@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { openSyntheticBuildProgressWindow } from "@/lib/desktop-popout";
-import { openExternalUrl } from "@/lib/external-url";
 import { desktopUpdateClient } from "@/lib/desktop-update";
 import {
   normalizeSyntheticBuildError,
@@ -28,10 +27,9 @@ import {
   type SyntheticBuildClient,
   type SyntheticCommit,
   type SyntheticBuildIdentity,
-  type SyntheticPrerequisiteScan,
 } from "@/lib/synthetic-build";
 
-type Stage = "commits" | "prerequisites" | "warning";
+type Stage = "commits" | "warning";
 
 export function SyntheticBuildCache({
   client = syntheticBuildClient,
@@ -189,7 +187,6 @@ export function SyntheticBuildSettings({
   const [commits, setCommits] = useState<SyntheticCommit[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<SyntheticCommit | null>(null);
-  const [scan, setScan] = useState<SyntheticPrerequisiteScan | null>(null);
   const [cachedTarget, setCachedTarget] = useState<CachedSyntheticBuild | null>(
     null,
   );
@@ -267,41 +264,18 @@ export function SyntheticBuildSettings({
       }
       setCachedTarget(null);
       const nextScan = await client.scanPrerequisites(target.sha);
-      setScan(nextScan);
-      setStage(nextScan.ready ? "warning" : "prerequisites");
-    } catch (reason) {
-      setError(normalizeSyntheticBuildError(reason).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function checkAgain() {
-    if (!selected) return;
-    setBusy(true);
-    try {
-      const nextScan = await client.scanPrerequisites(selected.sha);
-      setScan(nextScan);
-      if (nextScan.ready) setStage("warning");
-    } catch (reason) {
-      setError(normalizeSyntheticBuildError(reason).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function installPrerequisites() {
-    if (!selected || !scan) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const nextScan = await client.installPrerequisites(
-        selected.sha,
-        scan.prerequisites
+      if (!nextScan.ready) {
+        const missing = nextScan.prerequisites
           .filter((item) => item.status !== "ready")
-          .map((item) => item.id),
-      );
-      setScan(nextScan);
+          .map(
+            (item) =>
+              item.message ?? `${item.label} requires ${item.requiredVersion}.`,
+          )
+          .join(" ");
+        setError(`Cantrip could not prepare the build environment. ${missing}`);
+        return;
+      }
+      setStage("warning");
     } catch (reason) {
       setError(normalizeSyntheticBuildError(reason).message);
     } finally {
@@ -364,18 +338,12 @@ export function SyntheticBuildSettings({
         >
           <DialogHeader>
             <DialogTitle>
-              {stage === "commits"
-                ? "Build update"
-                : stage === "prerequisites"
-                  ? "Build prerequisites"
-                  : "Confirm synthetic build"}
+              {stage === "commits" ? "Build update" : "Confirm synthetic build"}
             </DialogTitle>
             <DialogDescription>
               {stage === "commits"
                 ? "Choose a commit from main. The latest buildable commit is selected by default."
-                : stage === "prerequisites"
-                  ? "Install or update the required build tools, then check again."
-                  : "Cantrip will build and install this historical source on this machine."}
+                : "Cantrip will build and install this historical source on this machine."}
             </DialogDescription>
           </DialogHeader>
 
@@ -418,37 +386,6 @@ export function SyntheticBuildSettings({
                 ) : null}
               </div>
             </div>
-          ) : stage === "prerequisites" ? (
-            <div className="max-h-[50vh] overflow-y-auto border-y">
-              {scan?.prerequisites.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-4 border-b px-2 py-3 text-sm"
-                >
-                  <div>
-                    <div className="font-medium">{item.label}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.message ?? `Requires ${item.requiredVersion}`}
-                    </div>
-                  </div>
-                  {item.status === "ready" ? (
-                    <span className="text-xs text-emerald-500">Ready</span>
-                  ) : item.installUrl ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void openExternalUrl(item.installUrl!)}
-                    >
-                      Install
-                    </Button>
-                  ) : (
-                    <span className="text-xs text-amber-500">
-                      Needs attention
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
           ) : (
             <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
               <div className="flex gap-2 font-medium">
@@ -458,7 +395,7 @@ export function SyntheticBuildSettings({
               <p className="mt-2 text-muted-foreground">
                 {cachedTarget
                   ? "A verified local artifact already exists, so Cantrip will install it without rebuilding. It is a local synthetic build, not an official signed or notarized release."
-                  : "The build downloads source and dependencies, uses the selected commit's build scripts, and may consume substantial disk and network bandwidth. It is a local synthetic build, not an official signed or notarized Cantrip release."}
+                  : "The build downloads source, dependencies, and isolated Node, pnpm, and Rust tools into Cantrip's private data directory. It does not change your shell or system toolchains, but may consume substantial disk and network bandwidth. It is a local synthetic build, not an official signed or notarized Cantrip release."}
               </p>
               <dl className="mt-3 grid grid-cols-[7rem_1fr] gap-1 text-xs">
                 <dt>Version</dt>
@@ -483,13 +420,7 @@ export function SyntheticBuildSettings({
               <Button
                 variant="outline"
                 disabled={busy}
-                onClick={() =>
-                  setStage(
-                    stage === "warning" && !scan?.ready
-                      ? "prerequisites"
-                      : "commits",
-                  )
-                }
+                onClick={() => setStage("commits")}
               >
                 Back
               </Button>
@@ -497,30 +428,12 @@ export function SyntheticBuildSettings({
             {stage === "commits" ? (
               <Button
                 pending={busy}
-                pendingLabel="Checking…"
+                pendingLabel="Preparing…"
                 disabled={!selected}
                 onClick={() => void continueFromCommit()}
               >
                 Continue
               </Button>
-            ) : stage === "prerequisites" ? (
-              <>
-                <Button
-                  variant="outline"
-                  pending={busy}
-                  pendingLabel="Opening installers…"
-                  onClick={() => void installPrerequisites()}
-                >
-                  Install prerequisites
-                </Button>
-                <Button
-                  pending={busy}
-                  pendingLabel="Checking…"
-                  onClick={() => void checkAgain()}
-                >
-                  Check again
-                </Button>
-              </>
             ) : (
               <Button
                 pending={busy}

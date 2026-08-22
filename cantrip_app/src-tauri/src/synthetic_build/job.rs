@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
+use super::toolchain::{SyntheticBuildToolchain, RUST_VERSION};
 use super::{
     scan_prerequisites, supported_platform, validate_full_sha, SyntheticBuildCoordinator,
     SyntheticBuildError, SyntheticPrerequisiteStatus,
@@ -296,8 +297,9 @@ fn sanitized_build_command(
     artifact_path: &Path,
     root: &Path,
     job: &SyntheticBuildJob,
-) -> Command {
-    let mut command = Command::new("node");
+    toolchain: &SyntheticBuildToolchain,
+) -> Result<Command, SyntheticBuildError> {
+    let mut command = Command::new(&toolchain.node);
     command
         .arg(worktree.join("scripts/synthetic-build.mjs"))
         .arg("--target")
@@ -354,12 +356,18 @@ fn sanitized_build_command(
         .env("CANTRIP_SYNTHETIC_OVERLAY_DIGEST", &job.overlay_digest)
         .env("CANTRIP_SYNTHETIC_VERSION", &job.version)
         .env("CANTRIP_WINDOWS_BUNDLE", "nsis")
-        .env("CARGO_HOME", root.join("stores/cargo-home"))
+        .env("CARGO_HOME", &toolchain.cargo_home)
         .env("CARGO_TARGET_DIR", root.join("stores/cargo-target"))
         .env("CANTRIP_CODE_CACHE_DIR", root.join("stores/cantrip-code"))
+        .env("PATH", toolchain.path()?)
+        .env("RUSTUP_HOME", &toolchain.rustup_home)
+        .env("RUSTUP_TOOLCHAIN", RUST_VERSION)
+        .env("npm_execpath", &toolchain.pnpm_cli)
+        .env("npm_node_execpath", &toolchain.node)
         .env("pnpm_config_store_dir", root.join("stores/pnpm"));
     configure_desktop_child(&mut command);
-    command
+    command.env("PATH", toolchain.path()?);
+    Ok(command)
 }
 
 fn configure_process_group(command: &mut Command) {
@@ -501,6 +509,7 @@ fn run_job(
     runtime: Arc<JobRuntime>,
     mut job: SyntheticBuildJob,
     worktree: PathBuf,
+    toolchain: SyntheticBuildToolchain,
 ) {
     let artifact_path = runtime
         .root
@@ -525,7 +534,20 @@ fn run_job(
 
     job.state = SyntheticBuildJobState::Running;
     emit_state(&app, &runtime, &job);
-    let mut command = sanitized_build_command(&worktree, &artifact_path, &runtime.root, &job);
+    let mut command =
+        match sanitized_build_command(&worktree, &artifact_path, &runtime.root, &job, &toolchain) {
+            Ok(command) => command,
+            Err(error) => {
+                job.state = SyntheticBuildJobState::Failed;
+                job.error = Some(SyntheticBuildJobError {
+                    code: error.code.into(),
+                    message: error.message,
+                    retryable: error.retryable,
+                });
+                emit_state(&app, &runtime, &job);
+                return;
+            }
+        };
     configure_process_group(&mut command);
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -651,7 +673,10 @@ pub async fn start_synthetic_build(
         ));
     }
     let source = coordinator.resolve_source(sha.clone()).await?;
-    let prerequisites = scan_prerequisites(&source.package_manager);
+    let toolchain = coordinator
+        .ensure_toolchain(&source.package_manager)
+        .await?;
+    let prerequisites = scan_prerequisites(&source.package_manager, Some(&toolchain));
     if prerequisites
         .iter()
         .any(|item| item.status != SyntheticPrerequisiteStatus::Ready)
@@ -704,7 +729,9 @@ pub async fn start_synthetic_build(
         active_pid: Arc::clone(&coordinator.jobs().active_pid),
     });
     let task_job = job.clone();
-    tauri::async_runtime::spawn_blocking(move || run_job(app, runtime, task_job, worktree));
+    tauri::async_runtime::spawn_blocking(move || {
+        run_job(app, runtime, task_job, worktree, toolchain)
+    });
     Ok(job)
 }
 

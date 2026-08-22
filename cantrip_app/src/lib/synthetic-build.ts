@@ -38,8 +38,7 @@ export interface SyntheticPrerequisite {
   status: SyntheticPrerequisiteStatus;
   detectedVersion: string | null;
   requiredVersion: string;
-  installation: "managed" | "system" | "guided";
-  installUrl: string | null;
+  installation: "managed" | "system";
   message: string | null;
 }
 
@@ -139,10 +138,6 @@ export interface SyntheticBuildClient {
   listCommits(cursor?: string): Promise<SyntheticCommitPage>;
   resolveTarget(sha: string): Promise<SyntheticCommit>;
   scanPrerequisites(sha: string): Promise<SyntheticPrerequisiteScan>;
-  installPrerequisites(
-    sha: string,
-    ids: string[],
-  ): Promise<SyntheticPrerequisiteScan>;
   start(sha: string): Promise<SyntheticBuildJob>;
   status(): Promise<SyntheticBuildStatus>;
   cancel(jobId: string): Promise<boolean>;
@@ -194,8 +189,6 @@ export const syntheticBuildClient: SyntheticBuildClient = {
   resolveTarget: (sha) => invoke("resolve_synthetic_build_target", { sha }),
   scanPrerequisites: (sha) =>
     invoke("scan_synthetic_build_prerequisites", { sha }),
-  installPrerequisites: (sha, ids) =>
-    invoke("install_synthetic_build_prerequisites", { sha, ids }),
   start: (sha) => invoke("start_synthetic_build", { sha }),
   status: () => invoke("synthetic_build_status"),
   cancel: (jobId) => invoke("cancel_synthetic_build", { jobId }),

@@ -14,9 +14,10 @@ The finished experience must:
 
 - put a **Build Update** action above Version history in General settings;
 - open a commit selector with the latest `main` commit selected by default;
-- prevent the build from starting until required host tools are present;
-- offer to install supported missing prerequisites and visibly report that
-  work;
+- prevent the build from starting until required host capabilities are present;
+- automatically provision pinned Node, pnpm, and Rust tools inside Cantrip's
+  private data directory, using checksum-verified upstream archives without
+  changing the user's environment;
 - warn that a full native build can take a long time and consume substantial
   disk and network resources;
 - move an accepted build into a dedicated progress window with a step timeline,
@@ -134,50 +135,50 @@ from the commit, and calculate `git rev-list --count <sha>`.
 
 ### Prerequisite gate
 
-Continue runs a non-mutating prerequisite scan. If everything is ready, Cantrip
-moves directly to the final warning. Otherwise it opens a prerequisite dialog
-with one row per requirement:
+Continue resolves the selected commit and prepares its private build toolchain.
+Cantrip downloads pinned Node and rustup archives, verifies their SHA-256
+digests, installs the selected commit's exact pnpm version through the private
+Node executable, and installs Rust with `--no-modify-path`. These files live
+under `<app-data>/synthetic-builds/toolchains`; package/compiler caches remain
+under `<app-data>/synthetic-builds/stores`. The user's shell configuration,
+global package installations, and existing Rust/Node toolchains are not read or
+modified for these managed requirements.
 
-- requirement and detected/current version;
-- required version or capability;
-- status: Ready, Missing, Installing, Needs attention, Restart required, or
-  Failed;
-- whether installation is per-user or requires an operating-system prompt;
-- an **Install prerequisites** action; and
-- a **Check again** action.
+There is no prerequisite screen and no link to an external installer. The
+Continue button reports **Preparing…** while first-run downloads and
+installation run, then moves directly to the final warning. Subsequent
+builds reuse verified private tools. A failed download or installation remains
+on the commit selector and reports the actionable error inline.
 
-Cantrip may initiate every supported prerequisite installer, but it must not
-bypass UAC, macOS installer UI, license acceptance, or reboot requirements.
-Privileged installers run only after this explicit action. Output from
-prerequisite installation is shown inside this dialog and is also written to
-the job log. The gate rescans after installation and remains blocked until all
-requirements pass.
+Host-native capabilities that cannot safely be provided as portable archives
+are still probed before any toolchain download. A missing system capability
+keeps the user on the commit selector with an inline error; Cantrip does not
+open a web page, mutate the operating system, bypass UAC, accept a license, or
+trigger a reboot.
 
-The first implementation should prefer Cantrip-managed, per-user toolchains in
-the synthetic cache over global mutation:
-
-| Requirement     | macOS                                                  | Windows                                                         | Installation policy                                     |
-| --------------- | ------------------------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------- |
-| Git             | Xcode Command Line Tools Git or a verified managed Git | Verified PortableGit                                            | Initiate OS prompt on macOS; managed install on Windows |
-| Node            | Pinned Node 24 archive                                 | Pinned Node 24 archive                                          | Managed, checksum-verified                              |
-| pnpm            | Repository `packageManager`, currently 11.15.1         | Same                                                            | Managed through the pinned Node toolchain               |
-| Rust            | Repository-supported toolchain, currently 1.95.0       | `1.95.0-x86_64-pc-windows-msvc`                                 | Managed rustup home                                     |
-| Native C/C++    | Xcode Command Line Tools                               | VS 2022 C++ Build Tools, Windows SDK, Spectre x64/x86 libraries | OS installer; may require admin/reboot                  |
-| Build utilities | Commit-specific verified requirements                  | CMake and NASM plus commit-specific requirements                | Managed archives where possible                         |
+| Requirement     | macOS                                          | Windows                                                         | Installation policy                                   |
+| --------------- | ---------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------- |
+| Git             | System Git                                     | System Git                                                      | Host capability; never installed by Cantrip           |
+| Node            | Pinned Node 24 archive                         | Pinned Node 24 archive                                          | Managed, checksum-verified                            |
+| pnpm            | Repository `packageManager`, currently 11.15.1 | Same                                                            | Managed through the pinned Node toolchain             |
+| Rust            | Pinned 1.95.0 private rustup home              | Pinned `1.95.0-x86_64-pc-windows-msvc` private rustup home      | Managed with `--no-modify-path`                       |
+| Native C/C++    | Xcode Command Line Tools                       | VS 2022 C++ Build Tools, Windows SDK, Spectre x64/x86 libraries | Host capability; never installed by Cantrip           |
+| Build utilities | Commit-specific requirements                   | System CMake and NASM plus commit-specific requirements         | Host capability until a pinned managed archive exists |
 
 Pinned download URLs, publishers, versions, and SHA-256 values belong in a
 versioned toolchain manifest shipped with Cantrip. Never execute an unpinned
 `curl | sh`, trust the first executable found on `PATH`, or install a floating
 latest toolchain.
 
-The selected commit may require a toolchain older or newer than the running
-client understands. A compatibility probe must inspect the checkout before
-building. Unsupported commits remain visible but explain why they cannot be
-built by this Cantrip version.
+The selected commit may require a pnpm or source layout older or newer than the
+running client understands. Compatibility inspection happens before building.
+Unsupported commits remain visible but explain why they cannot be built by this
+Cantrip version.
 
 ### Final warning
 
-After prerequisites pass, show a final confirmation containing:
+After the private toolchain and host checks pass, show a final confirmation
+containing:
 
 - selected synthetic version, full SHA, subject, and date;
 - target platform and architecture;
@@ -322,7 +323,7 @@ Add a `SyntheticBuildCoordinator` managed by Tauri, separate from
 
 - the one-active-job lock;
 - durable job and step state;
-- prerequisite scans and installers;
+- host-capability scans and the isolated managed toolchain;
 - the Git mirror and detached worktree lifecycle;
 - child-process groups and cancellation;
 - bounded console buffering and log persistence;
@@ -387,8 +388,7 @@ Tauri commands:
 - `synthetic_build_capability`
 - `list_synthetic_build_commits({ cursor, query })`
 - `resolve_synthetic_build_target({ sha })`
-- `scan_synthetic_build_prerequisites({ sha })`
-- `install_synthetic_build_prerequisites({ sha, ids })`
+- `scan_synthetic_build_prerequisites({ sha })` (prepares managed tools as needed)
 - `start_synthetic_build({ sha })`
 - `synthetic_build_status()`
 - `cancel_synthetic_build({ jobId })`
@@ -525,11 +525,12 @@ spikes pass.
 
 - Implement capability, commit catalog, full-SHA resolution, main-reachability
   verification, bare mirror, worktrees, and commit-count versioning.
-- Implement non-mutating prerequisite probes.
-- Implement managed toolchain downloads with checksum verification and
-  explicit OS installer handoffs.
+- Implement non-mutating host-capability probes.
+- Implement managed Node, pnpm, and Rust downloads with checksum verification,
+  private homes, and no operating-system installer handoffs.
 - Implement cache manifests, locking, quota accounting, and cleanup.
-- Add the commit selector, prerequisite gate, and final warning dialogs.
+- Add the commit selector, automatic toolchain preparation, and final warning
+  dialogs.
 
 ### Milestone 3: build coordinator and progress window
 
@@ -568,8 +569,8 @@ Unit tests:
   stability during refresh;
 - main reachability, commit count, version family, `-x` generation, and overlay
   digest;
-- prerequisite detection, pinned installer verification, rescans, reboot
-  states, and unsupported commits;
+- host-capability detection, pinned download verification, managed-version
+  selection, and unsupported commits;
 - job reducer/state transitions, weighted progress, log sequence replay, cache
   keys, eviction protection, cancellation idempotence, and retry boundaries;
 - artifact path containment, hashes, target identity, first-launch
@@ -589,8 +590,8 @@ Integration tests:
 
 Platform acceptance:
 
-1. Start from a clean supported machine and install every prerequisite through
-   Cantrip's gate.
+1. Start from a clean supported machine and let Cantrip provision Node, pnpm,
+   and Rust without changing the system environment.
 2. Build the latest commit selected by default.
 3. Confirm every timeline phase and live console output.
 4. Cancel during dependency installation and native compilation; confirm no
@@ -608,8 +609,9 @@ Platform acceptance:
   clients.
 - The latest `main` commit is selected by default and no branch race can change
   the confirmed full SHA.
-- A build cannot start until all prerequisites pass, and every supported
-  missing prerequisite has an explicit guided installation path.
+- A build cannot start until host checks pass and the selected private toolchain
+  is ready; Cantrip never opens a prerequisite URL or modifies global Node,
+  pnpm, Rust, or shell configuration.
 - The progress window remains responsive during a cold build, never drops log
   lines across reload, and cannot be closed without a cancellation decision.
 - Cancellation terminates the complete process tree and never leaves a partial

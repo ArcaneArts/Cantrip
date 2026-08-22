@@ -928,7 +928,6 @@ pub fn run() {
             desktop_update::cancel_desktop_update,
             synthetic_build::synthetic_build_capability,
             synthetic_build::scan_synthetic_build_prerequisites,
-            synthetic_build::install_synthetic_build_prerequisites,
             synthetic_build::list_synthetic_build_commits,
             synthetic_build::resolve_synthetic_build_target,
             synthetic_build::job::start_synthetic_build,
