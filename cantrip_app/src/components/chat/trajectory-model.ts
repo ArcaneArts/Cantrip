@@ -118,7 +118,7 @@ function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
     if (message.role === "user" || slices.length === 0) slices.push([]);
     slices.at(-1)!.push(message);
   }
-  return slices.map((turnMessages) => {
+  const projected = slices.map((turnMessages) => {
     const runtimeTurnId =
       turnMessages.map(correlationTurnId).find(Boolean) ?? null;
     const opening =
@@ -130,6 +130,19 @@ function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
       runtimeTurnId,
     };
   });
+  const merged: TurnSlice[] = [];
+  for (const slice of projected) {
+    const previous = merged.at(-1);
+    if (
+      slice.runtimeTurnId &&
+      previous?.runtimeTurnId === slice.runtimeTurnId
+    ) {
+      previous.messages.push(...slice.messages);
+      continue;
+    }
+    merged.push(slice);
+  }
+  return merged;
 }
 
 function activityLane(activity: AgentActivity): TrajectoryLane {
@@ -482,21 +495,20 @@ export function projectTrajectory(input: {
     : null;
 
   const events: TrajectoryEvent[] = [];
-  if (opening.role === "user") {
-    events.push(
-      messageEvent(
-        opening,
-        0,
-        "input",
-        "User input",
-        messageText(opening),
-        "input",
-      ),
-    );
-  }
-
   for (const message of selected.messages) {
-    if (message.role === "user") continue;
+    if (message.role === "user") {
+      events.push(
+        messageEvent(
+          message,
+          0,
+          "input",
+          message === opening ? "User input" : "Steer input",
+          messageText(message),
+          "input",
+        ),
+      );
+      continue;
+    }
     const texts = message.content.flatMap((content, contentIndex) =>
       content.type === "text" ? [{ content, contentIndex }] : [],
     );
