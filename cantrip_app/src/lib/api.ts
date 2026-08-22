@@ -4233,6 +4233,20 @@ export async function getTerminalScriptCommands(terminalId: string) {
   );
 }
 
+export async function getProjectScriptCommands(
+  projectId: string,
+  worktreeId?: string,
+) {
+  const query = new URLSearchParams();
+  if (worktreeId) query.set("worktreeId", worktreeId);
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return scriptCommandListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/script-commands${suffix}`,
+    ),
+  );
+}
+
 export async function createTerminal(
   projectId: string,
   title: string,

@@ -3040,6 +3040,12 @@ describe("Cantrip protocol", () => {
         stateProtection: terminalStateFixture(),
       }).type,
     ).toBe("project.script-commands");
+    expect(
+      workerCommandSchema.parse({
+        type: "project.script-commands.inspect",
+        sourcePath: "/worker/projects/cantrip",
+      }).type,
+    ).toBe("project.script-commands.inspect");
   });
 
   it("bounds version-checked explorer file writes", () => {

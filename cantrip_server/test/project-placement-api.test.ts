@@ -11,6 +11,7 @@ import {
   executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
   projectTabLayoutWireSummarySchema,
+  scriptCommandListSchema,
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
@@ -190,6 +191,17 @@ const workerBridge: WorkerCommandBus = {
           diagnostics: [],
         };
       }
+      case "project.script-commands.inspect":
+        return [
+          {
+            id: "package:package.json:dev",
+            kind: "package",
+            name: "dev",
+            command: "pnpm run dev",
+            description: "vite",
+            source: "package.json",
+          },
+        ];
       default:
         throw new Error(`Unexpected placement command ${command.type}.`);
     }
@@ -578,6 +590,25 @@ describe.sequential("project execution placement API", () => {
       ),
     ).rejects.toMatchObject<Partial<ExecutionPlacementUnavailableError>>({
       code: "worker-offline",
+    });
+  });
+
+  it("discovers project scripts on the selected worktree worker", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/script-commands?worktreeId=${betaWorktreeId}`,
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(scriptCommandListSchema.parse(response.json())).toEqual([
+      expect.objectContaining({ name: "dev", command: "pnpm run dev" }),
+    ]);
+    expect(routedCommands.at(-1)).toMatchObject({
+      workerId: "worker-beta",
+      command: {
+        type: "project.script-commands.inspect",
+        sourcePath: path.join(dataDirectory, "worker-beta"),
+      },
     });
   });
 

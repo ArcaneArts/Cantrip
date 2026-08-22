@@ -61,7 +61,9 @@ function terminalTheme() {
 export function TerminalView({
   commandPaletteOpen = false,
   onCommandPaletteOpenChange,
+  onPendingInputSent,
   onServicePanelOpenChange,
+  pendingInput = null,
   servicePanelOpen = false,
   terminal,
   onExit,
@@ -70,7 +72,9 @@ export function TerminalView({
 }: {
   commandPaletteOpen?: boolean;
   onCommandPaletteOpenChange?(open: boolean): void;
+  onPendingInputSent?(inputId: string): void;
   onServicePanelOpenChange?(open: boolean): void;
+  pendingInput?: { data: string; id: string } | null;
   servicePanelOpen?: boolean;
   terminal: TerminalSummary;
   onExit?(): void;
@@ -86,6 +90,8 @@ export function TerminalView({
   const onExitRef = useRef(onExit);
   const onOpenExternalLinkRef = useRef(onOpenExternalLink);
   const onOpenLinkRef = useRef(onOpenLink);
+  const onPendingInputSentRef = useRef(onPendingInputSent);
+  const pendingInputRef = useRef(pendingInput);
   const [connectionKey, setConnectionKey] = useState(0);
   const [state, setState] = useState<"connecting" | "reconnecting" | "ready">(
     "connecting",
@@ -102,6 +108,8 @@ export function TerminalView({
   onExitRef.current = onExit;
   onOpenExternalLinkRef.current = onOpenExternalLink;
   onOpenLinkRef.current = onOpenLink;
+  onPendingInputSentRef.current = onPendingInputSent;
+  pendingInputRef.current = pendingInput;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -297,6 +305,11 @@ export function TerminalView({
           loadedTerminalIds.add(terminal.id);
           setLoadedTerminalId(terminal.id);
           setState("ready");
+          const queuedInput = pendingInputRef.current;
+          if (queuedInput && sendInput(queuedInput.data)) {
+            pendingInputRef.current = null;
+            onPendingInputSentRef.current?.(queuedInput.id);
+          }
           clientLogger.info("Terminal surface is ready", {
             attempt: reconnectAttemptRef.current + 1,
             durationMs: Math.round(performance.now() - connectionStartedAt),
@@ -515,6 +528,13 @@ export function TerminalView({
       xterm.dispose();
     };
   }, [connectionKey, terminal.activeWorkerId, terminal.id]);
+
+  useEffect(() => {
+    if (!pendingInput) return;
+    if (!inputSenderRef.current?.(pendingInput.data)) return;
+    pendingInputRef.current = null;
+    onPendingInputSentRef.current?.(pendingInput.id);
+  }, [pendingInput]);
 
   const setCommandPaletteOpen = (open: boolean) => {
     onCommandPaletteOpenChange?.(open);

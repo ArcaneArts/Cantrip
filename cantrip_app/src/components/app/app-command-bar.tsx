@@ -2,6 +2,7 @@ import type {
   GithubRepository,
   ProjectSummary,
   ProjectWorkspaceSummary,
+  ScriptCommand,
   WorkerSummary,
 } from "@cantrip/protocol";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +17,7 @@ import {
   GitFork,
   Loader2,
   Lock,
+  Palette,
   Plus,
   Search,
   SquareTerminal,
@@ -46,6 +48,7 @@ import {
   getCachedGithubRepositories,
   getGithubRepositories,
   getGithubStatus,
+  getProjectScriptCommands,
 } from "@/lib/api";
 import {
   advanceDoubleShiftGesture,
@@ -173,9 +176,11 @@ export function AppCommandBar({
   onCreatedProject,
   onOpenChange,
   onOpenFolder,
+  onRunScriptCommand,
   onSelectProject,
   open,
   projects,
+  scriptWorktreeId,
   workers,
   workspaces,
 }: {
@@ -187,9 +192,11 @@ export function AppCommandBar({
   onCreatedProject(project: ProjectSummary): void;
   onOpenChange(open: boolean): void;
   onOpenFolder(): void;
+  onRunScriptCommand(command: ScriptCommand): Promise<void>;
   onSelectProject(projectId: string): void;
   open: boolean;
   projects: readonly ProjectSummary[];
+  scriptWorktreeId: string | null;
   workers: readonly WorkerSummary[];
   workspaces: readonly ProjectWorkspaceSummary[];
 }) {
@@ -200,6 +207,9 @@ export function AppCommandBar({
   const [pendingRepositoryId, setPendingRepositoryId] = useState<string | null>(
     null,
   );
+  const [pendingScriptCommandId, setPendingScriptCommandId] = useState<
+    string | null
+  >(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const lastShiftAtRef = useRef<number | null>(null);
   const actions = useMemo(() => availableAppActions(context), [context]);
@@ -246,6 +256,21 @@ export function AppCommandBar({
       getCachedGithubRepositories(githubWorkerId!, github.data!.login!),
     queryKey: ["github-repositories-cache", githubWorkerId, github.data?.login],
     staleTime: 30_000,
+  });
+  const projectScriptCommands = useQuery({
+    enabled: Boolean(open && activeScope === null && currentProjectId),
+    queryFn: () =>
+      getProjectScriptCommands(
+        currentProjectId!,
+        scriptWorktreeId ?? undefined,
+      ),
+    queryKey: [
+      "project-script-commands",
+      currentProjectId,
+      scriptWorktreeId ?? "default",
+    ],
+    refetchOnWindowFocus: false,
+    staleTime: 10_000,
   });
   const githubRepositories = repositories.data ?? cachedRepositories.data ?? [];
   const hasGithubRepositoryData = Boolean(
@@ -403,6 +428,19 @@ export function AppCommandBar({
       setPendingRepositoryId(null);
     }
   };
+  const runScriptCommand = async (command: ScriptCommand) => {
+    if (pendingScriptCommandId) return;
+    setPendingScriptCommandId(command.id);
+    setOperationError(null);
+    try {
+      await onRunScriptCommand(command);
+      onOpenChange(false);
+    } catch (error) {
+      setOperationError(errorMessage(error));
+    } finally {
+      setPendingScriptCommandId(null);
+    }
+  };
 
   const placeholder =
     activeScope === "folder"
@@ -411,13 +449,13 @@ export function AppCommandBar({
         ? "Search GitHub repositories…"
         : activeScope === "new-project"
           ? "Choose a source or existing project…"
-          : "Search actions or projects…";
+          : "Search actions, scripts, or projects…";
   const emptyMessage =
     activeScope === "github"
       ? "No GitHub repositories match your search."
       : activeScope === "new-project"
         ? "No projects match your search."
-        : "No matching actions or projects.";
+        : "No matching actions, scripts, or projects.";
   const showEmpty = !(
     activeScope === "github" &&
     (githubLoading ||
@@ -512,6 +550,65 @@ export function AppCommandBar({
                     </CommandItem>
                   ))}
                 </CommandGroup>
+                {currentProjectId ? (
+                  <CommandGroup heading="Project scripts">
+                    {projectScriptCommands.isPending ? (
+                      <CommandItem disabled value="discovering project scripts">
+                        <Loader2 className="size-4 animate-spin" />
+                        <span className="text-sm text-muted-foreground">
+                          Discovering scripts…
+                        </span>
+                      </CommandItem>
+                    ) : projectScriptCommands.isError ? (
+                      <CommandItem disabled value="project scripts unavailable">
+                        <Palette className="size-4" />
+                        <span className="truncate text-sm text-destructive">
+                          {errorMessage(projectScriptCommands.error)}
+                        </span>
+                      </CommandItem>
+                    ) : (
+                      projectScriptCommands.data?.map((command) => {
+                        const pending = pendingScriptCommandId === command.id;
+                        return (
+                          <CommandItem
+                            key={command.id}
+                            value={`project script task ${command.name} ${command.command} ${command.source} ${command.description ?? ""}`}
+                            disabled={Boolean(pendingScriptCommandId)}
+                            className="gap-3 rounded-lg px-3 py-2.5"
+                            onSelect={() => void runScriptCommand(command)}
+                          >
+                            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                              <Palette className="size-4" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span className="truncate text-sm font-medium">
+                                  {command.name}
+                                </span>
+                                <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                  {command.source}
+                                </span>
+                              </span>
+                              <span className="block truncate font-mono text-xs text-muted-foreground">
+                                {command.command}
+                              </span>
+                              {command.description ? (
+                                <span className="block truncate text-[11px] text-muted-foreground/80">
+                                  {command.description}
+                                </span>
+                              ) : null}
+                            </span>
+                            {pending ? (
+                              <Loader2 className="size-4 shrink-0 animate-spin" />
+                            ) : (
+                              <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                            )}
+                          </CommandItem>
+                        );
+                      })
+                    )}
+                  </CommandGroup>
+                ) : null}
                 {projects.length > 0 ? (
                   <ProjectCommandGroup
                     currentProjectId={currentProjectId}
@@ -718,7 +815,7 @@ export function AppCommandBar({
             <span className="truncate">
               {scopes.length > 0
                 ? "Backspace on an empty search removes the previous action"
-                : "Search actions and projects from any workspace"}
+                : "Search actions, project scripts, and projects from any workspace"}
             </span>
           )}
           <span className="hidden shrink-0 items-center gap-3 sm:flex">
