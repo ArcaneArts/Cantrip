@@ -8,6 +8,7 @@ import {
   CANTRIP_MCP_MUTATION_TOOL_NAMES,
   CANTRIP_MCP_READ_TOOL_NAMES,
   CANTRIP_MCP_TOOL_NAMES,
+  cantripMcpOperationsForPermissionProfile,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -219,6 +220,52 @@ describe("Cantrip MCP worker broker", () => {
     }
   });
 
+  it("does not authorize Run mutations for a read-only binding", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const broker = new CantripMcpBroker({
+      dataDirectory,
+      serverUrl: "https://cantrip.example",
+      token: "worker-token",
+      workerId: "worker-one",
+    });
+    await broker.start();
+    try {
+      const attachment = broker.createBinding({
+        ...bindingInput(),
+        permissionProfileId: ":read-only",
+        allowedOperations: [
+          ...cantripMcpOperationsForPermissionProfile(":read-only"),
+        ],
+      });
+      expect(attachment.binding.allowedOperations).not.toEqual(
+        expect.arrayContaining(["run.start", "run.stop"]),
+      );
+      const denied = await fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${attachment.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: attachment.binding.bindingId,
+          request: {
+            operation: "run.start",
+            arguments: {
+              actionId: "a".repeat(64),
+              configRevision: "b".repeat(64),
+            },
+          },
+        }),
+      });
+      expect(denied.status).toBe(403);
+      await expect(denied.json()).resolves.toMatchObject({
+        code: "forbidden",
+      });
+    } finally {
+      await broker.close();
+    }
+  });
+
   it("rotates a binding when its project identity changes", async () => {
     const dataDirectory = await temporaryDirectory();
     const broker = new CantripMcpBroker({
@@ -416,6 +463,7 @@ describe("Cantrip MCP worker broker", () => {
             tool.name as (typeof CANTRIP_MCP_READ_TOOL_NAMES)[number],
           );
           const destructive = new Set([
+            "run_stop",
             "worktree_release",
             "worktree_remove",
             "explorer_write",
@@ -423,6 +471,8 @@ describe("Cantrip MCP worker broker", () => {
           ]).has(tool.name);
           const openWorld = new Set([
             "browser_services",
+            "run_start",
+            "run_stop",
             "terminal_send",
             "browser_navigate",
           ]).has(tool.name);
@@ -447,7 +497,7 @@ describe("Cantrip MCP worker broker", () => {
             worktreeId: "worktree-one",
           },
         });
-        expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(12);
+        expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(14);
       } finally {
         await client.close();
         await broker.close();
@@ -515,6 +565,84 @@ describe("Cantrip MCP worker broker", () => {
       });
     } finally {
       release();
+      await broker.close();
+    }
+  });
+
+  it("rejects an oversized Run configuration response at the worker broker", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const broker = new CantripMcpBroker(
+      {
+        dataDirectory,
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-one",
+      },
+      {
+        execute: async (binding) => ({
+          summary: "Found large Run actions.",
+          target: null,
+          worktreeId: binding.worktreeId,
+          continuationScheduled: false,
+          mutated: false,
+          data: {
+            platform: "linux",
+            canonical: {
+              relativePath: ".codex/environments/environment.toml",
+              sourceControlState: "tracked",
+            },
+            configured: true,
+            valid: true,
+            configurations: [
+              {
+                relativePath: ".codex/environments/environment.toml",
+                revision: "b".repeat(64),
+                version: 1,
+                name: "Large environment",
+                sourceControlState: "tracked",
+                setup: null,
+                actions: Array.from({ length: 6 }, (_, sourceIndex) => ({
+                  id: sourceIndex.toString(16).padStart(64, "0"),
+                  name: `Action ${sourceIndex}`,
+                  icon: "run",
+                  command: "x".repeat(100_000),
+                  platform: "linux",
+                  configurationPath: ".codex/environments/environment.toml",
+                  sourceIndex,
+                })),
+                diagnostics: [],
+              },
+            ],
+            diagnostics: [],
+          },
+        }),
+      },
+    );
+    broker.setEncryptionService({
+      ownerId: () => "owner-one",
+    } as unknown as WorkerEncryptionService);
+    await broker.start();
+    const attachment = broker.createBinding({
+      ...bindingInput(),
+      allowedOperations: ["run-config.list"],
+    });
+    try {
+      const response = await fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${attachment.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: attachment.binding.bindingId,
+          request: { operation: "run-config.list", arguments: {} },
+        }),
+      });
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        code: "output-too-large",
+      });
+    } finally {
       await broker.close();
     }
   });

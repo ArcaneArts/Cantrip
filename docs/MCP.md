@@ -2,7 +2,8 @@
 
 Cantrip gives each applicable Codex chat a worker-owned MCP server named
 `cantrip`. It is the preferred agent interface for Cantrip-owned context,
-Policies, worktrees, execution targets, surfaces, and bounded client controls.
+Policies, Run configurations and instances, worktrees, execution targets,
+surfaces, and bounded client controls.
 Normal repository reads, edits, commands, and Git operations still use normal
 shell, file, and Git tools. The worker-authenticated [`cantrip` CLI](CLI.md)
 remains available to humans, scripts, diagnostics, and agents whose MCP runtime
@@ -58,6 +59,11 @@ the owner and worker from the worker credential, reloads the current chat lane,
 and independently checks expiry, permission profile, operation allowlist, and
 lane identity before dispatch.
 
+Successful Run mutations are audited as `run.mcp.started` or
+`run.mcp.stopped` against the durable Run ID. That identity links to the exact
+project, worktree, worker, action ID, and configuration revision without adding
+the raw command or volatile PTY output to the audit log.
+
 ## Agent use
 
 1. Call `context_get` first and treat its project, lane, worker, root, worktree,
@@ -68,9 +74,14 @@ lane identity before dispatch.
    or reconstruct opaque target identifiers.
 4. Use the target-specific tool. Normal filesystem and Git work stays in normal
    repository tools.
-5. If a result has `continuationScheduled: true`, end the current turn
+5. Create or edit `.codex/environments/environment.toml` with normal repository
+   tools, and validate it with `cantrip run validate`. Use `run_config_list` or
+   `run_config_read` to obtain the exact action ID and configuration revision,
+   then prefer `run_start`, `run_status`, `run_read`, and `run_stop` over copied
+   shell commands. MCP never invokes the CLI internally.
+6. If a result has `continuationScheduled: true`, end the current turn
    immediately so Cantrip can checkpoint and resume in the selected lane.
-6. If managed MCP is unavailable, use `cantrip -h` and the corresponding CLI
+7. If managed MCP is unavailable, use `cantrip -h` and the corresponding CLI
    command. Do not retry an expired, stale, or denied binding without refreshed
    chat context.
 
@@ -83,35 +94,42 @@ only. CodeGraph remains separately labeled **Read only**.
 
 ## Tool catalog
 
-The catalog contains 23 tools. Read-only and mutation annotations are attached
-per tool; the current permission profile and binding remain the authority even
-when Codex displays a tool.
+The catalog contains 29 tools. Read-only and mutation annotations are attached
+per tool. Cantrip narrows Codex's enabled tool list to the current permission
+profile, so read-only bindings receive the Run read tools but not `run_start` or
+`run_stop`; the broker and server independently enforce the same boundary.
 
-| Tool                      | Kind                 | Purpose                                                                                         |
-| ------------------------- | -------------------- | ----------------------------------------------------------------------------------------------- |
-| `context_get`             | Read                 | Return the validated project, chat lane, worker, root, worktree, and permission context.        |
-| `policy_list`             | Read                 | List bounded summaries of effective Policies in configured order.                               |
-| `policy_read`             | Read                 | Read the current full body for a key returned by `policy_list`.                                 |
-| `target_list`             | Read                 | Page through exact authorized execution targets for the bound project.                          |
-| `target_inspect`          | Read                 | Revalidate one listed target and report current placement and availability.                     |
-| `worktree_list`           | Read                 | List validated worktrees and leases without exposing worker filesystem paths.                   |
-| `worktree_status`         | Read                 | Read bounded Git status for the current or an exact listed worktree.                            |
-| `explorer_list`           | Read                 | List a bounded directory page through an exact Explorer target.                                 |
-| `explorer_read`           | Read                 | Read bounded protected text and its version from an Explorer target.                            |
-| `terminal_read`           | Read                 | Read a bounded protected Terminal snapshot.                                                     |
-| `browser_services`        | Read/open-world      | Discover bounded local HTTP services visible to a Browser target.                               |
-| `worktree_create`         | Mutation             | Create an agent-owned worktree in the bound project.                                            |
-| `worktree_switch`         | Mutation             | Schedule continuation in an exact authorized worktree.                                          |
-| `worktree_release`        | Destructive mutation | Release a clean secondary lease and schedule continuation on Primary.                           |
-| `worktree_remove`         | Destructive mutation | Remove a clean, unused, agent-created secondary worktree while retaining its branch.            |
-| `explorer_write`          | Destructive mutation | Replace bounded text using the expected version returned by `explorer_read`.                    |
-| `terminal_send`           | Open-world mutation  | Send bounded protected input to an exact Terminal target.                                       |
-| `terminal_restart`        | Destructive mutation | Restart the service owned by an eligible Terminal target.                                       |
-| `browser_navigate`        | Open-world mutation  | Navigate a Browser target to a revision-checked HTTP(S) URL.                                    |
-| `client_notify`           | Client mutation      | Deliver one bounded best-effort notice to a compatible project-active app.                      |
-| `client_focus_project`    | Client mutation      | Ask a compatible app to focus the bound project.                                                |
-| `client_focus_surface`    | Client mutation      | Ask a compatible app to focus an authorized Chat, Terminal, Explorer, Code, or Browser surface. |
-| `client_show_interaction` | Client mutation      | Ask a compatible chat-active app to show an exact pending interaction without answering it.     |
+| Tool                      | Kind                            | Purpose                                                                                         |
+| ------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `context_get`             | Read                            | Return the validated project, chat lane, worker, root, worktree, and permission context.        |
+| `policy_list`             | Read                            | List bounded summaries of effective Policies in configured order.                               |
+| `policy_read`             | Read                            | Read the current full body for a key returned by `policy_list`.                                 |
+| `target_list`             | Read                            | Page through exact authorized execution targets for the bound project.                          |
+| `target_inspect`          | Read                            | Revalidate one listed target and report current placement and availability.                     |
+| `run_config_list`         | Read                            | List platform-compatible Codex actions with their exact IDs and configuration revisions.        |
+| `run_config_read`         | Read                            | Read one exact action after revalidating both its ID and configuration revision.                |
+| `run_status`              | Read                            | Refresh one Run, or the latest Run in the bound worktree, from its owning worker.               |
+| `run_read`                | Read                            | Read a bounded tail of volatile, worker-owned Run output.                                       |
+| `worktree_list`           | Read                            | List validated worktrees and leases without exposing worker filesystem paths.                   |
+| `worktree_status`         | Read                            | Read bounded Git status for the current or an exact listed worktree.                            |
+| `explorer_list`           | Read                            | List a bounded directory page through an exact Explorer target.                                 |
+| `explorer_read`           | Read                            | Read bounded protected text and its version from an Explorer target.                            |
+| `terminal_read`           | Read                            | Read a bounded protected Terminal snapshot.                                                     |
+| `browser_services`        | Read/open-world                 | Discover bounded local HTTP services visible to a Browser target.                               |
+| `run_start`               | Open-world mutation             | Start an exact revision-checked action in the bound worktree through its target worker.         |
+| `run_stop`                | Destructive/open-world mutation | Stop an exact Run and its complete worker-owned process group.                                  |
+| `worktree_create`         | Mutation                        | Create an agent-owned worktree in the bound project.                                            |
+| `worktree_switch`         | Mutation                        | Schedule continuation in an exact authorized worktree.                                          |
+| `worktree_release`        | Destructive mutation            | Release a clean secondary lease and schedule continuation on Primary.                           |
+| `worktree_remove`         | Destructive mutation            | Remove a clean, unused, agent-created secondary worktree while retaining its branch.            |
+| `explorer_write`          | Destructive mutation            | Replace bounded text using the expected version returned by `explorer_read`.                    |
+| `terminal_send`           | Open-world mutation             | Send bounded protected input to an exact Terminal target.                                       |
+| `terminal_restart`        | Destructive mutation            | Restart the service owned by an eligible Terminal target.                                       |
+| `browser_navigate`        | Open-world mutation             | Navigate a Browser target to a revision-checked HTTP(S) URL.                                    |
+| `client_notify`           | Client mutation                 | Deliver one bounded best-effort notice to a compatible project-active app.                      |
+| `client_focus_project`    | Client mutation                 | Ask a compatible app to focus the bound project.                                                |
+| `client_focus_surface`    | Client mutation                 | Ask a compatible app to focus an authorized Chat, Terminal, Explorer, Code, or Browser surface. |
+| `client_show_interaction` | Client mutation                 | Ask a compatible chat-active app to show an exact pending interaction without answering it.     |
 
 Creating a new UI surface is intentionally not an MCP tool. Surface creation
 has durable ownership, persistence, and lifecycle semantics and must not be

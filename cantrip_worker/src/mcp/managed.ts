@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  CANTRIP_MCP_TOOL_NAMES,
   MANAGED_CANTRIP_MCP_NAME,
   isManagedMcpName,
   type McpServerConfiguration,
@@ -37,7 +38,10 @@ export function cantripMcpHostInvocation(
 export function managedCantripMcpServer(
   invocation: CantripMcpHostInvocation,
   connectionPath: string,
-): McpServerConfiguration {
+  managedToolNames: readonly (typeof CANTRIP_MCP_TOOL_NAMES)[number][] = CANTRIP_MCP_TOOL_NAMES,
+): McpServerConfiguration & {
+  managedToolNames: Array<(typeof CANTRIP_MCP_TOOL_NAMES)[number]>;
+} {
   return {
     name: MANAGED_CANTRIP_MCP_NAME,
     enabled: true,
@@ -49,6 +53,7 @@ export function managedCantripMcpServer(
       path.resolve(connectionPath),
     ],
     environment: {},
+    managedToolNames: [...managedToolNames],
   };
 }
 

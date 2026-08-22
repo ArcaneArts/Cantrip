@@ -49,7 +49,183 @@ const commonResult = {
   mutated: false as const,
 };
 
+const actionId = "a".repeat(64);
+const configurationRevision = "b".repeat(64);
+const runId = "00000000-0000-4000-8000-000000000301";
+
+function runFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: runId,
+    projectId: binding.projectId,
+    worktreeId: binding.worktreeId,
+    workerId: "worker-two",
+    actionId,
+    configurationRevision,
+    state: "running" as const,
+    terminalId: null,
+    exitCode: null,
+    signal: null,
+    createdAt: "2026-08-21T12:00:00.000Z",
+    startedAt: "2026-08-21T12:00:01.000Z",
+    endedAt: null,
+    updatedAt: "2026-08-21T12:00:01.000Z",
+    ...overrides,
+  };
+}
+
+function runConfiguration() {
+  return {
+    relativePath: ".codex/environments/environment.toml",
+    revision: configurationRevision,
+    version: 1,
+    name: "Spectral Lab",
+    sourceControlState: "ignored" as const,
+    setup: null,
+    actions: [
+      {
+        id: actionId,
+        name: "Run Spectral Lab",
+        icon: "run",
+        command: "dotnet run --project ./src/SpectralLab.App",
+        platform: "linux" as const,
+        configurationPath: ".codex/environments/environment.toml",
+        sourceIndex: 1,
+      },
+    ],
+    diagnostics: [],
+  };
+}
+
 describe("Cantrip MCP read operation normalization", () => {
+  it("lists and reads exact revision-checked Run configuration actions", async () => {
+    const service = encryptionService(randomBytes(32));
+    const configuration = runConfiguration();
+    const inspection = {
+      platform: "linux" as const,
+      canonical: {
+        relativePath: ".codex/environments/environment.toml" as const,
+        sourceControlState: "ignored" as const,
+      },
+      configured: true,
+      valid: true,
+      configurations: [configuration],
+      diagnostics: [],
+    };
+    const calls: unknown[] = [];
+    const execute = async (_binding: CantripMcpBinding, request: unknown) => {
+      calls.push(request);
+      const operation = (request as { operation: string }).operation;
+      return {
+        ...commonResult,
+        summary:
+          operation === "run-config.list"
+            ? "Found one run action for linux."
+            : "Read run action Run Spectral Lab.",
+        data:
+          operation === "run-config.list"
+            ? inspection
+            : { configuration, action: configuration.actions[0] },
+      };
+    };
+
+    const listed = await executeCantripMcpReadOperation({
+      binding,
+      service,
+      requestId: "run-list-one",
+      request: { operation: "run-config.list", arguments: {} },
+      execute,
+    });
+    expect(listed.data).toMatchObject({
+      platform: "linux",
+      configurations: [
+        {
+          revision: configurationRevision,
+          actions: [{ id: actionId, name: "Run Spectral Lab" }],
+        },
+      ],
+    });
+
+    const read = await executeCantripMcpReadOperation({
+      binding,
+      service,
+      requestId: "run-read-config-one",
+      request: {
+        operation: "run-config.read",
+        arguments: { actionId, configRevision: configurationRevision },
+      },
+      execute,
+    });
+    expect(read.data).toMatchObject({
+      configuration: { revision: configurationRevision },
+      action: { id: actionId },
+    });
+    expect(calls).toEqual([
+      { operation: "run-config.list", arguments: {} },
+      {
+        operation: "run-config.read",
+        arguments: { actionId, configRevision: configurationRevision },
+      },
+    ]);
+  });
+
+  it("accepts server-routed Run workers, bounds output, and rejects foreign Runs", async () => {
+    const service = encryptionService(randomBytes(32));
+    const run = runFixture();
+    const calls: unknown[] = [];
+    const execute = async (_binding: CantripMcpBinding, request: unknown) => {
+      calls.push(request);
+      return {
+        ...commonResult,
+        summary: "Read Run state.",
+        data:
+          (request as { operation: string }).operation === "run.status"
+            ? { run }
+            : { run, data: "0123456789abcdef", truncated: false },
+      };
+    };
+
+    const status = await executeCantripMcpReadOperation({
+      binding,
+      service,
+      requestId: "run-status-one",
+      request: { operation: "run.status", arguments: { runId } },
+      execute,
+    });
+    expect(status.data).toMatchObject({
+      run: { id: runId, workerId: "worker-two", state: "running" },
+    });
+
+    const output = await executeCantripMcpReadOperation({
+      binding,
+      service,
+      requestId: "run-output-one",
+      request: {
+        operation: "run.read",
+        arguments: { runId, maxChars: 6 },
+      },
+      execute,
+    });
+    expect(output.data).toMatchObject({ data: "abcdef", truncated: true });
+    expect(calls).toEqual([
+      { operation: "run.status", arguments: { runId } },
+      { operation: "run.read", arguments: { runId, maxChars: 6 } },
+    ]);
+
+    await expect(
+      executeCantripMcpReadOperation({
+        binding,
+        service,
+        requestId: "run-status-foreign",
+        request: { operation: "run.status", arguments: { runId } },
+        execute: async () => ({
+          ...commonResult,
+          summary: "Foreign Run.",
+          data: { run: runFixture({ projectId: "project-two" }) },
+        }),
+      }),
+    ).rejects.toThrow("outside the MCP binding");
+  });
+
   it("opens effective policy summaries and bodies only on the worker", async () => {
     const key = randomBytes(32);
     const service = encryptionService(key);

@@ -425,9 +425,10 @@ paths.
 Interactive Codex turns prefer the worker-owned managed `cantrip` MCP instead
 of client-hosted dynamic tools. Its typed catalog exposes worktree lifecycle,
 canonical target discovery, bounded Explorer reads/writes, Terminal
-scrollback/input/service restart, Browser discovery/navigation, and ephemeral
-client controls. The worker-bundled `cantrip` CLI remains the human/script and
-agent fallback over the same server operation boundary. Target lists are
+scrollback/input/service restart, Browser discovery/navigation, revision-checked
+Run configuration and process operations, and ephemeral client controls. The
+worker-bundled `cantrip` CLI remains the human/script and agent fallback over
+the same server operation boundary. Target lists are
 cursor-paginated, file and terminal output are bounded, Explorer writes require
 the current SHA-256 version, and Browser URLs must use HTTP(S).
 
@@ -439,6 +440,9 @@ endpoint with its worker credential. The server revalidates the active lane,
 account ownership, project, worktree, permission profile, target kind,
 capabilities, and availability before using the existing server-to-target-worker
 bridge. The source and target workers never exchange addresses or credentials.
+Run status, output, and stop operations route to the worker recorded on the
+durable Run instance, which may differ from the MCP-host worker after placement
+changes; raw commands and PTY output never transit durable server storage.
 
 Every attempted mutation reaches the same audited operation implementation.
 CLI attempts record `cli.command.mutated`; MCP calls retain their request and

@@ -13,6 +13,14 @@ import {
   cantripMcpPolicyListResultSchema,
   cantripMcpPolicyReadInputSchema,
   cantripMcpPolicyReadResultSchema,
+  cantripMcpRunConfigListInputSchema,
+  cantripMcpRunConfigListResultSchema,
+  cantripMcpRunConfigReadInputSchema,
+  cantripMcpRunConfigReadResultSchema,
+  cantripMcpRunReadInputSchema,
+  cantripMcpRunReadResultSchema,
+  cantripMcpRunStatusInputSchema,
+  cantripMcpRunStatusResultSchema,
   cantripMcpTargetInspectInputSchema,
   cantripMcpTargetInspectResultSchema,
   cantripMcpTargetListInputSchema,
@@ -30,6 +38,10 @@ import {
   executionTargetSchema,
   executionTargetWireCatalogSchema,
   projectWorktreeListSchema,
+  runConfigurationInspectionSchema,
+  runConfigurationSelectionSchema,
+  runInstanceResultSchema,
+  runLogResultSchema,
   worktreeStatusResultSchema,
   type CantripAgentOperationRequest,
   type CantripAgentOperationResult,
@@ -306,6 +318,100 @@ async function executeWorktreeStatus(options: CantripMcpOperationOptions) {
   });
 }
 
+export function assertBoundRun(
+  options: CantripMcpOperationOptions,
+  run: { projectId: string; worktreeId: string },
+) {
+  if (
+    run.projectId !== options.binding.projectId ||
+    run.worktreeId !== options.binding.worktreeId
+  ) {
+    throw new Error("Cantrip returned a Run outside the MCP binding.");
+  }
+}
+
+export function assertBoundRunResult(
+  options: CantripMcpOperationOptions,
+  result: CantripAgentOperationResult,
+) {
+  if (result.worktreeId !== options.binding.worktreeId) {
+    throw new Error("Cantrip returned a Run result for another worktree.");
+  }
+}
+
+async function executeRunReadOperation(options: CantripMcpOperationOptions) {
+  switch (options.request.operation) {
+    case "run-config.list": {
+      cantripMcpRunConfigListInputSchema.parse(options.request.arguments);
+      const result = await options.execute(
+        options.binding,
+        { operation: "run-config.list", arguments: {} },
+        options.requestId,
+      );
+      assertBoundRunResult(options, result);
+      return cantripMcpRunConfigListResultSchema.parse({
+        ...result,
+        data: runConfigurationInspectionSchema.parse(result.data),
+      });
+    }
+    case "run-config.read": {
+      const arguments_ = cantripMcpRunConfigReadInputSchema.parse(
+        options.request.arguments,
+      );
+      const result = await options.execute(
+        options.binding,
+        { operation: "run-config.read", arguments: arguments_ },
+        options.requestId,
+      );
+      assertBoundRunResult(options, result);
+      return cantripMcpRunConfigReadResultSchema.parse({
+        ...result,
+        data: runConfigurationSelectionSchema.parse(result.data),
+      });
+    }
+    case "run.status": {
+      const arguments_ = cantripMcpRunStatusInputSchema.parse(
+        options.request.arguments,
+      );
+      const result = await options.execute(
+        options.binding,
+        { operation: "run.status", arguments: arguments_ },
+        options.requestId,
+      );
+      assertBoundRunResult(options, result);
+      const data = runInstanceResultSchema.parse(result.data);
+      assertBoundRun(options, data.run);
+      return cantripMcpRunStatusResultSchema.parse({ ...result, data });
+    }
+    case "run.read": {
+      const arguments_ = cantripMcpRunReadInputSchema.parse(
+        options.request.arguments,
+      );
+      const result = await options.execute(
+        options.binding,
+        { operation: "run.read", arguments: arguments_ },
+        options.requestId,
+      );
+      assertBoundRunResult(options, result);
+      const data = runLogResultSchema.parse(result.data);
+      assertBoundRun(options, data.run);
+      const locallyTruncated = data.data.length > arguments_.maxChars;
+      return cantripMcpRunReadResultSchema.parse({
+        ...result,
+        data: {
+          ...data,
+          data: locallyTruncated
+            ? data.data.slice(-arguments_.maxChars)
+            : data.data,
+          truncated: data.truncated || locallyTruncated,
+        },
+      });
+    }
+    default:
+      throw new Error("The requested operation is not a Run read.");
+  }
+}
+
 async function executeExplorerOperation(options: CantripMcpOperationOptions) {
   const list = options.request.operation === "explorer.list";
   const arguments_ = list
@@ -491,6 +597,11 @@ export async function executeCantripMcpReadOperation(
       return executeTargetList(options);
     case "target.inspect":
       return executeTargetInspect(options);
+    case "run-config.list":
+    case "run-config.read":
+    case "run.status":
+    case "run.read":
+      return executeRunReadOperation(options);
     case "worktree.list":
       return executeWorktreeList(options);
     case "worktree.status":

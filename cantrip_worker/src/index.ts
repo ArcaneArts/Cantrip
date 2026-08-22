@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   chatAttachmentSummarySchema,
   cantripMcpOperationsForPermissionProfile,
+  cantripMcpToolNamesForOperations,
   gitAgentDraftCreateSchema,
   gitAgentDraftModelOutputSchema,
   gitAgentDraftResultSchema,
@@ -868,6 +869,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
     }
+    const cantripAllowedOperations = attachment
+      ? cantripMcpOperationsForPermissionProfile(attachment.permissionProfileId)
+      : [];
     const cantripAttachment = attachment
       ? mcpBroker.createBinding({
           ownerId: workerEncryption.ownerId(),
@@ -879,15 +883,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           canonicalRoot: cwd,
           rootKind: attachment.rootKind,
           permissionProfileId: attachment.permissionProfileId,
-          allowedOperations: [
-            ...cantripMcpOperationsForPermissionProfile(
-              attachment.permissionProfileId,
-            ),
-          ],
+          allowedOperations: [...cantripAllowedOperations],
         })
       : null;
     const managedCantrip = cantripAttachment
-      ? managedCantripMcpServer(mcpHost, cantripAttachment.connectionPath)
+      ? managedCantripMcpServer(
+          mcpHost,
+          cantripAttachment.connectionPath,
+          cantripMcpToolNamesForOperations(cantripAllowedOperations),
+        )
       : null;
     if (managedCantrip) {
       workerLogger.event("debug", "Cantrip agent MCP injected", {

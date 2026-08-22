@@ -57,6 +57,14 @@ independently rejects mismatched, stale, expired, or unauthorized bindings.
 Cross-worker surface operations use the existing server relay; workers never
 exchange addresses or credentials directly.
 
+Codex's enabled managed-tool list is narrowed to the binding permission
+profile. Read-only profiles receive Run configuration/status/output tools but
+not Run start/stop tools; the broker and server still enforce that distinction
+if a caller attempts to bypass Codex discovery. Run start requires an opaque
+action ID plus configuration revision and uses the broker request identity for
+idempotency. The server audits the mutation but never stores the action command
+or terminal output.
+
 The four optional client controls travel from the authorized operation through
 the server's authenticated application live WebSocket. The server selects only
 same-owner, project-active clients that declared the exact capability. Requests

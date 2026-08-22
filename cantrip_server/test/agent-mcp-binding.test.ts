@@ -127,16 +127,22 @@ describe("Cantrip MCP server binding", () => {
       permissionProfileId: ":read-only",
       allowedOperations: [...CANTRIP_MCP_OPERATIONS],
     };
-    expect(() =>
-      assertCantripMcpBinding({
-        binding: readOnlyBinding,
-        context: readOnlyContext,
-        operation: "explorer.write",
-        ownerId: "owner-one",
-        serverAllowedOperations: new Set(CANTRIP_MCP_OPERATIONS),
-        now,
-      }),
-    ).toThrow("permission profile");
+    for (const operation of [
+      "explorer.write",
+      "run.start",
+      "run.stop",
+    ] as const) {
+      expect(() =>
+        assertCantripMcpBinding({
+          binding: readOnlyBinding,
+          context: readOnlyContext,
+          operation,
+          ownerId: "owner-one",
+          serverAllowedOperations: new Set(CANTRIP_MCP_OPERATIONS),
+          now,
+        }),
+      ).toThrow("permission profile");
+    }
   });
 
   it("allows mutations for an unchanged write-capable profile", () => {

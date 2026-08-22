@@ -908,6 +908,16 @@ describe("managed Cantrip MCP guidance", () => {
     );
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`context_get`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`policy_read`");
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
+      "`.codex/environments/environment.toml`",
+    );
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
+      "`cantrip run validate`",
+    );
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`run_start`");
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
+      "exact action ID and configuration revision",
+    );
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`cantrip -h`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("fallback");
   });
@@ -1386,6 +1396,30 @@ describe("codexMcpConfigOverride", () => {
     expect(managedMcpToolRequirements([server])).toEqual(
       CANTRIP_MCP_TOOL_NAMES.map((tool) => ({ name: "cantrip", tool })),
     );
+  });
+
+  it("limits managed Cantrip tools to the binding permission catalog", () => {
+    const server = {
+      name: "cantrip",
+      transport: "stdio" as const,
+      command: "/worker/runtime/node",
+      args: ["/worker/dist/mcp/stdio.js", "--connection", "/binding.json"],
+      environment: {},
+      enabled: true,
+      managedToolNames: ["context_get", "run_config_list", "run_status"],
+    };
+    expect(codexMcpConfigOverride([server])).toMatchObject({
+      mcp_servers: {
+        cantrip: {
+          enabled_tools: ["context_get", "run_config_list", "run_status"],
+        },
+      },
+    });
+    expect(managedMcpToolRequirements([server])).toEqual([
+      { name: "cantrip", tool: "context_get" },
+      { name: "cantrip", tool: "run_config_list" },
+      { name: "cantrip", tool: "run_status" },
+    ]);
   });
 });
 
