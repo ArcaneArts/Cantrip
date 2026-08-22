@@ -6266,7 +6266,23 @@ export async function buildApp({
         });
       }
       case "target.resolve-browser": {
-        const target = await selectTarget(context, "browser", selector);
+        let target;
+        try {
+          target = await selectTarget(context, "browser", selector);
+        } catch (error) {
+          if (
+            selector ||
+            !(error instanceof CliCommandRequestError) ||
+            error.code !== "unavailable"
+          ) {
+            throw error;
+          }
+          target = await selectTarget(
+            context,
+            context.rootKind === "folder-root" ? "worker" : "worktree",
+            null,
+          );
+        }
         return agentOperationExecutor.execute(context, {
           operation: "target.inspect",
           arguments: { target: target.target },
@@ -6333,6 +6349,43 @@ export async function buildApp({
         return agentOperationExecutor.execute(context, {
           operation: "browser.services",
           arguments: { target: target.target },
+        });
+      }
+      case "browser.create": {
+        const input = encryptedBrowserCreateSchema.parse(call.arguments);
+        const browser = await repository.createBrowser(
+          applicationOwnerId(),
+          context.projectId,
+          input,
+          (workerId) => bridge.isConnected(workerId),
+        );
+        if (!browser) throw new Error("Browser project was not found.");
+        publishLiveInvalidation("browser", {
+          entityId: browser.id,
+          projectId: context.projectId,
+        });
+        publishLiveInvalidation("project-tab-layout", {
+          entityId: browser.id,
+          projectId: context.projectId,
+        });
+        const target = executionTargetSchema.parse({
+          kind: "surface",
+          projectId: context.projectId,
+          surfaceKind: "browser",
+          surfaceId: browser.id,
+        });
+        await liveHub.requestClientControl(applicationOwnerId(), {
+          kind: "focus-surface",
+          projectId: context.projectId,
+          surfaceKind: "browser",
+          surfaceId: browser.id,
+        });
+        return cantripCliCommandResultSchema.parse({
+          summary: "Opened a new Browser tab.",
+          target,
+          worktreeId: context.worktreeId,
+          mutated: true,
+          data: browser,
         });
       }
       case "browser.open": {

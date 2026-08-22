@@ -446,6 +446,69 @@ describe.sequential("project execution placement API", () => {
     }
   });
 
+  it("creates a Browser target on the current CLI placement when none exists", async () => {
+    const request = async (
+      command: "target.resolve-browser" | "browser.create",
+      arguments_: Record<string, unknown>,
+    ) =>
+      app.inject({
+        method: "POST",
+        url: "/api/internal/cli",
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: {
+          command,
+          chatContext: null,
+          context: {
+            codexThreadId: null,
+            terminalId: null,
+            cwd: path.join(dataDirectory, "worker-alpha"),
+          },
+          arguments: arguments_,
+          requestId: `cli-${command}`,
+          workerId: "worker-alpha",
+        },
+      });
+
+    const resolution = await request("target.resolve-browser", {});
+    expect(resolution.statusCode, JSON.stringify(resolution.json())).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(resolution.json()),
+    ).toMatchObject({
+      target: {
+        kind: "worktree",
+        projectId,
+        worktreeId: alphaWorktreeId,
+      },
+      data: { stateRevision: null },
+    });
+
+    const fields = protectedBrowserFields();
+    const created = await request("browser.create", {
+      ...fields,
+      target: {
+        kind: "worktree",
+        projectId,
+        worktreeId: alphaWorktreeId,
+      },
+    });
+    expect(created.statusCode, JSON.stringify(created.json())).toBe(200);
+    const result = cantripCliCommandResultSchema.parse(created.json());
+    expect(result).toMatchObject({
+      summary: "Opened a new Browser tab.",
+      target: {
+        kind: "surface",
+        projectId,
+        surfaceKind: "browser",
+        surfaceId: fields.id,
+      },
+      mutated: true,
+      data: { workerId: "worker-alpha", stateRevision: 1 },
+    });
+    expect(
+      await database.repository.deleteBrowser(LOCAL_USER_ID, fields.id),
+    ).toBe(true);
+  });
+
   it("honors explicit worktrees and never silently moves an invalid target", async () => {
     expect(
       await database.repository.resolveProjectExecutionPlacement(

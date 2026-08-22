@@ -225,7 +225,7 @@ enum BrowserCommand {
         #[command(flatten)]
         surface: SurfaceTarget,
     },
-    /// Navigate a Browser surface to an HTTP(S) URL.
+    /// Open an HTTP(S) URL, creating a Browser tab when none exists.
     Open {
         #[command(flatten)]
         surface: SurfaceTarget,

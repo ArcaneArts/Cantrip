@@ -12,6 +12,7 @@ import path from "node:path";
 
 import {
   clearSensitiveBytes,
+  decryptPrivateDisplayLabel,
   decryptSurfacePrivateState,
   deriveComponentKey,
   encryptPolicyContent,
@@ -532,10 +533,17 @@ describe("Cantrip CLI worker broker", () => {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
+    const accountMasterKey = generateAccountMasterKey();
     const componentKey = deriveComponentKey({
-      accountMasterKey: generateAccountMasterKey(),
+      accountMasterKey,
       ownerId,
       component: "surface-private-state",
+      keyRevision: 1,
+    });
+    const privateLabelKey = deriveComponentKey({
+      accountMasterKey,
+      ownerId,
+      component: "private-surface-metadata",
       keyRevision: 1,
     });
     const wrappedKey = await wrapComponentKeyForWorker({
@@ -560,7 +568,24 @@ describe("Cantrip CLI worker broker", () => {
       createdAt: timestamp,
       updatedAt: timestamp,
     };
-    await service.acceptBootstrap({ ownerId, principal, grants: [grant] });
+    const privateLabelGrant: EncryptionKeyGrant = {
+      ...grant,
+      id: crypto.randomUUID(),
+      component: "private-surface-metadata",
+      wrappedKey: await wrapComponentKeyForWorker({
+        ownerId,
+        workerId,
+        component: "private-surface-metadata",
+        componentKey: privateLabelKey,
+        keyRevision: 1,
+        workerPublicKey: principal.publicKey,
+      }),
+    };
+    await service.acceptBootstrap({
+      ownerId,
+      principal,
+      grants: [grant, privateLabelGrant],
+    });
 
     const calls: unknown[] = [];
     const broker = new CantripCliBroker(
@@ -575,6 +600,20 @@ describe("Cantrip CLI worker broker", () => {
         execute: async (request) => {
           calls.push(request);
           if (request.command === "target.resolve-browser") {
+            if (request.arguments.target === undefined) {
+              return {
+                summary: "Resolved Browser placement.",
+                target: {
+                  kind: "worker",
+                  projectId: "browser-project",
+                  workerId,
+                },
+                worktreeId: null,
+                continuationScheduled: false,
+                mutated: false,
+                data: { serverId, stateRevision: null },
+              };
+            }
             return {
               summary: "Resolved browser.",
               target: {
@@ -587,6 +626,21 @@ describe("Cantrip CLI worker broker", () => {
               continuationScheduled: false,
               mutated: false,
               data: { serverId, stateRevision: 3 },
+            };
+          }
+          if (request.command === "browser.create") {
+            return {
+              summary: "Opened a new Browser tab.",
+              target: {
+                kind: "surface",
+                projectId: "browser-project",
+                surfaceKind: "browser",
+                surfaceId: String(request.arguments.id),
+              },
+              worktreeId: null,
+              continuationScheduled: false,
+              mutated: true,
+              data: { stateRevision: 1 },
             };
           }
           return {
@@ -646,8 +700,66 @@ describe("Cantrip CLI worker broker", () => {
           opaque: encrypted.arguments.stateProtection,
         }),
       ).resolves.toMatchObject({ revision: 4, url: sentinelUrl });
+
+      calls.splice(0);
+      const createdUrl = "https://private.example.test/new-browser";
+      const createResponse = await fetch(`${connection.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${connection.sessionToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          command: "browser.open",
+          context: { codexThreadId: null, terminalId: null, cwd: null },
+          arguments: { url: createdUrl },
+        }),
+      });
+      expect(createResponse.status).toBe(200);
+      expect(JSON.stringify(calls)).not.toContain(createdUrl);
+      expect(calls).toHaveLength(2);
+      const create = calls[1] as {
+        command: string;
+        arguments: {
+          id: string;
+          stateProtection: Parameters<
+            typeof decryptSurfacePrivateState
+          >[0]["opaque"];
+          titleProtection: Parameters<
+            typeof decryptPrivateDisplayLabel
+          >[0]["opaque"];
+        };
+      };
+      expect(create.command).toBe("browser.create");
+      await expect(
+        decryptSurfacePrivateState({
+          ownerId,
+          context: {
+            serverId,
+            resource: "browser-row",
+            resourceId: create.arguments.id,
+            operationId: null,
+            recordKind: "browser-state",
+          },
+          keyRevision: 1,
+          componentKey,
+          opaque: create.arguments.stateProtection,
+        }),
+      ).resolves.toMatchObject({ revision: 1, url: createdUrl });
+      await expect(
+        decryptPrivateDisplayLabel({
+          ownerId,
+          recordKind: "browser",
+          rowId: create.arguments.id,
+          keyRevision: 1,
+          componentKey: privateLabelKey,
+          opaque: create.arguments.titleProtection,
+        }),
+      ).resolves.toBe("Browser");
     } finally {
+      clearSensitiveBytes(accountMasterKey);
       clearSensitiveBytes(componentKey);
+      clearSensitiveBytes(privateLabelKey);
       await broker.close();
     }
   });
