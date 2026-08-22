@@ -195,10 +195,101 @@ export const runStartResultSchema = z
   })
   .strict();
 
+export const worktreeSetupJobStateSchema = z.enum([
+  "queued",
+  "running",
+  "blocked",
+  "succeeded",
+  "failed",
+  "stale",
+]);
+
+export const worktreeSetupJobErrorSchema = z
+  .object({
+    code: z.enum([
+      "configuration-invalid",
+      "configuration-stale",
+      "worker-offline",
+      "capability-missing",
+      "setup-start-failed",
+      "setup-failed",
+      "setup-interrupted",
+    ]),
+    message: z.string().trim().min(1).max(2_000),
+    retryable: z.boolean(),
+  })
+  .strict();
+
+export const worktreeSetupJobSummarySchema = z
+  .object({
+    id: z.string().uuid(),
+    projectId: runInstanceSchema.shape.projectId,
+    worktreeId: runInstanceSchema.shape.worktreeId,
+    workerId: runInstanceSchema.shape.workerId,
+    configurationRevision:
+      runConfigurationDefinitionSchema.shape.revision.nullable(),
+    state: worktreeSetupJobStateSchema,
+    stateRevision: z.number().int().positive().safe(),
+    attempt: z.number().int().nonnegative().safe(),
+    error: worktreeSetupJobErrorSchema.nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+    startedAt: z.iso.datetime().nullable(),
+    completedAt: z.iso.datetime().nullable(),
+  })
+  .strict();
+
+export const workerRunSetupStatusSchema = z
+  .object({
+    jobId: worktreeSetupJobSummarySchema.shape.id,
+    projectId: runInstanceSchema.shape.projectId,
+    worktreeId: runInstanceSchema.shape.worktreeId,
+    configurationRevision:
+      runConfigurationDefinitionSchema.shape.revision.nullable(),
+    attempt: z.number().int().positive().safe(),
+    state: z.enum(["running", "succeeded", "failed"]),
+    output: z.string().max(100_000),
+    outputTruncated: z.boolean(),
+    exitCode: z.number().int().nullable(),
+    signal: z.string().min(1).max(100).nullable(),
+    error: worktreeSetupJobErrorSchema.nullable(),
+    startedAt: z.iso.datetime(),
+    completedAt: z.iso.datetime().nullable(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const workerRunSetupLookupSchema = z.discriminatedUnion("found", [
+  z
+    .object({
+      found: z.literal(false),
+      jobId: worktreeSetupJobSummarySchema.shape.id,
+    })
+    .strict(),
+  z
+    .object({ found: z.literal(true), status: workerRunSetupStatusSchema })
+    .strict(),
+]);
+
+export const runSetupStatusResultSchema = z
+  .object({
+    worktreeId: runInstanceSchema.shape.worktreeId,
+    setup: worktreeSetupJobSummarySchema.nullable(),
+    currentConfigurationRevision:
+      runConfigurationDefinitionSchema.shape.revision.nullable(),
+    output: z.string().max(100_000).nullable(),
+    outputTruncated: z.boolean(),
+    exitCode: z.number().int().nullable(),
+    signal: z.string().min(1).max(100).nullable(),
+    workerStatusAvailable: z.boolean(),
+  })
+  .strict();
+
 export const runEnvironmentSummarySchema = z
   .object({
     worktreeId: runInstanceSchema.shape.worktreeId,
     inspection: runConfigurationInspectionSchema,
+    setup: worktreeSetupJobSummarySchema.nullable(),
     run: runInstanceSchema.nullable(),
   })
   .strict();
@@ -259,6 +350,14 @@ export type RunTerminalSurfaceResult = z.infer<
 export type RunEnvironmentSummary = z.infer<typeof runEnvironmentSummarySchema>;
 export type RunStartRequest = z.infer<typeof runStartRequestSchema>;
 export type RunOpenRequest = z.infer<typeof runOpenRequestSchema>;
+export type WorktreeSetupJobState = z.infer<typeof worktreeSetupJobStateSchema>;
+export type WorktreeSetupJobError = z.infer<typeof worktreeSetupJobErrorSchema>;
+export type WorktreeSetupJobSummary = z.infer<
+  typeof worktreeSetupJobSummarySchema
+>;
+export type WorkerRunSetupStatus = z.infer<typeof workerRunSetupStatusSchema>;
+export type WorkerRunSetupLookup = z.infer<typeof workerRunSetupLookupSchema>;
+export type RunSetupStatusResult = z.infer<typeof runSetupStatusResultSchema>;
 export type WorkerRunIdentity = z.infer<typeof workerRunIdentitySchema>;
 export type WorkerRunSnapshot = z.infer<typeof workerRunSnapshotSchema>;
 export type WorkerRunLookup = z.infer<typeof workerRunLookupSchema>;

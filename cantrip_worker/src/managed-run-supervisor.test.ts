@@ -56,6 +56,7 @@ function supervisor(
   root: string,
   notifications: unknown[] = [],
   environment: NodeJS.ProcessEnv = process.env,
+  setupEnvironment: Record<string, string> = {},
 ) {
   return new ManagedRunSupervisor({
     platform: "linux",
@@ -65,6 +66,7 @@ function supervisor(
       expect(input.worktreePath).toBe(root);
       return { sourceRoot: root, worktreeRoot: root };
     },
+    environmentForRun: () => ({ ...setupEnvironment }),
     notify: (run) => notifications.push(run),
   });
 }
@@ -80,18 +82,26 @@ afterEach(async () => {
 describe.skipIf(process.platform === "win32")("ManagedRunSupervisor", () => {
   it("runs once with compatible environment variables and bounded logs", async () => {
     const fixture = await project(
-      'printf \'%s|%s|%s|%s|%s|%s\' "$CODEX_WORKTREE_PATH" "$CANTRIP_WORKTREE_PATH" "$CANTRIP_PROJECT_ROOT" "$CANTRIP_RUN_ID" "$CANTRIP_ACTION_ID" "$PRESERVED_FIXTURE"',
+      'printf \'%s|%s|%s|%s|%s|%s|%s\' "$CODEX_WORKTREE_PATH" "$CANTRIP_WORKTREE_PATH" "$CANTRIP_PROJECT_ROOT" "$CANTRIP_RUN_ID" "$CANTRIP_ACTION_ID" "$PRESERVED_FIXTURE" "$SETUP_FIXTURE"',
     );
     const notifications: unknown[] = [];
-    const runs = supervisor(fixture.root, notifications, {
-      ...process.env,
-      CANTRIP_ACTION_ID: "must-not-win",
-      CANTRIP_PROJECT_ROOT: "must-not-win",
-      CANTRIP_RUN_ID: "must-not-win",
-      CANTRIP_WORKTREE_PATH: "must-not-win",
-      CODEX_WORKTREE_PATH: "must-not-win",
-      PRESERVED_FIXTURE: "preserved",
-    });
+    const runs = supervisor(
+      fixture.root,
+      notifications,
+      {
+        ...process.env,
+        CANTRIP_ACTION_ID: "must-not-win",
+        CANTRIP_PROJECT_ROOT: "must-not-win",
+        CANTRIP_RUN_ID: "must-not-win",
+        CANTRIP_WORKTREE_PATH: "must-not-win",
+        CODEX_WORKTREE_PATH: "must-not-win",
+        PRESERVED_FIXTURE: "preserved",
+      },
+      {
+        CANTRIP_RUN_ID: "setup-must-not-win",
+        SETUP_FIXTURE: "captured",
+      },
+    );
 
     expect((await runs.start(fixture.input)).state).toMatch(/running|exited/u);
     await expect
@@ -99,10 +109,10 @@ describe.skipIf(process.platform === "win32")("ManagedRunSupervisor", () => {
       .toMatchObject({ found: true, run: { state: "exited", exitCode: 0 } });
     const logs = runs.logs(fixture.input.runId, 100_000);
     expect(logs.data).toContain(
-      `${fixture.root}|${fixture.root}|${fixture.root}|${fixture.input.runId}|${fixture.input.actionId}|preserved`,
+      `${fixture.root}|${fixture.root}|${fixture.root}|${fixture.input.runId}|${fixture.input.actionId}|preserved|captured`,
     );
     expect(runs.logs(fixture.input.runId, 10)).toMatchObject({
-      data: expect.stringMatching(/preserved$/u),
+      data: expect.stringMatching(/captured$/u),
       truncated: true,
     });
     expect(JSON.stringify(notifications)).not.toContain("printf");

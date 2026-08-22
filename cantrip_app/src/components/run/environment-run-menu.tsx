@@ -67,6 +67,7 @@ export function EnvironmentRunMenu({
     })),
   );
   const run = environment?.run ?? null;
+  const setup = environment?.setup ?? null;
   const actionName = run
     ? actions.find(({ action }) => action.id === run.actionId)?.action.name
     : null;
@@ -135,6 +136,24 @@ export function EnvironmentRunMenu({
             </div>
           ) : null}
 
+          {setup ? (
+            <div className="flex items-center gap-2 px-2 py-1.5 text-xs">
+              {setup.state === "queued" ||
+              setup.state === "running" ||
+              setup.state === "blocked" ? (
+                <Loader2 className="size-3.5 animate-spin text-amber-500" />
+              ) : setup.state === "failed" || setup.state === "stale" ? (
+                <CircleAlert className="size-3.5 text-destructive" />
+              ) : (
+                <span className="size-2 rounded-full bg-emerald-500" />
+              )}
+              <span>Worktree setup</span>
+              <span className="ml-auto capitalize text-muted-foreground">
+                {setup.state}
+              </span>
+            </div>
+          ) : null}
+
           {run ? (
             <>
               <div className="px-2 py-1.5 text-xs">
@@ -184,7 +203,9 @@ export function EnvironmentRunMenu({
             actions.map(({ action, configRevision }) => (
               <StyledDropdownMenuItem
                 disabled={
-                  mutationPending || environment?.inspection.valid === false
+                  mutationPending ||
+                  environment?.inspection.valid === false ||
+                  (setup !== null && setup.state !== "succeeded")
                 }
                 key={`${configRevision}:${action.id}`}
                 onSelect={() => onStart(action, configRevision)}

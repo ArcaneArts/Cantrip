@@ -38,6 +38,8 @@ import type {
   ProjectReplicaJobState,
   ProjectRootKind,
   RunInstanceState,
+  WorktreeSetupJobError,
+  WorktreeSetupJobState,
   ProjectSourceKind,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
@@ -1805,6 +1807,74 @@ export const projectWorktrees = pgTable(
     check(
       "project_worktrees_folder_root_shape_check",
       sql`${table.rootKind} <> 'folder-root' OR (${table.isPrimary} = true AND ${table.isDefault} = true AND ${table.origin} IN ('cantrip', 'external') AND ${table.branch} IS NULL AND ${table.head} IS NULL AND ${table.detached} = false)`,
+    ),
+  ],
+);
+
+export const worktreeSetupJobs = pgTable(
+  "worktree_setup_jobs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    configurationRevision: text("configuration_revision"),
+    state: text("state").$type<WorktreeSetupJobState>().notNull(),
+    stateRevision: integer("state_revision").notNull().default(1),
+    attempt: integer("attempt").notNull().default(0),
+    commandId: text("command_id"),
+    lastErrorCode:
+      text("last_error_code").$type<WorktreeSetupJobError["code"]>(),
+    lastErrorMessage: text("last_error_message"),
+    errorRetryable: boolean("error_retryable"),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("worktree_setup_jobs_worktree_unique").on(table.worktreeId),
+    uniqueIndex("worktree_setup_jobs_command_unique")
+      .on(table.commandId)
+      .where(sql`${table.commandId} IS NOT NULL`),
+    index("worktree_setup_jobs_dispatch_index").on(
+      table.state,
+      table.availableAt,
+      table.createdAt,
+    ),
+    index("worktree_setup_jobs_worker_state_index").on(
+      table.workerId,
+      table.state,
+    ),
+    check(
+      "worktree_setup_jobs_state_check",
+      sql`${table.state} IN ('queued', 'running', 'blocked', 'succeeded', 'failed', 'stale')`,
+    ),
+    check(
+      "worktree_setup_jobs_revision_check",
+      sql`${table.stateRevision} > 0`,
+    ),
+    check("worktree_setup_jobs_attempt_check", sql`${table.attempt} >= 0`),
+    check(
+      "worktree_setup_jobs_error_shape_check",
+      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
     ),
   ],
 );

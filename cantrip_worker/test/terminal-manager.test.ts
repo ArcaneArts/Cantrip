@@ -26,7 +26,10 @@ describe("TerminalManager", () => {
     }).latestCursor;
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
     directories.push(directory);
-    const manager = new TerminalManager();
+    const manager = new TerminalManager({
+      environmentForCwd: (cwd) =>
+        cwd === directory ? { SETUP_TERMINAL_FIXTURE: "captured" } : {},
+    });
     expect(manager.snapshot("missing-terminal", 100)).toEqual({
       terminalId: "missing-terminal",
       status: "not-running",
@@ -53,12 +56,12 @@ describe("TerminalManager", () => {
     manager.input(
       "terminal-1",
       process.platform === "win32"
-        ? "echo CANTRIP_PTY_OK\r"
-        : "printf 'CANTRIP_PTY_OK\\n'\r",
+        ? "echo CANTRIP_PTY_OK:$env:SETUP_TERMINAL_FIXTURE\r"
+        : "printf 'CANTRIP_PTY_OK:%s\\n' \"$SETUP_TERMINAL_FIXTURE\"\r",
     );
     await expect
       .poll(() => output, { timeout: 5_000 })
-      .toContain("CANTRIP_PTY_OK");
+      .toContain("CANTRIP_PTY_OK:captured");
     expect(manager.snapshot("terminal-1", 8)).toMatchObject({
       terminalId: "terminal-1",
       status: "running",

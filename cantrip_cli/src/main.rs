@@ -104,6 +104,11 @@ enum RunCommand {
     Open { run_id: String },
     /// Validate project Run configuration files for the current worker.
     Validate,
+    /// Inspect or explicitly retry secondary-worktree setup.
+    Setup {
+        #[command(subcommand)]
+        command: RunSetupCommand,
+    },
     /// Inspect the canonical Run configuration location.
     Config {
         #[command(subcommand)]
@@ -115,6 +120,14 @@ enum RunCommand {
 enum RunConfigCommand {
     /// Show the canonical repository-relative configuration path and Git state.
     Path,
+}
+
+#[derive(Debug, Subcommand)]
+enum RunSetupCommand {
+    /// Show durable setup state and bounded worker-owned output.
+    Status,
+    /// Explicitly queue setup for the current secondary worktree.
+    Retry,
 }
 
 #[derive(Debug, Subcommand)]
@@ -484,6 +497,16 @@ fn invocation(command: Command) -> Result<Invocation, String> {
                 command: "run.validate",
                 arguments: json!({}),
             },
+            RunCommand::Setup { command } => match command {
+                RunSetupCommand::Status => Invocation {
+                    command: "run.setup-status",
+                    arguments: json!({}),
+                },
+                RunSetupCommand::Retry => Invocation {
+                    command: "run.setup-retry",
+                    arguments: json!({}),
+                },
+            },
             RunCommand::Config { command } => match command {
                 RunConfigCommand::Path => Invocation {
                     command: "run.config-path",
@@ -633,6 +656,11 @@ mod tests {
                 "run.show",
             ),
             (&["cantrip", "run", "validate"][..], "run.validate"),
+            (
+                &["cantrip", "run", "setup", "status"][..],
+                "run.setup-status",
+            ),
+            (&["cantrip", "run", "setup", "retry"][..], "run.setup-retry"),
             (&["cantrip", "run", "config", "path"][..], "run.config-path"),
             (
                 &["cantrip", "run", "start", "Run Spectral Lab"][..],

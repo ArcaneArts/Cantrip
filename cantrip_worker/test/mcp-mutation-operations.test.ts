@@ -75,6 +75,24 @@ function runFixture(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function setupFixture() {
+  return {
+    id: "00000000-0000-4000-8000-000000000402",
+    projectId: binding.projectId,
+    worktreeId: binding.worktreeId,
+    workerId: binding.workerId,
+    configurationRevision,
+    state: "queued" as const,
+    stateRevision: 3,
+    attempt: 1,
+    error: null,
+    createdAt: "2026-08-21T12:00:00.000Z",
+    updatedAt: "2026-08-21T12:00:03.000Z",
+    startedAt: "2026-08-21T12:00:01.000Z",
+    completedAt: null,
+  };
+}
+
 function worktree(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
@@ -343,6 +361,52 @@ describe("Cantrip MCP mutation operation normalization", () => {
         }),
       }),
     ).rejects.toThrow("outside the MCP binding");
+  });
+
+  it("retries setup through the bound shared operation", async () => {
+    const service = encryptionService();
+    const calls: unknown[] = [];
+    const result = await executeCantripMcpMutationOperation({
+      binding,
+      service,
+      requestId: "mcp-run-setup-retry-one",
+      request: { operation: "run.setup-retry", arguments: {} },
+      execute: async (_binding, request, requestId) => {
+        calls.push({ request, requestId });
+        return {
+          ...commonMutation,
+          summary: "Queued worktree setup retry.",
+          target: null,
+          worktreeId: binding.worktreeId,
+          data: {
+            worktreeId: binding.worktreeId,
+            setup: setupFixture(),
+            currentConfigurationRevision: configurationRevision,
+            output: null,
+            outputTruncated: false,
+            exitCode: null,
+            signal: null,
+            workerStatusAvailable: false,
+          },
+        };
+      },
+    });
+    expect(result).toMatchObject({
+      target: {
+        kind: "worktree",
+        projectId: binding.projectId,
+        worktreeId: binding.worktreeId,
+      },
+      mutated: true,
+      data: { setup: { state: "queued", stateRevision: 3 } },
+    });
+    expect(result.data).not.toHaveProperty("environmentDelta");
+    expect(calls).toEqual([
+      {
+        requestId: "mcp-run-setup-retry-one",
+        request: { operation: "run.setup-retry", arguments: {} },
+      },
+    ]);
   });
 
   it("creates and transitions worktrees without exposing private paths or runtime IDs", async () => {

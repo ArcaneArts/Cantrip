@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  RUN_CONFIGURATION_CANONICAL_PATH,
   githubPullRequestCheckoutPreparedSchema,
   githubPullRequestCheckoutResultSchema,
   worktreeCreateResultSchema,
   worktreeInventorySchema,
   worktreeRemoveResultSchema,
   worktreeStatusResultSchema,
+  runConfigurationInspectionSchema,
   type ProjectWorktreeSummary,
   type GithubPullRequestCheckoutResult,
   type WorktreeCreateMode,
@@ -32,6 +34,7 @@ type WorktreeRepository = Pick<
   | "observeProjectWorktree"
   | "reconcileProjectWorktrees"
   | "workflowRuns"
+  | "worktreeSetupJobs"
 >;
 
 export interface ProjectWorktreeCreateRequest {
@@ -40,6 +43,8 @@ export interface ProjectWorktreeCreateRequest {
   origin: ProjectWorktreeSummary["origin"];
   worktreeId?: string;
 }
+
+class WorktreeSetupPendingError extends Error {}
 
 export interface WorkflowWorktreeAllocationRequest {
   runId: string;
@@ -101,6 +106,7 @@ export class ProjectWorktreeCoordinator {
     private readonly repository: WorktreeRepository,
     private readonly bridge: WorkerCommandBus,
     private readonly onProjectChanged?: (projectId: string) => void,
+    private readonly onSetupQueued?: () => void,
   ) {}
 
   async serialize<T>(
@@ -321,17 +327,46 @@ export class ProjectWorktreeCoordinator {
       }
 
       try {
-        const created = await this.createInProject(ownerId, projectId, {
-          worktreeId: lease.requestedWorktreeId,
-          name: identity.name,
-          origin: "cantrip",
-          mode: {
-            type: "newBranch",
-            branch: lease.branchName,
-            startPoint: lease.baseRevision,
-          },
-        });
+        const existing = await this.repository.getProjectWorktreeContext(
+          ownerId,
+          projectId,
+          lease.requestedWorktreeId,
+          { allowSetupStates: true },
+        );
+        if (
+          existing &&
+          (existing.projectSourceId !== lease.projectSourceId ||
+            existing.workerId !== lease.workerId ||
+            existing.worktree.isPrimary ||
+            existing.worktree.branch !== lease.branchName)
+        ) {
+          throw new Error(
+            "The reserved workflow worktree identity belongs to another lane.",
+          );
+        }
+        const created =
+          existing?.worktree ??
+          (await this.createInProject(ownerId, projectId, {
+            worktreeId: lease.requestedWorktreeId,
+            name: identity.name,
+            origin: "cantrip",
+            mode: {
+              type: "newBranch",
+              branch: lease.branchName,
+              startPoint: lease.baseRevision,
+            },
+          }));
         if (!created) return null;
+        if (created.lifecycleState === "preparing") {
+          throw new WorktreeSetupPendingError(
+            "The workflow worktree is still running its project setup.",
+          );
+        }
+        if (created.lifecycleState !== "ready") {
+          throw new Error(
+            `The workflow worktree cannot activate while setup is ${created.lifecycleState}.`,
+          );
+        }
         const context = await this.repository.getProjectWorktreeContext(
           ownerId,
           projectId,
@@ -393,7 +428,9 @@ export class ProjectWorktreeCoordinator {
                 ? "worker-unavailable"
                 : "worktree-allocation-failed",
             message: error instanceof Error ? error.message : String(error),
-            recoverable: error instanceof WorkerUnavailableError,
+            recoverable:
+              error instanceof WorkerUnavailableError ||
+              error instanceof WorktreeSetupPendingError,
           },
         );
         throw error;
@@ -620,6 +657,7 @@ export class ProjectWorktreeCoordinator {
       result.inventory,
       {
         id: worktreeId,
+        lifecycleState: "preparing",
         name: input.name,
         origin: input.origin,
         path: result.worktree.path,
@@ -629,7 +667,61 @@ export class ProjectWorktreeCoordinator {
     if (!created) {
       throw new Error("Created worktree could not be reconciled.");
     }
-    return created;
+    let configurationRevision: string | null = null;
+    let setupQueued = false;
+    let configurationError: {
+      code: "configuration-invalid" | "setup-start-failed";
+      message: string;
+      retryable: true;
+    } | null = null;
+    try {
+      const inspection = runConfigurationInspectionSchema.parse(
+        await this.bridge.request(source.workerId, {
+          type: "project.run-configurations.inspect",
+          sourcePath: source.cwd,
+        }),
+      );
+      const configuration = inspection.configurations.find(
+        ({ relativePath }) => relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
+      );
+      configurationRevision = configuration?.revision ?? null;
+      configurationError = inspection.valid
+        ? null
+        : {
+            code: "configuration-invalid",
+            message:
+              "The project environment is invalid. Validate it before retrying worktree setup.",
+            retryable: true,
+          };
+      setupQueued = !configurationError && Boolean(configuration?.setup);
+    } catch {
+      configurationError = {
+        code: "setup-start-failed",
+        message:
+          "Cantrip could not inspect the project environment after creating the worktree. Retry setup when the worker is available.",
+        retryable: true,
+      };
+    }
+    const initialized = await this.repository.worktreeSetupJobs.initialize({
+      configurationRevision,
+      ...(configurationError ? { error: configurationError } : {}),
+      ownerId,
+      projectId,
+      queued: setupQueued,
+      workerId: source.workerId,
+      worktreeId,
+    });
+    if (initialized.job.state === "queued") this.onSetupQueued?.();
+    return {
+      ...created,
+      lifecycleState:
+        initialized.job.state === "queued"
+          ? "preparing"
+          : initialized.job.state === "failed"
+            ? "setup-failed"
+            : "ready",
+      updatedAt: initialized.job.updatedAt,
+    };
   }
 
   private async inspectWorktree(

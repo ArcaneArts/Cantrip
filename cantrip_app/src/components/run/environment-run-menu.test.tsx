@@ -42,6 +42,7 @@ const environment: RunEnvironmentSummary = {
     ],
     diagnostics: [],
   },
+  setup: null,
   run: {
     id: runId,
     projectId: "project-one",
