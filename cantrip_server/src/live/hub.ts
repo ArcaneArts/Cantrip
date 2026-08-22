@@ -109,10 +109,16 @@ interface Connection {
   socket: AppLiveSocket;
 }
 
+interface EncodedServerMessage {
+  bytes: number;
+  data: string;
+}
+
 interface RetainedEvent {
-  encodedBytes: number;
-  event: AppLiveEvent;
+  cursor: number;
+  encoded: EncodedServerMessage;
   ownerId: string;
+  scopeKey: string;
 }
 
 export interface AppLiveClientControlResult {
@@ -169,6 +175,10 @@ function requestIdFromUnknown(value: unknown): string | null {
   return null;
 }
 
+function encodedServerMessage(data: string): EncodedServerMessage {
+  return { bytes: Buffer.byteLength(data), data };
+}
+
 export class AppLiveHub {
   readonly #connections = new Set<Connection>();
   readonly #epoch: string;
@@ -185,6 +195,10 @@ export class AppLiveHub {
   >();
   readonly #ownerCursors = new Map<string, number>();
   readonly #replayEvents: RetainedEvent[] = [];
+  readonly #subscribersByOwnerAndScope = new Map<
+    string,
+    Map<string, Set<Connection>>
+  >();
   readonly #heartbeatTimer: ReturnType<typeof setInterval>;
   #maintainingConnections = false;
   #acceptedConnectionCount = 0;
@@ -308,17 +322,19 @@ export class AppLiveHub {
       kind: "project",
       projectId: command.projectId,
     });
+    const projectSubscribers = this.#subscribers(ownerId, projectScopeKey);
     const projectConnections = (
       await Promise.all(
-        [...this.#connections].map(async (connection) =>
-          connection.context.ownerId === ownerId &&
-          connection.initialized &&
-          !connection.closed &&
-          connection.scopes.has(projectScopeKey) &&
-          (await this.#isConnectionActive(connection))
-            ? connection
-            : null,
-        ),
+        [...(projectSubscribers ?? [])].map(async (connection) => {
+          if (
+            !connection.initialized ||
+            connection.closed ||
+            !(await this.#isConnectionActive(connection))
+          ) {
+            return null;
+          }
+          return connection;
+        }),
       )
     ).filter((connection): connection is Connection => connection !== null);
     if (projectConnections.length === 0) {
@@ -409,27 +425,26 @@ export class AppLiveHub {
     this.#ownerCursors.set(ownerId, cursor);
     this.#currentCursor += 1;
     this.#publicationCount += 1;
-    const encodedBytes = Buffer.byteLength(encodeAppLiveServerMessage(parsed));
-    this.#replayEvents.push({ encodedBytes, event: parsed, ownerId });
-    this.#replayBytes += encodedBytes;
+    // The event has already passed the server-message schema above. Stringify
+    // that validated value once, then reuse the exact frame for fanout/replay.
+    const encoded = encodedServerMessage(JSON.stringify(parsed));
+    const scopeKey = appLiveScopeKey(parsed.scope);
+    this.#replayEvents.push({ cursor, encoded, ownerId, scopeKey });
+    this.#replayBytes += encoded.bytes;
     while (
       this.#replayEvents.length > this.#maxReplayEvents ||
       this.#replayBytes > this.#maxReplayBytes
     ) {
       const removed = this.#replayEvents.shift();
       if (!removed) break;
-      this.#replayBytes -= removed.encodedBytes;
+      this.#replayBytes -= removed.encoded.bytes;
     }
 
-    const scopeKey = appLiveScopeKey(parsed.scope);
-    for (const connection of this.#connections) {
-      if (
-        connection.context.ownerId === ownerId &&
-        connection.initialized &&
-        connection.scopes.has(scopeKey) &&
-        !connection.resume
-      ) {
-        if (this.#send(connection, parsed)) this.#deliveredEventCount += 1;
+    for (const connection of this.#subscribers(ownerId, scopeKey) ?? []) {
+      if (connection.initialized && !connection.resume) {
+        if (this.#sendEncoded(connection, encoded)) {
+          this.#deliveredEventCount += 1;
+        }
       }
     }
     return parsed;
@@ -467,10 +482,7 @@ export class AppLiveHub {
       this.#settleClientControl(correlationId, "unavailable");
     }
     for (const connection of [...this.#connections]) {
-      connection.closed = true;
-      connection.socket.close(1001, "Live service is shutting down");
-      this.#connections.delete(connection);
-      this.#disconnectedConnectionCount += 1;
+      this.#closeConnection(connection, 1001, "Live service is shutting down");
     }
   }
 
@@ -690,7 +702,7 @@ export class AppLiveHub {
     }
 
     for (const scope of message.scopes) {
-      connection.scopes.set(appLiveScopeKey(scope), scope);
+      this.#addSubscription(connection, scope);
     }
     const response: AppLiveServerMessage = {
       type: "subscribed",
@@ -707,7 +719,7 @@ export class AppLiveHub {
     message: Extract<AppLiveClientMessage, { type: "unsubscribe" }>,
   ): void {
     for (const scope of message.scopes) {
-      connection.scopes.delete(appLiveScopeKey(scope));
+      this.#removeSubscription(connection, appLiveScopeKey(scope));
     }
     this.#rememberAndSend(connection, {
       type: "unsubscribed",
@@ -737,9 +749,7 @@ export class AppLiveHub {
       this.#epoch,
       message.cursor,
     );
-    connection.scopes = new Map(
-      message.scopes.map((scope) => [appLiveScopeKey(scope), scope]),
-    );
+    this.#replaceSubscriptions(connection, message.scopes);
     if (reason) {
       connection.resume = { cursor: message.cursor, reason };
       const response = {
@@ -777,6 +787,73 @@ export class AppLiveHub {
     }
   }
 
+  #subscribers(
+    ownerId: string,
+    scopeKey: string,
+  ): ReadonlySet<Connection> | undefined {
+    return this.#subscribersByOwnerAndScope.get(ownerId)?.get(scopeKey);
+  }
+
+  #addSubscription(connection: Connection, scope: AppLiveScope): void {
+    if (connection.closed) return;
+    const scopeKey = appLiveScopeKey(scope);
+    if (connection.scopes.has(scopeKey)) {
+      connection.scopes.set(scopeKey, scope);
+      return;
+    }
+    connection.scopes.set(scopeKey, scope);
+    let ownerScopes = this.#subscribersByOwnerAndScope.get(
+      connection.context.ownerId,
+    );
+    if (!ownerScopes) {
+      ownerScopes = new Map();
+      this.#subscribersByOwnerAndScope.set(
+        connection.context.ownerId,
+        ownerScopes,
+      );
+    }
+    let subscribers = ownerScopes.get(scopeKey);
+    if (!subscribers) {
+      subscribers = new Set();
+      ownerScopes.set(scopeKey, subscribers);
+    }
+    subscribers.add(connection);
+  }
+
+  #removeSubscription(connection: Connection, scopeKey: string): void {
+    if (!connection.scopes.delete(scopeKey)) return;
+    const ownerScopes = this.#subscribersByOwnerAndScope.get(
+      connection.context.ownerId,
+    );
+    const subscribers = ownerScopes?.get(scopeKey);
+    subscribers?.delete(connection);
+    if (subscribers?.size === 0) ownerScopes?.delete(scopeKey);
+    if (ownerScopes?.size === 0) {
+      this.#subscribersByOwnerAndScope.delete(connection.context.ownerId);
+    }
+  }
+
+  #replaceSubscriptions(connection: Connection, scopes: AppLiveScope[]): void {
+    if (connection.closed) return;
+    const nextScopes = new Map(
+      scopes.map((scope) => [appLiveScopeKey(scope), scope]),
+    );
+    for (const scopeKey of [...connection.scopes.keys()]) {
+      if (!nextScopes.has(scopeKey)) {
+        this.#removeSubscription(connection, scopeKey);
+      }
+    }
+    for (const scope of nextScopes.values()) {
+      this.#addSubscription(connection, scope);
+    }
+  }
+
+  #removeConnectionSubscriptions(connection: Connection): void {
+    for (const scopeKey of [...connection.scopes.keys()]) {
+      this.#removeSubscription(connection, scopeKey);
+    }
+  }
+
   #finishResume(connection: Connection): void {
     const resume = connection.resume;
     if (!resume) return;
@@ -797,13 +874,12 @@ export class AppLiveHub {
     this.#replaySessionCount += 1;
     let replayedCount = 0;
     for (const retained of this.#replayEvents) {
-      const { event } = retained;
       if (
         retained.ownerId === connection.context.ownerId &&
-        event.cursor > cursor &&
-        connection.scopes.has(appLiveScopeKey(event.scope))
+        retained.cursor > cursor &&
+        connection.scopes.has(retained.scopeKey)
       ) {
-        if (!this.#send(connection, event)) return;
+        if (!this.#sendEncoded(connection, retained.encoded)) return;
         replayedCount += 1;
         this.#replayedEventCount += 1;
         this.#deliveredEventCount += 1;
@@ -826,7 +902,7 @@ export class AppLiveHub {
     if (cursor > currentCursor) return "cursor-expired";
     const oldestCursor = this.#replayEvents.find(
       (retained) => retained.ownerId === ownerId,
-    )?.event.cursor;
+    )?.cursor;
     if (oldestCursor !== undefined && cursor < oldestCursor - 1) {
       return "cursor-expired";
     }
@@ -941,6 +1017,13 @@ export class AppLiveHub {
   }
 
   #send(connection: Connection, message: AppLiveServerMessage): boolean {
+    return this.#sendEncoded(
+      connection,
+      encodedServerMessage(encodeAppLiveServerMessage(message)),
+    );
+  }
+
+  #sendEncoded(connection: Connection, encoded: EncodedServerMessage): boolean {
     if (
       connection.closed ||
       connection.socket.readyState !== OPEN_SOCKET_STATE
@@ -948,9 +1031,8 @@ export class AppLiveHub {
       this.#disconnect(connection);
       return false;
     }
-    const encoded = encodeAppLiveServerMessage(message);
     if (
-      connection.socket.bufferedAmount + Buffer.byteLength(encoded) >
+      connection.socket.bufferedAmount + encoded.bytes >
       this.#maxBufferedBytes
     ) {
       this.#queuePressureCount += 1;
@@ -963,7 +1045,7 @@ export class AppLiveHub {
       return false;
     }
     try {
-      connection.socket.send(encoded);
+      connection.socket.send(encoded.data);
       return true;
     } catch {
       this.#closeConnection(connection, 1011, "Live send failed");
@@ -1001,6 +1083,7 @@ export class AppLiveHub {
     if (connection.closed) return;
     connection.closed = true;
     this.#connections.delete(connection);
+    this.#removeConnectionSubscriptions(connection);
     this.#disconnectedConnectionCount += 1;
     this.#settleClientControlForConnection(connection);
     connection.socket.close(code, reason);
@@ -1010,6 +1093,7 @@ export class AppLiveHub {
     if (connection.closed) return;
     connection.closed = true;
     this.#connections.delete(connection);
+    this.#removeConnectionSubscriptions(connection);
     this.#disconnectedConnectionCount += 1;
     this.#settleClientControlForConnection(connection);
   }
