@@ -49,6 +49,24 @@ type ChatImportJobRow = typeof schema.chatImportJobs.$inferSelect;
 const RUNNING_STATES = ["reading", "importing", "hydrating"] as const;
 export const CHAT_IMPORT_JOB_LEASE_MS = 2 * 60_000;
 export const CHAT_IMPORT_JOB_HISTORY_LIMIT = 1_000;
+// Imported message rows bind 12 values each. A 500-row batch remains well
+// below PostgreSQL's per-statement parameter limit while reducing chatter for
+// large histories.
+export const CHAT_IMPORT_INSERT_BATCH_SIZE = 500;
+
+export function chatImportInsertBatches<T>(
+  values: readonly T[],
+  batchSize = CHAT_IMPORT_INSERT_BATCH_SIZE,
+): T[][] {
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
+    throw new RangeError("Chat import insert batch size must be positive.");
+  }
+  const batches: T[][] = [];
+  for (let offset = 0; offset < values.length; offset += batchSize) {
+    batches.push(values.slice(offset, offset + batchSize));
+  }
+  return batches;
+}
 
 export class ChatImportJobConflictError extends Error {}
 export class ChatImportJobNotFoundError extends Error {}
@@ -200,7 +218,10 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 export class ChatImportJobRepository {
-  constructor(private readonly database: ChatImportDatabase) {}
+  constructor(
+    private readonly database: ChatImportDatabase,
+    private readonly insertBatchSize = CHAT_IMPORT_INSERT_BATCH_SIZE,
+  ) {}
 
   async create(
     ownerId: string,
@@ -923,12 +944,14 @@ export class ChatImportJobRepository {
       });
       const attachmentByExternalId = new Map<string, ChatAttachmentSummary>();
       const opaqueAttachments: ChatAttachmentOpaqueSummary[] = [];
-      for (const imported of importedAttachments) {
+      const canonicalAttachments = importedAttachments.map((imported) => {
         const status =
-          imported.descriptor.status === "available" ? "ready" : "failed";
-        const inserted = await transaction
-          .insert(schema.chatAttachments)
-          .values({
+          imported.descriptor.status === "available"
+            ? ("ready" as const)
+            : ("failed" as const);
+        return {
+          externalId: imported.descriptor.id,
+          row: {
             id: imported.id,
             chatId,
             workerId: job.targetPlacement.workerId,
@@ -937,20 +960,39 @@ export class ChatImportJobRepository {
             status,
             createdAt: now,
             updatedAt: now,
-          })
-          .returning();
-        const attachment = inserted[0]!;
-        if (status === "ready") {
-          await transaction.insert(schema.chatAttachmentReplicas).values({
-            attachmentId: imported.id,
-            workerId: job.targetPlacement.workerId,
-            status: "ready",
-            verifiedAt: now,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-        attachmentByExternalId.set(imported.descriptor.id, {
+          },
+        };
+      });
+      for (const attachments of chatImportInsertBatches(
+        canonicalAttachments.map(({ row }) => row),
+        this.insertBatchSize,
+      )) {
+        await transaction.insert(schema.chatAttachments).values(attachments);
+      }
+      const replicaRows = canonicalAttachments.flatMap(({ row }) =>
+        row.status === "ready"
+          ? [
+              {
+                attachmentId: row.id,
+                workerId: job.targetPlacement.workerId,
+                status: "ready",
+                verifiedAt: now,
+                createdAt: now,
+                updatedAt: now,
+              } as const,
+            ]
+          : [],
+      );
+      for (const replicas of chatImportInsertBatches(
+        replicaRows,
+        this.insertBatchSize,
+      )) {
+        await transaction
+          .insert(schema.chatAttachmentReplicas)
+          .values(replicas);
+      }
+      for (const { externalId, row: attachment } of canonicalAttachments) {
+        attachmentByExternalId.set(externalId, {
           id: attachment.id,
           chatId,
           fileName: "Protected attachment",
@@ -958,7 +1000,7 @@ export class ChatImportJobRepository {
           sizeBytes: attachment.sizeBytes,
           kind: "file",
           source: "file",
-          status: attachment.status as "failed" | "ready",
+          status: attachment.status,
           previewText: null,
           createdAt: toISOString(attachment.createdAt),
         });
@@ -1000,21 +1042,25 @@ export class ChatImportJobRepository {
           "The destination worker returned an inconsistent encrypted transcript.",
         );
       }
-      for (const message of protectedMessages) {
-        await transaction.insert(schema.chatMessages).values({
-          id: message.id,
-          chatId,
-          worktreeId: worktree.id,
-          executionLaneId,
-          role: message.classification.role,
-          mode: message.classification.mode,
-          content: null,
-          protectedContent: message.protectedContent,
-          attachmentIds: message.classification.attachmentIds,
-          reasoningEffort: message.reasoningEffort,
-          idempotencyKey: message.idempotencyKey,
-          createdAt: now,
-        });
+      const messageRows = protectedMessages.map((message) => ({
+        id: message.id,
+        chatId,
+        worktreeId: worktree.id,
+        executionLaneId,
+        role: message.classification.role,
+        mode: message.classification.mode,
+        content: null,
+        protectedContent: message.protectedContent,
+        attachmentIds: message.classification.attachmentIds,
+        reasoningEffort: message.reasoningEffort,
+        idempotencyKey: message.idempotencyKey,
+        createdAt: now,
+      }));
+      for (const messages of chatImportInsertBatches(
+        messageRows,
+        this.insertBatchSize,
+      )) {
+        await transaction.insert(schema.chatMessages).values(messages);
       }
       const rows = await transaction
         .update(schema.chatImportJobs)
