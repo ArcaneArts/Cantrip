@@ -8092,6 +8092,7 @@ export const cantripCliContextSchema = z
     codexThreadId: z.string().min(1).max(200).nullable().default(null),
     terminalId: z.string().min(1).max(200).nullable().default(null),
     cwd: z.string().min(1).max(8_192).nullable().default(null),
+    selection: z.enum(["auto", "cwd", "lane"]).default("auto"),
   })
   .strict();
 
