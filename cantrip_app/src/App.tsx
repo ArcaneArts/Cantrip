@@ -2581,6 +2581,8 @@ function ChatTranscript({
                   key={entry.key}
                   startedAt={entry.startedAt}
                   endedAt={entry.endedAt}
+                  turnId={entry.turnId}
+                  turnKey={entry.turnKey}
                 >
                   {entry.messages.map((message) => (
                     <MessageContent key={message.id} message={message} />

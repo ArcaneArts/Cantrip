@@ -173,6 +173,7 @@ interface ActiveTurn {
   fileStartedAtMs: Map<string, number>;
   finalText: string | null;
   interactionMode: "interactive" | "preauthorized";
+  itemStartedAtMs: Map<string, number>;
   latestUsage: TokenUsageBreakdown | null;
   liveAgentMessageFingerprints: Set<string>;
   model: RunAgentTurnOptions["model"];
@@ -229,6 +230,7 @@ const COMMAND_OUTPUT_COALESCE_MS = 100;
 const MAX_TURN_COMMAND_TELEMETRY = 200;
 const MAX_COMPLETED_COMMAND_IDS = 1_000;
 const MAX_TURN_FILE_ITEMS = 1_000;
+const MAX_TURN_ITEM_TIMESTAMPS = 1_000;
 
 function boundedMapSet<K, V>(map: Map<K, V>, key: K, value: V, limit: number) {
   if (!map.has(key) && map.size >= limit) {
@@ -317,6 +319,7 @@ function clearTurnInspectionTelemetry(active: ActiveTurn): void {
   active.commandTelemetry.clear();
   active.completedCommandIds.clear();
   active.fileStartedAtMs.clear();
+  active.itemStartedAtMs.clear();
 }
 
 export function findActiveChatTurn<
@@ -2314,6 +2317,7 @@ export function normalizeCodexThreadItem(
       resultText: isCodeGraph ? mcpResultText(item.result) : null,
       error: boundedText(item.error?.message),
       durationMs: item.durationMs,
+      ...timestamps,
       correlation,
     });
   }
@@ -2326,6 +2330,7 @@ export function normalizeCodexThreadItem(
       tool: item.tool,
       success: item.success,
       durationMs: item.durationMs,
+      ...timestamps,
       correlation,
     });
   }
@@ -2352,6 +2357,7 @@ export function normalizeCodexThreadItem(
             : [],
         )
         .slice(0, 100),
+      ...timestamps,
       correlation,
     });
   }
@@ -2368,6 +2374,7 @@ export function normalizeCodexThreadItem(
       kind: item.kind,
       agentThreadId: item.agentThreadId,
       agentPath: item.agentPath || item.agentThreadId,
+      ...timestamps,
       correlation,
     });
   }
@@ -2378,6 +2385,7 @@ export function normalizeCodexThreadItem(
       status: lifecycle === "started" ? "running" : "completed",
       query: boundedText(item.query, 4_000) ?? "",
       action: boundedText(webSearchAction(item), 4_000),
+      ...timestamps,
       correlation,
     });
   }
@@ -2387,6 +2395,7 @@ export function normalizeCodexThreadItem(
       id: item.id,
       status: lifecycle === "started" ? "running" : "completed",
       path: displayPath(cwd, item.path),
+      ...timestamps,
       correlation,
     });
   }
@@ -2397,6 +2406,7 @@ export function normalizeCodexThreadItem(
       status: lifecycle === "started" ? "running" : "completed",
       state: item.type === "enteredReviewMode" ? "entered" : "exited",
       review: boundedText(item.review) ?? "",
+      ...timestamps,
       correlation,
     });
   }
@@ -2405,6 +2415,7 @@ export function normalizeCodexThreadItem(
       type: "contextCompaction",
       id: item.id,
       status: lifecycle === "started" ? "running" : "completed",
+      ...timestamps,
       correlation,
     });
   }
@@ -3111,6 +3122,7 @@ export class CodexAppServer implements CodexRuntime {
         fileStartedAtMs: new Map(),
         finalText: null,
         interactionMode: "interactive",
+        itemStartedAtMs: new Map(),
         latestUsage: null,
         liveAgentMessageFingerprints: new Set(),
         model: options.model,
@@ -3260,6 +3272,7 @@ export class CodexAppServer implements CodexRuntime {
         fileStartedAtMs: new Map(),
         finalText: null,
         interactionMode: options.approvalMode,
+        itemStartedAtMs: new Map(),
         latestUsage: null,
         liveAgentMessageFingerprints: new Set(),
         model: options.model,
@@ -5581,6 +5594,14 @@ export class CodexAppServer implements CodexRuntime {
       );
       if (active && params.summaryIndex >= 0 && params.summaryIndex < 100) {
         const observedAtMs = Date.now();
+        const startedAtMs =
+          active.itemStartedAtMs.get(params.itemId) ?? observedAtMs;
+        boundedMapSet(
+          active.itemStartedAtMs,
+          params.itemId,
+          startedAtMs,
+          MAX_TURN_ITEM_TIMESTAMPS,
+        );
         const summary = active.reasoningSummaries.get(params.itemId) ?? [];
         while (summary.length <= params.summaryIndex) summary.push("");
         summary[params.summaryIndex] =
@@ -5593,7 +5614,7 @@ export class CodexAppServer implements CodexRuntime {
             id: params.itemId,
             status: "running",
             summary: summary.map((part) => part.trim()).filter(Boolean),
-            startedAtMs: active.startedAtMs,
+            startedAtMs,
             updatedAtMs: observedAtMs,
             completedAtMs: null,
             correlation: eventCorrelation(
@@ -5657,6 +5678,12 @@ export class CodexAppServer implements CodexRuntime {
       const startedAtMs =
         active.fileStartedAtMs.get(params.itemId) ?? observedAtMs;
       boundedMapSet(
+        active.itemStartedAtMs,
+        params.itemId,
+        startedAtMs,
+        MAX_TURN_ITEM_TIMESTAMPS,
+      );
+      boundedMapSet(
         active.fileStartedAtMs,
         params.itemId,
         startedAtMs,
@@ -5712,6 +5739,12 @@ export class CodexAppServer implements CodexRuntime {
         flushActiveAgentMessage(active, false);
         const observedAtMs = Date.now();
         const startedAtMs = params.startedAtMs ?? observedAtMs;
+        boundedMapSet(
+          active.itemStartedAtMs,
+          params.item.id,
+          startedAtMs,
+          MAX_TURN_ITEM_TIMESTAMPS,
+        );
         const correlation = eventCorrelation(
           message.method,
           diagnosticId,
@@ -5778,6 +5811,15 @@ export class CodexAppServer implements CodexRuntime {
         params.turnId,
       );
       const observedAtMs = params.completedAtMs ?? Date.now();
+      const itemStartedAtMs =
+        active && params.item.type !== "agentMessage"
+          ? (params.startedAtMs ??
+            active.itemStartedAtMs.get(params.item.id) ??
+            null)
+          : null;
+      if (active && params.item.type !== "agentMessage") {
+        active.itemStartedAtMs.delete(params.item.id);
+      }
       if (
         active &&
         ((params.item.type === "agentMessage" &&
@@ -5830,7 +5872,8 @@ export class CodexAppServer implements CodexRuntime {
         telemetry.item = params.item;
         telemetry.output = completed.output;
         telemetry.truncated = completed.truncated;
-        telemetry.startedAtMs = completed.startedAtMs;
+        telemetry.startedAtMs =
+          existing?.startedAtMs ?? itemStartedAtMs ?? completed.startedAtMs;
         telemetry.updatedAtMs = completed.updatedAtMs;
         telemetry.correlation = correlation;
         emitCommandTelemetry(active, telemetry, observedAtMs);
@@ -5839,7 +5882,9 @@ export class CodexAppServer implements CodexRuntime {
       } else if (active && params.item.type === "fileChange") {
         flushActiveAgentMessage(active, false);
         const startedAtMs =
-          active.fileStartedAtMs.get(params.item.id) ?? observedAtMs;
+          itemStartedAtMs ??
+          active.fileStartedAtMs.get(params.item.id) ??
+          observedAtMs;
         active.fileStartedAtMs.delete(params.item.id);
         const activity = normalizeCodexThreadItem(
           params.item,
@@ -5873,7 +5918,7 @@ export class CodexAppServer implements CodexRuntime {
             params.item.id,
           ),
           {
-            startedAtMs: active.startedAtMs,
+            startedAtMs: itemStartedAtMs ?? observedAtMs,
             updatedAtMs: observedAtMs,
             completedAtMs: observedAtMs,
           },

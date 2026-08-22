@@ -379,15 +379,23 @@ describe("Codex rich event normalization", () => {
       { type: "contextCompaction" as const, id: "compact-1" },
     ];
 
-    expect(
-      items.map(
-        (item) =>
-          normalizeCodexThreadItem(item, "/workspace", "completed", {
-            ...correlation,
-            itemId: item.id,
-          })?.type,
+    const normalized = items.map((item) =>
+      normalizeCodexThreadItem(
+        item,
+        "/workspace",
+        "completed",
+        {
+          ...correlation,
+          itemId: item.id,
+        },
+        {
+          startedAtMs: 1_000,
+          updatedAtMs: 1_200,
+          completedAtMs: 1_200,
+        },
       ),
-    ).toEqual([
+    );
+    expect(normalized.map((activity) => activity?.type)).toEqual([
       "mcpToolCall",
       "dynamicToolCall",
       "collabToolCall",
@@ -397,6 +405,13 @@ describe("Codex rich event normalization", () => {
       "reviewMode",
       "contextCompaction",
     ]);
+    for (const activity of normalized) {
+      expect(activity).toMatchObject({
+        startedAtMs: 1_000,
+        updatedAtMs: 1_200,
+        completedAtMs: 1_200,
+      });
+    }
     expect(
       normalizeCodexThreadItem(items[2]!, "/workspace", "completed", {
         ...correlation,
