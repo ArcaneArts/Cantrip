@@ -14,6 +14,7 @@ import {
   type RunConfigurationInspection,
   type RunConfigurationPlatform,
   type RunConfigurationSetup,
+  type RunConfigurationSelection,
   type RunConfigurationSourceControlState,
 } from "@cantrip/protocol";
 import { parse as parseToml } from "smol-toml";
@@ -577,4 +578,35 @@ export async function inspectRunConfigurations(
     configurations,
     diagnostics,
   });
+}
+
+export async function resolveRunConfigurationAction(
+  sourcePath: string,
+  actionId: string,
+  expectedRevision: string,
+  hostPlatform: NodeJS.Platform = process.platform,
+): Promise<RunConfigurationSelection> {
+  const inspection = await inspectRunConfigurations(sourcePath, hostPlatform);
+  if (!inspection.valid) {
+    throw new Error(
+      "Run configuration validation failed. Validate the environment before starting an action.",
+    );
+  }
+  const matches = inspection.configurations.flatMap((configuration) =>
+    configuration.actions
+      .filter((action) => action.id === actionId)
+      .map((action) => ({ action, configuration })),
+  );
+  if (matches.length !== 1) {
+    throw new Error(
+      "The requested Run action is not available on this worker platform.",
+    );
+  }
+  const selected = matches[0]!;
+  if (selected.configuration.revision !== expectedRevision) {
+    throw new Error(
+      "The Run configuration changed. List its actions again before starting it.",
+    );
+  }
+  return selected;
 }

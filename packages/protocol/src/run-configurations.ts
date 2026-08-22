@@ -97,6 +97,87 @@ export const runConfigurationSelectionSchema = z
   })
   .strict();
 
+export const runInstanceStateSchema = z.enum([
+  "queued",
+  "starting",
+  "running",
+  "exited",
+  "failed",
+  "stopping",
+  "stopped",
+  "lost",
+]);
+
+export const runInstanceSchema = z
+  .object({
+    id: z.string().uuid(),
+    projectId: z.string().min(1).max(200),
+    worktreeId: z.string().min(1).max(200),
+    workerId: z.string().min(1).max(200),
+    actionId: runConfigurationActionSchema.shape.id,
+    configurationRevision: runConfigurationDefinitionSchema.shape.revision,
+    state: runInstanceStateSchema,
+    terminalId: z.string().min(1).max(200).nullable(),
+    exitCode: z.number().int().nullable(),
+    signal: z.string().min(1).max(100).nullable(),
+    createdAt: z.iso.datetime(),
+    startedAt: z.iso.datetime().nullable(),
+    endedAt: z.iso.datetime().nullable(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const workerRunIdentitySchema = z
+  .object({
+    runId: runInstanceSchema.shape.id,
+    projectId: runInstanceSchema.shape.projectId,
+    worktreeId: runInstanceSchema.shape.worktreeId,
+    actionId: runInstanceSchema.shape.actionId,
+    configurationRevision: runInstanceSchema.shape.configurationRevision,
+  })
+  .strict();
+
+export const workerRunSnapshotSchema = workerRunIdentitySchema
+  .extend({
+    state: runInstanceStateSchema.exclude(["queued"]),
+    startedAt: z.iso.datetime().nullable(),
+    endedAt: z.iso.datetime().nullable(),
+    exitCode: z.number().int().nullable(),
+    signal: z.string().min(1).max(100).nullable(),
+  })
+  .strict();
+
+export const workerRunLookupSchema = z.discriminatedUnion("found", [
+  z
+    .object({ found: z.literal(false), runId: runInstanceSchema.shape.id })
+    .strict(),
+  z.object({ found: z.literal(true), run: workerRunSnapshotSchema }).strict(),
+]);
+
+export const workerRunReconciliationSchema = z
+  .array(workerRunLookupSchema)
+  .max(256);
+
+export const workerRunLogSnapshotSchema = z
+  .object({
+    run: workerRunSnapshotSchema,
+    data: z.string().max(100_000),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const runInstanceResultSchema = z
+  .object({ run: runInstanceSchema })
+  .strict();
+
+export const runLogResultSchema = z
+  .object({
+    run: runInstanceSchema,
+    data: z.string().max(100_000),
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export type RunConfigurationPlatform = z.infer<
   typeof runConfigurationPlatformSchema
 >;
@@ -119,3 +200,9 @@ export type RunConfigurationInspection = z.infer<
 export type RunConfigurationSelection = z.infer<
   typeof runConfigurationSelectionSchema
 >;
+export type RunInstanceState = z.infer<typeof runInstanceStateSchema>;
+export type RunInstance = z.infer<typeof runInstanceSchema>;
+export type WorkerRunIdentity = z.infer<typeof workerRunIdentitySchema>;
+export type WorkerRunSnapshot = z.infer<typeof workerRunSnapshotSchema>;
+export type WorkerRunLookup = z.infer<typeof workerRunLookupSchema>;
+export type WorkerRunLogSnapshot = z.infer<typeof workerRunLogSnapshotSchema>;

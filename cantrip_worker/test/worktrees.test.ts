@@ -369,6 +369,7 @@ describe("worker Git worktrees", () => {
       created.worktree.path,
       "Retain for review",
     );
+    const beforeRemove = vi.fn(async () => undefined);
     expect(locked.worktree).toMatchObject({
       locked: true,
       lockReason: "Retain for review",
@@ -376,9 +377,11 @@ describe("worker Git worktrees", () => {
     await expect(
       manager.remove(repository, created.worktree.path, {
         allowExternal: false,
+        beforeRemove,
         force: true,
       }),
     ).rejects.toThrow("Unlock");
+    expect(beforeRemove).not.toHaveBeenCalled();
     expect(
       (await manager.unlock(repository, created.worktree.path)).worktree.locked,
     ).toBe(false);
@@ -390,13 +393,18 @@ describe("worker Git worktrees", () => {
     await expect(
       manager.remove(repository, created.worktree.path, {
         allowExternal: false,
+        beforeRemove,
         force: false,
       }),
     ).rejects.toThrow("uncommitted changes");
+    expect(beforeRemove).not.toHaveBeenCalled();
     await manager.remove(repository, created.worktree.path, {
       allowExternal: false,
+      beforeRemove,
       force: true,
     });
+    expect(beforeRemove).toHaveBeenCalledTimes(1);
+    expect(beforeRemove).toHaveBeenCalledWith(created.worktree.path);
     await expect(
       execFileAsync("git", [
         "-C",

@@ -69,6 +69,10 @@ cantrip run list
 cantrip run show "Run Spectral Lab"
 cantrip run validate
 cantrip run config path
+cantrip run start "Run Spectral Lab" --no-focus
+cantrip run status
+cantrip run logs 11111111-1111-4111-8111-111111111111 --tail 20000
+cantrip run stop 11111111-1111-4111-8111-111111111111
 ```
 
 Worktree creation defaults to a new `cantrip/<name>` branch based on the
@@ -96,9 +100,31 @@ are present. `cantrip run config path` reports the canonical
 `.codex/environments/environment.toml` location and whether it is tracked,
 ignored, untracked, or absent.
 
-These commands are read-only. Action execution and worktree setup are added by
-later Run-configuration milestones; ordinary repository tools remain the way
-to create or edit TOML.
+`cantrip run start <action>` resolves an unambiguous action name or opaque ID,
+then sends its exact ID and configuration revision to the owning worker. The
+worker rereads the source-root configuration, rechecks its platform and
+revision, and starts the command once in a worker-owned PTY. The action CWD is
+the active worktree. Its environment preserves the worker environment and
+sets `CODEX_WORKTREE_PATH`, `CANTRIP_WORKTREE_PATH`, `CANTRIP_PROJECT_ROOT`,
+`CANTRIP_RUN_ID`, and `CANTRIP_ACTION_ID`. A desktop client is not required;
+Runs are headless until terminal materialization is added in a later milestone.
+
+`cantrip run status [run-id]` refreshes one Run or, when no ID is supplied, the
+most recently created Run in the current worktree. `cantrip run logs <run-id>`
+reads a bounded character tail from volatile worker memory; `--tail` accepts 1
+through 100000 characters. Scrollback is not persisted by the server and is
+unavailable when its worker is offline or has restarted. `cantrip run stop
+<run-id>` terminates the PTY's complete process tree. Exited actions are never
+automatically restarted, and retries reuse the same Run identity instead of
+starting the action twice. Cantrip also stops affected Runs before removing a
+worktree, managed project folder, or worker-owned repository copy.
+
+Run instances persist only routing and lifecycle metadata: project, worktree,
+worker, action ID, configuration revision, state, timestamps, exit result, and
+eventually a terminal association. Commands, environment values, and terminal
+output are never stored in the server database. Ordinary repository tools
+remain the way to create or edit TOML; setup is separate and does not execute
+when a Run starts.
 
 ## Policies
 

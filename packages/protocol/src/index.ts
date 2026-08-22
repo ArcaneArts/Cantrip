@@ -56,6 +56,11 @@ import {
   repositoryOperationWireRequestSchema,
   repositoryRoutingHandleSchema,
 } from "./repository-operation.js";
+import {
+  runInstanceSchema,
+  workerRunIdentitySchema,
+  workerRunSnapshotSchema,
+} from "./run-configurations.js";
 
 import {
   directBrokerAdvertisementSchema,
@@ -7046,6 +7051,10 @@ export const cantripAgentOperationNameSchema = z.enum([
   "target.inspect",
   "run-config.list",
   "run-config.read",
+  "run.start",
+  "run.status",
+  "run.read",
+  "run.stop",
   "worktree.list",
   "worktree.status",
   "worktree.create",
@@ -7735,6 +7744,10 @@ export const cantripCliCommandNameSchema = z.enum([
   "run.show",
   "run.validate",
   "run.config-path",
+  "run.start",
+  "run.status",
+  "run.logs",
+  "run.stop",
   "target.resolve-browser",
   "target.resolve-explorer",
   "target.resolve-terminal",
@@ -11138,6 +11151,41 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       sourcePath: z.string().min(1).max(8_192),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("project.run.start"),
+      requestId: z.string().min(1).max(200),
+      rootKind: projectRootKindSchema,
+      sourcePath: z.string().min(1).max(8_192),
+      worktreePath: z.string().min(1).max(8_192),
+    })
+    .extend(workerRunIdentitySchema.shape)
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run.status"),
+      runId: runInstanceSchema.shape.id,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run.logs"),
+      runId: runInstanceSchema.shape.id,
+      maxChars: z.number().int().min(1).max(100_000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run.stop"),
+      runId: runInstanceSchema.shape.id,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run.reconcile"),
+      runs: z.array(workerRunIdentitySchema).max(256),
+    })
+    .strict(),
   z.object({
     type: z.literal("project.repository-stats"),
     cwd: z.string().min(1).max(8_192),
@@ -12561,6 +12609,12 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("codegraph.status.observed"),
       status: codeGraphProjectStatusSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run.state.observed"),
+      run: workerRunSnapshotSchema,
     })
     .strict(),
   providerAuthStatusObservationSchema,

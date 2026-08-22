@@ -337,6 +337,31 @@ pub fn render(command: &str, result: &CommandResult, json: bool) {
             println!("{}", result.summary);
             return;
         }
+        "run.start" | "run.status" | "run.stop" => {
+            println!("{}", result.summary);
+            if let Some(run) = result.data.as_ref().and_then(|data| data.get("run")) {
+                println!("ID: {}", string(Some(run), "id"));
+                println!("State: {}", string(Some(run), "state"));
+                println!("Action: {}", string(Some(run), "actionId"));
+                println!("Worker: {}", string(Some(run), "workerId"));
+                println!("Started: {}", string(Some(run), "startedAt"));
+                println!("Ended: {}", string(Some(run), "endedAt"));
+                println!("Exit code: {}", string(Some(run), "exitCode"));
+                println!("Signal: {}", string(Some(run), "signal"));
+            }
+            return;
+        }
+        "run.logs" => {
+            if let Some(data) = result
+                .data
+                .as_ref()
+                .and_then(|data| data.get("data"))
+                .and_then(Value::as_str)
+            {
+                print!("{data}");
+                return;
+            }
+        }
         _ => {}
     }
 
