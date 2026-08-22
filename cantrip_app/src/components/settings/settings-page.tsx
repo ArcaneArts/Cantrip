@@ -122,6 +122,7 @@ import {
   providerSupportsCatalog,
 } from "./provider-catalog-display";
 import {
+  providerAccountWeeklyUsage,
   providerWeeklyAvailability,
   providerWeeklyRemainingPercent,
 } from "./provider-usage-display";
@@ -676,8 +677,10 @@ export function SettingsPage({
       deviceLogin ? 10_000 : 30_000,
     ),
   });
-  const weeklyRemainingPercent = codexAuth.data?.weeklyUsage
-    ? providerWeeklyRemainingPercent(codexAuth.data.weeklyUsage.usedPercent)
+  const selectedWeeklyUsage =
+    codexAuth.data?.weeklyUsage ?? providerAccountWeeklyUsage(selectedAccount);
+  const weeklyRemainingPercent = selectedWeeklyUsage
+    ? providerWeeklyRemainingPercent(selectedWeeklyUsage.usedPercent)
     : null;
 
   const refresh = () =>
@@ -1993,8 +1996,7 @@ export function SettingsPage({
                       <LogOut className="size-4" /> Sign out
                     </Button>
                   </div>
-                  {codexAuth.data.weeklyUsage &&
-                  weeklyRemainingPercent !== null ? (
+                  {selectedWeeklyUsage && weeklyRemainingPercent !== null ? (
                     <div className="grid gap-1.5 border-t pt-3">
                       <div className="flex justify-between text-xs">
                         <span>7-day remaining</span>
@@ -2010,11 +2012,11 @@ export function SettingsPage({
                           }}
                         />
                       </div>
-                      {codexAuth.data.weeklyUsage.resetsAt ? (
+                      {selectedWeeklyUsage.resetsAt ? (
                         <p className="text-[11px] text-muted-foreground">
                           Resets{" "}
                           {new Date(
-                            codexAuth.data.weeklyUsage.resetsAt * 1_000,
+                            selectedWeeklyUsage.resetsAt * 1_000,
                           ).toLocaleString()}
                         </p>
                       ) : null}

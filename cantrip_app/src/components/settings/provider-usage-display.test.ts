@@ -2,6 +2,7 @@ import type { ModelProviderAccountSummary } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
+  providerAccountWeeklyUsage,
   providerWeeklyAvailability,
   providerWeeklyRemainingPercent,
 } from "./provider-usage-display";
@@ -34,6 +35,17 @@ describe("provider weekly availability", () => {
     expect(providerWeeklyRemainingPercent(95)).toBe(5);
     expect(providerWeeklyRemainingPercent(0)).toBe(100);
     expect(providerWeeklyRemainingPercent(100)).toBe(0);
+  });
+
+  it("normalizes persisted account usage for the provider detail view", () => {
+    expect(
+      providerAccountWeeklyUsage(
+        account("grok", 0, {
+          weeklyUsageResetsAt: "2026-08-24T18:00:00.000Z",
+        }),
+      ),
+    ).toEqual({ usedPercent: 0, resetsAt: 1_787_594_400 });
+    expect(providerAccountWeeklyUsage(account("missing", null))).toBeNull();
   });
 
   it("adds remaining capacity across every reported signed-in account", () => {

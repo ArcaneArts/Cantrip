@@ -12,7 +12,8 @@ import {
   ContextUsageRing,
   formatQuotaReset,
   latestContextUsage,
-  selectedChatGptProvider,
+  quotaProviderLabel,
+  selectedQuotaProvider,
   signedInQuotaAccounts,
 } from "./context-usage-ring";
 
@@ -195,14 +196,14 @@ describe("context usage ring", () => {
     ).toBeNull();
   });
 
-  it("shows ChatGPT quota only when it is the model's primary route", () => {
+  it("shows account-provider quota only when it is the model's primary route", () => {
     const bundle = settings();
     const model = bundle.models[0] as ModelProfileSummary;
     const chatGpt = bundle.providers[0] as ModelProviderSummary;
 
-    expect(selectedChatGptProvider(model, bundle.providers)).toBe(chatGpt);
+    expect(selectedQuotaProvider(model, bundle.providers)).toBe(chatGpt);
     expect(
-      selectedChatGptProvider(
+      selectedQuotaProvider(
         {
           ...model,
           routes: [
@@ -217,6 +218,39 @@ describe("context usage ring", () => {
         bundle.providers,
       ),
     ).toBeNull();
+  });
+
+  it("shows SuperGrok quota for a Grok model's primary route", () => {
+    const bundle = settings();
+    const grok = {
+      ...bundle.providers[0]!,
+      id: "grok-1",
+      name: "Grok",
+      kind: "grok" as const,
+      accounts: [
+        account("grok-account", 0, {
+          providerId: "grok-1",
+        }),
+      ],
+    };
+    const model = {
+      ...bundle.models[0]!,
+      routes: [
+        {
+          ...bundle.models[0]!.routes[0]!,
+          providerId: grok.id,
+          providerName: grok.name,
+          modelName: "grok-4.6",
+        },
+      ],
+    };
+
+    expect(selectedQuotaProvider(model, [grok])).toBe(grok);
+    expect(quotaProviderLabel(grok)).toBe("SuperGrok");
+    const markup = renderToStaticMarkup(
+      <ContextUsageRing messages={[]} model={model} providers={[grok]} />,
+    );
+    expect(markup).toContain("100% total 7-day available across 1 account");
   });
 
   it("orders only enabled signed-in accounts for the detail dialog", () => {
