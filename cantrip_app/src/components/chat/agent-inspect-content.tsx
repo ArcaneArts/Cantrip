@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 import { cn } from "@/lib/utils";
 
+import { AgentTrajectory } from "./agent-trajectory";
 import { displayCommand } from "./command-display";
 import {
   buildAgentInspectorProjectionSource,
@@ -476,32 +477,13 @@ export function AgentInspectStateContent({
   return <AgentInspectLiveContent messages={messages} visible={visible} />;
 }
 
-function AgentTrajectoryScaffold({ active }: { active: boolean }) {
-  return (
-    <div
-      className="grid h-full place-items-center p-6 text-center"
-      data-slot="agent-trajectory-content"
-    >
-      <div>
-        <p className="text-sm font-medium">
-          {active ? "Watching this turn" : "No active turn"}
-        </p>
-        <p className="mt-1 max-w-64 text-xs text-muted-foreground">
-          {active
-            ? "Input, model, and tool events will appear on the shared turn timeline."
-            : "The most recently completed turn will appear here when its timeline is available."}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export function AgentInspectContent({
   active,
   initialTab = "trajectory",
   messages,
   onTabChange,
   tab,
+  trajectoryTargetKey,
   visible,
 }: {
   active: boolean;
@@ -509,6 +491,7 @@ export function AgentInspectContent({
   messages: ChatMessage[];
   onTabChange?(tab: AgentInspectTab): void;
   tab?: AgentInspectTab;
+  trajectoryTargetKey?: string | null;
   visible: boolean;
 }) {
   const [internalTab, setInternalTab] = useState<AgentInspectTab>(initialTab);
@@ -536,7 +519,12 @@ export function AgentInspectContent({
         role="tabpanel"
       >
         {activeTab === "trajectory" ? (
-          <AgentTrajectoryScaffold active={active} />
+          <AgentTrajectory
+            active={active}
+            messages={messages}
+            targetTurnKey={trajectoryTargetKey}
+            visible={visible}
+          />
         ) : (
           <AgentInspectStateContent
             active={active}
