@@ -746,10 +746,18 @@ function RepositoryImporter({
   const hasRepositoryData = Boolean(
     repositories.data || cachedRepositories.data?.length,
   );
+  const repositoryPickerReady = Boolean(
+    workerId && github.data?.authenticated && !github.isError,
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex w-full flex-1 flex-col gap-4 overflow-hidden p-5 sm:p-8">
+      <div
+        className={cn(
+          "flex w-full flex-1 flex-col overflow-hidden",
+          !repositoryPickerReady && "p-5 sm:p-8",
+        )}
+      >
         {!workerId ? (
           <Card>
             <CardHeader>
@@ -804,58 +812,60 @@ function RepositoryImporter({
           </Card>
         ) : (
           <>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative flex-1">
-                <GitBranch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search repositories"
-                  className="h-10 w-full rounded-md border bg-background pl-10 pr-3 text-sm outline-none ring-ring focus:ring-2"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-2 sm:justify-end">
-                <Badge variant="secondary" className="gap-2 px-3 py-2">
-                  <StatusDot online />@{github.data.login}
-                </Badge>
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {filtered.length} repositories
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={repositories.isFetching}
-                  onClick={() => void repositories.refetch()}
-                >
-                  <RefreshCw
-                    className={cn(
-                      "size-4",
-                      repositories.isFetching && "animate-spin",
-                    )}
+            <div className="flex shrink-0 flex-col gap-4 px-5 pt-5 sm:px-8 sm:pt-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                  <GitBranch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Search repositories"
+                    className="h-10 w-full rounded-md border bg-background pl-10 pr-3 text-sm outline-none ring-ring focus:ring-2"
                   />
-                  {repositories.isFetching ? "Refreshing" : "Refresh"}
-                </Button>
-              </div>
-            </div>
-
-            {activeWorkspaceId ? (
-              <WorkspaceMembershipPicker
-                requiredWorkspaceId={activeWorkspaceId}
-                selectedIds={selectedWorkspaceIds}
-                trailingAction={
+                </div>
+                <div className="flex items-center justify-between gap-2 sm:justify-end">
+                  <Badge variant="secondary" className="gap-2 px-3 py-2">
+                    <StatusDot online />@{github.data.login}
+                  </Badge>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {filtered.length} repositories
+                  </span>
                   <Button
                     size="sm"
-                    variant="outline"
-                    onClick={() => setCreateRepositoryOpen(true)}
+                    variant="ghost"
+                    disabled={repositories.isFetching}
+                    onClick={() => void repositories.refetch()}
                   >
-                    <Plus className="size-3.5" />
-                    Repository
+                    <RefreshCw
+                      className={cn(
+                        "size-4",
+                        repositories.isFetching && "animate-spin",
+                      )}
+                    />
+                    {repositories.isFetching ? "Refreshing" : "Refresh"}
                   </Button>
-                }
-                workspaces={workspaces}
-                onChange={setSelectedWorkspaceIds}
-              />
-            ) : null}
+                </div>
+              </div>
+
+              {activeWorkspaceId ? (
+                <WorkspaceMembershipPicker
+                  requiredWorkspaceId={activeWorkspaceId}
+                  selectedIds={selectedWorkspaceIds}
+                  trailingAction={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setCreateRepositoryOpen(true)}
+                    >
+                      <Plus className="size-3.5" />
+                      Repository
+                    </Button>
+                  }
+                  workspaces={workspaces}
+                  onChange={setSelectedWorkspaceIds}
+                />
+              ) : null}
+            </div>
 
             {!hasRepositoryData &&
             (repositories.isLoading || cachedRepositories.isLoading) ? (
@@ -866,11 +876,11 @@ function RepositoryImporter({
                 </div>
               </div>
             ) : repositories.isError && !hasRepositoryData ? (
-              <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+              <p className="mx-5 mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive sm:mx-8">
                 {errorText(repositories.error)}
               </p>
             ) : (
-              <div className="min-h-0 flex-1 overflow-auto rounded-xl border bg-card/20">
+              <div className="mt-4 min-h-0 flex-1 overflow-auto border-y">
                 <table className="w-full table-fixed border-collapse text-left text-sm">
                   <thead
                     data-slot="table-header-surface"
@@ -1010,17 +1020,21 @@ function RepositoryImporter({
               </div>
             )}
 
-            {repositories.isError && hasRepositoryData ? (
-              <p className="text-xs text-destructive">
-                Refresh failed; showing the last cached repository list.{" "}
-                {errorText(repositories.error)}
-              </p>
-            ) : null}
-
-            {importErrors.size > 0 ? (
-              <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                {Array.from(importErrors.values()).at(-1)}
-              </p>
+            {(repositories.isError && hasRepositoryData) ||
+            importErrors.size > 0 ? (
+              <div className="flex shrink-0 flex-col gap-3 px-5 pb-5 pt-4 sm:px-8 sm:pb-8">
+                {repositories.isError && hasRepositoryData ? (
+                  <p className="text-xs text-destructive">
+                    Refresh failed; showing the last cached repository list.{" "}
+                    {errorText(repositories.error)}
+                  </p>
+                ) : null}
+                {importErrors.size > 0 ? (
+                  <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                    {Array.from(importErrors.values()).at(-1)}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
 
             <GithubRepositoryCreateDialog
