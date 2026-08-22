@@ -14,10 +14,13 @@ Store Connect for TestFlight processing rather than attached publicly.
 
 The two browser-only surfaces are deployed separately through DigitalOcean App
 Platform using `.do/app.yaml`. Both static components watch `release` with
-automatic deploys enabled. Host-based ingress serves the marketing site at
-`cantrip.art`, the browser application at `app.cantrip.art`, and redirects the
-DigitalOcean starter hostname to the marketing site. The components build from
-the repository root so pnpm can resolve the shared workspace protocol package.
+automatic deploys enabled, and `pnpm release` also reapplies the committed spec,
+waits for the App Platform deployment, and verifies that both components
+activated the exact release commit. Host-based ingress serves the marketing
+site at `cantrip.art`, the browser application at `app.cantrip.art`, and
+redirects the DigitalOcean starter hostname to the marketing site. The
+components build from the repository root so pnpm can resolve the shared
+workspace packages.
 Each component has an explicit browser-only build command; App Platform must
 not invoke the root native distribution build, which requires Rust and other
 desktop toolchains that are intentionally absent from its Node.js build image.
@@ -53,7 +56,7 @@ native PTY, screen capture, and image modules.
 | `pnpm package:app`      | Tauri bundles under `cantrip_app/src-tauri/target/release/bundle` | Tauri build prerequisites                             |
 | `pnpm bundle`           | All three native artifacts under `artifacts/bundles/<os>-<arch>`  | Current native build host                             |
 | `pnpm deploy:server`    | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH |
-| `pnpm release`          | Promotes `release`, builds, migrates, and deploys production      | Same as `deploy:server`, plus push access             |
+| `pnpm release`          | Promotes `release`, deploys App Platform, and deploys the Server  | Same as `deploy:server`, plus `doctl` and push access |
 
 Every Worker package must contain the regular entry file
 `dist/mcp/stdio.js` and its production MCP SDK dependencies. Standalone Worker
@@ -271,11 +274,13 @@ The command first runs `git pull --ff-only origin main`, requires local `main`
 to equal `origin/main`, verifies that `origin/release` can fast-forward, and
 then pushes `main` to `release`. It refuses dirty trees, non-`main` branches,
 unpushed main commits, and divergent release history. The branch push triggers
-the native client release workflow. The same command also cross-builds the
-Linux x64 Server with Docker Buildx, loads the production environment from
-Infisical on the release machine, and deploys that exact commit to the
-configured production host. Use `pnpm deploy:server` to retry only the server
-deployment without advancing `release`.
+the native client release workflow. The release command then validates and
+applies `.do/app.yaml` with authenticated `doctl`, waits for App Platform, and
+requires both the `app` and `site` components to activate the exact promoted
+commit. Finally, it cross-builds the Linux x64 Server with Docker Buildx, loads
+the production environment from Infisical on the release machine, and deploys
+that same commit to the configured production host. Use `pnpm deploy:server`
+to retry only the server deployment without advancing `release`.
 
 Neither command gives the production host access to Infisical. The release
 machine writes an allowlisted service environment over SSH, excluding the SSH

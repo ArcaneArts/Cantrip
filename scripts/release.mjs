@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { deployAppPlatform } from "./deploy-app-platform.mjs";
 import { deployProduction } from "./deploy-production.mjs";
 
 const scriptRoot = path.resolve(
@@ -104,10 +105,15 @@ export function promoteReleaseBranch({ root = scriptRoot } = {}) {
 export async function releaseCantrip({
   root = scriptRoot,
   deploy = deployProduction,
+  deployWeb = deployAppPlatform,
 } = {}) {
   const promotion = promoteReleaseBranch({ root });
+  const appPlatformDeployment = await deployWeb({
+    root,
+    commit: promotion.commit,
+  });
   const deployment = await deploy({ root, commit: promotion.commit });
-  return { deployment, promotion };
+  return { appPlatformDeployment, deployment, promotion };
 }
 
 const isMain =
