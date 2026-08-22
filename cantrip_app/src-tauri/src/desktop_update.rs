@@ -115,14 +115,14 @@ pub struct DesktopUpdateStatus {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActiveWorkSummary {
-    active_chats: u32,
-    queued_prompts: u32,
-    terminal_services: u32,
-    background_jobs: u32,
+    pub(crate) active_chats: u32,
+    pub(crate) queued_prompts: u32,
+    pub(crate) terminal_services: u32,
+    pub(crate) background_jobs: u32,
 }
 
 impl ActiveWorkSummary {
-    fn total(&self) -> u32 {
+    pub(crate) fn total(&self) -> u32 {
         self.active_chats
             .saturating_add(self.queued_prompts)
             .saturating_add(self.terminal_services)

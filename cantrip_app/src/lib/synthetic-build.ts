@@ -1,3 +1,4 @@
+import type { DesktopUpdateActiveWorkSummary } from "@cantrip/protocol";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
 export const SYNTHETIC_BUILD_STATE_EVENT = "cantrip-synthetic-build-state";
@@ -103,6 +104,28 @@ export interface SyntheticBuildLogBatch {
   hasMore: boolean;
 }
 
+export interface CachedSyntheticBuild {
+  id: string;
+  version: string;
+  commitSha: string;
+  buildId: string;
+  builtAt: string;
+  platform: SyntheticBuildPlatform;
+  overlayDigest: string;
+  sizeBytes: number;
+  artifactPath: string;
+}
+
+export interface SyntheticBuildIdentity {
+  installId: string;
+  version: string;
+  commitSha: string;
+  buildId: string;
+  builtAt: string;
+  overlayDigest: string;
+  installedAt: string;
+}
+
 export interface SyntheticBuildErrorShape {
   code: string;
   message: string;
@@ -119,6 +142,15 @@ export interface SyntheticBuildClient {
   status(): Promise<SyntheticBuildStatus>;
   cancel(jobId: string): Promise<boolean>;
   logs(afterSequence?: number, limit?: number): Promise<SyntheticBuildLogBatch>;
+  cached(): Promise<CachedSyntheticBuild[]>;
+  install(
+    artifactId: string,
+    activeWork: DesktopUpdateActiveWorkSummary,
+    confirmActiveWork: boolean,
+  ): Promise<string>;
+  deleteCached(artifactId: string): Promise<boolean>;
+  identity(): Promise<SyntheticBuildIdentity | null>;
+  openLog(jobId: string): Promise<void>;
   listenState(listener: (job: SyntheticBuildJob) => void): Promise<() => void>;
   listenLogs(
     listener: (batch: SyntheticBuildLogBatch) => void,
@@ -160,6 +192,16 @@ export const syntheticBuildClient: SyntheticBuildClient = {
   cancel: (jobId) => invoke("cancel_synthetic_build", { jobId }),
   logs: (afterSequence, limit) =>
     invoke("synthetic_build_logs", { afterSequence, limit }),
+  cached: () => invoke("list_cached_synthetic_builds"),
+  install: (artifactId, activeWork, confirmActiveWork) =>
+    invoke("install_cached_synthetic_build", {
+      artifactId,
+      request: { activeWork, confirmActiveWork },
+    }),
+  deleteCached: (artifactId) =>
+    invoke("delete_cached_synthetic_build", { artifactId }),
+  identity: () => invoke("synthetic_build_identity"),
+  openLog: (jobId) => invoke("open_synthetic_build_log", { jobId }),
   async listenState(listener) {
     const { listen } = await import("@tauri-apps/api/event");
     return listen<SyntheticBuildJob>(

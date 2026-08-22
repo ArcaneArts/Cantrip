@@ -14,6 +14,7 @@ use tauri::{App, Manager, State};
 
 use crate::process_environment::configure_desktop_child;
 
+pub(crate) mod artifact;
 pub(crate) mod job;
 
 const COMMITS_URL: &str = "https://api.github.com/repos/ArcaneArts/Cantrip/commits";
@@ -53,6 +54,7 @@ impl SyntheticBuildCoordinator {
             })?;
         }
         let jobs = job::JobRuntime::load(&root)?;
+        artifact::reconcile_identity(&root, &app.package_info().version.to_string())?;
         Ok(Self {
             root,
             source_lock: Arc::new(Mutex::new(())),
