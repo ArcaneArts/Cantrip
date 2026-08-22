@@ -3206,6 +3206,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ),
             })),
             chatId: command.chatId,
+            captureProtectedDiagnostics: encryptedChat,
             clientMessageId: command.clientMessageId,
             cwd: command.cwd,
             isPrimary: command.isPrimary,

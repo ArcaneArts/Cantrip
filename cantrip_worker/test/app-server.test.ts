@@ -315,6 +315,43 @@ describe("Codex rich event normalization", () => {
     expect(activity).not.toHaveProperty("content");
   });
 
+  it("captures redacted raw diagnostics only when protected capture is enabled", () => {
+    const item = {
+      type: "mcpToolCall" as const,
+      id: "mcp-protected-1",
+      server: "example",
+      tool: "lookup",
+      status: "completed" as const,
+      arguments: {
+        Authorization: "Bearer private-token",
+        query: "safe query",
+      },
+      result: { content: [{ type: "text", text: "safe result" }] },
+      error: null,
+      durationMs: 12,
+    };
+    const protectedActivity = normalizeCodexThreadItem(
+      item,
+      "/workspace",
+      "completed",
+      { ...correlation, itemId: item.id },
+      { captureRaw: true },
+    );
+    expect(protectedActivity?.raw).toMatchObject({ schemaVersion: 1 });
+    expect(JSON.stringify(protectedActivity?.raw)).toContain("safe query");
+    expect(JSON.stringify(protectedActivity?.raw)).toContain("safe result");
+    expect(JSON.stringify(protectedActivity?.raw)).not.toContain(
+      "private-token",
+    );
+
+    expect(
+      normalizeCodexThreadItem(item, "/workspace", "completed", {
+        ...correlation,
+        itemId: item.id,
+      }),
+    ).not.toHaveProperty("raw");
+  });
+
   it("normalizes tools, subagents, web, images, review, and compaction", () => {
     const items = [
       {

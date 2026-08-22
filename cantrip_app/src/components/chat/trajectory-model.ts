@@ -124,6 +124,7 @@ function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
 }
 
 function activityLane(activity: AgentActivity): TrajectoryLane {
+  if (activity.type === "instructionContext") return "input";
   switch (activity.type) {
     case "reasoning":
     case "plan":
@@ -153,6 +154,9 @@ function compactText(value: string | null | undefined, limit = 360): string {
 function activityPreview(activity: AgentActivity): string | null {
   let preview = "";
   switch (activity.type) {
+    case "instructionContext":
+      preview = activity.text ?? activity.sources.join(" · ");
+      break;
     case "command":
       preview = [activity.cwd, activity.outputTail ?? activity.output]
         .map((part) => compactText(part))

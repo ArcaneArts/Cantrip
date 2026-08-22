@@ -99,6 +99,8 @@ function CorrelationDetails({ activity }: { activity: AgentActivity }) {
 function RichActivityIcon({ activity }: { activity: AgentActivity }) {
   const className = "size-4 shrink-0 text-muted-foreground";
   switch (activity.type) {
+    case "instructionContext":
+      return <ShieldCheck className={className} />;
     case "plan":
       return <ListChecks className={className} />;
     case "reasoning":
@@ -140,6 +142,8 @@ function RichActivityIcon({ activity }: { activity: AgentActivity }) {
 
 export function activityLabel(activity: AgentActivity): string {
   switch (activity.type) {
+    case "instructionContext":
+      return `Effective instructions · ${activity.provenance === "exact" ? "Exact" : activity.provenance === "assembled" ? "Assembled" : "Unavailable"}`;
     case "plan":
       return activity.status === "running" ? "Updating plan" : "Updated plan";
     case "reasoning":
@@ -191,6 +195,15 @@ export function activityLabel(activity: AgentActivity): string {
 
 function RichActivityDetails({ activity }: { activity: AgentActivity }) {
   switch (activity.type) {
+    case "instructionContext":
+      return (
+        <div className="space-y-1">
+          <p>Provenance: {activity.provenance}</p>
+          {activity.sources.map((source) => (
+            <p key={source}>{source}</p>
+          ))}
+        </div>
+      );
     case "plan":
       return (
         <div className="space-y-2">
@@ -381,6 +394,7 @@ function RichActivityDetails({ activity }: { activity: AgentActivity }) {
 }
 
 export function Activity({ activity }: { activity: AgentActivity }) {
+  if (activity.type === "instructionContext") return null;
   if (activity.type === "reasoning") {
     return activity.summary.length > 0 ? (
       <div className="min-w-0 space-y-2 py-1 text-xs leading-5 text-muted-foreground">
