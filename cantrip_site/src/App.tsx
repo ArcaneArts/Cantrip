@@ -58,16 +58,16 @@ const surfaces: Array<{
   {
     icon: MessageSquare,
     title: "Codex chats",
-    meta: "STEER · QUEUE · APPROVE",
+    meta: "TASKS · STEER · APPROVE",
     description:
-      "Structured plans, reasoning, tools, subagents, approvals, attachments, and a linked live Codex console.",
+      "Structured Tasks, plans, reasoning, tools, subagents, approvals, attachments, GitHub references, and a linked live Codex console.",
   },
   {
     icon: TerminalSquare,
     title: "Real terminals",
-    meta: "PTY · DIRECT · RECONNECT",
+    meta: "PTY · ENCRYPTED · MOBILE",
     description:
-      "Worker-owned shells with real color, resize, durable reconnect, and a direct local desktop path when available.",
+      "Worker-owned shells with real color, clickable links, a mobile command bar, durable reconnect, and encrypted remote relay.",
   },
   {
     icon: Code2,
@@ -79,9 +79,9 @@ const surfaces: Array<{
   {
     icon: FolderTree,
     title: "Project explorer",
-    meta: "LAZY TREE · EDIT · PREVIEW",
+    meta: "LAZY TREE · GRAPH · EDIT",
     description:
-      "Browse a Git-aware lazy file tree, preview source or Markdown, and edit supported files in a persistent editor.",
+      "Browse a Git-aware lazy tree and repository graph, stream previews, and edit supported files in a persistent editor.",
   },
   {
     icon: Globe2,
@@ -100,9 +100,9 @@ const surfaces: Array<{
   {
     icon: GitBranch,
     title: "Git workspace",
-    meta: "HISTORY · REVIEW · RECOVERY",
+    meta: "GRAPH · REVIEW · RECOVERY",
     description:
-      "Graph every branch and worktree, stage by line or hunk, resolve history, recover mistakes, and manage GitHub work.",
+      "See commits, branches, worktrees, and code structure; stage by line or hunk, recover mistakes, and manage GitHub work.",
   },
   {
     icon: Network,
@@ -113,12 +113,70 @@ const surfaces: Array<{
   },
 ];
 
+const releaseHighlights: Array<{
+  description: string;
+  features: string[];
+  icon: LucideIcon;
+  label: string;
+  title: string;
+}> = [
+  {
+    icon: Braces,
+    label: "AGENT-NATIVE MCP",
+    title: "Cantrip is now part of the agent’s toolbelt.",
+    description:
+      "Every compatible Codex chat receives a worker-owned managed MCP connection with validated project, lane, worker, worktree, policy, and target context.",
+    features: [
+      "Inspect policies, worktrees, files, terminals, and browser targets",
+      "Write through Explorer and control authorized live surfaces",
+      "Focus the right project, surface, or pending interaction in the app",
+    ],
+  },
+  {
+    icon: ShieldCheck,
+    label: "PRIVATE + LIVE",
+    title: "Protected state moves without becoming server plaintext.",
+    description:
+      "The recent account-mode encryption work now covers workspace identity, Tasks, and private surface state while AppLive keeps clients synchronized as work changes.",
+    features: [
+      "End-to-end encrypted workspace labels and Task content",
+      "Protected Terminal, Explorer, Browser, and Desktop state",
+      "Live Git, CodeGraph, provider, chat, and worker-log updates",
+    ],
+  },
+  {
+    icon: Network,
+    label: "CODE INTELLIGENCE",
+    title: "Repository structure is visible—and queryable.",
+    description:
+      "Managed CodeGraph follows project worktrees and stays available to agents as a read-only MCP, paired with an interactive repository graph for people.",
+    features: [
+      "Live indexing and status across compatible workers",
+      "Repository graph overlays for files, folders, and commits",
+      "Semantic project context exposed without replacing normal tools",
+    ],
+  },
+  {
+    icon: Smartphone,
+    label: "REMOTE DAILY DRIVER",
+    title: "Mobile and Windows have real recovery paths.",
+    description:
+      "Remote work is smoother from the first connection through the last terminal command, with platform-specific affordances and actionable setup recovery.",
+    features: [
+      "Mobile terminal command bar, haptics, links, and touch recovery",
+      "Encrypted remote terminal connections with local-direct fallback",
+      "Windows CodeGraph setup, share reveal, and long-path guidance",
+    ],
+  },
+];
+
 const agentFeatures = [
   "Choose Default, Plan, Goal, and model per message",
   "Steer active work or sort, edit, freeze, and send queued prompts",
   "Pause at a safe boundary without losing buffered work",
-  "Use slash commands, skills, hooks, MCP, approvals, and attachments",
-  "Give agents a scoped Cantrip CLI for worktrees and live surfaces",
+  "Use slash commands, skills, hooks, approvals, and attachments",
+  "Give agents managed MCP context for policies, worktrees, and targets",
+  "Operate authorized Explorer, Terminal, Browser, and client surfaces",
   "Toggle into the exact linked Codex console whenever you want it",
   "Fork at any message, rename, duplicate, compact, and pop out chats",
 ];
@@ -196,13 +254,13 @@ const toolkitFeatures: Array<{
   {
     icon: FolderTree,
     label: "EXPLORE & EDIT",
-    title: "A file tree that knows the checkout",
+    title: "A file tree that understands the checkout",
     description:
-      "Explorer loads directories on demand and decorates them with live Git state and recent commit context.",
+      "Explorer loads directories on demand, streams rich previews, and connects the tree to live Git and repository-graph context.",
     features: [
-      "Source and rendered Markdown preview",
+      "Source, rendered Markdown, image, and media preview",
       "Persistent Monaco editing with guarded saves",
-      "Selection and edit state survive tab switches",
+      "CodeGraph and commit overlays stay aligned with worktrees",
     ],
   },
   {
@@ -219,26 +277,26 @@ const toolkitFeatures: Array<{
   },
   {
     icon: Command,
-    label: "CANTRIP CLI",
-    title: "One narrow command surface for agents",
+    label: "MCP + CANTRIP CLI",
+    title: "Managed tools first. A narrow CLI alongside them.",
     description:
-      "The worker-authenticated CLI gives terminals and Codex the same server-owned project and execution context.",
+      "Cantrip injects a worker-owned MCP server into compatible Codex chats. The worker-authenticated CLI remains available to people, scripts, and fallback runtimes.",
     features: [
-      "Create, switch, release, and inspect worktrees",
-      "Read or write Explorer files and target live terminals",
-      "Open Browser services with human-readable or JSON output",
+      "Validated project, policy, worktree, and target context",
+      "Bounded Explorer, Terminal, Browser, and client controls",
+      "CLI support for diagnostics, scripts, and manual operation",
     ],
   },
   {
     icon: Network,
     label: "LIVE TRANSPORT",
-    title: "Direct when local. Relayed when remote.",
+    title: "Live when connected. Recoverable when interrupted.",
     description:
-      "Cantrip chooses the shortest authorized path without changing the project or weakening the control plane.",
+      "AppLive pushes committed state while protected surface transports choose the shortest authorized path without weakening the control plane.",
     features: [
-      "One-use, server-authorized desktop capabilities",
+      "Git, provider, CodeGraph, chat, and worker-log live updates",
       "Direct PTY, project share, Code, and tunnel streams",
-      "WebRTC Remote Desktop with authenticated relay fallback",
+      "Authenticated relay fallback with bounded reconnect recovery",
     ],
   },
 ];
@@ -391,24 +449,27 @@ function ChatDemo() {
     <div className="demo-pane chat-demo">
       <div className="message message-user">
         <span>YOU</span>
-        <p>Ship the Git view cleanup in an isolated worktree.</p>
+        <p>
+          Trace the checkout with CodeGraph, then ship the fix in a worktree.
+        </p>
       </div>
       <div className="message message-agent">
         <span>CANTRIP / CODEX</span>
         <p>
-          I’ll unify History, Issues, and PRs, then verify the affected flows.
+          I have the exact project, policy, worker, and target context through
+          Cantrip MCP.
         </p>
         <div className="plan-row">
           <Check size={14} />
-          <span>Created agent/manual/unified-git</span>
+          <span>Context verified · worktree isolated</span>
         </div>
         <div className="plan-row active">
           <Play size={12} fill="currentColor" />
-          <span>Implement unified Git surface</span>
+          <span>Query CodeGraph and inspect the change</span>
         </div>
         <div className="plan-row">
           <span className="step-dot" />
-          <span>Run checks and open PR</span>
+          <span>Run checks, open PR, focus review</span>
         </div>
       </div>
       <div className="composer-demo">
@@ -466,10 +527,10 @@ function GitDemo() {
         </button>
       </div>
       {[
-        ["c91e42a", "Unify Git surfaces", "2m"],
-        ["83dd102", "Keep queues paused between turns", "18m"],
-        ["f4a20b8", "Add per-message goal mode", "1h"],
-        ["a6001cd", "Initialize linked Codex console", "3h"],
+        ["c91e42a", "Make managed MCP primary", "2m"],
+        ["83dd102", "Stream workspace state live", "18m"],
+        ["f4a20b8", "Protect remote terminal relay", "1h"],
+        ["a6001cd", "Add mobile terminal controls", "3h"],
       ].map(([hash, title, time], index) => (
         <div className="commit-row" key={hash}>
           <span className={`commit-node node-${index}`} />
@@ -558,7 +619,7 @@ function ProductDemo() {
         <GitBranch size={16} />
       </div>
       <div className="stage-note">
-        <CirclePause size={14} /> Pauses at a safe boundary
+        <Activity size={14} /> Live state follows every client
       </div>
     </div>
   );
@@ -628,10 +689,10 @@ function App() {
         <div className="header-inner">
           <Brand />
           <nav aria-label="Primary navigation">
+            <a href="#latest">Latest</a>
             <a href="#workspace">Surfaces</a>
             <a href="#toolkit">Tooling</a>
             <a href="#agents">Agents</a>
-            <a href="#workflows">Workflows</a>
             <a href="#architecture">Deploy</a>
           </nav>
           <div className="header-actions">
@@ -661,14 +722,14 @@ function App() {
         <section className="hero section-wrap">
           <div className="hero-copy">
             <div className="status-line">
-              <i /> NATIVE DESKTOP · WEB · MOBILE · SELF-HOSTED
+              <i /> MANAGED MCP · LIVE STATE · ENCRYPTED · CROSS-DEVICE
             </div>
             <h1>One workspace for the whole build.</h1>
             <p className="hero-lede">
-              Give Codex a durable workspace around the whole job: editable
-              files, real terminals, persistent VS Code, Git and GitHub,
-              browsers, remote desktops, and automations—local-first and
-              available from every device.
+              Give Codex a durable, agent-native workspace around the whole job:
+              managed MCP, CodeGraph, editable files, real terminals, persistent
+              VS Code, Git and GitHub, browsers, remote desktops, and
+              automations—local-first and available from every device.
             </p>
             <div className="hero-actions">
               <a
@@ -699,15 +760,15 @@ function App() {
               <div>
                 <Database size={17} />
                 <span>
-                  <strong>Your workspace follows you.</strong>
-                  <small>History lives on your server.</small>
+                  <strong>Private state stays protected.</strong>
+                  <small>Keys stay with clients and authorized workers.</small>
                 </span>
               </div>
               <div>
                 <Braces size={17} />
                 <span>
-                  <strong>Codex plus the Cantrip CLI.</strong>
-                  <small>Agents can operate worktrees and surfaces.</small>
+                  <strong>Managed MCP plus the Cantrip CLI.</strong>
+                  <small>Agents get exact context and bounded controls.</small>
                 </span>
               </div>
             </div>
@@ -732,6 +793,56 @@ function App() {
             <span>
               <Smartphone size={16} /> MOBILE HANDOFF
             </span>
+          </div>
+        </section>
+
+        <section className="release-section section-wrap" id="latest">
+          <div className="section-heading split-heading">
+            <div>
+              <SectionLabel>RECENT RELEASE TRAIN</SectionLabel>
+              <h2>The foundations are turning into daily tools.</h2>
+            </div>
+            <p>
+              Recent releases connected the agent, control plane, workers, and
+              clients more tightly—while making remote and cross-platform work
+              easier to trust and recover.
+            </p>
+          </div>
+          <div className="release-grid">
+            {releaseHighlights.map(
+              ({ description, features, icon: Icon, label, title }, index) => (
+                <article className="release-card" key={label}>
+                  <div className="release-card-topline">
+                    <span className="release-icon">
+                      <Icon size={20} />
+                    </span>
+                    <small>{label}</small>
+                    <span className="release-number">0{index + 1}</span>
+                  </div>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
+                  <ul>
+                    {features.map((feature) => (
+                      <li key={feature}>
+                        <Check size={13} /> {feature}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ),
+            )}
+          </div>
+          <div className="release-footer">
+            <span>
+              <Activity size={14} /> SHIPPING CONTINUOUSLY
+            </span>
+            <p>
+              These capabilities are in the current release train—not future
+              roadmap promises.
+            </p>
+            <a href={`${GITHUB_URL}/releases`} rel="noreferrer" target="_blank">
+              Browse releases <ExternalLink size={14} />
+            </a>
           </div>
         </section>
 
@@ -845,10 +956,10 @@ function App() {
           <div className="agent-panel">
             <div className="agent-copy">
               <SectionLabel>AGENT CONTROL</SectionLabel>
-              <h2>More than a prompt box.</h2>
+              <h2>More than a prompt box—and more than a shell.</h2>
               <p>
-                Give Codex the right operating mode for the next message, then
-                stay in control while it works.
+                Give Codex the right operating mode and exact Cantrip context,
+                then stay in control while it works across authorized targets.
               </p>
               <ul className="feature-checks">
                 {agentFeatures.map((feature) => (
@@ -1017,9 +1128,10 @@ function App() {
             <h2>One control plane. Workers where the code lives.</h2>
             <p>
               The client talks to your Cantrip server, which keeps identity,
-              conversation history, configuration, and routing. Workers keep
-              source, processes, terminals, browsers, and Code beside the
-              machine that owns them.
+              encrypted workspace records, conversation history, configuration,
+              live coordination, and routing. Workers keep source, processes,
+              terminals, browsers, CodeGraph, and Code beside the machine that
+              owns them.
             </p>
             <div className="architecture-points">
               <span>
@@ -1037,6 +1149,10 @@ function App() {
               <span>
                 <Network size={15} /> Reach every enrolled worker through one
                 authenticated control plane
+              </span>
+              <span>
+                <Activity size={15} /> Push Git, provider, CodeGraph, chat, and
+                worker state over one recoverable live channel
               </span>
             </div>
             <a
@@ -1060,7 +1176,9 @@ function App() {
             <div className="arch-node server">
               <Cloud size={20} />
               <span>Server</span>
-              <small>PGlite / PostgreSQL · Identity · History · Routing</small>
+              <small>
+                PGlite / PostgreSQL · Identity · History · Live routing
+              </small>
             </div>
             <div className="arch-link">
               <i />
@@ -1070,7 +1188,7 @@ function App() {
               <div className="arch-node worker">
                 <Box size={18} />
                 <span>Desktop worker</span>
-                <small>Codex · Code · Git · PTY</small>
+                <small>Codex · MCP · CodeGraph · Git · PTY</small>
               </div>
               <div className="arch-node worker">
                 <Box size={18} />
