@@ -137,6 +137,37 @@ describe.skipIf(process.platform === "win32")("ManagedRunSupervisor", () => {
     await runs.closeAll();
   });
 
+  it("attaches encrypted terminal transports to the existing Run PTY", async () => {
+    const fixture = await project(
+      "printf 'ready:'; read line; printf 'received:%s' \"$line\"",
+    );
+    const runs = supervisor(fixture.root);
+    await runs.start(fixture.input);
+    const events: Array<{ type: string; data?: string }> = [];
+    const opened = runs.attach(
+      fixture.input.runId,
+      "attachment-one",
+      90,
+      30,
+      (event) => events.push(event),
+    );
+    expect(events[0]).toEqual({ type: "terminal.ready" });
+    runs.input(fixture.input.runId, "hello\r");
+    await expect(opened).resolves.toMatchObject({
+      status: "exited",
+      exitCode: 0,
+    });
+    expect(events.map((event) => event.data ?? "").join("")).toContain(
+      "received:hello",
+    );
+    expect(runs.snapshot(fixture.input.runId, 100_000)).toMatchObject({
+      terminalId: fixture.input.runId,
+      status: "exited",
+      data: expect.stringContaining("received:hello"),
+    });
+    await runs.closeAll();
+  });
+
   it("stops the complete process group and never restarts an action", async () => {
     const fixture = await project(
       "(sleep 1; printf 'orphan' > escaped.txt) & while :; do sleep 1; done",

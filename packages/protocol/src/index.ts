@@ -64,6 +64,7 @@ import {
   runInstanceResultSchema,
   runInstanceSchema,
   runLogResultSchema,
+  runStartResultSchema,
   workerRunIdentitySchema,
   workerRunSnapshotSchema,
 } from "./run-configurations.js";
@@ -4382,6 +4383,23 @@ export const encryptedTerminalCreateSchema = terminalPlacementSchema
     },
   );
 
+export const encryptedRunTerminalMaterializationSchema = z
+  .object({
+    projectId: z.string().min(1).max(200),
+    worktreeId: z.string().min(1).max(200),
+    terminalId: runInstanceSchema.shape.id,
+    titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: terminalPrivateStateOpaqueSchema,
+  })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "terminal",
+    {
+      message: "Run terminal title classification must be terminal.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const encryptedLinkedConsoleCreateSchema = z
   .object({
     id: z.string().uuid(),
@@ -7058,6 +7076,7 @@ export const cantripAgentOperationNameSchema = z.enum([
   "run-config.list",
   "run-config.read",
   "run.start",
+  "run.open",
   "run.status",
   "run.read",
   "run.stop",
@@ -7120,6 +7139,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
   "run.start",
+  "run.open",
   "run.stop",
   "worktree.create",
   "worktree.switch",
@@ -7145,6 +7165,7 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
   "run_start",
+  "run_open",
   "run_stop",
   "worktree_create",
   "worktree_switch",
@@ -7436,6 +7457,13 @@ export const cantripMcpRunStartInputSchema = z
   .object({
     actionId: runConfigurationActionSchema.shape.id,
     configRevision: runConfigurationDefinitionSchema.shape.revision,
+    focus: z.boolean().default(true),
+  })
+  .strict();
+export const cantripMcpRunOpenInputSchema = z
+  .object({
+    runId: runInstanceSchema.shape.id,
+    focus: z.boolean().default(true),
   })
   .strict();
 export const cantripMcpRunStopInputSchema = z
@@ -7734,7 +7762,11 @@ const cantripMcpRunMutationResultBaseSchema = z
   .strict();
 export const cantripMcpRunStartResultSchema =
   cantripMcpRunMutationResultBaseSchema.extend({
-    data: runInstanceResultSchema,
+    data: runStartResultSchema,
+  });
+export const cantripMcpRunOpenResultSchema =
+  cantripMcpRunMutationResultBaseSchema.extend({
+    data: runStartResultSchema,
   });
 export const cantripMcpRunStopResultSchema =
   cantripMcpRunMutationResultBaseSchema.extend({
@@ -7838,6 +7870,7 @@ export const cantripCliCommandNameSchema = z.enum([
   "run.validate",
   "run.config-path",
   "run.start",
+  "run.open",
   "run.status",
   "run.logs",
   "run.stop",
@@ -11953,6 +11986,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("terminal.open"),
       terminalId: z.string().min(1),
+      managedRunId: z.string().uuid().nullable().optional(),
       attachmentId: z.string().min(1),
       operationId: surfaceStreamWireRequestSchema.shape.operationId,
       serverId: z.string().min(1).max(255),
@@ -13614,6 +13648,9 @@ export type ChatPermissionProfileUpdate = z.infer<
 export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
 export type EncryptedTerminalCreate = z.infer<
   typeof encryptedTerminalCreateSchema
+>;
+export type EncryptedRunTerminalMaterialization = z.infer<
+  typeof encryptedRunTerminalMaterializationSchema
 >;
 export type TerminalUpdate = z.infer<typeof terminalUpdateSchema>;
 export type EncryptedTerminalUpdate = z.infer<

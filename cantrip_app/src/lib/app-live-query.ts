@@ -243,6 +243,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : event.scope.kind === "current-user"
           ? [["terminals"]]
           : [];
+    case "run":
+      return projectId
+        ? [["run-environment", projectId]]
+        : event.scope.kind === "current-user"
+          ? [["run-environment"]]
+          : [];
     case "explorer":
       return projectId
         ? [["explorers", projectId]]

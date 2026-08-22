@@ -72,6 +72,7 @@ cantrip run config path
 cantrip run start "Run Spectral Lab" --no-focus
 cantrip run status
 cantrip run logs 11111111-1111-4111-8111-111111111111 --tail 20000
+cantrip run open 11111111-1111-4111-8111-111111111111
 cantrip run stop 11111111-1111-4111-8111-111111111111
 ```
 
@@ -113,7 +114,12 @@ revision, and starts the command once in a worker-owned PTY. The action CWD is
 the active worktree. Its environment preserves the worker environment and
 sets `CODEX_WORKTREE_PATH`, `CANTRIP_WORKTREE_PATH`, `CANTRIP_PROJECT_ROOT`,
 `CANTRIP_RUN_ID`, and `CANTRIP_ACTION_ID`. A desktop client is not required;
-Runs are headless until terminal materialization is added in a later milestone.
+the Run succeeds headlessly when no compatible client is connected. When a
+client is available, Cantrip asks it to encrypt and idempotently materialize a
+terminal whose UUID is the Run UUID. `cantrip run open <run-id>` retries that
+best-effort materialization after a client reconnects and focuses it when
+applied. The terminal attaches to the existing worker-owned Run PTY; it never
+starts a second shell or gives the action terminal-service restart semantics.
 
 `cantrip run status [run-id]` refreshes one Run or, when no ID is supplied, the
 most recently created Run in the current worktree. `cantrip run logs <run-id>`
@@ -127,7 +133,7 @@ worktree, managed project folder, or worker-owned repository copy.
 
 Run instances persist only routing and lifecycle metadata: project, worktree,
 worker, action ID, configuration revision, state, timestamps, exit result, and
-eventually a terminal association. Commands, environment values, and terminal
+an optional terminal association. Commands, environment values, and terminal
 output are never stored in the server database. Ordinary repository tools
 remain the way to create or edit TOML; setup is separate and does not execute
 when a Run starts.

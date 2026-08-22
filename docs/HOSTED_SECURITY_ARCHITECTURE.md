@@ -59,18 +59,21 @@ exchange addresses or credentials directly.
 
 Codex's enabled managed-tool list is narrowed to the binding permission
 profile. Read-only profiles receive Run configuration/status/output tools but
-not Run start/stop tools; the broker and server still enforce that distinction
-if a caller attempts to bypass Codex discovery. Run start requires an opaque
-action ID plus configuration revision and uses the broker request identity for
-idempotency. The server audits the mutation but never stores the action command
-or terminal output.
+not Run start/open/stop tools; the broker and server still enforce that
+distinction if a caller attempts to bypass Codex discovery. Run start requires
+an opaque action ID plus configuration revision and uses the broker request
+identity for idempotency. The server audits the mutation but never stores the
+action command or terminal output.
 
-The four optional client controls travel from the authorized operation through
+The five optional client controls travel from the authorized operation through
 the server's authenticated application live WebSocket. The server selects only
 same-owner, project-active clients that declared the exact capability. Requests
 expire within ten seconds, are acknowledged, and are neither persisted nor
-placed in the replay ring. They cannot create durable surfaces or answer an
-interaction. See [`MCP.md`](MCP.md) for the full catalog and lifecycle.
+placed in the replay ring. Only `materialize-run-terminal` may create a durable
+surface, and only for an exact authorized Run with matching Run/terminal UUID,
+project, worktree, and worker placement; other controls cannot create surfaces
+or answer an interaction. See [`MCP.md`](MCP.md) for the full catalog and
+lifecycle.
 
 ## 2. Authentication modes
 

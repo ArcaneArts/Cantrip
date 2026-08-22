@@ -37,6 +37,8 @@ import {
   cantripMcpRunConfigReadResultSchema,
   cantripMcpRunReadInputSchema,
   cantripMcpRunReadResultSchema,
+  cantripMcpRunOpenInputSchema,
+  cantripMcpRunOpenResultSchema,
   cantripMcpRunStartInputSchema,
   cantripMcpRunStartResultSchema,
   cantripMcpRunStatusInputSchema,
@@ -68,7 +70,7 @@ import {
 } from "@cantrip/protocol";
 
 export const CANTRIP_MCP_INSTRUCTIONS =
-  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Use normal shell, file, and Git tools to create or edit .codex/environments/environment.toml, then use the Cantrip CLI to validate it. Call context_get first. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
+  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Use normal shell, file, and Git tools to create or edit .codex/environments/environment.toml, then use the Cantrip CLI to validate it. Call context_get first. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. A headless Run remains successful when no compatible client can create its encrypted terminal; use run_open after a client reconnects. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
 
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
@@ -510,6 +512,28 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
         return operationResult(
           cantripMcpRunStartResultSchema.parse(
             await gateway({ operation: "run.start", arguments: arguments_ }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_open",
+    {
+      title: "Open a Cantrip Run terminal",
+      description:
+        "Materialize or reopen the exact Run as an encrypted Cantrip terminal through a compatible live client.",
+      inputSchema: cantripMcpRunOpenInputSchema,
+      outputSchema: cantripMcpRunOpenResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunOpenResultSchema.parse(
+            await gateway({ operation: "run.open", arguments: arguments_ }),
           ),
         );
       } catch (error) {

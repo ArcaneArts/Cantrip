@@ -671,6 +671,7 @@ function AuthenticatedApplication({
           "focus-project",
           "focus-surface",
           "show-interaction",
+          "materialize-run-terminal",
         ],
       },
       onAuthenticationRequired: notifyAuthenticationRequired,

@@ -359,9 +359,14 @@ import {
   scriptCommandListSchema,
   runConfigurationInspectionSchema,
   runConfigurationSelectionSchema,
+  runEnvironmentSummarySchema,
+  runEnvironmentRequestSchema,
   runInstanceResultSchema,
   runInstanceSchema,
   runLogResultSchema,
+  runStartResultSchema,
+  runStartRequestSchema,
+  runOpenRequestSchema,
   skillListSchema,
   skillSettingsContextSchema,
   skillSettingsDeleteRequestSchema,
@@ -377,6 +382,7 @@ import {
   systemHealthSchema,
   terminalClientMessageSchema,
   encryptedTerminalCreateSchema,
+  encryptedRunTerminalMaterializationSchema,
   encryptedLinkedConsoleCreateSchema,
   terminalWireListSchema,
   terminalOpenResultSchema,
@@ -485,6 +491,7 @@ import type {
   ProviderQuotaSnapshot,
   ProviderAuthLiveStatus,
   ReasoningEffort,
+  RunInstance,
   WorkerNotification,
   WorkerCommand,
   WorkerSummary,
@@ -2116,11 +2123,27 @@ export async function buildApp({
       return;
     }
     if (notification.type === "project.run.state.observed") {
-      await repository.applyRunInstanceObservation(
+      const run = await repository.applyRunInstanceObservation(
         ownerId,
         workerId,
         notification.run,
       );
+      if (run) {
+        publishLiveInvalidation("run", {
+          projectId: run.projectId,
+          entityId: run.id,
+        });
+        if (run.terminalId) {
+          await updateTerminalStatus(
+            run.terminalId,
+            ["queued", "starting", "running", "stopping"].includes(run.state)
+              ? "running"
+              : run.state === "failed"
+                ? "failed"
+                : "exited",
+          );
+        }
+      }
       return;
     }
     if (notification.type === "provider.auth.status.observed") {
@@ -4975,6 +4998,46 @@ export async function buildApp({
         )) ?? current
       );
     };
+    const synchronizeRunTerminalStatus = async (run: RunInstance) => {
+      if (run.terminalId) {
+        await updateTerminalStatus(
+          run.terminalId,
+          ["queued", "starting", "running", "stopping"].includes(run.state)
+            ? "running"
+            : run.state === "failed"
+              ? "failed"
+              : "exited",
+        );
+      }
+      return run;
+    };
+    const materializeRunTerminal = async (run: RunInstance, focus: boolean) => {
+      const result = await liveHub
+        .requestClientControl(applicationOwnerId(), {
+          kind: "materialize-run-terminal",
+          projectId: run.projectId,
+          worktreeId: run.worktreeId,
+          runId: run.id,
+          terminalId: run.id,
+          focus,
+        })
+        .catch(() => ({ status: "unavailable" as const }));
+      const refreshed = await synchronizeRunTerminalStatus(
+        (await repository.getRunInstance(
+          applicationOwnerId(),
+          run.projectId,
+          run.worktreeId,
+          run.id,
+        )) ?? run,
+      );
+      return runStartResultSchema.parse({
+        run: refreshed,
+        surface: {
+          status: result.status,
+          terminalId: refreshed.terminalId,
+        },
+      });
+    };
     const resolveTarget = (
       target: Parameters<typeof repository.resolveExecutionTarget>[2],
       allowUnavailable = false,
@@ -5160,11 +5223,15 @@ export async function buildApp({
         if (
           ["exited", "failed", "stopped", "lost"].includes(durable.run.state)
         ) {
+          const data = await materializeRunTerminal(
+            durable.run,
+            call.arguments.focus !== false,
+          );
           return cantripCliCommandResultSchema.parse({
             summary: `Run ${durable.run.id} is already ${durable.run.state}.`,
             worktreeId: context.worktreeId,
-            mutated: false,
-            data: runInstanceResultSchema.parse({ run: durable.run }),
+            mutated: data.surface.status === "applied",
+            data,
           });
         }
         await repository.transitionRunInstance(
@@ -5195,14 +5262,21 @@ export async function buildApp({
               target.workerId,
               observation,
             )) ?? durable.run;
+          const data = await materializeRunTerminal(
+            run,
+            call.arguments.focus !== false,
+          );
           return cantripCliCommandResultSchema.parse({
             summary:
               run.state === "failed"
                 ? `Run ${run.id} failed to start.`
                 : `Started Run ${run.id}.`,
             worktreeId: context.worktreeId,
-            mutated: durable.created || durable.run.state !== run.state,
-            data: runInstanceResultSchema.parse({ run }),
+            mutated:
+              durable.created ||
+              durable.run.state !== run.state ||
+              data.surface.status === "applied",
+            data,
           });
         } catch (error) {
           await repository.transitionRunInstance(
@@ -5215,9 +5289,28 @@ export async function buildApp({
           throw error;
         }
       }
-      case "run.status": {
+      case "run.open": {
+        requireRunMutation();
         const run = await refreshRunInstance(
-          optionalToolString(call.arguments, "runId"),
+          requiredToolString(call.arguments, "runId"),
+        );
+        const data = await materializeRunTerminal(
+          run,
+          call.arguments.focus !== false,
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary:
+            data.surface.status === "applied"
+              ? `Opened Run ${run.id} in a terminal.`
+              : `Run ${run.id} terminal materialization is ${data.surface.status}.`,
+          worktreeId: context.worktreeId,
+          mutated: data.surface.status === "applied",
+          data,
+        });
+      }
+      case "run.status": {
+        const run = await synchronizeRunTerminalStatus(
+          await refreshRunInstance(optionalToolString(call.arguments, "runId")),
         );
         return cantripCliCommandResultSchema.parse({
           summary: `Run ${run.id} is ${run.state}.`,
@@ -5263,12 +5356,13 @@ export async function buildApp({
             maxChars: maximum,
           }),
         );
-        const observed =
+        const observed = await synchronizeRunTerminalStatus(
           (await repository.applyRunInstanceObservation(
             applicationOwnerId(),
             run.workerId,
             snapshot.run,
-          )) ?? run;
+          )) ?? run,
+        );
         return cantripCliCommandResultSchema.parse({
           summary: `Read the last ${snapshot.data.length} characters from Run ${run.id}.`,
           worktreeId: context.worktreeId,
@@ -5325,6 +5419,7 @@ export async function buildApp({
                 current.id,
                 "lost",
               )) ?? current);
+          await synchronizeRunTerminalStatus(run);
           return cantripCliCommandResultSchema.parse({
             summary: stopped.found
               ? `Stopped Run ${run.id}.`
@@ -6101,6 +6196,76 @@ export async function buildApp({
     worktreeMode: context.worktreeMode,
   });
 
+  const resolveAppRunContext = async (
+    projectId: string,
+    requestedWorktreeId?: string,
+  ): Promise<ExecutionOperationContext> => {
+    const target = requestedWorktreeId
+      ? ({
+          kind: "worktree",
+          projectId,
+          worktreeId: requestedWorktreeId,
+        } as const)
+      : ({ kind: "project", projectId } as const);
+    const resolution = await repository.resolveProjectExecutionPlacement(
+      applicationOwnerId(),
+      projectId,
+      "terminal",
+      target,
+      (workerId) => bridge.isConnected(workerId),
+    );
+    if (!resolution.placement.worktreeId) {
+      throw new ExecutionPlacementUnavailableError(
+        "worktree-unavailable",
+        "The project has no ready Run worktree.",
+      );
+    }
+    const selected = await repository.getProjectWorktreeContext(
+      applicationOwnerId(),
+      projectId,
+      resolution.placement.worktreeId,
+    );
+    if (!selected || selected.workerId !== resolution.placement.workerId) {
+      throw new ExecutionLaneConflictError(
+        "The Run worktree placement changed before the operation.",
+      );
+    }
+    return {
+      chatId: null,
+      executionLaneId: null,
+      permissionProfileId: null,
+      projectId,
+      rootKind: selected.worktree.rootKind,
+      terminalId: null,
+      workerId: selected.workerId,
+      worktreeId: selected.worktree.id,
+      worktreeMode: null,
+    };
+  };
+
+  const sendRunApiFailure = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof CliCommandRequestError) {
+      return reply
+        .code(error.status)
+        .send({ code: error.code, error: error.message });
+    }
+    if (error instanceof ExecutionPlacementUnavailableError) {
+      const status =
+        error.code === "project-not-found" || error.code === "target-not-found"
+          ? 404
+          : error.code === "worker-offline"
+            ? 503
+            : 409;
+      return reply
+        .code(status)
+        .send({ code: error.code, error: error.message });
+    }
+    if (error instanceof ExecutionLaneConflictError) {
+      return reply.code(409).send({ code: "conflict", error: error.message });
+    }
+    return sendWorkerRequestFailure(reply, error);
+  };
+
   const normalizedWorkerPath = (value: string) => {
     const normalized = value.replaceAll("\\", "/").replace(/\/+$/u, "");
     return /^[A-Za-z]:\//u.test(normalized)
@@ -6678,6 +6843,16 @@ export async function buildApp({
           }),
         );
       }
+      case "run.open":
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "run.open",
+            arguments: {
+              runId: requiredToolString(call.arguments, "runId"),
+              focus: call.arguments.focus !== false,
+            },
+          }),
+        );
       case "run.status":
         return agentOperationExecutor.execute(context, {
           operation: "run.status",
@@ -20435,6 +20610,201 @@ export async function buildApp({
     },
   );
 
+  app.get<{
+    Params: { projectId: string };
+    Querystring: { worktreeId?: string };
+  }>("/api/projects/:projectId/run-environment", async (request, reply) => {
+    const input = runEnvironmentRequestSchema.safeParse(request.query);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const context = await resolveAppRunContext(
+        request.params.projectId,
+        input.data.worktreeId,
+      );
+      const configuration = await agentOperationExecutor.execute(context, {
+        operation: "run-config.list",
+        arguments: {},
+      });
+      let run: RunInstance | null = null;
+      try {
+        const status = await agentOperationExecutor.execute(context, {
+          operation: "run.status",
+          arguments: {},
+        });
+        run = runInstanceResultSchema.parse(status.data).run;
+      } catch (error) {
+        if (
+          !(error instanceof CliCommandRequestError) ||
+          error.code !== "not-found"
+        ) {
+          throw error;
+        }
+      }
+      return reply.send(
+        runEnvironmentSummarySchema.parse({
+          worktreeId: context.worktreeId,
+          inspection: runConfigurationInspectionSchema.parse(
+            configuration.data,
+          ),
+          run,
+        }),
+      );
+    } catch (error) {
+      return sendRunApiFailure(reply, error);
+    }
+  });
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/runs",
+    async (request, reply) => {
+      const input = runStartRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const context = await resolveAppRunContext(
+          request.params.projectId,
+          input.data.worktreeId,
+        );
+        const result = await agentOperationExecutor.execute(context, {
+          operation: "run.start",
+          arguments: {
+            requestId: input.data.requestId,
+            actionId: input.data.actionId,
+            configRevision: input.data.configRevision,
+            focus: input.data.focus,
+          },
+        });
+        const data = runStartResultSchema.parse(result.data);
+        publishLiveInvalidation("run", {
+          projectId: context.projectId,
+          entityId: data.run.id,
+        });
+        await appendAudit(request, {
+          action: "run.app.started",
+          resourceId: data.run.id,
+          resourceType: "run-instance",
+          result: "succeeded",
+        });
+        return reply.code(201).send(data);
+      } catch (error) {
+        return sendRunApiFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { projectId: string; runId: string };
+  }>("/api/projects/:projectId/runs/:runId/open", async (request, reply) => {
+    const input = runOpenRequestSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const context = await resolveAppRunContext(
+        request.params.projectId,
+        input.data.worktreeId,
+      );
+      const result = await agentOperationExecutor.execute(context, {
+        operation: "run.open",
+        arguments: { runId: request.params.runId, focus: input.data.focus },
+      });
+      const data = runStartResultSchema.parse(result.data);
+      publishLiveInvalidation("run", {
+        projectId: context.projectId,
+        entityId: data.run.id,
+      });
+      await appendAudit(request, {
+        action: "run.app.opened",
+        resourceId: data.run.id,
+        resourceType: "run-instance",
+        result: "succeeded",
+      });
+      return reply.send(data);
+    } catch (error) {
+      return sendRunApiFailure(reply, error);
+    }
+  });
+
+  app.post<{
+    Params: { projectId: string; runId: string };
+  }>("/api/projects/:projectId/runs/:runId/stop", async (request, reply) => {
+    const input = runEnvironmentRequestSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const context = await resolveAppRunContext(
+        request.params.projectId,
+        input.data.worktreeId,
+      );
+      const result = await agentOperationExecutor.execute(context, {
+        operation: "run.stop",
+        arguments: { runId: request.params.runId },
+      });
+      const data = runInstanceResultSchema.parse(result.data);
+      publishLiveInvalidation("run", {
+        projectId: context.projectId,
+        entityId: data.run.id,
+      });
+      await appendAudit(request, {
+        action: "run.app.stopped",
+        resourceId: data.run.id,
+        resourceType: "run-instance",
+        result: "succeeded",
+      });
+      return reply.send(data);
+    } catch (error) {
+      return sendRunApiFailure(reply, error);
+    }
+  });
+
+  app.put<{ Params: { runId: string } }>(
+    "/api/runs/:runId/terminal",
+    async (request, reply) => {
+      const input = encryptedRunTerminalMaterializationSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const materialized = await repository.materializeRunTerminal(
+          applicationOwnerId(),
+          request.params.runId,
+          input.data,
+        );
+        if (!materialized) {
+          return reply.code(404).send({ error: "Run not found." });
+        }
+        publishLiveInvalidation("terminal", {
+          projectId: materialized.run.projectId,
+          entityId: materialized.terminal.id,
+        });
+        publishLiveInvalidation("project-tab-layout", {
+          projectId: materialized.run.projectId,
+        });
+        publishLiveInvalidation("run", {
+          projectId: materialized.run.projectId,
+          entityId: materialized.run.id,
+        });
+        await appendAudit(request, {
+          action: "run.terminal.materialized",
+          resourceId: materialized.run.id,
+          resourceType: "run-instance",
+          result: "succeeded",
+        });
+        return reply
+          .code(materialized.created ? 201 : 200)
+          .send(terminalWireSummarySchema.parse(materialized.terminal));
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/terminals",
     async (request, reply) => {
@@ -20575,6 +20945,16 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Terminal not found." });
       }
+      if (
+        await repository.getRunInstanceByTerminal(
+          applicationOwnerId(),
+          request.params.terminalId,
+        )
+      ) {
+        return reply.code(409).send({
+          error: "Run terminals are controlled by their managed Run session.",
+        });
+      }
       if (!context.serviceEnabled) {
         return reply.code(409).send({ error: "Terminal service is disabled." });
       }
@@ -20610,6 +20990,17 @@ export async function buildApp({
         applicationOwnerId(),
         request.params.terminalId,
       );
+      if (
+        context &&
+        (await repository.getRunInstanceByTerminal(
+          applicationOwnerId(),
+          request.params.terminalId,
+        ))
+      ) {
+        return reply
+          .code(409)
+          .send({ error: "Run terminals cannot change worktrees." });
+      }
       if (context) await requireProjectWorktrees(context.projectId);
       try {
         const terminal = await repository.updateTerminalWorktree(
@@ -22776,6 +23167,10 @@ export async function buildApp({
       }
       const bootstrapAttachmentId = `direct-bootstrap:${randomUUID()}`;
       try {
+        const managedRun = await repository.getRunInstanceByTerminal(
+          principal.user.id,
+          context.terminalId,
+        );
         let launch: Extract<
           WorkerCommand,
           { type: "terminal.open" }
@@ -22822,6 +23217,7 @@ export async function buildApp({
           {
             type: "terminal.open",
             terminalId: context.terminalId,
+            managedRunId: managedRun?.id ?? null,
             attachmentId: bootstrapAttachmentId,
             operationId: randomUUID(),
             serverId,
@@ -22886,6 +23282,7 @@ export async function buildApp({
               adapter: "terminal",
               resourceId: context.terminalId,
               serverId,
+              managedRunId: managedRun?.id ?? null,
             },
           },
           worker,
@@ -23034,6 +23431,10 @@ export async function buildApp({
           return;
         }
         try {
+          const managedRun = await repository.getRunInstanceByTerminal(
+            applicationOwnerId(),
+            terminalId,
+          );
           let launch: Extract<
             WorkerCommand,
             { type: "terminal.open" }
@@ -23068,6 +23469,7 @@ export async function buildApp({
               {
                 type: "terminal.open",
                 terminalId,
+                managedRunId: managedRun?.id ?? null,
                 attachmentId,
                 operationId,
                 serverId,
@@ -26146,18 +26548,24 @@ export async function buildApp({
           );
           const runResult =
             input.data.request.operation === "run.start" ||
-            input.data.request.operation === "run.stop"
-              ? runInstanceResultSchema.safeParse(result.data)
-              : null;
+            input.data.request.operation === "run.open"
+              ? runStartResultSchema.safeParse(result.data)
+              : input.data.request.operation === "run.stop"
+                ? runInstanceResultSchema.safeParse(result.data)
+                : null;
           await appendAudit(request, {
             action:
               input.data.request.operation === "run.start"
                 ? "run.mcp.started"
-                : input.data.request.operation === "run.stop"
-                  ? "run.mcp.stopped"
-                  : isCantripMcpMutationOperation(input.data.request.operation)
-                    ? "mcp.operation.mutated"
-                    : "mcp.operation.executed",
+                : input.data.request.operation === "run.open"
+                  ? "run.mcp.opened"
+                  : input.data.request.operation === "run.stop"
+                    ? "run.mcp.stopped"
+                    : isCantripMcpMutationOperation(
+                          input.data.request.operation,
+                        )
+                      ? "mcp.operation.mutated"
+                      : "mcp.operation.executed",
             actorSessionId: null,
             actorUserId: null,
             ownerId: workerAuth.ownerId,
@@ -26277,6 +26685,7 @@ export async function buildApp({
           "worktree.release",
           "worktree.remove",
           "run.start",
+          "run.open",
           "run.stop",
           "explorer.write",
           "terminal.send",
@@ -26288,16 +26697,20 @@ export async function buildApp({
           if (mutation) {
             const runResult =
               input.data.command === "run.start" ||
-              input.data.command === "run.stop"
-                ? runInstanceResultSchema.safeParse(result.data)
-                : null;
+              input.data.command === "run.open"
+                ? runStartResultSchema.safeParse(result.data)
+                : input.data.command === "run.stop"
+                  ? runInstanceResultSchema.safeParse(result.data)
+                  : null;
             await appendAudit(request, {
               action:
                 input.data.command === "run.start"
                   ? "run.cli.started"
-                  : input.data.command === "run.stop"
-                    ? "run.cli.stopped"
-                    : "cli.command.mutated",
+                  : input.data.command === "run.open"
+                    ? "run.cli.opened"
+                    : input.data.command === "run.stop"
+                      ? "run.cli.stopped"
+                      : "cli.command.mutated",
               actorSessionId: null,
               actorUserId: null,
               ownerId: workerAuth.ownerId,
@@ -26359,9 +26772,11 @@ export async function buildApp({
               action:
                 input.data.command === "run.start"
                   ? "run.cli.start-failed"
-                  : input.data.command === "run.stop"
-                    ? "run.cli.stop-failed"
-                    : "cli.command.mutated",
+                  : input.data.command === "run.open"
+                    ? "run.cli.open-failed"
+                    : input.data.command === "run.stop"
+                      ? "run.cli.stop-failed"
+                      : "cli.command.mutated",
               actorSessionId: null,
               actorUserId: null,
               ownerId: workerAuth.ownerId,

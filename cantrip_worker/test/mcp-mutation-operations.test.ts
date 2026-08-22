@@ -239,10 +239,42 @@ describe("Cantrip MCP mutation operation normalization", () => {
             requestId: "mcp-run-start-one",
             actionId,
             configRevision: configurationRevision,
+            focus: true,
           },
         },
       },
     ]);
+
+    const opened = await executeCantripMcpMutationOperation({
+      binding,
+      service,
+      requestId: "mcp-run-open-one",
+      request: { operation: "run.open", arguments: { runId } },
+      execute: async (_binding, request) => {
+        calls.push({ request, requestId: "mcp-run-open-one" });
+        return {
+          ...commonMutation,
+          summary: `Opened Run ${runId}.`,
+          target: null,
+          worktreeId: binding.worktreeId,
+          data: {
+            run: runFixture({ terminalId: runId }),
+            surface: { status: "applied", terminalId: runId },
+          },
+        };
+      },
+    });
+    expect(opened.data).toMatchObject({
+      run: { id: runId, terminalId: runId },
+      surface: { status: "applied", terminalId: runId },
+    });
+    expect(calls.at(-1)).toEqual({
+      requestId: "mcp-run-open-one",
+      request: {
+        operation: "run.open",
+        arguments: { runId, focus: true },
+      },
+    });
 
     const stopped = await executeCantripMcpMutationOperation({
       binding,
@@ -269,7 +301,7 @@ describe("Cantrip MCP mutation operation normalization", () => {
     expect(stopped.data).toMatchObject({
       run: { id: runId, state: "stopped", signal: "SIGTERM" },
     });
-    expect(calls[1]).toEqual({
+    expect(calls[2]).toEqual({
       requestId: "mcp-run-stop-one",
       request: { operation: "run.stop", arguments: { runId } },
     });

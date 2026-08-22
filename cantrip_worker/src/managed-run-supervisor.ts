@@ -3,11 +3,15 @@ import { realpath } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  terminalOpenResultSchema,
+  terminalSnapshotResultSchema,
   workerRunLogSnapshotSchema,
   workerRunLookupSchema,
   workerRunReconciliationSchema,
   workerRunSnapshotSchema,
   type ProjectRootKind,
+  type TerminalOpenResult,
+  type TerminalSnapshotResult,
   type WorkerRunIdentity,
   type WorkerRunLogSnapshot,
   type WorkerRunLookup,
@@ -17,7 +21,10 @@ import * as pty from "node-pty";
 
 import { workerLogError, workerLogger } from "./logger.js";
 import { resolveRunConfigurationAction } from "./run-configuration-discovery.js";
-import { ensureSpawnHelperExecutable } from "./terminal-manager.js";
+import {
+  ensureSpawnHelperExecutable,
+  type TerminalRuntimeEvent,
+} from "./terminal-manager.js";
 
 const MAX_RETAINED_RUNS = 64;
 const MAX_SCROLLBACK_CHARS = 256 * 1_024;
@@ -37,15 +44,19 @@ export interface AuthorizedRunRoots {
 }
 
 interface ManagedRunSession extends ManagedRunStart {
+  attachmentWaiters: Map<string, (result: TerminalOpenResult) => void>;
   buffer: string;
+  cols: number;
   endedAt: string | null;
   exitCode: number | null;
   process: pty.IPty | null;
+  rows: number;
   signal: string | null;
   startedAt: string | null;
   state: WorkerRunSnapshot["state"];
   terminationIntent: "lost" | "stopped" | null;
-  waiters: Set<() => void>;
+  subscribers: Map<string, (event: TerminalRuntimeEvent) => void>;
+  terminationWaiters: Set<() => void>;
 }
 
 export interface ManagedRunSupervisorOptions {
@@ -166,15 +177,19 @@ export class ManagedRunSupervisor {
       ...input,
       sourcePath: roots.sourceRoot,
       worktreePath: roots.worktreeRoot,
+      attachmentWaiters: new Map(),
       buffer: "",
+      cols: 120,
       endedAt: null,
       exitCode: null,
       process: null,
+      rows: 40,
       signal: null,
       startedAt: null,
       state: "starting",
+      subscribers: new Map(),
       terminationIntent: null,
-      waiters: new Set(),
+      terminationWaiters: new Set(),
     };
     this.#runs.set(input.runId, session);
     this.#emit(session);
@@ -209,9 +224,7 @@ export class ManagedRunSupervisor {
       session.state = "running";
       child.onData((data) => {
         if (session.process !== child) return;
-        session.buffer = `${session.buffer}${data}`.slice(
-          -MAX_SCROLLBACK_CHARS,
-        );
+        this.#appendOutput(session, data);
       });
       child.onExit(({ exitCode, signal }) => {
         if (session.process !== child) return;
@@ -225,7 +238,8 @@ export class ManagedRunSupervisor {
             : session.terminationIntent === "stopped"
               ? "stopped"
               : "exited";
-        this.#resolveWaiters(session);
+        this.#resolveTerminationWaiters(session);
+        this.#resolveAttachments(session);
         this.#emit(session);
       });
       this.#emit(session);
@@ -267,6 +281,81 @@ export class ManagedRunSupervisor {
           run: this.#snapshot(session),
         })
       : workerRunLookupSchema.parse({ found: false, runId });
+  }
+
+  has(runId: string): boolean {
+    return this.#runs.has(runId);
+  }
+
+  attach(
+    runId: string,
+    attachmentId: string,
+    cols: number,
+    rows: number,
+    emit: (event: TerminalRuntimeEvent) => void,
+  ): Promise<TerminalOpenResult> {
+    const session = this.#runs.get(runId);
+    if (!session) throw new Error("The Run is not available on this worker.");
+    session.cols = cols;
+    session.rows = rows;
+    if (session.process) session.process.resize(cols, rows);
+    session.subscribers.set(attachmentId, emit);
+    emit({ type: "terminal.ready" });
+    if (session.buffer) emit({ type: "terminal.output", data: session.buffer });
+    if (!session.process) {
+      session.subscribers.delete(attachmentId);
+      return Promise.resolve(this.#terminalExitResult(session));
+    }
+    return new Promise((resolve) =>
+      session.attachmentWaiters.set(attachmentId, resolve),
+    );
+  }
+
+  detach(runId: string, attachmentId: string): TerminalOpenResult {
+    const result = terminalOpenResultSchema.parse({ status: "detached" });
+    const session = this.#runs.get(runId);
+    if (!session) return result;
+    session.subscribers.delete(attachmentId);
+    session.attachmentWaiters.get(attachmentId)?.(result);
+    session.attachmentWaiters.delete(attachmentId);
+    return result;
+  }
+
+  input(runId: string, data: string): void {
+    const session = this.#runs.get(runId);
+    if (!session?.process || session.state !== "running") {
+      throw new Error("The Run is not accepting terminal input.");
+    }
+    session.process.write(data);
+  }
+
+  resize(runId: string, cols: number, rows: number): void {
+    const session = this.#runs.get(runId);
+    if (!session) throw new Error("The Run is not available on this worker.");
+    session.cols = cols;
+    session.rows = rows;
+    if (session.process) session.process.resize(cols, rows);
+  }
+
+  snapshot(runId: string, maxChars: number): TerminalSnapshotResult {
+    const session = this.#runs.get(runId);
+    if (!session) {
+      return terminalSnapshotResultSchema.parse({
+        terminalId: runId,
+        status: "not-running",
+        data: "",
+        truncated: false,
+        exitCode: null,
+      });
+    }
+    const maximum = Math.max(1, Math.min(100_000, maxChars));
+    return terminalSnapshotResultSchema.parse({
+      terminalId: runId,
+      status: session.process ? "running" : "exited",
+      data: session.buffer.slice(-maximum),
+      truncated: session.buffer.length > maximum,
+      exitCode: session.exitCode,
+    });
   }
 
   logs(runId: string, maximum: number): WorkerRunLogSnapshot {
@@ -395,9 +484,34 @@ export class ManagedRunSupervisor {
     this.#notify(this.#snapshot(session));
   }
 
-  #resolveWaiters(session: ManagedRunSession): void {
-    for (const resolve of session.waiters) resolve();
-    session.waiters.clear();
+  #appendOutput(session: ManagedRunSession, data: string): void {
+    session.buffer = `${session.buffer}${data}`.slice(-MAX_SCROLLBACK_CHARS);
+    for (const emit of session.subscribers.values()) {
+      emit({ type: "terminal.output", data });
+    }
+  }
+
+  #resolveTerminationWaiters(session: ManagedRunSession): void {
+    for (const resolve of session.terminationWaiters) resolve();
+    session.terminationWaiters.clear();
+  }
+
+  #resolveAttachments(session: ManagedRunSession): void {
+    const result = this.#terminalExitResult(session);
+    for (const resolve of session.attachmentWaiters.values()) resolve(result);
+    session.attachmentWaiters.clear();
+    session.subscribers.clear();
+  }
+
+  #terminalExitResult(
+    session: ManagedRunSession,
+  ): Extract<TerminalOpenResult, { status: "exited" }> {
+    const signal = session.signal === null ? null : Number(session.signal);
+    return terminalOpenResultSchema.parse({
+      status: "exited",
+      exitCode: session.exitCode ?? (session.state === "failed" ? 1 : 0),
+      signal: Number.isInteger(signal) ? signal : null,
+    }) as Extract<TerminalOpenResult, { status: "exited" }>;
   }
 
   async #terminate(
@@ -420,7 +534,8 @@ export class ManagedRunSupervisor {
       session.process = null;
       session.state = finalState;
       session.endedAt = new Date().toISOString();
-      this.#resolveWaiters(session);
+      this.#resolveTerminationWaiters(session);
+      this.#resolveAttachments(session);
       this.#emit(session);
     }
   }
@@ -436,13 +551,13 @@ export class ManagedRunSupervisor {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        session.waiters.delete(exited);
+        session.terminationWaiters.delete(exited);
         resolve(value);
       };
       const exited = () => finish(true);
       const timer = setTimeout(() => finish(false), timeoutMs);
       timer.unref();
-      session.waiters.add(exited);
+      session.terminationWaiters.add(exited);
     });
   }
 

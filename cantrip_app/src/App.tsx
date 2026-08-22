@@ -30,6 +30,7 @@ import type {
   QueuedPrompt,
   ReasoningEffort,
   RemoteDesktopTarget,
+  RunConfigurationAction,
   SettingsBundle,
   SkillSummary,
   TerminalSummary,
@@ -196,6 +197,7 @@ import { MobileProjectSelector } from "@/components/mobile/mobile-project-select
 import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
+import { EnvironmentRunMenu } from "@/components/run/environment-run-menu";
 import { WindowsLongPathDialog } from "@/components/projects/windows-long-path-dialog";
 import {
   FolderProjectDialog,
@@ -328,6 +330,7 @@ import {
   getProjectTokenUsage,
   getRemoteDesktop,
   getQueuedPrompts,
+  getRunEnvironment,
   getServerBootstrap,
   getSettings,
   getSkills,
@@ -335,6 +338,8 @@ import {
   getTerminals,
   getWorkers,
   getWorkflows,
+  materializeRunTerminal,
+  openRun,
   getWorkflowAutomationTriggers,
   invokeSavedWorkflowCommand,
   interruptChat,
@@ -354,9 +359,11 @@ import {
   respondToAgentInteractionRequest,
   saveChatComposerDraft,
   setChatPaused,
+  startRun,
   startTurn,
   steerQueuedPrompt,
   syncChat,
+  stopRun,
   updateChatModel,
   updateChatPermissionProfile,
   updateChatGoal,
@@ -5091,6 +5098,73 @@ export function App() {
   const activeWorktree = worktrees.data?.find(
     (worktree) => worktree.id === activeWorktreeId,
   );
+  const runEnvironment = useQuery({
+    enabled: Boolean(
+      selectedProject &&
+      !showImporter &&
+      !showSettings &&
+      !showServerAdmin &&
+      !showProjectSettings,
+    ),
+    queryFn: () =>
+      getRunEnvironment(selectedProject!.id, activeWorktreeId ?? undefined),
+    queryKey: [
+      "run-environment",
+      selectedProject?.id,
+      activeWorktreeId ?? "default",
+    ],
+    refetchInterval: (query) =>
+      projectResourcesLive
+        ? false
+        : ["queued", "starting", "running", "stopping"].includes(
+              query.state.data?.run?.state ?? "",
+            )
+          ? 2_000
+          : 15_000,
+    retry: false,
+  });
+  const refreshRunEnvironment = (projectId: string) =>
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["run-environment", projectId],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["terminals", projectId] }),
+      queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", projectId],
+      }),
+    ]);
+  const startRunMutation = useMutation({
+    mutationFn: ({
+      requestId,
+      actionId,
+      configRevision,
+    }: {
+      requestId: string;
+      actionId: string;
+      configRevision: string;
+    }) =>
+      startRun(selectedProject!.id, {
+        requestId,
+        actionId,
+        configRevision,
+        focus: true,
+        worktreeId: runEnvironment.data?.worktreeId,
+      }),
+    onSuccess: (_result) => refreshRunEnvironment(selectedProject!.id),
+  });
+  const openRunMutation = useMutation({
+    mutationFn: (runId: string) =>
+      openRun(selectedProject!.id, runId, {
+        focus: true,
+        worktreeId: runEnvironment.data?.worktreeId,
+      }),
+    onSuccess: (_result) => refreshRunEnvironment(selectedProject!.id),
+  });
+  const stopRunMutation = useMutation({
+    mutationFn: (runId: string) =>
+      stopRun(selectedProject!.id, runId, runEnvironment.data?.worktreeId),
+    onSuccess: (_result) => refreshRunEnvironment(selectedProject!.id),
+  });
   const selectedWorkerId =
     selectedProjectView?.kind === "remote-desktop"
       ? remoteDesktop.data?.workerId
@@ -5847,14 +5921,16 @@ export function App() {
     selectProjectFromSidebar(projectId);
   };
   const handleClientControl = useCallback(
-    (command: ClientControlCommand) => {
+    async (command: ClientControlCommand) => {
       if (!projects.data?.some(({ id }) => id === command.projectId)) {
         return {
           status: "declined" as const,
           detail: "The requested project is not available in this client.",
         };
       }
-      window.focus();
+      if (command.kind !== "materialize-run-terminal" || command.focus) {
+        window.focus();
+      }
       switch (command.kind) {
         case "notify":
           setClientControlNotice({
@@ -5881,6 +5957,43 @@ export function App() {
             queryKey: ["agent-requests", command.chatId, "pending"],
           });
           return { status: "applied" as const };
+        case "materialize-run-terminal": {
+          try {
+            const terminal = await materializeRunTerminal(
+              command.projectId,
+              command.worktreeId,
+              command.runId,
+            );
+            if (terminal.id !== command.terminalId) {
+              return {
+                status: "declined" as const,
+                detail:
+                  "The materialized terminal identity did not match the Run.",
+              };
+            }
+            queryClient.setQueryData<TerminalSummary[]>(
+              ["terminals", terminal.projectId],
+              (current = []) =>
+                [
+                  ...current.filter((item) => item.id !== terminal.id),
+                  terminal,
+                ].sort((left, right) => left.position - right.position),
+            );
+            await queryClient.invalidateQueries({
+              queryKey: ["project-tab-layout", terminal.projectId],
+            });
+            if (command.focus) {
+              selectProjectFromCommandBar(command.projectId);
+              openCreatedTab(command.projectId, "terminal", terminal.id);
+            }
+            return { status: "applied" as const };
+          } catch (error) {
+            return {
+              status: "declined" as const,
+              detail: errorText(error).slice(0, 500),
+            };
+          }
+        }
       }
     },
     [
@@ -6273,6 +6386,43 @@ export function App() {
           }
         : null,
   } satisfies Omit<ContentHeaderActionsProps, "compact">;
+  const environmentRunMenuProps =
+    selectedProject &&
+    !showImporter &&
+    !showSettings &&
+    !showServerAdmin &&
+    !showProjectSettings
+      ? {
+          environment: runEnvironment.data ?? null,
+          error:
+            startRunMutation.error ??
+            openRunMutation.error ??
+            stopRunMutation.error ??
+            runEnvironment.error,
+          loading: runEnvironment.isLoading,
+          mutationPending:
+            startRunMutation.isPending ||
+            openRunMutation.isPending ||
+            stopRunMutation.isPending,
+          onConfigure: () => openProjectSettings(selectedProject.id),
+          onOpen: (runId: string) => openRunMutation.mutate(runId),
+          onStart: (action: RunConfigurationAction, configRevision: string) =>
+            startRunMutation.mutate({
+              requestId: crypto.randomUUID(),
+              actionId: action.id,
+              configRevision,
+            }),
+          onStop: (runId: string) => stopRunMutation.mutate(runId),
+          onCompareBranch: selectedProject.capabilities.git
+            ? () =>
+                newProjectView.mutate({
+                  projectId: selectedProject.id,
+                  kind: "history",
+                  worktreeId: runEnvironment.data?.worktreeId,
+                })
+            : null,
+        }
+      : null;
   const codeSurfaceVisible = Boolean(
     selectedCodeTab &&
     !mobileProjectSelectorOpen &&
@@ -6964,6 +7114,9 @@ export function App() {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
+              {environmentRunMenuProps ? (
+                <EnvironmentRunMenu {...environmentRunMenuProps} compact />
+              ) : null}
               <ContentHeaderActions {...contentHeaderActions} compact />
               {!isPopout && !compactShell ? (
                 <>
@@ -6997,6 +7150,9 @@ export function App() {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
+              {environmentRunMenuProps ? (
+                <EnvironmentRunMenu {...environmentRunMenuProps} />
+              ) : null}
               <ContentHeaderActions {...contentHeaderActions} />
               {!isPopout &&
               !showImporter &&

@@ -8,6 +8,8 @@ import {
   cantripMcpExplorerWriteResultSchema,
   cantripMcpRunStartInputSchema,
   cantripMcpRunStartResultSchema,
+  cantripMcpRunOpenInputSchema,
+  cantripMcpRunOpenResultSchema,
   cantripMcpRunStopInputSchema,
   cantripMcpRunStopResultSchema,
   cantripMcpTerminalRestartInputSchema,
@@ -27,6 +29,7 @@ import {
   executionTargetSchema,
   projectWorktreeSummarySchema,
   runInstanceResultSchema,
+  runStartResultSchema,
   worktreeRemoveResultSchema,
   type CantripAgentOperationResult,
 } from "@cantrip/protocol";
@@ -233,9 +236,29 @@ async function executeRunMutation(options: CantripMcpOperationOptions) {
       options.requestId,
     );
     assertBoundRunResult(options, result);
-    const data = runInstanceResultSchema.parse(result.data);
+    const data = runStartResultSchema.parse(result.data);
     assertBoundRun(options, data.run);
     return cantripMcpRunStartResultSchema.parse({
+      ...result,
+      target,
+      worktreeId: target.worktreeId,
+      continuationScheduled: false,
+      data,
+    });
+  }
+  if (options.request.operation === "run.open") {
+    const arguments_ = cantripMcpRunOpenInputSchema.parse(
+      options.request.arguments,
+    );
+    const result = await options.execute(
+      options.binding,
+      { operation: "run.open", arguments: arguments_ },
+      options.requestId,
+    );
+    assertBoundRunResult(options, result);
+    const data = runStartResultSchema.parse(result.data);
+    assertBoundRun(options, data.run);
+    return cantripMcpRunOpenResultSchema.parse({
       ...result,
       target,
       worktreeId: target.worktreeId,
@@ -484,6 +507,7 @@ export async function executeCantripMcpMutationOperation(
   }
   switch (options.request.operation) {
     case "run.start":
+    case "run.open":
     case "run.stop":
       return executeRunMutation(options);
     case "worktree.create":

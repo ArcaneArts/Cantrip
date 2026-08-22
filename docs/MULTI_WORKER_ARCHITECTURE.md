@@ -443,6 +443,13 @@ bridge. The source and target workers never exchange addresses or credentials.
 Run status, output, and stop operations route to the worker recorded on the
 durable Run instance, which may differ from the MCP-host worker after placement
 changes; raw commands and PTY output never transit durable server storage.
+Run terminal materialization follows worker → server → active client control:
+the server fixes the exact Run/project/worktree identity, the client creates
+the encrypted terminal fields, and the terminal transport returns through the
+server to the Run's worker-owned PTY. An unavailable client does not make Run
+start fail, and a later CLI or MCP `run open` retries materialization. The
+worker receives an explicit managed-Run identity when opening the terminal, so
+a lost Run can never fall back to spawning an ordinary terminal shell.
 
 Every attempted mutation reaches the same audited operation implementation.
 CLI attempts record `cli.command.mutated`; MCP calls retain their request and
