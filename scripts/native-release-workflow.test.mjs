@@ -84,9 +84,15 @@ test("builds mobile releases in parallel and gates publication on them", async (
     workflow.match(/pnpm --filter @cantrip\/crypto build/gmu)?.length,
     3,
   );
+  assert.equal(
+    workflow.match(/pnpm --filter @cantrip\/version build/gmu)?.length,
+    2,
+  );
   const androidJob =
     workflow.match(/^ {2}android:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
   const iosJob = workflow.match(/^ {2}ios:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
+  assert.match(androidJob, /pnpm --filter @cantrip\/version build/u);
+  assert.match(iosJob, /pnpm --filter @cantrip\/version build/u);
   assert.match(androidJob, /pnpm --filter @cantrip\/crypto build/u);
   assert.match(iosJob, /pnpm --filter @cantrip\/crypto build/u);
   assert.doesNotMatch(androidJob, /^ {4}needs:/mu);
