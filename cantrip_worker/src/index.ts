@@ -3506,6 +3506,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           model: command.model,
           provider: provider(),
         }).interruptChat(command.chatId, command.threadId);
+      case "chat.turn.rollback":
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).rollbackLatestChatTurn({
+          clientMessageId: command.clientMessageId,
+          cwd: command.cwd,
+          model: command.model,
+          permissionProfileId: command.permissionProfileId,
+          provider: provider(),
+          threadId: command.threadId,
+        });
       case "chat.goal.get": {
         const result = await runtimeFor({
           model: command.model,

@@ -15479,6 +15479,103 @@ export class ServerRepository {
     return rows.map(({ message }) => toEncryptedChatMessage(message));
   }
 
+  async getLatestEncryptedUserMessage(
+    ownerId: string,
+    chatId: string,
+  ): Promise<ChatMessageOpaqueSummary | null> {
+    const rows = await this.database
+      .select({ message: schema.chatMessages })
+      .from(schema.chatMessages)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, "agent"),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatMessages.chatId, chatId),
+          eq(schema.chatMessages.role, "user"),
+          isNotNull(schema.chatMessages.protectedContent),
+        ),
+      )
+      .orderBy(desc(schema.chatMessages.sequence))
+      .limit(1);
+    return rows[0] ? toEncryptedChatMessage(rows[0].message) : null;
+  }
+
+  async trimLatestEncryptedTurn(
+    ownerId: string,
+    chatId: string,
+    messageId: string,
+  ): Promise<boolean> {
+    return this.database.transaction(async (transaction) => {
+      const chats = await transaction
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            eq(schema.chats.experience, "agent"),
+            isNull(schema.chats.archivedAt),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!chats[0]) return false;
+      const messages = await transaction
+        .select({
+          id: schema.chatMessages.id,
+          sequence: schema.chatMessages.sequence,
+        })
+        .from(schema.chatMessages)
+        .where(
+          and(
+            eq(schema.chatMessages.chatId, chatId),
+            eq(schema.chatMessages.role, "user"),
+            isNotNull(schema.chatMessages.protectedContent),
+          ),
+        )
+        .orderBy(desc(schema.chatMessages.sequence))
+        .limit(1);
+      const latest = messages[0];
+      if (!latest || latest.id !== messageId) return false;
+      await transaction
+        .delete(schema.chatMessages)
+        .where(
+          and(
+            eq(schema.chatMessages.chatId, chatId),
+            gte(schema.chatMessages.sequence, latest.sequence),
+          ),
+        );
+      await transaction
+        .update(schema.chats)
+        .set({
+          protectedPlan: null,
+          hasPendingPlanQuestion: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.chats.id, chatId));
+      return true;
+    });
+  }
+
   private async listOpaqueMessagePageRows(
     ownerId: string,
     chatId: string,

@@ -4056,6 +4056,32 @@ describe("Cantrip protocol", () => {
     ).toBe("chat.compact");
   });
 
+  it("validates worker-backed latest-turn rollback", () => {
+    expect(
+      workerCommandSchema.parse({
+        type: "chat.turn.rollback",
+        chatId: "chat-1",
+        clientMessageId: "message-1",
+        cwd: "/workspace",
+        threadId: "thread-1",
+        model: {
+          id: "model-1",
+          routeId: "route-1",
+          name: "gpt-test",
+          reasoningEffort: null,
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+          apiKey: null,
+        },
+        permissionProfileId: ":workspace",
+      }).type,
+    ).toBe("chat.turn.rollback");
+  });
+
   it("validates an ephemeral provider connection test without chat state", () => {
     const command = workerCommandSchema.parse({
       type: "model.provider.test",

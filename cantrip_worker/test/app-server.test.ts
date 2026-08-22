@@ -17,6 +17,7 @@ import {
   appendBoundedCommandOutput,
   boundedCommandOutput,
   changedFiles,
+  chatTurnRollbackBoundary,
   codexChatApprovalPolicy,
   codexChatThreadSecurityParams,
   codexResultForAgentInteraction,
@@ -128,6 +129,40 @@ describe("active chat turn selection", () => {
     expect(findActiveChatTurn(turns, "chat-live", "thread-stale")?.[0]).toBe(
       "turn-live",
     );
+  });
+});
+
+describe("chat turn rollback selection", () => {
+  it("rewinds the matching Cantrip turn and every automatic turn after it", () => {
+    expect(
+      chatTurnRollbackBoundary(
+        [
+          {
+            id: "turn-before",
+            items: [
+              { type: "userMessage", clientId: "cantrip:message-before" },
+            ],
+          },
+          {
+            id: "turn-edited",
+            items: [
+              { type: "userMessage", clientId: "cantrip:message-edited" },
+            ],
+          },
+          { id: "turn-goal-continuation", items: [] },
+        ],
+        "message-edited",
+      ),
+    ).toEqual({ numTurns: 2, turnId: "turn-edited" });
+  });
+
+  it("does not guess when the persisted turn lacks the message identity", () => {
+    expect(
+      chatTurnRollbackBoundary(
+        [{ id: "turn-other", items: [{ type: "userMessage" }] }],
+        "message-edited",
+      ),
+    ).toBeNull();
   });
 });
 

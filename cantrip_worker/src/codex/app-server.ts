@@ -1657,6 +1657,28 @@ export type CompactAgentThreadOptions = Pick<
   threadId: string;
 };
 
+export function chatTurnRollbackBoundary(
+  turns: readonly {
+    id: string;
+    items: readonly { type: string; clientId?: string | null }[];
+  }[],
+  clientMessageId: string,
+): { numTurns: number; turnId: string } | null {
+  const turnIndex = turns.findIndex((turn) =>
+    turn.items.some(
+      (item) =>
+        item.type === "userMessage" &&
+        item.clientId === `cantrip:${clientMessageId}`,
+    ),
+  );
+  return turnIndex < 0
+    ? null
+    : {
+        numTurns: turns.length - turnIndex,
+        turnId: turns[turnIndex]!.id,
+      };
+}
+
 export { codexModelProviderName } from "./provider-config.js";
 
 function managedCantripEnabledToolNames(server: McpServerConfiguration) {
@@ -3766,6 +3788,65 @@ export class CodexAppServer implements CodexRuntime {
       ...codexProviderLogContext(options.provider),
     });
     return { accepted: true };
+  }
+
+  async rollbackLatestChatTurn(
+    options: CompactAgentThreadOptions & { clientMessageId: string },
+  ): Promise<{ rolledBack: true }> {
+    const startedAtMs = Date.now();
+    await this.ensureStarted(options.model, options.provider);
+    const threadId = await this.loadThread(options, false);
+    if (!threadId) {
+      throw new Error(
+        "The Codex thread is no longer available on this worker.",
+      );
+    }
+    if (this.hasActiveThread(threadId)) {
+      throw new Error(`Codex thread ${threadId} already has an active turn.`);
+    }
+    const response = (await this.request("thread/read", {
+      threadId,
+      includeTurns: true,
+    })) as CodexThreadReadResponse;
+    const boundary = chatTurnRollbackBoundary(
+      response.thread.turns,
+      options.clientMessageId,
+    );
+    if (!boundary) {
+      throw new Error(
+        "The latest Cantrip message could not be matched to its Codex turn.",
+      );
+    }
+    if (this.methodAvailable("thread/revert")) {
+      try {
+        await this.request("thread/revert", {
+          threadId,
+          beforeTurnId: boundary.turnId,
+        });
+      } catch (error) {
+        if (!/paginated|not supported/iu.test(String(error))) throw error;
+        await this.request("thread/rollback", {
+          threadId,
+          numTurns: boundary.numTurns,
+        });
+      }
+    } else {
+      await this.request("thread/rollback", {
+        threadId,
+        numTurns: boundary.numTurns,
+      });
+    }
+    workerLogger.event("info", "Codex chat turn rolled back", {
+      event: "codex.thread.rollback",
+      subsystem: "codex",
+      operation: "rollback-chat-turn",
+      status: "completed",
+      threadId,
+      turnId: boundary.turnId,
+      durationMs: Date.now() - startedAtMs,
+      ...codexProviderLogContext(options.provider),
+    });
+    return { rolledBack: true };
   }
 
   async getGoal(

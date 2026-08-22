@@ -5783,6 +5783,42 @@ export async function startTurn(
       };
 }
 
+export async function retryChatTurn(
+  chatId: string,
+  messageId: string,
+  text: string,
+  modelId: string,
+  attachments: ChatAttachmentSummary[] = [],
+  mode: ChatTurnMode = "default",
+  reasoningEffort: ReasoningEffort | null = null,
+) {
+  await getPolicies();
+  const idempotencyKey = crypto.randomUUID();
+  const input = await createEncryptedChatTurn({
+    attachments,
+    idempotencyKey,
+    messageId: crypto.randomUUID(),
+    mode,
+    modelId,
+    promptId: crypto.randomUUID(),
+    reasoningEffort,
+    text,
+  });
+  const result = encryptedChatPromptSubmitResultSchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/turns/${encodeURIComponent(messageId)}/retry`,
+      encryptedChatTurnCreateSchema.parse(input),
+    ),
+  );
+  if (result.status !== "started") {
+    throw new Error("An edited message cannot be queued.");
+  }
+  return {
+    status: "started" as const,
+    message: await openChatMessageOpaqueSummary(result.message),
+  };
+}
+
 export async function getChatComposerDraft(chatId: string) {
   return openChatComposerDraft(
     chatId,

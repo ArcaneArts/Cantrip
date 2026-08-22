@@ -64,6 +64,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pause,
+  Pencil,
   Plus,
   RefreshCw,
   Settings,
@@ -127,6 +128,11 @@ import { ChatPlanProgress } from "@/components/chat/chat-plan-progress";
 import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
+import {
+  editableMessageAttachments,
+  editableMessageText,
+  latestEditableUserMessage,
+} from "@/components/chat/latest-message-edit";
 import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import {
   imageInputCapabilityMessage,
@@ -364,6 +370,7 @@ import {
   removeProject,
   retryProjectReplicaJob,
   retryProjectFolderSetup,
+  retryChatTurn,
   moveProjectTabGroupMember,
   reorderProjectTabGroupMembers,
   reorderProjectTabGroups,
@@ -1177,6 +1184,11 @@ function ChatTranscript({
     id: string;
     frozen: boolean;
   } | null>(null);
+  const [editingSentMessage, setEditingSentMessage] = useState<{
+    error: string | null;
+    id: string;
+    text: string;
+  } | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
@@ -1202,6 +1214,7 @@ function ChatTranscript({
   const skillListRef = useRef<HTMLDivElement>(null);
   const githubListRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const editedMessageRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const idleHistoryPrefetchChatRef = useRef<string | null>(null);
   const {
@@ -1549,6 +1562,26 @@ function ChatTranscript({
     () => buildChatTimeline(messages.data ?? []),
     [messages.data],
   );
+  const latestEditableMessage = useMemo(
+    () =>
+      effectiveInspectOnly ||
+      relocationActive ||
+      (queuedPrompts.data?.length ?? 0) > 0
+        ? null
+        : latestEditableUserMessage(
+            messages.data ?? [],
+            chat.status,
+            chat.automationPaused,
+          ),
+    [
+      chat.automationPaused,
+      chat.status,
+      effectiveInspectOnly,
+      messages.data,
+      queuedPrompts.data?.length,
+      relocationActive,
+    ],
+  );
   const slashQuery = slashCommandQuery(draft);
   const slashSuggestions = useMemo(
     () =>
@@ -1832,6 +1865,69 @@ function ChatTranscript({
       ]);
     },
   });
+  const retrySentMessage = useMutation({
+    mutationFn: async ({
+      message,
+      text,
+    }: {
+      message: ChatMessage;
+      text: string;
+    }) => {
+      const modelId = message.modelId;
+      if (!modelId) {
+        throw new Error("The original model is no longer available.");
+      }
+      await ensureChatWorkerEncryption({
+        worker: workers.data?.find(
+          ({ workerId }) => workerId === chat.activeWorkerId,
+        ),
+      });
+      return retryChatTurn(
+        chat.id,
+        message.id,
+        text,
+        modelId,
+        editableMessageAttachments(message),
+        message.mode,
+        message.reasoningEffort,
+      );
+    },
+    onSuccess: async () => {
+      setEditingSentMessage(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["goal", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["plan", chat.id] }),
+      ]);
+    },
+    onError: (error: unknown) => {
+      setEditingSentMessage((current) =>
+        current ? { ...current, error: errorText(error) } : current,
+      );
+    },
+  });
+  useEffect(() => {
+    if (
+      editingSentMessage &&
+      !retrySentMessage.isPending &&
+      editingSentMessage.id !== latestEditableMessage?.id
+    ) {
+      setEditingSentMessage(null);
+    }
+  }, [
+    editingSentMessage,
+    latestEditableMessage?.id,
+    retrySentMessage.isPending,
+  ]);
+  useEffect(() => {
+    if (!editingSentMessage) return;
+    window.requestAnimationFrame(() => {
+      const textarea = editedMessageRef.current;
+      textarea?.focus();
+      textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+  }, [editingSentMessage?.id]);
   const updatePrompt = useMutation({
     mutationFn: ({
       id,
@@ -2106,6 +2202,23 @@ function ChatTranscript({
       )
       ?.scrollIntoView({ block: "nearest" });
   }, [githubMenuOpen, selectedGithubIndex]);
+
+  const submitEditedMessage = (message: ChatMessage, event?: FormEvent) => {
+    event?.preventDefault();
+    if (
+      retrySentMessage.isPending ||
+      editingSentMessage?.id !== message.id ||
+      latestEditableMessage?.id !== message.id
+    ) {
+      return;
+    }
+    const text = editingSentMessage.text.trim();
+    if (!text && editableMessageAttachments(message).length === 0) return;
+    setEditingSentMessage((current) =>
+      current ? { ...current, error: null } : current,
+    );
+    retrySentMessage.mutate({ message, text });
+  };
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
@@ -2487,6 +2600,11 @@ function ChatTranscript({
                     )
                     .join("\n\n")
                 : "";
+            const editingThisMessage =
+              user && editingSentMessage?.id === message.id;
+            const messageAttachments = user
+              ? editableMessageAttachments(message)
+              : [];
             return (
               <div
                 key={message.id}
@@ -2526,7 +2644,84 @@ function ChatTranscript({
                       {message.mode} mode
                     </Badge>
                   ) : null}
-                  <MessageContent message={message} />
+                  {editingThisMessage ? (
+                    <form
+                      className="space-y-3"
+                      onSubmit={(event) => submitEditedMessage(message, event)}
+                    >
+                      <textarea
+                        ref={editedMessageRef}
+                        aria-label="Edit latest message"
+                        className="min-h-28 w-full resize-y bg-transparent text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+                        disabled={retrySentMessage.isPending}
+                        onChange={(event) =>
+                          setEditingSentMessage((current) =>
+                            current?.id === message.id
+                              ? {
+                                  ...current,
+                                  error: null,
+                                  text: event.target.value,
+                                }
+                              : current,
+                          )
+                        }
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            !event.shiftKey &&
+                            !event.nativeEvent.isComposing
+                          ) {
+                            event.preventDefault();
+                            submitEditedMessage(message);
+                          }
+                        }}
+                        value={editingSentMessage.text}
+                      />
+                      {messageAttachments.length > 0 ? (
+                        <MessageContent
+                          message={{
+                            ...message,
+                            content: messageAttachments.map((attachment) => ({
+                              type: "attachment" as const,
+                              attachment,
+                            })),
+                          }}
+                        />
+                      ) : null}
+                      {editingSentMessage.error ? (
+                        <p className="text-xs text-destructive" role="alert">
+                          {editingSentMessage.error}
+                        </p>
+                      ) : null}
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          disabled={retrySentMessage.isPending}
+                          onClick={() => setEditingSentMessage(null)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          disabled={
+                            retrySentMessage.isPending ||
+                            (!editingSentMessage.text.trim() &&
+                              messageAttachments.length === 0)
+                          }
+                          size="sm"
+                          type="submit"
+                        >
+                          {retrySentMessage.isPending ? (
+                            <Loader2 className="animate-spin" />
+                          ) : null}
+                          Send
+                        </Button>
+                      </div>
+                    </form>
+                  ) : (
+                    <MessageContent message={message} />
+                  )}
                   {user && message.providerName ? (
                     <p className="mt-1.5 truncate text-[10px] text-muted-foreground">
                       {message.providerName}
@@ -2576,6 +2771,29 @@ function ChatTranscript({
                           {turnMetadata}
                         </span>
                       ) : null}
+                    </div>
+                  ) : null}
+                  {user &&
+                  !editingThisMessage &&
+                  latestEditableMessage?.id === message.id ? (
+                    <div className="mt-2 flex justify-end">
+                      <Button
+                        aria-label="Edit and resend latest message"
+                        className="size-7 text-muted-foreground"
+                        onClick={() =>
+                          setEditingSentMessage({
+                            error: null,
+                            id: message.id,
+                            text: editableMessageText(message),
+                          })
+                        }
+                        size="icon"
+                        title="Edit and resend"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
                     </div>
                   ) : null}
                 </div>
