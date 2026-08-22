@@ -50,6 +50,7 @@ import {
   Code2,
   Copy,
   ExternalLink,
+  FilePlus2,
   Folder,
   FolderGit2,
   FolderTree,
@@ -2219,7 +2220,54 @@ function ChatTranscript({
       style={{
         paddingRight: inspectOpen && !inspectOverlay ? inspectWidth : 0,
       }}
+      onDragEnter={(event) => {
+        if (
+          !effectiveInspectOnly &&
+          !relocationActive &&
+          event.dataTransfer.types.includes("Files")
+        ) {
+          event.preventDefault();
+          setDraggingFiles(true);
+        }
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setDraggingFiles(false);
+        }
+      }}
+      onDragOver={(event) => {
+        if (
+          !effectiveInspectOnly &&
+          !relocationActive &&
+          event.dataTransfer.types.includes("Files")
+        ) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }
+      }}
+      onDrop={(event) => {
+        const droppedFiles = [...event.dataTransfer.files];
+        if (droppedFiles.length === 0) return;
+        event.preventDefault();
+        setDraggingFiles(false);
+        if (!effectiveInspectOnly && !relocationActive) {
+          void attachFiles(droppedFiles);
+        }
+      }}
     >
+      {draggingFiles ? (
+        <div
+          role="status"
+          className="pointer-events-none absolute inset-3 z-40 grid place-items-center rounded-2xl border-2 border-dashed border-primary bg-background/90 backdrop-blur"
+        >
+          <div className="text-center">
+            <FilePlus2 className="mx-auto size-6 text-primary" />
+            <p className="mt-2 text-sm font-medium">
+              Attach files to the next message
+            </p>
+          </div>
+        </div>
+      ) : null}
       <div
         ref={transcriptViewportRef}
         className={cn(
@@ -2681,41 +2729,7 @@ function ChatTranscript({
               reorderPrompts.mutate(ids);
             }}
           />
-          <div
-            className={cn(
-              "chat-composer-surface relative flex items-end gap-2 rounded-2xl border p-2 shadow-xl shadow-background/20 focus-within:ring-2 focus-within:ring-ring",
-              draggingFiles && "ring-2 ring-primary",
-            )}
-            onDragEnter={(event) => {
-              if (event.dataTransfer.types.includes("Files")) {
-                event.preventDefault();
-                setDraggingFiles(true);
-              }
-            }}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                setDraggingFiles(false);
-              }
-            }}
-            onDragOver={(event) => {
-              if (event.dataTransfer.types.includes("Files")) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "copy";
-              }
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDraggingFiles(false);
-              if (event.dataTransfer.files.length > 0) {
-                void attachFiles([...event.dataTransfer.files]);
-              }
-            }}
-          >
-            {draggingFiles ? (
-              <div className="pointer-events-none absolute inset-1 z-20 grid place-items-center rounded-xl bg-background/85 text-sm font-medium backdrop-blur-sm">
-                Drop files to attach
-              </div>
-            ) : null}
+          <div className="chat-composer-surface relative flex items-end gap-2 rounded-2xl border p-2 shadow-xl shadow-background/20 focus-within:ring-2 focus-within:ring-ring">
             <div className="min-w-0 flex-1">
               {draftAttachments.length > 0 ? (
                 <div className="flex max-h-44 flex-wrap gap-2 overflow-y-auto px-1 pb-2">
