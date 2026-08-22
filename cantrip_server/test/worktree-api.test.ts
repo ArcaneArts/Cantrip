@@ -113,6 +113,16 @@ const gitDiffCommands: Array<Extract<WorkerCommand, { type: "git.diff" }>> = [];
 const repositoryOperationCommands: Array<
   Extract<WorkerCommand, { type: "repository.operation" }>
 > = [];
+const runConfigurationAuthoringCommands: Array<
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        | "project.run-configurations.read-authoring"
+        | "project.run-configurations.write";
+    }
+  >
+> = [];
 const gitPatchPreviewCommands: Array<
   Extract<WorkerCommand, { type: "git.patch.preview" }>
 > = [];
@@ -611,6 +621,49 @@ const workerBridge = {
           valid: true,
           configurations: [],
           diagnostics: [],
+        };
+      case "project.run-configurations.read-authoring":
+        runConfigurationAuthoringCommands.push(command);
+        return {
+          relativePath: ".codex/environments/environment.toml",
+          sourceControlState: "absent",
+          revision: null,
+          document: null,
+          editingError: null,
+          inspection: {
+            platform: "darwin",
+            canonical: {
+              relativePath: ".codex/environments/environment.toml",
+              sourceControlState: "absent",
+            },
+            configured: false,
+            valid: true,
+            configurations: [],
+            diagnostics: [],
+          },
+        };
+      case "project.run-configurations.write":
+        runConfigurationAuthoringCommands.push(command);
+        return {
+          written: true,
+          snapshot: {
+            relativePath: ".codex/environments/environment.toml",
+            sourceControlState: "untracked",
+            revision: "c".repeat(64),
+            document: command.document,
+            editingError: null,
+            inspection: {
+              platform: "darwin",
+              canonical: {
+                relativePath: ".codex/environments/environment.toml",
+                sourceControlState: "untracked",
+              },
+              configured: true,
+              valid: true,
+              configurations: [],
+              diagnostics: [],
+            },
+          },
         };
       case "worktree.create": {
         activeCreates += 1;
@@ -1884,6 +1937,97 @@ describe.sequential("server worktree control plane", () => {
     expect(new Set(managedIds).size).toBe(2);
     expect(created.every(({ origin }) => origin === "user")).toBe(true);
     expect(maximumConcurrentCreates).toBe(1);
+  });
+
+  it("refuses Run config writes when the bound lane and cwd select different worktrees", async () => {
+    const secondary = (
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
+    ).find(({ id }) => id === managedIds[0])!;
+    const chat = await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        ...protectedChatFields(),
+        worktreeId: primaryId,
+        worktreeMode: "pinned",
+      },
+    );
+    expect(chat).not.toBeNull();
+    const execution = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      chat!.id,
+      "agent",
+      "Verify CLI context safety",
+    );
+    expect(execution?.executionLaneId).toBeTruthy();
+    const commandCount = runConfigurationAuthoringCommands.length;
+    const payload = {
+      arguments: { overwrite: false, name: "Secondary environment" },
+      chatContext: {
+        chatId: chat!.id,
+        executionLaneId: execution!.executionLaneId,
+      },
+      command: "run.config-init",
+      context: {
+        codexThreadId: null,
+        cwd: secondary.path,
+        selection: "auto",
+        terminalId: null,
+      },
+      requestId: "run-config-context-mismatch",
+      workerId: "test-worker",
+    };
+    const mismatched = await app.inject({
+      method: "POST",
+      url: "/api/internal/cli",
+      headers: { authorization: `Bearer ${config.workerToken}` },
+      payload,
+    });
+    expect(mismatched.statusCode, mismatched.body).toBe(409);
+    expect(mismatched.json()).toMatchObject({
+      code: "conflict",
+      error: expect.stringContaining("--context lane or --context cwd"),
+    });
+    expect(runConfigurationAuthoringCommands).toHaveLength(commandCount);
+
+    const explicitCwd = await app.inject({
+      method: "POST",
+      url: "/api/internal/cli",
+      headers: { authorization: `Bearer ${config.workerToken}` },
+      payload: {
+        ...payload,
+        context: { ...payload.context, selection: "cwd" },
+        requestId: "run-config-explicit-cwd",
+      },
+    });
+    expect(explicitCwd.statusCode, explicitCwd.body).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(explicitCwd.json()),
+    ).toMatchObject({
+      mutated: true,
+      summary: expect.stringContaining(
+        `CLI context: project ${projectId}, worktree ${secondary.id}`,
+      ),
+      worktreeId: secondary.id,
+    });
+    expect(runConfigurationAuthoringCommands.slice(commandCount)).toEqual([
+      expect.objectContaining({
+        type: "project.run-configurations.read-authoring",
+        sourcePath: secondary.path,
+      }),
+      expect.objectContaining({
+        type: "project.run-configurations.write",
+        sourcePath: secondary.path,
+      }),
+    ]);
+    await database.repository.finishChatExecutionLane(
+      chat.id,
+      execution!.executionLaneId,
+      "idle",
+    );
+    expect(await database.repository.deleteChat(LOCAL_USER_ID, chat.id)).toBe(
+      "deleted",
+    );
   });
 
   it("shares Primary while binding each Codex turn and message to one lane", async () => {

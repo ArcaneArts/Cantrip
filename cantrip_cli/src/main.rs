@@ -32,8 +32,29 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
+    /// Select project context explicitly when the bound lane and cwd differ.
+    #[arg(long, global = true, value_enum, default_value_t = ContextSelection::Auto)]
+    context: ContextSelection,
+
     #[command(subcommand)]
     command: Option<Command>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum ContextSelection {
+    Auto,
+    Cwd,
+    Lane,
+}
+
+impl ContextSelection {
+    fn wire_name(&self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Cwd => "cwd",
+            Self::Lane => "lane",
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -544,7 +565,11 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match client::execute(invocation.command, invocation.arguments) {
+    match client::execute(
+        invocation.command,
+        invocation.arguments,
+        cli.context.wire_name(),
+    ) {
         Ok(result) => {
             let validation_failed = invocation.command == "run.validate"
                 && result
@@ -571,7 +596,7 @@ fn main() -> ExitCode {
 mod tests {
     use clap::{CommandFactory, Parser, error::ErrorKind};
 
-    use super::{Cli, Command, invocation};
+    use super::{Cli, Command, ContextSelection, invocation};
 
     #[test]
     fn top_level_help_stays_brief_and_layered() {
@@ -586,6 +611,7 @@ mod tests {
         assert!(help.contains("explorer"));
         assert!(help.contains("run"));
         assert!(help.contains("-v, --version"));
+        assert!(help.contains("--context <CONTEXT>"));
         assert!(!help.contains("-V, --version"));
         assert!(!help.contains("--existing"));
         assert!(!help.contains("Surface title, full ID"));
@@ -659,6 +685,16 @@ mod tests {
                 panic!("failed to parse {arguments:?} without -v: {error}")
             });
         }
+    }
+
+    #[test]
+    fn context_selection_is_global_and_explicit() {
+        let before = Cli::try_parse_from(["cantrip", "--context", "cwd", "run", "config", "init"])
+            .expect("parse context before command");
+        let after = Cli::try_parse_from(["cantrip", "run", "config", "init", "--context", "lane"])
+            .expect("parse context after command");
+        assert_eq!(before.context, ContextSelection::Cwd);
+        assert_eq!(after.context, ContextSelection::Lane);
     }
 
     #[test]

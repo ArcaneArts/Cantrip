@@ -11,16 +11,18 @@ pub struct CommandContext {
     codex_thread_id: Option<String>,
     terminal_id: Option<String>,
     cwd: Option<String>,
+    selection: String,
 }
 
 impl CommandContext {
-    pub fn detect() -> Self {
+    pub fn detect(selection: &str) -> Self {
         Self {
             codex_thread_id: nonempty_environment("CODEX_THREAD_ID"),
             terminal_id: nonempty_environment("CANTRIP_TERMINAL_ID"),
             cwd: env::current_dir()
                 .ok()
                 .map(|path| path.to_string_lossy().into_owned()),
+            selection: selection.to_owned(),
         }
     }
 }
@@ -94,11 +96,15 @@ impl From<ConnectionError> for CommandError {
     }
 }
 
-pub fn execute(command: &str, arguments: Value) -> Result<CommandResult, CommandError> {
+pub fn execute(
+    command: &str,
+    arguments: Value,
+    context_selection: &str,
+) -> Result<CommandResult, CommandError> {
     let connection = load_connection()?;
     let request = CommandRequest {
         command,
-        context: CommandContext::detect(),
+        context: CommandContext::detect(context_selection),
         arguments,
     };
     broker_post(&connection, "/v1/execute", &request).map_err(Into::into)
@@ -114,10 +120,12 @@ mod tests {
             codex_thread_id: Some("thread-1".to_string()),
             terminal_id: Some("terminal-1".to_string()),
             cwd: Some("/tmp/project".to_string()),
+            selection: "cwd".to_string(),
         })
         .expect("context JSON");
         assert_eq!(value["codexThreadId"], "thread-1");
         assert_eq!(value["terminalId"], "terminal-1");
         assert_eq!(value["cwd"], "/tmp/project");
+        assert_eq!(value["selection"], "cwd");
     }
 }

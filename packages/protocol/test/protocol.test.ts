@@ -1044,9 +1044,16 @@ describe("Cantrip protocol", () => {
     ).toMatchObject({
       command: "explorer.read",
       chatContext: { chatId: "chat-one", executionLaneId: "lane-one" },
-      context: { codexThreadId: "thread-one" },
+      context: { codexThreadId: "thread-one", selection: "auto" },
       workerId: "worker-one",
     });
+    expect(
+      cantripCliCommandRequestSchema.parse({
+        command: "run.config-init",
+        context: { ...request.context, selection: "cwd" },
+        arguments: { overwrite: false },
+      }).context.selection,
+    ).toBe("cwd");
     expect(
       cantripCliCommandResultSchema.parse({ summary: "Read README.md." }),
     ).toMatchObject({

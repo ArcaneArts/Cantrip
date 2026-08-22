@@ -513,6 +513,7 @@ import type {
   CantripAgentOperationName,
   CantripAgentOperationRequest,
   CantripAgentOperationResult,
+  CantripCliCommandName,
   CantripCliCommandResult,
   WorkerCliCommandCall,
 } from "@cantrip/protocol";
@@ -5019,7 +5020,7 @@ export async function buildApp({
       return runConfigurationInspectionSchema.parse(
         await bridge.request(target.workerId, {
           type: "project.run-configurations.inspect",
-          sourcePath: target.sourcePath,
+          sourcePath: target.worktree.path,
         }),
       );
     };
@@ -5033,7 +5034,7 @@ export async function buildApp({
       return runConfigurationAuthoringSnapshotSchema.parse(
         await bridge.request(target.workerId, {
           type: "project.run-configurations.read-authoring",
-          sourcePath: target.sourcePath,
+          sourcePath: target.worktree.path,
         }),
       );
     };
@@ -5421,7 +5422,7 @@ export async function buildApp({
         const result = workerRunConfigurationWriteResultSchema.parse(
           await bridge.request(target.workerId, {
             type: "project.run-configurations.write",
-            sourcePath: target.sourcePath,
+            sourcePath: target.worktree.path,
             ...input.data,
           }),
         );
@@ -6650,9 +6651,27 @@ export async function buildApp({
     );
   };
 
-  const resolveCliExecutionContext = async (
+  const cliMutationCommands = new Set<CantripCliCommandName>([
+    "worktree.create",
+    "worktree.switch",
+    "worktree.release",
+    "worktree.remove",
+    "run.start",
+    "run.open",
+    "run.setup-retry",
+    "run.config-init",
+    "run.stop",
+    "explorer.write",
+    "terminal.send",
+    "terminal.restart",
+    "browser.create",
+    "browser.open",
+  ]);
+  const cliCommandIsMutation = (command: CantripCliCommandName) =>
+    cliMutationCommands.has(command);
+
+  const resolveCliBoundExecutionContext = async (
     call: WorkerCliCommandCall,
-    allowMissing = false,
   ): Promise<ExecutionOperationContext | null> => {
     if (call.chatContext) {
       const context = await repository.getChatExecutionContext(
@@ -6705,30 +6724,33 @@ export async function buildApp({
               terminal.linkedChatId,
             )
           : null;
+        const matchedChat =
+          chat?.workerId === terminal.workerId &&
+          chat.worktreeId === terminal.worktreeId
+            ? chat
+            : null;
         return {
-          chatId:
-            chat?.workerId === terminal.workerId &&
-            chat.worktreeId === terminal.worktreeId
-              ? chat.chatId
-              : null,
-          executionLaneId:
-            chat?.workerId === terminal.workerId &&
-            chat.worktreeId === terminal.worktreeId
-              ? chat.executionLaneId
-              : null,
-          permissionProfileId: chat
-            ? effectivePermissionProfile(chat).effectiveId
+          chatId: matchedChat?.chatId ?? null,
+          executionLaneId: matchedChat?.executionLaneId ?? null,
+          permissionProfileId: matchedChat
+            ? effectivePermissionProfile(matchedChat).effectiveId
             : null,
           projectId: terminal.projectId,
           rootKind: terminal.rootKind,
           terminalId: terminal.terminalId,
           workerId: terminal.workerId,
           worktreeId: terminal.worktreeId,
-          worktreeMode: chat?.worktreeMode ?? null,
+          worktreeMode: matchedChat?.worktreeMode ?? null,
         };
       }
     }
 
+    return null;
+  };
+
+  const resolveCliCwdExecutionContext = async (
+    call: WorkerCliCommandCall,
+  ): Promise<ExecutionOperationContext | null> => {
     if (call.context.cwd) {
       const candidates = (
         await repository.listWorkerExecutionRootContexts(
@@ -6777,6 +6799,60 @@ export async function buildApp({
         };
       }
     }
+
+    return null;
+  };
+
+  const sameCliExecutionPlacement = (
+    left: ExecutionOperationContext,
+    right: ExecutionOperationContext,
+  ) =>
+    left.projectId === right.projectId &&
+    left.workerId === right.workerId &&
+    left.worktreeId === right.worktreeId;
+
+  const resolveCliExecutionContext = async (
+    call: WorkerCliCommandCall,
+    allowMissing = false,
+  ): Promise<ExecutionOperationContext | null> => {
+    const selection = call.context.selection;
+    if (selection === "cwd") {
+      const cwd = await resolveCliCwdExecutionContext(call);
+      if (cwd) return cwd;
+      throw new CliCommandRequestError(
+        "context-not-found",
+        400,
+        "--context cwd was requested, but the current directory is not inside a Cantrip project root.",
+      );
+    }
+    if (selection === "lane") {
+      const bound = await resolveCliBoundExecutionContext(call);
+      if (bound) return bound;
+      throw new CliCommandRequestError(
+        "context-not-found",
+        400,
+        "--context lane was requested, but no active chat or Terminal lane is bound to this process.",
+      );
+    }
+
+    const [bound, cwd] = await Promise.all([
+      resolveCliBoundExecutionContext(call),
+      resolveCliCwdExecutionContext(call),
+    ]);
+    if (
+      bound &&
+      cwd &&
+      cliCommandIsMutation(call.command) &&
+      !sameCliExecutionPlacement(bound, cwd)
+    ) {
+      throw new CliCommandRequestError(
+        "conflict",
+        409,
+        `Cantrip refused to mutate because the bound lane targets project ${bound.projectId}, worktree ${bound.worktreeId}, while cwd targets project ${cwd.projectId}, worktree ${cwd.worktreeId}. Retry explicitly with --context lane or --context cwd. The mutation did not start.`,
+      );
+    }
+    if (bound) return bound;
+    if (cwd) return cwd;
 
     if (allowMissing) return null;
     throw new CliCommandRequestError(
@@ -7130,7 +7206,12 @@ export async function buildApp({
       operation: Promise<CantripCliCommandResult>,
     ) => {
       const result = await operation;
-      return cantripCliCommandResultSchema.parse({ ...result, mutated: true });
+      const contextSummary = ` CLI context: project ${context.projectId}, worktree ${context.worktreeId}.`;
+      return cantripCliCommandResultSchema.parse({
+        ...result,
+        summary: `${result.summary.slice(0, 2_000 - contextSummary.length)}${contextSummary}`,
+        mutated: true,
+      });
     };
     switch (call.command) {
       case "policy.list":
@@ -7456,10 +7537,12 @@ export async function buildApp({
       }
       case "explorer.write": {
         const target = await selectTarget(context, "explorer", selector);
-        return agentOperationExecutor.execute(context, {
-          operation: "explorer.write",
-          arguments: { ...call.arguments, target: target.target },
-        });
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "explorer.write",
+            arguments: { ...call.arguments, target: target.target },
+          }),
+        );
       }
       case "terminal.read": {
         const target = await selectTarget(context, "terminal", selector);
@@ -7470,17 +7553,21 @@ export async function buildApp({
       }
       case "terminal.send": {
         const target = await selectTarget(context, "terminal", selector);
-        return agentOperationExecutor.execute(context, {
-          operation: "terminal.send",
-          arguments: { ...call.arguments, target: target.target },
-        });
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "terminal.send",
+            arguments: { ...call.arguments, target: target.target },
+          }),
+        );
       }
       case "terminal.restart": {
         const target = await selectTarget(context, "terminal", selector);
-        return agentOperationExecutor.execute(context, {
-          operation: "terminal.restart",
-          arguments: { target: target.target },
-        });
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "terminal.restart",
+            arguments: { target: target.target },
+          }),
+        );
       }
       case "browser.services": {
         const target = await selectTarget(context, "browser", selector);
@@ -7518,24 +7605,30 @@ export async function buildApp({
           surfaceKind: "browser",
           surfaceId: browser.id,
         });
-        return cantripCliCommandResultSchema.parse({
-          summary: "Opened a new Browser tab.",
-          target,
-          worktreeId: context.worktreeId,
-          mutated: true,
-          data: browser,
-        });
+        return mutationResult(
+          Promise.resolve(
+            cantripCliCommandResultSchema.parse({
+              summary: "Opened a new Browser tab.",
+              target,
+              worktreeId: context.worktreeId,
+              mutated: true,
+              data: browser,
+            }),
+          ),
+        );
       }
       case "browser.open": {
         const target = await selectTarget(context, "browser", selector);
-        return agentOperationExecutor.execute(context, {
-          operation: "browser.open",
-          arguments: {
-            target: target.target,
-            expectedStateRevision: call.arguments.expectedStateRevision,
-            stateProtection: call.arguments.stateProtection,
-          },
-        });
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "browser.open",
+            arguments: {
+              target: target.target,
+              expectedStateRevision: call.arguments.expectedStateRevision,
+              stateProtection: call.arguments.stateProtection,
+            },
+          }),
+        );
       }
     }
   };
@@ -27583,21 +27676,7 @@ export async function buildApp({
         });
       }
       return runAsOwner(workerAuth.ownerId, async () => {
-        const mutation = new Set([
-          "worktree.create",
-          "worktree.switch",
-          "worktree.release",
-          "worktree.remove",
-          "run.start",
-          "run.open",
-          "run.setup-retry",
-          "run.config-init",
-          "run.stop",
-          "explorer.write",
-          "terminal.send",
-          "terminal.restart",
-          "browser.open",
-        ]).has(input.data.command);
+        const mutation = cliCommandIsMutation(input.data.command);
         try {
           const result = await executeCliCommand(input.data);
           if (mutation) {
