@@ -1,3 +1,4 @@
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { formatGoalElapsed, GoalPanel } from "./goal-panel";
@@ -28,5 +29,29 @@ describe("goal panel", () => {
         pending: false,
       }),
     ).toBeNull();
+  });
+
+  it("renders active goals on an opaque surface", () => {
+    const markup = renderToStaticMarkup(
+      GoalPanel({
+        error: null,
+        goal: {
+          threadId: "thread-1",
+          objective: "Finish the work",
+          status: "active",
+          tokenBudget: null,
+          tokensUsed: 123,
+          timeUsedSeconds: 45,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+        onClear: () => undefined,
+        onUpdate: () => undefined,
+        pending: false,
+      }),
+    );
+
+    expect(markup).toContain('data-slot="goal-panel"');
+    expect(markup).toContain("bg-[var(--popover-solid)]");
   });
 });

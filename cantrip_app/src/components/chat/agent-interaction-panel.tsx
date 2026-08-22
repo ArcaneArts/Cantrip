@@ -219,7 +219,10 @@ function InteractionCard({
   title: string;
 }) {
   return (
-    <section className="rounded-xl border border-amber-500/30 bg-popover p-3 text-popover-foreground shadow-lg">
+    <section
+      data-slot="agent-interaction-card"
+      className="rounded-xl border border-amber-500/30 bg-[var(--popover-solid)] p-3 text-popover-foreground shadow-lg"
+    >
       <div className="flex items-start gap-3">
         <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
           <Icon className="size-4" />
