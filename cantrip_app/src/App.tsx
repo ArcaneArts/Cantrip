@@ -3495,7 +3495,6 @@ function ChatTranscript({
         </div>
       ) : null}
       <AgentInspectPanelShell
-        active={inspectActive}
         className="absolute inset-y-0 right-0 z-30"
         onOpenChange={onInspectOpenChange}
         onWidthChange={setInspectWidth}

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 
+import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 import { cn } from "@/lib/utils";
 
 import { displayCommand } from "./command-display";
@@ -405,12 +406,33 @@ export function AgentInspectPresentation({
   );
 }
 
-export function AgentInspectContent({
-  active,
+export type AgentInspectTab = "trajectory" | "state";
+
+export const AGENT_INSPECT_TABS = [
+  { id: "trajectory", label: "Trajectory" },
+  { id: "state", label: "State" },
+] as const;
+
+function AgentInspectInactive() {
+  return (
+    <div
+      className="grid h-full place-items-center p-6 text-center"
+      data-slot="agent-inspect-inactive"
+    >
+      <div>
+        <p className="text-sm font-medium">Inactive</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Shows activity when agent is working
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AgentInspectLiveContent({
   messages,
   visible,
 }: {
-  active: boolean;
   messages: ChatMessage[];
   visible: boolean;
 }) {
@@ -422,21 +444,107 @@ export function AgentInspectContent({
 
   useEffect(() => {
     setClockMs(Date.now());
-  }, [active, source, visible]);
+  }, [source, visible]);
 
   useEffect(() => {
-    if (!active || !visible) return;
+    if (!visible) return;
     const interval = window.setInterval(
       () => setClockMs(Date.now()),
       AGENT_INSPECT_CLOCK_INTERVAL_MS,
     );
     return () => window.clearInterval(interval);
-  }, [active, visible]);
+  }, [visible]);
 
   const nowMs = visible ? Math.max(clockMs, Date.now()) : clockMs;
   const snapshot = useMemo(
-    () => projectAgentInspector({ active, nowMs, source }),
-    [active, nowMs, source],
+    () => projectAgentInspector({ active: true, nowMs, source }),
+    [nowMs, source],
   );
   return <AgentInspectPresentation snapshot={snapshot} />;
+}
+
+export function AgentInspectStateContent({
+  active,
+  messages,
+  visible,
+}: {
+  active: boolean;
+  messages: ChatMessage[];
+  visible: boolean;
+}) {
+  if (!active) return <AgentInspectInactive />;
+  return <AgentInspectLiveContent messages={messages} visible={visible} />;
+}
+
+function AgentTrajectoryScaffold({ active }: { active: boolean }) {
+  return (
+    <div
+      className="grid h-full place-items-center p-6 text-center"
+      data-slot="agent-trajectory-content"
+    >
+      <div>
+        <p className="text-sm font-medium">
+          {active ? "Watching this turn" : "No active turn"}
+        </p>
+        <p className="mt-1 max-w-64 text-xs text-muted-foreground">
+          {active
+            ? "Input, model, and tool events will appear on the shared turn timeline."
+            : "The most recently completed turn will appear here when its timeline is available."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function AgentInspectContent({
+  active,
+  initialTab = "trajectory",
+  messages,
+  onTabChange,
+  tab,
+  visible,
+}: {
+  active: boolean;
+  initialTab?: AgentInspectTab;
+  messages: ChatMessage[];
+  onTabChange?(tab: AgentInspectTab): void;
+  tab?: AgentInspectTab;
+  visible: boolean;
+}) {
+  const [internalTab, setInternalTab] = useState<AgentInspectTab>(initialTab);
+  const activeTab = tab ?? internalTab;
+  const selectTab = (nextTab: AgentInspectTab) => {
+    if (tab === undefined) setInternalTab(nextTab);
+    onTabChange?.(nextTab);
+  };
+
+  return (
+    <div
+      className="flex h-full min-h-0 flex-col"
+      data-slot="agent-observation-content"
+    >
+      <NavigationTabBar
+        activeTab={activeTab}
+        ariaLabel="Inspect view"
+        className="border-b px-3"
+        onTabChange={selectTab}
+        tabs={AGENT_INSPECT_TABS}
+      />
+      <div
+        aria-label={`${activeTab === "trajectory" ? "Trajectory" : "State"} view`}
+        className="min-h-0 flex-1 overflow-hidden"
+        role="tabpanel"
+      >
+        {activeTab === "trajectory" ? (
+          <AgentTrajectoryScaffold active={active} />
+        ) : (
+          <AgentInspectStateContent
+            active={active}
+            messages={messages}
+            visible={visible}
+          />
+        )}
+      </div>
+    </div>
+  );
 }
