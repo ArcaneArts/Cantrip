@@ -4,7 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
-  EliteModeButton,
   SettingsPage,
   changedAccountLabel,
   type SettingsSection,
@@ -46,14 +45,18 @@ describe("account settings", () => {
     expect(logs).toBeGreaterThan(workers);
   });
 
-  it("keeps the Elite entry visible in the Pro Mode dialog", () => {
-    const markup = renderToStaticMarkup(
-      <EliteModeButton onOpen={() => undefined} />,
-    );
+  it("keeps the Elite configuration entry in Appearance without Pro Mode", () => {
+    const markup = renderSettings("general");
+    const appearance = markup.indexOf(">Appearance<");
+    const eliteMode = markup.indexOf(">Elite Mode<");
+    const nextSettingsRow = markup.indexOf(">Default agent permissions<");
 
+    expect(appearance).toBeGreaterThanOrEqual(0);
+    expect(eliteMode).toBeGreaterThan(appearance);
+    expect(eliteMode).toBeLessThan(nextSettingsRow);
     expect(markup).toContain("Elite Mode");
     expect(markup).not.toContain("elite-secret-entry");
-    expect(markup).toContain('aria-label="Open Elite Mode"');
+    expect(markup).toContain('aria-label="Configure Elite Mode"');
   });
 
   it("exposes the visual reveal laboratory as its own section", () => {
