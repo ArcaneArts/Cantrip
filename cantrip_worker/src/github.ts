@@ -32,6 +32,7 @@ import {
   githubWorkerRepositoryListSchema,
   projectCloneResultSchema,
   projectReplicaProvisionResultSchema,
+  projectReplicaLinkRepairResultSchema,
   projectReplicaRemoveResultSchema,
   projectReplicaSynchronizeResultSchema,
   worktreePolicySchema,
@@ -66,7 +67,9 @@ import {
   type ProjectCloneResult,
   type ProjectReplicaJobProgressEvent,
   type ProjectReplicaJobErrorCode,
+  type ProjectReplicaLinkRepairResult,
   type ProjectReplicaPlacementRequest,
+  type ProjectReplicaPlacementResult,
   type ProjectReplicaProvisionResult,
   type ProjectReplicaRemoveResult,
   type ProjectReplicaSynchronizationPolicy,
@@ -581,6 +584,30 @@ function githubRepositoryFromRemoteUrl(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function pathsEqual(left: string, right: string): boolean {
+  const comparable = (value: string) => {
+    const normalized = path.normalize(value);
+    if (process.platform !== "win32") return normalized;
+    const withoutNamespace = normalized.startsWith("\\\\?\\UNC\\")
+      ? `\\\\${normalized.slice(8)}`
+      : normalized.startsWith("\\\\?\\")
+        ? normalized.slice(4)
+        : normalized;
+    return withoutNamespace.toLowerCase();
+  };
+  return comparable(left) === comparable(right);
+}
+
+function pathIsWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
 }
 
 function pullRequestCheckoutIdentity(pullRequest: GithubPullRequestSummary): {
@@ -2042,7 +2069,7 @@ export class GithubClient {
     };
     const [owner, repository] = repositorySegments(input.nameWithOwner);
     const queueTarget =
-      normalizedInput.placement.mode === "managed"
+      normalizedInput.placement.mode !== "direct"
         ? path.join(this.dataDirectory, "repositories", owner, repository)
         : normalizedInput.placement.path;
     const previous =
@@ -2618,6 +2645,7 @@ export class GithubClient {
         await this.placementManager.record({
           canonicalPath: canonicalTarget,
           createdAt: new Date().toISOString(),
+          linkPath: null,
           mode: "direct",
           ownership,
           projectId: input.projectId,
@@ -2631,6 +2659,27 @@ export class GithubClient {
         return blocked(
           "target-repository-mismatch",
           "The materialized checkout could not be verified safely.",
+          false,
+        );
+      }
+    }
+
+    if (prepared.mode === "managed-link") {
+      try {
+        await this.placementManager.materializeManagedLink({
+          canonicalPath: canonicalTarget,
+          linkPath: prepared.linkPath!,
+          projectId: input.projectId,
+          repositoryFingerprint,
+          requestedPath: prepared.requestedPath!,
+        });
+      } catch (error) {
+        if (error instanceof ProjectReplicaPlacementError) {
+          return blockedFromPlacementError(error);
+        }
+        return blocked(
+          "link-unsupported",
+          "The managed repository link could not be created safely.",
           false,
         );
       }
@@ -2653,7 +2702,7 @@ export class GithubClient {
         ownership,
         canonicalPath: canonicalTarget,
         requestedPath: prepared.requestedPath,
-        linkPath: null,
+        linkPath: prepared.linkPath,
       },
       worktreePolicy: projectPolicy.policy,
     });
@@ -2663,16 +2712,23 @@ export class GithubClient {
     input: {
       jobId: string;
       attempt: number;
+      projectId?: string;
       nameWithOwner: string;
       sourcePath: string;
+      placement?: ProjectReplicaPlacementResult;
+      repositoryFingerprint?: string;
       expectedRevision: string;
       policy: ProjectReplicaSynchronizationPolicy;
     },
     reportProgress: (progress: ProjectReplicaJobProgressEvent) => void = () =>
       undefined,
   ): Promise<ProjectReplicaSynchronizeResult> {
+    const normalizedInput = {
+      ...input,
+      projectId: input.projectId ?? input.jobId,
+    };
     return this.withReplicaOperation(input.sourcePath, () =>
-      this.synchronizeReplicaUnlocked(input, reportProgress),
+      this.synchronizeReplicaUnlocked(normalizedInput, reportProgress),
     );
   }
 
@@ -2680,22 +2736,18 @@ export class GithubClient {
     input: {
       jobId: string;
       attempt: number;
+      projectId: string;
       nameWithOwner: string;
       sourcePath: string;
+      placement?: ProjectReplicaPlacementResult;
+      repositoryFingerprint?: string;
       expectedRevision: string;
       policy: ProjectReplicaSynchronizationPolicy;
     },
     reportProgress: (progress: ProjectReplicaJobProgressEvent) => void,
   ): Promise<ProjectReplicaSynchronizeResult> {
     const blocked = (
-      code:
-        | "target-not-found"
-        | "target-mismatch"
-        | "worktree-dirty"
-        | "revision-diverged"
-        | "unpushed-commits"
-        | "policy-denied"
-        | "remote-unavailable",
+      code: ProjectReplicaJobErrorCode,
       message: string,
       retryable: boolean,
     ): ProjectReplicaSynchronizeResult =>
@@ -2706,19 +2758,79 @@ export class GithubClient {
         error: { code, message: message.slice(0, 4_000), retryable },
       });
 
+    const placement = input.placement ?? null;
+    const placementMode = placement?.mode ?? "managed";
+    const customPlacement =
+      placementMode === "direct" || placementMode === "managed-link";
+    const sourceTarget = path.resolve(input.sourcePath);
+    if (
+      placement &&
+      !pathsEqual(path.resolve(placement.canonicalPath), sourceTarget)
+    ) {
+      return blocked(
+        "target-mismatch",
+        "The persisted canonical repository path does not match the synchronization target.",
+        false,
+      );
+    }
+    if (customPlacement && (!placement || !input.repositoryFingerprint)) {
+      return blocked(
+        "ownership-proof-missing",
+        "Custom repository synchronization requires its persisted placement identity.",
+        false,
+      );
+    }
     reportProgress({
       stage: "validating",
       percent: 10,
-      message: "Validating the worker-managed replica.",
+      message: customPlacement
+        ? "Validating the custom worker repository placement."
+        : "Validating the worker-managed replica.",
     });
-    const validation = await this.validateManagedReplica(
-      input.sourcePath,
-      input.nameWithOwner,
-    );
+    const validation =
+      placementMode === "direct"
+        ? await this.validateDirectReplica(
+            input.sourcePath,
+            input.nameWithOwner,
+          )
+        : await this.validateManagedReplica(
+            input.sourcePath,
+            input.nameWithOwner,
+          );
     if (!validation.ok) {
       return blocked(validation.code, validation.message, false);
     }
     const target = validation.path;
+    if (customPlacement && placement && input.repositoryFingerprint) {
+      const canonicalTarget = await realpath(target);
+      const gitCommonDir = await this.gitCommonDirectory(canonicalTarget);
+      const repositoryFingerprint = createHash("sha256")
+        .update(gitCommonDir)
+        .digest("hex");
+      if (repositoryFingerprint !== input.repositoryFingerprint) {
+        return blocked(
+          "ownership-proof-missing",
+          "The repository fingerprint no longer matches the persisted project replica.",
+          false,
+        );
+      }
+      try {
+        await this.placementManager.verifyPlacementOwnership({
+          canonicalPath: canonicalTarget,
+          gitCommonDir,
+          linkPath: placement.linkPath,
+          mode: placementMode,
+          ownership: placement.ownership,
+          projectId: input.projectId,
+          repositoryFingerprint,
+        });
+      } catch (error) {
+        if (error instanceof ProjectReplicaPlacementError) {
+          return blocked(error.code, error.message, error.retryable);
+        }
+        throw error;
+      }
+    }
     reportProgress({
       stage: "fetching",
       percent: 30,
@@ -2731,7 +2843,9 @@ export class GithubClient {
     } catch (error) {
       return blocked(
         "remote-unavailable",
-        `Could not fetch the repository origin: ${(error as Error).message}`,
+        customPlacement
+          ? "Could not fetch the selected worker checkout's repository origin."
+          : `Could not fetch the repository origin: ${(error as Error).message}`,
         true,
       );
     }
@@ -2875,19 +2989,98 @@ export class GithubClient {
     });
   }
 
+  async repairReplicaLink(input: {
+    projectId: string;
+    nameWithOwner: string;
+    sourcePath: string;
+    linkPath: string;
+    repositoryFingerprint: string;
+  }): Promise<ProjectReplicaLinkRepairResult> {
+    return this.withReplicaOperation(input.sourcePath, async () => {
+      const blocked = (
+        code: ProjectReplicaJobErrorCode,
+        message: string,
+        retryable = false,
+      ): ProjectReplicaLinkRepairResult =>
+        projectReplicaLinkRepairResultSchema.parse({
+          status: "blocked",
+          error: { code, message: message.slice(0, 4_000), retryable },
+        });
+      const validation = await this.validateManagedReplica(
+        input.sourcePath,
+        input.nameWithOwner,
+      );
+      if (!validation.ok) {
+        return blocked(validation.code, validation.message);
+      }
+      const canonicalPath = await realpath(validation.path);
+      const gitCommonDir = await this.gitCommonDirectory(canonicalPath);
+      const repositoryFingerprint = createHash("sha256")
+        .update(gitCommonDir)
+        .digest("hex");
+      if (repositoryFingerprint !== input.repositoryFingerprint) {
+        return blocked(
+          "ownership-proof-missing",
+          "The repository fingerprint no longer matches the managed-link replica.",
+        );
+      }
+      try {
+        await this.placementManager.verifyPlacementOwnership({
+          canonicalPath,
+          gitCommonDir,
+          linkPath: input.linkPath,
+          mode: "managed-link",
+          ownership: "cantrip",
+          projectId: input.projectId,
+          repositoryFingerprint,
+        });
+        const result = await this.placementManager.materializeManagedLink({
+          canonicalPath,
+          linkPath: input.linkPath,
+          projectId: input.projectId,
+          repositoryFingerprint,
+          requestedPath: input.linkPath,
+          requireExistingClaim: true,
+        });
+        return projectReplicaLinkRepairResultSchema.parse({
+          status: "ready",
+          projectId: input.projectId,
+          path: canonicalPath,
+          linkPath: input.linkPath,
+          repaired: result.changed,
+        });
+      } catch (error) {
+        if (error instanceof ProjectReplicaPlacementError) {
+          return blocked(error.code, error.message, error.retryable);
+        }
+        return blocked(
+          "link-unsupported",
+          "The managed repository link could not be repaired safely.",
+        );
+      }
+    });
+  }
+
   async removeReplica(
     input: {
       jobId: string;
       attempt: number;
+      projectId?: string;
       nameWithOwner: string;
       sourcePath: string;
+      placement?: ProjectReplicaPlacementResult;
+      repositoryFingerprint?: string;
       deleteLocalFiles: boolean;
     },
     reportProgress: (progress: ProjectReplicaJobProgressEvent) => void = () =>
       undefined,
   ): Promise<ProjectReplicaRemoveResult> {
+    const normalizedInput = {
+      ...input,
+      projectId: input.projectId ?? input.jobId,
+    };
     return this.withReplicaOperation(input.sourcePath, () =>
-      this.removeReplicaUnlocked(input, reportProgress),
+      this.removeReplicaUnlocked(normalizedInput, reportProgress),
     );
   }
 
@@ -2895,20 +3088,17 @@ export class GithubClient {
     input: {
       jobId: string;
       attempt: number;
+      projectId: string;
       nameWithOwner: string;
       sourcePath: string;
+      placement?: ProjectReplicaPlacementResult;
+      repositoryFingerprint?: string;
       deleteLocalFiles: boolean;
     },
     reportProgress: (progress: ProjectReplicaJobProgressEvent) => void,
   ): Promise<ProjectReplicaRemoveResult> {
     const blocked = (
-      code:
-        | "target-not-found"
-        | "target-mismatch"
-        | "worktree-dirty"
-        | "unpushed-commits"
-        | "policy-denied"
-        | "remote-unavailable",
+      code: ProjectReplicaJobErrorCode,
       message: string,
       retryable: boolean,
     ): ProjectReplicaRemoveResult =>
@@ -2918,12 +3108,61 @@ export class GithubClient {
         attempt: input.attempt,
         error: { code, message: message.slice(0, 4_000), retryable },
       });
+    const blockedFromPlacementError = (
+      error: ProjectReplicaPlacementError,
+    ): ProjectReplicaRemoveResult =>
+      blocked(error.code, error.message, error.retryable);
     const target = path.resolve(input.sourcePath);
+    const placement = input.placement ?? null;
+    const placementMode = placement?.mode ?? "managed";
+    const customPlacement =
+      placementMode === "direct" || placementMode === "managed-link";
     const root = this.repositoriesRoot();
-    if (!target.startsWith(`${root}${path.sep}`) || target === root) {
+    const canonicalRoot = await realpath(root).catch(() => root);
+    if (
+      placement &&
+      !pathsEqual(path.resolve(placement.canonicalPath), target)
+    ) {
       return blocked(
         "target-mismatch",
-        "Cantrip will only remove repositories from worker-managed storage.",
+        "The persisted canonical repository path does not match the removal target.",
+        false,
+      );
+    }
+    if (
+      placementMode !== "direct" &&
+      !(
+        (pathIsWithin(root, target) && !pathsEqual(target, root)) ||
+        (pathIsWithin(canonicalRoot, target) &&
+          !pathsEqual(target, canonicalRoot))
+      )
+    ) {
+      return blocked(
+        "target-mismatch",
+        "Cantrip will only remove managed repositories from worker-owned storage.",
+        false,
+      );
+    }
+    if (customPlacement && !input.repositoryFingerprint) {
+      return blocked(
+        "ownership-proof-missing",
+        "Custom repository removal requires its persisted repository fingerprint.",
+        false,
+      );
+    }
+    const placementReleased =
+      customPlacement && placement && input.repositoryFingerprint
+        ? await this.placementManager.isPlacementReleased({
+            canonicalPath: target,
+            mode: placementMode,
+            projectId: input.projectId,
+            repositoryFingerprint: input.repositoryFingerprint,
+          })
+        : false;
+    if (placementReleased && input.deleteLocalFiles) {
+      return blocked(
+        "policy-denied",
+        "This repository placement was already retained as user-managed storage.",
         false,
       );
     }
@@ -2931,30 +3170,188 @@ export class GithubClient {
       await access(target);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        if (placementReleased) {
+          return projectReplicaRemoveResultSchema.parse({
+            status: "removed",
+            jobId: input.jobId,
+            attempt: input.attempt,
+            path: target,
+            localFilesDeleted: false,
+            ownershipReleased: true,
+          });
+        }
+        let linkRemoved = false;
+        let warning: string | null = null;
+        if (
+          placementMode === "managed-link" &&
+          placement?.linkPath &&
+          input.repositoryFingerprint
+        ) {
+          try {
+            await this.placementManager.verifyPlacementOwnership({
+              canonicalPath: target,
+              gitCommonDir: "",
+              linkPath: placement.linkPath,
+              mode: "managed-link",
+              ownership: placement.ownership,
+              projectId: input.projectId,
+              repositoryFingerprint: input.repositoryFingerprint,
+            });
+            if (input.deleteLocalFiles) {
+              const link =
+                await this.placementManager.removeManagedLinkIfMatching({
+                  canonicalPath: target,
+                  linkPath: placement.linkPath,
+                });
+              linkRemoved = link.removed;
+              warning = link.warning;
+            }
+            if (input.deleteLocalFiles) {
+              await this.placementManager.forgetPlacement(
+                input.projectId,
+                target,
+              );
+            } else {
+              await this.placementManager.releasePlacement({
+                canonicalPath: target,
+                gitCommonDir: null,
+                mode: "managed-link",
+                ownership: placement.ownership,
+                projectId: input.projectId,
+                repositoryFingerprint: input.repositoryFingerprint,
+              });
+            }
+          } catch (placementError) {
+            if (placementError instanceof ProjectReplicaPlacementError) {
+              return blockedFromPlacementError(placementError);
+            }
+            throw placementError;
+          }
+        } else if (placementMode === "direct") {
+          await this.placementManager.forgetPlacement(input.projectId, target);
+        }
         return projectReplicaRemoveResultSchema.parse({
           status: "removed",
           jobId: input.jobId,
           attempt: input.attempt,
           path: target,
           localFilesDeleted: input.deleteLocalFiles,
+          linkRemoved,
+          ownershipReleased: customPlacement,
+          warning,
         });
       }
       throw error;
     }
-    const validation = await this.validateManagedReplica(
-      target,
-      input.nameWithOwner,
-    );
+    const validation =
+      placementMode === "direct"
+        ? await this.validateDirectReplica(target, input.nameWithOwner)
+        : await this.validateManagedReplica(target, input.nameWithOwner);
     if (!validation.ok) {
       return blocked(validation.code, validation.message, false);
     }
+    const canonicalTarget = await realpath(target);
+    let gitCommonDir: string | null = null;
+    if (customPlacement) {
+      gitCommonDir = await this.gitCommonDirectory(canonicalTarget);
+      const repositoryFingerprint = createHash("sha256")
+        .update(gitCommonDir)
+        .digest("hex");
+      if (repositoryFingerprint !== input.repositoryFingerprint) {
+        return blocked(
+          "ownership-proof-missing",
+          "The repository fingerprint no longer matches the persisted project replica.",
+          false,
+        );
+      }
+      if (
+        !placement ||
+        (placementMode === "managed-link" && !placement.linkPath)
+      ) {
+        return blocked(
+          "ownership-proof-missing",
+          "The custom repository placement metadata is incomplete.",
+          false,
+        );
+      }
+      if (placementReleased) {
+        try {
+          await this.placementManager.releasePlacement({
+            canonicalPath: canonicalTarget,
+            gitCommonDir,
+            mode: placementMode,
+            ownership: placement.ownership,
+            projectId: input.projectId,
+            repositoryFingerprint,
+          });
+        } catch (error) {
+          if (error instanceof ProjectReplicaPlacementError) {
+            return blockedFromPlacementError(error);
+          }
+          throw error;
+        }
+        return projectReplicaRemoveResultSchema.parse({
+          status: "removed",
+          jobId: input.jobId,
+          attempt: input.attempt,
+          path: target,
+          localFilesDeleted: false,
+          ownershipReleased: true,
+        });
+      }
+      try {
+        await this.placementManager.verifyPlacementOwnership({
+          canonicalPath: canonicalTarget,
+          gitCommonDir,
+          linkPath: placement.linkPath,
+          mode: placementMode,
+          ownership: placement.ownership,
+          projectId: input.projectId,
+          repositoryFingerprint,
+        });
+      } catch (error) {
+        if (error instanceof ProjectReplicaPlacementError) {
+          return blockedFromPlacementError(error);
+        }
+        throw error;
+      }
+      if (
+        placementMode === "direct" &&
+        placement.ownership === "user" &&
+        input.deleteLocalFiles
+      ) {
+        return blocked(
+          "policy-denied",
+          "This checkout existed before Cantrip and cannot be deleted.",
+          false,
+        );
+      }
+    }
     if (!input.deleteLocalFiles) {
+      if (customPlacement && placement && gitCommonDir) {
+        try {
+          await this.placementManager.releasePlacement({
+            canonicalPath: canonicalTarget,
+            gitCommonDir,
+            mode: placementMode,
+            ownership: placement.ownership,
+            projectId: input.projectId,
+            repositoryFingerprint: input.repositoryFingerprint!,
+          });
+        } catch (error) {
+          if (error instanceof ProjectReplicaPlacementError) {
+            return blockedFromPlacementError(error);
+          }
+          throw error;
+        }
+      }
       return projectReplicaRemoveResultSchema.parse({
         status: "removed",
         jobId: input.jobId,
         attempt: input.attempt,
         path: target,
         localFilesDeleted: false,
+        ownershipReleased: customPlacement,
       });
     }
     reportProgress({
@@ -3016,7 +3413,9 @@ export class GithubClient {
     } catch (error) {
       return blocked(
         "remote-unavailable",
-        `Could not verify published history: ${(error as Error).message}`,
+        customPlacement
+          ? "Could not verify published history for the selected worker checkout."
+          : `Could not verify published history: ${(error as Error).message}`,
         true,
       );
     }
@@ -3048,13 +3447,62 @@ export class GithubClient {
       percent: 80,
       message: "Removing verified worker-local replica files.",
     });
+    if (
+      customPlacement &&
+      placement &&
+      gitCommonDir &&
+      input.repositoryFingerprint
+    ) {
+      try {
+        await this.placementManager.verifyPlacementOwnership({
+          canonicalPath: canonicalTarget,
+          gitCommonDir,
+          linkPath: placement.linkPath,
+          mode: placementMode,
+          ownership: placement.ownership,
+          projectId: input.projectId,
+          repositoryFingerprint: input.repositoryFingerprint,
+        });
+      } catch (error) {
+        if (error instanceof ProjectReplicaPlacementError) {
+          return blockedFromPlacementError(error);
+        }
+        throw error;
+      }
+    }
     await rm(target, { recursive: true, force: false });
+    let linkRemoved = false;
+    let warning: string | null = null;
+    if (
+      placementMode === "managed-link" &&
+      placement?.linkPath &&
+      input.repositoryFingerprint
+    ) {
+      const link = await this.placementManager.removeManagedLinkIfMatching({
+        canonicalPath: canonicalTarget,
+        linkPath: placement.linkPath,
+      });
+      linkRemoved = link.removed;
+      warning = link.warning;
+      await this.placementManager.forgetPlacement(
+        input.projectId,
+        canonicalTarget,
+      );
+    } else if (placementMode === "direct") {
+      await this.placementManager.forgetPlacement(
+        input.projectId,
+        canonicalTarget,
+      );
+    }
     return projectReplicaRemoveResultSchema.parse({
       status: "removed",
       jobId: input.jobId,
       attempt: input.attempt,
       path: target,
       localFilesDeleted: true,
+      linkRemoved,
+      ownershipReleased: customPlacement,
+      warning,
     });
   }
 
@@ -3082,6 +3530,124 @@ export class GithubClient {
     }
   }
 
+  private async gitCommonDirectory(repositoryPath: string): Promise<string> {
+    const commonDirOutput = (
+      await execFileAsync(
+        "git",
+        ["-C", repositoryPath, "rev-parse", "--git-common-dir"],
+        { maxBuffer: 1024 * 1024 },
+      )
+    ).stdout.trim();
+    return realpath(
+      path.isAbsolute(commonDirOutput)
+        ? commonDirOutput
+        : path.resolve(repositoryPath, commonDirOutput),
+    );
+  }
+
+  private async validateDirectReplica(
+    repositoryPath: string,
+    nameWithOwner: string,
+  ): Promise<
+    | { ok: true; path: string }
+    | {
+        ok: false;
+        code:
+          | "target-not-found"
+          | "target-repository-mismatch"
+          | "target-not-primary-worktree";
+        message: string;
+      }
+  > {
+    const target = path.resolve(repositoryPath);
+    try {
+      const entry = await lstat(target);
+      if (!entry.isDirectory() || entry.isSymbolicLink()) {
+        return {
+          ok: false,
+          code: "target-repository-mismatch",
+          message: "The direct repository path is not a canonical directory.",
+        };
+      }
+      if (!pathsEqual(await realpath(target), target)) {
+        return {
+          ok: false,
+          code: "target-repository-mismatch",
+          message:
+            "The direct repository path no longer has its canonical identity.",
+        };
+      }
+      const topLevel = await realpath(
+        (
+          await execFileAsync(
+            "git",
+            ["-C", target, "rev-parse", "--show-toplevel"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim(),
+      );
+      const isBare = (
+        await execFileAsync(
+          "git",
+          ["-C", target, "rev-parse", "--is-bare-repository"],
+          { maxBuffer: 1024 * 1024 },
+        )
+      ).stdout.trim();
+      const origin = (
+        await execFileAsync(
+          "git",
+          ["-C", target, "config", "--get", "remote.origin.url"],
+          { maxBuffer: 1024 * 1024 },
+        )
+      ).stdout.trim();
+      if (
+        !pathsEqual(topLevel, target) ||
+        isBare !== "false" ||
+        githubRepositoryFromRemoteUrl(origin) !== nameWithOwner.toLowerCase()
+      ) {
+        return {
+          ok: false,
+          code: "target-repository-mismatch",
+          message:
+            "The direct checkout no longer matches this GitHub repository.",
+        };
+      }
+      const gitDirOutput = (
+        await execFileAsync("git", ["-C", target, "rev-parse", "--git-dir"], {
+          maxBuffer: 1024 * 1024,
+        })
+      ).stdout.trim();
+      const gitDir = await realpath(
+        path.isAbsolute(gitDirOutput)
+          ? gitDirOutput
+          : path.resolve(target, gitDirOutput),
+      );
+      const commonDir = await this.gitCommonDirectory(target);
+      if (!pathsEqual(gitDir, commonDir)) {
+        return {
+          ok: false,
+          code: "target-not-primary-worktree",
+          message:
+            "Only the direct repository's Primary worktree can be removed.",
+        };
+      }
+      return { ok: true, path: target };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return {
+          ok: false,
+          code: "target-not-found",
+          message: "The direct repository checkout no longer exists.",
+        };
+      }
+      return {
+        ok: false,
+        code: "target-repository-mismatch",
+        message: "The direct repository checkout could not be verified safely.",
+      };
+    }
+  }
+
   private async validateManagedReplica(
     repositoryPath: string,
     nameWithOwner: string,
@@ -3095,14 +3661,6 @@ export class GithubClient {
   > {
     const root = this.repositoriesRoot();
     const target = path.resolve(repositoryPath);
-    if (!target.startsWith(`${root}${path.sep}`) || target === root) {
-      return {
-        ok: false,
-        code: "target-mismatch",
-        message:
-          "The replica path is outside worker-managed repository storage.",
-      };
-    }
     try {
       const entry = await lstat(target);
       if (!entry.isDirectory() || entry.isSymbolicLink()) {
@@ -3127,8 +3685,8 @@ export class GithubClient {
       realpath(target),
     ]);
     if (
-      !resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`) ||
-      resolvedTarget === resolvedRoot
+      !pathIsWithin(resolvedRoot, resolvedTarget) ||
+      pathsEqual(resolvedTarget, resolvedRoot)
     ) {
       return {
         ok: false,

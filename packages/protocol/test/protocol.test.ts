@@ -1658,6 +1658,19 @@ describe("Cantrip protocol", () => {
         deleteLocalFiles: true,
       }),
     ).toMatchObject({ type: "project.replica.remove", deleteLocalFiles: true });
+    expect(
+      workerCommandSchema.parse({
+        type: "project.replica.link.repair",
+        projectId: jobId,
+        repository: { nameWithOwner: "ArcaneArts/Cantrip" },
+        sourcePath: "/worker/repositories/ArcaneArts/Cantrip",
+        linkPath: "/workspace/Cantrip",
+        repositoryFingerprint: "c".repeat(64),
+      }),
+    ).toMatchObject({
+      type: "project.replica.link.repair",
+      projectId: jobId,
+    });
   });
 
   it("validates split project token usage analytics", () => {

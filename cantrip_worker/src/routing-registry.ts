@@ -21,6 +21,7 @@ const protectedResultTypes = new Set([
   "project.replica.provision",
   "project.replica.synchronize",
   "project.replica.remove",
+  "project.replica.link.repair",
   "worktree.list",
   "worktree.reconcile",
   "worktree.create",
