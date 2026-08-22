@@ -21,6 +21,7 @@ import type { WorkerCommandBus } from "../src/workers/bridge.js";
 import {
   protectedChatFields,
   protectedProjectFields,
+  protectedTerminalFields,
 } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-run-cli-"));
@@ -151,7 +152,7 @@ let projectId: string;
 let worktreeId: string;
 
 async function cli(
-  command: "run.start" | "run.status" | "run.logs" | "run.stop",
+  command: "run.start" | "run.open" | "run.status" | "run.logs" | "run.stop",
   arguments_: Record<string, unknown>,
   requestId: string,
 ) {
@@ -277,6 +278,7 @@ describe("Run CLI execution", () => {
         state: "running",
         terminalId: null,
       },
+      surface: { status: "unavailable", terminalId: null },
     });
     const runId = (started.data as { run: { id: string } }).run.id;
 
@@ -309,6 +311,113 @@ describe("Run CLI execution", () => {
     );
     expect(starts.some((command) => "command" in command)).toBe(false);
 
+    const unavailableOpen = await cli(
+      "run.open",
+      { runId, focus: true },
+      "run-open-headless-fixture",
+    );
+    expect(unavailableOpen.statusCode, unavailableOpen.body).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(unavailableOpen.json()).data,
+    ).toMatchObject({
+      run: { id: runId, terminalId: null },
+      surface: { status: "unavailable", terminalId: null },
+    });
+
+    const protectedTerminal = protectedTerminalFields(runId);
+    const materialized = await app.inject({
+      method: "PUT",
+      url: `/api/runs/${runId}/terminal`,
+      payload: {
+        projectId,
+        worktreeId,
+        terminalId: runId,
+        titleProtection: protectedTerminal.titleProtection,
+        stateProtection: protectedTerminal.stateProtection,
+      },
+    });
+    expect(materialized.statusCode, materialized.body).toBe(201);
+    expect(materialized.json()).toMatchObject({
+      id: runId,
+      projectId,
+      worktreeId,
+      activeWorkerId: "run-worker",
+    });
+    const repeatedMaterialization = await app.inject({
+      method: "PUT",
+      url: `/api/runs/${runId}/terminal`,
+      payload: {
+        projectId,
+        worktreeId,
+        terminalId: runId,
+        titleProtection: protectedTerminal.titleProtection,
+        stateProtection: protectedTerminal.stateProtection,
+      },
+    });
+    expect(
+      repeatedMaterialization.statusCode,
+      repeatedMaterialization.body,
+    ).toBe(200);
+    expect(
+      (
+        await database.repository.listTerminals(LOCAL_USER_ID, projectId)
+      ).filter((terminal) => terminal.id === runId),
+    ).toHaveLength(1);
+
+    const mismatchedTerminal = protectedTerminalFields(
+      "00000000-0000-4000-8000-000000000099",
+    );
+    const rejectedIdentity = await app.inject({
+      method: "PUT",
+      url: `/api/runs/${runId}/terminal`,
+      payload: {
+        projectId,
+        worktreeId,
+        terminalId: "00000000-0000-4000-8000-000000000099",
+        titleProtection: mismatchedTerminal.titleProtection,
+        stateProtection: mismatchedTerminal.stateProtection,
+      },
+    });
+    expect(rejectedIdentity.statusCode, rejectedIdentity.body).toBe(409);
+
+    const rejectedService = await app.inject({
+      method: "PUT",
+      url: `/api/terminals/${runId}/service`,
+      payload: {
+        enabled: true,
+        stateProtection: protectedTerminal.stateProtection,
+      },
+    });
+    expect(rejectedService.statusCode, rejectedService.body).toBe(409);
+    expect(rejectedService.json()).toMatchObject({
+      error: "Run terminals are controlled by their managed Run session.",
+    });
+
+    const rejectedWorktreeChange = await app.inject({
+      method: "PATCH",
+      url: `/api/terminals/${runId}/worktree`,
+      payload: { worktreeId },
+    });
+    expect(rejectedWorktreeChange.statusCode, rejectedWorktreeChange.body).toBe(
+      409,
+    );
+    expect(rejectedWorktreeChange.json()).toMatchObject({
+      error: "Run terminals cannot change worktrees.",
+    });
+
+    const reopened = await cli(
+      "run.open",
+      { runId, focus: true },
+      "run-open-existing-fixture",
+    );
+    expect(reopened.statusCode, reopened.body).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(reopened.json()).data,
+    ).toMatchObject({
+      run: { id: runId, terminalId: runId },
+      surface: { status: "unavailable", terminalId: runId },
+    });
+
     const status = await cli("run.status", {}, "run-status-fixture");
     expect(status.statusCode, status.body).toBe(200);
     expect(
@@ -338,6 +447,69 @@ describe("Run CLI execution", () => {
         run: { id: runId, state: "stopped", signal: "SIGTERM" },
       },
     );
+    expect(
+      (await database.repository.listTerminals(LOCAL_USER_ID, projectId)).find(
+        (terminal) => terminal.id === runId,
+      ),
+    ).toMatchObject({ status: "exited" });
+
+    const environment = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-environment?worktreeId=${worktreeId}`,
+    });
+    expect(environment.statusCode, environment.body).toBe(200);
+    expect(environment.json()).toMatchObject({
+      worktreeId,
+      inspection: { platform: "linux", valid: true },
+      run: { id: runId, state: "stopped" },
+    });
+
+    const appRequest = {
+      requestId: "00000000-0000-4000-8000-000000000040",
+      actionId,
+      configRevision: configurationRevision,
+      focus: false,
+      worktreeId,
+    };
+    const appStart = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/runs`,
+      payload: appRequest,
+    });
+    expect(appStart.statusCode, appStart.body).toBe(201);
+    expect(appStart.json()).toMatchObject({
+      run: { actionId, state: "running", terminalId: null },
+      surface: { status: "unavailable", terminalId: null },
+    });
+    const appRunId = (appStart.json() as { run: { id: string } }).run.id;
+    const appStartRetry = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/runs`,
+      payload: appRequest,
+    });
+    expect(appStartRetry.statusCode, appStartRetry.body).toBe(201);
+    expect(appStartRetry.json()).toMatchObject({ run: { id: appRunId } });
+
+    const appOpen = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/runs/${appRunId}/open`,
+      payload: { focus: false, worktreeId },
+    });
+    expect(appOpen.statusCode, appOpen.body).toBe(200);
+    expect(appOpen.json()).toMatchObject({
+      run: { id: appRunId },
+      surface: { status: "unavailable", terminalId: null },
+    });
+
+    const appStop = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/runs/${appRunId}/stop`,
+      payload: { worktreeId },
+    });
+    expect(appStop.statusCode, appStop.body).toBe(200);
+    expect(appStop.json()).toMatchObject({
+      run: { id: appRunId, state: "stopped" },
+    });
 
     const audits = await database.repository.listAuditEvents(
       { limit: 50 },
@@ -354,6 +526,21 @@ describe("Run CLI execution", () => {
           action: "run.cli.stopped",
           result: "succeeded",
           resource: { type: "run-instance", id: runId },
+        }),
+        expect.objectContaining({
+          action: "run.app.started",
+          result: "succeeded",
+          resource: { type: "run-instance", id: appRunId },
+        }),
+        expect.objectContaining({
+          action: "run.app.opened",
+          result: "succeeded",
+          resource: { type: "run-instance", id: appRunId },
+        }),
+        expect.objectContaining({
+          action: "run.app.stopped",
+          result: "succeeded",
+          resource: { type: "run-instance", id: appRunId },
         }),
       ]),
     );

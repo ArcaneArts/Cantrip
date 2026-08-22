@@ -887,6 +887,18 @@ failure, exact reset preservation, opaque worker commands, and a full public
 table scan containing neither the sentinel working directory nor service
 command.
 
+Run terminal materialization uses the same terminal label and private-state
+envelopes, but only after the server has authorized an exact durable Run. The
+live client-control frame contains public Run/project/worktree identity and a
+terminal UUID fixed to the Run UUID; the client authors both ciphertexts and
+the Run-specific server route attaches them idempotently. The server can route
+the opaque state but cannot decrypt the terminal title or working-directory
+selection. Relay and direct transports attach the surface to the existing
+worker-managed Run PTY and retain the protected terminal-stream protocol. An
+explicit managed-Run marker prevents a missing or lost Run from being opened as
+a new ordinary shell, and Run terminals cannot be converted to auto-restarting
+services or rebound to another worktree.
+
 ### Explorer selected state
 
 The Explorer selected path now uses a row-bound `explorer-state` bundle under

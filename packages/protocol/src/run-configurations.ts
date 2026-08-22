@@ -170,6 +170,56 @@ export const runInstanceResultSchema = z
   .object({ run: runInstanceSchema })
   .strict();
 
+export const runTerminalSurfaceStatusSchema = z.enum([
+  "applied",
+  "declined",
+  "unsupported",
+  "expired",
+  "unavailable",
+]);
+
+export const runTerminalSurfaceResultSchema = z
+  .object({
+    status: runTerminalSurfaceStatusSchema,
+    terminalId: runInstanceSchema.shape.terminalId,
+  })
+  .strict();
+
+export const runStartResultSchema = z
+  .object({
+    run: runInstanceSchema,
+    surface: runTerminalSurfaceResultSchema.default({
+      status: "unavailable",
+      terminalId: null,
+    }),
+  })
+  .strict();
+
+export const runEnvironmentSummarySchema = z
+  .object({
+    worktreeId: runInstanceSchema.shape.worktreeId,
+    inspection: runConfigurationInspectionSchema,
+    run: runInstanceSchema.nullable(),
+  })
+  .strict();
+
+export const runEnvironmentRequestSchema = z
+  .object({ worktreeId: runInstanceSchema.shape.worktreeId.optional() })
+  .strict();
+
+export const runStartRequestSchema = runEnvironmentRequestSchema
+  .extend({
+    requestId: z.string().uuid(),
+    actionId: runConfigurationActionSchema.shape.id,
+    configRevision: runConfigurationDefinitionSchema.shape.revision,
+    focus: z.boolean().default(true),
+  })
+  .strict();
+
+export const runOpenRequestSchema = runEnvironmentRequestSchema
+  .extend({ focus: z.boolean().default(true) })
+  .strict();
+
 export const runLogResultSchema = z
   .object({
     run: runInstanceSchema,
@@ -202,6 +252,13 @@ export type RunConfigurationSelection = z.infer<
 >;
 export type RunInstanceState = z.infer<typeof runInstanceStateSchema>;
 export type RunInstance = z.infer<typeof runInstanceSchema>;
+export type RunStartResult = z.infer<typeof runStartResultSchema>;
+export type RunTerminalSurfaceResult = z.infer<
+  typeof runTerminalSurfaceResultSchema
+>;
+export type RunEnvironmentSummary = z.infer<typeof runEnvironmentSummarySchema>;
+export type RunStartRequest = z.infer<typeof runStartRequestSchema>;
+export type RunOpenRequest = z.infer<typeof runOpenRequestSchema>;
 export type WorkerRunIdentity = z.infer<typeof workerRunIdentitySchema>;
 export type WorkerRunSnapshot = z.infer<typeof workerRunSnapshotSchema>;
 export type WorkerRunLookup = z.infer<typeof workerRunLookupSchema>;

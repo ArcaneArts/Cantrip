@@ -100,6 +100,8 @@ enum RunCommand {
     },
     /// Stop a worker-managed Run and its process tree.
     Stop { run_id: String },
+    /// Materialize or reopen a Run in a connected Cantrip client.
+    Open { run_id: String },
     /// Validate project Run configuration files for the current worker.
     Validate,
     /// Inspect the canonical Run configuration location.
@@ -474,6 +476,10 @@ fn invocation(command: Command) -> Result<Invocation, String> {
                 command: "run.stop",
                 arguments: json!({ "runId": run_id }),
             },
+            RunCommand::Open { run_id } => Invocation {
+                command: "run.open",
+                arguments: json!({ "runId": run_id, "focus": true }),
+            },
             RunCommand::Validate => Invocation {
                 command: "run.validate",
                 arguments: json!({}),
@@ -603,6 +609,12 @@ mod tests {
                 "stop",
                 "00000000-0000-0000-0000-000000000001",
             ][..],
+            &[
+                "cantrip",
+                "run",
+                "open",
+                "00000000-0000-0000-0000-000000000001",
+            ][..],
             &["cantrip", "run", "validate"][..],
             &["cantrip", "run", "config", "path"][..],
         ] {
@@ -644,6 +656,15 @@ mod tests {
                     "00000000-0000-0000-0000-000000000001",
                 ][..],
                 "run.stop",
+            ),
+            (
+                &[
+                    "cantrip",
+                    "run",
+                    "open",
+                    "00000000-0000-0000-0000-000000000001",
+                ][..],
+                "run.open",
             ),
         ] {
             let cli = Cli::try_parse_from(arguments).expect("parse run command");

@@ -568,6 +568,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       binding.capabilityId,
       target.resourceId,
       target.serverId,
+      target.managedRunId ?? null,
     );
   });
   directBroker.setCapabilityRevoker((capabilityId, reason) => {
@@ -737,6 +738,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         run,
       }),
   });
+  terminalDirectEndpoints.setManagedRunSupervisor(managedRuns);
   const providerAuthObserver = new ProviderAuthObserver({
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
   });
@@ -2672,6 +2674,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             stateProtection: command.stateProtection,
             service: workerEncryption,
           });
+          if (command.managedRunId) {
+            if (
+              command.managedRunId !== command.terminalId ||
+              !managedRuns.has(command.managedRunId)
+            ) {
+              throw new Error("The managed Run is unavailable on this worker.");
+            }
+            const result = await managedRuns.attach(
+              command.managedRunId,
+              command.attachmentId,
+              command.cols,
+              command.rows,
+              protectedEmit,
+            );
+            await outputQueue;
+            return result;
+          }
           if (command.launch.type === "codex") {
             const runtime = runtimeFor({
               model: command.launch.model,
@@ -2738,10 +2757,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
       }
       case "terminal.detach": {
-        const result = terminals.detach(
-          command.terminalId,
-          command.attachmentId,
-        );
+        const result = managedRuns.has(command.terminalId)
+          ? managedRuns.detach(command.terminalId, command.attachmentId)
+          : terminals.detach(command.terminalId, command.attachmentId);
         const context = terminalStreamContexts.get(command.attachmentId);
         if (context) {
           surfaceStreamReplay.release(context);
@@ -2765,7 +2783,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           schema: terminalInputContentSchema,
           service: workerEncryption,
         });
-        terminals.input(command.terminalId, content.data);
+        if (managedRuns.has(command.terminalId)) {
+          managedRuns.input(command.terminalId, content.data);
+        } else {
+          terminals.input(command.terminalId, content.data);
+        }
         const protectedResponse = await protectWorkerSurfaceStreamContent({
           context: { ...streamContext, direction: "response" },
           content: {
@@ -2783,10 +2805,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
       case "terminal.resize":
-        terminals.resize(command.terminalId, command.cols, command.rows);
+        if (managedRuns.has(command.terminalId)) {
+          managedRuns.resize(command.terminalId, command.cols, command.rows);
+        } else {
+          terminals.resize(command.terminalId, command.cols, command.rows);
+        }
         return { accepted: true };
       case "terminal.close":
-        terminals.close(command.terminalId);
+        if (!managedRuns.has(command.terminalId)) {
+          terminals.close(command.terminalId);
+        }
         return { accepted: true };
       case "terminal.snapshot": {
         const streamContext = {
@@ -2810,7 +2838,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ok: true as const,
             result: {
               type: "terminal.snapshot" as const,
-              ...terminals.snapshot(command.terminalId, request.maxChars),
+              ...(managedRuns.has(command.terminalId)
+                ? managedRuns.snapshot(command.terminalId, request.maxChars)
+                : terminals.snapshot(command.terminalId, request.maxChars)),
             },
           };
         } catch (error) {

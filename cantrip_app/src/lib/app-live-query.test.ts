@@ -263,6 +263,14 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "run",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([["run-environment", "project-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           entityId: "workflow-one",
           resource: "workflow-definition",
           scope: { kind: "project", projectId: "project-one" },

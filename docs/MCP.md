@@ -77,8 +77,10 @@ the raw command or volatile PTY output to the audit log.
 5. Create or edit `.codex/environments/environment.toml` with normal repository
    tools, and validate it with `cantrip run validate`. Use `run_config_list` or
    `run_config_read` to obtain the exact action ID and configuration revision,
-   then prefer `run_start`, `run_status`, `run_read`, and `run_stop` over copied
-   shell commands. MCP never invokes the CLI internally.
+   then prefer `run_start`, `run_status`, `run_read`, `run_open`, and
+   `run_stop` over copied shell commands. MCP never invokes the CLI internally.
+   A headless start is successful even when its surface status is unavailable;
+   use `run_open` after a compatible client reconnects.
 6. If a result has `continuationScheduled: true`, end the current turn
    immediately so Cantrip can checkpoint and resume in the selected lane.
 7. If managed MCP is unavailable, use `cantrip -h` and the corresponding CLI
@@ -94,10 +96,11 @@ only. CodeGraph remains separately labeled **Read only**.
 
 ## Tool catalog
 
-The catalog contains 29 tools. Read-only and mutation annotations are attached
+The catalog contains 30 tools. Read-only and mutation annotations are attached
 per tool. Cantrip narrows Codex's enabled tool list to the current permission
-profile, so read-only bindings receive the Run read tools but not `run_start` or
-`run_stop`; the broker and server independently enforce the same boundary.
+profile, so read-only bindings receive the Run read tools but not `run_start`,
+`run_open`, or `run_stop`; the broker and server independently enforce the same
+boundary.
 
 | Tool                      | Kind                            | Purpose                                                                                         |
 | ------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -117,6 +120,7 @@ profile, so read-only bindings receive the Run read tools but not `run_start` or
 | `terminal_read`           | Read                            | Read a bounded protected Terminal snapshot.                                                     |
 | `browser_services`        | Read/open-world                 | Discover bounded local HTTP services visible to a Browser target.                               |
 | `run_start`               | Open-world mutation             | Start an exact revision-checked action in the bound worktree through its target worker.         |
+| `run_open`                | Mutation                        | Retry idempotent encrypted terminal materialization for an exact Run through a live client.     |
 | `run_stop`                | Destructive/open-world mutation | Stop an exact Run and its complete worker-owned process group.                                  |
 | `worktree_create`         | Mutation                        | Create an agent-owned worktree in the bound project.                                            |
 | `worktree_switch`         | Mutation                        | Schedule continuation in an exact authorized worktree.                                          |
@@ -131,10 +135,12 @@ profile, so read-only bindings receive the Run read tools but not `run_start` or
 | `client_focus_surface`    | Client mutation                 | Ask a compatible app to focus an authorized Chat, Terminal, Explorer, Code, or Browser surface. |
 | `client_show_interaction` | Client mutation                 | Ask a compatible chat-active app to show an exact pending interaction without answering it.     |
 
-Creating a new UI surface is intentionally not an MCP tool. Surface creation
-has durable ownership, persistence, and lifecycle semantics and must not be
-confused with the ephemeral client-control path. A future `surface_create`
-requires a separate durable design.
+Unrestricted UI-surface creation is intentionally not an MCP tool. `run_open`
+is the narrow exception: the server first authorizes an exact existing Run,
+fixes project/worktree/worker identity, requires the terminal UUID to equal the
+Run UUID, and then asks a compatible client to author the encrypted terminal
+fields. A generic future `surface_create` still requires a separate durable
+design.
 
 ## Client controls
 
@@ -153,6 +159,14 @@ correlation IDs are acknowledged from a bounded client cache so a retry cannot
 apply the same control twice. Capability fields were introduced within live
 protocol version 1 and the app/server release is deployed as one compatibility
 unit; older clients that omit capabilities safely receive no controls.
+
+`materialize-run-terminal` carries the exact project, worktree, Run UUID,
+matching terminal UUID, and focus intent. The client verifies project access,
+encrypts the title and private terminal state, and calls the Run-specific
+idempotent server route. The server does not accept generic surface creation,
+and the worker attaches that surface only to the already existing managed Run
+PTY. No eligible client yields `surface.status = unavailable` without changing
+the successful Run result.
 
 ## Failure and recovery
 

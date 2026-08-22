@@ -27,6 +27,7 @@ import {
   cantripMcpClientNotifyInputSchema,
   cantripMcpClientNotifyResultSchema,
   cantripMcpClientShowInteractionInputSchema,
+  clientControlCommandSchema,
   cantripMcpConnectionDocumentSchema,
   cantripMcpContextGetResultSchema,
   cantripMcpExplorerReadInputSchema,
@@ -97,6 +98,8 @@ import {
   settingsBundleSchema,
   providerModelCatalogEntrySchema,
   reasoningEffortSchema,
+  runStartRequestSchema,
+  runStartResultSchema,
   explorerFileWriteSchema,
   explorerOperationRequestContentSchema,
   explorerMediaTypeForPath,
@@ -805,6 +808,7 @@ describe("Cantrip protocol", () => {
     ).toBe(true);
     expect(isCantripMcpMutationOperation("context.get")).toBe(false);
     expect(isCantripMcpMutationOperation("run.start")).toBe(true);
+    expect(isCantripMcpMutationOperation("run.open")).toBe(true);
     expect(isCantripMcpMutationOperation("run.stop")).toBe(true);
     expect(CANTRIP_MCP_READ_OPERATIONS).toEqual(
       expect.arrayContaining([
@@ -815,16 +819,16 @@ describe("Cantrip protocol", () => {
       ]),
     );
     expect(CANTRIP_MCP_MUTATION_OPERATIONS).toEqual(
-      expect.arrayContaining(["run.start", "run.stop"]),
+      expect.arrayContaining(["run.start", "run.open", "run.stop"]),
     );
     expect(cantripMcpOperationsForPermissionProfile(":read-only")).not.toEqual(
-      expect.arrayContaining(["run.start", "run.stop"]),
+      expect.arrayContaining(["run.start", "run.open", "run.stop"]),
     );
     const actionId = "a".repeat(64);
     const configRevision = "b".repeat(64);
     expect(
       cantripMcpRunStartInputSchema.parse({ actionId, configRevision }),
-    ).toEqual({ actionId, configRevision });
+    ).toEqual({ actionId, configRevision, focus: true });
     expect(
       cantripMcpRunStartInputSchema.safeParse({
         action: "Run Spectral Lab",
@@ -936,6 +940,62 @@ describe("Cantrip protocol", () => {
         mutated: true,
       }).success,
     ).toBe(false);
+
+    const runId = "00000000-0000-4000-8000-000000000020";
+    expect(
+      runStartRequestSchema.parse({
+        requestId: "00000000-0000-4000-8000-000000000022",
+        actionId: "a".repeat(64),
+        configRevision: "b".repeat(64),
+      }),
+    ).toMatchObject({ focus: true });
+    expect(
+      runStartRequestSchema.safeParse({
+        actionId: "a".repeat(64),
+        configRevision: "b".repeat(64),
+      }).success,
+    ).toBe(false);
+    expect(
+      clientControlCommandSchema.parse({
+        kind: "materialize-run-terminal",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+        runId,
+        terminalId: runId,
+        focus: true,
+      }),
+    ).toMatchObject({ runId, terminalId: runId, focus: true });
+    expect(
+      clientControlCommandSchema.safeParse({
+        kind: "materialize-run-terminal",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+        runId,
+        terminalId: "00000000-0000-4000-8000-000000000021",
+        focus: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      runStartResultSchema.parse({
+        run: {
+          id: runId,
+          projectId: "project-one",
+          worktreeId: "worktree-one",
+          workerId: "worker-one",
+          actionId: "a".repeat(64),
+          configurationRevision: "b".repeat(64),
+          state: "running",
+          createdAt: "2026-08-21T12:00:00.000Z",
+          updatedAt: "2026-08-21T12:00:00.000Z",
+          startedAt: "2026-08-21T12:00:00.000Z",
+          endedAt: null,
+          exitCode: null,
+          signal: null,
+          terminalId: null,
+        },
+        surface: { status: "unavailable", terminalId: null },
+      }),
+    ).toMatchObject({ surface: { status: "unavailable" } });
   });
 
   it("validates CLI commands across the local broker and server boundary", () => {

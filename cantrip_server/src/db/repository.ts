@@ -135,6 +135,7 @@ import type {
   EncryptedProjectViewUpdate,
   SettingsBundleWire,
   EncryptedTerminalCreate,
+  EncryptedRunTerminalMaterialization,
   EncryptedTerminalServiceConfiguration,
   TerminalServiceRuntimeConfiguration,
   TerminalWireSummary,
@@ -9643,6 +9644,132 @@ export class ServerRepository {
     return rows[0] ? toRunInstance(rows[0].run) : null;
   }
 
+  async getRunInstanceByTerminal(
+    ownerId: string,
+    terminalId: string,
+  ): Promise<RunInstance | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.runInstances)
+      .where(
+        and(
+          eq(schema.runInstances.ownerId, ownerId),
+          eq(schema.runInstances.terminalId, terminalId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toRunInstance(rows[0]) : null;
+  }
+
+  async materializeRunTerminal(
+    ownerId: string,
+    runId: string,
+    input: EncryptedRunTerminalMaterialization,
+  ): Promise<{
+    created: boolean;
+    run: RunInstance;
+    terminal: TerminalWireSummary;
+  } | null> {
+    const run = await this.getRunInstance(
+      ownerId,
+      input.projectId,
+      input.worktreeId,
+      runId,
+    );
+    if (!run) return null;
+    if (input.terminalId !== run.id) {
+      throw new Error("A Run terminal must reuse the Run UUID.");
+    }
+    if (run.terminalId && run.terminalId !== input.terminalId) {
+      throw new Error("The Run is already attached to another terminal.");
+    }
+
+    const position = await this.nextProjectTabPosition(input.projectId);
+    const terminalStatus: TerminalWireSummary["status"] = [
+      "queued",
+      "starting",
+      "running",
+      "stopping",
+    ].includes(run.state)
+      ? "running"
+      : run.state === "failed"
+        ? "failed"
+        : "exited";
+    return this.database.transaction(async (transaction) => {
+      const inserted = await transaction
+        .insert(schema.terminals)
+        .values({
+          id: input.terminalId,
+          projectId: input.projectId,
+          protectedLabel: input.titleProtection,
+          protectedState: input.stateProtection,
+          position,
+          status: terminalStatus,
+          activeWorkerId: run.workerId,
+          worktreeId: run.worktreeId,
+        })
+        .onConflictDoNothing({ target: schema.terminals.id })
+        .returning();
+      const terminalRows = inserted[0]
+        ? inserted
+        : await transaction
+            .select()
+            .from(schema.terminals)
+            .where(eq(schema.terminals.id, input.terminalId))
+            .limit(1);
+      const terminal = terminalRows[0];
+      if (
+        !terminal ||
+        (!inserted[0] && run.terminalId !== input.terminalId) ||
+        terminal.projectId !== run.projectId ||
+        terminal.worktreeId !== run.worktreeId ||
+        terminal.activeWorkerId !== run.workerId ||
+        terminal.linkedChatId !== null
+      ) {
+        throw new Error(
+          "The Run terminal identity belongs to another surface.",
+        );
+      }
+      await transaction
+        .update(schema.runInstances)
+        .set({ terminalId: input.terminalId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.runInstances.id, run.id),
+            eq(schema.runInstances.ownerId, ownerId),
+            or(
+              isNull(schema.runInstances.terminalId),
+              eq(schema.runInstances.terminalId, input.terminalId),
+            ),
+          ),
+        );
+      if (inserted[0]) {
+        await attachProjectTab(transaction, {
+          projectId: run.projectId,
+          tabId: terminal.id,
+          tabKind: "terminal",
+        });
+      }
+      const updatedRun = await transaction
+        .select()
+        .from(schema.runInstances)
+        .where(
+          and(
+            eq(schema.runInstances.id, run.id),
+            eq(schema.runInstances.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      return {
+        created: Boolean(inserted[0]),
+        run: toRunInstance(
+          firstOrThrow(updatedRun, "attaching a terminal to a Run"),
+        ),
+        terminal: toTerminalWireSummary(terminal),
+      };
+    });
+  }
+
   async listActiveRunIdentitiesForWorker(
     ownerId: string,
     workerId: string,
@@ -11929,6 +12056,11 @@ export class ServerRepository {
     if (owned.linkedChatId) {
       throw new Error("Linked Codex consoles cannot run terminal services.");
     }
+    if (await this.getRunInstanceByTerminal(ownerId, terminalId)) {
+      throw new Error(
+        "Run terminals are controlled by their managed Run session.",
+      );
+    }
     const result = await this.database
       .update(schema.terminals)
       .set({
@@ -11992,6 +12124,9 @@ export class ServerRepository {
       throw new Error(
         "Linked Codex consoles inherit their parent chat worktree.",
       );
+    }
+    if (await this.getRunInstanceByTerminal(ownerId, terminalId)) {
+      throw new Error("Run terminals cannot change worktrees.");
     }
     if (terminal.status === "running") {
       throw new Error("Stop the terminal before changing its worktree.");
@@ -13345,6 +13480,15 @@ export class ServerRepository {
     const context = await this.getTerminalExecutionContext(ownerId, terminalId);
     if (!context) return null;
     await this.database.transaction(async (transaction) => {
+      await transaction
+        .update(schema.runInstances)
+        .set({ terminalId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.runInstances.ownerId, ownerId),
+            eq(schema.runInstances.terminalId, terminalId),
+          ),
+        );
       await detachProjectTab(
         transaction,
         context.projectId,

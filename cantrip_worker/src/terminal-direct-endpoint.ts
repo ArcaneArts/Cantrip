@@ -16,6 +16,7 @@ import type {
   TerminalManager,
   TerminalRuntimeEvent,
 } from "./terminal-manager.js";
+import type { ManagedRunSupervisor } from "./managed-run-supervisor.js";
 import { workerLogError, workerLogger } from "./logger.js";
 import {
   openWorkerSurfaceStreamContent,
@@ -40,9 +41,14 @@ function rawText(data: RawData): string {
 export class TerminalDirectEndpointManager {
   readonly #endpoints = new Map<string, Endpoint>();
   #encryption: WorkerEncryptionService | null = null;
+  #managedRuns: ManagedRunSupervisor | null = null;
   #replay: SurfaceStreamReplayGuard | null = null;
 
   constructor(private readonly terminals: TerminalManager) {}
+
+  setManagedRunSupervisor(supervisor: ManagedRunSupervisor): void {
+    this.#managedRuns = supervisor;
+  }
 
   setEncryptionService(
     service: WorkerEncryptionService,
@@ -56,6 +62,7 @@ export class TerminalDirectEndpointManager {
     capabilityId: string,
     terminalId: string,
     serverId: string,
+    managedRunId: string | null = null,
   ): Promise<TunnelDataPlaneTarget> {
     this.revoke(capabilityId, "Direct terminal capability rotated");
     const server = createServer((_request, response) => {
@@ -94,7 +101,7 @@ export class TerminalDirectEndpointManager {
       }
       endpoint.sockets.add(socket);
       server.close();
-      this.#attach(terminalId, operationId, serverId, socket);
+      this.#attach(terminalId, operationId, serverId, managedRunId, socket);
       socket.once("close", () => endpoint.sockets.delete(socket));
     });
     await new Promise<void>((resolve, reject) => {
@@ -150,12 +157,21 @@ export class TerminalDirectEndpointManager {
     terminalId: string,
     operationId: string,
     serverId: string,
+    managedRunId: string | null,
     socket: WebSocket,
   ): void {
     const encryption = this.#encryption;
     const replay = this.#replay;
     if (!encryption || !replay) {
       socket.close(1011, "Terminal encryption unavailable");
+      return;
+    }
+    const managedRun = managedRunId ? this.#managedRuns : null;
+    if (
+      managedRunId &&
+      (managedRunId !== terminalId || !managedRun?.has(managedRunId))
+    ) {
+      socket.close(1011, "Managed Run unavailable");
       return;
     }
     const attachmentId = `direct:${randomUUID()}`;
@@ -184,7 +200,11 @@ export class TerminalDirectEndpointManager {
     const detach = () => {
       if (detached) return;
       detached = true;
-      this.terminals.detach(terminalId, attachmentId);
+      if (managedRun) {
+        managedRun.detach(terminalId, attachmentId);
+      } else {
+        this.terminals.detach(terminalId, attachmentId);
+      }
       replay.release(inputContext);
       workerLogger.event("info", "Direct terminal client disconnected", {
         event: "terminal.direct.disconnected",
@@ -222,10 +242,18 @@ export class TerminalDirectEndpointManager {
               schema: terminalInputContentSchema,
               service: encryption,
             });
-            this.terminals.input(terminalId, content.data);
+            if (managedRun) {
+              managedRun.input(terminalId, content.data);
+            } else {
+              this.terminals.input(terminalId, content.data);
+            }
             replay.accept(context, false);
           } else {
-            this.terminals.resize(terminalId, message.cols, message.rows);
+            if (managedRun) {
+              managedRun.resize(terminalId, message.cols, message.rows);
+            } else {
+              this.terminals.resize(terminalId, message.cols, message.rows);
+            }
           }
         })
         .catch(() => {
@@ -241,36 +269,33 @@ export class TerminalDirectEndpointManager {
     let outputSequence = 0;
     let outputQueue = Promise.resolve();
     try {
-      opened = this.terminals.attachExisting(
-        terminalId,
-        attachmentId,
-        80,
-        24,
-        (event: TerminalRuntimeEvent) => {
-          if (event.type === "terminal.ready") send({ type: "ready" });
-          else if (event.type === "terminal.output") {
-            const sequence = outputSequence;
-            outputSequence += 1;
-            outputQueue = outputQueue.then(async () => {
-              send({
-                type: "output",
-                operationId,
-                sequence,
-                protectedData: await protectWorkerSurfaceStreamContent({
-                  context: {
-                    ...inputContext,
-                    direction: "output",
-                    sequence,
-                  },
-                  content: event,
-                  schema: terminalOutputContentSchema,
-                  service: encryption,
-                }),
-              });
+      const emit = (event: TerminalRuntimeEvent) => {
+        if (event.type === "terminal.ready") send({ type: "ready" });
+        else if (event.type === "terminal.output") {
+          const sequence = outputSequence;
+          outputSequence += 1;
+          outputQueue = outputQueue.then(async () => {
+            send({
+              type: "output",
+              operationId,
+              sequence,
+              protectedData: await protectWorkerSurfaceStreamContent({
+                context: {
+                  ...inputContext,
+                  direction: "output",
+                  sequence,
+                },
+                content: event,
+                schema: terminalOutputContentSchema,
+                service: encryption,
+              }),
             });
-          }
-        },
-      );
+          });
+        }
+      };
+      opened = managedRun
+        ? managedRun.attach(terminalId, attachmentId, 80, 24, emit)
+        : this.terminals.attachExisting(terminalId, attachmentId, 80, 24, emit);
     } catch (error) {
       workerLogger.event("warn", "Direct terminal attachment failed", {
         event: "terminal.direct.attach-failed",

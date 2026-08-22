@@ -337,7 +337,7 @@ pub fn render(command: &str, result: &CommandResult, json: bool) {
             println!("{}", result.summary);
             return;
         }
-        "run.start" | "run.status" | "run.stop" => {
+        "run.start" | "run.open" | "run.status" | "run.stop" => {
             println!("{}", result.summary);
             if let Some(run) = result.data.as_ref().and_then(|data| data.get("run")) {
                 println!("ID: {}", string(Some(run), "id"));

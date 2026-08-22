@@ -246,6 +246,9 @@ import {
   serverBootstrapSchema,
   settingsBundleSchema,
   scriptCommandListSchema,
+  runEnvironmentSummarySchema,
+  runInstanceResultSchema,
+  runStartResultSchema,
   skillListSchema,
   skillSettingsContextSchema,
   skillSettingsDeleteRequestSchema,
@@ -4107,6 +4110,92 @@ export async function getTerminals(projectId: string) {
   );
   return Promise.all(
     terminals.map((terminal) => surfaceTitleEncryption.openTerminal(terminal)),
+  );
+}
+
+function runEnvironmentQuery(worktreeId?: string): string {
+  const query = new URLSearchParams();
+  if (worktreeId) query.set("worktreeId", worktreeId);
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+export async function getRunEnvironment(
+  projectId: string,
+  worktreeId?: string,
+) {
+  return runEnvironmentSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/run-environment${runEnvironmentQuery(worktreeId)}`,
+    ),
+  );
+}
+
+export async function startRun(
+  projectId: string,
+  input: {
+    requestId: string;
+    actionId: string;
+    configRevision: string;
+    focus?: boolean;
+    worktreeId?: string;
+  },
+) {
+  return runStartResultSchema.parse(
+    await post(`/api/projects/${encodeURIComponent(projectId)}/runs`, input),
+  );
+}
+
+export async function openRun(
+  projectId: string,
+  runId: string,
+  input: { focus?: boolean; worktreeId?: string } = {},
+) {
+  return runStartResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}/open`,
+      input,
+    ),
+  );
+}
+
+export async function stopRun(
+  projectId: string,
+  runId: string,
+  worktreeId?: string,
+) {
+  return runInstanceResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}/stop`,
+      worktreeId ? { worktreeId } : {},
+    ),
+  );
+}
+
+export async function materializeRunTerminal(
+  projectId: string,
+  worktreeId: string,
+  runId: string,
+) {
+  const terminalId = runId;
+  const title = `Run ${runId.slice(0, 8)}`;
+  const [titleProtection, stateProtection] = await Promise.all([
+    surfaceTitleEncryption.protect(terminalId, title, "terminal"),
+    surfaceTitleEncryption.protectTerminalState(terminalId, undefined, ""),
+  ]);
+  return surfaceTitleEncryption.openTerminal(
+    terminalWireSummarySchema.parse(
+      await request(`/api/runs/${encodeURIComponent(runId)}/terminal`, {
+        method: "PUT",
+        body: JSON.stringify({
+          projectId,
+          worktreeId,
+          terminalId,
+          titleProtection,
+          stateProtection,
+        }),
+      }),
+    ),
   );
 }
 
