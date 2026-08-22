@@ -3,6 +3,30 @@ import type {
   ProjectSummary,
 } from "@cantrip/protocol";
 
+export function projectListRefreshInterval(
+  resourcesLive: boolean,
+  projects: readonly Pick<ProjectSummary, "setupStatus">[] | undefined,
+): number | false {
+  if (
+    projects?.some(
+      (project) =>
+        project.setupStatus === "cloning" ||
+        project.setupStatus === "preparing",
+    )
+  ) {
+    return 3_000;
+  }
+  return resourcesLive ? false : 15_000;
+}
+
+export function projectSetupJobRefreshInterval(
+  setupStatus: ProjectSummary["setupStatus"],
+): number | false {
+  return setupStatus === "cloning" || setupStatus === "preparing"
+    ? 2_000
+    : false;
+}
+
 export function projectOwningWorkerId(
   project: Pick<ProjectSummary, "preferredWorkerId" | "source"> | undefined,
   setupJob?: Pick<ProjectReplicaJobSummary, "workerId">,
