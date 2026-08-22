@@ -65,12 +65,19 @@ import {
   type GithubWorkerRepository,
   type ProjectCloneResult,
   type ProjectReplicaJobProgressEvent,
+  type ProjectReplicaJobErrorCode,
+  type ProjectReplicaPlacementRequest,
   type ProjectReplicaProvisionResult,
   type ProjectReplicaRemoveResult,
   type ProjectReplicaSynchronizationPolicy,
   type ProjectReplicaSynchronizeResult,
   type WorktreePolicy,
 } from "@cantrip/protocol";
+
+import {
+  ProjectReplicaPlacementError,
+  ProjectReplicaPlacementManager,
+} from "./project-replica-placement.js";
 
 const execFileAsync = promisify(execFile);
 const SAFE_REPOSITORY_SEGMENT = /^[A-Za-z0-9_.-]+$/;
@@ -980,8 +987,17 @@ function parseRelease(value: GithubApiRelease): GithubReleaseSummary {
 
 export class GithubClient {
   private readonly replicaOperationQueues = new Map<string, Promise<void>>();
+  private readonly placementManager: ProjectReplicaPlacementManager;
 
-  constructor(private readonly dataDirectory: string) {}
+  constructor(
+    private readonly dataDirectory: string,
+    workerId = "local-worker",
+  ) {
+    this.placementManager = new ProjectReplicaPlacementManager(
+      dataDirectory,
+      workerId,
+    );
+  }
 
   private repositoriesRoot(): string {
     return path.resolve(this.dataDirectory, "repositories");
@@ -1985,10 +2001,13 @@ export class GithubClient {
   }
 
   async cloneRepository(nameWithOwner: string): Promise<ProjectCloneResult> {
+    const jobId = randomUUID();
     const provisioned = await this.provisionReplica({
-      jobId: randomUUID(),
+      jobId,
       attempt: 1,
+      projectId: jobId,
       nameWithOwner,
+      placement: { mode: "managed" },
       expectedRevision: null,
     });
     if (provisioned.status === "blocked") {
@@ -2008,34 +2027,42 @@ export class GithubClient {
     input: {
       jobId: string;
       attempt: number;
+      projectId?: string;
       nameWithOwner: string;
+      placement?: ProjectReplicaPlacementRequest;
       expectedRevision: string | null;
     },
     reportProgress: (progress: ProjectReplicaJobProgressEvent) => void = () =>
       undefined,
   ): Promise<ProjectReplicaProvisionResult> {
+    const normalizedInput = {
+      ...input,
+      projectId: input.projectId ?? input.jobId,
+      placement: input.placement ?? ({ mode: "managed" } as const),
+    };
     const [owner, repository] = repositorySegments(input.nameWithOwner);
-    const target = path.join(
-      this.dataDirectory,
-      "repositories",
-      owner,
-      repository,
-    );
+    const queueTarget =
+      normalizedInput.placement.mode === "managed"
+        ? path.join(this.dataDirectory, "repositories", owner, repository)
+        : normalizedInput.placement.path;
     const previous =
-      this.replicaOperationQueues.get(target) ?? Promise.resolve();
+      this.replicaOperationQueues.get(queueTarget) ?? Promise.resolve();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
     const queued = previous.catch(() => undefined).then(() => gate);
-    this.replicaOperationQueues.set(target, queued);
+    this.replicaOperationQueues.set(queueTarget, queued);
     await previous.catch(() => undefined);
     try {
-      return await this.provisionReplicaUnlocked(input, reportProgress);
+      return await this.provisionReplicaUnlocked(
+        normalizedInput,
+        reportProgress,
+      );
     } finally {
       release();
-      if (this.replicaOperationQueues.get(target) === queued) {
-        this.replicaOperationQueues.delete(target);
+      if (this.replicaOperationQueues.get(queueTarget) === queued) {
+        this.replicaOperationQueues.delete(queueTarget);
       }
     }
   }
@@ -2044,33 +2071,16 @@ export class GithubClient {
     input: {
       jobId: string;
       attempt: number;
+      projectId: string;
       nameWithOwner: string;
+      placement: ProjectReplicaPlacementRequest;
       expectedRevision: string | null;
     },
     reportProgress: (progress: ProjectReplicaJobProgressEvent) => void,
   ): Promise<ProjectReplicaProvisionResult> {
-    reportProgress({
-      stage: "validating",
-      percent: 10,
-      message: "Validating the managed replica target.",
-    });
     const [owner, repository] = repositorySegments(input.nameWithOwner);
-    const repositoriesDirectory = path.join(
-      this.dataDirectory,
-      "repositories",
-      owner,
-    );
-    const target = path.join(repositoriesDirectory, repository);
-    await mkdir(repositoriesDirectory, { recursive: true });
-
     const blocked = (
-      code:
-        | "target-not-found"
-        | "target-mismatch"
-        | "worktree-dirty"
-        | "revision-diverged"
-        | "remote-unavailable"
-        | "windows-long-paths-disabled",
+      code: ProjectReplicaJobErrorCode,
       message: string,
       retryable: boolean,
     ): ProjectReplicaProvisionResult =>
@@ -2080,16 +2090,186 @@ export class GithubClient {
         attempt: input.attempt,
         error: { code, message: message.slice(0, 4_000), retryable },
       });
+    const blockedFromPlacementError = (
+      error: ProjectReplicaPlacementError,
+    ): ProjectReplicaProvisionResult =>
+      blocked(error.code, error.message, error.retryable);
 
-    let reused = true;
+    reportProgress({
+      stage:
+        input.placement.mode === "managed"
+          ? "validating"
+          : "validating-placement",
+      percent: 10,
+      message:
+        input.placement.mode === "managed"
+          ? "Validating the managed replica target."
+          : "Validating the custom repository placement.",
+    });
+    let prepared;
     try {
-      await access(target);
+      prepared = await this.placementManager.prepare({
+        jobId: input.jobId,
+        managedTarget: path.join(
+          this.dataDirectory,
+          "repositories",
+          owner,
+          repository,
+        ),
+        placement: input.placement,
+        projectId: input.projectId,
+      });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      reused = false;
+      if (error instanceof ProjectReplicaPlacementError) {
+        return blockedFromPlacementError(error);
+      }
+      throw error;
     }
 
-    if (reused) {
+    const target = prepared.targetPath;
+    let materialization: "attached" | "cloned" | "reused" = prepared.exists
+      ? "reused"
+      : "cloned";
+    let ownership: "cantrip" | "user" = "cantrip";
+    let directCommonDir: string | null = null;
+    let directFingerprint: string | null = null;
+
+    if (prepared.exists && prepared.mode === "direct") {
+      reportProgress({
+        stage: "inspecting-existing-checkout",
+        percent: 35,
+        message: "Inspecting the existing checkout without modifying it.",
+      });
+      try {
+        const topLevel = (
+          await execFileAsync(
+            "git",
+            ["-C", target, "rev-parse", "--show-toplevel"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim();
+        const canonicalTopLevel = await realpath(topLevel);
+        if (canonicalTopLevel !== target) {
+          return blocked(
+            "target-repository-mismatch",
+            "The requested target is not the root of its Git checkout.",
+            false,
+          );
+        }
+        const isBare = (
+          await execFileAsync(
+            "git",
+            ["-C", target, "rev-parse", "--is-bare-repository"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim();
+        if (isBare !== "false") {
+          return blocked(
+            "target-repository-mismatch",
+            "Bare Git repositories cannot be attached as a project checkout.",
+            false,
+          );
+        }
+        const origin = (
+          await execFileAsync(
+            "git",
+            ["-C", target, "config", "--get", "remote.origin.url"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim();
+        if (
+          githubRepositoryFromRemoteUrl(origin) !==
+          input.nameWithOwner.toLowerCase()
+        ) {
+          return blocked(
+            "target-repository-mismatch",
+            "The requested checkout belongs to a different GitHub repository.",
+            false,
+          );
+        }
+        const gitDirOutput = (
+          await execFileAsync("git", ["-C", target, "rev-parse", "--git-dir"], {
+            maxBuffer: 1024 * 1024,
+          })
+        ).stdout.trim();
+        const commonDirOutput = (
+          await execFileAsync(
+            "git",
+            ["-C", target, "rev-parse", "--git-common-dir"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim();
+        const gitDir = await realpath(
+          path.isAbsolute(gitDirOutput)
+            ? gitDirOutput
+            : path.resolve(target, gitDirOutput),
+        );
+        directCommonDir = await realpath(
+          path.isAbsolute(commonDirOutput)
+            ? commonDirOutput
+            : path.resolve(target, commonDirOutput),
+        );
+        if (gitDir !== directCommonDir) {
+          return blocked(
+            "target-not-primary-worktree",
+            "Only the repository's Primary worktree can be attached.",
+            false,
+          );
+        }
+        const currentRevision = await resolveGitCommit(target, "HEAD");
+        if (
+          input.expectedRevision &&
+          currentRevision !== input.expectedRevision.toLowerCase()
+        ) {
+          return blocked(
+            "target-revision-mismatch",
+            "The existing checkout is not at the requested immutable revision.",
+            false,
+          );
+        }
+        if (input.expectedRevision) {
+          const status = (
+            await execFileAsync(
+              "git",
+              [
+                "-C",
+                target,
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+              ],
+              { maxBuffer: 4 * 1024 * 1024 },
+            )
+          ).stdout.trim();
+          if (status) {
+            return blocked(
+              "worktree-dirty",
+              "An exact-revision replica can attach only to a clean checkout.",
+              false,
+            );
+          }
+        }
+        directFingerprint = createHash("sha256")
+          .update(directCommonDir)
+          .digest("hex");
+        ownership = await this.placementManager.classifyExisting({
+          canonicalPath: target,
+          gitCommonDir: directCommonDir,
+          projectId: input.projectId,
+          repositoryFingerprint: directFingerprint,
+        });
+        materialization = ownership === "cantrip" ? "reused" : "attached";
+      } catch (error) {
+        if (error instanceof ProjectReplicaPlacementError) {
+          return blockedFromPlacementError(error);
+        }
+        return blocked(
+          "target-repository-mismatch",
+          "The requested target is not an attachable Git checkout.",
+          false,
+        );
+      }
+    } else if (prepared.exists) {
       let origin: string;
       try {
         origin = (
@@ -2193,14 +2373,25 @@ export class GithubClient {
         );
       }
     } else {
-      const staging = `${target}.cantrip-provision-${input.jobId}`;
+      const staging = prepared.stagingPath;
       reportProgress({
         stage: "materializing",
         percent: 30,
-        message: "Cloning into worker-owned staging storage.",
+        message:
+          prepared.mode === "direct"
+            ? "Cloning into custom-placement staging storage."
+            : "Cloning into worker-owned staging storage.",
       });
       try {
-        await rm(staging, { recursive: true, force: true });
+        if (prepared.mode === "direct") {
+          await this.placementManager.claimStaging({
+            jobId: input.jobId,
+            projectId: input.projectId,
+            stagingPath: staging,
+          });
+        } else {
+          await rm(staging, { recursive: true, force: true });
+        }
         await cloneGithubRepository(
           input.nameWithOwner,
           staging,
@@ -2233,7 +2424,15 @@ export class GithubClient {
               { maxBuffer: 1024 * 1024 },
             );
           } catch {
-            await rm(staging, { recursive: true, force: true });
+            if (prepared.mode === "direct") {
+              await this.placementManager.cleanupStaging({
+                jobId: input.jobId,
+                projectId: input.projectId,
+                stagingPath: staging,
+              });
+            } else {
+              await rm(staging, { recursive: true, force: true });
+            }
             return blocked(
               "target-not-found",
               `Revision ${input.expectedRevision} is not available from the repository origin.`,
@@ -2248,15 +2447,76 @@ export class GithubClient {
         } else if (!(await resolveGitCommit(staging, "HEAD"))) {
           await attachUnbornHeadToOrigin(staging);
         }
+        if (prepared.mode === "direct") {
+          const commonDirOutput = (
+            await execFileAsync(
+              "git",
+              ["-C", staging, "rev-parse", "--git-common-dir"],
+              { maxBuffer: 1024 * 1024 },
+            )
+          ).stdout.trim();
+          const stagingCommonDir = await realpath(
+            path.isAbsolute(commonDirOutput)
+              ? commonDirOutput
+              : path.resolve(staging, commonDirOutput),
+          );
+          const relativeCommonDir = path.relative(staging, stagingCommonDir);
+          if (
+            !relativeCommonDir ||
+            relativeCommonDir === ".." ||
+            relativeCommonDir.startsWith(`..${path.sep}`) ||
+            path.isAbsolute(relativeCommonDir)
+          ) {
+            throw new ProjectReplicaPlacementError(
+              "ownership-proof-missing",
+              "The staged checkout has an unsupported Git common directory.",
+            );
+          }
+          const expectedCommonDir = path.join(target, relativeCommonDir);
+          const expectedFingerprint = createHash("sha256")
+            .update(expectedCommonDir)
+            .digest("hex");
+          await this.placementManager.writeCreatedMarker({
+            gitCommonDir: stagingCommonDir,
+            projectId: input.projectId,
+            repositoryFingerprint: expectedFingerprint,
+          });
+        }
         await rename(staging, target);
+        if (prepared.mode === "direct") {
+          await this.placementManager.cleanupStaging({
+            jobId: input.jobId,
+            projectId: input.projectId,
+            stagingPath: staging,
+          });
+        }
       } catch (error) {
-        await rm(staging, { recursive: true, force: true }).catch(
-          () => undefined,
-        );
+        if (prepared.mode === "direct") {
+          await this.placementManager
+            .cleanupStaging({
+              jobId: input.jobId,
+              projectId: input.projectId,
+              stagingPath: staging,
+            })
+            .catch(() => undefined);
+        } else {
+          await rm(staging, { recursive: true, force: true }).catch(
+            () => undefined,
+          );
+        }
+        if (error instanceof ProjectReplicaPlacementError) {
+          return blockedFromPlacementError(error);
+        }
         const detail =
           error instanceof Error ? error.message : "Unknown Git clone failure.";
         const failure = githubCloneFailureDetails(detail);
-        return blocked(failure.code, failure.message, true);
+        return blocked(
+          failure.code,
+          prepared.mode === "direct" && failure.code === "remote-unavailable"
+            ? "Could not clone the repository into the requested worker placement."
+            : failure.message,
+          true,
+        );
       }
     }
 
@@ -2266,38 +2526,135 @@ export class GithubClient {
       message: "Verifying the materialized repository identity and revision.",
     });
 
-    const resolvedRevision = await resolveGitCommit(target, "HEAD");
+    const canonicalTarget = await realpath(target);
+    const resolvedRevision = await resolveGitCommit(canonicalTarget, "HEAD");
     const branch = (
-      await execFileAsync("git", ["-C", target, "branch", "--show-current"], {
-        maxBuffer: 1024 * 1024,
-      })
-    ).stdout.trim();
-    const commonDirOutput = (
       await execFileAsync(
         "git",
-        ["-C", target, "rev-parse", "--git-common-dir"],
+        ["-C", canonicalTarget, "branch", "--show-current"],
         { maxBuffer: 1024 * 1024 },
       )
     ).stdout.trim();
-    const commonDir = await realpath(
-      path.isAbsolute(commonDirOutput)
-        ? commonDirOutput
-        : path.resolve(target, commonDirOutput),
-    );
+    const commonDir =
+      directCommonDir ??
+      (await (async () => {
+        const commonDirOutput = (
+          await execFileAsync(
+            "git",
+            ["-C", canonicalTarget, "rev-parse", "--git-common-dir"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim();
+        return realpath(
+          path.isAbsolute(commonDirOutput)
+            ? commonDirOutput
+            : path.resolve(canonicalTarget, commonDirOutput),
+        );
+      })());
+    const repositoryFingerprint =
+      directFingerprint ?? createHash("sha256").update(commonDir).digest("hex");
 
-    const projectPolicy = await readProjectWorktreePolicy(target);
+    if (prepared.mode === "direct") {
+      try {
+        const configuredOrigin = (
+          await execFileAsync(
+            "git",
+            ["-C", canonicalTarget, "config", "--get", "remote.origin.url"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim();
+        if (
+          githubRepositoryFromRemoteUrl(configuredOrigin) !==
+          input.nameWithOwner.toLowerCase()
+        ) {
+          return blocked(
+            "target-repository-mismatch",
+            "The materialized checkout belongs to a different GitHub repository.",
+            false,
+          );
+        }
+        const topLevel = await realpath(
+          (
+            await execFileAsync(
+              "git",
+              ["-C", canonicalTarget, "rev-parse", "--show-toplevel"],
+              { maxBuffer: 1024 * 1024 },
+            )
+          ).stdout.trim(),
+        );
+        const gitDirOutput = (
+          await execFileAsync(
+            "git",
+            ["-C", canonicalTarget, "rev-parse", "--git-dir"],
+            { maxBuffer: 1024 * 1024 },
+          )
+        ).stdout.trim();
+        const gitDir = await realpath(
+          path.isAbsolute(gitDirOutput)
+            ? gitDirOutput
+            : path.resolve(canonicalTarget, gitDirOutput),
+        );
+        if (topLevel !== canonicalTarget || gitDir !== commonDir) {
+          return blocked(
+            "target-not-primary-worktree",
+            "The materialized checkout is not the repository's Primary worktree.",
+            false,
+          );
+        }
+        if (materialization === "cloned") {
+          ownership = await this.placementManager.classifyExisting({
+            canonicalPath: canonicalTarget,
+            gitCommonDir: commonDir,
+            projectId: input.projectId,
+            repositoryFingerprint,
+          });
+          if (ownership !== "cantrip") {
+            throw new ProjectReplicaPlacementError(
+              "ownership-proof-missing",
+              "The cloned checkout is missing its Cantrip ownership proof.",
+            );
+          }
+        }
+        await this.placementManager.record({
+          canonicalPath: canonicalTarget,
+          createdAt: new Date().toISOString(),
+          mode: "direct",
+          ownership,
+          projectId: input.projectId,
+          repositoryFingerprint,
+          requestedPath: prepared.requestedPath!,
+        });
+      } catch (error) {
+        if (error instanceof ProjectReplicaPlacementError) {
+          return blockedFromPlacementError(error);
+        }
+        return blocked(
+          "target-repository-mismatch",
+          "The materialized checkout could not be verified safely.",
+          false,
+        );
+      }
+    }
+
+    const projectPolicy = await readProjectWorktreePolicy(canonicalTarget);
     return projectReplicaProvisionResultSchema.parse({
       status: "ready",
       jobId: input.jobId,
       attempt: input.attempt,
-      path: target,
-      displayPath: `${owner}/${repository}`,
-      repositoryFingerprint: createHash("sha256")
-        .update(commonDir)
-        .digest("hex"),
+      path: canonicalTarget,
+      displayPath: prepared.requestedPath ?? `${owner}/${repository}`,
+      repositoryFingerprint,
       resolvedRevision,
       branch: branch || null,
-      reused,
+      reused: materialization !== "cloned",
+      placement: {
+        mode: prepared.mode,
+        materialization,
+        ownership,
+        canonicalPath: canonicalTarget,
+        requestedPath: prepared.requestedPath,
+        linkPath: null,
+      },
       worktreePolicy: projectPolicy.policy,
     });
   }

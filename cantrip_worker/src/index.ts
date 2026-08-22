@@ -677,7 +677,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const chatRelocations = new ChatRelocationHydrationStore(
     config.dataDirectory,
   );
-  const github = new GithubClient(config.dataDirectory);
+  const github = new GithubClient(config.dataDirectory, config.workerId);
   const managedFolders = new ManagedFolderManager(config.dataDirectory);
   const projectGithubConverter = new ProjectGithubConverter(managedFolders);
   const codexAuthClients = new Map<string, CodexAuthClient>();
@@ -1558,7 +1558,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           {
             jobId: command.jobId,
             attempt: command.attempt,
+            projectId: command.projectId ?? command.jobId,
             nameWithOwner: command.repository.nameWithOwner,
+            placement: command.placement ?? { mode: "managed" },
             expectedRevision: command.expectedRevision,
           },
           (progress) =>
