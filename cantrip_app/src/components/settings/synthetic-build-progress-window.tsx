@@ -100,8 +100,14 @@ export function SyntheticBuildProgressWindow() {
         const status = await syntheticBuildClient.status();
         if (disposed) return;
         setJob(status.job);
-        const history = await syntheticBuildClient.logs(0, 2_000);
-        if (!disposed) appendLogs(history.entries);
+        let sequence = 0;
+        let more = true;
+        while (more && !disposed) {
+          const history = await syntheticBuildClient.logs(sequence, 2_000);
+          appendLogs(history.entries);
+          sequence = history.nextSequence;
+          more = history.hasMore;
+        }
       })
       .catch((reason: unknown) => {
         if (!disposed) setError(normalizeSyntheticBuildError(reason).message);
@@ -174,6 +180,16 @@ export function SyntheticBuildProgressWindow() {
       setConfirmInstall(false);
     } finally {
       setInstalling(false);
+    }
+  }
+
+  async function retry() {
+    if (!job) return;
+    setError(null);
+    try {
+      await syntheticBuildClient.start(job.targetSha);
+    } catch (reason) {
+      setError(normalizeSyntheticBuildError(reason).message);
     }
   }
 
@@ -285,13 +301,18 @@ export function SyntheticBuildProgressWindow() {
               Install build
             </Button>
           ) : job?.state === "failed" && job ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void syntheticBuildClient.openLog(job.id)}
-            >
-              Open log
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => void retry()}>
+                Retry build
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void syntheticBuildClient.openLog(job.id)}
+              >
+                Open log
+              </Button>
+            </div>
           ) : null}
         </div>
         <div

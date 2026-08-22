@@ -836,6 +836,67 @@ pub async fn scan_synthetic_build_prerequisites(
 }
 
 #[tauri::command]
+pub async fn install_synthetic_build_prerequisites(
+    sha: String,
+    ids: Vec<String>,
+    coordinator: State<'_, SyntheticBuildCoordinator>,
+) -> Result<SyntheticPrerequisiteScan, SyntheticBuildError> {
+    validate_full_sha(&sha)?;
+    let preliminary = scan_prerequisites("pnpm@11.15.1");
+    let package_manager = if preliminary
+        .iter()
+        .any(|item| item.id == "git" && item.status == SyntheticPrerequisiteStatus::Ready)
+    {
+        coordinator
+            .resolve_source(sha.clone())
+            .await?
+            .package_manager
+    } else {
+        "pnpm@11.15.1".into()
+    };
+    let prerequisites = scan_prerequisites(&package_manager);
+    for prerequisite in prerequisites
+        .iter()
+        .filter(|item| ids.iter().any(|id| id == item.id))
+        .filter(|item| item.status != SyntheticPrerequisiteStatus::Ready)
+    {
+        #[cfg(target_os = "macos")]
+        if prerequisite.id == "native-build-tools" {
+            let _ = Command::new("xcode-select").arg("--install").spawn();
+            continue;
+        }
+        let Some(url) = prerequisite.install_url else {
+            continue;
+        };
+        #[cfg(target_os = "macos")]
+        let result = Command::new("open").arg(url).spawn();
+        #[cfg(target_os = "windows")]
+        let result = Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let result: std::io::Result<std::process::Child> =
+            Err(std::io::Error::other("unsupported platform"));
+        result.map_err(|error| {
+            SyntheticBuildError::new(
+                "synthetic_prerequisite_installer_failed",
+                format!(
+                    "The {} installer could not be opened: {error}",
+                    prerequisite.label
+                ),
+                true,
+            )
+        })?;
+    }
+    Ok(SyntheticPrerequisiteScan {
+        target_sha: sha,
+        ready: prerequisites
+            .iter()
+            .all(|item| item.status == SyntheticPrerequisiteStatus::Ready),
+        package_manager: Some(package_manager),
+        prerequisites,
+    })
+}
+
+#[tauri::command]
 pub async fn list_synthetic_build_commits(
     cursor: Option<String>,
 ) -> Result<SyntheticCommitPage, SyntheticBuildError> {

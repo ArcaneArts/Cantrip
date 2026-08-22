@@ -138,6 +138,10 @@ export interface SyntheticBuildClient {
   listCommits(cursor?: string): Promise<SyntheticCommitPage>;
   resolveTarget(sha: string): Promise<SyntheticCommit>;
   scanPrerequisites(sha: string): Promise<SyntheticPrerequisiteScan>;
+  installPrerequisites(
+    sha: string,
+    ids: string[],
+  ): Promise<SyntheticPrerequisiteScan>;
   start(sha: string): Promise<SyntheticBuildJob>;
   status(): Promise<SyntheticBuildStatus>;
   cancel(jobId: string): Promise<boolean>;
@@ -151,6 +155,8 @@ export interface SyntheticBuildClient {
   deleteCached(artifactId: string): Promise<boolean>;
   identity(): Promise<SyntheticBuildIdentity | null>;
   openLog(jobId: string): Promise<void>;
+  openCache(): Promise<void>;
+  cleanCache(): Promise<number>;
   listenState(listener: (job: SyntheticBuildJob) => void): Promise<() => void>;
   listenLogs(
     listener: (batch: SyntheticBuildLogBatch) => void,
@@ -187,6 +193,8 @@ export const syntheticBuildClient: SyntheticBuildClient = {
   resolveTarget: (sha) => invoke("resolve_synthetic_build_target", { sha }),
   scanPrerequisites: (sha) =>
     invoke("scan_synthetic_build_prerequisites", { sha }),
+  installPrerequisites: (sha, ids) =>
+    invoke("install_synthetic_build_prerequisites", { sha, ids }),
   start: (sha) => invoke("start_synthetic_build", { sha }),
   status: () => invoke("synthetic_build_status"),
   cancel: (jobId) => invoke("cancel_synthetic_build", { jobId }),
@@ -202,6 +210,8 @@ export const syntheticBuildClient: SyntheticBuildClient = {
     invoke("delete_cached_synthetic_build", { artifactId }),
   identity: () => invoke("synthetic_build_identity"),
   openLog: (jobId) => invoke("open_synthetic_build_log", { jobId }),
+  openCache: () => invoke("open_synthetic_build_cache"),
+  cleanCache: () => invoke("clean_unused_synthetic_build_cache"),
   async listenState(listener) {
     const { listen } = await import("@tauri-apps/api/event");
     return listen<SyntheticBuildJob>(
