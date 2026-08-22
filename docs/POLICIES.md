@@ -16,12 +16,12 @@ system prompt:
 - a mandatory policy applies to every project owned by that user on the server.
 
 Policies provide reusable operational expectations without copying instruction
-files into every repository. Cantrip initially packages the Manual Change
-Protocol and a compact Codegraph awareness policy. Cantrip creates editable
-policies from both templates during account bootstrap and marks them mandatory
-by default. These are convenience defaults from the user to their projects, not
-administrator rules imposed by Cantrip. The user may edit, disable, unmark,
-reorder, or delete them.
+files into every repository. Cantrip packages the Manual Change Protocol and a
+compact Codegraph awareness policy as templates. Account bootstrap creates an
+editable Codegraph policy and marks it mandatory by default; the Manual Change
+Protocol remains available as an opt-in template. Defaults are conveniences
+from the user to their projects, not administrator rules imposed by Cantrip.
+The user may edit, disable, unmark, reorder, or delete them.
 
 This document defines the implemented first complete Policy system. It
 intentionally does not implement Task tabs; Tasks are designed separately in
@@ -119,6 +119,7 @@ template contains:
 - short summary;
 - Markdown body;
 - packaged template version;
+- whether the template is included in fresh-account bootstrap;
 - optional suggested enabled/mandatory defaults.
 
 Templates are code/distribution assets, not database policies. Editing or
@@ -139,10 +140,13 @@ proposes a suffix.
 
 During versioned one-time policy bootstrap for each user, Cantrip creates:
 
-- **Manual Change Protocol** (`manual-change-protocol`), enabled and mandatory;
 - **Codegraph** (`codegraph`), enabled and mandatory, with a short capability
   description that makes the Agent aware of repository-aware file, symbol, and
   relationship discovery without requiring Codegraph for every task.
+
+The **Manual Change Protocol** (`manual-change-protocol`) is not created during
+bootstrap. It remains in the packaged catalog so users can explicitly create an
+editable copy through **+ Policy** when they want that workflow.
 
 Existing users receive each newly introduced default once. Durable versioned
 bootstrap markers prevent older defaults from being recreated and prevent any
@@ -534,7 +538,7 @@ observed merged before the dependent milestone starts.
 - owner-scoped repository methods;
 - effective-policy resolver;
 - packaged template loader/validation;
-- one-time Manual Change Protocol bootstrap;
+- one-time default-policy bootstrap;
 - optimistic concurrency;
 - protocol/server unit tests.
 
@@ -580,10 +584,10 @@ observed merged before the dependent milestone starts.
 
 ## Acceptance criteria
 
-- A fresh/existing user receives one editable Manual Change Protocol policy
-  exactly once, enabled and mandatory.
-- Deleting that policy does not cause it to reappear; the packaged template
-  remains selectable.
+- A fresh user receives one editable Codegraph policy, enabled and mandatory.
+- A fresh user does not receive a Manual Change Protocol policy automatically;
+  its packaged template remains selectable.
+- Existing Manual Change Protocol policies are preserved and remain editable.
 - Users can create blank or template-based policies only from root Settings.
 - Users can edit, enable/disable, mark/unmark Mandatory, sort, and delete any
   policy.

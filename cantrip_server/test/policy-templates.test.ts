@@ -6,13 +6,14 @@ import {
 } from "../src/policies/templates.js";
 
 describe("packaged policy templates", () => {
-  it("packages the repository-agnostic default policies", () => {
+  it("keeps optional templates separate from default policies", () => {
     const templates = listPackagedPolicyTemplates();
     expect(templates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           templateKey: "manual-change-protocol",
           suggestedPolicyKey: "manual-change-protocol",
+          suggestedDefault: false,
           suggestedEnabled: true,
           suggestedMandatory: true,
           version: 1,
@@ -20,6 +21,7 @@ describe("packaged policy templates", () => {
         expect.objectContaining({
           templateKey: "codegraph",
           suggestedPolicyKey: "codegraph",
+          suggestedDefault: true,
           suggestedEnabled: true,
           suggestedMandatory: true,
           version: 1,
@@ -27,6 +29,11 @@ describe("packaged policy templates", () => {
       ]),
     );
     expect(templates).toHaveLength(2);
+    expect(
+      templates
+        .filter(({ suggestedDefault }) => suggestedDefault)
+        .map(({ templateKey }) => templateKey),
+    ).toEqual(["codegraph"]);
     expect(templates).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ bodyMarkdown: expect.anything() }),

@@ -34,10 +34,6 @@ function defaultBootstrap() {
   return {
     expectedBootstrapVersion: 0,
     policies: [
-      opaquePolicyCreate("manual-change-protocol", {
-        mandatory: true,
-        templateKey: "manual-change-protocol",
-      }),
       opaquePolicyCreate("codegraph", {
         mandatory: true,
         templateKey: "codegraph",
@@ -53,15 +49,30 @@ describe("opaque policy persistence", () => {
       const initial = await repository.policies.list(LOCAL_USER_ID);
       expect(initial).toMatchObject({ bootstrapVersion: 0, policies: [] });
 
+      await expect(
+        repository.policies.bootstrap(LOCAL_USER_ID, {
+          expectedBootstrapVersion: 0,
+          policies: [
+            opaquePolicyCreate("manual-change-protocol", {
+              mandatory: true,
+              templateKey: "manual-change-protocol",
+            }),
+            ...defaultBootstrap().policies,
+          ],
+        }),
+      ).rejects.toMatchObject<Partial<PolicyConflictError>>({
+        code: "invalid-order",
+      });
+
       const bootstrapped = await repository.policies.bootstrap(
         LOCAL_USER_ID,
         defaultBootstrap(),
       );
       expect(bootstrapped.bootstrapVersion).toBe(2);
-      expect(bootstrapped.policies).toHaveLength(2);
+      expect(bootstrapped.policies).toHaveLength(1);
       expect(
         bootstrapped.policies.map(({ templateKey }) => templateKey),
-      ).toEqual(["manual-change-protocol", "codegraph"]);
+      ).toEqual(["codegraph"]);
       expect(JSON.stringify(bootstrapped)).not.toContain(
         "Manual Change Protocol",
       );
@@ -70,7 +81,7 @@ describe("opaque policy persistence", () => {
         LOCAL_USER_ID,
         defaultBootstrap(),
       );
-      expect(raced.policies).toHaveLength(2);
+      expect(raced.policies).toHaveLength(1);
       const raw = await client.query<{
         key_blind_index: string;
         protected_body: unknown;
@@ -80,7 +91,7 @@ describe("opaque policy persistence", () => {
         FROM policies
         WHERE owner_id = '${LOCAL_USER_ID}'
       `);
-      expect(raw.rows).toHaveLength(2);
+      expect(raw.rows).toHaveLength(1);
       expect(
         raw.rows.every(({ key_blind_index }) => key_blind_index.length === 43),
       ).toBe(true);

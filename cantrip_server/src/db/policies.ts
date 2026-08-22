@@ -140,7 +140,9 @@ export class PolicyRepository {
   ): Promise<PolicyWireList> {
     const input = encryptedPolicyBootstrapSchema.parse(rawInput);
     const templateKeys = new Set(
-      listPackagedPolicyTemplates().map(({ templateKey }) => templateKey),
+      listPackagedPolicyTemplates()
+        .filter(({ suggestedDefault }) => suggestedDefault)
+        .map(({ templateKey }) => templateKey),
     );
     if (
       input.policies.length !== templateKeys.size ||

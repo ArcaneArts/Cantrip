@@ -980,9 +980,9 @@ export async function getPolicies() {
   let wire = policyWireListSchema.parse(await request("/api/policies"));
   if (wire.bootstrapVersion < POLICY_BOOTSTRAP_VERSION) {
     const templates = await Promise.all(
-      (await getPolicyTemplates()).map(({ templateKey }) =>
-        getPolicyTemplate(templateKey),
-      ),
+      (await getPolicyTemplates())
+        .filter(({ suggestedDefault }) => suggestedDefault)
+        .map(({ templateKey }) => getPolicyTemplate(templateKey)),
     );
     const policies = await Promise.all(
       templates.map((template) =>

@@ -455,11 +455,11 @@ Root **Settings → Policies** is the only policy-authoring surface. It supports
   overwrite a newer edit or order.
 
 The packaged template catalog is immutable server distribution data. Versioned
-Policy bootstrap copies the Manual Change Protocol and compact Codegraph
-awareness templates into independent editable policies, enables them, and
-marks them Mandatory. Durable bootstrap markers make each default exactly-once:
-deleting a copy does not recreate it, and the packaged template remains
-available.
+Policy bootstrap copies the compact Codegraph awareness template into an
+independent editable policy, enables it, and marks it Mandatory. The Manual
+Change Protocol remains available as an opt-in template. Durable bootstrap
+markers make each default exactly-once: deleting a copy does not recreate it,
+and packaged templates remain available.
 
 Nonmandatory policies can be assigned to workspaces and projects. Effectiveness
 is:
