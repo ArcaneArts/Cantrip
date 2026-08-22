@@ -8,6 +8,11 @@ import {
   INSPECT_FILE_LIFETIME_MS,
   buildAgentInspectorProjectionSource,
   projectAgentInspector as projectAgentInspectorSource,
+  type AgentInspectorCommand,
+  type AgentInspectorFile,
+  type AgentInspectorProjectionSource,
+  type AgentInspectorRecentCommand,
+  type AgentInspectorSnapshot,
 } from "./inspect-model";
 
 function message(
@@ -109,6 +114,277 @@ function projectAgentInspector(input: {
     source: buildAgentInspectorProjectionSource(input.messages),
   });
 }
+
+interface LegacyActivityRecord {
+  activity: AgentActivity;
+  message: ChatMessage;
+  observedAtMs: number;
+  turnId: string | null;
+}
+
+function legacyRecords(messages: ChatMessage[]): LegacyActivityRecord[] {
+  return messages.flatMap((entry) =>
+    entry.role === "assistant"
+      ? entry.content.flatMap((content) =>
+          content.type === "activity"
+            ? [
+                {
+                  activity: content.activity,
+                  message: entry,
+                  observedAtMs:
+                    content.activity.updatedAtMs ??
+                    content.activity.completedAtMs ??
+                    content.activity.startedAtMs ??
+                    Date.parse(entry.createdAt),
+                  turnId: content.activity.correlation?.turnId ?? null,
+                },
+              ]
+            : [],
+        )
+      : [],
+  );
+}
+
+function legacyProjectAgentInspector(input: {
+  nowMs: number;
+  records: readonly LegacyActivityRecord[];
+  source: AgentInspectorProjectionSource;
+}): AgentInspectorSnapshot {
+  const fileMap = new Map<string, AgentInspectorFile>();
+  const commands: AgentInspectorCommand[] = [];
+  const recentCommands: AgentInspectorRecentCommand[] = [];
+
+  for (const record of input.records) {
+    if (record.activity.type === "fileChange") {
+      for (const change of record.activity.changes) {
+        const updatedAtMs = change.lastActivityAtMs ?? record.observedAtMs;
+        const candidate: AgentInspectorFile = {
+          id: `${record.activity.id}:${change.path}`,
+          expiresAtMs: updatedAtMs + INSPECT_FILE_LIFETIME_MS,
+          kind: change.kind,
+          latestLine: change.latestLine ?? null,
+          path: change.path,
+          turnId: record.turnId,
+          updatedAtMs,
+        };
+        const current = fileMap.get(change.path);
+        if (
+          !current ||
+          candidate.updatedAtMs > current.updatedAtMs ||
+          (candidate.updatedAtMs === current.updatedAtMs &&
+            candidate.id.localeCompare(current.id) > 0)
+        ) {
+          fileMap.set(change.path, candidate);
+        }
+      }
+      continue;
+    }
+    if (record.activity.type !== "command") continue;
+
+    const activity = record.activity;
+    const startedAtMs =
+      activity.startedAtMs ?? Date.parse(record.message.createdAt);
+    const completedAtMs =
+      activity.status === "running"
+        ? null
+        : (activity.completedAtMs ?? record.observedAtMs);
+    const elapsedMs = Math.max(0, (completedAtMs ?? input.nowMs) - startedAtMs);
+    const presentation =
+      completedAtMs === null
+        ? input.nowMs - startedAtMs >= INSPECT_COMMAND_CARD_DELAY_MS
+          ? "visible"
+          : "hidden"
+        : elapsedMs >= INSPECT_COMMAND_CARD_DELAY_MS &&
+            input.nowMs < completedAtMs + INSPECT_COMMAND_CARD_EXIT_MS
+          ? "exiting"
+          : null;
+    if (presentation) {
+      commands.push({
+        id: activity.id,
+        command: activity.command,
+        completedAtMs,
+        cwd: activity.cwd,
+        elapsedMs,
+        exitCode: activity.exitCode,
+        output: activity.outputTail ?? activity.output ?? "",
+        outputTruncated: activity.outputTruncated ?? false,
+        presentation,
+        startedAtMs,
+        status: activity.status,
+        turnId: record.turnId,
+        updatedAtMs: record.observedAtMs,
+      });
+    }
+    if (
+      completedAtMs !== null &&
+      input.nowMs < completedAtMs + INSPECT_COMPLETED_COMMAND_LIFETIME_MS
+    ) {
+      recentCommands.push({
+        id: activity.id,
+        command: activity.command,
+        completedAtMs,
+        expiresAtMs: completedAtMs + INSPECT_COMPLETED_COMMAND_LIFETIME_MS,
+        status: activity.status,
+        turnId: record.turnId,
+      });
+    }
+  }
+
+  const files = [...fileMap.values()]
+    .filter((file) => input.nowMs < file.expiresAtMs)
+    .sort(
+      (left, right) =>
+        right.updatedAtMs - left.updatedAtMs ||
+        left.path.localeCompare(right.path),
+    );
+  commands.sort(
+    (left, right) =>
+      left.startedAtMs - right.startedAtMs || left.id.localeCompare(right.id),
+  );
+  recentCommands.sort(
+    (left, right) =>
+      right.completedAtMs - left.completedAtMs ||
+      left.id.localeCompare(right.id),
+  );
+  const transitions = [
+    ...files.map((file) => file.expiresAtMs),
+    ...recentCommands.map((command) => command.expiresAtMs),
+    ...commands.flatMap((command) => {
+      if (command.presentation === "hidden") {
+        return [command.startedAtMs + INSPECT_COMMAND_CARD_DELAY_MS];
+      }
+      if (
+        command.presentation === "exiting" &&
+        command.completedAtMs !== null
+      ) {
+        return [command.completedAtMs + INSPECT_COMMAND_CARD_EXIT_MS];
+      }
+      return [];
+    }),
+  ].filter((transition) => transition > input.nowMs);
+
+  return {
+    active: true,
+    commands,
+    files,
+    nextTransitionAtMs:
+      transitions.length > 0 ? Math.min(...transitions) : null,
+    recentCommands,
+    thought: input.source.thought,
+    turnId: input.source.turnId,
+  };
+}
+
+function syntheticInspectorMessages(
+  recordCount: number,
+  sessionStartMs: number,
+): ChatMessage[] {
+  const messages = [user(1, sessionStartMs - 20_000)];
+  for (let index = 0; index < recordCount; index += 1) {
+    const sequence = index + 2;
+    const id = `activity-${index}`;
+    const variant = index % 6;
+    if (variant === 0) {
+      const updatedAtMs = sessionStartMs - (index % 200);
+      messages.push(
+        activityMessage(
+          commandActivity({
+            id,
+            output: `running output ${index}`,
+            startedAtMs: sessionStartMs - 5_000 - (index % 5_000),
+            updatedAtMs,
+          }),
+          sequence,
+          updatedAtMs,
+        ),
+      );
+      continue;
+    }
+    if (variant === 2 || variant === 5) {
+      const completedAtMs = sessionStartMs - (index % 2_500);
+      messages.push(
+        activityMessage(
+          commandActivity({
+            completedAtMs,
+            id,
+            output: `completed output ${index}`,
+            startedAtMs: completedAtMs - (variant === 2 ? 2_000 : 750),
+            status: "completed",
+            updatedAtMs: completedAtMs,
+          }),
+          sequence,
+          completedAtMs,
+        ),
+      );
+      continue;
+    }
+    if (variant === 1 || variant === 4) {
+      const updatedAtMs = sessionStartMs - (index % 9_000);
+      messages.push(
+        activityMessage(
+          {
+            type: "fileChange",
+            id,
+            status: "running",
+            updatedAtMs,
+            correlation: correlation("turn-1", id),
+            changes: [
+              {
+                path: `src/generated/file-${index}.ts`,
+                kind: index % 2 === 0 ? "update" : "add",
+                latestLine: `const value${index} = ${index};`,
+                lastActivityAtMs: updatedAtMs,
+              },
+            ],
+          },
+          sequence,
+          updatedAtMs,
+        ),
+      );
+      continue;
+    }
+    const updatedAtMs = sessionStartMs - (index % 1_000);
+    messages.push(
+      activityMessage(
+        {
+          type: "reasoning",
+          id,
+          status: "running",
+          summary: [`Inspecting activity ${index}`],
+          updatedAtMs,
+          correlation: correlation("turn-1", id),
+        },
+        sequence,
+        updatedAtMs,
+      ),
+    );
+  }
+  return messages;
+}
+
+function percentile(samples: readonly number[], fraction: number): number {
+  const sorted = [...samples].sort((left, right) => left - right);
+  return sorted[Math.ceil(sorted.length * fraction) - 1] ?? 0;
+}
+
+function measureInspectorSession(
+  times: readonly number[],
+  project: (nowMs: number) => AgentInspectorSnapshot,
+): { checksum: number; elapsedMs: number } {
+  let checksum = 0;
+  const startedAt = performance.now();
+  for (const nowMs of times) {
+    const snapshot = project(nowMs);
+    checksum +=
+      snapshot.commands.length * 3 +
+      snapshot.files.length * 5 +
+      snapshot.recentCommands.length * 7 +
+      (snapshot.nextTransitionAtMs ?? 0);
+  }
+  return { checksum, elapsedMs: performance.now() - startedAt };
+}
+
+const INSPECT_BENCHMARK_TICK_MS = 250;
 
 describe("agent inspector projection", () => {
   it("applies exact command entry, exit, and completion boundaries", () => {
@@ -506,4 +782,92 @@ describe("agent inspector projection", () => {
     expect(snapshot.turnId).toBe("turn-new");
     expect(snapshot.commands.map(({ id }) => id)).toEqual(["new-turn-command"]);
   });
+
+  it("preindexes stable activity state while preserving every timed projection", () => {
+    const sessionStartMs = 100_000;
+    const messages = syntheticInspectorMessages(180, sessionStartMs);
+    const source = buildAgentInspectorProjectionSource(messages);
+    const records = legacyRecords(messages);
+
+    expect(source.transitionTimesMs).toEqual(
+      [...source.transitionTimesMs].sort((left, right) => left - right),
+    );
+    for (let tick = 0; tick < 240; tick += 1) {
+      const nowMs = sessionStartMs + tick * INSPECT_BENCHMARK_TICK_MS;
+      expect(
+        projectAgentInspectorSource({ active: true, nowMs, source }),
+      ).toEqual(legacyProjectAgentInspector({ nowMs, records, source }));
+    }
+  });
 });
+
+const benchmarkInspectorProjection =
+  (
+    globalThis as typeof globalThis & {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env?.CANTRIP_BENCHMARK_AGENT_INSPECT === "1"
+    ? it
+    : it.skip;
+
+benchmarkInspectorProjection(
+  "benchmarks a 60-second open inspector session",
+  () => {
+    const results: Array<Record<string, number>> = [];
+    for (const recordCount of [10, 100, 1_000]) {
+      const sessionStartMs = 1_000_000;
+      const messages = syntheticInspectorMessages(recordCount, sessionStartMs);
+      const source = buildAgentInspectorProjectionSource(messages);
+      const records = legacyRecords(messages);
+      const times = Array.from(
+        { length: 240 },
+        (_, tick) => sessionStartMs + tick * INSPECT_BENCHMARK_TICK_MS,
+      );
+      const baseline = (nowMs: number) =>
+        legacyProjectAgentInspector({ nowMs, records, source });
+      const candidate = (nowMs: number) =>
+        projectAgentInspectorSource({ active: true, nowMs, source });
+
+      for (const nowMs of times) {
+        expect(candidate(nowMs)).toEqual(baseline(nowMs));
+      }
+      for (let warmup = 0; warmup < 5; warmup += 1) {
+        measureInspectorSession(times, baseline);
+        measureInspectorSession(times, candidate);
+      }
+
+      const baselineSamples: number[] = [];
+      const candidateSamples: number[] = [];
+      for (let iteration = 0; iteration < 25; iteration += 1) {
+        const first =
+          iteration % 2 === 0
+            ? measureInspectorSession(times, baseline)
+            : measureInspectorSession(times, candidate);
+        const second =
+          iteration % 2 === 0
+            ? measureInspectorSession(times, candidate)
+            : measureInspectorSession(times, baseline);
+        const baselineResult = iteration % 2 === 0 ? first : second;
+        const candidateResult = iteration % 2 === 0 ? second : first;
+        expect(candidateResult.checksum).toBe(baselineResult.checksum);
+        baselineSamples.push(baselineResult.elapsedMs);
+        candidateSamples.push(candidateResult.elapsedMs);
+      }
+
+      const baselineP50Ms = percentile(baselineSamples, 0.5);
+      const candidateP50Ms = percentile(candidateSamples, 0.5);
+      results.push({
+        recordCount,
+        ticks: times.length,
+        baselineP50Ms,
+        baselineP95Ms: percentile(baselineSamples, 0.95),
+        candidateP50Ms,
+        candidateP95Ms: percentile(candidateSamples, 0.95),
+        speedup: baselineP50Ms / candidateP50Ms,
+      });
+      expect(candidateP50Ms).toBeLessThan(baselineP50Ms * 0.95);
+    }
+    console.info("agent-inspector-projection-benchmark", results);
+  },
+  120_000,
+);
