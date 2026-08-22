@@ -811,7 +811,6 @@ describe("Run CLI execution", () => {
       executionLaneId: context.executionLaneId,
       workerId: context.workerId,
       worktreeId: context.worktreeId,
-      canonicalRoot: context.cwd,
       rootKind: context.rootKind,
       permissionProfileId:
         context.permissionProfileId ??

@@ -672,7 +672,6 @@ describe("Cantrip protocol", () => {
       executionLaneId: "lane-one",
       workerId: "worker-one",
       worktreeId: "worktree-one",
-      canonicalRoot: "/worktrees/one",
       rootKind: "git-worktree",
       permissionProfileId: ":workspace-write",
       allowedOperations: ["context.get"],
@@ -680,6 +679,12 @@ describe("Cantrip protocol", () => {
       expiresAt: "2026-08-21T18:00:00.000Z",
     });
     expect(binding.allowedOperations).toEqual(["context.get"]);
+    expect(
+      cantripMcpBindingSchema.safeParse({
+        ...binding,
+        canonicalRoot: "/private/worktree/path",
+      }).success,
+    ).toBe(false);
     expect(
       cantripMcpConnectionDocumentSchema.parse({
         protocolVersion: 1,

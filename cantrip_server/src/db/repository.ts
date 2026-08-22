@@ -10050,17 +10050,19 @@ export class ServerRepository {
         "Git worktree reconciliation is unavailable for folder sources.",
       );
     }
-    if (source.absolutePath !== inventory.sourcePath) {
-      throw new Error("Worker inventory referred to a different replica path.");
-    }
     const observedPrimaries = inventory.worktrees.filter(
       ({ isPrimary }) => isPrimary,
     );
-    if (
-      observedPrimaries.length !== 1 ||
-      observedPrimaries[0]?.path !== inventory.primaryPath
-    ) {
+    if (observedPrimaries.length !== 1) {
       throw new Error("Worker inventory did not contain exactly one Primary.");
+    }
+    const observedPrimary = observedPrimaries[0]!;
+    // Protected repository paths are deliberately scoped by result field.
+    // `source.absolutePath` and `observedPrimary.path` both originate from the
+    // canonical `path` field, while `sourcePath` and `primaryPath` use distinct
+    // routing handles even when they identify the same worker-local directory.
+    if (source.absolutePath !== observedPrimary.path) {
+      throw new Error("Worker inventory referred to a different replica path.");
     }
     if (
       source.repositoryFingerprint &&
@@ -10085,7 +10087,7 @@ export class ServerRepository {
       await transaction
         .update(schema.projectSources)
         .set({
-          absolutePath: inventory.primaryPath,
+          absolutePath: observedPrimary.path,
           repositoryFingerprint: inventory.repositoryFingerprint,
           updatedAt: observedAt,
         })
