@@ -118,6 +118,7 @@ export interface CachedSyntheticBuild {
 
 export interface SyntheticBuildIdentity {
   installId: string;
+  artifactId: string;
   version: string;
   commitSha: string;
   buildId: string;
