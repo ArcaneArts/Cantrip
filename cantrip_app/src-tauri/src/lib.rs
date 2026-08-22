@@ -12,15 +12,12 @@ use std::{
 };
 
 use serde_json::json;
+#[cfg(target_os = "macos")]
+use tauri::menu::{MenuItemKind, PredefinedMenuItem};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, RunEvent, State, WindowEvent,
-};
-#[cfg(target_os = "macos")]
-use tauri::{
-    menu::{MenuItemKind, PredefinedMenuItem},
-    Emitter,
+    Emitter, Manager, RunEvent, State, WindowEvent,
 };
 #[cfg(desktop)]
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
@@ -1086,6 +1083,13 @@ pub fn run() {
                 if let Some(window) = handle.get_webview_window("main") {
                     let _ = window.hide();
                 }
+            } else if label == "synthetic-build-progress"
+                && handle
+                    .state::<synthetic_build::SyntheticBuildCoordinator>()
+                    .build_active()
+            {
+                api.prevent_close();
+                let _ = handle.emit_to(label, "cantrip-synthetic-build-close-requested", ());
             }
         }
         if matches!(event, RunEvent::Exit) {

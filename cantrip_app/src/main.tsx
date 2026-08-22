@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ApplicationSession } from "@/components/auth/application-session";
+import { SyntheticBuildProgressWindow } from "@/components/settings/synthetic-build-progress-window";
 import {
   clientLogger,
   installClientLogCapture,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/client-log-relay";
 import {
   desktopWindowThemeOverride,
+  isSyntheticBuildProgressWindow,
   updateDesktopWindowTheme,
 } from "@/lib/desktop-popout";
 import { initializeServerConnections } from "@/lib/server-connections";
@@ -36,6 +38,14 @@ async function start(): Promise<void> {
     });
   }
   await initializeClientLogPersistence();
+  if (isSyntheticBuildProgressWindow(window.location.search)) {
+    createRoot(document.getElementById("root")!).render(
+      <StrictMode>
+        <SyntheticBuildProgressWindow />
+      </StrictMode>,
+    );
+    return;
+  }
   const startedAt = performance.now();
   const tauriRuntime = "__TAURI_INTERNALS__" in window;
   clientLogger.info("Cantrip client boot started", {

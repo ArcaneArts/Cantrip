@@ -15,6 +15,7 @@ export type DesktopExplorerFileTarget = {
 
 const groupParameter = "cantrip-popout-group";
 const explorerFileParameter = "cantrip-explorer-file";
+const syntheticBuildProgressParameter = "cantrip-synthetic-build";
 const noDesktopListener = () => undefined;
 
 export type DesktopPopoutWindowLifecycle = {
@@ -26,6 +27,13 @@ export type DesktopWindowFocusLifecycle = {
 };
 
 export type DesktopWindowTheme = "dark" | "light" | null;
+
+export function isSyntheticBuildProgressWindow(search: string): boolean {
+  return (
+    new URLSearchParams(search).get(syntheticBuildProgressParameter) ===
+    "progress"
+  );
+}
 
 // Cantrip windows host live transports and Tauri's title-bar drag handling.
 // Suspending an occluded WKWebView can therefore freeze both content and
@@ -281,11 +289,24 @@ export async function openDesktopExplorerFile(
   );
 }
 
+export async function openSyntheticBuildProgressWindow(): Promise<
+  "created" | "focused"
+> {
+  return openDesktopWindow(
+    "synthetic-build-progress",
+    `?${syntheticBuildProgressParameter}=progress`,
+    "Building Cantrip",
+    undefined,
+    { height: 720, minHeight: 520, minWidth: 760, width: 1040 },
+  );
+}
+
 async function openDesktopWindow(
   label: string,
   search: string,
   title: string,
   position?: { x: number; y: number },
+  size?: { height: number; minHeight: number; minWidth: number; width: number },
 ): Promise<"created" | "focused"> {
   if (!isDesktopRuntime()) {
     throw new Error("Pop-out windows are only available in the desktop app.");
@@ -299,16 +320,16 @@ async function openDesktopWindow(
     backgroundThrottling: desktopBackgroundThrottlingPolicy,
     center: true,
     focus: true,
-    height: 760,
+    height: size?.height ?? 760,
     hiddenTitle: macos,
-    minHeight: 440,
-    minWidth: 640,
+    minHeight: size?.minHeight ?? 440,
+    minWidth: size?.minWidth ?? 640,
     resizable: true,
     title: `${title} — Cantrip`,
     titleBarStyle: macos ? "overlay" : undefined,
     transparent: macos,
     url: `${path}${search}`,
-    width: 1100,
+    width: size?.width ?? 1100,
   });
 
   try {

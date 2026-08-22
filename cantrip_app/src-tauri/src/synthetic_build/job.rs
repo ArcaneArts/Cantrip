@@ -151,7 +151,7 @@ impl JobRuntime {
         })
     }
 
-    fn snapshot(&self) -> Result<Option<SyntheticBuildJob>, SyntheticBuildError> {
+    pub(super) fn snapshot(&self) -> Result<Option<SyntheticBuildJob>, SyntheticBuildError> {
         self.state.lock().map(|state| state.clone()).map_err(|_| {
             SyntheticBuildError::new(
                 "synthetic_build_busy",
@@ -159,6 +159,13 @@ impl JobRuntime {
                 true,
             )
         })
+    }
+
+    pub(super) fn active(&self) -> bool {
+        self.snapshot()
+            .ok()
+            .flatten()
+            .is_some_and(|job| job.state.active())
     }
 
     fn replace(&self, job: SyntheticBuildJob) -> Result<(), SyntheticBuildError> {

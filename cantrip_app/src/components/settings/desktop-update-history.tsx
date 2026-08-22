@@ -1,4 +1,5 @@
 import { ChevronRight, History, Loader2 } from "lucide-react";
+import type { ReactNode } from "react";
 
 import {
   formatDesktopUpdateDate,
@@ -10,12 +11,14 @@ export function DesktopUpdateHistory({
   error,
   installedVersion,
   loading,
+  headerAction,
   onOpenRelease,
   releases,
 }: {
   error: string | null;
   installedVersion: string;
   loading: boolean;
+  headerAction?: ReactNode;
   onOpenRelease(release: DesktopUpdateRelease): void;
   releases: DesktopUpdateRelease[];
 }) {
@@ -24,14 +27,17 @@ export function DesktopUpdateHistory({
 
   return (
     <div data-slot="desktop-update-history" className="border-t">
-      <div className="flex items-center gap-2.5 px-3 py-3">
-        <History className="size-4 shrink-0 text-muted-foreground" />
-        <div>
-          <h3 className="text-sm font-semibold">Version history</h3>
-          <p className="text-xs text-muted-foreground">
-            Review release notes or install a specific signed version.
-          </p>
+      <div className="flex items-center justify-between gap-3 px-3 py-3">
+        <div className="flex items-center gap-2.5">
+          <History className="size-4 shrink-0 text-muted-foreground" />
+          <div>
+            <h3 className="text-sm font-semibold">Version history</h3>
+            <p className="text-xs text-muted-foreground">
+              Review release notes or install a specific signed version.
+            </p>
+          </div>
         </div>
+        {headerAction}
       </div>
 
       {loading && releases.length === 0 ? (

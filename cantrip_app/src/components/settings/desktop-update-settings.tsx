@@ -37,6 +37,7 @@ import {
 import { openExternalUrl } from "@/lib/external-url";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { DesktopUpdateHistory } from "./desktop-update-history";
+import { SyntheticBuildSettings } from "./synthetic-build-settings";
 
 const AUTOMATIC_UPDATE_REFRESH_MS = 30_000;
 const automaticCheckTimes = new WeakMap<DesktopUpdateClient, number>();
@@ -727,6 +728,7 @@ export function DesktopUpdateSettings({
       </div>
 
       <DesktopUpdateHistory
+        headerAction={<SyntheticBuildSettings />}
         error={historyError}
         installedVersion={state.installedVersion}
         loading={historyLoading}
