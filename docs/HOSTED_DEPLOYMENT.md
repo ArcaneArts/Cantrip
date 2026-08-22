@@ -27,6 +27,8 @@ Droplet. The release workstation needs:
 
 - a clean `main` checkout equal to `origin/main`;
 - Docker Engine with Buildx and Linux AMD64 build support;
+- an authenticated `doctl` CLI session authorized to update the Cantrip App
+  Platform app;
 - authenticated Infisical CLI access to the project in `.infisical.json`;
 - OpenSSH, SCP, and tar; and
 - both production DNS names resolving to the `sshHost` in
@@ -45,11 +47,13 @@ Run a full release from synchronized `main`:
 pnpm release
 ```
 
-This fast-forwards the `release` branch, cross-builds the Server bundle, writes
-the root-only environment, uploads the immutable release, runs the matching
-forward migration, switches the active symlink, and restarts Caddy and Cantrip.
-It waits for both public HTTPS health endpoints before succeeding. If branch
-promotion already succeeded but deployment failed, retry only the host phase:
+This fast-forwards the `release` branch, updates and verifies both DigitalOcean
+App Platform static sites, cross-builds the Server bundle, writes the root-only
+environment, uploads the immutable release, runs the matching forward migration,
+switches the active symlink, and restarts Caddy and Cantrip. It waits for App
+Platform and both public HTTPS health endpoints before succeeding. If branch
+promotion already succeeded but the Droplet deployment failed, retry only the
+host phase:
 
 ```bash
 pnpm deploy:server

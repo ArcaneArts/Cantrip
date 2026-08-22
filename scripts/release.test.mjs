@@ -79,18 +79,30 @@ test("deploys the exact commit promoted to release", async () => {
   const fixture = await repositoryFixture();
   try {
     let deployed;
+    let webDeployed;
+    const calls = [];
     const result = await releaseCantrip({
       root: fixture.repository,
       deploy: async (options) => {
+        calls.push("server");
         deployed = options;
         return { commit: options.commit };
       },
+      deployWeb: async (options) => {
+        calls.push("web");
+        webDeployed = options;
+        return { commit: options.commit };
+      },
     });
+    assert.deepEqual(calls, ["web", "server"]);
     assert.equal(deployed.root, fixture.repository);
+    assert.equal(webDeployed.root, fixture.repository);
     assert.equal(
       deployed.commit,
       git(fixture.repository, "rev-parse", "refs/heads/main"),
     );
+    assert.equal(webDeployed.commit, deployed.commit);
+    assert.equal(result.appPlatformDeployment.commit, deployed.commit);
     assert.equal(result.deployment.commit, deployed.commit);
   } finally {
     await rm(fixture.root, { force: true, recursive: true });
