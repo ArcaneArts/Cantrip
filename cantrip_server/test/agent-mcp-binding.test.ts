@@ -6,10 +6,7 @@ import {
   type CantripMcpBinding,
 } from "@cantrip/protocol";
 
-import {
-  assertCantripMcpBinding,
-  CantripMcpBindingError,
-} from "../src/agent-tools/binding.js";
+import { assertCantripMcpBinding } from "../src/agent-tools/binding.js";
 import type { ChatExecutionContext } from "../src/db/repository.js";
 
 const now = Date.parse("2026-08-21T12:00:00.000Z");
@@ -162,13 +159,17 @@ describe("Cantrip MCP server binding", () => {
   });
 
   it.each([
-    ["chat", { ...context, chatId: "chat-two" }],
-    ["lane", { ...context, executionLaneId: "lane-two" }],
-    ["worker", { ...context, workerId: "worker-two" }],
-    ["worktree", { ...context, worktreeId: "worktree-two" }],
-    ["root", { ...context, cwd: "/worktrees/two" }],
-    ["permission", { ...context, permissionProfileId: ":read-only" }],
-  ])("rejects a stale %s claim", (_name, changedContext) => {
+    ["chat", "chat", { ...context, chatId: "chat-two" }],
+    ["lane", "execution lane", { ...context, executionLaneId: "lane-two" }],
+    ["worker", "worker", { ...context, workerId: "worker-two" }],
+    ["worktree", "worktree", { ...context, worktreeId: "worktree-two" }],
+    ["root", "working directory", { ...context, cwd: "/worktrees/two" }],
+    [
+      "permission",
+      "permission profile",
+      { ...context, permissionProfileId: ":read-only" },
+    ],
+  ])("rejects a stale %s claim", (_name, changedClaim, changedContext) => {
     expect(() =>
       assertCantripMcpBinding({
         binding,
@@ -178,7 +179,7 @@ describe("Cantrip MCP server binding", () => {
         serverAllowedOperations,
         now,
       }),
-    ).toThrowError(CantripMcpBindingError);
+    ).toThrow(`changed: ${changedClaim}`);
   });
 
   it("rejects expiry, owner mismatch, and server-side operation denial", () => {

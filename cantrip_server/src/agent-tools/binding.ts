@@ -80,16 +80,23 @@ export function assertCantripMcpBinding(options: {
   }
   const currentPermissionProfile =
     effectivePermissionProfile(context).effectiveId;
-  const staleIdentity =
-    binding.chatId !== context.chatId ||
-    binding.projectId !== context.projectId ||
-    binding.executionLaneId !== context.executionLaneId ||
-    binding.workerId !== context.workerId ||
-    binding.worktreeId !== context.worktreeId ||
-    binding.rootKind !== context.rootKind ||
-    binding.permissionProfileId !== currentPermissionProfile ||
+  const staleClaims = [
+    binding.chatId !== context.chatId ? "chat" : null,
+    binding.projectId !== context.projectId ? "project" : null,
+    binding.executionLaneId !== context.executionLaneId
+      ? "execution lane"
+      : null,
+    binding.workerId !== context.workerId ? "worker" : null,
+    binding.worktreeId !== context.worktreeId ? "worktree" : null,
+    binding.rootKind !== context.rootKind ? "root kind" : null,
+    binding.permissionProfileId !== currentPermissionProfile
+      ? "permission profile"
+      : null,
     normalizedWorkerPath(binding.canonicalRoot) !==
-      normalizedWorkerPath(context.cwd);
+    normalizedWorkerPath(context.cwd)
+      ? "working directory"
+      : null,
+  ].filter((claim): claim is string => claim !== null);
   // A linked Codex console can call the read-only context probe while the
   // Cantrip chat row is between turns. Keep every durable binding claim
   // authoritative, but do not reject that harmless probe solely because the
@@ -97,11 +104,12 @@ export function assertCantripMcpBinding(options: {
   // require an active Cantrip turn.
   const inactiveOperation =
     operation !== "context.get" && !chatIsExecuting(context.status);
-  if (staleIdentity || inactiveOperation) {
+  if (inactiveOperation) staleClaims.push("chat status");
+  if (staleClaims.length > 0) {
     throw new CantripMcpBindingError(
       "stale-binding",
       409,
-      "The MCP binding no longer matches the active Cantrip chat lane.",
+      `The MCP binding no longer matches the active Cantrip chat lane (changed: ${staleClaims.join(", ")}).`,
     );
   }
   if (
