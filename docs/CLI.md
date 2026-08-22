@@ -20,6 +20,7 @@ cantrip target -h
 cantrip explorer -h
 cantrip terminal -h
 cantrip browser -h
+cantrip run -h
 ```
 
 `cantrip -v` prints the CLI version. `cantrip --json <command>` returns the
@@ -62,6 +63,12 @@ cantrip terminal send --target "Build terminal" pnpm test
 cantrip terminal restart --target "Dev server"
 cantrip browser services --target Preview
 cantrip browser open --target Preview http://127.0.0.1:5173
+
+# Inspect Codex-compatible project Run configurations.
+cantrip run list
+cantrip run show "Run Spectral Lab"
+cantrip run validate
+cantrip run config path
 ```
 
 Worktree creation defaults to a new `cantrip/<name>` branch based on the
@@ -69,6 +76,29 @@ current revision. Use `--from`, `--existing`, or `--detach` only when that
 default is not appropriate. Removal deliberately reuses Cantrip's existing
 safety policy: Primary, dirty, externally created, leased, or actively bound
 worktrees cannot be removed through this command.
+
+## Run configurations
+
+Cantrip discovers declarative Codex local environments from
+`.codex/environments/*.toml` beneath the registered project source root. It
+uses the target worker platform when selecting actions, so repeated macOS,
+Windows, and Linux variants with the same display name resolve correctly. An
+ignored local environment remains local to that worker and still applies when
+the active chat uses a secondary worktree; a tracked file follows normal Git
+replication.
+
+`cantrip run list` returns actions compatible with the current worker.
+`cantrip run show` accepts an exact action name or the opaque ID returned by
+the list. Duplicate compatible names are rejected as ambiguous instead of
+being selected arbitrarily. `cantrip run validate` reports bounded parsing,
+schema, path-safety, and ambiguity diagnostics and exits nonzero when errors
+are present. `cantrip run config path` reports the canonical
+`.codex/environments/environment.toml` location and whether it is tracked,
+ignored, untracked, or absent.
+
+These commands are read-only. Action execution and worktree setup are added by
+later Run-configuration milestones; ordinary repository tools remain the way
+to create or edit TOML.
 
 ## Policies
 

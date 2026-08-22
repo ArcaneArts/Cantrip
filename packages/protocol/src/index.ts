@@ -14,6 +14,7 @@ export * from "./explorer.js";
 export * from "./surface-stream.js";
 export * from "./repository-operation.js";
 export * from "./workflow-content.js";
+export * from "./run-configurations.js";
 
 import {
   chatPlanOpaqueStateSchema,
@@ -7042,6 +7043,8 @@ export const cantripAgentOperationNameSchema = z.enum([
   "policy.read",
   "target.list",
   "target.inspect",
+  "run-config.list",
+  "run-config.read",
   "worktree.list",
   "worktree.status",
   "worktree.create",
@@ -7727,6 +7730,10 @@ export const cantripCliCommandNameSchema = z.enum([
   "worktree.remove",
   "target.list",
   "target.show",
+  "run.list",
+  "run.show",
+  "run.validate",
+  "run.config-path",
   "target.resolve-browser",
   "target.resolve-explorer",
   "target.resolve-terminal",
@@ -11122,6 +11129,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       serverId: z.string().min(1).max(255),
       worktreePath: z.string().min(1).max(8_192),
       stateProtection: terminalPrivateStateOpaqueSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run-configurations.inspect"),
+      sourcePath: z.string().min(1).max(8_192),
     })
     .strict(),
   z.object({

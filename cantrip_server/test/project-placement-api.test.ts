@@ -156,6 +156,39 @@ const workerBridge: WorkerCommandBus = {
             statusCode: 200,
           },
         ];
+      case "project.run-configurations.inspect":
+        return {
+          platform: "darwin",
+          canonical: {
+            relativePath: ".codex/environments/environment.toml",
+            sourceControlState: "ignored",
+          },
+          configured: true,
+          valid: true,
+          configurations: [
+            {
+              relativePath: ".codex/environments/environment.toml",
+              revision: "a".repeat(64),
+              version: 1,
+              name: "Spectral Lab",
+              sourceControlState: "ignored",
+              setup: null,
+              actions: [
+                {
+                  id: "b".repeat(64),
+                  name: "Run Spectral Lab",
+                  icon: "run",
+                  command: "dotnet run --project ./src/SpectralLab.App",
+                  platform: "darwin",
+                  configurationPath: ".codex/environments/environment.toml",
+                  sourceIndex: 1,
+                },
+              ],
+              diagnostics: [],
+            },
+          ],
+          diagnostics: [],
+        };
       default:
         throw new Error(`Unexpected placement command ${command.type}.`);
     }
@@ -879,6 +912,10 @@ describe.sequential("project execution placement API", () => {
         | "status"
         | "policy.list"
         | "policy.read"
+        | "run.list"
+        | "run.show"
+        | "run.validate"
+        | "run.config-path"
         | "target.list"
         | "target.show"
         | "explorer.list"
@@ -993,6 +1030,38 @@ describe.sequential("project execution placement API", () => {
           protectedBody: replacement.content.protectedBody,
         },
       },
+    });
+    const cliRunList = await cli("run.list");
+    expect(cliRunList.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(cliRunList.json()).data,
+    ).toMatchObject({
+      platform: "darwin",
+      configured: true,
+      configurations: [
+        {
+          name: "Spectral Lab",
+          sourceControlState: "ignored",
+          actions: [{ id: "b".repeat(64), name: "Run Spectral Lab" }],
+        },
+      ],
+    });
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: {
+        type: "project.run-configurations.inspect",
+        sourcePath: path.join(dataDirectory, "worker-alpha"),
+      },
+    });
+    const cliRunAction = await cli("run.show", {
+      action: "Run Spectral Lab",
+    });
+    expect(cliRunAction.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(cliRunAction.json()).data,
+    ).toMatchObject({
+      configuration: { revision: "a".repeat(64) },
+      action: { id: "b".repeat(64), platform: "darwin" },
     });
     const hiddenPolicyRead = await cli("policy.read", {
       policyId: hiddenPolicy.id,

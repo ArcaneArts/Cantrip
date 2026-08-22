@@ -251,6 +251,7 @@ import { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-ada
 import { readProjectFolderStats } from "./project-folder-stats.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
+import { inspectRunConfigurations } from "./run-configuration-discovery.js";
 import {
   TerminalManager,
   type TerminalRuntimeEvent,
@@ -1537,6 +1538,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         } catch {
           throw new Error("Could not discover terminal script commands.");
         }
+      case "project.run-configurations.inspect":
+        return inspectRunConfigurations(command.sourcePath);
       case "project.repository-stats":
         return readProjectRepositoryStats(command.cwd);
       case "project.folder-stats":
