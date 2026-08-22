@@ -1,6 +1,6 @@
 import type { AgentActivity } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Activity, ActivityGroup, activityLabel } from "./activity";
 
@@ -133,6 +133,7 @@ describe("rich Codex activity", () => {
       <ActivityGroup
         startedAt="2026-08-07T12:00:00.000Z"
         endedAt="2026-08-07T12:00:37.000Z"
+        onViewTrajectory={vi.fn()}
         turnId="turn-1"
         turnKey="runtime:turn-1"
       >
@@ -140,6 +141,8 @@ describe("rich Codex activity", () => {
       </ActivityGroup>,
     );
     expect(completed).toContain("Worked for 37s");
+    expect(completed).toContain('aria-label="View turn trajectory"');
+    expect(completed.match(/<button/gu)).toHaveLength(2);
     expect(completed).toContain('data-turn-key="runtime:turn-1"');
     expect(completed).not.toContain("Grouped command");
 

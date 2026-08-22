@@ -1,5 +1,6 @@
 import type { ChatMessage } from "@cantrip/protocol";
 import {
+  ArrowLeft,
   Check,
   ChevronDown,
   CircleX,
@@ -7,7 +8,7 @@ import {
   Loader2,
   Search,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,10 @@ import {
   type TrajectoryEvent,
   type TrajectoryLane,
 } from "./trajectory-model";
+import {
+  TrajectoryTimeline,
+  trajectoryEventAtTime,
+} from "./trajectory-timeline";
 
 const TRAJECTORY_CLOCK_INTERVAL_MS = 500;
 const lanes = ["input", "model", "tools"] as const;
@@ -62,48 +67,65 @@ function laneColor(lane: TrajectoryLane): string {
 
 function TrajectoryEventRow({
   event,
+  onSelect,
+  rowRef,
+  selected,
   startedAtMs,
 }: {
   event: TrajectoryEvent;
+  onSelect(): void;
+  rowRef(node: HTMLLIElement | null): void;
+  selected: boolean;
   startedAtMs: number;
 }) {
   return (
     <li
-      className="flex min-w-0 gap-2.5 border-b px-3 py-2.5 last:border-b-0"
+      className="min-w-0 border-b last:border-b-0"
       data-event-id={event.id}
       data-event-kind={event.kind}
       data-event-lane={event.lane}
+      ref={rowRef}
     >
-      <span
-        aria-hidden="true"
+      <button
+        aria-current={selected ? "true" : undefined}
         className={cn(
-          "mt-1.5 size-2 shrink-0 rounded-full",
-          laneColor(event.lane),
+          "flex w-full min-w-0 gap-2.5 px-3 py-2.5 text-left outline-none hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          selected && "bg-muted/50",
         )}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-xs font-medium">
-            {event.label}
-          </span>
-          <time className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-            {formatOffset(event, startedAtMs)}
-          </time>
-          <EventStatus event={event} />
-        </div>
-        {event.preview ? (
-          <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
-            {event.preview}
-          </p>
-        ) : null}
-        <div className="mt-1 flex gap-2 font-mono text-[9px] uppercase tracking-wide text-muted-foreground/70">
-          <span>{event.lane}</span>
-          <span>{trajectoryKindLabel(event.kind)}</span>
-          {event.timingQuality !== "exact" ? (
-            <span>{event.timingQuality} timing</span>
+        onClick={onSelect}
+        type="button"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "mt-1.5 size-2 shrink-0 rounded-full",
+            laneColor(event.lane),
+          )}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-xs font-medium">
+              {event.label}
+            </span>
+            <time className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+              {formatOffset(event, startedAtMs)}
+            </time>
+            <EventStatus event={event} />
+          </div>
+          {event.preview ? (
+            <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+              {event.preview}
+            </p>
           ) : null}
+          <div className="mt-1 flex gap-2 font-mono text-[9px] uppercase tracking-wide text-muted-foreground/70">
+            <span>{event.lane}</span>
+            <span>{trajectoryKindLabel(event.kind)}</span>
+            {event.timingQuality !== "exact" ? (
+              <span>{event.timingQuality} timing</span>
+            ) : null}
+          </div>
         </div>
-      </div>
+      </button>
     </li>
   );
 }
@@ -111,16 +133,21 @@ function TrajectoryEventRow({
 export function AgentTrajectory({
   active,
   messages,
+  onBackToCurrent,
   targetTurnKey,
   visible,
 }: {
   active: boolean;
   messages: ChatMessage[];
+  onBackToCurrent?(): void;
   targetTurnKey?: string | null;
   visible: boolean;
 }) {
   const [clockMs, setClockMs] = useState(() => Date.now());
   const [query, setQuery] = useState("");
+  const [playheadMs, setPlayheadMs] = useState<number | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const [hiddenLanes, setHiddenLanes] = useState<Set<TrajectoryLane>>(
     () => new Set(),
   );
@@ -167,6 +194,46 @@ export function AgentTrajectory({
     [hiddenKinds, hiddenLanes, query, turn?.events],
   );
 
+  useEffect(() => {
+    setPlayheadMs(turn?.timelineStartMs ?? null);
+    setSelectedEventId(null);
+  }, [turn?.key]);
+
+  useEffect(() => {
+    if (
+      selectedEventId &&
+      turn &&
+      !turn.events.some((event) => event.id === selectedEventId)
+    ) {
+      setSelectedEventId(null);
+    }
+  }, [selectedEventId, turn]);
+
+  const selectAndReveal = (event: TrajectoryEvent, nextPlayheadMs: number) => {
+    setPlayheadMs(nextPlayheadMs);
+    setSelectedEventId(event.id);
+    window.requestAnimationFrame(() => {
+      rowRefs.current.get(event.id)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  };
+
+  const seekTimeline = (timeMs: number) => {
+    if (!turn) return;
+    const nextTimeMs = Math.min(
+      turn.timelineEndMs,
+      Math.max(turn.timelineStartMs, timeMs),
+    );
+    const event = trajectoryEventAtTime(events, nextTimeMs);
+    if (event) selectAndReveal(event, nextTimeMs);
+    else {
+      setPlayheadMs(nextTimeMs);
+      setSelectedEventId(null);
+    }
+  };
+
   if (!turn) {
     return (
       <div
@@ -196,11 +263,27 @@ export function AgentTrajectory({
               {turn.title}
             </p>
             <p className="mt-0.5 text-[10px] text-muted-foreground">
-              {turn.completed ? "Completed" : "Live"} ·{" "}
-              {formatElapsed(turn.elapsedMs)}
+              {targetTurnKey
+                ? `Historical turn ${turn.ordinal}`
+                : turn.completed
+                  ? "Completed"
+                  : "Live"}{" "}
+              · {formatElapsed(turn.elapsedMs)}
               {!turn.exactTimingComplete ? " · mixed timing precision" : ""}
             </p>
           </div>
+          {targetTurnKey && onBackToCurrent ? (
+            <Button
+              aria-label="Back to current trajectory"
+              className="h-7 shrink-0 px-2 text-[10px]"
+              onClick={onBackToCurrent}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <ArrowLeft className="size-3" /> Back to current
+            </Button>
+          ) : null}
           <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground">
             {turn.events.length} events
           </span>
@@ -229,6 +312,15 @@ export function AgentTrajectory({
           ))}
         </div>
       </header>
+
+      <div className="shrink-0 border-b bg-muted/10 px-2 py-1">
+        <TrajectoryTimeline
+          events={events}
+          onSeek={seekTimeline}
+          playheadMs={playheadMs ?? turn.timelineStartMs}
+          turn={turn}
+        />
+      </div>
 
       <div className="flex shrink-0 items-center gap-2 border-b p-2">
         <div className="relative min-w-0 flex-1">
@@ -299,6 +391,12 @@ export function AgentTrajectory({
               <TrajectoryEventRow
                 event={event}
                 key={event.id}
+                onSelect={() => selectAndReveal(event, event.startMs)}
+                rowRef={(node) => {
+                  if (node) rowRefs.current.set(event.id, node);
+                  else rowRefs.current.delete(event.id);
+                }}
+                selected={selectedEventId === event.id}
                 startedAtMs={turn.startedAtMs}
               />
             ))}

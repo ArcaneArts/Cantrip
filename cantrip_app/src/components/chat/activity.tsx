@@ -577,12 +577,14 @@ export function Activity({ activity }: { activity: AgentActivity }) {
 export function ActivityGroup({
   children,
   endedAt,
+  onViewTrajectory,
   startedAt,
   turnId,
   turnKey,
 }: {
   children: ReactNode;
   endedAt: string | null;
+  onViewTrajectory?(turnKey: string): void;
   startedAt: string;
   turnId: string | null;
   turnKey: string;
@@ -612,17 +614,33 @@ export function ActivityGroup({
       data-turn-id={turnId ?? undefined}
       data-turn-key={turnKey}
     >
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-1.5 border-b py-2 text-left text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-      >
-        <span>Worked for {formatElapsedTime(startedAt, endedAt)}</span>
-        <ChevronDown
-          className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
-        />
-      </button>
+      <div className="flex items-center border-b">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 py-2 text-left text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <span>Worked for {formatElapsedTime(startedAt, endedAt)}</span>
+          <ChevronDown
+            className={cn(
+              "size-3.5 transition-transform",
+              !open && "-rotate-90",
+            )}
+          />
+        </button>
+        {onViewTrajectory ? (
+          <button
+            aria-label="View turn trajectory"
+            className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onViewTrajectory(turnKey)}
+            title="View turn trajectory"
+            type="button"
+          >
+            <Network className="size-3.5" />
+          </button>
+        ) : null}
+      </div>
       {open ? <div className="grid min-w-0 gap-0 py-1">{children}</div> : null}
     </div>
   );

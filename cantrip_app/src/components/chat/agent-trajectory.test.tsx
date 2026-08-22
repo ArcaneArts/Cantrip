@@ -69,4 +69,22 @@ describe("AgentTrajectory", () => {
     expect(markup).toContain('data-event-kind="command"');
     expect(markup).toContain("mixed timing precision");
   });
+
+  it("identifies a pinned historical target and offers a return action", () => {
+    const markup = renderToStaticMarkup(
+      <AgentTrajectory
+        active={false}
+        messages={[
+          message("user-1", 1, "user", 1_000, [
+            { type: "text", text: "Historical request" },
+          ]),
+        ]}
+        onBackToCurrent={() => undefined}
+        targetTurnKey="legacy:user-1"
+        visible
+      />,
+    );
+    expect(markup).toContain("Historical turn 1");
+    expect(markup).toContain('aria-label="Back to current trajectory"');
+  });
 });
