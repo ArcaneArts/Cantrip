@@ -26,6 +26,7 @@
     "@cantrip/crypto": "workspace:*",
     "@cantrip/logging": "workspace:*",
     "@cantrip/protocol": "workspace:*",
+    "@cantrip/version": "workspace:*",
     "@capacitor/android": "^8.5.0",
     "@capacitor/app": "^8.1.1",
     "@capacitor/app-launcher": "^8.0.1",
