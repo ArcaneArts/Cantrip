@@ -59,7 +59,42 @@ describe("model reasoning picker", () => {
 
     expect(markup).toContain(">GPT 5.6 Sol<");
     expect(markup).toContain('aria-label="Select agent model"');
+    expect(markup).not.toContain('aria-label="Configure reasoning effort"');
     expect(markup).not.toContain("<select");
+  });
+
+  it("places the reasoning trigger immediately after the model selector", () => {
+    const reasoningState = chatReasoningStateSchema.parse({
+      modelId: "sol",
+      reasoningEffort: "high",
+      options: [
+        { effort: "low", description: null },
+        { effort: "high", description: null },
+      ],
+      reasoningMandatory: false,
+      incompleteMetadata: false,
+    });
+    const markup = renderToStaticMarkup(
+      <ModelReasoningPicker
+        models={models}
+        selectedModelId="sol"
+        reasoningEffort="high"
+        reasoningState={reasoningState}
+        onSelectModel={() => {}}
+        onSelectReasoning={() => {}}
+      />,
+    );
+
+    const modelTrigger = markup.indexOf('aria-label="Select agent model"');
+    const reasoningTrigger = markup.indexOf(
+      'aria-label="Configure reasoning effort"',
+    );
+    expect(modelTrigger).toBeGreaterThanOrEqual(0);
+    expect(reasoningTrigger).toBeGreaterThan(modelTrigger);
+    expect(markup.slice(modelTrigger, reasoningTrigger)).toContain(
+      "GPT 5.6 Sol",
+    );
+    expect(markup.slice(reasoningTrigger)).toContain("lucide-brain");
   });
 
   it("filters by display name, provider, and provider model name", () => {
