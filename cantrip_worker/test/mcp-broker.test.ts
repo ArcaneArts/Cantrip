@@ -163,7 +163,63 @@ describe("Cantrip MCP worker broker", () => {
     }
   });
 
-  it("rotates a binding when its permission scope changes", async () => {
+  it("refreshes mutable scope claims without replacing the stdio connection", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const broker = new CantripMcpBroker({
+      dataDirectory,
+      serverUrl: "https://cantrip.example",
+      token: "worker-token",
+      workerId: "worker-one",
+    });
+    await broker.start();
+    try {
+      const first = broker.createBinding({
+        ...bindingInput(),
+        allowedOperations: ["context.get", "policy.list"] as Array<
+          "context.get" | "policy.list"
+        >,
+      });
+      const refreshed = broker.createBinding({
+        ...bindingInput(),
+        executionLaneId: "lane-two",
+        worktreeId: "worktree-two",
+        canonicalRoot: "C:\\Users\\Cantrip\\project-two",
+        rootKind: "folder-root",
+        permissionProfileId: ":read-only",
+      });
+
+      expect(refreshed).toMatchObject({
+        binding: {
+          bindingId: first.binding.bindingId,
+          executionLaneId: "lane-two",
+          worktreeId: "worktree-two",
+          canonicalRoot: "C:\\Users\\Cantrip\\project-two",
+          rootKind: "folder-root",
+          permissionProfileId: ":read-only",
+          allowedOperations: ["context.get"],
+        },
+        connectionPath: first.connectionPath,
+      });
+      expect(refreshed.connection).toEqual(first.connection);
+      await expect(access(first.connectionPath)).resolves.toBeUndefined();
+      const forbidden = await fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${first.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: first.binding.bindingId,
+          request: { operation: "policy.list", arguments: {} },
+        }),
+      });
+      expect(forbidden.status).toBe(403);
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("rotates a binding when its project identity changes", async () => {
     const dataDirectory = await temporaryDirectory();
     const broker = new CantripMcpBroker({
       dataDirectory,
@@ -176,7 +232,7 @@ describe("Cantrip MCP worker broker", () => {
       const first = broker.createBinding(bindingInput());
       const rotated = broker.createBinding({
         ...bindingInput(),
-        permissionProfileId: ":read-only",
+        projectId: "project-two",
       });
 
       expect(rotated.binding.bindingId).not.toBe(first.binding.bindingId);
