@@ -60,6 +60,7 @@ export function nativeLocalProjectFolderRequest(
   const source = project.source;
   if (!source) return null;
   return {
+    folderManagement: project.folderManagement ?? null,
     path: source.path,
     serverUrl,
     sourceKind: source.sourceKind,

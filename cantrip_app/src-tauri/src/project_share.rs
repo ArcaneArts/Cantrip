@@ -15,7 +15,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 use crate::{
     desktop_worker::{
-        normalize_server_url, resolve_project_directory_under_root, DesktopWorkerProjectStorage,
+        normalize_server_url, resolve_project_directory, DesktopWorkerProjectStorage,
         DesktopWorkers,
     },
     ManagedRuntime,
@@ -38,17 +38,38 @@ pub struct RevealProjectShareRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RevealLocalProjectFolderRequest {
+    folder_management: Option<LocalProjectFolderManagement>,
     path: String,
     server_url: String,
     source_kind: LocalProjectSourceKind,
     worker_id: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum LocalProjectSourceKind {
     Folder,
     Git,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum LocalProjectFolderManagement {
+    External,
+    Managed,
+}
+
+fn local_project_storage(
+    source_kind: LocalProjectSourceKind,
+    folder_management: Option<LocalProjectFolderManagement>,
+) -> DesktopWorkerProjectStorage {
+    match (source_kind, folder_management) {
+        (LocalProjectSourceKind::Folder, Some(LocalProjectFolderManagement::External)) => {
+            DesktopWorkerProjectStorage::ExternalFolder
+        }
+        (LocalProjectSourceKind::Folder, _) => DesktopWorkerProjectStorage::Folders,
+        (LocalProjectSourceKind::Git, _) => DesktopWorkerProjectStorage::Repositories,
+    }
 }
 
 struct MountedProjectShare {
@@ -117,15 +138,12 @@ pub async fn reveal_local_project_folder(
     let Ok(server_url) = normalize_server_url(&request.server_url) else {
         return Ok(false);
     };
-    let storage = match request.source_kind {
-        LocalProjectSourceKind::Folder => DesktopWorkerProjectStorage::Folders,
-        LocalProjectSourceKind::Git => DesktopWorkerProjectStorage::Repositories,
-    };
+    let storage = local_project_storage(request.source_kind, request.folder_management);
     let requested_path = std::path::Path::new(&request.path);
     let bundled_project = runtime
         .local_worker_data_directory(&server_url, &request.worker_id)
         .and_then(|data_directory| {
-            resolve_project_directory_under_root(data_directory, storage, requested_path)
+            resolve_project_directory(data_directory, storage, requested_path)
         });
     let project_directory = match bundled_project {
         Some(project_directory) => Some(project_directory),
@@ -937,6 +955,28 @@ mod tests {
         assert!(mount_expiration_deadline(1).is_ok());
         assert!(mount_expiration_deadline(0).is_err());
         assert!(mount_expiration_deadline(MAX_NATIVE_MOUNT_LEASE_MS + 1).is_err());
+    }
+
+    #[test]
+    fn resolves_only_explicit_external_folders_outside_managed_storage() {
+        assert_eq!(
+            local_project_storage(
+                LocalProjectSourceKind::Folder,
+                Some(LocalProjectFolderManagement::External),
+            ),
+            DesktopWorkerProjectStorage::ExternalFolder
+        );
+        assert_eq!(
+            local_project_storage(
+                LocalProjectSourceKind::Folder,
+                Some(LocalProjectFolderManagement::Managed),
+            ),
+            DesktopWorkerProjectStorage::Folders
+        );
+        assert_eq!(
+            local_project_storage(LocalProjectSourceKind::Git, None),
+            DesktopWorkerProjectStorage::Repositories
+        );
     }
 
     #[cfg(target_os = "macos")]

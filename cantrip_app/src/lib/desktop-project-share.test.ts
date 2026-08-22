@@ -72,9 +72,35 @@ describe("desktop project reveal", () => {
     expect(
       nativeLocalProjectFolderRequest(project, "https://cantrip.example"),
     ).toEqual({
+      folderManagement: null,
       path: "/worker/repositories/ArcaneArts/Cantrip",
       serverUrl: "https://cantrip.example",
       sourceKind: "git",
+      workerId: "desktop-worker-1",
+    });
+  });
+
+  it("marks added folders for direct local path resolution", () => {
+    expect(
+      nativeLocalProjectFolderRequest(
+        {
+          ...project,
+          folderManagement: "external",
+          originKind: "managed-folder",
+          source: {
+            ...project.source!,
+            displayPath: "/Users/example/Documents/notes",
+            path: "/Users/example/Documents/notes",
+            sourceKind: "folder",
+          },
+        },
+        "https://cantrip.example",
+      ),
+    ).toEqual({
+      folderManagement: "external",
+      path: "/Users/example/Documents/notes",
+      serverUrl: "https://cantrip.example",
+      sourceKind: "folder",
       workerId: "desktop-worker-1",
     });
   });
