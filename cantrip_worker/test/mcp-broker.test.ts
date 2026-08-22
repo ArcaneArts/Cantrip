@@ -478,6 +478,24 @@ describe("Cantrip MCP worker broker", () => {
             worktreeId: "worktree-one",
           },
         });
+        const help = await client.callTool({
+          name: "tool_help",
+          arguments: { tool: "worktree_create" },
+        });
+        expect(help).toMatchObject({
+          structuredContent: {
+            data: {
+              tool: "worktree_create",
+              inputSchema: expect.any(Object),
+              examples: expect.arrayContaining([
+                expect.objectContaining({
+                  intent: "newBranch",
+                  baseRevision: "main",
+                }),
+              ]),
+            },
+          },
+        });
         expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(16);
       } finally {
         await client.close();

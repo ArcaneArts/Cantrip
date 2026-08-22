@@ -29,6 +29,7 @@ import {
   cantripMcpTargetListResultSchema,
   cantripMcpTerminalReadInputSchema,
   cantripMcpTerminalReadResultSchema,
+  cantripMcpToolHelpInputSchema,
   cantripMcpWorktreeListInputSchema,
   cantripMcpWorktreeListResultSchema,
   cantripMcpWorktreeStatusInputSchema,
@@ -72,6 +73,7 @@ import {
   protectWorkerSurfaceStreamContent,
 } from "../surface-stream-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
+import { cantripMcpToolHelp } from "./tool-catalog.js";
 
 export type CantripMcpRawOperationExecutor = (
   binding: CantripMcpBinding,
@@ -594,6 +596,12 @@ export async function executeCantripMcpReadOperation(
     throw new Error("Worker encryption belongs to a different MCP owner.");
   }
   switch (options.request.operation) {
+    case "tool.help": {
+      const { tool } = cantripMcpToolHelpInputSchema.parse(
+        options.request.arguments,
+      );
+      return cantripMcpToolHelp(tool);
+    }
     case "context.get": {
       cantripMcpContextGetInputSchema.parse(options.request.arguments);
       return cantripMcpContextGetResultSchema.parse(

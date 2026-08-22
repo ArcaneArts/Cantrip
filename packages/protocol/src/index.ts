@@ -7246,6 +7246,7 @@ const cantripCliArgumentsSchema = z
 
 export const cantripAgentOperationNameSchema = z.enum([
   "context.get",
+  "tool.help",
   "policy.list",
   "policy.read",
   "target.list",
@@ -7284,6 +7285,7 @@ export const cantripAgentOperationNameSchema = z.enum([
 
 export const CANTRIP_MCP_READ_OPERATIONS = [
   "context.get",
+  "tool.help",
   "policy.list",
   "policy.read",
   "target.list",
@@ -7303,6 +7305,7 @@ export const CANTRIP_MCP_READ_OPERATIONS = [
 
 export const CANTRIP_MCP_READ_TOOL_NAMES = [
   "context_get",
+  "tool_help",
   "policy_list",
   "policy_read",
   "target_list",
@@ -7375,6 +7378,8 @@ export const CANTRIP_MCP_TOOL_NAMES = [
   ...CANTRIP_MCP_READ_TOOL_NAMES,
   ...CANTRIP_MCP_MUTATION_TOOL_NAMES,
 ] as const;
+
+export const cantripMcpToolNameSchema = z.enum(CANTRIP_MCP_TOOL_NAMES);
 
 export function cantripMcpToolNamesForOperations(
   operations: readonly z.infer<typeof cantripAgentOperationNameSchema>[],
@@ -7500,6 +7505,9 @@ const cantripMcpReadResultBaseSchema = z
   .strict();
 
 export const cantripMcpContextGetInputSchema = z.object({}).strict();
+export const cantripMcpToolHelpInputSchema = z
+  .object({ tool: cantripMcpToolNameSchema })
+  .strict();
 export const cantripMcpBindingStaleClaimSchema = z.enum([
   "chat",
   "project",
@@ -7626,7 +7634,15 @@ export const cantripMcpWorktreeCreateInputSchema = z.discriminatedUnion(
         intent: z.literal("newBranch"),
         name: z.string().trim().min(1).max(200),
         branch: z.string().trim().min(1).max(255),
-        baseRevision: z.string().trim().min(1).max(1_024).optional(),
+        baseRevision: z
+          .string()
+          .trim()
+          .min(1)
+          .max(1_024)
+          .optional()
+          .describe(
+            "Optional starting revision; matches CLI --base-revision (legacy alias --from).",
+          ),
       })
       .strict(),
     z
@@ -7640,7 +7656,14 @@ export const cantripMcpWorktreeCreateInputSchema = z.discriminatedUnion(
       .object({
         intent: z.literal("detached"),
         name: z.string().trim().min(1).max(200),
-        baseRevision: z.string().trim().min(1).max(1_024),
+        baseRevision: z
+          .string()
+          .trim()
+          .min(1)
+          .max(1_024)
+          .describe(
+            "Required detached revision; CLI expresses this variant with --detach.",
+          ),
       })
       .strict(),
   ],
@@ -7786,6 +7809,19 @@ export const cantripMcpContextGetResultSchema =
       })
       .strict(),
   });
+export const cantripMcpToolHelpResultSchema = cantripMcpReadResultBaseSchema
+  .extend({
+    target: z.null().default(null),
+    data: z
+      .object({
+        tool: cantripMcpToolNameSchema,
+        inputSchema: z.record(z.string(), z.unknown()),
+        examples: z.array(z.record(z.string(), z.unknown())).max(3),
+        notes: z.array(z.string().min(1).max(500)).max(8),
+      })
+      .strict(),
+  })
+  .strict();
 export const cantripMcpPolicyListResultSchema =
   cantripMcpReadResultBaseSchema.extend({
     target: z.null().default(null),
