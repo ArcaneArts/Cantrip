@@ -2987,10 +2987,20 @@ describe("Cantrip protocol", () => {
             operation: { id: operationId, context: operationContext },
           },
         ],
+        codegraphTargets: [
+          {
+            projectId,
+            worktreeId,
+            rootKind: "folder-root",
+            sourcePath: "/folder",
+            worktreePath: "/folder",
+          },
+        ],
       }),
     ).toMatchObject({
       type: "worktree.observation.configure",
       targets: [{ operation: { id: operationId } }],
+      codegraphTargets: [{ rootKind: "folder-root" }],
     });
     expect(() =>
       workerCommandSchema.parse({

@@ -14,7 +14,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { codeGraphProjectStatusSchema } from "@cantrip/protocol";
-import type { CodeGraphProjectStatus } from "@cantrip/protocol";
+import type {
+  CodeGraphObservationTarget,
+  CodeGraphProjectStatus,
+} from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CodeGraphProjectSupervisor } from "../src/codegraph/supervisor.js";
@@ -91,6 +94,20 @@ function fakeCodeGraph() {
   };
 }
 
+function codeGraphTarget(
+  root: string,
+  overrides: Partial<CodeGraphObservationTarget> = {},
+): CodeGraphObservationTarget {
+  return {
+    projectId: "00000000-0000-4000-8000-000000000001",
+    worktreeId: `root:${root}`,
+    rootKind: "git-worktree",
+    sourcePath: root,
+    worktreePath: root,
+    ...overrides,
+  };
+}
+
 describe("CodeGraph project supervisor", () => {
   it("authorizes, excludes, initializes, and incrementally synchronizes a worktree", async () => {
     const project = await gitProject("cantrip-codegraph-project-");
@@ -104,9 +121,7 @@ describe("CodeGraph project supervisor", () => {
       execute: fake.execute,
     });
 
-    await supervisor.configure([
-      { sourcePath: project.root, worktreePath: project.root },
-    ]);
+    await supervisor.configure([codeGraphTarget(project.root)]);
     await supervisor.waitForIdle();
 
     expect(fake.calls.map(({ args }) => args[0])).toEqual([
@@ -159,7 +174,7 @@ describe("CodeGraph project supervisor", () => {
       execute: fake.execute,
     });
 
-    const target = { sourcePath: project.root, worktreePath: project.root };
+    const target = codeGraphTarget(project.root);
     await supervisor.configure([target]);
     await supervisor.waitForIdle();
     await supervisor.configure([target]);
@@ -190,12 +205,10 @@ describe("CodeGraph project supervisor", () => {
     });
 
     await supervisor.configure([
-      {
+      codeGraphTarget(project.root, {
         projectId,
         worktreeId,
-        sourcePath: project.root,
-        worktreePath: project.root,
-      },
+      }),
     ]);
     await supervisor.waitForIdle();
 
@@ -252,7 +265,7 @@ describe("CodeGraph project supervisor", () => {
     });
 
     await supervisor.configure(
-      projects.map(({ root }) => ({ sourcePath: root, worktreePath: root })),
+      projects.map(({ root }) => codeGraphTarget(root)),
     );
     await supervisor.waitForIdle();
 
@@ -282,9 +295,7 @@ describe("CodeGraph project supervisor", () => {
       },
     });
 
-    await supervisor.configure([
-      { sourcePath: project.root, worktreePath: project.root },
-    ]);
+    await supervisor.configure([codeGraphTarget(project.root)]);
     await supervisor.waitForIdle();
     const callsBeforeChange = fake.calls.length;
     listener?.("change", "src/first.ts");
@@ -319,13 +330,47 @@ describe("CodeGraph project supervisor", () => {
     });
 
     await supervisor.configure([
-      { sourcePath: project.root, worktreePath: unrelated },
+      codeGraphTarget(project.root, { worktreePath: unrelated }),
     ]);
     await supervisor.waitForIdle();
 
     expect(fake.calls).toEqual([]);
     expect(supervisor.statuses()).toEqual([]);
     await expect(supervisor.prepareForAgent(unrelated)).resolves.toBeNull();
+    supervisor.close();
+  });
+
+  it("initializes a plain folder without requiring Git metadata", async () => {
+    const root = await realpath(
+      await mkdtemp(path.join(tmpdir(), "cantrip-codegraph-folder-")),
+    );
+    directories.push(root);
+    const fake = fakeCodeGraph();
+    const supervisor = new CodeGraphProjectSupervisor({
+      authorize: async (sourcePath, requested, rootKind) => {
+        expect(sourcePath).toBe(root);
+        expect(requested).toEqual([root]);
+        expect(rootKind).toBe("folder-root");
+        return [{ gitCommonDir: null, root }];
+      },
+      command: "/managed/codegraph",
+      execute: fake.execute,
+    });
+
+    await supervisor.configure([
+      codeGraphTarget(root, { rootKind: "folder-root" }),
+    ]);
+    await supervisor.waitForIdle();
+
+    expect(fake.calls.map(({ args }) => args[0])).toEqual([
+      "status",
+      "init",
+      "status",
+    ]);
+    await expect(supervisor.prepareForAgent(root)).resolves.toBe(root);
+    expect(supervisor.statuses()).toEqual([
+      expect.objectContaining({ root, state: "ready" }),
+    ]);
     supervisor.close();
   });
 });

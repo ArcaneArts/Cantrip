@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { lstat, mkdtemp, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -20,6 +20,7 @@ import {
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
   type AgentTurnResultMode,
+  type CodeGraphObservationTarget,
   type GitManagedOperationContext,
   type GitManagedOperationRecord,
   type GitManagedOperationWorkerState,
@@ -707,7 +708,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   const codegraphInvocation = codegraphRuntime?.launcherInvocation() ?? null;
   let codegraphProjects: CodeGraphProjectSupervisor | null = null;
-  let codegraphObservationTargets: WorktreeObservationTarget[] = [];
+  let codegraphObservationTargets: CodeGraphObservationTarget[] = [];
   const activateCodeGraphProjects = async (): Promise<void> => {
     if (
       !codegraphRuntime ||
@@ -718,7 +719,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     }
     if (!codegraphProjects) {
       codegraphProjects = new CodeGraphProjectSupervisor({
-        authorize: async (sourcePath, worktreePaths) => {
+        authorize: async (sourcePath, worktreePaths, rootKind) => {
+          if (rootKind === "folder-root") {
+            const canonicalSource = await realpath(sourcePath);
+            const sourceEntry = await lstat(canonicalSource);
+            if (!sourceEntry.isDirectory()) {
+              throw new Error("CodeGraph folder source is not a directory.");
+            }
+            return Promise.all(
+              worktreePaths.map(async (worktreePath) => {
+                const root = await realpath(worktreePath);
+                if (root !== canonicalSource) {
+                  throw new Error(
+                    "CodeGraph folder root does not match its project source.",
+                  );
+                }
+                return { gitCommonDir: null, root };
+              }),
+            );
+          }
           const authorized = await worktrees.authorizeTargets(
             sourcePath,
             worktreePaths,
@@ -2133,7 +2152,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return worktrees.status(command.sourcePath, command.worktreePath);
       case "worktree.observation.configure":
         worktrees.configureObservation(command.targets);
-        codegraphObservationTargets = [...command.targets];
+        codegraphObservationTargets =
+          command.codegraphTargets ??
+          command.targets.map((target) => ({
+            projectId: target.projectId!,
+            worktreeId: target.worktreeId!,
+            rootKind: "git-worktree" as const,
+            sourcePath: target.sourcePath,
+            worktreePath: target.worktreePath,
+          }));
         void activateCodeGraphProjects().catch((error) => {
           workerLogger.event(
             "warn",
