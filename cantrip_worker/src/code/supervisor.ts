@@ -18,6 +18,8 @@ import type {
   CodeAgentTurnPreparationResult,
   CodeAppearance,
   CodeCapabilities,
+  CodeOpenFileResult,
+  CodePresentation,
   CodeProbeResult,
   CodeRuntimeStatus,
   CodeSaveAllResult,
@@ -48,6 +50,7 @@ interface CodeSession {
   lastError: string | null;
   profileId: string;
   profileKey: string;
+  presentation: CodePresentation;
   projectId: string;
   projectName: string;
   sessionId: string;
@@ -176,7 +179,8 @@ function sameBinding(session: CodeSession, command: CodeOpenCommand): boolean {
     session.projectId === command.projectId &&
     session.worktreeId === command.worktreeId &&
     session.cwd === path.resolve(command.cwd) &&
-    session.profileKey === stableKey(command.profileId)
+    session.profileKey === stableKey(command.profileId) &&
+    session.presentation === command.presentation
   );
 }
 
@@ -318,6 +322,7 @@ export class CodeSupervisor {
         lastError: null,
         profileId: command.profileId,
         profileKey,
+        presentation: command.presentation,
         projectId: command.projectId,
         projectName: path.basename(cwd),
         sessionId: command.sessionId,
@@ -349,6 +354,7 @@ export class CodeSupervisor {
     session.appearance = command.appearance;
     session.themeMode = "follow-cantrip";
     session.profileId = command.profileId;
+    session.presentation = command.presentation;
     session.worktreeName = command.worktreeName ?? session.worktreeName;
     session.lastActivityAt = isoNow();
     session.lastError = null;
@@ -431,6 +437,24 @@ export class CodeSupervisor {
   async saveAll(sessionId: string): Promise<CodeSaveAllResult> {
     this.#requireSession(sessionId).lastActivityAt = isoNow();
     return this.#bridge.saveAll(sessionId);
+  }
+
+  async openFile(
+    sessionId: string,
+    requestedPath: string,
+  ): Promise<CodeOpenFileResult> {
+    const session = this.#requireSession(sessionId);
+    const [relativePath] = this.#safeRelativePaths(session.cwd, [
+      requestedPath,
+    ]);
+    const normalizedRequest = requestedPath.replaceAll("\\", "/");
+    if (!relativePath || relativePath !== normalizedRequest) {
+      throw new Error(
+        "Cantrip Code requires a safe worktree-relative file path.",
+      );
+    }
+    session.lastActivityAt = isoNow();
+    return this.#bridge.openFile(sessionId, relativePath);
   }
 
   async setTheme(
@@ -946,6 +970,7 @@ export class CodeSupervisor {
       "cantrip.bridgeUrl": session.bridgeUrl,
       "cantrip.projectId": session.projectId,
       "cantrip.projectName": session.projectName,
+      "cantrip.presentation": session.presentation,
       "cantrip.sessionId": session.sessionId,
       "cantrip.workerId": this.#workerId,
       "cantrip.workerName": this.#workerName,
@@ -959,6 +984,18 @@ export class CodeSupervisor {
       "window.title": "Command Palette",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
     };
+    if (session.presentation === "editor") {
+      Object.assign(settings, {
+        "breadcrumbs.enabled": true,
+        "window.commandCenter": false,
+        "window.menuBarVisibility": "hidden",
+        "workbench.activityBar.location": "hidden",
+        "workbench.editor.editorActionsLocation": "hidden",
+        "workbench.editor.showTabs": "none",
+        "workbench.layoutControl.enabled": false,
+        "workbench.statusBar.visible": true,
+      });
+    }
     settings["workbench.colorTheme"] = THEME_NAMES[session.appearance];
     const workspace = {
       folders: [{ name: path.basename(session.cwd), path: session.cwd }],
@@ -1105,6 +1142,8 @@ export class CodeSupervisor {
         lastError: null,
         profileId,
         profileKey,
+        presentation:
+          candidate.presentation === "editor" ? "editor" : "workbench",
         projectId,
         projectName: candidate.projectName as string,
         sessionId,
@@ -1189,6 +1228,7 @@ export class CodeSupervisor {
       lastError: session.lastError,
       profileId: session.profileId,
       profileKey: session.profileKey,
+      presentation: session.presentation,
       projectId: session.projectId,
       projectName: session.projectName,
       sessionId: session.sessionId,

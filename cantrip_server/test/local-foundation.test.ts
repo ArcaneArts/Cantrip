@@ -1282,6 +1282,8 @@ const workerBridge = {
         };
       case "code.saveAll":
         return { saved: ["file:///workspace/Cantrip/README.md"], failed: [] };
+      case "code.openFile":
+        return { relativePath: command.path };
       case "code.prepareAgentTurn":
         return { prepared: true, sessions: [] };
       case "code.agentTurnState":

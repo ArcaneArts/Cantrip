@@ -77,6 +77,7 @@ function encodedWebSocketResponse(): Buffer {
 }
 
 class LoopbackWorker implements WorkerCommandBus {
+  readonly commands: WorkerCommand[] = [];
   readonly observedHeads: CodeAdapterRequestHead[] = [];
   readonly observedInitialCredits: number[] = [];
   readonly #listeners = new Set<WorkerTunnelDataPlaneFrameListener>();
@@ -203,10 +204,11 @@ class LoopbackWorker implements WorkerCommandBus {
   }
   request(
     _workerId: string,
-    _command: WorkerCommand,
+    command: WorkerCommand,
     _options?: WorkerRequestOptions,
   ): Promise<unknown> {
-    return Promise.reject(new Error("Not used by the tunnel test."));
+    this.commands.push(command);
+    return Promise.resolve(null);
   }
 
   #emit(
@@ -351,6 +353,31 @@ describe("Cantrip Code isolated editor surface", () => {
     expect(broker.hasAttachment(secondToken)).toBe(true);
     await broker.revokeAuthSession("auth-session-2");
     expect(broker.hasAttachment(secondToken)).toBe(false);
+    await broker.close();
+  });
+
+  it("stops an ephemeral editor session when its attachment is released", async () => {
+    const worker = new LoopbackWorker();
+    const broker = new CodeTunnelBroker(worker, {
+      surfaceOrigin: "http://127.0.0.1:4311",
+      allowedFrameAncestors: ["tauri://localhost"],
+    });
+    const attachment = await broker.createAttachment({
+      codeTabId: "explorer:explorer-1",
+      ownerId: "user-1",
+      projectId: "project-1",
+      runtime,
+      sessionId: runtime.sessionId,
+      stopSessionOnRelease: true,
+      workerId: "worker-1",
+    });
+
+    await broker.revokeAttachment(attachment.attachmentId, "user-1");
+
+    expect(worker.commands).toContainEqual({
+      type: "code.stop",
+      sessionId: runtime.sessionId,
+    });
     await broker.close();
   });
 

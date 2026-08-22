@@ -153,6 +153,7 @@ function openCommand(
     profileId: "default",
     themeMode: "follow-cantrip" as const,
     appearance: "dark" as const,
+    presentation: "workbench" as const,
   };
 }
 
@@ -278,6 +279,60 @@ describe("Cantrip Code supervisor", () => {
     );
     expect(state).not.toContain(firstTarget.connectionToken);
     expect(state).not.toContain("cantrip.bridgeToken");
+  });
+
+  it("configures an editor-only workspace and opens a safe relative file", async () => {
+    const { repository, supervisor } = await fixture();
+    await writeFile(path.join(repository, "example.ts"), "export {};\n");
+    await supervisor.open({
+      ...openCommand("editor", repository, "primary"),
+      presentation: "editor",
+    });
+    const target = supervisor.proxyTarget("editor");
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, unknown> };
+    expect(workspace.settings).toMatchObject({
+      "breadcrumbs.enabled": true,
+      "cantrip.presentation": "editor",
+      "window.commandCenter": false,
+      "window.menuBarVisibility": "hidden",
+      "workbench.activityBar.location": "hidden",
+      "workbench.editor.editorActionsLocation": "hidden",
+      "workbench.editor.showTabs": "none",
+      "workbench.layoutControl.enabled": false,
+      "workbench.statusBar.visible": true,
+    });
+
+    const socket = await openSocket(
+      workspace.settings["cantrip.bridgeUrl"] as string,
+    );
+    socket.on("message", (data) => {
+      const request = JSON.parse(data.toString()) as {
+        id: string;
+        method: string;
+        params: { path?: string };
+      };
+      socket.send(
+        JSON.stringify({
+          type: "response",
+          id: request.id,
+          ok: true,
+          result:
+            request.method === "openFile"
+              ? { relativePath: request.params.path }
+              : { applied: true },
+        }),
+      );
+    });
+
+    await expect(supervisor.openFile("editor", "example.ts")).resolves.toEqual({
+      relativePath: "example.ts",
+    });
+    await expect(
+      supervisor.openFile("editor", "../outside.ts"),
+    ).rejects.toThrow("safe worktree-relative file path");
+    socket.close();
   });
 
   it("prepares dirty editors and reports bounded agent file changes", async () => {

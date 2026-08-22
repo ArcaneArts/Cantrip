@@ -45,6 +45,8 @@ import {
   cantripVersionSchema,
   codeAttachmentCreateSchema,
   codeAttachmentSchema,
+  codeOpenFileRequestSchema,
+  codeOpenFileResultSchema,
   codeAgentTurnNotificationResultSchema,
   codeAgentTurnPreparationResultSchema,
   codeProbeResultSchema,
@@ -140,6 +142,7 @@ import {
   encryptedChatUpdateSchema,
   chatWorktreeUpdateSchema,
   encryptedExplorerCreateSchema,
+  explorerCodeAttachmentCreateSchema,
   explorerWireListSchema,
   explorerWireSummarySchema,
   encryptedExplorerUpdateSchema,
@@ -22126,6 +22129,7 @@ export async function buildApp({
             ),
             themeMode: "follow-cantrip",
             appearance: input.data.appearance,
+            presentation: "workbench",
           }),
         );
         if (
@@ -22210,6 +22214,39 @@ export async function buildApp({
       );
       await directAttachments.revokeAttachment(request.params.attachmentId);
       return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/code-attachments/:attachmentId/open-file",
+    async (request, reply) => {
+      const input = codeOpenFileRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = codeTunnel.attachmentContext(
+        request.params.attachmentId,
+        applicationOwnerId(),
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code attachment not found." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        return reply.send(
+          codeOpenFileResultSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "code.openFile",
+              sessionId: context.sessionId,
+              path: input.data.relativePath,
+            }),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
     },
   );
 
@@ -23934,6 +23971,86 @@ export async function buildApp({
       ))
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Explorer not found." }),
+  );
+
+  app.post<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId/code-attachments",
+    async (request, reply) => {
+      const input = explorerCodeAttachmentCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getExplorerExecutionContext(
+        applicationOwnerId(),
+        request.params.explorerId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Explorer not found." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+
+      let probe;
+      try {
+        probe = codeProbeResultSchema.parse(
+          await bridge.request(context.workerId, { type: "code.probe" }),
+        );
+      } catch (error) {
+        return reply.code(503).send({ error: errorMessage(error) });
+      }
+      if (!probe.capabilities.available || !probe.editorBuild) {
+        return reply.code(409).send({
+          error:
+            probe.capabilities.reason ??
+            "This worker has no compatible Cantrip Code build.",
+        });
+      }
+
+      const sessionId = randomUUID();
+      const surfaceId = `explorer:${context.explorerId}:${sessionId}`;
+      let runtime: CodeRuntimeStatus;
+      try {
+        runtime = codeRuntimeStatusSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "code.open",
+            sessionId,
+            codeTabId: surfaceId,
+            projectId: context.projectId,
+            worktreeId: context.worktreeId,
+            cwd: context.root,
+            profileId: scopedCodeProfileId(applicationOwnerId(), "default"),
+            themeMode: "follow-cantrip",
+            appearance: input.data.appearance,
+            presentation: "editor",
+          }),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+
+      try {
+        return reply.code(201).send(
+          codeAttachmentSchema.parse(
+            await codeTunnel.createAttachment({
+              authSessionId: authenticatedPrincipal(request).sessionId,
+              codeTabId: surfaceId,
+              ownerId: applicationOwnerId(),
+              projectId: context.projectId,
+              runtime,
+              sessionId,
+              stopSessionOnRelease: true,
+              workerId: context.workerId,
+            }),
+          ),
+        );
+      } catch (error) {
+        await bridge
+          .request(context.workerId, { type: "code.stop", sessionId })
+          .catch(() => undefined);
+        return reply.code(503).send({ error: errorMessage(error) });
+      }
+    },
   );
 
   app.post<{ Params: { explorerId: string } }>(

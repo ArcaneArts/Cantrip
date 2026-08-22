@@ -40,6 +40,7 @@ export interface CodeAttachmentBinding {
   projectId: string;
   route: TunnelRouteHandle;
   sessionId: string;
+  stopSessionOnRelease: boolean;
   token: string;
   telemetry: ManagedServerRelayTelemetry | null;
   tunnelId: string;
@@ -53,6 +54,7 @@ export interface CreateCodeAttachmentInput {
   projectId: string;
   runtime: CodeRuntimeStatus;
   sessionId: string;
+  stopSessionOnRelease?: boolean;
   workerId: string;
 }
 
@@ -243,6 +245,7 @@ export class CodeTunnelBroker {
         projectId: input.projectId,
         route,
         sessionId: input.sessionId,
+        stopSessionOnRelease: input.stopSessionOnRelease ?? false,
         token,
         telemetry: this.#repository
           ? new ManagedServerRelayTelemetry(
@@ -307,6 +310,13 @@ export class CodeTunnelBroker {
   }
 
   prepareDirectAttachment(
+    attachmentId: string,
+    ownerId: string,
+  ): CodeDirectAttachmentContext | null {
+    return this.attachmentContext(attachmentId, ownerId);
+  }
+
+  attachmentContext(
     attachmentId: string,
     ownerId: string,
   ): CodeDirectAttachmentContext | null {
@@ -497,6 +507,14 @@ export class CodeTunnelBroker {
         projectId: binding.projectId,
         tunnelId: removed?.tunnelId ?? binding.tunnelId,
       });
+    }
+    if (binding.stopSessionOnRelease) {
+      await this.bridge
+        .request(binding.workerId, {
+          type: "code.stop",
+          sessionId: binding.sessionId,
+        })
+        .catch(() => undefined);
     }
     this.#stopTrackingWorkerIfUnused(binding.workerId);
   }
