@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, Copy } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
@@ -238,17 +238,24 @@ function previewText(event: TrajectoryEvent): string | null {
   }
 }
 
-function Preview({ event }: { event: TrajectoryEvent }) {
-  const text = previewText(event);
+const PreviewContent = memo(function PreviewContent({
+  command,
+  outputTruncated,
+  text,
+}: {
+  command: boolean;
+  outputTruncated: boolean;
+  text: string | null;
+}) {
   if (!text) {
     return (
       <p className="p-4 text-xs text-muted-foreground">Preview unavailable.</p>
     );
   }
-  if (event.activity?.type === "command") {
+  if (command) {
     return (
       <div className="p-3">
-        {event.activity.outputTruncated ? (
+        {outputTruncated ? (
           <p className="mb-2 text-xs text-amber-600">
             Older output was truncated; this is the retained output tail.
           </p>
@@ -263,6 +270,20 @@ function Preview({ event }: { event: TrajectoryEvent }) {
     <div className="max-h-full overflow-auto p-3 text-xs">
       <Markdown>{text}</Markdown>
     </div>
+  );
+});
+
+function Preview({ event }: { event: TrajectoryEvent }) {
+  const activity = event.activity;
+  const command = activity?.type === "command";
+  return (
+    <PreviewContent
+      command={command}
+      outputTruncated={Boolean(
+        activity?.type === "command" && activity.outputTruncated,
+      )}
+      text={previewText(event)}
+    />
   );
 }
 

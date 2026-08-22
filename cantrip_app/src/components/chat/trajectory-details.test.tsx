@@ -81,6 +81,27 @@ describe("TrajectoryDetails", () => {
     expect(markup).toContain("Tests passed");
   });
 
+  it("renders non-command previews as Markdown", () => {
+    const previewEvent = event();
+    previewEvent.activity = {
+      type: "reasoning",
+      id: "reasoning-1",
+      status: "completed",
+      summary: ["A **stable** preview"],
+    };
+    previewEvent.kind = "reasoning";
+
+    const markup = renderToStaticMarkup(
+      <TrajectoryDetails
+        event={previewEvent}
+        initialTab="preview"
+        onBack={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("A <strong>stable</strong> preview");
+  });
+
   it("keeps the bounded protected envelope in Raw", () => {
     const markup = renderToStaticMarkup(
       <TrajectoryDetails
