@@ -21351,6 +21351,43 @@ export async function buildApp({
     },
   );
 
+  app.get<{
+    Params: { projectId: string };
+    Querystring: { worktreeId?: string };
+  }>("/api/projects/:projectId/script-commands", async (request, reply) => {
+    const input = runEnvironmentRequestSchema.safeParse(request.query);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const context = await resolveAppRunContext(
+        request.params.projectId,
+        input.data.worktreeId,
+      );
+      const worktree = await repository.getProjectWorktreeContext(
+        applicationOwnerId(),
+        request.params.projectId,
+        context.worktreeId,
+      );
+      if (!worktree || worktree.workerId !== context.workerId) {
+        throw new ExecutionLaneConflictError(
+          "The script command worktree placement changed before discovery.",
+        );
+      }
+      const commands = await bridge.request(
+        context.workerId,
+        {
+          type: "project.script-commands.inspect",
+          sourcePath: worktree.worktree.path,
+        },
+        { timeoutMs: 30_000 },
+      );
+      return reply.send(scriptCommandListSchema.parse(commands));
+    } catch (error) {
+      return sendRunApiFailure(reply, error);
+    }
+  });
+
   app.patch<{ Params: { terminalId: string } }>(
     "/api/terminals/:terminalId",
     async (request, reply) => {

@@ -11305,6 +11305,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("project.script-commands.inspect"),
+      sourcePath: z.string().min(1).max(8_192),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("project.run-configurations.inspect"),
       sourcePath: z.string().min(1).max(8_192),
     })

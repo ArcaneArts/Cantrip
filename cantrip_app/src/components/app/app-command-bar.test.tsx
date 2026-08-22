@@ -24,6 +24,7 @@ vi.mock("@/lib/api", () => ({
   getCachedGithubRepositories: vi.fn(),
   getGithubRepositories: vi.fn(),
   getGithubStatus: vi.fn(),
+  getProjectScriptCommands: vi.fn(),
 }));
 vi.mock("@/lib/project-encryption", () => ({
   createGithubProject: vi.fn(),
@@ -64,8 +65,22 @@ const workspaces = [
 
 describe("app command bar", () => {
   it("includes projects from every workspace in the default search scope", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(
+      ["project-script-commands", "project-cantrip", "worktree-cantrip"],
+      [
+        {
+          id: "package:package.json:dev",
+          kind: "package",
+          name: "dev",
+          command: "pnpm run dev",
+          description: "vite --host 0.0.0.0",
+          source: "package.json",
+        },
+      ],
+    );
     const markup = renderToStaticMarkup(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={queryClient}>
         <AppCommandBar
           activeWorkspaceId="primary"
           context={{ projectId: "project-cantrip" }}
@@ -79,15 +94,19 @@ describe("app command bar", () => {
           onCreatedProject={vi.fn()}
           onOpenChange={vi.fn()}
           onOpenFolder={vi.fn()}
+          onRunScriptCommand={vi.fn()}
           onSelectProject={vi.fn()}
+          scriptWorktreeId="worktree-cantrip"
         />
       </QueryClientProvider>,
     );
 
-    expect(markup).toContain("Search actions or projects…");
+    expect(markup).toContain("Search actions, scripts, or projects…");
     expect(markup).toContain("self-start");
     expect(markup).not.toContain("top-[15vh]");
     expect(markup).toContain("Projects");
+    expect(markup).toContain("Project scripts");
+    expect(markup).toContain("pnpm run dev");
     expect(markup).toContain("ArcaneArts/Cantrip · Primary");
     expect(markup).toContain("ArcaneArts/CareMap · Other Workspace");
   });

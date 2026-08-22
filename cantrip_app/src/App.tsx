@@ -31,6 +31,7 @@ import type {
   ReasoningEffort,
   RemoteDesktopTarget,
   RunConfigurationAction,
+  ScriptCommand,
   SettingsBundle,
   SkillSummary,
   TerminalSummary,
@@ -212,6 +213,7 @@ import {
 } from "@/components/projects/project-create-menu";
 import { taskChatIsInspectOnly } from "@/components/tasks/task-chat-access";
 import { terminalLinkBrowserTitle } from "@/components/terminal/terminal-links";
+import { terminalCommandInput } from "@/components/terminal/terminal-command-palette";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import {
   SettingsPage,
@@ -421,6 +423,7 @@ import {
   projectSurfaceTabId,
   projectSurfaceTabKey,
 } from "@/lib/project-surface";
+import { projectScriptCommandDestination } from "@/lib/project-script-command";
 import {
   clampSidebarWidth,
   DEFAULT_SIDEBAR_WIDTH,
@@ -3371,6 +3374,13 @@ export function App() {
   const [terminalServiceTerminalId, setTerminalServiceTerminalId] = useState<
     string | null
   >(null);
+  const [pendingTerminalInputs, setPendingTerminalInputs] = useState<
+    Array<{
+      data: string;
+      id: string;
+      terminalId: string;
+    }>
+  >([]);
   const [detachedGroupId, setDetachedGroupId] = useState<string | null>(null);
   const detachedExplorerIdRef = useRef<string | null>(null);
   const explorerLifecycleRef = useRef(
@@ -4043,7 +4053,9 @@ export function App() {
       title,
       worktreeId,
       target,
+      initialInput: _initialInput,
     }: {
+      initialInput?: string;
       projectId: string;
       directoryPath?: string;
       tabGroupId?: string;
@@ -4059,7 +4071,7 @@ export function App() {
         target,
         directoryPath,
       ),
-    onSuccess: (terminal) => {
+    onSuccess: (terminal, { initialInput }) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],
         (current = []) =>
@@ -4067,6 +4079,16 @@ export function App() {
             (left, right) => left.position - right.position,
           ),
       );
+      if (initialInput) {
+        setPendingTerminalInputs((current) => [
+          ...current,
+          {
+            data: initialInput,
+            id: crypto.randomUUID(),
+            terminalId: terminal.id,
+          },
+        ]);
+      }
       openCreatedTab(terminal.projectId, "terminal", terminal.id);
       void queryClient.invalidateQueries({
         queryKey: ["terminals", terminal.projectId],
@@ -4589,6 +4611,9 @@ export function App() {
       if (terminalServiceTerminalId === deletedId) {
         setTerminalServiceTerminalId(null);
       }
+      setPendingTerminalInputs((current) =>
+        current.filter(({ terminalId }) => terminalId !== deletedId),
+      );
       await queryClient.invalidateQueries({
         queryKey: ["terminals", selectedProjectId],
       });
@@ -5121,6 +5146,41 @@ export function App() {
   const activeWorktree = worktrees.data?.find(
     (worktree) => worktree.id === activeWorktreeId,
   );
+  const scriptCommandWorktreeId =
+    appActionView === "project" ? activeWorktreeId : null;
+  const runProjectScriptCommand = async (command: ScriptCommand) => {
+    if (!selectedProject) {
+      throw new Error("Select a project before running a project script.");
+    }
+    const currentSurface =
+      appActionView === "project" ? (selectedSurface ?? null) : null;
+    const destination = projectScriptCommandDestination({
+      activeWorktreeId: scriptCommandWorktreeId,
+      currentSurface,
+      selectedTerminal:
+        currentSurface?.kind === "terminal"
+          ? (selectedStandaloneTerminal ?? null)
+          : null,
+    });
+    const input = terminalCommandInput(command);
+    if (destination.kind === "current-terminal") {
+      setPendingTerminalInputs((current) => [
+        ...current,
+        {
+          data: input,
+          id: crypto.randomUUID(),
+          terminalId: destination.terminalId,
+        },
+      ]);
+      return;
+    }
+    await newTerminal.mutateAsync({
+      initialInput: input,
+      projectId: selectedProject.id,
+      tabGroupId: destination.tabGroupId,
+      worktreeId: destination.worktreeId,
+    });
+  };
   const runEnvironment = useQuery({
     enabled: Boolean(
       selectedProject &&
@@ -7672,6 +7732,16 @@ export function App() {
                     open ? selectedTerminal.id : null,
                   )
                 }
+                pendingInput={
+                  pendingTerminalInputs.find(
+                    ({ terminalId }) => terminalId === selectedTerminal.id,
+                  ) ?? null
+                }
+                onPendingInputSent={(inputId) =>
+                  setPendingTerminalInputs((current) =>
+                    current.filter(({ id }) => id !== inputId),
+                  )
+                }
                 onOpenExternalLink={openTerminalLinkExternally}
                 onOpenLink={openTerminalLink}
               />
@@ -8082,9 +8152,11 @@ export function App() {
             setFolderProjectDialogMode("existing");
             setFolderProjectDialogOpen(true);
           }}
+          onRunScriptCommand={runProjectScriptCommand}
           onSelectProject={selectProjectFromCommandBar}
           open={commandBarOpen}
           projects={projects.data ?? []}
+          scriptWorktreeId={scriptCommandWorktreeId}
           workers={workers.data ?? []}
           workspaces={projectWorkspaces.data ?? []}
         />

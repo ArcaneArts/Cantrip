@@ -1623,6 +1623,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         } catch {
           throw new Error("Could not discover terminal script commands.");
         }
+      case "project.script-commands.inspect":
+        try {
+          return await discoverScriptCommands(command.sourcePath);
+        } catch {
+          throw new Error("Could not discover project script commands.");
+        }
       case "project.run-configurations.inspect":
         return inspectRunConfigurations(command.sourcePath);
       case "project.run-configurations.read-authoring":
