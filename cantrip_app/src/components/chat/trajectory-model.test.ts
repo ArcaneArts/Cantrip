@@ -123,6 +123,93 @@ describe("trajectory projection", () => {
     ]);
   });
 
+  it("keeps steered input in the same runtime turn", () => {
+    const turn = projectTrajectory({
+      active: false,
+      messages: [
+        message("user-1", 1, "user", 1_000, [
+          { type: "text", text: "Create the run configuration" },
+        ]),
+        activityMessage("reasoning-1", 2, 1_100, {
+          type: "reasoning",
+          id: "reasoning-1",
+          status: "completed",
+          summary: ["Preparing the configuration"],
+          correlation: correlation("turn-1", "reasoning-1"),
+        }),
+        message("commentary-1", 3, "assistant", 1_200, [
+          {
+            type: "text",
+            text: "The configuration is ready.",
+            phase: "commentary",
+          },
+        ]),
+        message("steer-1", 4, "user", 1_300, [
+          { type: "text", text: "I could hear it" },
+        ]),
+        activityMessage("command-1", 5, 1_400, {
+          type: "command",
+          id: "command-1",
+          status: "completed",
+          command: "git status --short",
+          cwd: "/workspace",
+          exitCode: 0,
+          output: "",
+          correlation: correlation("turn-1", "command-1"),
+        }),
+        message("answer-1", 6, "assistant", 1_500, [
+          {
+            type: "text",
+            text: "The run configuration works.",
+            phase: "final_answer",
+          },
+        ]),
+      ],
+      nowMs: 1_500,
+    });
+
+    expect(turn).toMatchObject({
+      key: "runtime:turn-1",
+      laneCounts: { input: 2, model: 3, tools: 1 },
+      ordinal: 1,
+      title: "Create the run configuration",
+    });
+    expect(
+      turn?.events.map((event) => ({
+        kind: event.kind,
+        label: event.label,
+        preview: event.preview,
+      })),
+    ).toEqual([
+      {
+        kind: "input",
+        label: "User input",
+        preview: "Create the run configuration",
+      },
+      {
+        kind: "reasoning",
+        label: "Reasoned",
+        preview: "Preparing the configuration",
+      },
+      {
+        kind: "commentary",
+        label: "Model commentary",
+        preview: "The configuration is ready.",
+      },
+      { kind: "input", label: "Steer input", preview: "I could hear it" },
+      {
+        kind: "command",
+        label: "git status --short",
+        preview: "/workspace",
+      },
+      {
+        kind: "response",
+        label: "Assistant response",
+        preview: "The run configuration works.",
+      },
+    ]);
+  });
+
   it("merges lifecycle replacements and retains exact item timing", () => {
     const messages = [
       message("user", 1, "user", 1_000, [
