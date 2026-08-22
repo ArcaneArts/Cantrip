@@ -259,7 +259,7 @@ describe("AgentInspectContent", () => {
     expect(markup).toContain('aria-label="Inspect view"');
     expect(markup).toContain('aria-selected="true"');
     expect(markup).toContain('aria-label="Trajectory view"');
-    expect(markup).toContain('data-slot="agent-trajectory-content"');
+    expect(markup).toContain('data-slot="agent-trajectory-empty"');
     expect(markup).not.toContain('data-slot="agent-inspect-inactive"');
   });
 
