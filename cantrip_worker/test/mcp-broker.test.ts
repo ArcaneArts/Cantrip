@@ -105,7 +105,65 @@ describe("Cantrip MCP worker broker", () => {
     }
   });
 
-  it("rotates a binding when its lane claims change", async () => {
+  it("refreshes the execution lane without replacing the stdio connection", async () => {
+    const dataDirectory = await temporaryDirectory();
+    let observedLane: string | null = null;
+    const broker = new CantripMcpBroker(
+      {
+        dataDirectory,
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-one",
+      },
+      {
+        execute: async (binding) => {
+          observedLane = binding.executionLaneId;
+          return {
+            summary: "Context is current.",
+            target: null,
+            worktreeId: binding.worktreeId,
+            continuationScheduled: false,
+            mutated: false,
+          };
+        },
+      },
+    );
+    await broker.start();
+    try {
+      const first = broker.createBinding(bindingInput());
+      const refreshed = broker.createBinding({
+        ...bindingInput(),
+        executionLaneId: "lane-two",
+      });
+
+      expect(refreshed).toMatchObject({
+        binding: {
+          bindingId: first.binding.bindingId,
+          executionLaneId: "lane-two",
+        },
+        connectionPath: first.connectionPath,
+      });
+      expect(refreshed.connection).toEqual(first.connection);
+      await expect(access(first.connectionPath)).resolves.toBeUndefined();
+      const response = await fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${first.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: first.binding.bindingId,
+          request: { operation: "context.get", arguments: {} },
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(observedLane).toBe("lane-two");
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("rotates a binding when its permission scope changes", async () => {
     const dataDirectory = await temporaryDirectory();
     const broker = new CantripMcpBroker({
       dataDirectory,
@@ -118,7 +176,7 @@ describe("Cantrip MCP worker broker", () => {
       const first = broker.createBinding(bindingInput());
       const rotated = broker.createBinding({
         ...bindingInput(),
-        executionLaneId: "lane-two",
+        permissionProfileId: ":read-only",
       });
 
       expect(rotated.binding.bindingId).not.toBe(first.binding.bindingId);

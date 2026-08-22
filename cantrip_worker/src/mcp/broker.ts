@@ -83,7 +83,7 @@ function equivalentCanonicalRoot(left: string, right: string): boolean {
   return normalize(left) === normalize(right);
 }
 
-function bindingMatchesInput(
+function bindingScopeMatchesInput(
   binding: CantripMcpBinding,
   input: BindingInput,
 ): boolean {
@@ -91,7 +91,6 @@ function bindingMatchesInput(
     binding.ownerId === input.ownerId &&
     binding.projectId === input.projectId &&
     binding.chatId === input.chatId &&
-    binding.executionLaneId === input.executionLaneId &&
     binding.workerId === input.workerId &&
     binding.worktreeId === input.worktreeId &&
     equivalentCanonicalRoot(binding.canonicalRoot, input.canonicalRoot) &&
@@ -214,11 +213,19 @@ export class CantripMcpBroker {
     for (const stored of this.#bindings.values()) {
       if (stored.binding.chatId === input.chatId) {
         if (
-          bindingMatchesInput(stored.binding, input) &&
+          bindingScopeMatchesInput(stored.binding, input) &&
           existsSync(stored.connectionPath) &&
           Date.parse(stored.binding.expiresAt) - now >
             CANTRIP_MCP_BINDING_RENEWAL_WINDOW_MS
         ) {
+          // A lane is renewed for every turn. Keep the connection identity
+          // stable so a linked Codex console stays subscribed to the thread.
+          stored.binding = cantripMcpBindingSchema.parse({
+            ...input,
+            bindingId: stored.binding.bindingId,
+            issuedAt: stored.binding.issuedAt,
+            expiresAt: stored.binding.expiresAt,
+          });
           return {
             binding: stored.binding,
             connection: stored.connection,
