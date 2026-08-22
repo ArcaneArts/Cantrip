@@ -83,7 +83,7 @@ describe("trajectory timeline navigation", () => {
     ).toBe(1_000);
     expect(
       trajectoryTimeAtClientX({
-        clientX: 988,
+        clientX: 1_000,
         left: 0,
         timelineEndMs: 2_000,
         timelineStartMs: 1_000,
@@ -133,7 +133,7 @@ describe("trajectory timeline navigation", () => {
     expect(trajectoryTimelineMarks(dense, turn)[0]?.count).toBe(4);
   });
 
-  it("renders all lanes, event spans, and a visible playhead", () => {
+  it("renders full-bleed event bars with hover details", () => {
     const markup = renderToStaticMarkup(
       <TrajectoryTimeline
         events={[
@@ -150,11 +150,13 @@ describe("trajectory timeline navigation", () => {
     expect(markup).toContain('role="slider"');
     expect(markup).toContain('aria-label="Turn trajectory timeline"');
     expect(markup).toContain("milliseconds of 1.0 seconds");
-    expect(markup).toContain(">input</text>");
-    expect(markup).toContain(">model</text>");
-    expect(markup).toContain(">tools</text>");
-    expect(markup).toContain('data-slot="trajectory-playhead"');
+    expect(markup).toContain('preserveAspectRatio="none"');
+    expect(markup).not.toContain(">input</text>");
+    expect(markup).not.toContain(">model</text>");
+    expect(markup).not.toContain(">tools</text>");
+    expect(markup).not.toContain('data-slot="trajectory-playhead"');
     expect(markup).toContain('data-event-id="tools"');
     expect(markup).toContain('data-timing-quality="exact"');
+    expect(markup).toContain("tools, completed, exact timing</title>");
   });
 });

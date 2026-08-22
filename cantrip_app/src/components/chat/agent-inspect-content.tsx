@@ -479,6 +479,7 @@ export function AgentInspectStateContent({
 
 export function AgentInspectContent({
   active,
+  integratedPanelHeader = false,
   initialTab = "trajectory",
   messages,
   onBackToCurrent,
@@ -488,6 +489,7 @@ export function AgentInspectContent({
   visible,
 }: {
   active: boolean;
+  integratedPanelHeader?: boolean;
   initialTab?: AgentInspectTab;
   messages: ChatMessage[];
   onBackToCurrent?(): void;
@@ -511,7 +513,10 @@ export function AgentInspectContent({
       <NavigationTabBar
         activeTab={activeTab}
         ariaLabel="Inspect view"
-        className="border-b px-3"
+        className={cn(
+          "border-b px-3",
+          integratedPanelHeader && "h-11 pl-24 pr-10",
+        )}
         onTabChange={selectTab}
         tabs={AGENT_INSPECT_TABS}
       />

@@ -104,15 +104,18 @@ export function AgentInspectPanel({
   return (
     <aside
       aria-label="Agent activity inspector"
-      className="flex h-full min-h-0 w-full flex-col bg-background"
+      className="relative flex h-full min-h-0 w-full flex-col bg-background"
       data-slot="agent-inspect-panel"
     >
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
+      <header
+        className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-11 items-center gap-2 px-3"
+        data-slot="agent-inspect-header"
+      >
         <Info className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Inspect</h2>
         <Button
           aria-label="Close Inspect"
-          className="ml-auto size-7"
+          className="pointer-events-auto ml-auto size-7"
           onClick={onClose}
           size="icon"
           title="Close Inspect"

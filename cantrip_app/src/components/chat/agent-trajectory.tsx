@@ -446,7 +446,7 @@ export function AgentTrajectory({
         </div>
       </header>
 
-      <div className="shrink-0 border-b bg-muted/10 px-2 py-1">
+      <div className="shrink-0 border-b bg-muted/10">
         <TrajectoryTimeline
           events={events}
           onMovePlayhead={movePlayhead}
