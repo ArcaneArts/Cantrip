@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   projectsInWorkspace,
+  resolveProjectWorkspaceForSelection,
   resolveProjectWorkspace,
   searchProjects,
 } from "./project-workspaces";
@@ -52,6 +53,30 @@ describe("project workspace filtering", () => {
         resolveProjectWorkspace(workspaces, "personal"),
       ).map(({ id }) => id),
     ).toEqual(["project-2", "project-3"]);
+  });
+
+  it("keeps project selection in the active workspace when possible", () => {
+    expect(
+      resolveProjectWorkspaceForSelection(workspaces, "project-2", "personal")
+        ?.id,
+    ).toBe("personal");
+  });
+
+  it("selects the first workspace containing a project across workspaces", () => {
+    expect(
+      resolveProjectWorkspaceForSelection(workspaces, "project-3", "default")
+        ?.id,
+    ).toBe("personal");
+    expect(
+      resolveProjectWorkspaceForSelection(workspaces, "project-2", "missing")
+        ?.id,
+    ).toBe("default");
+  });
+
+  it("rejects projects that are not assigned to a workspace", () => {
+    expect(
+      resolveProjectWorkspaceForSelection(workspaces, "unassigned", "default"),
+    ).toBeNull();
   });
 
   it("keeps an empty search inside the active workspace", () => {

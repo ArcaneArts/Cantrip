@@ -57,6 +57,7 @@ import {
   createGithubProject,
   createManagedFolderProject,
 } from "@/lib/project-encryption";
+import { resolveProjectWorkspaceForSelection } from "@/lib/project-workspaces";
 
 const scopeLabels: Record<CommandBarScope, string> = {
   folder: "Folder",
@@ -103,6 +104,63 @@ function RepositoryIcon({ repository }: { repository: GithubRepository }) {
     <GitFork className="size-4" />
   ) : (
     <FolderGit2 className="size-4" />
+  );
+}
+
+function ProjectCommandGroup({
+  currentProjectId,
+  heading,
+  onSelect,
+  projects,
+  workspaces,
+}: {
+  currentProjectId: string | null;
+  heading: string;
+  onSelect(project: ProjectSummary): void;
+  projects: readonly ProjectSummary[];
+  workspaces: readonly ProjectWorkspaceSummary[];
+}) {
+  return (
+    <CommandGroup heading={heading}>
+      {projects.map((project) => {
+        const memberships = projectMemberships(project.id, workspaces);
+        const detail = projectDetail(project, memberships);
+        const current = project.id === currentProjectId;
+        return (
+          <CommandItem
+            key={project.id}
+            value={`${project.name} ${detail} ${project.id} project`}
+            className="gap-3 rounded-lg px-3 py-2.5"
+            onSelect={() => onSelect(project)}
+          >
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+              {project.originKind === "github" ? (
+                <FolderGit2 className="size-4" />
+              ) : (
+                <Folder className="size-4" />
+              )}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">
+                {project.name}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {detail}
+              </span>
+            </span>
+            {project.setupStatus !== "ready" ? (
+              <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] capitalize text-muted-foreground">
+                {project.setupStatus}
+              </span>
+            ) : current ? (
+              <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
+                <Check className="size-3" /> Current
+              </span>
+            ) : null}
+          </CommandItem>
+        );
+      })}
+    </CommandGroup>
   );
 }
 
@@ -265,9 +323,20 @@ export function AppCommandBar({
     onOpenChange(false);
     onAction(actionId);
   };
-  const selectProject = (projectId: string) => {
+  const selectProject = (project: ProjectSummary) => {
+    const workspace = resolveProjectWorkspaceForSelection(
+      workspaces,
+      project.id,
+      activeWorkspaceId,
+    );
+    if (!workspace) {
+      setOperationError(
+        `Project “${project.name}” is not assigned to any workspace.`,
+      );
+      return;
+    }
+    onSelectProject(project.id);
     onOpenChange(false);
-    onSelectProject(projectId);
   };
   const createFolder = async () => {
     const name = query.trim();
@@ -342,13 +411,13 @@ export function AppCommandBar({
         ? "Search GitHub repositories…"
         : activeScope === "new-project"
           ? "Choose a source or existing project…"
-          : "Search actions…";
+          : "Search actions or projects…";
   const emptyMessage =
     activeScope === "github"
       ? "No GitHub repositories match your search."
       : activeScope === "new-project"
         ? "No projects match your search."
-        : "No matching actions.";
+        : "No matching actions or projects.";
   const showEmpty = !(
     activeScope === "github" &&
     (githubLoading ||
@@ -393,7 +462,10 @@ export function AppCommandBar({
             <CommandPrimitive.Input
               autoFocus
               value={query}
-              onValueChange={setQuery}
+              onValueChange={(value) => {
+                setQuery(value);
+                setOperationError(null);
+              }}
               onKeyDown={(event) => {
                 if (event.key !== "Backspace") return;
                 const next = commandBarScopesAfterBackspace(scopes, query);
@@ -415,30 +487,41 @@ export function AppCommandBar({
           <CommandList className="min-h-32 flex-1 overscroll-contain overflow-y-auto p-2">
             {showEmpty ? <CommandEmpty>{emptyMessage}</CommandEmpty> : null}
             {activeScope === null ? (
-              <CommandGroup heading="Actions">
-                {actions.map((action) => (
-                  <CommandItem
-                    key={action.id}
-                    value={`action ${action.label} ${action.keywords.join(" ")}`}
-                    className="gap-3 rounded-lg px-3 py-2.5"
-                    onSelect={() => runAction(action.id)}
-                  >
-                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-                      <AppActionIcon actionId={action.id} />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {action.label}
-                    </span>
-                    {action.shortcut ? (
-                      <kbd className="shrink-0 rounded border bg-background/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        {action.shortcut.label}
-                      </kbd>
-                    ) : (
-                      <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" />
-                    )}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+              <>
+                <CommandGroup heading="Actions">
+                  {actions.map((action) => (
+                    <CommandItem
+                      key={action.id}
+                      value={`action ${action.label} ${action.keywords.join(" ")}`}
+                      className="gap-3 rounded-lg px-3 py-2.5"
+                      onSelect={() => runAction(action.id)}
+                    >
+                      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                        <AppActionIcon actionId={action.id} />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-medium">
+                        {action.label}
+                      </span>
+                      {action.shortcut ? (
+                        <kbd className="shrink-0 rounded border bg-background/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {action.shortcut.label}
+                        </kbd>
+                      ) : (
+                        <CornerDownLeft className="size-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+                {projects.length > 0 ? (
+                  <ProjectCommandGroup
+                    currentProjectId={currentProjectId}
+                    heading="Projects"
+                    projects={projects}
+                    workspaces={workspaces}
+                    onSelect={selectProject}
+                  />
+                ) : null}
+              </>
             ) : activeScope === "new-project" ? (
               <>
                 <CommandGroup heading="Source">
@@ -476,49 +559,13 @@ export function AppCommandBar({
                   </CommandItem>
                 </CommandGroup>
                 {projects.length > 0 ? (
-                  <CommandGroup heading="Existing projects">
-                    {projects.map((project) => {
-                      const memberships = projectMemberships(
-                        project.id,
-                        workspaces,
-                      );
-                      const detail = projectDetail(project, memberships);
-                      const current = project.id === currentProjectId;
-                      return (
-                        <CommandItem
-                          key={project.id}
-                          value={`project ${project.name} ${detail} ${project.id}`}
-                          className="gap-3 rounded-lg px-3 py-2.5"
-                          onSelect={() => selectProject(project.id)}
-                        >
-                          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-                            {project.originKind === "github" ? (
-                              <FolderGit2 className="size-4" />
-                            ) : (
-                              <Folder className="size-4" />
-                            )}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">
-                              {project.name}
-                            </span>
-                            <span className="block truncate text-xs text-muted-foreground">
-                              {detail}
-                            </span>
-                          </span>
-                          {project.setupStatus !== "ready" ? (
-                            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] capitalize text-muted-foreground">
-                              {project.setupStatus}
-                            </span>
-                          ) : current ? (
-                            <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
-                              <Check className="size-3" /> Current
-                            </span>
-                          ) : null}
-                        </CommandItem>
-                      );
-                    })}
-                  </CommandGroup>
+                  <ProjectCommandGroup
+                    currentProjectId={currentProjectId}
+                    heading="Existing projects"
+                    projects={projects}
+                    workspaces={workspaces}
+                    onSelect={selectProject}
+                  />
                 ) : null}
               </>
             ) : activeScope === "folder" ? (
@@ -653,17 +700,27 @@ export function AppCommandBar({
           </CommandList>
         </Command>
         <div className="flex min-h-9 shrink-0 items-center justify-between gap-3 border-t px-4 text-[11px] text-muted-foreground">
-          <span
-            className={
-              operationError ? "truncate text-destructive" : "truncate"
-            }
-            title={operationError ?? undefined}
-          >
-            {operationError ??
-              (scopes.length > 0
+          {operationError ? (
+            <span className="flex min-w-0 items-center gap-1 text-destructive">
+              <span className="truncate" title={operationError}>
+                {operationError}
+              </span>
+              <button
+                aria-label="Dismiss command error"
+                className="grid size-5 shrink-0 place-items-center rounded hover:bg-destructive/10"
+                onClick={() => setOperationError(null)}
+                type="button"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ) : (
+            <span className="truncate">
+              {scopes.length > 0
                 ? "Backspace on an empty search removes the previous action"
-                : "Actions adapt to the current view")}
-          </span>
+                : "Search actions and projects from any workspace"}
+            </span>
+          )}
           <span className="hidden shrink-0 items-center gap-3 sm:flex">
             <span>↑↓ Navigate</span>
             <span className="flex items-center gap-1">

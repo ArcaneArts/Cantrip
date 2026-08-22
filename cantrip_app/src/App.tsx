@@ -435,6 +435,7 @@ import {
 } from "@/lib/project-tab-layout-optimistic";
 import {
   projectsInWorkspace,
+  resolveProjectWorkspaceForSelection,
   resolveProjectWorkspace,
 } from "@/lib/project-workspaces";
 import {
@@ -5926,13 +5927,12 @@ export function App() {
     revealWorkspace();
   };
   const selectProjectFromCommandBar = (projectId: string) => {
-    const activeContainsProject =
-      activeProjectWorkspace?.projectIds.includes(projectId) ?? false;
-    const targetWorkspace = activeContainsProject
-      ? activeProjectWorkspace
-      : (projectWorkspaces.data?.find(({ projectIds }) =>
-          projectIds.includes(projectId),
-        ) ?? null);
+    const targetWorkspace = resolveProjectWorkspaceForSelection(
+      projectWorkspaces.data ?? [],
+      projectId,
+      activeProjectWorkspace?.id ?? null,
+    );
+    if (!targetWorkspace) return false;
     if (targetWorkspace && targetWorkspace.id !== activeProjectWorkspace?.id) {
       setActiveProjectWorkspaceId(targetWorkspace.id);
       window.localStorage.setItem(
@@ -5941,6 +5941,7 @@ export function App() {
       );
     }
     selectProjectFromSidebar(projectId);
+    return true;
   };
   const handleClientControl = useCallback(
     async (command: ClientControlCommand) => {
