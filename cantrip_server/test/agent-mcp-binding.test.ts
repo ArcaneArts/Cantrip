@@ -67,6 +67,31 @@ describe("Cantrip MCP server binding", () => {
     ).not.toThrow();
   });
 
+  it("allows the read-only context probe between linked console turns", () => {
+    const idleContext = { ...context, status: "idle" as const };
+
+    expect(() =>
+      assertCantripMcpBinding({
+        binding,
+        context: idleContext,
+        operation: "context.get",
+        ownerId: "owner-one",
+        serverAllowedOperations,
+        now,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertCantripMcpBinding({
+        binding,
+        context: idleContext,
+        operation: "policy.list",
+        ownerId: "owner-one",
+        serverAllowedOperations,
+        now,
+      }),
+    ).toThrow("active Cantrip chat lane");
+  });
+
   it("allows the read catalog under an unchanged read-only profile", () => {
     const readOnlyContext = {
       ...context,
@@ -137,7 +162,6 @@ describe("Cantrip MCP server binding", () => {
     ["worktree", { ...context, worktreeId: "worktree-two" }],
     ["root", { ...context, cwd: "/worktrees/two" }],
     ["permission", { ...context, permissionProfileId: ":read-only" }],
-    ["status", { ...context, status: "idle" as const }],
   ])("rejects a stale %s claim", (_name, changedContext) => {
     expect(() =>
       assertCantripMcpBinding({

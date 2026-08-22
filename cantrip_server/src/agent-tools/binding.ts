@@ -76,7 +76,7 @@ export function assertCantripMcpBinding(options: {
   }
   const currentPermissionProfile =
     effectivePermissionProfile(context).effectiveId;
-  const stale =
+  const staleIdentity =
     binding.chatId !== context.chatId ||
     binding.projectId !== context.projectId ||
     binding.executionLaneId !== context.executionLaneId ||
@@ -85,9 +85,15 @@ export function assertCantripMcpBinding(options: {
     binding.rootKind !== context.rootKind ||
     binding.permissionProfileId !== currentPermissionProfile ||
     normalizedWorkerPath(binding.canonicalRoot) !==
-      normalizedWorkerPath(context.cwd) ||
-    !chatIsExecuting(context.status);
-  if (stale) {
+      normalizedWorkerPath(context.cwd);
+  // A linked Codex console can call the read-only context probe while the
+  // Cantrip chat row is between turns. Keep every durable binding claim
+  // authoritative, but do not reject that harmless probe solely because the
+  // UI-owned execution status is briefly idle. All other MCP operations still
+  // require an active Cantrip turn.
+  const inactiveOperation =
+    operation !== "context.get" && !chatIsExecuting(context.status);
+  if (staleIdentity || inactiveOperation) {
     throw new CantripMcpBindingError(
       "stale-binding",
       409,
