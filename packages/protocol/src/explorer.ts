@@ -8,6 +8,7 @@ export const explorerEntrySchema = z.object({
   modifiedAt: z.string().datetime(),
   viewable: z.boolean(),
   markdown: z.boolean(),
+  symbolicLink: z.boolean().default(false),
 });
 
 export const explorerDirectorySchema = z.object({

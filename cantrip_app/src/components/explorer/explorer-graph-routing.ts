@@ -8,6 +8,7 @@ export function explorerFileEntryForGraphPath(path: string): ExplorerEntry {
     name: path.split("/").at(-1) ?? path,
     path,
     size: null,
+    symbolicLink: false,
     viewable: true,
   };
 }

@@ -133,17 +133,10 @@ async function resolveEntry(root: string, relativePath: string) {
   ) {
     throw new Error("Explorer path is outside the project.");
   }
-  const metadata = await lstat(targetPath);
-  if (metadata.isSymbolicLink()) {
-    throw new Error("Explorer does not follow symbolic links.");
-  }
+  // The user-selected path must start inside the project, but a symlink may
+  // deliberately resolve to a shared file or directory outside it.
   const resolvedTarget = await realpath(targetPath);
-  if (
-    resolvedTarget !== rootPath &&
-    !resolvedTarget.startsWith(`${rootPath}${path.sep}`)
-  ) {
-    throw new Error("Explorer path is outside the project.");
-  }
+  const metadata = await lstat(resolvedTarget);
   return { metadata, targetPath: resolvedTarget };
 }
 
@@ -158,8 +151,15 @@ export async function listExplorerDirectory(
     (entry) => entry.name !== ".git",
   );
   entries.sort((left, right) => {
-    const leftRank = left.isDirectory() ? 0 : left.isFile() ? 1 : 2;
-    const rightRank = right.isDirectory() ? 0 : right.isFile() ? 1 : 2;
+    // Keep links ahead of the directory limit until their target kind is known.
+    const leftRank =
+      left.isDirectory() || left.isSymbolicLink() ? 0 : left.isFile() ? 1 : 2;
+    const rightRank =
+      right.isDirectory() || right.isSymbolicLink()
+        ? 0
+        : right.isFile()
+          ? 1
+          : 2;
     return (
       leftRank - rightRank ||
       left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
@@ -171,10 +171,17 @@ export async function listExplorerDirectory(
       const entryPath = relativePath
         ? `${relativePath}/${entry.name}`
         : entry.name;
-      const entryMetadata = await lstat(path.join(targetPath, entry.name));
-      const kind = entry.isDirectory()
+      const absoluteEntryPath = path.join(targetPath, entry.name);
+      const linkMetadata = await lstat(absoluteEntryPath);
+      const symbolicLink = linkMetadata.isSymbolicLink();
+      const entryMetadata = symbolicLink
+        ? await realpath(absoluteEntryPath)
+            .then((resolved) => lstat(resolved))
+            .catch(() => linkMetadata)
+        : linkMetadata;
+      const kind = entryMetadata.isDirectory()
         ? "directory"
-        : entry.isFile()
+        : entryMetadata.isFile()
           ? "file"
           : "other";
       return {
@@ -185,6 +192,7 @@ export async function listExplorerDirectory(
         modifiedAt: entryMetadata.mtime.toISOString(),
         viewable: kind === "file" && viewableFile(entry.name),
         markdown: kind === "file" && markdownFile(entry.name),
+        symbolicLink,
       } as const;
     }),
   );
