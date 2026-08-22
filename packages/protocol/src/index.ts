@@ -6270,7 +6270,7 @@ const agentActivityBaseShape = {
   correlation: codexEventCorrelationSchema.nullable().optional(),
 };
 
-const tokenUsageBreakdownSchema = z.object({
+export const agentTokenUsageSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
   inputTokens: z.number().int().nonnegative(),
   cachedInputTokens: z.number().int().nonnegative(),
@@ -6410,8 +6410,8 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("usage"),
-    total: tokenUsageBreakdownSchema,
-    last: tokenUsageBreakdownSchema,
+    total: agentTokenUsageSchema,
+    last: agentTokenUsageSchema,
     modelContextWindow: z.number().int().positive().nullable(),
     contextUsedPercent: z.number().min(0).nullable(),
   }),
@@ -10321,6 +10321,7 @@ export const agentTurnResultSchema = z.object({
   turnId: z.string().min(1).optional(),
   text: z.string(),
   structuredResult: z.unknown().optional(),
+  measuredUsage: agentTokenUsageSchema.nullable().optional(),
   status: z.literal("completed"),
 });
 
@@ -12632,6 +12633,13 @@ export const workerEventSchema = z.discriminatedUnion("type", [
           turnId: z.string().min(1).nullable(),
         }),
         z.object({
+          kind: z.literal("usage"),
+          usage: agentTokenUsageSchema,
+          modelContextWindow: z.number().int().positive().nullable(),
+          contextUsedPercent: z.number().min(0).nullable(),
+          turnId: z.string().min(1).nullable(),
+        }),
+        z.object({
           kind: z.literal("checkpoint"),
           turnId: z.string().min(1),
         }),
@@ -14119,6 +14127,7 @@ export type ChatPlanAnswer = z.infer<typeof chatPlanAnswerSchema>;
 export type ChatPlanAccepted = z.infer<typeof chatPlanAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
 export type AgentTurnResultMode = z.infer<typeof agentTurnResultModeSchema>;
+export type AgentTokenUsage = z.infer<typeof agentTokenUsageSchema>;
 export type WorkflowNodeExecutionWorkerResult = z.infer<
   typeof workflowNodeExecutionResultSchema
 >;

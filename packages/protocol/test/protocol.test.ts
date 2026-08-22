@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   accountSessionListSchema,
   agentActivitySchema,
+  agentTurnResultSchema,
   agentInteractionRequestQuerySchema,
   agentInteractionRequestSchema,
   agentInteractionRuntimeRequestSchema,
@@ -254,6 +255,20 @@ function terminalStateFixture() {
 
 function workflowContentFixture() {
   return terminalStateFixture().protectedState;
+}
+
+function protectedChatMessageFixture() {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    classification: {
+      role: "assistant" as const,
+      mode: "default" as const,
+      attachmentIds: [],
+    },
+    protectedContent: workflowContentFixture(),
+    reasoningEffort: null,
+    idempotencyKey: "protected-usage-message",
+  };
 }
 
 function attachmentChunkFixture() {
@@ -4243,6 +4258,56 @@ describe("Cantrip protocol", () => {
       status: "pending",
       limit: 100,
     });
+  });
+
+  it("carries exact usage as minimized protected-chat telemetry", () => {
+    const usage = {
+      totalTokens: 1_200,
+      inputTokens: 800,
+      cachedInputTokens: 200,
+      cacheWriteInputTokens: 25,
+      outputTokens: 300,
+      reasoningOutputTokens: 100,
+    };
+    const event = workerEventSchema.parse({
+      type: "agent.protected-message",
+      message: protectedChatMessageFixture(),
+      telemetry: {
+        kind: "usage",
+        usage,
+        modelContextWindow: 128_000,
+        contextUsedPercent: 12.5,
+        turnId: "turn-1",
+        plaintextActivity: "must be stripped",
+      },
+    });
+
+    expect(event.telemetry).toEqual({
+      kind: "usage",
+      usage,
+      modelContextWindow: 128_000,
+      contextUsedPercent: 12.5,
+      turnId: "turn-1",
+    });
+    expect(JSON.stringify(event.telemetry)).not.toContain("plaintextActivity");
+    expect(
+      workerEventSchema.safeParse({
+        ...event,
+        telemetry: {
+          ...event.telemetry,
+          usage: { ...usage, inputTokens: -1 },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      agentTurnResultSchema.parse({
+        threadId: "thread-1",
+        turnId: "turn-1",
+        text: "",
+        measuredUsage: usage,
+        status: "completed",
+      }).measuredUsage,
+    ).toEqual(usage);
   });
 
   it("validates cooperative chat pause state and worker commands", () => {

@@ -377,11 +377,20 @@ export class EncryptedChatEventSealer {
         },
         service: this.#service,
       }),
-      telemetry: {
-        kind: "activity" as const,
-        activityType: activity.type,
-        turnId,
-      },
+      telemetry:
+        activity.type === "usage"
+          ? {
+              kind: "usage" as const,
+              usage: activity.last,
+              modelContextWindow: activity.modelContextWindow,
+              contextUsedPercent: activity.contextUsedPercent,
+              turnId,
+            }
+          : {
+              kind: "activity" as const,
+              activityType: activity.type,
+              turnId,
+            },
     };
   }
 

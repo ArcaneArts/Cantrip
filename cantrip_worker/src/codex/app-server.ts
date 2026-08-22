@@ -6176,6 +6176,7 @@ export class CodexAppServer implements CodexRuntime {
               threadId: active.threadId,
               turnId,
               text,
+              measuredUsage: active.latestUsage,
               ...(active.structuredChat
                 ? {
                     structuredResult: parseWorkflowStructuredResult(
