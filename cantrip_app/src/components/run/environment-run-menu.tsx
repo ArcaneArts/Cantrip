@@ -4,6 +4,7 @@ import type {
   RunEnvironmentSummary,
 } from "@cantrip/protocol";
 import {
+  Box,
   CircleAlert,
   CircleStop,
   GitCompareArrows,
@@ -37,7 +38,6 @@ function stateTone(state: string): string {
 }
 
 export function EnvironmentRunMenu({
-  compact = false,
   environment,
   error,
   loading,
@@ -48,7 +48,6 @@ export function EnvironmentRunMenu({
   onStart,
   onStop,
 }: {
-  compact?: boolean;
   environment: RunEnvironmentSummary | null;
   error?: unknown;
   loading: boolean;
@@ -82,21 +81,17 @@ export function EnvironmentRunMenu({
       <DropdownMenuPrimitive.Trigger asChild>
         <Button
           aria-label="Environment and Run actions"
-          className={cn(compact ? "size-8" : "h-8 gap-1.5 px-2")}
-          size={compact ? "icon" : "sm"}
+          className="size-8"
+          size="icon"
           title="Environment and Run actions"
           variant="ghost"
         >
           {loading || mutationPending ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
-            <Play className="size-4" />
+            <Box className="size-4" />
           )}
-          {compact ? (
-            <span className="sr-only">Environment</span>
-          ) : (
-            <span>Environment</span>
-          )}
+          <span className="sr-only">Environment</span>
           {run ? (
             <span
               aria-label={`Latest Run ${run.state}`}
