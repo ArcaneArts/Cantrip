@@ -86,7 +86,6 @@ function runConfiguration() {
         id: actionId,
         name: "Run Spectral Lab",
         icon: "run",
-        command: "dotnet run --project ./src/SpectralLab.App",
         platform: "linux" as const,
         configurationPath: ".codex/environments/environment.toml",
         sourceIndex: 1,

@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   inspectRunConfigurations,
+  inspectRunConfigurationsForExecution,
   readRunConfigurationAuthoring,
   writeRunConfiguration,
 } from "./run-configuration-discovery.js";
@@ -98,6 +99,11 @@ describe("inspectRunConfigurations", () => {
     const root = await project(spectralLabConfiguration);
     const windows = await inspectRunConfigurations(root, "win32");
     const mac = await inspectRunConfigurations(root, "darwin");
+    const linux = await inspectRunConfigurations(root, "linux");
+    const executableWindows = await inspectRunConfigurationsForExecution(
+      root,
+      "win32",
+    );
 
     expect(windows).toMatchObject({
       platform: "win32",
@@ -109,14 +115,12 @@ describe("inspectRunConfigurations", () => {
           version: 1,
           setup: {
             platform: "win32",
-            command: expect.stringContaining("Set-Location"),
           },
           actions: [
             {
               name: "Run Spectral Lab",
               platform: "win32",
               sourceIndex: 2,
-              command: expect.stringContaining("SpectralLab.App.csproj"),
             },
           ],
         },
@@ -124,13 +128,22 @@ describe("inspectRunConfigurations", () => {
     });
     expect(mac.configurations[0]?.setup).toMatchObject({
       platform: null,
-      command: expect.stringContaining("dotnet restore"),
     });
     expect(mac.configurations[0]?.actions).toHaveLength(1);
     expect(mac.configurations[0]?.actions[0]?.platform).toBe("darwin");
+    expect(linux.configurations[0]?.actions).toHaveLength(1);
+    expect(linux.configurations[0]?.actions[0]?.platform).toBe("linux");
     expect(mac.configurations[0]?.revision).toBe(
       windows.configurations[0]?.revision,
     );
+    expect(executableWindows.configurations[0]?.setup?.command).toContain(
+      "Set-Location",
+    );
+    expect(executableWindows.configurations[0]?.actions[0]?.command).toContain(
+      "SpectralLab.App.csproj",
+    );
+    expect(windows.configurations[0]?.setup).not.toHaveProperty("command");
+    expect(windows.configurations[0]?.actions[0]).not.toHaveProperty("command");
   });
 
   it("keeps revisions and action IDs stable until file content or position changes", async () => {
@@ -165,7 +178,10 @@ name = "Run"
 icon = "run"
 command = "  echo preserved  "
 `);
-    const inspection = await inspectRunConfigurations(root, "linux");
+    const inspection = await inspectRunConfigurationsForExecution(
+      root,
+      "linux",
+    );
     expect(inspection.configurations[0]?.actions[0]?.command).toBe(
       "  echo preserved  ",
     );

@@ -264,5 +264,13 @@ describe("runShellInvocation", () => {
       command: "/bin/fish",
       args: ["-lc", "printf ok"],
     });
+    expect(runShellInvocation("printf mac", "darwin", {})).toEqual({
+      command: "/bin/zsh",
+      args: ["-lc", "printf mac"],
+    });
+    expect(runShellInvocation("printf linux", "linux", {})).toEqual({
+      command: "/bin/bash",
+      args: ["-lc", "printf linux"],
+    });
   });
 });

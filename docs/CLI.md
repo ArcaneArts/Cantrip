@@ -69,11 +69,14 @@ cantrip run list
 cantrip run show "Run Spectral Lab"
 cantrip run validate
 cantrip run config path
+cantrip run config init --name "Spectral Lab"
 cantrip run start "Run Spectral Lab" --no-focus
 cantrip run status
 cantrip run logs 11111111-1111-4111-8111-111111111111 --tail 20000
 cantrip run open 11111111-1111-4111-8111-111111111111
 cantrip run stop 11111111-1111-4111-8111-111111111111
+cantrip run setup status
+cantrip run setup retry
 ```
 
 Worktree creation defaults to a new `cantrip/<name>` branch based on the
@@ -107,6 +110,13 @@ are present. `cantrip run config path` reports the canonical
 `.codex/environments/environment.toml` location and whether it is tracked,
 ignored, untracked, or absent.
 
+`cantrip run config init [--name <name>]` creates a minimal canonical v1 file
+only when it is absent. `--overwrite` is required to replace an existing file,
+and the worker still rejects a stale revision. The command never edits
+`.gitignore` or stages, commits, or pushes the result. Project settings →
+Environment provides the same revision-checked authoring path for setup and
+action platform variants.
+
 `cantrip run start <action>` resolves an unambiguous action name or opaque ID,
 then sends its exact ID and configuration revision to the owning worker. The
 worker rereads the source-root configuration, rechecks its platform and
@@ -137,6 +147,15 @@ an optional terminal association. Commands, environment values, and terminal
 output are never stored in the server database. Ordinary repository tools
 remain the way to create or edit TOML; setup is separate and does not execute
 when a Run starts.
+
+`cantrip run setup status` reports the durable setup job plus bounded output
+when its worker is available. `cantrip run setup retry` is an explicit
+secondary-worktree mutation; it is unavailable for Primary. A changed
+configuration makes completed setup stale until retry, and removing the
+worktree deletes its worker-private setup state.
+
+See [Codex-compatible Run environments](RUN_CONFIGURATIONS.md) for the full
+schema, platform shell matrix, lifecycle, limits, and threat model.
 
 ## Policies
 

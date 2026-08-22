@@ -51,41 +51,68 @@ describe("runConfigurationInspectionSchema", () => {
     ).toMatchObject({ configured: false, valid: true });
   });
 
-  it("rejects action commands containing NUL", () => {
-    expect(() =>
-      runConfigurationInspectionSchema.parse({
-        platform: "linux",
-        canonical: {
+  it("rejects raw scripts in transported configuration definitions", () => {
+    const inspection = {
+      platform: "linux" as const,
+      canonical: {
+        relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
+        sourceControlState: "untracked" as const,
+      },
+      configured: true,
+      valid: true,
+      configurations: [
+        {
           relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
-          sourceControlState: "untracked",
+          revision: "a".repeat(64),
+          version: 1,
+          name: "Example",
+          sourceControlState: "untracked" as const,
+          setup: { platform: null },
+          actions: [
+            {
+              id: "b".repeat(64),
+              name: "Run",
+              icon: "run",
+              platform: null,
+              configurationPath: RUN_CONFIGURATION_CANONICAL_PATH,
+              sourceIndex: 0,
+            },
+          ],
+          diagnostics: [],
         },
-        configured: true,
-        valid: true,
+      ],
+      diagnostics: [],
+    };
+    expect(runConfigurationInspectionSchema.parse(inspection)).toEqual(
+      inspection,
+    );
+    expect(
+      runConfigurationInspectionSchema.safeParse({
+        ...inspection,
         configurations: [
           {
-            relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
-            revision: "a".repeat(64),
-            version: 1,
-            name: "Example",
-            sourceControlState: "untracked",
-            setup: null,
+            ...inspection.configurations[0],
             actions: [
               {
-                id: "b".repeat(64),
-                name: "Run",
-                icon: "run",
-                command: "echo before\0after",
-                platform: null,
-                configurationPath: RUN_CONFIGURATION_CANONICAL_PATH,
-                sourceIndex: 0,
+                ...inspection.configurations[0]!.actions[0],
+                command: "echo private",
               },
             ],
-            diagnostics: [],
           },
         ],
-        diagnostics: [],
-      }),
-    ).toThrow();
+      }).success,
+    ).toBe(false);
+    expect(
+      runConfigurationInspectionSchema.safeParse({
+        ...inspection,
+        configurations: [
+          {
+            ...inspection.configurations[0],
+            setup: { platform: null, command: "pnpm install" },
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("registers the discovery operations without broad worker arguments", () => {

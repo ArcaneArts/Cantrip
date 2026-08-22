@@ -40,7 +40,6 @@ const runConfigurationScriptSchema = z
 
 export const runConfigurationSetupSchema = z
   .object({
-    command: runConfigurationScriptSchema,
     platform: runConfigurationPlatformSchema.nullable(),
   })
   .strict();
@@ -50,7 +49,6 @@ export const runConfigurationActionSchema = z
     id: z.string().regex(/^[0-9a-f]{64}$/u),
     name: z.string().trim().min(1).max(200),
     icon: z.string().trim().min(1).max(100),
-    command: runConfigurationScriptSchema,
     platform: runConfigurationPlatformSchema.nullable(),
     configurationPath: z.string().min(1).max(512),
     sourceIndex: z.number().int().nonnegative().max(999),

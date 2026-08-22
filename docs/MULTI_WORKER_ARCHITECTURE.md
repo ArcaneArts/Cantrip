@@ -451,6 +451,15 @@ start fail, and a later CLI or MCP `run open` retries materialization. The
 worker receives an explicit managed-Run identity when opening the terminal, so
 a lost Run can never fall back to spawning an ordinary terminal shell.
 
+Run configuration discovery is source-root and worker-local. Public
+configuration inspection crosses the bridge without raw setup or action
+scripts; the target worker rereads its private executable definition and
+revalidates the revision immediately before spawn. Ignored configuration is
+therefore available to every checkout on one worker but is never synthesized
+on another worker. Tracked configuration reaches another worker only through
+normal repository replication. The complete flow and platform matrix are in
+[the Run environment guide](RUN_CONFIGURATIONS.md).
+
 Every attempted mutation reaches the same audited operation implementation.
 CLI attempts record `cli.command.mutated`; MCP calls retain their request and
 binding correlation. Project mismatches, stale or spoofed lanes, pinned-chat
