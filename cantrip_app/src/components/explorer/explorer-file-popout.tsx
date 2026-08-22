@@ -27,6 +27,7 @@ export function ExplorerFilePopout({
   overlayTitlebar,
   path,
   projectTitle,
+  repositoryGraphAvailable,
 }: {
   error: string | null;
   explorer: ExplorerSummary | null;
@@ -35,6 +36,7 @@ export function ExplorerFilePopout({
   overlayTitlebar: boolean;
   path: string;
   projectTitle?: string;
+  repositoryGraphAvailable: boolean;
 }) {
   const [header, setHeader] = useState<ExplorerHeaderState | null>(null);
   const title = fileName(path);
@@ -115,6 +117,7 @@ export function ExplorerFilePopout({
           explorer={explorer}
           gitStatus={gitStatus}
           onHeaderChange={setHeader}
+          repositoryGraphAvailable={repositoryGraphAvailable}
           transientFile={transientFile}
         />
       ) : null}

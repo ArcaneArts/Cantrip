@@ -13,6 +13,7 @@ describe("ExplorerFilePopout", () => {
         overlayTitlebar
         path="src/example.ts"
         projectTitle="Cantrip"
+        repositoryGraphAvailable
       />,
     );
 

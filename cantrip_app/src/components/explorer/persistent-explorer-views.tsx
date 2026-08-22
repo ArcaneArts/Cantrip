@@ -42,6 +42,7 @@ export function PersistentExplorerViews({
   onLifecycleChange,
   onOpenFile,
   onOpenTerminal,
+  repositoryGraphAvailable,
 }: {
   activeExplorer: ExplorerSummary | null;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
@@ -56,6 +57,7 @@ export function PersistentExplorerViews({
     entry: ExplorerEntry,
   ): void | Promise<void>;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  repositoryGraphAvailable: boolean;
 }) {
   const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -107,6 +109,7 @@ export function PersistentExplorerViews({
         onLifecycleChange={handleLifecycleChange}
         onOpenFile={onOpenFile}
         onOpenTerminal={onOpenTerminal}
+        repositoryGraphAvailable={repositoryGraphAvailable}
       />
     );
   });

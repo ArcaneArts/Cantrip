@@ -4,9 +4,16 @@ import {
   explorerExpandedPathsForReveal,
   explorerFileEntryForGraphPath,
   explorerGraphRootForEntry,
+  explorerRepositoryGraphAvailable,
 } from "./explorer-graph-routing";
 
 describe("Explorer graph routing", () => {
+  it("only exposes repository graph actions for Git-capable projects", () => {
+    expect(explorerRepositoryGraphAvailable({ git: true })).toBe(true);
+    expect(explorerRepositoryGraphAvailable({ git: false })).toBe(false);
+    expect(explorerRepositoryGraphAvailable(undefined)).toBe(false);
+  });
+
   it("scopes directories to themselves", () => {
     expect(
       explorerGraphRootForEntry({ kind: "directory", path: "src/components" }),

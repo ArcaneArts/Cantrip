@@ -32,7 +32,7 @@ export function ExplorerDirectoryNode({
   explorerId: string;
   gitStatus: GitStatus | undefined;
   onOpenFile(entry: ExplorerEntry): void;
-  onShowInGraph(rootPath: string | null): void;
+  onShowInGraph?(rootPath: string | null): void;
   onOpenTerminal(entry: ExplorerEntry): void;
   onToggle(path: string): void;
   revealedPath?: string | null;
@@ -53,7 +53,11 @@ export function ExplorerDirectoryNode({
         entry={entry}
         expanded={expanded}
         onOpen={() => onToggle(entry.path)}
-        onShowInGraph={() => onShowInGraph(explorerGraphRootForEntry(entry))}
+        onShowInGraph={
+          onShowInGraph
+            ? () => onShowInGraph(explorerGraphRootForEntry(entry))
+            : undefined
+        }
         onOpenTerminal={() => onOpenTerminal(entry)}
         revealed={entry.path === revealedPath}
       />
@@ -108,8 +112,10 @@ export function ExplorerDirectoryNode({
                     entry={child}
                     key={child.path}
                     onOpen={() => onOpenFile(child)}
-                    onShowInGraph={() =>
-                      onShowInGraph(explorerGraphRootForEntry(child))
+                    onShowInGraph={
+                      onShowInGraph
+                        ? () => onShowInGraph(explorerGraphRootForEntry(child))
+                        : undefined
                     }
                     revealed={child.path === revealedPath}
                   />

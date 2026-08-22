@@ -278,6 +278,7 @@ export function ExplorerView({
   onLifecycleChange,
   onOpenFile,
   onOpenTerminal,
+  repositoryGraphAvailable,
   transientFile,
 }: {
   active?: boolean;
@@ -294,6 +295,7 @@ export function ExplorerView({
     entry: ExplorerEntry,
   ): void | Promise<void>;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  repositoryGraphAvailable: boolean;
   transientFile?: TransientExplorerFile;
 }) {
   const previousActiveRef = useRef(active);
@@ -999,7 +1001,7 @@ export function ExplorerView({
             explorer={explorer}
             gitStatus={gitStatus}
             onOpenFile={openEntry}
-            onShowInGraph={openGraph}
+            onShowInGraph={repositoryGraphAvailable ? openGraph : undefined}
             onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}
             replayKey={entryReplayKey}
             revealedPath={revealedPath}
