@@ -14,6 +14,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { clientEncryption } from "./client-encryption";
 import { clearClientSession, setClientSession } from "./client-session";
 import { createTaskMessageOpaqueContent } from "./task-message-encryption";
+import {
+  chatMessageLiveQueryKey,
+  type ChatMessageLiveOverlay,
+} from "./chat-message-history";
 
 import {
   AppLiveQueryBridge,
@@ -22,6 +26,15 @@ import {
 } from "./app-live-query";
 
 type AppLiveEvent = Extract<AppLiveServerMessage, { type: "event" }>;
+
+function liveMessages(queryClient: QueryClient, chatId: string): ChatMessage[] {
+  const overlay = queryClient.getQueryData<ChatMessageLiveOverlay>(
+    chatMessageLiveQueryKey(chatId),
+  );
+  return Object.values(overlay?.upserts ?? {}).sort(
+    (left, right) => left.sequence - right.sequence,
+  );
+}
 
 const event = (
   input: Pick<AppLiveEvent, "resource" | "scope"> &
@@ -118,7 +131,10 @@ describe("application live query bridge", () => {
           scope: { kind: "chat", chatId: "chat-one" },
         }),
       ),
-    ).toEqual([["messages", "chat-one"]]);
+    ).toEqual([
+      ["messages", "chat-one"],
+      ["message-history", "chat-one"],
+    ]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -433,8 +449,6 @@ describe("application live query bridge", () => {
       role: "assistant",
       content: [{ type: "text", text: "Working", phase: "commentary" }],
     });
-    queryClient.setQueryData<ChatMessage[]>(["messages", "chat-one"], [first]);
-
     bridge.handleEvent({
       ...event({
         entityId: streamed.id,
@@ -446,9 +460,7 @@ describe("application live query bridge", () => {
       revision: streamed.sequence,
     });
 
-    expect(
-      queryClient.getQueryData<ChatMessage[]>(["messages", "chat-one"]),
-    ).toEqual([first, streamed]);
+    expect(liveMessages(queryClient, "chat-one")).toEqual([streamed]);
     expect(invalidate).not.toHaveBeenCalled();
   });
 
@@ -506,8 +518,6 @@ describe("application live query bridge", () => {
       .spyOn(queryClient, "invalidateQueries")
       .mockResolvedValue();
     const bridge = new AppLiveQueryBridge(queryClient);
-    queryClient.setQueryData<ChatMessage[]>(["messages", payload.chatId], []);
-
     bridge.handleEvent({
       ...event({
         entityId: opaque.id,
@@ -519,9 +529,7 @@ describe("application live query bridge", () => {
     });
 
     await vi.waitFor(() =>
-      expect(
-        queryClient.getQueryData<ChatMessage[]>(["messages", payload.chatId]),
-      ).toMatchObject([
+      expect(liveMessages(queryClient, payload.chatId)).toMatchObject([
         {
           id: opaque.id,
           content: [{ type: "text", text: "SENTINEL live Task message" }],
@@ -829,10 +837,6 @@ describe("application live query bridge", () => {
       providerModelName: null,
       createdAt: "2026-08-09T12:00:00.000Z",
     });
-    queryClient.setQueryData<ChatMessage[]>(
-      ["messages", "chat-one"],
-      [message],
-    );
     const send = (cursor: number, text: string) =>
       bridge.handleEvent({
         ...event({
@@ -851,10 +855,9 @@ describe("application live query bridge", () => {
     send(5, "duplicate");
     send(4, "stale");
 
-    expect(
-      queryClient.getQueryData<ChatMessage[]>(["messages", "chat-one"])?.[0]
-        ?.content,
-    ).toEqual([{ type: "text", text: "newest", phase: "commentary" }]);
+    expect(liveMessages(queryClient, "chat-one")[0]?.content).toEqual([
+      { type: "text", text: "newest", phase: "commentary" },
+    ]);
   });
 
   it("applies safe provider auth lifecycle state and rejects stale revisions", async () => {
@@ -948,10 +951,6 @@ describe("application live query bridge", () => {
       providerModelName: null,
       createdAt: "2026-08-09T12:00:00.000Z",
     });
-    queryClient.setQueryData<ChatMessage[]>(
-      ["messages", "chat-one"],
-      [message],
-    );
     const send = (cursor: number, text: string) =>
       bridge.handleEvent({
         ...event({
@@ -973,10 +972,9 @@ describe("application live query bridge", () => {
     );
     send(1, "new epoch");
 
-    expect(
-      queryClient.getQueryData<ChatMessage[]>(["messages", "chat-one"])?.[0]
-        ?.content,
-    ).toEqual([{ type: "text", text: "new epoch" }]);
+    expect(liveMessages(queryClient, "chat-one")[0]?.content).toEqual([
+      { type: "text", text: "new epoch" },
+    ]);
   });
 
   it("awaits all authoritative scope invalidations during recovery", async () => {

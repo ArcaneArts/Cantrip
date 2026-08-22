@@ -46,6 +46,38 @@ export function useStickyChatScroll(conversationId: string) {
     setShowScrollToBottom(false);
   }, []);
 
+  const preserveScrollDuringPrepend = useCallback(
+    async (action: () => Promise<unknown>) => {
+      const viewport = viewportRef.current;
+      if (!viewport) {
+        await action();
+        return;
+      }
+      const wasNearBottom = chatScrollIsNearBottom(viewport);
+      const previousHeight = viewport.scrollHeight;
+      const previousTop = viewport.scrollTop;
+      await action();
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            const current = viewportRef.current;
+            if (current) {
+              if (wasNearBottom) {
+                current.scrollTop = current.scrollHeight;
+              } else {
+                current.scrollTop =
+                  previousTop + (current.scrollHeight - previousHeight);
+              }
+              updateScrollState();
+            }
+            resolve();
+          });
+        });
+      });
+    },
+    [updateScrollState],
+  );
+
   useEffect(() => {
     followOutputRef.current = true;
     setShowScrollToBottom(false);
@@ -74,6 +106,7 @@ export function useStickyChatScroll(conversationId: string) {
   return {
     contentRef,
     onScroll: updateScrollState,
+    preserveScrollDuringPrepend,
     scrollToBottom,
     showScrollToBottom,
     viewportRef,

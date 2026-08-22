@@ -115,7 +115,9 @@ import {
   chatMessageOpaqueContentListSchema,
   chatMessageOpaqueContentSchema,
   chatMessageListSchema,
+  chatMessagePageQuerySchema,
   chatMessageWireListSchema,
+  chatMessageWirePageSchema,
   chatMessageSchema,
   chatMessageRelayResultSchema,
   chatModelUpdateSchema,
@@ -25278,35 +25280,59 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { chatId: string } }>(
-    "/api/chats/:chatId/messages",
-    async (request, reply) => {
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-      const task = context.experience === "task";
-      const messages = task
-        ? await repository.listTaskMessages(
+  app.get<{
+    Params: { chatId: string };
+    Querystring: { beforeSequence?: string; limit?: string };
+  }>("/api/chats/:chatId/messages", async (request, reply) => {
+    const context = await repository.getChatExecutionContext(
+      applicationOwnerId(),
+      request.params.chatId,
+    );
+    if (!context) {
+      return reply.code(404).send({ error: "Chat source not found." });
+    }
+    const task = context.experience === "task";
+    const paginated =
+      request.query.beforeSequence !== undefined ||
+      request.query.limit !== undefined;
+    if (paginated) {
+      const query = chatMessagePageQuerySchema.parse(request.query);
+      const result = task
+        ? await repository.listTaskMessagePage(
             applicationOwnerId(),
             request.params.chatId,
+            query,
           )
-        : await repository.listEncryptedMessages(
+        : await repository.listEncryptedMessagePage(
             applicationOwnerId(),
             request.params.chatId,
+            query,
           );
       return reply.send(
-        chatMessageWireListSchema.parse(
-          task
-            ? { kind: "task-encrypted", messages }
-            : { kind: "chat-encrypted", messages },
-        ),
+        chatMessageWirePageSchema.parse({
+          kind: task ? "task-encrypted" : "chat-encrypted",
+          messages: result.messages,
+          page: result.page,
+        }),
       );
-    },
-  );
+    }
+    const messages = task
+      ? await repository.listTaskMessages(
+          applicationOwnerId(),
+          request.params.chatId,
+        )
+      : await repository.listEncryptedMessages(
+          applicationOwnerId(),
+          request.params.chatId,
+        );
+    return reply.send(
+      chatMessageWireListSchema.parse(
+        task
+          ? { kind: "task-encrypted", messages }
+          : { kind: "chat-encrypted", messages },
+      ),
+    );
+  });
 
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/skills",

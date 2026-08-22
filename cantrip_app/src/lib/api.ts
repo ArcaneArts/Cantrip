@@ -4,6 +4,7 @@ import {
   deriveLookupKey,
 } from "@cantrip/crypto";
 import {
+  CHAT_MESSAGE_PAGE_DEFAULT_LIMIT,
   accountAdminSummarySchema,
   accountLicenseWhitelistCreateSchema,
   accountLicenseWhitelistEntrySchema,
@@ -35,6 +36,7 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatMessageListSchema,
+  chatMessageWirePageSchema,
   chatMessageSchema,
   chatMessageWireListSchema,
   chatWireSummarySchema,
@@ -450,6 +452,11 @@ import {
   requestResponse,
   withQuery,
 } from "@/lib/api-client";
+import {
+  CHAT_MESSAGE_DECRYPT_CONCURRENCY,
+  mapWithConcurrency,
+  type ChatMessagePage,
+} from "@/lib/chat-message-history";
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
@@ -5496,6 +5503,37 @@ export async function getMessages(chatId: string) {
       ),
     ),
   );
+}
+
+export async function getMessagePage(
+  chatId: string,
+  options: {
+    beforeSequence?: number;
+    limit?: number;
+    signal?: AbortSignal;
+  } = {},
+): Promise<ChatMessagePage> {
+  const response = chatMessageWirePageSchema.parse(
+    await request(
+      withQuery(`/api/chats/${encodeURIComponent(chatId)}/messages`, {
+        beforeSequence: options.beforeSequence,
+        limit: options.limit ?? CHAT_MESSAGE_PAGE_DEFAULT_LIMIT,
+      }),
+      { signal: options.signal },
+    ),
+  );
+  const messages = await mapWithConcurrency(
+    response.messages,
+    CHAT_MESSAGE_DECRYPT_CONCURRENCY,
+    (message) =>
+      response.kind === "task-encrypted"
+        ? openTaskMessageOpaqueSummary(message)
+        : openChatMessageOpaqueSummary(message),
+  );
+  return {
+    messages: chatMessageListSchema.parse(messages),
+    page: response.page,
+  };
 }
 
 export async function getSkills(chatId: string) {

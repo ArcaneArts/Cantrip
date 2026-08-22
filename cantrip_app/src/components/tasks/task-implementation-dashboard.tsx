@@ -31,7 +31,6 @@ import { Markdown } from "@/components/chat/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  getMessages,
   getTaskImplementationDashboard,
   interruptChat,
   setChatPaused,
@@ -40,6 +39,7 @@ import {
 import { errorMessage } from "@/lib/error-message";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
+import { useChatMessageHistory } from "@/lib/use-chat-message-history";
 import { cn } from "@/lib/utils";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
@@ -150,9 +150,9 @@ export function TaskImplementationDashboard({
   const goal = dashboard.data?.goal ?? null;
   const active =
     chat.status === "running" || chat.status === "waiting-for-approval";
-  const messages = useQuery({
-    queryFn: () => getMessages(chat.id),
-    queryKey: ["messages", chat.id],
+  const messages = useChatMessageHistory({
+    autoLoadOlder: true,
+    chatId: chat.id,
     refetchInterval: liveResourceRefreshInterval(
       taskResourcesLive,
       active ? 1_000 : 5_000,
