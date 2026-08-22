@@ -266,39 +266,22 @@ export function ModelReasoningPicker({
                 />
               </div>
             )}
-            {canSelectReasoning ? (
+            {canSelectReasoning && panel === "reasoning" ? (
               <Button
                 type="button"
                 size="icon"
-                variant={panel === "reasoning" ? "outline" : "ghost"}
+                variant="outline"
                 className="size-8 shrink-0"
-                disabled={reasoningPending}
-                aria-label={
-                  panel === "reasoning"
-                    ? "Search models"
-                    : "Configure reasoning effort"
-                }
-                title={
-                  panel === "reasoning"
-                    ? "Search models"
-                    : "Configure reasoning effort"
-                }
+                aria-label="Search models"
+                title="Search models"
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  setPanel((current) =>
-                    current === "models" ? "reasoning" : "models",
-                  );
-                  if (panel === "reasoning") {
-                    window.setTimeout(() => searchRef.current?.focus(), 0);
-                  }
+                  setPanel("models");
+                  window.setTimeout(() => searchRef.current?.focus(), 0);
                 }}
               >
-                {panel === "reasoning" ? (
-                  <Search className="size-4" />
-                ) : (
-                  <Brain className="size-4" />
-                )}
+                <Search className="size-4" />
               </Button>
             ) : null}
           </div>
@@ -357,6 +340,26 @@ export function ModelReasoningPicker({
           ) : null}
         </StyledDropdownMenuContent>
       </DropdownMenuPrimitive.Portal>
+      {canSelectReasoning ? (
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-7 shrink-0 text-muted-foreground"
+          disabled={disabled || reasoningPending}
+          aria-label="Configure reasoning effort"
+          aria-haspopup="menu"
+          aria-expanded={open && panel === "reasoning"}
+          title="Configure reasoning effort"
+          onClick={() => {
+            setPanel("reasoning");
+            setQuery("");
+            setOpen(true);
+          }}
+        >
+          <Brain className="size-4" />
+        </Button>
+      ) : null}
     </DropdownMenuPrimitive.Root>
   );
 }
