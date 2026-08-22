@@ -25,6 +25,8 @@ export type DesktopWindowFocusLifecycle = {
   listenFocusChanged(listener: (focused: boolean) => void): Promise<() => void>;
 };
 
+export type DesktopWindowTheme = "dark" | "light" | null;
+
 // Cantrip windows host live transports and Tauri's title-bar drag handling.
 // Suspending an occluded WKWebView can therefore freeze both content and
 // window interaction until a native resize wakes the document again.
@@ -138,8 +140,14 @@ export async function updateDesktopWindowTitle(title: string): Promise<void> {
   await getCurrentWebviewWindow().setTitle(title);
 }
 
+export function desktopWindowThemeOverride(
+  preference: "dark" | "light" | "system",
+): DesktopWindowTheme {
+  return preference === "system" ? null : preference;
+}
+
 export async function updateDesktopWindowTheme(
-  theme: "dark" | "light",
+  theme: DesktopWindowTheme,
 ): Promise<void> {
   if (!isDesktopRuntime()) return;
   const { getCurrentWebviewWindow } =

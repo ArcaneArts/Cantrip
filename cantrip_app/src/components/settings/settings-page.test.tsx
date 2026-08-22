@@ -59,6 +59,17 @@ describe("account settings", () => {
     expect(markup).toContain('aria-label="Configure Elite Mode"');
   });
 
+  it("uses a compact brightness dropdown in Appearance", () => {
+    const markup = renderSettings("general");
+
+    expect(markup).toContain('aria-label="Brightness"');
+    expect(markup).toContain(
+      '<option value="system" selected="">System</option>',
+    );
+    expect(markup).toContain('<option value="light">Light</option>');
+    expect(markup).toContain('<option value="dark">Dark</option>');
+  });
+
   it("exposes the visual reveal laboratory as its own section", () => {
     const markup = renderSettings("elite");
     expect(markup).toContain("Elite reveal laboratory");

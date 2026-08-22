@@ -29,8 +29,6 @@ import {
   Loader2,
   Lock,
   LogOut,
-  Monitor,
-  Moon,
   Network,
   Palette,
   Plus,
@@ -43,7 +41,6 @@ import {
   ScrollText,
   SlidersHorizontal,
   Sparkles,
-  Sun,
   Trash2,
 } from "lucide-react";
 import {
@@ -1082,36 +1079,27 @@ export function SettingsPage({
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      <div className="flex rounded-md bg-muted/50 p-0.5">
-                        {(
-                          [
-                            ["system", Monitor],
-                            ["light", Sun],
-                            ["dark", Moon],
-                          ] as const
-                        ).map(([theme, Icon]) => (
-                          <Button
-                            key={theme}
-                            type="button"
-                            size="sm"
-                            className="h-7 px-2.5 text-xs"
-                            variant={
-                              settings.data?.preferences.theme === theme
-                                ? "default"
-                                : "ghost"
-                            }
-                            disabled={preferences.isPending}
-                            onClick={() =>
-                              preferences.mutate({
-                                theme: theme as ThemePreference,
-                              })
-                            }
-                          >
-                            <Icon className="size-3.5" />
-                            <span className="capitalize">{theme}</span>
-                          </Button>
-                        ))}
-                      </div>
+                      <label className="flex items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">
+                          Brightness
+                        </span>
+                        <NativeSelect
+                          aria-label="Brightness"
+                          className="h-7"
+                          size="sm"
+                          value={settings.data?.preferences.theme ?? "system"}
+                          disabled={preferences.isPending}
+                          onChange={(event) =>
+                            preferences.mutate({
+                              theme: event.target.value as ThemePreference,
+                            })
+                          }
+                        >
+                          <option value="system">System</option>
+                          <option value="light">Light</option>
+                          <option value="dark">Dark</option>
+                        </NativeSelect>
+                      </label>
                       <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50">
                         <input
                           type="checkbox"
