@@ -1360,11 +1360,36 @@ export function goalShouldContinue(
 export const CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS =
   "The managed `cantrip` MCP server is the preferred interface for Cantrip-owned state and surfaces. Start with `context_get`, list targets instead of guessing identifiers, and use `policy_list` plus `policy_read` whenever an effective policy summary requires its current full body. Use standard shell, file, and Git tools for normal repository work. If the managed MCP server is unavailable, use the worker-authenticated `cantrip` CLI as a fallback and run `cantrip -h` for concise help. When a Cantrip tool or command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
 
+export const NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS =
+  "The current project path has no local `.git` metadata in it or any parent directory, so treat this project as a non-Git folder. Do not run Git or GitHub commands, inspect branches, remotes, or worktrees, or attempt commits or pull requests. Work directly with its files. Do not initialize Git unless the user explicitly asks.";
+
 export const CANTRIP_DYNAMIC_TOOLS_OVERRIDE = { dynamicTools: [] } as const;
 
-export function cantripChatThreadParams() {
+export async function workspaceHasGitMetadata(cwd: string): Promise<boolean> {
+  let current = path.resolve(cwd);
+  while (true) {
+    try {
+      await lstat(path.join(current, ".git"));
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") {
+        // Only label a workspace non-Git when the absence of metadata is
+        // certain. Permission and filesystem errors must fail conservatively.
+        return true;
+      }
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+}
+
+export function cantripChatThreadParams(hasGitMetadata = true) {
   return {
-    developerInstructions: CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS,
+    developerInstructions: hasGitMetadata
+      ? CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS
+      : `${CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS}\n\n${NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS}`,
     ...CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
   } as const;
 }
@@ -4428,6 +4453,7 @@ export class CodexAppServer implements CodexRuntime {
         ? codexMcpConfigOverride(options.mcpServers)
         : null;
     const mcpConfigFingerprint = mcpConfig ? JSON.stringify(mcpConfig) : null;
+    const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
     let threadId = options.threadId;
     if (threadId && this.#threadKinds.get(threadId) === "workflow") {
       throw new Error(
@@ -4472,7 +4498,7 @@ export class CodexAppServer implements CodexRuntime {
             this.permissionProfilesSupported(),
             structuredReadOnly,
           ),
-          ...cantripChatThreadParams(),
+          ...cantripChatThreadParams(hasGitMetadata),
           ...(mcpConfig ? { config: mcpConfig } : {}),
         })) as ThreadResponse;
         threadId = resumed.thread.id;
@@ -4523,7 +4549,7 @@ export class CodexAppServer implements CodexRuntime {
           this.permissionProfilesSupported(),
           structuredReadOnly,
         ),
-        ...cantripChatThreadParams(),
+        ...cantripChatThreadParams(hasGitMetadata),
         ...(mcpConfig ? { config: mcpConfig } : {}),
       })) as ThreadResponse;
       threadId = started.thread.id;
