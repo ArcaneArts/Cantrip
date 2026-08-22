@@ -427,6 +427,74 @@ pub fn open_synthetic_build_log(
     Ok(())
 }
 
+#[tauri::command]
+pub fn open_synthetic_build_cache(
+    coordinator: State<'_, SyntheticBuildCoordinator>,
+) -> Result<(), SyntheticBuildError> {
+    let path = coordinator.root();
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut value = Command::new("open");
+        value.arg(path);
+        value
+    };
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut value = Command::new("explorer");
+        value.arg(path);
+        value
+    };
+    command.spawn().map_err(|error| {
+        SyntheticBuildError::new("synthetic_cache_open_failed", error.to_string(), true)
+    })?;
+    Ok(())
+}
+
+fn directory_size(path: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                directory_size(&path)
+            } else {
+                entry.metadata().map_or(0, |metadata| metadata.len())
+            }
+        })
+        .sum()
+}
+
+#[tauri::command]
+pub fn clean_unused_synthetic_build_cache(
+    coordinator: State<'_, SyntheticBuildCoordinator>,
+) -> Result<u64, SyntheticBuildError> {
+    if coordinator.build_active() {
+        return Err(SyntheticBuildError::new(
+            "synthetic_build_busy",
+            "Wait for the active build to finish before cleaning its cache.",
+            true,
+        ));
+    }
+    let before = directory_size(coordinator.root());
+    for path in [
+        coordinator.root().join("worktrees"),
+        coordinator.root().join("stores/cargo-target"),
+    ] {
+        if path.exists() {
+            fs::remove_dir_all(&path).map_err(|error| {
+                SyntheticBuildError::new("synthetic_cache_clean_failed", error.to_string(), true)
+            })?;
+            fs::create_dir_all(&path).map_err(|error| {
+                SyntheticBuildError::new("synthetic_cache_clean_failed", error.to_string(), true)
+            })?;
+        }
+    }
+    Ok(before.saturating_sub(directory_size(coordinator.root())))
+}
+
 #[cfg(test)]
 mod tests {
     use super::safe_relative;

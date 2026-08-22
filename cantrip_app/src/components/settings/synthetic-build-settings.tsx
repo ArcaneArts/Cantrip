@@ -41,6 +41,7 @@ export function SyntheticBuildCache({
   const [builds, setBuilds] = useState<CachedSyntheticBuild[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [identity, setIdentity] = useState<SyntheticBuildIdentity | null>(null);
+  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
 
   async function install(build: CachedSyntheticBuild) {
     try {
@@ -74,7 +75,7 @@ export function SyntheticBuildCache({
       );
   }, [client]);
 
-  if (builds.length === 0 && !identity && !error) return null;
+  if (!client.isSupportedEnvironment()) return null;
   return (
     <section className="border-t" aria-labelledby="cached-synthetic-builds">
       {identity ? (
@@ -138,6 +139,34 @@ export function SyntheticBuildCache({
           </div>
         ))
       )}
+      <div className="flex items-center gap-2 border-t px-3 py-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => void client.openCache()}
+        >
+          Open cache folder
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() =>
+            void client
+              .cleanCache()
+              .then((bytes) =>
+                setCacheMessage(`${(bytes / 1_048_576).toFixed(0)} MB removed`),
+              )
+              .catch((reason) =>
+                setError(normalizeSyntheticBuildError(reason).message),
+              )
+          }
+        >
+          Clean unused build cache
+        </Button>
+        {cacheMessage ? (
+          <span className="text-xs text-muted-foreground">{cacheMessage}</span>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -154,6 +183,7 @@ export function SyntheticBuildSettings({
   client?: SyntheticBuildClient;
 }) {
   const [available, setAvailable] = useState(false);
+  const [activeBuild, setActiveBuild] = useState(false);
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<Stage>("commits");
   const [commits, setCommits] = useState<SyntheticCommit[]>([]);
@@ -166,7 +196,14 @@ export function SyntheticBuildSettings({
 
   useEffect(() => {
     if (!client.isSupportedEnvironment()) return;
-    void client.capability().then((value) => setAvailable(value.available));
+    void Promise.all([client.capability(), client.status()]).then(
+      ([capability, status]) => {
+        setAvailable(capability.available);
+        setActiveBuild(
+          status.job?.state === "queued" || status.job?.state === "running",
+        );
+      },
+    );
   }, [client]);
 
   const visible = useMemo(() => {
@@ -241,11 +278,31 @@ export function SyntheticBuildSettings({
     }
   }
 
+  async function installPrerequisites() {
+    if (!selected || !scan) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const nextScan = await client.installPrerequisites(
+        selected.sha,
+        scan.prerequisites
+          .filter((item) => item.status !== "ready")
+          .map((item) => item.id),
+      );
+      setScan(nextScan);
+    } catch (reason) {
+      setError(normalizeSyntheticBuildError(reason).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function start() {
     if (!selected) return;
     setBusy(true);
     try {
       await client.start(selected.sha);
+      setActiveBuild(true);
       setOpen(false);
       await openSyntheticBuildProgressWindow();
     } catch (reason) {
@@ -266,7 +323,8 @@ export function SyntheticBuildSettings({
           void load(true);
         }}
       >
-        <Hammer className="size-3.5" /> Build Update
+        <Hammer className="size-3.5" />{" "}
+        {activeBuild ? "View Build" : "Build Update"}
       </Button>
       <Dialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
         <DialogContent
@@ -416,13 +474,23 @@ export function SyntheticBuildSettings({
                 Continue
               </Button>
             ) : stage === "prerequisites" ? (
-              <Button
-                pending={busy}
-                pendingLabel="Checking…"
-                onClick={() => void checkAgain()}
-              >
-                Check again
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  pending={busy}
+                  pendingLabel="Opening installers…"
+                  onClick={() => void installPrerequisites()}
+                >
+                  Install prerequisites
+                </Button>
+                <Button
+                  pending={busy}
+                  pendingLabel="Checking…"
+                  onClick={() => void checkAgain()}
+                >
+                  Check again
+                </Button>
+              </>
             ) : (
               <Button
                 pending={busy}
