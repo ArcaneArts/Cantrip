@@ -8,13 +8,33 @@ import {
   initializeClientLogPersistence,
   operationalErrorMetadata,
 } from "@/lib/client-log-relay";
+import {
+  desktopWindowThemeOverride,
+  updateDesktopWindowTheme,
+} from "@/lib/desktop-popout";
 import { initializeServerConnections } from "@/lib/server-connections";
+import { readStartupThemePreference } from "@/lib/startup-theme";
 
 import "./index.css";
 
 installClientLogCapture();
 
 async function start(): Promise<void> {
+  const startupThemePreference = readStartupThemePreference();
+  if (startupThemePreference) {
+    void updateDesktopWindowTheme(
+      desktopWindowThemeOverride(startupThemePreference),
+    ).catch((error: unknown) => {
+      clientLogger.warn("Cached desktop window theme could not be restored", {
+        ...operationalErrorMetadata(error),
+        event: "window.theme.startup.failed",
+        operation: "restore-theme",
+        reasonCode: "native-window-error",
+        status: "failed",
+        subsystem: "desktop-window",
+      });
+    });
+  }
   await initializeClientLogPersistence();
   const startedAt = performance.now();
   const tauriRuntime = "__TAURI_INTERNALS__" in window;

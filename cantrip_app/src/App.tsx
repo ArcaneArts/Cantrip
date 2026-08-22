@@ -433,6 +433,11 @@ import {
   sidebarWidthFromKey,
   sidebarWidthFromPointer,
 } from "@/lib/sidebar-resize";
+import {
+  readStartupThemePreference,
+  rememberStartupThemePreference,
+  startupThemeIsDark,
+} from "@/lib/startup-theme";
 import { cn } from "@/lib/utils";
 import {
   applyOptimisticTabLayoutToCache,
@@ -3453,9 +3458,7 @@ export function App() {
     null,
   );
   const [codeAppearance, setCodeAppearance] = useState<CodeAppearance>(() =>
-    window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light",
+    document.documentElement.classList.contains("dark") ? "dark" : "light",
   );
   const [proModeActive, setProModeActive] = useState(false);
   const contentRootRef = useRef<HTMLElement>(null);
@@ -5684,12 +5687,16 @@ export function App() {
     }
   };
   useEffect(() => {
-    const preference = settings.data?.preferences.theme ?? "system";
+    const configuredPreference = settings.data?.preferences.theme;
+    const preference =
+      configuredPreference ?? readStartupThemePreference() ?? "system";
+    if (configuredPreference) {
+      rememberStartupThemePreference(configuredPreference);
+    }
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     let active = true;
     const apply = () => {
-      const dark =
-        preference === "dark" || (preference === "system" && media.matches);
+      const dark = startupThemeIsDark(preference, media.matches);
       document.documentElement.classList.toggle("dark", dark);
       document.documentElement.classList.toggle(
         "high-contrast",
