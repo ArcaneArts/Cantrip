@@ -22,7 +22,7 @@ function circleCenters(source) {
 
 function trayCells(source) {
   return [
-    ...source.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="1" height="1"/g),
+    ...source.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="2" height="2"/g),
   ].map(([, x, y]) => [Number(x), Number(y)]);
 }
 
@@ -69,7 +69,7 @@ test("app artwork keeps the tall glint inside a five-unit safe area", () => {
   assert.ok(top >= 5 && 36 - bottom >= 5);
 });
 
-test("macOS tray renders a pixel-snapped SVG as an unscaled native template", () => {
+test("macOS tray renders a bold pixel-snapped SVG as an unscaled native template", () => {
   const rust = svg("cantrip_app/src-tauri/src/lib.rs");
   const tray = svg("cantrip_app/src-tauri/icons/tray-icon-macos.svg");
   const expectedCells = circleCenters(
