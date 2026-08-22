@@ -35,8 +35,8 @@ describe("TerminalDirectEndpointManager", () => {
     const terminal = {
       attachExisting: vi.fn(
         (_terminalId, _attachmentId, _cols, _rows, emit) => {
-          emit({ type: "terminal.ready" });
           emit({ type: "terminal.output", data: "hello" });
+          emit({ type: "terminal.ready" });
           return new Promise(() => undefined);
         },
       ),
@@ -75,14 +75,14 @@ describe("TerminalDirectEndpointManager", () => {
       socket.once("error", reject);
     });
     await vi.waitFor(() => expect(messages).toHaveLength(2));
-    expect(messages[0]).toEqual({ type: "ready" });
-    const output = messages[1] as {
+    const output = messages[0] as {
       operationId: string;
       protectedData: unknown;
       sequence: number;
       type: "output";
     };
     expect(output).toMatchObject({ type: "output", operationId, sequence: 0 });
+    expect(messages[1]).toEqual({ type: "ready" });
     await expect(
       openWorkerSurfaceStreamContent({
         context: {

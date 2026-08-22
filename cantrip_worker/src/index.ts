@@ -2719,8 +2719,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         let outputSequence = 0;
         let outputQueue = Promise.resolve();
         const protectedEmit = (event: TerminalRuntimeEvent) => {
-          if (event.type !== "terminal.output") {
-            emit(event);
+          if (event.type === "terminal.ready") {
+            // Preserve replay-before-ready ordering across async encryption.
+            outputQueue = outputQueue.then(() => emit(event));
             return;
           }
           const sequence = outputSequence;

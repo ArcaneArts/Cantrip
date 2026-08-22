@@ -270,8 +270,10 @@ export class TerminalDirectEndpointManager {
     let outputQueue = Promise.resolve();
     try {
       const emit = (event: TerminalRuntimeEvent) => {
-        if (event.type === "terminal.ready") send({ type: "ready" });
-        else if (event.type === "terminal.output") {
+        if (event.type === "terminal.ready") {
+          // Preserve replay-before-ready ordering across async encryption.
+          outputQueue = outputQueue.then(() => send({ type: "ready" }));
+        } else if (event.type === "terminal.output") {
           const sequence = outputSequence;
           outputSequence += 1;
           outputQueue = outputQueue.then(async () => {

@@ -477,8 +477,10 @@ export class TerminalManager {
       attachmentId,
       counts: { clients: session.subscribers.size },
     });
-    emit({ type: "terminal.ready" });
+    // Replayed control sequences can make terminal emulators emit replies, so
+    // keep the input-ready marker behind the historical output.
     if (session.buffer) emit({ type: "terminal.output", data: session.buffer });
+    emit({ type: "terminal.ready" });
     return new Promise((resolve) => session.waiters.set(attachmentId, resolve));
   }
 
