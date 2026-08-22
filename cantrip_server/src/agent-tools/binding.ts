@@ -33,13 +33,6 @@ export class CantripMcpBindingError extends Error {
   }
 }
 
-function normalizedWorkerPath(value: string) {
-  const normalized = value.replaceAll("\\", "/").replace(/\/+$/u, "");
-  return /^[A-Za-z]:\//u.test(normalized)
-    ? normalized.toLocaleLowerCase()
-    : normalized || "/";
-}
-
 export function assertCantripMcpBinding(options: {
   binding: CantripMcpBinding;
   context: ChatExecutionContext;
@@ -88,6 +81,10 @@ export function assertCantripMcpBinding(options: {
     binding.projectId !== context.projectId ? "project" : null,
     binding.workerId !== context.workerId ? "worker" : null,
   ].filter((claim): claim is string => claim !== null);
+  // The worktree ID is the durable execution-root identity shared by the
+  // worker and server. A canonical filesystem path is worker-private, while
+  // the server stores only a field-scoped routing handle, so path strings must
+  // never be transported in or compared through an MCP binding.
   const staleScopeClaims = [
     binding.executionLaneId !== context.executionLaneId
       ? "execution lane"
@@ -96,10 +93,6 @@ export function assertCantripMcpBinding(options: {
     binding.rootKind !== context.rootKind ? "root kind" : null,
     binding.permissionProfileId !== currentPermissionProfile
       ? "permission profile"
-      : null,
-    normalizedWorkerPath(binding.canonicalRoot) !==
-    normalizedWorkerPath(context.cwd)
-      ? "working directory"
       : null,
   ].filter((claim): claim is string => claim !== null);
   const staleClaims = [

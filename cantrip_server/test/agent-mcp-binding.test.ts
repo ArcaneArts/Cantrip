@@ -13,7 +13,7 @@ const now = Date.parse("2026-08-21T12:00:00.000Z");
 const context: ChatExecutionContext = {
   automationPaused: false,
   chatId: "chat-one",
-  cwd: "/worktrees/one",
+  cwd: `ctrr_${"A".repeat(43)}`,
   experience: "chat",
   defaultPermissionProfileId: ":default",
   executionLaneId: "lane-one",
@@ -41,7 +41,6 @@ const binding: CantripMcpBinding = {
   executionLaneId: context.executionLaneId!,
   workerId: context.workerId,
   worktreeId: context.worktreeId,
-  canonicalRoot: context.cwd,
   rootKind: context.rootKind,
   permissionProfileId: ":workspace-write",
   allowedOperations: [...CANTRIP_MCP_READ_OPERATIONS],
@@ -182,7 +181,6 @@ describe("Cantrip MCP server binding", () => {
     ["lane", { ...context, executionLaneId: "lane-two" }],
     ["worktree", { ...context, worktreeId: "worktree-two" }],
     ["root kind", { ...context, rootKind: "project-root" as const }],
-    ["working directory", { ...context, cwd: "/worktrees/two" }],
     ["permission", { ...context, permissionProfileId: ":read-only" }],
   ])(
     "allows read-only discovery to follow a changed %s scope",
@@ -208,7 +206,6 @@ describe("Cantrip MCP server binding", () => {
       "root kind",
       { ...context, rootKind: "project-root" as const },
     ],
-    ["root", "working directory", { ...context, cwd: "/worktrees/two" }],
     [
       "permission",
       "permission profile",

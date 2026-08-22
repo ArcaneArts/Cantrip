@@ -44,7 +44,6 @@ function bindingInput() {
     executionLaneId: "lane-one",
     workerId: "worker-one",
     worktreeId: "worktree-one",
-    canonicalRoot: "/worktrees/one",
     rootKind: "git-worktree" as const,
     permissionProfileId: ":workspace-write",
     allowedOperations: ["context.get"] as Array<"context.get">,
@@ -76,32 +75,6 @@ describe("Cantrip MCP worker broker", () => {
         },
       );
       expect(handshake.status).toBe(200);
-    } finally {
-      await broker.close();
-    }
-  });
-
-  it("reuses a live binding across equivalent Windows path forms", async () => {
-    const dataDirectory = await temporaryDirectory();
-    const broker = new CantripMcpBroker({
-      dataDirectory,
-      serverUrl: "https://cantrip.example",
-      token: "worker-token",
-      workerId: "worker-one",
-    });
-    await broker.start();
-    try {
-      const first = broker.createBinding({
-        ...bindingInput(),
-        canonicalRoot: "C:\\Users\\Cantrip\\project\\",
-      });
-      const reused = broker.createBinding({
-        ...bindingInput(),
-        canonicalRoot: "c:/users/cantrip/project",
-      });
-
-      expect(reused.binding.bindingId).toBe(first.binding.bindingId);
-      await expect(access(first.connectionPath)).resolves.toBeUndefined();
     } finally {
       await broker.close();
     }
@@ -185,7 +158,6 @@ describe("Cantrip MCP worker broker", () => {
         ...bindingInput(),
         executionLaneId: "lane-two",
         worktreeId: "worktree-two",
-        canonicalRoot: "C:\\Users\\Cantrip\\project-two",
         rootKind: "folder-root",
         permissionProfileId: ":read-only",
       });
@@ -195,7 +167,6 @@ describe("Cantrip MCP worker broker", () => {
           bindingId: first.binding.bindingId,
           executionLaneId: "lane-two",
           worktreeId: "worktree-two",
-          canonicalRoot: "C:\\Users\\Cantrip\\project-two",
           rootKind: "folder-root",
           permissionProfileId: ":read-only",
           allowedOperations: ["context.get"],

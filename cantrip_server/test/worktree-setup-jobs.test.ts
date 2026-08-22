@@ -35,12 +35,14 @@ afterAll(async () => {
 });
 
 describe("durable worktree setup jobs", () => {
-  it("gates readiness, retries revision drift, and cleans up missing worktrees", async () => {
+  it("reconciles field-scoped routing handles, gates readiness, and retries drift", async () => {
     const database = await connectDatabase(config);
     try {
       const workerId = "setup-worker";
-      const primaryPath = path.join(dataDirectory, "repository");
-      const worktreePath = path.join(dataDirectory, "worktrees", "feature");
+      const primaryPath = `ctrr_${"P".repeat(43)}`;
+      const inventorySourcePath = `ctrr_${"S".repeat(43)}`;
+      const inventoryPrimaryPath = `ctrr_${"I".repeat(43)}`;
+      const worktreePath = `ctrr_${"W".repeat(43)}`;
       await database.repository.recordWorker(LOCAL_USER_ID, {
         workerId,
         name: "Setup Worker",
@@ -81,10 +83,10 @@ describe("durable worktree setup jobs", () => {
       );
       const worktreeId = randomUUID();
       const inventory = {
-        sourcePath: primaryPath,
-        primaryPath,
-        gitCommonDir: path.join(primaryPath, ".git"),
-        managedRoot: path.join(dataDirectory, "worktrees"),
+        sourcePath: inventorySourcePath,
+        primaryPath: inventoryPrimaryPath,
+        gitCommonDir: `ctrr_${"G".repeat(43)}`,
+        managedRoot: `ctrr_${"M".repeat(43)}`,
         repositoryFingerprint: "d".repeat(64),
         worktrees: [
           {
@@ -128,6 +130,21 @@ describe("durable worktree setup jobs", () => {
           path: worktreePath,
         },
       );
+      await expect(
+        database.repository.reconcileProjectWorktrees(
+          LOCAL_USER_ID,
+          project.id,
+          workerId,
+          {
+            ...inventory,
+            worktrees: inventory.worktrees.map((worktree) =>
+              worktree.isPrimary
+                ? { ...worktree, path: `ctrr_${"X".repeat(43)}` }
+                : worktree,
+            ),
+          },
+        ),
+      ).rejects.toThrow("different replica path");
 
       const firstRevision = "a".repeat(64);
       const initialized =

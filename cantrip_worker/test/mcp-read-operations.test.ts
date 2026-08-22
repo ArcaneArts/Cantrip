@@ -26,7 +26,6 @@ const binding: CantripMcpBinding = {
   executionLaneId: "lane-one",
   workerId: "worker-one",
   worktreeId: "worktree-one",
-  canonicalRoot: "/private/worktrees/one",
   rootKind: "git-worktree",
   permissionProfileId: ":workspace-write",
   allowedOperations: [...CANTRIP_MCP_READ_OPERATIONS],

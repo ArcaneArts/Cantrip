@@ -7423,7 +7423,6 @@ export const cantripMcpBindingSchema = z
     executionLaneId: z.string().min(1).max(200),
     workerId: z.string().min(1).max(200),
     worktreeId: z.string().min(1).max(200),
-    canonicalRoot: z.string().min(1).max(8_192),
     rootKind: projectRootKindSchema,
     permissionProfileId: permissionProfileIdSchema,
     allowedOperations: z

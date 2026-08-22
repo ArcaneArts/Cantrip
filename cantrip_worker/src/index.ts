@@ -935,7 +935,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           executionLaneId: attachment.executionLaneId,
           workerId: attachment.workerId,
           worktreeId: attachment.worktreeId,
-          canonicalRoot: cwd,
           rootKind: attachment.rootKind,
           permissionProfileId: attachment.permissionProfileId,
           allowedOperations: [...cantripAllowedOperations],

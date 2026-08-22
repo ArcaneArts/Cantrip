@@ -13,7 +13,6 @@ const binding: CantripMcpBinding = {
   executionLaneId: "lane-one",
   workerId: "worker-one",
   worktreeId: "worktree-one",
-  canonicalRoot: "/worktrees/one",
   rootKind: "git-worktree",
   permissionProfileId: ":workspace-write",
   allowedOperations: ["context.get"],
