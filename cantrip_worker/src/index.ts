@@ -87,6 +87,7 @@ import { CodexAuthClient } from "./codex/auth-client.js";
 import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
 import { chatGptExternalAuthCapabilityError } from "./codex/external-chatgpt-auth.js";
+import { workerGlobalCodexSkillsRoot } from "./codex/global-skills.js";
 import { CantripCliBroker } from "./cli-broker.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
@@ -461,6 +462,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     { workerId: config.workerId },
   );
   const codexHome = path.join(config.dataDirectory, "codex-home");
+  const globalCodexSkillRoots = [workerGlobalCodexSkillsRoot()];
   const codexRuntime = await workerStartupPhase(
     "probe-codex-runtime",
     () =>
@@ -1030,6 +1032,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               }
             : provider,
         providerAccessTokens,
+        undefined,
+        globalCodexSkillRoots,
       );
       runtime.setExternalThreadChangeObserver((change) => {
         workerNotificationEmitter?.({
@@ -1056,6 +1060,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         undefined,
         undefined,
         providerAccessTokens,
+        undefined,
+        globalCodexSkillRoots,
       );
       codexCatalogRuntimes.set(credentialHomeKey, runtime);
     }

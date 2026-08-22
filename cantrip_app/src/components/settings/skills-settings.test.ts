@@ -23,4 +23,19 @@ describe("skills settings search", () => {
     expect(skillMatchesSearch(skill, "project")).toBe(true);
     expect(skillMatchesSearch(skill, "database")).toBe(false);
   });
+
+  it("labels skills discovered from the worker's Codex home", () => {
+    expect(
+      skillMatchesSearch(
+        {
+          ...skill,
+          id: "codexUser:review",
+          scope: "user",
+          location: "codexUser",
+          path: "/worker/.codex/skills/review/SKILL.md",
+        },
+        "worker codex home",
+      ),
+    ).toBe(true);
+  });
 });

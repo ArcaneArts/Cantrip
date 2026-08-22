@@ -4,7 +4,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
+import {
+  unprobedCodexRuntimeReport,
+  type CodexRuntimeReport,
+} from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -68,7 +71,9 @@ const threadId = "goal-thread";
 const actualTurnId = "runtime-goal-turn";
 let cleared = false;
 let turnStartCount = 0;
+let globalSkillRootsRegistered = false;
 const completedTurns = [];
+const expectedGlobalSkillRoot = ${JSON.stringify(path.join(directory, "global-skills"))};
 let goal = mode === "replace-completed"
   ? {
       threadId,
@@ -123,6 +128,21 @@ server.on("connection", (socket) => {
     if (message.id === undefined) return;
     if (message.method === "initialize") {
       reply(socket, message.id, {});
+      return;
+    }
+    if (message.method === "skills/extraRoots/set") {
+      if (JSON.stringify(message.params.extraRoots) !== JSON.stringify([expectedGlobalSkillRoot])) {
+        process.exit(41);
+      }
+      globalSkillRootsRegistered = true;
+      reply(socket, message.id, {});
+      return;
+    }
+    if (message.method === "skills/list") {
+      if (!globalSkillRootsRegistered) process.exit(42);
+      reply(socket, message.id, {
+        data: [{ cwd: message.params.cwds[0], skills: [], errors: [] }]
+      });
       return;
     }
     if (message.method === "thread/resume") {
@@ -324,6 +344,10 @@ function launcher(
 
 async function fixture(
   mode: "automatic-continuation" | "replace-completed" | "turn-id-race",
+  options: {
+    compatibility?: CodexRuntimeReport;
+    registerGlobalSkills?: boolean;
+  } = {},
 ) {
   const root = await mkdtemp(path.join(tmpdir(), "cantrip-goal-streaming-"));
   temporaryDirectories.push(root);
@@ -334,16 +358,38 @@ async function fixture(
       binary,
       root,
       path.join(root, "codex-home"),
-      compatibility,
+      options.compatibility ?? compatibility,
       undefined,
       undefined,
       undefined,
       launcher(mode),
+      options.registerGlobalSkills ? [path.join(root, "global-skills")] : [],
     ),
   };
 }
 
 describe("Codex goal streaming", () => {
+  it("registers worker-global skill roots before serving the native skill catalog", async () => {
+    const globalSkillCompatibility = {
+      ...compatibility,
+      methods: {
+        ...compatibility.methods,
+        "skills/extraRoots/set": "available" as const,
+      },
+    };
+    const { root, runtime } = await fixture("replace-completed", {
+      compatibility: globalSkillCompatibility,
+      registerGlobalSkills: true,
+    });
+    try {
+      await expect(
+        runtime.listSkills({ cwd: root, model, provider }),
+      ).resolves.toEqual([]);
+    } finally {
+      runtime.close();
+    }
+  });
+
   it("clears a completed goal before creating its replacement", async () => {
     const { root, runtime } = await fixture("replace-completed");
     try {
