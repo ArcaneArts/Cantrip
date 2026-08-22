@@ -16,6 +16,8 @@ import {
   isMachOHeader,
   signMacosRuntime,
 } from "./sign-macos-runtime.mjs";
+import { verifyPackagedCantripCode } from "./cantrip-code/packaged-manifest.mjs";
+import { createDistributionFileInventory } from "./cantrip-code/build-lib.mjs";
 import { notarizeMacosDistribution } from "./notarize-macos-distribution.mjs";
 import { signMacosDiskImages } from "./sign-macos-disk-images.mjs";
 import { verifyMacosDistribution } from "./verify-macos-distribution.mjs";
@@ -49,9 +51,22 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
     await chmod(node, 0o755);
     await chmod(codex, 0o644);
     await writeFile(path.join(root, "README.txt"), "not native\n");
+    const codeRoot = path.join(root, "worker", "resources", "cantrip-code");
+    await mkdir(codeRoot, { recursive: true });
+    await writeFile(path.join(codeRoot, "native.dylib"), thinMachO);
+    const files = await createDistributionFileInventory(codeRoot);
+    await writeFile(
+      path.join(codeRoot, "cantrip-code.manifest.json"),
+      JSON.stringify({
+        schemaVersion: 3,
+        component: "cantrip-code",
+        target: "darwin-arm64",
+        files,
+      }),
+    );
     assert.deepEqual(
       new Set(await findMachOBinaries(root)),
-      new Set([node, codex, codeModeHost]),
+      new Set([node, codex, codeModeHost, path.join(codeRoot, "native.dylib")]),
     );
 
     const calls = [];
@@ -61,7 +76,7 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
       identity: "Developer ID Application: Cantrip Test (TEAMID)",
       run: (arguments_) => calls.push(arguments_),
     });
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
     const nodeCall = calls.find((call) => call.at(-1) === node);
     const codexCall = calls.find((call) => call.at(-1) === codex);
     const codeModeHostCall = calls.find((call) => call.at(-1) === codeModeHost);
@@ -74,6 +89,7 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
     assert.ok(codeModeHostCall.includes("--timestamp"));
     assert.ok(codeModeHostCall.includes("--options"));
     assert.ok(codeModeHostCall.includes("--entitlements"));
+    await verifyPackagedCantripCode(codeRoot, "darwin-arm64");
 
     const adhocCalls = [];
     await signMacosRuntime({
@@ -82,7 +98,7 @@ test("signs every embedded Mach-O and applies runtime JIT entitlements", async (
       identity: "-",
       run: (arguments_) => adhocCalls.push(arguments_),
     });
-    assert.equal(adhocCalls.length, 3);
+    assert.equal(adhocCalls.length, 4);
     assert.equal(
       adhocCalls.some((call) => call.includes("--timestamp")),
       false,
@@ -199,8 +215,17 @@ test("signs generated disk images after Tauri packaging", async () => {
       "utf8",
     );
     const build = packageScript.indexOf('"tauri:build"');
+    const runtimeSign = packageScript.indexOf('"sign-macos-runtime.mjs"');
+    const codeVerification = packageScript.indexOf(
+      "await verifyPackagedCantripCode",
+    );
     const sign = packageScript.indexOf('"sign-macos-disk-images.mjs"');
     const verify = packageScript.indexOf('"verify-macos-distribution.mjs"');
+    assert.ok(
+      runtimeSign >= 0 &&
+        codeVerification > runtimeSign &&
+        build > codeVerification,
+    );
     assert.ok(build >= 0 && sign > build && verify > sign);
   } finally {
     await rm(root, { force: true, recursive: true });
