@@ -61,7 +61,7 @@ const environment: RunEnvironmentSummary = {
 };
 
 describe("EnvironmentRunMenu", () => {
-  it("exposes the project Environment control and latest Run state", () => {
+  it("exposes an icon-only project Environment control and latest Run state", () => {
     const markup = renderToStaticMarkup(
       <EnvironmentRunMenu
         environment={environment}
@@ -75,14 +75,15 @@ describe("EnvironmentRunMenu", () => {
     );
 
     expect(markup).toContain('aria-label="Environment and Run actions"');
-    expect(markup).toContain(">Environment<");
+    expect(markup).toContain("lucide-box");
+    expect(markup).toContain('class="sr-only">Environment</span>');
+    expect(markup).toContain("size-8");
     expect(markup).toContain('aria-label="Latest Run running"');
   });
 
-  it("keeps the compact control accessible and reflects pending work", () => {
+  it("keeps the control accessible and reflects pending work", () => {
     const markup = renderToStaticMarkup(
       <EnvironmentRunMenu
-        compact
         environment={environment}
         loading={false}
         mutationPending

@@ -7268,7 +7268,7 @@ export function App() {
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
               {environmentRunMenuProps ? (
-                <EnvironmentRunMenu {...environmentRunMenuProps} compact />
+                <EnvironmentRunMenu {...environmentRunMenuProps} />
               ) : null}
               <ContentHeaderActions {...contentHeaderActions} compact />
               {!isPopout && !compactShell ? (
