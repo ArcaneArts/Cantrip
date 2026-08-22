@@ -280,6 +280,39 @@ authority. Conversion enables those capabilities only after the worker binds
 and pushes the selected new/empty GitHub repository and the server atomically
 commits the reconciled source identity.
 
+### GitHub repository placement authority
+
+Custom GitHub placement is also worker-owned, but unlike a managed folder the
+user may express one exact worker path. Before the project or replica mutation,
+the app registers that raw value through an authenticated protected repository
+operation on the selected worker. The server receives and persists only an
+opaque routing handle plus the placement mode. It authorizes the account,
+project, worker, replica, and durable job attempt but cannot parse or
+dereference the path.
+
+The worker resolves the handle, applies platform path rules, creates missing
+parents without changing existing permissions, and canonicalizes the result.
+Direct creation uses same-parent staging and two independent ownership proofs:
+an owner-only worker registry and an untracked Git-common-directory marker.
+Attaching an existing matching Primary writes no ownership marker and remains
+user-owned. Managed links are verified conveniences; runtime commands always
+receive the managed clone's canonical path.
+
+Destructive removal never accepts a client-supplied path, placement mode, or
+ownership claim. The server derives those facts from the active source and the
+worker revalidates canonical Git identity, fingerprint, origin, placement
+record, and—when applicable—the ownership marker. User-owned attachments are
+never deleted. Retargeted links and created parent directories are left
+untouched. Server logs, audits, progress, live events, and stored errors use
+bounded stage/reason codes and must not include resolved raw paths.
+
+New capabilities default false for rolling-version safety. The app, mutation
+route, and job executor each gate direct/link requests against the selected
+worker's advertisement; Windows link support is advertised only after a real
+junction probe. Container mounts and service permissions remain deployment
+authority, not something a client path can bypass. See
+[PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md).
+
 ### Run environment authority
 
 Codex-compatible setup and action scripts are arbitrary worker-side code.

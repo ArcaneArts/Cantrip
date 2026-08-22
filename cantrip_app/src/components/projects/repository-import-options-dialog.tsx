@@ -115,8 +115,15 @@ export function RepositoryImportOptionsDialog({
   }, [initialWorkspaceIds, open, requiredWorkspaceId]);
 
   const customMode = mode !== "managed";
+  const selectedModeAvailable =
+    mode === "managed"
+      ? availability?.managed
+      : mode === "managed-link"
+        ? availability?.managedLink
+        : availability?.direct;
   const canSubmit = Boolean(
     worker &&
+    selectedModeAvailable &&
     !pending &&
     (!customMode || path.trim()) &&
     (!requiredWorkspaceId || workspaceIds.has(requiredWorkspaceId)),

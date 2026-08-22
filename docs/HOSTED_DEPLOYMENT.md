@@ -230,6 +230,15 @@ An explicitly converted folder keeps its physical UUID-derived directory, so
 continue backing that path up until the project is deliberately deleted or its
 source is otherwise retired.
 
+Custom repository placement introduces an additional backup boundary. A
+direct checkout and the external side of a managed link may live outside the
+worker data volume and are not captured by a snapshot of that volume. Back up
+those mounted paths separately when dirty files or unpushed commits matter, and
+pair them with the worker snapshot that contains Cantrip's placement registry
+and ownership records. Restoring PostgreSQL alone restores only lifecycle state
+and opaque path handles; it cannot recreate repository files. See
+[the project repository placement guide](PROJECT_REPOSITORY_PLACEMENT.md#backup-and-recovery).
+
 ## Reverse proxy and transport requirements
 
 Only HTTPS/WSS is supported for hosted traffic. The proxy must preserve `Host`,
@@ -257,6 +266,16 @@ The images run as UID/GID `10001` and use read-only root filesystems. Named
 volumes are initialized with correct ownership. For bind mounts, create the
 directories first and assign them to `10001:10001`. Never mount the Docker
 socket into a worker.
+
+An exact repository path is resolved inside the worker container or service
+namespace. Mount its intended parent before requesting direct or managed-link
+placement; typing an unmounted host path cannot escape the container. Missing
+directories can be created only inside an accessible mount, and existing
+parent permissions are never changed. Prefer a narrow dedicated repository
+mount over a host home or filesystem root. The service account—not the client
+user—must be able to traverse, create, canonicalize, lock, and rename on that
+filesystem. Managed-link additionally depends on the worker's successful
+symlink/junction capability probe.
 
 Monitor container restarts, PostgreSQL capacity/latency, Redis availability,
 server health/readiness, worker presence, command failures, active WebSockets,

@@ -18,6 +18,15 @@ use the explicit conversion flow to become a new or empty GitHub repository;
 an attached user-owned folder stays in folder mode. Every project resolves to a
 source folder on a worker and can contain an ordered mix of:
 
+GitHub imports keep a one-click worker-managed default and also support an
+exact path on the selected worker. Cantrip can keep the canonical clone in its
+managed storage while creating one external symlink/junction, clone directly
+to a missing path, or attach an existing matching Primary checkout without
+mutating it. Attached checkouts remain user-owned and cannot be deleted by
+Cantrip. All runtime operations use the canonical checkout; raw worker paths
+cross the server only as opaque worker routing handles. See the
+[project repository placement guide](docs/PROJECT_REPOSITORY_PLACEMENT.md).
+
 - Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, drag-and-drop, paste, and picker attachments, large-paste attachments, image input for capable providers including Grok, per-message Default/Plan/Goal modes, model and reasoning selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
 - Task-backed chats for large jobs. A Task starts as a full Markdown brief with
   attachments, runs strictly read-only planning into a durable Markdown plan
@@ -173,16 +182,17 @@ Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATA
 ### `cantrip_worker`
 
 The worker is the machine that actually performs work. It owns Cantrip-managed
-folder directories, repository clones, and physical Git worktrees; validates
-and operates attached user-owned folder roots; runs Git and GitHub CLI
-operations where applicable; provides filesystem access; hosts PTY processes
-and supervised terminal services; supervises Codex runtimes; keeps the embedded
-Code server warm; runs Browser-tab Chromium sessions; and captures and controls
-its own desktop for Remote Desktop tabs. Provider URLs and Browser-tab
-addresses are resolved from the worker machine, which is important once the
-server and worker live on different hosts. Server-managed ChatGPT and Grok
-access leases remain in memory; normal operation does not create worker-local
-`auth.json` or `grok-auth.json` credentials.
+folder directories, managed and direct repository clones, placement ownership
+records, and physical Git worktrees; validates and operates attached user-owned
+folder and repository roots; runs Git and GitHub CLI operations where
+applicable; provides filesystem access; hosts PTY processes and supervised
+terminal services; supervises Codex runtimes; keeps the embedded Code server
+warm; runs Browser-tab Chromium sessions; and captures and controls its own
+desktop for Remote Desktop tabs. Provider URLs, repository paths, and
+Browser-tab addresses are resolved from the worker machine, which is important
+once the server and worker live on different hosts. Server-managed ChatGPT and
+Grok access leases remain in memory; normal operation does not create
+worker-local `auth.json` or `grok-auth.json` credentials.
 
 Chat attachments are staged beneath the worker's private Cantrip data directory, outside project sources and Git worktrees. Workers communicate through the server. There is intentionally no app-to-worker connection mode. See [ADR 0003](docs/adr/0003-worker-owned-chat-attachments.md) for the attachment transport, model-capability fallback, limits, and storage boundary.
 
@@ -323,7 +333,11 @@ See [the Policies design and behavior guide](docs/POLICIES.md).
 Every GitHub-backed project has a non-removable **Primary** worktree at the
 project source path. Additional worktrees are worker-created checkouts beneath
 Cantrip's private worker data directory, or external checkouts discovered by
-Git reconciliation. The app never chooses an unrestricted filesystem path.
+Git reconciliation. Primary placement may be selected as an exact worker path
+during import or per-worker replica provisioning; secondary worktree target
+paths remain worker-controlled. See
+[project repository placement](docs/PROJECT_REPOSITORY_PLACEMENT.md) for the
+separate ownership and deletion contract.
 
 Chats default to **Agent managed**. Such a chat may inspect Primary, ask
 Cantrip's Codex-native worktree tools to acquire or create an isolated lane,
@@ -459,6 +473,12 @@ Vite hot module replacement updates the app as frontend files change. The Node s
 
 Local database files, worker-owned repository clones, and managed project
 folders are stored under `.cantrip/dev/` and are ignored by Git.
+
+Direct repository placements and the external side of managed links can live
+outside `.cantrip/dev/`. They are not included merely by backing up the worker
+data directory; preserve those paths separately when they contain dirty or
+unpushed work. See
+[project repository placement](docs/PROJECT_REPOSITORY_PLACEMENT.md#backup-and-recovery).
 
 To test multiple accounts without replacing the anonymous local server, run
 `pnpm dev:server` in another terminal. It starts an isolated, disposable

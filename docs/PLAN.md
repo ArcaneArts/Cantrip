@@ -1,6 +1,6 @@
 # Cantrip Project Plan
 
-- Status: local and hosted account foundations, independently enrolled workers, portable server-owned ChatGPT/Grok OAuth accounts, multi-worker replicas, Redis relay coordination, fenced scheduling, production deployment assets, and end-to-end durable chat relocation implemented
+- Status: local and hosted account foundations, independently enrolled workers, portable server-owned ChatGPT/Grok OAuth accounts, multi-worker replicas with customizable Primary placement, Redis relay coordination, fenced scheduling, production deployment assets, and end-to-end durable chat relocation implemented
 - Canonical domain: `cantrip.art`
 - Desktop/mobile application identifier: `art.cantrip`
 - Package manager: pnpm workspaces
@@ -26,7 +26,9 @@ this deployment shape incrementally.
 
 ## 2. Goals
 
-- Organize chats inside projects, where each MVP project represents one GitHub repository and one worker-owned source folder.
+- Organize chats inside projects, where each GitHub-backed project has one
+  logical repository and one independently placed source per worker, while a
+  folder project has one worker-owned execution root.
 - Run the open-source Codex CLI through its app-server interface rather than screen-scraping its terminal UI.
 - Stream agent messages, plans, reasoning summaries, commands, file changes, diffs, approvals, errors, and token usage into a responsive UI.
 - Support interrupting, steering, queued follow-ups, prompt reordering, and explicit context compaction.
@@ -232,8 +234,13 @@ A logical project owns one worker source, and that source owns one non-removable
 Primary checkout plus zero or more physical Git worktrees. The worker controls
 all canonical paths and validates every checkout against Git's common
 directory. The server stores observed metadata for offline rendering and owns
-chat execution leases; it does not copy files or accept app-selected target
-paths.
+chat execution leases; it does not copy files or dereference app-selected
+paths. At repository import or per-worker replica provisioning, the app may
+express an exact worker path through an opaque worker routing handle. The
+worker either creates a direct checkout, attaches a matching user-owned Primary,
+or creates a link to its managed clone, then reports the canonical path used by
+every runtime surface. Secondary worktree locations remain worker-controlled.
+See [PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md).
 
 Chats default to Agent managed and may transition between worktrees only at a
 turn boundary. Pinned chats remain on one selected checkout. Codex runtime
@@ -314,7 +321,7 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `workers` | Owner, display name, status, platform, capabilities, protocol version, public key, last seen time. |
 | `worker_credentials` | Hashed/encrypted enrollment material and rotation metadata; never raw provider secrets. |
 | `projects` | Server-owned logical project name, owner, settings, and optional preferred worker. Physical sources are represented by per-worker replicas. |
-| `project_sources` | One worker-owned installation of a logical repository: canonical path, display path, repository fingerprint, Git metadata, and allowed access policy. |
+| `project_sources` | One worker-owned installation of a logical repository: protected canonical/requested/link path handles, placement and ownership classifications, repository fingerprint, Git metadata, and allowed access policy. |
 | `project_worktrees` | Durable observations for Primary, Cantrip-managed, agent, user, and external checkouts: worker/path ownership, branch/HEAD, lifecycle, lock, detached, and scan state. |
 | `chats` | Server-owned logical conversation with project, title, active worker, runtime profile, status, model, and event cursor. |
 | `chat_execution_lanes` | Historical and active chat/worktree leases with actor, purpose, transition state, base/starting revision, runtime association, and lifecycle timestamps. |
@@ -333,7 +340,12 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `tunnel_attachments` | Revocable consumers of a logical tunnel, including desktop loopback listeners and server relays, with hashed credentials, leases, status, and per-attachment counters. |
 | `audit_events` | Security-sensitive operations such as pairing, terminal creation, approvals, policy changes, and secret updates. |
 
-A project source path is meaningful only on its worker. Two workers may bind the same logical project to different clones and different absolute paths. The server stores only source metadata and paths needed for routing; it does not mirror the working tree or file contents. File reads, edits, Git operations, and terminals always execute on the selected worker.
+A project source path is meaningful only on its worker. Two workers may bind
+the same logical project to different clones, placement modes, and absolute
+paths. The server stores only source metadata and opaque path handles needed
+for routing; it does not mirror the working tree, file contents, or raw worker
+path. File reads, edits, Git operations, and terminals always execute on the
+selected worker's canonical checkout.
 
 The server keeps the ordered transcript and enough normalized events to render a chat while its worker is offline. The worker keeps the Codex rollout/session files required to resume model context. If those files are lost, the transcript remains viewable. A later handoff can attach the logical chat to another worker by creating a new runtime session from server history, provided that worker has a matching source binding. The UI must distinguish a seamless session resume from a history-based handoff.
 
@@ -341,9 +353,27 @@ Local worktree isolation is implemented within one worker source. Cross-worker G
 
 ### 6.1 GitHub-backed project creation
 
-The local MVP does not expose an arbitrary filesystem picker. The app asks the server for repositories available through a selected worker; the worker uses GitHub CLI authentication or a worker-local `GH_TOKEN`, lists repositories accessible to that identity, and clones the selected repository beneath Cantrip's worker data directory. GitHub credentials never enter the app or server database.
+The app asks the server for repositories available through a selected worker;
+the worker uses GitHub CLI authentication or a worker-local `GH_TOKEN` and
+lists repositories accessible to that identity. The default import clones
+beneath Cantrip's worker data directory. **Add with location...** can instead
+request a managed clone plus an external link or an exact direct path on that
+worker. A missing direct target is cloned; an existing matching non-bare
+Primary checkout is attached without mutation and remains user-owned.
 
-The server records the GitHub repository ID and enforces one Cantrip project per `(user, GitHub repository)`. The repository picker marks existing projects and the database unique constraint is the final race-safe guard. The server stores the worker path as routing metadata, while all Git and file operations still execute on the worker.
+The UI does not use a client filesystem picker for a remote worker. It labels
+the path with the selected worker and enables custom choices only when that
+worker advertises the complete capability set. Raw paths are registered on the
+worker and replaced with opaque routing handles before the authenticated
+project mutation reaches durable server state. GitHub credentials likewise
+never enter the app or server database.
+
+The server records the GitHub repository identity and enforces one Cantrip
+project per `(user, GitHub repository)`. The repository picker marks existing
+projects and the database unique constraint is the final race-safe guard.
+Placement is independent per worker replica. The full authority, deletion,
+backup, and platform contract is in
+[PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md).
 
 ## 7. Protocols and state flow
 
@@ -431,6 +461,8 @@ Store the source Codex method and raw payload alongside normalized data. Unknown
 - Codex app-server process lifecycle and JSONL parsing;
 - thread/runtime lookup and resumption;
 - source-root registration and path enforcement;
+- repository placement ownership, link probing, and canonical-path
+  enforcement;
 - user terminal PTYs;
 - local secret storage and provider environment variables;
 - a durable event outbox; and

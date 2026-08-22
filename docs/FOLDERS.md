@@ -9,6 +9,22 @@ agent execution, Tasks and workflows, application UX, explicit GitHub
 conversion, and final acceptance/documentation. Each cycle used its own
 worktree and ready pull request; no omnibus branch was used.
 
+## Relationship to GitHub repository placement
+
+Folder attachment and GitHub repository placement are separate authority
+contracts. A folder source uses the worker's `managedFolders` lifecycle and
+never gains Git, replica, or worktree capabilities merely because its path
+contains a repository. A GitHub source uses the `projectReplicas` lifecycle and
+may choose a managed Primary, a managed Primary with an external link, or a
+direct exact worker path. Its worker validates Git identity and always exposes
+the canonical Primary checkout to runtime surfaces.
+
+Neither flow interprets a path on the browser, desktop, or mobile client. A
+remote path always belongs to the selected worker, and the server routes only
+opaque worker path handles. Repository placement does not move folder sources,
+change their deletion rules, or allow secondary Git worktrees at custom paths.
+See [PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md).
+
 ## Objective
 
 Provide a first-class Cantrip project type backed by a new empty directory on one
