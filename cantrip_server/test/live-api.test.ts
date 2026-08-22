@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   appLiveServerMessageSchema,
   chatMessageOpaqueSummarySchema,
+  chatMessageWirePageSchema,
   codexMcpOauthStartResultSchema,
   providerAuthLiveStatusSchema,
   unprobedCodexRuntimeReport,
@@ -894,6 +895,15 @@ describe.sequential("application live WebSocket", () => {
     const persistedMessage = chatMessageOpaqueSummarySchema.parse(
       messageResponse.json(),
     );
+    const pageResponse = await app.inject({
+      method: "GET",
+      url: `/api/chats/${chatId}/messages?limit=1`,
+    });
+    expect(pageResponse.statusCode).toBe(200);
+    const messagePage = chatMessageWirePageSchema.parse(pageResponse.json());
+    expect(messagePage.kind).toBe("chat-encrypted");
+    expect(messagePage.messages.at(-1)?.id).toBe(persistedMessage.id);
+    expect(messagePage.page.newestSequence).toBe(persistedMessage.sequence);
     await vi.waitFor(() =>
       expect(
         messages

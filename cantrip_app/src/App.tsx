@@ -264,6 +264,8 @@ import {
   chatTranscriptNeedsFastRefresh,
 } from "@/lib/chat-resource-refresh";
 import { scopedChatComposerDraftPersistence } from "@/lib/chat-composer-draft-persistence";
+import { scheduleWhenIdle } from "@/lib/chat-message-history";
+import { useChatMessageHistory } from "@/lib/use-chat-message-history";
 import { codeGraphChatRefreshIntervalMs } from "@/lib/codegraph-refresh";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -323,7 +325,6 @@ import {
   getGithubRepositories,
   getGithubIssues,
   getGithubStatus,
-  getMessages,
   getAgentInteractionRequests,
   getProjectReplicaJobs,
   getProjectFolderSetupJob,
@@ -1185,9 +1186,11 @@ function ChatTranscript({
   const githubListRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const idleHistoryPrefetchChatRef = useRef<string | null>(null);
   const {
     contentRef: transcriptContentRef,
     onScroll: handleTranscriptScroll,
+    preserveScrollDuringPrepend,
     scrollToBottom: scrollTranscriptToBottom,
     showScrollToBottom,
     viewportRef: transcriptViewportRef,
@@ -1304,16 +1307,55 @@ function ChatTranscript({
   });
   const effectiveInspectOnly =
     inspectOnly && taskChatIsInspectOnly(taskState.data);
-  const messages = useQuery({
-    queryFn: () => getMessages(chat.id),
-    queryKey: ["messages", chat.id],
-    refetchInterval: (query) =>
+  const messages = useChatMessageHistory({
+    chatId: chat.id,
+    refetchInterval: (loadedMessages) =>
       chatResourceRefreshIntervalMs(
         chat.status,
         chatResourcesLive,
-        chatTranscriptNeedsFastRefresh(query.state.data),
+        chatTranscriptNeedsFastRefresh(loadedMessages),
       ),
   });
+  const loadOlderMessages = useCallback(async () => {
+    if (!messages.hasOlder || messages.isFetchingOlder) return;
+    await preserveScrollDuringPrepend(messages.fetchOlder);
+  }, [
+    messages.fetchOlder,
+    messages.hasOlder,
+    messages.isFetchingOlder,
+    preserveScrollDuringPrepend,
+  ]);
+  useEffect(() => {
+    if (
+      !messages.hasOlder ||
+      messages.isFetchingOlder ||
+      idleHistoryPrefetchChatRef.current === chat.id
+    ) {
+      return;
+    }
+    return scheduleWhenIdle(() => {
+      idleHistoryPrefetchChatRef.current = chat.id;
+      void loadOlderMessages();
+    });
+  }, [chat.id, loadOlderMessages, messages.hasOlder, messages.isFetchingOlder]);
+  const handleChatTranscriptScroll = useCallback(() => {
+    handleTranscriptScroll();
+    const viewport = transcriptViewportRef.current;
+    if (
+      viewport &&
+      viewport.scrollTop < 256 &&
+      messages.hasOlder &&
+      !messages.isFetchingOlder
+    ) {
+      void loadOlderMessages();
+    }
+  }, [
+    handleTranscriptScroll,
+    loadOlderMessages,
+    messages.hasOlder,
+    messages.isFetchingOlder,
+    transcriptViewportRef,
+  ]);
   const composerDraftState = useQuery({
     enabled: !initialComposerDraft.cached,
     queryFn: () => getChatComposerDraft(chat.id),
@@ -2303,9 +2345,25 @@ function ChatTranscript({
           "chat-message-scroll flex-1 overflow-y-auto px-4 pt-6 sm:px-8",
           effectiveInspectOnly ? "pb-10" : "pb-60",
         )}
-        onScroll={handleTranscriptScroll}
+        onScroll={handleChatTranscriptScroll}
       >
         <div ref={transcriptContentRef} className="flex w-full flex-col gap-5">
+          {messages.hasOlder ? (
+            <div className="flex justify-center">
+              <Button
+                disabled={messages.isFetchingOlder}
+                onClick={() => void loadOlderMessages()}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                {messages.isFetchingOlder ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                Load earlier messages
+              </Button>
+            </div>
+          ) : null}
           {messages.data?.length === 0 ? (
             <EmptyState className="min-h-[45vh] flex-none p-0">
               <EmptyStateContent>

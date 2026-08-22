@@ -51,7 +51,6 @@ import {
   deleteChatAttachment,
   getChatPermissionProfiles,
   getChatReasoning,
-  getMessages,
   getTask,
   getTaskAttachments,
   loadChatAttachmentContent,
@@ -66,6 +65,7 @@ import { errorMessage } from "@/lib/error-message";
 import { clientEncryption } from "@/lib/client-encryption";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
+import { useChatMessageHistory } from "@/lib/use-chat-message-history";
 import {
   ensureTaskWorkerEncryption,
   taskWorkerEncryptionCanAttempt,
@@ -215,11 +215,11 @@ export function TaskSurface({
     queryFn: () => getTaskAttachments(chat.id),
     queryKey: ["task-attachments", chat.id],
   });
-  const messages = useQuery({
+  const messages = useChatMessageHistory({
+    autoLoadOlder: true,
+    chatId: chat.id,
     enabled:
       task.data?.state === "planning" || task.data?.state === "finalizing",
-    queryFn: () => getMessages(chat.id),
-    queryKey: ["messages", chat.id],
     refetchInterval: liveResourceRefreshInterval(
       taskResourcesLive,
       chat.status === "running" ? 1_000 : false,

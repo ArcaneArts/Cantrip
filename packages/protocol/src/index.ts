@@ -7956,6 +7956,32 @@ export const workerCliCommandCallSchema = cantripCliCommandRequestSchema
 
 export const chatMessageListSchema = z.array(chatMessageSchema);
 
+export const CHAT_MESSAGE_PAGE_DEFAULT_LIMIT = 150;
+export const CHAT_MESSAGE_PAGE_MAX_LIMIT = 200;
+export const CHAT_MESSAGE_PAGE_BOUNDARY_MAX = 500;
+
+export const chatMessagePageQuerySchema = z
+  .object({
+    beforeSequence: z.coerce.number().int().positive().optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(CHAT_MESSAGE_PAGE_MAX_LIMIT)
+      .default(CHAT_MESSAGE_PAGE_DEFAULT_LIMIT),
+  })
+  .strict();
+
+export const chatMessagePageInfoSchema = z
+  .object({
+    hasMore: z.boolean(),
+    nextBeforeSequence: z.number().int().positive().nullable(),
+    oldestSequence: z.number().int().positive().nullable(),
+    newestSequence: z.number().int().positive().nullable(),
+    startsAtUserTurn: z.boolean(),
+  })
+  .strict();
+
 export const chatMessageWireListSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -7967,6 +7993,27 @@ export const chatMessageWireListSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("chat-encrypted"),
       messages: z.array(chatMessageOpaqueSummarySchema).max(100_000),
+    })
+    .strict(),
+]);
+
+export const chatMessageWirePageSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("task-encrypted"),
+      messages: z
+        .array(taskMessageOpaqueSummarySchema)
+        .max(CHAT_MESSAGE_PAGE_BOUNDARY_MAX),
+      page: chatMessagePageInfoSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("chat-encrypted"),
+      messages: z
+        .array(chatMessageOpaqueSummarySchema)
+        .max(CHAT_MESSAGE_PAGE_BOUNDARY_MAX),
+      page: chatMessagePageInfoSchema,
     })
     .strict(),
 ]);
@@ -13999,6 +14046,9 @@ export type CodexEventCorrelation = z.infer<typeof codexEventCorrelationSchema>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export type ChatMessagePageQuery = z.infer<typeof chatMessagePageQuerySchema>;
+export type ChatMessagePageInfo = z.infer<typeof chatMessagePageInfoSchema>;
+export type ChatMessageWirePage = z.infer<typeof chatMessageWirePageSchema>;
 export type EncryptedChatTurnCreate = z.infer<
   typeof encryptedChatTurnCreateSchema
 >;

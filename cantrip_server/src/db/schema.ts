@@ -2876,6 +2876,10 @@ export const chatMessages = pgTable(
       table.chatId,
       table.idempotencyKey,
     ),
+    index("chat_messages_chat_sequence_index").on(
+      table.chatId,
+      table.sequence.desc(),
+    ),
     check(
       "chat_messages_content_shape_check",
       sql`(CASE WHEN ${table.content} IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN ${table.protectedContent} IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN ${table.taskProtectedContent} IS NOT NULL THEN 1 ELSE 0 END) = 1`,

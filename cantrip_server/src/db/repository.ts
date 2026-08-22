@@ -51,6 +51,8 @@ import type {
   ChatPlanOpaqueState,
   ChatMessage,
   ChatMessageCreate,
+  ChatMessagePageInfo,
+  ChatMessagePageQuery,
   ChatWireSummary,
   EncryptedChatUpdate,
   ChatWorktreeUpdate,
@@ -213,6 +215,10 @@ import {
   executionTargetAvailability,
   type ExecutionTargetCapability,
 } from "../execution-targets/catalog.js";
+import {
+  CHAT_MESSAGE_PAGE_BOUNDARY_MAX,
+  selectChatMessagePageWindow,
+} from "./chat-message-pagination.js";
 import {
   deriveQuotaTokenAnalytics,
   quotaValueStatistics,
@@ -15418,6 +15424,126 @@ export class ServerRepository {
     return rows.map(({ message }) => toEncryptedChatMessage(message));
   }
 
+  private async listOpaqueMessagePageRows(
+    ownerId: string,
+    chatId: string,
+    experience: ChatExperience,
+    query: ChatMessagePageQuery,
+  ): Promise<{
+    messages: (typeof schema.chatMessages.$inferSelect)[];
+    page: ChatMessagePageInfo;
+  }> {
+    const protectedColumn =
+      experience === "task"
+        ? schema.chatMessages.taskProtectedContent
+        : schema.chatMessages.protectedContent;
+    const cursorCondition = query.beforeSequence
+      ? lt(schema.chatMessages.sequence, query.beforeSequence)
+      : undefined;
+    const headers = await this.database
+      .select({
+        role: schema.chatMessages.role,
+        sequence: schema.chatMessages.sequence,
+      })
+      .from(schema.chatMessages)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, experience),
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatMessages.chatId, chatId),
+          isNotNull(protectedColumn),
+          cursorCondition,
+        ),
+      )
+      .orderBy(desc(schema.chatMessages.sequence))
+      .limit(CHAT_MESSAGE_PAGE_BOUNDARY_MAX + 1);
+
+    if (headers.length === 0) {
+      return {
+        messages: [],
+        page: {
+          hasMore: false,
+          nextBeforeSequence: null,
+          oldestSequence: null,
+          newestSequence: null,
+          startsAtUserTurn: true,
+        },
+      };
+    }
+
+    const window = selectChatMessagePageWindow(headers, query.limit);
+    const selectedHeaders = window.selected;
+    const selectedSequences = selectedHeaders.map(({ sequence }) => sequence);
+    const rows = await this.database
+      .select({ message: schema.chatMessages })
+      .from(schema.chatMessages)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, experience),
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatMessages.chatId, chatId),
+          isNotNull(protectedColumn),
+          inArray(schema.chatMessages.sequence, selectedSequences),
+        ),
+      )
+      .orderBy(asc(schema.chatMessages.sequence));
+    const oldestSequence = selectedHeaders.at(-1)?.sequence ?? null;
+    return {
+      messages: rows.map(({ message }) => message),
+      page: {
+        hasMore: window.hasMore,
+        nextBeforeSequence: window.hasMore ? oldestSequence : null,
+        oldestSequence,
+        newestSequence: selectedHeaders[0]?.sequence ?? null,
+        startsAtUserTurn: window.startsAtUserTurn,
+      },
+    };
+  }
+
+  async listEncryptedMessagePage(
+    ownerId: string,
+    chatId: string,
+    query: ChatMessagePageQuery,
+  ): Promise<{
+    messages: ChatMessageOpaqueSummary[];
+    page: ChatMessagePageInfo;
+  }> {
+    const result = await this.listOpaqueMessagePageRows(
+      ownerId,
+      chatId,
+      "agent",
+      query,
+    );
+    return {
+      messages: result.messages.map(toEncryptedChatMessage),
+      page: result.page,
+    };
+  }
+
   async listAgentMessageWire(ownerId: string, chatId: string) {
     const rows = await this.database
       .select({ message: schema.chatMessages })
@@ -15469,6 +15595,26 @@ export class ServerRepository {
       .where(eq(schema.chatMessages.chatId, chatId))
       .orderBy(asc(schema.chatMessages.sequence));
     return rows.map(({ message }) => toTaskMessage(message));
+  }
+
+  async listTaskMessagePage(
+    ownerId: string,
+    chatId: string,
+    query: ChatMessagePageQuery,
+  ): Promise<{
+    messages: TaskMessageOpaqueSummary[];
+    page: ChatMessagePageInfo;
+  }> {
+    const result = await this.listOpaqueMessagePageRows(
+      ownerId,
+      chatId,
+      "task",
+      query,
+    );
+    return {
+      messages: result.messages.map(toTaskMessage),
+      page: result.page,
+    };
   }
 
   async listMessageHeaders(ownerId: string, chatId: string) {

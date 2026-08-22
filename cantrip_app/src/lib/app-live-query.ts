@@ -12,7 +12,6 @@ import type {
   AppLiveResyncReason,
   AppLiveScope,
   AppLiveServerMessage,
-  ChatMessage,
   CodeGraphProjectStatus,
   CodexExternalImportStatus,
   CodexMcpOauthStatus,
@@ -26,6 +25,14 @@ import { chatMessageOpaqueSummarySchema } from "@cantrip/protocol/communication-
 import { taskMessageOpaqueSummarySchema } from "@cantrip/protocol/tasks";
 
 import { openChatMessageOpaqueSummary } from "./chat-message-encryption";
+import {
+  EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
+  chatMessageLiveQueryKey,
+  chatMessagePagesQueryKey,
+  deleteFromChatMessageLiveOverlay,
+  upsertChatMessageLiveOverlay,
+  type ChatMessageLiveOverlay,
+} from "./chat-message-history";
 import { openTaskMessageOpaqueSummary } from "./task-message-encryption";
 
 type AppLiveEvent = Extract<AppLiveServerMessage, { type: "event" }>;
@@ -218,7 +225,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : [];
     case "chat-message":
       return event.scope.kind === "chat"
-        ? [["messages", event.scope.chatId]]
+        ? [
+            ["messages", event.scope.chatId],
+            ["message-history", event.scope.chatId],
+          ]
         : [];
     case "chat-queue":
       return event.scope.kind === "chat"
@@ -528,13 +538,12 @@ export class AppLiveQueryBridge {
     const latestCursor = this.#messageCursors.get(entityKey);
     if (latestCursor !== undefined && event.cursor <= latestCursor) return true;
 
-    const queryKey = ["messages", event.scope.chatId] as const;
-    const current = this.#queryClient.getQueryData<ChatMessage[]>(queryKey);
-    if (!current) return false;
+    const liveQueryKey = chatMessageLiveQueryKey(event.scope.chatId);
+    const pagesQueryKey = chatMessagePagesQueryKey(event.scope.chatId);
     if (event.action === "deleted") {
-      this.#queryClient.setQueryData<ChatMessage[]>(
-        queryKey,
-        current.filter((message) => message.id !== event.entityId),
+      this.#queryClient.setQueryData<ChatMessageLiveOverlay>(
+        liveQueryKey,
+        (current) => deleteFromChatMessageLiveOverlay(current, event.entityId!),
       );
       this.#messageCursors.set(entityKey, event.cursor);
       return true;
@@ -555,23 +564,14 @@ export class AppLiveQueryBridge {
         .then((message) => {
           const latest = this.#messageCursors.get(entityKey);
           if (latest !== undefined && event.cursor <= latest) return;
-          const cached =
-            this.#queryClient.getQueryData<ChatMessage[]>(queryKey) ?? [];
-          this.#queryClient.setQueryData<ChatMessage[]>(
-            queryKey,
-            [
-              ...cached.filter((candidate) => candidate.id !== message.id),
-              message,
-            ].sort(
-              (left, right) =>
-                left.sequence - right.sequence ||
-                left.id.localeCompare(right.id),
-            ),
+          this.#queryClient.setQueryData<ChatMessageLiveOverlay>(
+            liveQueryKey,
+            (current) => upsertChatMessageLiveOverlay(current, message),
           );
           this.#messageCursors.set(entityKey, event.cursor);
         })
         .catch(() => {
-          void this.#queryClient.invalidateQueries({ queryKey });
+          void this.#queryClient.invalidateQueries({ queryKey: pagesQueryKey });
         });
       return true;
     }
@@ -584,23 +584,14 @@ export class AppLiveQueryBridge {
         .then((message) => {
           const latest = this.#messageCursors.get(entityKey);
           if (latest !== undefined && event.cursor <= latest) return;
-          const cached =
-            this.#queryClient.getQueryData<ChatMessage[]>(queryKey) ?? [];
-          this.#queryClient.setQueryData<ChatMessage[]>(
-            queryKey,
-            [
-              ...cached.filter((candidate) => candidate.id !== message.id),
-              message,
-            ].sort(
-              (left, right) =>
-                left.sequence - right.sequence ||
-                left.id.localeCompare(right.id),
-            ),
+          this.#queryClient.setQueryData<ChatMessageLiveOverlay>(
+            liveQueryKey,
+            (current) => upsertChatMessageLiveOverlay(current, message),
           );
           this.#messageCursors.set(entityKey, event.cursor);
         })
         .catch(() => {
-          void this.#queryClient.invalidateQueries({ queryKey });
+          void this.#queryClient.invalidateQueries({ queryKey: pagesQueryKey });
         });
       return true;
     }
@@ -611,14 +602,10 @@ export class AppLiveQueryBridge {
     ) {
       return false;
     }
-    const next = [
-      ...current.filter((message) => message.id !== parsed.data.id),
-      parsed.data,
-    ].sort(
-      (left, right) =>
-        left.sequence - right.sequence || left.id.localeCompare(right.id),
+    this.#queryClient.setQueryData<ChatMessageLiveOverlay>(
+      liveQueryKey,
+      (current) => upsertChatMessageLiveOverlay(current, parsed.data),
     );
-    this.#queryClient.setQueryData<ChatMessage[]>(queryKey, next);
     this.#messageCursors.set(entityKey, event.cursor);
     return true;
   }
@@ -900,6 +887,13 @@ export class AppLiveQueryBridge {
     await this.#flush();
     for (const scope of scopes) {
       if (scope.kind !== "chat") continue;
+      this.#queryClient.setQueryData(
+        chatMessageLiveQueryKey(scope.chatId),
+        EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
+      );
+      this.#queryClient.removeQueries({
+        queryKey: ["message-history", scope.chatId],
+      });
       const prefix = `${scope.chatId}:`;
       for (const key of this.#messageCursors.keys()) {
         if (key.startsWith(prefix)) this.#messageCursors.delete(key);

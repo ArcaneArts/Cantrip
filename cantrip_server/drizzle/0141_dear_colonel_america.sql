@@ -1,0 +1,1 @@
+CREATE INDEX "chat_messages_chat_sequence_index" ON "chat_messages" USING btree ("chat_id","sequence" DESC NULLS LAST);
