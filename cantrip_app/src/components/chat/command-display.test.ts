@@ -22,6 +22,24 @@ describe("command display", () => {
     );
   });
 
+  it("hides Windows PowerShell launch wrappers without changing the source", () => {
+    const command =
+      "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -Command 'cantrip --json status'";
+
+    expect(displayCommand(command)).toBe("cantrip --json status");
+    expect(command).toBe(
+      "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -Command 'cantrip --json status'",
+    );
+  });
+
+  it("unwraps common pwsh launch flags", () => {
+    expect(
+      displayCommand(
+        'pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "git status --short --branch"',
+      ),
+    ).toBe("git status --short --branch");
+  });
+
   it("shows managed worker repository paths from the project root", () => {
     const command =
       "/bin/zsh -lc 'cat \"/Users/test/Library/Application Support/art.cantrip/worker/repositories/VolmitSoftware/Iris/core/src/Noise.java\"'";
@@ -54,6 +72,12 @@ describe("command display", () => {
     );
     expect(displayCommand('cat "/Users/test/project/Iris/README.md"')).toBe(
       'cat "/Users/test/project/Iris/README.md"',
+    );
+    expect(displayCommand("powershell.exe -EncodedCommand ZQBjAGgAbwA=")).toBe(
+      "powershell.exe -EncodedCommand ZQBjAGgAbwA=",
+    );
+    expect(displayCommand('printf "powershell.exe -Command test"')).toBe(
+      'printf "powershell.exe -Command test"',
     );
   });
 });
