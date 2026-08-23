@@ -168,7 +168,12 @@ describe("desktop Explorer file windows", () => {
   it("round-trips the transient file target", () => {
     expect(
       parseDesktopExplorerFileTarget(desktopExplorerFileSearch(target)),
-    ).toEqual(target);
+    ).toEqual({ ...target, launchId: null });
+    expect(
+      parseDesktopExplorerFileTarget(
+        desktopExplorerFileSearch(target, "launch-one"),
+      ),
+    ).toEqual({ ...target, launchId: "launch-one" });
   });
 
   it("rejects incomplete file targets", () => {
