@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   APPLICATION_SPLASH_BOLT_GLITCH_CONFIG,
-  APPLICATION_SPLASH_BOLT_GLITCH_INTERVAL_MS,
+  APPLICATION_SPLASH_GLITCH_DELAY_MAX_MS,
+  APPLICATION_SPLASH_GLITCH_DELAY_MIN_MS,
   APPLICATION_SPLASH_WORDMARK_GLITCH_CONFIG,
-  APPLICATION_SPLASH_WORDMARK_GLITCH_INTERVAL_MS,
   ApplicationLoadingSplash,
+  applicationSplashGlitchDelayMs,
 } from "./application-loading-splash";
 
 describe("ApplicationLoadingSplash", () => {
@@ -23,8 +24,7 @@ describe("ApplicationLoadingSplash", () => {
     expect(markup).not.toContain("animate-spin");
   });
 
-  it("runs independent continuous glitches for the bolt and wordmark", () => {
-    expect(APPLICATION_SPLASH_BOLT_GLITCH_INTERVAL_MS).toBe(48);
+  it("runs independent short glitches for the bolt and wordmark", () => {
     expect(APPLICATION_SPLASH_BOLT_GLITCH_CONFIG).toMatchObject({
       glitchCountMax: 3,
       glitchCountMin: 3,
@@ -34,13 +34,12 @@ describe("ApplicationLoadingSplash", () => {
     expect(
       APPLICATION_SPLASH_BOLT_GLITCH_CONFIG.glitchShowMs *
         APPLICATION_SPLASH_BOLT_GLITCH_CONFIG.glitchCountMin,
-    ).toBe(APPLICATION_SPLASH_BOLT_GLITCH_INTERVAL_MS);
+    ).toBe(48);
     expect(APPLICATION_SPLASH_BOLT_GLITCH_CONFIG.variants).toEqual([
       "chromatic",
       "spatial-shift",
     ]);
 
-    expect(APPLICATION_SPLASH_WORDMARK_GLITCH_INTERVAL_MS).toBe(42);
     expect(APPLICATION_SPLASH_WORDMARK_GLITCH_CONFIG).toMatchObject({
       glitchCountMax: 3,
       glitchCountMin: 3,
@@ -50,14 +49,22 @@ describe("ApplicationLoadingSplash", () => {
     expect(
       APPLICATION_SPLASH_WORDMARK_GLITCH_CONFIG.glitchShowMs *
         APPLICATION_SPLASH_WORDMARK_GLITCH_CONFIG.glitchCountMin,
-    ).toBe(APPLICATION_SPLASH_WORDMARK_GLITCH_INTERVAL_MS);
+    ).toBe(42);
     expect(APPLICATION_SPLASH_WORDMARK_GLITCH_CONFIG.variants).toEqual([
       "chromatic",
       "spatial-shift",
       "text-jitter",
     ]);
-    expect(APPLICATION_SPLASH_BOLT_GLITCH_INTERVAL_MS).not.toBe(
-      APPLICATION_SPLASH_WORDMARK_GLITCH_INTERVAL_MS,
-    );
+  });
+
+  it("waits a randomized one to three seconds between glitch bursts", () => {
+    expect(APPLICATION_SPLASH_GLITCH_DELAY_MIN_MS).toBe(1_000);
+    expect(APPLICATION_SPLASH_GLITCH_DELAY_MAX_MS).toBe(3_000);
+    expect(applicationSplashGlitchDelayMs(() => 0)).toBe(1_000);
+    expect(applicationSplashGlitchDelayMs(() => 0.5)).toBe(2_000);
+    expect(applicationSplashGlitchDelayMs(() => 1)).toBe(3_000);
+    expect(applicationSplashGlitchDelayMs(() => -1)).toBe(1_000);
+    expect(applicationSplashGlitchDelayMs(() => 2)).toBe(3_000);
+    expect(applicationSplashGlitchDelayMs(() => Number.NaN)).toBe(1_000);
   });
 });
