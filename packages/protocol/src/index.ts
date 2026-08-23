@@ -4763,6 +4763,7 @@ const explorerCreateBaseSchema = z
     worktreeId: z.string().min(1).optional(),
     tabGroupId: z.string().min(1).optional(),
     target: executionTargetSchema.optional(),
+    attachToTabLayout: z.boolean().optional(),
   })
   .refine((input) => !(input.worktreeId && input.target), {
     message: "Choose either a legacy worktreeId or an execution target.",

@@ -6,7 +6,15 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CopyPlus, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  CopyPlus,
+  FileCode2,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { ExecutionTarget } from "@cantrip/protocol";
 import { useState, type ReactNode } from "react";
 
@@ -54,6 +62,15 @@ export interface ProjectTabBarProps {
   onRename(surface: ProjectSurface, title: string): void;
   onSelect(tabKey: string): void;
   placement?: ProjectSurfacePlacementContext;
+  previewFile?: {
+    active: boolean;
+    path: string;
+    projectId: string;
+    title: string;
+    onClose(): void;
+    onPin(): void;
+    onSelect(): void;
+  };
   surfaces: readonly ProjectSurface[];
 }
 
@@ -67,13 +84,14 @@ export function ProjectTabBar({
   onRename,
   onSelect,
   placement,
+  previewFile,
   surfaces,
 }: ProjectTabBarProps) {
   const [editingTabKey, setEditingTabKey] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
   const groupId = surfaces[0]?.groupId ?? "empty";
-  const projectId = surfaces[0]?.projectId ?? "empty";
+  const projectId = surfaces[0]?.projectId ?? previewFile?.projectId ?? "empty";
   const topBarDrop = useDroppable({
     id: workspaceTopBarDropId(groupId),
     disabled: surfaces.length === 0,
@@ -127,7 +145,8 @@ export function ProjectTabBar({
             strategy={horizontalListSortingStrategy}
           >
             {surfaces.map((surface, memberPosition) => {
-              const active = surface.tabKey === activeTabKey;
+              const active =
+                !previewFile?.active && surface.tabKey === activeTabKey;
               const editing = editingTabKey === surface.tabKey;
               return (
                 <SortableProjectTabFrame
@@ -171,15 +190,20 @@ export function ProjectTabBar({
                               beginRename(surface);
                             }}
                           >
-                            <ProjectSurfaceIcon
-                              kind={
-                                surface.kind === "chat" &&
-                                surface.entity.experience === "task"
-                                  ? "task"
-                                  : surface.kind
-                              }
-                              className="size-3.5 shrink-0"
-                            />
+                            {surface.kind === "explorer" &&
+                            surface.entity.selectedPath ? (
+                              <FileCode2 className="size-3.5 shrink-0" />
+                            ) : (
+                              <ProjectSurfaceIcon
+                                kind={
+                                  surface.kind === "chat" &&
+                                  surface.entity.experience === "task"
+                                    ? "task"
+                                    : surface.kind
+                                }
+                                className="size-3.5 shrink-0"
+                              />
+                            )}
                             <span className="truncate">{surface.title}</span>
                           </button>
                         )}
@@ -243,6 +267,51 @@ export function ProjectTabBar({
               );
             })}
           </SortableContext>
+
+          {previewFile ? (
+            <div
+              className={cn(
+                "group relative flex min-w-0 max-w-56 shrink-0 items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                previewFile.active && "bg-muted text-foreground",
+              )}
+              data-preview-file-path={previewFile.path}
+              title={`${previewFile.path}\nDouble-click to keep open`}
+            >
+              <button
+                aria-selected={previewFile.active}
+                className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left italic"
+                onClick={previewFile.onSelect}
+                onDoubleClick={(event) => {
+                  event.preventDefault();
+                  previewFile.onPin();
+                }}
+                role="tab"
+                type="button"
+              >
+                <FileCode2 className="size-3.5 shrink-0" />
+                <span className="truncate">{previewFile.title}</span>
+              </button>
+              <button
+                aria-label={`Close preview ${previewFile.title}`}
+                className="mr-1 grid size-6 shrink-0 place-items-center rounded opacity-60 hover:bg-background/70 hover:opacity-100 focus:opacity-100"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  previewFile.onClose();
+                }}
+                title="Close preview"
+                type="button"
+              >
+                <X className="size-3.5" />
+              </button>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-foreground transition-opacity",
+                  previewFile.active ? "opacity-100" : "opacity-0",
+                )}
+              />
+            </div>
+          ) : null}
 
           <ProjectSurfaceCreateMenu
             creatingKinds={creatingKinds}

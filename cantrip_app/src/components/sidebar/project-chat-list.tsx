@@ -11,6 +11,7 @@ import type {
   ChatSummary,
   CodeTabSummary,
   ExecutionTarget,
+  ExplorerEntry,
   ExplorerSummary,
   ProjectFolderSetupJobSummary,
   ProjectSummary,
@@ -27,6 +28,7 @@ import {
   CirclePause,
   Code2,
   CopyPlus,
+  FileCode2,
   Folder,
   FolderGit2,
   FolderOpen,
@@ -56,6 +58,7 @@ import {
   openSidebarActionsMenu,
   SortableSidebarSurfaceRow,
 } from "@/components/sidebar/sortable-sidebar-surface-row";
+import { ProjectSidebarFileTree } from "@/components/sidebar/project-sidebar-file-tree";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import {
   ProjectSurfaceCreateMenu,
@@ -539,9 +542,17 @@ export function ProjectChatList({
   codeTabs,
   creatingKinds,
   explorers,
+  fileExplorer,
+  filePreviewPath,
+  fileTreeError,
+  fileTreeLoading,
+  fileTreePinningPath,
   onChangeChatWorktree,
   projectViews,
   onCreateSurface,
+  onFilePin,
+  onFilePreview,
+  onFileTreeRetry,
   onDeleteChat,
   onDeleteBrowser,
   onDeleteCode,
@@ -583,6 +594,11 @@ export function ProjectChatList({
   codeTabs: CodeTabSummary[];
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
   explorers: ExplorerSummary[];
+  fileExplorer: ExplorerSummary | null;
+  filePreviewPath: string | null;
+  fileTreeError?: string | null;
+  fileTreeLoading: boolean;
+  fileTreePinningPath?: string | null;
   onChangeChatWorktree(
     chatId: string,
     worktreeId: string,
@@ -594,6 +610,9 @@ export function ProjectChatList({
     kind: ProjectSurfaceCreateKind,
     target?: ExecutionTarget,
   ): void;
+  onFilePin(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  onFilePreview(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  onFileTreeRetry?(): void;
   onDeleteChat(chatId: string): void;
   onDeleteBrowser(browserId: string): void;
   onDeleteCode(codeTabId: string): void;
@@ -1163,7 +1182,13 @@ export function ProjectChatList({
                             key={tab.id}
                             sortId={tab.id}
                             title={tab.explorer.title}
-                            icon={<FolderTree className="size-3.5 shrink-0" />}
+                            icon={
+                              tab.explorer.selectedPath ? (
+                                <FileCode2 className="size-3.5 shrink-0" />
+                              ) : (
+                                <FolderTree className="size-3.5 shrink-0" />
+                              )
+                            }
                             active={tab.id === selectedTabKey}
                             editing={editingExplorerId === tab.explorer.id}
                             renameValue={renameValue}
@@ -1304,6 +1329,20 @@ export function ProjectChatList({
                         );
                       })}
                     </SortableContext>
+                    <ProjectSidebarFileTree
+                      activePath={filePreviewPath}
+                      error={fileTreeError}
+                      explorer={fileExplorer}
+                      loading={fileTreeLoading}
+                      onPin={(entry) => {
+                        if (fileExplorer) onFilePin(fileExplorer, entry);
+                      }}
+                      onPreview={(entry) => {
+                        if (fileExplorer) onFilePreview(fileExplorer, entry);
+                      }}
+                      onRetry={onFileTreeRetry}
+                      pinningPath={fileTreePinningPath}
+                    />
                   </div>
                 ) : null}
               </SortableProject>

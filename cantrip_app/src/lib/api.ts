@@ -4873,6 +4873,7 @@ export async function createExplorer(
   worktreeId?: string,
   tabGroupId?: string,
   target?: ExecutionTarget,
+  attachToTabLayout = true,
 ) {
   const id = crypto.randomUUID();
   const titleProtection = await surfaceTitleEncryption.protect(
@@ -4893,6 +4894,7 @@ export async function createExplorer(
         ...(worktreeId ? { worktreeId } : {}),
         ...(tabGroupId ? { tabGroupId } : {}),
         ...(target ? { target } : {}),
+        attachToTabLayout,
       }),
     ),
   );

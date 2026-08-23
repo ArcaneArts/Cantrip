@@ -192,6 +192,7 @@ import type {
   ExplorerHeaderState,
   ExplorerLifecycleActions,
 } from "@/components/explorer/explorer-view";
+import { ExplorerView } from "@/components/explorer/explorer-view";
 import {
   confirmExplorerDiscard,
   prepareExplorerPopout as prepareExplorerPopoutLifecycle,
@@ -451,6 +452,14 @@ import {
   projectSurfaceTabId,
   projectSurfaceTabKey,
 } from "@/lib/project-surface";
+import {
+  pinnedExplorerForPath,
+  preferredSidebarExplorer,
+  primaryWorktreeId,
+  sidebarFileName,
+  surfaceWorktreeId,
+  type SidebarFilePreviewState,
+} from "@/lib/sidebar-file-tabs";
 import { projectScriptCommandDestination } from "@/lib/project-script-command";
 import {
   clampSidebarWidth,
@@ -3700,6 +3709,8 @@ export function App() {
         }
       : null,
   );
+  const [sidebarFilePreview, setSidebarFilePreview] =
+    useState<SidebarFilePreviewState | null>(null);
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -3758,6 +3769,7 @@ export function App() {
   const [commandBarOpen, setCommandBarOpen] = useState(false);
   const projectOverviewSelected =
     !isPopout &&
+    !sidebarFilePreview?.active &&
     !showImporter &&
     !showSettings &&
     !showServerAdmin &&
@@ -3791,6 +3803,8 @@ export function App() {
     useState<GitHistoryHeaderState | null>(null);
   const [explorerHeader, setExplorerHeader] =
     useState<ExplorerHeaderState | null>(null);
+  const [sidebarFilePreviewHeader, setSidebarFilePreviewHeader] =
+    useState<ExplorerHeaderState | null>(null);
   const [codeHeader, setCodeHeader] = useState<CodeHeaderState | null>(null);
   const [popoutPending, setPopoutPending] = useState(false);
   const [popoutError, setPopoutError] = useState<string | null>(null);
@@ -3813,6 +3827,9 @@ export function App() {
   const explorerLifecycleRef = useRef(
     new Map<string, ExplorerLifecycleActions>(),
   );
+  const sidebarFilePreviewLifecycleRef =
+    useRef<ExplorerLifecycleActions | null>(null);
+  const sidebarExplorerCreationKeyRef = useRef<string | null>(null);
   const archiveCleanupRequestedRef = useRef(false);
   const appResourcesLoggedRef = useRef(false);
   const projectResourcesLoggedRef = useRef<string | null>(null);
@@ -3864,6 +3881,13 @@ export function App() {
     (explorerId: string, actions: ExplorerLifecycleActions | null) => {
       if (actions) explorerLifecycleRef.current.set(explorerId, actions);
       else explorerLifecycleRef.current.delete(explorerId);
+    },
+    [],
+  );
+
+  const handleSidebarFilePreviewLifecycleChange = useCallback(
+    (_explorerId: string, actions: ExplorerLifecycleActions | null) => {
+      sidebarFilePreviewLifecycleRef.current = actions;
     },
     [],
   );
@@ -3925,6 +3949,7 @@ export function App() {
   };
 
   const openCreatedProject = (project: ProjectSummary) => {
+    setSidebarFilePreview(null);
     setSelectedProjectId(project.id);
     setWorkspaceSelection(emptyWorkspaceSelection(project.id));
     resetMobileBottomTabs();
@@ -3947,6 +3972,9 @@ export function App() {
     kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view",
     tabId: string,
   ) => {
+    setSidebarFilePreview((current) =>
+      current?.projectId === projectId ? { ...current, active: false } : null,
+    );
     setDesktopSidebarDrawerOpen(false);
     const tabKey = projectSurfaceTabKey(kind, tabId);
     setSelectedProjectId(projectId);
@@ -4608,6 +4636,80 @@ export function App() {
         queryKey: ["explorers", explorer.projectId],
       });
     },
+  });
+  const createSidebarExplorerMutation = useMutation({
+    mutationFn: ({
+      projectId,
+      worktreeId,
+    }: {
+      projectId: string;
+      worktreeId?: string;
+    }) =>
+      createExplorer(
+        projectId,
+        "Project files",
+        worktreeId,
+        undefined,
+        undefined,
+        false,
+      ),
+    onError: (_error, input) => {
+      sidebarExplorerCreationKeyRef.current = `${input.projectId}:${input.worktreeId ?? "default"}`;
+    },
+    onSuccess: (explorer) => {
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", explorer.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== explorer.id), explorer].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["explorers", explorer.projectId],
+      });
+    },
+  });
+  const pinSidebarFileMutation = useMutation({
+    mutationFn: async ({
+      explorer,
+      groupId,
+      path,
+    }: {
+      explorer: ExplorerSummary;
+      groupId: string | null;
+      path: string;
+    }) => {
+      const created = await createExplorer(
+        explorer.projectId,
+        sidebarFileName(path),
+        explorer.worktreeId,
+        groupId ?? undefined,
+      );
+      try {
+        return await updateExplorerViewState(created.id, {
+          fileMode: defaultExplorerFileMode(path),
+          selectedPath: path,
+        });
+      } catch (error) {
+        await deleteExplorer(created.id).catch(() => undefined);
+        throw error;
+      }
+    },
+    onSuccess: (explorer) => {
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", explorer.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== explorer.id), explorer].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      setSidebarFilePreview(null);
+      openCreatedTab(explorer.projectId, "explorer", explorer.id);
+      void queryClient.invalidateQueries({
+        queryKey: ["explorers", explorer.projectId],
+      });
+    },
+    onError: (error) => setPopoutError(errorText(error)),
   });
   const openRepositoryGraphFile = (
     projectId: string,
@@ -5431,6 +5533,83 @@ export function App() {
   const selectedSurface = selectedTabKey
     ? projectSurfaceIndex.byTabKey.get(selectedTabKey)
     : undefined;
+  const sidebarDesiredWorktreeId =
+    surfaceWorktreeId(selectedSurface) ??
+    primaryWorktreeId(worktrees.data ?? []);
+  const sidebarPreviewExplorer = sidebarFilePreview
+    ? (explorers.data?.find(
+        (explorer) => explorer.id === sidebarFilePreview.explorerId,
+      ) ?? null)
+    : null;
+  const sidebarExplorer = preferredSidebarExplorer({
+    desiredWorktreeId: sidebarDesiredWorktreeId,
+    explorers: explorers.data ?? [],
+    layout: tabLayout.data,
+    previewExplorerId: sidebarFilePreview?.active
+      ? sidebarFilePreview.explorerId
+      : null,
+  });
+  const sidebarExplorerCreationInput =
+    selectedProject?.setupStatus === "ready" &&
+    selectedProject.source &&
+    (!selectedProject.capabilities.worktrees || sidebarDesiredWorktreeId)
+      ? {
+          projectId: selectedProject.id,
+          ...(sidebarDesiredWorktreeId
+            ? { worktreeId: sidebarDesiredWorktreeId }
+            : {}),
+        }
+      : null;
+  const sidebarExplorerCreationKey = sidebarExplorerCreationInput
+    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}`
+    : null;
+  const sidebarHasDesiredExplorer = Boolean(
+    sidebarExplorerCreationInput &&
+    (explorers.data ?? []).some(
+      (explorer) =>
+        !sidebarExplorerCreationInput.worktreeId ||
+        explorer.worktreeId === sidebarExplorerCreationInput.worktreeId,
+    ),
+  );
+  useEffect(() => {
+    if (
+      isPopout ||
+      !explorers.isSuccess ||
+      !tabLayout.isSuccess ||
+      !sidebarExplorerCreationInput ||
+      !sidebarExplorerCreationKey ||
+      sidebarHasDesiredExplorer ||
+      createSidebarExplorerMutation.isPending ||
+      sidebarExplorerCreationKeyRef.current === sidebarExplorerCreationKey
+    ) {
+      return;
+    }
+    sidebarExplorerCreationKeyRef.current = sidebarExplorerCreationKey;
+    createSidebarExplorerMutation.mutate(sidebarExplorerCreationInput);
+  }, [
+    createSidebarExplorerMutation,
+    explorers.isSuccess,
+    isPopout,
+    sidebarExplorerCreationInput,
+    sidebarExplorerCreationKey,
+    sidebarHasDesiredExplorer,
+    tabLayout.isSuccess,
+  ]);
+  useEffect(() => {
+    if (
+      sidebarFilePreview &&
+      (sidebarFilePreview.projectId !== selectedProjectId ||
+        (explorers.isSuccess && !sidebarPreviewExplorer))
+    ) {
+      sidebarFilePreviewLifecycleRef.current = null;
+      setSidebarFilePreview(null);
+    }
+  }, [
+    explorers.isSuccess,
+    selectedProjectId,
+    sidebarFilePreview,
+    sidebarPreviewExplorer,
+  ]);
   const validMobileGroupIds = useMemo(
     () =>
       new Set(
@@ -5444,6 +5623,9 @@ export function App() {
     () => [...projectSurfaceIndex.byTabKey.values()],
     [projectSurfaceIndex],
   );
+  const sidebarFilePreviewVisible = Boolean(
+    sidebarFilePreview?.active && sidebarPreviewExplorer,
+  );
   const selectedTabGroup = tabLayout.data?.groups.find(
     (group) => group.id === workspaceSelection.selectedGroupId,
   );
@@ -5451,6 +5633,18 @@ export function App() {
     ? (projectSurfaceIndex.byGroupId.get(workspaceSelection.selectedGroupId) ??
       [])
     : [];
+  const sidebarPreviewGroupSurfaces = sidebarFilePreview?.groupId
+    ? (projectSurfaceIndex.byGroupId.get(sidebarFilePreview.groupId) ?? [])
+    : [];
+  const projectTabBarSurfaces = sidebarFilePreview?.active
+    ? sidebarPreviewGroupSurfaces
+    : selectedGroupSurfaces;
+  const showSidebarPreviewTab = Boolean(
+    sidebarFilePreview &&
+    (sidebarFilePreview.active ||
+      (sidebarFilePreview.groupId !== null &&
+        sidebarFilePreview.groupId === workspaceSelection.selectedGroupId)),
+  );
   const activeMobileBottomTab = mobileBottomTabs.find(
     ({ id }) => id === activeMobileBottomTabId,
   );
@@ -5466,9 +5660,10 @@ export function App() {
     };
   });
   const selectedProjectView =
-    selectedSurface?.kind === "history" ||
-    selectedSurface?.kind === "issues" ||
-    selectedSurface?.kind === "remote-desktop"
+    !sidebarFilePreviewVisible &&
+    (selectedSurface?.kind === "history" ||
+      selectedSurface?.kind === "issues" ||
+      selectedSurface?.kind === "remote-desktop")
       ? selectedSurface.entity
       : undefined;
   const gitHistoryProject =
@@ -5478,7 +5673,9 @@ export function App() {
       ? selectedProject
       : undefined;
   const selectedChat =
-    selectedSurface?.kind === "chat" ? selectedSurface.entity : undefined;
+    !sidebarFilePreviewVisible && selectedSurface?.kind === "chat"
+      ? selectedSurface.entity
+      : undefined;
   const completionAcknowledgementAttemptRef = useRef<string | null>(null);
   useEffect(() => {
     completionAcknowledgementAttemptRef.current = null;
@@ -5529,7 +5726,9 @@ export function App() {
     });
   };
   const selectedStandaloneTerminal =
-    selectedSurface?.kind === "terminal" ? selectedSurface.entity : undefined;
+    !sidebarFilePreviewVisible && selectedSurface?.kind === "terminal"
+      ? selectedSurface.entity
+      : undefined;
   const linkedConsoleTerminal =
     selectedChat && chatConsoleOpenChats.has(selectedChat.id)
       ? terminals.data?.find(
@@ -5577,8 +5776,11 @@ export function App() {
   const activeRelocation = activeChatRelocationJob(chatRelocations.data ?? []);
   const latestRelocation = latestChatRelocationJob(chatRelocations.data ?? []);
   const currentRelocation = activeRelocation ?? latestRelocation;
-  const selectedExplorer =
-    selectedSurface?.kind === "explorer" ? selectedSurface.entity : undefined;
+  const selectedExplorer = sidebarFilePreviewVisible
+    ? (sidebarPreviewExplorer ?? undefined)
+    : selectedSurface?.kind === "explorer"
+      ? selectedSurface.entity
+      : undefined;
   const explorerToPrewarm = selectedExplorer ?? explorers.data?.[0];
   useEffect(() => {
     if (!desktopRuntime || isPopout || !explorerToPrewarm) {
@@ -5591,9 +5793,13 @@ export function App() {
     });
   }, [codeAppearance, desktopRuntime, explorerToPrewarm, isPopout]);
   const selectedBrowser =
-    selectedSurface?.kind === "browser" ? selectedSurface.entity : undefined;
+    !sidebarFilePreviewVisible && selectedSurface?.kind === "browser"
+      ? selectedSurface.entity
+      : undefined;
   const selectedCodeTab =
-    selectedSurface?.kind === "code" ? selectedSurface.entity : undefined;
+    !sidebarFilePreviewVisible && selectedSurface?.kind === "code"
+      ? selectedSurface.entity
+      : undefined;
   const activeWorktreeTarget: WorktreeBindingTarget | null = activeChat
     ? {
         kind: "chat",
@@ -5754,8 +5960,11 @@ export function App() {
   const selectedWorker = workers.data?.find(
     (worker) => worker.workerId === selectedWorkerId,
   );
+  const activeExplorerHeader = sidebarFilePreviewVisible
+    ? sidebarFilePreviewHeader
+    : explorerHeader;
   const explorerDisplayPath = selectedExplorer
-    ? `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Explorer"}${explorerHeader?.directoryPath ? `/${explorerHeader.directoryPath}` : ""}`
+    ? `${activeWorktree?.displayPath ?? selectedProject?.source?.displayPath ?? "Explorer"}${activeExplorerHeader?.directoryPath ? `/${activeExplorerHeader.directoryPath}` : ""}`
     : null;
   const bindChatWorktree = (
     chat: ChatSummary,
@@ -6479,6 +6688,9 @@ export function App() {
     setShowProjectSettings(false);
   };
   const selectProjectFromSidebar = (projectId: string) => {
+    setSidebarFilePreview((current) =>
+      current?.projectId === projectId ? { ...current, active: false } : null,
+    );
     setSelectedProjectId(projectId);
     setWorkspaceSelection(emptyWorkspaceSelection(projectId));
     resetMobileBottomTabs();
@@ -6629,6 +6841,9 @@ export function App() {
     );
   };
   const selectTopTab = (tabKey: string) => {
+    setSidebarFilePreview((current) =>
+      current ? { ...current, active: false } : null,
+    );
     const layout = tabLayout.data;
     if (layout) {
       setWorkspaceSelection((current) =>
@@ -6648,6 +6863,9 @@ export function App() {
     );
   };
   const selectGroupFromSidebar = (groupId: string) => {
+    setSidebarFilePreview((current) =>
+      current ? { ...current, active: false } : null,
+    );
     const layout = tabLayout.data;
     if (!layout) return;
     const selectLocally = () => {
@@ -6674,6 +6892,127 @@ export function App() {
         }
       })
       .catch(() => selectLocally());
+  };
+  const sidebarFileGroupId = (explorer: ExplorerSummary): string | null => {
+    if (sidebarFilePreview?.explorerId === explorer.id) {
+      return sidebarFilePreview.groupId;
+    }
+    return selectedTabGroup?.id ?? tabLayout.data?.groups[0]?.id ?? null;
+  };
+  const focusPinnedSidebarFile = (explorer: ExplorerSummary) => {
+    sidebarFilePreviewLifecycleRef.current = null;
+    setSidebarFilePreview(null);
+    openCreatedTab(explorer.projectId, "explorer", explorer.id);
+    setDesktopSidebarDrawerOpen(false);
+  };
+  const openSidebarFilePreview = (
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+  ) => {
+    if (entry.kind !== "file" || !entry.viewable) return;
+    const pinned = pinnedExplorerForPath({
+      explorers: explorers.data ?? [],
+      layout: tabLayout.data,
+      path: entry.path,
+      worktreeId: explorer.worktreeId,
+    });
+    if (pinned) {
+      focusPinnedSidebarFile(pinned);
+      return;
+    }
+    const previewLifecycle = sidebarFilePreviewLifecycleRef.current;
+    if (
+      sidebarFilePreview?.path !== entry.path &&
+      !confirmExplorerDiscard(previewLifecycle, () =>
+        window.confirm(
+          "Open another file and discard the unsaved changes in this preview?",
+        ),
+      )
+    ) {
+      return;
+    }
+    const groupId = sidebarFileGroupId(explorer);
+    const layout = tabLayout.data;
+    if (layout && groupId) {
+      setWorkspaceSelection((current) =>
+        selectWorkspaceGroup(current, layout, groupId),
+      );
+    }
+    sidebarFilePreviewLifecycleRef.current = null;
+    setSidebarFilePreview({
+      active: true,
+      explorerId: explorer.id,
+      groupId,
+      path: entry.path,
+      projectId: explorer.projectId,
+    });
+    setDesktopSidebarDrawerOpen(false);
+    setMobileTabGridOpen(false);
+    setDetachedGroupId(null);
+    revealWorkspace();
+  };
+  const pinSidebarFilePath = async (
+    explorer: ExplorerSummary,
+    path: string,
+  ) => {
+    const pinned = pinnedExplorerForPath({
+      explorers: explorers.data ?? [],
+      layout: tabLayout.data,
+      path,
+      worktreeId: explorer.worktreeId,
+    });
+    if (pinned) {
+      focusPinnedSidebarFile(pinned);
+      return;
+    }
+    const previewLifecycle =
+      sidebarFilePreview?.explorerId === explorer.id &&
+      sidebarFilePreview.path === path
+        ? sidebarFilePreviewLifecycleRef.current
+        : null;
+    if (previewLifecycle?.dirty && !(await previewLifecycle.save())) return;
+    pinSidebarFileMutation.mutate({
+      explorer,
+      groupId: sidebarFileGroupId(explorer),
+      path,
+    });
+  };
+  const pinSidebarFile = (explorer: ExplorerSummary, entry: ExplorerEntry) => {
+    if (entry.kind !== "file" || !entry.viewable) return;
+    void pinSidebarFilePath(explorer, entry.path);
+  };
+  const closeSidebarFilePreview = () => {
+    if (
+      !confirmExplorerDiscard(sidebarFilePreviewLifecycleRef.current, () =>
+        window.confirm("Close this preview and discard its unsaved changes?"),
+      )
+    ) {
+      return;
+    }
+    sidebarFilePreviewLifecycleRef.current = null;
+    setSidebarFilePreview(null);
+  };
+  const activateSidebarFilePreview = () => {
+    if (!sidebarFilePreview) return;
+    const layout = tabLayout.data;
+    if (layout && sidebarFilePreview.groupId) {
+      setWorkspaceSelection((current) =>
+        selectWorkspaceGroup(current, layout, sidebarFilePreview.groupId!),
+      );
+    }
+    setSidebarFilePreview((current) =>
+      current ? { ...current, active: true } : null,
+    );
+    setMobileTabGridOpen(false);
+    setDetachedGroupId(null);
+    revealWorkspace();
+  };
+  const retrySidebarFileTree = () => {
+    createSidebarExplorerMutation.reset();
+    sidebarExplorerCreationKeyRef.current = null;
+    if (!sidebarExplorerCreationInput || !sidebarExplorerCreationKey) return;
+    sidebarExplorerCreationKeyRef.current = sidebarExplorerCreationKey;
+    createSidebarExplorerMutation.mutate(sidebarExplorerCreationInput);
   };
   const selectMobileBottomTab = (tabId: string) => {
     setActiveMobileBottomTabId(tabId);
@@ -6746,13 +7085,6 @@ export function App() {
     } else {
       newProjectView.mutate({ projectId, tabGroupId, kind });
     }
-  };
-  const createSurfaceInSelectedGroup = (
-    kind: ProjectSurfaceCreateKind,
-    target?: ExecutionTarget,
-  ) => {
-    if (!selectedProject || !selectedTabGroup) return;
-    createProjectSurface(selectedProject.id, kind, selectedTabGroup.id, target);
   };
   const renameSurface = (surface: ProjectSurface, title: string) => {
     if (surface.kind === "chat") {
@@ -6877,7 +7209,7 @@ export function App() {
         gitHistoryHeader?.section === "graph")
         ? gitHistoryHeader
         : null,
-    explorer: selectedExplorer ? explorerHeader : null,
+    explorer: selectedExplorer ? activeExplorerHeader : null,
     code: selectedCodeTab ? { header: codeHeader } : null,
     terminalService:
       !showImporter &&
@@ -7260,6 +7592,26 @@ export function App() {
                 selectedTabKey={selectedTabKey}
                 tabLayout={tabLayout.data ?? null}
                 creatingKinds={creatingSurfaceKinds}
+                fileExplorer={sidebarExplorer}
+                filePreviewPath={
+                  sidebarFilePreview &&
+                  sidebarFilePreview.explorerId === sidebarExplorer?.id
+                    ? sidebarFilePreview.path
+                    : (selectedExplorer?.selectedPath ?? null)
+                }
+                fileTreeError={
+                  !sidebarExplorer && createSidebarExplorerMutation.isError
+                    ? errorText(createSidebarExplorerMutation.error)
+                    : null
+                }
+                fileTreeLoading={
+                  explorers.isLoading || createSidebarExplorerMutation.isPending
+                }
+                fileTreePinningPath={
+                  pinSidebarFileMutation.isPending
+                    ? (pinSidebarFileMutation.variables?.path ?? null)
+                    : null
+                }
                 onCreateSurface={(projectId, kind, target) => {
                   setDesktopSidebarDrawerOpen(false);
                   createProjectSurface(projectId, kind, undefined, target);
@@ -7279,6 +7631,9 @@ export function App() {
                 onOpenChatTerminal={openChatTerminalHere}
                 onOpenChatExplorer={openChatExplorerHere}
                 onOpenChatHistory={openChatHistoryHere}
+                onFilePin={pinSidebarFile}
+                onFilePreview={openSidebarFilePreview}
+                onFileTreeRetry={retrySidebarFileTree}
                 onRenameChat={(chatId, title) =>
                   renameChatMutation.mutate({ chatId, title })
                 }
@@ -7508,7 +7863,7 @@ export function App() {
                 {selectedExplorer ? (
                   <ExplorerFileCloseButton
                     compact={overlayTitlebar}
-                    header={explorerHeader}
+                    header={activeExplorerHeader}
                   />
                 ) : null}
                 <span
@@ -7534,7 +7889,12 @@ export function App() {
                                   : selectedBrowser
                                     ? selectedBrowser.title
                                     : selectedExplorer
-                                      ? selectedExplorer.title
+                                      ? sidebarFilePreviewVisible &&
+                                        sidebarFilePreview
+                                        ? sidebarFileName(
+                                            sidebarFilePreview.path,
+                                          )
+                                        : selectedExplorer.title
                                       : selectedTerminal
                                         ? selectedTerminal.linkedChatId
                                           ? (linkedConsoleChat?.title ??
@@ -7773,14 +8133,22 @@ export function App() {
         !showServerAdmin &&
         !showProjectSettings &&
         !groupOwnedElsewhere &&
-        selectedTabKey &&
-        selectedTabGroup &&
-        selectedGroupSurfaces.length > 0 ? (
+        ((selectedTabKey &&
+          selectedTabGroup &&
+          selectedGroupSurfaces.length > 0) ||
+          showSidebarPreviewTab) ? (
           <ProjectTabBar
-            activeTabKey={selectedTabKey}
+            activeTabKey={selectedTabKey ?? ""}
             creatingKinds={creatingSurfaceKinds}
-            surfaces={selectedGroupSurfaces}
-            onCreate={createSurfaceInSelectedGroup}
+            surfaces={projectTabBarSurfaces}
+            onCreate={(kind, target) => {
+              const groupId = sidebarFilePreview?.active
+                ? sidebarFilePreview.groupId
+                : selectedTabGroup?.id;
+              if (selectedProject && groupId) {
+                createProjectSurface(selectedProject.id, kind, groupId, target);
+              }
+            }}
             onClose={deleteSurfaceImmediately}
             onDelete={deleteSurface}
             onDuplicate={(surface) => {
@@ -7791,6 +8159,26 @@ export function App() {
             onRename={renameSurface}
             onSelect={selectTopTab}
             placement={selectedPlacementContext}
+            previewFile={
+              showSidebarPreviewTab && sidebarFilePreview
+                ? {
+                    active: sidebarFilePreview.active,
+                    path: sidebarFilePreview.path,
+                    projectId: sidebarFilePreview.projectId,
+                    title: sidebarFileName(sidebarFilePreview.path),
+                    onClose: closeSidebarFilePreview,
+                    onPin: () => {
+                      if (sidebarPreviewExplorer) {
+                        void pinSidebarFilePath(
+                          sidebarPreviewExplorer,
+                          sidebarFilePreview.path,
+                        );
+                      }
+                    },
+                    onSelect: activateSidebarFilePreview,
+                  }
+                : undefined
+            }
           />
         ) : null}
 
@@ -7826,7 +8214,9 @@ export function App() {
         >
           <PersistentExplorerViews
             activeExplorer={
-              explorerSurfaceVisible ? (selectedExplorer ?? null) : null
+              explorerSurfaceVisible && !sidebarFilePreviewVisible
+                ? (selectedExplorer ?? null)
+                : null
             }
             gitStatuses={worktreeStatuses}
             onChanged={handleExplorerChanged}
@@ -7894,6 +8284,26 @@ export function App() {
               renameChatMutation.mutate({ chatId, title })
             }
           />
+          {sidebarFilePreview && sidebarPreviewExplorer ? (
+            <ExplorerView
+              active={sidebarFilePreviewVisible}
+              explorer={sidebarPreviewExplorer}
+              gitStatus={worktreeStatuses[sidebarPreviewExplorer.worktreeId]}
+              key={`sidebar-file-preview:${sidebarPreviewExplorer.id}:${sidebarFilePreview.path}`}
+              onChanged={handleExplorerChanged}
+              onHeaderChange={
+                sidebarFilePreviewVisible
+                  ? setSidebarFilePreviewHeader
+                  : undefined
+              }
+              onLifecycleChange={handleSidebarFilePreviewLifecycleChange}
+              repositoryGraphAvailable={false}
+              transientFile={{
+                close: closeSidebarFilePreview,
+                path: sidebarFilePreview.path,
+              }}
+            />
+          ) : null}
         </Suspense>
 
         {mobileProjectSelectorOpen ? (
