@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
   isTauri: vi.fn(),
   startDesktopTunnel: vi.fn(),
   stopDesktopTunnel: vi.fn(),
+  stopDesktopTunnelForward: vi.fn(),
   fetch: vi.fn(),
+  clientLog: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -17,6 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@/lib/desktop-tunnel", () => ({
   startDesktopTunnel: mocks.startDesktopTunnel,
   stopDesktopTunnel: mocks.stopDesktopTunnel,
+  stopDesktopTunnelForward: mocks.stopDesktopTunnelForward,
 }));
 
 vi.mock("@/lib/browser-code-tunnel", () => ({
@@ -25,11 +28,16 @@ vi.mock("@/lib/browser-code-tunnel", () => ({
   stopBrowserCodeAttachment: vi.fn(),
 }));
 
+vi.mock("@/lib/client-log-relay", () => ({
+  clientLogger: { event: mocks.clientLog },
+}));
+
 import {
   directCodeAttachmentHealthy,
   openDirectCodeAttachmentFile,
   preferProtectedCodeAttachment,
   setDirectCodeAttachmentPresentation,
+  transportSafeErrorIdentity,
   waitForDirectCodeAttachmentReady,
 } from "./desktop-code";
 
@@ -136,6 +144,7 @@ describe("preferProtectedCodeAttachment", () => {
   it("opens the protected generic tunnel at the worker-local Code path", async () => {
     mocks.startDesktopTunnel.mockResolvedValue({
       attachmentId: "transport-1",
+      diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
       localHost: "127.0.0.1",
       localPort: 52345,
       tunnelId: "11111111-1111-4111-8111-111111111111",
@@ -158,9 +167,23 @@ describe("preferProtectedCodeAttachment", () => {
     expect(preferred.directTunnelId).toBe(
       "11111111-1111-4111-8111-111111111111",
     );
+    expect(mocks.startDesktopTunnel).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      { diagnosticTraceId: expect.any(String) },
+    );
     expect(mocks.fetch).toHaveBeenCalledWith(
       new URL("http://127.0.0.1:52345/code/_cantrip/health"),
       { cache: "no-store", credentials: "omit" },
+    );
+    const diagnosticTraceId = mocks.startDesktopTunnel.mock.calls[0]?.[1]
+      ?.diagnosticTraceId as string;
+    expect(mocks.clientLog).toHaveBeenCalledWith(
+      "info",
+      "Cantrip Code health check completed",
+      expect.objectContaining({
+        diagnosticTraceId,
+        event: "code.attachment.health.completed",
+      }),
     );
   });
 });
@@ -174,10 +197,105 @@ describe("waitForDirectCodeAttachmentReady", () => {
     await expect(
       waitForDirectCodeAttachmentReady(
         { url: "http://127.0.0.1:52345/code/" },
-        { attempts: 2, retryDelayMs: 0 },
+        {
+          attempts: 2,
+          diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
+          retryDelayMs: 0,
+        },
       ),
     ).resolves.toBeUndefined();
 
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(mocks.clientLog).toHaveBeenCalledWith(
+      "info",
+      "Cantrip Code health check completed",
+      expect.objectContaining({
+        attemptCount: 2,
+        diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
+      }),
+    );
+  });
+
+  it("records a normalized failure without logging the loopback URL or error message", async () => {
+    mocks.fetch.mockRejectedValue(
+      new TypeError("Load failed at a private URL"),
+    );
+
+    await expect(
+      waitForDirectCodeAttachmentReady(
+        { url: "http://127.0.0.1:52345/code/" },
+        {
+          attachmentId: "11111111-1111-4111-8111-111111111111",
+          attempts: 1,
+          diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
+          retryDelayMs: 0,
+          sessionId: "22222222-2222-4222-8222-222222222222",
+          tunnelId: "44444444-4444-4444-8444-444444444444",
+        },
+      ),
+    ).rejects.toThrow("Load failed at a private URL");
+
+    const failure = mocks.clientLog.mock.calls.find(
+      ([, , context]) => context.event === "code.attachment.health.failed",
+    );
+    expect(failure).toEqual([
+      "warn",
+      "Cantrip Code health check failed",
+      expect.objectContaining({
+        attemptCount: 1,
+        attemptKind: "network-error",
+        attachmentId: "11111111-1111-4111-8111-111111111111",
+        diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
+        errorClass: "TypeError",
+        reasonCode: "network-error",
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        tunnelId: "44444444-4444-4444-8444-444444444444",
+      }),
+    ]);
+    expect(JSON.stringify(failure)).not.toContain("127.0.0.1");
+    expect(JSON.stringify(failure)).not.toContain("Load failed");
+  });
+
+  it("drops hostile alphanumeric error identities while retaining allowlisted network identity", async () => {
+    const hostileName = "SecretLookingClassAlpha123";
+    const hostileCode = "SecretLookingCodeBeta456";
+    const error = new Error("private transport failure") as Error & {
+      code: string;
+      status: number;
+    };
+    error.name = hostileName;
+    error.code = hostileCode;
+    error.status = 503;
+    mocks.fetch.mockRejectedValue(error);
+
+    await expect(
+      waitForDirectCodeAttachmentReady(
+        { url: "http://127.0.0.1:52345/code/" },
+        { attempts: 1, retryDelayMs: 0 },
+      ),
+    ).rejects.toBe(error);
+
+    const failure = mocks.clientLog.mock.calls.find(
+      ([, , context]) => context.event === "code.attachment.health.failed",
+    );
+    expect(failure?.[2]).toEqual(
+      expect.objectContaining({
+        errorClass: "Error",
+        errorStatus: 503,
+      }),
+    );
+    expect(failure?.[2]).not.toHaveProperty("errorCode");
+    expect(JSON.stringify(failure)).not.toContain(hostileName);
+    expect(JSON.stringify(failure)).not.toContain(hostileCode);
+    expect(transportSafeErrorIdentity(new TypeError("Load failed"))).toEqual({
+      errorClass: "TypeError",
+    });
+    expect(
+      transportSafeErrorIdentity(
+        Object.assign(new TypeError("Load failed"), {
+          code: "ECONNREFUSED",
+        }),
+      ),
+    ).toEqual({ errorClass: "TypeError", errorCode: "ECONNREFUSED" });
   });
 });

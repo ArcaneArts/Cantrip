@@ -154,6 +154,7 @@ describe("browser local tunnel URLs", () => {
     expect(
       browserTunnelLocalUrl("http://localhost:5173/deep/path?mode=hmr#ready", {
         attachmentId: "attachment-1",
+        diagnosticTraceId: null,
         expiresAt: "2026-08-12T00:00:00.000Z",
         localHost: "127.0.0.1",
         localPort: 41_234,

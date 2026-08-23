@@ -17,7 +17,11 @@ import {
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
-import { workerLogError, workerLogger } from "../logger.js";
+import {
+  workerLogError,
+  workerLogErrorIdentity,
+  workerLogger,
+} from "../logger.js";
 import type { CodeSupervisor } from "./supervisor.js";
 import {
   codeEditorRequestHeaders,
@@ -29,9 +33,27 @@ import {
 
 interface Endpoint {
   address: { kind: "tcp"; host: "127.0.0.1"; port: number };
+  connectionContexts: Map<number, CodeEndpointPreparationContext>;
+  diagnosticOutcomes: Map<
+    string,
+    Set<"health" | "http-success" | "websocket-success">
+  >;
+  fallbackConnection: CodeEndpointPreparationContext;
   server: HttpServer;
   sessionId: string;
   sockets: Set<WebSocket>;
+  tunnelId: string;
+}
+
+interface CodeEndpointPreparationContext {
+  attachmentId?: string;
+  connectionId?: string;
+  diagnosticTraceId?: string;
+}
+
+interface CodeEndpointContext extends CodeEndpointPreparationContext {
+  sessionId: string;
+  tunnelId: string;
 }
 
 const BASE_PATH = "/code";
@@ -39,6 +61,7 @@ const OPEN_FILE_PATH = `${BASE_PATH}/_cantrip/open-file`;
 const PRESENTATION_PATH = `${BASE_PATH}/_cantrip/presentation`;
 const MAX_CONTROL_REQUEST_BYTES = 16 * 1_024;
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
+const MAX_ENDPOINT_DIAGNOSTIC_TRACES = 128;
 const FRAME_ANCESTORS =
   "frame-ancestors 'self' http://127.0.0.1:1420 http://tauri.localhost https://tauri.localhost tauri://localhost";
 const ABNORMAL_CLOSE_CODE = 1011;
@@ -145,35 +168,78 @@ export class CodeDirectEndpointManager {
   async prepareProtected(
     tunnelId: string,
     sessionId: string,
+    connection: CodeEndpointPreparationContext = {},
   ): Promise<{ kind: "tcp"; host: "127.0.0.1"; port: number }> {
     const endpointId = `protected:${tunnelId}`;
+    const details = { tunnelId, sessionId, ...connection };
     const existing = this.#endpoints.get(endpointId);
-    if (existing?.sessionId === sessionId) return existing.address;
+    if (existing?.sessionId === sessionId) {
+      existing.fallbackConnection = connection;
+      return existing.address;
+    }
     this.revoke(endpointId, "Protected Code session rotated");
-    return this.#create(endpointId, sessionId);
+    try {
+      const address = await this.#create(
+        endpointId,
+        { sessionId, tunnelId },
+        connection,
+      );
+      workerLogger.event("info", "Cantrip Code direct endpoint prepared", {
+        event: "code.direct.prepared",
+        subsystem: "code",
+        operation: "prepare-direct-endpoint",
+        status: "completed",
+        reused: false,
+        ...details,
+      });
+      return address;
+    } catch (error) {
+      workerLogger.event("warn", "Cantrip Code direct endpoint failed", {
+        event: "code.direct.prepare-failed",
+        subsystem: "code",
+        operation: "prepare-direct-endpoint",
+        reasonCode: "endpoint-preparation-failed",
+        status: "failed",
+        ...details,
+        ...workerLogErrorIdentity(error),
+      });
+      throw error;
+    }
   }
 
   async #create(
     endpointId: string,
-    sessionId: string,
+    context: CodeEndpointContext,
+    connection: CodeEndpointPreparationContext,
   ): Promise<{ kind: "tcp"; host: "127.0.0.1"; port: number }> {
+    const { sessionId, tunnelId } = context;
     const endpoint: Endpoint = {
       address: { kind: "tcp", host: "127.0.0.1", port: 0 },
+      connectionContexts: new Map(),
+      diagnosticOutcomes: new Map(),
+      fallbackConnection: connection,
       server: createServer(),
       sessionId,
       sockets: new Set(),
+      tunnelId,
     };
     const webSockets = new WebSocketServer({
       noServer: true,
       maxPayload: CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
     });
     endpoint.server.on("request", (request, response) =>
-      this.#proxyHttp(sessionId, request, response),
+      this.#proxyHttp(
+        endpoint,
+        this.#requestContext(endpoint, request),
+        request,
+        response,
+      ),
     );
     endpoint.server.on("upgrade", (request, socket, head) => {
+      const requestContext = this.#requestContext(endpoint, request);
       if (!this.#validPath(request.url)) {
         workerLogger.rateLimited(
-          `code-direct-path-rejected:${sessionId}`,
+          this.#failureKey("websocket", requestContext, "invalid-path"),
           "warn",
           "Cantrip Code direct WebSocket path rejected",
           {
@@ -182,7 +248,7 @@ export class CodeDirectEndpointManager {
             operation: "open-websocket",
             reasonCode: "invalid-path",
             status: "rejected",
-            sessionId,
+            ...requestContext,
           },
         );
         socket.destroy();
@@ -195,7 +261,19 @@ export class CodeDirectEndpointManager {
     webSockets.on("connection", (socket, request) => {
       endpoint.sockets.add(socket);
       socket.once("close", () => endpoint.sockets.delete(socket));
-      this.#proxyWebSocket(sessionId, socket, request);
+      this.#proxyWebSocket(
+        endpoint,
+        this.#requestContext(endpoint, request),
+        socket,
+        request,
+      );
+    });
+    endpoint.server.on("connection", (socket) => {
+      const remotePort = socket.remotePort;
+      if (remotePort === undefined) return;
+      socket.once("close", () =>
+        endpoint.connectionContexts.delete(remotePort),
+      );
     });
     await new Promise<void>((resolve, reject) => {
       endpoint.server.once("error", reject);
@@ -215,15 +293,18 @@ export class CodeDirectEndpointManager {
       port: address.port,
     };
     this.#endpoints.set(endpointId, endpoint);
-    workerLogger.event("info", "Cantrip Code direct endpoint prepared", {
-      event: "code.direct.prepared",
-      subsystem: "code",
-      operation: "prepare-direct-endpoint",
-      status: "completed",
-      capabilityId: endpointId,
-      sessionId,
-    });
     return endpoint.address;
+  }
+
+  bindProtectedConnection(
+    tunnelId: string,
+    endpointPort: number,
+    remotePort: number,
+    connection: CodeEndpointPreparationContext,
+  ): void {
+    const endpoint = this.#endpoints.get(`protected:${tunnelId}`);
+    if (!endpoint || endpoint.address.port !== endpointPort) return;
+    endpoint.connectionContexts.set(remotePort, connection);
   }
 
   revoke(capabilityId: string, reason: string): void {
@@ -262,11 +343,69 @@ export class CodeDirectEndpointManager {
     }
   }
 
+  #requestContext(
+    endpoint: Endpoint,
+    request: IncomingMessage,
+  ): CodeEndpointContext {
+    const remotePort = request.socket.remotePort;
+    const connection =
+      (remotePort === undefined
+        ? undefined
+        : endpoint.connectionContexts.get(remotePort)) ??
+      endpoint.fallbackConnection;
+    return {
+      sessionId: endpoint.sessionId,
+      tunnelId: endpoint.tunnelId,
+      ...connection,
+    };
+  }
+
+  #firstOutcome(
+    endpoint: Endpoint,
+    outcome: "health" | "http-success" | "websocket-success",
+    context: CodeEndpointContext,
+  ): boolean {
+    const traceKey = context.diagnosticTraceId ?? "untraced";
+    let outcomes = endpoint.diagnosticOutcomes.get(traceKey);
+    if (outcomes?.has(outcome)) return false;
+    if (!outcomes) {
+      if (endpoint.diagnosticOutcomes.size >= MAX_ENDPOINT_DIAGNOSTIC_TRACES) {
+        const oldestTrace = endpoint.diagnosticOutcomes.keys().next().value;
+        if (oldestTrace !== undefined) {
+          endpoint.diagnosticOutcomes.delete(oldestTrace);
+        }
+      }
+      outcomes = new Set();
+      endpoint.diagnosticOutcomes.set(traceKey, outcomes);
+    }
+    outcomes.add(outcome);
+    return true;
+  }
+
+  #failureKey(
+    transport: "http" | "websocket",
+    context: CodeEndpointContext,
+    reasonCode: string,
+  ): string {
+    return `code-direct:${transport}:${context.diagnosticTraceId ?? "untraced"}:${context.tunnelId}:${reasonCode}`;
+  }
+
   #proxyHttp(
-    sessionId: string,
+    endpoint: Endpoint,
+    context: CodeEndpointContext,
     request: IncomingMessage,
     response: ServerResponse,
   ): void {
+    const { sessionId, tunnelId, ...connection } = context;
+    const requestId = randomUUID();
+    const startedAtMs = Date.now();
+    const details = {
+      sessionId,
+      tunnelId,
+      ...connection,
+      requestId,
+      method: request.method ?? "GET",
+    };
     let pathname: string;
     try {
       pathname = new URL(request.url ?? "/", "http://cantrip-code.invalid")
@@ -274,6 +413,19 @@ export class CodeDirectEndpointManager {
     } catch {
       response.writeHead(404, { "cache-control": "no-store" }).end("Not found");
       return;
+    }
+    if (
+      pathname === `${BASE_PATH}/_cantrip/health` &&
+      this.#firstOutcome(endpoint, "health", context)
+    ) {
+      workerLogger.event("info", "Cantrip Code direct health reached", {
+        event: "code.direct.health-reached",
+        subsystem: "code",
+        operation: "check-direct-endpoint",
+        status: "completed",
+        ...details,
+        durationMs: Date.now() - startedAtMs,
+      });
     }
     if (pathname === `${BASE_PATH}/_cantrip/health`) {
       response
@@ -286,11 +438,11 @@ export class CodeDirectEndpointManager {
       return;
     }
     if (pathname === OPEN_FILE_PATH) {
-      void this.#openFile(sessionId, request, response);
+      void this.#openFile(context, request, response);
       return;
     }
     if (pathname === PRESENTATION_PATH) {
-      void this.#setPresentation(sessionId, request, response);
+      void this.#setPresentation(context, request, response);
       return;
     }
     if (!this.#validPath(request.url)) {
@@ -298,9 +450,11 @@ export class CodeDirectEndpointManager {
       return;
     }
     let releaseStream: (() => void) | null = null;
+    let failureReason = "session-unavailable";
     try {
       const proxy = this.supervisor.proxyTarget(sessionId);
       const streamId = `direct-http:${randomUUID()}`;
+      failureReason = "stream-registration-failed";
       this.supervisor.beginTunnelStream(sessionId, streamId);
       let ended = false;
       const endStream = () => {
@@ -309,12 +463,14 @@ export class CodeDirectEndpointManager {
         this.supervisor.endTunnelStream(sessionId, streamId);
       };
       releaseStream = endStream;
+      failureReason = "invalid-editor-target";
       const target = codeEditorTargetUrl(
         proxy.editorOrigin,
         request.url ?? `${BASE_PATH}/`,
         BASE_PATH,
         proxy.workspaceUri,
       );
+      failureReason = "editor-request-start-failed";
       const upstream = requestHttp(
         target,
         {
@@ -327,14 +483,61 @@ export class CodeDirectEndpointManager {
           ),
         },
         (incoming) => {
+          if (this.#firstOutcome(endpoint, "http-success", context)) {
+            workerLogger.event(
+              "debug",
+              "Cantrip Code editor HTTP response received",
+              {
+                event: "code.direct.http-upstream-responded",
+                subsystem: "code",
+                operation: "proxy-http",
+                status: "completed",
+                ...details,
+                statusCode: incoming.statusCode ?? 502,
+                durationMs: Date.now() - startedAtMs,
+              },
+            );
+          }
           writeResponseHeaders(response, incoming);
           incoming.pipe(response);
           incoming.once("end", endStream);
-          incoming.once("error", endStream);
+          incoming.once("error", (error) => {
+            endStream();
+            workerLogger.rateLimited(
+              this.#failureKey("http", context, "editor-response-error"),
+              "warn",
+              "Cantrip Code editor HTTP response failed",
+              {
+                event: "code.direct.http-upstream-failed",
+                subsystem: "code",
+                operation: "proxy-http",
+                reasonCode: "editor-response-error",
+                status: "failed",
+                ...details,
+                durationMs: Date.now() - startedAtMs,
+                ...workerLogErrorIdentity(error),
+              },
+            );
+          });
         },
       );
-      upstream.once("error", () => {
+      upstream.once("error", (error) => {
         endStream();
+        workerLogger.rateLimited(
+          this.#failureKey("http", context, "editor-connection-error"),
+          "warn",
+          "Cantrip Code editor HTTP request failed",
+          {
+            event: "code.direct.http-upstream-failed",
+            subsystem: "code",
+            operation: "proxy-http",
+            reasonCode: "editor-connection-error",
+            status: "failed",
+            ...details,
+            durationMs: Date.now() - startedAtMs,
+            ...workerLogErrorIdentity(error),
+          },
+        );
         if (!response.headersSent) response.writeHead(502);
         response.end("Cantrip Code is unavailable.");
       });
@@ -343,6 +546,21 @@ export class CodeDirectEndpointManager {
       request.pipe(upstream);
     } catch (error) {
       releaseStream?.();
+      workerLogger.rateLimited(
+        this.#failureKey("http", context, failureReason),
+        "warn",
+        "Cantrip Code HTTP proxy rejected",
+        {
+          event: "code.direct.http-proxy-failed",
+          subsystem: "code",
+          operation: "proxy-http",
+          reasonCode: failureReason,
+          status: "failed",
+          ...details,
+          durationMs: Date.now() - startedAtMs,
+          ...workerLogErrorIdentity(error),
+        },
+      );
       response
         .writeHead(503, {
           "cache-control": "no-store",
@@ -357,10 +575,11 @@ export class CodeDirectEndpointManager {
   }
 
   async #openFile(
-    sessionId: string,
+    context: CodeEndpointContext,
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> {
+    const { sessionId } = context;
     if (request.method === "OPTIONS") {
       writeControlResponse(response, 204);
       return;
@@ -397,7 +616,7 @@ export class CodeDirectEndpointManager {
         subsystem: "code",
         operation: "open-file",
         status: "completed",
-        sessionId,
+        ...context,
       });
     } catch (error) {
       workerLogger.event("warn", "Cantrip Code direct file open failed", {
@@ -406,7 +625,7 @@ export class CodeDirectEndpointManager {
         operation: "open-file",
         reasonCode: "open-failed",
         status: "failed",
-        sessionId,
+        ...context,
         error: workerLogError(error),
       });
       writeControlResponse(response, 503, {
@@ -419,10 +638,11 @@ export class CodeDirectEndpointManager {
   }
 
   async #setPresentation(
-    sessionId: string,
+    context: CodeEndpointContext,
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> {
+    const { sessionId } = context;
     if (request.method === "OPTIONS") {
       writeControlResponse(response, 204);
       return;
@@ -458,7 +678,7 @@ export class CodeDirectEndpointManager {
         operation: "set-presentation",
         status: "completed",
         presentation: "editor",
-        sessionId,
+        ...context,
       });
     } catch (error) {
       workerLogger.event(
@@ -470,7 +690,7 @@ export class CodeDirectEndpointManager {
           operation: "set-presentation",
           reasonCode: "update-failed",
           status: "failed",
-          sessionId,
+          ...context,
           error: workerLogError(error),
         },
       );
@@ -484,14 +704,21 @@ export class CodeDirectEndpointManager {
   }
 
   #proxyWebSocket(
-    sessionId: string,
+    endpoint: Endpoint,
+    context: CodeEndpointContext,
     client: WebSocket,
     request: IncomingMessage,
   ): void {
+    const { sessionId, tunnelId, ...connection } = context;
+    const requestId = randomUUID();
+    const startedAtMs = Date.now();
+    const details = { sessionId, tunnelId, ...connection, requestId };
     let releaseStream: (() => void) | null = null;
+    let failureReason = "session-unavailable";
     try {
       const proxy = this.supervisor.proxyTarget(sessionId);
       const streamId = `direct-websocket:${randomUUID()}`;
+      failureReason = "stream-registration-failed";
       this.supervisor.beginTunnelStream(sessionId, streamId);
       let ended = false;
       const endStream = () => {
@@ -500,6 +727,7 @@ export class CodeDirectEndpointManager {
         this.supervisor.endTunnelStream(sessionId, streamId);
       };
       releaseStream = endStream;
+      failureReason = "invalid-editor-target";
       const target = codeEditorTargetUrl(
         proxy.editorOrigin,
         request.url ?? `${BASE_PATH}/`,
@@ -507,6 +735,7 @@ export class CodeDirectEndpointManager {
         proxy.workspaceUri,
       );
       target.protocol = "ws:";
+      failureReason = "editor-websocket-start-failed";
       const upstream = new WebSocket(target, protocols(request.headers), {
         headers: codeEditorRequestHeaders(
           rawHeaders(request).filter(
@@ -521,14 +750,6 @@ export class CodeDirectEndpointManager {
       const queued: Array<{ data: Buffer; binary: boolean }> = [];
       let queuedBytes = 0;
       let authenticationForwarded = false;
-      const details = { sessionId };
-      workerLogger.event("debug", "Cantrip Code direct WebSocket accepted", {
-        event: "code.direct.websocket-accepted",
-        subsystem: "code",
-        operation: "open-websocket",
-        status: "completed",
-        ...details,
-      });
       const closeBoth = (code = 1011, reason = "Cantrip Code disconnected") => {
         if (client.readyState === WebSocket.OPEN) client.close(code, reason);
         if (upstream.readyState === WebSocket.OPEN)
@@ -543,17 +764,6 @@ export class CodeDirectEndpointManager {
               editorAuthenticatedPayload(payload, proxy.connectionToken),
             );
             authenticationForwarded = true;
-            workerLogger.event(
-              "debug",
-              "Cantrip Code direct WebSocket authentication forwarded",
-              {
-                event: "code.direct.authentication-forwarded",
-                subsystem: "code",
-                operation: "authenticate-websocket",
-                status: "completed",
-                ...details,
-              },
-            );
           }
           if (upstream.readyState !== WebSocket.OPEN) {
             queued.push({ data: payload, binary });
@@ -571,7 +781,12 @@ export class CodeDirectEndpointManager {
           }
           upstream.send(payload, { binary });
         } catch (error) {
-          workerLogger.event(
+          workerLogger.rateLimited(
+            this.#failureKey(
+              "websocket",
+              context,
+              "invalid-authentication-frame",
+            ),
             "warn",
             "Cantrip Code direct WebSocket input rejected",
             {
@@ -581,7 +796,7 @@ export class CodeDirectEndpointManager {
               reasonCode: "invalid-authentication-frame",
               status: "rejected",
               ...details,
-              error: workerLogError(error),
+              ...workerLogErrorIdentity(error),
             },
           );
           closeBoth(1008, "Invalid Code authentication frame");
@@ -589,17 +804,20 @@ export class CodeDirectEndpointManager {
       };
       client.on("message", forward);
       upstream.once("open", () => {
-        workerLogger.event(
-          "debug",
-          "Cantrip Code direct editor WebSocket opened",
-          {
-            event: "code.direct.websocket-opened",
-            subsystem: "code",
-            operation: "open-websocket",
-            status: "completed",
-            ...details,
-          },
-        );
+        if (this.#firstOutcome(endpoint, "websocket-success", context)) {
+          workerLogger.event(
+            "debug",
+            "Cantrip Code direct editor WebSocket opened",
+            {
+              event: "code.direct.websocket-opened",
+              subsystem: "code",
+              operation: "open-websocket",
+              status: "completed",
+              ...details,
+              durationMs: Date.now() - startedAtMs,
+            },
+          );
+        }
         for (const item of queued.splice(0)) {
           upstream.send(item.data, { binary: item.binary });
         }
@@ -617,18 +835,6 @@ export class CodeDirectEndpointManager {
         client.send(payload, { binary });
       });
       client.once("close", (code, reason) => {
-        workerLogger.event(
-          "debug",
-          "Cantrip Code direct client WebSocket closed",
-          {
-            event: "code.direct.client-closed",
-            subsystem: "code",
-            operation: "forward-websocket",
-            status: "completed",
-            ...details,
-            code,
-          },
-        );
         endStream();
         if (upstream.readyState === WebSocket.OPEN) {
           const forwarded = forwardableCodeWebSocketClose(code, reason);
@@ -636,7 +842,8 @@ export class CodeDirectEndpointManager {
         } else upstream.terminate();
       });
       client.once("error", (error) => {
-        workerLogger.event(
+        workerLogger.rateLimited(
+          this.#failureKey("websocket", context, "client-error"),
           "warn",
           "Cantrip Code direct client WebSocket failed",
           {
@@ -646,25 +853,14 @@ export class CodeDirectEndpointManager {
             reasonCode: "client-error",
             status: "degraded",
             ...details,
-            error: workerLogError(error),
+            durationMs: Date.now() - startedAtMs,
+            ...workerLogErrorIdentity(error),
           },
         );
         endStream();
         closeBoth();
       });
       upstream.once("close", (code, reason) => {
-        workerLogger.event(
-          "debug",
-          "Cantrip Code direct editor WebSocket closed",
-          {
-            event: "code.direct.editor-closed",
-            subsystem: "code",
-            operation: "forward-websocket",
-            status: "completed",
-            ...details,
-            code,
-          },
-        );
         endStream();
         if (client.readyState === WebSocket.OPEN) {
           const forwarded = forwardableCodeWebSocketClose(code, reason);
@@ -672,17 +868,19 @@ export class CodeDirectEndpointManager {
         }
       });
       upstream.once("error", (error) => {
-        workerLogger.event(
+        workerLogger.rateLimited(
+          this.#failureKey("websocket", context, "editor-websocket-error"),
           "warn",
           "Cantrip Code direct editor WebSocket failed",
           {
             event: "code.direct.editor-failed",
             subsystem: "code",
             operation: "forward-websocket",
-            reasonCode: "editor-error",
+            reasonCode: "editor-websocket-error",
             status: "degraded",
             ...details,
-            error: workerLogError(error),
+            durationMs: Date.now() - startedAtMs,
+            ...workerLogErrorIdentity(error),
           },
         );
         endStream();
@@ -690,6 +888,21 @@ export class CodeDirectEndpointManager {
       });
     } catch (error) {
       releaseStream?.();
+      workerLogger.rateLimited(
+        this.#failureKey("websocket", context, failureReason),
+        "warn",
+        "Cantrip Code WebSocket proxy rejected",
+        {
+          event: "code.direct.websocket-proxy-failed",
+          subsystem: "code",
+          operation: "open-websocket",
+          reasonCode: failureReason,
+          status: "failed",
+          ...details,
+          durationMs: Date.now() - startedAtMs,
+          ...workerLogErrorIdentity(error),
+        },
+      );
       client.close(
         1013,
         (error instanceof Error

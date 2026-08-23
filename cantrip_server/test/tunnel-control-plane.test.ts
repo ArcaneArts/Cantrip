@@ -4,11 +4,13 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import {
+  directTunnelTicketSchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentReadySchema,
   tunnelWireListSchema,
   tunnelWireSummarySchema,
   unprobedCodexRuntimeReport,
+  type WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { WebSocket } from "ws";
@@ -37,6 +39,7 @@ const config: ServerConfig = {
   port: 4310,
   workerToken: "test-worker-token",
 };
+const workerCommands: WorkerCommand[] = [];
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -53,6 +56,13 @@ const workerBridge: WorkerCommandBus = {
     return () => undefined;
   },
   async request(_workerId, command) {
+    workerCommands.push(command);
+    if (command.type === "direct.capability.prepare") {
+      return { accepted: true, capabilityId: command.binding.capabilityId };
+    }
+    if (command.type === "direct.capability.revoke") {
+      return { revoked: true };
+    }
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
 };
@@ -63,6 +73,7 @@ let projectId: string;
 let userTunnelId: string;
 let managedTunnelId: string;
 let otherOwnerId: string;
+let codeAttachmentId: string;
 
 function protectedRecord(operationId: string, revision: number) {
   return {
@@ -95,6 +106,15 @@ async function recordWorker(ownerId: string, workerId: string): Promise<void> {
       browser: false,
       transports: ["websocket"],
       maxSessions: 1,
+    },
+    directBroker: {
+      available: true,
+      protocol: "ws-v1",
+      loopbackHost: "127.0.0.1",
+      loopbackPort: 43123,
+      instanceId: randomUUID(),
+      publicKey: "a".repeat(43),
+      fingerprint: "b".repeat(64),
     },
     startedAt: new Date().toISOString(),
   });
@@ -452,6 +472,7 @@ describe.sequential("tunnel control plane", () => {
     const attachment = tunnelAttachmentCreateResultSchema.parse(
       response.json(),
     );
+    codeAttachmentId = attachment.attachmentId;
     expect(attachment.tunnelId).toBe(tunnelId);
     await expect(
       database.repository.getDesktopTunnelAttachment(
@@ -468,6 +489,39 @@ describe.sequential("tunnel control plane", () => {
       tunnelId,
     });
   });
+
+  it("validates and propagates direct tunnel diagnostic trace IDs", async () => {
+    const commandCount = workerCommands.length;
+    const invalid = await app.inject({
+      method: "POST",
+      url: `/api/tunnel-attachments/${codeAttachmentId}/direct`,
+      payload: { diagnosticTraceId: "not-a-uuid" },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(workerCommands).toHaveLength(commandCount);
+
+    const diagnosticTraceId = randomUUID();
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/tunnel-attachments/${codeAttachmentId}/direct`,
+      payload: { diagnosticTraceId },
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    const command = workerCommands.at(-1);
+    expect(command).toMatchObject({
+      type: "direct.capability.prepare",
+      diagnosticTraceId,
+    });
+    expect(
+      command?.type === "direct.capability.prepare" ? command.binding : {},
+    ).not.toHaveProperty("diagnosticTraceId");
+
+    const responseBody = response.json();
+    expect(responseBody).not.toHaveProperty("diagnosticTraceId");
+    const ticket = directTunnelTicketSchema.parse(responseBody);
+    expect(ticket.binding).not.toHaveProperty("diagnosticTraceId");
+  });
+
   it("clears organizational project links without deleting tunnels", async () => {
     expect(
       await database.repository.deleteProject(LOCAL_USER_ID, projectId),

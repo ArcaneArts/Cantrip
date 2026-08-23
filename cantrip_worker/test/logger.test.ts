@@ -5,6 +5,7 @@ import {
   readWorkerLogs,
   subscribeWorkerLogs,
   workerLogError,
+  workerLogErrorIdentity,
   workerLogger,
 } from "../src/logger.js";
 
@@ -28,8 +29,8 @@ describe("worker service log capture", () => {
           timestamp: expect.any(String),
           system: "worker",
           level: "warn",
-          message: "Provider connection failed",
-          context: { apiKey: "[REDACTED]", attempt: 2 },
+          message: "worker.diagnostic",
+          context: { attempt: 2 },
         },
       ],
       hasMore: false,
@@ -59,7 +60,7 @@ describe("worker service log capture", () => {
           timestamp: expect.any(String),
           system: "worker",
           level: "debug",
-          message: "[codex] transport failed with token=[REDACTED]",
+          message: "worker.diagnostic",
           context: { subsystem: "codex" },
         },
       ],
@@ -99,5 +100,57 @@ describe("worker service log capture", () => {
       message: "outer api_key=[REDACTED]",
       code: "E_PROVIDER",
     });
+  });
+
+  it("reduces transport errors to class and code without sensitive messages", () => {
+    const error = Object.assign(
+      new Error(
+        "token=transport-secret file:///worker/private/project.code-workspace ciphertext-fragment-123",
+      ),
+      { code: "ECONNREFUSED" },
+    );
+
+    const identity = workerLogErrorIdentity(error);
+
+    expect(identity).toEqual({
+      errorClass: "Error",
+      errorCode: "ECONNREFUSED",
+    });
+    expect(JSON.stringify(identity)).not.toContain("transport-secret");
+    expect(JSON.stringify(identity)).not.toContain("project.code-workspace");
+    expect(JSON.stringify(identity)).not.toContain("ciphertext-fragment-123");
+  });
+
+  it("rejects hostile error identity fields containing protected material", () => {
+    const pathSentinel = "/worker/private/project.code-workspace";
+    const protectedSentinel = "ciphertext-fragment-123";
+    const secretSentinel = "transport-secret";
+    const error = Object.assign(new Error("safe message"), {
+      name: `TypeError${pathSentinel}${protectedSentinel}${secretSentinel}`,
+      code: `E_TRANSPORT_${pathSentinel}_${protectedSentinel}_${secretSentinel}`,
+    });
+
+    const identity = workerLogErrorIdentity(error);
+    const serialized = JSON.stringify(identity);
+
+    expect(identity).toEqual({ errorClass: "Error" });
+    expect(serialized).not.toContain(pathSentinel);
+    expect(serialized).not.toContain(protectedSentinel);
+    expect(serialized).not.toContain(secretSentinel);
+  });
+
+  it("rejects purely alphanumeric hostile error identity fields", () => {
+    const sentinel = "TransportSecretCiphertextFragment123";
+    const error = Object.assign(new Error("safe message"), {
+      name: sentinel,
+      code: sentinel.toUpperCase(),
+    });
+
+    const identity = workerLogErrorIdentity(error);
+    const serialized = JSON.stringify(identity);
+
+    expect(identity).toEqual({ errorClass: "Error" });
+    expect(serialized).not.toContain(sentinel);
+    expect(serialized).not.toContain(sentinel.toUpperCase());
   });
 });

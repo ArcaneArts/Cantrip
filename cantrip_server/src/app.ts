@@ -339,6 +339,7 @@ import {
   encryptedRemoteDesktopUpdateSchema,
   directAttachmentTicketSchema,
   directTransportTelemetrySchema,
+  directTunnelPrepareRequestSchema,
   directTunnelTicketSchema,
   remoteDesktopFleetWireSchema,
   remoteDesktopProbeResultSchema,
@@ -12147,10 +12148,14 @@ export async function buildApp({
     },
   );
 
-  app.post<{ Params: { attachmentId: string } }>(
+  app.post<{ Params: { attachmentId: string }; Body: unknown }>(
     "/api/tunnel-attachments/:attachmentId/direct",
     { logLevel: "warn" },
     async (request, reply) => {
+      const input = directTunnelPrepareRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
       const principal = authenticatedPrincipal(request);
       const authorization = await repository.getDesktopTunnelAttachment(
         principal.user.id,
@@ -12179,6 +12184,7 @@ export async function buildApp({
           attachmentId: authorization.attachmentId,
           authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
           channels: ["tunnel-data"],
+          diagnosticTraceId: input.data.diagnosticTraceId,
           leaseExpiresAt: authorization.expiresAt,
           ownerId: principal.user.id,
           resourceId: authorization.tunnelId,
@@ -12228,6 +12234,15 @@ export async function buildApp({
           ownerId: principal.user.id,
         })
       ) {
+        directAttachments.recordActivationOutcome(
+          input.data.capabilityId,
+          {
+            attachmentId: request.params.attachmentId,
+            authSessionId,
+            ownerId: principal.user.id,
+          },
+          "capability_mismatch",
+        );
         return reply.code(404).send({ error: "Direct attachment not found." });
       }
       const authorization = await repository.getDesktopTunnelAttachment(
@@ -12235,6 +12250,15 @@ export async function buildApp({
         request.params.attachmentId,
       );
       if (!authorization) {
+        directAttachments.recordActivationOutcome(
+          input.data.capabilityId,
+          {
+            attachmentId: request.params.attachmentId,
+            authSessionId,
+            ownerId: principal.user.id,
+          },
+          "attachment_missing",
+        );
         return reply.code(404).send({ error: "Tunnel attachment not found." });
       }
       if (
@@ -12243,8 +12267,26 @@ export async function buildApp({
           authorization.clientId,
         ))
       ) {
+        directAttachments.recordActivationOutcome(
+          input.data.capabilityId,
+          {
+            attachmentId: authorization.attachmentId,
+            authSessionId,
+            ownerId: principal.user.id,
+          },
+          "attachment_stale",
+        );
         return reply.code(409).send({ error: "Tunnel attachment is stale." });
       }
+      directAttachments.recordActivationOutcome(
+        input.data.capabilityId,
+        {
+          attachmentId: authorization.attachmentId,
+          authSessionId,
+          ownerId: principal.user.id,
+        },
+        "completed",
+      );
       publishTunnelRuntimeChange({
         attachmentId: authorization.attachmentId,
         ownerId: authorization.ownerId,

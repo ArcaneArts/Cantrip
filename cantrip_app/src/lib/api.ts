@@ -255,7 +255,9 @@ import {
   queuedPromptSchema,
   directAttachmentTicketSchema,
   directTransportTelemetrySchema,
+  directTunnelPrepareRequestSchema,
   directTunnelTicketSchema,
+  type DirectTunnelPrepareRequest,
   remoteDesktopWireListSchema,
   remoteDesktopFleetWireSchema,
   remoteDesktopWireSummarySchema,
@@ -754,10 +756,15 @@ export async function deleteDirectAttachment(
 export async function recordDirectAttachmentTelemetry(
   capabilityId: string,
   telemetry: Parameters<typeof directTransportTelemetrySchema.parse>[0],
+  options: { signal?: AbortSignal } = {},
 ): Promise<void> {
-  await post(
+  await request(
     `/api/direct-attachments/${encodeURIComponent(capabilityId)}/telemetry`,
-    directTransportTelemetrySchema.parse(telemetry),
+    {
+      body: JSON.stringify(directTransportTelemetrySchema.parse(telemetry)),
+      method: "POST",
+      signal: options.signal,
+    },
   );
 }
 
@@ -911,11 +918,14 @@ export async function deleteTunnelAttachment(
   });
 }
 
-export async function createDirectTunnelAttachment(attachmentId: string) {
+export async function createDirectTunnelAttachment(
+  attachmentId: string,
+  input: DirectTunnelPrepareRequest = {},
+) {
   return directTunnelTicketSchema.parse(
     await post(
       `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct`,
-      {},
+      directTunnelPrepareRequestSchema.parse(input),
     ),
   );
 }

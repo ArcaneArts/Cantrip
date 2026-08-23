@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
+import { normalizeLogError, type ServiceLogger } from "@cantrip/logging";
 import {
   directAttachmentTicketSchema,
   directCapabilityPrepareResultSchema,
@@ -14,11 +15,19 @@ import type { WorkerCommandBus } from "../workers/bridge.js";
 import { serverLogger } from "../logger.js";
 
 interface DirectGrant {
+  activatedAtMs: number | null;
+  activationAttemptCount: number;
+  activationCount: number;
   attachmentId: string;
   authSessionId: string;
+  createdAtMs: number;
+  diagnosticTraceId: string;
+  mode: "direct-capability" | "direct-tunnel";
   ownerId: string;
   resourceId: string;
   resourceKind: DirectResourceKind;
+  telemetryObservedAtMs: number | null;
+  telemetryReportCount: number;
   timer: ReturnType<typeof setTimeout>;
   unsubscribeDisconnect: () => void;
   workerId: string;
@@ -29,10 +38,17 @@ export interface DirectTransportTelemetryDelta extends DirectTransportTelemetry 
   resourceKind: DirectResourceKind;
 }
 
+export type DirectAttachmentActivationOutcome =
+  | "attachment_missing"
+  | "attachment_stale"
+  | "capability_mismatch"
+  | "completed";
+
 export interface DirectAttachmentPrepareInput {
   attachmentId?: string;
   authSessionId: string;
   channels: string[];
+  diagnosticTraceId?: string;
   ownerId: string;
   resourceId: string;
   resourceKind: DirectResourceKind;
@@ -46,35 +62,77 @@ export interface DirectAttachmentPrepareInput {
 
 const CAPABILITY_TTL_MS = 15_000;
 const LEASE_TTL_MS = 60_000;
+const SAFE_ERROR_CLASSES = new Set([
+  "AggregateError",
+  "Error",
+  "RangeError",
+  "SyntaxError",
+  "TypeError",
+  "WorkerUnavailableError",
+  "ZodError",
+]);
+const SAFE_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EPIPE",
+  "ETIMEDOUT",
+  "ERR_INVALID_ARG_TYPE",
+  "ERR_INVALID_STATE",
+  "ERR_SOCKET_CLOSED",
+]);
 
 export class DirectAttachmentUnavailableError extends Error {}
 
 export class DirectAttachmentCoordinator {
   readonly #grants = new Map<string, DirectGrant>();
 
-  constructor(private readonly workers: WorkerCommandBus) {}
+  constructor(
+    private readonly workers: WorkerCommandBus,
+    private readonly logger: ServiceLogger = serverLogger,
+  ) {}
 
   async prepare(
     input: DirectAttachmentPrepareInput,
   ): Promise<DirectAttachmentTicket> {
     const startedAtMs = Date.now();
-    serverLogger.debug("Direct attachment capability requested", {
+    const diagnosticTraceId = input.diagnosticTraceId ?? randomUUID();
+    const mode = input.tunnelRoute ? "direct-tunnel" : "direct-capability";
+    this.logger.debug("Direct attachment capability requested", {
       event: "direct_attachment.prepare.started",
       subsystem: "direct-attachment",
       operation: "prepare",
       status: "started",
+      diagnosticTraceId,
+      mode,
       attachmentId: input.attachmentId,
       resourceKind: input.resourceKind,
       workerId: input.worker.workerId,
-      counts: { channels: new Set(input.channels).size },
+      channelCount: new Set(input.channels).size,
     });
     if (
       !input.worker.online ||
       !this.workers.isConnected(input.worker.workerId)
     ) {
+      this.#logPrepareFailure(
+        diagnosticTraceId,
+        input,
+        mode,
+        startedAtMs,
+        "worker_offline",
+      );
       throw new DirectAttachmentUnavailableError("Worker is offline.");
     }
     if (!input.worker.directBroker.available) {
+      this.#logPrepareFailure(
+        diagnosticTraceId,
+        input,
+        mode,
+        startedAtMs,
+        "direct_broker_unavailable",
+      );
       throw new DirectAttachmentUnavailableError(
         "Worker does not offer a local direct broker.",
       );
@@ -88,6 +146,13 @@ export class DirectAttachmentCoordinator {
       now + 12 * 60 * 60_000,
     );
     if (leaseExpiresAt <= now) {
+      this.#logPrepareFailure(
+        diagnosticTraceId,
+        input,
+        mode,
+        startedAtMs,
+        "lease_expired",
+      );
       throw new DirectAttachmentUnavailableError(
         "Direct attachment lease has already expired.",
       );
@@ -116,6 +181,7 @@ export class DirectAttachmentCoordinator {
           input.worker.workerId,
           {
             type: "direct.capability.prepare",
+            diagnosticTraceId,
             binding,
             secret,
             tunnelRoute: input.tunnelRoute ?? null,
@@ -124,23 +190,26 @@ export class DirectAttachmentCoordinator {
         ),
       );
     } catch (error) {
-      serverLogger.warn("Direct attachment preparation failed", {
-        event: "direct_attachment.prepare.failed",
-        subsystem: "direct-attachment",
-        operation: "prepare",
-        status: "failed",
-        reasonCode: "worker_prepare_failed",
-        attachmentId: input.attachmentId,
-        resourceKind: input.resourceKind,
-        workerId: input.worker.workerId,
-        durationMs: Date.now() - startedAtMs,
+      this.#logPrepareFailure(
+        diagnosticTraceId,
+        input,
+        mode,
+        startedAtMs,
+        "worker_prepare_failed",
         error,
-      });
+      );
       throw new DirectAttachmentUnavailableError(
         "Worker could not prepare a local direct capability.",
       );
     }
     if (prepared.capabilityId !== capabilityId) {
+      this.#logPrepareFailure(
+        diagnosticTraceId,
+        input,
+        mode,
+        startedAtMs,
+        "worker_ack_mismatch",
+      );
       throw new Error("Worker acknowledged another direct capability.");
     }
     const timer = setTimeout(
@@ -150,14 +219,22 @@ export class DirectAttachmentCoordinator {
     timer.unref();
     const unsubscribeDisconnect = this.workers.subscribeWorkerDisconnect(
       input.worker.workerId,
-      () => this.#forget(capabilityId),
+      () => this.#finalize(capabilityId, "worker_disconnected"),
     );
     this.#grants.set(capabilityId, {
+      activatedAtMs: null,
+      activationAttemptCount: 0,
+      activationCount: 0,
       attachmentId: binding.attachmentId,
       authSessionId: input.authSessionId,
+      createdAtMs: startedAtMs,
+      diagnosticTraceId,
+      mode,
       ownerId: input.ownerId,
       resourceId: input.resourceId,
       resourceKind: input.resourceKind,
+      telemetryObservedAtMs: null,
+      telemetryReportCount: 0,
       timer,
       unsubscribeDisconnect,
       workerId: input.worker.workerId,
@@ -168,16 +245,19 @@ export class DirectAttachmentCoordinator {
         connectionsOpened: 0,
       },
     });
-    serverLogger.info("Direct attachment capability prepared", {
+    this.logger.info("Direct attachment capability prepared", {
       event: "direct_attachment.prepare.completed",
       subsystem: "direct-attachment",
       operation: "prepare",
       status: "completed",
+      diagnosticTraceId,
+      mode,
       attachmentId: binding.attachmentId,
+      resourceId: input.resourceId,
       resourceKind: input.resourceKind,
       workerId: input.worker.workerId,
       durationMs: Date.now() - startedAtMs,
-      counts: { channels: binding.channels.length },
+      channelCount: binding.channels.length,
     });
     return ticket;
   }
@@ -196,8 +276,10 @@ export class DirectAttachmentCoordinator {
     ) {
       return false;
     }
-    this.#forget(capabilityId);
-    await this.workers
+    const reasonCode = directRevocationReasonCode(reason);
+    this.#finalize(capabilityId, reasonCode);
+    const revokeStartedAtMs = Date.now();
+    const delivered = await this.workers
       .request(
         grant.workerId,
         {
@@ -207,22 +289,23 @@ export class DirectAttachmentCoordinator {
         },
         { ownerId: grant.ownerId, timeoutMs: 5_000 },
       )
-      .catch(() => undefined);
-    serverLogger.info("Direct attachment capability revoked", {
+      .then(() => true)
+      .catch(() => false);
+    const log = delivered ? this.logger.info : this.logger.warn;
+    log.call(this.logger, "Direct attachment capability revoked", {
       event: "direct_attachment.revoked",
       subsystem: "direct-attachment",
       operation: "revoke",
-      status: "completed",
-      reasonCode: directRevocationReasonCode(reason),
+      status: delivered ? "completed" : "degraded",
+      reasonCode,
+      success: delivered,
+      diagnosticTraceId: grant.diagnosticTraceId,
+      mode: grant.mode,
       attachmentId: grant.attachmentId,
+      resourceId: grant.resourceId,
       resourceKind: grant.resourceKind,
       workerId: grant.workerId,
-      bytesFromLocal: grant.telemetry.bytesFromLocal,
-      bytesToLocal: grant.telemetry.bytesToLocal,
-      counts: {
-        connectionsOpened: grant.telemetry.connectionsOpened,
-        connectionsClosed: grant.telemetry.connectionsClosed,
-      },
+      durationMs: Date.now() - revokeStartedAtMs,
     });
     return true;
   }
@@ -254,6 +337,82 @@ export class DirectAttachmentCoordinator {
     );
   }
 
+  recordActivationOutcome(
+    capabilityId: string,
+    authorization: {
+      attachmentId: string;
+      authSessionId: string;
+      ownerId: string;
+    },
+    outcome: DirectAttachmentActivationOutcome,
+  ): boolean {
+    const grant = this.#grants.get(capabilityId);
+    if (
+      !grant ||
+      grant.ownerId !== authorization.ownerId ||
+      grant.authSessionId !== authorization.authSessionId ||
+      grant.attachmentId !== authorization.attachmentId
+    ) {
+      this.logger.rateLimited(
+        `direct-activation-uncorrelated:${authorization.ownerId}`,
+        "warn",
+        "Direct attachment activation could not be correlated",
+        {
+          event: "direct_attachment.activation.uncorrelated",
+          subsystem: "direct-attachment",
+          operation: "activate",
+          status: outcome === "capability_mismatch" ? "rejected" : "degraded",
+          reasonCode:
+            outcome === "capability_mismatch"
+              ? "capability_mismatch"
+              : "grant_missing",
+          mode: "local-direct",
+          attachmentId: authorization.attachmentId,
+        },
+      );
+      return false;
+    }
+    const now = Date.now();
+    grant.activationAttemptCount += 1;
+    if (outcome === "completed") {
+      grant.activationCount += 1;
+      grant.activatedAtMs ??= now;
+      this.logger.info("Direct attachment route activated", {
+        event: "direct_attachment.activation.completed",
+        subsystem: "direct-attachment",
+        operation: "activate",
+        status: "completed",
+        diagnosticTraceId: grant.diagnosticTraceId,
+        mode: "local-direct",
+        attachmentId: grant.attachmentId,
+        resourceId: grant.resourceId,
+        resourceKind: grant.resourceKind,
+        workerId: grant.workerId,
+        durationMs: now - grant.createdAtMs,
+        activationAttemptCount: grant.activationAttemptCount,
+        activationCount: grant.activationCount,
+      });
+      return true;
+    }
+    this.logger.warn("Direct attachment activation rejected", {
+      event: "direct_attachment.activation.rejected",
+      subsystem: "direct-attachment",
+      operation: "activate",
+      status: "rejected",
+      reasonCode: outcome,
+      diagnosticTraceId: grant.diagnosticTraceId,
+      mode: "local-direct",
+      attachmentId: grant.attachmentId,
+      resourceId: grant.resourceId,
+      resourceKind: grant.resourceKind,
+      workerId: grant.workerId,
+      durationMs: now - grant.createdAtMs,
+      activationAttemptCount: grant.activationAttemptCount,
+      activationCount: grant.activationCount,
+    });
+    return true;
+  }
+
   recordTelemetry(
     capabilityId: string,
     authorization: { authSessionId: string; ownerId: string },
@@ -268,23 +427,48 @@ export class DirectAttachmentCoordinator {
       return null;
     }
     const previous = grant.telemetry;
-    const delta = {
+    const merged = {
       bytesFromLocal: Math.max(
-        0,
-        telemetry.bytesFromLocal - previous.bytesFromLocal,
+        previous.bytesFromLocal,
+        telemetry.bytesFromLocal,
       ),
-      bytesToLocal: Math.max(0, telemetry.bytesToLocal - previous.bytesToLocal),
+      bytesToLocal: Math.max(previous.bytesToLocal, telemetry.bytesToLocal),
       connectionsClosed: Math.max(
-        0,
-        telemetry.connectionsClosed - previous.connectionsClosed,
+        previous.connectionsClosed,
+        telemetry.connectionsClosed,
       ),
       connectionsOpened: Math.max(
-        0,
-        telemetry.connectionsOpened - previous.connectionsOpened,
+        previous.connectionsOpened,
+        telemetry.connectionsOpened,
       ),
+    };
+    const delta = {
+      bytesFromLocal: merged.bytesFromLocal - previous.bytesFromLocal,
+      bytesToLocal: merged.bytesToLocal - previous.bytesToLocal,
+      connectionsClosed: merged.connectionsClosed - previous.connectionsClosed,
+      connectionsOpened: merged.connectionsOpened - previous.connectionsOpened,
       resourceKind: grant.resourceKind,
     };
-    grant.telemetry = { ...telemetry };
+    grant.telemetry = merged;
+    grant.telemetryObservedAtMs = Date.now();
+    grant.telemetryReportCount += 1;
+    this.logger.debug("Direct attachment telemetry recorded", {
+      event: "direct_attachment.telemetry.recorded",
+      subsystem: "direct-attachment",
+      operation: "record-telemetry",
+      status: "completed",
+      diagnosticTraceId: grant.diagnosticTraceId,
+      mode: grant.mode,
+      attachmentId: grant.attachmentId,
+      resourceId: grant.resourceId,
+      resourceKind: grant.resourceKind,
+      workerId: grant.workerId,
+      fromLocalBytes: merged.bytesFromLocal,
+      toLocalBytes: merged.bytesToLocal,
+      openedConnectionCount: merged.connectionsOpened,
+      closedConnectionCount: merged.connectionsClosed,
+      telemetryReportCount: grant.telemetryReportCount,
+    });
     return delta;
   }
 
@@ -334,22 +518,94 @@ export class DirectAttachmentCoordinator {
         this.revoke(capabilityId, "Cantrip Server is stopping"),
       ),
     );
-    serverLogger.info("Direct attachment coordinator stopped", {
+    this.logger.info("Direct attachment coordinator stopped", {
       event: "direct_attachment.runtime.stopped",
       subsystem: "direct-attachment",
       operation: "shutdown",
       status: "completed",
-      counts: { activeCapabilities: activeCount },
+      activeCapabilityCount: activeCount,
     });
   }
 
-  #forget(capabilityId: string): void {
+  #finalize(capabilityId: string, reasonCode: string): DirectGrant | null {
     const grant = this.#grants.get(capabilityId);
-    if (!grant) return;
+    if (!grant) return null;
     clearTimeout(grant.timer);
     grant.unsubscribeDisconnect();
     this.#grants.delete(capabilityId);
+    const now = Date.now();
+    this.logger.info("Direct attachment final state captured", {
+      event: "direct_attachment.finalized",
+      subsystem: "direct-attachment",
+      operation: "finalize",
+      status: "completed",
+      reasonCode,
+      diagnosticTraceId: grant.diagnosticTraceId,
+      mode: grant.mode,
+      attachmentId: grant.attachmentId,
+      resourceId: grant.resourceId,
+      resourceKind: grant.resourceKind,
+      workerId: grant.workerId,
+      durationMs: now - grant.createdAtMs,
+      activationAttemptCount: grant.activationAttemptCount,
+      activationCount: grant.activationCount,
+      telemetryReportCount: grant.telemetryReportCount,
+      fromLocalBytes: grant.telemetry.bytesFromLocal,
+      toLocalBytes: grant.telemetry.bytesToLocal,
+      openedConnectionCount: grant.telemetry.connectionsOpened,
+      closedConnectionCount: grant.telemetry.connectionsClosed,
+      ...(grant.activatedAtMs === null
+        ? {}
+        : { activationAgeMs: now - grant.activatedAtMs }),
+      ...(grant.telemetryObservedAtMs === null
+        ? {}
+        : { telemetryAgeMs: now - grant.telemetryObservedAtMs }),
+    });
+    return grant;
   }
+
+  #logPrepareFailure(
+    diagnosticTraceId: string,
+    input: DirectAttachmentPrepareInput,
+    mode: DirectGrant["mode"],
+    startedAtMs: number,
+    reasonCode: string,
+    error?: unknown,
+  ): void {
+    this.logger.warn("Direct attachment preparation failed", {
+      event: "direct_attachment.prepare.failed",
+      subsystem: "direct-attachment",
+      operation: "prepare",
+      status: "failed",
+      reasonCode,
+      diagnosticTraceId,
+      mode,
+      attachmentId: input.attachmentId,
+      resourceId: input.resourceId,
+      resourceKind: input.resourceKind,
+      workerId: input.worker.workerId,
+      durationMs: Date.now() - startedAtMs,
+      ...(error === undefined ? {} : safeErrorMetadata(error)),
+    });
+  }
+}
+
+function safeErrorMetadata(error: unknown): {
+  errorClass: string;
+  errorCode?: string;
+} {
+  const normalized = normalizeLogError(error);
+  const errorClass = SAFE_ERROR_CLASSES.has(normalized.name)
+    ? normalized.name
+    : "Error";
+  const errorCode =
+    normalized.code && SAFE_ERROR_CODES.has(normalized.code)
+      ? normalized.code
+      : undefined;
+  return {
+    errorClass,
+    ...(errorCode ? { errorCode } : {}),
+  };
 }
 
 function directRevocationReasonCode(reason: string): string {

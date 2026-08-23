@@ -17,6 +17,35 @@ const workerLogListeners = new Set<(record: ServiceLogRecord) => void>();
 let workerLogArchive: DailyLogArchive | null = null;
 let lastArchiveDiagnosticAt = 0;
 
+const SAFE_ERROR_CLASSES = new Set([
+  "AggregateError",
+  "Error",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "TypeError",
+  "URIError",
+  "WorkerUnavailableError",
+  "ZodError",
+]);
+const SAFE_ERROR_CODES = new Set([
+  "AUTH_FAILED",
+  "EACCES",
+  "EADDRINUSE",
+  "ECONNABORTED",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOENT",
+  "ENOTFOUND",
+  "EPIPE",
+  "ETIMEDOUT",
+  "ERR_INVALID_ARG_TYPE",
+  "ERR_INVALID_STATE",
+  "ERR_SOCKET_CLOSED",
+]);
+
 function storeWorkerLogRecord(record: ServiceLogRecordInput) {
   const stored = workerLogBuffer.append(record);
   void workerLogArchive?.append(stored);
@@ -69,6 +98,26 @@ export const workerLogger = createServiceLogger("worker", {
 
 export function workerLogError(error: unknown) {
   return normalizeLogError(error);
+}
+
+/**
+ * Returns only stable error identity fields for security-sensitive transport
+ * diagnostics. Error messages are intentionally excluded because they can
+ * contain worker-local paths or protected target material.
+ */
+export function workerLogErrorIdentity(error: unknown) {
+  const normalized = normalizeLogError(error);
+  const errorClass = SAFE_ERROR_CLASSES.has(normalized.name)
+    ? normalized.name
+    : "Error";
+  const errorCode =
+    normalized.code && SAFE_ERROR_CODES.has(normalized.code)
+      ? normalized.code
+      : undefined;
+  return {
+    errorClass,
+    ...(errorCode ? { errorCode } : {}),
+  };
 }
 
 /**

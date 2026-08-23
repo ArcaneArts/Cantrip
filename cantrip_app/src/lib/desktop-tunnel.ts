@@ -11,13 +11,16 @@ import {
   deleteDirectAttachment,
   deleteTunnelAttachment,
   getTunnelDataProtection,
+  recordDirectAttachmentTelemetry,
 } from "@/lib/api";
 import { getActiveServerUrl } from "@/lib/server-connections";
 
 const clientIdStorageKey = "cantrip.desktop-tunnel-client.v1";
+const FINAL_TELEMETRY_TIMEOUT_MS = 2_000;
 
 export interface DesktopTunnelForwardSummary {
   attachmentId: string;
+  diagnosticTraceId: string | null;
   expiresAt: string;
   localHost: "127.0.0.1";
   localPort: number;
@@ -32,7 +35,18 @@ export interface DesktopTunnelForwardSummary {
   connectionsOpened?: number;
 }
 
+interface DesktopTunnelTerminalSnapshot {
+  attachmentId: string;
+  tunnelId: string;
+  directCapabilityId: string | null;
+  bytesFromLocal: number;
+  bytesToLocal: number;
+  connectionsClosed: number;
+  connectionsOpened: number;
+}
+
 export interface StartDesktopTunnelOptions {
+  diagnosticTraceId?: string;
   preferredLocalPort?: number;
 }
 
@@ -53,11 +67,13 @@ function nativeStartRequest(
   clientId: string,
   direct: Awaited<ReturnType<typeof createDirectTunnelAttachment>> | null,
   dataProtection: Awaited<ReturnType<typeof getTunnelDataProtection>>,
+  diagnosticTraceId?: string,
   preferredLocalPort?: number,
 ) {
   return {
     attachmentId: attachment.attachmentId,
     clientId,
+    diagnosticTraceId: diagnosticTraceId ?? null,
     dataProtection,
     direct,
     expiresAt: attachment.expiresAt,
@@ -84,14 +100,15 @@ export async function startDesktopTunnel(
   const clientId = desktopTunnelClientId(window.localStorage);
   const dataProtection = await getTunnelDataProtection(tunnelId);
   const attachment = await createTunnelAttachment(tunnelId, { clientId });
-  const direct = await createDirectTunnelAttachment(
-    attachment.attachmentId,
-  ).catch(() => null);
+  const direct = await createDirectTunnelAttachment(attachment.attachmentId, {
+    diagnosticTraceId: options.diagnosticTraceId,
+  }).catch(() => null);
   const request = nativeStartRequest(
     attachment,
     clientId,
     direct,
     dataProtection,
+    options.diagnosticTraceId,
     options.preferredLocalPort,
   );
   try {
@@ -123,7 +140,7 @@ export async function startDesktopTunnel(
     if (request.direct) request.direct.secret = "";
     request.dataProtection.key = "";
     attachment.secret = "";
-    await invoke("stop_tunnel_forward", { tunnelId }).catch(() => {
+    await stopDesktopTunnelForward(tunnelId).catch(() => {
       // Server revocation below remains authoritative.
     });
     await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
@@ -145,6 +162,7 @@ export async function startDirectDesktopTunnel(
   const request = {
     attachmentId: ticket.route.attachmentId,
     clientId: desktopTunnelClientId(window.localStorage),
+    diagnosticTraceId: null,
     direct: ticket,
     expiresAt,
     preferredLocalPort: null,
@@ -170,12 +188,40 @@ export async function stopDesktopTunnel(
   tunnelId: string,
   attachmentId: string,
 ): Promise<void> {
-  if (isTauri()) {
-    await invoke("stop_tunnel_forward", { tunnelId }).catch(() => {
-      // Server revocation remains authoritative if the local listener is gone.
-    });
-  }
+  await stopDesktopTunnelForward(tunnelId);
   await deleteTunnelAttachment(attachmentId);
+}
+
+export async function stopDesktopTunnelForward(
+  tunnelId: string,
+): Promise<void> {
+  if (!isTauri()) return;
+  const snapshot = await invoke<DesktopTunnelTerminalSnapshot | null>(
+    "stop_tunnel_forward",
+    { tunnelId },
+  ).catch(() => {
+    // Server revocation remains authoritative if the local listener is gone.
+    return null;
+  });
+  await reportFinalDesktopTunnelTelemetry(snapshot).catch(() => undefined);
+}
+
+async function reportFinalDesktopTunnelTelemetry(
+  snapshot: DesktopTunnelTerminalSnapshot | null,
+): Promise<void> {
+  if (!snapshot?.directCapabilityId) return;
+  await recordDirectAttachmentTelemetry(
+    snapshot.directCapabilityId,
+    {
+      bytesFromLocal: snapshot.bytesFromLocal,
+      bytesToLocal: snapshot.bytesToLocal,
+      connectionsClosed: snapshot.connectionsClosed,
+      connectionsOpened: snapshot.connectionsOpened,
+    },
+    {
+      signal: AbortSignal.timeout(FINAL_TELEMETRY_TIMEOUT_MS),
+    },
+  );
 }
 
 export async function listDesktopTunnels(): Promise<

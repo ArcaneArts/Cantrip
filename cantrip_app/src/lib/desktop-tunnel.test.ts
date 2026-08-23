@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   isTauri: vi.fn(),
   getTunnelDataProtection: vi.fn(),
+  recordDirectAttachmentTelemetry: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -22,6 +23,7 @@ vi.mock("@/lib/api", () => ({
   deleteDirectAttachment: mocks.deleteDirectAttachment,
   deleteTunnelAttachment: mocks.deleteTunnelAttachment,
   getTunnelDataProtection: mocks.getTunnelDataProtection,
+  recordDirectAttachmentTelemetry: mocks.recordDirectAttachmentTelemetry,
 }));
 vi.mock("@/lib/server-connections", () => ({
   getActiveServerUrl: () => "https://cantrip.example",
@@ -31,6 +33,7 @@ import {
   refreshDesktopTunnelRelay,
   startDesktopTunnel,
   startDirectDesktopTunnel,
+  stopDesktopTunnel,
 } from "./desktop-tunnel";
 
 const capabilityId = "1c4066d8-5798-4330-82e2-f5634c6176b7";
@@ -89,6 +92,7 @@ beforeEach(() => {
     keyRevision: 1,
     key: "k".repeat(43),
   });
+  mocks.recordDirectAttachmentTelemetry.mockResolvedValue(undefined);
   const values = new Map<string, string>();
   vi.stubGlobal("window", {
     localStorage: {
@@ -112,13 +116,24 @@ describe("startDesktopTunnel", () => {
       tunnelId: "tunnel-1",
     });
 
-    await expect(startDesktopTunnel("tunnel-1")).resolves.toMatchObject({
-      routeState: "local-direct",
-    });
+    await expect(
+      startDesktopTunnel("tunnel-1", {
+        diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
+      }),
+    ).resolves.toMatchObject({ routeState: "local-direct" });
+    expect(mocks.createDirectTunnelAttachment).toHaveBeenCalledWith(
+      "attachment-1",
+      { diagnosticTraceId: "33333333-3333-4333-8333-333333333333" },
+    );
     expect(mocks.activateDirectTunnelAttachment).toHaveBeenCalledWith(
       "attachment-1",
       { capabilityId },
     );
+    expect(mocks.invoke).toHaveBeenCalledWith("start_tunnel_forward", {
+      request: expect.objectContaining({
+        diagnosticTraceId: expect.any(String),
+      }),
+    });
   });
 
   it("keeps the relay usable when a local capability cannot be prepared", async () => {
@@ -160,9 +175,65 @@ describe("startDesktopTunnel", () => {
       startDirectDesktopTunnel(direct, expiresAt),
     ).resolves.toMatchObject({ routeState: "local-direct" });
     expect(mocks.invoke).toHaveBeenCalledWith("start_tunnel_forward", {
-      request: expect.objectContaining({ relay: null }),
+      request: expect.objectContaining({
+        diagnosticTraceId: null,
+        relay: null,
+      }),
     });
     expect(direct.secret).toBe("");
+  });
+});
+
+describe("stopDesktopTunnel", () => {
+  it("stops locally before posting the exact terminal snapshot and deleting", async () => {
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "stop_tunnel_forward") {
+        return {
+          attachmentId: "attachment-1",
+          bytesFromLocal: 11,
+          bytesToLocal: 12,
+          connectionsClosed: 2,
+          connectionsOpened: 2,
+          directCapabilityId: capabilityId,
+          tunnelId: "tunnel-1",
+        };
+      }
+      return true;
+    });
+
+    await stopDesktopTunnel("tunnel-1", "attachment-1");
+
+    expect(mocks.recordDirectAttachmentTelemetry).toHaveBeenCalledWith(
+      capabilityId,
+      {
+        bytesFromLocal: 11,
+        bytesToLocal: 12,
+        connectionsClosed: 2,
+        connectionsOpened: 2,
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(mocks.invoke).toHaveBeenCalledWith("stop_tunnel_forward", {
+      tunnelId: "tunnel-1",
+    });
+    expect(mocks.invoke.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.recordDirectAttachmentTelemetry.mock.invocationCallOrder[0]!,
+    );
+    expect(
+      mocks.recordDirectAttachmentTelemetry.mock.invocationCallOrder[0]!,
+    ).toBeLessThan(mocks.deleteTunnelAttachment.mock.invocationCallOrder[0]!);
+  });
+
+  it("keeps repeated native stops idempotent without reporting stale counters", async () => {
+    mocks.invoke.mockResolvedValue(null);
+
+    await stopDesktopTunnel("tunnel-1", "attachment-1");
+
+    expect(mocks.invoke).toHaveBeenCalledWith("stop_tunnel_forward", {
+      tunnelId: "tunnel-1",
+    });
+    expect(mocks.recordDirectAttachmentTelemetry).not.toHaveBeenCalled();
+    expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1");
   });
 });
 
@@ -173,6 +244,7 @@ describe("refreshDesktopTunnelRelay", () => {
     await expect(
       refreshDesktopTunnelRelay({
         attachmentId: "attachment-1",
+        diagnosticTraceId: null,
         expiresAt,
         localHost: "127.0.0.1",
         localPort: 41_234,
@@ -205,6 +277,7 @@ describe("refreshDesktopTunnelRelay", () => {
 
     await refreshDesktopTunnelRelay({
       attachmentId: "attachment-1",
+      diagnosticTraceId: null,
       expiresAt,
       localHost: "127.0.0.1",
       localPort: 41_234,

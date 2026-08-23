@@ -94,6 +94,7 @@ describe("tunnel settings", () => {
   it("builds openable URLs only for HTTP-like local attachments", () => {
     const attachment: DesktopTunnelForwardSummary = {
       attachmentId: "attachment-1",
+      diagnosticTraceId: null,
       expiresAt: now,
       localHost: "127.0.0.1",
       localPort: 41_234,
@@ -125,6 +126,7 @@ describe("tunnel settings", () => {
   it("summarizes direct and relayed desktop traffic", () => {
     const base: DesktopTunnelForwardSummary = {
       attachmentId: "attachment-1",
+      diagnosticTraceId: null,
       expiresAt: now,
       localHost: "127.0.0.1",
       localPort: 41_234,

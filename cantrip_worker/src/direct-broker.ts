@@ -21,7 +21,7 @@ import {
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
-import { workerLogError, workerLogger } from "./logger.js";
+import { workerLogErrorIdentity, workerLogger } from "./logger.js";
 
 type PrepareCommand = Extract<
   WorkerCommand,
@@ -30,15 +30,17 @@ type PrepareCommand = Extract<
 
 interface PreparedCapability {
   binding: DirectCapabilityBinding;
+  diagnosticTraceId?: string;
   tunnelRoute: PrepareCommand["tunnelRoute"];
   secretHash: Buffer;
   timer: ReturnType<typeof setTimeout>;
 }
 
 interface ActiveSession {
+  acceptanceDiagnosticEmitted: boolean;
   binding: DirectCapabilityBinding;
-  capabilityId: string;
   connections: Map<string, TunnelDataPlaneFrameHeader>;
+  diagnosticTraceId?: string;
   socket: WebSocket;
   timer: ReturnType<typeof setTimeout>;
   tunnelRoute: NonNullable<PrepareCommand["tunnelRoute"]> | null;
@@ -52,6 +54,7 @@ const TUNNEL_LOW_WATER_BYTES = 256 * 1_024;
 type TunnelFrameHandler = (
   header: TunnelDataPlaneFrameHeader,
   payload: Uint8Array,
+  context: { diagnosticTraceId?: string },
 ) => void;
 type TunnelTargetResolver = (
   binding: DirectCapabilityBinding,
@@ -199,6 +202,7 @@ export class DirectBroker {
     timer.unref();
     this.#prepared.set(command.binding.capabilityId, {
       binding: command.binding,
+      diagnosticTraceId: command.diagnosticTraceId,
       secretHash: secretHash(command.secret),
       timer,
       tunnelRoute,
@@ -208,9 +212,11 @@ export class DirectBroker {
       subsystem: "direct-broker",
       operation: "prepare",
       status: "completed",
-      capabilityId: command.binding.capabilityId,
       resourceKind: command.binding.resourceKind,
       attachmentId: command.binding.attachmentId,
+      ...(command.diagnosticTraceId
+        ? { diagnosticTraceId: command.diagnosticTraceId }
+        : {}),
       tunnelRouted: tunnelRoute !== null,
       counts: { prepared: this.#prepared.size, active: this.#active.size },
     });
@@ -236,6 +242,9 @@ export class DirectBroker {
   revoke(capabilityId: string, reason: string): boolean {
     let revoked = false;
     const prepared = this.#prepared.get(capabilityId);
+    const diagnosticTraceId =
+      prepared?.diagnosticTraceId ??
+      this.#active.get(capabilityId)?.diagnosticTraceId;
     if (prepared) {
       clearTimeout(prepared.timer);
       prepared.secretHash.fill(0);
@@ -257,8 +266,8 @@ export class DirectBroker {
         subsystem: "direct-broker",
         operation: "revoke",
         status: "completed",
-        capabilityId,
         reasonCode: "capability-revoked",
+        ...(diagnosticTraceId ? { diagnosticTraceId } : {}),
         counts: { prepared: this.#prepared.size, active: this.#active.size },
       });
     }
@@ -304,12 +313,46 @@ export class DirectBroker {
       active.socket.readyState !== WebSocket.OPEN ||
       active.socket.bufferedAmount > MAX_BUFFERED_TUNNEL_BYTES
     ) {
+      workerLogger.event("warn", "Direct tunnel response was not routed", {
+        event: "direct.frame.return-failed",
+        subsystem: "direct-broker",
+        operation: "route-frame",
+        reasonCode:
+          active.socket.readyState !== WebSocket.OPEN
+            ? "socket-unavailable"
+            : "socket-congested",
+        status: "failed",
+        mode: header.kind,
+        resourceKind: active.binding.resourceKind,
+        tunnelId: header.tunnelId,
+        attachmentId: header.attachmentId,
+        connectionId: header.connectionId,
+        ...(active.diagnosticTraceId
+          ? { diagnosticTraceId: active.diagnosticTraceId }
+          : {}),
+      });
       return false;
     }
     try {
       active.socket.send(encodeTunnelDataPlaneFrame(header, payload), {
         binary: true,
       });
+      if (header.kind === "accepted" && !active.acceptanceDiagnosticEmitted) {
+        active.acceptanceDiagnosticEmitted = true;
+        workerLogger.event("info", "Direct tunnel connection accepted", {
+          event: "direct.connection.accepted",
+          subsystem: "direct-broker",
+          operation: "open-connection",
+          status: "completed",
+          resourceKind: active.binding.resourceKind,
+          tunnelId: header.tunnelId,
+          attachmentId: header.attachmentId,
+          connectionId: header.connectionId,
+          ...(active.diagnosticTraceId
+            ? { diagnosticTraceId: active.diagnosticTraceId }
+            : {}),
+        });
+      }
       // Keep the source-side sequence state until the desktop acknowledges the
       // destination close. The desktop tunnel forwarder always sends its own
       // terminal close after receiving a destination close/error. Deleting the
@@ -317,7 +360,23 @@ export class DirectBroker {
       // connection and closed the entire direct capability, including every
       // unrelated workbench HTTP and WebSocket stream sharing it.
       return true;
-    } catch {
+    } catch (error) {
+      workerLogger.event("warn", "Direct tunnel response was not routed", {
+        event: "direct.frame.return-failed",
+        subsystem: "direct-broker",
+        operation: "route-frame",
+        reasonCode: "response-forward-failed",
+        status: "failed",
+        mode: header.kind,
+        resourceKind: active.binding.resourceKind,
+        tunnelId: header.tunnelId,
+        attachmentId: header.attachmentId,
+        connectionId: header.connectionId,
+        ...(active.diagnosticTraceId
+          ? { diagnosticTraceId: active.diagnosticTraceId }
+          : {}),
+        ...workerLogErrorIdentity(error),
+      });
       return false;
     }
   }
@@ -354,6 +413,7 @@ export class DirectBroker {
 
   #accept(socket: WebSocket): void {
     let initialized = false;
+    let diagnosticTraceId: string | undefined;
     const timeout = setTimeout(
       () => socket.close(1008, "Direct initialization timed out"),
       INITIALIZE_TIMEOUT_MS,
@@ -370,6 +430,7 @@ export class DirectBroker {
           JSON.parse(rawText(data)),
         );
         const capability = this.#prepared.get(initialize.binding.capabilityId);
+        diagnosticTraceId = capability?.diagnosticTraceId;
         const candidateHash = secretHash(initialize.secret);
         if (
           !capability ||
@@ -391,9 +452,10 @@ export class DirectBroker {
         initialized = true;
         const leaseExpiry = Date.parse(capability.binding.leaseExpiresAt);
         const active: ActiveSession = {
+          acceptanceDiagnosticEmitted: false,
           binding: capability.binding,
-          capabilityId: capability.binding.capabilityId,
           connections: new Map(),
+          diagnosticTraceId: capability.diagnosticTraceId,
           socket,
           timer: this.#leaseTimer(capability.binding.capabilityId, leaseExpiry),
           tunnelRoute: capability.tunnelRoute,
@@ -404,9 +466,11 @@ export class DirectBroker {
           subsystem: "direct-broker",
           operation: "connect",
           status: "completed",
-          capabilityId: capability.binding.capabilityId,
           resourceKind: capability.binding.resourceKind,
           attachmentId: capability.binding.attachmentId,
+          ...(capability.diagnosticTraceId
+            ? { diagnosticTraceId: capability.diagnosticTraceId }
+            : {}),
           counts: { active: this.#active.size },
         });
         socket.send(
@@ -448,9 +512,11 @@ export class DirectBroker {
             subsystem: "direct-broker",
             operation: "connect",
             status: "completed",
-            capabilityId: capability.binding.capabilityId,
             code,
             resourceKind: capability.binding.resourceKind,
+            ...(capability.diagnosticTraceId
+              ? { diagnosticTraceId: capability.diagnosticTraceId }
+              : {}),
           });
         });
         socket.on("message", (data, isBinary) => {
@@ -471,7 +537,8 @@ export class DirectBroker {
             operation: "connect",
             reasonCode: "invalid-initialization",
             status: "rejected",
-            error: workerLogError(error),
+            ...(diagnosticTraceId ? { diagnosticTraceId } : {}),
+            ...workerLogErrorIdentity(error),
           },
         );
         socket.close(1008, "Direct initialization is invalid");
@@ -486,9 +553,33 @@ export class DirectBroker {
   #handleDirectFrame(active: ActiveSession, data: RawData): void {
     const route = active.tunnelRoute;
     if (!route || !active.binding.channels.includes("tunnel-data")) {
+      workerLogger.rateLimited(
+        `direct-frame-rejected:unauthorized-channel:${active.binding.resourceKind}`,
+        "warn",
+        "Direct tunnel frame rejected",
+        {
+          event: "direct.frame.rejected",
+          subsystem: "direct-broker",
+          operation: "route-frame",
+          reasonCode: "unauthorized-channel",
+          status: "rejected",
+          resourceKind: active.binding.resourceKind,
+          ...(route
+            ? {
+                tunnelId: route.tunnelId,
+                attachmentId: route.attachmentId,
+              }
+            : {}),
+          ...(active.diagnosticTraceId
+            ? { diagnosticTraceId: active.diagnosticTraceId }
+            : {}),
+        },
+      );
       active.socket.close(1008, "Direct tunnel channel is not authorized");
       return;
     }
+    let reasonCode = "malformed-frame";
+    let observedHeader: TunnelDataPlaneFrameHeader | null = null;
     try {
       const bytes =
         data instanceof ArrayBuffer
@@ -498,6 +589,8 @@ export class DirectBroker {
             : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
       const frame = decodeTunnelDataPlaneFrame(bytes);
       const { header } = frame;
+      observedHeader = header;
+      reasonCode = "capability-binding-mismatch";
       if (
         header.tunnelId !== route.tunnelId ||
         header.attachmentId !== route.attachmentId ||
@@ -509,6 +602,7 @@ export class DirectBroker {
       }
       let routed: TunnelDataPlaneFrameHeader = header;
       if (header.kind === "open") {
+        reasonCode = "invalid-connection-identity";
         if (
           header.sequence !== 0 ||
           active.connections.has(header.connectionId)
@@ -518,6 +612,7 @@ export class DirectBroker {
         routed = { ...header, kind: "connect", target: route.target };
         active.connections.set(header.connectionId, routed);
       } else {
+        reasonCode = "invalid-frame-sequence";
         const previous = active.connections.get(header.connectionId);
         if (!previous || header.sequence !== previous.sequence + 1) {
           throw new Error(
@@ -529,21 +624,30 @@ export class DirectBroker {
           active.connections.delete(header.connectionId);
         }
       }
-      this.#handleTunnelFrame(routed, frame.payload);
+      this.#handleTunnelFrame(routed, frame.payload, {
+        diagnosticTraceId: active.diagnosticTraceId,
+      });
     } catch (error) {
       workerLogger.rateLimited(
-        `direct-frame-rejected:${active.capabilityId}`,
+        `direct-frame-rejected:${route.tunnelId}:${reasonCode}`,
         "warn",
         "Direct tunnel frame rejected",
         {
           event: "direct.frame.rejected",
           subsystem: "direct-broker",
           operation: "route-frame",
-          reasonCode: "invalid-frame",
+          reasonCode,
           status: "rejected",
-          capabilityId: active.capabilityId,
-          error: workerLogError(error),
+          ...workerLogErrorIdentity(error),
           resourceKind: active.binding.resourceKind,
+          tunnelId: route.tunnelId,
+          attachmentId: route.attachmentId,
+          ...(observedHeader
+            ? { connectionId: observedHeader.connectionId }
+            : {}),
+          ...(active.diagnosticTraceId
+            ? { diagnosticTraceId: active.diagnosticTraceId }
+            : {}),
         },
       );
       active.socket.close(1003, "Invalid direct tunnel frame");
@@ -565,6 +669,7 @@ export class DirectBroker {
           code: "endpoint-disconnected",
         },
         new Uint8Array(),
+        { diagnosticTraceId: active.diagnosticTraceId },
       );
     }
     active.connections.clear();

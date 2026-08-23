@@ -1,0 +1,28 @@
+Cantrip Code startup/prewarm failure — privacy-redacted event extract
+
+Environment: macOS arm64; Cantrip 1.1.971; OpenVSCode Server 1.109.5
+
+worker  code.profile.starting                  status=started
+worker  code.profile.ready                     status=completed
+worker  code.session.running                   status=completed bridgeConnected=false
+server  protected Code attachment created
+server  desktop tunnel attachment created
+server  direct_attachment.prepare.started      status=started resourceKind=tunnel
+worker  direct.capability.prepared              status=completed tunnelRouted=true
+server  direct_attachment.prepare.completed    status=completed
+worker  direct.capability.connected             status=completed resourceKind=tunnel
+client  code attachment health                  result=TypeError: Load failed
+worker  direct.capability.disconnected          code=1006
+server  direct_attachment.revoked               connectionsOpened=0 connectionsClosed=0
+worker  code.stop                               status=completed
+client  editor-window.prewarm-unavailable       reasonCode=prewarm-failed
+
+Absent before cleanup:
+- code.direct.prepared
+- tunnel.destination.opening
+- tunnel.destination.connected
+- editor iframe mount
+
+Identifiers, local filesystem paths, origins, process IDs, protected records,
+and credentials were intentionally removed from this committed extract. The
+original user-supplied log remains outside the repository.
