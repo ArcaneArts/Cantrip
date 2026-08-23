@@ -3735,8 +3735,9 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.parse({
         type: "customization.mcp.oauth.status",
+        ...protectedContent,
         ...runtime,
-        server: "docs",
+        protectedRequest: customizationContentFixture(),
       }).type,
     ).toBe("customization.mcp.oauth.status");
     expect(

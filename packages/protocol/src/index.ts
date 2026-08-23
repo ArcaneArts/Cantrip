@@ -1164,6 +1164,8 @@ export const codexMcpReloadResultSchema = z.object({
   reloaded: z.literal(true),
 });
 
+export const codexMcpReloadRequestSchema = z.object({}).strict();
+
 export const codexExternalImportApplySchema = z
   .object({
     itemIds: z.array(z.string().min(1).max(200)).min(1).max(100),
@@ -12536,9 +12538,8 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("customization.mcp.resource.read"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1),
-    server: z.string().trim().min(1).max(256),
-    uri: z.string().trim().min(1).max(8_192),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
@@ -12558,20 +12559,21 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("customization.mcp.oauth.start"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1),
-    server: codexMcpOauthStartSchema.shape.server,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("customization.mcp.oauth.status"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1),
-    server: codexMcpOauthStartSchema.shape.server,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("customization.mcp.reload"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,

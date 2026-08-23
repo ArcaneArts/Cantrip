@@ -2089,7 +2089,7 @@ change the original database-dump guarantee.
 | Run logs, worktree-setup output, and detailed setup failures                                       | Operation-bound `run-content` responses; durable setup rows retain stable codes and generic messages rather than worker diagnostics                                                | Stable public lifecycle/result codes with endpoint-opened output, signals, and detailed diagnostics                                                                | E2EE/minimization complete                             | P1       | Medium      |
 | Durable project/chat job progress and detailed errors                                              | Several folder setup, GitHub conversion, replica, chat import, and chat relocation jobs persist free-form progress and error messages                                              | Stable public lifecycle/error codes plus protected details where endpoint presentation is required                                                                 | Planned minimization                                   | P1       | Medium      |
 | Skill files, skill inventories, hooks, roots, external-import previews, and customization errors   | Operation-bound `customization-content` envelopes across app, server, and worker; the server sees only routing scope, operation class, coarse lifecycle/result, and ciphertext     | Keep all names, paths, files, contents, commands, matchers, warnings, errors, previews, and import details client/worker-only                                      | E2EE complete                                          | P1       | Medium      |
-| MCP runtime inventory and resource contents                                                        | Saved/discovered configuration and the combined runtime inventory are protected; resource reads plus OAuth/reload requests, results, and detailed status remain relay plaintext    | Reuse `customization-content` for MCP resource-read, OAuth, reload, and status request/response bodies                                                             | Runtime inventory E2EE; operation rollout planned      | P1       | Medium      |
+| MCP runtime inventory and resource contents                                                        | Operation-bound `customization-content` envelopes protect runtime inventory, resource reads, OAuth/reload operations, authorization URLs, resource bodies, and diagnostics         | Keep tool/resource schemas and metadata, request parameters, returned content, URLs, server names, and detailed errors client/worker-only                          | E2EE complete                                          | P1       | Medium      |
 | Discovered project and terminal script commands                                                    | Operation-bound `repository-content` responses opened only by the requesting client; discovery remains worker-local                                                                | Keep command, name, source, and description opaque to the relay server                                                                                             | E2EE complete                                          | P1       | Low-Medium  |
 | Client-control notification title and message                                                      | Agent-provided notification content crosses the server and live hub as plaintext                                                                                                   | Operation-bound endpoint ciphertext opened only by the selected authorized client                                                                                  | Planned                                                | P1       | Low-Medium  |
 | Session IP-address and user-agent hashes                                                           | Durable unsalted hashes permit enumeration/correlation and are not used by a current user-facing security feature                                                                  | Stop collecting and remove the columns unless a defined abuse-control feature requires a deliberately designed representation                                      | Planned minimization                                   | P2       | Low         |
@@ -2162,10 +2162,35 @@ to originate protected requests or retain customization plaintext.
 The customization target lookup is deliberately a public control-plane route:
 it returns only worker/project/chat/provider routing identifiers needed to
 select the correct worker grant and construct authenticated associated data.
-MCP resource reads and MCP OAuth/reload operations remain separately tracked
-until their plaintext request, response, and live-status paths are converted;
-the combined customization inventory that describes MCP runtime state is
-already protected by this cycle.
+The combined customization inventory also protects MCP runtime state. MCP
+resource, OAuth, reload, and status operations are described separately below.
+
+### MCP runtime protected content
+
+Saved and discovered MCP configuration retains its existing protected storage
+and discovery boundary. The runtime inventory, including server names and
+status details, tool descriptions, input/output schemas, resources, resource
+templates, URIs, descriptions, MIME information, annotations, and private
+metadata, is carried inside the protected customization inventory. The server
+does not parse or cache that inventory.
+
+MCP resource reads, OAuth start/status, and reload now use operation-specific
+`customization-content` request and response envelopes. Resource server names,
+URIs, returned text/blob bodies, authorization URLs, OAuth server names, and
+detailed errors exist only at the unlocked client and assigned worker. OAuth's
+coarse pending/completed/unknown lifecycle may remain public so the server can
+route and rate-limit an operation, but success/failure diagnostics and any URL
+or token-bearing value remain encrypted. The worker seals runtime exceptions
+inside the response instead of returning free-form relay-visible errors.
+
+The server no longer polls OAuth state or publishes payload-bearing
+customization status events, because it cannot originate a correctly bound
+protected request. The unlocked client polls while the operation is pending,
+opening each status locally; live customization traffic is now an invalidation
+only. Request and response ciphertext remains bound to the server, worker,
+chat/project/provider scope, operation ID and class, direction, sequence, and
+key revision. Replayed OAuth-start and reload mutations are rejected by the
+worker's customization replay guard.
 
 The server should continue to see opaque IDs, worker assignments, lifecycle
 states, ordering, timestamps, sizes, flow-control values, counters, and stable
@@ -2356,9 +2381,15 @@ counts, worker presence, model-route choices, and traffic patterns.
     paths, commands, warnings, and detailed errors across app, server, and
     worker. The worker performs schema validation and local mutations, the
     client owns presentation, and the server retains only authenticated routing
-    scope plus coarse operation/result/lifecycle metadata. MCP resource,
-    OAuth, reload, and detailed live-status operations remain explicitly open
-    in the post-closure ledger for the next rollout.
+    scope plus coarse operation/result/lifecycle metadata.
+25. **MCP runtime content — complete:** protected customization inventories
+    cover MCP servers, tools, schemas, resources, templates, descriptions,
+    URIs, annotations, and diagnostics. Operation-specific
+    `customization-content` requests and responses protect resource-read
+    parameters and text/blob results, OAuth server names, authorization URLs
+    and status details, reload results, and runtime errors. The client polls
+    protected status while pending; the server emits only payload-free
+    customization invalidations and retains coarse lifecycle metadata.
 
 A usable first encrypted component is moderate in scope. A robust system with
 multi-device enrollment, unattended workers, device replacement, rotation,

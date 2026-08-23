@@ -7,7 +7,6 @@ import {
   appLiveServerMessageSchema,
   chatMessageOpaqueSummarySchema,
   chatMessageWirePageSchema,
-  codexMcpOauthStartResultSchema,
   providerAuthLiveStatusSchema,
   unprobedCodexRuntimeReport,
   workerLogStreamServerMessageSchema,
@@ -106,7 +105,6 @@ const opaqueWorkflowContent = () => ({
     ciphertext: randomBytes(32).toString("base64url"),
   },
 });
-let oauthStatusReads = 0;
 let chatSyncReads = 0;
 let gitOperationInspections = 0;
 let gitOperationInspection: GitManagedOperationWorkerState | null = null;
@@ -159,17 +157,6 @@ const workerBridge: WorkerCommandBus = {
   },
   async request(_workerId, command) {
     switch (command.type) {
-      case "customization.mcp.oauth.start":
-        return {
-          server: command.server,
-          authorizationUrl: `https://auth.example.test/${command.server}`,
-          status: "pending",
-        };
-      case "customization.mcp.oauth.status":
-        oauthStatusReads += 1;
-        return { server: command.server, status: "succeeded", error: null };
-      case "customization.skill.configure":
-        return { path: command.path, effectiveEnabled: command.enabled };
       case "chat.sync":
         chatSyncReads += 1;
         return {
@@ -1049,38 +1036,6 @@ describe.sequential("application live WebSocket", () => {
           ),
       ).toBe(true),
     );
-
-    const customizationEventStart = messages.length;
-    const oauthStart = codexMcpOauthStartResultSchema.parse(
-      (
-        await app.inject({
-          method: "POST",
-          url: `/api/chats/${chatId}/customizations/mcp-oauth`,
-          payload: { server: "docs" },
-        })
-      ).json(),
-    );
-    expect(oauthStart.status).toBe("pending");
-    await vi.waitFor(
-      () =>
-        expect(
-          messages
-            .slice(customizationEventStart)
-            .find(
-              (message) =>
-                message.type === "event" &&
-                message.resource === "customization" &&
-                message.entityId === "mcp-oauth" &&
-                message.payload?.status === "succeeded",
-            ),
-        ).toMatchObject({
-          type: "event",
-          scope: { kind: "chat", chatId },
-          payload: { server: "docs", status: "succeeded", error: null },
-        }),
-      { timeout: 2_500 },
-    );
-    expect(oauthStatusReads).toBe(1);
 
     const provider = await database.repository.createModelProvider(
       LOCAL_USER_ID,

@@ -111,7 +111,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "247b76b5a6064bd89bc02f74624e98c9b93fd777ad6b60352b4ec4d533c92992",
+    "5b4126d1e47271ee47932bdbe1c16cad8b63e9e179f34f6cc8c9bd5366bd1a06",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:
@@ -3526,19 +3526,14 @@ function applicationRouteContentClassification(route) {
   }
   if (
     /\/skills(?:\/|$)/u.test(route.path) ||
-    (/\/customizations(?:\/|$)/u.test(route.path) &&
-      !/\/mcp-(?:oauth|reload|resource)(?:\/|$)/u.test(route.path))
+    /\/customizations(?:\/|$)/u.test(route.path)
   ) {
     return {
       classification: "endpoint-protected",
       rationale: "operation-bound customization content",
     };
   }
-  if (
-    /(?:\/customizations\/mcp-(?:oauth|reload|resource)(?:\/|$)|\/tunnels(?:\/|$))/u.test(
-      route.path,
-    )
-  ) {
+  if (/\/tunnels(?:\/|$)/u.test(route.path)) {
     return {
       classification: "tracked-rollout-gap",
       rationale: "post-closure remaining-work ledger",
@@ -3594,20 +3589,10 @@ function workerCommandContentClassification(command) {
       rationale: "bounded worktree-readiness metadata without Run semantics",
     };
   }
-  if (
-    /^skills\./u.test(command) ||
-    (/^customization\./u.test(command) &&
-      !/^customization\.mcp\./u.test(command))
-  ) {
+  if (/^(?:skills\.|customization\.)/u.test(command)) {
     return {
       classification: "endpoint-protected",
       rationale: "operation-bound customization content",
-    };
-  }
-  if (/^customization\.mcp\./u.test(command)) {
-    return {
-      classification: "tracked-rollout-gap",
-      rationale: "post-closure remaining-work ledger",
     };
   }
   if (
@@ -3633,7 +3618,7 @@ function workerCommandContentClassification(command) {
 }
 
 function liveResourceContentClassification(resource) {
-  if (["customization", "tunnel"].includes(resource)) {
+  if (resource === "tunnel") {
     return {
       classification: "tracked-rollout-gap",
       rationale: "post-closure remaining-work ledger",
@@ -3643,6 +3628,12 @@ function liveResourceContentClassification(resource) {
     return {
       classification: "minimized-operational-metadata",
       rationale: "Run lifecycle invalidation without semantic content",
+    };
+  }
+  if (resource === "customization") {
+    return {
+      classification: "endpoint-protected",
+      rationale: "customization invalidation without semantic payload",
     };
   }
   if (

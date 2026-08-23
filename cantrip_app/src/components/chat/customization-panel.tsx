@@ -58,7 +58,6 @@ import {
   setChatSkillRoots,
   startChatMcpOauth,
 } from "@/lib/api";
-import { useAppLiveStatus } from "@/lib/app-live-react";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/error-message";
 
@@ -920,8 +919,6 @@ export function CustomizationPanel({
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
-  const liveStatus = useAppLiveStatus();
-  const customizationResourcesLive = liveStatus === "live";
   const inventoryKey = ["chat-customizations", chatId, "inventory"] as const;
   const [oauthServer, setOauthServer] = useState<string | null>(null);
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
@@ -1013,11 +1010,10 @@ export function CustomizationPanel({
     queryKey: ["chat-customizations", chatId, "mcp-oauth", oauthServer],
     queryFn: () => getChatMcpOauthStatus(chatId, oauthServer!),
     enabled: open && oauthServer !== null,
-    refetchInterval: customizationResourcesLive
-      ? false
-      : (query) => (query.state.data?.status === "pending" ? 1_000 : false),
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending" ? 1_000 : false,
     refetchOnWindowFocus: false,
-    staleTime: customizationResourcesLive ? Infinity : 0,
+    staleTime: 0,
   });
   const externalImportStatus = useQuery({
     queryKey: ["chat-customizations", chatId, "external-import", importId],

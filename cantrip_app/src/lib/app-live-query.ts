@@ -1,8 +1,6 @@
 import {
   chatMessageSchema,
   codeGraphProjectStatusSchema,
-  codexExternalImportStatusSchema,
-  codexMcpOauthStatusSchema,
   providerAuthLiveStatusSchema,
   gitConflictListSchema,
   gitManagedOperationResponseSchema,
@@ -13,8 +11,6 @@ import type {
   AppLiveScope,
   AppLiveServerMessage,
   CodeGraphProjectStatus,
-  CodexExternalImportStatus,
-  CodexMcpOauthStatus,
   CodexAuthStatus,
   GitConflictList,
   GitManagedOperationResponse,
@@ -444,8 +440,7 @@ export class AppLiveQueryBridge {
       this.#applyProviderAuthEvent(event) ||
       this.#applyGitOperationEvent(event) ||
       this.#applyGitConflictEvent(event) ||
-      worktreeStatus.applied ||
-      this.#applyCustomizationStatusEvent(event);
+      worktreeStatus.applied;
     if (directlyApplied) {
       this.#directlyAppliedEventCount += 1;
       if (event.resource !== "worktree-status") return;
@@ -836,46 +831,6 @@ export class AppLiveQueryBridge {
       const oldest = revisions.keys().next().value;
       if (oldest !== undefined) revisions.delete(oldest);
     }
-  }
-
-  #applyCustomizationStatusEvent(event: AppLiveEvent): boolean {
-    if (
-      event.resource !== "customization" ||
-      event.action !== "updated" ||
-      event.scope.kind !== "chat" ||
-      !event.payload
-    ) {
-      return false;
-    }
-    if (event.entityId === "mcp-oauth") {
-      const parsed = codexMcpOauthStatusSchema.safeParse(event.payload);
-      if (!parsed.success) return false;
-      this.#queryClient.setQueryData<CodexMcpOauthStatus>(
-        [
-          "chat-customizations",
-          event.scope.chatId,
-          "mcp-oauth",
-          parsed.data.server,
-        ],
-        parsed.data,
-      );
-      return true;
-    }
-    if (event.entityId === "external-import") {
-      const parsed = codexExternalImportStatusSchema.safeParse(event.payload);
-      if (!parsed.success) return false;
-      this.#queryClient.setQueryData<CodexExternalImportStatus>(
-        [
-          "chat-customizations",
-          event.scope.chatId,
-          "external-import",
-          parsed.data.importId,
-        ],
-        parsed.data,
-      );
-      return true;
-    }
-    return false;
   }
 
   async recoverScopes(

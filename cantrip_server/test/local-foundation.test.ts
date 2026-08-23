@@ -10,10 +10,6 @@ import {
   browserListSchema,
   browserSummarySchema,
   customizationContentScopeSchema,
-  codexMcpOauthStartResultSchema,
-  codexMcpOauthStatusSchema,
-  codexMcpReloadResultSchema,
-  codexMcpResourceReadSchema,
   chatAttachmentSummarySchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
@@ -1100,16 +1096,11 @@ const workerBridge = {
           command.scope,
         );
       case "customization.mcp.resource.read":
-        return {
-          contents: [
-            {
-              type: "text",
-              uri: command.uri,
-              mimeType: "text/markdown",
-              text: "# Cantrip",
-            },
-          ],
-        };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+        );
       case "customization.skill.configure":
         return protectedCustomizationResponse(
           command.operationId,
@@ -1123,15 +1114,25 @@ const workerBridge = {
           command.scope,
         );
       case "customization.mcp.oauth.start":
-        return {
-          server: command.server,
-          authorizationUrl: `https://auth.example.test/${command.server}`,
-          status: "pending",
-        };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+          "pending",
+        );
       case "customization.mcp.oauth.status":
-        return { server: command.server, status: "succeeded", error: null };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+          "completed",
+        );
       case "customization.mcp.reload":
-        return { reloaded: true };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+        );
       case "customization.external.apply":
         return protectedCustomizationResponse(
           command.operationId,
@@ -4115,25 +4116,24 @@ describe("local server foundation", () => {
       operation: "customization.external.preview",
       scope: customizationTarget,
     });
+    const mcpResourceOperationId = "67c5b79c-caa7-4d1a-9a4f-fd00be321d9a";
     expect(
-      codexMcpResourceReadSchema.parse(
+      protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
             method: "POST",
             url: `/api/chats/${chat.id}/customizations/mcp-resource`,
-            payload: { server: "docs", uri: "docs://readme" },
+            payload: protectedCustomizationRequest(
+              mcpResourceOperationId,
+              "customization.mcp.resource.read",
+              customizationTarget,
+            ),
           })
         ).json(),
       ),
-    ).toEqual({
-      contents: [
-        {
-          type: "text",
-          uri: "docs://readme",
-          mimeType: "text/markdown",
-          text: "# Cantrip",
-        },
-      ],
+    ).toMatchObject({
+      operationId: mcpResourceOperationId,
+      operation: "customization.mcp.resource.read",
     });
 
     const configureSkillOperationId = "5ddd4be8-a280-4f4e-b745-0be96068093a";
@@ -4174,37 +4174,65 @@ describe("local server foundation", () => {
       operationId: skillRootsOperationId,
       operation: "customization.skill-roots.set",
     });
+    const mcpOauthOperationId = "2a39a88b-5384-4678-81e3-a18160313aef";
     expect(
-      codexMcpOauthStartResultSchema.parse(
+      protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
             method: "POST",
             url: `/api/chats/${chat.id}/customizations/mcp-oauth`,
-            payload: { server: "docs" },
+            payload: protectedCustomizationRequest(
+              mcpOauthOperationId,
+              "customization.mcp.oauth.start",
+              customizationTarget,
+            ),
           })
         ).json(),
       ),
-    ).toMatchObject({ server: "docs", status: "pending" });
+    ).toMatchObject({
+      operationId: mcpOauthOperationId,
+      operation: "customization.mcp.oauth.start",
+      lifecycle: "pending",
+    });
+    const mcpOauthStatusOperationId = "20a9b172-9f0b-4d34-946d-fef443460aae";
     expect(
-      codexMcpOauthStatusSchema.parse(
+      protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${chat.id}/customizations/mcp-oauth/status?server=docs`,
+            method: "POST",
+            url: `/api/chats/${chat.id}/customizations/mcp-oauth/status`,
+            payload: protectedCustomizationRequest(
+              mcpOauthStatusOperationId,
+              "customization.mcp.oauth.status",
+              customizationTarget,
+            ),
           })
         ).json(),
-      ).status,
-    ).toBe("succeeded");
+      ),
+    ).toMatchObject({
+      operationId: mcpOauthStatusOperationId,
+      operation: "customization.mcp.oauth.status",
+      lifecycle: "completed",
+    });
+    const mcpReloadOperationId = "64112f3c-c9b0-4450-9fe2-2408a4d3a9fa";
     expect(
-      codexMcpReloadResultSchema.parse(
+      protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
             method: "POST",
             url: `/api/chats/${chat.id}/customizations/mcp-reload`,
+            payload: protectedCustomizationRequest(
+              mcpReloadOperationId,
+              "customization.mcp.reload",
+              customizationTarget,
+            ),
           })
         ).json(),
-      ).reloaded,
-    ).toBe(true);
+      ),
+    ).toMatchObject({
+      operationId: mcpReloadOperationId,
+      operation: "customization.mcp.reload",
+    });
     const importOperationId = "8a616f2c-4b84-40d4-9ce4-15c6fcbe987e";
     const importStarted = protectedCustomizationResponseSchema.parse(
       (

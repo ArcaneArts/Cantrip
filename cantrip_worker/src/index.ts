@@ -11,6 +11,13 @@ import {
   codexExternalImportApplySchema,
   codexExternalImportPreviewSchema,
   codexExternalImportStatusSchema,
+  codexMcpOauthStartResultSchema,
+  codexMcpOauthStartSchema,
+  codexMcpOauthStatusSchema,
+  codexMcpReloadRequestSchema,
+  codexMcpReloadResultSchema,
+  codexMcpResourceReadRequestSchema,
+  codexMcpResourceReadSchema,
   codexSkillConfigResultSchema,
   codexSkillConfigUpdateSchema,
   codexSkillRootsResultSchema,
@@ -2998,17 +3005,38 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               provider: provider(),
             }),
         });
-      case "customization.mcp.resource.read":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).readMcpResource({
-          cwd: command.cwd,
-          model: command.model,
-          provider: provider(),
-          server: command.server,
-          uri: command.uri,
+      case "customization.mcp.resource.read": {
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: codexMcpResourceReadRequestSchema,
+          service: workerEncryption,
         });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexMcpResourceReadSchema,
+          service: workerEncryption,
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).readMcpResource({
+              cwd: command.cwd,
+              model: command.model,
+              provider: provider(),
+              server: input.server,
+              uri: input.uri,
+            }),
+        });
+      }
       case "customization.skill.configure": {
         customizationContentReplay.reserve({
           serverId: command.serverId,
@@ -3084,30 +3112,112 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             }),
         });
       }
-      case "customization.mcp.oauth.start":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).startMcpOauth({
-          cwd: command.cwd,
-          model: command.model,
-          provider: provider(),
-          server: command.server,
+      case "customization.mcp.oauth.start": {
+        customizationContentReplay.reserve({
+          serverId: command.serverId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
         });
-      case "customization.mcp.oauth.status":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).mcpOauthStatus(command.server);
-      case "customization.mcp.reload":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).reloadMcpServers({
-          cwd: command.cwd,
-          model: command.model,
-          provider: provider(),
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: codexMcpOauthStartSchema,
+          service: workerEncryption,
         });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexMcpOauthStartResultSchema,
+          service: workerEncryption,
+          lifecycle: () => "pending",
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).startMcpOauth({
+              cwd: command.cwd,
+              model: command.model,
+              provider: provider(),
+              server: input.server,
+            }),
+        });
+      }
+      case "customization.mcp.oauth.status": {
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: codexMcpOauthStartSchema,
+          service: workerEncryption,
+        });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexMcpOauthStatusSchema,
+          service: workerEncryption,
+          lifecycle: (status) =>
+            status.status === "pending"
+              ? "pending"
+              : status.status === "unknown"
+                ? "unknown"
+                : "completed",
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).mcpOauthStatus(input.server),
+        });
+      }
+      case "customization.mcp.reload": {
+        customizationContentReplay.reserve({
+          serverId: command.serverId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+        });
+        await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: codexMcpReloadRequestSchema,
+          service: workerEncryption,
+        });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexMcpReloadResultSchema,
+          service: workerEncryption,
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).reloadMcpServers({
+              cwd: command.cwd,
+              model: command.model,
+              provider: provider(),
+            }),
+        });
+      }
       case "customization.external.apply": {
         customizationContentReplay.reserve({
           serverId: command.serverId,

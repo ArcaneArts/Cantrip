@@ -1008,7 +1008,7 @@ describe("application live query bridge", () => {
     });
   });
 
-  it("applies live customization statuses without a follow-up GET", async () => {
+  it("treats customization live events as invalidations, not plaintext status", async () => {
     vi.useFakeTimers();
     try {
       const queryClient = new QueryClient();
@@ -1025,19 +1025,7 @@ describe("application live query bridge", () => {
         }),
         payload: { server: "docs", status: "succeeded", error: null },
       });
-      bridge.handleEvent({
-        ...event({
-          entityId: "external-import",
-          resource: "customization",
-          scope: { kind: "chat", chatId: "chat-one" },
-        }),
-        cursor: 2,
-        payload: {
-          importId: "import-one",
-          status: "completed",
-          results: [],
-        },
-      });
+      await vi.advanceTimersByTimeAsync(100);
 
       expect(
         queryClient.getQueryData([
@@ -1046,26 +1034,7 @@ describe("application live query bridge", () => {
           "mcp-oauth",
           "docs",
         ]),
-      ).toEqual({ server: "docs", status: "succeeded", error: null });
-      expect(
-        queryClient.getQueryData([
-          "chat-customizations",
-          "chat-one",
-          "external-import",
-          "import-one",
-        ]),
-      ).toEqual({ importId: "import-one", status: "completed", results: [] });
-      expect(invalidate).not.toHaveBeenCalled();
-
-      bridge.handleEvent({
-        ...event({
-          resource: "customization",
-          scope: { kind: "chat", chatId: "chat-one" },
-        }),
-        action: "invalidated",
-        cursor: 3,
-      });
-      await vi.advanceTimersByTimeAsync(100);
+      ).toBeUndefined();
 
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["chat-customizations", "chat-one", "inventory"],
