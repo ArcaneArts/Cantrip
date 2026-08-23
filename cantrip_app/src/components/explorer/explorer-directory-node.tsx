@@ -24,6 +24,7 @@ export function ExplorerDirectoryNode({
   onShowInGraph,
   onOpenTerminal,
   onToggle,
+  queryScope,
   revealedPath,
 }: {
   changeByPath: ReadonlyMap<string, ExplorerChangeSummary>;
@@ -39,6 +40,7 @@ export function ExplorerDirectoryNode({
   onShowInGraph?(rootPath: string | null): void;
   onOpenTerminal(entry: ExplorerEntry): void;
   onToggle(path: string): void;
+  queryScope: string;
   revealedPath?: string | null;
 }) {
   const expanded = expandedPaths.has(entry.path);
@@ -47,6 +49,7 @@ export function ExplorerDirectoryNode({
     explorerId,
     gitStatus,
     path: entry.path,
+    queryScope,
   });
   return (
     <>
@@ -112,6 +115,7 @@ export function ExplorerDirectoryNode({
                     onShowInGraph={onShowInGraph}
                     onOpenTerminal={onOpenTerminal}
                     onToggle={onToggle}
+                    queryScope={queryScope}
                     revealedPath={revealedPath}
                   />
                 ) : (

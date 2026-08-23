@@ -23,6 +23,8 @@ import {
 import { WorkerEncryptionService } from "./worker-encryption.js";
 
 const ownerId = "owner-private-label-worker";
+const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const serverUrl = "https://cantrip.test";
 const timestamp = "2026-08-19T12:00:00.000Z";
 const directories: string[] = [];
 
@@ -87,7 +89,7 @@ describe("worker private display-label adapter", () => {
     const workerId = "worker-a";
     const first = await WorkerEncryptionService.open({
       dataDirectory,
-      serverUrl: "https://cantrip.test",
+      serverUrl,
       workerId,
     });
     const workerPrincipal = principal(first, workerId);
@@ -109,6 +111,7 @@ describe("worker private display-label adapter", () => {
       }),
     );
     await first.acceptBootstrap({
+      serverId,
       ownerId,
       principal: workerPrincipal,
       grants: [workerGrant],
@@ -117,10 +120,11 @@ describe("worker private display-label adapter", () => {
 
     const restarted = await WorkerEncryptionService.open({
       dataDirectory,
-      serverUrl: "https://cantrip.test",
+      serverUrl,
       workerId,
     });
     await restarted.acceptBootstrap({
+      serverId,
       ownerId,
       principal: workerPrincipal,
       grants: [workerGrant],
@@ -165,7 +169,7 @@ describe("worker private display-label adapter", () => {
   it("fails closed for missing, stale, revoked, and another worker's grant", async () => {
     const workerA = await WorkerEncryptionService.open({
       dataDirectory: await directory(),
-      serverUrl: "https://cantrip.test",
+      serverUrl,
       workerId: "worker-a",
     });
     await expect(
@@ -197,6 +201,7 @@ describe("worker private display-label adapter", () => {
       }),
     );
     await workerA.acceptBootstrap({
+      serverId,
       ownerId,
       principal: workerPrincipal,
       grants: [workerGrant],
@@ -220,6 +225,7 @@ describe("worker private display-label adapter", () => {
     ).rejects.toMatchObject({ state: "stale" });
 
     await workerA.acceptBootstrap({
+      serverId,
       ownerId,
       principal: principal(workerA, "worker-a", "revoked"),
       grants: [],
@@ -236,7 +242,7 @@ describe("worker private display-label adapter", () => {
 
     const workerB = await WorkerEncryptionService.open({
       dataDirectory: await directory(),
-      serverUrl: "https://cantrip.test",
+      serverUrl,
       workerId: "worker-b",
     });
     const workerBPrincipal = principal(workerB, "worker-b");
@@ -253,6 +259,7 @@ describe("worker private display-label adapter", () => {
     );
     await expect(
       workerB.acceptBootstrap({
+        serverId,
         ownerId,
         principal: workerBPrincipal,
         grants: [grantEncryptedForA],

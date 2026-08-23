@@ -117,6 +117,28 @@ describe("generic tunnel data plane protocol", () => {
     }
   });
 
+  it("round-trips relay correlation only on the destination connect frame", () => {
+    const diagnosticTraceId = "11111111-1111-4111-8111-111111111111";
+    const header: TunnelDataPlaneFrameHeader = {
+      ...base,
+      kind: "connect",
+      target: { kind: "tcp", host: "127.0.0.1", port: 4_310 },
+      initialCreditBytes: 1_024,
+      diagnosticTraceId,
+    };
+    expect(
+      decodeTunnelDataPlaneFrame(
+        encodeTunnelDataPlaneFrame(header, new Uint8Array()),
+      ).header,
+    ).toEqual(header);
+    expect(() =>
+      encodeTunnelDataPlaneFrame(
+        { ...header, diagnosticTraceId: "not-a-uuid" } as never,
+        new Uint8Array(),
+      ),
+    ).toThrow();
+  });
+
   it("rejects unsafe targets, invalid credit, malformed lengths, and payload misuse", () => {
     expect(() =>
       encodeTunnelDataPlaneFrame(

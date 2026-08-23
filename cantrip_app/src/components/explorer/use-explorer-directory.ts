@@ -10,21 +10,29 @@ export function useExplorerDirectory({
   explorerId,
   gitStatus,
   path,
+  queryScope,
 }: {
   enabled: boolean;
   explorerId: string;
   gitStatus: GitStatus | undefined;
   path: string;
+  queryScope: string;
 }) {
   const directory = useQuery({
     enabled,
     queryFn: () => getExplorerDirectory(explorerId, path),
-    queryKey: ["explorer-directory", explorerId, path],
+    queryKey: ["explorer-directory", explorerId, path, queryScope],
   });
   const commits = useQuery({
     enabled: enabled && directory.isSuccess && gitStatus !== undefined,
     queryFn: () => getExplorerDirectoryCommits(explorerId, path),
-    queryKey: ["explorer-directory-commits", explorerId, path, gitStatus?.head],
+    queryKey: [
+      "explorer-directory-commits",
+      explorerId,
+      path,
+      gitStatus?.head,
+      queryScope,
+    ],
     retry: false,
   });
   const entries = useMemo(

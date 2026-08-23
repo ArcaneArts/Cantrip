@@ -18,6 +18,7 @@ import { WorkerTunnelEndpoint } from "./worker-endpoint.js";
 
 interface ActiveAttachment {
   authorization: TunnelAttachmentAuthorization;
+  diagnosticTraceId?: string;
   endpoint: DesktopTunnelEndpoint;
   expires: ReturnType<typeof setTimeout>;
   route: TunnelRouteHandle;
@@ -60,6 +61,9 @@ export class TunnelRuntimeManager {
       projectId: authorization.projectId,
       tunnelId: authorization.tunnelId,
       workerId: authorization.destination.workerId,
+      ...(initialize.diagnosticTraceId
+        ? { diagnosticTraceId: initialize.diagnosticTraceId }
+        : {}),
     });
     if (this.#closed) throw new Error("The tunnel runtime is shutting down.");
     if (initialize.clientId !== authorization.clientId) {
@@ -80,6 +84,7 @@ export class TunnelRuntimeManager {
     );
     const route = this.#broker.registerRoute({
       attachmentId: authorization.attachmentId,
+      diagnosticTraceId: initialize.diagnosticTraceId,
       destination,
       destinationTarget: {
         kind: "protected-tunnel",
@@ -130,6 +135,7 @@ export class TunnelRuntimeManager {
     );
     const active = {
       authorization,
+      diagnosticTraceId: initialize.diagnosticTraceId,
       endpoint: source,
       expires,
       route,
@@ -175,6 +181,9 @@ export class TunnelRuntimeManager {
       projectId: authorization.projectId,
       tunnelId: authorization.tunnelId,
       workerId: authorization.destination.workerId,
+      ...(initialize.diagnosticTraceId
+        ? { diagnosticTraceId: initialize.diagnosticTraceId }
+        : {}),
       durationMs: Date.now() - startedAtMs,
     });
     return {
@@ -205,6 +214,9 @@ export class TunnelRuntimeManager {
       projectId: active.authorization.projectId,
       tunnelId: active.authorization.tunnelId,
       workerId: active.authorization.destination.workerId,
+      ...(active.diagnosticTraceId
+        ? { diagnosticTraceId: active.diagnosticTraceId }
+        : {}),
     });
   }
 

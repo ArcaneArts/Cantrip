@@ -88,6 +88,9 @@ export class TunnelDestinationRouter {
     diagnostics: TunnelDiagnosticContext = {},
   ): void {
     if (header.kind === "connect") {
+      const connectionDiagnostics = diagnostics.diagnosticTraceId
+        ? diagnostics
+        : { diagnosticTraceId: header.diagnosticTraceId };
       if (header.target.kind === "protected-tunnel") {
         const key = connectionKey(header);
         const generation = Symbol();
@@ -95,7 +98,7 @@ export class TunnelDestinationRouter {
         void this.#handleProtectedConnect(
           header,
           payload,
-          diagnostics,
+          connectionDiagnostics,
           generation,
         );
       } else if (header.target.kind === "tcp") {

@@ -506,14 +506,15 @@ describe("Cantrip CLI worker broker", () => {
 
   it("encrypts browser URLs on the worker before relaying the command", async () => {
     const directory = await temporaryDirectory();
-    const serverId = "https://cantrip.example";
+    const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const serverUrl = "https://cantrip.example";
     const ownerId = "browser-cli-owner";
     const workerId = "worker-example";
     const surfaceId = "browser-surface";
     const sentinelUrl = "https://private.example.test/cli-sentinel";
     const service = await WorkerEncryptionService.open({
       dataDirectory: path.join(directory, "worker-data"),
-      serverUrl: serverId,
+      serverUrl,
       workerId,
     });
     const registration = service.registration();
@@ -582,6 +583,7 @@ describe("Cantrip CLI worker broker", () => {
       }),
     };
     await service.acceptBootstrap({
+      serverId,
       ownerId,
       principal,
       grants: [grant, privateLabelGrant],
@@ -591,7 +593,7 @@ describe("Cantrip CLI worker broker", () => {
     const broker = new CantripCliBroker(
       {
         dataDirectory: path.join(directory, "worker-data"),
-        serverUrl: serverId,
+        serverUrl,
         token: "worker-token",
         workerId,
       },

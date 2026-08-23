@@ -22,7 +22,8 @@ import {
 } from "./browser-private-state.js";
 
 const ownerId = "browser-private-state-owner";
-const serverId = "https://browser-private-state.test";
+const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const serverUrl = "https://browser-private-state.test";
 const workerId = "browser-private-state-worker";
 const timestamp = "2026-08-20T12:00:00.000Z";
 const directories: string[] = [];
@@ -34,7 +35,7 @@ async function service(): Promise<WorkerEncryptionService> {
   directories.push(dataDirectory);
   const service = await WorkerEncryptionService.open({
     dataDirectory,
-    serverUrl: serverId,
+    serverUrl,
     workerId,
   });
   const registration = service.registration();
@@ -81,7 +82,12 @@ async function service(): Promise<WorkerEncryptionService> {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  await service.acceptBootstrap({ ownerId, principal, grants: [grant] });
+  await service.acceptBootstrap({
+    serverId,
+    ownerId,
+    principal,
+    grants: [grant],
+  });
   return service;
 }
 

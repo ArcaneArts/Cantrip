@@ -172,6 +172,7 @@ function sourceFrame(
 
 describe("desktop tunnel runtime", () => {
   it("relays concurrent binary streams and half-closes through a worker endpoint", async () => {
+    const diagnosticTraceId = "22222222-2222-4222-8222-222222222222";
     const repository = {
       activateDesktopTunnelAttachment: async () => true,
       markDesktopTunnelAttachmentOffline: async () => undefined,
@@ -189,6 +190,7 @@ describe("desktop tunnel runtime", () => {
     const ready = await runtime.attach(socket, authorization, {
       type: "initialize",
       clientId: authorization.clientId,
+      diagnosticTraceId,
     });
     expect(ready).toMatchObject({
       sourceEndpointId: "desktop:desktop-1:attachment-1",
@@ -218,6 +220,7 @@ describe("desktop tunnel runtime", () => {
 
     expect(bridge.received[0]).toMatchObject({
       kind: "connect",
+      diagnosticTraceId,
       target: {
         kind: "protected-tunnel",
         recordId: authorization.tunnelId,

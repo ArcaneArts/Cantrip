@@ -31,6 +31,7 @@ import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser
 import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file-routing";
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
 import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
+import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
 import {
   defaultExplorerFileMode,
   markdownPreviewUsesPlainText,
@@ -45,13 +46,11 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   getExplorerFile,
-  getWorkers,
   loadExplorerMedia,
   saveExplorerFile,
   updateExplorerViewState,
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
-import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import { cn } from "@/lib/utils";
 
 const StructuredFileVisual = lazy(async () => {
@@ -354,10 +353,12 @@ export function ExplorerView({
   const [mediaRevision, setMediaRevision] = useState(0);
   const [viewStatePending, setViewStatePending] = useState(0);
   const [viewStateError, setViewStateError] = useState<string | null>(null);
-  const [streamEncryptionReady, setStreamEncryptionReady] = useState(false);
-  const [streamEncryptionError, setStreamEncryptionError] = useState<
-    string | null
-  >(null);
+  const streamEncryption = useExplorerWorkerEncryption(explorer, active);
+  const streamEncryptionReady = streamEncryption.ready;
+  const streamEncryptionBindingRef = useRef(streamEncryption.bindingKey);
+  streamEncryptionBindingRef.current = streamEncryption.bindingKey;
+  const streamEncryptionReadyRef = useRef(streamEncryptionReady);
+  streamEncryptionReadyRef.current = streamEncryptionReady;
   const queryClient = useQueryClient();
   const mountedRef = useRef(true);
   const selectedPathRef = useRef(selectedPath);
@@ -388,7 +389,12 @@ export function ExplorerView({
       explorerMediaTypeForPath(selectedPath) === null,
     ),
     queryFn: () => getExplorerFile(explorer.id, selectedPath!),
-    queryKey: ["explorer-file", explorer.id, selectedPath],
+    queryKey: [
+      "explorer-file",
+      explorer.id,
+      selectedPath,
+      streamEncryption.bindingKey,
+    ],
   });
   const saveFile = useMutation({
     mutationFn: ({
@@ -430,33 +436,6 @@ export function ExplorerView({
   draftVersionRef.current = draftVersion;
   selectedPathRef.current = selectedPath;
   fileModeRef.current = fileMode;
-
-  useEffect(() => {
-    let disposed = false;
-    setStreamEncryptionReady(false);
-    setStreamEncryptionError(null);
-    void getWorkers()
-      .then((workers) =>
-        ensureSurfacePrivateStateWorkerEncryption({
-          worker: workers.find(
-            (worker) => worker.workerId === explorer.activeWorkerId,
-          ),
-        }),
-      )
-      .then(() => {
-        if (!disposed) setStreamEncryptionReady(true);
-      })
-      .catch(() => {
-        if (!disposed) {
-          setStreamEncryptionError(
-            "Explorer encryption is unavailable for this worker.",
-          );
-        }
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [explorer.activeWorkerId]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -557,24 +536,32 @@ export function ExplorerView({
 
   const loadFile = useCallback(
     async (path: string) => {
+      const bindingKey = streamEncryptionBindingRef.current;
       setDraft("");
       setBaselineContent("");
       setDraftVersion(null);
       resetSaveFile();
+      if (!streamEncryptionReadyRef.current || !bindingKey) return;
       if (explorerMediaTypeForPath(path)) {
         setMediaRevision((revision) => revision + 1);
         return;
       }
       await queryClient.invalidateQueries({
         exact: true,
-        queryKey: ["explorer-file", explorer.id, path],
+        queryKey: ["explorer-file", explorer.id, path, bindingKey],
         refetchType: "none",
       });
       const loaded = await queryClient.fetchQuery({
         queryFn: () => getExplorerFile(explorer.id, path),
-        queryKey: ["explorer-file", explorer.id, path],
+        queryKey: ["explorer-file", explorer.id, path, bindingKey],
       });
-      if (!mountedRef.current || selectedPathRef.current !== path) return;
+      if (
+        !mountedRef.current ||
+        selectedPathRef.current !== path ||
+        streamEncryptionBindingRef.current !== bindingKey
+      ) {
+        return;
+      }
       setDraft(loaded.content);
       setBaselineContent(loaded.content);
       setDraftVersion(loaded.version);
@@ -603,6 +590,8 @@ export function ExplorerView({
   }, [applyViewState, resetSaveFile, transientFilePath]);
 
   const saveDraft = useCallback(async (): Promise<boolean> => {
+    const bindingKey = streamEncryptionBindingRef.current;
+    if (!streamEncryptionReadyRef.current || !bindingKey) return false;
     const path = selectedPathRef.current;
     const version = draftVersionRef.current;
     if (!path || !version || !dirtyRef.current) return true;
@@ -622,10 +611,14 @@ export function ExplorerView({
         version,
       });
       queryClient.setQueryData(
-        ["explorer-file", explorer.id, savedFile.path],
+        ["explorer-file", explorer.id, savedFile.path, bindingKey],
         savedFile,
       );
-      if (mountedRef.current && selectedPathRef.current === savedFile.path) {
+      if (
+        mountedRef.current &&
+        selectedPathRef.current === savedFile.path &&
+        streamEncryptionBindingRef.current === bindingKey
+      ) {
         setDraft(savedFile.content);
         setBaselineContent(savedFile.content);
         setDraftVersion(savedFile.version);
@@ -736,6 +729,7 @@ export function ExplorerView({
   ]);
 
   const refreshExplorer = useCallback(async () => {
+    if (!streamEncryptionReadyRef.current) return;
     if (
       dirtyRef.current &&
       !window.confirm(
@@ -960,7 +954,21 @@ export function ExplorerView({
     >
       {!streamEncryptionReady ? (
         <div className="grid h-full flex-1 place-items-center p-6 text-sm text-muted-foreground">
-          {streamEncryptionError ?? <Loader2 className="size-5 animate-spin" />}
+          {streamEncryption.error ? (
+            <div className="space-y-3 text-center">
+              <p>{streamEncryption.error}</p>
+              <Button
+                onClick={streamEncryption.retry}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <Loader2 className="size-5 animate-spin" />
+          )}
         </div>
       ) : graphVisible ? (
         <GitRepositoryGraphView
@@ -1082,6 +1090,7 @@ export function ExplorerView({
             revealLabel={revealLabel}
             onShowInGraph={repositoryGraphAvailable ? openGraph : undefined}
             onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}
+            queryScope={streamEncryption.bindingKey!}
             replayKey={entryReplayKey}
             revealedPath={revealedPath}
           />

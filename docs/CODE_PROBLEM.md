@@ -25,16 +25,25 @@ that the original logs left ambiguous. The correlated trace is
    same worker and rejects the same protected record, proving that transport
    selection is not the initiating failure.
 5. Explorer directory operations in the same local run fail at worker protected
-   request opening and return HTTP 502, before filesystem access.
+   request opening and return HTTP 502, before filesystem access. The worker's
+   live grant snapshot contains `repository-content` and `tunnel-content`, but
+   not the `surface-private-state` grant required for Explorer operations.
 
-The deterministic root cause is an authenticated-data identity mismatch. The
-client encrypts endpoint and surface content with the server's persistent UUID
+The deterministic Code root cause is an authenticated-data identity mismatch.
+The client encrypts endpoint/tunnel content with the server's persistent UUID
 from `ClientSessionContext.serverId`. `WorkerEncryptionService`, however, uses
 the canonical server URL (with the loopback port optionally removed) as
 `serverIdentity()`. The server binding participates in AEAD associated data, so
 even a valid, freshly issued worker component-key grant cannot authenticate the
 client payload. Direct and relay necessarily fail in the same way because both
 carry the same protected record.
+
+Explorer's failure is separate. Its worker command already carries the server
+UUID explicitly, but `ExplorerView` retained `streamEncryptionReady` when the
+Explorer changed on the same worker. After the local server/grant state changed,
+the stale ready flag allowed operations to run without reauthorizing the two
+surface grants. That produces the same visible “files do not load” symptom at a
+different protected-content boundary.
 
 Source chronology supports applying this conclusion to the supplied incident:
 worker URL-origin identity landed before endpoint-content encryption began using
@@ -50,12 +59,16 @@ The reproduction also exposed two independent follow-up defects:
 - A previously ready iframe could navigate to an error document while retaining
   stale workbench readiness. Inline Code, inline Explorer, and the Explorer
   popout must clear readiness and remount with a fresh nonce on a second load.
+- Explorer stream encryption readiness was keyed only to worker identity, so a
+  new Explorer or server/account session on the same worker could reuse stale
+  authorization state.
 
 The required encryption fix is to return the authoritative logical server UUID
 in worker bootstrap, keep it distinct from the transport URL identity, persist
 and validate the two identities separately, and use the UUID for all protected
 content associated data. Completion still requires a fresh local desktop click
-that mounts the exact requested file in the editor-only workbench.
+that mounts the exact requested file in the editor-only workbench, with Explorer
+surface grants revalidated for the current server/account session.
 
 ## Executive conclusion
 

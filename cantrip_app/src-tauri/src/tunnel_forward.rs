@@ -1656,10 +1656,13 @@ mod desktop {
                 .await
                 .map_err(|_| "Connecting the tunnel attachment timed out.".to_string())?
                 .map_err(|_| "Could not connect the tunnel attachment.".to_string())?;
-        let initialize = serde_json::json!({
+        let mut initialize = serde_json::json!({
             "type": "initialize",
             "clientId": request.client_id,
         });
+        if let Some(diagnostic_trace_id) = request.diagnostic_trace_id.as_deref() {
+            initialize["diagnosticTraceId"] = serde_json::json!(diagnostic_trace_id);
+        }
         web_socket
             .send(Message::Text(initialize.to_string().into()))
             .await
@@ -2411,7 +2414,7 @@ mod desktop {
                 "leaseExpiresAt": lease_expires_at,
                 "ownerId": owner_id,
                 "relaySecret": relay_secret,
-                "serverId": "https://cantrip-native-e2e.test",
+                "serverId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
                 "sessionId": session_id,
                 "tunnelId": tunnel_id,
                 "workerId": worker_id,
@@ -2674,6 +2677,11 @@ mod desktop {
                     && context["diagnosticTraceId"] == good_diagnostic_trace_id
                     && context["tunnelId"] == tunnel_id
             }));
+            assert!(snapshot.worker_contexts.iter().any(|context| {
+                context["event"] == "code.direct.http-upstream-responded"
+                    && context["diagnosticTraceId"] == bad_diagnostic_trace_id
+                    && context["tunnelId"] == tunnel_id
+            }));
             let diagnostics = serde_json::to_string(&snapshot.worker_contexts).unwrap();
             for secret in [&good_secret, &bad_secret, &relay_secret, &data_key] {
                 assert!(!diagnostics.contains(secret));
@@ -2817,7 +2825,14 @@ mod desktop {
                 .await
                 .unwrap();
                 let initialize = web_socket.next().await.unwrap().unwrap();
-                assert!(matches!(initialize, Message::Text(_)));
+                let Message::Text(initialize) = initialize else {
+                    panic!("expected an initialize frame")
+                };
+                let initialize: Value = serde_json::from_str(&initialize).unwrap();
+                assert_eq!(
+                    initialize["diagnosticTraceId"],
+                    "22222222-2222-4222-8222-222222222222"
+                );
                 web_socket
                     .send(Message::Text(
                         serde_json::json!({
@@ -2950,7 +2965,7 @@ mod desktop {
                 attachment_id: "attachment".into(),
                 client_id: "client".into(),
                 data_protection: None,
-                diagnostic_trace_id: None,
+                diagnostic_trace_id: Some("22222222-2222-4222-8222-222222222222".into()),
                 direct: None,
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 preferred_local_port: None,

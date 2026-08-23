@@ -29078,6 +29078,7 @@ export async function buildApp({
       const grants = grantResult.status === "ok" ? grantResult.grants : [];
       return reply.header("cache-control", "no-store").send(
         workerEncryptionBootstrapResultSchema.parse({
+          serverId,
           ownerId: workerAuth.ownerId,
           principal,
           grants,

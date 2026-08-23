@@ -59,6 +59,8 @@ interface HarnessStart {
   workerId: string;
 }
 
+const serverUrl = "https://cantrip-native-e2e.test";
+
 interface HarnessCommand {
   type: "snapshot" | "shutdown";
 }
@@ -178,7 +180,7 @@ async function closeServer(
 async function openEncryption(start: HarnessStart, dataDirectory: string) {
   const service = await WorkerEncryptionService.open({
     dataDirectory,
-    serverUrl: start.serverId,
+    serverUrl,
     workerId: start.workerId,
   });
   const registration = service.registration();
@@ -226,6 +228,7 @@ async function openEncryption(start: HarnessStart, dataDirectory: string) {
     updatedAt: now,
   };
   await service.acceptBootstrap({
+    serverId: start.serverId,
     ownerId: start.ownerId,
     principal,
     grants: [grant],
@@ -381,9 +384,7 @@ async function main(): Promise<void> {
 
   let routerEndpoint!: RouterEndpoint;
   routerEndpoint = new RouterEndpoint(start.workerId, (header, payload) =>
-    router.handleFrame(header, payload, {
-      diagnosticTraceId: start.badDiagnosticTraceId,
-    }),
+    router.handleFrame(header, payload),
   );
   router.setFrameEmitter(
     (header, payload) =>
@@ -419,18 +420,22 @@ async function main(): Promise<void> {
         return;
       }
       let clientId: string;
+      let diagnosticTraceId: string;
       try {
         const initialize = JSON.parse(String(message)) as {
           clientId?: unknown;
+          diagnosticTraceId?: unknown;
           type?: unknown;
         };
         if (
           initialize.type !== "initialize" ||
-          initialize.clientId !== start.clientId
+          initialize.clientId !== start.clientId ||
+          initialize.diagnosticTraceId !== start.badDiagnosticTraceId
         ) {
           throw new Error("identity mismatch");
         }
         clientId = initialize.clientId;
+        diagnosticTraceId = initialize.diagnosticTraceId;
       } catch {
         socket.close(1008, "Tunnel initialization is invalid");
         return;
@@ -442,6 +447,7 @@ async function main(): Promise<void> {
       );
       const routeHandle = relayBroker.registerRoute({
         attachmentId: start.attachmentId,
+        diagnosticTraceId,
         destination: routerEndpoint,
         destinationTarget: route.target,
         source,

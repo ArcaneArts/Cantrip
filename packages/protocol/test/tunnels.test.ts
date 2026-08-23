@@ -332,6 +332,24 @@ describe("tunnel protocol", () => {
         clientId: "desktop-1",
       }),
     ).toEqual({ type: "initialize", clientId: "desktop-1" });
+    expect(
+      tunnelAttachmentInitializeSchema.parse({
+        type: "initialize",
+        clientId: "desktop-1",
+        diagnosticTraceId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toEqual({
+      type: "initialize",
+      clientId: "desktop-1",
+      diagnosticTraceId: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(() =>
+      tunnelAttachmentInitializeSchema.parse({
+        type: "initialize",
+        clientId: "desktop-1",
+        diagnosticTraceId: "not-a-uuid",
+      }),
+    ).toThrow();
     expect(() =>
       tunnelAttachmentInitializeSchema.parse({
         type: "initialize",

@@ -18,7 +18,8 @@ import { openTerminalPrivateState } from "./terminal-private-state.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 
 const ownerId = "owner-terminal-private-state";
-const serverId = "https://cantrip.test";
+const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const serverUrl = "https://cantrip.test";
 const terminalId = "terminal-1";
 const timestamp = "2026-08-20T12:00:00.000Z";
 const directories: string[] = [];
@@ -36,7 +37,7 @@ async function fixture(): Promise<WorkerEncryptionService> {
   directories.push(dataDirectory);
   const service = await WorkerEncryptionService.open({
     dataDirectory,
-    serverUrl: serverId,
+    serverUrl,
     workerId: "worker-a",
   });
   const registration = service.registration();
@@ -83,7 +84,12 @@ async function fixture(): Promise<WorkerEncryptionService> {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  await service.acceptBootstrap({ ownerId, principal, grants: [grant] });
+  await service.acceptBootstrap({
+    serverId,
+    ownerId,
+    principal,
+    grants: [grant],
+  });
   return service;
 }
 
@@ -164,11 +170,12 @@ describe("terminal private-state runtime", () => {
     directories.push(ungrantedDirectory);
     const ungranted = await WorkerEncryptionService.open({
       dataDirectory: ungrantedDirectory,
-      serverUrl: serverId,
+      serverUrl,
       workerId: "worker-b",
     });
     const ungrantedRegistration = ungranted.registration();
     await ungranted.acceptBootstrap({
+      serverId,
       ownerId,
       principal: {
         id: ungrantedRegistration.principalId,

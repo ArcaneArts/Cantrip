@@ -22,6 +22,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { useExplorerDirectory } from "@/components/explorer/use-explorer-directory";
+import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -36,6 +37,11 @@ export function sidebarEntryRenameError(value: string): string | null {
     ? null
     : (result.error.issues[0]?.message ?? "Enter a valid name.");
 }
+
+export type ExplorerFileMutationAuthorization = {
+  bindingKey: string;
+  isCurrent(): boolean;
+};
 
 function entryIcon(entry: ExplorerEntry, expanded: boolean) {
   if (entry.kind === "directory") return expanded ? FolderOpen : Folder;
@@ -259,6 +265,7 @@ function SidebarDirectoryNode({
   onRenameSubmit,
   onRenameValueChange,
   onToggle,
+  queryScope,
   editingPath,
   renamePending,
   renameValue,
@@ -280,6 +287,7 @@ function SidebarDirectoryNode({
   onRenameSubmit(): void;
   onRenameValueChange(value: string): void;
   onToggle(path: string): void;
+  queryScope: string;
   editingPath: string | null;
   renamePending: boolean;
   renameValue: string;
@@ -291,6 +299,7 @@ function SidebarDirectoryNode({
     explorerId,
     gitStatus: undefined,
     path: entry.path,
+    queryScope,
   });
   return (
     <>
@@ -360,6 +369,7 @@ function SidebarDirectoryNode({
                   onRenameSubmit={onRenameSubmit}
                   onRenameValueChange={onRenameValueChange}
                   onToggle={onToggle}
+                  queryScope={queryScope}
                   renamePending={renamePending}
                   renameValue={renameValue}
                   revealLabel={revealLabel}
@@ -410,13 +420,20 @@ export function ProjectSidebarFileTree({
   error?: string | null;
   explorer: ExplorerSummary | null;
   loading: boolean;
-  onDelete(entry: ExplorerEntry): Promise<void>;
+  onDelete(
+    entry: ExplorerEntry,
+    authorization: ExplorerFileMutationAuthorization,
+  ): Promise<void>;
   onOpenGraph?(entry: ExplorerEntry): void;
   onOpenNative?(entry: ExplorerEntry, localFolder: boolean): void;
   onPreview(entry: ExplorerEntry): void;
   onOpenTerminal?(entry: ExplorerEntry): void;
   onPin(entry: ExplorerEntry): void;
-  onRename(entry: ExplorerEntry, name: string): Promise<void>;
+  onRename(
+    entry: ExplorerEntry,
+    name: string,
+    authorization: ExplorerFileMutationAuthorization,
+  ): Promise<void>;
   onRetry?(): void;
   pinningPath?: string | null;
   revealLabel?: string;
@@ -432,18 +449,45 @@ export function ProjectSidebarFileTree({
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [filesCollapsed, setFilesCollapsed] = useState(false);
+  const streamEncryption = useExplorerWorkerEncryption(
+    explorer,
+    !filesCollapsed,
+  );
+  const mutationBindingKey = streamEncryption.ready
+    ? streamEncryption.bindingKey
+    : null;
+  const mutationBindingKeyRef = useRef(mutationBindingKey);
+  mutationBindingKeyRef.current = mutationBindingKey;
+  useEffect(
+    () => () => {
+      mutationBindingKeyRef.current = null;
+    },
+    [],
+  );
   const { directory, entries } = useExplorerDirectory({
-    enabled: Boolean(explorer) && !filesCollapsed,
+    enabled: Boolean(explorer) && !filesCollapsed && streamEncryption.ready,
     explorerId: explorer?.id ?? "unavailable",
     gitStatus: undefined,
     path: "",
+    queryScope: streamEncryption.bindingKey ?? "unavailable",
   });
 
   useEffect(() => {
     setExpandedPaths(new Set());
     setRenameTarget(null);
+    setRenameError(null);
     setDeleteTarget(null);
-  }, [explorer?.id]);
+    setDeleteError(null);
+  }, [explorer?.id, mutationBindingKey]);
+
+  const currentMutationAuthorization = () => {
+    const bindingKey = mutationBindingKeyRef.current;
+    if (!bindingKey) return null;
+    return {
+      bindingKey,
+      isCurrent: () => mutationBindingKeyRef.current === bindingKey,
+    } satisfies ExplorerFileMutationAuthorization;
+  };
 
   const toggle = (path: string) => {
     setExpandedPaths((current) => {
@@ -466,6 +510,8 @@ export function ProjectSidebarFileTree({
   };
   const submitRename = () => {
     if (!renameTarget || renamePending) return;
+    const authorization = currentMutationAuthorization();
+    if (!authorization) return;
     const error = sidebarEntryRenameError(renameValue);
     if (error) {
       setRenameError(error);
@@ -479,8 +525,9 @@ export function ProjectSidebarFileTree({
     setRenamePending(true);
     setRenameError(null);
     const target = renameTarget;
-    void onRename(target, name)
+    void onRename(target, name, authorization)
       .then(() => {
+        if (!authorization.isCurrent()) return;
         if (target.kind === "directory") {
           const separator = target.path.lastIndexOf("/");
           const nextPath =
@@ -500,28 +547,34 @@ export function ProjectSidebarFileTree({
         }
         setRenameTarget(null);
       })
-      .catch((error: unknown) =>
+      .catch((error: unknown) => {
+        if (!authorization.isCurrent()) return;
         setRenameError(
           error instanceof Error
             ? error.message
             : "The entry could not be renamed.",
-        ),
-      )
+        );
+      })
       .finally(() => setRenamePending(false));
   };
   const confirmDelete = () => {
     if (!deleteTarget || deletePending) return;
+    const authorization = currentMutationAuthorization();
+    if (!authorization) return;
     setDeletePending(true);
     setDeleteError(null);
-    void onDelete(deleteTarget)
-      .then(() => setDeleteTarget(null))
-      .catch((error: unknown) =>
+    void onDelete(deleteTarget, authorization)
+      .then(() => {
+        if (authorization.isCurrent()) setDeleteTarget(null);
+      })
+      .catch((error: unknown) => {
+        if (!authorization.isCurrent()) return;
         setDeleteError(
           error instanceof Error
             ? error.message
             : "The entry could not be deleted.",
-        ),
-      )
+        );
+      })
       .finally(() => setDeletePending(false));
   };
 
@@ -551,16 +604,30 @@ export function ProjectSidebarFileTree({
           </p>
         ) : null}
         {filesCollapsed ? null : loading ||
+          (explorer && !streamEncryption.ready && !streamEncryption.error) ||
           (explorer && directory.isLoading) ? (
           <div className="flex h-16 items-center justify-center text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
           </div>
-        ) : error || (explorer && directory.isError && !directory.data) ? (
+        ) : error ||
+          streamEncryption.error ||
+          (explorer && directory.isError && !directory.data) ? (
           <div className="space-y-2 px-2 py-3 text-center">
             <p className="text-[10px] leading-4 text-destructive">
-              {error ?? "Project files could not be loaded."}
+              {error ??
+                streamEncryption.error ??
+                "Project files could not be loaded."}
             </p>
-            {onRetry ? (
+            {streamEncryption.error && !error ? (
+              <Button
+                className="h-7 text-[10px]"
+                onClick={streamEncryption.retry}
+                size="sm"
+                variant="outline"
+              >
+                Retry
+              </Button>
+            ) : onRetry ? (
               <Button
                 className="h-7 text-[10px]"
                 onClick={onRetry}
@@ -594,6 +661,7 @@ export function ProjectSidebarFileTree({
                   onRenameSubmit={submitRename}
                   onRenameValueChange={setRenameValue}
                   onToggle={toggle}
+                  queryScope={streamEncryption.bindingKey!}
                   renamePending={renamePending}
                   renameValue={renameValue}
                   revealLabel={revealLabel}
