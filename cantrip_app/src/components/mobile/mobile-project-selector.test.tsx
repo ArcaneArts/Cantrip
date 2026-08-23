@@ -125,7 +125,6 @@ describe("mobile project selector", () => {
       state: "blocked",
       error: {
         code: "worker-offline",
-        message: "The owning worker is offline.",
         retryable: true,
       },
     } as ProjectFolderSetupJobSummary;

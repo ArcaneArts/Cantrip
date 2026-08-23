@@ -48,6 +48,12 @@ import {
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import {
+  projectFolderSetupErrorMessage,
+  projectReplicaJobMessage,
+  projectSetupErrorMessage,
+} from "@/lib/job-status-message";
+
+import {
   ChatContextMenu,
   ChatDropdownMenu,
   type ChatWorktreeActions,
@@ -393,8 +399,12 @@ function SortableProject({
       <div
         title={
           failed
-            ? (project.setupError ?? undefined)
-            : (folderSetupJob?.error?.message ?? setupJob?.progress.message)
+            ? (projectSetupErrorMessage(project.setupError) ?? undefined)
+            : folderSetupJob?.error
+              ? projectFolderSetupErrorMessage(folderSetupJob.error.code)
+              : setupJob
+                ? projectReplicaJobMessage(setupJob)
+                : undefined
         }
         onContextMenu={openSidebarActionsMenu}
         className={cn(

@@ -341,7 +341,7 @@ describe.sequential("durable chat relocation jobs", () => {
       1,
       "validating",
       "preparing-replica",
-      { stage: "preparing-replica", percent: 20, message: "Replica ready." },
+      { stage: "preparing-replica", percent: 20 },
     );
     advanced = await database.repository.chatRelocationJobs.advance(
       job.id,
@@ -349,7 +349,7 @@ describe.sequential("durable chat relocation jobs", () => {
       advanced.attempt,
       "preparing-replica",
       "transferring-attachments",
-      { stage: "transferring-attachments", percent: 45, message: "Copying." },
+      { stage: "transferring-attachments", percent: 45 },
     );
     advanced = await database.repository.chatRelocationJobs.advance(
       job.id,
@@ -357,7 +357,7 @@ describe.sequential("durable chat relocation jobs", () => {
       advanced.attempt,
       "transferring-attachments",
       "hydrating-runtime",
-      { stage: "hydrating-runtime", percent: 70, message: "Hydrating." },
+      { stage: "hydrating-runtime", percent: 70 },
     );
     advanced = await database.repository.chatRelocationJobs.advance(
       job.id,
@@ -365,7 +365,7 @@ describe.sequential("durable chat relocation jobs", () => {
       advanced.attempt,
       "hydrating-runtime",
       "ready-to-commit",
-      { stage: "ready-to-commit", percent: 95, message: "Runtime ready." },
+      { stage: "ready-to-commit", percent: 95 },
       {
         cancellationUnsafe: true,
         targetModelRouteId: DEFAULT_MODEL_ROUTE_ID,
@@ -544,7 +544,7 @@ describe.sequential("durable chat relocation jobs", () => {
       staleClaim!.job.attempt,
       "validating",
       "preparing-replica",
-      { stage: "preparing-replica", percent: 20, message: "Ready." },
+      { stage: "preparing-replica", percent: 20 },
     );
     for (const [from, to, percent] of [
       ["preparing-replica", "transferring-attachments", 45],
@@ -557,7 +557,7 @@ describe.sequential("durable chat relocation jobs", () => {
         advanced.attempt,
         from,
         to,
-        { stage: to, percent, message: "Advancing." },
+        { stage: to, percent },
         to === "ready-to-commit"
           ? {
               cancellationUnsafe: true,
@@ -610,7 +610,7 @@ describe.sequential("durable chat relocation jobs", () => {
       firstAttempt!.job.attempt,
       "validating",
       "preparing-replica",
-      { stage: "preparing-replica", percent: 20, message: "Preparing." },
+      { stage: "preparing-replica", percent: 20 },
     );
     expect(
       await database.repository.chatRelocationJobs.recoverInterrupted(false),

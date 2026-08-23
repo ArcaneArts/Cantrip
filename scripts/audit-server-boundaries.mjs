@@ -164,9 +164,9 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   projectSources: "endpoint-protected",
   projectWorktrees: "endpoint-protected",
   worktreeSetupJobs: "tracked-rollout-gap",
-  projectFolderSetupJobs: "tracked-rollout-gap",
-  projectGithubConversionJobs: "tracked-rollout-gap",
-  projectReplicaJobs: "tracked-rollout-gap",
+  projectFolderSetupJobs: "minimized-operational-metadata",
+  projectGithubConversionJobs: "minimized-operational-metadata",
+  projectReplicaJobs: "minimized-operational-metadata",
   gitOperations: "endpoint-protected",
   runInstances: "minimized-operational-metadata",
   chats: "endpoint-protected",
@@ -187,8 +187,8 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   modelBehaviorObservations: "minimized-operational-metadata",
   chatAttachments: "endpoint-protected",
   chatAttachmentReplicas: "intentionally-public-control-plane",
-  chatRelocationJobs: "tracked-rollout-gap",
-  chatImportJobs: "tracked-rollout-gap",
+  chatRelocationJobs: "minimized-operational-metadata",
+  chatImportJobs: "minimized-operational-metadata",
   chatRelocationSnapshots: "endpoint-protected",
   queuedPrompts: "endpoint-protected",
   projectAutomations: "endpoint-protected",
@@ -3290,6 +3290,119 @@ async function encryptionLedgerClosureAudit() {
   };
 }
 
+async function durableJobStatusBoundaryAudit() {
+  const paths = {
+    schema: schemaPath,
+    protocol: protocolPath,
+    repository: resolve(serverSourcePath, "db/repository.ts"),
+    migration: resolve(
+      repositoryRoot,
+      "cantrip_server/drizzle/0148_slim_johnny_blaze.sql",
+    ),
+  };
+  const texts = Object.fromEntries(
+    await Promise.all(
+      Object.entries(paths).map(async ([name, path]) => [
+        name,
+        await readFile(path, "utf8"),
+      ]),
+    ),
+  );
+  const failures = [];
+  const durableJobs = [
+    ["projectFolderSetupJobs", "project_folder_setup_jobs", false],
+    ["projectGithubConversionJobs", "project_github_conversion_jobs", false],
+    ["projectReplicaJobs", "project_replica_jobs", true],
+    ["chatRelocationJobs", "chat_relocation_jobs", true],
+    ["chatImportJobs", "chat_import_jobs", true],
+  ];
+  for (const [exportName, tableName, hasProgress] of durableJobs) {
+    const table = tableInitializer(texts.schema, exportName);
+    for (const legacy of ["lastErrorMessage", "last_error_message"]) {
+      if (table.includes(legacy)) {
+        failures.push(`${tableName}: free-form durable error field returned`);
+      }
+    }
+    for (const marker of ["lastErrorCode", "errorRetryable"]) {
+      if (!table.includes(marker)) {
+        failures.push(`${tableName}: missing stable error field ${marker}`);
+      }
+    }
+    if (hasProgress && !table.includes("progress_minimized_check")) {
+      failures.push(`${tableName}: minimized progress constraint is missing`);
+    }
+    if (
+      !texts.migration.includes(
+        `ALTER TABLE "${tableName}" DROP COLUMN "last_error_message"`,
+      )
+    ) {
+      failures.push(`${tableName}: plaintext error cutover is missing`);
+    }
+  }
+
+  for (const schemaName of [
+    "projectReplicaJobErrorSchema",
+    "projectReplicaJobProgressSchema",
+    "projectFolderSetupJobErrorSchema",
+    "chatRelocationProgressSchema",
+    "chatImportProgressSchema",
+  ]) {
+    const initializer = declarationInitializer(texts.protocol, schemaName, "(");
+    if (/\bmessage\s*:/u.test(initializer)) {
+      failures.push(`${schemaName}: free-form message returned`);
+    }
+  }
+  for (const schemaName of [
+    "projectGithubConversionJobErrorSchema",
+    "chatRelocationJobErrorSchema",
+    "chatImportJobErrorSchema",
+  ]) {
+    const declaration = texts.protocol.slice(
+      texts.protocol.indexOf(`export const ${schemaName}`),
+      texts.protocol.indexOf(
+        ";",
+        texts.protocol.indexOf(`export const ${schemaName}`),
+      ) + 1,
+    );
+    if (!/omit\(\{\s*message:\s*true,?\s*\}\)/u.test(declaration)) {
+      failures.push(`${schemaName}: detailed endpoint error was not minimized`);
+    }
+  }
+  for (const tableName of [
+    "project_replica_jobs",
+    "chat_relocation_jobs",
+    "chat_import_jobs",
+  ]) {
+    if (
+      !texts.migration.includes(
+        `UPDATE "${tableName}" SET "progress" = "progress" - 'message'`,
+      )
+    ) {
+      failures.push(`${tableName}: legacy progress scrub is missing`);
+    }
+  }
+  const projectsTable = tableInitializer(texts.schema, "projects");
+  if (!projectsTable.includes("projects_setup_error_minimized_check")) {
+    failures.push("projects: minimized setup-error constraint is missing");
+  }
+  if (texts.repository.includes("failGithubProjectSetup")) {
+    failures.push("repository: free-form project setup-error writer returned");
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Durable job-status minimization regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: durableJobs.map(([, tableName]) => tableName),
+    guards: [
+      "job-errors:stable-code-and-retryable-only",
+      "job-progress:stable-stage-percent-timestamp-only",
+      "legacy-free-form-job-status:deleted",
+    ],
+  };
+}
+
 async function analyticsAuditLogPrivacyBoundaryAudit() {
   const paths = {
     schema: resolve(serverSourcePath, "db/schema.ts"),
@@ -4423,6 +4536,7 @@ async function buildInventory() {
     providerSecretRepository,
     workspaceNameRepository,
     tunnelConfiguration,
+    durableJobStatus,
     analyticsAuditLogPrivacy,
     attachmentContentRepository,
     privateDisplayLabelDependencies,
@@ -4457,6 +4571,7 @@ async function buildInventory() {
     providerSecretRepositoryBoundaryAudit(),
     workspaceNameRepositoryBoundaryAudit(),
     tunnelConfigurationBoundaryAudit(),
+    durableJobStatusBoundaryAudit(),
     analyticsAuditLogPrivacyBoundaryAudit(),
     attachmentContentRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
@@ -4693,6 +4808,10 @@ async function buildInventory() {
     tunnelConfigurationE2eeBoundary: {
       status: "configuration-and-tcp-data-enforced",
       ...tunnelConfiguration,
+    },
+    durableJobStatusPrivacyBoundary: {
+      status: "minimized",
+      ...durableJobStatus,
     },
     analyticsAuditLogPrivacyBoundary: {
       status: "minimized",

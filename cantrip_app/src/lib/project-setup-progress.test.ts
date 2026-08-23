@@ -94,12 +94,11 @@ describe("project setup progress", () => {
     ).toBe("worker-source");
   });
 
-  it("recognizes typed and legacy Windows long-path failures", () => {
+  it("recognizes the stable Windows long-path failure code", () => {
     expect(
       isWindowsLongPathSetupFailure({
         error: {
           code: "windows-long-paths-disabled",
-          message: "Git long paths are disabled.",
           retryable: true,
         },
       }),
@@ -108,16 +107,6 @@ describe("project setup progress", () => {
       isWindowsLongPathSetupFailure({
         error: {
           code: "remote-unavailable",
-          message: "fatal: cannot write keep file: Filename too long",
-          retryable: true,
-        },
-      }),
-    ).toBe(true);
-    expect(
-      isWindowsLongPathSetupFailure({
-        error: {
-          code: "remote-unavailable",
-          message: "fatal: the remote disconnected",
           retryable: true,
         },
       }),

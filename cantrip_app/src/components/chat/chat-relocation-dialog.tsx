@@ -37,6 +37,7 @@ import {
 } from "@/lib/api";
 import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import { errorMessage } from "@/lib/error-message";
+import { chatRelocationJobMessage } from "@/lib/job-status-message";
 import { cn } from "@/lib/utils";
 
 export const activeChatRelocationStates = new Set<
@@ -257,7 +258,7 @@ export function ChatRelocationStatus({
             failed && "text-destructive",
           )}
         >
-          {job.error?.message ?? job.progress.message}
+          {chatRelocationJobMessage(job)}
         </span>
         <span className="mt-1 block h-1 overflow-hidden rounded-full bg-muted">
           <span

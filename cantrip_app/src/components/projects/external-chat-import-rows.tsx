@@ -6,6 +6,7 @@ import { Archive, ExternalLink, Loader2, RotateCcw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { chatImportJobMessage } from "@/lib/job-status-message";
 import { cn } from "@/lib/utils";
 
 import {
@@ -130,7 +131,7 @@ export function ImportJobRow({
       : job.error.retryable
         ? "Cantrip will retry when the required worker is available."
         : "This chat was not imported."
-    : job.progress.message;
+    : chatImportJobMessage(job);
   return (
     <div className="space-y-2 px-3 py-3">
       <div className="flex flex-wrap items-start justify-between gap-2">

@@ -22,6 +22,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
+import { projectReplicaJobMessage } from "@/lib/job-status-message";
 import {
   Dialog,
   DialogContent,
@@ -127,7 +128,7 @@ function JobProgress({ job }: { job: ProjectReplicaJobSummary }) {
           job.error && "text-destructive",
         )}
       >
-        {job.error?.message ?? job.progress.message}
+        {projectReplicaJobMessage(job)}
       </p>
     </div>
   );

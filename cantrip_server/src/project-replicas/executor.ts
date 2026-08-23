@@ -174,8 +174,6 @@ export class ProjectReplicaJobExecutor {
           claimed.commandId,
           {
             code: "worker-offline",
-            message:
-              "The target worker is offline. The job will resume after it reconnects.",
             retryable: true,
           },
         );
@@ -219,7 +217,6 @@ export class ProjectReplicaJobExecutor {
           claimed.commandId,
           {
             code: "capability-missing",
-            message: `The target worker does not advertise safe replica ${job.kind} capability.`,
             retryable: false,
           },
         );
@@ -304,7 +301,6 @@ export class ProjectReplicaJobExecutor {
             claimed.commandId,
             {
               code: "target-not-found",
-              message: "The active replica target no longer exists.",
               retryable: false,
             },
           );
@@ -318,8 +314,6 @@ export class ProjectReplicaJobExecutor {
             claimed.commandId,
             {
               code: "replica-not-ready",
-              message:
-                "The replica placement identity is incomplete or changed.",
               retryable: false,
             },
           );
@@ -378,7 +372,6 @@ export class ProjectReplicaJobExecutor {
               claimed.commandId,
               {
                 code: "replica-in-use",
-                message: blocker,
                 retryable: false,
               },
             );
@@ -393,8 +386,6 @@ export class ProjectReplicaJobExecutor {
                 claimed.commandId,
                 {
                   code: "replica-not-ready",
-                  message:
-                    "The replica Primary worktree is not ready for removal.",
                   retryable: false,
                 },
               );
@@ -483,7 +474,6 @@ export class ProjectReplicaJobExecutor {
                 claimed.commandId,
                 {
                   code: "worker-offline",
-                  message: `The target worker disconnected during replica ${job.kind}. The job will resume after it reconnects.`,
                   retryable: true,
                 },
               )
@@ -492,10 +482,6 @@ export class ProjectReplicaJobExecutor {
                 claimed.commandId,
                 {
                   code: "worker-error",
-                  message:
-                    error instanceof Error
-                      ? error.message.slice(0, 4_000)
-                      : `The worker failed to ${job.kind} the replica.`,
                   retryable: true,
                 },
               );

@@ -40,14 +40,12 @@ function toJob(row: JobRow): ProjectFolderSetupJobSummary {
     state: row.state,
     stateRevision: row.stateRevision,
     attempt: row.attempt,
-    error:
-      row.lastErrorCode && row.lastErrorMessage !== null
-        ? {
-            code: row.lastErrorCode,
-            message: row.lastErrorMessage,
-            retryable: row.errorRetryable ?? false,
-          }
-        : null,
+    error: row.lastErrorCode
+      ? {
+          code: row.lastErrorCode,
+          retryable: row.errorRetryable ?? false,
+        }
+      : null,
     createdAt: toISOString(row.createdAt),
     updatedAt: toISOString(row.updatedAt),
     startedAt: row.startedAt ? toISOString(row.startedAt) : null,
@@ -113,7 +111,6 @@ export class ProjectFolderSetupJobRepository {
           startedAt: candidate.job.startedAt ?? now,
           completedAt: null,
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -197,7 +194,6 @@ export class ProjectFolderSetupJobRepository {
           leaseExpiresAt: null,
           completedAt: state === "failed" ? now : null,
           lastErrorCode: error.code,
-          lastErrorMessage: error.message,
           errorRetryable: error.retryable,
           updatedAt: now,
         })
@@ -219,7 +215,7 @@ export class ProjectFolderSetupJobRepository {
         .update(schema.projects)
         .set({
           setupStatus: state === "failed" ? "failed" : "preparing",
-          setupError: error.message,
+          setupError: error.code,
           updatedAt: now,
         })
         .where(eq(schema.projects.id, updated.projectId));
@@ -302,7 +298,6 @@ export class ProjectFolderSetupJobRepository {
           commandId: null,
           leaseExpiresAt: null,
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           completedAt: now,
           updatedAt: now,
@@ -336,7 +331,6 @@ export class ProjectFolderSetupJobRepository {
           availableAt: now,
           completedAt: null,
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -372,7 +366,6 @@ export class ProjectFolderSetupJobRepository {
         leaseExpiresAt: null,
         availableAt: now,
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })
@@ -401,7 +394,6 @@ export class ProjectFolderSetupJobRepository {
           stateRevision: sql`${schema.projectFolderSetupJobs.stateRevision} + 1`,
           availableAt: now,
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })

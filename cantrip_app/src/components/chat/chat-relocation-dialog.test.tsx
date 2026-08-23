@@ -166,14 +166,12 @@ function job(state: ChatRelocationJobSummary["state"], createdAt = now) {
     progress: {
       stage: state,
       percent: state === "succeeded" ? 100 : 35,
-      message: state === "blocked" ? "Target worker is offline." : "Ready.",
       updatedAt: now,
     },
     error:
       state === "blocked"
         ? {
             code: "worker-offline",
-            message: "Target worker is offline.",
             retryable: true,
           }
         : null,
@@ -312,7 +310,9 @@ describe("chat relocation UI model", () => {
     );
     const markup = renderToStaticMarkup(<ChatRelocationStatus job={blocked} />);
     expect(markup).toContain("Moving agent · blocked");
-    expect(markup).toContain("Target worker is offline.");
+    expect(markup).toContain(
+      "A required worker is offline. Relocation will resume after it reconnects.",
+    );
     expect(markup).toContain("35%");
   });
 });

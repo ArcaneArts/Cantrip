@@ -180,12 +180,11 @@ function relocationMessages(
 }
 
 function progress(
-  stage: string,
+  stage: ChatRelocationProgress["stage"],
   percent: number,
-  message: string,
   now = new Date(),
 ): ChatRelocationProgress {
-  return { stage, percent, message, updatedAt: toISOString(now) };
+  return { stage, percent, updatedAt: toISOString(now) };
 }
 
 function toJob(row: ChatRelocationJobRow): ChatRelocationJobSummary {
@@ -205,14 +204,12 @@ function toJob(row: ChatRelocationJobRow): ChatRelocationJobSummary {
     targetProviderAccountId: row.targetProviderAccountId,
     attempt: row.attempt,
     progress: row.progress,
-    error:
-      row.lastErrorCode && row.lastErrorMessage !== null
-        ? {
-            code: row.lastErrorCode,
-            message: row.lastErrorMessage,
-            retryable: row.errorRetryable ?? false,
-          }
-        : null,
+    error: row.lastErrorCode
+      ? {
+          code: row.lastErrorCode,
+          retryable: row.errorRetryable ?? false,
+        }
+      : null,
     createdAt: toISOString(row.createdAt),
     updatedAt: toISOString(row.updatedAt),
     startedAt: row.startedAt ? toISOString(row.startedAt) : null,
@@ -615,14 +612,7 @@ export class ChatRelocationJobRepository {
             sourcePlacement,
             sourcePlacementRevision: context.chat.placementRevision,
             targetPlacement: normalizedTarget,
-            progress: progress(
-              initialState,
-              0,
-              initialState === "waiting-for-idle"
-                ? "Waiting for the active chat execution to reach an idle boundary."
-                : "Relocation is queued for validation.",
-              now,
-            ),
+            progress: progress(initialState, 0, now),
             availableAt: now,
             createdAt: now,
             updatedAt: now,
@@ -957,12 +947,7 @@ export class ChatRelocationJobRepository {
         leaseExpiresAt: null,
         cancellationUnsafeAt: null,
         availableAt: now,
-        progress: progress(
-          "recovering",
-          0,
-          "Recovered an interrupted relocation for safe replay.",
-          now,
-        ),
+        progress: progress("recovering", 0, now),
         updatedAt: now,
       })
       .where(
@@ -1014,14 +999,8 @@ export class ChatRelocationJobRepository {
         commandId: null,
         leaseExpiresAt: null,
         availableAt: now,
-        progress: progress(
-          "queued",
-          0,
-          "A required worker reconnected; relocation validation will resume.",
-          now,
-        ),
+        progress: progress("queued", 0, now),
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })
@@ -1075,11 +1054,7 @@ export class ChatRelocationJobRepository {
       if (candidate.job.state === "waiting-for-idle") {
         try {
           await this.refreshWaitingSnapshot(candidate.job.id);
-        } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message.slice(0, 4_000)
-              : "The idle relocation snapshot could not be refreshed.";
+        } catch {
           await this.database
             .update(schema.chatRelocationJobs)
             .set({
@@ -1087,9 +1062,8 @@ export class ChatRelocationJobRepository {
               stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
               commandId: null,
               leaseExpiresAt: null,
-              progress: progress("failed", 100, message, now),
+              progress: progress("failed", 100, now),
               lastErrorCode: "stale-attempt",
-              lastErrorMessage: message,
               errorRetryable: false,
               completedAt: now,
               updatedAt: now,
@@ -1119,14 +1093,8 @@ export class ChatRelocationJobRepository {
           leaseExpiresAt: new Date(
             now.getTime() + CHAT_RELOCATION_JOB_LEASE_MS,
           ),
-          progress: progress(
-            "validating",
-            5,
-            "Validating source and target placement.",
-            now,
-          ),
+          progress: progress("validating", 5, now),
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -1240,10 +1208,9 @@ export class ChatRelocationJobRepository {
         commandId: null,
         leaseExpiresAt: null,
         progress: error.retryable
-          ? progress("blocked", current.progress.percent, error.message, now)
-          : progress("failed", 100, error.message, now),
+          ? progress("blocked", current.progress.percent, now)
+          : progress("failed", 100, now),
         lastErrorCode: error.code,
-        lastErrorMessage: error.message,
         errorRetryable: error.retryable,
         completedAt: error.retryable ? null : now,
         updatedAt: now,
@@ -1358,15 +1325,8 @@ export class ChatRelocationJobRepository {
             stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
             commandId: null,
             leaseExpiresAt: null,
-            progress: progress(
-              "failed",
-              100,
-              "The source placement changed before relocation could commit.",
-              now,
-            ),
+            progress: progress("failed", 100, now),
             lastErrorCode: "stale-attempt",
-            lastErrorMessage:
-              "The source placement changed before relocation could commit.",
             errorRetryable: false,
             completedAt: now,
             updatedAt: now,
@@ -1517,12 +1477,7 @@ export class ChatRelocationJobRepository {
           stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
           commandId: null,
           leaseExpiresAt: null,
-          progress: progress(
-            "succeeded",
-            100,
-            "Chat placement changed successfully.",
-            now,
-          ),
+          progress: progress("succeeded", 100, now),
           completedAt: now,
           updatedAt: now,
         })
@@ -1556,7 +1511,7 @@ export class ChatRelocationJobRepository {
         stateRevision: sql`${schema.chatRelocationJobs.stateRevision} + 1`,
         commandId: null,
         leaseExpiresAt: null,
-        progress: progress("cancelled", 100, "Relocation cancelled.", now),
+        progress: progress("cancelled", 100, now),
         completedAt: now,
         updatedAt: now,
       })
@@ -1603,9 +1558,8 @@ export class ChatRelocationJobRepository {
         leaseExpiresAt: null,
         cancellationUnsafeAt: null,
         availableAt: now,
-        progress: progress("queued", 0, "Relocation queued for retry.", now),
+        progress: progress("queued", 0, now),
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         completedAt: null,
         updatedAt: now,

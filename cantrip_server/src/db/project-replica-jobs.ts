@@ -65,12 +65,11 @@ function toISOString(value: Date): string {
 }
 
 function progress(
-  stage: string,
+  stage: ProjectReplicaJobProgress["stage"],
   percent: number,
-  message: string,
   now = new Date(),
 ): ProjectReplicaJobProgress {
-  return { stage, percent, message, updatedAt: toISOString(now) };
+  return { stage, percent, updatedAt: toISOString(now) };
 }
 
 function toJob(row: ProjectReplicaJobRow): ProjectReplicaJobSummary {
@@ -94,14 +93,12 @@ function toJob(row: ProjectReplicaJobRow): ProjectReplicaJobSummary {
     deleteLocalFiles: row.deleteLocalFiles,
     attempt: row.attempt,
     progress: row.progress,
-    error:
-      row.lastErrorCode && row.lastErrorMessage !== null
-        ? {
-            code: row.lastErrorCode,
-            message: row.lastErrorMessage,
-            retryable: row.errorRetryable ?? false,
-          }
-        : null,
+    error: row.lastErrorCode
+      ? {
+          code: row.lastErrorCode,
+          retryable: row.errorRetryable ?? false,
+        }
+      : null,
     createdAt: toISOString(row.createdAt),
     updatedAt: toISOString(row.updatedAt),
     startedAt: row.startedAt ? toISOString(row.startedAt) : null,
@@ -288,12 +285,7 @@ export class ProjectReplicaJobRepository {
             placementMode: placement.mode,
             placementPath: placement.mode === "managed" ? null : placement.path,
             expectedRevision: input.expectedRevision,
-            progress: progress(
-              "queued",
-              0,
-              "Waiting for the target worker.",
-              now,
-            ),
+            progress: progress("queued", 0, now),
             availableAt: now,
             createdAt: now,
             updatedAt: now,
@@ -510,12 +502,7 @@ export class ProjectReplicaJobRepository {
             expectedRevision: synchronizeInput?.expectedRevision ?? null,
             synchronizationPolicy: synchronizeInput?.policy ?? null,
             deleteLocalFiles: removeInput?.deleteLocalFiles ?? null,
-            progress: progress(
-              "queued",
-              0,
-              `Waiting to ${kind} the replica.`,
-              now,
-            ),
+            progress: progress("queued", 0, now),
             availableAt: now,
             createdAt: now,
             updatedAt: now,
@@ -810,14 +797,8 @@ export class ProjectReplicaJobRepository {
         commandId: null,
         leaseExpiresAt: null,
         availableAt: now,
-        progress: progress(
-          "queued",
-          0,
-          "Recovered after the server restarted.",
-          now,
-        ),
+        progress: progress("queued", 0, now),
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })
@@ -893,14 +874,8 @@ export class ProjectReplicaJobRepository {
           ),
           startedAt: candidate.startedAt ?? now,
           cancellationUnsafeAt: now,
-          progress: progress(
-            "dispatching",
-            5,
-            `Dispatching replica ${candidate.kind}.`,
-            now,
-          ),
+          progress: progress("dispatching", 5, now),
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -980,14 +955,8 @@ export class ProjectReplicaJobRepository {
           leaseExpiresAt: null,
           cancellationUnsafeAt: sql`CASE WHEN ${schema.projectReplicaJobs.kind} = 'provision' THEN NULL ELSE ${schema.projectReplicaJobs.cancellationUnsafeAt} END`,
           completedAt: state === "failed" ? now : null,
-          progress: progress(
-            state,
-            state === "failed" ? 100 : 0,
-            error.message,
-            now,
-          ),
+          progress: progress(state, state === "failed" ? 100 : 0, now),
           lastErrorCode: error.code,
-          lastErrorMessage: error.message,
           errorRetryable: error.retryable,
           updatedAt: now,
         })
@@ -1019,7 +988,7 @@ export class ProjectReplicaJobRepository {
           .update(schema.projects)
           .set({
             setupStatus: "failed",
-            setupError: error.message,
+            setupError: error.code,
             updatedAt: now,
           })
           .where(eq(schema.projects.id, updated[0].projectId));
@@ -1190,17 +1159,9 @@ export class ProjectReplicaJobRepository {
           commandId: null,
           leaseExpiresAt: null,
           cancellationUnsafeAt: null,
-          progress: progress(
-            "succeeded",
-            100,
-            result.resolvedRevision
-              ? "Replica is ready at the resolved revision."
-              : "Empty repository is ready for its first commit.",
-            now,
-          ),
+          progress: progress("succeeded", 100, now),
           completedAt: now,
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -1289,17 +1250,9 @@ export class ProjectReplicaJobRepository {
           commandId: null,
           leaseExpiresAt: null,
           cancellationUnsafeAt: null,
-          progress: progress(
-            "succeeded",
-            100,
-            result.changed
-              ? "Replica fast-forwarded to the expected revision."
-              : "Replica already matches the expected revision.",
-            now,
-          ),
+          progress: progress("succeeded", 100, now),
           completedAt: now,
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -1395,18 +1348,9 @@ export class ProjectReplicaJobRepository {
           commandId: null,
           leaseExpiresAt: null,
           cancellationUnsafeAt: null,
-          progress: progress(
-            "succeeded",
-            100,
-            result.warning ??
-              (result.localFilesDeleted
-                ? "Replica local files were safely removed."
-                : "Replica was removed from Cantrip; local files were retained."),
-            now,
-          ),
+          progress: progress("succeeded", 100, now),
           completedAt: now,
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -1443,9 +1387,8 @@ export class ProjectReplicaJobRepository {
           leaseExpiresAt: null,
           availableAt: now,
           completedAt: null,
-          progress: progress("queued", 0, "Retry requested.", now),
+          progress: progress("queued", 0, now),
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -1493,12 +1436,7 @@ export class ProjectReplicaJobRepository {
         .set({
           state: "cancelled",
           stateRevision: stateRevision + 1,
-          progress: progress(
-            "cancelled",
-            100,
-            "Provisioning was cancelled.",
-            now,
-          ),
+          progress: progress("cancelled", 100, now),
           completedAt: now,
           cancellationUnsafeAt: null,
           updatedAt: now,
@@ -1529,7 +1467,7 @@ export class ProjectReplicaJobRepository {
           .update(schema.projects)
           .set({
             setupStatus: "failed",
-            setupError: "Replica provisioning was cancelled.",
+            setupError: "cancelled",
             updatedAt: now,
           })
           .where(eq(schema.projects.id, updated[0].projectId));
@@ -1548,14 +1486,8 @@ export class ProjectReplicaJobRepository {
           state: "queued",
           stateRevision: sql`${schema.projectReplicaJobs.stateRevision} + 1`,
           availableAt: now,
-          progress: progress(
-            "queued",
-            0,
-            "Target worker reconnected; retrying.",
-            now,
-          ),
+          progress: progress("queued", 0, now),
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })

@@ -128,7 +128,7 @@ function mapReplicaError(job: ProjectReplicaJobSummary): ChatRelocationError {
       : error.code === "remote-unavailable"
         ? "revision-diverged"
         : "policy-denied",
-    message: error.message,
+    message: `Replica operation failed with code ${error.code}.`,
     retryable: error.retryable,
   };
 }
@@ -284,7 +284,6 @@ export class ChatRelocationJobExecutor {
         {
           stage: "preparing-replica",
           percent: 20,
-          message: "Preparing the target worktree at the captured revision.",
         },
       );
       this.onChanged({ ownerId: claimed.ownerId, job });
@@ -299,7 +298,6 @@ export class ChatRelocationJobExecutor {
         {
           stage: "transferring-attachments",
           percent: 35,
-          message: "Resolving canonical attachments on the target worker.",
         },
       );
       this.onChanged({ ownerId: claimed.ownerId, job });
@@ -314,7 +312,6 @@ export class ChatRelocationJobExecutor {
         {
           stage: "hydrating-runtime",
           percent: 65,
-          message: "Hydrating a target Codex runtime from canonical history.",
         },
       );
       this.onChanged({ ownerId: claimed.ownerId, job });
@@ -344,7 +341,6 @@ export class ChatRelocationJobExecutor {
         {
           stage: "ready-to-commit",
           percent: 90,
-          message: "Target runtime is ready; committing chat placement.",
         },
         {
           cancellationUnsafe: true,

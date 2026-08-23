@@ -245,7 +245,6 @@ describe.sequential("chat import job durability", () => {
       reclaimed!.commandId,
       {
         code: "capability-missing",
-        message: "Required hydration methods are unavailable.",
         retryable: false,
       },
     );
@@ -267,8 +266,7 @@ describe.sequential("chat import job durability", () => {
       error: null,
       progress: {
         percent: 100,
-        message:
-          "Chat history is imported. A new runtime will start when you continue.",
+        stage: "succeeded",
       },
     });
     const resumed = await database.repository.startChatExecutionLane(

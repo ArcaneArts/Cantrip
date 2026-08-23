@@ -14820,9 +14820,10 @@ export async function buildApp({
           }),
         );
         return result.status === "blocked"
-          ? reply
-              .code(409)
-              .send({ code: result.error.code, error: result.error.message })
+          ? reply.code(409).send({
+              code: result.error.code,
+              error: "Replica link repair was blocked.",
+            })
           : reply.send(result);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);

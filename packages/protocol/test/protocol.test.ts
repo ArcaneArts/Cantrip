@@ -1734,12 +1734,10 @@ describe("Cantrip protocol", () => {
         progress: {
           stage: "blocked",
           percent: 0,
-          message: "Waiting for worker.",
           updatedAt: "2026-08-11T12:00:00.000Z",
         },
         error: {
           code: "worker-offline",
-          message: "Waiting for worker.",
           retryable: true,
         },
         createdAt: "2026-08-11T12:00:00.000Z",
@@ -6362,7 +6360,6 @@ describe("Cantrip protocol", () => {
         progress: {
           stage: "waiting-for-idle",
           percent: 0,
-          message: "Waiting for an idle boundary.",
           updatedAt: "2026-08-12T00:00:00.000Z",
         },
         error: null,
