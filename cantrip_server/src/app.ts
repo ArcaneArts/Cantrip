@@ -110,6 +110,7 @@ import {
   chatMessageWirePageSchema,
   chatMessageSchema,
   chatMessageRelayResultSchema,
+  chatModelConfigurationUpdateSchema,
   chatModelUpdateSchema,
   chatReasoningStateSchema,
   chatReasoningUpdateSchema,
@@ -118,6 +119,8 @@ import {
   chatPromptSubmitResultSchema,
   encryptedChatPromptSubmitResultSchema,
   encryptedChatTurnCreateSchema,
+  modelConfigurationFailureSchema,
+  modelConfigurationSchema,
   projectAutomationProtectedDispatchResultSchema,
   encryptedQueuedPromptListSchema,
   encryptedQueuedPromptSchema,
@@ -503,6 +506,7 @@ import type {
   ProjectWorktreeSummary,
   ProviderQuotaSnapshot,
   ProviderAuthLiveStatus,
+  ModelConfiguration,
   ReasoningEffort,
   ProtectedRunConfigurationInspection,
   RunInstance,
@@ -712,6 +716,12 @@ import {
   prepareRuntimesForReasoning,
   reasoningStateForRuntimes,
 } from "./models/reasoning.js";
+import {
+  ModelConfigurationResolutionError,
+  modelConfigurationFailure,
+  resolveModelRoutePairs,
+  type ResolvedModelRoutePair,
+} from "./models/subagent-routing.js";
 import {
   ChatImportJobConflictError,
   ChatImportJobNotFoundError,
@@ -7484,6 +7494,98 @@ export async function buildApp({
     return available;
   };
 
+  const routePairsForConfiguration = async (
+    context: ChatExecutionContext,
+    configuration: ModelConfiguration,
+    rootRuntimes?: ModelRuntime[],
+  ): Promise<ResolvedModelRoutePair[]> => {
+    if (!bridge.isConnected(context.workerId)) {
+      return resolveModelRoutePairs({
+        configuration,
+        rootRuntimes: [],
+        workerConnected: false,
+      });
+    }
+    if (!configuration.modelId) {
+      return resolveModelRoutePairs({ configuration, rootRuntimes: [] });
+    }
+
+    let availableRoots: ModelRuntime[];
+    try {
+      availableRoots =
+        rootRuntimes ??
+        (await availableModelRuntimes(context, configuration.modelId));
+    } catch (error) {
+      throw new ModelConfigurationResolutionError({
+        code: "root-model-unavailable",
+        error: errorMessage(error),
+        field: "modelId",
+        retryable: true,
+      });
+    }
+
+    let availableSubagents: ModelRuntime[] | undefined;
+    if (configuration.customSubagentModel) {
+      if (!configuration.subagentModelId) {
+        availableSubagents = [];
+      } else {
+        try {
+          availableSubagents = await availableModelRuntimes(
+            { ...context, providerAccountId: null },
+            configuration.subagentModelId,
+          );
+        } catch (error) {
+          throw new ModelConfigurationResolutionError({
+            code: "subagent-model-unavailable",
+            error: errorMessage(error),
+            field: "subagentModelId",
+            retryable: true,
+          });
+        }
+      }
+    }
+    return resolveModelRoutePairs({
+      configuration,
+      rootRuntimes: availableRoots,
+      subagentRuntimes: availableSubagents,
+    });
+  };
+
+  const configuredRoutePairsForDefaults = async (
+    configuration: ModelConfiguration,
+  ): Promise<ResolvedModelRoutePair[]> => {
+    if (!configuration.modelId) {
+      return configuration.customSubagentModel
+        ? resolveModelRoutePairs({ configuration, rootRuntimes: [] })
+        : [];
+    }
+    const [rootRuntimes, subagentRuntimes] = await Promise.all([
+      repository.getModelRuntimes(applicationOwnerId(), configuration.modelId),
+      configuration.customSubagentModel && configuration.subagentModelId
+        ? repository.getModelRuntimes(
+            applicationOwnerId(),
+            configuration.subagentModelId,
+          )
+        : Promise.resolve(undefined),
+    ]);
+    return resolveModelRoutePairs({
+      configuration,
+      rootRuntimes,
+      subagentRuntimes,
+    });
+  };
+
+  const sendModelConfigurationResolutionFailure = (
+    reply: FastifyReply,
+    error: unknown,
+  ) => {
+    const failure = modelConfigurationFailure(error);
+    if (!failure) return null;
+    return reply
+      .code(failure.code === "worker-offline" ? 503 : 409)
+      .send(modelConfigurationFailureSchema.parse(failure));
+  };
+
   const runtimeForContext = async (
     context: ChatExecutionContext,
   ): Promise<ModelRuntime | null> => {
@@ -8236,6 +8338,9 @@ export async function buildApp({
           mode: prompt.classification.mode,
           modelId: prompt.modelId,
           reasoningEffort: prompt.reasoningEffort,
+          customSubagentModel: prompt.customSubagentModel,
+          subagentModelId: prompt.subagentModelId,
+          subagentReasoningEffort: prompt.subagentReasoningEffort,
           idempotencyKey: prompt.pendingMessage.idempotencyKey,
         },
         {
@@ -8544,7 +8649,10 @@ export async function buildApp({
     context: ChatExecutionContext,
     input: Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
       attachmentIds?: string[];
+      customSubagentModel?: boolean;
       mode?: ChatTurnCreate["mode"];
+      subagentModelId?: string | null;
+      subagentReasoningEffort?: ReasoningEffort | null;
     },
     options: {
       acquiringActor?: "agent" | "user";
@@ -8598,20 +8706,32 @@ export async function buildApp({
       : null;
     const encryptedTaskMessages = options.encryptedTaskMessages ?? null;
     let encryptedChatMessages = options.encryptedChatMessages ?? null;
-    if (!bridge.isConnected(context.workerId)) {
-      throw new Error("Project worker is offline.");
-    }
     const modelId = await resolveModelId(context, input.modelId);
     const requestedReasoningEffort =
       input.reasoningEffort !== undefined
         ? input.reasoningEffort
         : context.reasoningEffort;
-    const candidateRuntimes =
-      options.runtimes ?? (await availableModelRuntimes(context, modelId));
-    const preparedRuntimes = prepareRuntimesForReasoning(
-      candidateRuntimes,
-      requestedReasoningEffort,
+    const turnModelConfiguration = modelConfigurationSchema.parse({
+      modelId,
+      reasoningEffort: requestedReasoningEffort,
+      customSubagentModel:
+        input.customSubagentModel ??
+        context.modelConfiguration.customSubagentModel,
+      subagentModelId:
+        input.subagentModelId !== undefined
+          ? input.subagentModelId
+          : context.modelConfiguration.subagentModelId,
+      subagentReasoningEffort:
+        input.subagentReasoningEffort !== undefined
+          ? input.subagentReasoningEffort
+          : context.modelConfiguration.subagentReasoningEffort,
+    });
+    const routePairs = await routePairsForConfiguration(
+      context,
+      turnModelConfiguration,
+      options.runtimes,
     );
+    const preparedRuntimes = routePairs.map(({ root }) => root);
     const runtimes = preparedRuntimes.map(({ runtime }) => runtime);
     const attachments = await resolvePromptAttachments(
       context,
@@ -8802,12 +8922,6 @@ export async function buildApp({
       } else {
         throw new Error("Chat turn content was not encrypted.");
       }
-      await repository.setChatModel(
-        ownerId,
-        execution.chatId,
-        { modelId },
-        requestedReasoningEffort,
-      );
       app.log.info(
         {
           event: "chat.turn.accepted",
@@ -8854,6 +8968,7 @@ export async function buildApp({
           const attemptStartedAtMs = Date.now();
           let behaviorTurnId: string | null = null;
           const preparedReasoning = preparedRuntimes[index]!;
+          const subagentRuntime = routePairs[index]!.subagent?.runtime ?? null;
           let attemptActivity = false;
           const canResume = runtimeCanResumeContext(execution, runtime);
           const threadId = canResume ? execution.threadId : null;
@@ -9015,6 +9130,12 @@ export async function buildApp({
                     : mentionedSkillNames(input.text),
                 model: runtime.model,
                 provider: runtime.provider,
+                subagentDefaults: subagentRuntime
+                  ? {
+                      model: subagentRuntime.model,
+                      provider: subagentRuntime.provider,
+                    }
+                  : null,
                 permissionProfileId:
                   effectivePermissionProfile(execution).effectiveId,
                 planMode: turnPlanMode,
@@ -9864,12 +9985,15 @@ export async function buildApp({
     task: TaskOperationRelayResult["task"],
     idempotencyKey: string,
   ): Promise<void> {
-    if (!bridge.isConnected(context.workerId)) {
-      throw new Error("Project worker is offline.");
-    }
     const modelId = await resolveModelId(context);
-    const runtime = await runtimeForContext(context);
-    if (!runtime) throw new Error("Selected model was not found.");
+    const routePairs = await routePairsForConfiguration(
+      context,
+      modelConfigurationSchema.parse({
+        ...context.modelConfiguration,
+        modelId,
+      }),
+    );
+    const runtime = routePairs[0]!.root.runtime;
     const result = taskGoalWorkerResultSchema.parse(
       await bridge.request(context.workerId, {
         type: "chat.goal.create",
@@ -9996,19 +10120,21 @@ export async function buildApp({
     } = {},
   ) {
     if (!input.text) throw new Error("Goal mode needs a text objective.");
-    if (!bridge.isConnected(context.workerId)) {
-      throw new Error("Project worker is offline.");
-    }
     await resolvePromptAttachments(context, input.attachmentIds);
     const modelId = await resolveModelId(context, input.modelId);
     const requestedReasoningEffort =
       input.reasoningEffort !== undefined
         ? input.reasoningEffort
         : context.reasoningEffort;
-    const runtime = prepareRuntimesForReasoning(
-      await availableModelRuntimes(context, modelId),
-      requestedReasoningEffort,
-    )[0]!.runtime;
+    const routePairs = await routePairsForConfiguration(
+      context,
+      modelConfigurationSchema.parse({
+        ...context.modelConfiguration,
+        modelId,
+        reasoningEffort: requestedReasoningEffort,
+      }),
+    );
+    const runtime = routePairs[0]!.root.runtime;
     const result = chatGoalResponseSchema.parse(
       await bridge.request(context.workerId, {
         type: "chat.goal.create",
@@ -14087,6 +14213,47 @@ export async function buildApp({
     const input = userSettingsUpdateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const modelConfigurationFields = [
+      "defaultModelId",
+      "defaultReasoningEffort",
+      "defaultCustomSubagentModel",
+      "defaultSubagentModelId",
+      "defaultSubagentReasoningEffort",
+    ] as const;
+    if (modelConfigurationFields.some((field) => field in input.data)) {
+      const current = await repository.getUserSettings(applicationOwnerId());
+      const configuration = modelConfigurationSchema.safeParse({
+        modelId:
+          input.data.defaultModelId !== undefined
+            ? input.data.defaultModelId
+            : current.defaultModelId,
+        reasoningEffort:
+          input.data.defaultReasoningEffort !== undefined
+            ? input.data.defaultReasoningEffort
+            : current.defaultReasoningEffort,
+        customSubagentModel:
+          input.data.defaultCustomSubagentModel ??
+          current.defaultCustomSubagentModel,
+        subagentModelId:
+          input.data.defaultSubagentModelId !== undefined
+            ? input.data.defaultSubagentModelId
+            : current.defaultSubagentModelId,
+        subagentReasoningEffort:
+          input.data.defaultSubagentReasoningEffort !== undefined
+            ? input.data.defaultSubagentReasoningEffort
+            : current.defaultSubagentReasoningEffort,
+      });
+      if (!configuration.success) {
+        return reply.code(400).send(invalidBody(configuration.error.issues));
+      }
+      try {
+        await configuredRoutePairsForDefaults(configuration.data);
+      } catch (error) {
+        const response = sendModelConfigurationResolutionFailure(reply, error);
+        if (response) return response;
+        throw error;
+      }
     }
     const settings = await repository.updateSettings(
       applicationOwnerId(),
@@ -21217,6 +21384,49 @@ export async function buildApp({
   );
 
   app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/model-configuration",
+    async (request, reply) => {
+      const input = chatModelConfigurationUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (chatIsExecuting(context.status)) {
+        return reply.code(409).send(
+          modelConfigurationFailureSchema.parse({
+            error:
+              "Finish or interrupt the active turn before changing its model configuration.",
+            code: "chat-runtime-active",
+            field: null,
+            retryable: true,
+          }),
+        );
+      }
+      try {
+        await routePairsForConfiguration(context, input.data);
+      } catch (error) {
+        const response = sendModelConfigurationResolutionFailure(reply, error);
+        if (response) return response;
+        throw error;
+      }
+      const result = await repository.setChatModelConfiguration(
+        applicationOwnerId(),
+        request.params.chatId,
+        input.data,
+      );
+      return result
+        ? reply.send(chatWireSummarySchema.parse(result))
+        : reply.code(404).send({ error: "Chat or model not found." });
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId/plan",
     async (request, reply) => {
       const input = taskOpaqueMutationSchema.safeParse(request.body);
@@ -27149,13 +27359,24 @@ export async function buildApp({
           rememberedReasoningEffort ?? null,
         );
       } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
+        const response = sendModelConfigurationResolutionFailure(reply, error);
+        return response ?? reply.code(409).send({ error: errorMessage(error) });
       }
-      const result = await repository.setChatModel(
+      const configuration = modelConfigurationSchema.parse({
+        ...context.modelConfiguration,
+        modelId: input.data.modelId,
+        reasoningEffort: reasoning.reasoningEffort,
+      });
+      try {
+        await routePairsForConfiguration(context, configuration);
+      } catch (error) {
+        const response = sendModelConfigurationResolutionFailure(reply, error);
+        return response ?? reply.code(409).send({ error: errorMessage(error) });
+      }
+      const result = await repository.setChatModelConfiguration(
         applicationOwnerId(),
         request.params.chatId,
-        input.data,
-        reasoning.reasoningEffort,
+        configuration,
       );
       if (!result) {
         return reply.code(404).send({ error: "Chat or model not found." });
@@ -27228,11 +27449,21 @@ export async function buildApp({
             "That reasoning effort is not supported by every eligible provider route.",
         });
       }
-      const updated = await repository.setChatReasoningEffortAndRememberDefault(
+      const configuration = modelConfigurationSchema.parse({
+        ...context.modelConfiguration,
+        modelId: current.modelId,
+        reasoningEffort: input.data.reasoningEffort,
+      });
+      try {
+        await routePairsForConfiguration(context, configuration);
+      } catch (error) {
+        const response = sendModelConfigurationResolutionFailure(reply, error);
+        return response ?? reply.code(409).send({ error: errorMessage(error) });
+      }
+      const updated = await repository.setChatModelConfiguration(
         applicationOwnerId(),
         context.chatId,
-        current.modelId,
-        input.data.reasoningEffort,
+        configuration,
       );
       if (!updated) {
         return reply.code(404).send({ error: "Chat source not found." });
@@ -27576,6 +27807,9 @@ export async function buildApp({
               mode: queued.classification.mode,
               modelId: queued.modelId,
               reasoningEffort: queued.reasoningEffort,
+              customSubagentModel: queued.customSubagentModel,
+              subagentModelId: queued.subagentModelId,
+              subagentReasoningEffort: queued.subagentReasoningEffort,
               idempotencyKey: queued.pendingMessage.idempotencyKey,
             },
             {
@@ -27618,7 +27852,10 @@ export async function buildApp({
           }),
         );
       } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
+        return (
+          sendModelConfigurationResolutionFailure(reply, error) ??
+          reply.code(409).send({ error: errorMessage(error) })
+        );
       }
     },
   );
@@ -27713,6 +27950,10 @@ export async function buildApp({
             mode: input.data.message.classification.mode,
             modelId: input.data.modelId,
             reasoningEffort: input.data.message.reasoningEffort,
+            customSubagentModel: input.data.queuedPrompt.customSubagentModel,
+            subagentModelId: input.data.queuedPrompt.subagentModelId,
+            subagentReasoningEffort:
+              input.data.queuedPrompt.subagentReasoningEffort,
             idempotencyKey: input.data.message.idempotencyKey,
           },
           {
@@ -27738,6 +27979,11 @@ export async function buildApp({
           }),
         );
       } catch (error) {
+        const resolution = sendModelConfigurationResolutionFailure(
+          reply,
+          error,
+        );
+        if (resolution) return resolution;
         const message = errorMessage(error);
         const status = message.includes("offline")
           ? 503
@@ -27856,6 +28102,10 @@ export async function buildApp({
             mode: replacement.classification.mode,
             modelId: input.data.modelId,
             reasoningEffort: replacement.reasoningEffort,
+            customSubagentModel: input.data.queuedPrompt.customSubagentModel,
+            subagentModelId: input.data.queuedPrompt.subagentModelId,
+            subagentReasoningEffort:
+              input.data.queuedPrompt.subagentReasoningEffort,
             idempotencyKey: replacement.idempotencyKey,
           },
           {
@@ -27883,6 +28133,11 @@ export async function buildApp({
           }),
         );
       } catch (error) {
+        const resolution = sendModelConfigurationResolutionFailure(
+          reply,
+          error,
+        );
+        if (resolution) return resolution;
         const message = errorMessage(error);
         return reply
           .code(message.includes("offline") ? 503 : 409)
@@ -28186,6 +28441,11 @@ export async function buildApp({
                   mode: "default",
                   modelId,
                   reasoningEffort: claim.reasoningEffort,
+                  customSubagentModel:
+                    context.modelConfiguration.customSubagentModel,
+                  subagentModelId: context.modelConfiguration.subagentModelId,
+                  subagentReasoningEffort:
+                    context.modelConfiguration.subagentReasoningEffort,
                   idempotencyKey,
                 },
                 { timeoutMs: 45_000 },
@@ -28232,6 +28492,11 @@ export async function buildApp({
                 mode: "default",
                 modelId,
                 reasoningEffort: claim.reasoningEffort,
+                customSubagentModel:
+                  protectedTurn.queuedPrompt.customSubagentModel,
+                subagentModelId: protectedTurn.queuedPrompt.subagentModelId,
+                subagentReasoningEffort:
+                  protectedTurn.queuedPrompt.subagentReasoningEffort,
                 idempotencyKey,
               },
               {

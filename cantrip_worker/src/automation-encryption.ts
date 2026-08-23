@@ -22,6 +22,9 @@ export async function protectProjectAutomationDispatch(input: {
   mode: ChatTurnMode;
   modelId: string;
   reasoningEffort: ReasoningEffort | null;
+  customSubagentModel?: boolean;
+  subagentModelId?: string | null;
+  subagentReasoningEffort?: ReasoningEffort | null;
   idempotencyKey: string;
   service: WorkerEncryptionService;
   countOpenIssues(repository: string): Promise<number>;
@@ -89,6 +92,9 @@ export async function protectProjectAutomationDispatch(input: {
             modelId: input.modelId,
             promptId: input.promptId,
             reasoningEffort: input.reasoningEffort,
+            customSubagentModel: input.customSubagentModel,
+            subagentModelId: input.subagentModelId,
+            subagentReasoningEffort: input.subagentReasoningEffort,
             service: input.service,
             text: prompt.prompt,
           })

@@ -31,6 +31,40 @@ export const modelConfigurationSchema = z
 
 export type ModelConfiguration = z.infer<typeof modelConfigurationSchema>;
 
+export const modelConfigurationFailureCodeSchema = z.enum([
+  "worker-offline",
+  "chat-runtime-active",
+  "root-model-unavailable",
+  "subagent-model-unavailable",
+  "root-reasoning-unsupported",
+  "subagent-reasoning-unsupported",
+  "provider-route-incompatible",
+]);
+
+export const modelConfigurationFieldSchema = z.enum([
+  "modelId",
+  "reasoningEffort",
+  "customSubagentModel",
+  "subagentModelId",
+  "subagentReasoningEffort",
+]);
+
+export const modelConfigurationFailureSchema = z
+  .object({
+    error: z.string().min(1).max(4_000),
+    code: modelConfigurationFailureCodeSchema,
+    field: modelConfigurationFieldSchema.nullable(),
+    retryable: z.boolean(),
+  })
+  .strict();
+
+export type ModelConfigurationFailureCode = z.infer<
+  typeof modelConfigurationFailureCodeSchema
+>;
+export type ModelConfigurationFailure = z.infer<
+  typeof modelConfigurationFailureSchema
+>;
+
 export const EMPTY_MODEL_CONFIGURATION: ModelConfiguration = {
   modelId: null,
   reasoningEffort: null,
