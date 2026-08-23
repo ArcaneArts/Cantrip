@@ -1,4 +1,7 @@
-import type { TunnelDataPlaneFrameHeader } from "@cantrip/protocol";
+import type {
+  TunnelDataPlaneFrameHeader,
+  TunnelDataPlaneRejectionCode,
+} from "@cantrip/protocol";
 import type { TunnelDataProtectionConfiguration } from "@cantrip/protocol/tunnel-content";
 
 import type { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
@@ -26,6 +29,36 @@ interface ProtectedConnection {
 
 interface TunnelDiagnosticContext {
   diagnosticTraceId?: string;
+}
+
+type ProtectedTargetRejectionReason =
+  | "invalid-target-binding"
+  | "protected-record-open-failed"
+  | "worker-id-mismatch"
+  | "target-kind-mismatch"
+  | "tcp-target-handoff-failed"
+  | "code-endpoint-preparation-failed"
+  | "code-endpoint-handoff-failed"
+  | "project-share-preparation-failed"
+  | "project-share-handoff-failed";
+
+function protectedTargetRejectionCode(
+  reasonCode: ProtectedTargetRejectionReason,
+): TunnelDataPlaneRejectionCode {
+  switch (reasonCode) {
+    case "invalid-target-binding":
+    case "worker-id-mismatch":
+    case "target-kind-mismatch":
+      return "protected-target-invalid";
+    case "protected-record-open-failed":
+      return "protected-record-unavailable";
+    case "tcp-target-handoff-failed":
+    case "code-endpoint-preparation-failed":
+    case "code-endpoint-handoff-failed":
+    case "project-share-preparation-failed":
+    case "project-share-handoff-failed":
+      return "protected-endpoint-unavailable";
+  }
 }
 
 export class TunnelDestinationRouter {
@@ -117,7 +150,7 @@ export class TunnelDestinationRouter {
     payload: Uint8Array,
     diagnostics: TunnelDiagnosticContext,
   ): Promise<void> {
-    let reasonCode = "invalid-target-binding";
+    let reasonCode: ProtectedTargetRejectionReason = "invalid-target-binding";
     let sessionId: string | undefined;
     const targetKind =
       header.target.kind === "protected-tunnel"
@@ -277,7 +310,7 @@ export class TunnelDestinationRouter {
           connectionId: header.connectionId,
           sequence: 0,
           kind: "rejected",
-          code: "target-rejected",
+          code: protectedTargetRejectionCode(reasonCode),
         },
         new Uint8Array(),
       );

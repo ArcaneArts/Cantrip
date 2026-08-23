@@ -353,6 +353,55 @@ describe("protected Code direct transport", () => {
       proxyConnectionIds.push(await request("/code/", "editor-ready"));
     }
 
+    const rejectedConnectionId = randomUUID();
+    const prepareFailure = vi
+      .spyOn(codeEndpoints, "prepareProtected")
+      .mockRejectedValueOnce(new Error("forced endpoint preparation failure"));
+    const rejectedOpen: TunnelDataPlaneFrameHeader = {
+      protocolVersion: 1,
+      tunnelId,
+      attachmentId,
+      sourceEndpointId: route.sourceEndpointId,
+      destinationEndpointId: route.destinationEndpointId,
+      connectionId: rejectedConnectionId,
+      sequence: 0,
+      kind: "open",
+      initialCreditBytes: 256 * 1_024,
+    };
+    socket.send(encodeTunnelDataPlaneFrame(rejectedOpen, new Uint8Array()));
+    await vi.waitFor(() =>
+      expect(
+        decodedFrames().some(
+          (frame) =>
+            frame.header.connectionId === rejectedConnectionId &&
+            frame.header.kind === "rejected" &&
+            frame.header.code === "protected-endpoint-unavailable",
+        ),
+      ).toBe(true),
+    );
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    socket.send(
+      encodeTunnelDataPlaneFrame(
+        {
+          protocolVersion: 1,
+          tunnelId,
+          attachmentId,
+          sourceEndpointId: route.sourceEndpointId,
+          destinationEndpointId: route.destinationEndpointId,
+          connectionId: rejectedConnectionId,
+          sequence: 1,
+          kind: "close",
+          code: "normal",
+        },
+        new Uint8Array(),
+      ),
+    );
+    prepareFailure.mockRestore();
+    healthConnectionIds.push(
+      await request("/code/_cantrip/health", '{"status":"ok"}'),
+    );
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+
     expect(observed?.url).toBe(
       "/?workspace=%2Fworker%2Fprivate%2Fproject.code-workspace",
     );

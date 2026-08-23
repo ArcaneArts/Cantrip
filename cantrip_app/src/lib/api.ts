@@ -747,9 +747,11 @@ export async function createDirectWorkerProbe(workerId: string) {
 
 export async function deleteDirectAttachment(
   capabilityId: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<void> {
   await request(`/api/direct-attachments/${encodeURIComponent(capabilityId)}`, {
     method: "DELETE",
+    signal: options.signal,
   });
 }
 

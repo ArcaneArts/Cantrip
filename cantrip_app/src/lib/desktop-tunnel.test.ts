@@ -30,6 +30,7 @@ vi.mock("@/lib/server-connections", () => ({
 }));
 
 import {
+  forceDesktopTunnelRelay,
   refreshDesktopTunnelRelay,
   startDesktopTunnel,
   startDirectDesktopTunnel,
@@ -146,7 +147,7 @@ describe("startDesktopTunnel", () => {
       localHost: "127.0.0.1",
       localPort: 41_234,
       routeState: "relayed",
-      directCapabilityId: null,
+      directCapabilityId: capabilityId,
       directFallbackReason: null,
       tunnelId: "tunnel-1",
     });
@@ -234,6 +235,264 @@ describe("stopDesktopTunnel", () => {
     });
     expect(mocks.recordDirectAttachmentTelemetry).not.toHaveBeenCalled();
     expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1");
+  });
+});
+
+describe("forceDesktopTunnelRelay", () => {
+  it("waits for bounded direct telemetry and revocation after native relay selection", async () => {
+    mocks.invoke.mockResolvedValue({
+      attachmentId: "attachment-1",
+      expiresAt,
+      localHost: "127.0.0.1",
+      localPort: 41_234,
+      routeState: "relayed",
+      relayFallbackAvailable: true,
+      directCapabilityId: capabilityId,
+      directFallbackReason: "connected-route-unusable",
+      tunnelId: "tunnel-1",
+      bytesFromLocal: 11,
+      bytesToLocal: 12,
+      connectionsClosed: 1,
+      connectionsOpened: 1,
+    });
+
+    await expect(
+      forceDesktopTunnelRelay({
+        attachmentId: "attachment-1",
+        diagnosticTraceId: null,
+        expiresAt,
+        localHost: "127.0.0.1",
+        localPort: 41_234,
+        routeState: "local-direct",
+        relayFallbackAvailable: true,
+        directCapabilityId: capabilityId,
+        directFallbackReason: null,
+        tunnelId: "tunnel-1",
+      }),
+    ).resolves.toMatchObject({ routeState: "relayed" });
+
+    expect(mocks.invoke).toHaveBeenCalledWith("force_tunnel_forward_relay", {
+      tunnelId: "tunnel-1",
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "confirm_tunnel_forward_direct_retired",
+      { directCapabilityId: capabilityId, tunnelId: "tunnel-1" },
+    );
+    expect(mocks.recordDirectAttachmentTelemetry).toHaveBeenCalledWith(
+      capabilityId,
+      {
+        bytesFromLocal: 11,
+        bytesToLocal: 12,
+        connectionsClosed: 1,
+        connectionsOpened: 1,
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(mocks.deleteDirectAttachment).toHaveBeenCalledWith(capabilityId, {
+      signal: expect.any(AbortSignal),
+    });
+    expect(
+      mocks.recordDirectAttachmentTelemetry.mock.invocationCallOrder[0]!,
+    ).toBeLessThan(mocks.deleteDirectAttachment.mock.invocationCallOrder[0]!);
+  });
+
+  it("gives revocation a fresh deadline after telemetry exhausts its deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.invoke.mockImplementation(async (command: string) =>
+        command === "confirm_tunnel_forward_direct_retired"
+          ? true
+          : {
+              attachmentId: "attachment-1",
+              expiresAt,
+              localHost: "127.0.0.1",
+              localPort: 41_234,
+              routeState: "relayed",
+              relayFallbackAvailable: true,
+              directCapabilityId: capabilityId,
+              directFallbackReason: "connected-route-unusable",
+              tunnelId: "tunnel-1",
+            },
+      );
+      mocks.recordDirectAttachmentTelemetry.mockImplementation(
+        (_capabilityId, _counts, options: { signal: AbortSignal }) =>
+          new Promise((_, reject) => {
+            options.signal.addEventListener(
+              "abort",
+              () => reject(options.signal.reason),
+              {
+                once: true,
+              },
+            );
+          }),
+      );
+      const pending = forceDesktopTunnelRelay({
+        attachmentId: "attachment-1",
+        diagnosticTraceId: null,
+        expiresAt,
+        localHost: "127.0.0.1",
+        localPort: 41_234,
+        routeState: "local-direct",
+        relayFallbackAvailable: true,
+        directCapabilityId: capabilityId,
+        directFallbackReason: null,
+        tunnelId: "tunnel-1",
+      });
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      await pending;
+
+      const telemetrySignal = mocks.recordDirectAttachmentTelemetry.mock
+        .calls[0]?.[2].signal as AbortSignal;
+      const deletionSignal = mocks.deleteDirectAttachment.mock.calls[0]?.[1]
+        .signal as AbortSignal;
+      expect(telemetrySignal.aborted).toBe(true);
+      expect(deletionSignal).not.toBe(telemetrySignal);
+      expect(deletionSignal.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not clear native identity when direct revocation fails", async () => {
+    mocks.invoke.mockResolvedValue({
+      attachmentId: "attachment-1",
+      routeState: "relayed",
+      relayFallbackAvailable: true,
+      directCapabilityId: capabilityId,
+      tunnelId: "tunnel-1",
+    });
+    mocks.deleteDirectAttachment.mockRejectedValue(
+      new Error("revocation failed"),
+    );
+
+    await expect(
+      forceDesktopTunnelRelay({
+        attachmentId: "attachment-1",
+        diagnosticTraceId: null,
+        expiresAt,
+        localHost: "127.0.0.1",
+        localPort: 41_234,
+        routeState: "local-direct",
+        relayFallbackAvailable: true,
+        directCapabilityId: capabilityId,
+        directFallbackReason: null,
+        tunnelId: "tunnel-1",
+      }),
+    ).rejects.toThrow("revocation failed");
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "confirm_tunnel_forward_direct_retired",
+      expect.anything(),
+    );
+  });
+
+  it("treats an already retired native capability as an idempotent success", async () => {
+    mocks.invoke.mockResolvedValue({
+      attachmentId: "attachment-1",
+      routeState: "relayed",
+      relayFallbackAvailable: true,
+      directCapabilityId: null,
+      tunnelId: "tunnel-1",
+    });
+
+    await expect(
+      forceDesktopTunnelRelay({
+        attachmentId: "attachment-1",
+        diagnosticTraceId: null,
+        expiresAt,
+        localHost: "127.0.0.1",
+        localPort: 41_234,
+        routeState: "local-direct",
+        relayFallbackAvailable: true,
+        directCapabilityId: capabilityId,
+        directFallbackReason: null,
+        tunnelId: "tunnel-1",
+      }),
+    ).resolves.toMatchObject({ directCapabilityId: null });
+    expect(mocks.recordDirectAttachmentTelemetry).not.toHaveBeenCalled();
+    expect(mocks.deleteDirectAttachment).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalledWith(
+      "confirm_tunnel_forward_direct_retired",
+      expect.anything(),
+    );
+  });
+
+  it("does not retire or hide a replacement native capability", async () => {
+    mocks.invoke.mockResolvedValue({
+      attachmentId: "attachment-2",
+      routeState: "relayed",
+      relayFallbackAvailable: true,
+      directCapabilityId: "replacement-capability",
+      tunnelId: "tunnel-1",
+    });
+
+    await expect(
+      forceDesktopTunnelRelay({
+        attachmentId: "attachment-1",
+        diagnosticTraceId: null,
+        expiresAt,
+        localHost: "127.0.0.1",
+        localPort: 41_234,
+        routeState: "local-direct",
+        relayFallbackAvailable: true,
+        directCapabilityId: capabilityId,
+        directFallbackReason: null,
+        tunnelId: "tunnel-1",
+      }),
+    ).resolves.toMatchObject({
+      directCapabilityId: "replacement-capability",
+    });
+    expect(mocks.recordDirectAttachmentTelemetry).not.toHaveBeenCalled();
+    expect(mocks.deleteDirectAttachment).not.toHaveBeenCalled();
+  });
+
+  it("coalesces concurrent retirement for the same native capability", async () => {
+    mocks.invoke.mockImplementation(async (command: string) =>
+      command === "confirm_tunnel_forward_direct_retired"
+        ? true
+        : {
+            attachmentId: "attachment-1",
+            routeState: "relayed",
+            relayFallbackAvailable: true,
+            directCapabilityId: capabilityId,
+            tunnelId: "tunnel-1",
+          },
+    );
+    let releaseTelemetry: (() => void) | undefined;
+    mocks.recordDirectAttachmentTelemetry.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseTelemetry = resolve;
+        }),
+    );
+    const forward = {
+      attachmentId: "attachment-1",
+      diagnosticTraceId: null,
+      expiresAt,
+      localHost: "127.0.0.1" as const,
+      localPort: 41_234,
+      routeState: "local-direct" as const,
+      relayFallbackAvailable: true,
+      directCapabilityId: capabilityId,
+      directFallbackReason: null,
+      tunnelId: "tunnel-1",
+    };
+
+    const first = forceDesktopTunnelRelay(forward);
+    const second = forceDesktopTunnelRelay(forward);
+    await vi.waitFor(() =>
+      expect(mocks.recordDirectAttachmentTelemetry).toHaveBeenCalledOnce(),
+    );
+    releaseTelemetry?.();
+
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(mocks.recordDirectAttachmentTelemetry).toHaveBeenCalledTimes(1);
+    expect(mocks.deleteDirectAttachment).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.invoke.mock.calls.filter(
+        ([command]) => command === "confirm_tunnel_forward_direct_retired",
+      ),
+    ).toHaveLength(1);
   });
 });
 

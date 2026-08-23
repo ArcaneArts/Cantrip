@@ -15,6 +15,7 @@ import {
 } from "@/lib/browser-code-tunnel";
 import { clientLogger } from "@/lib/client-log-relay";
 import {
+  forceDesktopTunnelRelay,
   startDesktopTunnel,
   stopDesktopTunnel,
   stopDesktopTunnelForward,
@@ -28,6 +29,13 @@ export interface PreferredCodeAttachment {
 const protectedAttachmentIds = new Map<string, string>();
 const CODE_ATTACHMENT_HEALTH_ATTEMPTS = 100;
 const CODE_ATTACHMENT_HEALTH_RETRY_MS = 50;
+const CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS = 750;
+const CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS = 8_000;
+const CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS = 2_500;
+const MAX_CODE_ATTACHMENT_HEALTH_ATTEMPTS = 100;
+const MAX_CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS = 5_000;
+const MAX_CODE_ATTACHMENT_HEALTH_RETRY_MS = 1_000;
+const MAX_CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS = 10_000;
 const TRANSPORT_ERROR_CLASSES = new Set([
   "AbortError",
   "DOMException",
@@ -89,56 +97,225 @@ export function transportSafeErrorIdentity(error: unknown): {
   };
 }
 
+export type CodeAttachmentHealthFailureKind =
+  "attempt-timeout" | "http-response" | "network-error" | "total-timeout";
+
+export class CodeAttachmentHealthError extends Error {
+  readonly attemptCount: number;
+  readonly failureKind: CodeAttachmentHealthFailureKind;
+  readonly statusCode?: number;
+
+  constructor(options: {
+    attemptCount: number;
+    cause?: unknown;
+    failureKind: CodeAttachmentHealthFailureKind;
+    statusCode?: number;
+  }) {
+    super(
+      options.failureKind === "http-response"
+        ? `Cantrip Code returned HTTP ${options.statusCode ?? 500}.`
+        : options.failureKind === "network-error"
+          ? "Cantrip Code could not be reached."
+          : "Cantrip Code did not respond before the readiness deadline.",
+      { cause: options.cause },
+    );
+    this.name = "CodeAttachmentHealthError";
+    this.attemptCount = options.attemptCount;
+    this.failureKind = options.failureKind;
+    this.statusCode = options.statusCode;
+  }
+
+  get relayFallbackEligible(): boolean {
+    return this.failureKind !== "http-response";
+  }
+}
+
+class CodeAttachmentAttemptTimeout extends Error {}
+
+function boundedInteger(
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+  minimum: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.floor(value)));
+}
+
+function monotonicNow(): number {
+  return performance.now();
+}
+
+async function fetchCodeAttachmentHealth(
+  endpoint: URL,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<Response> {
+  signal?.throwIfAborted();
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let rejectCallerAbort: ((reason?: unknown) => void) | undefined;
+  const onCallerAbort = () => {
+    controller.abort();
+    rejectCallerAbort?.(signal?.reason);
+  };
+  signal?.addEventListener("abort", onCallerAbort, { once: true });
+  try {
+    return await Promise.race([
+      fetch(endpoint, {
+        cache: "no-store",
+        credentials: "omit",
+        signal: controller.signal,
+      }),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new CodeAttachmentAttemptTimeout());
+          controller.abort();
+        }, timeoutMs);
+      }),
+      ...(signal
+        ? [
+            new Promise<never>((_, reject) => {
+              rejectCallerAbort = reject;
+              if (signal.aborted) onCallerAbort();
+            }),
+          ]
+        : []),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+    signal?.removeEventListener("abort", onCallerAbort);
+  }
+}
+
+async function abortableDelay(
+  delayMs: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  signal?.throwIfAborted();
+  if (delayMs <= 0) return;
+  await new Promise<void>((resolve, reject) => {
+    const finish = () => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const timeout = setTimeout(finish, delayMs);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      reject(signal?.reason);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+}
+
 export async function waitForDirectCodeAttachmentReady(
   attachment: Pick<CodeAttachment, "url">,
   options: {
     attachmentId?: string;
+    attemptTimeoutMs?: number;
     attempts?: number;
     diagnosticTraceId?: string;
+    healthPhase?: "direct" | "initial" | "relay";
     retryDelayMs?: number;
+    signal?: AbortSignal;
     sessionId?: string;
+    totalTimeoutMs?: number;
     tunnelId?: string;
   } = {},
 ): Promise<void> {
-  const attempts = Math.max(
+  const attempts = boundedInteger(
+    options.attempts,
+    CODE_ATTACHMENT_HEALTH_ATTEMPTS,
+    MAX_CODE_ATTACHMENT_HEALTH_ATTEMPTS,
     1,
-    options.attempts ?? CODE_ATTACHMENT_HEALTH_ATTEMPTS,
   );
-  const retryDelayMs = Math.max(
+  const attemptTimeoutMs = boundedInteger(
+    options.attemptTimeoutMs,
+    CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS,
+    MAX_CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS,
+    1,
+  );
+  const retryDelayMs = boundedInteger(
+    options.retryDelayMs,
+    CODE_ATTACHMENT_HEALTH_RETRY_MS,
+    MAX_CODE_ATTACHMENT_HEALTH_RETRY_MS,
     0,
-    options.retryDelayMs ?? CODE_ATTACHMENT_HEALTH_RETRY_MS,
+  );
+  const totalTimeoutMs = boundedInteger(
+    options.totalTimeoutMs,
+    CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS,
+    MAX_CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS,
+    1,
   );
   const diagnosticTraceId = options.diagnosticTraceId ?? crypto.randomUUID();
   const endpoint = new URL("_cantrip/health", attachment.url);
-  const startedAtMs = Date.now();
+  const startedAtMs = monotonicNow();
+  const deadlineMs = startedAtMs + totalTimeoutMs;
   let lastError: unknown = new Error("Cantrip Code is unavailable.");
-  let lastAttemptKind = "network-error";
+  let lastAttemptKind: CodeAttachmentHealthFailureKind = "network-error";
   let lastStatusCode: number | undefined;
+  let attempted = 0;
   clientLogger.event("info", "Cantrip Code health check started", {
     attachmentId: options.attachmentId,
-    attemptCount: attempts,
+    attemptLimit: attempts,
+    attemptTimeoutMs,
     diagnosticTraceId,
     event: "code.attachment.health.started",
+    healthPhase: options.healthPhase ?? "initial",
     operation: "check-health",
     status: "started",
     subsystem: "code",
     sessionId: options.sessionId,
+    totalTimeoutMs,
     tunnelId: options.tunnelId,
   });
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      const response = await fetch(endpoint, {
-        cache: "no-store",
-        credentials: "omit",
+  let cancellationLogged = false;
+  const throwIfCancelled = (): void => {
+    if (!options.signal?.aborted) return;
+    if (!cancellationLogged) {
+      cancellationLogged = true;
+      clientLogger.event("info", "Cantrip Code health check cancelled", {
+        attachmentId: options.attachmentId,
+        attemptCount: attempted,
+        diagnosticTraceId,
+        durationMs: Math.round(monotonicNow() - startedAtMs),
+        event: "code.attachment.health.cancelled",
+        healthPhase: options.healthPhase ?? "initial",
+        operation: "check-health",
+        reasonCode: "cancelled",
+        status: "cancelled",
+        subsystem: "code",
+        sessionId: options.sessionId,
+        tunnelId: options.tunnelId,
       });
+    }
+    options.signal.throwIfAborted();
+  };
+  throwIfCancelled();
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const remainingMs = deadlineMs - monotonicNow();
+    if (remainingMs <= 0) {
+      lastAttemptKind = "total-timeout";
+      break;
+    }
+    attempted = attempt + 1;
+    try {
+      const response = await fetchCodeAttachmentHealth(
+        endpoint,
+        Math.max(1, Math.min(attemptTimeoutMs, remainingMs)),
+        options.signal,
+      );
       if (response.ok) {
         clientLogger.event("info", "Cantrip Code health check completed", {
           attachmentId: options.attachmentId,
-          attemptCount: attempt + 1,
+          attemptCount: attempted,
           attemptKind: "http-response",
           diagnosticTraceId,
-          durationMs: Date.now() - startedAtMs,
+          durationMs: Math.round(monotonicNow() - startedAtMs),
           event: "code.attachment.health.completed",
+          healthPhase: options.healthPhase ?? "initial",
           operation: "check-health",
           status: "completed",
           subsystem: "code",
@@ -149,24 +326,55 @@ export async function waitForDirectCodeAttachmentReady(
       }
       lastAttemptKind = "http-response";
       lastStatusCode = response.status;
-      lastError = new Error(`Cantrip Code returned HTTP ${response.status}.`);
+      lastError = new CodeAttachmentHealthError({
+        attemptCount: attempted,
+        failureKind: "http-response",
+        statusCode: response.status,
+      });
+      break;
     } catch (error) {
-      lastAttemptKind = "network-error";
+      throwIfCancelled();
+      lastAttemptKind =
+        error instanceof CodeAttachmentAttemptTimeout
+          ? monotonicNow() >= deadlineMs
+            ? "total-timeout"
+            : "attempt-timeout"
+          : "network-error";
       lastStatusCode = undefined;
       lastError = error;
     }
-    if (attempt + 1 < attempts) {
-      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    if (attempt + 1 < attempts && monotonicNow() < deadlineMs) {
+      try {
+        await abortableDelay(
+          Math.max(0, Math.min(retryDelayMs, deadlineMs - monotonicNow())),
+          options.signal,
+        );
+      } catch (error) {
+        throwIfCancelled();
+        throw error;
+      }
     }
   }
+  if (monotonicNow() >= deadlineMs && lastAttemptKind !== "http-response") {
+    lastAttemptKind = "total-timeout";
+  }
+  const healthError =
+    lastError instanceof CodeAttachmentHealthError
+      ? lastError
+      : new CodeAttachmentHealthError({
+          attemptCount: attempted,
+          cause: lastError,
+          failureKind: lastAttemptKind,
+        });
   clientLogger.event("warn", "Cantrip Code health check failed", {
     ...transportSafeErrorIdentity(lastError),
-    attemptCount: attempts,
+    attemptCount: attempted,
     attemptKind: lastAttemptKind,
     attachmentId: options.attachmentId,
     diagnosticTraceId,
-    durationMs: Date.now() - startedAtMs,
+    durationMs: Math.round(monotonicNow() - startedAtMs),
     event: "code.attachment.health.failed",
+    healthPhase: options.healthPhase ?? "initial",
     operation: "check-health",
     reasonCode: lastAttemptKind,
     status: "failed",
@@ -175,12 +383,14 @@ export async function waitForDirectCodeAttachmentReady(
     sessionId: options.sessionId,
     tunnelId: options.tunnelId,
   });
-  throw lastError;
+  throw healthError;
 }
 
 export async function preferProtectedCodeAttachment(
   wire: CodeProtectedAttachmentWire,
+  options: { signal?: AbortSignal } = {},
 ): Promise<PreferredCodeAttachment> {
+  options.signal?.throwIfAborted();
   if (!isTauri()) {
     return {
       attachment: await startBrowserCodeAttachment(wire),
@@ -188,9 +398,10 @@ export async function preferProtectedCodeAttachment(
     };
   }
   const diagnosticTraceId = crypto.randomUUID();
-  const forward = await startDesktopTunnel(wire.tunnelId, {
+  let forward = await startDesktopTunnel(wire.tunnelId, {
     diagnosticTraceId,
   });
+  const readinessStartedAtMs = monotonicNow();
   try {
     const url = new URL(
       `http://${forward.localHost}:${forward.localPort}/code/`,
@@ -209,12 +420,97 @@ export async function preferProtectedCodeAttachment(
       expiresAt: wire.expiresAt,
       runtime: wire.runtime,
     } satisfies CodeAttachment;
-    await waitForDirectCodeAttachmentReady(attachment, {
-      attachmentId: wire.attachmentId,
-      diagnosticTraceId,
-      sessionId: wire.sessionId,
-      tunnelId: wire.tunnelId,
-    });
+    try {
+      await waitForDirectCodeAttachmentReady(attachment, {
+        attachmentId: wire.attachmentId,
+        diagnosticTraceId,
+        healthPhase: forward.routeState === "local-direct" ? "direct" : "relay",
+        sessionId: wire.sessionId,
+        signal: options.signal,
+        totalTimeoutMs:
+          forward.routeState === "local-direct"
+            ? CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS
+            : CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS,
+        tunnelId: wire.tunnelId,
+      });
+      if (
+        forward.routeState === "local-direct" &&
+        forward.relayFallbackAvailable
+      ) {
+        const currentRoute = (
+          await invoke<Array<{ routeState: string; tunnelId: string }>>(
+            "list_tunnel_forwards",
+          )
+        ).find((candidate) => candidate.tunnelId === wire.tunnelId);
+        if (!currentRoute) {
+          throw new Error("The desktop tunnel stopped during Code readiness.");
+        }
+        if (
+          currentRoute.routeState === "relayed" ||
+          currentRoute.routeState === "degraded"
+        ) {
+          forward = await forceDesktopTunnelRelay(forward, {
+            signal: options.signal,
+          });
+          const remainingHealthMs = Math.floor(
+            CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS -
+              (monotonicNow() - readinessStartedAtMs),
+          );
+          if (remainingHealthMs <= 0) {
+            throw new CodeAttachmentHealthError({
+              attemptCount: 0,
+              failureKind: "total-timeout",
+            });
+          }
+          await waitForDirectCodeAttachmentReady(attachment, {
+            attachmentId: wire.attachmentId,
+            diagnosticTraceId,
+            healthPhase: "relay",
+            sessionId: wire.sessionId,
+            signal: options.signal,
+            totalTimeoutMs: remainingHealthMs,
+            tunnelId: wire.tunnelId,
+          });
+        } else if (currentRoute.routeState !== "local-direct") {
+          throw new Error(
+            "The desktop tunnel returned an invalid route state.",
+          );
+        }
+      }
+    } catch (error) {
+      if (
+        !(error instanceof CodeAttachmentHealthError) ||
+        !error.relayFallbackEligible ||
+        forward.routeState !== "local-direct" ||
+        !forward.relayFallbackAvailable
+      ) {
+        throw error;
+      }
+      forward = await forceDesktopTunnelRelay(forward, {
+        signal: options.signal,
+      });
+      options.signal?.throwIfAborted();
+      const remainingHealthMs = Math.floor(
+        CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS -
+          (monotonicNow() - readinessStartedAtMs),
+      );
+      if (remainingHealthMs <= 0) {
+        throw new CodeAttachmentHealthError({
+          attemptCount: 0,
+          cause: error,
+          failureKind: "total-timeout",
+        });
+      }
+      await waitForDirectCodeAttachmentReady(attachment, {
+        attachmentId: wire.attachmentId,
+        diagnosticTraceId,
+        healthPhase: "relay",
+        sessionId: wire.sessionId,
+        signal: options.signal,
+        totalTimeoutMs: remainingHealthMs,
+        tunnelId: wire.tunnelId,
+      });
+    }
     protectedAttachmentIds.set(wire.tunnelId, forward.attachmentId);
     return {
       attachment,

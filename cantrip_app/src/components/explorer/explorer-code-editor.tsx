@@ -61,6 +61,7 @@ export function ExplorerCodeEditor({
   }, []);
 
   useEffect(() => {
+    const connectionController = new AbortController();
     let cancelled = false;
     let connection: Promise<OwnedCodeAttachment | null> | null = null;
     let startTimer: ReturnType<typeof setTimeout> | undefined;
@@ -79,7 +80,9 @@ export function ExplorerCodeEditor({
           appearance,
         );
         attachmentId = wire.attachmentId;
-        const preferred = await preferProtectedCodeAttachment(wire);
+        const preferred = await preferProtectedCodeAttachment(wire, {
+          signal: connectionController.signal,
+        });
         if (!cancelled) setPreferredAttachment(preferred);
         return {
           attachmentId: wire.attachmentId,
@@ -106,6 +109,9 @@ export function ExplorerCodeEditor({
     }, 0);
     return () => {
       cancelled = true;
+      connectionController.abort(
+        new DOMException("Explorer Code connection superseded.", "AbortError"),
+      );
       if (startTimer) clearTimeout(startTimer);
       // A server attachment may already exist while its native tunnel is still
       // connecting. Releasing it before setup settles revokes the capability

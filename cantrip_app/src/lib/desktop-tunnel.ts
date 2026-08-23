@@ -17,6 +17,8 @@ import { getActiveServerUrl } from "@/lib/server-connections";
 
 const clientIdStorageKey = "cantrip.desktop-tunnel-client.v1";
 const FINAL_TELEMETRY_TIMEOUT_MS = 2_000;
+const DIRECT_CAPABILITY_RETIRE_TIMEOUT_MS = 2_000;
+const directCapabilityRetirements = new Map<string, Promise<void>>();
 
 export interface DesktopTunnelForwardSummary {
   attachmentId: string;
@@ -204,6 +206,110 @@ export async function stopDesktopTunnelForward(
     return null;
   });
   await reportFinalDesktopTunnelTelemetry(snapshot).catch(() => undefined);
+}
+
+export async function forceDesktopTunnelRelay(
+  forward: DesktopTunnelForwardSummary,
+  options: { signal?: AbortSignal } = {},
+): Promise<DesktopTunnelForwardSummary> {
+  if (!isTauri() || !forward.relayFallbackAvailable) {
+    throw new Error("The desktop tunnel has no relay fallback.");
+  }
+  options.signal?.throwIfAborted();
+  const relayed = await raceWithAbort(
+    invoke<DesktopTunnelForwardSummary | null>("force_tunnel_forward_relay", {
+      tunnelId: forward.tunnelId,
+    }),
+    options.signal,
+  );
+  options.signal?.throwIfAborted();
+  if (!relayed || relayed.routeState !== "relayed") {
+    throw new Error("The desktop tunnel could not switch to its relay.");
+  }
+  if (
+    forward.directCapabilityId &&
+    relayed.directCapabilityId === forward.directCapabilityId
+  ) {
+    await retireDirectCapabilityAndConfirm(forward, relayed);
+    return { ...relayed, directCapabilityId: null };
+  }
+  return relayed;
+}
+
+async function retireDirectCapabilityAndConfirm(
+  forward: DesktopTunnelForwardSummary,
+  snapshot: DesktopTunnelForwardSummary,
+): Promise<void> {
+  const capabilityId = forward.directCapabilityId;
+  if (!capabilityId) return;
+  const existing = directCapabilityRetirements.get(capabilityId);
+  if (existing) return existing;
+  const retirement = (async () => {
+    await retireDirectCapability(capabilityId, snapshot);
+    const confirmed = await invoke<boolean>(
+      "confirm_tunnel_forward_direct_retired",
+      {
+        directCapabilityId: capabilityId,
+        tunnelId: forward.tunnelId,
+      },
+    );
+    if (!confirmed) {
+      throw new Error("The desktop tunnel stopped during direct retirement.");
+    }
+  })();
+  directCapabilityRetirements.set(capabilityId, retirement);
+  try {
+    await retirement;
+  } finally {
+    if (directCapabilityRetirements.get(capabilityId) === retirement) {
+      directCapabilityRetirements.delete(capabilityId);
+    }
+  }
+}
+
+async function raceWithAbort<T>(
+  operation: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  signal?.throwIfAborted();
+  if (!signal) return operation;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void operation.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function retireDirectCapability(
+  capabilityId: string,
+  snapshot: DesktopTunnelForwardSummary,
+): Promise<void> {
+  const retirementSignal = AbortSignal.timeout(
+    DIRECT_CAPABILITY_RETIRE_TIMEOUT_MS,
+  );
+  await recordDirectAttachmentTelemetry(
+    capabilityId,
+    {
+      bytesFromLocal: snapshot.bytesFromLocal ?? 0,
+      bytesToLocal: snapshot.bytesToLocal ?? 0,
+      connectionsClosed: snapshot.connectionsClosed ?? 0,
+      connectionsOpened: snapshot.connectionsOpened ?? 0,
+    },
+    { signal: retirementSignal },
+  ).catch(() => undefined);
+  await deleteDirectAttachment(capabilityId, {
+    signal: AbortSignal.timeout(DIRECT_CAPABILITY_RETIRE_TIMEOUT_MS),
+  });
 }
 
 async function reportFinalDesktopTunnelTelemetry(

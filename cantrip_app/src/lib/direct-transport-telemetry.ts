@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { recordDirectAttachmentTelemetry } from "@/lib/api";
 import {
   desktopTunnelAvailable,
+  forceDesktopTunnelRelay,
   listDesktopTunnels,
   refreshDesktopTunnelRelay,
 } from "@/lib/desktop-tunnel";
@@ -13,7 +14,12 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
   const forwards = await listDesktopTunnels();
   await Promise.all(
     forwards
-      .filter((forward) => Boolean(forward.directCapabilityId))
+      .filter(
+        (forward) =>
+          Boolean(forward.directCapabilityId) &&
+          (forward.routeState === "local-direct" ||
+            !forward.relayFallbackAvailable),
+      )
       .map((forward) =>
         recordDirectAttachmentTelemetry(forward.directCapabilityId!, {
           bytesFromLocal: forward.bytesFromLocal ?? 0,
@@ -30,6 +36,18 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
           forward.routeState === "degraded" && forward.relayFallbackAvailable,
       )
       .map((forward) => refreshDesktopTunnelRelay(forward).catch(() => false)),
+  );
+  await Promise.all(
+    forwards
+      .filter(
+        (forward) =>
+          Boolean(forward.directCapabilityId) &&
+          forward.routeState !== "local-direct" &&
+          forward.relayFallbackAvailable,
+      )
+      .map((forward) =>
+        forceDesktopTunnelRelay(forward).catch(() => undefined),
+      ),
   );
 }
 
