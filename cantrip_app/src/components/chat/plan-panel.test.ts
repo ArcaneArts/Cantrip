@@ -65,6 +65,7 @@ describe("PlanPanel answers", () => {
     };
     const markup = renderToStaticMarkup(
       createElement(PlanPanel, {
+        active: true,
         error: null,
         onAnswer: () => undefined,
         pending: false,
@@ -78,5 +79,46 @@ describe("PlanPanel answers", () => {
     expect(markup).toContain('data-slot="plan-panel-scroll"');
     expect(markup).toContain("overflow-y-auto");
     expect(markup).toContain("shrink-0");
+  });
+
+  it("hides an idle plan after its turn completes", async () => {
+    const { PlanPanel } = await import("./plan-panel");
+    const markup = renderToStaticMarkup(
+      createElement(PlanPanel, {
+        active: false,
+        error: null,
+        onAnswer: () => undefined,
+        pending: false,
+        state: {
+          mode: "plan",
+          explanation: null,
+          steps: [],
+          question: null,
+        },
+      }),
+    );
+
+    expect(markup).toBe("");
+  });
+
+  it("keeps an unanswered plan question visible while the turn waits", async () => {
+    const { PlanPanel } = await import("./plan-panel");
+    const markup = renderToStaticMarkup(
+      createElement(PlanPanel, {
+        active: false,
+        error: null,
+        onAnswer: () => undefined,
+        pending: false,
+        state: {
+          mode: "plan",
+          explanation: null,
+          steps: [],
+          question,
+        },
+      }),
+    );
+
+    expect(markup).toContain('data-slot="plan-panel"');
+    expect(markup).toContain("Codex needs your input");
   });
 });

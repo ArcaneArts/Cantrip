@@ -3152,6 +3152,7 @@ function ChatTranscript({
           />
           {planState.data ? (
             <PlanPanel
+              active={chat.status === "running" && !interrupt.isPending}
               state={planState.data}
               pending={answerPlanPending}
               error={answerPlanError}

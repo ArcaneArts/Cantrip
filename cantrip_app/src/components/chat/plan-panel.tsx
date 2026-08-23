@@ -25,11 +25,13 @@ export function buildPlanAnswers(
 }
 
 export function PlanPanel({
+  active,
   error,
   onAnswer,
   pending,
   state,
 }: {
+  active: boolean;
   error?: string | null;
   onAnswer(answers: ChatPlanAnswer["answers"]): void;
   pending: boolean;
@@ -45,7 +47,7 @@ export function PlanPanel({
   const answers = state.question
     ? buildPlanAnswers(state.question, values, otherValues)
     : null;
-  if (state.mode !== "plan" && !state.question) return null;
+  if (!state.question && (state.mode !== "plan" || !active)) return null;
 
   return (
     <section
