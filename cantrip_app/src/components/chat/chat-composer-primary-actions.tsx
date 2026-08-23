@@ -1,10 +1,36 @@
-import { Loader2, Pause, Play, Send, Square } from "lucide-react";
+import { Clock3, Loader2, Pause, Play, Send, Square } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { formatRunningAgentDuration } from "@/components/chat/chat-run-duration";
 import { cn } from "@/lib/utils";
+
+function RunningAgentDuration({ startedAtMs }: { startedAtMs: number | null }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (startedAtMs === null) return;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [startedAtMs]);
+
+  if (startedAtMs === null) return null;
+  const elapsed = formatRunningAgentDuration(nowMs - startedAtMs);
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1 px-1 text-xs text-muted-foreground tabular-nums"
+      title={`Agent working for ${elapsed}`}
+      aria-label={`Agent working for ${elapsed}`}
+    >
+      <Clock3 aria-hidden="true" className="size-3.5" />
+      <span>{elapsed}</span>
+    </span>
+  );
+}
 
 export function ChatComposerPrimaryActions({
   active,
+  agentStartedAtMs,
   onPauseChange,
   onStop,
   pauseDisabled,
@@ -16,6 +42,7 @@ export function ChatComposerPrimaryActions({
   stopPending,
 }: {
   active: boolean;
+  agentStartedAtMs: number | null;
   onPauseChange(paused: boolean): void;
   onStop(): void;
   pauseDisabled: boolean;
@@ -46,6 +73,7 @@ export function ChatComposerPrimaryActions({
 
   return (
     <>
+      <RunningAgentDuration startedAtMs={agentStartedAtMs} />
       <Button
         type="button"
         size="icon"

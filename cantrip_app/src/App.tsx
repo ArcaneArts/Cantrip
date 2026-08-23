@@ -121,6 +121,7 @@ import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { scheduleChatComposerFocus } from "@/components/chat/chat-composer-focus";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
+import { resolveRunningAgentStartedAtMs } from "@/components/chat/chat-run-duration";
 import {
   ChatComposerNotice,
   scheduleChatComposerNoticeDismiss,
@@ -3570,6 +3571,10 @@ function ChatTranscript({
                 chat.status === "running" ||
                 chat.status === "waiting-for-approval"
               }
+              agentStartedAtMs={resolveRunningAgentStartedAtMs(
+                messages.data ?? [],
+                chat.updatedAt,
+              )}
               paused={chat.automationPaused}
               pausePending={setAutomationPaused.isPending}
               pauseDisabled={relocationActive || setAutomationPaused.isPending}
