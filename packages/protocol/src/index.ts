@@ -7593,6 +7593,7 @@ export const cantripMcpWorktreeListInputSchema = z
   .object({
     cursor: z.number().int().min(0).max(1_999).default(0),
     limit: z.number().int().min(1).max(200).default(100),
+    includeLeaseHistory: z.boolean().default(false),
   })
   .strict();
 export const cantripMcpWorktreeStatusInputSchema = z

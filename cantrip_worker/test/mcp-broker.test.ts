@@ -472,6 +472,9 @@ describe("Cantrip MCP worker broker", () => {
           name: "context_get",
           arguments: {},
         });
+        expect(result.content).toEqual([
+          { type: "text", text: "Validated Cantrip context." },
+        ]);
         expect(result).toMatchObject({
           structuredContent: {
             summary: "Validated Cantrip context.",

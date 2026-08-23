@@ -10395,6 +10395,7 @@ export class ServerRepository {
   async listProjectExecutionLanes(
     ownerId: string,
     projectId: string,
+    options: { includeHistory?: boolean } = {},
   ): Promise<ChatExecutionLaneSummary[]> {
     const rows = await this.database
       .select({ lane: schema.chatExecutionLanes })
@@ -10411,10 +10412,12 @@ export class ServerRepository {
         ),
       )
       .where(
-        and(
-          eq(schema.chats.projectId, projectId),
-          ne(schema.chatExecutionLanes.state, "released"),
-        ),
+        options.includeHistory
+          ? eq(schema.chats.projectId, projectId)
+          : and(
+              eq(schema.chats.projectId, projectId),
+              ne(schema.chatExecutionLanes.state, "released"),
+            ),
       )
       .orderBy(desc(schema.chatExecutionLanes.updatedAt));
     return rows.map(({ lane }) => toChatExecutionLaneSummary(lane));

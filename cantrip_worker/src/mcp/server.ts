@@ -88,9 +88,11 @@ export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
 ) => Promise<CantripAgentOperationResult>;
 
-function operationResult(result: CantripAgentOperationResult): CallToolResult {
+export function operationResult(
+  result: CantripAgentOperationResult,
+): CallToolResult {
   return {
-    content: [{ type: "text", text: JSON.stringify(result) }],
+    content: [{ type: "text", text: result.summary }],
     structuredContent: result as Record<string, unknown>,
   };
 }
@@ -427,7 +429,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     {
       title: "List Cantrip worktrees",
       description:
-        "List a bounded page of validated worktrees and active leases without exposing worker filesystem paths.",
+        "List a bounded page of validated worktrees and leases that still protect work by default, without exposing worker filesystem paths. Set includeLeaseHistory to inspect released and idle Primary lease history.",
       inputSchema: cantripMcpWorktreeListInputSchema,
       outputSchema: cantripMcpWorktreeListResultSchema,
       annotations: readAnnotations,
