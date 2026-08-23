@@ -1,16 +1,13 @@
 import { useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type {
   BrowserSummary,
   ChatSummary,
   CodeTabSummary,
-  ExecutionTarget,
   ExplorerEntry,
   ExplorerSummary,
   ProjectFolderSetupJobSummary,
@@ -29,23 +26,21 @@ import {
   Code2,
   CopyPlus,
   FileCode2,
-  Folder,
-  FolderGit2,
   FolderOpen,
   FolderTree,
   GitCommitHorizontal,
   Globe2,
+  LayoutDashboard,
   Loader2,
   MonitorUp,
   MoreHorizontal,
   Pencil,
-  Plus,
   Settings,
   SquareTerminal,
   Trash2,
   WifiOff,
 } from "lucide-react";
-import { useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import {
   projectFolderSetupErrorMessage,
@@ -66,11 +61,6 @@ import {
 } from "@/components/sidebar/sortable-sidebar-surface-row";
 import { ProjectSidebarFileTree } from "@/components/sidebar/project-sidebar-file-tree";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
-import {
-  ProjectSurfaceCreateMenu,
-  type ProjectSurfaceCreateKind,
-  type ProjectSurfacePlacementContext,
-} from "@/components/workspace/project-surface-create-menu";
 import { SurfaceActionsMenu } from "@/components/workspace/surface-tab-controls";
 import {
   StyledDropdownMenuContent,
@@ -347,13 +337,10 @@ function GroupedSidebarTab({
   );
 }
 
-function SortableProject({
+export function ProjectOverviewTab({
   active,
   children,
-  creatingKinds,
-  onCreate,
   onOpenSettings,
-  placement,
   onReveal,
   onRemove,
   onSelect,
@@ -365,13 +352,10 @@ function SortableProject({
 }: {
   active: boolean;
   children?: ReactNode;
-  creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
-  onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenSettings(): void;
   onReveal?: (localFolder: boolean) => void;
   onRemove(): void;
   onSelect(): void;
-  placement: ProjectSurfacePlacementContext;
   project: ProjectSummary;
   folderSetupJob?: ProjectFolderSetupJobSummary;
   setupJob?: ProjectReplicaJobSummary;
@@ -383,19 +367,9 @@ function SortableProject({
   const settingUp = cloning || preparing;
   const failed = project.setupStatus === "failed";
   const folderBlocked = preparing && folderSetupJob?.state === "blocked";
-  const sortable = useSortable({
-    id: projectId(project.id),
-    disabled: settingUp,
-  });
   const revealLocalFolder = useRef(false);
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition,
-    opacity: sortable.isDragging ? 0.25 : 1,
-    zIndex: sortable.isDragging ? 10 : undefined,
-  };
   return (
-    <div ref={sortable.setNodeRef} style={style} className="group mb-1">
+    <div className="group mb-1">
       <div
         title={
           failed
@@ -408,87 +382,47 @@ function SortableProject({
         }
         onContextMenu={openSidebarActionsMenu}
         className={cn(
-          "flex items-center rounded-md hover:bg-muted",
+          "flex h-8 items-center rounded-md hover:bg-muted",
           active && "bg-muted font-medium",
         )}
       >
         <button
-          ref={sortable.setActivatorNodeRef}
           type="button"
           className={cn(
-            "flex min-w-0 flex-1 touch-none flex-col px-3 py-2 text-left text-sm",
-            settingUp ? "cursor-default" : "cursor-grab active:cursor-grabbing",
+            "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            settingUp && "cursor-default",
           )}
           onClick={onSelect}
-          {...sortable.attributes}
-          {...sortable.listeners}
         >
-          <span className="flex w-full min-w-0 items-center gap-2">
-            {folderBlocked ? (
-              <WifiOff className="size-4 shrink-0 text-amber-500" />
-            ) : settingUp ? (
-              <Loader2 className="size-4 shrink-0 animate-spin" />
-            ) : failed ? (
-              <CircleAlert className="size-4 shrink-0 text-destructive" />
-            ) : project.originKind === "managed-folder" ? (
-              <Folder className="size-4 shrink-0" />
-            ) : (
-              <FolderGit2 className="size-4 shrink-0" />
-            )}
-            <span className="truncate">{project.name}</span>
-            {settingUp || failed ? (
-              <span
-                className={cn(
-                  "ml-auto shrink-0 text-[10px] font-normal text-muted-foreground",
-                  failed && "text-destructive",
-                )}
-              >
-                {folderBlocked
-                  ? "Worker offline"
-                  : cloning
-                    ? setupJob
-                      ? `${setupJob.progress.percent}%`
-                      : "Starting"
-                    : preparing
-                      ? "Preparing"
-                      : "Failed"}
-              </span>
-            ) : null}
-          </span>
-          {settingUp && !folderBlocked ? (
-            <span className="mt-1.5 block h-0.5 w-full overflow-hidden rounded-full bg-muted-foreground/20">
-              <span
-                className={cn(
-                  "block h-full rounded-full bg-primary transition-[width] duration-500",
-                  !setupJob && "animate-pulse",
-                )}
-                style={{
-                  width: `${cloning ? (setupJob?.progress.percent ?? 5) : 35}%`,
-                }}
-              />
+          {folderBlocked ? (
+            <WifiOff className="size-3.5 shrink-0 text-amber-500" />
+          ) : settingUp ? (
+            <Loader2 className="size-3.5 shrink-0 animate-spin" />
+          ) : failed ? (
+            <CircleAlert className="size-3.5 shrink-0 text-destructive" />
+          ) : (
+            <LayoutDashboard className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+          <span className="truncate">Overview</span>
+          {settingUp || failed ? (
+            <span
+              className={cn(
+                "ml-auto shrink-0 text-[10px] font-normal text-muted-foreground",
+                failed && "text-destructive",
+              )}
+            >
+              {folderBlocked
+                ? "Worker offline"
+                : cloning
+                  ? setupJob
+                    ? `${setupJob.progress.percent}%`
+                    : "Starting"
+                  : preparing
+                    ? "Preparing"
+                    : "Failed"}
             </span>
           ) : null}
         </button>
-        {project.source ? (
-          <ProjectSurfaceCreateMenu
-            align="end"
-            contentClassName="min-w-36"
-            creatingKinds={creatingKinds}
-            onCreate={onCreate}
-            placement={placement}
-            trigger={
-              <button
-                type="button"
-                aria-label={`Add to ${project.name}`}
-                onClick={(event) => event.stopPropagation()}
-                className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
-              >
-                <Plus className="size-3.5" />
-                <span className="sr-only">Add to {project.name}</span>
-              </button>
-            }
-          />
-        ) : null}
         {settingUp && !folderBlocked ? null : (
           <DropdownMenuPrimitive.Root>
             <DropdownMenuPrimitive.Trigger asChild>
@@ -550,7 +484,6 @@ export function ProjectChatList({
   browsers,
   chats,
   codeTabs,
-  creatingKinds,
   explorers,
   fileExplorer,
   filePreviewPath,
@@ -560,8 +493,8 @@ export function ProjectChatList({
   fileTreePinningPath,
   fileRevealLabel,
   onChangeChatWorktree,
+  overviewSelected,
   projectViews,
-  onCreateSurface,
   onFilePin,
   onFileDelete,
   onFileOpenGraph,
@@ -609,7 +542,6 @@ export function ProjectChatList({
   browsers: BrowserSummary[];
   chats: ChatSummary[];
   codeTabs: CodeTabSummary[];
-  creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
   explorers: ExplorerSummary[];
   fileExplorer: ExplorerSummary | null;
   filePreviewPath: string | null;
@@ -623,12 +555,8 @@ export function ProjectChatList({
     worktreeId: string,
     mode: "agent-managed" | "pinned",
   ): void;
+  overviewSelected: boolean;
   projectViews: ProjectViewSummary[];
-  onCreateSurface(
-    projectId: string,
-    kind: ProjectSurfaceCreateKind,
-    target?: ExecutionTarget,
-  ): void;
   onFilePin(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   onFileDelete(explorer: ExplorerSummary, entry: ExplorerEntry): Promise<void>;
   onFileOpenGraph(explorer: ExplorerSummary, entry: ExplorerEntry): void;
@@ -982,27 +910,15 @@ export function ProjectChatList({
         >
           {projects.map((project) => {
             const active = project.id === selectedProjectId;
+            if (!active) return null;
             return (
-              <SortableProject
+              <ProjectOverviewTab
                 key={project.id}
                 project={project}
                 folderSetupJob={folderSetupJobs.get(project.id)}
                 setupJob={projectSetupJobs.get(project.id)}
-                active={active}
-                creatingKinds={creatingKinds}
-                onCreate={(kind, target) =>
-                  onCreateSurface(project.id, kind, target)
-                }
+                active={overviewSelected}
                 onOpenSettings={() => onOpenProjectSettings(project.id)}
-                placement={{
-                  capabilities: project.capabilities,
-                  projectId: project.id,
-                  replicas: project.replicas,
-                  workers,
-                  worktrees: worktrees.filter(
-                    (worktree) => worktree.projectId === project.id,
-                  ),
-                }}
                 onReveal={
                   project.source && projectRevealLabel && onRevealProject
                     ? (localFolder) => {
@@ -1035,7 +951,7 @@ export function ProjectChatList({
                   <div
                     ref={sidebarDrop.setNodeRef}
                     className={cn(
-                      "mt-1 min-h-8 rounded-md transition-colors",
+                      "min-h-8 rounded-md transition-colors",
                       sidebarDrop.isOver && "bg-muted/40",
                     )}
                   >
@@ -1414,7 +1330,7 @@ export function ProjectChatList({
                     />
                   </div>
                 ) : null}
-              </SortableProject>
+              </ProjectOverviewTab>
             );
           })}
         </SortableContext>
