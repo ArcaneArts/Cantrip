@@ -4,6 +4,19 @@ import { endpointContentOpaqueSchema } from "./endpoint-content.js";
 
 const tunnelContentIdSchema = z.string().trim().min(1).max(200);
 const tunnelContentHostSchema = z.enum(["127.0.0.1", "localhost", "::1"]);
+const tunnelDataKeySchema = z
+  .string()
+  .length(43)
+  .regex(/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/u);
+
+export const tunnelDataProtectionConfigurationSchema = z
+  .object({
+    formatVersion: z.literal(1),
+    algorithm: z.literal("AES-256-GCM"),
+    keyRevision: z.number().int().positive().safe(),
+    key: tunnelDataKeySchema,
+  })
+  .strict();
 
 export const tunnelContentErrorCodeSchema = z.enum([
   "attachment-disconnected",
@@ -61,6 +74,7 @@ export const tunnelContentRecordSchema = z
     description: z.string().trim().max(1_000).nullable(),
     source: tunnelContentSourceEndpointSchema,
     destination: tunnelContentDestinationEndpointSchema,
+    dataProtection: tunnelDataProtectionConfigurationSchema,
   })
   .strict();
 
@@ -145,6 +159,9 @@ export type TunnelContentErrorCode = z.infer<
   typeof tunnelContentErrorCodeSchema
 >;
 export type TunnelContentRecord = z.infer<typeof tunnelContentRecordSchema>;
+export type TunnelDataProtectionConfiguration = z.infer<
+  typeof tunnelDataProtectionConfigurationSchema
+>;
 export type TunnelContentSourceEndpoint = z.infer<
   typeof tunnelContentSourceEndpointSchema
 >;

@@ -22782,7 +22782,8 @@ export async function buildApp({
       const existing = await repository.getManagedTunnel(ownerId, managedBy);
       const targetChanged = Boolean(
         existing &&
-        (existing.destination.kind !== "worker-tcp" ||
+        (input.data.resetAttachments ||
+          existing.destination.kind !== "worker-tcp" ||
           existing.destination.workerId !== workerId ||
           existing.protocolHint !== input.data.protocolHint),
       );

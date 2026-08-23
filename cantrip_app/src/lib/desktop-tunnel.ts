@@ -10,6 +10,7 @@ import {
   createTunnelAttachment,
   deleteDirectAttachment,
   deleteTunnelAttachment,
+  getTunnelDataProtection,
 } from "@/lib/api";
 import { getActiveServerUrl } from "@/lib/server-connections";
 
@@ -51,11 +52,13 @@ function nativeStartRequest(
   attachment: TunnelAttachmentCreateResult,
   clientId: string,
   direct: Awaited<ReturnType<typeof createDirectTunnelAttachment>> | null,
+  dataProtection: Awaited<ReturnType<typeof getTunnelDataProtection>>,
   preferredLocalPort?: number,
 ) {
   return {
     attachmentId: attachment.attachmentId,
     clientId,
+    dataProtection,
     direct,
     expiresAt: attachment.expiresAt,
     preferredLocalPort: preferredLocalPort ?? null,
@@ -79,6 +82,7 @@ export async function startDesktopTunnel(
     );
   }
   const clientId = desktopTunnelClientId(window.localStorage);
+  const dataProtection = await getTunnelDataProtection(tunnelId);
   const attachment = await createTunnelAttachment(tunnelId, { clientId });
   const direct = await createDirectTunnelAttachment(
     attachment.attachmentId,
@@ -87,6 +91,7 @@ export async function startDesktopTunnel(
     attachment,
     clientId,
     direct,
+    dataProtection,
     options.preferredLocalPort,
   );
   try {
@@ -96,6 +101,7 @@ export async function startDesktopTunnel(
     );
     request.relay.secret = "";
     if (request.direct) request.direct.secret = "";
+    request.dataProtection.key = "";
     attachment.secret = "";
     if (started.routeState === "local-direct") {
       if (!started.directCapabilityId) {
@@ -115,6 +121,7 @@ export async function startDesktopTunnel(
   } catch (error) {
     request.relay.secret = "";
     if (request.direct) request.direct.secret = "";
+    request.dataProtection.key = "";
     attachment.secret = "";
     await invoke("stop_tunnel_forward", { tunnelId }).catch(() => {
       // Server revocation below remains authoritative.

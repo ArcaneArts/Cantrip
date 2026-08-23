@@ -102,6 +102,12 @@ describe("Tunnel content encryption", () => {
         host: "127.0.0.1",
         port: 51_731,
       },
+      dataProtection: {
+        formatVersion: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 1,
+        key: "k".repeat(43),
+      },
     });
     const protectedContent = await protectWorkerEndpointContent({
       context: {

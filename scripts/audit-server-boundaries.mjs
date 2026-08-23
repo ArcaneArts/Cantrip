@@ -2984,6 +2984,15 @@ async function tunnelConfigurationBoundaryAudit() {
       repositoryRoot,
       "cantrip_worker/src/tunnel-destination-router.ts",
     ),
+    workerDataProtection: resolve(
+      repositoryRoot,
+      "cantrip_worker/src/tunnel-data-protection.ts",
+    ),
+    desktopDataPlane: resolve(
+      repositoryRoot,
+      "cantrip_app/src-tauri/src/tunnel_forward.rs",
+    ),
+    broker: resolve(serverSourcePath, "tunnels/broker.ts"),
     migration: resolve(
       repositoryRoot,
       "cantrip_server/drizzle/0145_closed_quasimodo.sql",
@@ -3041,13 +3050,18 @@ async function tunnelConfigurationBoundaryAudit() {
     "tunnelWireSummarySchema",
     "browserTunnelWireRequestSchema",
   ]) {
-    if (!texts.protocol.includes(marker) || !texts.application.includes(marker)) {
+    if (
+      !texts.protocol.includes(marker) ||
+      !texts.application.includes(marker)
+    ) {
       failures.push(`tunnel routes: missing opaque contract ${marker}`);
     }
   }
   for (const marker of [
     'kind: z.literal("protected-tunnel")',
     "protectedTunnelContentRecordSchema",
+    "tunnelDataFrameProtectionSchema",
+    'algorithm: z.literal("AES-256-GCM")',
   ]) {
     if (!texts.tunnelProtocol.includes(marker)) {
       failures.push(`tunnel data plane: missing protected target ${marker}`);
@@ -3090,10 +3104,44 @@ async function tunnelConfigurationBoundaryAudit() {
   for (const marker of [
     'target.kind === "protected-tunnel"',
     "openWorkerTunnelContentRecord",
+    "openTunnelDataFrame",
+    "sealTunnelDataFrame",
   ]) {
     if (!texts.router.includes(marker)) {
-      failures.push(`tunnel router: missing protected target handling ${marker}`);
+      failures.push(
+        `tunnel router: missing protected target handling ${marker}`,
+      );
     }
+  }
+  for (const marker of [
+    'createCipheriv("aes-256-gcm"',
+    'createDecipheriv("aes-256-gcm"',
+    "associatedData",
+  ]) {
+    if (!texts.workerDataProtection.includes(marker)) {
+      failures.push(
+        `tunnel worker data plane: missing AEAD boundary ${marker}`,
+      );
+    }
+  }
+  for (const marker of [
+    "Aes256Gcm",
+    "frame_associated_data",
+    "seal_data_payload",
+    "open_data_payload",
+  ]) {
+    if (!texts.desktopDataPlane.includes(marker)) {
+      failures.push(
+        `tunnel desktop data plane: missing AEAD boundary ${marker}`,
+      );
+    }
+  }
+  if (
+    /@cantrip\/crypto|createDecipher|Aes256Gcm|openTunnelDataFrame/u.test(
+      texts.broker,
+    )
+  ) {
+    failures.push("tunnel broker: endpoint decryption dependency returned");
   }
   for (const marker of [
     'TRUNCATE TABLE "tunnels" CASCADE',
@@ -3121,6 +3169,9 @@ async function tunnelConfigurationBoundaryAudit() {
       "attachment-local-listener:client-only",
       "control-errors:stable-codes-only",
       "destination-worker:opens-protected-target",
+      "desktop-worker-tcp-data:endpoint-aead",
+      "direct-and-relayed-frames:same-ciphertext-contract",
+      "server-broker:ciphertext-only",
       "legacy-tunnel-plaintext:absent",
     ],
   };
@@ -3891,7 +3942,8 @@ function tunnelFrameContentClassification(kind) {
   if (kind === "data") {
     return {
       classification: "tracked-rollout-gap",
-      rationale: "tunnel application payload protection is the next rollout",
+      rationale:
+        "desktop/worker TCP frames are endpoint-protected; Code and project-share adapter relocation remains",
     };
   }
   if (kind === "connect") {
@@ -4639,7 +4691,7 @@ async function buildInventory() {
       ...workspaceNameRepository,
     },
     tunnelConfigurationE2eeBoundary: {
-      status: "configuration-enforced",
+      status: "configuration-and-tcp-data-enforced",
       ...tunnelConfiguration,
     },
     analyticsAuditLogPrivacyBoundary: {

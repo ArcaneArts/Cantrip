@@ -409,17 +409,26 @@ describe.sequential("browser service discovery API", () => {
         .attachments.find(({ id }) => id === attachment.attachmentId)?.status,
     ).toBe("starting");
 
-    const sameTarget = await app.inject({
+    const hiddenTargetChange = await app.inject({
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
       payload: {
         tunnelId: tunnel.id,
         protocolHint: "http-websocket",
         workerId: "test-worker",
+        resetAttachments: true,
         protectedRecord: protectedTunnelRecord(randomUUID(), 2),
       },
     });
-    expect(tunnelWireSummarySchema.parse(sameTarget.json()).id).toBe(tunnel.id);
+    const hiddenTargetChanged = tunnelWireSummarySchema.parse(
+      hiddenTargetChange.json(),
+    );
+    expect(hiddenTargetChanged.id).toBe(tunnel.id);
+    expect(
+      hiddenTargetChanged.attachments.find(
+        ({ id }) => id === attachment.attachmentId,
+      )?.status,
+    ).toBe("stopped");
 
     const retarget = await app.inject({
       method: "POST",

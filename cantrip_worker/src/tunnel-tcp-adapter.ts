@@ -2,7 +2,7 @@ import { connect, type Socket } from "node:net";
 
 import {
   TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES,
-  TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES,
+  TUNNEL_DATA_PLANE_MAX_PLAINTEXT_BYTES,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
 
@@ -55,10 +55,10 @@ function chunks(payload: Uint8Array): Uint8Array[] {
   for (
     let offset = 0;
     offset < payload.byteLength;
-    offset += TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES
+    offset += TUNNEL_DATA_PLANE_MAX_PLAINTEXT_BYTES
   ) {
     output.push(
-      payload.subarray(offset, offset + TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES),
+      payload.subarray(offset, offset + TUNNEL_DATA_PLANE_MAX_PLAINTEXT_BYTES),
     );
   }
   return output;
@@ -142,6 +142,11 @@ export class TunnelTcpDestinationAdapter {
       this.#remove(stream);
       stream.socket.destroy();
     }
+  }
+
+  failProtectedFrame(header: TunnelDataPlaneFrameHeader): void {
+    const stream = this.#streams.get(key(header));
+    if (stream) this.#close(stream, "protocol-error");
   }
 
   disconnect(): void {
