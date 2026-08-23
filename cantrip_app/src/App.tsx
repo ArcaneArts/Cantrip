@@ -5664,6 +5664,7 @@ export function App() {
     return {
       id: tab.id,
       label: group?.title,
+      removable: tab.id !== PRIMARY_MOBILE_BOTTOM_TAB_ID,
       surface: tabKey ? projectSurfaceIndex.byTabKey.get(tabKey) : undefined,
     };
   });
@@ -7070,13 +7071,11 @@ export function App() {
     setMobileTabGridOpen(false);
     selectGroupFromSidebar(groupId);
   };
-  const removeActiveMobileBottomTab = () => {
-    const removal = removeMobileBottomTab(
-      mobileBottomTabs,
-      activeMobileBottomTabId,
-    );
+  const removeMobileBottomTabById = (tabId: string) => {
+    const removal = removeMobileBottomTab(mobileBottomTabs, tabId);
     if (!removal) return;
     setMobileBottomTabs(removal.tabs);
+    if (tabId !== activeMobileBottomTabId) return;
     setActiveMobileBottomTabId(removal.activeTabId);
     const next = removal.tabs.find(({ id }) => id === removal.activeTabId);
     if (next?.groupId) {
@@ -7086,6 +7085,8 @@ export function App() {
       setMobileTabGridOpen(true);
     }
   };
+  const removeActiveMobileBottomTab = () =>
+    removeMobileBottomTabById(activeMobileBottomTabId);
   const createProjectSurface = (
     projectId: string,
     kind: ProjectSurfaceCreateKind,
@@ -9036,6 +9037,7 @@ export function App() {
             items={mobileBottomNavigationItems}
             onAdd={addMobileBottomTab}
             onOverview={selectMobileOverview}
+            onRemove={removeMobileBottomTabById}
             onReset={openMobileBottomTabSwitcher}
             onSelect={selectMobileBottomTab}
             overviewSelected={
