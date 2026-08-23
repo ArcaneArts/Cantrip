@@ -43,6 +43,13 @@ interface PreparedEditorAttachment {
 export interface DesktopExplorerWindowBroker {
   dispose(): Promise<void>;
   launchId: string;
+  openFile(path: string, requestedAtMs?: number): Promise<void>;
+  ready: Promise<void>;
+}
+
+export interface DesktopExplorerWindowBrokerOptions {
+  configureInitialFile?: boolean;
+  requireDirectBridge?: boolean;
 }
 
 async function releasePreparedEditor(
@@ -143,28 +150,16 @@ async function prepareEditorAttachment(
   }
 }
 
-async function configureEditorAttachment(
-  prepared: PreparedEditorAttachment,
-  path: string,
-): Promise<void> {
-  if (prepared.compatibilityCodeTabId) {
-    await setDirectCodeAttachmentPresentation(prepared.attachment, "editor");
-  }
-  if (prepared.directTunnelId) {
-    await openDirectCodeAttachmentFile(prepared.attachment, path);
-  } else {
-    await openCodeAttachmentFile(prepared.attachment.attachmentId, path);
-  }
-}
-
 export function createDesktopExplorerWindowBroker(
   input: Omit<DesktopExplorerWindowContext, "requestedAtMs">,
+  options: DesktopExplorerWindowBrokerOptions = {},
 ): DesktopExplorerWindowBroker {
   const launchId = crypto.randomUUID();
-  const context: DesktopExplorerWindowContext = {
+  let context: DesktopExplorerWindowContext = {
     ...input,
     requestedAtMs: Date.now(),
   };
+  const configureInitialFile = options.configureInitialFile ?? true;
   const channel = new BroadcastChannel(
     desktopExplorerWindowChannelName(launchId),
   );
@@ -177,6 +172,15 @@ export function createDesktopExplorerWindowBroker(
   const send = (response: DesktopExplorerWindowResponse) => {
     if (!disposed) channel.postMessage(response);
   };
+  const reportEditorError = (error: unknown) => {
+    const message = errorMessage(
+      error,
+      "Cantrip Code could not open this file.",
+    );
+    if (message === editorError) return;
+    editorError = message;
+    send({ error: message, launchId, type: "editor.failed" });
+  };
   const editorPromise = prepareEditorAttachment(context)
     .then((result) => {
       prepared = result;
@@ -187,28 +191,47 @@ export function createDesktopExplorerWindowBroker(
         preparedAtMs,
         type: "editor.ready",
       });
-      void configureEditorAttachment(result, context.path)
-        .then(() => {
-          configuredAtMs = Date.now();
-          send({ configuredAtMs, launchId, type: "editor.configured" });
-        })
-        .catch((error: unknown) => {
-          editorError = errorMessage(
-            error,
-            "Cantrip Code could not open this file.",
-          );
-          send({ error: editorError, launchId, type: "editor.failed" });
-        });
       return result;
     })
     .catch((error: unknown) => {
-      editorError = errorMessage(
-        error,
-        "Cantrip Code could not open this file.",
-      );
-      send({ error: editorError, launchId, type: "editor.failed" });
+      reportEditorError(error);
       return null;
     });
+  const bridgeReady = editorPromise.then(async (result) => {
+    if (!result) throw new Error(editorError ?? "Cantrip Code is unavailable.");
+    if (result.directTunnelId) {
+      await setDirectCodeAttachmentPresentation(result.attachment, "editor");
+    } else if (options.requireDirectBridge) {
+      throw new Error(
+        "Cantrip Code could not establish a direct prewarmed editor bridge.",
+      );
+    }
+    return result;
+  });
+  let navigationQueue = Promise.resolve();
+  const openFile = (path: string, requestedAtMs = Date.now()) => {
+    const navigate = navigationQueue.then(async () => {
+      const result = await bridgeReady;
+      context = { ...context, path, requestedAtMs };
+      configuredAtMs = null;
+      editorError = null;
+      send({ context, launchId, type: "launch.ready" });
+      await (result.directTunnelId
+        ? openDirectCodeAttachmentFile(result.attachment, path)
+        : openCodeAttachmentFile(result.attachment.attachmentId, path));
+      configuredAtMs = Date.now();
+      send({ configuredAtMs, launchId, type: "editor.configured" });
+    });
+    navigationQueue = navigate.catch(() => undefined);
+    return navigate.catch((error: unknown) => {
+      reportEditorError(error);
+      throw error;
+    });
+  };
+  const ready = configureInitialFile
+    ? openFile(context.path, context.requestedAtMs)
+    : bridgeReady.then(() => undefined);
+  void ready.catch((error: unknown) => reportEditorError(error));
 
   channel.addEventListener("message", (event) => {
     const request = event.data;
@@ -279,6 +302,8 @@ export function createDesktopExplorerWindowBroker(
 
   return {
     launchId,
+    openFile,
+    ready,
     async dispose() {
       if (disposed) return;
       disposed = true;

@@ -1,5 +1,5 @@
 import type { CodeAttachment, ExplorerSummary } from "@cantrip/protocol";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CantripApiError } from "./api-client";
 
@@ -29,6 +29,8 @@ import { createDesktopExplorerWindowBroker } from "./desktop-explorer-window-bro
 import { DesktopExplorerWindowClient } from "./desktop-explorer-window-client";
 
 describe("desktop Explorer window broker", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("loads the hidden iframe before announcing that its workbench is configured", async () => {
     const attachment = {
       attachmentId: "attachment-one",
@@ -110,5 +112,72 @@ describe("desktop Explorer window broker", () => {
     await broker.dispose();
     expect(api.deleteCodeTab).toHaveBeenCalledWith("stale-code-tab");
     expect(api.deleteCodeTab).toHaveBeenCalledWith("code-tab-one");
+  });
+
+  it("connects a hidden workbench before opening its first file", async () => {
+    const attachment = {
+      attachmentId: "attachment-warm",
+      url: "http://127.0.0.1:43123/code/",
+    } as CodeAttachment;
+    api.createExplorerCodeAttachment.mockResolvedValue(attachment);
+    desktopCode.preferDirectCodeAttachment.mockResolvedValue({
+      attachment,
+      directTunnelId: "direct-code:warm-session",
+    });
+    desktopCode.setDirectCodeAttachmentPresentation.mockResolvedValue({
+      presentation: "editor",
+    });
+    desktopCode.openDirectCodeAttachmentFile.mockResolvedValue({
+      relativePath: "src/warm.ts",
+    });
+    desktopCode.stopDirectCodeAttachment.mockResolvedValue(undefined);
+
+    const onContext = vi.fn();
+    const onConfigured = vi.fn();
+    const broker = createDesktopExplorerWindowBroker(
+      {
+        appearance: "dark",
+        explorer: {
+          id: "explorer-warm",
+          projectId: "project-one",
+          worktreeId: "worktree-one",
+        } as ExplorerSummary,
+        path: ".cantrip-editor-prewarm",
+      },
+      { configureInitialFile: false, requireDirectBridge: true },
+    );
+    const client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext,
+      onEditor: vi.fn(),
+      onEditorConfigured: onConfigured,
+      onEditorError: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+
+    await broker.ready;
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledWith(attachment, "editor");
+    expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+    expect(onConfigured).not.toHaveBeenCalled();
+
+    await broker.openFile("src/warm.ts", 123_456);
+    await vi.waitFor(() => {
+      expect(onContext).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          path: "src/warm.ts",
+          requestedAtMs: 123_456,
+        }),
+      );
+      expect(onConfigured).toHaveBeenCalledOnce();
+    });
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
+      attachment,
+      "src/warm.ts",
+    );
+
+    client.dispose();
+    await broker.dispose();
   });
 });

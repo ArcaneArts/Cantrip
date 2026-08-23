@@ -4,6 +4,7 @@ import type { BackgroundThrottlingPolicy } from "@tauri-apps/api/window";
 
 import type { DesktopExplorerWindowBroker } from "@/lib/desktop-explorer-window-broker";
 import { desktopExplorerWindowLaunchParameter } from "@/lib/desktop-explorer-window-protocol";
+import { clientLogger } from "@/lib/client-log-relay";
 
 export type DesktopPopoutGroupTarget = {
   activeTabKey: string;
@@ -32,7 +33,24 @@ const explorerFileParameter = "cantrip-explorer-file";
 const syntheticBuildProgressParameter = "cantrip-synthetic-build";
 const noDesktopListener = () => undefined;
 const explorerWindowBrokers = new Map<string, DesktopExplorerWindowBroker>();
+const explorerFileWindowLabels = new Map<string, string>();
+const explorerEditorPrewarmPath = ".cantrip-editor-prewarm";
 let explorerWindowUnloadCleanupInstalled = false;
+let desiredExplorerEditorWarmKey: string | null = null;
+
+type ExplorerEditorWarmSlot = {
+  broker: DesktopExplorerWindowBroker;
+  key: string;
+  label: string;
+};
+
+type ExplorerEditorWarmState = {
+  key: string;
+  promise: Promise<ExplorerEditorWarmSlot>;
+  retired: boolean;
+};
+
+let explorerEditorWarmState: ExplorerEditorWarmState | null = null;
 
 export type DesktopPopoutWindowLifecycle = {
   listenDestroyed(listener: () => void): Promise<() => void>;
@@ -43,6 +61,11 @@ export type DesktopWindowFocusLifecycle = {
 };
 
 export type DesktopWindowTheme = "dark" | "light" | null;
+
+type DesktopWindowOpenBehavior = {
+  focus?: boolean;
+  visible?: boolean;
+};
 
 export function isSyntheticBuildProgressWindow(search: string): boolean {
   return (
@@ -135,6 +158,33 @@ export function desktopExplorerFileWindowLabel(
   return `cantrip-editor-${safeExplorerId}-${stableLabelHash(path)}`;
 }
 
+function desktopExplorerFileTargetKey(
+  explorerId: string,
+  path: string,
+): string {
+  return `${explorerId}\0${path}`;
+}
+
+function desktopExplorerEditorWarmKey(
+  context: DesktopExplorerFileLaunchContext,
+): string {
+  return [
+    context.explorer.id,
+    context.explorer.projectId,
+    context.explorer.worktreeId,
+    context.appearance,
+  ].join("\0");
+}
+
+function desktopExplorerEditorWarmWindowLabel(
+  context: DesktopExplorerFileLaunchContext,
+  launchId: string,
+): string {
+  return `cantrip-editor-warm-${stableLabelHash(
+    `${desktopExplorerEditorWarmKey(context)}\0${launchId}`,
+  )}`;
+}
+
 export function isDesktopRuntime(): boolean {
   return isTauri();
 }
@@ -210,14 +260,47 @@ async function closeWindow(label: string): Promise<void> {
   throw new Error("The previous Explorer editor window did not close.");
 }
 
+async function disposeExplorerWindowBroker(
+  label: string,
+  broker: DesktopExplorerWindowBroker,
+): Promise<void> {
+  if (explorerWindowBrokers.get(label) === broker) {
+    explorerWindowBrokers.delete(label);
+  }
+  for (const [targetKey, targetLabel] of explorerFileWindowLabels) {
+    if (targetLabel === label) explorerFileWindowLabels.delete(targetKey);
+  }
+  await broker.dispose();
+}
+
+async function closeExplorerEditorWarmSlot(
+  slot: ExplorerEditorWarmSlot,
+): Promise<void> {
+  await closeWindow(slot.label).catch(() => undefined);
+  await disposeExplorerWindowBroker(slot.label, slot.broker);
+}
+
+function retireExplorerEditorWarmState(state: ExplorerEditorWarmState): void {
+  state.retired = true;
+  void state.promise
+    .then((slot) => closeExplorerEditorWarmSlot(slot))
+    .catch(() => undefined);
+}
+
 function installExplorerWindowUnloadCleanup(): void {
   if (explorerWindowUnloadCleanupInstalled) return;
   explorerWindowUnloadCleanupInstalled = true;
   window.addEventListener(
     "pagehide",
     () => {
+      desiredExplorerEditorWarmKey = null;
+      if (explorerEditorWarmState) {
+        retireExplorerEditorWarmState(explorerEditorWarmState);
+        explorerEditorWarmState = null;
+      }
       const brokers = [...explorerWindowBrokers.values()];
       explorerWindowBrokers.clear();
+      explorerFileWindowLabels.clear();
       for (const broker of brokers) void broker.dispose();
     },
     { once: true },
@@ -329,24 +412,179 @@ export async function openDesktopPopoutGroup(
   );
 }
 
+async function createExplorerEditorWarmSlot(
+  context: DesktopExplorerFileLaunchContext,
+  key: string,
+  retired: () => boolean,
+): Promise<ExplorerEditorWarmSlot> {
+  const startedAt = Date.now();
+  const { createDesktopExplorerWindowBroker } =
+    await import("@/lib/desktop-explorer-window-broker");
+  const broker = createDesktopExplorerWindowBroker(
+    {
+      ...context,
+      path: explorerEditorPrewarmPath,
+    },
+    { configureInitialFile: false, requireDirectBridge: true },
+  );
+  const label = desktopExplorerEditorWarmWindowLabel(context, broker.launchId);
+  const slot = { broker, key, label };
+  explorerWindowBrokers.set(label, broker);
+  try {
+    await openDesktopWindow(
+      label,
+      desktopExplorerFileSearch(
+        {
+          explorerId: context.explorer.id,
+          path: explorerEditorPrewarmPath,
+          projectId: context.explorer.projectId,
+        },
+        broker.launchId,
+      ),
+      "Editor",
+      undefined,
+      undefined,
+      { focus: false, visible: false },
+    );
+    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+    const popout = await WebviewWindow.getByLabel(label);
+    if (!popout) {
+      throw new Error("The prewarmed Explorer editor window closed.");
+    }
+    await popout.once("tauri://destroyed", () => {
+      void disposeExplorerWindowBroker(label, broker);
+    });
+    await broker.ready;
+    if (retired()) {
+      throw new Error("The prewarmed Explorer editor was superseded.");
+    }
+    clientLogger.info("Explorer editor bridge prewarmed", {
+      durationMs: Date.now() - startedAt,
+      event: "surface.explorer.editor-window.prewarmed",
+      operation: "prewarm-editor",
+      status: "ready",
+      subsystem: "explorer",
+      surfaceId: context.explorer.id,
+    });
+    return slot;
+  } catch (error) {
+    await closeExplorerEditorWarmSlot(slot);
+    throw error;
+  }
+}
+
+export async function prewarmDesktopExplorerFile(
+  context: DesktopExplorerFileLaunchContext,
+): Promise<void> {
+  if (!isDesktopRuntime()) return;
+  installExplorerWindowUnloadCleanup();
+  const key = desktopExplorerEditorWarmKey(context);
+  desiredExplorerEditorWarmKey = key;
+  if (explorerEditorWarmState?.key === key) {
+    await explorerEditorWarmState.promise.catch(() => undefined);
+    return;
+  }
+  if (explorerEditorWarmState) {
+    retireExplorerEditorWarmState(explorerEditorWarmState);
+  }
+  const state: ExplorerEditorWarmState = {
+    key,
+    promise: Promise.resolve(null as never),
+    retired: false,
+  };
+  state.promise = createExplorerEditorWarmSlot(
+    context,
+    key,
+    () => state.retired,
+  );
+  explorerEditorWarmState = state;
+  await state.promise.catch((error: unknown) => {
+    if (explorerEditorWarmState === state) explorerEditorWarmState = null;
+    clientLogger.debug("Explorer editor prewarm was unavailable", {
+      event: "surface.explorer.editor-window.prewarm-unavailable",
+      operation: "prewarm-editor",
+      reasonCode: state.retired ? "superseded" : "prewarm-failed",
+      status: state.retired ? "cancelled" : "degraded",
+      subsystem: "explorer",
+      surfaceId: context.explorer.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+}
+
+export function clearDesktopExplorerFilePrewarm(): void {
+  desiredExplorerEditorWarmKey = null;
+  if (!explorerEditorWarmState) return;
+  retireExplorerEditorWarmState(explorerEditorWarmState);
+  explorerEditorWarmState = null;
+}
+
+async function takeExplorerEditorWarmSlot(
+  context: DesktopExplorerFileLaunchContext,
+): Promise<ExplorerEditorWarmSlot | null> {
+  const key = desktopExplorerEditorWarmKey(context);
+  const state = explorerEditorWarmState;
+  if (!state || state.key !== key || state.retired) return null;
+  explorerEditorWarmState = null;
+  return state.promise.catch(() => null);
+}
+
 export async function openDesktopExplorerFile(
   target: DesktopExplorerFileTarget,
   title: string,
   context: DesktopExplorerFileLaunchContext,
 ): Promise<"created" | "focused"> {
-  const label = desktopExplorerFileWindowLabel(target.explorerId, target.path);
   installExplorerWindowUnloadCleanup();
-  const activeBroker = explorerWindowBrokers.get(label);
-  if (activeBroker && (await focusWindow(label))) return "focused";
+  const targetKey = desktopExplorerFileTargetKey(
+    target.explorerId,
+    target.path,
+  );
+  const legacyLabel = desktopExplorerFileWindowLabel(
+    target.explorerId,
+    target.path,
+  );
+  const activeLabel = explorerFileWindowLabels.get(targetKey) ?? legacyLabel;
+  const activeBroker = explorerWindowBrokers.get(activeLabel);
+  if (activeBroker && (await focusWindow(activeLabel))) return "focused";
   if (activeBroker) {
-    explorerWindowBrokers.delete(label);
-    await activeBroker.dispose();
-  } else {
+    await disposeExplorerWindowBroker(activeLabel, activeBroker);
+  } else if (activeLabel === legacyLabel) {
     // A child can outlive a reloaded main WebView. Its launch channel no
     // longer has an owner, so replace it instead of focusing a permanently
     // disconnected editor window.
-    await closeWindow(label);
+    await closeWindow(activeLabel);
   }
+  explorerFileWindowLabels.delete(targetKey);
+
+  const requestedAtMs = Date.now();
+  const warmSlot = await takeExplorerEditorWarmSlot(context);
+  if (warmSlot) {
+    try {
+      await warmSlot.broker.openFile(target.path, requestedAtMs);
+      if (!(await focusWindow(warmSlot.label))) {
+        throw new Error("The prewarmed Explorer editor window closed.");
+      }
+      explorerFileWindowLabels.set(targetKey, warmSlot.label);
+      clientLogger.info("Explorer file opened in a prewarmed editor", {
+        durationMs: Date.now() - requestedAtMs,
+        event: "surface.explorer.editor-window.warm-opened",
+        operation: "open-file",
+        status: "completed",
+        subsystem: "explorer",
+        surfaceId: target.explorerId,
+      });
+      if (
+        desiredExplorerEditorWarmKey === desktopExplorerEditorWarmKey(context)
+      ) {
+        void prewarmDesktopExplorerFile(context);
+      }
+      return "created";
+    } catch {
+      await closeExplorerEditorWarmSlot(warmSlot);
+    }
+  }
+
+  const label = legacyLabel;
   const { createDesktopExplorerWindowBroker } =
     await import("@/lib/desktop-explorer-window-broker");
   const broker = createDesktopExplorerWindowBroker({
@@ -354,11 +592,9 @@ export async function openDesktopExplorerFile(
     path: target.path,
   });
   explorerWindowBrokers.set(label, broker);
+  explorerFileWindowLabels.set(targetKey, label);
   const disposeBroker = async () => {
-    if (explorerWindowBrokers.get(label) === broker) {
-      explorerWindowBrokers.delete(label);
-    }
-    await broker.dispose();
+    await disposeExplorerWindowBroker(label, broker);
   };
   try {
     const result = await openDesktopWindow(
@@ -377,6 +613,11 @@ export async function openDesktopExplorerFile(
       throw new Error("The Explorer editor window closed while opening.");
     }
     await popout.once("tauri://destroyed", () => void disposeBroker());
+    if (
+      desiredExplorerEditorWarmKey === desktopExplorerEditorWarmKey(context)
+    ) {
+      void prewarmDesktopExplorerFile(context);
+    }
     return result;
   } catch (error) {
     await disposeBroker();
@@ -402,6 +643,7 @@ async function openDesktopWindow(
   title: string,
   position?: { x: number; y: number },
   size?: { height: number; minHeight: number; minWidth: number; width: number },
+  behavior: DesktopWindowOpenBehavior = {},
 ): Promise<"created" | "focused"> {
   if (!isDesktopRuntime()) {
     throw new Error("Pop-out windows are only available in the desktop app.");
@@ -414,7 +656,7 @@ async function openDesktopWindow(
   const popout = new WebviewWindow(label, {
     backgroundThrottling: desktopBackgroundThrottlingPolicy,
     center: true,
-    focus: true,
+    focus: behavior.focus ?? true,
     height: size?.height ?? 760,
     hiddenTitle: macos,
     minHeight: size?.minHeight ?? 440,
@@ -424,6 +666,7 @@ async function openDesktopWindow(
     titleBarStyle: macos ? "overlay" : undefined,
     transparent: macos,
     url: `${path}${search}`,
+    visible: behavior.visible ?? true,
     width: size?.width ?? 1100,
   });
 

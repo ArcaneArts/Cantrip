@@ -26,7 +26,9 @@ export class DesktopExplorerWindowClient {
   readonly #channel: BroadcastChannel;
   readonly #launchId: string;
   readonly #pending = new Map<string, PendingRequest>();
+  #configuredAtMs: number | null = null;
   #contextReceived = false;
+  #contextSignature: string | null = null;
   #disposed = false;
   #launchRetry: ReturnType<typeof setInterval> | null = null;
   #launchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -91,12 +93,17 @@ export class DesktopExplorerWindowClient {
       return;
     }
     if (response.type === "launch.ready") {
-      if (this.#contextReceived) return;
-      this.#contextReceived = true;
-      if (this.#launchRetry) clearInterval(this.#launchRetry);
-      this.#launchRetry = null;
-      if (this.#launchTimeout) clearTimeout(this.#launchTimeout);
-      this.#launchTimeout = null;
+      if (!this.#contextReceived) {
+        this.#contextReceived = true;
+        if (this.#launchRetry) clearInterval(this.#launchRetry);
+        this.#launchRetry = null;
+        if (this.#launchTimeout) clearTimeout(this.#launchTimeout);
+        this.#launchTimeout = null;
+      }
+      const signature = `${response.context.requestedAtMs}\0${response.context.path}`;
+      if (signature === this.#contextSignature) return;
+      this.#contextSignature = signature;
+      this.#configuredAtMs = null;
       this.#callbacks.onContext(response.context);
       return;
     }
@@ -105,6 +112,8 @@ export class DesktopExplorerWindowClient {
       return;
     }
     if (response.type === "editor.configured") {
+      if (response.configuredAtMs === this.#configuredAtMs) return;
+      this.#configuredAtMs = response.configuredAtMs;
       this.#callbacks.onEditorConfigured(response.configuredAtMs);
       return;
     }

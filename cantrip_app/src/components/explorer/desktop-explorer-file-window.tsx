@@ -304,7 +304,16 @@ export function DesktopExplorerFileWindow({
     () =>
       new DesktopExplorerWindowClient(launchId, {
         onContext: (next) => {
+          setMode("edit");
           setContext(next);
+          setConfiguredAtMs(null);
+          setEditorError(null);
+          setFile(null);
+          setDraft("");
+          setMedia(null);
+          setContentError(null);
+          setContentLoading(false);
+          setSaving(false);
           clientLogger.info("Explorer editor window handoff received", {
             durationMs: Date.now() - next.requestedAtMs,
             event: "surface.explorer.editor-window.handoff",

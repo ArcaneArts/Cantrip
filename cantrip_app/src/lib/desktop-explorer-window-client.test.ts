@@ -109,4 +109,50 @@ describe("DesktopExplorerWindowClient", () => {
     client.dispose();
     broker.close();
   });
+
+  it("accepts a later file handoff without replaying duplicate context", async () => {
+    const launchId = crypto.randomUUID();
+    const broker = new BroadcastChannel(
+      desktopExplorerWindowChannelName(launchId),
+    );
+    const initial: DesktopExplorerWindowContext = {
+      appearance: "dark",
+      explorer: { id: "explorer-warm" } as ExplorerSummary,
+      path: ".cantrip-editor-prewarm",
+      requestedAtMs: 1,
+    };
+    const active = {
+      ...initial,
+      path: "src/active.ts",
+      requestedAtMs: 2,
+    };
+    broker.addEventListener("message", (event) => {
+      const request = event.data as DesktopExplorerWindowRequest;
+      if (request.type === "launch.request") {
+        broker.postMessage({
+          context: initial,
+          launchId,
+          type: "launch.ready",
+        });
+      }
+    });
+    const onContext = vi.fn();
+    const client = new DesktopExplorerWindowClient(launchId, {
+      onContext,
+      onEditor: vi.fn(),
+      onEditorConfigured: vi.fn(),
+      onEditorError: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+    await vi.waitFor(() => expect(onContext).toHaveBeenCalledOnce());
+
+    broker.postMessage({ context: active, launchId, type: "launch.ready" });
+    broker.postMessage({ context: active, launchId, type: "launch.ready" });
+    await vi.waitFor(() => expect(onContext).toHaveBeenCalledTimes(2));
+    expect(onContext).toHaveBeenLastCalledWith(active);
+
+    client.dispose();
+    broker.close();
+  });
 });

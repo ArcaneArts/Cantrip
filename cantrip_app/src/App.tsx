@@ -416,6 +416,7 @@ import {
 } from "@/lib/workspace-encryption";
 import { createGithubProject, getProjects } from "@/lib/project-encryption";
 import {
+  clearDesktopExplorerFilePrewarm,
   closeCurrentDesktopWindow,
   desktopPopoutTitlebarLeftInset,
   desktopWindowThemeOverride,
@@ -426,6 +427,7 @@ import {
   openDesktopPopoutGroup,
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
+  prewarmDesktopExplorerFile,
   shouldUseOverlayTitlebar,
   updateDesktopWindowTheme,
   updateMacosProMode,
@@ -5577,6 +5579,17 @@ export function App() {
   const currentRelocation = activeRelocation ?? latestRelocation;
   const selectedExplorer =
     selectedSurface?.kind === "explorer" ? selectedSurface.entity : undefined;
+  const explorerToPrewarm = selectedExplorer ?? explorers.data?.[0];
+  useEffect(() => {
+    if (!desktopRuntime || isPopout || !explorerToPrewarm) {
+      if (!isPopout) clearDesktopExplorerFilePrewarm();
+      return;
+    }
+    void prewarmDesktopExplorerFile({
+      appearance: codeAppearance,
+      explorer: explorerToPrewarm,
+    });
+  }, [codeAppearance, desktopRuntime, explorerToPrewarm, isPopout]);
   const selectedBrowser =
     selectedSurface?.kind === "browser" ? selectedSurface.entity : undefined;
   const selectedCodeTab =
