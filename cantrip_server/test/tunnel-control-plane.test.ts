@@ -73,7 +73,7 @@ let projectId: string;
 let userTunnelId: string;
 let managedTunnelId: string;
 let otherOwnerId: string;
-let codeAttachmentId: string;
+let codeAttachment: ReturnType<typeof tunnelAttachmentCreateResultSchema.parse>;
 
 function protectedRecord(operationId: string, revision: number) {
   return {
@@ -472,7 +472,7 @@ describe.sequential("tunnel control plane", () => {
     const attachment = tunnelAttachmentCreateResultSchema.parse(
       response.json(),
     );
-    codeAttachmentId = attachment.attachmentId;
+    codeAttachment = attachment;
     expect(attachment.tunnelId).toBe(tunnelId);
     await expect(
       database.repository.getDesktopTunnelAttachment(
@@ -490,11 +490,11 @@ describe.sequential("tunnel control plane", () => {
     });
   });
 
-  it("validates and propagates direct tunnel diagnostic trace IDs", async () => {
+  it("preserves the relay credential after direct route activation", async () => {
     const commandCount = workerCommands.length;
     const invalid = await app.inject({
       method: "POST",
-      url: `/api/tunnel-attachments/${codeAttachmentId}/direct`,
+      url: `/api/tunnel-attachments/${codeAttachment.attachmentId}/direct`,
       payload: { diagnosticTraceId: "not-a-uuid" },
     });
     expect(invalid.statusCode).toBe(400);
@@ -503,7 +503,7 @@ describe.sequential("tunnel control plane", () => {
     const diagnosticTraceId = randomUUID();
     const response = await app.inject({
       method: "POST",
-      url: `/api/tunnel-attachments/${codeAttachmentId}/direct`,
+      url: `/api/tunnel-attachments/${codeAttachment.attachmentId}/direct`,
       payload: { diagnosticTraceId },
     });
     expect(response.statusCode, response.body).toBe(201);
@@ -519,7 +519,57 @@ describe.sequential("tunnel control plane", () => {
     const responseBody = response.json();
     expect(responseBody).not.toHaveProperty("diagnosticTraceId");
     const ticket = directTunnelTicketSchema.parse(responseBody);
+    expect(ticket.binding.attachmentId).toBe(codeAttachment.attachmentId);
     expect(ticket.binding).not.toHaveProperty("diagnosticTraceId");
+
+    const activation = await app.inject({
+      method: "POST",
+      url: `/api/tunnel-attachments/${codeAttachment.attachmentId}/direct-activate`,
+      payload: { capabilityId: ticket.binding.capabilityId },
+    });
+    expect(activation.statusCode, activation.body).toBe(204);
+
+    let relayClient: WebSocket | null = null;
+    const readyMessages: unknown[] = [];
+    const relaySocket = await app.injectWS(
+      codeAttachment.connectPath,
+      { headers: { authorization: `Bearer ${codeAttachment.secret}` } },
+      {
+        onInit(client) {
+          relayClient = client;
+          client.on("message", (data, binary) => {
+            if (!binary) readyMessages.push(JSON.parse(data.toString()));
+          });
+        },
+      },
+    );
+    if (!relayClient) throw new Error("Relay socket did not initialize.");
+    relayClient.send(
+      JSON.stringify({ type: "initialize", clientId: "desktop-code-test" }),
+    );
+    await expect.poll(() => readyMessages.length).toBe(1);
+    expect(tunnelAttachmentReadySchema.parse(readyMessages[0])).toMatchObject({
+      attachmentId: codeAttachment.attachmentId,
+      tunnelId: codeAttachment.tunnelId,
+    });
+
+    const releaseDirect = await app.inject({
+      method: "DELETE",
+      url: `/api/direct-attachments/${ticket.binding.capabilityId}`,
+    });
+    expect(releaseDirect.statusCode, releaseDirect.body).toBe(204);
+    const releaseDirectAgain = await app.inject({
+      method: "DELETE",
+      url: `/api/direct-attachments/${ticket.binding.capabilityId}`,
+    });
+    expect(releaseDirectAgain.statusCode, releaseDirectAgain.body).toBe(204);
+    expect(relayClient.readyState).toBe(1);
+    expect(workerCommands.at(-1)).toMatchObject({
+      type: "direct.capability.revoke",
+      capabilityId: ticket.binding.capabilityId,
+    });
+
+    relaySocket.terminate();
   });
 
   it("clears organizational project links without deleting tunnels", async () => {

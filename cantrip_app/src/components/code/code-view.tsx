@@ -167,6 +167,7 @@ export function CodeView({
   }, []);
 
   useEffect(() => {
+    const connectionController = new AbortController();
     const generation = ++connectionGeneration.current;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let directHealthTimer: ReturnType<typeof setTimeout> | undefined;
@@ -205,7 +206,9 @@ export function CodeView({
         );
         ownedAttachmentId = protectedWire.attachmentId;
         const initialAttachment = (
-          await preferProtectedCodeAttachment(protectedWire)
+          await preferProtectedCodeAttachment(protectedWire, {
+            signal: connectionController.signal,
+          })
         ).attachment;
         ownedAttachmentId = initialAttachment.attachmentId;
         logCodeEvent("info", "relay attachment created", {
@@ -303,6 +306,9 @@ export function CodeView({
     retryTimer = setTimeout(() => void connect(0), 0);
     return () => {
       cancelled = true;
+      connectionController.abort(
+        new DOMException("Code connection superseded.", "AbortError"),
+      );
       if (retryTimer) clearTimeout(retryTimer);
       if (directHealthTimer) clearTimeout(directHealthTimer);
       if (ownedAttachmentId) {

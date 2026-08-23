@@ -52,6 +52,18 @@ export const tunnelDataPlaneCloseCodeSchema = z.enum([
   "protocol-error",
 ]);
 
+export const tunnelDataPlaneRejectionCodeSchema = z.enum([
+  "target-unavailable",
+  "target-rejected",
+  "limit-exceeded",
+  "unauthorized",
+  "protocol-error",
+  "congested",
+  "protected-target-invalid",
+  "protected-record-unavailable",
+  "protected-endpoint-unavailable",
+]);
+
 export const tunnelDataPlaneTargetSchema = z.union([
   z
     .object({
@@ -116,14 +128,7 @@ export const tunnelDataPlaneFrameHeaderSchema = z.discriminatedUnion("kind", [
   }),
   frameBaseSchema.extend({
     kind: z.literal("rejected"),
-    code: z.enum([
-      "target-unavailable",
-      "target-rejected",
-      "limit-exceeded",
-      "unauthorized",
-      "protocol-error",
-      "congested",
-    ]),
+    code: tunnelDataPlaneRejectionCodeSchema,
   }),
   frameBaseSchema.extend({
     kind: z.literal("data"),
@@ -247,6 +252,9 @@ export type TunnelDataFrameProtection = z.infer<
 >;
 export type TunnelDataPlaneCloseCode = z.infer<
   typeof tunnelDataPlaneCloseCodeSchema
+>;
+export type TunnelDataPlaneRejectionCode = z.infer<
+  typeof tunnelDataPlaneRejectionCodeSchema
 >;
 export type TunnelDataPlaneTarget = z.infer<typeof tunnelDataPlaneTargetSchema>;
 export type TunnelDataPlaneFrameHeader = z.infer<

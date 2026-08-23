@@ -44,6 +44,10 @@ class EchoWorkerBridge implements WorkerCommandBus {
   readonly listeners = new Set<WorkerTunnelDataPlaneFrameListener>();
   readonly received: TunnelDataPlaneFrameHeader[] = [];
 
+  constructor(
+    private readonly rejectedConnectCode?: "protected-endpoint-unavailable",
+  ) {}
+
   attach() {}
   close() {}
   isConnected(workerId: string) {
@@ -83,7 +87,9 @@ class EchoWorkerBridge implements WorkerCommandBus {
     };
     const response: TunnelDataPlaneFrameHeader | null =
       header.kind === "connect"
-        ? { ...base, kind: "accepted", initialCreditBytes: 1_024 }
+        ? this.rejectedConnectCode
+          ? { ...base, kind: "rejected", code: this.rejectedConnectCode }
+          : { ...base, kind: "accepted", initialCreditBytes: 1_024 }
         : header.kind === "data"
           ? {
               ...base,
@@ -240,6 +246,49 @@ describe("desktop tunnel runtime", () => {
       activeConnections: 0,
       activeRoutes: 0,
     });
+  });
+
+  it("preserves a protected endpoint rejection from worker to desktop", async () => {
+    const repository = {
+      activateDesktopTunnelAttachment: async () => true,
+      markDesktopTunnelAttachmentOffline: async () => undefined,
+    } as unknown as ServerRepository;
+    const bridge = new EchoWorkerBridge("protected-endpoint-unavailable");
+    const runtime = new TunnelRuntimeManager(repository, bridge, () => {});
+    const socket = new FakeDesktopSocket();
+    await runtime.attach(socket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+    });
+
+    socket.emitFrame(
+      sourceFrame("protected-endpoint-failure", 0, {
+        kind: "open",
+        initialCreditBytes: 1_024,
+      }),
+    );
+
+    expect(bridge.received[0]).toMatchObject({
+      kind: "connect",
+      target: {
+        kind: "protected-tunnel",
+        recordId: authorization.tunnelId,
+      },
+    });
+    expect(socket.sent).toEqual([
+      expect.objectContaining({
+        header: expect.objectContaining({
+          kind: "rejected",
+          code: "protected-endpoint-unavailable",
+          connectionId: "protected-endpoint-failure",
+        }),
+      }),
+    ]);
+    expect(runtime.stats()).toMatchObject({
+      activeConnections: 0,
+      rejectedConnections: 1,
+    });
+    runtime.close();
   });
 
   it("authorizes revocation before closing another owner's active route", async () => {

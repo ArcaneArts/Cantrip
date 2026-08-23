@@ -965,6 +965,8 @@ pub fn run() {
             project_share::reveal_local_project_folder,
             project_share::reveal_project_share,
             tunnel_forward::start_tunnel_forward,
+            tunnel_forward::force_tunnel_forward_relay,
+            tunnel_forward::confirm_tunnel_forward_direct_retired,
             tunnel_forward::refresh_tunnel_forward_relay,
             tunnel_forward::stop_tunnel_forward,
             tunnel_forward::list_tunnel_forwards,

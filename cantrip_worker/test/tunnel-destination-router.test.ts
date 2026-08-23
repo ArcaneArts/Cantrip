@@ -188,7 +188,10 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
     await vi.waitFor(() => expect(emitted).toHaveBeenCalledTimes(2));
     expect(tunnelContent.open).not.toHaveBeenCalled();
     expect(emitted).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "rejected", code: "target-rejected" }),
+      expect.objectContaining({
+        kind: "rejected",
+        code: "protected-target-invalid",
+      }),
       new Uint8Array(),
     );
     expect(records).toEqual(
@@ -227,6 +230,13 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
     });
 
     await vi.waitFor(() => expect(emitted).toHaveBeenCalledOnce());
+    expect(emitted).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "rejected",
+        code: "protected-record-unavailable",
+      }),
+      new Uint8Array(),
+    );
     expect(records).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -257,7 +267,10 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
 
     await vi.waitFor(() => expect(emitted).toHaveBeenCalledOnce());
     expect(emitted).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "rejected", code: "target-rejected" }),
+      expect.objectContaining({
+        kind: "rejected",
+        code: "protected-endpoint-unavailable",
+      }),
       new Uint8Array(),
     );
     expect(records).toEqual(

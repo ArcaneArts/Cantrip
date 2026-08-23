@@ -11986,16 +11986,16 @@ export async function buildApp({
     { logLevel: "warn" },
     async (request, reply) => {
       const principal = authenticatedPrincipal(request);
-      return (await directAttachments.revoke(
+      await directAttachments.revoke(
         request.params.capabilityId,
         "Client released direct attachment",
         {
           authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
           ownerId: principal.user.id,
         },
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Direct attachment not found." });
+      );
+      // A completed or concurrent revocation is already the requested end state.
+      return reply.code(204).send();
     },
   );
 

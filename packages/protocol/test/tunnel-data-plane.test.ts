@@ -98,6 +98,25 @@ describe("generic tunnel data plane protocol", () => {
     }
   });
 
+  it("round-trips coarse protected target rejection categories", () => {
+    for (const code of [
+      "protected-target-invalid",
+      "protected-record-unavailable",
+      "protected-endpoint-unavailable",
+    ] as const) {
+      const header: TunnelDataPlaneFrameHeader = {
+        ...base,
+        kind: "rejected",
+        code,
+      };
+      expect(
+        decodeTunnelDataPlaneFrame(
+          encodeTunnelDataPlaneFrame(header, new Uint8Array()),
+        ).header,
+      ).toEqual(header);
+    }
+  });
+
   it("rejects unsafe targets, invalid credit, malformed lengths, and payload misuse", () => {
     expect(() =>
       encodeTunnelDataPlaneFrame(
