@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,10 +7,15 @@ import { format } from "prettier";
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverSourcePath = resolve(repositoryRoot, "cantrip_server/src");
 const appPath = resolve(serverSourcePath, "app.ts");
+const schemaPath = resolve(serverSourcePath, "db/schema.ts");
 const protocolPath = resolve(repositoryRoot, "packages/protocol/src/index.ts");
 const liveProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/live.ts",
+);
+const tunnelDataPlaneProtocolPath = resolve(
+  repositoryRoot,
+  "packages/protocol/src/tunnel-data-plane.ts",
 );
 const surfaceStreamProtocolPath = resolve(
   repositoryRoot,
@@ -87,6 +93,122 @@ const inventoryPath = resolve(
   "docs/security/server-route-inventory.json",
 );
 const encryptionPlanPath = resolve(repositoryRoot, "docs/ENCRYPTION.md");
+
+const CONTENT_CLASSIFICATIONS = new Set([
+  "endpoint-protected",
+  "hashed-validator",
+  "minimized-operational-metadata",
+  "intentionally-public-control-plane",
+  "worker-local",
+  "tracked-rollout-gap",
+]);
+
+// These digests deliberately freeze the reviewed set of server-bound
+// contracts. Adding a route, worker command, live resource, or CLI command
+// requires reviewing its content classification and updating the matching
+// digest; regenerating the inventory alone cannot silently accept it.
+const REVIEWED_CONTRACT_DIGESTS = {
+  agentOperations:
+    "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
+  applicationRoutes:
+    "72fd89d9aeb145e6d1365d60a3f79f9b90a7190eb0928a10ff90981f58989abd",
+  clientControlCommands:
+    "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
+  cliCommands:
+    "c60e6813bbd3b2ed4df9a4b2377d8b1db15dafcf9c16fef4034cb0739fe88ad5",
+  liveResources:
+    "794d634c9d77ded0dab79d3b92edae59c63272c203a224ab75cf5fbb472484e6",
+  workerCommands:
+    "11176fe9fd0ef7dd4a89b9ba5cbedb09d0bc4036e2da440410323c09b282fa26",
+  tunnelFrameKinds:
+    "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
+};
+
+const DURABLE_TABLE_CLASSIFICATIONS = {
+  systemState: "intentionally-public-control-plane",
+  users: "intentionally-public-control-plane",
+  accountLicenseWhitelist: "intentionally-public-control-plane",
+  userSessions: "tracked-rollout-gap",
+  mobileSignInGrants: "hashed-validator",
+  auditEvents: "minimized-operational-metadata",
+  workerEnrollmentCodes: "hashed-validator",
+  modelProviders: "endpoint-protected",
+  modelProviderAccounts: "endpoint-protected",
+  modelProviderAccountWorkers: "intentionally-public-control-plane",
+  providerQuotaObservations: "minimized-operational-metadata",
+  providerModels: "intentionally-public-control-plane",
+  providerModelCatalogSnapshots: "minimized-operational-metadata",
+  providerModelAvailability: "minimized-operational-metadata",
+  providerCatalogSyncStates: "minimized-operational-metadata",
+  providerModelSuppressions: "intentionally-public-control-plane",
+  modelProfiles: "intentionally-public-control-plane",
+  modelRoutes: "intentionally-public-control-plane",
+  userSettings: "intentionally-public-control-plane",
+  policyOwnerStates: "intentionally-public-control-plane",
+  policies: "endpoint-protected",
+  workers: "intentionally-public-control-plane",
+  workerCredentials: "hashed-validator",
+  accountEncryptionProfiles: "endpoint-protected",
+  encryptionPrincipals: "endpoint-protected",
+  encryptionKeyGrants: "endpoint-protected",
+  projects: "endpoint-protected",
+  tunnels: "tracked-rollout-gap",
+  tunnelAttachments: "tracked-rollout-gap",
+  mcpServers: "endpoint-protected",
+  projectWorkspaces: "endpoint-protected",
+  projectWorkspaceMemberships: "intentionally-public-control-plane",
+  projectPolicyAssignments: "intentionally-public-control-plane",
+  workspacePolicyAssignments: "intentionally-public-control-plane",
+  tabGroups: "endpoint-protected",
+  tabGroupMembers: "intentionally-public-control-plane",
+  projectSources: "endpoint-protected",
+  projectWorktrees: "endpoint-protected",
+  worktreeSetupJobs: "tracked-rollout-gap",
+  projectFolderSetupJobs: "tracked-rollout-gap",
+  projectGithubConversionJobs: "tracked-rollout-gap",
+  projectReplicaJobs: "tracked-rollout-gap",
+  gitOperations: "endpoint-protected",
+  runInstances: "minimized-operational-metadata",
+  chats: "endpoint-protected",
+  tasks: "endpoint-protected",
+  taskPlanningRounds: "endpoint-protected",
+  terminals: "endpoint-protected",
+  explorers: "endpoint-protected",
+  codeTabs: "endpoint-protected",
+  codeSessions: "intentionally-public-control-plane",
+  browsers: "endpoint-protected",
+  remoteSurfaces: "endpoint-protected",
+  projectViews: "endpoint-protected",
+  chatRuntimeSessions: "intentionally-public-control-plane",
+  chatExecutionLanes: "intentionally-public-control-plane",
+  agentInteractionRequests: "endpoint-protected",
+  chatMessages: "endpoint-protected",
+  tokenUsageRecords: "minimized-operational-metadata",
+  modelBehaviorObservations: "minimized-operational-metadata",
+  chatAttachments: "endpoint-protected",
+  chatAttachmentReplicas: "intentionally-public-control-plane",
+  chatRelocationJobs: "tracked-rollout-gap",
+  chatImportJobs: "tracked-rollout-gap",
+  chatRelocationSnapshots: "endpoint-protected",
+  queuedPrompts: "endpoint-protected",
+  projectAutomations: "endpoint-protected",
+  projectAutomationRuns: "endpoint-protected",
+  workflowDefinitions: "endpoint-protected",
+  workflowRevisions: "endpoint-protected",
+  workflowRevisionNodes: "intentionally-public-control-plane",
+  workflowRevisionEdges: "intentionally-public-control-plane",
+  workflowRuns: "endpoint-protected",
+  workflowAutomationTriggers: "endpoint-protected",
+  workflowTriggerDeliveries: "endpoint-protected",
+  workflowRunNodes: "endpoint-protected",
+  workflowRunNodeDependencies: "intentionally-public-control-plane",
+  workflowRunNodeItems: "endpoint-protected",
+  workflowNodeAttempts: "endpoint-protected",
+  workflowWorktreeLeases: "minimized-operational-metadata",
+  projectBranchLeases: "minimized-operational-metadata",
+  workflowRunEvents: "endpoint-protected",
+  workflowApprovalGates: "endpoint-protected",
+};
 
 const prohibitedTaskProtocolSymbols = new Set([
   "TaskContinuationStart",
@@ -2916,10 +3038,43 @@ async function encryptionLedgerClosureAudit() {
   if (failures.length > 0) {
     throw new Error(`Encryption ledger is not closed:\n${failures.join("\n")}`);
   }
+  const remainingSection = document
+    .split("## Post-closure review and remaining-work ledger", 2)[1]
+    ?.split("## Important web-client limitation", 1)[0];
+  if (!remainingSection) {
+    throw new Error("Post-closure remaining-work ledger was not found.");
+  }
+  const remainingRows = remainingSection
+    .split("\n")
+    .filter((line) => line.startsWith("|") && !/^\|\s*-+/u.test(line))
+    .map((line) =>
+      line
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim()),
+    )
+    .filter(([dataClass]) => dataClass !== "Data class");
+  const malformedRemainingRows = remainingRows.filter(
+    (cells) => cells.length !== 6,
+  );
+  if (remainingRows.length === 0 || malformedRemainingRows.length > 0) {
+    throw new Error(
+      "Post-closure remaining-work ledger is empty or malformed.",
+    );
+  }
+  const plannedRows = remainingRows.filter((cells) =>
+    /\b(?:planned|partial|pending|incomplete|not started)\b/iu.test(cells[3]),
+  );
   return {
     status: "closed",
     rowCount: rows.length,
     classifications,
+    remainingWork: {
+      status: plannedRows.length > 0 ? "open" : "closed",
+      rowCount: remainingRows.length,
+      plannedCount: plannedRows.length,
+      plannedDataClasses: plannedRows.map(([dataClass]) => dataClass),
+    },
   };
 }
 
@@ -3296,6 +3451,245 @@ function enumValues(sourceText, declarationName) {
   ].map((match) => match[1]);
 }
 
+function reviewedDigest(values) {
+  return createHash("sha256")
+    .update([...new Set(values)].sort().join("\n"))
+    .digest("hex");
+}
+
+function requireReviewedContractSet(kind, values) {
+  const actual = reviewedDigest(values);
+  const expected = REVIEWED_CONTRACT_DIGESTS[kind];
+  if (actual !== expected) {
+    throw new Error(
+      `Server content boundary has an unreviewed ${kind} set. ` +
+        `Expected ${expected}; reviewed candidate is ${actual}.`,
+    );
+  }
+  return actual;
+}
+
+function durableTableContentInventory(schemaText) {
+  const tables = [
+    ...schemaText.matchAll(
+      /export const ([A-Za-z][A-Za-z0-9_]*)\s*=\s*pgTable\(\s*["']([^"']+)["']/gu,
+    ),
+  ].map((match) => ({ exportName: match[1], tableName: match[2] }));
+  const discovered = new Set(tables.map(({ exportName }) => exportName));
+  const classified = new Set(Object.keys(DURABLE_TABLE_CLASSIFICATIONS));
+  const missing = [...discovered].filter((name) => !classified.has(name));
+  const stale = [...classified].filter((name) => !discovered.has(name));
+  const invalid = Object.entries(DURABLE_TABLE_CLASSIFICATIONS)
+    .filter(
+      ([, classification]) => !CONTENT_CLASSIFICATIONS.has(classification),
+    )
+    .map(([name]) => name);
+  if (missing.length > 0 || stale.length > 0 || invalid.length > 0) {
+    throw new Error(
+      [
+        "Durable server table content classifications are incomplete.",
+        ...(missing.length > 0
+          ? [`Unclassified tables: ${missing.sort().join(", ")}`]
+          : []),
+        ...(stale.length > 0
+          ? [`Stale classifications: ${stale.sort().join(", ")}`]
+          : []),
+        ...(invalid.length > 0
+          ? [`Invalid classifications: ${invalid.sort().join(", ")}`]
+          : []),
+      ].join("\n"),
+    );
+  }
+  return tables
+    .map((table) => ({
+      ...table,
+      classification: DURABLE_TABLE_CLASSIFICATIONS[table.exportName],
+    }))
+    .sort((left, right) => left.tableName.localeCompare(right.tableName));
+}
+
+function applicationRouteContentClassification(route) {
+  const key = `${route.method} ${route.path}`;
+  if (
+    /(?:\/run-environment|\/runs(?:\/|$)|\/script-commands|\/customizations(?:\/|$)|\/skills(?:\/|$)|\/tunnels(?:\/|$))/u.test(
+      route.path,
+    )
+  ) {
+    return {
+      classification: "tracked-rollout-gap",
+      rationale: "post-closure remaining-work ledger",
+    };
+  }
+  if (/^\/api\/auth\//u.test(route.path)) {
+    return {
+      classification: "hashed-validator",
+      rationale: "authentication and session validation boundary",
+    };
+  }
+  if (
+    /(?:\/analytics(?:\/|$)|\/audit-events(?:\/|$)|\/token-usage(?:\/|$)|\/telemetry(?:\/|$))/u.test(
+      route.path,
+    )
+  ) {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale: "bounded analytics, audit, or telemetry contract",
+    };
+  }
+  if (
+    /(?:\/encryption(?:\/|$)|\/attachments(?:\/|$)|\/chats(?:\/|$)|\/tasks(?:\/|$)|\/workflows(?:\/|$)|\/policies(?:\/|$)|\/mcp-servers(?:\/|$)|\/repository-operation(?:\/|$))/u.test(
+      route.path,
+    ) ||
+    /\b(?:encrypted|protected|opaque|Protection)\b/u.test(route.source)
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "opaque or endpoint-protected route contract",
+    };
+  }
+  return {
+    classification: "intentionally-public-control-plane",
+    rationale: `reviewed routing/authorization contract (${key})`,
+  };
+}
+
+function workerCommandContentClassification(command) {
+  if (
+    /^(?:project\.run(?:-|\.)|project\.script-commands|skills\.|customization\.)/u.test(
+      command,
+    )
+  ) {
+    return {
+      classification: "tracked-rollout-gap",
+      rationale: "post-closure remaining-work ledger",
+    };
+  }
+  if (
+    /^(?:attachment\.|automation\.|explorer\.|git\.|github\.|policy\.|repository\.|surface\.|task\.|terminal\.|workflow\.)/u.test(
+      command,
+    )
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "operation-bound protected worker contract",
+    };
+  }
+  if (/^(?:code\.|codegraph\.|project\.|worktree\.)/u.test(command)) {
+    return {
+      classification: "worker-local",
+      rationale: "worker-owned operation with opaque server routing handles",
+    };
+  }
+  return {
+    classification: "intentionally-public-control-plane",
+    rationale: "reviewed worker lifecycle or capability contract",
+  };
+}
+
+function liveResourceContentClassification(resource) {
+  if (["customization", "run", "tunnel"].includes(resource)) {
+    return {
+      classification: "tracked-rollout-gap",
+      rationale: "post-closure remaining-work ledger",
+    };
+  }
+  if (
+    /^(?:chat|task|agent-interaction|terminal|explorer|browser|code-tab|project-view|remote-desktop|workflow-)/u.test(
+      resource,
+    )
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "invalidations carry opaque IDs or protected summaries",
+    };
+  }
+  if (/(?:job|status|token-usage|git-operation|git-conflict)/u.test(resource)) {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale: "bounded lifecycle invalidation",
+    };
+  }
+  return {
+    classification: "intentionally-public-control-plane",
+    rationale: "reviewed invalidation-only resource",
+  };
+}
+
+function cliCommandContentClassification(command) {
+  if (/^run\./u.test(command)) {
+    return {
+      classification: "tracked-rollout-gap",
+      rationale: "Run content still crosses the server in plaintext",
+    };
+  }
+  if (/^(?:browser|explorer|policy|terminal)\./u.test(command)) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "protected operation or surface stream contract",
+    };
+  }
+  if (/^(?:target|worktree)\./u.test(command)) {
+    return {
+      classification: "worker-local",
+      rationale: "opaque execution target and worker-local repository state",
+    };
+  }
+  return {
+    classification: "intentionally-public-control-plane",
+    rationale: "reviewed CLI status contract",
+  };
+}
+
+function agentOperationContentClassification(operation) {
+  if (/^(?:run(?:-|\.)|client\.notify$)/u.test(operation)) {
+    return {
+      classification: "tracked-rollout-gap",
+      rationale: "Run or client-notification semantic content is plaintext",
+    };
+  }
+  if (/^(?:browser|explorer|policy|terminal)\./u.test(operation)) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "protected operation or surface stream contract",
+    };
+  }
+  if (/^(?:target|worktree)\./u.test(operation)) {
+    return {
+      classification: "worker-local",
+      rationale: "opaque execution target and worker-local repository state",
+    };
+  }
+  return {
+    classification: "intentionally-public-control-plane",
+    rationale: "reviewed operation discovery or client-control contract",
+  };
+}
+
+function clientControlContentClassification(command) {
+  return command === "notify"
+    ? {
+        classification: "tracked-rollout-gap",
+        rationale: "notification title and message are semantic plaintext",
+      }
+    : {
+        classification: "intentionally-public-control-plane",
+        rationale: "short-lived opaque focus/materialization identifiers",
+      };
+}
+
+function tunnelFrameContentClassification(kind) {
+  return ["close", "connect", "data", "error", "rejected"].includes(kind)
+    ? {
+        classification: "tracked-rollout-gap",
+        rationale:
+          "payload, destination target, or detailed error is plaintext",
+      }
+    : {
+        classification: "intentionally-public-control-plane",
+        rationale: "routing, lifecycle, or flow-control frame",
+      };
+}
+
 function declarationInitializer(sourceText, declarationName, opener) {
   const declaration = sourceText.indexOf(`export const ${declarationName}`);
   if (declaration < 0) throw new Error(`Missing ${declarationName}.`);
@@ -3650,7 +4044,11 @@ async function surfacePrivateStateRepositoryBoundaryAudit(protocolText) {
     ["openSession", "Remote Surface could not be opened."],
   ]) {
     const body = methodBody(workerManagerText, method);
-    if (body.includes("workerLogError") || !body.includes(genericFailure)) {
+    // Detailed adapter failures may remain in the worker's local console. The
+    // shared persistent/remote log minimizer removes their message and keeps
+    // only stable error class/code metadata; the server-facing exception must
+    // remain generic.
+    if (!body.includes(genericFailure)) {
       failures.push(
         `worker RemoteSurfaceManager.${method}: private adapter failures are not generic`,
       );
@@ -3728,8 +4126,10 @@ async function repositoryMethodInventory() {
 async function buildInventory() {
   const [
     sourceText,
+    schemaText,
     protocolText,
     liveProtocolText,
+    tunnelDataPlaneProtocolText,
     surfaceStreamProtocolText,
     repositoryOperationProtocolText,
     remoteSurfaceStreamProtocolText,
@@ -3759,8 +4159,10 @@ async function buildInventory() {
     encryptionLedgerClosure,
   ] = await Promise.all([
     readFile(appPath, "utf8"),
+    readFile(schemaPath, "utf8"),
     readFile(protocolPath, "utf8"),
     readFile(liveProtocolPath, "utf8"),
+    readFile(tunnelDataPlaneProtocolPath, "utf8"),
     readFile(surfaceStreamProtocolPath, "utf8"),
     readFile(repositoryOperationProtocolPath, "utf8"),
     readFile(remoteSurfaceStreamProtocolPath, "utf8"),
@@ -3818,7 +4220,64 @@ async function buildInventory() {
     clientApiText,
     `${workerText}\n${workerRoutingText}`,
   );
-  const routes = parsedRoutes.map(({ source: _source, ...route }) => route);
+  const routeKeys = parsedRoutes.map(({ method, path }) => `${method} ${path}`);
+  const workerCommands = literalValuesInInitializer(
+    protocolText,
+    "workerCommandSchema",
+    "[",
+  ).sort();
+  const liveResources = enumValues(
+    liveProtocolText,
+    "appLiveResourceSchema",
+  ).sort();
+  const cliCommands = enumValues(
+    protocolText,
+    "cantripCliCommandNameSchema",
+  ).sort();
+  const agentOperations = enumValues(
+    protocolText,
+    "cantripAgentOperationNameSchema",
+  ).sort();
+  const clientControlCommands = literalValuesInInitializer(
+    liveProtocolText,
+    "clientControlCommandSchema",
+    "[",
+  ).sort();
+  const tunnelFrameKinds = literalValuesInInitializer(
+    tunnelDataPlaneProtocolText,
+    "tunnelDataPlaneFrameHeaderSchema",
+    "[",
+  ).sort();
+  const contractSetDigests = {
+    agentOperations: requireReviewedContractSet(
+      "agentOperations",
+      agentOperations,
+    ),
+    applicationRoutes: requireReviewedContractSet(
+      "applicationRoutes",
+      routeKeys,
+    ),
+    cliCommands: requireReviewedContractSet("cliCommands", cliCommands),
+    clientControlCommands: requireReviewedContractSet(
+      "clientControlCommands",
+      clientControlCommands,
+    ),
+    liveResources: requireReviewedContractSet("liveResources", liveResources),
+    workerCommands: requireReviewedContractSet(
+      "workerCommands",
+      workerCommands,
+    ),
+    tunnelFrameKinds: requireReviewedContractSet(
+      "tunnelFrameKinds",
+      tunnelFrameKinds,
+    ),
+  };
+  const durableTables = durableTableContentInventory(schemaText);
+  const routes = parsedRoutes.map((parsedRoute) => {
+    const contentBoundary = applicationRouteContentClassification(parsedRoute);
+    const { source: _source, ...route } = parsedRoute;
+    return { ...route, contentBoundary };
+  });
   routes.sort(
     (left, right) =>
       left.path.localeCompare(right.path) ||
@@ -3860,12 +4319,17 @@ async function buildInventory() {
   );
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     sources: {
+      agentOperations: "packages/protocol/src/index.ts",
       applicationRoutes: "cantrip_server/src/app.ts",
+      clientControlCommands: "packages/protocol/src/live.ts",
+      durableTables: "cantrip_server/src/db/schema.ts",
       liveProtocol: "packages/protocol/src/live.ts",
       remoteSurfaceStreamProtocol:
         "packages/protocol/src/remote-surface-stream.ts",
+      tunnelDataPlaneProtocol: "packages/protocol/src/tunnel-data-plane.ts",
+      cliCommands: "packages/protocol/src/index.ts",
       workerCommands: "packages/protocol/src/index.ts",
     },
     summary: {
@@ -3883,23 +4347,45 @@ async function buildInventory() {
       workerCredentialRoutes: routes.filter(
         (route) => route.ownerEvidence === "worker-credential",
       ).length,
-      workerCommands: literalValuesInInitializer(
-        protocolText,
-        "workerCommandSchema",
-        "[",
-      ).length,
-      liveResources: enumValues(liveProtocolText, "appLiveResourceSchema")
-        .length,
+      durableTables: durableTables.length,
+      agentOperations: agentOperations.length,
+      workerCommands: workerCommands.length,
+      liveResources: liveResources.length,
+      clientControlCommands: clientControlCommands.length,
+      cliCommands: cliCommands.length,
+      tunnelFrameKinds: tunnelFrameKinds.length,
       repositoryMethods: repositoryMethods.length,
       repositoryOwnerEvidence,
     },
+    contractSetDigests,
+    durableTables,
     routes,
-    workerCommands: literalValuesInInitializer(
-      protocolText,
-      "workerCommandSchema",
-      "[",
-    ).sort(),
-    liveResources: enumValues(liveProtocolText, "appLiveResourceSchema").sort(),
+    agentOperationContentBoundaries: agentOperations.map((operation) => ({
+      operation,
+      ...agentOperationContentClassification(operation),
+    })),
+    workerCommands,
+    workerCommandContentBoundaries: workerCommands.map((command) => ({
+      command,
+      ...workerCommandContentClassification(command),
+    })),
+    liveResources,
+    liveResourceContentBoundaries: liveResources.map((resource) => ({
+      resource,
+      ...liveResourceContentClassification(resource),
+    })),
+    clientControlContentBoundaries: clientControlCommands.map((command) => ({
+      command,
+      ...clientControlContentClassification(command),
+    })),
+    cliCommandContentBoundaries: cliCommands.map((command) => ({
+      command,
+      ...cliCommandContentClassification(command),
+    })),
+    tunnelFrameContentBoundaries: tunnelFrameKinds.map((kind) => ({
+      kind,
+      ...tunnelFrameContentClassification(kind),
+    })),
     repositoryMethods,
     taskE2eeBoundary: {
       status: "enforced",
@@ -3968,6 +4454,7 @@ async function buildInventory() {
     externalTransports: [
       {
         boundary: "capability-token",
+        contentClassification: "tracked-rollout-gap",
         implementation: "cantrip_server/src/code/tunnel.ts",
         name: "Cantrip Code HTTP/WebSocket surface",
         ownerBinding:
@@ -3975,18 +4462,21 @@ async function buildInventory() {
       },
       {
         boundary: "capability-token",
+        contentClassification: "tracked-rollout-gap",
         implementation: "cantrip_server/src/project-shares/tunnel.ts",
         name: "Project share HTTP/WebSocket surface",
         ownerBinding: "attachment owner, project, worker, and canonical root",
       },
       {
         boundary: "application-principal",
+        contentClassification: "endpoint-protected",
         implementation: "cantrip_server/src/remote-surfaces/relay.ts",
         name: "Browser and Remote Desktop binary relay",
         ownerBinding: "surface execution context, attachment, and worker",
       },
       {
         boundary: "worker-control",
+        contentClassification: "tracked-rollout-gap",
         implementation: "cantrip_server/src/workers/bridge.ts",
         name: "Worker command and binary tunnel multiplexing",
         ownerBinding:
@@ -3994,6 +4484,7 @@ async function buildInventory() {
       },
       {
         boundary: "application-principal",
+        contentClassification: "intentionally-public-control-plane",
         implementation: "cantrip_server/src/live/hub.ts",
         name: "Application invalidation and replay stream",
         ownerBinding:
