@@ -281,28 +281,18 @@ describe("Cantrip Code supervisor", () => {
     expect(state).not.toContain("cantrip.bridgeToken");
   });
 
-  it("configures an editor-only workspace and opens a safe relative file", async () => {
+  it("reconfigures a compatibility workbench as editor-only and opens a safe relative file", async () => {
     const { repository, supervisor } = await fixture();
     await writeFile(path.join(repository, "example.ts"), "export {};\n");
     await supervisor.open({
       ...openCommand("editor", repository, "primary"),
-      presentation: "editor",
+      presentation: "workbench",
     });
     const target = supervisor.proxyTarget("editor");
-    const workspace = JSON.parse(
+    let workspace = JSON.parse(
       await readFile(new URL(target.workspaceUri), "utf8"),
     ) as { settings: Record<string, unknown> };
-    expect(workspace.settings).toMatchObject({
-      "breadcrumbs.enabled": true,
-      "cantrip.presentation": "editor",
-      "window.commandCenter": false,
-      "window.menuBarVisibility": "hidden",
-      "workbench.activityBar.location": "hidden",
-      "workbench.editor.editorActionsLocation": "hidden",
-      "workbench.editor.showTabs": "none",
-      "workbench.layoutControl.enabled": false,
-      "workbench.statusBar.visible": true,
-    });
+    expect(workspace.settings["cantrip.presentation"]).toBe("workbench");
 
     const socket = await openSocket(
       workspace.settings["cantrip.bridgeUrl"] as string,
@@ -324,6 +314,24 @@ describe("Cantrip Code supervisor", () => {
               : { applied: true },
         }),
       );
+    });
+
+    await supervisor.setPresentation("editor", "editor");
+    workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, unknown> };
+    expect(workspace.settings).toMatchObject({
+      "breadcrumbs.enabled": true,
+      "cantrip.presentation": "editor",
+      "window.commandCenter": false,
+      "window.menuBarVisibility": "hidden",
+      "workbench.activityBar.location": "hidden",
+      "workbench.editor.editorActionsLocation": "hidden",
+      "workbench.editor.empty.hint": "hidden",
+      "workbench.editor.showTabs": "none",
+      "workbench.layoutControl.enabled": false,
+      "workbench.startupEditor": "none",
+      "workbench.statusBar.visible": true,
     });
 
     await expect(supervisor.openFile("editor", "example.ts")).resolves.toEqual({

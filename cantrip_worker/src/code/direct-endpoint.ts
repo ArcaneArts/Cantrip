@@ -12,6 +12,7 @@ import {
   CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
   codeOpenFileRequestSchema,
   codeOpenFileResultSchema,
+  codePresentationUpdateSchema,
   isForwardableCodeAdapterWebSocketCloseCode,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
@@ -33,6 +34,7 @@ interface Endpoint {
 
 const BASE_PATH = "/code";
 const OPEN_FILE_PATH = `${BASE_PATH}/_cantrip/open-file`;
+const PRESENTATION_PATH = `${BASE_PATH}/_cantrip/presentation`;
 const MAX_CONTROL_REQUEST_BYTES = 16 * 1_024;
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
 const FRAME_ANCESTORS =
@@ -251,6 +253,10 @@ export class CodeDirectEndpointManager {
       void this.#openFile(sessionId, request, response);
       return;
     }
+    if (pathname === PRESENTATION_PATH) {
+      void this.#setPresentation(sessionId, request, response);
+      return;
+    }
     if (!this.#validPath(request.url)) {
       response.writeHead(404, { "cache-control": "no-store" }).end("Not found");
       return;
@@ -372,6 +378,71 @@ export class CodeDirectEndpointManager {
           error instanceof Error
             ? error.message
             : "Cantrip Code could not open this file.",
+      });
+    }
+  }
+
+  async #setPresentation(
+    sessionId: string,
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    if (request.method === "OPTIONS") {
+      writeControlResponse(response, 204);
+      return;
+    }
+    if (request.method !== "POST") {
+      writeControlResponse(response, 405, {
+        error: "Cantrip Code presentation requests require POST.",
+      });
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readControlRequest(request);
+    } catch {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code requires a valid JSON request body.",
+      });
+      return;
+    }
+    const input = codePresentationUpdateSchema.safeParse(body);
+    if (!input.success || input.data.presentation !== "editor") {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code only supports the editor presentation here.",
+      });
+      return;
+    }
+    try {
+      await this.supervisor.setPresentation(sessionId, "editor");
+      writeControlResponse(response, 200, input.data);
+      workerLogger.event("debug", "Cantrip Code direct presentation updated", {
+        event: "code.direct.presentation-updated",
+        subsystem: "code",
+        operation: "set-presentation",
+        status: "completed",
+        presentation: "editor",
+        sessionId,
+      });
+    } catch (error) {
+      workerLogger.event(
+        "warn",
+        "Cantrip Code direct presentation update failed",
+        {
+          event: "code.direct.presentation-update-failed",
+          subsystem: "code",
+          operation: "set-presentation",
+          reasonCode: "update-failed",
+          status: "failed",
+          sessionId,
+          error: workerLogError(error),
+        },
+      );
+      writeControlResponse(response, 503, {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Cantrip Code could not enter editor-only mode.",
       });
     }
   }

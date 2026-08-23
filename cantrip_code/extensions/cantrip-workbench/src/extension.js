@@ -9,7 +9,10 @@ const {
   themeNameForAppearance,
 } = require("./protocol.js");
 const { forceColorTheme } = require("./theme.js");
-const { configureWorkbenchPresentation } = require("./layout.js");
+const {
+  configureWorkbenchPresentation,
+  setWorkbenchPresentation,
+} = require("./layout.js");
 const { observeSocketErrors } = require("./socket.js");
 
 function configuration() {
@@ -451,6 +454,10 @@ class WorkbenchCoordinator {
       await this.setTheme(params);
       return { applied: true };
     }
+    if (method === "setPresentation") {
+      await this.setPresentation(params);
+      return { applied: true, presentation: params.presentation };
+    }
     if (method === "externalFilesChanged") {
       return this.externalFilesChanged(params.paths);
     }
@@ -512,6 +519,16 @@ class WorkbenchCoordinator {
     });
     this.scheduleState();
     return { relativePath };
+  }
+
+  async setPresentation(params) {
+    await setWorkbenchPresentation(
+      params.presentation,
+      vscode.workspace,
+      vscode.commands,
+      vscode.ConfigurationTarget.Workspace,
+    );
+    this.scheduleState();
   }
 
   async setTheme(params) {

@@ -1,8 +1,10 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   codeOpenFileResultSchema,
+  codePresentationUpdateSchema,
   type CodeAttachment,
   type CodeOpenFileResult,
+  type CodePresentationUpdate,
 } from "@cantrip/protocol";
 
 import { createDirectCodeAttachment, deleteDirectAttachment } from "@/lib/api";
@@ -87,6 +89,31 @@ export async function openDirectCodeAttachmentFile(
     throw new Error(message);
   }
   return codeOpenFileResultSchema.parse(body);
+}
+
+export async function setDirectCodeAttachmentPresentation(
+  attachment: CodeAttachment,
+  presentation: "editor",
+): Promise<CodePresentationUpdate> {
+  const endpoint = new URL("_cantrip/presentation", attachment.url);
+  const response = await fetch(endpoint, {
+    body: JSON.stringify({ presentation }),
+    credentials: "omit",
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const message =
+      body &&
+      typeof body === "object" &&
+      "error" in body &&
+      typeof body.error === "string"
+        ? body.error
+        : "Cantrip Code could not enter editor-only mode.";
+    throw new Error(message);
+  }
+  return codePresentationUpdateSchema.parse(body);
 }
 
 export async function stopDirectCodeAttachment(

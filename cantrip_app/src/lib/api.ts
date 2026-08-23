@@ -469,6 +469,7 @@ import {
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
+import { isVisibleProjectCodeTab } from "@/lib/code-tab-visibility";
 import {
   openSurfaceStreamContent,
   protectSurfaceStreamContent,
@@ -5004,9 +5005,10 @@ export async function getCodeTabs(projectId: string) {
   const codeTabs = codeTabWireListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/code-tabs`),
   );
-  return Promise.all(
+  const opened = await Promise.all(
     codeTabs.map((codeTab) => surfaceTitleEncryption.openCodeTab(codeTab)),
   );
+  return opened.filter((codeTab) => isVisibleProjectCodeTab(codeTab.title));
 }
 
 export async function createCodeTab(

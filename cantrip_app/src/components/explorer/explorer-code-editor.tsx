@@ -18,9 +18,11 @@ import {
   releaseCodeAttachment,
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
+import { INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE } from "@/lib/code-tab-visibility";
 import {
   openDirectCodeAttachmentFile,
   preferDirectCodeAttachment,
+  setDirectCodeAttachmentPresentation,
   stopDirectCodeAttachment,
   type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
@@ -49,6 +51,10 @@ export async function createEditorAttachmentWithCompatibilityFallback<T>(
   }
 }
 
+interface ExplorerPreferredCodeAttachment extends PreferredCodeAttachment {
+  compatibilityFallback: boolean;
+}
+
 export function ExplorerCodeEditor({
   appearance,
   explorerId,
@@ -63,7 +69,7 @@ export function ExplorerCodeEditor({
   worktreeId: string;
 }) {
   const [preferredAttachment, setPreferredAttachment] =
-    useState<PreferredCodeAttachment | null>(null);
+    useState<ExplorerPreferredCodeAttachment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -95,7 +101,7 @@ export function ExplorerCodeEditor({
             // compatibility tab with the popout.
             const codeTab = await createCodeTab(
               projectId,
-              "Explorer editor",
+              INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE,
               worktreeId,
             );
             compatibilityCodeTabId = codeTab.id;
@@ -138,7 +144,10 @@ export function ExplorerCodeEditor({
           }
           return;
         }
-        setPreferredAttachment(preferred);
+        setPreferredAttachment({
+          ...preferred,
+          compatibilityFallback: result.compatibilityFallback,
+        });
       } catch (connectError) {
         if (!cancelled) {
           setError(
@@ -167,13 +176,27 @@ export function ExplorerCodeEditor({
   useEffect(() => {
     if (!preferredAttachment) return;
     let cancelled = false;
-    const openFile = preferredAttachment.directTunnelId
-      ? openDirectCodeAttachmentFile(preferredAttachment.attachment, path)
-      : openCodeAttachmentFile(
-          preferredAttachment.attachment.attachmentId,
-          path,
-        );
-    void openFile
+    const preparePresentation = preferredAttachment.compatibilityFallback
+      ? preferredAttachment.directTunnelId
+        ? setDirectCodeAttachmentPresentation(
+            preferredAttachment.attachment,
+            "editor",
+          )
+        : Promise.reject(
+            new Error(
+              "This server is too old to open an Explorer editor without a desktop worker tunnel.",
+            ),
+          )
+      : Promise.resolve();
+    void preparePresentation
+      .then(() =>
+        preferredAttachment.directTunnelId
+          ? openDirectCodeAttachmentFile(preferredAttachment.attachment, path)
+          : openCodeAttachmentFile(
+              preferredAttachment.attachment.attachmentId,
+              path,
+            ),
+      )
       .then((result) => {
         if (!cancelled && result.relativePath === path) {
           setError(null);

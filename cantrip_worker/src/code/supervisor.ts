@@ -457,6 +457,19 @@ export class CodeSupervisor {
     return this.#bridge.openFile(sessionId, relativePath);
   }
 
+  async setPresentation(
+    sessionId: string,
+    presentation: CodePresentation,
+  ): Promise<CodeRuntimeStatus> {
+    const session = this.#requireSession(sessionId);
+    session.presentation = presentation;
+    session.lastActivityAt = isoNow();
+    await this.#writeWorkspace(session);
+    await this.#bridge.setPresentation(sessionId, presentation);
+    await this.#persistState();
+    return this.#status(session);
+  }
+
   async setTheme(
     sessionId: string,
     _themeMode: CodeThemeMode,
@@ -991,8 +1004,10 @@ export class CodeSupervisor {
         "window.menuBarVisibility": "hidden",
         "workbench.activityBar.location": "hidden",
         "workbench.editor.editorActionsLocation": "hidden",
+        "workbench.editor.empty.hint": "hidden",
         "workbench.editor.showTabs": "none",
         "workbench.layoutControl.enabled": false,
+        "workbench.startupEditor": "none",
         "workbench.statusBar.visible": true,
       });
     }

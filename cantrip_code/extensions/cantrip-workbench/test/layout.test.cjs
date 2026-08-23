@@ -3,7 +3,10 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { configureWorkbenchPresentation } = require("../src/layout.js");
+const {
+  configureWorkbenchPresentation,
+  setWorkbenchPresentation,
+} = require("../src/layout.js");
 
 function configuration(presentation) {
   return {
@@ -53,5 +56,76 @@ test("closes non-editor parts for the editor-only presentation", async () => {
     "workbench.action.closeAuxiliaryBar",
     "workbench.action.closeSidebar",
     "workbench.action.closePanel",
+    "notifications.hideToasts",
+    "notifications.clearAll",
   ]);
+});
+
+test("applies editor-only settings without changing ordinary workbenches", async () => {
+  const updates = [];
+  const commands = [];
+  const workspace = {
+    getConfiguration(section) {
+      return {
+        async update(key, value, target) {
+          updates.push([section, key, value, target]);
+        },
+      };
+    },
+  };
+
+  assert.equal(
+    await setWorkbenchPresentation(
+      "editor",
+      workspace,
+      {
+        async executeCommand(command) {
+          commands.push(command);
+        },
+      },
+      "workspace",
+    ),
+    true,
+  );
+  assert.deepEqual(updates[0], [
+    "cantrip",
+    "presentation",
+    "editor",
+    "workspace",
+  ]);
+  assert.ok(
+    updates.some(
+      ([section, key, value]) =>
+        section === "workbench.editor" &&
+        key === "showTabs" &&
+        value === "none",
+    ),
+  );
+  assert.ok(
+    updates.some(
+      ([section, key, value]) =>
+        section === "workbench.statusBar" &&
+        key === "visible" &&
+        value === true,
+    ),
+  );
+  assert.deepEqual(commands, [
+    "workbench.action.closeAuxiliaryBar",
+    "workbench.action.closeSidebar",
+    "workbench.action.closePanel",
+    "notifications.hideToasts",
+    "notifications.clearAll",
+  ]);
+});
+
+test("rejects attempts to collapse a normal Code workbench", async () => {
+  await assert.rejects(
+    setWorkbenchPresentation(
+      "workbench",
+      { getConfiguration: () => ({ update: async () => undefined }) },
+      { executeCommand: async () => undefined },
+      "workspace",
+    ),
+    /Unsupported Cantrip presentation/u,
+  );
 });
