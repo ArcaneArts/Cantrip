@@ -5,6 +5,7 @@ import {
   monacoLanguageForPath,
   monacoModelPath,
   structuredFileFormatForPath,
+  usesCantripCodeEditor,
 } from "./explorer-file-language";
 
 describe("explorer file editing", () => {
@@ -29,6 +30,14 @@ describe("explorer file editing", () => {
     expect(defaultExplorerFileMode("ChangeLog.txt")).toBe("edit");
     expect(defaultExplorerFileMode("assets/photo.png")).toBe("preview");
     expect(defaultExplorerFileMode("recording.mp4")).toBe("preview");
+  });
+
+  it("routes edit mode through Cantrip Code", () => {
+    expect(usesCantripCodeEditor("build.gradle.kts", "edit")).toBe(true);
+    expect(usesCantripCodeEditor("ChangeLog.txt", "edit")).toBe(true);
+    expect(usesCantripCodeEditor("README.md", "edit")).toBe(true);
+    expect(usesCantripCodeEditor("README.md", "preview")).toBe(false);
+    expect(usesCantripCodeEditor("assets/photo.png", "edit")).toBe(false);
   });
 
   it("identifies supported structured file formats", () => {

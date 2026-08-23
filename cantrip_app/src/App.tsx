@@ -8218,6 +8218,7 @@ export function App() {
                 ? (selectedExplorer ?? null)
                 : null
             }
+            appearance={codeAppearance}
             gitStatuses={worktreeStatuses}
             onChanged={handleExplorerChanged}
             onHeaderChange={setExplorerHeader}
@@ -8287,6 +8288,7 @@ export function App() {
           {sidebarFilePreview && sidebarPreviewExplorer ? (
             <ExplorerView
               active={sidebarFilePreviewVisible}
+              appearance={codeAppearance}
               explorer={sidebarPreviewExplorer}
               gitStatus={worktreeStatuses[sidebarPreviewExplorer.worktreeId]}
               key={`sidebar-file-preview:${sidebarPreviewExplorer.id}:${sidebarFilePreview.path}`}
