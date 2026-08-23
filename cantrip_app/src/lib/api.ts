@@ -99,6 +99,9 @@ import {
   codexSkillRootsUpdateSchema,
   explorerDirectoryCommitsSchema,
   explorerDirectorySchema,
+  explorerEntryDeleteSchema,
+  explorerEntryMutationResultSchema,
+  explorerEntryRenameSchema,
   explorerFileSchema,
   explorerFileWriteSchema,
   explorerWireListSchema,
@@ -459,6 +462,9 @@ import type {
   TunnelUserUpdate,
   UserSettingsUpdate,
   ExplorerFileWrite,
+  ExplorerEntryDelete,
+  ExplorerEntryMutationResult,
+  ExplorerEntryRename,
   WorktreePolicy,
   WorkerCredentialRotate,
   WorkerEncryptionRefreshRequest,
@@ -5752,6 +5758,34 @@ export async function saveExplorerFile(
     throw new Error("Explorer returned an unexpected saved file result.");
   }
   return explorerFileSchema.parse(result.value);
+}
+
+export async function renameExplorerEntry(
+  explorerId: string,
+  input: ExplorerEntryRename,
+): Promise<ExplorerEntryMutationResult> {
+  const result = await executeExplorerOperation(explorerId, {
+    type: "explorer.entry.rename",
+    ...explorerEntryRenameSchema.parse(input),
+  });
+  if (result.type !== "explorer.entry.mutated") {
+    throw new Error("Explorer returned an unexpected rename result.");
+  }
+  return explorerEntryMutationResultSchema.parse(result.value);
+}
+
+export async function deleteExplorerEntry(
+  explorerId: string,
+  input: ExplorerEntryDelete,
+): Promise<ExplorerEntryMutationResult> {
+  const result = await executeExplorerOperation(explorerId, {
+    type: "explorer.entry.delete",
+    ...explorerEntryDeleteSchema.parse(input),
+  });
+  if (result.type !== "explorer.entry.mutated") {
+    throw new Error("Explorer returned an unexpected delete result.");
+  }
+  return explorerEntryMutationResultSchema.parse(result.value);
 }
 
 export function terminalWebSocketUrl(

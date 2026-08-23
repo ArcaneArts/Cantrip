@@ -1,19 +1,30 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open, readFile, readdir, realpath } from "node:fs/promises";
+import {
+  lstat,
+  open,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+} from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import {
   explorerDirectoryCommitsSchema,
   explorerDirectorySchema,
+  explorerEntryMutationResultSchema,
+  explorerEntryRenameSchema,
   explorerFileSchema,
   explorerMediaFileChunkSchema,
   explorerMediaFileSchema,
   explorerMediaTypeForPath,
   type ExplorerDirectoryCommits,
   type ExplorerDirectory,
+  type ExplorerEntryMutationResult,
   type ExplorerFile,
   type ExplorerLastCommit,
   type ExplorerMediaFile,
@@ -138,6 +149,35 @@ async function resolveEntry(root: string, relativePath: string) {
   const resolvedTarget = await realpath(targetPath);
   const metadata = await lstat(resolvedTarget);
   return { metadata, targetPath: resolvedTarget };
+}
+
+function pathIsInside(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
+}
+
+async function resolveMutableEntry(root: string, relativePath: string) {
+  const segments = pathSegments(relativePath);
+  if (segments.length === 0) {
+    throw new Error("The Explorer project root cannot be changed.");
+  }
+  const rootPath = await realpath(root);
+  const parentPath = await realpath(
+    path.resolve(rootPath, ...segments.slice(0, -1)),
+  );
+  if (!pathIsInside(rootPath, parentPath)) {
+    throw new Error(
+      "Explorer mutations cannot follow links outside the project.",
+    );
+  }
+  const targetPath = path.join(parentPath, segments.at(-1)!);
+  const metadata = await lstat(targetPath);
+  return { metadata, parentPath, targetPath };
 }
 
 export async function listExplorerDirectory(
@@ -599,4 +639,59 @@ export async function writeExplorerFile(
     await handle.close();
   }
   return readExplorerFile(root, relativePath);
+}
+
+export async function renameExplorerEntry(
+  root: string,
+  relativePath: string,
+  requestedName: string,
+): Promise<ExplorerEntryMutationResult> {
+  const input = explorerEntryRenameSchema.parse({
+    name: requestedName,
+    path: relativePath,
+  });
+  const separator = input.path.lastIndexOf("/");
+  const newPath =
+    separator < 0
+      ? input.name
+      : `${input.path.slice(0, separator + 1)}${input.name}`;
+  const result = explorerEntryMutationResultSchema.parse({
+    path: input.path,
+    newPath,
+  });
+  const { parentPath, targetPath } = await resolveMutableEntry(
+    root,
+    input.path,
+  );
+  const destinationPath = path.join(parentPath, input.name);
+  if (destinationPath !== targetPath) {
+    const existing = await lstat(destinationPath).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      },
+    );
+    const caseOnlyRename =
+      destinationPath.toLowerCase() === targetPath.toLowerCase();
+    if (existing && !caseOnlyRename) {
+      throw new Error("A file or folder with that name already exists.");
+    }
+    await rename(targetPath, destinationPath);
+  }
+  return result;
+}
+
+export async function deleteExplorerEntry(
+  root: string,
+  relativePath: string,
+): Promise<ExplorerEntryMutationResult> {
+  const { metadata, targetPath } = await resolveMutableEntry(
+    root,
+    relativePath,
+  );
+  await rm(targetPath, { force: false, recursive: metadata.isDirectory() });
+  return explorerEntryMutationResultSchema.parse({
+    path: relativePath,
+    newPath: null,
+  });
 }

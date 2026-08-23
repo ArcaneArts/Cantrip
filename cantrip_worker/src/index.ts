@@ -148,10 +148,12 @@ import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
 import {
+  deleteExplorerEntry,
   listExplorerDirectoryCommits,
   listExplorerDirectory,
   readExplorerFile,
   readExplorerMediaFile,
+  renameExplorerEntry,
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
@@ -2798,6 +2800,28 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     request.content,
                     request.version,
                   ),
+                },
+              };
+              break;
+            case "explorer.entry.rename":
+              outcome = {
+                ok: true as const,
+                result: {
+                  type: "explorer.entry.mutated" as const,
+                  value: await renameExplorerEntry(
+                    command.root,
+                    request.path,
+                    request.name,
+                  ),
+                },
+              };
+              break;
+            case "explorer.entry.delete":
+              outcome = {
+                ok: true as const,
+                result: {
+                  type: "explorer.entry.mutated" as const,
+                  value: await deleteExplorerEntry(command.root, request.path),
                 },
               };
               break;

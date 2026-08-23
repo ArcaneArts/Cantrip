@@ -110,3 +110,36 @@ export const explorerFileWriteSchema = z.object({
   content: z.string().max(2 * 1024 * 1024),
   version: explorerFileSchema.shape.version,
 });
+
+export const explorerEntryNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .refine(
+    (value) =>
+      value !== "." &&
+      value !== ".." &&
+      !value.includes("/") &&
+      !value.includes("\\") &&
+      !value.includes("\0"),
+    "Expected a single file or folder name.",
+  );
+
+export const explorerEntryRenameSchema = z
+  .object({
+    path: explorerFileWriteSchema.shape.path,
+    name: explorerEntryNameSchema,
+  })
+  .strict();
+
+export const explorerEntryDeleteSchema = z
+  .object({ path: explorerFileWriteSchema.shape.path })
+  .strict();
+
+export const explorerEntryMutationResultSchema = z
+  .object({
+    path: explorerFileWriteSchema.shape.path,
+    newPath: explorerFileWriteSchema.shape.path.nullable(),
+  })
+  .strict();

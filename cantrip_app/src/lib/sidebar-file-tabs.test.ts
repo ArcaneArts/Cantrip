@@ -7,8 +7,10 @@ import { describe, expect, it } from "vitest";
 import {
   pinnedExplorerForPath,
   preferredSidebarExplorer,
+  moveSidebarPath,
   sidebarFileName,
   sidebarFilePreviewViewKey,
+  sidebarPathAtOrBelow,
   tabbedExplorerIds,
 } from "./sidebar-file-tabs";
 
@@ -100,5 +102,18 @@ describe("sidebar file tabs", () => {
     ).toBe(pinned);
     expect(tabbedExplorerIds(layout("pinned"))).toEqual(new Set(["pinned"]));
     expect(sidebarFileName("src/index.ts")).toBe("index.ts");
+  });
+
+  it("moves a preview path when its file or ancestor folder is renamed", () => {
+    expect(moveSidebarPath("src/index.ts", "src", "source")).toBe(
+      "source/index.ts",
+    );
+    expect(moveSidebarPath("README.md", "src", "source")).toBe("README.md");
+  });
+
+  it("matches only the mutated entry and paths below it", () => {
+    expect(sidebarPathAtOrBelow("src", "src")).toBe(true);
+    expect(sidebarPathAtOrBelow("src/app/index.ts", "src")).toBe(true);
+    expect(sidebarPathAtOrBelow("source/index.ts", "src")).toBe(false);
   });
 });

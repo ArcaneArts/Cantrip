@@ -189,8 +189,12 @@ import {
 } from "@/components/git/git-history";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
-import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
+import {
+  explorerGraphRootForEntry,
+  explorerRepositoryGraphAvailable,
+} from "@/components/explorer/explorer-graph-routing";
 import type {
+  ExplorerGraphRequest,
   ExplorerHeaderState,
   ExplorerLifecycleActions,
 } from "@/components/explorer/explorer-view";
@@ -332,6 +336,7 @@ import {
   deleteBrowser,
   deleteCodeTab,
   deleteExplorer,
+  deleteExplorerEntry,
   deleteProjectView,
   deleteTerminal,
   deleteQueuedPrompt,
@@ -378,6 +383,7 @@ import {
   loadChatAttachmentContent,
   renameChat,
   renameExplorer,
+  renameExplorerEntry,
   renameProjectView,
   renameTerminal,
   removeProject,
@@ -459,8 +465,10 @@ import {
   pinnedExplorerForPath,
   preferredSidebarExplorer,
   primaryWorktreeId,
+  moveSidebarPath,
   sidebarFileName,
   sidebarFilePreviewViewKey,
+  sidebarPathAtOrBelow,
   surfaceWorktreeId,
   type SidebarFilePreviewState,
 } from "@/lib/sidebar-file-tabs";
@@ -3740,6 +3748,8 @@ export function App() {
   );
   const [sidebarFilePreview, setSidebarFilePreview] =
     useState<SidebarFilePreviewState | null>(null);
+  const [explorerGraphRequest, setExplorerGraphRequest] =
+    useState<ExplorerGraphRequest | null>(null);
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -4663,6 +4673,48 @@ export function App() {
       openCreatedTab(explorer.projectId, "explorer", explorer.id);
       void queryClient.invalidateQueries({
         queryKey: ["explorers", explorer.projectId],
+      });
+    },
+  });
+  const newGraphExplorer = useMutation({
+    mutationFn: ({
+      explorer,
+      entry,
+      tabGroupId,
+    }: {
+      explorer: ExplorerSummary;
+      entry: ExplorerEntry;
+      tabGroupId?: string;
+    }) =>
+      createExplorer(
+        explorer.projectId,
+        `Graph · ${entry.name}`,
+        explorer.worktreeId,
+        tabGroupId,
+        {
+          kind: "worktree",
+          projectId: explorer.projectId,
+          worktreeId: explorer.worktreeId,
+        },
+      ),
+    onError: (error) => setPopoutError(errorText(error)),
+    onSuccess: (createdExplorer, { entry }) => {
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", createdExplorer.projectId],
+        (current = []) =>
+          [
+            ...current.filter((item) => item.id !== createdExplorer.id),
+            createdExplorer,
+          ].sort((left, right) => left.position - right.position),
+      );
+      setExplorerGraphRequest({
+        explorerId: createdExplorer.id,
+        requestId: crypto.randomUUID(),
+        rootPath: explorerGraphRootForEntry(entry),
+      });
+      openCreatedTab(createdExplorer.projectId, "explorer", createdExplorer.id);
+      void queryClient.invalidateQueries({
+        queryKey: ["explorers", createdExplorer.projectId],
       });
     },
   });
@@ -7051,6 +7103,190 @@ export function App() {
     if (entry.kind !== "file" || !entry.viewable) return;
     void pinSidebarFilePath(explorer, entry.path);
   };
+  const refreshSidebarExplorerEntries = async (explorer: ExplorerSummary) => {
+    const relatedExplorerIds = (explorers.data ?? [])
+      .filter((candidate) => candidate.worktreeId === explorer.worktreeId)
+      .map((candidate) => candidate.id);
+    await Promise.all([
+      ...relatedExplorerIds.flatMap((explorerId) => [
+        queryClient.invalidateQueries({
+          queryKey: ["explorer-directory", explorerId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["explorer-directory-commits", explorerId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["explorer-file", explorerId],
+        }),
+      ]),
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey: ["worktree-status", explorer.projectId, explorer.worktreeId],
+      }),
+    ]);
+  };
+  const explorersDisplayingSidebarEntry = (
+    explorer: ExplorerSummary,
+    entryPath: string,
+  ) =>
+    (explorers.data ?? []).filter(
+      (candidate) =>
+        candidate.worktreeId === explorer.worktreeId &&
+        candidate.selectedPath !== null &&
+        sidebarPathAtOrBelow(candidate.selectedPath, entryPath),
+    );
+  const persistSidebarEntryPathChanges = async (
+    candidates: ExplorerSummary[],
+    previousPath: string,
+    nextPath: string | null,
+  ) => {
+    const updates = await Promise.all(
+      candidates.map((candidate) => {
+        const selectedPath = nextPath
+          ? moveSidebarPath(candidate.selectedPath!, previousPath, nextPath)
+          : null;
+        return updateExplorerViewState(candidate.id, {
+          fileMode: selectedPath
+            ? defaultExplorerFileMode(selectedPath)
+            : "preview",
+          selectedPath,
+        });
+      }),
+    );
+    for (const updated of updates) {
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", updated.projectId],
+        (current = []) =>
+          current.map((candidate) =>
+            candidate.id === updated.id ? updated : candidate,
+          ),
+      );
+      await explorerLifecycleRef.current.get(updated.id)?.reconcile(updated);
+    }
+  };
+  const renameSidebarFileEntry = async (
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+    name: string,
+  ) => {
+    const displayedExplorers = explorersDisplayingSidebarEntry(
+      explorer,
+      entry.path,
+    );
+    for (const displayedExplorer of displayedExplorers) {
+      const lifecycle = explorerLifecycleRef.current.get(displayedExplorer.id);
+      if (lifecycle?.dirty && !(await lifecycle.save())) {
+        throw new Error("Save the open file before renaming it.");
+      }
+    }
+    if (
+      sidebarFilePreview?.explorerId === explorer.id &&
+      sidebarPathAtOrBelow(sidebarFilePreview.path, entry.path) &&
+      sidebarFilePreviewLifecycleRef.current?.dirty &&
+      !(await sidebarFilePreviewLifecycleRef.current.save())
+    ) {
+      throw new Error("Save the open file before renaming it.");
+    }
+    const result = await renameExplorerEntry(explorer.id, {
+      name,
+      path: entry.path,
+    });
+    if (result.newPath) {
+      await persistSidebarEntryPathChanges(
+        displayedExplorers,
+        result.path,
+        result.newPath,
+      ).catch((error: unknown) =>
+        setPopoutError(
+          `The entry was renamed, but an open file tab could not be updated: ${errorText(error)}`,
+        ),
+      );
+      setSidebarFilePreview((current) =>
+        current &&
+        current.projectId === explorer.projectId &&
+        sidebarPathAtOrBelow(current.path, result.path)
+          ? {
+              ...current,
+              path: moveSidebarPath(current.path, result.path, result.newPath!),
+            }
+          : current,
+      );
+    }
+    await refreshSidebarExplorerEntries(explorer);
+  };
+  const deleteSidebarFileEntry = async (
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+  ) => {
+    const displayedExplorers = explorersDisplayingSidebarEntry(
+      explorer,
+      entry.path,
+    );
+    await deleteExplorerEntry(explorer.id, { path: entry.path });
+    await persistSidebarEntryPathChanges(
+      displayedExplorers,
+      entry.path,
+      null,
+    ).catch((error: unknown) =>
+      setPopoutError(
+        `The entry was deleted, but an open file tab could not be updated: ${errorText(error)}`,
+      ),
+    );
+    setSidebarFilePreview((current) => {
+      if (
+        !current ||
+        current.projectId !== explorer.projectId ||
+        !sidebarPathAtOrBelow(current.path, entry.path)
+      ) {
+        return current;
+      }
+      sidebarFilePreviewLifecycleRef.current = null;
+      return null;
+    });
+    await refreshSidebarExplorerEntries(explorer);
+  };
+  const openSidebarFolderNative = (
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+    localFolder: boolean,
+  ) => {
+    const project = (projects.data ?? []).find(
+      (candidate) => candidate.id === explorer.projectId,
+    );
+    if (!project?.source) return;
+    void revealProjectInNativeFileManager(
+      project,
+      localFolder,
+      entry.path,
+    ).catch((error: unknown) => setPopoutError(errorText(error)));
+  };
+  const openSidebarFolderTerminal = (
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+  ) => {
+    newTerminal.mutate({
+      projectId: explorer.projectId,
+      directoryPath: entry.path,
+      tabGroupId: sidebarFileGroupId(explorer) ?? undefined,
+      title: `Terminal · ${entry.name}`,
+      worktreeId: explorer.worktreeId,
+      target: {
+        kind: "worktree",
+        projectId: explorer.projectId,
+        worktreeId: explorer.worktreeId,
+      },
+    });
+  };
+  const openSidebarFolderGraph = (
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+  ) => {
+    newGraphExplorer.mutate({
+      explorer,
+      entry,
+      tabGroupId: sidebarFileGroupId(explorer) ?? undefined,
+    });
+  };
   const closeSidebarFilePreview = () => {
     if (
       !confirmExplorerDiscard(sidebarFilePreviewLifecycleRef.current, () =>
@@ -7666,6 +7902,9 @@ export function App() {
                 tabLayout={tabLayout.data ?? null}
                 creatingKinds={creatingSurfaceKinds}
                 fileExplorer={sidebarExplorer}
+                fileGraphAvailable={explorerRepositoryGraphAvailable(
+                  selectedProject?.capabilities,
+                )}
                 filePreviewPath={
                   sidebarFilePreview &&
                   sidebarFilePreview.explorerId === sidebarExplorer?.id
@@ -7685,6 +7924,7 @@ export function App() {
                     ? (pinSidebarFileMutation.variables?.path ?? null)
                     : null
                 }
+                fileRevealLabel={projectRevealButtonLabel ?? undefined}
                 onCreateSurface={(projectId, kind, target) => {
                   setDesktopSidebarDrawerOpen(false);
                   createProjectSurface(projectId, kind, undefined, target);
@@ -7705,7 +7945,12 @@ export function App() {
                 onOpenChatExplorer={openChatExplorerHere}
                 onOpenChatHistory={openChatHistoryHere}
                 onFilePin={pinSidebarFile}
+                onFileDelete={deleteSidebarFileEntry}
+                onFileOpenGraph={openSidebarFolderGraph}
+                onFileOpenNative={openSidebarFolderNative}
+                onFileOpenTerminal={openSidebarFolderTerminal}
                 onFilePreview={openSidebarFilePreview}
+                onFileRename={renameSidebarFileEntry}
                 onFileTreeRetry={retrySidebarFileTree}
                 onRenameChat={(chatId, title) =>
                   renameChatMutation.mutate({ chatId, title })
@@ -8292,6 +8537,7 @@ export function App() {
                 : null
             }
             appearance={codeAppearance}
+            graphRequest={explorerGraphRequest}
             gitStatuses={worktreeStatuses}
             onChanged={handleExplorerChanged}
             onHeaderChange={setExplorerHeader}

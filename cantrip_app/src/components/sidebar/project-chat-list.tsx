@@ -555,13 +555,20 @@ export function ProjectChatList({
   fileExplorer,
   filePreviewPath,
   fileTreeError,
+  fileGraphAvailable,
   fileTreeLoading,
   fileTreePinningPath,
+  fileRevealLabel,
   onChangeChatWorktree,
   projectViews,
   onCreateSurface,
   onFilePin,
+  onFileDelete,
+  onFileOpenGraph,
+  onFileOpenNative,
+  onFileOpenTerminal,
   onFilePreview,
+  onFileRename,
   onFileTreeRetry,
   onDeleteChat,
   onDeleteBrowser,
@@ -607,8 +614,10 @@ export function ProjectChatList({
   fileExplorer: ExplorerSummary | null;
   filePreviewPath: string | null;
   fileTreeError?: string | null;
+  fileGraphAvailable: boolean;
   fileTreeLoading: boolean;
   fileTreePinningPath?: string | null;
+  fileRevealLabel?: string;
   onChangeChatWorktree(
     chatId: string,
     worktreeId: string,
@@ -621,7 +630,20 @@ export function ProjectChatList({
     target?: ExecutionTarget,
   ): void;
   onFilePin(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  onFileDelete(explorer: ExplorerSummary, entry: ExplorerEntry): Promise<void>;
+  onFileOpenGraph(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  onFileOpenNative(
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+    localFolder: boolean,
+  ): void;
+  onFileOpenTerminal(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   onFilePreview(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  onFileRename(
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+    name: string,
+  ): Promise<void>;
   onFileTreeRetry?(): void;
   onDeleteChat(chatId: string): void;
   onDeleteBrowser(browserId: string): void;
@@ -1344,14 +1366,51 @@ export function ProjectChatList({
                       error={fileTreeError}
                       explorer={fileExplorer}
                       loading={fileTreeLoading}
+                      onDelete={(entry) => {
+                        if (!fileExplorer) {
+                          return Promise.reject(
+                            new Error(
+                              "The project file explorer is unavailable.",
+                            ),
+                          );
+                        }
+                        return onFileDelete(fileExplorer, entry);
+                      }}
+                      onOpenGraph={
+                        fileGraphAvailable && fileExplorer
+                          ? (entry) => onFileOpenGraph(fileExplorer, entry)
+                          : undefined
+                      }
+                      onOpenNative={
+                        fileRevealLabel && fileExplorer
+                          ? (entry, localFolder) =>
+                              onFileOpenNative(fileExplorer, entry, localFolder)
+                          : undefined
+                      }
+                      onOpenTerminal={
+                        fileExplorer
+                          ? (entry) => onFileOpenTerminal(fileExplorer, entry)
+                          : undefined
+                      }
                       onPin={(entry) => {
                         if (fileExplorer) onFilePin(fileExplorer, entry);
                       }}
                       onPreview={(entry) => {
                         if (fileExplorer) onFilePreview(fileExplorer, entry);
                       }}
+                      onRename={(entry, name) => {
+                        if (!fileExplorer) {
+                          return Promise.reject(
+                            new Error(
+                              "The project file explorer is unavailable.",
+                            ),
+                          );
+                        }
+                        return onFileRename(fileExplorer, entry, name);
+                      }}
                       onRetry={onFileTreeRetry}
                       pinningPath={fileTreePinningPath}
+                      revealLabel={fileRevealLabel}
                     />
                   </div>
                 ) : null}

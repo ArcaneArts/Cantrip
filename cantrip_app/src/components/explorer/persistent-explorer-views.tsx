@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   ExplorerView,
+  type ExplorerGraphRequest,
   type ExplorerHeaderState,
   type ExplorerLifecycleActions,
 } from "@/components/explorer/explorer-view";
@@ -38,6 +39,7 @@ export function retainExplorerSurfaceTabs(
 export function PersistentExplorerViews({
   activeExplorer,
   appearance,
+  graphRequest,
   gitStatuses,
   onChanged,
   onHeaderChange,
@@ -50,6 +52,7 @@ export function PersistentExplorerViews({
 }: {
   activeExplorer: ExplorerSummary | null;
   appearance: CodeAppearance;
+  graphRequest?: ExplorerGraphRequest | null;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
@@ -114,6 +117,9 @@ export function PersistentExplorerViews({
         active={active}
         appearance={appearance}
         explorer={explorer}
+        graphRequest={
+          graphRequest?.explorerId === explorer.id ? graphRequest : null
+        }
         gitStatus={gitStatuses[explorer.worktreeId]}
         key={explorer.id}
         onChanged={onChanged}

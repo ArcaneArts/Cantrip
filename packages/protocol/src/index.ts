@@ -56,6 +56,10 @@ import {
   explorerDirectoryCommitsSchema,
   explorerDirectoryCommitEntrySchema,
   explorerDirectorySchema,
+  explorerEntryDeleteSchema,
+  explorerEntryMutationResultSchema,
+  explorerEntryNameSchema,
+  explorerEntryRenameSchema,
   explorerEntrySchema,
   explorerFileSchema,
   explorerFileWriteSchema,
@@ -14795,6 +14799,12 @@ export type TabGroupOrder = z.infer<typeof tabGroupOrderSchema>;
 export type TabGroupMemberOrder = z.infer<typeof tabGroupMemberOrderSchema>;
 export type TabGroupMemberMove = z.infer<typeof tabGroupMemberMoveSchema>;
 export type ExplorerEntry = z.infer<typeof explorerEntrySchema>;
+export type ExplorerEntryName = z.infer<typeof explorerEntryNameSchema>;
+export type ExplorerEntryRename = z.infer<typeof explorerEntryRenameSchema>;
+export type ExplorerEntryDelete = z.infer<typeof explorerEntryDeleteSchema>;
+export type ExplorerEntryMutationResult = z.infer<
+  typeof explorerEntryMutationResultSchema
+>;
 export type ExplorerDirectory = z.infer<typeof explorerDirectorySchema>;
 export type ExplorerLastCommit = z.infer<typeof explorerLastCommitSchema>;
 export type ExplorerDirectoryCommitEntry = z.infer<

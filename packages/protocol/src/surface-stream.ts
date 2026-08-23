@@ -3,6 +3,9 @@ import { z } from "zod";
 import {
   explorerDirectoryCommitsSchema,
   explorerDirectorySchema,
+  explorerEntryDeleteSchema,
+  explorerEntryMutationResultSchema,
+  explorerEntryRenameSchema,
   explorerFileSchema,
   explorerFileWriteSchema,
   explorerMediaFileChunkSchema,
@@ -117,6 +120,14 @@ export const explorerOperationRequestContentSchema = z.discriminatedUnion(
       .object({ type: z.literal("explorer.file.write") })
       .extend(explorerFileWriteSchema.shape)
       .strict(),
+    z
+      .object({ type: z.literal("explorer.entry.rename") })
+      .extend(explorerEntryRenameSchema.shape)
+      .strict(),
+    z
+      .object({ type: z.literal("explorer.entry.delete") })
+      .extend(explorerEntryDeleteSchema.shape)
+      .strict(),
   ],
 );
 
@@ -142,6 +153,12 @@ export const explorerOperationResultContentSchema = z.discriminatedUnion(
       .object({
         type: z.literal("explorer.media"),
         value: explorerMediaFileChunkSchema,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("explorer.entry.mutated"),
+        value: explorerEntryMutationResultSchema,
       })
       .strict(),
   ],
