@@ -41,6 +41,9 @@ uuid = { version = "1", features = ["v4"] }
 zip = { version = "4.6", default-features = false, features = ["deflate"] }
 zeroize = "1"
 
+[target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-window-state = "2"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",

@@ -23,6 +23,8 @@ use tauri::{
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 #[cfg(desktop)]
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+#[cfg(desktop)]
+use tauri_plugin_window_state::StateFlags;
 
 mod desktop_update;
 mod desktop_worker;
@@ -127,6 +129,16 @@ pub(crate) fn shutdown_owned_runtime(app: &tauri::AppHandle) -> bool {
 struct DesktopExitState {
     approved: AtomicBool,
     confirmation_open: AtomicBool,
+}
+
+#[cfg(desktop)]
+fn desktop_window_state_flags() -> StateFlags {
+    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
+}
+
+#[cfg(desktop)]
+fn should_persist_window_state(label: &str) -> bool {
+    label == "main"
 }
 
 #[cfg(desktop)]
@@ -900,6 +912,13 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
+    #[cfg(desktop)]
+    let builder = builder.plugin(
+        tauri_plugin_window_state::Builder::default()
+            .with_state_flags(desktop_window_state_flags())
+            .with_filter(should_persist_window_state)
+            .build(),
+    );
     #[cfg(all(
         desktop,
         not(debug_assertions),
@@ -1125,9 +1144,24 @@ mod tests {
     };
 
     use super::{
-        exit_request_needs_confirmation, node_service_command, run_shutdown_once,
-        LocalWorkerRuntime, ManagedRuntime,
+        desktop_window_state_flags, exit_request_needs_confirmation, node_service_command,
+        run_shutdown_once, should_persist_window_state, LocalWorkerRuntime, ManagedRuntime,
     };
+    use tauri_plugin_window_state::StateFlags;
+
+    #[test]
+    fn desktop_window_state_only_tracks_main_window_geometry() {
+        let flags = desktop_window_state_flags();
+
+        assert!(flags.contains(StateFlags::SIZE));
+        assert!(flags.contains(StateFlags::POSITION));
+        assert!(flags.contains(StateFlags::MAXIMIZED));
+        assert!(!flags
+            .intersects(StateFlags::VISIBLE | StateFlags::DECORATIONS | StateFlags::FULLSCREEN));
+        assert!(should_persist_window_state("main"));
+        assert!(!should_persist_window_state("cantrip-editor-example"));
+        assert!(!should_persist_window_state("synthetic-build-progress"));
+    }
 
     #[test]
     fn packaged_node_services_use_a_working_directory_relative_entrypoint() {
