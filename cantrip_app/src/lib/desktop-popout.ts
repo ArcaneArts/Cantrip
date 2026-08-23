@@ -545,8 +545,15 @@ export async function openDesktopExplorerFile(
   );
   const activeLabel = explorerFileWindowLabels.get(targetKey) ?? legacyLabel;
   const activeBroker = explorerWindowBrokers.get(activeLabel);
-  if (activeBroker && (await focusWindow(activeLabel))) return "focused";
+  if (
+    activeBroker &&
+    !activeBroker.failed &&
+    (await focusWindow(activeLabel))
+  ) {
+    return "focused";
+  }
   if (activeBroker) {
+    await closeWindow(activeLabel).catch(() => undefined);
     await disposeExplorerWindowBroker(activeLabel, activeBroker);
   } else if (activeLabel === legacyLabel) {
     // A child can outlive a reloaded main WebView. Its launch channel no
