@@ -74,6 +74,7 @@ import {
   chatRelocationCreateSchema,
   chatRelocationJobSummarySchema,
   chatTurnCreateSchema,
+  codeAttachmentCreateSchema,
   codeRuntimeStatusSchema,
   codeTabSummarySchema,
   decodeWorkerRequestEnvelope,
@@ -5052,6 +5053,19 @@ describe("Cantrip protocol", () => {
   });
 
   it("validates Cantrip Code capabilities, durable tabs, and worker commands", () => {
+    expect(
+      codeAttachmentCreateSchema.parse({
+        appearance: "dark",
+        expectedWorkerId: "code-worker",
+        expectedWorktreeId: "worktree-1",
+      }),
+    ).toMatchObject({
+      expectedWorkerId: "code-worker",
+      expectedWorktreeId: "worktree-1",
+    });
+    expect(
+      codeAttachmentCreateSchema.safeParse({ appearance: "dark" }).success,
+    ).toBe(false);
     const heartbeat = workerHeartbeatSchema.parse({
       architecture: "arm64",
       codexVersion: "codex-cli 1.0.0",
@@ -5095,10 +5109,15 @@ describe("Cantrip protocol", () => {
         worktreeId: "worktree-1",
         cwd: "/workspace/Cantrip",
         profileId: "default",
+        initialFile: "packages/protocol/src/index.ts",
         themeMode: "follow-cantrip",
         appearance: "high-contrast-dark",
       }),
-    ).toMatchObject({ type: "code.open", presentation: "workbench" });
+    ).toMatchObject({
+      type: "code.open",
+      initialFile: "packages/protocol/src/index.ts",
+      presentation: "workbench",
+    });
     expect(
       workerCommandSchema.parse({
         type: "code.openFile",

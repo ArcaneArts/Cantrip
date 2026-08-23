@@ -5207,6 +5207,8 @@ export const projectSharePublicOriginSchema = z.url().refine((value) => {
 
 export const codeAttachmentCreateSchema = z.object({
   appearance: codeAppearanceSchema.default("dark"),
+  expectedWorkerId: executionResourceIdSchema,
+  expectedWorktreeId: executionResourceIdSchema,
 });
 
 export const codeProtectedAttachmentCreateSchema = codeAttachmentCreateSchema
@@ -5229,7 +5231,7 @@ export const codeProtectedAttachmentCreateSchema = codeAttachmentCreateSchema
 
 export const explorerCodeProtectedAttachmentCreateSchema =
   codeProtectedAttachmentCreateSchema.extend({
-    path: repositoryRelativePathSchema,
+    path: repositoryRelativePathSchema.optional(),
   });
 
 export const explorerCodeAttachmentCreateSchema = codeAttachmentCreateSchema
@@ -12602,6 +12604,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     worktreeName: z.string().trim().min(1).max(200).optional(),
     cwd: z.string().min(1),
     profileId: z.string().min(1).max(200),
+    initialFile: repositoryRelativePathSchema.optional(),
     themeMode: codeThemeModeSchema,
     appearance: codeAppearanceSchema,
     presentation: codePresentationSchema.default("workbench"),

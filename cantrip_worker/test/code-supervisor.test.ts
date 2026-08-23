@@ -4,11 +4,14 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -209,6 +212,45 @@ describe("Cantrip Code supervisor", () => {
     expect(supervisor.status("shared").status).toBe("running");
   });
 
+  it("retires a stale workspace incarnation when the same session moves", async () => {
+    const { repository, supervisor } = await fixture();
+    const replacement = path.join(path.dirname(repository), "replacement");
+    await mkdir(replacement);
+    const command = openCommand("moving", repository, "primary");
+    const first = await supervisor.open(command);
+    const firstTarget = supervisor.proxyTarget(command.sessionId);
+    const firstWorkspace = JSON.parse(
+      await readFile(new URL(firstTarget.workspaceUri), "utf8"),
+    ) as { settings: Record<string, string> };
+    const staleBridge = await openSocket(
+      firstWorkspace.settings["cantrip.bridgeUrl"]!,
+    );
+    const staleBridgeClosed = new Promise<number>((resolve) => {
+      staleBridge.once("close", (code) => resolve(code));
+    });
+
+    const moved = await supervisor.open({ ...command, cwd: replacement });
+    const movedTarget = supervisor.proxyTarget(command.sessionId);
+    const movedWorkspace = JSON.parse(
+      await readFile(new URL(movedTarget.workspaceUri), "utf8"),
+    ) as { folders: Array<{ path: string }> };
+    const canonicalReplacement = await realpath(replacement);
+
+    expect(moved.processInstanceId).toBe(first.processInstanceId);
+    expect(movedTarget.workspaceUri).not.toBe(firstTarget.workspaceUri);
+    expect(movedWorkspace.folders).toEqual([
+      {
+        name: path.basename(canonicalReplacement),
+        path: canonicalReplacement,
+      },
+    ]);
+    expect(JSON.stringify(movedWorkspace)).not.toContain(repository);
+    await expect(
+      readFile(new URL(firstTarget.workspaceUri), "utf8"),
+    ).rejects.toThrow();
+    await expect(staleBridgeClosed).resolves.toBe(1000);
+  });
+
   it("multiplexes more sessions than the legacy advertised limit", async () => {
     const { repository, supervisor } = await fixture();
     const sessions = await Promise.all(
@@ -257,6 +299,24 @@ describe("Cantrip Code supervisor", () => {
       openCommand("second-editor", repository, "primary"),
     );
     expect(second.processInstanceId).toBe(first.processInstanceId);
+  });
+
+  it("removes every workspace incarnation when the supervisor closes", async () => {
+    const { repository, supervisor } = await fixture();
+    await Promise.all([
+      supervisor.open(openCommand("close-one", repository, "primary")),
+      supervisor.open(openCommand("close-two", repository, "feature")),
+    ]);
+    const workspaceUris = [
+      supervisor.proxyTarget("close-one").workspaceUri,
+      supervisor.proxyTarget("close-two").workspaceUri,
+    ];
+
+    await supervisor.close();
+
+    for (const workspaceUri of workspaceUris) {
+      await expect(readFile(new URL(workspaceUri), "utf8")).rejects.toThrow();
+    }
   });
 
   it("evicts a warm profile after its idle timeout", async () => {
@@ -314,7 +374,7 @@ describe("Cantrip Code supervisor", () => {
       folders: Array<{ path: string }>;
       settings: Record<string, unknown>;
     };
-    expect(workspace.folders[0]?.path).toBe(repository);
+    expect(workspace.folders[0]?.path).toBe(await realpath(repository));
     expect(workspace.settings).toMatchObject({
       "cantrip.appearance": "dark",
       "cantrip.sessionId": "one",
@@ -354,16 +414,22 @@ describe("Cantrip Code supervisor", () => {
 
   it("reconfigures a compatibility workbench as editor-only and opens a safe relative file", async () => {
     const { repository, supervisor } = await fixture();
+    const canonicalRepository = await realpath(repository);
     await writeFile(path.join(repository, "example.ts"), "export {};\n");
+    await writeFile(path.join(repository, "second.ts"), "export {};\n");
     await supervisor.open({
       ...openCommand("editor", repository, "primary"),
+      initialFile: "example.ts",
       presentation: "workbench",
     });
     const target = supervisor.proxyTarget("editor");
     let workspace = JSON.parse(
       await readFile(new URL(target.workspaceUri), "utf8"),
     ) as { settings: Record<string, unknown> };
-    expect(workspace.settings["cantrip.presentation"]).toBe("workbench");
+    expect(workspace.settings).toMatchObject({
+      "cantrip.presentation": "workbench",
+    });
+    expect(workspace.settings).not.toHaveProperty("cantrip.initialFile");
 
     const socket = await openSocket(
       workspace.settings["cantrip.bridgeUrl"] as string,
@@ -372,8 +438,14 @@ describe("Cantrip Code supervisor", () => {
       const request = JSON.parse(data.toString()) as {
         id: string;
         method: string;
-        params: { path?: string };
+        params: { expectedWorkspaceRootUri?: string; path?: string };
       };
+      if (request.method === "openFile") {
+        expect(request.params).toEqual({
+          expectedWorkspaceRootUri: pathToFileURL(canonicalRepository).href,
+          path: "second.ts",
+        });
+      }
       socket.send(
         JSON.stringify({
           type: "response",
@@ -405,13 +477,95 @@ describe("Cantrip Code supervisor", () => {
     });
     expect(workspace.settings).not.toHaveProperty("window.menuBarVisibility");
 
-    await expect(supervisor.openFile("editor", "example.ts")).resolves.toEqual({
-      relativePath: "example.ts",
+    await expect(supervisor.openFile("editor", "second.ts")).resolves.toEqual({
+      relativePath: "second.ts",
     });
+    workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, unknown> };
+    expect(workspace.settings).not.toHaveProperty("cantrip.initialFile");
     await expect(
       supervisor.openFile("editor", "../outside.ts"),
     ).rejects.toThrow("safe worktree-relative file path");
     socket.close();
+  });
+
+  it("binds workspace navigation to the canonical worktree root", async () => {
+    const { repository, supervisor } = await fixture();
+    const repositoryAlias = path.join(
+      path.dirname(repository),
+      "repository-alias",
+    );
+    await symlink(repository, repositoryAlias, "dir");
+    await writeFile(path.join(repository, "canonical.ts"), "export {};\n");
+    await supervisor.open(
+      openCommand("canonical-root", repositoryAlias, "primary"),
+    );
+
+    const target = supervisor.proxyTarget("canonical-root");
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as {
+      folders: Array<{ name: string; path: string }>;
+      settings: Record<string, unknown>;
+    };
+    const canonicalRoot = await realpath(repository);
+    expect(workspace.folders).toEqual([
+      { name: path.basename(canonicalRoot), path: canonicalRoot },
+    ]);
+    const socket = await openSocket(
+      workspace.settings["cantrip.bridgeUrl"] as string,
+    );
+    const openRequest = new Promise<Record<string, unknown>>((resolve) => {
+      socket.on("message", (data) => {
+        const request = JSON.parse(data.toString()) as {
+          id: string;
+          method: string;
+          params: Record<string, unknown>;
+        };
+        if (request.method === "openFile") resolve(request.params);
+        socket.send(
+          JSON.stringify({
+            type: "response",
+            id: request.id,
+            ok: true,
+            result:
+              request.method === "openFile"
+                ? { relativePath: request.params.path }
+                : { applied: true },
+          }),
+        );
+      });
+    });
+
+    await expect(
+      supervisor.openFile("canonical-root", "canonical.ts"),
+    ).resolves.toEqual({ relativePath: "canonical.ts" });
+    await expect(openRequest).resolves.toEqual({
+      expectedWorkspaceRootUri: pathToFileURL(canonicalRoot).href,
+      path: "canonical.ts",
+    });
+    socket.close();
+  });
+
+  it("rejects missing files and symlinks outside the authorized worktree", async () => {
+    const { repository, supervisor } = await fixture();
+    const outside = path.join(path.dirname(repository), "outside.ts");
+    await writeFile(outside, "private\n");
+    await symlink(outside, path.join(repository, "outside-link.ts"));
+
+    await expect(
+      supervisor.open({
+        ...openCommand("missing-file", repository, "primary"),
+        initialFile: "missing.ts",
+      }),
+    ).rejects.toThrow("does not exist");
+    await expect(
+      supervisor.open({
+        ...openCommand("escaping-link", repository, "primary"),
+        initialFile: "outside-link.ts",
+      }),
+    ).rejects.toThrow("outside the authorized worktree");
   });
 
   it("prepares dirty editors and reports bounded agent file changes", async () => {
@@ -484,13 +638,18 @@ describe("Cantrip Code supervisor", () => {
       repository,
       supervisor,
     } = await fixture();
-    const command = openCommand("restored", repository, "primary");
+    await writeFile(path.join(repository, "restored.ts"), "export {};\n");
+    const command = {
+      ...openCommand("restored", repository, "primary"),
+      initialFile: "restored.ts",
+    };
     const first = await supervisor.open(command);
     await supervisor.close();
     const stateFile = path.join(dataDirectory, "code", "state", "runtime.json");
     const persisted = JSON.parse(await readFile(stateFile, "utf8")) as {
       sessions: Array<Record<string, unknown>>;
     };
+    expect(persisted.sessions[0]?.initialFile).toBe("restored.ts");
     persisted.sessions.push({
       ...persisted.sessions[0],
       codeTabId: "tab-orphaned-editor",
@@ -510,6 +669,18 @@ describe("Cantrip Code supervisor", () => {
     expect(restored.status("restored")).toMatchObject({
       status: "running",
     });
+    expect(restored.proxyTarget("restored").workspaceUri).toBe(
+      first.workspaceUri,
+    );
+    const restoredWorkspace = JSON.parse(
+      await readFile(
+        new URL(restored.proxyTarget("restored").workspaceUri),
+        "utf8",
+      ),
+    ) as { settings: Record<string, unknown> };
+    expect(restoredWorkspace.settings).not.toHaveProperty(
+      "cantrip.initialFile",
+    );
     expect(() => restored.status("orphaned-editor")).toThrow("is not open");
     const reopened = await restored.open(command);
     expect(reopened.status).toBe("running");

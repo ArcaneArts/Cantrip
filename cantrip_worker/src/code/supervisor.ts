@@ -4,6 +4,7 @@ import {
   appendFile,
   mkdir,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
@@ -46,6 +47,7 @@ interface CodeSession {
   bridgeUrl: string;
   codeTabId: string;
   cwd: string;
+  initialFile: string | null;
   lastActivityAt: string;
   lastError: string | null;
   profileId: string;
@@ -58,6 +60,9 @@ interface CodeSession {
   status: CodeRuntimeStatus["status"];
   themeMode: CodeThemeMode;
   workspacePath: string;
+  workspaceIncarnation: string;
+  workspaceRootPath: string;
+  workspaceRootUri: string;
   workspaceUri: string;
   worktreeId: string;
   worktreeName: string;
@@ -179,12 +184,17 @@ async function waitForPort(
   throw new Error(`Cantrip Code did not become ready within ${timeoutMs}ms.`);
 }
 
-function sameBinding(session: CodeSession, command: CodeOpenCommand): boolean {
+function sameBinding(
+  session: CodeSession,
+  command: CodeOpenCommand,
+  workspaceRootPath: string,
+): boolean {
   return (
     session.codeTabId === command.codeTabId &&
     session.projectId === command.projectId &&
     session.worktreeId === command.worktreeId &&
     session.cwd === path.resolve(command.cwd) &&
+    session.workspaceRootPath === workspaceRootPath &&
     session.profileKey === stableKey(command.profileId) &&
     session.presentation === command.presentation
   );
@@ -302,9 +312,17 @@ export class CodeSupervisor {
     if (!cwdStat?.isDirectory()) {
       throw new Error(`Cantrip Code worktree does not exist: ${cwd}`);
     }
+    const workspaceRootPath = await realpath(cwd);
+    const workspaceRootUri = pathToFileURL(workspaceRootPath).href;
+    const initialFile = command.initialFile
+      ? await this.#authorizedRelativeFile(
+          workspaceRootPath,
+          command.initialFile,
+        )
+      : null;
 
     const current = this.#sessions.get(command.sessionId);
-    if (current && !sameBinding(current, command)) {
+    if (current && !sameBinding(current, command, workspaceRootPath)) {
       await this.stop(command.sessionId);
     }
     if (!this.#sessions.has(command.sessionId)) {
@@ -327,9 +345,10 @@ export class CodeSupervisor {
         bridgeToken,
         command.appearance,
       );
+      const workspaceIncarnation = randomUUID();
       const workspacePath = path.join(
         workspaceDirectory,
-        `${stableKey(command.worktreeId)}-${sessionKey}.code-workspace`,
+        `${stableKey(command.worktreeId)}-${sessionKey}-${workspaceIncarnation}.code-workspace`,
       );
       const session: CodeSession = {
         activeTunnelStreams: new Set(),
@@ -338,6 +357,7 @@ export class CodeSupervisor {
         bridgeUrl,
         codeTabId: command.codeTabId,
         cwd,
+        initialFile,
         lastActivityAt: isoNow(),
         lastError: null,
         profileId: command.profileId,
@@ -349,7 +369,10 @@ export class CodeSupervisor {
         startedAt: null,
         status: "starting",
         themeMode: "follow-cantrip",
+        workspaceIncarnation,
         workspacePath,
+        workspaceRootPath,
+        workspaceRootUri,
         workspaceUri: pathToFileURL(workspacePath).href,
         worktreeId: command.worktreeId,
         worktreeName: command.worktreeName ?? command.worktreeId,
@@ -373,6 +396,7 @@ export class CodeSupervisor {
 
     const session = this.#sessions.get(command.sessionId)!;
     session.appearance = command.appearance;
+    if (initialFile) session.initialFile = initialFile;
     session.themeMode = "follow-cantrip";
     session.profileId = command.profileId;
     session.presentation = command.presentation;
@@ -465,17 +489,18 @@ export class CodeSupervisor {
     requestedPath: string,
   ): Promise<CodeOpenFileResult> {
     const session = this.#requireSession(sessionId);
-    const [relativePath] = this.#safeRelativePaths(session.cwd, [
+    const relativePath = await this.#authorizedRelativeFile(
+      session.workspaceRootPath,
       requestedPath,
-    ]);
-    const normalizedRequest = requestedPath.replaceAll("\\", "/");
-    if (!relativePath || relativePath !== normalizedRequest) {
-      throw new Error(
-        "Cantrip Code requires a safe worktree-relative file path.",
-      );
-    }
+    );
+    session.initialFile = relativePath;
+    await this.#writeWorkspace(session);
     session.lastActivityAt = isoNow();
-    return this.#bridge.openFile(sessionId, relativePath);
+    return this.#bridge.openFile(
+      sessionId,
+      relativePath,
+      session.workspaceRootUri,
+    );
   }
 
   async setPresentation(
@@ -574,7 +599,10 @@ export class CodeSupervisor {
     this.#bridge.unregister(sessionId);
     session.status = "stopped";
     this.#sessions.delete(sessionId);
-    await this.#persistState();
+    await Promise.all([
+      this.#persistState(),
+      rm(session.workspacePath, { force: true }),
+    ]);
     return this.#stoppedStatus(sessionId);
   }
 
@@ -683,10 +711,24 @@ export class CodeSupervisor {
         this.#terminateProfile(profile),
       ),
     );
-    await this.#persistState();
+    const cleanupResults = await Promise.allSettled([
+      this.#persistState(),
+      ...[...this.#sessions.values()].map((session) =>
+        rm(session.workspacePath, { force: true }),
+      ),
+    ]);
     this.#sessions.clear();
     this.#profiles.clear();
     await this.#bridge.close();
+    const cleanupFailures = cleanupResults.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (cleanupFailures.length > 0) {
+      throw new AggregateError(
+        cleanupFailures,
+        "Cantrip Code supervisor cleanup failed.",
+      );
+    }
   }
 
   async #profile(
@@ -1072,14 +1114,24 @@ export class CodeSupervisor {
     }
     settings["workbench.colorTheme"] = THEME_NAMES[session.appearance];
     const workspace = {
-      folders: [{ name: path.basename(session.cwd), path: session.cwd }],
+      folders: [
+        {
+          name: path.basename(session.workspaceRootPath),
+          path: session.workspaceRootPath,
+        },
+      ],
       settings,
     };
-    await writeFile(
-      session.workspacePath,
-      `${JSON.stringify(workspace, null, 2)}\n`,
-      { encoding: "utf8", mode: 0o600 },
-    );
+    const temporary = `${session.workspacePath}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, `${JSON.stringify(workspace, null, 2)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      await rename(temporary, session.workspacePath);
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
   }
 
   #status(session: CodeSession): CodeRuntimeStatus {
@@ -1141,6 +1193,42 @@ export class CodeSupervisor {
     return [...result];
   }
 
+  async #authorizedRelativeFile(
+    cwd: string,
+    requestedPath: string,
+  ): Promise<string> {
+    const [relativePath] = this.#safeRelativePaths(cwd, [requestedPath]);
+    const normalizedRequest = requestedPath.replaceAll("\\", "/");
+    if (!relativePath || relativePath !== normalizedRequest) {
+      throw new Error(
+        "Cantrip Code requires a safe worktree-relative file path.",
+      );
+    }
+    const [rootPath, filePath] = await Promise.all([
+      realpath(cwd),
+      realpath(path.resolve(cwd, relativePath)).catch(() => null),
+    ]);
+    if (!filePath) {
+      throw new Error("The selected Cantrip Code file does not exist.");
+    }
+    const relativeTarget = path.relative(rootPath, filePath);
+    if (
+      !relativeTarget ||
+      relativeTarget === ".." ||
+      relativeTarget.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativeTarget)
+    ) {
+      throw new Error(
+        "The selected Cantrip Code file is outside the authorized worktree.",
+      );
+    }
+    const fileStat = await stat(filePath).catch(() => null);
+    if (!fileStat?.isFile()) {
+      throw new Error("The selected Cantrip Code path is not a file.");
+    }
+    return relativePath;
+  }
+
   async #restoreState(): Promise<void> {
     if (!this.#installation) return;
     const file = path.join(this.#codeRoot, "state", "runtime.json");
@@ -1197,14 +1285,31 @@ export class CodeSupervisor {
         continue;
       }
       const cwd = path.resolve(candidate.cwd as string);
-      const cwdStat = await stat(cwd).catch(() => null);
+      const workspaceRootPath = await realpath(cwd).catch(() => null);
+      if (!workspaceRootPath) continue;
+      const cwdStat = await stat(workspaceRootPath).catch(() => null);
       if (!cwdStat?.isDirectory()) continue;
+      const workspaceRootUri = pathToFileURL(workspaceRootPath).href;
+      const initialFile =
+        typeof candidate.initialFile === "string"
+          ? await this.#authorizedRelativeFile(
+              workspaceRootPath,
+              candidate.initialFile,
+            ).catch(() => null)
+          : null;
       const profileId = candidate.profileId as string;
       const profileKey = stableKey(profileId);
       const sessionId = candidate.sessionId as string;
       const projectId = candidate.projectId as string;
       const worktreeId = candidate.worktreeId as string;
       const sessionKey = stableKey(sessionId);
+      const workspaceIncarnation =
+        typeof candidate.workspaceIncarnation === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+          candidate.workspaceIncarnation,
+        )
+          ? candidate.workspaceIncarnation
+          : randomUUID();
       const workspaceDirectory = path.join(
         this.#codeRoot,
         "workspaces",
@@ -1228,6 +1333,7 @@ export class CodeSupervisor {
         ),
         codeTabId: candidate.codeTabId as string,
         cwd,
+        initialFile,
         lastActivityAt: isoNow(),
         lastError: null,
         profileId,
@@ -1244,10 +1350,13 @@ export class CodeSupervisor {
             : null,
         status: "offline",
         themeMode: "follow-cantrip",
+        workspaceIncarnation,
         workspacePath: path.join(
           workspaceDirectory,
-          `${stableKey(worktreeId)}-${sessionKey}.code-workspace`,
+          `${stableKey(worktreeId)}-${sessionKey}-${workspaceIncarnation}.code-workspace`,
         ),
+        workspaceRootPath,
+        workspaceRootUri,
         workspaceUri: "",
         worktreeId,
         worktreeName: candidate.worktreeName as string,
@@ -1315,6 +1424,7 @@ export class CodeSupervisor {
         appearance: session.appearance,
         codeTabId: session.codeTabId,
         cwd: session.cwd,
+        initialFile: session.initialFile,
         editorFingerprint: this.#installation?.editorBuild.fingerprint ?? null,
         lastActivityAt: session.lastActivityAt,
         lastError: session.lastError,
@@ -1327,6 +1437,7 @@ export class CodeSupervisor {
         startedAt: session.startedAt,
         status: session.status,
         themeMode: session.themeMode,
+        workspaceIncarnation: session.workspaceIncarnation,
         workspacePath: session.workspacePath,
         worktreeId: session.worktreeId,
         worktreeName: session.worktreeName,

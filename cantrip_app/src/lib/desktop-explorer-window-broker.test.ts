@@ -104,7 +104,13 @@ describe("desktop Explorer window broker", () => {
     client.start();
 
     await expect(editor).resolves.toEqual(attachment);
-    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledWith(
+      "explorer-one",
+      "src/index.ts",
+      "worker-one",
+      "worktree-one",
+      "dark",
+    );
     expect(
       desktopCode.setDirectCodeAttachmentPresentation,
     ).not.toHaveBeenCalled();
@@ -158,6 +164,13 @@ describe("desktop Explorer window broker", () => {
     client.editorFrameLoaded();
 
     await broker.ready;
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledWith(
+      "explorer-warm",
+      null,
+      "worker-one",
+      "worktree-one",
+      "dark",
+    );
     expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
     await broker.openFile("src/warm.ts", 123_456);
     await vi.waitFor(() => expect(onConfigured).toHaveBeenCalledOnce());

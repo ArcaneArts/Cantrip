@@ -22082,12 +22082,21 @@ export async function buildApp({
           input.data,
         );
         if (codeTab) {
+          const sessionsAfterUpdate =
+            (await repository.listCodeSessions(
+              applicationOwnerId(),
+              request.params.codeTabId,
+            )) ?? [];
+          const staleSessionIds = new Set([
+            ...previousSessions.map(({ id }) => id),
+            ...sessionsAfterUpdate.map(({ id }) => id),
+          ]);
           await Promise.all(
-            previousSessions.map((session) =>
+            [...staleSessionIds].map((sessionId) =>
               directAttachments.revokeResource(
                 applicationOwnerId(),
                 "code",
-                session.id,
+                sessionId,
               ),
             ),
           );
@@ -22173,6 +22182,14 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Code tab not found." });
       }
+      if (
+        input.data.expectedWorkerId !== context.workerId ||
+        input.data.expectedWorktreeId !== context.worktreeId
+      ) {
+        return reply.code(409).send({
+          error: "The Code tab changed while its editor was opening.",
+        });
+      }
       if (!context.capabilities.available) {
         return reply.code(409).send({
           error:
@@ -22209,41 +22226,86 @@ export async function buildApp({
           error: "The Code tab changed while its editor was opening.",
         });
       }
+      const openingContext = await repository.getCodeTabExecutionContext(
+        ownerId,
+        request.params.codeTabId,
+      );
+      if (
+        !openingContext ||
+        openingContext.workerId !== context.workerId ||
+        openingContext.worktreeId !== context.worktreeId ||
+        openingContext.cwd !== context.cwd ||
+        openingContext.codeTab.profileId !== context.codeTab.profileId ||
+        session.workerId !== openingContext.workerId ||
+        session.worktreeId !== openingContext.worktreeId ||
+        session.profileId !== openingContext.codeTab.profileId
+      ) {
+        await directAttachments.revokeResource(ownerId, "code", session.id);
+        return reply.code(409).send({
+          error: "The Code tab changed while its editor was opening.",
+        });
+      }
       let runtime: CodeRuntimeStatus | null = null;
       try {
         runtime = codeRuntimeStatusSchema.parse(
-          await bridge.request(context.workerId, {
+          await bridge.request(openingContext.workerId, {
             type: "code.open",
             sessionId: session.id,
-            codeTabId: context.codeTab.id,
-            projectId: context.codeTab.projectId,
-            worktreeId: context.worktreeId,
-            worktreeName: context.worktreeName,
-            cwd: context.cwd,
-            profileId: scopedCodeProfileId(ownerId, context.codeTab.profileId),
+            codeTabId: openingContext.codeTab.id,
+            projectId: openingContext.codeTab.projectId,
+            worktreeId: openingContext.worktreeId,
+            worktreeName: openingContext.worktreeName,
+            cwd: openingContext.cwd,
+            profileId: scopedCodeProfileId(
+              ownerId,
+              openingContext.codeTab.profileId,
+            ),
             themeMode: "follow-cantrip",
             appearance: input.data.appearance,
             presentation: "workbench",
           }),
         );
+        const freshContext = await repository.getCodeTabExecutionContext(
+          ownerId,
+          request.params.codeTabId,
+        );
         if (
+          runtime.sessionId !== session.id ||
+          !freshContext ||
+          freshContext.workerId !== openingContext.workerId ||
+          freshContext.worktreeId !== openingContext.worktreeId ||
+          freshContext.cwd !== openingContext.cwd ||
+          freshContext.codeTab.profileId !== openingContext.codeTab.profileId ||
           !(await updateCodeSessionRuntime(
             ownerId,
-            context.codeTab.id,
+            openingContext.codeTab.id,
             session.id,
             runtime,
             true,
           ))
         ) {
-          throw new Error(
-            "The Code session changed while its runtime was starting.",
-          );
+          await Promise.all([
+            bridge
+              .request(
+                openingContext.workerId,
+                {
+                  type: "code.stop",
+                  sessionId: session.id,
+                },
+                { timeoutMs: 5_000 },
+              )
+              .catch(() => undefined),
+            directAttachments.revokeResource(ownerId, "code", session.id),
+          ]);
+          return reply.code(409).send({
+            error: "The Code tab changed while its editor was opening.",
+          });
         }
       } catch (error) {
         const message = errorMessage(error);
         if (runtime) {
           void bridge
-            .request(context.workerId, {
+            .request(openingContext.workerId, {
               type: "code.stop",
               sessionId: session.id,
             })
@@ -22303,10 +22365,25 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Code tab not found." });
       }
+      if (
+        input.data.expectedWorkerId !== context.workerId ||
+        input.data.expectedWorktreeId !== context.worktreeId
+      ) {
+        return reply.code(409).send({
+          error: "The Code tab changed while its editor was attaching.",
+        });
+      }
       const session = (
         (await repository.listCodeSessions(ownerId, context.codeTab.id)) ?? []
       ).find((candidate) => candidate.id === input.data.sessionId);
-      if (!session || session.workerId !== context.workerId) {
+      if (
+        !session ||
+        input.data.expectedWorkerId !== session.workerId ||
+        input.data.expectedWorktreeId !== session.worktreeId ||
+        session.workerId !== context.workerId ||
+        session.worktreeId !== context.worktreeId ||
+        session.profileId !== context.codeTab.profileId
+      ) {
         return reply.code(409).send({ error: "Code session is unavailable." });
       }
       if (!bridge.isConnected(context.workerId)) {
@@ -22323,22 +22400,53 @@ export async function buildApp({
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
+      const freshContext = await repository.getCodeTabExecutionContext(
+        ownerId,
+        request.params.codeTabId,
+      );
+      if (
+        runtime.sessionId !== session.id ||
+        !freshContext ||
+        freshContext.workerId !== context.workerId ||
+        freshContext.worktreeId !== context.worktreeId ||
+        freshContext.cwd !== context.cwd ||
+        freshContext.codeTab.profileId !== context.codeTab.profileId
+      ) {
+        return reply.code(409).send({
+          error: "The Code tab changed while its editor was attaching.",
+        });
+      }
       try {
-        return reply.code(201).send(
-          codeProtectedAttachmentWireSchema.parse(
-            await codeTunnel.createProtectedAttachment({
-              authSessionId: authenticatedPrincipal(request).sessionId,
-              codeTabId: context.codeTab.id,
-              ownerId,
-              projectId: context.codeTab.projectId,
-              protectedRecord: input.data.protectedRecord,
-              runtime,
-              sessionId: session.id,
-              tunnelId: input.data.tunnelId,
-              workerId: context.workerId,
-            }),
-          ),
+        const attachment = codeProtectedAttachmentWireSchema.parse(
+          await codeTunnel.createProtectedAttachment({
+            authSessionId: authenticatedPrincipal(request).sessionId,
+            codeTabId: context.codeTab.id,
+            ownerId,
+            projectId: context.codeTab.projectId,
+            protectedRecord: input.data.protectedRecord,
+            runtime,
+            sessionId: session.id,
+            tunnelId: input.data.tunnelId,
+            workerId: context.workerId,
+          }),
         );
+        const attachedContext = await repository.getCodeTabExecutionContext(
+          ownerId,
+          request.params.codeTabId,
+        );
+        if (
+          !attachedContext ||
+          attachedContext.workerId !== context.workerId ||
+          attachedContext.worktreeId !== context.worktreeId ||
+          attachedContext.cwd !== context.cwd ||
+          attachedContext.codeTab.profileId !== context.codeTab.profileId
+        ) {
+          await codeTunnel.revokeAttachment(attachment.attachmentId, ownerId);
+          return reply.code(409).send({
+            error: "The Code tab changed while its editor was attaching.",
+          });
+        }
+        return reply.code(201).send(attachment);
       } catch (error) {
         return reply.code(503).send({ error: errorMessage(error) });
       }
@@ -24040,6 +24148,14 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Explorer not found." });
       }
+      if (
+        input.data.expectedWorkerId !== context.workerId ||
+        input.data.expectedWorktreeId !== context.worktreeId
+      ) {
+        return reply.code(409).send({
+          error: "The Explorer changed while its editor was opening.",
+        });
+      }
       if (!bridge.isConnected(context.workerId)) {
         return reply.code(503).send({ error: "Worker is offline." });
       }
@@ -24071,6 +24187,7 @@ export async function buildApp({
             worktreeId: context.worktreeId,
             cwd: context.root,
             profileId: scopedCodeProfileId(ownerId, "default"),
+            ...(input.data.path ? { initialFile: input.data.path } : {}),
             themeMode: "follow-cantrip",
             appearance: input.data.appearance,
             presentation: "editor",
@@ -24079,26 +24196,68 @@ export async function buildApp({
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
+      const freshContext = await repository.getExplorerExecutionContext(
+        ownerId,
+        request.params.explorerId,
+      );
+      if (
+        runtime.sessionId !== sessionId ||
+        !freshContext ||
+        freshContext.projectId !== context.projectId ||
+        freshContext.workerId !== context.workerId ||
+        freshContext.worktreeId !== context.worktreeId ||
+        freshContext.root !== context.root
+      ) {
+        await bridge
+          .request(
+            context.workerId,
+            { type: "code.stop", sessionId },
+            { timeoutMs: 5_000 },
+          )
+          .catch(() => undefined);
+        return reply.code(409).send({
+          error: "The Explorer changed while its editor was opening.",
+        });
+      }
       try {
-        return reply.code(201).send(
-          codeProtectedAttachmentWireSchema.parse(
-            await codeTunnel.createProtectedAttachment({
-              authSessionId: authenticatedPrincipal(request).sessionId,
-              codeTabId: surfaceId,
-              ownerId,
-              projectId: context.projectId,
-              protectedRecord: input.data.protectedRecord,
-              runtime,
-              sessionId,
-              stopSessionOnRelease: true,
-              tunnelId: input.data.tunnelId,
-              workerId: context.workerId,
-            }),
-          ),
+        const attachment = codeProtectedAttachmentWireSchema.parse(
+          await codeTunnel.createProtectedAttachment({
+            authSessionId: authenticatedPrincipal(request).sessionId,
+            codeTabId: surfaceId,
+            ownerId,
+            projectId: context.projectId,
+            protectedRecord: input.data.protectedRecord,
+            runtime,
+            sessionId,
+            stopSessionOnRelease: true,
+            tunnelId: input.data.tunnelId,
+            workerId: context.workerId,
+          }),
         );
+        const attachedContext = await repository.getExplorerExecutionContext(
+          ownerId,
+          request.params.explorerId,
+        );
+        if (
+          !attachedContext ||
+          attachedContext.projectId !== context.projectId ||
+          attachedContext.workerId !== context.workerId ||
+          attachedContext.worktreeId !== context.worktreeId ||
+          attachedContext.root !== context.root
+        ) {
+          await codeTunnel.revokeAttachment(attachment.attachmentId, ownerId);
+          return reply.code(409).send({
+            error: "The Explorer changed while its editor was opening.",
+          });
+        }
+        return reply.code(201).send(attachment);
       } catch (error) {
         await bridge
-          .request(context.workerId, { type: "code.stop", sessionId })
+          .request(
+            context.workerId,
+            { type: "code.stop", sessionId },
+            { timeoutMs: 5_000 },
+          )
           .catch(() => undefined);
         return reply.code(503).send({ error: errorMessage(error) });
       }
