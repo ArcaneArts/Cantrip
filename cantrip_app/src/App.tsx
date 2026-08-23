@@ -2728,6 +2728,7 @@ function ChatTranscript({
                     "min-w-0",
                     user &&
                       "max-w-[85%] overflow-hidden rounded-2xl bg-muted/80 px-4 py-3 text-foreground sm:max-w-[42rem]",
+                    editingThisMessage && "w-full",
                     !user && !system && "flex-1 py-1",
                     system &&
                       "max-w-[85%] overflow-hidden rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive",
@@ -2754,7 +2755,7 @@ function ChatTranscript({
                       <textarea
                         ref={editedMessageRef}
                         aria-label="Edit latest message"
-                        className="min-h-28 w-full resize-y bg-transparent text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+                        className="max-h-[min(60vh,32rem)] min-h-40 w-full field-sizing-content resize-y overflow-y-auto bg-transparent text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
                         disabled={retrySentMessage.isPending}
                         onChange={(event) =>
                           setEditingSentMessage((current) =>
@@ -2777,6 +2778,7 @@ function ChatTranscript({
                             submitEditedMessage(message);
                           }
                         }}
+                        rows={1}
                         value={editingSentMessage.text}
                       />
                       {messageAttachments.length > 0 ? (
