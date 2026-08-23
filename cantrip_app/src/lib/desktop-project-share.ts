@@ -17,6 +17,7 @@ export type DesktopProjectRevealLabel =
   "Reveal in File Explorer" | "Reveal in Finder";
 export type DesktopFolderRevealLabel =
   "Show in File Explorer" | "Show in Finder";
+export type DesktopProjectRevealButtonLabel = "Explorer" | "Finder";
 
 function desktopFileManagerName(
   desktopRuntime: boolean,
@@ -43,6 +44,16 @@ export function desktopProjectRevealLabel(
 ): DesktopProjectRevealLabel | null {
   const fileManager = desktopFileManagerName(desktopRuntime, userAgent);
   return fileManager ? `Reveal in ${fileManager}` : null;
+}
+
+export function desktopProjectRevealButtonLabel(
+  desktopRuntime: boolean,
+  userAgent: string,
+): DesktopProjectRevealButtonLabel | null {
+  const fileManager = desktopFileManagerName(desktopRuntime, userAgent);
+  if (fileManager === "Finder") return "Finder";
+  if (fileManager === "File Explorer") return "Explorer";
+  return null;
 }
 
 export function desktopFolderRevealLabel(
@@ -116,22 +127,21 @@ export async function coordinateDesktopProjectReveal(
   }
 }
 
-export async function revealProjectInNativeFileManager(
-  project: ProjectSummary,
-  localFolder = false,
-  relativePath = "",
+export async function coordinateDesktopProjectRevealPreference(
+  preferLocalFolder: boolean,
+  operations: {
+    revealLocalFolder(): Promise<boolean>;
+    revealNetworkShare(): Promise<void>;
+  },
 ): Promise<void> {
-  if (localFolder) {
-    const request = nativeLocalProjectFolderRequest(
-      project,
-      getActiveServerUrl(),
-      relativePath,
-    );
-    if (!request) return;
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke<boolean>("reveal_local_project_folder", { request });
-    return;
-  }
+  if (preferLocalFolder && (await operations.revealLocalFolder())) return;
+  await operations.revealNetworkShare();
+}
+
+async function revealProjectNetworkShare(
+  project: ProjectSummary,
+  relativePath: string,
+): Promise<void> {
   return coordinateDesktopProjectReveal(project, {
     createAttachment: createProjectNetworkShare,
     invokeNative: async (attachment, target) => {
@@ -180,6 +190,26 @@ export async function revealProjectInNativeFileManager(
       });
     },
     revokeAttachment: deleteProjectNetworkShare,
+  });
+}
+
+export async function revealProjectInNativeFileManager(
+  project: ProjectSummary,
+  localFolder = false,
+  relativePath = "",
+): Promise<void> {
+  return coordinateDesktopProjectRevealPreference(localFolder, {
+    revealLocalFolder: async () => {
+      const request = nativeLocalProjectFolderRequest(
+        project,
+        getActiveServerUrl(),
+        relativePath,
+      );
+      if (!request) return false;
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<boolean>("reveal_local_project_folder", { request });
+    },
+    revealNetworkShare: () => revealProjectNetworkShare(project, relativePath),
   });
 }
 

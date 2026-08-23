@@ -12,6 +12,7 @@ import {
   Files,
   Folder,
   FolderGit2,
+  FolderOpen,
   GitBranch,
   GitCommitHorizontal,
   HardDrive,
@@ -24,6 +25,7 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { ProjectSurfaceCreateMenu } from "@/components/workspace/project-surface-create-menu";
 import type {
   ProjectSurfaceCreateKind,
@@ -176,8 +178,10 @@ export function ProjectOverview({
   onCreateSurface,
   onOpenSurface,
   onOpenTabs,
+  onRevealProject,
   placement,
   project,
+  revealLabel,
   stats,
   statsError,
   statsLoading,
@@ -196,8 +200,10 @@ export function ProjectOverview({
   ): void;
   onOpenSurface(tabKey: string): void;
   onOpenTabs?: () => void;
+  onRevealProject?(preferLocalFolder: boolean): Promise<void>;
   placement?: ProjectSurfacePlacementContext;
   project: ProjectSummary;
+  revealLabel?: "Explorer" | "Finder";
   stats?: ProjectRepositoryStats;
   statsError?: string | null;
   statsLoading: boolean;
@@ -208,6 +214,8 @@ export function ProjectOverview({
   workerOnline: boolean;
   worktrees: readonly ProjectWorktreeSummary[];
 }) {
+  const [revealError, setRevealError] = useState<string | null>(null);
+  const [revealPending, setRevealPending] = useState(false);
   const [usageOpen, setUsageOpen] = useState(false);
   const orderedSurfaces = useMemo(
     () =>
@@ -234,6 +242,20 @@ export function ProjectOverview({
     "—"
   );
   const eliteKeyPrefix = `project-overview:${project.id}`;
+  const revealProject = (preferLocalFolder: boolean) => {
+    if (!onRevealProject || revealPending) return;
+    setRevealError(null);
+    setRevealPending(true);
+    void onRevealProject(preferLocalFolder)
+      .catch((error: unknown) => {
+        setRevealError(
+          error instanceof Error
+            ? error.message
+            : "Could not reveal this project.",
+        );
+      })
+      .finally(() => setRevealPending(false));
+  };
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -300,6 +322,23 @@ export function ProjectOverview({
               </div>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
+              {project.source && revealLabel && onRevealProject ? (
+                <Button
+                  disabled={revealPending}
+                  onClick={(event) => revealProject(event.shiftKey)}
+                  size="sm"
+                  title={`Open in ${revealLabel}. Hold Shift to prefer the real local folder.`}
+                  type="button"
+                  variant="outline"
+                >
+                  {revealPending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <FolderOpen className="size-3.5" />
+                  )}
+                  {revealLabel}
+                </Button>
+              ) : null}
               {project.github ? (
                 <Button asChild variant="outline" size="sm">
                   <a href={project.github.url} target="_blank" rel="noreferrer">
@@ -645,6 +684,17 @@ export function ProjectOverview({
           projectName={project.name}
           usage={usage}
         />
+      ) : null}
+      {revealError ? (
+        <InlineAlert
+          className="fixed bottom-5 right-5 z-50 max-w-md border-destructive bg-destructive px-4 py-3 text-destructive-foreground shadow-xl"
+          dismissLabel="Dismiss project reveal error"
+          icon={false}
+          onDismiss={() => setRevealError(null)}
+          tone="error"
+        >
+          Could not reveal project: {revealError}
+        </InlineAlert>
       ) : null}
     </div>
   );
