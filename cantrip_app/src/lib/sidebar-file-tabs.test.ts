@@ -8,6 +8,7 @@ import {
   pinnedExplorerForPath,
   preferredSidebarExplorer,
   sidebarFileName,
+  sidebarFilePreviewViewKey,
   tabbedExplorerIds,
 } from "./sidebar-file-tabs";
 
@@ -58,6 +59,31 @@ describe("sidebar file tabs", () => {
         previewExplorerId: preview.id,
       }),
     ).toBe(preview);
+  });
+
+  it("keeps one preview view while its temporary file changes", () => {
+    expect(
+      sidebarFilePreviewViewKey({
+        explorerId: "explorer-1",
+        path: "src/first.ts",
+      }),
+    ).toBe(
+      sidebarFilePreviewViewKey({
+        explorerId: "explorer-1",
+        path: "README.md",
+      }),
+    );
+    expect(
+      sidebarFilePreviewViewKey({
+        explorerId: "explorer-1",
+        path: "src/index.ts",
+      }),
+    ).not.toBe(
+      sidebarFilePreviewViewKey({
+        explorerId: "explorer-2",
+        path: "src/index.ts",
+      }),
+    );
   });
 
   it("only treats layout-backed matching files as pinned", () => {

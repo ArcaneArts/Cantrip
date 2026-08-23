@@ -21,6 +21,14 @@ import {
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
 
+const FILE_OPEN_RETRY_DELAY_MS = 250;
+
+function shouldRetryFileOpen(error: unknown): boolean {
+  return /(?:failed to fetch|load failed|network|not connected|unavailable)/iu.test(
+    errorMessage(error, ""),
+  );
+}
+
 export function ExplorerCodeEditor({
   appearance,
   explorerId,
@@ -38,6 +46,8 @@ export function ExplorerCodeEditor({
   const [ready, setReady] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const pathRef = useRef(path);
+  pathRef.current = path;
 
   const reload = useCallback(() => {
     setReloadVersion((version) => version + 1);
@@ -57,7 +67,7 @@ export function ExplorerCodeEditor({
       try {
         const wire = await createProtectedExplorerCodeAttachment(
           explorerId,
-          path,
+          pathRef.current,
           workerId,
           appearance,
         );
@@ -91,34 +101,46 @@ export function ExplorerCodeEditor({
         void releaseCodeAttachment(attachmentId).catch(() => undefined);
       }
     };
-  }, [appearance, explorerId, path, reloadVersion, workerId]);
+  }, [appearance, explorerId, reloadVersion, workerId]);
 
   useEffect(() => {
     if (!preferredAttachment) return;
     let cancelled = false;
-    const preparePresentation = setDirectCodeAttachmentPresentation(
-      preferredAttachment.attachment,
-      "editor",
-    );
-    void preparePresentation
-      .then(() =>
-        openDirectCodeAttachmentFile(preferredAttachment.attachment, path),
-      )
-      .then((result) => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    setError(null);
+    setReady(false);
+    const openFile = async (attempt: number) => {
+      try {
+        await setDirectCodeAttachmentPresentation(
+          preferredAttachment.attachment,
+          "editor",
+        );
+        const result = await openDirectCodeAttachmentFile(
+          preferredAttachment.attachment,
+          path,
+        );
         if (!cancelled && result.relativePath === path) {
           setError(null);
           setReady(true);
         }
-      })
-      .catch((openError: unknown) => {
-        if (!cancelled) {
-          setError(
-            errorMessage(openError, "Cantrip Code could not open this file."),
+      } catch (openError) {
+        if (cancelled) return;
+        if (attempt === 0 && shouldRetryFileOpen(openError)) {
+          retryTimer = setTimeout(
+            () => void openFile(attempt + 1),
+            FILE_OPEN_RETRY_DELAY_MS,
           );
+          return;
         }
-      });
+        setError(
+          errorMessage(openError, "Cantrip Code could not open this file."),
+        );
+      }
+    };
+    void openFile(0);
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [path, preferredAttachment]);
 

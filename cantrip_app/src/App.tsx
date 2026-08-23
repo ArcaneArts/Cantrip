@@ -457,6 +457,7 @@ import {
   preferredSidebarExplorer,
   primaryWorktreeId,
   sidebarFileName,
+  sidebarFilePreviewViewKey,
   surfaceWorktreeId,
   type SidebarFilePreviewState,
 } from "@/lib/sidebar-file-tabs";
@@ -8291,7 +8292,7 @@ export function App() {
               appearance={codeAppearance}
               explorer={sidebarPreviewExplorer}
               gitStatus={worktreeStatuses[sidebarPreviewExplorer.worktreeId]}
-              key={`sidebar-file-preview:${sidebarPreviewExplorer.id}:${sidebarFilePreview.path}`}
+              key={sidebarFilePreviewViewKey(sidebarFilePreview)}
               onChanged={handleExplorerChanged}
               onHeaderChange={
                 sidebarFilePreviewVisible
