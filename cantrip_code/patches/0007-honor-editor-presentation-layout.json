@@ -1,0 +1,16 @@
+{
+  "id": "0007-honor-editor-presentation-layout",
+  "title": "Honor Cantrip editor-only workbench presentation",
+  "reason": "Explorer popouts transition an already-running OpenVSCode workbench into an editor-only presentation. The extension API can update the workspace settings, but it cannot directly hide workbench parts, and OpenVSCode keeps the Activity Bar in cached runtime layout state. The title bar can also be recreated from unrelated layout changes. This patch makes the per-workspace cantrip.presentation setting authoritative for those two workbench parts without changing normal Code sessions.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": [
+    "src/vs/workbench/browser/layout.ts",
+    "src/vs/workbench/services/layout/browser/layoutService.ts"
+  ],
+  "validation": [
+    "pnpm code:patch -- --source cantrip_code/upstream --check",
+    "pnpm code:build",
+    "Open a file from Explorer in the desktop popout and confirm the Activity Bar and custom title bar are absent while breadcrumbs and the status bar remain visible"
+  ],
+  "removal": "Remove if OpenVSCode exposes a window-local extension API for hiding the Activity Bar and custom title bar, or if Cantrip stops transitioning shared workbench processes into editor-only sessions."
+}
