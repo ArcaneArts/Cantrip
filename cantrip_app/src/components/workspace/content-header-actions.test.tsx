@@ -62,7 +62,9 @@ function codeHeader(): CodeHeaderState {
     runtime,
     status: "running",
     reload: vi.fn(),
+    prepareWorktreeChange: vi.fn(),
     restart: vi.fn(),
+    resumeAfterWorktreeChange: vi.fn(),
     saveAll: vi.fn(),
     stop: vi.fn(),
   };

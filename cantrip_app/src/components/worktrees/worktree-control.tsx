@@ -284,6 +284,7 @@ export function WorktreeIndicator({
 }
 
 export interface WorktreeControlActions {
+  branchDisabled?: boolean;
   chatMode?: "agent-managed" | "pinned";
   disabled?: boolean;
   error?: string | null;
@@ -313,6 +314,19 @@ export function worktreeSwitchBranchOptions(
     if (left.kind !== right.kind) return left.kind === "local" ? -1 : 1;
     return left.name.localeCompare(right.name);
   });
+}
+
+export function worktreeForBranch(
+  worktrees: readonly ProjectWorktreeSummary[],
+  branch: GitManagedBranch,
+): ProjectWorktreeSummary | undefined {
+  const branchNames =
+    branch.kind === "local" ? [branch.name] : branch.trackingLocalBranches;
+  return worktrees.find(
+    (worktree) =>
+      !worktree.detached &&
+      Boolean(worktree.branch && branchNames.includes(worktree.branch)),
+  );
 }
 
 export function worktreeExistingBranchOptions(
@@ -491,6 +505,8 @@ export function WorktreeControl({
     branchInventory.data?.branches ?? [],
   );
   const controlDisabled = actions.disabled || branchOperation.busy;
+  const branchDisabled =
+    actions.branchDisabled ?? actions.disabled ?? branchOperation.busy;
   return (
     <>
       <DropdownMenuPrimitive.Root open={menuOpen} onOpenChange={setMenuOpen}>
@@ -528,7 +544,8 @@ export function WorktreeControl({
             </DropdownMenuPrimitive.Label>
             <StyledDropdownMenuItem
               disabled={
-                controlDisabled ||
+                branchDisabled ||
+                branchOperation.busy ||
                 !worker.online ||
                 current.lifecycleState !== "ready"
               }
@@ -631,8 +648,8 @@ export function WorktreeControl({
           <DialogHeader>
             <DialogTitle>Switch branch</DialogTitle>
             <DialogDescription>
-              Choose the branch to check out in {current.name}. Branches owned
-              by another worktree stay with that worktree.
+              Choose a branch for {current.name}. If it is already checked out,
+              Cantrip switches this surface to its worktree instead.
             </DialogDescription>
           </DialogHeader>
           <Command className="rounded-lg border">
@@ -655,16 +672,30 @@ export function WorktreeControl({
                   <CommandEmpty>No branches found.</CommandEmpty>
                   <CommandGroup heading="Branches">
                     {branchOptions.map((branch) => {
+                      const owningWorktree = worktreeForBranch(
+                        worktrees,
+                        branch,
+                      );
                       const ownedByAnotherWorktree = Boolean(
-                        branch.worktree && !branch.worktree.current,
+                        owningWorktree &&
+                        owningWorktree.id !== currentWorktreeId,
                       );
                       return (
                         <CommandItem
                           key={branch.fullRef}
                           value={`${branch.kind} ${branch.name} ${branch.upstream ?? ""}`}
-                          disabled={branch.current || ownedByAnotherWorktree}
+                          disabled={
+                            branch.current ||
+                            (ownedByAnotherWorktree &&
+                              (Boolean(actions.disabled) ||
+                                owningWorktree?.lifecycleState !== "ready"))
+                          }
                           onSelect={() => {
                             setBranchPickerOpen(false);
+                            if (ownedByAnotherWorktree && owningWorktree) {
+                              actions.onSelect(owningWorktree.id);
+                              return;
+                            }
                             branchOperation.review({
                               type: "switch",
                               name: branch.name,
@@ -683,7 +714,7 @@ export function WorktreeControl({
                           </span>
                           <span className="shrink-0 text-[10px] text-muted-foreground">
                             {ownedByAnotherWorktree
-                              ? `In ${branch.worktree!.label}`
+                              ? `Open ${owningWorktree!.name}`
                               : branch.current
                                 ? "Current"
                                 : branch.kind === "remote"
