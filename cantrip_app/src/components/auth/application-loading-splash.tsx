@@ -10,20 +10,21 @@ import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
 
 import "./application-loading-splash.css";
 
-export const APPLICATION_SPLASH_GLITCH_INTERVAL_MS = 100;
+export const APPLICATION_SPLASH_GLITCH_INTERVAL_MS = 48;
 
 export const APPLICATION_SPLASH_GLITCH_CONFIG: EliteRevealConfig = {
   ...DEFAULT_ELITE_REVEAL_CONFIG,
-  glitchCountMax: 1,
-  glitchCountMin: 1,
-  glitchShowMs: 72,
+  glitchCountMax: 3,
+  glitchCountMin: 3,
+  glitchShowMs: 16,
   staggerSpreadMs: 0,
-  variants: ["chromatic", "spatial-shift", "scanline"],
+  variants: ["chromatic", "spatial-shift", "scanline", "text-jitter"],
   variantWeights: {
     ...DEFAULT_ELITE_REVEAL_CONFIG.variantWeights,
-    chromatic: 1,
+    chromatic: 2,
     scanline: 1,
-    "spatial-shift": 1,
+    "spatial-shift": 2,
+    "text-jitter": 2,
   },
 };
 
@@ -42,24 +43,24 @@ export function ApplicationLoadingSplash() {
   return (
     <>
       <SessionWindowDragRegion enabled={isMacosDesktopRuntime()} />
-      <main className="application-loading-splash">
-        <div
+      <main
+        className="application-loading-splash"
+        data-application-loading-splash=""
+      >
+        <EliteReveal
           className="application-loading-splash__brand"
-          data-application-loading-splash=""
+          config={APPLICATION_SPLASH_GLITCH_CONFIG}
+          contentKind="text"
+          replayKey={replayKey}
         >
-          <EliteReveal
-            className="application-loading-splash__logo"
-            config={APPLICATION_SPLASH_GLITCH_CONFIG}
-            contentKind="box"
-            replayKey={replayKey}
-          >
+          <span className="application-loading-splash__logo">
             <span
               aria-hidden="true"
               className="application-loading-splash__mark"
             />
-          </EliteReveal>
+          </span>
           <h1 className="application-loading-splash__name">Cantrip</h1>
-        </div>
+        </EliteReveal>
       </main>
     </>
   );

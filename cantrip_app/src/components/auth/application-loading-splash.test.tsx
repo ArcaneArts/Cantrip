@@ -13,26 +13,29 @@ describe("ApplicationLoadingSplash", () => {
 
     expect(markup).toContain("data-application-loading-splash");
     expect(markup).toContain("application-loading-splash__mark");
+    expect(markup).toContain('data-content-kind="text"');
     expect(markup).toContain(">Cantrip</h1>");
     expect(markup).not.toContain("Connecting to Cantrip");
     expect(markup).not.toContain("animate-spin");
   });
 
-  it("replays one short bolt glitch every 100 milliseconds", () => {
-    expect(APPLICATION_SPLASH_GLITCH_INTERVAL_MS).toBe(100);
+  it("continuously replays rapid three-frame brand glitches", () => {
+    expect(APPLICATION_SPLASH_GLITCH_INTERVAL_MS).toBe(48);
     expect(APPLICATION_SPLASH_GLITCH_CONFIG).toMatchObject({
-      glitchCountMax: 1,
-      glitchCountMin: 1,
-      glitchShowMs: 72,
+      glitchCountMax: 3,
+      glitchCountMin: 3,
+      glitchShowMs: 16,
       staggerSpreadMs: 0,
     });
-    expect(APPLICATION_SPLASH_GLITCH_CONFIG.glitchShowMs).toBeLessThan(
-      APPLICATION_SPLASH_GLITCH_INTERVAL_MS,
-    );
+    expect(
+      APPLICATION_SPLASH_GLITCH_CONFIG.glitchShowMs *
+        APPLICATION_SPLASH_GLITCH_CONFIG.glitchCountMin,
+    ).toBe(APPLICATION_SPLASH_GLITCH_INTERVAL_MS);
     expect(APPLICATION_SPLASH_GLITCH_CONFIG.variants).toEqual([
       "chromatic",
       "spatial-shift",
       "scanline",
+      "text-jitter",
     ]);
   });
 });
