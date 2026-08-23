@@ -170,6 +170,8 @@ export function createDesktopExplorerWindowBroker(
   );
   let disposed = false;
   let prepared: PreparedEditorAttachment | null = null;
+  let preparedAtMs: number | null = null;
+  let configuredAtMs: number | null = null;
   let editorError: string | null = null;
 
   const send = (response: DesktopExplorerWindowResponse) => {
@@ -178,21 +180,25 @@ export function createDesktopExplorerWindowBroker(
   const editorPromise = prepareEditorAttachment(context)
     .then((result) => {
       prepared = result;
+      preparedAtMs = Date.now();
       send({
         attachment: result.attachment,
         launchId,
-        preparedAtMs: Date.now(),
+        preparedAtMs,
         type: "editor.ready",
       });
-      void configureEditorAttachment(result, context.path).catch(
-        (error: unknown) => {
+      void configureEditorAttachment(result, context.path)
+        .then(() => {
+          configuredAtMs = Date.now();
+          send({ configuredAtMs, launchId, type: "editor.configured" });
+        })
+        .catch((error: unknown) => {
           editorError = errorMessage(
             error,
             "Cantrip Code could not open this file.",
           );
           send({ error: editorError, launchId, type: "editor.failed" });
-        },
-      );
+        });
       return result;
     })
     .catch((error: unknown) => {
@@ -218,9 +224,12 @@ export function createDesktopExplorerWindowBroker(
         send({
           attachment: prepared.attachment,
           launchId,
-          preparedAtMs: Date.now(),
+          preparedAtMs: preparedAtMs ?? Date.now(),
           type: "editor.ready",
         });
+      }
+      if (configuredAtMs !== null) {
+        send({ configuredAtMs, launchId, type: "editor.configured" });
       }
       if (editorError) {
         send({ error: editorError, launchId, type: "editor.failed" });

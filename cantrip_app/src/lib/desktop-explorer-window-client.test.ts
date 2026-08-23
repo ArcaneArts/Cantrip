@@ -29,6 +29,11 @@ describe("DesktopExplorerWindowClient", () => {
       const request = event.data as DesktopExplorerWindowRequest;
       if (request.type === "launch.request") {
         broker.postMessage({ context, launchId, type: "launch.ready" });
+        broker.postMessage({
+          configuredAtMs: 123,
+          launchId,
+          type: "editor.configured",
+        });
       } else if (request.type === "file.read") {
         broker.postMessage({
           file,
@@ -45,15 +50,21 @@ describe("DesktopExplorerWindowClient", () => {
         resolveContext = resolve;
       },
     );
+    let resolveConfigured!: (value: number) => void;
+    const configured = new Promise<number>((resolve) => {
+      resolveConfigured = resolve;
+    });
     const client = new DesktopExplorerWindowClient(launchId, {
       onContext: resolveContext,
       onEditor: vi.fn(),
+      onEditorConfigured: resolveConfigured,
       onEditorError: vi.fn(),
       onLaunchError: vi.fn(),
     });
     client.start();
 
     await expect(receivedContext).resolves.toEqual(context);
+    await expect(configured).resolves.toBe(123);
     await expect(client.readFile()).resolves.toEqual(file);
 
     client.dispose();
@@ -77,6 +88,7 @@ describe("DesktopExplorerWindowClient", () => {
     const client = new DesktopExplorerWindowClient(launchId, {
       onContext: resolveContext,
       onEditor: vi.fn(),
+      onEditorConfigured: vi.fn(),
       onEditorError: vi.fn(),
       onLaunchError: vi.fn(),
     });

@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { DesktopExplorerWindowLoadingShell } from "@/components/explorer/desktop-explorer-window-shell";
 import {
   clientLogger,
   installClientLogCapture,
@@ -8,7 +9,9 @@ import {
   operationalErrorMetadata,
 } from "@/lib/client-log-relay";
 import {
+  desktopPopoutTitlebarLeftInset,
   desktopWindowThemeOverride,
+  isMacosDesktopRuntime,
   isSyntheticBuildProgressWindow,
   parseDesktopExplorerFileTarget,
   updateDesktopWindowTheme,
@@ -51,10 +54,25 @@ async function start(): Promise<void> {
   );
   if (explorerWindowTarget?.launchId) {
     void initializeClientLogPersistence().catch(() => undefined);
+    const root = createRoot(document.getElementById("root")!);
+    const overlayTitlebar = isMacosDesktopRuntime();
+    const titlebarLeftInset = desktopPopoutTitlebarLeftInset(
+      true,
+      overlayTitlebar,
+    );
+    root.render(
+      <DesktopExplorerWindowLoadingShell
+        path={explorerWindowTarget.path}
+        titlebarLeftInset={titlebarLeftInset}
+      />,
+    );
     const { DesktopExplorerFileWindow } =
       await import("@/components/explorer/desktop-explorer-file-window");
-    createRoot(document.getElementById("root")!).render(
-      <DesktopExplorerFileWindow launchId={explorerWindowTarget.launchId} />,
+    root.render(
+      <DesktopExplorerFileWindow
+        initialPath={explorerWindowTarget.path}
+        launchId={explorerWindowTarget.launchId}
+      />,
     );
     return;
   }
