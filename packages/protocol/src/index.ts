@@ -3563,7 +3563,7 @@ export const tunnelSourceEndpointSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("server-http"),
-      adapter: z.enum(["code", "project-share"]),
+      adapter: z.literal("code"),
     })
     .strict(),
   z
@@ -5133,41 +5133,43 @@ export const projectShareAttachmentSchema = z.object({
     .max(24 * 60 * 60_000),
 });
 
+export const projectShareTunnelCreateSchema = z
+  .object({
+    tunnelId: z.string().uuid(),
+    workerId: tunnelResourceIdSchema,
+    protectedRecord: protectedTunnelContentRecordSchema,
+  })
+  .strict()
+  .refine(
+    ({ tunnelId, protectedRecord }) =>
+      tunnelId === protectedRecord.operationId || protectedRecord.revision > 1,
+    {
+      message:
+        "A new project share must bind its tunnel identity to its protected record.",
+      path: ["protectedRecord", "operationId"],
+    },
+  );
+
 export const projectShareDirectCreateSchema = z
   .object({
     clientId: tunnelResourceIdSchema,
   })
   .strict();
 
-const projectShareAdapterHeaderListSchema = z
-  .array(z.tuple([z.string().min(1).max(256), z.string().max(16 * 1_024)]))
-  .max(256);
-
-export const projectShareAdapterRequestHeadSchema = z
+export const projectShareAttachmentWireSchema = z
   .object({
-    protocolVersion: z.literal(1),
-    method: z
-      .string()
-      .regex(/^[A-Z]+$/u)
-      .max(32),
-    path: z
-      .string()
-      .min(1)
-      .max(32 * 1_024)
-      .refine((value) => value.startsWith("/") && !value.startsWith("//")),
-    headers: projectShareAdapterHeaderListSchema,
+    attachmentId: tunnelResourceIdSchema,
+    projectId: tunnelResourceIdSchema,
+    protocol: z.literal("webdav"),
+    tunnelId: tunnelResourceIdSchema,
+    expiresAt: z.string().datetime(),
+    mountLeaseMs: z
+      .number()
+      .int()
+      .positive()
+      .max(24 * 60 * 60_000),
   })
   .strict();
-
-export const projectShareAdapterResponseHeadSchema = z
-  .object({
-    protocolVersion: z.literal(1),
-    statusCode: z.number().int().min(100).max(599),
-    headers: projectShareAdapterHeaderListSchema,
-  })
-  .strict();
-
-export const PROJECT_SHARE_ADAPTER_MAX_HEAD_BYTES = 64 * 1_024;
 
 export const projectSharePublicBasePathSchema = z
   .string()
@@ -11371,17 +11373,26 @@ export const workerAttachmentReadResultSchema = z.object({
   sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
 });
 
-export const workerProjectShareOpenResultSchema = z.object({
-  shareId: z.string().min(1).max(200),
-  protocol: z.literal("webdav"),
-  publicBasePath: projectSharePublicBasePathSchema,
-  publicOrigin: projectSharePublicOriginSchema,
-  loopbackHost: z.literal("127.0.0.1"),
-  loopbackPort: z.number().int().min(1).max(65_535),
-  username: z.string().min(1).max(128),
-  password: z.string().min(24).max(256),
-  realm: z.string().min(1).max(200),
-});
+export const workerProjectShareDescriptorSchema = z
+  .object({
+    shareId: z.string().min(1).max(200),
+    protocol: z.literal("webdav"),
+    publicBasePath: projectSharePublicBasePathSchema,
+    publicOrigin: projectSharePublicOriginSchema,
+    loopbackHost: z.literal("127.0.0.1"),
+    loopbackPort: z.number().int().min(1).max(65_535),
+    username: z.string().min(1).max(128),
+    password: z.string().min(24).max(256),
+    realm: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const workerProjectShareOpenResultSchema = z
+  .object({
+    accepted: z.literal(true),
+    shareId: z.string().min(1).max(200),
+  })
+  .strict();
 
 export const ollamaModelInventoryItemSchema = z.object({
   name: z.string().trim().min(1).max(500),
@@ -12157,9 +12168,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("project.share.open"),
     shareId: z.string().min(1).max(200),
-    root: z.string().min(1).max(8_192),
-    publicBasePath: projectSharePublicBasePathSchema,
-    publicOrigin: projectSharePublicOriginSchema,
+    protectedRecord: protectedTunnelContentRecordSchema,
   }),
   z.object({
     type: z.literal("project.share.close"),
@@ -14606,6 +14615,9 @@ export type CodeAdapterWebSocketClose = z.infer<
 export type ProjectShareAttachment = z.infer<
   typeof projectShareAttachmentSchema
 >;
+export type ProjectShareAttachmentWire = z.infer<
+  typeof projectShareAttachmentWireSchema
+>;
 export type BrowserCreate = z.infer<typeof browserCreateSchema>;
 export type EncryptedBrowserCreate = z.infer<
   typeof encryptedBrowserCreateSchema
@@ -15074,6 +15086,9 @@ export type WorkerAttachmentReadResult = z.infer<
 export type WorkerProjectShareOpenResult = z.infer<
   typeof workerProjectShareOpenResultSchema
 >;
+export type WorkerProjectShareDescriptor = z.infer<
+  typeof workerProjectShareDescriptorSchema
+>;
 export type OllamaModelInventoryItem = z.infer<
   typeof ollamaModelInventoryItemSchema
 >;
@@ -15115,12 +15130,6 @@ export type WorkerLogReadQuery = z.infer<typeof workerLogReadQuerySchema>;
 export type WorkerLogStreamBatch = z.infer<typeof workerLogStreamBatchSchema>;
 export type WorkerLogStreamServerMessage = z.infer<
   typeof workerLogStreamServerMessageSchema
->;
-export type ProjectShareAdapterRequestHead = z.infer<
-  typeof projectShareAdapterRequestHeadSchema
->;
-export type ProjectShareAdapterResponseHead = z.infer<
-  typeof projectShareAdapterResponseHeadSchema
 >;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
 export type CodeGraphWorkerStatus = z.infer<typeof codeGraphWorkerStatusSchema>;

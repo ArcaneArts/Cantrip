@@ -303,8 +303,9 @@ import {
   encryptedProjectReplicaRemoveCreateSchema,
   encryptedProjectReplicaSynchronizeCreateSchema,
   projectReplicaSummarySchema,
-  projectShareAttachmentSchema,
+  projectShareAttachmentWireSchema,
   projectShareDirectCreateSchema,
+  projectShareTunnelCreateSchema,
   projectWireSummarySchema,
   projectPreferredWorkerUpdateSchema,
   encryptedProjectWorkspaceCreateSchema,
@@ -12184,7 +12185,10 @@ export async function buildApp({
             ...route,
             target: {
               kind: "protected-tunnel",
-              targetKind: "tcp",
+              targetKind:
+                authorization.destination.kind === "worker-tcp"
+                  ? "tcp"
+                  : "project-share",
               recordId: authorization.tunnelId,
               protectedRecord: authorization.protectedRecord,
             },
@@ -17024,23 +17028,54 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/network-shares",
     async (request, reply) => {
+      const input = projectShareTunnelCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
       const source = await repository.getProjectSource(
-        applicationOwnerId(),
+        ownerId,
         request.params.projectId,
       );
       if (!source) {
         return reply.code(404).send({ error: "Project source not found." });
       }
+      if (source.workerId !== input.data.workerId) {
+        return reply.code(409).send({
+          code: "target-mismatch",
+          error: "The protected project share targets another worker.",
+        });
+      }
       try {
+        const existing = await repository.getManagedTunnel(ownerId, {
+          kind: "project-share",
+          id: request.params.projectId,
+        });
+        if (existing && existing.id !== input.data.tunnelId) {
+          return reply.code(409).send({
+            code: "stale-tunnel",
+            error: "The project share tunnel identity is stale.",
+          });
+        }
+        if (existing) {
+          await Promise.all(
+            existing.attachments.map(({ id }) =>
+              tunnelRuntime.revoke(ownerId, id, {
+                preserveTunnelState: true,
+              }),
+            ),
+          );
+        }
         const attachment = await projectShareTunnel.open({
-          ownerId: applicationOwnerId(),
+          ownerId,
           projectId: request.params.projectId,
-          root: source.cwd,
-          workerId: source.workerId,
+          protectedRecord: input.data.protectedRecord,
+          tunnelId: input.data.tunnelId,
+          workerId: input.data.workerId,
         });
         return reply
           .code(201)
-          .send(projectShareAttachmentSchema.parse(attachment));
+          .send(projectShareAttachmentWireSchema.parse(attachment));
       } catch (error) {
         const message = errorMessage(error);
         return reply
@@ -17058,75 +17093,32 @@ export async function buildApp({
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/project-shares/:attachmentId",
     async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      const tunnel = await repository.getTunnel(
+        ownerId,
+        request.params.attachmentId,
+      );
+      if (
+        !tunnel ||
+        tunnel.origin !== "project-share" ||
+        tunnel.managedBy?.kind !== "project-share"
+      ) {
+        return reply.code(404).send({ error: "Project share not found." });
+      }
+      await Promise.all(
+        tunnel.attachments.map(({ id }) =>
+          tunnelRuntime.revoke(ownerId, id, { preserveTunnelState: true }),
+        ),
+      );
       const revoked = await projectShareTunnel.revokeAttachment(
         request.params.attachmentId,
-        applicationOwnerId(),
+        ownerId,
       );
       if (!revoked) {
         return reply.code(404).send({ error: "Project share not found." });
       }
       await directAttachments.revokeAttachment(request.params.attachmentId);
       return reply.code(204).send();
-    },
-  );
-
-  app.post<{ Params: { attachmentId: string } }>(
-    "/api/project-shares/:attachmentId/direct",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const input = projectShareDirectCreateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const principal = authenticatedPrincipal(request);
-      const share = projectShareTunnel.prepareDirectAttachment(
-        request.params.attachmentId,
-        principal.user.id,
-      );
-      if (!share) {
-        return reply.code(404).send({ error: "Project share not found." });
-      }
-      const worker = await repository.getWorker(
-        principal.user.id,
-        share.workerId,
-      );
-      if (!worker) {
-        return reply.code(409).send({ error: "Project worker is offline." });
-      }
-      const route = {
-        tunnelId: share.tunnelId,
-        attachmentId: share.attachmentId,
-        sourceEndpointId: `desktop:${input.data.clientId}:${share.attachmentId}`,
-        destinationEndpointId: `worker:${share.workerId}`,
-      };
-      try {
-        const ticket = await directAttachments.prepare({
-          attachmentId: share.attachmentId,
-          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
-          channels: ["tunnel-data"],
-          leaseExpiresAt: share.expiresAt,
-          ownerId: principal.user.id,
-          resourceId: share.attachmentId,
-          resourceKind: "project-share",
-          tunnelRoute: {
-            ...route,
-            target: {
-              kind: "tcp",
-              host: share.loopbackHost,
-              port: share.loopbackPort,
-            },
-          },
-          worker,
-        });
-        return reply
-          .code(201)
-          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
-      } catch (error) {
-        if (error instanceof DirectAttachmentUnavailableError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        throw error;
-      }
     },
   );
 

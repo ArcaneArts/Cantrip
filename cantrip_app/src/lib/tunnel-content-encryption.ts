@@ -151,14 +151,19 @@ function managedPresentation(tunnel: TunnelWireSummary): TunnelPresentation {
           };
   if (
     tunnel.source.kind === "worker-listener" ||
-    tunnel.destination.kind === "worker-tcp"
+    tunnel.destination.kind === "worker-tcp" ||
+    (tunnel.destination.kind === "worker-adapter" &&
+      tunnel.destination.adapter === "project-share")
   ) {
     throw new Error("Private tunnel configuration is unavailable.");
   }
   return {
     ...presentation,
     source: tunnel.source,
-    destination: tunnel.destination,
+    destination:
+      tunnel.destination.kind === "worker-adapter"
+        ? { ...tunnel.destination, adapter: "code" }
+        : tunnel.destination,
   };
 }
 

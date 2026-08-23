@@ -83,7 +83,10 @@ export class TunnelRuntimeManager {
       destination,
       destinationTarget: {
         kind: "protected-tunnel",
-        targetKind: "tcp",
+        targetKind:
+          authorization.destination.kind === "worker-tcp"
+            ? "tcp"
+            : "project-share",
         recordId: authorization.tunnelId,
         protectedRecord: authorization.protectedRecord,
       },

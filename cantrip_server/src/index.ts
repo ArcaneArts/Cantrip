@@ -111,11 +111,7 @@ async function start(): Promise<void> {
     relayQuotas,
     workerBridge,
   });
-  const codeSurface = createCodeSurfaceServer(
-    codeTunnel,
-    surfaceConfig.origin,
-    projectShareTunnel,
-  );
+  const codeSurface = createCodeSurfaceServer(codeTunnel, surfaceConfig.origin);
   let closing = false;
   let codeSurfaceListening = false;
 

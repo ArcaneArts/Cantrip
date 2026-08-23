@@ -952,8 +952,6 @@ pub fn run() {
             relay_client_log,
             set_desktop_app_action_availability,
             set_macos_pro_mode,
-            project_share::fallback_project_share,
-            project_share::list_direct_project_share_tunnels,
             project_share::reveal_local_project_folder,
             project_share::reveal_project_share,
             tunnel_forward::start_tunnel_forward,

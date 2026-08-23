@@ -293,7 +293,7 @@ import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
 import { ProjectShareManager } from "./project-share-manager.js";
-import { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-adapter.js";
+import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
 import { readProjectFolderStats } from "./project-folder-stats.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
@@ -757,13 +757,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const codexCatalogRuntimes = new Map<string, CodexAppServer>();
   const pausedChats = new Set<string>();
   const projectShares = new ProjectShareManager();
-  const projectShareTunnel = new ProjectShareTunnelDestinationAdapter(
-    projectShares,
-  );
   const tunnelTcpDestination = new TunnelTcpDestinationAdapter();
   const tunnelDestinations = new TunnelDestinationRouter(
     tunnelTcpDestination,
-    projectShareTunnel,
+    projectShares,
     codeTunnel,
     workerEncryption,
     config.workerId,
@@ -2074,10 +2071,37 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           projectRoot: command.projectRoot,
           service: workerEncryption,
         });
-      case "project.share.open":
-        return projectShares.open(command);
+      case "project.share.open": {
+        const content = await openWorkerTunnelContentRecord({
+          record: command.protectedRecord,
+          serverId: workerEncryption.serverIdentity(),
+          service: workerEncryption,
+          tunnelId: command.shareId,
+          workerId: config.workerId,
+        });
+        if (
+          content.destination.kind !== "worker-project-share" ||
+          content.destination.workerId !== config.workerId ||
+          content.destination.resourceId !== command.shareId ||
+          (command.protectedRecord.operationId !== command.shareId &&
+            command.protectedRecord.revision === 1)
+        ) {
+          throw new Error(
+            "Protected project share content belongs to another endpoint.",
+          );
+        }
+        await projectShares.open({
+          password: content.destination.password,
+          publicBasePath: content.destination.publicBasePath,
+          publicOrigin: content.destination.publicOrigin,
+          realm: content.destination.realm,
+          root: content.destination.root,
+          shareId: command.shareId,
+          username: content.destination.username,
+        });
+        return { accepted: true as const, shareId: command.shareId };
+      }
       case "project.share.close":
-        projectShareTunnel.closeShare(command.shareId);
         await projectShares.close(command.shareId);
         return { accepted: true };
       case "repository.operation": {

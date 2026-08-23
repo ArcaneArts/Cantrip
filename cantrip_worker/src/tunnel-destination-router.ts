@@ -2,7 +2,7 @@ import type { TunnelDataPlaneFrameHeader } from "@cantrip/protocol";
 import type { TunnelDataProtectionConfiguration } from "@cantrip/protocol/tunnel-content";
 
 import type { CodeTunnelProxy } from "./code/tunnel-proxy.js";
-import type { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-adapter.js";
+import type { ProjectShareManager } from "./project-share-manager.js";
 import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
 import {
   openTunnelDataFrame,
@@ -17,13 +17,18 @@ type FrameEmitter = (
 ) => boolean;
 type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 
+interface ProtectedConnection {
+  configuration: TunnelDataProtectionConfiguration;
+  targetKind: "project-share" | "tcp";
+}
+
 export class TunnelDestinationRouter {
   #emit: FrameEmitter | null = null;
-  readonly #protections = new Map<string, TunnelDataProtectionConfiguration>();
+  readonly #protections = new Map<string, ProtectedConnection>();
 
   constructor(
     private readonly tcp: TunnelTcpDestinationAdapter,
-    private readonly projectShares: ProjectShareTunnelDestinationAdapter,
+    private readonly projectShares: ProjectShareManager,
     private readonly code: CodeTunnelProxy,
     private readonly encryption: WorkerEncryptionService,
     private readonly workerId: string,
@@ -35,7 +40,6 @@ export class TunnelDestinationRouter {
       (header, payload) => this.#emitTcp(header, payload),
       waitForCapacity,
     );
-    this.projectShares.setFrameEmitter(emit, waitForCapacity);
     this.code.setFrameEmitter(emit, waitForCapacity);
   }
 
@@ -45,9 +49,7 @@ export class TunnelDestinationRouter {
         void this.#handleProtectedConnect(header, payload);
       } else if (header.target.kind === "tcp")
         this.tcp.handleFrame(header, payload);
-      else if (header.target.adapter === "project-share") {
-        this.projectShares.handleFrame(header, payload);
-      } else if (header.target.adapter === "code") {
+      else if (header.target.adapter === "code") {
         this.code.handleFrame(header, payload);
       }
       return;
@@ -56,15 +58,16 @@ export class TunnelDestinationRouter {
     if (protection) {
       if (header.kind === "data") {
         try {
-          this.tcp.handleFrame(
+          this.#handleProtectedFrame(
+            protection.targetKind,
             { ...header, protection: undefined },
-            openTunnelDataFrame(protection, header, payload),
+            openTunnelDataFrame(protection.configuration, header, payload),
           );
         } catch {
           this.tcp.failProtectedFrame(header);
         }
       } else {
-        this.tcp.handleFrame(header, payload);
+        this.#handleProtectedFrame(protection.targetKind, header, payload);
         if (header.kind === "close" || header.kind === "error") {
           this.#protections.delete(connectionKey(header));
         }
@@ -72,21 +75,18 @@ export class TunnelDestinationRouter {
       return;
     }
     this.tcp.handleFrame(header, payload);
-    this.projectShares.handleFrame(header, payload);
     this.code.handleFrame(header, payload);
   }
 
   disconnect(): void {
     this.#protections.clear();
     this.tcp.disconnect();
-    this.projectShares.disconnect();
     this.code.disconnect();
   }
 
   close(): void {
     this.#protections.clear();
     this.tcp.close();
-    this.projectShares.close();
     this.code.close();
   }
 
@@ -108,25 +108,62 @@ export class TunnelDestinationRouter {
         tunnelId: header.tunnelId,
         workerId: this.workerId,
       });
-      if (
-        content.destination.kind !== "worker-tcp" ||
-        content.destination.workerId !== this.workerId ||
-        header.target.targetKind !== "tcp"
-      ) {
+      if (content.destination.workerId !== this.workerId) {
         throw new Error("Protected tunnel target belongs to another endpoint.");
       }
-      this.#protections.set(connectionKey(header), content.dataProtection);
-      this.tcp.handleFrame(
-        {
-          ...header,
-          target: {
-            kind: "tcp",
-            host: content.destination.host,
-            port: content.destination.port,
+      if (
+        content.destination.kind === "worker-tcp" &&
+        header.target.targetKind === "tcp"
+      ) {
+        this.#protections.set(connectionKey(header), {
+          configuration: content.dataProtection,
+          targetKind: "tcp",
+        });
+        this.tcp.handleFrame(
+          {
+            ...header,
+            target: {
+              kind: "tcp",
+              host: content.destination.host,
+              port: content.destination.port,
+            },
           },
-        },
-        payload,
-      );
+          payload,
+        );
+        return;
+      }
+      if (
+        content.destination.kind === "worker-project-share" &&
+        header.target.targetKind === "project-share" &&
+        content.destination.resourceId === header.target.recordId
+      ) {
+        const share = await this.projectShares.open({
+          password: content.destination.password,
+          publicBasePath: content.destination.publicBasePath,
+          publicOrigin: content.destination.publicOrigin,
+          realm: content.destination.realm,
+          root: content.destination.root,
+          shareId: content.destination.resourceId,
+          username: content.destination.username,
+        });
+        this.#protections.set(connectionKey(header), {
+          configuration: content.dataProtection,
+          targetKind: "tcp",
+        });
+        this.tcp.handleFrame(
+          {
+            ...header,
+            target: {
+              kind: "tcp",
+              host: share.loopbackHost,
+              port: share.loopbackPort,
+            },
+          },
+          payload,
+        );
+        return;
+      }
+      throw new Error("Protected tunnel target belongs to another endpoint.");
     } catch {
       this.#protections.delete(connectionKey(header));
       this.#emit?.(
@@ -147,13 +184,24 @@ export class TunnelDestinationRouter {
   }
 
   #emitTcp(header: TunnelDataPlaneFrameHeader, payload: Uint8Array): boolean {
+    return this.#emitProtected(header, payload);
+  }
+
+  #emitProtected(
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
     const key = connectionKey(header);
-    const configuration = this.#protections.get(key);
+    const connection = this.#protections.get(key);
     let emittedHeader = header;
     let emittedPayload = payload;
-    if (configuration && header.kind === "data") {
+    if (connection && header.kind === "data") {
       try {
-        const sealed = sealTunnelDataFrame(configuration, header, payload);
+        const sealed = sealTunnelDataFrame(
+          connection.configuration,
+          header,
+          payload,
+        );
         emittedHeader = sealed.header;
         emittedPayload = sealed.payload;
       } catch {
@@ -169,6 +217,14 @@ export class TunnelDestinationRouter {
       this.#protections.delete(key);
     }
     return sent;
+  }
+
+  #handleProtectedFrame(
+    targetKind: ProtectedConnection["targetKind"],
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
+  ): void {
+    if (targetKind === "tcp") this.tcp.handleFrame(header, payload);
   }
 }
 

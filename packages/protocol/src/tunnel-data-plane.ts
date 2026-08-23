@@ -56,7 +56,7 @@ export const tunnelDataPlaneTargetSchema = z.union([
   z
     .object({
       kind: z.literal("protected-tunnel"),
-      targetKind: z.literal("tcp"),
+      targetKind: z.enum(["tcp", "project-share"]),
       recordId: idSchema,
       protectedRecord: protectedTunnelContentRecordSchema,
     })
@@ -71,7 +71,7 @@ export const tunnelDataPlaneTargetSchema = z.union([
   z
     .object({
       kind: z.literal("adapter"),
-      adapter: z.enum(["code", "project-share"]),
+      adapter: z.literal("code"),
       resourceId: idSchema,
     })
     .strict(),

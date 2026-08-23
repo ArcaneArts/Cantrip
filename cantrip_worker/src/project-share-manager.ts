@@ -1,18 +1,16 @@
-import { randomBytes } from "node:crypto";
 import { realpath, stat } from "node:fs/promises";
 import type { Server } from "node:http";
 
 import {
   projectSharePublicBasePathSchema,
   projectSharePublicOriginSchema,
-  type WorkerProjectShareOpenResult,
+  type WorkerProjectShareDescriptor,
 } from "@cantrip/protocol";
 import { v2 as webdav } from "webdav-server";
 
 import { workerLogError, workerLogger } from "./logger.js";
 
 const LOOPBACK_HOST = "127.0.0.1" as const;
-const SHARE_REALM = "Cantrip Project Share";
 const DEFAULT_MAX_SHARES = 8;
 const FILE_MANAGER_METADATA_NAMES = new Set([
   ".appledouble",
@@ -39,7 +37,7 @@ const MUTATING_METHODS = new Set([
 ]);
 
 interface ManagedProjectShare {
-  descriptor: WorkerProjectShareOpenResult;
+  descriptor: WorkerProjectShareDescriptor;
   listener: Server;
   root: string;
   server: webdav.WebDAVServer;
@@ -47,10 +45,13 @@ interface ManagedProjectShare {
 }
 
 export interface ProjectShareOpenInput {
+  password: string;
   publicBasePath: string;
   publicOrigin: string;
+  realm: string;
   root: string;
   shareId: string;
+  username: string;
 }
 
 export interface ProjectShareManagerOptions {
@@ -105,7 +106,7 @@ function rejectFileManagerMetadataRequests(server: webdav.WebDAVServer): void {
 
 export class ProjectShareManager {
   readonly #maxShares: number;
-  readonly #opening = new Map<string, Promise<WorkerProjectShareOpenResult>>();
+  readonly #opening = new Map<string, Promise<WorkerProjectShareDescriptor>>();
   readonly #shares = new Map<string, ManagedProjectShare>();
 
   constructor(options: ProjectShareManagerOptions = {}) {
@@ -115,13 +116,13 @@ export class ProjectShareManager {
     }
   }
 
-  get(shareId: string): WorkerProjectShareOpenResult | null {
+  get(shareId: string): WorkerProjectShareDescriptor | null {
     return this.#shares.get(shareId)?.descriptor ?? null;
   }
 
   async open(
     input: ProjectShareOpenInput,
-  ): Promise<WorkerProjectShareOpenResult> {
+  ): Promise<WorkerProjectShareDescriptor> {
     const startedAtMs = Date.now();
     const publicBasePath = projectSharePublicBasePathSchema.parse(
       input.publicBasePath,
@@ -140,7 +141,10 @@ export class ProjectShareManager {
       if (
         existing.root !== root ||
         existing.descriptor.publicBasePath !== publicBasePath ||
-        existing.descriptor.publicOrigin !== publicOrigin
+        existing.descriptor.publicOrigin !== publicOrigin ||
+        existing.descriptor.username !== input.username ||
+        existing.descriptor.password !== input.password ||
+        existing.descriptor.realm !== input.realm
       ) {
         throw new Error(
           "Project share identity is already bound to another root or public endpoint.",
@@ -251,11 +255,9 @@ export class ProjectShareManager {
 
   async #start(
     input: ProjectShareOpenInput,
-  ): Promise<WorkerProjectShareOpenResult> {
-    const username = `cantrip-${randomBytes(12).toString("hex")}`;
-    const password = randomBytes(32).toString("base64url");
+  ): Promise<WorkerProjectShareDescriptor> {
     const userManager = new webdav.SimpleUserManager();
-    const user = userManager.addUser(username, password, false);
+    const user = userManager.addUser(input.username, input.password, false);
     const privilegeManager = new webdav.SimplePathPrivilegeManager();
     privilegeManager.setRights(user, input.publicBasePath, ["all"]);
 
@@ -263,7 +265,7 @@ export class ProjectShareManager {
       hostname: LOOPBACK_HOST,
       httpAuthentication: new webdav.HTTPDigestAuthentication(
         userManager,
-        SHARE_REALM,
+        input.realm,
       ),
       port: 0,
       privilegeManager,
@@ -294,16 +296,16 @@ export class ProjectShareManager {
       );
     }
 
-    const descriptor: WorkerProjectShareOpenResult = Object.freeze({
+    const descriptor: WorkerProjectShareDescriptor = Object.freeze({
       loopbackHost: LOOPBACK_HOST,
       loopbackPort: address.port,
-      password,
+      password: input.password,
       protocol: "webdav",
       publicBasePath: input.publicBasePath,
       publicOrigin: input.publicOrigin,
-      realm: SHARE_REALM,
+      realm: input.realm,
       shareId: input.shareId,
-      username,
+      username: input.username,
     });
     this.#shares.set(input.shareId, {
       descriptor,
