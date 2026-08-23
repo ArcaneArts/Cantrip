@@ -42,7 +42,7 @@ describe("provider quota observation ledger", () => {
       await repository.recordWorker(LOCAL_USER_ID, {
         architecture: "arm64",
         codexRuntime: unprobedCodexRuntimeReport,
-        codexVersion: "0.148.0",
+        codexVersion: "0.149.0",
         name: "Telemetry worker",
         platform: "darwin",
         startedAt: "2026-08-16T10:00:00.000Z",
@@ -76,7 +76,7 @@ describe("provider quota observation ledger", () => {
         executionAttemptId: "attempt-historical-dimension",
         workerVersion: "worker-build",
         serverVersion: "server-build",
-        codexVersion: "0.148.0",
+        codexVersion: "0.149.0",
       } as const;
 
       await expect(
@@ -167,7 +167,7 @@ describe("provider quota observation ledger", () => {
             snapshotId: "snapshot-all-windows",
             observedAt: "2026-08-16T12:02:00.000Z",
             workerVersion: "1.1.520",
-            codexVersion: "0.148.0",
+            codexVersion: "0.149.0",
             windows: [
               {
                 limitId: "codex",

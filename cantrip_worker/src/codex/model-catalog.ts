@@ -9,7 +9,7 @@ type RuntimeModel = Extract<WorkerCommand, { type: "chat.turn" }>["model"];
 
 const SUPPORTED_INPUT_MODALITIES = new Set(["text", "image", "audio"]);
 
-// Codex 0.148+ requires every externally supplied model to define its base
+// Codex 0.149+ requires every externally supplied model to define its base
 // instructions. Cantrip adds its product-specific guidance separately as
 // developer instructions, so keep this model-agnostic and concise.
 export const CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS =

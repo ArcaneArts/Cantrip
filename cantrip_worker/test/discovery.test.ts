@@ -18,7 +18,7 @@ const initialize = {
   experimentalApi: true,
   platformFamily: "unix",
   platformOs: "macos",
-  userAgent: "codex_cli_rs/0.148.0",
+  userAgent: "codex_cli_rs/0.149.0",
 };
 
 const availableMethods = Object.fromEntries(
@@ -74,7 +74,7 @@ describe("Codex runtime discovery", () => {
 
   it("requires usable feature stages and every requested method", () => {
     const report = assessCodexRuntime({
-      versionRaw: "codex-cli 0.148.0",
+      versionRaw: "codex-cli 0.149.0",
       initialize,
       methods: availableMethods,
       features: [
@@ -109,14 +109,14 @@ describe("Codex runtime discovery", () => {
   });
 
   it("parses the installed CLI version without depending on its prefix", () => {
-    expect(parseCodexSemanticVersion("codex-cli 0.148.0")).toBe("0.148.0");
-    expect(parseCodexSemanticVersion("0.148.9")).toBe("0.148.9");
+    expect(parseCodexSemanticVersion("codex-cli 0.149.0")).toBe("0.149.0");
+    expect(parseCodexSemanticVersion("0.149.9")).toBe("0.149.9");
     expect(parseCodexSemanticVersion("development build")).toBeNull();
   });
 
   it("reports a fully negotiated runtime as compatible", () => {
     const report = assessCodexRuntime({
-      versionRaw: "codex-cli 0.148.0",
+      versionRaw: "codex-cli 0.149.0",
       initialize,
       methods: availableMethods,
       features: [
@@ -131,7 +131,7 @@ describe("Codex runtime discovery", () => {
 
     expect(report).toMatchObject({
       compatibility: "compatible",
-      version: { semantic: "0.148.0" },
+      version: { semantic: "0.149.0" },
       methods: { "turn/start": "available" },
       features: [{ name: "goals", enabled: true }],
       degradedReasons: [],
@@ -140,7 +140,7 @@ describe("Codex runtime discovery", () => {
 
   it("reports a configured-but-untested runtime as incompatible", () => {
     const report = assessCodexRuntime({
-      versionRaw: "codex-cli 0.145.0",
+      versionRaw: "codex-cli 0.148.0",
       initialize,
       methods: availableMethods,
     });
@@ -163,7 +163,7 @@ describe("Codex runtime discovery", () => {
 
   it("keeps core turns available when an optional method is missing", () => {
     const report = assessCodexRuntime({
-      versionRaw: "codex-cli 0.148.0",
+      versionRaw: "codex-cli 0.149.0",
       initialize,
       methods: { ...availableMethods, "plugin/list": "unavailable" },
     });
@@ -175,7 +175,7 @@ describe("Codex runtime discovery", () => {
 
   it("reports one unavailable customization mutation without hiding reads", () => {
     const report = assessCodexRuntime({
-      versionRaw: "codex-cli 0.148.0",
+      versionRaw: "codex-cli 0.149.0",
       initialize,
       methods: {
         ...availableMethods,
@@ -195,7 +195,7 @@ describe("Codex runtime discovery", () => {
 
   it("rejects partial discovery when a core method is unavailable", () => {
     const report = assessCodexRuntime({
-      versionRaw: "codex-cli 0.148.0",
+      versionRaw: "codex-cli 0.149.0",
       initialize,
       methods: { ...availableMethods, "turn/start": "unavailable" },
     });
@@ -208,7 +208,7 @@ describe("Codex runtime discovery", () => {
     expect(
       parseInitializeResponse(
         {
-          userAgent: "codex_cli_rs/0.148.0",
+          userAgent: "codex_cli_rs/0.149.0",
           codexHome: "/tmp/codex-home",
           platformFamily: "unix",
           platformOs: "macos",

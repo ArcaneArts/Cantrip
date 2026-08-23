@@ -4977,7 +4977,7 @@ describe("Cantrip protocol", () => {
           homeLabel: "~/.codex",
           availability: "available",
           message: null,
-          runtimeVersion: "0.148.0",
+          runtimeVersion: "0.149.0",
           truncated: false,
           threads: [
             {
@@ -4991,7 +4991,7 @@ describe("Cantrip protocol", () => {
               source: "vscode",
               status: "not-loaded",
               modelProvider: "openai",
-              cliVersion: "0.148.0",
+              cliVersion: "0.149.0",
               git: null,
               match: {
                 kind: "worktree-path",

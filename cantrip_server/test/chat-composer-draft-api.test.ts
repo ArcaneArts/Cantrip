@@ -66,7 +66,7 @@ beforeAll(async () => {
     name: "Draft Worker",
     platform: "darwin",
     architecture: "arm64",
-    codexVersion: "0.148.0",
+    codexVersion: "0.149.0",
     codexRuntime: unprobedCodexRuntimeReport,
     remoteSurfaces: {
       browser: false,

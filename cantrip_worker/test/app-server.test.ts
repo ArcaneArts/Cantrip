@@ -1834,6 +1834,11 @@ describe("parseCodexRpcMessage", () => {
 
   it("distinguishes generated notifications from future schema drift", () => {
     expect(isKnownCodexNotificationMethod("turn/plan/updated")).toBe(true);
+    expect(isKnownCodexNotificationMethod("project/changed")).toBe(true);
+    expect(isKnownCodexNotificationMethod("thread/project/updated")).toBe(true);
+    expect(
+      isKnownCodexNotificationMethod("autoApprovalReview/strictReviewRequired"),
+    ).toBe(true);
     expect(isKnownCodexNotificationMethod("future/event")).toBe(false);
   });
 });
@@ -1948,7 +1953,7 @@ describe("Codex runtime compatibility enforcement", () => {
         worktreeMode: "agent-managed",
         worktreePolicy: "required-for-writes",
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.148\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.149\.0/u);
   });
 
   it("uses the dedicated workflow entry point for unavailable runtimes", async () => {
@@ -1991,7 +1996,7 @@ describe("Codex runtime compatibility enforcement", () => {
           apiKey: null,
         },
       }),
-    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.148\.0/u);
+    ).rejects.toThrow(/Codex runtime is missing.*expected >=0\.149\.0/u);
   });
 });
 
