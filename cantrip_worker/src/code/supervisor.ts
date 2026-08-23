@@ -92,6 +92,7 @@ export interface CodeSupervisorOptions {
   dataDirectory: string;
   installation: CantripCodeInstallation | null;
   bridge?: CodeWorkbenchBridge;
+  editorIdleTimeoutMs?: number;
   idleSweepIntervalMs?: number;
   idleTimeoutMs?: number;
   readinessTimeoutMs?: number;
@@ -103,6 +104,8 @@ const MAX_CRASHES_PER_WINDOW = 5;
 const CRASH_WINDOW_MS = 5 * 60_000;
 const PROCESS_STOP_TIMEOUT_MS = 2_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
+const DEFAULT_EDITOR_IDLE_TIMEOUT_MS = 30_000;
+const MAX_RESTORED_SESSION_RECORDS = 10_000;
 const RUNTIME_STATE_SCHEMA_VERSION = 2;
 const PROFILE_BUILD_FINGERPRINT_FILE = ".cantrip-code-build";
 
@@ -188,6 +191,7 @@ export class CodeSupervisor {
   readonly #bridge: CodeWorkbenchBridge;
   readonly #capabilities: CodeCapabilities;
   readonly #codeRoot: string;
+  readonly #editorIdleTimeoutMs: number;
   readonly #installation: CantripCodeInstallation | null;
   readonly #idleSweepIntervalMs: number;
   readonly #idleTimeoutMs: number;
@@ -205,13 +209,21 @@ export class CodeSupervisor {
     this.#capabilities = options.capabilities;
     this.#codeRoot = path.join(options.dataDirectory, "code");
     this.#installation = options.installation;
+    this.#editorIdleTimeoutMs = Math.max(
+      1_000,
+      options.editorIdleTimeoutMs ?? DEFAULT_EDITOR_IDLE_TIMEOUT_MS,
+    );
     this.#idleTimeoutMs = Math.max(
       1_000,
       options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
     );
     this.#idleSweepIntervalMs = Math.max(
       1_000,
-      options.idleSweepIntervalMs ?? Math.min(60_000, this.#idleTimeoutMs / 4),
+      options.idleSweepIntervalMs ??
+        Math.min(
+          60_000,
+          Math.min(this.#idleTimeoutMs, this.#editorIdleTimeoutMs) / 4,
+        ),
     );
     this.#readinessTimeoutMs = options.readinessTimeoutMs ?? 15_000;
     this.#workerId = options.workerId ?? "unknown-worker";
@@ -283,11 +295,6 @@ export class CodeSupervisor {
       await this.stop(command.sessionId);
     }
     if (!this.#sessions.has(command.sessionId)) {
-      if (this.#sessions.size >= this.#capabilities.maxSessions) {
-        throw new Error(
-          `This worker supports at most ${this.#capabilities.maxSessions} concurrent Code sessions.`,
-        );
-      }
       const profileKey = stableKey(command.profileId);
       const sessionKey = stableKey(command.sessionId);
       const workspaceDirectory = path.join(
@@ -465,8 +472,8 @@ export class CodeSupervisor {
     session.presentation = presentation;
     session.lastActivityAt = isoNow();
     await this.#writeWorkspace(session);
-    await this.#bridge.setPresentation(sessionId, presentation);
     await this.#persistState();
+    await this.#bridge.setPresentation(sessionId, presentation);
     return this.#status(session);
   }
 
@@ -542,7 +549,9 @@ export class CodeSupervisor {
   }
 
   async stop(sessionId: string): Promise<CodeRuntimeStatus> {
-    const session = this.#requireSession(sessionId);
+    this.#assertAvailable();
+    const session = this.#sessions.get(sessionId);
+    if (!session) return this.#stoppedStatus(sessionId);
     session.status = "stopping";
     session.lastActivityAt = isoNow();
     const profile = this.#profiles.get(session.profileKey);
@@ -611,11 +620,15 @@ export class CodeSupervisor {
   }
 
   #isIdle(session: CodeSession, now: number): boolean {
+    const idleTimeoutMs =
+      session.presentation === "editor"
+        ? this.#editorIdleTimeoutMs
+        : this.#idleTimeoutMs;
     return (
       session.status !== "starting" &&
       session.status !== "stopping" &&
       session.activeTunnelStreams.size === 0 &&
-      now - Date.parse(session.lastActivityAt) >= this.#idleTimeoutMs
+      now - Date.parse(session.lastActivityAt) >= idleTimeoutMs
     );
   }
 
@@ -1039,6 +1052,21 @@ export class CodeSupervisor {
     };
   }
 
+  #stoppedStatus(sessionId: string): CodeRuntimeStatus {
+    return {
+      sessionId,
+      status: "stopped",
+      editorBuild: this.#installation!.editorBuild,
+      processInstanceId: null,
+      bridgeConnected: false,
+      dirtyEditors: [],
+      workbench: this.#bridge.state(sessionId),
+      startedAt: null,
+      lastActivityAt: isoNow(),
+      lastError: null,
+    };
+  }
+
   #requireSession(sessionId: string): CodeSession {
     const session = this.#sessions.get(sessionId);
     if (!session)
@@ -1086,11 +1114,12 @@ export class CodeSupervisor {
     }
     const records = (value as { sessions: unknown[] }).sessions.slice(
       0,
-      this.#capabilities.maxSessions,
+      MAX_RESTORED_SESSION_RECORDS,
     );
     for (const record of records) {
       if (typeof record !== "object" || record === null) continue;
       const candidate = record as Record<string, unknown>;
+      if (candidate.presentation === "editor") continue;
       const appearance = codeAppearanceSchema.safeParse(candidate.appearance);
       const requiredStrings = [
         "codeTabId",
@@ -1233,26 +1262,28 @@ export class CodeSupervisor {
   async #persistState(): Promise<void> {
     const file = path.join(this.#codeRoot, "state", "runtime.json");
     const temporary = `${file}.${randomUUID()}.tmp`;
-    const sessions = [...this.#sessions.values()].map((session) => ({
-      appearance: session.appearance,
-      codeTabId: session.codeTabId,
-      cwd: session.cwd,
-      editorFingerprint: this.#installation?.editorBuild.fingerprint ?? null,
-      lastActivityAt: session.lastActivityAt,
-      lastError: session.lastError,
-      profileId: session.profileId,
-      profileKey: session.profileKey,
-      presentation: session.presentation,
-      projectId: session.projectId,
-      projectName: session.projectName,
-      sessionId: session.sessionId,
-      startedAt: session.startedAt,
-      status: session.status,
-      themeMode: session.themeMode,
-      workspacePath: session.workspacePath,
-      worktreeId: session.worktreeId,
-      worktreeName: session.worktreeName,
-    }));
+    const sessions = [...this.#sessions.values()]
+      .filter((session) => session.presentation === "workbench")
+      .map((session) => ({
+        appearance: session.appearance,
+        codeTabId: session.codeTabId,
+        cwd: session.cwd,
+        editorFingerprint: this.#installation?.editorBuild.fingerprint ?? null,
+        lastActivityAt: session.lastActivityAt,
+        lastError: session.lastError,
+        profileId: session.profileId,
+        profileKey: session.profileKey,
+        presentation: session.presentation,
+        projectId: session.projectId,
+        projectName: session.projectName,
+        sessionId: session.sessionId,
+        startedAt: session.startedAt,
+        status: session.status,
+        themeMode: session.themeMode,
+        workspacePath: session.workspacePath,
+        worktreeId: session.worktreeId,
+        worktreeName: session.worktreeName,
+      }));
     await writeFile(
       temporary,
       `${JSON.stringify({ schemaVersion: RUNTIME_STATE_SCHEMA_VERSION, sessions }, null, 2)}\n`,

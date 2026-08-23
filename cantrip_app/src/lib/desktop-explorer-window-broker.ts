@@ -64,16 +64,18 @@ async function removeStaleEditorCodeTabs(projectId: string): Promise<void> {
     (codeTab) => !isActiveExplorerEditorCodeTab(codeTab.id),
   );
   if (staleTabs.length === 0) return;
-  await Promise.allSettled(
+  void Promise.allSettled(
     staleTabs.map((codeTab) => deleteCodeTab(codeTab.id)),
-  );
-  clientLogger.warn("Stale Explorer editor sessions were removed", {
-    counts: { sessions: staleTabs.length },
-    event: "surface.explorer.editor.stale-sessions-removed",
-    operation: "recover-editor-sessions",
-    reasonCode: "orphaned-editor-window",
-    status: "completed",
-    subsystem: "explorer",
+  ).then((results) => {
+    const failed = results.filter((result) => result.status === "rejected");
+    clientLogger.warn("Stale Explorer editor session cleanup finished", {
+      counts: { failed: failed.length, sessions: staleTabs.length },
+      event: "surface.explorer.editor.stale-sessions-removed",
+      operation: "recover-editor-sessions",
+      reasonCode: "orphaned-editor-window",
+      status: failed.length === 0 ? "completed" : "degraded",
+      subsystem: "explorer",
+    });
   });
 }
 

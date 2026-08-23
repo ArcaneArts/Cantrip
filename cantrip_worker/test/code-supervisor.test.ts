@@ -37,7 +37,7 @@ afterEach(async () => {
 async function fixture(
   options: Pick<
     CodeSupervisorOptions,
-    "bridge" | "idleSweepIntervalMs" | "idleTimeoutMs"
+    "bridge" | "editorIdleTimeoutMs" | "idleSweepIntervalMs" | "idleTimeoutMs"
   > = {},
 ) {
   const root = await mkdtemp(path.join(tmpdir(), "cantrip-code-supervisor-"));
@@ -203,6 +203,34 @@ describe("Cantrip Code supervisor", () => {
     expect(second.processInstanceId).toBe(first.processInstanceId);
     expect(third.processInstanceId).toBe(first.processInstanceId);
     expect(supervisor.status("shared").status).toBe("running");
+  });
+
+  it("multiplexes more sessions than the legacy advertised limit", async () => {
+    const { repository, supervisor } = await fixture();
+    const sessions = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        supervisor.open(
+          openCommand(`unbounded-${index}`, repository, `tree-${index}`),
+        ),
+      ),
+    );
+
+    expect(
+      new Set(sessions.map((session) => session.processInstanceId)),
+    ).toEqual(new Set([sessions[0]?.processInstanceId]));
+    expect(supervisor.status("unbounded-7").status).toBe("running");
+  });
+
+  it("treats stopping an already-removed session as success", async () => {
+    const { repository, supervisor } = await fixture();
+    await supervisor.open(openCommand("disposable", repository, "primary"));
+    await supervisor.stop("disposable");
+
+    await expect(supervisor.stop("disposable")).resolves.toMatchObject({
+      sessionId: "disposable",
+      status: "stopped",
+      processInstanceId: null,
+    });
   });
 
   it("shares a persistent profile process and always writes the Cantrip theme", async () => {
@@ -416,6 +444,17 @@ describe("Cantrip Code supervisor", () => {
     const command = openCommand("restored", repository, "primary");
     const first = await supervisor.open(command);
     await supervisor.close();
+    const stateFile = path.join(dataDirectory, "code", "state", "runtime.json");
+    const persisted = JSON.parse(await readFile(stateFile, "utf8")) as {
+      sessions: Array<Record<string, unknown>>;
+    };
+    persisted.sessions.push({
+      ...persisted.sessions[0],
+      codeTabId: "tab-orphaned-editor",
+      presentation: "editor",
+      sessionId: "orphaned-editor",
+    });
+    await writeFile(stateFile, `${JSON.stringify(persisted, null, 2)}\n`);
 
     const restored = new CodeSupervisor({
       capabilities,
@@ -428,12 +467,85 @@ describe("Cantrip Code supervisor", () => {
     expect(restored.status("restored")).toMatchObject({
       status: "running",
     });
+    expect(() => restored.status("orphaned-editor")).toThrow("is not open");
     const reopened = await restored.open(command);
     expect(reopened.status).toBe("running");
     expect(reopened.processInstanceId).not.toBe(first.processInstanceId);
     expect(reopened.processInstanceId).toBe(
       restored.status("restored").processInstanceId,
     );
+  });
+
+  it("does not persist temporary editor-only sessions", async () => {
+    const {
+      capabilities,
+      dataDirectory,
+      installation,
+      repository,
+      supervisor,
+    } = await fixture();
+    await supervisor.open({
+      ...openCommand("temporary-editor", repository, "primary"),
+      presentation: "editor",
+    });
+    await supervisor.close();
+
+    const state = await readFile(
+      path.join(dataDirectory, "code", "state", "runtime.json"),
+      "utf8",
+    );
+    expect(state).not.toContain("temporary-editor");
+
+    const restored = new CodeSupervisor({
+      capabilities,
+      dataDirectory,
+      installation,
+      readinessTimeoutMs: 3_000,
+    });
+    supervisors.push(restored);
+    await restored.start();
+    expect(() => restored.status("temporary-editor")).toThrow("is not open");
+  });
+
+  it("makes compatibility sessions ephemeral before bridge acknowledgement", async () => {
+    const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 50 });
+    const { dataDirectory, repository, supervisor } = await fixture({ bridge });
+    await supervisor.open(
+      openCommand("compatibility-editor", repository, "primary"),
+    );
+    const target = supervisor.proxyTarget("compatibility-editor");
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, string> };
+    const socket = await openSocket(workspace.settings["cantrip.bridgeUrl"]!);
+
+    await expect(
+      supervisor.setPresentation("compatibility-editor", "editor"),
+    ).rejects.toThrow("timed out");
+    const state = await readFile(
+      path.join(dataDirectory, "code", "state", "runtime.json"),
+      "utf8",
+    );
+    expect(state).not.toContain("compatibility-editor");
+    socket.close();
+  });
+
+  it("evicts detached editor-only sessions sooner than durable workbenches", async () => {
+    const { repository, supervisor } = await fixture({
+      editorIdleTimeoutMs: 1_000,
+      idleSweepIntervalMs: 60_000,
+      idleTimeoutMs: 60_000,
+    });
+    await supervisor.open(openCommand("durable", repository, "primary"));
+    await supervisor.open({
+      ...openCommand("temporary", repository, "primary"),
+      presentation: "editor",
+    });
+
+    await expect(
+      supervisor.evictIdleSessions(Date.now() + 2_000),
+    ).resolves.toEqual(["temporary"]);
+    expect(supervisor.status("durable").status).toBe("running");
   });
 
   it("evicts unattached idle sessions but preserves active tunnel streams", async () => {
