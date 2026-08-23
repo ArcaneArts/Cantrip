@@ -1,8 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { ApplicationSession } from "@/components/auth/application-session";
-import { SyntheticBuildProgressWindow } from "@/components/settings/synthetic-build-progress-window";
 import {
   clientLogger,
   installClientLogCapture,
@@ -12,9 +10,9 @@ import {
 import {
   desktopWindowThemeOverride,
   isSyntheticBuildProgressWindow,
+  parseDesktopExplorerFileTarget,
   updateDesktopWindowTheme,
 } from "@/lib/desktop-popout";
-import { initializeServerConnections } from "@/lib/server-connections";
 import { readStartupThemePreference } from "@/lib/startup-theme";
 
 import "./index.css";
@@ -37,8 +35,10 @@ async function start(): Promise<void> {
       });
     });
   }
-  await initializeClientLogPersistence();
   if (isSyntheticBuildProgressWindow(window.location.search)) {
+    await initializeClientLogPersistence();
+    const { SyntheticBuildProgressWindow } =
+      await import("@/components/settings/synthetic-build-progress-window");
     createRoot(document.getElementById("root")!).render(
       <StrictMode>
         <SyntheticBuildProgressWindow />
@@ -46,6 +46,19 @@ async function start(): Promise<void> {
     );
     return;
   }
+  const explorerWindowTarget = parseDesktopExplorerFileTarget(
+    window.location.search,
+  );
+  if (explorerWindowTarget?.launchId) {
+    void initializeClientLogPersistence().catch(() => undefined);
+    const { DesktopExplorerFileWindow } =
+      await import("@/components/explorer/desktop-explorer-file-window");
+    createRoot(document.getElementById("root")!).render(
+      <DesktopExplorerFileWindow launchId={explorerWindowTarget.launchId} />,
+    );
+    return;
+  }
+  await initializeClientLogPersistence();
   const startedAt = performance.now();
   const tauriRuntime = "__TAURI_INTERNALS__" in window;
   clientLogger.info("Cantrip client boot started", {
@@ -76,6 +89,8 @@ async function start(): Promise<void> {
       });
   }
   const connectionsStartedAt = performance.now();
+  const { initializeServerConnections } =
+    await import("@/lib/server-connections");
   await initializeServerConnections();
   clientLogger.debug("Cantrip server state hydrated", {
     durationMs: Math.round(performance.now() - connectionsStartedAt),
@@ -83,6 +98,8 @@ async function start(): Promise<void> {
     operation: "hydrate",
     subsystem: "bootstrap",
   });
+  const { ApplicationSession } =
+    await import("@/components/auth/application-session");
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <ApplicationSession />

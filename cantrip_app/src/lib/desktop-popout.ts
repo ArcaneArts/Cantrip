@@ -1,5 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { CodeAppearance, ExplorerSummary } from "@cantrip/protocol";
 import type { BackgroundThrottlingPolicy } from "@tauri-apps/api/window";
+
+import { desktopExplorerWindowLaunchParameter } from "@/lib/desktop-explorer-window-protocol";
 
 export type DesktopPopoutGroupTarget = {
   activeTabKey: string;
@@ -11,6 +14,16 @@ export type DesktopExplorerFileTarget = {
   explorerId: string;
   path: string;
   projectId: string;
+};
+
+export type DesktopExplorerFileRouteTarget = DesktopExplorerFileTarget & {
+  launchId: string | null;
+};
+
+export type DesktopExplorerFileLaunchContext = {
+  appearance: CodeAppearance;
+  explorer: ExplorerSummary;
+  projectTitle?: string;
 };
 
 const groupParameter = "cantrip-popout-group";
@@ -66,24 +79,33 @@ export function desktopPopoutGroupSearch(
 
 export function parseDesktopExplorerFileTarget(
   search: string,
-): DesktopExplorerFileTarget | null {
+): DesktopExplorerFileRouteTarget | null {
   const parameters = new URLSearchParams(search);
   const explorerId = parameters.get("explorer");
   const path = parameters.get(explorerFileParameter);
   const projectId = parameters.get("project");
   return explorerId && path && projectId
-    ? { explorerId, path, projectId }
+    ? {
+        explorerId,
+        launchId: parameters.get(desktopExplorerWindowLaunchParameter),
+        path,
+        projectId,
+      }
     : null;
 }
 
 export function desktopExplorerFileSearch(
   target: DesktopExplorerFileTarget,
+  launchId?: string,
 ): string {
   const parameters = new URLSearchParams({
     [explorerFileParameter]: target.path,
     explorer: target.explorerId,
     project: target.projectId,
   });
+  if (launchId) {
+    parameters.set(desktopExplorerWindowLaunchParameter, launchId);
+  }
   return `?${parameters.toString()}`;
 }
 
@@ -281,12 +303,38 @@ export async function openDesktopPopoutGroup(
 export async function openDesktopExplorerFile(
   target: DesktopExplorerFileTarget,
   title: string,
+  context: DesktopExplorerFileLaunchContext,
 ): Promise<"created" | "focused"> {
-  return openDesktopWindow(
-    desktopExplorerFileWindowLabel(target.explorerId, target.path),
-    desktopExplorerFileSearch(target),
-    title,
-  );
+  const label = desktopExplorerFileWindowLabel(target.explorerId, target.path);
+  if (await focusWindow(label)) return "focused";
+  const { createDesktopExplorerWindowBroker } =
+    await import("@/lib/desktop-explorer-window-broker");
+  const broker = createDesktopExplorerWindowBroker({
+    ...context,
+    path: target.path,
+  });
+  try {
+    const result = await openDesktopWindow(
+      label,
+      desktopExplorerFileSearch(target, broker.launchId),
+      title,
+    );
+    if (result === "focused") {
+      await broker.dispose();
+      return result;
+    }
+    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+    const popout = await WebviewWindow.getByLabel(label);
+    if (!popout) {
+      await broker.dispose();
+      throw new Error("The Explorer editor window closed while opening.");
+    }
+    await popout.once("tauri://destroyed", () => void broker.dispose());
+    return result;
+  } catch (error) {
+    await broker.dispose();
+    throw error;
+  }
 }
 
 export async function openSyntheticBuildProgressWindow(): Promise<

@@ -3888,9 +3888,10 @@ export function App() {
           projectId: explorer.projectId,
         },
         entry.name,
+        { appearance: codeAppearance, explorer },
       );
     },
-    [],
+    [codeAppearance],
   );
 
   const resetMobileBottomTabs = () => {
@@ -4641,6 +4642,7 @@ export function App() {
             projectId: explorer.projectId,
           },
           path.split("/").at(-1) ?? path,
+          { appearance: codeAppearance, explorer },
         );
         return;
       }
