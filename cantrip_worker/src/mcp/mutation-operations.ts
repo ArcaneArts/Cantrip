@@ -6,6 +6,8 @@ import {
   cantripMcpBrowserNavigateResultSchema,
   cantripMcpExplorerWriteInputSchema,
   cantripMcpExplorerWriteResultSchema,
+  cantripMcpRunConfigActionAddInputSchema,
+  cantripMcpRunConfigActionAddResultSchema,
   cantripMcpRunStartInputSchema,
   cantripMcpRunStartResultSchema,
   cantripMcpRunOpenInputSchema,
@@ -306,6 +308,31 @@ async function executeRunMutation(options: CantripMcpOperationOptions) {
   });
 }
 
+async function executeRunConfigurationMutation(
+  options: CantripMcpOperationOptions,
+) {
+  const arguments_ = cantripMcpRunConfigActionAddInputSchema.parse(
+    options.request.arguments,
+  );
+  const result = await options.execute(
+    options.binding,
+    { operation: "run-config.action-add", arguments: arguments_ },
+    options.requestId,
+  );
+  assertBoundRunResult(options, result);
+  const target = exactWorktreeTarget(
+    options.binding.projectId,
+    options.binding.worktreeId,
+  );
+  return cantripMcpRunConfigActionAddResultSchema.parse({
+    ...result,
+    target,
+    worktreeId: target.worktreeId,
+    continuationScheduled: false,
+    mutated: true,
+  });
+}
+
 async function executeExplorerWrite(options: CantripMcpOperationOptions) {
   const arguments_ = cantripMcpExplorerWriteInputSchema.parse(
     options.request.arguments,
@@ -526,6 +553,8 @@ export async function executeCantripMcpMutationOperation(
     throw new Error("Worker encryption belongs to a different MCP owner.");
   }
   switch (options.request.operation) {
+    case "run-config.action-add":
+      return executeRunConfigurationMutation(options);
     case "run.start":
     case "run.open":
     case "run.setup-retry":

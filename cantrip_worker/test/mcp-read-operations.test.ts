@@ -1,6 +1,8 @@
 import { encryptPolicyContent, randomBytes } from "@cantrip/crypto";
 import {
   CANTRIP_MCP_READ_OPERATIONS,
+  RUN_CONFIGURATION_AUTHORING_EXAMPLE,
+  runConfigurationAuthoringDocumentSchema,
   type CantripMcpBinding,
 } from "@cantrip/protocol";
 import {
@@ -113,6 +115,35 @@ function setupFixture(state: "running" | "succeeded" = "succeeded") {
 }
 
 describe("Cantrip MCP read operation normalization", () => {
+  it("returns the exact Run configuration schema and example", async () => {
+    const service = encryptionService(randomBytes(32));
+    const execute = async () => ({
+      ...commonResult,
+      summary: "Returned Run configuration authoring help.",
+      data: {
+        schema: runConfigurationAuthoringDocumentSchema.toJSONSchema(),
+        example: RUN_CONFIGURATION_AUTHORING_EXAMPLE,
+        exampleToml: 'version = 1\nname = "Project environment"\n',
+      },
+    });
+    const result = await executeCantripMcpReadOperation({
+      binding,
+      service,
+      requestId: "run-config-schema-one",
+      request: { operation: "run-config.schema", arguments: {} },
+      execute,
+    });
+    expect(result).toMatchObject({
+      worktreeId: binding.worktreeId,
+      data: {
+        schema: { $schema: expect.any(String) },
+        example: {
+          actions: [{ name: "Run app", command: "pnpm run dev" }],
+        },
+      },
+    });
+  });
+
   it("lists and reads exact revision-checked Run configuration actions", async () => {
     const service = encryptionService(randomBytes(32));
     const configuration = runConfiguration();

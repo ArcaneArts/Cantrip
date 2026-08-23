@@ -202,25 +202,29 @@ never runs during discovery, validation, `run start`, or toolbar action start.
 The CLI is the canonical human and scripting interface. All commands support
 stable `--json` output.
 
-| Command                                               | Behavior                                                         |
-| ----------------------------------------------------- | ---------------------------------------------------------------- |
-| `cantrip run list`                                    | List platform-compatible action metadata and revisions.          |
-| `cantrip run show <action>`                           | Read one unambiguous name or exact opaque action ID.             |
-| `cantrip run validate`                                | Report bounded schema, path, and ambiguity diagnostics.          |
-| `cantrip run config path`                             | Show the canonical path and Git state.                           |
-| `cantrip run config init [--name <name>]`             | Create a minimal v1 canonical file only when absent.             |
-| `cantrip run config init --overwrite [--name <name>]` | Explicitly replace the current revision with a minimal v1 file.  |
-| `cantrip run start <action> [--no-focus]`             | Start an exact revision-checked Run.                             |
-| `cantrip run status [run-id]`                         | Refresh one Run or the latest Run in the current worktree.       |
-| `cantrip run logs <run-id> [--tail <chars>]`          | Read 1–100,000 characters from volatile worker scrollback.       |
-| `cantrip run stop <run-id>`                           | Stop the complete worker-owned process group.                    |
-| `cantrip run open <run-id>`                           | Retry encrypted terminal materialization.                        |
-| `cantrip run setup status`                            | Show durable setup state and available bounded worker output.    |
-| `cantrip run setup retry`                             | Explicitly queue another setup attempt for a secondary worktree. |
+| Command                                                | Behavior                                                         |
+| ------------------------------------------------------ | ---------------------------------------------------------------- |
+| `cantrip run list`                                     | List platform-compatible action metadata and revisions.          |
+| `cantrip run show <action>`                            | Read one unambiguous name or exact opaque action ID.             |
+| `cantrip run validate`                                 | Report bounded schema, path, and ambiguity diagnostics.          |
+| `cantrip run config path`                              | Show the canonical path and Git state.                           |
+| `cantrip run config schema --json`                     | Return the exact document schema and complete examples.          |
+| `cantrip run config example`                           | Print a complete canonical TOML example.                         |
+| `cantrip run config init [--name <name>]`              | Create a minimal v1 canonical file only when absent.             |
+| `cantrip run config init --overwrite [--name <name>]`  | Explicitly replace the current revision with a minimal v1 file.  |
+| `cantrip run config action add <name> --command <cmd>` | Append a complete action with a revision-checked write.          |
+| `cantrip run start <action> [--no-focus]`              | Start an exact revision-checked Run.                             |
+| `cantrip run status [run-id]`                          | Refresh one Run or the latest Run in the current worktree.       |
+| `cantrip run logs <run-id> [--tail <chars>]`           | Read 1–100,000 characters from volatile worker scrollback.       |
+| `cantrip run stop <run-id>`                            | Stop the complete worker-owned process group.                    |
+| `cantrip run open <run-id>`                            | Retry encrypted terminal materialization.                        |
+| `cantrip run setup status`                             | Show durable setup state and available bounded worker output.    |
+| `cantrip run setup retry`                              | Explicitly queue another setup attempt for a secondary worktree. |
 
-Agents should create or edit TOML with ordinary repository tools, run
-`cantrip run validate`, prefer managed MCP Run tools when the current binding
-provides them, and use this CLI as the fallback.
+Agents should prefer the action-add command for simple authoring, use the
+schema/example commands before complete TOML editing, run `cantrip run
+validate`, prefer managed MCP Run tools when the current binding provides
+them, and use this CLI as the fallback.
 
 ## Managed MCP reference
 
@@ -228,17 +232,19 @@ Read-only bindings receive only read tools. Mutation tools require the current
 binding, lane, project, worktree, target, worker, permission profile, and
 capability checks at both broker and server boundaries.
 
-| Tool               | Kind                            | Behavior                                                     |
-| ------------------ | ------------------------------- | ------------------------------------------------------------ |
-| `run_config_list`  | read                            | List compatible action metadata, IDs, and revisions.         |
-| `run_config_read`  | read                            | Revalidate one exact ID and revision.                        |
-| `run_status`       | read                            | Refresh one Run or the latest bound-worktree Run.            |
-| `run_read`         | read                            | Read a bounded volatile output tail.                         |
-| `run_setup_status` | read                            | Read durable setup state and bounded available output.       |
-| `run_start`        | open-world mutation             | Start an exact ID and configuration revision.                |
-| `run_stop`         | destructive/open-world mutation | Stop the complete process group.                             |
-| `run_open`         | mutation                        | Retry exact Run-terminal materialization.                    |
-| `run_setup_retry`  | mutation                        | Queue explicit setup retry for the bound secondary worktree. |
+| Tool                    | Kind                            | Behavior                                                     |
+| ----------------------- | ------------------------------- | ------------------------------------------------------------ |
+| `run_config_list`       | read                            | List compatible action metadata, IDs, and revisions.         |
+| `run_config_read`       | read                            | Revalidate one exact ID and revision.                        |
+| `run_config_schema`     | read                            | Return the exact document schema and complete examples.      |
+| `run_config_action_add` | mutation                        | Append a complete revision-checked action.                   |
+| `run_status`            | read                            | Refresh one Run or the latest bound-worktree Run.            |
+| `run_read`              | read                            | Read a bounded volatile output tail.                         |
+| `run_setup_status`      | read                            | Read durable setup state and bounded available output.       |
+| `run_start`             | open-world mutation             | Start an exact ID and configuration revision.                |
+| `run_stop`              | destructive/open-world mutation | Stop the complete process group.                             |
+| `run_open`              | mutation                        | Retry exact Run-terminal materialization.                    |
+| `run_setup_retry`       | mutation                        | Queue explicit setup retry for the bound secondary worktree. |
 
 MCP callers never select by display name. They use the action ID and revision
 returned by `run_config_list` or `run_config_read`.

@@ -69,7 +69,11 @@ cantrip run list
 cantrip run show "Run Spectral Lab"
 cantrip run validate
 cantrip run config path
+cantrip run config schema --json
+cantrip run config example
 cantrip run config init --name "Spectral Lab"
+cantrip run config action add "Run app" --command "pnpm run dev" --icon run
+cantrip run config action add "Run Windows app" --command "pnpm run dev" --platform win32
 cantrip run start "Run Spectral Lab" --no-focus
 cantrip run status
 cantrip run logs 11111111-1111-4111-8111-111111111111 --tail 20000
@@ -119,6 +123,15 @@ and the worker still rejects a stale revision. The command never edits
 Environment provides the same revision-checked authoring path for setup and
 action platform variants.
 
+`cantrip run config schema --json` returns the exact authoring JSON Schema,
+complete document example, and equivalent TOML. `cantrip run config example`
+prints the TOML example directly. For the common case, `cantrip run config
+action add <name> --command <shell-command>` creates the canonical file when
+absent or appends one complete revision-checked action. `--icon` defaults to
+`run`; omit `--platform` for every host or select `win32`, `darwin`, or
+`linux`. `--environment-name` sets the displayed environment name. All
+three commands honor the global `--context auto|cwd|lane` selection.
+
 `cantrip run start <action>` resolves an unambiguous action name or opaque ID,
 then sends its exact ID and configuration revision to the owning worker. The
 worker rereads the source-root configuration, rechecks its platform and
@@ -146,9 +159,10 @@ worktree, managed project folder, or worker-owned repository copy.
 Run instances persist only routing and lifecycle metadata: project, worktree,
 worker, action ID, configuration revision, state, timestamps, exit result, and
 an optional terminal association. Commands, environment values, and terminal
-output are never stored in the server database. Ordinary repository tools
-remain the way to create or edit TOML; setup is separate and does not execute
-when a Run starts.
+output are never stored in the server database. The action-add command is the
+preferred simple authoring path; ordinary repository tools remain available
+for complete TOML editing. Setup is separate and does not execute when a Run
+starts.
 
 `cantrip run setup status` reports the durable setup job plus bounded output
 when its worker is available. `cantrip run setup retry` is an explicit
@@ -198,13 +212,14 @@ commands can run from a normal project terminal.
 ## Codex integration
 
 For applicable new and resumed chat threads, the worker injects a required
-native MCP server named `cantrip`. Its 29 read, worker-mutation, and ephemeral
+native MCP server named `cantrip`. Its 35 read, worker-mutation, and ephemeral
 client-control tools appear in Codex's runtime inventory as **Managed by
 Cantrip**. The developer instruction directs Codex to prefer MCP, start with
-`context_get`, read required Policies, use normal repository tools to edit
-`environment.toml`, validate with `cantrip run validate`, and use exact action
-IDs plus configuration revisions with the managed Run tools. Read-only profiles
-receive only the read catalog. The CLI and `cantrip -h` remain the fallback.
+`context_get`, read required Policies, prefer `run_config_action_add` for
+simple authoring, consult `run_config_schema` before direct TOML editing, and
+use exact action IDs plus configuration revisions with managed Run tools.
+Read-only profiles receive only the read catalog. The CLI and `cantrip -h`
+remain the fallback.
 
 Both thread paths still send `dynamicTools: []`. The pinned runtime's resume
 compatibility patch distinguishes that explicit empty override from an omitted

@@ -58,7 +58,10 @@ import {
 } from "./repository-operation.js";
 import {
   runConfigurationActionSchema,
+  runConfigurationActionAddInputSchema,
   runConfigurationAuthoringDocumentSchema,
+  runConfigurationAuthoringHelpSchema,
+  runConfigurationAuthoringSnapshotSchema,
   runConfigurationDefinitionSchema,
   runConfigurationInspectionSchema,
   runConfigurationSelectionSchema,
@@ -7268,6 +7271,8 @@ export const cantripAgentOperationNameSchema = z.enum([
   "target.inspect",
   "run-config.list",
   "run-config.read",
+  "run-config.schema",
+  "run-config.action-add",
   "run-config.authoring",
   "run-config.write",
   "run.start",
@@ -7307,6 +7312,7 @@ export const CANTRIP_MCP_READ_OPERATIONS = [
   "target.inspect",
   "run-config.list",
   "run-config.read",
+  "run-config.schema",
   "run.setup-status",
   "run.status",
   "run.read",
@@ -7327,6 +7333,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
   "target_inspect",
   "run_config_list",
   "run_config_read",
+  "run_config_schema",
   "run_setup_status",
   "run_status",
   "run_read",
@@ -7339,6 +7346,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 ] as const;
 
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
+  "run-config.action-add",
   "run.start",
   "run.open",
   "run.setup-retry",
@@ -7366,6 +7374,7 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 ] as const;
 
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
+  "run_config_action_add",
   "run_start",
   "run_open",
   "run_setup_retry",
@@ -7557,12 +7566,15 @@ export const cantripMcpTargetInspectInputSchema = z
   .object({ target: executionTargetSchema })
   .strict();
 export const cantripMcpRunConfigListInputSchema = z.object({}).strict();
+export const cantripMcpRunConfigSchemaInputSchema = z.object({}).strict();
 export const cantripMcpRunConfigReadInputSchema = z
   .object({
     actionId: runConfigurationActionSchema.shape.id,
     configRevision: runConfigurationDefinitionSchema.shape.revision,
   })
   .strict();
+export const cantripMcpRunConfigActionAddInputSchema =
+  runConfigurationActionAddInputSchema;
 export const cantripMcpRunSetupStatusInputSchema = z.object({}).strict();
 export const cantripMcpRunStatusInputSchema = z
   .object({ runId: runInstanceSchema.shape.id.optional() })
@@ -7882,6 +7894,12 @@ export const cantripMcpRunConfigReadResultSchema =
     worktreeId: z.string().min(1).max(200),
     data: runConfigurationSelectionSchema,
   });
+export const cantripMcpRunConfigSchemaResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationAuthoringHelpSchema,
+  });
 export const cantripMcpRunSetupStatusResultSchema =
   cantripMcpReadResultBaseSchema.extend({
     target: z.null().default(null),
@@ -7990,6 +8008,12 @@ export const cantripMcpWorktreeCreateResultSchema =
     target: cantripMcpWorktreeTargetSchema,
     worktreeId: z.string().min(1).max(200),
     data: z.object({ worktree: cantripMcpWorktreeSummarySchema }).strict(),
+  });
+export const cantripMcpRunConfigActionAddResultSchema =
+  cantripMcpMutationResultBaseSchema.extend({
+    target: cantripMcpWorktreeTargetSchema,
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationAuthoringSnapshotSchema,
   });
 export const cantripMcpWorktreeSwitchResultSchema =
   cantripMcpContinuationResultBaseSchema.extend({
@@ -8136,7 +8160,10 @@ export const cantripCliCommandNameSchema = z.enum([
   "run.show",
   "run.validate",
   "run.config-path",
+  "run.config-schema",
+  "run.config-example",
   "run.config-init",
+  "run.config-action-add",
   "run.start",
   "run.open",
   "run.setup-status",

@@ -9,6 +9,8 @@ import {
 } from "./index.js";
 import {
   RUN_CONFIGURATION_CANONICAL_PATH,
+  RUN_CONFIGURATION_AUTHORING_EXAMPLE,
+  runConfigurationActionAddInputSchema,
   runConfigurationAuthoringDocumentSchema,
   runConfigurationInspectionSchema,
   runInstanceSchema,
@@ -122,6 +124,12 @@ describe("runConfigurationInspectionSchema", () => {
     expect(cantripAgentOperationNameSchema.parse("run-config.read")).toBe(
       "run-config.read",
     );
+    expect(cantripAgentOperationNameSchema.parse("run-config.schema")).toBe(
+      "run-config.schema",
+    );
+    expect(cantripAgentOperationNameSchema.parse("run-config.action-add")).toBe(
+      "run-config.action-add",
+    );
     expect(cantripAgentOperationNameSchema.parse("run-config.authoring")).toBe(
       "run-config.authoring",
     );
@@ -133,6 +141,15 @@ describe("runConfigurationInspectionSchema", () => {
     );
     expect(cantripCliCommandNameSchema.parse("run.config-init")).toBe(
       "run.config-init",
+    );
+    expect(cantripCliCommandNameSchema.parse("run.config-schema")).toBe(
+      "run.config-schema",
+    );
+    expect(cantripCliCommandNameSchema.parse("run.config-example")).toBe(
+      "run.config-example",
+    );
+    expect(cantripCliCommandNameSchema.parse("run.config-action-add")).toBe(
+      "run.config-action-add",
     );
     expect(
       workerCommandSchema.parse({
@@ -152,9 +169,30 @@ describe("runConfigurationInspectionSchema", () => {
     ).toBe(false);
     expect(CANTRIP_MCP_OPERATIONS).not.toContain("run-config.authoring");
     expect(CANTRIP_MCP_OPERATIONS).not.toContain("run-config.write");
+    expect(CANTRIP_MCP_OPERATIONS).toContain("run-config.schema");
+    expect(CANTRIP_MCP_OPERATIONS).toContain("run-config.action-add");
   });
 
   it("bounds the complete cross-platform authoring document", () => {
+    expect(
+      runConfigurationAuthoringDocumentSchema.parse(
+        RUN_CONFIGURATION_AUTHORING_EXAMPLE,
+      ),
+    ).toMatchObject({
+      version: 1,
+      actions: [{ name: "Run app", command: "pnpm run dev" }],
+    });
+    expect(
+      runConfigurationActionAddInputSchema.parse({
+        name: "Run app",
+        command: "pnpm run dev",
+      }),
+    ).toEqual({
+      name: "Run app",
+      command: "pnpm run dev",
+      icon: "run",
+      platform: null,
+    });
     expect(
       runConfigurationAuthoringDocumentSchema.parse({
         version: 1,

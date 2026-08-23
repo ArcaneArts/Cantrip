@@ -35,6 +35,10 @@ import {
   cantripMcpRunConfigListResultSchema,
   cantripMcpRunConfigReadInputSchema,
   cantripMcpRunConfigReadResultSchema,
+  cantripMcpRunConfigSchemaInputSchema,
+  cantripMcpRunConfigSchemaResultSchema,
+  cantripMcpRunConfigActionAddInputSchema,
+  cantripMcpRunConfigActionAddResultSchema,
   cantripMcpRunReadInputSchema,
   cantripMcpRunReadResultSchema,
   cantripMcpRunOpenInputSchema,
@@ -78,7 +82,7 @@ import {
 import { cantripMcpToolHelp } from "./tool-catalog.js";
 
 export const CANTRIP_MCP_INSTRUCTIONS =
-  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Use normal shell, file, and Git tools to create or edit .codex/environments/environment.toml, then use the Cantrip CLI to validate it. Call context_get first. Call tool_help with a tool name before guessing arguments; it returns exact schema generated from the live authoritative validator. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. Setup runs only while a new secondary worktree is prepared or through explicit run_setup_retry; inspect run_setup_status instead of running setup before an action. A headless Run remains successful when no compatible client can create its encrypted terminal; use run_open after a client reconnects. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
+  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Call context_get first. Call tool_help with a tool name before guessing arguments; it returns exact schema generated from the live authoritative validator. Prefer run_config_action_add for simple revision-checked Run action authoring; run_config_schema returns the complete document schema and example when direct TOML editing is necessary. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. Setup runs only while a new secondary worktree is prepared or through explicit run_setup_retry; inspect run_setup_status instead of running setup before an action. A headless Run remains successful when no compatible client can create its encrypted terminal; use run_open after a client reconnects. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
 
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
@@ -331,6 +335,28 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
+    "run_config_schema",
+    {
+      title: "Read the Run configuration authoring schema",
+      description:
+        "Return the exact canonical environment.toml document schema plus complete JSON and TOML examples.",
+      inputSchema: cantripMcpRunConfigSchemaInputSchema,
+      outputSchema: cantripMcpRunConfigSchemaResultSchema,
+      annotations: readAnnotations,
+    },
+    async (_arguments) => {
+      try {
+        return operationResult(
+          cantripMcpRunConfigSchemaResultSchema.parse(
+            await gateway({ operation: "run-config.schema", arguments: {} }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
     "run_setup_status",
     {
       title: "Read worktree setup status",
@@ -537,6 +563,31 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
           cantripMcpBrowserServicesResultSchema.parse(
             await gateway({
               operation: "browser.services",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_config_action_add",
+    {
+      title: "Add a Cantrip Run action",
+      description:
+        'Append a complete action to the canonical environment.toml with revision checking. Arguments: {"name":"Run app","command":"pnpm run dev","icon":"run","platform":null,"environmentName":"Project environment"}. Omit platform for all hosts.',
+      inputSchema: cantripMcpRunConfigActionAddInputSchema,
+      outputSchema: cantripMcpRunConfigActionAddResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunConfigActionAddResultSchema.parse(
+            await gateway({
+              operation: "run-config.action-add",
               arguments: arguments_,
             }),
           ),

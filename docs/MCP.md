@@ -79,8 +79,10 @@ the raw command or volatile PTY output to the audit log.
    or reconstruct opaque target identifiers.
 5. Use the target-specific tool. Normal filesystem and Git work stays in normal
    repository tools.
-6. Create or edit `.codex/environments/environment.toml` with normal repository
-   tools, and validate it with `cantrip run validate`. Use `run_config_list` or
+6. Prefer `run_config_action_add` to append one complete, revision-checked
+   action. Use `run_config_schema` for the exact document schema and complete
+   examples before direct `.codex/environments/environment.toml` editing, then
+   validate it with `cantrip run validate`. Use `run_config_list` or
    `run_config_read` to obtain the exact action ID and configuration revision,
    then prefer `run_start`, `run_status`, `run_read`, `run_open`, and
    `run_stop` over copied shell commands. MCP never invokes the CLI internally.
@@ -101,7 +103,7 @@ only. CodeGraph remains separately labeled **Read only**.
 
 ## Tool catalog
 
-The catalog contains 33 tools. Read-only and mutation annotations are attached
+The catalog contains 35 tools. Read-only and mutation annotations are attached
 per tool. Cantrip narrows Codex's enabled tool list to the current permission
 profile, so read-only bindings receive the Run read tools but not `run_start`,
 `run_open`, or `run_stop`; the broker and server independently enforce the same
@@ -117,6 +119,7 @@ boundary.
 | `target_inspect`          | Read                            | Revalidate one listed target and report current placement and availability.                     |
 | `run_config_list`         | Read                            | List platform-compatible Codex actions with their exact IDs and configuration revisions.        |
 | `run_config_read`         | Read                            | Read one exact action after revalidating both its ID and configuration revision.                |
+| `run_config_schema`       | Read                            | Return the exact authoring schema plus complete JSON and TOML examples.                         |
 | `run_status`              | Read                            | Refresh one Run, or the latest Run in the bound worktree, from its owning worker.               |
 | `run_read`                | Read                            | Read a bounded tail of volatile, worker-owned Run output.                                       |
 | `run_setup_status`        | Read                            | Read durable setup state and bounded output when its worker is available.                       |
@@ -126,6 +129,7 @@ boundary.
 | `explorer_read`           | Read                            | Read bounded protected text and its version from an Explorer target.                            |
 | `terminal_read`           | Read                            | Read a bounded protected Terminal snapshot.                                                     |
 | `browser_services`        | Read/open-world                 | Discover bounded local HTTP services visible to a Browser target.                               |
+| `run_config_action_add`   | Mutation                        | Append one complete revision-checked action in the MCP-bound worktree.                          |
 | `run_start`               | Open-world mutation             | Start an exact revision-checked action in the bound worktree through its target worker.         |
 | `run_open`                | Mutation                        | Retry idempotent encrypted terminal materialization for an exact Run through a live client.     |
 | `run_stop`                | Destructive/open-world mutation | Stop an exact Run and its complete worker-owned process group.                                  |

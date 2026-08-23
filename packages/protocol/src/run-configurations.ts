@@ -113,6 +113,16 @@ export const runConfigurationAuthoringActionSchema = z
   })
   .strict();
 
+export const runConfigurationActionAddInputSchema = z
+  .object({
+    name: runConfigurationAuthoringActionSchema.shape.name,
+    command: runConfigurationAuthoringActionSchema.shape.command,
+    icon: runConfigurationAuthoringActionSchema.shape.icon.default("run"),
+    platform: runConfigurationPlatformSchema.nullable().default(null),
+    environmentName: z.string().trim().min(1).max(200).optional(),
+  })
+  .strict();
+
 export const runConfigurationAuthoringDocumentSchema = z
   .object({
     version: z.literal(1),
@@ -143,6 +153,38 @@ export const runConfigurationAuthoringDocumentSchema = z
         "Run configuration authoring data cannot exceed 500,000 characters.",
     });
   });
+
+export const RUN_CONFIGURATION_AUTHORING_EXAMPLE =
+  runConfigurationAuthoringDocumentSchema.parse({
+    version: 1,
+    name: "Project environment",
+    setup: { default: null, win32: null, darwin: null, linux: null },
+    actions: [
+      {
+        name: "Run app",
+        icon: "run",
+        command: "pnpm run dev",
+        platform: null,
+      },
+    ],
+  });
+
+export const RUN_CONFIGURATION_AUTHORING_EXAMPLE_TOML = `version = 1
+name = "Project environment"
+
+[[actions]]
+name = "Run app"
+icon = "run"
+command = "pnpm run dev"
+`;
+
+export const runConfigurationAuthoringHelpSchema = z
+  .object({
+    schema: z.record(z.string(), z.unknown()),
+    example: runConfigurationAuthoringDocumentSchema,
+    exampleToml: z.string().min(1).max(100_000),
+  })
+  .strict();
 
 export const runConfigurationAuthoringSnapshotSchema = z
   .object({
@@ -431,6 +473,9 @@ export type RunConfigurationAuthoringSetup = z.infer<
 >;
 export type RunConfigurationAuthoringAction = z.infer<
   typeof runConfigurationAuthoringActionSchema
+>;
+export type RunConfigurationActionAddInput = z.infer<
+  typeof runConfigurationActionAddInputSchema
 >;
 export type RunConfigurationAuthoringDocument = z.infer<
   typeof runConfigurationAuthoringDocumentSchema

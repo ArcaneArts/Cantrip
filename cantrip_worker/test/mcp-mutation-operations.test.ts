@@ -92,6 +92,39 @@ function setupFixture() {
   };
 }
 
+function runConfigurationSnapshot() {
+  return {
+    relativePath: ".codex/environments/environment.toml" as const,
+    sourceControlState: "untracked" as const,
+    revision: configurationRevision,
+    document: {
+      version: 1 as const,
+      name: "Project environment",
+      setup: { default: null, win32: null, darwin: null, linux: null },
+      actions: [
+        {
+          name: "Run app",
+          command: "pnpm run dev",
+          icon: "run",
+          platform: null,
+        },
+      ],
+    },
+    editingError: null,
+    inspection: {
+      platform: "linux" as const,
+      canonical: {
+        relativePath: ".codex/environments/environment.toml" as const,
+        sourceControlState: "untracked" as const,
+      },
+      configured: true,
+      valid: true,
+      configurations: [],
+      diagnostics: [],
+    },
+  };
+}
+
 function worktree(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
@@ -216,6 +249,65 @@ function removalResult(removedPath: string) {
 }
 
 describe("Cantrip MCP mutation operation normalization", () => {
+  it("adds a complete Run action in the MCP-bound worktree", async () => {
+    const service = encryptionService();
+    const calls: unknown[] = [];
+    const result = await executeCantripMcpMutationOperation({
+      binding,
+      service,
+      requestId: "mcp-run-config-action-one",
+      request: {
+        operation: "run-config.action-add",
+        arguments: {
+          name: "Run app",
+          command: "pnpm run dev",
+          icon: "run",
+          platform: null,
+          environmentName: "Project environment",
+        },
+      },
+      execute: async (_binding, request, requestId) => {
+        calls.push({ request, requestId });
+        return {
+          ...commonMutation,
+          summary: "Wrote .codex/environments/environment.toml.",
+          target: null,
+          worktreeId: binding.worktreeId,
+          data: runConfigurationSnapshot(),
+        };
+      },
+    });
+    expect(result).toMatchObject({
+      target: {
+        kind: "worktree",
+        projectId: binding.projectId,
+        worktreeId: binding.worktreeId,
+      },
+      worktreeId: binding.worktreeId,
+      mutated: true,
+      data: {
+        document: {
+          actions: [{ name: "Run app", command: "pnpm run dev" }],
+        },
+      },
+    });
+    expect(calls).toEqual([
+      {
+        requestId: "mcp-run-config-action-one",
+        request: {
+          operation: "run-config.action-add",
+          arguments: {
+            name: "Run app",
+            command: "pnpm run dev",
+            icon: "run",
+            platform: null,
+            environmentName: "Project environment",
+          },
+        },
+      },
+    ]);
+  });
+
   it("starts and stops exact Runs through the shared server operation core", async () => {
     const service = encryptionService();
     const calls: unknown[] = [];

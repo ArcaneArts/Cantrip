@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   cantripMcpRunStartInputSchema,
+  cantripMcpRunConfigActionAddInputSchema,
   cantripMcpToolHelpResultSchema,
   cantripMcpWorktreeCreateInputSchema,
 } from "@cantrip/protocol";
@@ -31,5 +32,15 @@ describe("Cantrip MCP tool help", () => {
     expect(
       cantripMcpRunStartInputSchema.safeParse(run.data.examples[0]).success,
     ).toBe(true);
+
+    const action = cantripMcpToolHelpResultSchema.parse(
+      cantripMcpToolHelp("run_config_action_add"),
+    );
+    expect(action.data.examples).toHaveLength(1);
+    expect(
+      cantripMcpRunConfigActionAddInputSchema.safeParse(action.data.examples[0])
+        .success,
+    ).toBe(true);
+    expect(action.data.notes.join(" ")).toContain("revision-checked");
   });
 });

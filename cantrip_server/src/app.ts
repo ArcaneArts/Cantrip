@@ -365,7 +365,11 @@ import {
   settingsBundleWireSchema,
   scriptCommandListSchema,
   RUN_CONFIGURATION_CANONICAL_PATH,
+  RUN_CONFIGURATION_AUTHORING_EXAMPLE,
+  RUN_CONFIGURATION_AUTHORING_EXAMPLE_TOML,
+  runConfigurationActionAddInputSchema,
   runConfigurationAuthoringDocumentSchema,
+  runConfigurationAuthoringHelpSchema,
   runConfigurationAuthoringSnapshotSchema,
   runConfigurationInspectionSchema,
   runConfigurationSelectionSchema,
@@ -5393,6 +5397,85 @@ export async function buildApp({
           data: runConfigurationSelectionSchema.parse(selected),
         });
       }
+      case "run-config.schema":
+        return cantripCliCommandResultSchema.parse({
+          summary:
+            "Returned the exact Run configuration authoring schema and a complete example.",
+          worktreeId: context.worktreeId,
+          data: runConfigurationAuthoringHelpSchema.parse({
+            schema: runConfigurationAuthoringDocumentSchema.toJSONSchema(),
+            example: RUN_CONFIGURATION_AUTHORING_EXAMPLE,
+            exampleToml: RUN_CONFIGURATION_AUTHORING_EXAMPLE_TOML,
+          }),
+        });
+      case "run-config.action-add": {
+        requireRunMutation();
+        const input = runConfigurationActionAddInputSchema.safeParse(
+          call.arguments,
+        );
+        if (!input.success) {
+          throw new CliCommandRequestError(
+            "invalid",
+            400,
+            "A Run action needs a name and command; icon defaults to run and platform must be win32, darwin, linux, or omitted.",
+          );
+        }
+        const current = runConfigurationAuthoringSnapshotSchema.parse(
+          (
+            await agentOperationExecutor.execute(context, {
+              operation: "run-config.authoring",
+              arguments: {},
+            })
+          ).data,
+        );
+        if (!current.document && current.editingError) {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            current.editingError,
+          );
+        }
+        if (
+          current.document?.actions.some(
+            (action) =>
+              action.name === input.data.name &&
+              action.platform === input.data.platform,
+          )
+        ) {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            `A Run action named ${input.data.name} already exists for ${input.data.platform ?? "all platforms"}.`,
+          );
+        }
+        const document = runConfigurationAuthoringDocumentSchema.parse({
+          ...(current.document ?? {
+            version: 1,
+            name: input.data.environmentName ?? "Project environment",
+            setup: { default: null, win32: null, darwin: null, linux: null },
+            actions: [],
+          }),
+          ...(current.document && input.data.environmentName
+            ? { name: input.data.environmentName }
+            : {}),
+          actions: [
+            ...(current.document?.actions ?? []),
+            {
+              name: input.data.name,
+              command: input.data.command,
+              icon: input.data.icon,
+              platform: input.data.platform,
+            },
+          ],
+        });
+        return agentOperationExecutor.execute(context, {
+          operation: "run-config.write",
+          arguments: {
+            expectedRevision: current.revision,
+            document,
+          },
+        });
+      }
       case "run-config.authoring": {
         const snapshot = await runConfigurationAuthoring();
         return cantripCliCommandResultSchema.parse({
@@ -6664,6 +6747,7 @@ export async function buildApp({
     "run.open",
     "run.setup-retry",
     "run.config-init",
+    "run.config-action-add",
     "run.stop",
     "explorer.write",
     "terminal.send",
@@ -7280,6 +7364,23 @@ export async function buildApp({
           },
         });
       }
+      case "run.config-schema":
+        return agentOperationExecutor.execute(context, {
+          operation: "run-config.schema",
+          arguments: {},
+        });
+      case "run.config-example": {
+        const result = await agentOperationExecutor.execute(context, {
+          operation: "run-config.schema",
+          arguments: {},
+        });
+        const help = runConfigurationAuthoringHelpSchema.parse(result.data);
+        return cantripCliCommandResultSchema.parse({
+          ...result,
+          summary: "Returned a complete Run configuration TOML example.",
+          data: { example: help.example, exampleToml: help.exampleToml },
+        });
+      }
       case "run.config-init": {
         const overwrite = call.arguments.overwrite === true;
         const requestedName = optionalToolString(call.arguments, "name");
@@ -7327,6 +7428,13 @@ export async function buildApp({
           }),
         );
       }
+      case "run.config-action-add":
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "run-config.action-add",
+            arguments: call.arguments,
+          }),
+        );
       case "run.setup-status":
         return agentOperationExecutor.execute(context, {
           operation: "run.setup-status",
@@ -27833,7 +27941,8 @@ export async function buildApp({
               action:
                 input.data.command === "run.start"
                   ? "run.cli.started"
-                  : input.data.command === "run.config-init"
+                  : input.data.command === "run.config-init" ||
+                      input.data.command === "run.config-action-add"
                     ? "run.configuration.cli.updated"
                     : input.data.command === "run.open"
                       ? "run.cli.opened"
