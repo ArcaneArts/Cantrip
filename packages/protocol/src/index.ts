@@ -2114,6 +2114,7 @@ export const DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS: EliteGlitchVariantWeights = {
 
 export const eliteRevealConfigSchema = z
   .object({
+    glitchTerminalContents: z.boolean().default(false),
     glitchCountMax: z.number().int().min(1).max(8),
     glitchCountMin: z.number().int().min(1).max(8),
     glitchShowMs: z.number().int().min(5).max(120),
@@ -2135,6 +2136,7 @@ export const eliteRevealConfigSchema = z
 export type EliteRevealConfig = z.infer<typeof eliteRevealConfigSchema>;
 
 export const DEFAULT_ELITE_REVEAL_CONFIG: EliteRevealConfig = {
+  glitchTerminalContents: false,
   glitchCountMax: 8,
   glitchCountMin: 4,
   glitchShowMs: 16,

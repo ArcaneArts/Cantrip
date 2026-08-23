@@ -5395,6 +5395,17 @@ describe("Cantrip protocol", () => {
       }).eliteRevealConfig?.variantWeights,
     ).toEqual(DEFAULT_ELITE_REVEAL_CONFIG.variantWeights);
     expect(
+      userSettingsUpdateSchema.parse({
+        eliteRevealConfig: {
+          glitchCountMax: 3,
+          glitchCountMin: 1,
+          glitchShowMs: 9,
+          staggerSpreadMs: 50,
+          variants: ["outline"],
+        },
+      }).eliteRevealConfig?.glitchTerminalContents,
+    ).toBe(false);
+    expect(
       userSettingsUpdateSchema.safeParse({
         eliteRevealConfig: {
           ...DEFAULT_ELITE_REVEAL_CONFIG,

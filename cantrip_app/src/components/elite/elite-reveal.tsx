@@ -62,6 +62,7 @@ export function normalizeEliteRevealConfig(
     numericLimits.glitchCount.max,
   );
   return {
+    glitchTerminalContents: config.glitchTerminalContents,
     glitchCountMax,
     glitchCountMin,
     glitchShowMs: clamp(
@@ -96,7 +97,7 @@ export function eliteRevealConfigSignature(config: EliteRevealConfig): string {
   const weightSignature = ELITE_GLITCH_VARIANTS.map(
     (variant) => config.variantWeights[variant],
   ).join(",");
-  return `${config.glitchCountMin}:${config.glitchCountMax}:${config.glitchShowMs}:${config.staggerSpreadMs}:${config.variants.join(",")}:${weightSignature}`;
+  return `${Number(config.glitchTerminalContents)}:${config.glitchCountMin}:${config.glitchCountMax}:${config.glitchShowMs}:${config.staggerSpreadMs}:${config.variants.join(",")}:${weightSignature}`;
 }
 
 export function variantsForEliteContent(
@@ -444,6 +445,7 @@ export function EliteReveal({
     [
       config.glitchCountMax,
       config.glitchCountMin,
+      config.glitchTerminalContents,
       config.glitchShowMs,
       config.staggerSpreadMs,
       config.variants,
