@@ -5110,6 +5110,12 @@ export const codeOpenFileResultSchema = z
 
 export const codeOpenFileRequestSchema = codeOpenFileResultSchema;
 
+export const codePresentationUpdateSchema = z
+  .object({
+    presentation: codePresentationSchema,
+  })
+  .strict();
+
 export const codeThemeUpdateSchema = z.object({
   themeMode: codeThemeModeSchema,
   appearance: codeAppearanceSchema,
@@ -14349,6 +14355,9 @@ export type ExplorerCodeAttachmentCreate = z.infer<
 >;
 export type CodeOpenFileResult = z.infer<typeof codeOpenFileResultSchema>;
 export type CodeOpenFileRequest = z.infer<typeof codeOpenFileRequestSchema>;
+export type CodePresentationUpdate = z.infer<
+  typeof codePresentationUpdateSchema
+>;
 export type CodeThemeUpdate = z.infer<typeof codeThemeUpdateSchema>;
 export type CodeAdapterRequestHead = z.infer<
   typeof codeAdapterRequestHeadSchema

@@ -28,6 +28,7 @@ import {
   directCodeAttachmentHealthy,
   openDirectCodeAttachmentFile,
   preferDirectCodeAttachment,
+  setDirectCodeAttachmentPresentation,
 } from "./desktop-code";
 
 beforeEach(() => {
@@ -80,6 +81,32 @@ describe("openDirectCodeAttachmentFile", () => {
         "removed.ts",
       ),
     ).rejects.toThrow("File no longer exists.");
+  });
+});
+
+describe("setDirectCodeAttachmentPresentation", () => {
+  it("switches the local compatibility session into editor-only mode", async () => {
+    const attachment = {
+      url: "http://127.0.0.1:52345/code/?workspace=%2Fworker%2Fproject.code-workspace",
+    } as CodeAttachment;
+    mocks.fetch.mockResolvedValue({
+      json: async () => ({ presentation: "editor" }),
+      ok: true,
+    });
+
+    await expect(
+      setDirectCodeAttachmentPresentation(attachment, "editor"),
+    ).resolves.toEqual({ presentation: "editor" });
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:52345/code/_cantrip/presentation"),
+      {
+        body: JSON.stringify({ presentation: "editor" }),
+        credentials: "omit",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
   });
 });
 

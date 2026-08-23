@@ -85,3 +85,32 @@ describe("CodeDirectEndpointManager file-open control", () => {
     }
   });
 });
+
+describe("CodeDirectEndpointManager presentation control", () => {
+  it("switches the bound compatibility session into editor-only mode", async () => {
+    const setPresentation = vi.fn().mockResolvedValue({ status: "running" });
+    const manager = new CodeDirectEndpointManager({
+      setPresentation,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepare("capability-3", "session-3");
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/presentation`,
+        {
+          body: JSON.stringify({ presentation: "editor" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({
+        presentation: "editor",
+      });
+      expect(setPresentation).toHaveBeenCalledWith("session-3", "editor");
+    } finally {
+      manager.close();
+    }
+  });
+});
