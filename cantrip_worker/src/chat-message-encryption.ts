@@ -45,16 +45,32 @@ function activitySummary(activity: AgentActivity): string {
   if (activity.type === "rateLimit") {
     return `[rate limit: ${activity.primary?.usedPercent ?? "unknown"}% used]`;
   }
-  const { raw: _raw, ...normalized } = activity;
+  const { agentScope: _agentScope, raw: _raw, ...normalized } = activity;
   return `[${activity.type}: ${JSON.stringify(normalized)}]`;
+}
+
+function rootContinuationContent(
+  content: ChatMessage["content"],
+): ChatMessage["content"] {
+  return content.filter((item) => {
+    if (item.type === "text") {
+      return !item.agentScope || item.agentScope.isRoot;
+    }
+    if (item.type === "activity") {
+      return !item.activity.agentScope || item.activity.agentScope.isRoot;
+    }
+    return true;
+  });
 }
 
 function continuationPrompt(messages: ChatMessage[], prompt: string): string {
   if (messages.length === 0) return prompt;
   const transcript = messages
     .slice(-100)
-    .map((message) => {
-      const content = message.content
+    .flatMap((message) => {
+      const rootContent = rootContinuationContent(message.content);
+      if (rootContent.length === 0) return [];
+      const content = rootContent
         .flatMap((item) => {
           if (item.type === "text") return [item.text];
           if (item.type === "attachment") {
@@ -65,7 +81,7 @@ function continuationPrompt(messages: ChatMessage[], prompt: string): string {
           return [activitySummary(item.activity)];
         })
         .join("\n");
-      return `${message.role.toUpperCase()}: ${content}`;
+      return [`${message.role.toUpperCase()}: ${content}`];
     })
     .join("\n\n");
   return `Continue this existing Cantrip conversation. The encrypted endpoint history follows:\n\n${transcript}\n\nUSER: ${prompt}`;
@@ -345,7 +361,10 @@ export class EncryptedChatEventSealer {
 
   async message(message: NormalizedAgentMessage) {
     const turnId = message.correlation?.turnId ?? null;
-    const key = `agent-message:${turnId ?? "turn"}:${message.id}`;
+    const agentKey = message.agentScope
+      ? `${message.agentScope.rootTurnId}:${message.agentScope.agentThreadId}`
+      : "root";
+    const key = `agent-message:${agentKey}:${turnId ?? "turn"}:${message.id}`;
     return {
       type: "agent.protected-message" as const,
       message: await protectChatMessage({
@@ -358,6 +377,7 @@ export class EncryptedChatEventSealer {
               text: message.text,
               phase: message.phase,
               correlation: message.correlation,
+              ...(message.agentScope ? { agentScope: message.agentScope } : {}),
             },
           ]),
           idempotencyKey: key,
@@ -370,10 +390,13 @@ export class EncryptedChatEventSealer {
 
   async activity(activity: AgentActivity) {
     const turnId = activity.correlation?.turnId ?? null;
+    const agentKey = activity.agentScope
+      ? `${activity.agentScope.rootTurnId}:${activity.agentScope.agentThreadId}`
+      : "root";
     const key =
       activity.type === "worktree"
         ? activity.id
-        : `activity:${turnId ?? "turn"}:${activity.id}`;
+        : `activity:${agentKey}:${turnId ?? "turn"}:${activity.id}`;
     return {
       type: "agent.protected-message" as const,
       message: await protectChatMessage({
