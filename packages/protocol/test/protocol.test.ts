@@ -205,6 +205,9 @@ import {
   tabGroupOrderSchema,
   encryptedTabGroupUpdateSchema,
   tabGroupUpdateSchema,
+  nativeSubagentCapabilityCompatible,
+  codexRuntimeReportSchema,
+  NATIVE_SUBAGENT_PROTOCOL_VERSION,
   unprobedCodexRuntimeReport,
   DEFAULT_ELITE_REVEAL_CONFIG,
   userSettingsSchema,
@@ -4972,6 +4975,39 @@ describe("Cantrip protocol", () => {
     });
     expect(heartbeat.code).toBeUndefined();
     expect(heartbeat.externalCodexHistory).toBe(false);
+  });
+
+  it("defaults legacy workers to unavailable and gates newer subagent protocols", () => {
+    const legacy = codexRuntimeReportSchema.parse({
+      ...unprobedCodexRuntimeReport,
+      nativeSubagents: undefined,
+    });
+    expect(legacy.nativeSubagents).toEqual(
+      unprobedCodexRuntimeReport.nativeSubagents,
+    );
+    expect(nativeSubagentCapabilityCompatible(legacy.nativeSubagents)).toBe(
+      false,
+    );
+
+    const newer = codexRuntimeReportSchema.parse({
+      ...unprobedCodexRuntimeReport,
+      nativeSubagents: {
+        available: true,
+        protocolVersion: 2,
+        reason: null,
+      },
+    });
+    expect(newer.nativeSubagents.protocolVersion).toBe(2);
+    expect(nativeSubagentCapabilityCompatible(newer.nativeSubagents)).toBe(
+      false,
+    );
+    expect(
+      nativeSubagentCapabilityCompatible({
+        available: true,
+        protocolVersion: NATIVE_SUBAGENT_PROTOCOL_VERSION,
+        reason: null,
+      }),
+    ).toBe(true);
   });
 
   it("validates external Codex history discovery metadata and commands", () => {

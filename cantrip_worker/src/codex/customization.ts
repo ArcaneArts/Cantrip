@@ -14,6 +14,8 @@ import {
   codexMcpResourceReadSchema,
   codexSkillConfigResultSchema,
   codexSkillRootsResultSchema,
+  nativeSubagentCapabilityCompatible,
+  NATIVE_SUBAGENT_PROTOCOL_VERSION,
   type CodexCustomizationCapabilities,
   type CodexCustomizationInventory,
   type CodexExternalImportPreview,
@@ -119,6 +121,16 @@ function featureCapability(
 export function customizationCapabilities(
   report: CodexRuntimeReport,
 ): CodexCustomizationCapabilities {
+  const nativeSubagentsAvailable = nativeSubagentCapabilityCompatible(
+    report.nativeSubagents,
+  );
+  const nativeSubagentsReason = nativeSubagentsAvailable
+    ? "Native subagents are available."
+    : report.nativeSubagents.available &&
+        report.nativeSubagents.protocolVersion !== null
+      ? `This worker supports native subagent protocol ${report.nativeSubagents.protocolVersion}, but Cantrip requires protocol ${NATIVE_SUBAGENT_PROTOCOL_VERSION}.`
+      : (report.nativeSubagents.reason ??
+        "The installed Codex runtime does not support native subagents.");
   const pluginsUnavailable = capability(
     false,
     PLUGIN_PRODUCT_REASON,
@@ -137,12 +149,10 @@ export function customizationCapabilities(
       CODEX_CUSTOMIZATION_METHODS.goals,
     ),
     nativeSubagents: {
-      ...capability(
-        report.nativeSubagents.available,
-        report.nativeSubagents.reason ??
-          "The installed Codex runtime does not support native subagents.",
-      ),
-      protocolVersion: report.nativeSubagents.protocolVersion,
+      ...capability(nativeSubagentsAvailable, nativeSubagentsReason),
+      protocolVersion: nativeSubagentsAvailable
+        ? report.nativeSubagents.protocolVersion
+        : null,
     },
     customAgents: capability(
       false,

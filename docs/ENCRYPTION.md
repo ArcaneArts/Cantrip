@@ -90,6 +90,12 @@ intentionally visible control-plane metadata:
   metadata, IP hashes, user-agent hashes, or content-bearing diagnostic fields.
   Human diagnostic messages remain local console output only. See
   [records.ts](../packages/logging/src/records.ts).
+- Native subagent transcripts reuse the owning chat's `chat-content` and
+  `interaction-content` grants. Agent paths, nicknames, roles, assignments,
+  follow-ups, reasoning, commands, filesystem paths, results, and recovery
+  payloads are sealed by the worker before server persistence or relay. The
+  server sees only the existing opaque message/event envelope and the minimum
+  operational identifiers needed to route and deduplicate it.
 
 This summary describes the implemented protected data classes. It is not an
 exhaustive assertion that every current server table and relay operation is
@@ -633,6 +639,27 @@ server neither decrypts nor indexes it.
 Queued prompts carry a separately row-bound prompt envelope plus the already
 sealed future message, so dispatch and steering do not require server
 decryption or re-encryption.
+
+Native subagents do not introduce a server-side child-transcript table or a
+second encryption hierarchy. The worker attaches a protected agent scope to
+each child message and activity, including the root and child thread IDs,
+root-turn segment, parent relationship, path, nickname, role, and depth. It
+also normalizes spawn assignments, follow-ups, waits, interruptions, failures,
+and returned results as protected communication activities. Public message
+columns retain only opaque IDs, sequence, coarse role/activity classification,
+status, timestamps, and correlation required for authorization, ordering,
+retention, and idempotency. The app derives lifecycle cards, agent labels,
+filters, and child transcripts only after normal chat-message decryption.
+
+Child approval and elicitation requests use the root execution's existing
+`interaction-content` channel, so command bodies, paths, questions, and answers
+remain endpoint-only even when the immediate runtime thread is a child. Scoped
+idempotency includes the child thread/turn identity. Recovery through Codex
+`thread/list` and `thread/read` is normalized, bounded, redacted, deduplicated,
+and sealed by the worker exactly like live capture. Child-only records remain
+in ordinary chat retention, deletion, export, fork, and replica flows, but are
+excluded from root continuation reconstruction so child chatter cannot be
+replayed as root assistant history.
 
 Ordinary chat and live workflow-agent approval and elicitation requests use the
 separate `interaction-content` grant in the same passwordless post-login flow.

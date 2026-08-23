@@ -548,10 +548,19 @@ export const NATIVE_SUBAGENT_PROTOCOL_VERSION = 1 as const;
 export const nativeSubagentRuntimeCapabilitySchema = z
   .object({
     available: z.boolean(),
-    protocolVersion: z.literal(NATIVE_SUBAGENT_PROTOCOL_VERSION).nullable(),
+    protocolVersion: z.number().int().positive().nullable(),
     reason: z.string().min(1).nullable(),
   })
   .strict();
+
+export function nativeSubagentCapabilityCompatible(
+  capability: z.infer<typeof nativeSubagentRuntimeCapabilitySchema>,
+): boolean {
+  return (
+    capability.available &&
+    capability.protocolVersion === NATIVE_SUBAGENT_PROTOCOL_VERSION
+  );
+}
 
 export const unavailableNativeSubagentRuntimeCapability =
   nativeSubagentRuntimeCapabilitySchema.parse({
