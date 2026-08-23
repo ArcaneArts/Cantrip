@@ -128,7 +128,7 @@ describe("rich Codex activity", () => {
     expect(markup).not.toContain("session-1:403");
   });
 
-  it("opens failed MCP cards with their normalized reason and retryability", () => {
+  it("keeps failed MCP cards collapsed with their details available", () => {
     const activity: AgentActivity = {
       type: "mcpToolCall",
       id: "cantrip-failure",
@@ -144,11 +144,29 @@ describe("rich Codex activity", () => {
     };
     const markup = renderToStaticMarkup(<Activity activity={activity} />);
     expect(markup).toContain("<details");
-    expect(markup).toContain("open");
+    expect(markup).not.toContain("<details open");
     expect(markup).toContain("Unrecognized key: from. Use baseRevision.");
     expect(markup).toContain("Error code");
     expect(markup).toContain("-32602");
     expect(markup).toContain("should not be retried unchanged");
+  });
+
+  it("keeps failed command output collapsed", () => {
+    const activity: AgentActivity = {
+      type: "command",
+      id: "command-failure",
+      command: "pnpm test",
+      cwd: ".",
+      status: "failed",
+      exitCode: 1,
+      output: "Tests failed",
+    };
+
+    const markup = renderToStaticMarkup(<Activity activity={activity} />);
+    expect(markup).toContain("<details");
+    expect(markup).not.toContain("<details open");
+    expect(markup).toContain("Tests failed");
+    expect(markup).toContain("Exit code 1");
   });
 
   it("hides completed turn work behind the elapsed-time disclosure", () => {
