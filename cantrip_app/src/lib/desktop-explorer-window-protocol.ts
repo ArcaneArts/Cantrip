@@ -18,7 +18,15 @@ export interface DesktopExplorerWindowContext {
 
 export type DesktopExplorerWindowRequest =
   | { launchId: string; type: "launch.request" }
-  | { launchId: string; type: "editor.frame-loaded" }
+  | { launchId: string; nonce: string; type: "editor.workbench-mounted" }
+  | { launchId: string; nonce: string; type: "editor.workbench-ready" }
+  | {
+      error: string;
+      launchId: string;
+      nonce: string;
+      stage: "frame" | "workbench";
+      type: "editor.workbench-failed";
+    }
   | { launchId: string; requestId: string; type: "file.read" }
   | { launchId: string; requestId: string; type: "media.read" }
   | {
@@ -39,16 +47,20 @@ export type DesktopExplorerWindowResponse =
       attachment: CodeAttachment;
       launchId: string;
       preparedAtMs: number;
-      type: "editor.ready";
+      type: "editor.endpoint-ready";
     }
   | {
       configuredAtMs: number;
       launchId: string;
-      type: "editor.configured";
+      nonce: string;
+      path: string;
+      requestedAtMs: number;
+      type: "editor.ready";
     }
   | {
       error: string;
       launchId: string;
+      stage: "endpoint" | "file" | "frame" | "presentation" | "workbench";
       type: "editor.failed";
     }
   | {
@@ -95,11 +107,19 @@ export function isDesktopExplorerWindowRequest(
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
   if (typeof message.launchId !== "string") return false;
+  if (message.type === "launch.request") return true;
   if (
-    message.type === "launch.request" ||
-    message.type === "editor.frame-loaded"
+    message.type === "editor.workbench-mounted" ||
+    message.type === "editor.workbench-ready"
   ) {
-    return true;
+    return typeof message.nonce === "string";
+  }
+  if (message.type === "editor.workbench-failed") {
+    return (
+      typeof message.nonce === "string" &&
+      typeof message.error === "string" &&
+      (message.stage === "frame" || message.stage === "workbench")
+    );
   }
   if (
     (message.type === "file.read" || message.type === "media.read") &&
@@ -136,18 +156,28 @@ export function isDesktopExplorerWindowResponse(
       typeof context.explorer === "object"
     );
   }
-  if (message.type === "editor.ready") {
+  if (message.type === "editor.endpoint-ready") {
     return (
       Boolean(message.attachment) &&
       typeof message.attachment === "object" &&
       typeof message.preparedAtMs === "number"
     );
   }
-  if (message.type === "editor.configured") {
-    return typeof message.configuredAtMs === "number";
+  if (message.type === "editor.ready") {
+    return (
+      typeof message.configuredAtMs === "number" &&
+      typeof message.nonce === "string" &&
+      typeof message.path === "string" &&
+      typeof message.requestedAtMs === "number"
+    );
   }
   if (message.type === "editor.failed") {
-    return typeof message.error === "string";
+    return (
+      typeof message.error === "string" &&
+      ["endpoint", "file", "frame", "presentation", "workbench"].includes(
+        String(message.stage),
+      )
+    );
   }
   if (typeof message.requestId !== "string") return false;
   if (message.type === "request.failed") {

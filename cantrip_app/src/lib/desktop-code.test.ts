@@ -36,6 +36,7 @@ vi.mock("@/lib/client-log-relay", () => ({
 
 import {
   directCodeAttachmentHealthy,
+  directCodeAttachmentHealthyWithin,
   openDirectCodeAttachmentFile,
   preferProtectedCodeAttachment,
   setDirectCodeAttachmentPresentation,
@@ -190,6 +191,23 @@ describe("directCodeAttachmentHealthy", () => {
     ]);
 
     await expect(directCodeAttachmentHealthy("code-1")).resolves.toBe(false);
+  });
+
+  it("bounds periodic tunnel health and treats failures as unhealthy", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.invoke.mockReturnValue(new Promise(() => undefined));
+      const health = directCodeAttachmentHealthyWithin("code-1", 100);
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(health).resolves.toBe(false);
+
+      mocks.invoke.mockRejectedValue(new Error("native state unavailable"));
+      await expect(
+        directCodeAttachmentHealthyWithin("code-1", 100),
+      ).resolves.toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

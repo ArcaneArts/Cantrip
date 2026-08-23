@@ -1,7 +1,6 @@
-diff --git a/src/vs/workbench/services/layout/browser/layoutService.ts b/src/vs/workbench/services/layout/browser/layoutService.ts
 --- a/src/vs/workbench/services/layout/browser/layoutService.ts
 +++ b/src/vs/workbench/services/layout/browser/layoutService.ts
-@@ -43,11 +43,12 @@ export const enum ZenModeSettings {
+@@ -41,11 +41,12 @@
  }
  
  export const enum LayoutSettings {
@@ -15,21 +14,34 @@ diff --git a/src/vs/workbench/services/layout/browser/layoutService.ts b/src/vs/
  }
  
  export const enum ActivityBarPosition {
-@@ -361,6 +362,10 @@ export interface IWorkbenchLayoutService {
+@@ -360,7 +361,15 @@
+ 	getVisibleNeighborPart(part: Parts, direction: Direction): Parts | undefined;
  }
  
++export function isCantripEditorPresentation(configurationService: IConfigurationService): boolean {
++	return configurationService.getValue<string>(LayoutSettings.CANTRIP_PRESENTATION) === 'editor';
++}
++
  export function shouldShowCustomTitleBar(configurationService: IConfigurationService, window: Window, menuBarToggled?: boolean): boolean {
-+	if (configurationService.getValue<string>(LayoutSettings.CANTRIP_PRESENTATION) === 'editor') {
++	if (isCantripEditorPresentation(configurationService)) {
 +		return false;
 +	}
 +
  	if (!hasCustomTitlebar(configurationService)) {
  		return false;
  	}
-diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
 --- a/src/vs/workbench/browser/layout.ts
 +++ b/src/vs/workbench/browser/layout.ts
-@@ -123,6 +123,7 @@ const COMMAND_CENTER_SETTINGS = [
+@@ -11,7 +11,7 @@
+ import { EditorInputCapabilities, GroupIdentifier, isResourceEditorInput, IUntypedEditorInput, pathsToEditors } from '../common/editor.js';
+ import { SidebarPart } from './parts/sidebar/sidebarPart.js';
+ import { PanelPart } from './parts/panel/panelPart.js';
+-import { Position, Parts, PartOpensMaximizedOptions, IWorkbenchLayoutService, positionFromString, positionToString, partOpensMaximizedFromString, PanelAlignment, ActivityBarPosition, LayoutSettings, MULTI_WINDOW_PARTS, SINGLE_WINDOW_PARTS, ZenModeSettings, EditorTabsMode, EditorActionsLocation, shouldShowCustomTitleBar, isHorizontal, isMultiWindowPart, IPartVisibilityChangeEvent } from '../services/layout/browser/layoutService.js';
++import { Position, Parts, PartOpensMaximizedOptions, IWorkbenchLayoutService, positionFromString, positionToString, partOpensMaximizedFromString, PanelAlignment, ActivityBarPosition, LayoutSettings, MULTI_WINDOW_PARTS, SINGLE_WINDOW_PARTS, ZenModeSettings, EditorTabsMode, EditorActionsLocation, isCantripEditorPresentation, shouldShowCustomTitleBar, isHorizontal, isMultiWindowPart, IPartVisibilityChangeEvent } from '../services/layout/browser/layoutService.js';
+ import { isTemporaryWorkspace, IWorkspaceContextService, WorkbenchState } from '../../platform/workspace/common/workspace.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
+ import { IConfigurationChangeEvent, IConfigurationService, isConfigured } from '../../platform/configuration/common/configuration.js';
+@@ -123,6 +123,7 @@
  ];
  
  export const TITLE_BAR_SETTINGS = [
@@ -37,7 +49,85 @@ diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layou
  	LayoutSettings.ACTIVITY_BAR_LOCATION,
  	LayoutSettings.COMMAND_CENTER,
  	...COMMAND_CENTER_SETTINGS,
-@@ -2855,7 +2856,10 @@ class LayoutStateModel extends Disposable {
+@@ -420,6 +421,18 @@
+ 				}
+ 
+ 				this.doUpdateLayoutConfiguration();
++			}
++
++			if (
++				e.affectsConfiguration(LayoutSettings.CANTRIP_PRESENTATION) &&
++				isCantripEditorPresentation(this.configurationService)
++			) {
++				this.setActivityBarHidden(true);
++				this.setSideBarHidden(true);
++				this.setPanelHidden(true, true);
++				this.setAuxiliaryBarHidden(true, true);
++				this.setStatusBarHidden(true);
++				this.layout();
+ 			}
+ 
+ 			// Auxiliary Sidebar
+@@ -1299,6 +1312,18 @@
+ 			return true; // cannot hide editor part in auxiliary windows
+ 		}
+ 
++		if (targetWindow === mainWindow && isCantripEditorPresentation(this.configurationService)) {
++			switch (part) {
++				case Parts.TITLEBAR_PART:
++				case Parts.SIDEBAR_PART:
++				case Parts.PANEL_PART:
++				case Parts.AUXILIARYBAR_PART:
++				case Parts.STATUSBAR_PART:
++				case Parts.ACTIVITYBAR_PART:
++					return false;
++			}
++		}
++
+ 		switch (part) {
+ 			case Parts.TITLEBAR_PART:
+ 				return this.initialized ?
+@@ -1560,6 +1585,7 @@
+ 	}
+ 
+ 	private setStatusBarHidden(hidden: boolean): void {
++		hidden = hidden || isCantripEditorPresentation(this.configurationService);
+ 		this.stateModel.setRuntimeValue(LayoutStateKeys.STATUSBAR_HIDDEN, hidden);
+ 
+ 		// Adjust CSS
+@@ -1814,6 +1840,7 @@
+ 	}
+ 
+ 	private setActivityBarHidden(hidden: boolean): void {
++		hidden = hidden || isCantripEditorPresentation(this.configurationService);
+ 		this.stateModel.setRuntimeValue(LayoutStateKeys.ACTIVITYBAR_HIDDEN, hidden);
+ 		this.workbenchGrid.setViewVisible(this.activityBarPartView, !hidden);
+ 	}
+@@ -1858,6 +1885,7 @@
+ 	}
+ 
+ 	private setSideBarHidden(hidden: boolean): void {
++		hidden = hidden || isCantripEditorPresentation(this.configurationService);
+ 		if (!hidden && this.setAuxiliaryBarMaximized(false) && this.isVisible(Parts.SIDEBAR_PART)) {
+ 			return; // return: leaving maximised auxiliary bar made this part visible
+ 		}
+@@ -1989,6 +2017,7 @@
+ 	}
+ 
+ 	private setPanelHidden(hidden: boolean, skipLayout?: boolean): void {
++		hidden = hidden || isCantripEditorPresentation(this.configurationService);
+ 		if (!this.workbenchGrid) {
+ 			return; // Return if not initialized fully (https://github.com/microsoft/vscode/issues/105480)
+ 		}
+@@ -2192,6 +2221,7 @@
+ 	}
+ 
+ 	private setAuxiliaryBarHidden(hidden: boolean, skipLayout?: boolean): void {
++		hidden = hidden || isCantripEditorPresentation(this.configurationService);
+ 		if (hidden && this.setAuxiliaryBarMaximized(false) && !this.isVisible(Parts.AUXILIARYBAR_PART)) {
+ 			return; // return: leaving maximised auxiliary bar made this part hidden
+ 		}
+@@ -2855,10 +2885,23 @@
  	}
  
  	private updateStateFromLegacySettings(configurationChangeEvent: IConfigurationChangeEvent): void {
@@ -49,14 +139,116 @@ diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layou
  			this.setRuntimeValueAndFire(LayoutStateKeys.ACTIVITYBAR_HIDDEN, this.isActivityBarHidden());
  		}
  
-@@ -3081,6 +3085,10 @@ class LayoutStateModel extends Disposable {
++		if (
++			configurationChangeEvent.affectsConfiguration(LayoutSettings.CANTRIP_PRESENTATION) &&
++			isCantripEditorPresentation(this.configurationService)
++		) {
++			this.setRuntimeValueAndFire(LayoutStateKeys.SIDEBAR_HIDDEN, true);
++			this.setRuntimeValueAndFire(LayoutStateKeys.PANEL_HIDDEN, true);
++			this.setRuntimeValueAndFire(LayoutStateKeys.AUXILIARYBAR_HIDDEN, true);
++			this.setRuntimeValueAndFire(LayoutStateKeys.STATUSBAR_HIDDEN, true);
++		}
++
+ 		if (configurationChangeEvent.affectsConfiguration(LegacyWorkbenchLayoutSettings.STATUSBAR_VISIBLE)) {
+ 			this.setRuntimeValueAndFire(LayoutStateKeys.STATUSBAR_HIDDEN, !this.configurationService.getValue(LegacyWorkbenchLayoutSettings.STATUSBAR_VISIBLE));
+ 		}
+@@ -2959,6 +3002,19 @@
+ 
+ 		// Apply all overrides
+ 		this.applyOverrides(configuration);
++
++		if (isCantripEditorPresentation(this.configurationService)) {
++			for (const stateKey of [
++				LayoutStateKeys.ACTIVITYBAR_HIDDEN,
++				LayoutStateKeys.SIDEBAR_HIDDEN,
++				LayoutStateKeys.PANEL_HIDDEN,
++				LayoutStateKeys.AUXILIARYBAR_HIDDEN,
++				LayoutStateKeys.STATUSBAR_HIDDEN,
++			]) {
++				this.stateCache.set(stateKey.name, true);
++			}
++			this.stateCache.set(LayoutStateKeys.EDITOR_HIDDEN.name, false);
++		}
+ 
+ 		// Register for runtime key changes
+ 		this._register(this.storageService.onDidChangeValue(StorageScope.PROFILE, undefined, this._store)(storageChangeEvent => {
+@@ -3081,6 +3137,10 @@
  	}
  
  	private isActivityBarHidden(): boolean {
-+		if (this.configurationService.getValue<string>(LayoutSettings.CANTRIP_PRESENTATION) === 'editor') {
++		if (isCantripEditorPresentation(this.configurationService)) {
 +			return true;
 +		}
 +
  		const oldValue = this.configurationService.getValue<boolean | undefined>(WorkbenchLayoutSettings.ACTIVITY_BAR_VISIBLE);
  		if (oldValue !== undefined) {
  			return !oldValue;
+--- a/src/vs/workbench/browser/parts/editor/editor.ts
++++ b/src/vs/workbench/browser/parts/editor/editor.ts
+@@ -20,6 +20,7 @@
+ import { IAuxiliaryWindowOpenOptions } from '../../../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ import { ContextKeyValue, IContextKey, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
+ import { coalesce } from '../../../../base/common/arrays.js';
++import { isCantripEditorPresentation, LayoutSettings } from '../../../services/layout/browser/layoutService.js';
+ 
+ export interface IEditorPartCreationOptions {
+ 	readonly restorePreviousState: boolean;
+@@ -77,7 +78,7 @@
+ };
+ 
+ export function impactsEditorPartOptions(event: IConfigurationChangeEvent): boolean {
+-	return event.affectsConfiguration('workbench.editor') || event.affectsConfiguration('workbench.iconTheme') || event.affectsConfiguration('window.density');
++	return event.affectsConfiguration(LayoutSettings.CANTRIP_PRESENTATION) || event.affectsConfiguration('workbench.editor') || event.affectsConfiguration('workbench.iconTheme') || event.affectsConfiguration('window.density');
+ }
+ 
+ export function getEditorPartOptions(configurationService: IConfigurationService, themeService: IThemeService): IEditorPartOptions {
+@@ -109,6 +110,11 @@
+ 	const windowConfig = configurationService.getValue<IWindowsConfiguration>();
+ 	if (windowConfig?.window?.density?.editorTabHeight) {
+ 		options.tabHeight = windowConfig.window.density.editorTabHeight;
++	}
++
++	if (isCantripEditorPresentation(configurationService)) {
++		options.showTabs = 'none';
++		options.editorActionsLocation = 'hidden';
+ 	}
+ 
+ 	return validateEditorPartOptions(options);
+--- a/src/vs/workbench/browser/parts/editor/breadcrumbsControl.ts
++++ b/src/vs/workbench/browser/parts/editor/breadcrumbsControl.ts
+@@ -46,6 +46,7 @@
+ import { BreadcrumbsModel, FileElement, OutlineElement2 } from './breadcrumbsModel.js';
+ import { BreadcrumbsFilePicker, BreadcrumbsOutlinePicker } from './breadcrumbsPicker.js';
+ import { IEditorGroupView } from './editor.js';
++import { isCantripEditorPresentation, LayoutSettings } from '../../../services/layout/browser/layoutService.js';
+ import './media/breadcrumbscontrol.css';
+ import { ScrollbarVisibility } from '../../../../base/common/scrollable.js';
+ import { CancellationToken } from '../../../../base/common/cancellation.js';
+@@ -642,8 +643,8 @@
+ 		@IFileService fileService: IFileService
+ 	) {
+ 		const config = this._disposables.add(BreadcrumbsConfig.IsEnabled.bindTo(configurationService));
+-		this._disposables.add(config.onDidChange(() => {
+-			const value = config.getValue();
++		const updateEnablement = () => {
++			const value = !isCantripEditorPresentation(configurationService) && config.getValue();
+ 			if (!value && this._control) {
+ 				this._controlDisposables.clear();
+ 				this._control = undefined;
+@@ -653,9 +654,15 @@
+ 				this._control.update();
+ 				this._onDidEnablementChange.fire();
+ 			}
++		};
++		this._disposables.add(config.onDidChange(updateEnablement));
++		this._disposables.add(configurationService.onDidChangeConfiguration(event => {
++			if (event.affectsConfiguration(LayoutSettings.CANTRIP_PRESENTATION)) {
++				updateEnablement();
++			}
+ 		}));
+ 
+-		if (config.getValue()) {
++		if (!isCantripEditorPresentation(configurationService) && config.getValue()) {
+ 			this._control = this.createControl();
+ 		}
+ 

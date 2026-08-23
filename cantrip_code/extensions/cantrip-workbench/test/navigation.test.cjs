@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  closeUnrelatedEditors,
   openWorkspaceFile,
   WorkspaceFileNavigator,
 } = require("../src/navigation.js");
@@ -21,13 +22,34 @@ function uri(value) {
 }
 
 function fixture({
+  closeResult = true,
   joinedUri,
+  openTabUris = [],
   rootUri = "file:///repo",
   shownUri = "file:///repo/src/index.ts",
   workspaceFolderUris = ["file:///repo"],
 } = {}) {
   const calls = [];
+  const activeTab = {
+    input: { uri: uri(shownUri) },
+    isActive: true,
+  };
+  const unrelatedTabs = openTabUris.map((value) => ({
+    input: { uri: uri(value) },
+    isActive: false,
+    isDirty: false,
+  }));
+  const group = {
+    activeTab,
+    isActive: true,
+    tabs: [activeTab, ...unrelatedTabs],
+  };
   const vscode = {
+    commands: {
+      async executeCommand(command) {
+        calls.push(["command", command]);
+      },
+    },
     Uri: {
       joinPath(root, ...segments) {
         return uri(joinedUri ?? `${root.toString()}/${segments.join("/")}`);
@@ -44,6 +66,18 @@ function fixture({
       },
     },
     window: {
+      activeTextEditor: { document: { uri: uri(shownUri) } },
+      tabGroups: {
+        all: [group],
+        async close(tabs, preserveFocus) {
+          calls.push([
+            "close",
+            tabs.map((tab) => tab.input.uri.toString()),
+            preserveFocus,
+          ]);
+          return closeResult;
+        },
+      },
       async showTextDocument(document, options) {
         calls.push(["show", document.uri.toString(), options]);
         return { document: { uri: uri(shownUri) } };
@@ -66,7 +100,104 @@ test("opens and confirms the exact requested workspace file", async () => {
       "file:///repo/src/index.ts",
       { preserveFocus: false, preview: true },
     ],
+    ["command", "workbench.action.joinAllGroups"],
   ]);
+});
+
+test("closes clean restored and unrelated editor tabs", async () => {
+  const { calls, rootUri, vscode } = fixture({
+    openTabUris: ["file:///repo/README.md", "file:///repo/src/previous.ts"],
+  });
+
+  await openWorkspaceFile(vscode, rootUri, "src/index.ts");
+
+  assert.deepEqual(calls.at(-2), [
+    "close",
+    ["file:///repo/README.md", "file:///repo/src/previous.ts"],
+    true,
+  ]);
+  assert.deepEqual(calls.at(-1), ["command", "workbench.action.joinAllGroups"]);
+});
+
+test("saves a dirty file-backed editor before switching to the exact new file", async () => {
+  const { calls, rootUri, vscode } = fixture({
+    openTabUris: ["file:///repo/src/dirty.ts"],
+  });
+  vscode.window.tabGroups.all[0].tabs[1].isDirty = true;
+  let saved = 0;
+  vscode.workspace.textDocuments = [
+    {
+      uri: uri("file:///repo/src/dirty.ts"),
+      async save() {
+        saved += 1;
+        return true;
+      },
+    },
+  ];
+
+  await assert.doesNotReject(
+    openWorkspaceFile(vscode, rootUri, "src/index.ts"),
+  );
+  assert.equal(saved, 1);
+  assert.deepEqual(calls.at(-2), [
+    "close",
+    ["file:///repo/src/dirty.ts"],
+    true,
+  ]);
+});
+
+test("fails without discarding an unrelated dirty editor that cannot be saved", async () => {
+  const { calls, rootUri, vscode } = fixture({
+    openTabUris: ["untitled:Untitled-1"],
+  });
+  vscode.window.tabGroups.all[0].tabs[1].isDirty = true;
+
+  await assert.rejects(
+    openWorkspaceFile(vscode, rootUri, "src/index.ts"),
+    /untitled or custom editor/u,
+  );
+  assert.equal(
+    calls.some(([operation]) => operation === "close"),
+    false,
+  );
+});
+
+test("fails instead of reporting ready when clean unrelated tabs do not close", async () => {
+  const { rootUri, vscode } = fixture({
+    closeResult: false,
+    openTabUris: ["file:///repo/src/previous.ts"],
+  });
+
+  await assert.rejects(
+    openWorkspaceFile(vscode, rootUri, "src/index.ts"),
+    /could not close an unrelated editor/u,
+  );
+});
+
+test("bounds a clean-tab close that stops responding", async () => {
+  const { vscode } = fixture({
+    openTabUris: ["file:///repo/src/previous.ts"],
+  });
+  vscode.window.tabGroups.close = () => new Promise(() => {});
+
+  await assert.rejects(
+    closeUnrelatedEditors(vscode, uri("file:///repo/src/index.ts"), 5),
+    /timed out while closing unrelated editors/u,
+  );
+});
+
+test("fails when collapsing editor groups changes the selected active file", async () => {
+  const { rootUri, vscode } = fixture();
+  vscode.commands.executeCommand = async () => {
+    vscode.window.activeTextEditor = {
+      document: { uri: uri("file:///repo/src/stale.ts") },
+    };
+  };
+
+  await assert.rejects(
+    openWorkspaceFile(vscode, rootUri, "src/index.ts"),
+    /lost the selected file/u,
+  );
 });
 
 test("rejects escaping and non-canonical requested paths", async () => {
@@ -144,7 +275,11 @@ test("serializes delayed file opens so the newest request is active last", async
     releaseFirst = resolve;
   });
   const active = [];
+  const group = { activeTab: undefined, isActive: true, tabs: [] };
   const vscode = {
+    commands: {
+      async executeCommand() {},
+    },
     Uri: {
       joinPath(root, ...segments) {
         return uri(`${root.toString()}/${segments.join("/")}`);
@@ -159,8 +294,22 @@ test("serializes delayed file opens so the newest request is active last", async
       },
     },
     window: {
+      tabGroups: {
+        all: [group],
+        async close() {
+          return true;
+        },
+      },
       async showTextDocument(document) {
         active.push(document.uri.toString());
+        const tab = {
+          input: { uri: document.uri },
+          isActive: true,
+          isDirty: false,
+        };
+        group.activeTab = tab;
+        group.tabs = [tab];
+        vscode.window.activeTextEditor = { document };
         return { document };
       },
     },

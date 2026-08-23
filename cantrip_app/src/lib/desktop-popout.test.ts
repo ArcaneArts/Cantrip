@@ -247,7 +247,7 @@ describe("desktop Explorer file windows", () => {
     ).toBeNull();
   });
 
-  it("uses one bounded stable label per Explorer path", () => {
+  it("uses one bounded stable label per Explorer binding", () => {
     const label = desktopExplorerFileWindowLabel(
       "explorer with spaces",
       "src/components/file.tsx",
@@ -257,9 +257,18 @@ describe("desktop Explorer file windows", () => {
     expect(
       desktopExplorerFileWindowLabel(
         "explorer with spaces",
-        "src/components/file.tsx",
+        "src/components/other.tsx",
+        "worktree-one",
+        "worker-one",
       ),
-    ).toBe(label);
+    ).toBe(
+      desktopExplorerFileWindowLabel(
+        "explorer with spaces",
+        "src/components/file.tsx",
+        "worktree-one",
+        "worker-one",
+      ),
+    );
     expect(
       desktopExplorerFileWindowLabel(
         "explorer with spaces",
@@ -301,7 +310,7 @@ describe("desktop Explorer file windows", () => {
     );
   });
 
-  it("reasserts the requested file before focusing an existing bound editor", async () => {
+  it("switches a bound editor to another file before focusing the same window", async () => {
     tauri.isTauri.mockReturnValue(true);
     brokerModule.createDesktopExplorerWindowBroker.mockReset();
     const broker = {
@@ -330,17 +339,18 @@ describe("desktop Explorer file windows", () => {
         worktreeId: "worktree-one",
       } as ExplorerSummary,
     };
+    const nextTarget = { ...boundTarget, path: "src/next.ts" };
 
     try {
       await expect(
         openDesktopExplorerFile(boundTarget, "bound.ts", boundContext),
       ).resolves.toBe("created");
       await expect(
-        openDesktopExplorerFile(boundTarget, "bound.ts", boundContext),
+        openDesktopExplorerFile(nextTarget, "next.ts", boundContext),
       ).resolves.toBe("focused");
 
       expect(broker.openFile).toHaveBeenCalledOnce();
-      expect(broker.openFile).toHaveBeenCalledWith(boundTarget.path);
+      expect(broker.openFile).toHaveBeenCalledWith(nextTarget.path);
       expect(
         brokerModule.createDesktopExplorerWindowBroker,
       ).toHaveBeenCalledOnce();
@@ -441,6 +451,71 @@ describe("desktop Explorer editor prewarm", () => {
         "created",
       ]);
       expect(broker.openFile).toHaveBeenCalledOnce();
+      expect(
+        brokerModule.createDesktopExplorerWindowBroker,
+      ).toHaveBeenCalledOnce();
+    } finally {
+      clearDesktopExplorerFilePrewarm();
+      for (const window of webviews.windows.values()) await window.close();
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("serializes different-file clicks and leaves the shared editor on the latest path", async () => {
+    const firstOpened = deferred();
+    tauri.isTauri.mockReturnValue(true);
+    brokerModule.createDesktopExplorerWindowBroker.mockReset();
+    const broker = {
+      dispose: vi.fn(async () => undefined),
+      failed: false,
+      launchId: "warm-switching",
+      openFile: vi
+        .fn<(path: string) => Promise<void>>()
+        .mockReturnValueOnce(firstOpened.promise)
+        .mockResolvedValueOnce(undefined),
+      ready: Promise.resolve(),
+    };
+    brokerModule.createDesktopExplorerWindowBroker.mockReturnValue(broker);
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn(),
+      location: { pathname: "/" },
+    });
+    const context = {
+      appearance: "dark" as const,
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-switching",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+    };
+    const firstTarget = {
+      explorerId: context.explorer.id,
+      path: "src/a.ts",
+      projectId: context.explorer.projectId,
+    };
+    const secondTarget = { ...firstTarget, path: "src/b.ts" };
+
+    try {
+      await prewarmDesktopExplorerFile(context);
+      const first = openDesktopExplorerFile(firstTarget, "a.ts", context);
+      await vi.waitFor(() => expect(broker.openFile).toHaveBeenCalledOnce());
+      const second = openDesktopExplorerFile(secondTarget, "b.ts", context);
+      clearDesktopExplorerFilePrewarm();
+
+      expect(second).not.toBe(first);
+      expect(broker.openFile).toHaveBeenCalledTimes(1);
+      firstOpened.resolve();
+      await expect(Promise.all([first, second])).resolves.toEqual([
+        "created",
+        "focused",
+      ]);
+      expect(broker.openFile.mock.calls.map(([path]) => path)).toEqual([
+        "src/a.ts",
+        "src/b.ts",
+      ]);
       expect(
         brokerModule.createDesktopExplorerWindowBroker,
       ).toHaveBeenCalledOnce();

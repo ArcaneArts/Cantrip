@@ -262,10 +262,13 @@ class BrowserTunnelClient {
   readonly #key: Promise<CryptoKey>;
   readonly #socket: WebSocket;
   readonly #ready: Promise<ReadyMessage>;
+  readonly #terminalListeners = new Set<(error: Error) => void>();
   #readyResolve!: (ready: ReadyMessage) => void;
   #readyReject!: (error: Error) => void;
+  #closing = false;
   #identities: ReadyMessage | null = null;
   #receiveQueue = Promise.resolve();
+  #terminalError: Error | null = null;
 
   private constructor(
     readonly attachmentId: string,
@@ -346,8 +349,28 @@ class BrowserTunnelClient {
     };
   }
 
+  get healthy(): boolean {
+    return !this.#closing && this.#terminalError === null;
+  }
+
+  onTerminal(listener: (error: Error) => void): () => void {
+    if (this.#terminalError) {
+      listener(this.#terminalError);
+      return () => undefined;
+    }
+    if (this.#closing) return () => undefined;
+    this.#terminalListeners.add(listener);
+    return () => this.#terminalListeners.delete(listener);
+  }
+
   async openConnection(): Promise<BrowserTunnelConnection> {
     await this.#ready;
+    if (!this.healthy) {
+      throw (
+        this.#terminalError ??
+        new Error("The protected Code relay is no longer available.")
+      );
+    }
     const connection = new BrowserTunnelConnection(crypto.randomUUID(), this);
     this.#connections.set(connection.id, connection);
     this.sendControl({
@@ -405,6 +428,9 @@ class BrowserTunnelClient {
   }
 
   async close(): Promise<void> {
+    if (this.#closing) return;
+    this.#closing = true;
+    this.#terminalListeners.clear();
     for (const connection of this.#connections.values()) connection.close();
     this.#connections.clear();
     this.#socket.close(1000, "Code attachment closed");
@@ -477,9 +503,19 @@ class BrowserTunnelClient {
   }
 
   #fail(error: Error): void {
+    if (this.#closing || this.#terminalError) return;
+    this.#terminalError = error;
     this.#readyReject(error);
     for (const connection of this.#connections.values()) connection.fail(error);
     this.#connections.clear();
+    for (const listener of this.#terminalListeners) {
+      try {
+        listener(error);
+      } catch {
+        // A recovery observer must not prevent the terminal state from settling.
+      }
+    }
+    this.#terminalListeners.clear();
   }
 }
 
@@ -904,6 +940,10 @@ function encodeBase64(value: ArrayBuffer): string {
 class BrowserCodeSession {
   readonly #channel = new BroadcastChannel(HTTP_CHANNEL);
   readonly #sockets = new Map<string, BrowserCodeSocket>();
+  #closePromise: Promise<void> | null = null;
+  #failure: Error | null = null;
+  #healthy = true;
+  #removeTerminalListener: (() => void) | null = null;
 
   private constructor(
     readonly adapterId: string,
@@ -916,6 +956,7 @@ class BrowserCodeSession {
 
   static async open(
     wire: CodeProtectedAttachmentWire,
+    onTerminal: (session: BrowserCodeSession, error: Error) => void,
   ): Promise<BrowserCodeSession> {
     if (!("serviceWorker" in navigator)) {
       throw new Error("This browser cannot host protected Code attachments.");
@@ -939,7 +980,7 @@ class BrowserCodeSession {
         throw new Error("Cantrip Code supplied an invalid workspace URI.");
       url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
     }
-    return new BrowserCodeSession(
+    const session = new BrowserCodeSession(
       adapterId,
       {
         attachmentId: wire.attachmentId,
@@ -950,9 +991,30 @@ class BrowserCodeSession {
       },
       tunnel,
     );
+    session.#removeTerminalListener = tunnel.onTerminal((error) => {
+      session.#terminal(error, onTerminal);
+    });
+    return session;
   }
 
-  async close(): Promise<void> {
+  get healthy(): boolean {
+    return this.#healthy && this.tunnel.healthy;
+  }
+
+  get failure(): Error | null {
+    return this.#failure;
+  }
+
+  close(): Promise<void> {
+    if (this.#closePromise) return this.#closePromise;
+    this.#healthy = false;
+    this.#removeTerminalListener?.();
+    this.#removeTerminalListener = null;
+    this.#closePromise = this.#close();
+    return this.#closePromise;
+  }
+
+  async #close(): Promise<void> {
     this.#channel.removeEventListener("message", this.#http);
     this.#channel.close();
     window.removeEventListener("message", this.#socket);
@@ -960,6 +1022,17 @@ class BrowserCodeSession {
       await socket.close(1001, "Code attachment closed");
     this.#sockets.clear();
     await this.tunnel.close();
+  }
+
+  #terminal(
+    error: Error,
+    onTerminal: (session: BrowserCodeSession, error: Error) => void,
+  ): void {
+    if (!this.#healthy) return;
+    this.#healthy = false;
+    this.#failure = error;
+    onTerminal(this, error);
+    void this.close();
   }
 
   readonly #http = (event: MessageEvent<HttpProxyRequest>) => {
@@ -1049,20 +1122,81 @@ class BrowserCodeSession {
 }
 
 const sessions = new Map<string, BrowserCodeSession>();
+const pendingStartTokens = new Map<string, symbol>();
+
+export interface BrowserCodeAttachmentUnavailableEvent {
+  reason: string;
+  tunnelId: string;
+}
+
+const unavailableListeners = new Set<
+  (event: BrowserCodeAttachmentUnavailableEvent) => void
+>();
+
+export function subscribeBrowserCodeAttachmentUnavailable(
+  listener: (event: BrowserCodeAttachmentUnavailableEvent) => void,
+): () => void {
+  unavailableListeners.add(listener);
+  return () => unavailableListeners.delete(listener);
+}
+
+function notifyBrowserCodeAttachmentUnavailable(
+  tunnelId: string,
+  error: Error,
+): void {
+  const event = { tunnelId, reason: error.message };
+  for (const listener of unavailableListeners) {
+    try {
+      listener(event);
+    } catch {
+      // Recovery listeners are isolated so every mounted surface is notified.
+    }
+  }
+}
 
 export async function startBrowserCodeAttachment(
   wire: CodeProtectedAttachmentWire,
 ): Promise<CodeAttachment> {
-  const existing = sessions.get(wire.tunnelId);
-  if (existing) await existing.close();
-  const session = await BrowserCodeSession.open(wire);
-  sessions.set(wire.tunnelId, session);
-  return session.attachment;
+  const startToken = Symbol(wire.tunnelId);
+  pendingStartTokens.set(wire.tunnelId, startToken);
+  try {
+    const existing = sessions.get(wire.tunnelId);
+    if (existing) {
+      sessions.delete(wire.tunnelId);
+      await existing.close();
+    }
+    const session = await BrowserCodeSession.open(wire, (failed, error) => {
+      if (sessions.get(wire.tunnelId) !== failed) return;
+      sessions.delete(wire.tunnelId);
+      notifyBrowserCodeAttachmentUnavailable(wire.tunnelId, error);
+    });
+    if (!session.healthy) {
+      await session.close();
+      throw (
+        session.failure ??
+        new Error("The protected Code relay disconnected during startup.")
+      );
+    }
+    if (pendingStartTokens.get(wire.tunnelId) !== startToken) {
+      await session.close();
+      throw new DOMException(
+        "Protected Code attachment startup was superseded.",
+        "AbortError",
+      );
+    }
+    sessions.set(wire.tunnelId, session);
+    return session.attachment;
+  } finally {
+    if (pendingStartTokens.get(wire.tunnelId) === startToken) {
+      pendingStartTokens.delete(wire.tunnelId);
+    }
+  }
 }
 
 export async function stopBrowserCodeAttachment(
   tunnelId: string,
 ): Promise<void> {
+  pendingStartTokens.delete(tunnelId);
   const session = sessions.get(tunnelId);
   if (!session) return;
   sessions.delete(tunnelId);
@@ -1070,5 +1204,11 @@ export async function stopBrowserCodeAttachment(
 }
 
 export function browserCodeAttachmentHealthy(tunnelId: string): boolean {
-  return sessions.has(tunnelId);
+  const session = sessions.get(tunnelId);
+  if (!session?.healthy) {
+    if (session && sessions.get(tunnelId) === session)
+      sessions.delete(tunnelId);
+    return false;
+  }
+  return true;
 }

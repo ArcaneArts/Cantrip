@@ -1514,7 +1514,7 @@ export class CodeSupervisor {
     };
     if (session.presentation === "editor") {
       Object.assign(settings, {
-        "breadcrumbs.enabled": true,
+        "breadcrumbs.enabled": false,
         "window.commandCenter": false,
         "workbench.activityBar.location": "hidden",
         "workbench.editor.editorActionsLocation": "hidden",
@@ -1522,7 +1522,7 @@ export class CodeSupervisor {
         "workbench.editor.showTabs": "none",
         "workbench.layoutControl.enabled": false,
         "workbench.startupEditor": "none",
-        "workbench.statusBar.visible": true,
+        "workbench.statusBar.visible": false,
       });
     }
     settings["workbench.colorTheme"] = THEME_NAMES[session.appearance];

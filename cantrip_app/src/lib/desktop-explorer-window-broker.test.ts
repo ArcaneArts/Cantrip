@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   saveExplorerFile: vi.fn(),
 }));
 const desktopCode = vi.hoisted(() => ({
+  directCodeAttachmentHealthyWithin: vi.fn(),
   openDirectCodeAttachmentFile: vi.fn(),
   preferProtectedCodeAttachment: vi.fn(),
   setDirectCodeAttachmentPresentation: vi.fn(),
@@ -35,6 +36,7 @@ const wire = {
   expiresAt: attachment.expiresAt,
   runtime: attachment.runtime,
 };
+const frameNonce = "mount_nonce_1234567890";
 
 function deferred<T>(): {
   promise: Promise<T>;
@@ -53,6 +55,7 @@ describe("desktop Explorer window broker", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    desktopCode.directCodeAttachmentHealthyWithin.mockResolvedValue(true);
     api.createProtectedExplorerCodeAttachment.mockResolvedValue(wire);
     desktopCode.preferProtectedCodeAttachment.mockResolvedValue({
       attachment,
@@ -61,9 +64,9 @@ describe("desktop Explorer window broker", () => {
     desktopCode.setDirectCodeAttachmentPresentation.mockResolvedValue({
       presentation: "editor",
     });
-    desktopCode.openDirectCodeAttachmentFile.mockResolvedValue({
-      relativePath: "src/index.ts",
-    });
+    desktopCode.openDirectCodeAttachmentFile.mockImplementation(
+      async (_attachment, path) => ({ relativePath: path }),
+    );
     desktopCode.stopDirectCodeAttachment.mockResolvedValue(undefined);
     api.releaseCodeAttachment.mockResolvedValue(undefined);
   });
@@ -96,9 +99,9 @@ describe("desktop Explorer window broker", () => {
     let client!: DesktopExplorerWindowClient;
     client = new DesktopExplorerWindowClient(broker.launchId, {
       onContext: vi.fn(),
-      onEditor: resolveEditor,
-      onEditorConfigured: resolveConfigured,
+      onEditorEndpoint: resolveEditor,
       onEditorError: vi.fn(),
+      onEditorReady: resolveConfigured,
       onLaunchError: vi.fn(),
     });
     client.start();
@@ -116,7 +119,8 @@ describe("desktop Explorer window broker", () => {
     ).not.toHaveBeenCalled();
     expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
 
-    client.editorFrameLoaded();
+    client.editorWorkbenchMounted(frameNonce);
+    client.editorWorkbenchReady(frameNonce);
     await vi.waitFor(() =>
       expect(
         desktopCode.setDirectCodeAttachmentPresentation,
@@ -149,19 +153,20 @@ describe("desktop Explorer window broker", () => {
         } as ExplorerSummary,
         path: ".cantrip-editor-prewarm",
       },
-      { configureInitialFile: false, requireDirectBridge: true },
+      { configureInitialFile: false },
     );
     const onConfigured = vi.fn();
     let client!: DesktopExplorerWindowClient;
     client = new DesktopExplorerWindowClient(broker.launchId, {
       onContext: vi.fn(),
-      onEditor: vi.fn(),
-      onEditorConfigured: onConfigured,
+      onEditorEndpoint: vi.fn(),
       onEditorError: vi.fn(),
+      onEditorReady: onConfigured,
       onLaunchError: vi.fn(),
     });
     client.start();
-    client.editorFrameLoaded();
+    client.editorWorkbenchMounted(frameNonce);
+    client.editorWorkbenchReady(frameNonce);
 
     await broker.ready;
     expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledWith(
@@ -204,9 +209,12 @@ describe("desktop Explorer window broker", () => {
     let client!: DesktopExplorerWindowClient;
     client = new DesktopExplorerWindowClient(broker.launchId, {
       onContext: vi.fn(),
-      onEditor: () => client.editorFrameLoaded(),
-      onEditorConfigured: vi.fn(),
+      onEditorEndpoint: () => {
+        client.editorWorkbenchMounted(frameNonce);
+        client.editorWorkbenchReady(frameNonce);
+      },
       onEditorError: vi.fn(),
+      onEditorReady: vi.fn(),
       onLaunchError: vi.fn(),
     });
     client.start();
@@ -239,9 +247,12 @@ describe("desktop Explorer window broker", () => {
     let client!: DesktopExplorerWindowClient;
     client = new DesktopExplorerWindowClient(broker.launchId, {
       onContext: vi.fn(),
-      onEditor: () => client.editorFrameLoaded(),
-      onEditorConfigured: vi.fn(),
+      onEditorEndpoint: () => {
+        client.editorWorkbenchMounted(frameNonce);
+        client.editorWorkbenchReady(frameNonce);
+      },
       onEditorError: vi.fn(),
+      onEditorReady: vi.fn(),
       onLaunchError: vi.fn(),
     });
     client.start();
@@ -277,16 +288,15 @@ describe("desktop Explorer window broker", () => {
       },
       {
         configureInitialFile: false,
-        requireDirectBridge: true,
         signal: owner.signal,
       },
     );
     const onEditor = vi.fn();
     const client = new DesktopExplorerWindowClient(broker.launchId, {
       onContext: vi.fn(),
-      onEditor,
-      onEditorConfigured: vi.fn(),
+      onEditorEndpoint: onEditor,
       onEditorError: vi.fn(),
+      onEditorReady: vi.fn(),
       onLaunchError: vi.fn(),
     });
     client.start();
@@ -395,5 +405,246 @@ describe("desktop Explorer window broker", () => {
     await expect(broker.dispose()).resolves.toBeUndefined();
     expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
     expect(desktopCode.preferProtectedCodeAttachment).not.toHaveBeenCalled();
+  });
+
+  it("never treats a failed iframe document as editor readiness", async () => {
+    const onEditorError = vi.fn();
+    let client!: DesktopExplorerWindowClient;
+    const broker = createDesktopExplorerWindowBroker(
+      {
+        appearance: "dark",
+        explorer: {
+          activeWorkerId: "worker-one",
+          id: "explorer-error-document",
+          projectId: "project-one",
+          worktreeId: "worktree-one",
+        } as ExplorerSummary,
+        path: ".cantrip-editor-prewarm",
+      },
+      { configureInitialFile: false },
+    );
+    client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext: vi.fn(),
+      onEditorEndpoint: () => {
+        client.editorWorkbenchMounted(frameNonce);
+        client.editorWorkbenchFailed(
+          frameNonce,
+          "The embedded document returned an error page.",
+          "frame",
+        );
+      },
+      onEditorError,
+      onEditorReady: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+
+    await expect(broker.ready).rejects.toThrow("error page");
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).not.toHaveBeenCalled();
+    expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(api.releaseCodeAttachment).toHaveBeenCalledOnce(),
+    );
+    await vi.waitFor(() =>
+      expect(onEditorError).toHaveBeenCalledWith(
+        expect.stringContaining("error page"),
+        "frame",
+      ),
+    );
+
+    client.dispose();
+    await broker.dispose();
+  });
+
+  it("bounds workbench readiness and releases a frame that never acknowledges", async () => {
+    vi.useFakeTimers();
+    const broker = createDesktopExplorerWindowBroker(
+      {
+        appearance: "dark",
+        explorer: {
+          activeWorkerId: "worker-one",
+          id: "explorer-frame-timeout",
+          projectId: "project-one",
+          worktreeId: "worktree-one",
+        } as ExplorerSummary,
+        path: ".cantrip-editor-prewarm",
+      },
+      { configureInitialFile: false },
+    );
+    const ready = expect(broker.ready).rejects.toThrow(
+      "workbench did not become ready",
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(15_000);
+    await ready;
+    await vi.waitFor(() =>
+      expect(api.releaseCodeAttachment).toHaveBeenCalledOnce(),
+    );
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).not.toHaveBeenCalled();
+
+    await broker.dispose();
+    vi.useRealTimers();
+  });
+
+  it("coalesces rapid file switches onto the final exact path", async () => {
+    let client!: DesktopExplorerWindowClient;
+    const broker = createDesktopExplorerWindowBroker({
+      appearance: "dark",
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-rapid",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+      path: "src/initial.ts",
+    });
+    client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext: vi.fn(),
+      onEditorEndpoint: () => {
+        client.editorWorkbenchMounted(frameNonce);
+        client.editorWorkbenchReady(frameNonce);
+      },
+      onEditorError: vi.fn(),
+      onEditorReady: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+    await broker.ready;
+    desktopCode.openDirectCodeAttachmentFile.mockClear();
+
+    await Promise.all([
+      broker.openFile("src/a.ts", 10),
+      broker.openFile("src/b.ts", 20),
+      broker.openFile("src/c.ts", 30),
+    ]);
+
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
+      attachment,
+      "src/c.ts",
+      { signal: expect.any(AbortSignal) },
+    );
+
+    client.dispose();
+    await broker.dispose();
+  });
+
+  it("replays presentation and the current file for a newly mounted frame", async () => {
+    const secondNonce = "replacement_nonce_1234567890";
+    const onEditorReady = vi.fn();
+    let client!: DesktopExplorerWindowClient;
+    const broker = createDesktopExplorerWindowBroker({
+      appearance: "dark",
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-frame-reload",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+      path: "src/current.ts",
+    });
+    client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext: vi.fn(),
+      onEditorEndpoint: () => {
+        client.editorWorkbenchMounted(frameNonce);
+        client.editorWorkbenchReady(frameNonce);
+      },
+      onEditorError: vi.fn(),
+      onEditorReady,
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+    await broker.ready;
+    await vi.waitFor(() => expect(onEditorReady).toHaveBeenCalledOnce());
+
+    client.editorWorkbenchMounted(secondNonce);
+    client.editorWorkbenchFailed(frameNonce, "stale frame failed", "frame");
+    expect(broker.failed).toBe(false);
+    client.editorWorkbenchReady(secondNonce);
+
+    await vi.waitFor(() =>
+      expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(onEditorReady).toHaveBeenCalledTimes(2));
+
+    client.dispose();
+    await broker.dispose();
+  });
+
+  it("replaces an unhealthy attachment and replays the current file", async () => {
+    vi.useFakeTimers();
+    const replacementWire = {
+      ...wire,
+      attachmentId: "33333333-3333-4333-8333-333333333333",
+      tunnelId: "44444444-4444-4444-8444-444444444444",
+    };
+    api.createProtectedExplorerCodeAttachment
+      .mockResolvedValueOnce(wire)
+      .mockResolvedValueOnce(replacementWire);
+    desktopCode.preferProtectedCodeAttachment.mockImplementation(
+      async (selectedWire) => ({
+        attachment: {
+          ...attachment,
+          attachmentId: selectedWire.attachmentId,
+          url: `http://127.0.0.1:43123/code/${selectedWire.attachmentId}/`,
+        },
+        directTunnelId: selectedWire.tunnelId,
+      }),
+    );
+    desktopCode.directCodeAttachmentHealthyWithin
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    let endpointCount = 0;
+    let client!: DesktopExplorerWindowClient;
+    const broker = createDesktopExplorerWindowBroker({
+      appearance: "dark",
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-health-recovery",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+      path: "src/current.ts",
+    });
+    client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext: vi.fn(),
+      onEditorEndpoint: () => {
+        endpointCount += 1;
+        const nonce = `health_mount_nonce_${endpointCount}_1234567890`;
+        client.editorWorkbenchMounted(nonce);
+        client.editorWorkbenchReady(nonce);
+      },
+      onEditorError: vi.fn(),
+      onEditorReady: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+    await broker.ready;
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.waitFor(() =>
+      expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+        2,
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(2),
+    );
+    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
+    expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
+    expect(endpointCount).toBe(2);
+
+    client.dispose();
+    await broker.dispose();
+    vi.useRealTimers();
   });
 });

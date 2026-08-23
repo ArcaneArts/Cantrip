@@ -1,0 +1,13 @@
+{
+  "id": "0008-signal-embedded-workbench-readiness",
+  "title": "Signal embedded Cantrip workbench readiness",
+  "reason": "An iframe load event also fires for proxy and browser error documents, while the remote extension host cannot access the iframe DOM. The embedding client needs a browser-context signal that is emitted only by the real OpenVSCode workbench after its editor part has mounted and layout restore has completed. A per-mount nonce lets the client bind the signal to the exact iframe without exposing attachment credentials.",
+  "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  "files": ["src/vs/workbench/browser/workbench.ts"],
+  "validation": [
+    "pnpm code:patch -- --source cantrip_code/upstream --check",
+    "pnpm code:build",
+    "Mount Cantrip Code with a valid cantripFrameNonce query parameter and confirm the parent receives cantrip-code.workbench-ready only after the editor part is restored"
+  ],
+  "removal": "Remove when OpenVSCode exposes an embedder readiness API that distinguishes the rendered workbench from an iframe error document and supports per-mount correlation."
+}

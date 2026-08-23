@@ -7,7 +7,14 @@ import type {
   CodeTabSummary,
 } from "@cantrip/protocol";
 import { AlertTriangle, Code2, Loader2, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,9 +27,15 @@ import {
   stopCodeTab,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import {
+  CODE_WORKBENCH_READY_TIMEOUT_MS,
+  codeWorkbenchStageError,
+  createCodeWorkbenchFrameMount,
+  isCodeWorkbenchReadyEvent,
+} from "@/lib/code-workbench-frame";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
-  directCodeAttachmentHealthy,
+  directCodeAttachmentHealthyWithin,
   preferProtectedCodeAttachment,
   stopDirectCodeAttachment,
 } from "@/lib/desktop-code";
@@ -34,7 +47,6 @@ import {
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const CODE_RUNTIME_POLL_DELAY_MS = 500;
 const CODE_RUNTIME_POLL_WINDOW_MS = 30_000;
-const ATTACHMENT_UNAVAILABLE_MESSAGE = "cantrip-code-attachment-unavailable-v1";
 
 export interface CodeHeaderState {
   attachmentExpiresAt: string | null;
@@ -52,15 +64,6 @@ export interface CodeHeaderState {
 
 export function codeReconnectDelayMs(attempt: number): number {
   return Math.min(MAX_RECONNECT_DELAY_MS, 1_000 * 2 ** Math.max(0, attempt));
-}
-
-export function isCodeAttachmentUnavailableMessage(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    value.type === ATTACHMENT_UNAVAILABLE_MESSAGE
-  );
 }
 
 export function isCodeSessionUnavailableError(error: unknown): boolean {
@@ -152,6 +155,11 @@ export function CodeView({
   const [connectAttempt, setConnectAttempt] = useState(0);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [frameError, setFrameError] = useState<string | null>(null);
+  const [frameFailureNonce, setFrameFailureNonce] = useState<string | null>(
+    null,
+  );
+  const [frameReadyNonce, setFrameReadyNonce] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const [synchronizedThemeKey, setSynchronizedThemeKey] = useState<
@@ -171,6 +179,7 @@ export function CodeView({
     );
   const cancelConnectionRef = useRef<() => void>(() => undefined);
   const connectionGeneration = useRef(0);
+  const frameFailureNonceRef = useRef<string | null>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const stopped = useRef(false);
   const onChangedRef = useRef(onChanged);
@@ -204,6 +213,10 @@ export function CodeView({
     setConnectAttempt(0);
     setConnectError(null);
     setConnecting(false);
+    setFrameError(null);
+    setFrameFailureNonce(null);
+    frameFailureNonceRef.current = null;
+    setFrameReadyNonce(null);
     setRetrying(false);
     setSynchronizedThemeKey(null);
 
@@ -275,7 +288,9 @@ export function CodeView({
           const checkDirectRoute = async () => {
             if (cancelled || !ownedDirectTunnelId) return;
             try {
-              if (!(await directCodeAttachmentHealthy(ownedDirectTunnelId)))
+              if (
+                !(await directCodeAttachmentHealthyWithin(ownedDirectTunnelId))
+              )
                 throw new Error("Direct Code route is unavailable.");
               if (cancelled) return;
               failures = 0;
@@ -341,22 +356,66 @@ export function CodeView({
     };
   }, [codeTab.activeWorkerId, codeTab.id, codeTab.worktreeId, reloadVersion]);
 
-  useEffect(() => {
-    if (!attachment) return;
-    const attachmentOrigin = new URL(attachment.url).origin;
-    const recover = (event: MessageEvent<unknown>) => {
+  const frameMount = useMemo(
+    () => (attachment ? createCodeWorkbenchFrameMount(attachment.url) : null),
+    [attachment?.attachmentId, attachment?.url],
+  );
+
+  useLayoutEffect(() => {
+    setFrameReadyNonce(null);
+    if (!frameMount || frameFailureNonce === frameMount.nonce) return;
+    if (frameFailureNonceRef.current !== frameMount.nonce) {
+      frameFailureNonceRef.current = null;
+    }
+    let settled = false;
+    const receiveReady = (event: MessageEvent<unknown>) => {
       if (
-        event.origin !== attachmentOrigin ||
-        event.source !== frameRef.current?.contentWindow ||
-        !isCodeAttachmentUnavailableMessage(event.data)
+        settled ||
+        frameFailureNonceRef.current === frameMount.nonce ||
+        !isCodeWorkbenchReadyEvent(
+          event,
+          frameRef.current?.contentWindow ?? null,
+          frameMount,
+        )
       ) {
         return;
       }
-      reload();
+      settled = true;
+      frameFailureNonceRef.current = frameMount.nonce;
+      setFrameError(null);
+      setFrameReadyNonce(frameMount.nonce);
+      logCodeEvent("info", "workbench frame confirmed", {
+        attachmentId: attachment?.attachmentId,
+        sessionId: attachment?.sessionId,
+      });
     };
-    window.addEventListener("message", recover);
-    return () => window.removeEventListener("message", recover);
-  }, [attachment, reload]);
+    window.addEventListener("message", receiveReady);
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      const failure = codeWorkbenchStageError(
+        "workbench",
+        "The embedded editor timed out after its endpoint loaded.",
+      );
+      setFrameFailureNonce(frameMount.nonce);
+      setFrameError(failure.message);
+      logCodeEvent("error", "workbench frame readiness failed", {
+        attachmentId: attachment?.attachmentId,
+        error: failure.message,
+        sessionId: attachment?.sessionId,
+      });
+    }, CODE_WORKBENCH_READY_TIMEOUT_MS);
+    return () => {
+      settled = true;
+      clearTimeout(timeout);
+      window.removeEventListener("message", receiveReady);
+    };
+  }, [
+    attachment?.attachmentId,
+    attachment?.sessionId,
+    frameFailureNonce,
+    frameMount,
+  ]);
 
   useEffect(() => {
     if (!attachment) return;
@@ -633,7 +692,7 @@ export function CodeView({
   const header = useMemo<CodeHeaderState>(
     () => ({
       attachmentExpiresAt: attachment?.expiresAt ?? null,
-      error: actionError ?? connectError ?? backgroundError,
+      error: actionError ?? connectError ?? frameError ?? backgroundError,
       isBusy:
         busyAction !== null ||
         connecting ||
@@ -657,6 +716,7 @@ export function CodeView({
       codeTab.status,
       connectError,
       connecting,
+      frameError,
       reload,
       prepareWorktreeChange,
       restart,
@@ -679,7 +739,8 @@ export function CodeView({
 
   const workbenchReady = attachment
     ? synchronizedThemeKey === `${attachment.attachmentId}\0${appearance}` &&
-      isCodeWorkbenchReady(attachment.runtime, attachment.sessionId)
+      isCodeWorkbenchReady(attachment.runtime, attachment.sessionId) &&
+      frameReadyNonce === frameMount?.nonce
     : false;
   const darkWorkbench = isDarkCodeAppearance(appearance);
   const workbenchBackdrop = darkWorkbench ? "#000000" : "#ffffff";
@@ -696,22 +757,31 @@ export function CodeView({
       {attachment ? (
         <>
           <iframe
-            key={attachment.attachmentId}
+            key={frameMount?.nonce}
             allow="clipboard-read; clipboard-write"
             aria-hidden={!workbenchReady}
             className={codeWorkbenchFrameClassName(workbenchReady)}
             referrerPolicy="no-referrer"
             ref={frameRef}
-            src={attachment.url}
+            src={frameMount?.url}
             style={{ backgroundColor: workbenchBackdrop }}
             title={`${codeTab.title} — Cantrip Code`}
-            onError={() =>
+            onError={() => {
+              if (!frameMount) return;
+              frameFailureNonceRef.current = frameMount.nonce;
+              const failure = codeWorkbenchStageError(
+                "frame",
+                "The embedded editor document could not load.",
+              );
+              setFrameFailureNonce(frameMount.nonce);
+              setFrameError(failure.message);
               logCodeEvent("error", "workbench frame failed to load", {
                 attachmentId: attachment.attachmentId,
+                error: failure.message,
                 sessionId: attachment.sessionId,
                 url: codeAttachmentUrlForLog(attachment.url),
-              })
-            }
+              });
+            }}
             onLoad={() =>
               logCodeEvent("info", "workbench frame load event", {
                 attachmentId: attachment.attachmentId,
@@ -731,15 +801,29 @@ export function CodeView({
               }}
             >
               <div className="max-w-md">
-                <Loader2 className="mx-auto size-5 animate-spin" />
-                <h2 className="mt-4 font-semibold">Starting Cantrip Code</h2>
+                {frameError ? (
+                  <AlertTriangle className="mx-auto size-5 text-destructive" />
+                ) : (
+                  <Loader2 className="mx-auto size-5 animate-spin" />
+                )}
+                <h2 className="mt-4 font-semibold">
+                  {frameError
+                    ? "Cantrip Code did not render"
+                    : "Starting Cantrip Code"}
+                </h2>
                 <p
                   className="mt-2 text-sm leading-6"
                   style={{ color: workbenchMuted }}
                 >
-                  Connecting the editor to this worktree and applying your
-                  appearance settings.
+                  {frameError ??
+                    "Connecting the editor to this worktree and applying your appearance settings."}
                 </p>
+                {frameError ? (
+                  <Button className="mt-4" onClick={reload} variant="outline">
+                    <RefreshCw className="size-4" />
+                    Retry now
+                  </Button>
+                ) : null}
               </div>
             </div>
           ) : null}

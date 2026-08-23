@@ -5,6 +5,7 @@ import {
   isDesktopExplorerWindowResponse,
   type DesktopExplorerWindowContext,
   type DesktopExplorerWindowRequest,
+  type DesktopExplorerWindowResponse,
 } from "@/lib/desktop-explorer-window-protocol";
 
 type PendingRequest = {
@@ -15,9 +16,15 @@ type PendingRequest = {
 
 export interface DesktopExplorerWindowClientCallbacks {
   onContext(context: DesktopExplorerWindowContext): void;
-  onEditor(attachment: CodeAttachment, preparedAtMs: number): void;
-  onEditorConfigured(configuredAtMs: number): void;
-  onEditorError(error: string): void;
+  onEditorEndpoint(attachment: CodeAttachment, preparedAtMs: number): void;
+  onEditorError(
+    error: string,
+    stage: Extract<
+      DesktopExplorerWindowResponse,
+      { type: "editor.failed" }
+    >["stage"],
+  ): void;
+  onEditorReady(configuredAtMs: number): void;
   onLaunchError(error: string): void;
 }
 
@@ -26,12 +33,14 @@ export class DesktopExplorerWindowClient {
   readonly #channel: BroadcastChannel;
   readonly #launchId: string;
   readonly #pending = new Map<string, PendingRequest>();
-  #configuredAtMs: number | null = null;
+  #configuredSignature: string | null = null;
   #contextReceived = false;
   #contextSignature: string | null = null;
   #disposed = false;
+  #endpointSignature: string | null = null;
   #launchRetry: ReturnType<typeof setInterval> | null = null;
   #launchTimeout: ReturnType<typeof setTimeout> | null = null;
+  #workbenchNonce: string | null = null;
 
   constructor(
     launchId: string,
@@ -62,11 +71,40 @@ export class DesktopExplorerWindowClient {
     return this.#request<ExplorerFile>({ type: "file.read" });
   }
 
-  editorFrameLoaded(): void {
+  editorWorkbenchReady(nonce: string): void {
     if (this.#disposed) return;
+    this.#workbenchNonce = nonce;
+    this.#configuredSignature = null;
     this.#channel.postMessage({
       launchId: this.#launchId,
-      type: "editor.frame-loaded",
+      nonce,
+      type: "editor.workbench-ready",
+    } satisfies DesktopExplorerWindowRequest);
+  }
+
+  editorWorkbenchMounted(nonce: string): void {
+    if (this.#disposed) return;
+    this.#workbenchNonce = nonce;
+    this.#configuredSignature = null;
+    this.#channel.postMessage({
+      launchId: this.#launchId,
+      nonce,
+      type: "editor.workbench-mounted",
+    } satisfies DesktopExplorerWindowRequest);
+  }
+
+  editorWorkbenchFailed(
+    nonce: string,
+    error: string,
+    stage: "frame" | "workbench",
+  ): void {
+    if (this.#disposed) return;
+    this.#channel.postMessage({
+      error,
+      launchId: this.#launchId,
+      nonce,
+      stage,
+      type: "editor.workbench-failed",
     } satisfies DesktopExplorerWindowRequest);
   }
 
@@ -111,22 +149,36 @@ export class DesktopExplorerWindowClient {
       const signature = `${response.context.requestedAtMs}\0${response.context.path}`;
       if (signature === this.#contextSignature) return;
       this.#contextSignature = signature;
-      this.#configuredAtMs = null;
+      this.#configuredSignature = null;
       this.#callbacks.onContext(response.context);
       return;
     }
-    if (response.type === "editor.ready") {
-      this.#callbacks.onEditor(response.attachment, response.preparedAtMs);
+    if (response.type === "editor.endpoint-ready") {
+      const signature = `${response.attachment.attachmentId}\0${response.attachment.sessionId}\0${response.attachment.url}\0${response.preparedAtMs}`;
+      if (signature === this.#endpointSignature) return;
+      this.#endpointSignature = signature;
+      this.#callbacks.onEditorEndpoint(
+        response.attachment,
+        response.preparedAtMs,
+      );
       return;
     }
-    if (response.type === "editor.configured") {
-      if (response.configuredAtMs === this.#configuredAtMs) return;
-      this.#configuredAtMs = response.configuredAtMs;
-      this.#callbacks.onEditorConfigured(response.configuredAtMs);
+    if (response.type === "editor.ready") {
+      if (
+        response.nonce !== this.#workbenchNonce ||
+        !this.#contextSignature ||
+        this.#contextSignature !== `${response.requestedAtMs}\0${response.path}`
+      ) {
+        return;
+      }
+      const signature = `${response.requestedAtMs}\0${response.path}\0${response.configuredAtMs}`;
+      if (signature === this.#configuredSignature) return;
+      this.#configuredSignature = signature;
+      this.#callbacks.onEditorReady(response.configuredAtMs);
       return;
     }
     if (response.type === "editor.failed") {
-      this.#callbacks.onEditorError(response.error);
+      this.#callbacks.onEditorError(response.error, response.stage);
       return;
     }
     const pending = this.#pending.get(response.requestId);

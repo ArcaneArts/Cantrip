@@ -1122,7 +1122,7 @@ describe("Cantrip Code supervisor", () => {
       await readFile(new URL(target.workspaceUri), "utf8"),
     ) as { settings: Record<string, unknown> };
     expect(workspace.settings).toMatchObject({
-      "breadcrumbs.enabled": true,
+      "breadcrumbs.enabled": false,
       "cantrip.presentation": "editor",
       "window.commandCenter": false,
       "workbench.activityBar.location": "hidden",
@@ -1131,7 +1131,7 @@ describe("Cantrip Code supervisor", () => {
       "workbench.editor.showTabs": "none",
       "workbench.layoutControl.enabled": false,
       "workbench.startupEditor": "none",
-      "workbench.statusBar.visible": true,
+      "workbench.statusBar.visible": false,
     });
     expect(workspace.settings).not.toHaveProperty("window.menuBarVisibility");
 

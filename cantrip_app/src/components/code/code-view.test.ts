@@ -7,7 +7,6 @@ import {
   codeWorkbenchFrameClassName,
   codeReconnectDelayMs,
   isDarkCodeAppearance,
-  isCodeAttachmentUnavailableMessage,
   isCodeSessionUnavailableError,
   isCodeWorkbenchReady,
 } from "./code-view";
@@ -22,20 +21,6 @@ describe("Cantrip Code reconnect delay", () => {
 
   it("treats negative attempts as the first retry", () => {
     expect(codeReconnectDelayMs(-4)).toBe(1_000);
-  });
-
-  it("recognizes only the isolated surface recovery message", () => {
-    expect(
-      isCodeAttachmentUnavailableMessage({
-        type: "cantrip-code-attachment-unavailable-v1",
-      }),
-    ).toBe(true);
-    expect(
-      isCodeAttachmentUnavailableMessage({
-        type: "cantrip-code-attachment-unavailable-v2",
-      }),
-    ).toBe(false);
-    expect(isCodeAttachmentUnavailableMessage(null)).toBe(false);
   });
 
   it("recovers only from a worker that forgot an existing Code session", () => {
