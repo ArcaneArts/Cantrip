@@ -1,7 +1,7 @@
 "use strict";
 
 const EDITOR_CONFIGURATION = [
-  ["breadcrumbs", "enabled", true],
+  ["breadcrumbs", "enabled", false],
   ["window", "commandCenter", false],
   ["workbench.activityBar", "location", "hidden"],
   ["workbench.editor", "editorActionsLocation", "hidden"],
@@ -9,7 +9,7 @@ const EDITOR_CONFIGURATION = [
   ["workbench.editor", "showTabs", "none"],
   ["workbench", "startupEditor", "none"],
   ["workbench.layoutControl", "enabled", false],
-  ["workbench.statusBar", "visible", true],
+  ["workbench.statusBar", "visible", false],
 ];
 
 async function executeLayoutCommand(commands, command) {
@@ -55,13 +55,18 @@ async function setWorkbenchPresentation(
       .getConfiguration(section)
       .update(key, value, configurationTarget);
   }
-  return configureWorkbenchPresentation(
+  await configureWorkbenchPresentation(
     {
       get: (key, fallback) =>
         key === "presentation" ? presentation : fallback,
     },
     commands,
   );
+  return true;
 }
 
-module.exports = { configureWorkbenchPresentation, setWorkbenchPresentation };
+module.exports = {
+  EDITOR_CONFIGURATION,
+  configureWorkbenchPresentation,
+  setWorkbenchPresentation,
+};

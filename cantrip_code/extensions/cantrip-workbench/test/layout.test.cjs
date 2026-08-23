@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  EDITOR_CONFIGURATION,
   configureWorkbenchPresentation,
   setWorkbenchPresentation,
 } = require("../src/layout.js");
@@ -115,7 +116,13 @@ test("applies editor-only settings without changing ordinary workbenches", async
       ([section, key, value]) =>
         section === "workbench.statusBar" &&
         key === "visible" &&
-        value === true,
+        value === false,
+    ),
+  );
+  assert.ok(
+    updates.some(
+      ([section, key, value]) =>
+        section === "breadcrumbs" && key === "enabled" && value === false,
     ),
   );
   assert.deepEqual(commands, [
@@ -125,6 +132,67 @@ test("applies editor-only settings without changing ordinary workbenches", async
     "notifications.hideToasts",
     "notifications.clearAll",
   ]);
+});
+
+test("defines every configurable editor-only chrome invariant", () => {
+  assert.deepEqual(EDITOR_CONFIGURATION, [
+    ["breadcrumbs", "enabled", false],
+    ["window", "commandCenter", false],
+    ["workbench.activityBar", "location", "hidden"],
+    ["workbench.editor", "editorActionsLocation", "hidden"],
+    ["workbench.editor", "empty.hint", "hidden"],
+    ["workbench.editor", "showTabs", "none"],
+    ["workbench", "startupEditor", "none"],
+    ["workbench.layoutControl", "enabled", false],
+    ["workbench.statusBar", "visible", false],
+  ]);
+});
+
+test("treats already-hidden close commands as best-effort after applying authoritative config", async () => {
+  const workspace = {
+    getConfiguration() {
+      return { update: async () => undefined };
+    },
+  };
+
+  await assert.doesNotReject(
+    setWorkbenchPresentation(
+      "editor",
+      workspace,
+      {
+        async executeCommand(command) {
+          if (command === "workbench.action.closePanel") {
+            throw new Error("panel command failed");
+          }
+        },
+      },
+      "workspace",
+    ),
+  );
+});
+
+test("rejects presentation control when an authoritative config write fails", async () => {
+  const workspace = {
+    getConfiguration(section) {
+      return {
+        async update(key) {
+          if (section === "workbench.statusBar" && key === "visible") {
+            throw new Error("workspace settings are read-only");
+          }
+        },
+      };
+    },
+  };
+
+  await assert.rejects(
+    setWorkbenchPresentation(
+      "editor",
+      workspace,
+      { executeCommand: async () => undefined },
+      "workspace",
+    ),
+    /workspace settings are read-only/u,
+  );
 });
 
 test("rejects attempts to collapse a normal Code workbench", async () => {

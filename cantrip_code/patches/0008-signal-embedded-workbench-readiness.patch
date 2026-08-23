@@ -1,0 +1,36 @@
+--- a/src/vs/workbench/browser/workbench.ts
++++ b/src/vs/workbench/browser/workbench.ts
+@@ -62,6 +62,25 @@
+ 	 * Whether to reset the workbench parts layout on startup.
+ 	 */
+ 	resetLayout?: boolean;
++}
++
++const CANTRIP_FRAME_NONCE_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
++
++function signalCantripWorkbenchReady(): void {
++	if (mainWindow.parent === mainWindow || !mainWindow.document.querySelector('.part.editor')) {
++		return;
++	}
++
++	const nonce = new URL(mainWindow.location.href).searchParams.get('cantripFrameNonce');
++	if (!nonce || !CANTRIP_FRAME_NONCE_PATTERN.test(nonce)) {
++		return;
++	}
++
++	mainWindow.parent.postMessage({
++		type: 'cantrip-code.workbench-ready',
++		version: 1,
++		nonce,
++	}, '*');
+ }
+ 
+ export class Workbench extends Layout {
+@@ -450,6 +469,7 @@
+ 
+ 				// Set lifecycle phase to `Restored`
+ 				lifecycleService.phase = LifecyclePhase.Restored;
++				signalCantripWorkbenchReady();
+ 
+ 				// Set lifecycle phase to `Eventually` after a short delay and when idle (min 2.5sec, max 5sec)
+ 				const eventuallyPhaseScheduler = this._register(new RunOnceScheduler(() => {

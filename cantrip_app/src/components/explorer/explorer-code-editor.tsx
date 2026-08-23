@@ -3,20 +3,34 @@ import type {
   CodeProtectedAttachmentWire,
 } from "@cantrip/protocol";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   codeWorkbenchFrameClassName,
-  isCodeAttachmentUnavailableMessage,
   isDarkCodeAppearance,
 } from "@/components/code/code-view";
 import { Button } from "@/components/ui/button";
+import { subscribeBrowserCodeAttachmentUnavailable } from "@/lib/browser-code-tunnel";
+import {
+  CODE_WORKBENCH_READY_TIMEOUT_MS,
+  codeWorkbenchStageError,
+  createCodeWorkbenchFrameMount,
+  isCodeWorkbenchReadyEvent,
+} from "@/lib/code-workbench-frame";
 import {
   createProtectedExplorerCodeAttachment,
   releaseCodeAttachment,
 } from "@/lib/api";
 import {
   openDirectCodeAttachmentFile,
+  directCodeAttachmentHealthyWithin,
   preferProtectedCodeAttachment,
   setDirectCodeAttachmentPresentation,
   stopDirectCodeAttachment,
@@ -31,6 +45,7 @@ import {
 
 const FILE_OPEN_RETRY_DELAY_MS = 250;
 const FILE_OPEN_RECONNECT_LIMIT = 1;
+const ATTACHMENT_HEALTH_INTERVAL_MS = 5_000;
 
 function shouldRetryFileOpen(error: unknown): boolean {
   return /(?:failed to fetch|load failed|network|not connected|unavailable)/iu.test(
@@ -78,9 +93,14 @@ export function ExplorerCodeEditor({
   const [preferredAttachment, setPreferredAttachment] =
     useState<PreferredCodeAttachment | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [frameFailureNonce, setFrameFailureNonce] = useState<string | null>(
+    null,
+  );
+  const [frameReadyNonce, setFrameReadyNonce] = useState<string | null>(null);
   const [readyKey, setReadyKey] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const automaticReconnectsRef = useRef(0);
+  const frameFailureNonceRef = useRef<string | null>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const navigationQueueRef = useRef(new SerialTaskQueue());
   const attachmentLifecycleRef =
@@ -110,7 +130,20 @@ export function ExplorerCodeEditor({
         bindingKey,
       )
     : null;
-  const ready = readyKey !== null && readyKey === requestedReadyKey;
+  const frameMount = useMemo(
+    () =>
+      preferredAttachment
+        ? createCodeWorkbenchFrameMount(preferredAttachment.attachment.url)
+        : null,
+    [
+      preferredAttachment?.attachment.attachmentId,
+      preferredAttachment?.attachment.url,
+    ],
+  );
+  const frameReady =
+    frameMount !== null && frameReadyNonce === frameMount.nonce;
+  const ready =
+    frameReady && readyKey !== null && readyKey === requestedReadyKey;
 
   const reload = useCallback(() => {
     setReloadVersion((version) => version + 1);
@@ -122,6 +155,9 @@ export function ExplorerCodeEditor({
 
     setPreferredAttachment(null);
     setError(null);
+    setFrameFailureNonce(null);
+    frameFailureNonceRef.current = null;
+    setFrameReadyNonce(null);
     setReadyKey(null);
 
     const connect = async () => {
@@ -170,7 +206,81 @@ export function ExplorerCodeEditor({
   }, [path]);
 
   useEffect(() => {
-    if (!preferredAttachment) return;
+    const tunnelId = preferredAttachment?.directTunnelId;
+    if (!tunnelId) return;
+    let cancelled = false;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = async () => {
+      const healthy = await directCodeAttachmentHealthyWithin(tunnelId);
+      if (cancelled) return;
+      failures = healthy ? 0 : failures + 1;
+      if (failures >= 2) {
+        reload();
+        return;
+      }
+      timer = setTimeout(check, ATTACHMENT_HEALTH_INTERVAL_MS);
+    };
+    timer = setTimeout(check, ATTACHMENT_HEALTH_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [preferredAttachment?.directTunnelId, reload]);
+
+  useEffect(() => {
+    const tunnelId = preferredAttachment?.directTunnelId;
+    if (!tunnelId) return;
+    return subscribeBrowserCodeAttachmentUnavailable((event) => {
+      if (event.tunnelId === tunnelId) reload();
+    });
+  }, [preferredAttachment?.directTunnelId, reload]);
+
+  useLayoutEffect(() => {
+    setFrameReadyNonce(null);
+    if (!frameMount || frameFailureNonce === frameMount.nonce) return;
+    if (frameFailureNonceRef.current !== frameMount.nonce) {
+      frameFailureNonceRef.current = null;
+    }
+    let settled = false;
+    const receiveReady = (event: MessageEvent<unknown>) => {
+      if (
+        settled ||
+        frameFailureNonceRef.current === frameMount.nonce ||
+        !isCodeWorkbenchReadyEvent(
+          event,
+          frameRef.current?.contentWindow ?? null,
+          frameMount,
+        )
+      ) {
+        return;
+      }
+      settled = true;
+      frameFailureNonceRef.current = frameMount.nonce;
+      setError(null);
+      setFrameReadyNonce(frameMount.nonce);
+    };
+    window.addEventListener("message", receiveReady);
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      setFrameFailureNonce(frameMount.nonce);
+      setError(
+        codeWorkbenchStageError(
+          "workbench",
+          "The embedded editor timed out after its endpoint loaded.",
+        ).message,
+      );
+    }, CODE_WORKBENCH_READY_TIMEOUT_MS);
+    return () => {
+      settled = true;
+      clearTimeout(timeout);
+      window.removeEventListener("message", receiveReady);
+    };
+  }, [frameFailureNonce, frameMount]);
+
+  useEffect(() => {
+    if (!preferredAttachment || !frameReady) return;
     const navigationController = new AbortController();
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -182,20 +292,34 @@ export function ExplorerCodeEditor({
     );
     const openFile = async (attempt: number) => {
       try {
-        await setDirectCodeAttachmentPresentation(
-          preferredAttachment.attachment,
-          "editor",
-          { signal: navigationController.signal },
-        );
-        const result = await openDirectCodeAttachmentFile(
-          preferredAttachment.attachment,
-          path,
-          { signal: navigationController.signal },
-        );
+        try {
+          await setDirectCodeAttachmentPresentation(
+            preferredAttachment.attachment,
+            "editor",
+            { signal: navigationController.signal },
+          );
+        } catch (presentationError) {
+          throw codeWorkbenchStageError("presentation", presentationError);
+        }
+        let result: Awaited<ReturnType<typeof openDirectCodeAttachmentFile>>;
+        try {
+          result = await openDirectCodeAttachmentFile(
+            preferredAttachment.attachment,
+            path,
+            { signal: navigationController.signal },
+          );
+        } catch (fileError) {
+          throw codeWorkbenchStageError("file", fileError);
+        }
         if (!cancelled && result.relativePath === path) {
           automaticReconnectsRef.current = 0;
           setError(null);
           setReadyKey(navigationReadyKey);
+        } else if (!cancelled) {
+          throw codeWorkbenchStageError(
+            "file",
+            `Worker acknowledged ${result.relativePath} instead of ${path}.`,
+          );
         }
       } catch (openError) {
         if (cancelled) return;
@@ -229,23 +353,7 @@ export function ExplorerCodeEditor({
       );
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [bindingKey, path, preferredAttachment]);
-
-  useEffect(() => {
-    if (!preferredAttachment) return;
-    const attachmentOrigin = new URL(preferredAttachment.attachment.url).origin;
-    const recover = (event: MessageEvent<unknown>) => {
-      if (
-        event.origin === attachmentOrigin &&
-        event.source === frameRef.current?.contentWindow &&
-        isCodeAttachmentUnavailableMessage(event.data)
-      ) {
-        reload();
-      }
-    };
-    window.addEventListener("message", recover);
-    return () => window.removeEventListener("message", recover);
-  }, [preferredAttachment, reload]);
+  }, [bindingKey, frameReady, path, preferredAttachment]);
 
   return (
     <section
@@ -254,10 +362,25 @@ export function ExplorerCodeEditor({
     >
       {preferredAttachment ? (
         <iframe
+          key={frameMount?.nonce}
           allow="clipboard-read; clipboard-write"
+          aria-hidden={!ready}
           className={codeWorkbenchFrameClassName(ready)}
+          onError={() => {
+            if (!frameMount) return;
+            frameFailureNonceRef.current = frameMount.nonce;
+            setFrameFailureNonce(frameMount.nonce);
+            setError(
+              codeWorkbenchStageError(
+                "frame",
+                "The embedded editor document could not load.",
+              ).message,
+            );
+          }}
           ref={frameRef}
-          src={preferredAttachment.attachment.url}
+          referrerPolicy="no-referrer"
+          src={frameMount?.url}
+          tabIndex={ready ? 0 : -1}
           title={`Cantrip Code — ${path}`}
         />
       ) : null}

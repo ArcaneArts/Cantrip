@@ -36,7 +36,7 @@ const explorerWindowBrokers = new Map<string, DesktopExplorerWindowBroker>();
 const explorerFileWindowLabels = new Map<string, string>();
 const explorerFileOpenOperations = new Map<
   string,
-  Promise<"created" | "focused">
+  { path: string; promise: Promise<"created" | "focused"> }
 >();
 const explorerEditorPrewarmPath = ".cantrip-editor-prewarm";
 let explorerWindowUnloadCleanupInstalled = false;
@@ -163,9 +163,7 @@ export function desktopExplorerFileWindowLabel(
     .replace(/[^A-Za-z0-9-/:_]/g, "_")
     .slice(0, 64);
   const binding =
-    worktreeId || workerId
-      ? `${path}\0${worktreeId ?? ""}\0${workerId ?? ""}`
-      : path;
+    worktreeId || workerId ? `${worktreeId ?? ""}\0${workerId ?? ""}` : path;
   return `cantrip-editor-${safeExplorerId}-${stableLabelHash(binding)}`;
 }
 
@@ -175,7 +173,6 @@ function desktopExplorerFileTargetKey(
 ): string {
   return [
     target.explorerId,
-    target.path,
     context.explorer.worktreeId,
     context.explorer.activeWorkerId,
   ].join("\0");
@@ -447,7 +444,7 @@ async function createExplorerEditorWarmSlot(
       ...context,
       path: explorerEditorPrewarmPath,
     },
-    { configureInitialFile: false, requireDirectBridge: true, signal },
+    { configureInitialFile: false, signal },
   );
   const label = desktopExplorerEditorWarmWindowLabel(context, broker.launchId);
   const slot = { broker, key, label };
@@ -560,18 +557,21 @@ export function openDesktopExplorerFile(
 ): Promise<"created" | "focused"> {
   const targetKey = desktopExplorerFileTargetKey(target, context);
   const current = explorerFileOpenOperations.get(targetKey);
-  if (current) return current;
-  const operation = openDesktopExplorerFileOperation(
-    target,
-    title,
-    context,
-    targetKey,
-  ).finally(() => {
-    if (explorerFileOpenOperations.get(targetKey) === operation) {
-      explorerFileOpenOperations.delete(targetKey);
-    }
+  if (current?.path === target.path) return current.promise;
+  const operation = (current?.promise ?? Promise.resolve("focused" as const))
+    .catch(() => "focused" as const)
+    .then(() =>
+      openDesktopExplorerFileOperation(target, title, context, targetKey),
+    )
+    .finally(() => {
+      if (explorerFileOpenOperations.get(targetKey)?.promise === operation) {
+        explorerFileOpenOperations.delete(targetKey);
+      }
+    });
+  explorerFileOpenOperations.set(targetKey, {
+    path: target.path,
+    promise: operation,
   });
-  explorerFileOpenOperations.set(targetKey, operation);
   return operation;
 }
 

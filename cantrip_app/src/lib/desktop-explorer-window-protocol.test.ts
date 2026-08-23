@@ -36,12 +36,14 @@ describe("desktop Explorer window protocol", () => {
     expect(
       isDesktopExplorerWindowRequest({
         launchId: "launch-one",
-        type: "editor.frame-loaded",
+        nonce: "mount_nonce_1234567890",
+        type: "editor.workbench-ready",
       }),
     ).toBe(true);
     expect(
       isDesktopExplorerWindowRequest({
-        type: "editor.frame-loaded",
+        launchId: "launch-one",
+        type: "editor.workbench-ready",
       }),
     ).toBe(false);
     expect(
@@ -91,13 +93,16 @@ describe("desktop Explorer window protocol", () => {
       isDesktopExplorerWindowResponse({
         configuredAtMs: 123,
         launchId: "launch-one",
-        type: "editor.configured",
+        nonce: "mount_nonce_1234567890",
+        path: "src/index.ts",
+        requestedAtMs: 1,
+        type: "editor.ready",
       }),
     ).toBe(true);
     expect(
       isDesktopExplorerWindowResponse({
         launchId: "launch-one",
-        type: "editor.configured",
+        type: "editor.ready",
       }),
     ).toBe(false);
     expect(

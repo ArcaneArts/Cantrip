@@ -7,7 +7,16 @@ import {
 } from "@cantrip/protocol";
 import { Code2, Eye, Loader2, Save, SlidersHorizontal } from "lucide-react";
 import { Highlight, themes, type Language } from "prism-react-renderer";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Markdown } from "@/components/chat/markdown";
 import {
@@ -17,6 +26,12 @@ import {
 import { DesktopExplorerWindowHeader } from "@/components/explorer/desktop-explorer-window-shell";
 import { Button } from "@/components/ui/button";
 import { clientLogger } from "@/lib/client-log-relay";
+import {
+  CODE_WORKBENCH_READY_TIMEOUT_MS,
+  codeWorkbenchStageError,
+  createCodeWorkbenchFrameMount,
+  isCodeWorkbenchReadyEvent,
+} from "@/lib/code-workbench-frame";
 import { DesktopExplorerWindowClient } from "@/lib/desktop-explorer-window-client";
 import {
   desktopExplorerWindowModes,
@@ -208,19 +223,84 @@ function EditorPane({
   configuredAtMs,
   context,
   error,
-  onFrameLoaded,
+  onWorkbenchFailed,
+  onWorkbenchMounted,
+  onWorkbenchReady,
   preparedAtMs,
 }: {
   attachment: CodeAttachment | null;
   configuredAtMs: number | null;
   context: DesktopExplorerWindowContext;
   error: string | null;
-  onFrameLoaded(): void;
+  onWorkbenchFailed(
+    nonce: string,
+    error: string,
+    stage: "frame" | "workbench",
+  ): void;
+  onWorkbenchMounted(nonce: string): void;
+  onWorkbenchReady(nonce: string): void;
   preparedAtMs: number | null;
 }) {
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => setLoaded(false), [attachment?.url]);
-  const ready = loaded && configuredAtMs !== null;
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const mount = useMemo(
+    () => (attachment ? createCodeWorkbenchFrameMount(attachment.url) : null),
+    [attachment?.attachmentId, attachment?.url],
+  );
+  const [frameFailureNonce, setFrameFailureNonce] = useState<string | null>(
+    null,
+  );
+  const frameFailureNonceRef = useRef<string | null>(null);
+  const [workbenchNonce, setWorkbenchNonce] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    setWorkbenchNonce(null);
+    if (!mount || frameFailureNonce === mount.nonce) return;
+    if (frameFailureNonceRef.current !== mount.nonce) {
+      frameFailureNonceRef.current = null;
+    }
+    let settled = false;
+    const fail = (reason?: unknown) => {
+      if (settled) return;
+      settled = true;
+      frameFailureNonceRef.current = mount.nonce;
+      const failure = codeWorkbenchStageError("workbench", reason);
+      setFrameFailureNonce(mount.nonce);
+      onWorkbenchFailed(mount.nonce, failure.message, "workbench");
+    };
+    const receiveReady = (event: MessageEvent<unknown>) => {
+      if (
+        settled ||
+        frameFailureNonceRef.current === mount.nonce ||
+        !isCodeWorkbenchReadyEvent(
+          event,
+          frameRef.current?.contentWindow ?? null,
+          mount,
+        )
+      ) {
+        return;
+      }
+      settled = true;
+      setWorkbenchNonce(mount.nonce);
+      onWorkbenchReady(mount.nonce);
+    };
+    window.addEventListener("message", receiveReady);
+    onWorkbenchMounted(mount.nonce);
+    const timeout = setTimeout(
+      () => fail("The embedded editor timed out after its endpoint loaded."),
+      CODE_WORKBENCH_READY_TIMEOUT_MS,
+    );
+    return () => {
+      settled = true;
+      clearTimeout(timeout);
+      window.removeEventListener("message", receiveReady);
+    };
+  }, [
+    frameFailureNonce,
+    mount,
+    onWorkbenchFailed,
+    onWorkbenchMounted,
+    onWorkbenchReady,
+  ]);
+  const ready = workbenchNonce === mount?.nonce && configuredAtMs !== null;
   useEffect(() => {
     if (!ready) return;
     clientLogger.info("Explorer editor window rendered", {
@@ -237,15 +317,27 @@ function EditorPane({
     <div className="relative min-h-0 flex-1 overflow-hidden bg-background">
       {attachment ? (
         <iframe
+          key={mount?.nonce}
           allow="clipboard-read; clipboard-write"
           aria-hidden={!ready}
           className={cn(
             "size-full border-0 bg-background",
-            ready ? "opacity-100" : "pointer-events-none opacity-0",
+            !ready && "pointer-events-none",
           )}
+          onError={() => {
+            if (!mount) return;
+            frameFailureNonceRef.current = mount.nonce;
+            setFrameFailureNonce(mount.nonce);
+            onWorkbenchFailed(
+              mount.nonce,
+              codeWorkbenchStageError(
+                "frame",
+                "The embedded editor document could not load.",
+              ).message,
+              "frame",
+            );
+          }}
           onLoad={() => {
-            setLoaded(true);
-            onFrameLoaded();
             clientLogger.debug("Explorer editor workbench frame loaded", {
               durationMs: Date.now() - context.requestedAtMs,
               event: "surface.explorer.editor-window.frame-loaded",
@@ -255,7 +347,9 @@ function EditorPane({
               subsystem: "explorer",
             });
           }}
-          src={attachment.url}
+          ref={frameRef}
+          referrerPolicy="no-referrer"
+          src={mount?.url}
           tabIndex={ready ? 0 : -1}
           title={`Cantrip Code — ${context.path}`}
         />
@@ -325,13 +419,13 @@ export function DesktopExplorerFileWindow({
             subsystem: "explorer",
           });
         },
-        onEditor: (next, prepared) => {
+        onEditorEndpoint: (next, prepared) => {
           setAttachment(next);
           setPreparedAtMs(prepared);
           setConfiguredAtMs(null);
           setEditorError(null);
         },
-        onEditorConfigured: setConfiguredAtMs,
+        onEditorReady: setConfiguredAtMs,
         onEditorError: setEditorError,
         onLaunchError: setLaunchError,
       }),
@@ -342,6 +436,19 @@ export function DesktopExplorerFileWindow({
     client.start();
     return () => client.dispose();
   }, [client]);
+  const editorWorkbenchReady = useCallback(
+    (nonce: string) => client.editorWorkbenchReady(nonce),
+    [client],
+  );
+  const editorWorkbenchMounted = useCallback(
+    (nonce: string) => client.editorWorkbenchMounted(nonce),
+    [client],
+  );
+  const editorWorkbenchFailed = useCallback(
+    (nonce: string, error: string, stage: "frame" | "workbench") =>
+      client.editorWorkbenchFailed(nonce, error, stage),
+    [client],
+  );
 
   const path = context?.path ?? initialPath;
   const mediaType = context ? explorerMediaTypeForPath(path) : null;
@@ -489,7 +596,9 @@ export function DesktopExplorerFileWindow({
             configuredAtMs={configuredAtMs}
             context={context}
             error={editorError}
-            onFrameLoaded={() => client.editorFrameLoaded()}
+            onWorkbenchFailed={editorWorkbenchFailed}
+            onWorkbenchMounted={editorWorkbenchMounted}
+            onWorkbenchReady={editorWorkbenchReady}
             preparedAtMs={preparedAtMs}
           />
         </div>

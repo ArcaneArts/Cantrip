@@ -537,6 +537,25 @@ export async function directCodeAttachmentHealthy(
   );
 }
 
+export async function directCodeAttachmentHealthyWithin(
+  tunnelId: string,
+  timeoutMs = CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS,
+): Promise<boolean> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      directCodeAttachmentHealthy(tunnelId),
+      new Promise<boolean>((resolve) => {
+        timeout = setTimeout(() => resolve(false), Math.max(1, timeoutMs));
+      }),
+    ]);
+  } catch {
+    return false;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export async function openDirectCodeAttachmentFile(
   attachment: CodeAttachment,
   relativePath: string,
