@@ -20,10 +20,11 @@ import {
   type FormEvent,
 } from "react";
 
-import { ServerSwitcher } from "@/components/servers/server-switcher";
-import { AddServerForm } from "@/components/servers/add-server-form";
+import { ApplicationLoadingSplash } from "@/components/auth/application-loading-splash";
 import { MobileSignInScanner } from "@/components/auth/mobile-sign-in-scanner";
 import { SessionWindowDragRegion } from "@/components/auth/session-window-drag-region";
+import { AddServerForm } from "@/components/servers/add-server-form";
+import { ServerSwitcher } from "@/components/servers/server-switcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -820,13 +821,7 @@ export function ApplicationSession() {
     [refresh],
   );
   if (state.kind === "loading") {
-    return (
-      <SessionFrame>
-        <div className="flex items-center justify-center gap-3 rounded-2xl border bg-card p-8 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Connecting to Cantrip…
-        </div>
-      </SessionFrame>
-    );
+    return <ApplicationLoadingSplash />;
   }
   if (state.kind === "connection-error") {
     return <ConnectionErrorScreen {...state} onRetry={refresh} />;
