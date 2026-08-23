@@ -520,10 +520,7 @@ export function Activity({ activity }: { activity: AgentActivity }) {
     return (
       <details
         className="group min-w-0 py-1 text-sm"
-        open={
-          (activity.type === "notice" && activity.level === "error") ||
-          (activity.type === "mcpToolCall" && activity.status === "failed")
-        }
+        open={activity.type === "notice" && activity.level === "error"}
       >
         <summary
           className={cn(
@@ -566,10 +563,7 @@ export function Activity({ activity }: { activity: AgentActivity }) {
     activity.correlation,
   );
   return (
-    <details
-      className="group min-w-0 py-1 text-sm"
-      open={activity.status === "failed" ? true : undefined}
-    >
+    <details className="group min-w-0 py-1 text-sm">
       <summary
         className={cn(
           "flex min-w-0 list-none items-center gap-2",
