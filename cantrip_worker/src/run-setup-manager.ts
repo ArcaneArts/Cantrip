@@ -29,7 +29,7 @@ import { runShellInvocation } from "./managed-run-supervisor.js";
 
 type RunSetupStart = Omit<
   Extract<WorkerCommand, { type: "project.run-setup.start" }>,
-  "type"
+  "operationId" | "serverId" | "type"
 >;
 
 const MAX_OUTPUT_CHARS = 100_000;

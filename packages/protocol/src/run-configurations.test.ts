@@ -154,15 +154,27 @@ describe("runConfigurationInspectionSchema", () => {
     expect(
       workerCommandSchema.parse({
         type: "project.run-configurations.inspect",
+        operationId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb330",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+        serverId: "https://cantrip.test",
         sourcePath: "/project/source",
       }),
     ).toEqual({
       type: "project.run-configurations.inspect",
+      operationId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb330",
+      projectId: "project-one",
+      worktreeId: "worktree-one",
+      serverId: "https://cantrip.test",
       sourcePath: "/project/source",
     });
     expect(
       workerCommandSchema.safeParse({
         type: "project.run-configurations.inspect",
+        operationId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb330",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+        serverId: "https://cantrip.test",
         sourcePath: "/project/source",
         worktreePath: "/untrusted/override",
       }).success,
@@ -369,6 +381,8 @@ describe("Run runtime schemas", () => {
 
     const start = {
       type: "project.run-setup.start" as const,
+      operationId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb330",
+      serverId: "https://cantrip.test",
       jobId: setup.jobId,
       attempt: 1,
       projectId: setup.projectId,

@@ -2085,12 +2085,12 @@ change the original database-dump guarantee.
 | Encryption coverage inventory and closure audit                                                    | All durable tables and current application, worker, live, CLI, and external-transport contracts are explicitly classified; reviewed-set digests reject new unclassified boundaries | Keep the generated inventory current and preserve the open/closed distinction between the legacy baseline and remaining-work ledger                                | Coverage foundation complete; rollout open             | P0       | Medium      |
 | Saved tunnel names, descriptions, private endpoint configuration, and detailed errors              | Database and relay plaintext in tunnel and attachment records                                                                                                                      | New `tunnel-content` envelopes for semantic presentation and worker-open endpoint configuration; stable public error codes with protected details                  | Component foundation complete; payload rollout planned | P1       | Medium-High |
 | Generic tunnel data-plane payloads                                                                 | Raw payload bytes are visible to the relay server; an inner protocol may or may not provide TLS                                                                                    | Endpoint-authenticated AEAD frames bound to tunnel, attachment, connection, direction, and sequence; retain only routing, flow-control, size, and counter metadata | Planned                                                | P2       | High        |
-| Run configuration inspection, authoring documents, setup scripts, action commands, and diagnostics | Relay plaintext between app and worker                                                                                                                                             | New `run-content` operation envelopes; worker validates and executes semantics while the server routes opaque payloads                                             | Component foundation complete; payload rollout planned | P1       | Medium-High |
-| Run logs, worktree-setup output, and detailed setup failures                                       | Relay plaintext; detailed setup error messages can also be durable                                                                                                                 | `run-content` response envelopes, stable public result/error codes, and protected detailed diagnostics                                                             | Planned                                                | P1       | Medium      |
+| Run configuration inspection, authoring documents, setup scripts, action commands, and diagnostics | Operation-bound `run-content` envelopes across app, MCP, CLI, server, and worker; the server sees only bounded readiness metadata, IDs, revisions, and lifecycle state             | Worker-side validation, selection, authoring, and execution semantics with opaque server routing                                                                   | E2EE complete                                          | P1       | Medium-High |
+| Run logs, worktree-setup output, and detailed setup failures                                       | Operation-bound `run-content` responses; durable setup rows retain stable codes and generic messages rather than worker diagnostics                                                | Stable public lifecycle/result codes with endpoint-opened output, signals, and detailed diagnostics                                                                | E2EE/minimization complete                             | P1       | Medium      |
 | Durable project/chat job progress and detailed errors                                              | Several folder setup, GitHub conversion, replica, chat import, and chat relocation jobs persist free-form progress and error messages                                              | Stable public lifecycle/error codes plus protected details where endpoint presentation is required                                                                 | Planned minimization                                   | P1       | Medium      |
 | Skill files, skill inventories, hooks, roots, external-import previews, and customization errors   | Relay plaintext, including local paths, commands, descriptions, and complete editable skill content                                                                                | New worker-scoped `customization-content` operation envelopes with client-only presentation                                                                        | Component foundation complete; payload rollout planned | P1       | Medium      |
 | MCP runtime inventory and resource contents                                                        | Saved and discovered MCP configuration is protected, but tool/resource metadata and arbitrary resource text/blob reads are relay plaintext                                         | Reuse `customization-content` for runtime inventory and resource-read request/response bodies                                                                      | Planned                                                | P1       | Medium      |
-| Discovered project and terminal script commands                                                    | Exact command, name, source, and description are relay plaintext                                                                                                                   | Operation-bound `repository-content` response opened only by the requesting client                                                                                 | Planned                                                | P1       | Low-Medium  |
+| Discovered project and terminal script commands                                                    | Operation-bound `repository-content` responses opened only by the requesting client; discovery remains worker-local                                                                | Keep command, name, source, and description opaque to the relay server                                                                                             | E2EE complete                                          | P1       | Low-Medium  |
 | Client-control notification title and message                                                      | Agent-provided notification content crosses the server and live hub as plaintext                                                                                                   | Operation-bound endpoint ciphertext opened only by the selected authorized client                                                                                  | Planned                                                | P1       | Low-Medium  |
 | Session IP-address and user-agent hashes                                                           | Durable unsalted hashes permit enumeration/correlation and are not used by a current user-facing security feature                                                                  | Stop collecting and remove the columns unless a defined abuse-control feature requires a deliberately designed representation                                      | Planned minimization                                   | P2       | Low         |
 
@@ -2105,9 +2105,36 @@ hierarchy. A shared endpoint-content envelope authenticates the domain, server,
 worker, resource scope, operation, direction, sequence, and key revision. The
 client and worker adapters serialize only schema-validated content, clear
 temporary key/plaintext bytes, and fail closed when the account is locked or a
-scoped worker grant is missing or stale. This foundation does not by itself
-mark any payload row complete; the rows remain open until their commands,
-responses, and durable fields use the opaque contracts end to end.
+scoped worker grant is missing or stale. A row is marked complete only after
+its commands, responses, source adapters, and durable fields use those opaque
+contracts end to end.
+
+### Run and script-command protected content
+
+Run configuration inspection and authoring now execute at the owning worker.
+The worker encrypts the complete inspection, setup scripts, action names and
+commands, source-control presentation, and diagnostics under `run-content`.
+The app, worker-owned MCP adapter, and worker-authenticated CLI open that data
+locally; action selection, validation summaries, and document edits therefore
+no longer require server plaintext. The server routes only project/worktree and
+operation IDs plus bounded platform, configured/valid/setup booleans and the
+opaque configuration revision needed for lifecycle coordination.
+
+Run log reads similarly retain public Run identity and state while protecting
+the output and truncation detail. Worktree-setup responses retain public job
+state, attempt, exit code, stable error code, and retryability, but protect the
+captured output, signal, and detailed worker error. Durable setup rows store
+only code-derived generic messages; worker-specific diagnostics remain in the
+worker's private state and protected live response. A database or relay-server
+operator therefore cannot read Run commands, setup scripts, diagnostics, or
+output.
+
+Project and terminal script discovery remains worker-local and returns an
+operation-bound `repository-content` envelope. The server never parses the
+discovered command names, descriptions, sources, or command strings. Client
+readiness authorizes and refreshes the assigned worker before requesting
+either this content or Run content, while MCP and CLI use the worker's active
+grants without another password prompt.
 
 The server should continue to see opaque IDs, worker assignments, lifecycle
 states, ordering, timestamps, sizes, flow-control values, counters, and stable
@@ -2284,6 +2311,14 @@ counts, worker presence, model-route choices, and traffic patterns.
     persistent log messages are removed. The boundary is statically audited,
     and an optional future maximum-privacy mode may relocate the remaining
     numeric ledger to workers.
+23. **Run and discovered script content — complete:** `run-content` protects
+    configuration inspection and authoring, setup scripts, action commands,
+    diagnostics, Run logs, setup output, signals, and detailed failures across
+    app, MCP, CLI, server, and worker paths. The worker owns validation,
+    selection, editing, and execution semantics; the server retains only
+    allowlisted lifecycle/routing metadata and stable setup error codes.
+    Discovered project and terminal commands use operation-bound
+    `repository-content` responses and remain opaque to the server.
 
 A usable first encrypted component is moderate in scope. A robust system with
 multi-device enrollment, unattended workers, device replacement, rotation,

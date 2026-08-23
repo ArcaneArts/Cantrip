@@ -65,6 +65,8 @@ export function taskWorkerEncryptionReadiness(
     "mcp-secret",
     "policy-content",
     "provider-credential",
+    "repository-content",
+    "run-content",
   ] as const) {
     const grants = worker.encryption.grants.filter(
       (grant) => grant.component === component,
@@ -163,6 +165,8 @@ export async function ensureTaskWorkerEncryption(input: {
         "mcp-secret",
         "policy-content",
         "provider-credential",
+        "repository-content",
+        "run-content",
       ],
       identity,
       keyRevision: snapshot.masterKeyRevision,

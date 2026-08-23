@@ -199,28 +199,13 @@ describe("project worktree coordinator", () => {
     const bridge = {
       async request(_workerId: string, command: WorkerCommand) {
         commands.push(command);
-        if (command.type === "project.run-configurations.inspect") {
+        if (command.type === "project.run-configurations.metadata") {
           return {
             platform: "linux",
-            canonical: {
-              relativePath: ".codex/environments/environment.toml",
-              sourceControlState: "ignored",
-            },
             configured: true,
             valid: true,
-            configurations: [
-              {
-                relativePath: ".codex/environments/environment.toml",
-                revision: configurationRevision,
-                version: 1,
-                name: "Cantrip",
-                sourceControlState: "ignored",
-                setup: { platform: null },
-                actions: [],
-                diagnostics: [],
-              },
-            ],
-            diagnostics: [],
+            hasSetup: true,
+            configurationRevision,
           };
         }
         return {
@@ -269,7 +254,7 @@ describe("project worktree coordinator", () => {
         worktreeId: "workflow-worktree-1",
       }),
       expect.objectContaining({
-        type: "project.run-configurations.inspect",
+        type: "project.run-configurations.metadata",
         sourcePath: primary.path,
       }),
     ]);
@@ -612,26 +597,13 @@ describe("project worktree coordinator", () => {
     const bridge = {
       async request(_workerId: string, command: WorkerCommand) {
         commands.push(command);
-        if (command.type === "project.run-configurations.inspect") {
+        if (command.type === "project.run-configurations.metadata") {
           return {
-            ...absentEnvironmentInspection,
-            canonical: {
-              ...absentEnvironmentInspection.canonical,
-              sourceControlState: "ignored",
-            },
+            platform: "linux",
             configured: true,
-            configurations: [
-              {
-                relativePath: ".codex/environments/environment.toml",
-                revision: "c".repeat(64),
-                version: 1,
-                name: "Cantrip",
-                sourceControlState: "ignored",
-                setup: { platform: null },
-                actions: [],
-                diagnostics: [],
-              },
-            ],
+            valid: true,
+            hasSetup: true,
+            configurationRevision: "c".repeat(64),
           };
         }
         if (command.type === "worktree.create") {
@@ -680,7 +652,7 @@ describe("project worktree coordinator", () => {
     expect(commands.map(({ type }) => type)).toEqual([
       "worktree.status",
       "worktree.create",
-      "project.run-configurations.inspect",
+      "project.run-configurations.metadata",
       "worktree.status",
       "worktree.status",
     ]);

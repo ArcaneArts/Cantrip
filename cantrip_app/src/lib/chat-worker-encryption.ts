@@ -66,6 +66,8 @@ export function chatWorkerEncryptionReadiness(
     "mcp-secret",
     "policy-content",
     "provider-credential",
+    "repository-content",
+    "run-content",
     "workflow-content",
   ] as const;
   if (
@@ -139,6 +141,8 @@ export async function ensureChatWorkerEncryption(input: {
         "mcp-secret",
         "policy-content",
         "provider-credential",
+        "repository-content",
+        "run-content",
         "workflow-content",
       ],
       identity,

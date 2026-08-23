@@ -17,6 +17,8 @@ export * from "./endpoint-content.js";
 export * from "./workflow-content.js";
 export * from "./run-configurations.js";
 
+import { endpointContentOpaqueSchema } from "./endpoint-content.js";
+
 import {
   chatPlanOpaqueStateSchema,
   chatMessageOpaqueContentSchema,
@@ -54,6 +56,7 @@ import {
   surfaceStreamWireRequestSchema,
 } from "./surface-stream.js";
 import {
+  repositoryOperationOpaqueSchema,
   repositoryOperationWireRequestSchema,
   repositoryRoutingHandleSchema,
 } from "./repository-operation.js";
@@ -63,16 +66,23 @@ import {
   runConfigurationAuthoringDocumentSchema,
   runConfigurationAuthoringHelpSchema,
   runConfigurationAuthoringSnapshotSchema,
+  protectedRunConfigurationAuthoringSnapshotSchema,
+  protectedRunConfigurationInspectionSchema,
+  protectedRunConfigurationWriteRequestSchema,
   runConfigurationDefinitionSchema,
   runConfigurationInspectionSchema,
   runConfigurationSelectionSchema,
   runConfigurationWriteRequestSchema,
+  protectedRunEnvironmentSummarySchema,
   runInstanceResultSchema,
   runInstanceSchema,
+  protectedWorkerRunLogSnapshotSchema,
   runLogResultSchema,
   runSetupStatusResultSchema,
   runStartResultSchema,
   workerRunSetupLookupSchema,
+  protectedWorkerRunSetupLookupSchema,
+  protectedWorkerRunSetupStatusSchema,
   worktreeSetupJobSummarySchema,
   workerRunIdentitySchema,
   workerRunSnapshotSchema,
@@ -4649,6 +4659,15 @@ export const scriptCommandSchema = z.object({
 });
 
 export const scriptCommandListSchema = z.array(scriptCommandSchema).max(500);
+
+export const protectedScriptCommandListSchema = z
+  .object({
+    operationId: z.string().uuid(),
+    projectId: z.string().min(1).max(200),
+    worktreeId: z.string().min(1).max(200),
+    protectedCommands: repositoryOperationOpaqueSchema,
+  })
+  .strict();
 
 const explorerCreateBaseSchema = z
   .object({
@@ -11729,6 +11748,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("project.script-commands"),
+      operationId: z.string().uuid(),
       terminalId: z.string().min(1).max(200),
       serverId: z.string().min(1).max(255),
       worktreePath: z.string().min(1).max(8_192),
@@ -11738,33 +11758,55 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("project.script-commands.inspect"),
+      operationId: z.string().uuid(),
+      projectId: z.string().min(1).max(200),
+      worktreeId: z.string().min(1).max(200),
+      serverId: z.string().min(1).max(2_000),
+      sourcePath: z.string().min(1).max(8_192),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run-configurations.metadata"),
       sourcePath: z.string().min(1).max(8_192),
     })
     .strict(),
   z
     .object({
       type: z.literal("project.run-configurations.inspect"),
+      operationId: z.string().uuid(),
+      projectId: z.string().min(1).max(200),
+      worktreeId: z.string().min(1).max(200),
+      serverId: z.string().min(1).max(2_000),
       sourcePath: z.string().min(1).max(8_192),
     })
     .strict(),
   z
     .object({
       type: z.literal("project.run-configurations.read-authoring"),
+      operationId: z.string().uuid(),
+      projectId: z.string().min(1).max(200),
+      worktreeId: z.string().min(1).max(200),
+      serverId: z.string().min(1).max(2_000),
       sourcePath: z.string().min(1).max(8_192),
     })
     .strict(),
   z
     .object({
       type: z.literal("project.run-configurations.write"),
+      operationId: z.string().uuid(),
+      projectId: z.string().min(1).max(200),
+      worktreeId: z.string().min(1).max(200),
+      serverId: z.string().min(1).max(2_000),
       sourcePath: z.string().min(1).max(8_192),
-      expectedRevision:
-        runConfigurationWriteRequestSchema.shape.expectedRevision,
-      document: runConfigurationAuthoringDocumentSchema,
+      protectedRequest: endpointContentOpaqueSchema,
     })
     .strict(),
   z
     .object({
       type: z.literal("project.run-setup.start"),
+      operationId: z.string().uuid(),
+      serverId: z.string().min(1).max(2_000),
       jobId: worktreeSetupJobSummarySchema.shape.id,
       attempt: z.number().int().positive().safe(),
       projectId: runInstanceSchema.shape.projectId,
@@ -11778,6 +11820,8 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("project.run-setup.status"),
+      operationId: z.string().uuid(),
+      serverId: z.string().min(1).max(2_000),
       jobId: worktreeSetupJobSummarySchema.shape.id,
       projectId: runInstanceSchema.shape.projectId,
       worktreeId: runInstanceSchema.shape.worktreeId,
@@ -11802,6 +11846,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("project.run.logs"),
+      operationId: z.string().uuid(),
+      projectId: runInstanceSchema.shape.projectId,
+      worktreeId: runInstanceSchema.shape.worktreeId,
+      serverId: z.string().min(1).max(2_000),
       runId: runInstanceSchema.shape.id,
       maxChars: z.number().int().min(1).max(100_000),
     })

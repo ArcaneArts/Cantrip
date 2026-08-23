@@ -22,6 +22,21 @@ import {
   cantripCliCommandRequestSchema,
   cantripCliCommandResultSchema,
   executionTargetSchema,
+  protectedRunConfigurationAuthoringSnapshotSchema,
+  protectedRunConfigurationInspectionSchema,
+  protectedRunConfigurationWriteResultSchema,
+  protectedRunLogResultSchema,
+  protectedRunSetupStatusResultSchema,
+  runConfigurationActionAddInputSchema,
+  runConfigurationAuthoringDocumentSchema,
+  runConfigurationAuthoringSnapshotSchema,
+  runConfigurationInspectionSchema,
+  runConfigurationWriteRequestSchema,
+  runLogContentSchema,
+  runLogResultSchema,
+  runSetupDetailContentSchema,
+  runSetupStatusResultSchema,
+  workerRunConfigurationWriteResultSchema,
   type CantripCliCommandRequest,
   type CantripCliCommandResult,
 } from "@cantrip/protocol";
@@ -52,6 +67,10 @@ import {
   type SurfaceStreamContentSchema,
 } from "./surface-stream-encryption.js";
 import { openPolicyCliDetail, openPolicyCliList } from "./policy-encryption.js";
+import {
+  openWorkerRunContent,
+  protectWorkerRunContent,
+} from "./run-content-encryption.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 export const CANTRIP_CLI_CONNECTION_ENV = "CANTRIP_CLI_CONNECTION";
@@ -208,6 +227,7 @@ export class CantripCliBroker {
   readonly #threadContexts = new Map<string, CantripCliChatContext>();
   #surfacePrivateState: WorkerEncryptionService | null = null;
   #policyEncryption: WorkerEncryptionService | null = null;
+  #runEncryption: WorkerEncryptionService | null = null;
   #server: Server | null = null;
 
   constructor(
@@ -266,6 +286,385 @@ export class CantripCliBroker {
 
   setPolicyEncryptionService(service: WorkerEncryptionService): void {
     this.#policyEncryption = service;
+  }
+
+  setRunEncryptionService(service: WorkerEncryptionService): void {
+    this.#runEncryption = service;
+  }
+
+  private async readRunInspection(
+    command: CantripCliCommandRequest,
+    requestId: string,
+    chatContext: CantripCliChatContext | null,
+  ) {
+    const service = this.#runEncryption;
+    if (!service) throw new Error("Run encryption is unavailable.");
+    const result = await this.#execute(
+      cantripCliCommandRequestSchema.parse({
+        command: "run.list",
+        context: command.context,
+        arguments: {},
+      }),
+      `${requestId}:run-list`,
+      chatContext,
+    );
+    const wire = protectedRunConfigurationInspectionSchema.parse(result.data);
+    const inspection = await openWorkerRunContent({
+      serverId: service.serverIdentity(),
+      projectId: wire.projectId,
+      worktreeId: wire.worktreeId,
+      operationId: wire.operationId,
+      operation: "run.configuration.inspect",
+      opaque: wire.protectedInspection,
+      schema: runConfigurationInspectionSchema,
+      service,
+      direction: "response",
+    });
+    return { inspection, result, wire };
+  }
+
+  private async readRunAuthoring(
+    command: CantripCliCommandRequest,
+    requestId: string,
+    chatContext: CantripCliChatContext | null,
+  ) {
+    const service = this.#runEncryption;
+    if (!service) throw new Error("Run encryption is unavailable.");
+    const result = await this.#execute(
+      cantripCliCommandRequestSchema.parse({
+        command: command.command,
+        context: command.context,
+        arguments: { protectedPhase: "authoring" },
+      }),
+      `${requestId}:run-authoring`,
+      chatContext,
+    );
+    const wire = protectedRunConfigurationAuthoringSnapshotSchema.parse(
+      result.data,
+    );
+    const snapshot = await openWorkerRunContent({
+      serverId: service.serverIdentity(),
+      projectId: wire.projectId,
+      worktreeId: wire.worktreeId,
+      operationId: wire.operationId,
+      operation: "run.configuration.authoring",
+      opaque: wire.protectedSnapshot,
+      schema: runConfigurationAuthoringSnapshotSchema,
+      service,
+      direction: "response",
+    });
+    return { result, service, snapshot, wire };
+  }
+
+  private selectRunAction(
+    inspection: ReturnType<typeof runConfigurationInspectionSchema.parse>,
+    selector: string,
+  ) {
+    const matches = inspection.configurations
+      .flatMap((configuration) =>
+        configuration.actions.map((action) => ({ action, configuration })),
+      )
+      .filter(
+        ({ action }) => action.id === selector || action.name === selector,
+      );
+    if (matches.length === 1) return matches[0]!;
+    if (matches.length > 1) {
+      throw new Error(
+        `Multiple Run actions are named ${JSON.stringify(selector)}; retry with a full action ID.`,
+      );
+    }
+    throw new Error(`Run action ${JSON.stringify(selector)} was not found.`);
+  }
+
+  private async writeRunConfiguration(
+    command: CantripCliCommandRequest,
+    requestId: string,
+    chatContext: CantripCliChatContext | null,
+    current: Awaited<ReturnType<CantripCliBroker["readRunAuthoring"]>>,
+    document: ReturnType<typeof runConfigurationAuthoringDocumentSchema.parse>,
+  ) {
+    const operationId = randomUUID();
+    const request = runConfigurationWriteRequestSchema.parse({
+      expectedRevision: current.snapshot.revision,
+      document,
+    });
+    const protectedRequest = await protectWorkerRunContent({
+      serverId: current.service.serverIdentity(),
+      projectId: current.wire.projectId,
+      worktreeId: current.wire.worktreeId,
+      operationId,
+      operation: "run.configuration.write",
+      direction: "request",
+      content: request,
+      schema: runConfigurationWriteRequestSchema,
+      service: current.service,
+    });
+    const result = await this.#execute(
+      cantripCliCommandRequestSchema.parse({
+        command: command.command,
+        context: command.context,
+        arguments: {
+          operationId,
+          projectId: current.wire.projectId,
+          worktreeId: current.wire.worktreeId,
+          protectedRequest,
+        },
+      }),
+      requestId,
+      chatContext,
+    );
+    const wire = protectedRunConfigurationWriteResultSchema.parse(result.data);
+    const response = await openWorkerRunContent({
+      serverId: current.service.serverIdentity(),
+      projectId: wire.projectId,
+      worktreeId: wire.worktreeId,
+      operationId: wire.operationId,
+      operation: "run.configuration.write",
+      opaque: wire.protectedResponse,
+      schema: workerRunConfigurationWriteResultSchema,
+      service: current.service,
+      direction: "response",
+    });
+    if (!response.written) {
+      throw new Error(
+        "The Run configuration changed before it could be saved.",
+      );
+    }
+    return cantripCliCommandResultSchema.parse({
+      ...result,
+      summary: "Updated the Run configuration.",
+      mutated: true,
+      data: response.snapshot,
+    });
+  }
+
+  private async executeRunCommand(
+    command: CantripCliCommandRequest,
+    requestId: string,
+    chatContext: CantripCliChatContext | null,
+  ): Promise<CantripCliCommandResult | null> {
+    const protectedCommands = new Set([
+      "run.list",
+      "run.show",
+      "run.validate",
+      "run.config-path",
+      "run.config-init",
+      "run.config-action-add",
+      "run.start",
+      "run.logs",
+      "run.setup-status",
+      "run.setup-retry",
+    ]);
+    if (!protectedCommands.has(command.command)) return null;
+    if (
+      command.command === "run.setup-status" ||
+      command.command === "run.setup-retry"
+    ) {
+      const service = this.#runEncryption;
+      if (!service) throw new Error("Run encryption is unavailable.");
+      const result = await this.#execute(command, requestId, chatContext);
+      const wire = protectedRunSetupStatusResultSchema.parse(result.data);
+      const details =
+        wire.publicWorkerStatus && wire.protectedDetails
+          ? await openWorkerRunContent({
+              serverId: service.serverIdentity(),
+              projectId: wire.projectId,
+              worktreeId: wire.worktreeId,
+              operationId: wire.operationId,
+              operation: "run.setup.status",
+              opaque: wire.protectedDetails,
+              schema: runSetupDetailContentSchema,
+              service,
+              direction: "response",
+            })
+          : null;
+      return cantripCliCommandResultSchema.parse({
+        ...result,
+        summary: wire.setup
+          ? `Worktree setup is ${wire.setup.state}.`
+          : "This worktree has no Cantrip setup job.",
+        data: runSetupStatusResultSchema.parse({
+          worktreeId: wire.worktreeId,
+          setup:
+            wire.setup?.error && details?.errorMessage
+              ? {
+                  ...wire.setup,
+                  error: {
+                    ...wire.setup.error,
+                    message: details.errorMessage,
+                  },
+                }
+              : wire.setup,
+          currentConfigurationRevision: wire.currentConfigurationRevision,
+          output: details?.output ?? null,
+          outputTruncated: details?.outputTruncated ?? false,
+          exitCode: wire.publicWorkerStatus?.exitCode ?? null,
+          signal: details?.signal ?? null,
+          workerStatusAvailable: wire.workerStatusAvailable,
+        }),
+      });
+    }
+    if (command.command === "run.logs") {
+      const service = this.#runEncryption;
+      if (!service) throw new Error("Run encryption is unavailable.");
+      const result = await this.#execute(command, requestId, chatContext);
+      const wire = protectedRunLogResultSchema.parse(result.data);
+      const log = await openWorkerRunContent({
+        serverId: service.serverIdentity(),
+        projectId: wire.projectId,
+        worktreeId: wire.worktreeId,
+        operationId: wire.operationId,
+        operation: "run.logs.read",
+        opaque: wire.protectedLog,
+        schema: runLogContentSchema,
+        service,
+        direction: "response",
+      });
+      return cantripCliCommandResultSchema.parse({
+        ...result,
+        summary: `Read Run ${wire.run.id} output.`,
+        data: runLogResultSchema.parse({ run: wire.run, ...log }),
+      });
+    }
+    if (
+      command.command === "run.config-init" ||
+      command.command === "run.config-action-add"
+    ) {
+      const current = await this.readRunAuthoring(
+        command,
+        requestId,
+        chatContext,
+      );
+      if (!current.snapshot.document && current.snapshot.editingError) {
+        throw new Error(current.snapshot.editingError);
+      }
+      if (command.command === "run.config-init") {
+        if (current.snapshot.revision && command.arguments.overwrite !== true) {
+          throw new Error(
+            `${current.snapshot.relativePath} already exists. Retry with --overwrite only if replacement is intentional.`,
+          );
+        }
+        return this.writeRunConfiguration(
+          command,
+          requestId,
+          chatContext,
+          current,
+          runConfigurationAuthoringDocumentSchema.parse({
+            version: 1,
+            name:
+              typeof command.arguments.name === "string"
+                ? command.arguments.name
+                : "Project environment",
+            setup: { default: null, win32: null, darwin: null, linux: null },
+            actions: [],
+          }),
+        );
+      }
+      const addition = runConfigurationActionAddInputSchema.parse(
+        command.arguments,
+      );
+      const document = current.snapshot.document ?? {
+        version: 1 as const,
+        name: addition.environmentName ?? "Project environment",
+        setup: { default: null, win32: null, darwin: null, linux: null },
+        actions: [],
+      };
+      if (
+        document.actions.some(
+          (action) =>
+            action.name === addition.name &&
+            action.platform === addition.platform,
+        )
+      ) {
+        throw new Error(
+          `A Run action named ${addition.name} already exists for ${addition.platform ?? "all platforms"}.`,
+        );
+      }
+      return this.writeRunConfiguration(
+        command,
+        requestId,
+        chatContext,
+        current,
+        runConfigurationAuthoringDocumentSchema.parse({
+          ...document,
+          actions: [
+            ...document.actions,
+            {
+              name: addition.name,
+              command: addition.command,
+              icon: addition.icon,
+              platform: addition.platform,
+            },
+          ],
+        }),
+      );
+    }
+
+    const { inspection, result } = await this.readRunInspection(
+      command,
+      requestId,
+      chatContext,
+    );
+    if (command.command === "run.list") {
+      return cantripCliCommandResultSchema.parse({
+        ...result,
+        summary: inspection.configured
+          ? "Returned Run configuration for this project source."
+          : "No Run configuration is present for this project source.",
+        data: inspection,
+      });
+    }
+    if (command.command === "run.validate") {
+      const errors = [
+        ...inspection.diagnostics,
+        ...inspection.configurations.flatMap((item) => item.diagnostics),
+      ].filter((item) => item.severity === "error").length;
+      return cantripCliCommandResultSchema.parse({
+        ...result,
+        summary: inspection.valid
+          ? inspection.configured
+            ? "Run configuration is valid for this worker."
+            : "No Run configuration is present; the project is valid but unconfigured."
+          : `Run configuration has ${errors} validation error${errors === 1 ? "" : "s"}.`,
+        data: inspection,
+      });
+    }
+    if (command.command === "run.config-path") {
+      return cantripCliCommandResultSchema.parse({
+        ...result,
+        summary: `${inspection.canonical.relativePath} is ${inspection.canonical.sourceControlState}.`,
+        data: {
+          platform: inspection.platform,
+          canonical: inspection.canonical,
+          configured: inspection.configured,
+          valid: inspection.valid,
+        },
+      });
+    }
+    const selector = command.arguments.action;
+    if (typeof selector !== "string")
+      throw new Error("A Run action is required.");
+    const selected = this.selectRunAction(inspection, selector);
+    if (command.command === "run.show") {
+      return cantripCliCommandResultSchema.parse({
+        ...result,
+        summary: `Returned Run action ${selected.action.name}.`,
+        data: selected,
+      });
+    }
+    return this.#execute(
+      cantripCliCommandRequestSchema.parse({
+        command: "run.start",
+        context: command.context,
+        arguments: {
+          actionId: selected.action.id,
+          configRevision: selected.configuration.revision,
+          focus: command.arguments.focus !== false,
+        },
+      }),
+      requestId,
+      chatContext,
+    );
   }
 
   private async executePolicyCommand(
@@ -796,6 +1195,30 @@ export class CantripCliBroker {
                 response,
                 200,
                 cantripCliCommandResultSchema.parse(policyResult),
+              );
+              return;
+            }
+            const runResult = await this.executeRunCommand(
+              command,
+              requestId,
+              chatContext,
+            );
+            if (runResult) {
+              workerLogger.event("debug", "Cantrip CLI command completed", {
+                event: "cli.command.completed",
+                subsystem: "cli-broker",
+                operation: command.command,
+                status: "completed",
+                requestId,
+                durationMs: Date.now() - startedAtMs,
+                mutated: runResult.mutated,
+                continuationScheduled: runResult.continuationScheduled,
+                ...(chatContext ? { chatId: chatContext.chatId } : {}),
+              });
+              sendJson(
+                response,
+                200,
+                cantripCliCommandResultSchema.parse(runResult),
               );
               return;
             }

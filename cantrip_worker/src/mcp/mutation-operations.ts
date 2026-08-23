@@ -32,9 +32,14 @@ import {
   executionTargetResolutionSchema,
   executionTargetSchema,
   projectWorktreeSummarySchema,
+  protectedRunConfigurationAuthoringSnapshotSchema,
+  protectedRunConfigurationWriteResultSchema,
+  runConfigurationAuthoringSnapshotSchema,
+  runConfigurationWriteRequestSchema,
   runInstanceResultSchema,
   runStartResultSchema,
   runSetupStatusResultSchema,
+  workerRunConfigurationWriteResultSchema,
   worktreeRemoveResultSchema,
   type CantripAgentOperationResult,
 } from "@cantrip/protocol";
@@ -48,6 +53,10 @@ import {
 import { CantripServerRequestError } from "../cli-client.js";
 import { encodeSurfacePrivateStateForWorker } from "../surface-private-state-encryption.js";
 import {
+  openWorkerRunContent,
+  protectWorkerRunContent,
+} from "../run-content-encryption.js";
+import {
   openWorkerSurfaceStreamContent,
   protectWorkerSurfaceStreamContent,
 } from "../surface-stream-encryption.js";
@@ -55,6 +64,7 @@ import {
   dataRecord,
   assertBoundRun,
   assertBoundRunResult,
+  openBoundRunSetupStatus,
   resolveSurfaceContext,
   safeWorktree,
   type CantripMcpOperationOptions,
@@ -279,7 +289,7 @@ async function executeRunMutation(options: CantripMcpOperationOptions) {
       options.requestId,
     );
     assertBoundRunResult(options, result);
-    const data = runSetupStatusResultSchema.parse(result.data);
+    const data = await openBoundRunSetupStatus(options, result.data);
     return cantripMcpRunSetupRetryResultSchema.parse({
       ...result,
       target,
@@ -314,22 +324,122 @@ async function executeRunConfigurationMutation(
   const arguments_ = cantripMcpRunConfigActionAddInputSchema.parse(
     options.request.arguments,
   );
+  const authoringResult = await options.execute(
+    options.binding,
+    { operation: "run-config.authoring", arguments: {} },
+    `${options.requestId}:authoring`,
+  );
+  assertBoundRunResult(options, authoringResult);
+  const authoringWire = protectedRunConfigurationAuthoringSnapshotSchema.parse(
+    authoringResult.data,
+  );
+  if (
+    authoringWire.projectId !== options.binding.projectId ||
+    authoringWire.worktreeId !== options.binding.worktreeId
+  ) {
+    throw new Error("Cantrip returned Run configuration for another worktree.");
+  }
+  const current = await openWorkerRunContent({
+    serverId: options.service.serverIdentity(),
+    projectId: authoringWire.projectId,
+    worktreeId: authoringWire.worktreeId,
+    operationId: authoringWire.operationId,
+    operation: "run.configuration.authoring",
+    opaque: authoringWire.protectedSnapshot,
+    schema: runConfigurationAuthoringSnapshotSchema,
+    service: options.service,
+    direction: "response",
+  });
+  if (!current.document && current.editingError) {
+    throw new Error(current.editingError);
+  }
+  const document = current.document ?? {
+    version: 1 as const,
+    name: arguments_.environmentName ?? "Project environment",
+    setup: { default: null, win32: null, darwin: null, linux: null },
+    actions: [],
+  };
+  if (
+    document.actions.some(
+      (action) =>
+        action.name === arguments_.name &&
+        action.platform === arguments_.platform,
+    )
+  ) {
+    throw new Error(
+      `A Run action named ${arguments_.name} already exists for ${arguments_.platform ?? "all platforms"}.`,
+    );
+  }
+  const request = runConfigurationWriteRequestSchema.parse({
+    expectedRevision: current.revision,
+    document: {
+      ...document,
+      actions: [
+        ...document.actions,
+        {
+          name: arguments_.name,
+          command: arguments_.command,
+          icon: arguments_.icon,
+          platform: arguments_.platform,
+        },
+      ],
+    },
+  });
+  const operationId = randomUUID();
+  const protectedRequest = await protectWorkerRunContent({
+    serverId: options.service.serverIdentity(),
+    projectId: options.binding.projectId,
+    worktreeId: options.binding.worktreeId,
+    operationId,
+    operation: "run.configuration.write",
+    content: request,
+    schema: runConfigurationWriteRequestSchema,
+    service: options.service,
+    direction: "request",
+  });
   const result = await options.execute(
     options.binding,
-    { operation: "run-config.action-add", arguments: arguments_ },
+    {
+      operation: "run-config.action-add",
+      arguments: {
+        operationId,
+        projectId: options.binding.projectId,
+        worktreeId: options.binding.worktreeId,
+        protectedRequest,
+      },
+    },
     options.requestId,
   );
   assertBoundRunResult(options, result);
+  const responseWire = protectedRunConfigurationWriteResultSchema.parse(
+    result.data,
+  );
+  const response = await openWorkerRunContent({
+    serverId: options.service.serverIdentity(),
+    projectId: responseWire.projectId,
+    worktreeId: responseWire.worktreeId,
+    operationId: responseWire.operationId,
+    operation: "run.configuration.write",
+    opaque: responseWire.protectedResponse,
+    schema: workerRunConfigurationWriteResultSchema,
+    service: options.service,
+    direction: "response",
+  });
+  if (!response.written) {
+    throw new Error("The Run configuration changed before it could be saved.");
+  }
   const target = exactWorktreeTarget(
     options.binding.projectId,
     options.binding.worktreeId,
   );
   return cantripMcpRunConfigActionAddResultSchema.parse({
     ...result,
+    summary: `Added Run action ${arguments_.name}.`,
     target,
     worktreeId: target.worktreeId,
     continuationScheduled: false,
     mutated: true,
+    data: response.snapshot,
   });
 }
 

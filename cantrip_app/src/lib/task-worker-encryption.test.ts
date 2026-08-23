@@ -28,6 +28,8 @@ const requiredTaskWorkerComponents = [
   "mcp-secret",
   "policy-content",
   "provider-credential",
+  "repository-content",
+  "run-content",
 ] as const;
 
 function workerGrants(

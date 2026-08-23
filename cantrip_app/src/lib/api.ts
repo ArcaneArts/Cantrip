@@ -251,11 +251,17 @@ import {
   serverBootstrapSchema,
   settingsBundleSchema,
   scriptCommandListSchema,
+  protectedScriptCommandListSchema,
+  protectedRunConfigurationAuthoringSnapshotSchema,
+  protectedRunConfigurationWriteResultSchema,
+  protectedRunEnvironmentSummarySchema,
+  runConfigurationInspectionSchema,
   runConfigurationAuthoringSnapshotSchema,
   runConfigurationWriteRequestSchema,
   runEnvironmentSummarySchema,
   runInstanceResultSchema,
   runStartResultSchema,
+  workerRunConfigurationWriteResultSchema,
   skillListSchema,
   skillSettingsContextSchema,
   skillSettingsDeleteRequestSchema,
@@ -532,6 +538,11 @@ import {
   protectRepositoryOperationContent,
 } from "@/lib/repository-operation-encryption";
 import { ensureRepositoryWorkerEncryption } from "@/lib/repository-worker-encryption";
+import { ensureEndpointContentWorkerEncryption } from "@/lib/endpoint-content-worker-encryption";
+import {
+  openRunContent,
+  protectRunContent,
+} from "@/lib/run-content-encryption";
 import { ShortLivedRequestCache } from "@/lib/short-lived-request-cache";
 
 export { CantripApiError };
@@ -1620,6 +1631,8 @@ const repositoryOperationTargetCache =
   new ShortLivedRequestCache<RepositoryOperationTarget>(2_000);
 const repositoryWorkerReadinessCache =
   new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
+const runWorkerReadinessCache =
+  new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
 const repositoryWorktreeStatusCache =
   new ShortLivedRequestCache<WorktreeStatusResult>(1_000);
 
@@ -1671,6 +1684,29 @@ async function ensureRepositoryOperationWorker(
       worker,
     }),
   );
+}
+
+async function ensureRunOperationWorker(input: {
+  projectId: string;
+  worktreeId?: string;
+}) {
+  const target = await repositoryOperationTargetCache.get(
+    repositoryOperationTargetKey(input),
+    () => resolveRepositoryOperationTarget(input),
+  );
+  const snapshot = clientEncryption.getSnapshot();
+  const grants = target.worker?.encryption.grants
+    .filter(({ component }) => component === "run-content")
+    .map(({ keyRevision }) => keyRevision)
+    .join(",");
+  const key = `${repositoryOperationCacheNamespace()}\0${target.worker?.workerId ?? "missing"}\0${grants ?? "none"}\0${snapshot.masterKeyRevision ?? "locked"}`;
+  await runWorkerReadinessCache.get(key, () =>
+    ensureEndpointContentWorkerEncryption({
+      domains: ["run-content"],
+      worker: target.worker,
+    }),
+  );
+  return target;
 }
 
 async function runProtectedRepositoryOperation<T>(input: {
@@ -4223,34 +4259,90 @@ export async function getRunEnvironment(
   projectId: string,
   worktreeId?: string,
 ) {
-  return runEnvironmentSummarySchema.parse(
+  await ensureRunOperationWorker({ projectId, worktreeId });
+  const wire = protectedRunEnvironmentSummarySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/run-environment${runEnvironmentQuery(worktreeId)}`,
+    ),
+  );
+  return runEnvironmentSummarySchema.parse({
+    worktreeId: wire.worktreeId,
+    inspection: await openRunContent({
+      projectId: wire.inspection.projectId,
+      worktreeId: wire.inspection.worktreeId,
+      operationId: wire.inspection.operationId,
+      operation: "run.configuration.inspect",
+      opaque: wire.inspection.protectedInspection,
+      schema: runConfigurationInspectionSchema,
+    }),
+    setup: wire.setup,
+    run: wire.run,
+  });
+}
+
+async function getProtectedRunConfigurationAuthoring(projectId: string) {
+  await ensureRunOperationWorker({ projectId });
+  return protectedRunConfigurationAuthoringSnapshotSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/run-environment/configuration`,
     ),
   );
 }
 
 export async function getRunConfigurationAuthoring(projectId: string) {
-  return runConfigurationAuthoringSnapshotSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/run-environment/configuration`,
-    ),
-  );
+  const wire = await getProtectedRunConfigurationAuthoring(projectId);
+  return openRunContent({
+    projectId: wire.projectId,
+    worktreeId: wire.worktreeId,
+    operationId: wire.operationId,
+    operation: "run.configuration.authoring",
+    opaque: wire.protectedSnapshot,
+    schema: runConfigurationAuthoringSnapshotSchema,
+  });
 }
 
 export async function updateRunConfiguration(
   projectId: string,
   input: RunConfigurationWriteRequest,
 ) {
-  return runConfigurationAuthoringSnapshotSchema.parse(
+  const current = await getProtectedRunConfigurationAuthoring(projectId);
+  const operationId = crypto.randomUUID();
+  const protectedRequest = await protectRunContent({
+    projectId,
+    worktreeId: current.worktreeId,
+    operationId,
+    operation: "run.configuration.write",
+    content: input,
+    schema: runConfigurationWriteRequestSchema,
+  });
+  const wire = protectedRunConfigurationWriteResultSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/run-environment/configuration`,
       {
         method: "PUT",
-        body: JSON.stringify(runConfigurationWriteRequestSchema.parse(input)),
+        body: JSON.stringify({
+          operationId,
+          projectId,
+          worktreeId: current.worktreeId,
+          protectedRequest,
+        }),
       },
     ),
   );
+  const result = await openRunContent({
+    projectId: wire.projectId,
+    worktreeId: wire.worktreeId,
+    operationId,
+    operation: "run.configuration.write",
+    opaque: wire.protectedResponse,
+    schema: workerRunConfigurationWriteResultSchema,
+  });
+  if (!result.written) {
+    throw new Error(
+      "The Run configuration changed before it could be saved. Reload Environment settings and try again.",
+    );
+  }
+  return result.snapshot;
 }
 
 export async function startRun(
@@ -4321,26 +4413,61 @@ export async function materializeRunTerminal(
   );
 }
 
-export async function getTerminalScriptCommands(terminalId: string) {
-  return scriptCommandListSchema.parse(
+export async function getTerminalScriptCommands(
+  terminalId: string,
+  workerId: string,
+) {
+  const worker = (await getWorkers()).find(
+    (candidate) => candidate.workerId === workerId,
+  );
+  await ensureRepositoryOperationWorker(worker);
+  const operationId = crypto.randomUUID();
+  const wire = protectedScriptCommandListSchema.parse(
     await request(
-      `/api/terminals/${encodeURIComponent(terminalId)}/script-commands`,
+      `/api/terminals/${encodeURIComponent(terminalId)}/script-commands?operationId=${encodeURIComponent(operationId)}`,
     ),
   );
+  return openRepositoryOperationContent({
+    context: {
+      projectId: wire.projectId,
+      worktreeId: wire.worktreeId,
+      operationId,
+      direction: "response",
+    },
+    opaque: wire.protectedCommands,
+    schema: scriptCommandListSchema,
+  });
 }
 
 export async function getProjectScriptCommands(
   projectId: string,
   worktreeId?: string,
 ) {
+  const target = await resolveRepositoryOperationTarget({
+    projectId,
+    worktreeId,
+  });
+  await ensureRepositoryOperationWorker(target.worker);
   const query = new URLSearchParams();
+  const operationId = crypto.randomUUID();
+  query.set("operationId", operationId);
   if (worktreeId) query.set("worktreeId", worktreeId);
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  return scriptCommandListSchema.parse(
+  const wire = protectedScriptCommandListSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/script-commands${suffix}`,
     ),
   );
+  return openRepositoryOperationContent({
+    context: {
+      projectId: wire.projectId,
+      worktreeId: wire.worktreeId,
+      operationId,
+      direction: "response",
+    },
+    opaque: wire.protectedCommands,
+    schema: scriptCommandListSchema,
+  });
 }
 
 export async function createTerminal(

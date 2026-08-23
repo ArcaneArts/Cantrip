@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   worktreeSetupJobSummarySchema,
-  type WorkerRunSetupStatus,
+  type WorkerRunSetupPublicStatus,
   type WorktreeSetupJobError,
   type WorktreeSetupJobSummary,
 } from "@cantrip/protocol";
@@ -238,7 +238,7 @@ export class WorktreeSetupJobRepository {
   async complete(
     jobId: string,
     commandId: string,
-    status: WorkerRunSetupStatus,
+    status: WorkerRunSetupPublicStatus,
   ): Promise<WorktreeSetupJobSummary> {
     return this.finish(jobId, commandId, status, null);
   }
@@ -246,7 +246,7 @@ export class WorktreeSetupJobRepository {
   async fail(
     jobId: string,
     commandId: string,
-    status: WorkerRunSetupStatus | null,
+    status: WorkerRunSetupPublicStatus | null,
     error: WorktreeSetupJobError,
   ): Promise<WorktreeSetupJobSummary> {
     return this.finish(jobId, commandId, status, error);
@@ -255,7 +255,7 @@ export class WorktreeSetupJobRepository {
   private async finish(
     jobId: string,
     commandId: string,
-    status: WorkerRunSetupStatus | null,
+    status: WorkerRunSetupPublicStatus | null,
     error: WorktreeSetupJobError | null,
   ): Promise<WorktreeSetupJobSummary> {
     const now = new Date();
