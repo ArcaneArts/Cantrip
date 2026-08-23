@@ -113,6 +113,42 @@ describe("chat activity timeline", () => {
     });
   });
 
+  it("settles stale running tools after a terminal response", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect the graph" },
+      ]),
+      message("codegraph", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "mcpToolCall",
+            id: "codegraph-1",
+            status: "running",
+            server: "codegraph",
+            tool: "codegraph_explore",
+            query: "project architecture",
+            resultText: null,
+            error: null,
+            durationMs: null,
+          },
+        },
+      ]),
+      message("answer", "assistant", "2026-08-07T12:00:02.000Z", [
+        { type: "text", text: "Done", phase: "final_answer" },
+      ]),
+    ]);
+
+    expect(timeline[1]).toMatchObject({
+      type: "activityGroup",
+      messages: [
+        {
+          content: [{ activity: { id: "codegraph-1", status: "completed" } }],
+        },
+      ],
+    });
+  });
+
   it("uses correlated turn identities and stable legacy fallbacks", () => {
     const correlated = buildChatTimeline([
       message("user-correlated", "user", "2026-08-07T12:00:00.000Z", [

@@ -971,6 +971,54 @@ describe("Codex rich event normalization", () => {
       phase: "commentary",
     });
   });
+
+  it("settles stale running tools at the authoritative turn boundary", () => {
+    const codeGraphItem = {
+      type: "mcpToolCall" as const,
+      id: "codegraph-stale",
+      server: "codegraph",
+      tool: "codegraph_explore",
+      status: "inProgress" as const,
+      arguments: { query: "project architecture" },
+      result: null,
+      error: null,
+      durationMs: null,
+    };
+    const normalizedTurn = (status: "completed" | "failed" | "inProgress") =>
+      normalizeCodexThreadTurn(
+        {
+          id: `turn-${status}`,
+          status,
+          startedAt: 1,
+          completedAt: status === "inProgress" ? null : 2,
+          durationMs: status === "inProgress" ? null : 1_000,
+          error: null,
+          items: [codeGraphItem],
+        },
+        "/workspace",
+        "thread-1",
+      ).items.find(
+        (item) =>
+          item.type === "activity" && item.activity.type === "mcpToolCall",
+      );
+
+    expect(normalizedTurn("completed")).toMatchObject({
+      type: "activity",
+      activity: {
+        id: "codegraph-stale",
+        status: "completed",
+        completedAtMs: 2_000,
+      },
+    });
+    expect(normalizedTurn("failed")).toMatchObject({
+      type: "activity",
+      activity: { id: "codegraph-stale", status: "failed" },
+    });
+    expect(normalizedTurn("inProgress")).toMatchObject({
+      type: "activity",
+      activity: { id: "codegraph-stale", status: "running" },
+    });
+  });
 });
 
 describe("Codex agent interaction bridge", () => {

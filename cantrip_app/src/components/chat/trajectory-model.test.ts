@@ -306,6 +306,42 @@ describe("trajectory projection", () => {
     });
   });
 
+  it("settles stale running tools when the selected turn is no longer active", () => {
+    const turn = projectTrajectory({
+      active: false,
+      messages: [
+        message("user", 1, "user", 1_000, [
+          { type: "text", text: "Inspect the graph" },
+        ]),
+        activityMessage("codegraph-running", 2, 1_100, {
+          type: "mcpToolCall",
+          id: "codegraph-1",
+          status: "running",
+          server: "codegraph",
+          tool: "codegraph_explore",
+          query: "project architecture",
+          resultText: null,
+          error: null,
+          durationMs: null,
+          correlation: correlation("turn-1", "codegraph-1"),
+        }),
+        message("answer", 3, "assistant", 1_300, [
+          { type: "text", text: "Done", phase: "final_answer" },
+        ]),
+      ],
+      nowMs: 1_400,
+    });
+
+    expect(
+      turn?.events.find((event) => event.kind === "mcpToolCall"),
+    ).toMatchObject({
+      completedAtMs: 1_300,
+      status: "completed",
+    });
+    expect(turn?.statusCounts.running).toBe(0);
+    expect(turn?.nextTransitionAtMs).toBeNull();
+  });
+
   it("merges file paths and labels honest timing fallbacks", () => {
     const messages = [
       message("user", 1, "user", 1_000, [

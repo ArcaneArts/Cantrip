@@ -5,6 +5,7 @@ import {
   resolveTrajectoryTiming,
   type TrajectoryTimingQuality,
 } from "./trajectory-timing";
+import { settleRunningActivity } from "./timeline";
 
 export type TrajectoryLane = "input" | "model" | "tools";
 
@@ -487,6 +488,16 @@ export function projectTrajectory(input: {
   const terminal = [...selected.messages].reverse().find(terminalMessage);
   const followingCurrent = !input.targetTurnKey && selected === slices.at(-1);
   const completed = !followingCurrent || !input.active;
+  const terminalSummary = [...summaryActivities]
+    .reverse()
+    .find((activity) => activity.status !== "running");
+  const terminalActivityStatus = completed
+    ? terminalSummary?.status === "failed" ||
+      terminalSummary?.status === "declined" ||
+      terminal?.role === "system"
+      ? "failed"
+      : "completed"
+    : null;
   const startedAtMs = summaryStartedAtMs ?? timestamp(opening.createdAt);
   const completedAtMs = completed
     ? (summaryCompletedAtMs ??
@@ -538,18 +549,24 @@ export function projectTrajectory(input: {
   }
 
   for (const [id, record] of collectActivityRecords(selected.messages)) {
-    const activity = record.activity;
+    const activity = terminalActivityStatus
+      ? settleRunningActivity(
+          record.activity,
+          terminalActivityStatus,
+          completedAtMs,
+        )
+      : record.activity;
     const timing = resolveTrajectoryTiming({
-      completedAtMs: record.completedAtMs,
+      completedAtMs: activity.completedAtMs ?? record.completedAtMs,
       durationMs: activityDuration(activity),
       firstObservedAtMs: record.firstObservedAtMs,
       lastObservedAtMs: record.lastObservedAtMs,
       nowMs: input.nowMs,
-      running: activity.status === "running" && !completed,
+      running: activity.status === "running",
       startedAtMs: record.startedAtMs,
       turnCompletedAtMs: completedAtMs,
       turnStartedAtMs: startedAtMs,
-      updatedAtMs: record.updatedAtMs,
+      updatedAtMs: activity.updatedAtMs ?? record.updatedAtMs,
     });
     const {
       label,

@@ -197,6 +197,7 @@ interface ActiveTurn {
   }) => void;
   onPlanQuestion?: (question: PendingPlanQuestion) => void;
   onPlanQuestionResolved?: (questionId: string) => void;
+  pendingActivities: Map<string, AgentActivity>;
   pendingAgentMessage: NormalizedAgentMessage | null;
   reasoningSummaries: Map<string, string[]>;
   reject(error: Error): void;
@@ -243,6 +244,60 @@ function boundedMapSet<K, V>(map: Map<K, V>, key: K, value: V, limit: number) {
     if (oldest !== undefined) map.delete(oldest);
   }
   map.set(key, value);
+}
+
+function settleRunningActivityAtTurnBoundary(
+  activity: AgentActivity,
+  status: Exclude<AgentActivity["status"], "running">,
+  completedAtMs: number | null,
+  correlation: CodexEventCorrelation,
+): AgentActivity {
+  if (activity.status !== "running") return activity;
+  return agentActivitySchema.parse({
+    ...activity,
+    status,
+    ...(completedAtMs === null
+      ? {}
+      : {
+          updatedAtMs: Math.max(activity.updatedAtMs ?? 0, completedAtMs),
+          completedAtMs,
+        }),
+    correlation,
+  });
+}
+
+function emitTurnActivity(active: ActiveTurn, activity: AgentActivity): void {
+  const itemId = activity.correlation?.itemId;
+  if (itemId) {
+    if (activity.status === "running") {
+      boundedMapSet(
+        active.pendingActivities,
+        itemId,
+        activity,
+        MAX_TURN_ITEM_TIMESTAMPS,
+      );
+    } else {
+      active.pendingActivities.delete(itemId);
+    }
+  }
+  active.onActivity?.(activity);
+}
+
+function settlePendingTurnActivities(
+  active: ActiveTurn,
+  status: "completed" | "failed",
+  completedAtMs: number,
+  correlation: CodexEventCorrelation,
+): void {
+  for (const activity of [...active.pendingActivities.values()]) {
+    emitTurnActivity(
+      active,
+      settleRunningActivityAtTurnBoundary(activity, status, completedAtMs, {
+        ...correlation,
+        itemId: activity.correlation?.itemId ?? null,
+      }),
+    );
+  }
 }
 
 function rememberCompletedCommand(active: ActiveTurn, itemId: string): void {
@@ -296,7 +351,7 @@ function emitCommandTelemetry(
       ...(status === undefined ? {} : { status }),
     },
   );
-  if (activity) active.onActivity?.(activity);
+  if (activity) emitTurnActivity(active, activity);
 }
 
 function clearCommandFlush(telemetry: ActiveCommandTelemetry): void {
@@ -326,6 +381,7 @@ function clearTurnInspectionTelemetry(active: ActiveTurn): void {
   active.completedCommandIds.clear();
   active.fileStartedAtMs.clear();
   active.itemStartedAtMs.clear();
+  active.pendingActivities.clear();
 }
 
 export function findActiveChatTurn<
@@ -3045,12 +3101,28 @@ export function normalizeCodexThreadTurn(
         },
       ];
     }
-    const activity = normalizeCodexThreadItem(
+    const correlation = eventCorrelation(
+      "thread/read",
+      null,
+      threadId,
+      turn.id,
+      item.id,
+    );
+    const normalizedActivity = normalizeCodexThreadItem(
       item,
       cwd,
       turn.status === "inProgress" ? "started" : "completed",
-      eventCorrelation("thread/read", null, threadId, turn.id, item.id),
+      correlation,
     );
+    const activity =
+      normalizedActivity && turn.status !== "inProgress"
+        ? settleRunningActivityAtTurnBoundary(
+            normalizedActivity,
+            turn.status === "completed" ? "completed" : "failed",
+            turn.completedAt === null ? null : turn.completedAt * 1_000,
+            correlation,
+          )
+        : normalizedActivity;
     if (activity) return [{ type: "activity", activity }];
     const unknown = item as { id?: unknown; type?: unknown };
     const itemId = typeof unknown.id === "string" ? unknown.id : null;
@@ -3547,6 +3619,7 @@ export class CodexAppServer implements CodexRuntime {
         onPlan: options.onPlan,
         onPlanQuestion: options.onPlanQuestion,
         onPlanQuestionResolved: options.onPlanQuestionResolved,
+        pendingActivities: new Map(),
         pendingAgentMessage: null,
         reasoningSummaries: new Map(),
         reject,
@@ -3704,6 +3777,7 @@ export class CodexAppServer implements CodexRuntime {
         onInteractionExpired: options.onInteractionExpired,
         onInteractionRequest: options.onInteractionRequest,
         onPlan: options.onPlan,
+        pendingActivities: new Map(),
         pendingAgentMessage: null,
         reasoningSummaries: new Map(),
         reject,
@@ -6028,7 +6102,8 @@ export class CodexAppServer implements CodexRuntime {
           boundedText(`${summary[params.summaryIndex] ?? ""}${params.delta}`) ??
           "";
         active.reasoningSummaries.set(params.itemId, summary);
-        active.onActivity?.(
+        emitTurnActivity(
+          active,
           agentActivitySchema.parse({
             type: "reasoning",
             id: params.itemId,
@@ -6132,7 +6207,7 @@ export class CodexAppServer implements CodexRuntime {
           completedAtMs: null,
         },
       );
-      if (activity) active.onActivity?.(activity);
+      if (activity) emitTurnActivity(active, activity);
       return;
     }
 
@@ -6221,7 +6296,7 @@ export class CodexAppServer implements CodexRuntime {
             completedAtMs: null,
           },
         );
-        if (activity) active.onActivity?.(activity);
+        if (activity) emitTurnActivity(active, activity);
       }
       return;
     }
@@ -6322,7 +6397,7 @@ export class CodexAppServer implements CodexRuntime {
             ...completedActivityTimestamps(startedAtMs, observedAtMs),
           },
         );
-        if (activity) active.onActivity?.(activity);
+        if (activity) emitTurnActivity(active, activity);
       } else if (active) {
         flushActiveAgentMessage(active, false);
         const activity = normalizeCodexThreadItem(
@@ -6341,7 +6416,7 @@ export class CodexAppServer implements CodexRuntime {
             ...completedActivityTimestamps(itemStartedAtMs, observedAtMs),
           },
         );
-        if (activity) active.onActivity?.(activity);
+        if (activity) emitTurnActivity(active, activity);
         if (params.item.type === "reasoning") {
           active.reasoningSummaries.delete(params.item.id);
         }
@@ -6535,6 +6610,12 @@ export class CodexAppServer implements CodexRuntime {
           pendingCommandStatus,
         );
       }
+      settlePendingTurnActivities(
+        active,
+        pendingCommandStatus,
+        observedAtMs,
+        correlation,
+      );
       if (params.turn.error?.message) {
         active.onActivity?.(
           normalizeNoticeActivity({
@@ -6801,7 +6882,7 @@ export class CodexAppServer implements CodexRuntime {
           }
           active.onMessage?.(message);
         } else if (item.type === "activity") {
-          active.onActivity?.(item.activity);
+          emitTurnActivity(active, item.activity);
         }
       }
     } catch (error) {
