@@ -18,7 +18,7 @@ import {
 const execFileAsync = promisify(execFile);
 const PROBE_TIMEOUT_MS = 10_000;
 
-export const TESTED_CODEX_RANGE = ">=0.148.0 <0.149.0";
+export const TESTED_CODEX_RANGE = ">=0.149.0 <0.150.0";
 
 export const CODEX_CORE_METHODS = [
   "initialize",
@@ -140,7 +140,7 @@ export function isTestedCodexVersion(semantic: string): boolean {
   return (
     extra === undefined &&
     major === 0 &&
-    minor === 148 &&
+    minor === 149 &&
     patch !== undefined &&
     Number.isInteger(patch) &&
     patch >= 0

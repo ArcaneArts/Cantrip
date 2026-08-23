@@ -18,8 +18,8 @@ export interface ExternalChatGptAuthSession {
 export function chatGptExternalAuthCapabilityError(
   report: CodexRuntimeReport,
 ): string | null {
-  if (!report.version || !/^0\.148\.\d+$/u.test(report.version.semantic)) {
-    return "Portable ChatGPT accounts require Codex 0.148.x.";
+  if (!report.version || !/^0\.149\.\d+$/u.test(report.version.semantic)) {
+    return "Portable ChatGPT accounts require Codex 0.149.x.";
   }
   if (!report.initialize?.experimentalApi) {
     return "Portable ChatGPT accounts require Codex experimental API support.";

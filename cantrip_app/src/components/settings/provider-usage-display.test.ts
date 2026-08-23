@@ -58,7 +58,7 @@ describe("provider weekly availability", () => {
       snapshotId: "quota-1",
       observedAt: "2026-08-16T00:00:00.000Z",
       workerVersion: "1.2.3",
-      codexVersion: "codex-cli 0.148.0",
+      codexVersion: "codex-cli 0.149.0",
       windows: [
         {
           limitId: "codex",

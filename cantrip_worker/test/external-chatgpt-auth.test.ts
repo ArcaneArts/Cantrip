@@ -12,12 +12,12 @@ import {
 const externalAuthReport = {
   ...unprobedCodexRuntimeReport,
   compatibility: "compatible" as const,
-  version: { raw: "codex-cli 0.148.0", semantic: "0.148.0" },
+  version: { raw: "codex-cli 0.149.0", semantic: "0.149.0" },
   initialize: {
     experimentalApi: true,
     platformFamily: "unix",
     platformOs: "macos",
-    userAgent: "codex_cli_rs/0.148.0",
+    userAgent: "codex_cli_rs/0.149.0",
   },
   methods: { "account/login/start": "available" as const },
   degradedReasons: [],
@@ -51,6 +51,12 @@ const lease = {
 describe("Codex external ChatGPT authentication", () => {
   it("capability-gates and shapes external login tokens", () => {
     expect(chatGptExternalAuthCapabilityError(externalAuthReport)).toBeNull();
+    expect(
+      chatGptExternalAuthCapabilityError({
+        ...externalAuthReport,
+        version: { raw: "codex-cli 0.148.0", semantic: "0.148.0" },
+      }),
+    ).toContain("Codex 0.149.x");
     expect(
       chatGptExternalAuthCapabilityError({
         ...externalAuthReport,

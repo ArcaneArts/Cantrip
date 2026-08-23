@@ -186,7 +186,7 @@ it("persists every app-facing private label and surface state only as authentica
       name: "Surface Title Worker",
       platform: "darwin",
       architecture: "arm64",
-      codexVersion: "0.148.0",
+      codexVersion: "0.149.0",
       codexRuntime: unprobedCodexRuntimeReport,
       code: {
         available: true,

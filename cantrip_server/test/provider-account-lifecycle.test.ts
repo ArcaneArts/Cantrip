@@ -55,7 +55,7 @@ describe("global provider account lifecycle", () => {
       await repository.recordWorker(LOCAL_USER_ID, {
         architecture: "arm64",
         codexRuntime: unprobedCodexRuntimeReport,
-        codexVersion: "0.148.0",
+        codexVersion: "0.149.0",
         name: workerId,
         platform: "darwin",
         startedAt: "2026-08-15T00:00:00.000Z",

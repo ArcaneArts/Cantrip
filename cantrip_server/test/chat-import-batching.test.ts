@@ -80,7 +80,7 @@ async function createHarness(
     name: "Chat import batch worker",
     platform: "darwin",
     architecture: "arm64",
-    codexVersion: "0.148.0",
+    codexVersion: "0.149.0",
     codexRuntime: unprobedCodexRuntimeReport,
     externalCodexHistory: true,
     startedAt: "2026-08-15T00:00:00.000Z",
@@ -219,7 +219,7 @@ async function prepareImport(
       source: "vscode",
       status: "not-loaded",
       modelProvider: "openai",
-      cliVersion: "0.148.0",
+      cliVersion: "0.149.0",
       git: null,
       match: {
         kind: "worktree-path",

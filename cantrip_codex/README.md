@@ -37,7 +37,7 @@ versions, checksums, and revisions remain exactly as pinned upstream, and the
 tracked source snapshot is never modified. The runtime manifest fingerprints
 the ordered patch set so changing a patch invalidates cached binaries.
 
-Codex 0.148.0 continues to use Rusty V8's heap sandbox for the code-mode host. Those
+Codex 0.149.0 continues to use Rusty V8's heap sandbox for the code-mode host. Those
 artifacts are published on a separate official OpenAI Codex release rather than
 the upstream Rusty V8 release. The build resolves the pinned `v8` crate version
 and native Rust host target, downloads the same archive and generated binding

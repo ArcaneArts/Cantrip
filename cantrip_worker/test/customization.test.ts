@@ -47,10 +47,10 @@ const methods = {
 const report = codexRuntimeReportSchema.parse({
   adapter: "app-server",
   compatibility: "compatible",
-  version: { raw: "codex-cli 0.148.0", semantic: "0.148.0" },
-  testedRange: ">=0.148.0 <0.149.0",
+  version: { raw: "codex-cli 0.149.0", semantic: "0.149.0" },
+  testedRange: ">=0.149.0 <0.150.0",
   initialize: {
-    userAgent: "codex_cli_rs/0.148.0",
+    userAgent: "codex_cli_rs/0.149.0",
     platformFamily: "unix",
     platformOs: "macos",
     experimentalApi: true,
