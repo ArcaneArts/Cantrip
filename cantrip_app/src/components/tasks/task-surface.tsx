@@ -840,6 +840,7 @@ export function TaskSurface({
               chat.status === "waiting-for-approval"
             }
             reasoningState={reasoningState.data}
+            subagentCapability={worker?.codexRuntime.nativeSubagents}
             onSave={(configuration) =>
               selectModelConfiguration.mutateAsync(configuration)
             }

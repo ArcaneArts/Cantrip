@@ -28,6 +28,7 @@ import {
   codexStartupExitMessage,
   codexMcpConfigOverride,
   codexModelProviderName,
+  codexNativeSubagentConfigOverride,
   codexThreadPermissionParams,
   codexWorkflowTurnPolicy,
   codexWorktreeTurnPolicy,
@@ -1729,6 +1730,44 @@ describe("codexMcpConfigOverride", () => {
       { name: "cantrip", tool: "run_config_list" },
       { name: "cantrip", tool: "run_status" },
     ]);
+  });
+});
+
+describe("native Codex subagent configuration", () => {
+  it("enables native tools without inventing child defaults", () => {
+    expect(codexNativeSubagentConfigOverride(null)).toEqual({
+      features: { multi_agent: true },
+      agents: { enabled: true },
+    });
+  });
+
+  it("applies custom child defaults only when the chat selected them", () => {
+    expect(
+      codexNativeSubagentConfigOverride({
+        model: {
+          id: "child-model",
+          routeId: "child-route",
+          name: "gpt-5.6-terra",
+          reasoningEffort: "high",
+        },
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://chatgpt.com/backend-api",
+          apiKey: null,
+          accountId: "account-1",
+          credentialHomeKey: "account-home-1",
+        },
+      }),
+    ).toEqual({
+      features: { multi_agent: true },
+      agents: {
+        enabled: true,
+        default_subagent_model: "gpt-5.6-terra",
+        default_subagent_reasoning_effort: "high",
+      },
+    });
   });
 });
 

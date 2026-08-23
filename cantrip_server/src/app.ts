@@ -121,6 +121,7 @@ import {
   encryptedChatTurnCreateSchema,
   modelConfigurationFailureSchema,
   modelConfigurationSchema,
+  NATIVE_SUBAGENT_PROTOCOL_VERSION,
   projectAutomationProtectedDispatchResultSchema,
   encryptedQueuedPromptListSchema,
   encryptedQueuedPromptSchema,
@@ -7509,6 +7510,22 @@ export async function buildApp({
     if (!configuration.modelId) {
       return resolveModelRoutePairs({ configuration, rootRuntimes: [] });
     }
+    if (configuration.customSubagentModel) {
+      const worker = await repository.getWorker(
+        applicationOwnerId(),
+        context.workerId,
+      );
+      if (worker?.codexRuntime.nativeSubagents?.available !== true) {
+        throw new ModelConfigurationResolutionError({
+          code: "worker-subagents-unavailable",
+          error:
+            worker?.codexRuntime.nativeSubagents?.reason ??
+            "The selected worker does not support native subagents.",
+          field: "customSubagentModel",
+          retryable: false,
+        });
+      }
+    }
 
     let availableRoots: ModelRuntime[];
     try {
@@ -9136,6 +9153,12 @@ export async function buildApp({
                       provider: subagentRuntime.provider,
                     }
                   : null,
+                ...(attributedWorker?.codexRuntime.nativeSubagents
+                  ?.available === true
+                  ? {
+                      subagentProtocolVersion: NATIVE_SUBAGENT_PROTOCOL_VERSION,
+                    }
+                  : {}),
                 permissionProfileId:
                   effectivePermissionProfile(execution).effectiveId,
                 planMode: turnPlanMode,

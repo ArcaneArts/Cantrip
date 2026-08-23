@@ -72,6 +72,11 @@ const report = codexRuntimeReportSchema.parse({
       defaultEnabled: true,
     },
   ],
+  nativeSubagents: {
+    available: true,
+    protocolVersion: 1,
+    reason: null,
+  },
   degradedReasons: [],
 });
 
@@ -80,7 +85,7 @@ describe("Codex customization inventory", () => {
     const capabilities = customizationCapabilities(report);
     expect(capabilities).toMatchObject({
       isolatedCodexHome: true,
-      nativeSubagents: { available: true },
+      nativeSubagents: { available: true, protocolVersion: 1 },
       customAgents: { available: false, stability: "unsupported" },
       skills: {
         list: { available: true },

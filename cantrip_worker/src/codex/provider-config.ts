@@ -13,7 +13,11 @@ export interface CodexProviderConfiguration {
   environment: Record<string, string>;
 }
 
-const CANTRIP_CODEX_RUNTIME_POLICY = ["features.fast_mode=false"] as const;
+const CANTRIP_CODEX_RUNTIME_POLICY = [
+  "features.fast_mode=false",
+  "features.multi_agent=true",
+  "agents.enabled=true",
+] as const;
 
 export function isZaiRuntimeProvider(provider: CodexProvider): boolean {
   return (

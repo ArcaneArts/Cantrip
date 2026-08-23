@@ -126,6 +126,12 @@ describe("Codex runtime discovery", () => {
           enabled: true,
           defaultEnabled: true,
         },
+        {
+          name: "multi_agent",
+          stage: "stable",
+          enabled: true,
+          defaultEnabled: true,
+        },
       ],
     });
 
@@ -133,7 +139,11 @@ describe("Codex runtime discovery", () => {
       compatibility: "compatible",
       version: { semantic: "0.149.0" },
       methods: { "turn/start": "available" },
-      features: [{ name: "goals", enabled: true }],
+      nativeSubagents: {
+        available: true,
+        protocolVersion: 1,
+        reason: null,
+      },
       degradedReasons: [],
     });
   });
@@ -146,6 +156,7 @@ describe("Codex runtime discovery", () => {
     });
 
     expect(report.compatibility).toBe("incompatible");
+    expect(report.nativeSubagents.available).toBe(false);
     expect(report.degradedReasons.join(" ")).toContain("outside");
   });
 

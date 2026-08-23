@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 
 import {
   codexRuntimeReportSchema,
+  NATIVE_SUBAGENT_PROTOCOL_VERSION,
   type CodexRuntimeFeature,
   type CodexRuntimeMethodState,
   type CodexRuntimeReport,
@@ -19,6 +20,25 @@ const execFileAsync = promisify(execFile);
 const PROBE_TIMEOUT_MS = 10_000;
 
 export const TESTED_CODEX_RANGE = ">=0.149.0 <0.150.0";
+
+export function nativeSubagentCapabilityForRuntime(input: {
+  compatible: boolean;
+  features: CodexRuntimeFeature[];
+}) {
+  const stableFeature = input.features.find(
+    ({ name, stage }) => name === "multi_agent" && stage === "stable",
+  );
+  const available = input.compatible && Boolean(stableFeature);
+  return {
+    available,
+    protocolVersion: available ? NATIVE_SUBAGENT_PROTOCOL_VERSION : null,
+    reason: available
+      ? null
+      : input.compatible
+        ? "The installed Codex runtime does not advertise stable native multi-agent support."
+        : "The installed Codex runtime is not compatible with native subagents.",
+  } as const;
+}
 
 export const CODEX_CORE_METHODS = [
   "initialize",
@@ -279,6 +299,9 @@ export function assessCodexRuntime(
   const partial =
     !incompatible &&
     (unavailableOptional.length > 0 || !input.initialize?.experimentalApi);
+  const features = [...(input.features ?? [])].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
   return codexRuntimeReportSchema.parse({
     adapter: "app-server",
     compatibility: incompatible
@@ -290,9 +313,11 @@ export function assessCodexRuntime(
     testedRange: TESTED_CODEX_RANGE,
     initialize: input.initialize,
     methods,
-    features: [...(input.features ?? [])].sort((left, right) =>
-      left.name.localeCompare(right.name),
-    ),
+    features,
+    nativeSubagents: nativeSubagentCapabilityForRuntime({
+      compatible: !incompatible,
+      features,
+    }),
     degradedReasons: [...new Set(reasons)],
   });
 }

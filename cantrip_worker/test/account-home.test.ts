@@ -64,6 +64,49 @@ describe("ChatGPT account homes", () => {
     );
   });
 
+  it("keys managed catalogs by child model but not child reasoning effort", () => {
+    const provider = {
+      id: "chatgpt-provider",
+      name: "ChatGPT",
+      kind: "chatgpt" as const,
+      baseUrl: "https://chatgpt.com/backend-api",
+      apiKey: null,
+      accountId: "personal-account",
+      credentialHomeKey: "personal-home",
+    };
+    const root = {
+      id: "root-model",
+      routeId: "root-route",
+      name: "gpt-root",
+      reasoningEffort: "medium" as const,
+    };
+    const child = {
+      id: "child-model",
+      routeId: "child-route",
+      name: "gpt-child",
+      reasoningEffort: "medium" as const,
+    };
+    const inherited = codexRuntimeId(root, provider);
+    const custom = codexRuntimeId(root, provider, {
+      model: child,
+      provider,
+    });
+
+    expect(custom).not.toBe(inherited);
+    expect(custom).toBe(
+      codexRuntimeId(root, provider, {
+        model: { ...child, reasoningEffort: "high" },
+        provider,
+      }),
+    );
+    expect(custom).not.toBe(
+      codexRuntimeId(root, provider, {
+        model: { ...child, name: "gpt-child-next" },
+        provider,
+      }),
+    );
+  });
+
   it("restarts a custom-provider runtime when managed metadata changes", () => {
     const provider = {
       id: "ollama-provider",

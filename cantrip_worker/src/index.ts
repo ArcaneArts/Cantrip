@@ -119,7 +119,11 @@ import {
   readExternalChatHistory,
 } from "./external-chat-history.js";
 import { codexAccountHome } from "./codex/account-home.js";
-import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
+import {
+  CodexAppServer,
+  codexRuntimeId,
+  type RuntimeSubagentDefaults,
+} from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
 import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
@@ -1176,8 +1180,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const runtimeFor = (command: {
     model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
     provider: RuntimeProvider;
+    subagentDefaults?: RuntimeSubagentDefaults | null;
   }) => {
-    const runtimeId = codexRuntimeId(command.model, command.provider);
+    const runtimeId = codexRuntimeId(
+      command.model,
+      command.provider,
+      command.subagentDefaults ?? null,
+    );
     let runtime = codexRuntimes.get(runtimeId);
     if (!runtime) {
       const directoryName = createHash("sha256")
@@ -3825,9 +3834,31 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return protectChatTurn({ ...command, service: workerEncryption });
       case "chat.turn": {
         if (command.automationPaused) pausedChats.add(command.chatId);
+        const subagentDefaults = command.subagentDefaults
+          ? {
+              model: command.subagentDefaults.model,
+              provider: await openRuntimeProvider({
+                provider: command.subagentDefaults.provider,
+                service: workerEncryption,
+              }),
+            }
+          : null;
+        if (
+          subagentDefaults &&
+          (subagentDefaults.provider.id !== provider().id ||
+            subagentDefaults.provider.kind !== provider().kind ||
+            subagentDefaults.provider.accountId !== provider().accountId ||
+            subagentDefaults.provider.credentialHomeKey !==
+              provider().credentialHomeKey)
+        ) {
+          throw new Error(
+            "Custom subagents must use the root model's provider identity.",
+          );
+        }
         const runtime = runtimeFor({
           model: command.model,
           provider: provider(),
+          subagentDefaults,
         });
         runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));
         const encryptedTask =
@@ -3916,6 +3947,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               : encryptedChat
                 ? mentionedSkillNames(prompt)
                 : command.skillNames,
+            subagentDefaults,
+            subagentProtocolVersion: command.subagentProtocolVersion,
             threadId: command.threadId,
             worktreeMode: command.worktreeMode,
             worktreePolicy: command.worktreePolicy,

@@ -136,10 +136,14 @@ export function customizationCapabilities(
       "goals",
       CODEX_CUSTOMIZATION_METHODS.goals,
     ),
-    nativeSubagents: capability(
-      codexFeatureUsable(report, "multi_agent"),
-      "The installed Codex runtime does not enable native multi-agent support.",
-    ),
+    nativeSubagents: {
+      ...capability(
+        report.nativeSubagents.available,
+        report.nativeSubagents.reason ??
+          "The installed Codex runtime does not support native subagents.",
+      ),
+      protocolVersion: report.nativeSubagents.protocolVersion,
+    },
     customAgents: capability(
       false,
       "This Codex App Server version has no project or personal custom-agent discovery method; native subagents remain available independently.",

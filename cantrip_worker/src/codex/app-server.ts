@@ -1295,6 +1295,11 @@ export interface RunAgentTurnOptions {
   prompt: string;
   rootKind: Extract<WorkerCommand, { type: "chat.turn" }>["rootKind"];
   skillNames: string[];
+  subagentDefaults: RuntimeSubagentDefaults | null;
+  subagentProtocolVersion: Extract<
+    WorkerCommand,
+    { type: "chat.turn" }
+  >["subagentProtocolVersion"];
   threadId: string | null;
   worktreeMode: Extract<WorkerCommand, { type: "chat.turn" }>["worktreeMode"];
   worktreePolicy: Extract<
@@ -1311,6 +1316,11 @@ export interface RunAgentTurnOptions {
   onPlanQuestion?: ActiveTurn["onPlanQuestion"];
   onPlanQuestionResolved?: ActiveTurn["onPlanQuestionResolved"];
   onThreadLoaded?: (threadId: string) => void;
+}
+
+export interface RuntimeSubagentDefaults {
+  model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
+  provider: RuntimeProvider;
 }
 
 type WorkflowNodeExecuteCommand = Extract<
@@ -1914,9 +1924,32 @@ export function managedMcpToolRequirements(
   });
 }
 
+export function codexNativeSubagentConfigOverride(
+  defaults: RuntimeSubagentDefaults | null,
+): Record<string, unknown> {
+  return {
+    features: { multi_agent: true },
+    agents: {
+      enabled: true,
+      ...(defaults
+        ? {
+            default_subagent_model: defaults.model.name,
+            ...(defaults.model.reasoningEffort
+              ? {
+                  default_subagent_reasoning_effort:
+                    defaults.model.reasoningEffort,
+                }
+              : {}),
+          }
+        : {}),
+    },
+  };
+}
+
 export function codexRuntimeId(
   model: RunAgentTurnOptions["model"],
   provider: RunAgentTurnOptions["provider"],
+  subagentDefaults: RuntimeSubagentDefaults | null = null,
 ): string {
   // Reasoning effort is a thread/turn override. Including it here would spawn
   // another app-server against the same Codex home, so resuming the thread
@@ -1932,6 +1965,18 @@ export function codexRuntimeId(
         credentialHomeKey: provider.credentialHomeKey,
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
+        subagentModel: subagentDefaults
+          ? {
+              name: subagentDefaults.model.name,
+              routeId: subagentDefaults.model.routeId,
+              catalog: subagentDefaults.model.catalog ?? null,
+              providerId: subagentDefaults.provider.id,
+              providerKind: subagentDefaults.provider.kind,
+              providerAccountId: subagentDefaults.provider.accountId,
+              credentialHomeKey: subagentDefaults.provider.credentialHomeKey,
+              baseUrl: subagentDefaults.provider.baseUrl,
+            }
+          : null,
       }),
     )
     .digest("hex")
@@ -3595,7 +3640,11 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<AgentTurnResult> {
     const resultMode = options.resultMode ?? { kind: "visible" as const };
     if (options.automationPaused) this.#pausedChats.add(options.chatId);
-    await this.ensureStarted(options.model, options.provider);
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      options.subagentDefaults,
+    );
     const baseline = await workspaceSnapshot(options.cwd);
     const threadId = await this.loadThread(options);
     if (!threadId) {
@@ -4848,6 +4897,7 @@ export class CodexAppServer implements CodexRuntime {
   private async ensureStarted(
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
+    subagentDefaults: RuntimeSubagentDefaults | null = null,
   ): Promise<void> {
     if (
       this.compatibility.compatibility === "missing" ||
@@ -4858,7 +4908,7 @@ export class CodexAppServer implements CodexRuntime {
         `Codex runtime is ${this.compatibility.compatibility}; expected ${this.compatibility.testedRange}.${detail ? ` ${detail}` : ""}`,
       );
     }
-    const runtimeId = codexRuntimeId(model, provider);
+    const runtimeId = codexRuntimeId(model, provider, subagentDefaults);
     if (this.#starting) {
       await this.#starting;
     }
@@ -4882,7 +4932,7 @@ export class CodexAppServer implements CodexRuntime {
       codexVersion: this.compatibility.version?.raw ?? null,
       ...codexProviderLogContext(provider),
     });
-    const starting = this.start(model, provider);
+    const starting = this.start(model, provider, subagentDefaults);
     this.#starting = starting;
     try {
       await starting;
@@ -5086,7 +5136,10 @@ export class CodexAppServer implements CodexRuntime {
       | "permissionProfileId"
       | "provider"
       | "threadId"
-    > & { resultMode?: RunAgentTurnOptions["resultMode"] },
+    > & {
+      resultMode?: RunAgentTurnOptions["resultMode"];
+      subagentDefaults?: RuntimeSubagentDefaults | null;
+    },
     create = true,
   ): Promise<string | null> {
     const structuredReadOnly = options.resultMode?.kind === "structured";
@@ -5098,6 +5151,11 @@ export class CodexAppServer implements CodexRuntime {
       !structuredReadOnly && options.mcpServers
         ? codexMcpConfigOverride(options.mcpServers)
         : null;
+    const threadConfig = {
+      ...codexNativeSubagentConfigOverride(options.subagentDefaults ?? null),
+      ...(mcpConfig ?? {}),
+    };
+    const threadConfigFingerprint = JSON.stringify(threadConfig);
     const mcpConfigFingerprint = mcpConfig ? JSON.stringify(mcpConfig) : null;
     const hasGitMetadata = await workspaceHasGitMetadata(options.cwd);
     let threadId = options.threadId;
@@ -5110,9 +5168,8 @@ export class CodexAppServer implements CodexRuntime {
       threadId &&
       (!this.#loadedThreads.has(threadId) ||
         this.#permissionProfilesByThread.get(threadId) !== permissionKey ||
-        (mcpConfigFingerprint !== null &&
-          this.#mcpConfigFingerprintsByThread.get(threadId) !==
-            mcpConfigFingerprint))
+        this.#mcpConfigFingerprintsByThread.get(threadId) !==
+          threadConfigFingerprint)
     ) {
       const requestedThreadId = threadId;
       const startedAtMs = Date.now();
@@ -5127,9 +5184,8 @@ export class CodexAppServer implements CodexRuntime {
       try {
         if (
           this.#loadedThreads.has(threadId) &&
-          mcpConfigFingerprint !== null &&
           this.#mcpConfigFingerprintsByThread.get(threadId) !==
-            mcpConfigFingerprint
+            threadConfigFingerprint
         ) {
           await this.request("thread/unsubscribe", { threadId });
         }
@@ -5145,17 +5201,15 @@ export class CodexAppServer implements CodexRuntime {
             structuredReadOnly,
           ),
           ...cantripChatThreadParams(hasGitMetadata),
-          ...(mcpConfig ? { config: mcpConfig } : {}),
+          config: threadConfig,
         })) as ThreadResponse;
         threadId = resumed.thread.id;
         this.#loadedThreads.add(threadId);
         this.#permissionProfilesByThread.set(threadId, permissionKey);
-        if (mcpConfigFingerprint !== null) {
-          this.#mcpConfigFingerprintsByThread.set(
-            threadId,
-            mcpConfigFingerprint,
-          );
-        }
+        this.#mcpConfigFingerprintsByThread.set(
+          threadId,
+          threadConfigFingerprint,
+        );
         this.#threadKinds.set(threadId, "chat");
         workerLogger.event("info", "Codex chat thread resumed", {
           event: "codex.thread.resume",
@@ -5196,14 +5250,15 @@ export class CodexAppServer implements CodexRuntime {
           structuredReadOnly,
         ),
         ...cantripChatThreadParams(hasGitMetadata),
-        ...(mcpConfig ? { config: mcpConfig } : {}),
+        config: threadConfig,
       })) as ThreadResponse;
       threadId = started.thread.id;
       this.#loadedThreads.add(threadId);
       this.#permissionProfilesByThread.set(threadId, permissionKey);
-      if (mcpConfigFingerprint !== null) {
-        this.#mcpConfigFingerprintsByThread.set(threadId, mcpConfigFingerprint);
-      }
+      this.#mcpConfigFingerprintsByThread.set(
+        threadId,
+        threadConfigFingerprint,
+      );
       this.#threadKinds.set(threadId, "chat");
       workerLogger.event("info", "Codex chat thread started", {
         event: "codex.thread.start",
@@ -5456,6 +5511,7 @@ export class CodexAppServer implements CodexRuntime {
   private async start(
     model: RunAgentTurnOptions["model"] | null,
     provider: RunAgentTurnOptions["provider"],
+    subagentDefaults: RuntimeSubagentDefaults | null = null,
   ): Promise<void> {
     const startedAtMs = Date.now();
     this.#appServerSessionId = randomUUID();
@@ -5475,6 +5531,7 @@ export class CodexAppServer implements CodexRuntime {
           this.dataDirectory,
           model,
           runtimeProvider,
+          subagentDefaults?.model ?? null,
         )
       : null;
     const child = this.launchCodex(

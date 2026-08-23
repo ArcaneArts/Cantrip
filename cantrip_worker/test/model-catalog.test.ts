@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS,
   codexCatalogForRuntimeModel,
+  codexCatalogForRuntimeModels,
   runtimeModelSupportsImages,
   writeManagedCodexModelCatalog,
 } from "../src/codex/model-catalog.js";
@@ -104,6 +105,49 @@ describe("managed Codex model catalogs", () => {
           provider("chatgpt"),
         ),
       ).toBeNull();
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("includes distinct root and custom-child models in one managed catalog", async () => {
+    const childModel = {
+      ...model,
+      id: "logical-child",
+      routeId: "route-child",
+      name: "gemma4:4b",
+      reasoningEffort: "high",
+      catalog: {
+        ...model.catalog!,
+        nativeModelId: "gemma4:4b",
+        displayName: "Gemma 4 4B",
+      },
+    } satisfies TurnCommand["model"];
+
+    expect(
+      codexCatalogForRuntimeModels([model, childModel], "ollama")?.models.map(
+        ({ slug, priority }) => ({ slug, priority }),
+      ),
+    ).toEqual([
+      { slug: "gemma4:12b", priority: 0 },
+      { slug: "gemma4:4b", priority: 1 },
+    ]);
+
+    const directory = await mkdtemp(path.join(os.tmpdir(), "cantrip-model-"));
+    try {
+      const catalogPath = await writeManagedCodexModelCatalog(
+        directory,
+        model,
+        provider("ollama"),
+        childModel,
+      );
+      expect(
+        (
+          JSON.parse(await readFile(catalogPath!, "utf8")) as {
+            models: Array<{ slug: string }>;
+          }
+        ).models.map(({ slug }) => slug),
+      ).toEqual(["gemma4:12b", "gemma4:4b"]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

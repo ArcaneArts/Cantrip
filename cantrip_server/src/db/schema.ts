@@ -119,6 +119,11 @@ const unprobedCodexRuntimeReport = {
   initialize: null,
   methods: {},
   features: [],
+  nativeSubagents: {
+    available: false,
+    protocolVersion: null,
+    reason: "This worker has not reported native subagent capability.",
+  },
   degradedReasons: ["This worker has not reported runtime compatibility."],
 } satisfies CodexRuntimeReport;
 
