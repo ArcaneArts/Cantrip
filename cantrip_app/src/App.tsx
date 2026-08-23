@@ -211,7 +211,7 @@ import {
 } from "@/components/workspace/content-header-actions";
 import { WorkspaceDndProvider } from "@/components/workspace/workspace-dnd-provider";
 import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
-import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
+import { ProjectSwitcher } from "@/components/projects/project-switcher";
 import { MobileBottomNavigation } from "@/components/mobile/mobile-bottom-navigation";
 import { MobileProjectHeader } from "@/components/mobile/mobile-project-header";
 import { MobileProjectSelector } from "@/components/mobile/mobile-project-selector";
@@ -7625,15 +7625,18 @@ export function App() {
             </div>
 
             <div className="px-3 pb-2 pt-4">
-              <WorkspaceSwitcher
+              <ProjectSwitcher
                 activeWorkspaceId={activeProjectWorkspace?.id ?? null}
+                projects={projects.data ?? []}
+                selectedProjectId={selectedProjectId}
                 workspaces={projectWorkspaces.data ?? []}
-                onSelect={selectProjectWorkspace}
-                onCreate={async (name) => {
+                onSelectWorkspace={selectProjectWorkspace}
+                onSelectProject={selectProjectFromSidebar}
+                onCreateWorkspace={async (name) => {
                   await createWorkspaceMutation.mutateAsync(name);
                 }}
                 onAddProject={openProjectCreateSource}
-                onManage={() => {
+                onManageWorkspaces={() => {
                   setDesktopSidebarDrawerOpen(false);
                   setSettingsSection("workspaces");
                   setShowSettings(true);
