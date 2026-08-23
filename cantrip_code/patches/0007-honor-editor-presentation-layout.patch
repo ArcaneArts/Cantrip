@@ -1,0 +1,62 @@
+diff --git a/src/vs/workbench/services/layout/browser/layoutService.ts b/src/vs/workbench/services/layout/browser/layoutService.ts
+--- a/src/vs/workbench/services/layout/browser/layoutService.ts
++++ b/src/vs/workbench/services/layout/browser/layoutService.ts
+@@ -43,11 +43,12 @@ export const enum ZenModeSettings {
+ }
+ 
+ export const enum LayoutSettings {
++	CANTRIP_PRESENTATION = 'cantrip.presentation',
+ 	ACTIVITY_BAR_LOCATION = 'workbench.activityBar.location',
+ 	EDITOR_TABS_MODE = 'workbench.editor.showTabs',
+ 	EDITOR_ACTIONS_LOCATION = 'workbench.editor.editorActionsLocation',
+ 	COMMAND_CENTER = 'window.commandCenter',
+-	LAYOUT_ACTIONS = 'workbench.layoutControl.enabled'
++	LAYOUT_ACTIONS = 'workbench.layoutControl.enabled',
+ }
+ 
+ export const enum ActivityBarPosition {
+@@ -361,6 +362,10 @@ export interface IWorkbenchLayoutService {
+ }
+ 
+ export function shouldShowCustomTitleBar(configurationService: IConfigurationService, window: Window, menuBarToggled?: boolean): boolean {
++	if (configurationService.getValue<string>(LayoutSettings.CANTRIP_PRESENTATION) === 'editor') {
++		return false;
++	}
++
+ 	if (!hasCustomTitlebar(configurationService)) {
+ 		return false;
+ 	}
+diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
+--- a/src/vs/workbench/browser/layout.ts
++++ b/src/vs/workbench/browser/layout.ts
+@@ -123,6 +123,7 @@ const COMMAND_CENTER_SETTINGS = [
+ ];
+ 
+ export const TITLE_BAR_SETTINGS = [
++	LayoutSettings.CANTRIP_PRESENTATION,
+ 	LayoutSettings.ACTIVITY_BAR_LOCATION,
+ 	LayoutSettings.COMMAND_CENTER,
+ 	...COMMAND_CENTER_SETTINGS,
+@@ -2855,7 +2856,10 @@ class LayoutStateModel extends Disposable {
+ 	}
+ 
+ 	private updateStateFromLegacySettings(configurationChangeEvent: IConfigurationChangeEvent): void {
+-		if (configurationChangeEvent.affectsConfiguration(LayoutSettings.ACTIVITY_BAR_LOCATION)) {
++		if (
++			configurationChangeEvent.affectsConfiguration(LayoutSettings.CANTRIP_PRESENTATION) ||
++			configurationChangeEvent.affectsConfiguration(LayoutSettings.ACTIVITY_BAR_LOCATION)
++		) {
+ 			this.setRuntimeValueAndFire(LayoutStateKeys.ACTIVITYBAR_HIDDEN, this.isActivityBarHidden());
+ 		}
+ 
+@@ -3081,6 +3085,10 @@ class LayoutStateModel extends Disposable {
+ 	}
+ 
+ 	private isActivityBarHidden(): boolean {
++		if (this.configurationService.getValue<string>(LayoutSettings.CANTRIP_PRESENTATION) === 'editor') {
++			return true;
++		}
++
+ 		const oldValue = this.configurationService.getValue<boolean | undefined>(WorkbenchLayoutSettings.ACTIVITY_BAR_VISIBLE);
+ 		if (oldValue !== undefined) {
+ 			return !oldValue;
