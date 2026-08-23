@@ -9,15 +9,11 @@ import {
   appLiveServerMessageSchema,
   browserListSchema,
   browserSummarySchema,
-  codexCustomizationInventorySchema,
-  codexExternalImportStatusSchema,
-  codexExternalImportPreviewSchema,
+  customizationContentScopeSchema,
   codexMcpOauthStartResultSchema,
   codexMcpOauthStatusSchema,
   codexMcpReloadResultSchema,
   codexMcpResourceReadSchema,
-  codexSkillConfigResultSchema,
-  codexSkillRootsResultSchema,
   chatAttachmentSummarySchema,
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
@@ -81,7 +77,8 @@ import {
   serverBootstrapSchema,
   settingsBundleSchema,
   protectedScriptCommandListSchema,
-  skillListSchema,
+  protectedCustomizationResponseSchema,
+  protectedCustomizationRequestSchema,
   terminalListSchema,
   terminalSummarySchema,
   tunnelListSchema,
@@ -96,6 +93,10 @@ import type {
   ThreadGoal,
   WorkerCommand,
 } from "@cantrip/protocol";
+import type {
+  CustomizationContentOperation,
+  CustomizationContentScope,
+} from "@cantrip/protocol/customization-content";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
@@ -139,6 +140,40 @@ const protectedScriptCommands = {
     ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
   },
 };
+
+const protectedCustomizationContent = {
+  ...protectedScriptCommands,
+  domain: "customization-content" as const,
+};
+
+function protectedCustomizationResponse(
+  operationId: string,
+  operation: CustomizationContentOperation,
+  scope: CustomizationContentScope,
+  lifecycle: "pending" | "completed" | "unknown" | null = null,
+) {
+  return protectedCustomizationResponseSchema.parse({
+    operationId,
+    operation,
+    scope,
+    result: "succeeded",
+    lifecycle,
+    protectedResponse: protectedCustomizationContent,
+  });
+}
+
+function protectedCustomizationRequest(
+  operationId: string,
+  operation: CustomizationContentOperation,
+  scope: CustomizationContentScope,
+) {
+  return protectedCustomizationRequestSchema.parse({
+    operationId,
+    operation,
+    scope,
+    protectedRequest: protectedCustomizationContent,
+  });
+}
 
 function workspaceNameProtection(fill: number) {
   return {
@@ -1045,120 +1080,25 @@ const workerBridge = {
           version: "b".repeat(64),
         };
       case "skills.list":
-        return [
-          {
-            name: "skill-creator",
-            displayName: "Skill Creator",
-            description: "Create reusable skills",
-          },
-        ];
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+        );
       case "customization.inventory.read": {
         customizationInventoryThreadIds.push(command.threadId);
-        const available = {
-          available: true,
-          reason: null,
-          stability: "stable" as const,
-        };
-        const unsupported = {
-          available: false,
-          reason: "Not supported by this runtime.",
-          stability: "unsupported" as const,
-        };
-        return {
-          capabilities: {
-            isolatedCodexHome: true,
-            collaborationModes: { ...available, stability: "experimental" },
-            threadGoals: available,
-            nativeSubagents: available,
-            customAgents: unsupported,
-            hooks: available,
-            skills: {
-              list: available,
-              configure: available,
-              extraRoots: available,
-            },
-            mcp: {
-              status: available,
-              resourceRead: available,
-              oauth: available,
-              reload: available,
-            },
-            plugins: {
-              list: unsupported,
-              read: unsupported,
-              install: unsupported,
-              uninstall: unsupported,
-            },
-            externalImports: {
-              detect: { ...available, stability: "experimental" },
-              apply: { ...available, stability: "experimental" },
-            },
-          },
-          skills: {
-            items: [
-              {
-                name: "skill-creator",
-                displayName: "Skill Creator",
-                description: "Create reusable skills",
-                path: path.join(command.cwd, ".agents/skills/skill-creator"),
-                scope: "repo",
-                enabled: true,
-              },
-            ],
-            errors: [],
-          },
-          hooks: { items: [], warnings: [], errors: [] },
-          mcpServers: [
-            {
-              name: "docs",
-              serverInfo: null,
-              authStatus: "oAuth",
-              tools: [
-                {
-                  name: "search",
-                  title: null,
-                  description: "Search documentation",
-                  inputSchema: { type: "object" },
-                  outputSchema: null,
-                },
-              ],
-              resources: [
-                {
-                  uri: "docs://readme",
-                  name: "README",
-                  title: null,
-                  description: null,
-                  mimeType: "text/markdown",
-                  size: null,
-                },
-              ],
-              resourceTemplates: [],
-            },
-          ],
-        };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+        );
       }
       case "customization.external.preview":
-        return {
-          sourceScope: "project",
-          items: [
-            {
-              id: "external-command-preview",
-              itemType: "COMMANDS",
-              description: "Claude commands",
-              cwd: command.cwd,
-              details: {
-                pluginNames: [],
-                skillNames: [],
-                sessionCount: 0,
-                mcpServerNames: [],
-                hookNames: [],
-                subagentNames: [],
-                commandNames: ["release"],
-                memoryFiles: [],
-              },
-            },
-          ],
-        };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+        );
       case "customization.mcp.resource.read":
         return {
           contents: [
@@ -1171,14 +1111,17 @@ const workerBridge = {
           ],
         };
       case "customization.skill.configure":
-        return {
-          path: command.path,
-          effectiveEnabled: command.enabled,
-        };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+        );
       case "customization.skill-roots.set":
-        return {
-          roots: command.roots.map((root) => path.resolve(command.cwd, root)),
-        };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+        );
       case "customization.mcp.oauth.start":
         return {
           server: command.server,
@@ -1190,19 +1133,19 @@ const workerBridge = {
       case "customization.mcp.reload":
         return { reloaded: true };
       case "customization.external.apply":
-        return { importId: "import-1", status: "pending", results: [] };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+          "pending",
+        );
       case "customization.external.status":
-        return {
-          importId: command.importId,
-          status: "completed",
-          results: [
-            {
-              itemType: "COMMANDS",
-              successCount: 1,
-              failures: [],
-            },
-          ],
-        };
+        return protectedCustomizationResponse(
+          command.operationId,
+          command.type,
+          command.scope,
+          "completed",
+        );
       case "permission-profiles.list":
         return {
           available: true,
@@ -4117,56 +4060,61 @@ describe("local server foundation", () => {
     ).toBe("failed");
     await firstDatabase.repository.setChatStatus(chat.id, "idle");
 
+    const customizationTarget = customizationContentScopeSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/chats/${chat.id}/customizations/target`,
+        })
+      ).json(),
+    );
+    const skillsOperationId = "08bc829f-8c6a-4aec-9b2c-36239ad22d32";
     expect(
-      skillListSchema.parse(
+      protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
-            url: `/api/chats/${chat.id}/skills`,
+            url: `/api/chats/${chat.id}/skills?operationId=${skillsOperationId}`,
           })
         ).json(),
       ),
-    ).toEqual([
-      {
-        name: "skill-creator",
-        displayName: "Skill Creator",
-        description: "Create reusable skills",
-      },
-    ]);
+    ).toMatchObject({
+      operationId: skillsOperationId,
+      operation: "skills.list",
+      scope: customizationTarget,
+    });
 
-    const customizationInventory = codexCustomizationInventorySchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `/api/chats/${chat.id}/customizations?refresh=true`,
-        })
-      ).json(),
-    );
-    expect(customizationInventory).toMatchObject({
-      capabilities: {
-        isolatedCodexHome: true,
-        nativeSubagents: { available: true },
-        customAgents: { available: false },
-        plugins: { install: { available: false } },
-      },
-      skills: { items: [{ name: "skill-creator", enabled: true }] },
-      mcpServers: [{ name: "docs", resources: [{ uri: "docs://readme" }] }],
+    const inventoryOperationId = "a4c99bde-b302-4784-b064-b99b3b97a815";
+    expect(
+      protectedCustomizationResponseSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${chat.id}/customizations?refresh=true&operationId=${inventoryOperationId}`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      operationId: inventoryOperationId,
+      operation: "customization.inventory.read",
+      scope: customizationTarget,
     });
     expect(customizationInventoryThreadIds.at(-1)).toBeNull();
-    const externalPreview = codexExternalImportPreviewSchema.parse(
-      (
-        await firstApp.inject({
-          method: "GET",
-          url: `/api/chats/${chat.id}/customizations/external-preview`,
-        })
-      ).json(),
-    );
-    expect(externalPreview.items).toEqual([
-      expect.objectContaining({
-        itemType: "COMMANDS",
-        details: expect.objectContaining({ commandNames: ["release"] }),
-      }),
-    ]);
+    const previewOperationId = "4d299a12-8c01-4d19-8eaf-0e966d8db12a";
+    expect(
+      protectedCustomizationResponseSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${chat.id}/customizations/external-preview?operationId=${previewOperationId}`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      operationId: previewOperationId,
+      operation: "customization.external.preview",
+      scope: customizationTarget,
+    });
     expect(
       codexMcpResourceReadSchema.parse(
         (
@@ -4188,31 +4136,44 @@ describe("local server foundation", () => {
       ],
     });
 
+    const configureSkillOperationId = "5ddd4be8-a280-4f4e-b745-0be96068093a";
     expect(
-      codexSkillConfigResultSchema.parse(
+      protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
             method: "PATCH",
             url: `/api/chats/${chat.id}/customizations/skill`,
-            payload: {
-              path: customizationInventory.skills.items[0]!.path,
-              enabled: false,
-            },
+            payload: protectedCustomizationRequest(
+              configureSkillOperationId,
+              "customization.skill.configure",
+              customizationTarget,
+            ),
           })
         ).json(),
       ),
-    ).toMatchObject({ effectiveEnabled: false });
+    ).toMatchObject({
+      operationId: configureSkillOperationId,
+      operation: "customization.skill.configure",
+    });
+    const skillRootsOperationId = "891db5ef-a6fb-4e5b-8954-917176576d6f";
     expect(
-      codexSkillRootsResultSchema.parse(
+      protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
             method: "PUT",
             url: `/api/chats/${chat.id}/customizations/skill-roots`,
-            payload: { roots: [".agents/skills"] },
+            payload: protectedCustomizationRequest(
+              skillRootsOperationId,
+              "customization.skill-roots.set",
+              customizationTarget,
+            ),
           })
         ).json(),
-      ).roots[0],
-    ).toMatch(/\.agents\/skills$/u);
+      ),
+    ).toMatchObject({
+      operationId: skillRootsOperationId,
+      operation: "customization.skill-roots.set",
+    });
     expect(
       codexMcpOauthStartResultSchema.parse(
         (
@@ -4244,28 +4205,40 @@ describe("local server foundation", () => {
         ).json(),
       ).reloaded,
     ).toBe(true);
-    const importStarted = codexExternalImportStatusSchema.parse(
+    const importOperationId = "8a616f2c-4b84-40d4-9ce4-15c6fcbe987e";
+    const importStarted = protectedCustomizationResponseSchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/chats/${chat.id}/customizations/external-import`,
-          payload: { itemIds: [externalPreview.items[0]!.id] },
+          payload: protectedCustomizationRequest(
+            importOperationId,
+            "customization.external.apply",
+            customizationTarget,
+          ),
         })
       ).json(),
     );
-    expect(importStarted.status).toBe("pending");
+    expect(importStarted.lifecycle).toBe("pending");
+    const importStatusOperationId = "6c95ca67-bc25-4402-a1ae-24ab6130d001";
     expect(
-      codexExternalImportStatusSchema.parse(
+      protectedCustomizationResponseSchema.parse(
         (
           await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${chat.id}/customizations/external-import/status?importId=${importStarted.importId}`,
+            method: "POST",
+            url: `/api/chats/${chat.id}/customizations/external-import/status`,
+            payload: protectedCustomizationRequest(
+              importStatusOperationId,
+              "customization.external.status",
+              customizationTarget,
+            ),
           })
         ).json(),
       ),
     ).toMatchObject({
-      status: "completed",
-      results: [{ itemType: "COMMANDS", successCount: 1 }],
+      operationId: importStatusOperationId,
+      operation: "customization.external.status",
+      lifecycle: "completed",
     });
 
     const messagePayload = {

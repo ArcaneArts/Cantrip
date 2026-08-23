@@ -62,6 +62,7 @@ export function taskWorkerEncryptionReadiness(
   for (const component of [
     "attachment-content",
     "task-content",
+    "customization-content",
     "mcp-secret",
     "policy-content",
     "provider-credential",
@@ -162,6 +163,7 @@ export async function ensureTaskWorkerEncryption(input: {
       components: [
         "attachment-content",
         "task-content",
+        "customization-content",
         "mcp-secret",
         "policy-content",
         "provider-credential",

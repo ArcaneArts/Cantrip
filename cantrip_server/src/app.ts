@@ -68,20 +68,12 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   providerAuthLiveStatusSchema,
-  codexCustomizationInventorySchema,
-  codexExternalImportApplySchema,
-  codexExternalImportPreviewSchema,
-  codexExternalImportStatusSchema,
   codexMcpOauthStartResultSchema,
   codexMcpOauthStartSchema,
   codexMcpOauthStatusSchema,
   codexMcpReloadResultSchema,
   codexMcpResourceReadRequestSchema,
   codexMcpResourceReadSchema,
-  codexSkillConfigResultSchema,
-  codexSkillConfigUpdateSchema,
-  codexSkillRootsResultSchema,
-  codexSkillRootsUpdateSchema,
   chatCompactAcceptedSchema,
   encryptedChatComposerDraftUpdateSchema,
   encryptedChatComposerDraftWireStateSchema,
@@ -383,14 +375,7 @@ import {
   runStartRequestSchema,
   runOpenRequestSchema,
   protectedWorkerRunSetupLookupSchema,
-  skillListSchema,
   skillSettingsContextSchema,
-  skillSettingsDeleteRequestSchema,
-  skillSettingsDocumentSchema,
-  skillSettingsFileRequestSchema,
-  skillSettingsFileUpdateSchema,
-  skillSettingsInventorySchema,
-  skillSettingsMutationResultSchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
@@ -468,6 +453,13 @@ import {
   endpointContentContextSchema,
   endpointContentOpaqueSchema,
 } from "@cantrip/protocol/endpoint-content";
+import {
+  customizationContentScopeSchema,
+  protectedCustomizationRequestSchema,
+  protectedCustomizationResponseSchema,
+  type CustomizationContentOperation,
+  type CustomizationContentScope,
+} from "@cantrip/protocol/customization-content";
 import {
   accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
@@ -2530,35 +2522,6 @@ export async function buildApp({
       key: `${context.chatId}:mcp-oauth:${initial.server}`,
       pending: (status) => status.status === "pending",
       read: () => readMcpOauthStatus(context, runtime, initial.server),
-    });
-  };
-  const readExternalImportStatus = async (
-    context: ChatExecutionContext,
-    runtime: ModelRuntime,
-    importId: string,
-  ): Promise<CodexExternalImportStatus> =>
-    codexExternalImportStatusSchema.parse(
-      await bridge.request(context.workerId, {
-        type: "customization.external.status",
-        cwd: context.cwd,
-        importId,
-        model: runtime.model,
-        provider: runtime.provider,
-      }),
-    );
-  const observeExternalImportStatus = (
-    context: ChatExecutionContext,
-    runtime: ModelRuntime,
-    initial: CodexExternalImportStatus,
-  ): void => {
-    observeCustomizationStatus({
-      chatId: context.chatId,
-      entityId: "external-import",
-      expired: (status) => ({ ...status, status: "unknown" }),
-      initial,
-      key: `${context.chatId}:external-import:${initial.importId}`,
-      pending: (status) => status.status === "pending",
-      read: () => readExternalImportStatus(context, runtime, initial.importId),
     });
   };
   const publishChatMessage = (message: ChatMessage): void => {
@@ -8042,6 +8005,79 @@ export async function buildApp({
       providerId: provider.id,
       providerKind: provider.kind,
     };
+  };
+
+  const settingsCustomizationScope = (input: {
+    projectId: string | null;
+    providerId: string;
+    workerId: string;
+  }) =>
+    customizationContentScopeSchema.parse({
+      workerId: input.workerId,
+      projectId: input.projectId,
+      chatId: null,
+      providerId: input.providerId,
+    });
+
+  const settingsContextFromCustomizationScope = (
+    scope: CustomizationContentScope,
+  ) => {
+    if (scope.chatId !== null || scope.providerId === null) {
+      throw new Error("Protected skill settings scope is invalid.");
+    }
+    return skillSettingsContextSchema.parse({
+      workerId: scope.workerId,
+      projectId: scope.projectId,
+      providerId: scope.providerId,
+    });
+  };
+
+  const chatCustomizationScope = (
+    context: ChatExecutionContext,
+    runtime: ModelRuntime,
+  ) =>
+    customizationContentScopeSchema.parse({
+      workerId: context.workerId,
+      projectId: context.projectId,
+      chatId: context.chatId,
+      providerId: runtime.provider.id,
+    });
+
+  const customizationScopesMatch = (
+    left: CustomizationContentScope,
+    right: CustomizationContentScope,
+  ) => JSON.stringify(left) === JSON.stringify(right);
+
+  const checkedCustomizationResponse = (input: {
+    raw: unknown;
+    operationId: string;
+    operation: CustomizationContentOperation;
+    scope: CustomizationContentScope;
+  }) => {
+    const wire = protectedCustomizationResponseSchema.parse(input.raw);
+    if (
+      wire.operationId !== input.operationId ||
+      wire.operation !== input.operation ||
+      !customizationScopesMatch(wire.scope, input.scope)
+    ) {
+      throw new Error(
+        "Protected customization response targets another operation.",
+      );
+    }
+    return wire;
+  };
+
+  const checkedCustomizationRequest = (input: {
+    raw: unknown;
+    operation: CustomizationContentOperation;
+  }) => {
+    const wire = protectedCustomizationRequestSchema.parse(input.raw);
+    if (wire.operation !== input.operation) {
+      throw new Error(
+        "Protected customization request targets another operation.",
+      );
+    }
+    return wire;
   };
 
   const permissionProfileState = async (context: ChatExecutionContext) => {
@@ -13624,6 +13660,7 @@ export async function buildApp({
 
   app.get<{
     Querystring: {
+      operationId?: string;
       projectId?: string;
       providerId?: string;
       workerId?: string;
@@ -13637,15 +13674,33 @@ export async function buildApp({
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
+    const operationId =
+      endpointContentContextSchema.shape.operationId.safeParse(
+        request.query.operationId,
+      );
+    if (!operationId.success) {
+      return reply
+        .code(400)
+        .send({ error: "A valid operationId is required." });
+    }
     try {
       const target = await skillSettingsTarget(input.data);
-      const inventory = await bridge.request(target.workerId, {
-        type: "skills.settings.list",
-        cwd: target.cwd,
-        providerId: target.providerId,
-        providerKind: target.providerKind,
+      const scope = settingsCustomizationScope(input.data);
+      const inventory = checkedCustomizationResponse({
+        raw: await bridge.request(target.workerId, {
+          type: "skills.settings.list",
+          operationId: operationId.data,
+          serverId,
+          scope,
+          cwd: target.cwd,
+          providerId: target.providerId,
+          providerKind: target.providerKind,
+        }),
+        operationId: operationId.data,
+        operation: "skills.settings.list",
+        scope,
       });
-      return reply.send(skillSettingsInventorySchema.parse(inventory));
+      return reply.send(inventory);
     } catch (error) {
       const status =
         error instanceof SkillSettingsRequestError
@@ -13658,21 +13713,36 @@ export async function buildApp({
   });
 
   app.post("/api/skills/read", async (request, reply) => {
-    const input = skillSettingsFileRequestSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
     try {
-      const target = await skillSettingsTarget(input.data);
-      const document = await bridge.request(target.workerId, {
-        type: "skills.settings.read",
-        cwd: target.cwd,
-        providerId: target.providerId,
-        providerKind: target.providerKind,
-        skillId: input.data.skillId,
-        file: input.data.file,
+      const input = checkedCustomizationRequest({
+        raw: request.body,
+        operation: "skills.settings.read",
       });
-      return reply.send(skillSettingsDocumentSchema.parse(document));
+      const settingsContext = settingsContextFromCustomizationScope(
+        input.scope,
+      );
+      const target = await skillSettingsTarget(settingsContext);
+      const scope = settingsCustomizationScope(settingsContext);
+      if (!customizationScopesMatch(input.scope, scope)) {
+        return reply.code(409).send({ error: "Customization scope changed." });
+      }
+      return reply.send(
+        checkedCustomizationResponse({
+          raw: await bridge.request(target.workerId, {
+            type: "skills.settings.read",
+            operationId: input.operationId,
+            serverId,
+            scope,
+            protectedRequest: input.protectedRequest,
+            cwd: target.cwd,
+            providerId: target.providerId,
+            providerKind: target.providerKind,
+          }),
+          operationId: input.operationId,
+          operation: input.operation,
+          scope,
+        }),
+      );
     } catch (error) {
       const status =
         error instanceof SkillSettingsRequestError
@@ -13685,25 +13755,40 @@ export async function buildApp({
   });
 
   app.put("/api/skills/file", async (request, reply) => {
-    const input = skillSettingsFileUpdateSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
     try {
-      const target = await skillSettingsTarget(input.data);
-      const result = await bridge.request(target.workerId, {
-        type: "skills.settings.write",
-        cwd: target.cwd,
-        providerId: target.providerId,
-        providerKind: target.providerKind,
-        skillId: input.data.skillId,
-        file: input.data.file,
-        content: input.data.content,
+      const input = checkedCustomizationRequest({
+        raw: request.body,
+        operation: "skills.settings.write",
       });
-      publishLiveInvalidation("customization", {
-        projectId: input.data.projectId,
+      const settingsContext = settingsContextFromCustomizationScope(
+        input.scope,
+      );
+      const target = await skillSettingsTarget(settingsContext);
+      const scope = settingsCustomizationScope(settingsContext);
+      if (!customizationScopesMatch(input.scope, scope)) {
+        return reply.code(409).send({ error: "Customization scope changed." });
+      }
+      const result = checkedCustomizationResponse({
+        raw: await bridge.request(target.workerId, {
+          type: "skills.settings.write",
+          operationId: input.operationId,
+          serverId,
+          scope,
+          protectedRequest: input.protectedRequest,
+          cwd: target.cwd,
+          providerId: target.providerId,
+          providerKind: target.providerKind,
+        }),
+        operationId: input.operationId,
+        operation: input.operation,
+        scope,
       });
-      return reply.send(skillSettingsMutationResultSchema.parse(result));
+      if (result.result === "succeeded") {
+        publishLiveInvalidation("customization", {
+          projectId: input.scope.projectId,
+        });
+      }
+      return reply.send(result);
     } catch (error) {
       const status =
         error instanceof SkillSettingsRequestError
@@ -13716,23 +13801,40 @@ export async function buildApp({
   });
 
   app.delete("/api/skills", async (request, reply) => {
-    const input = skillSettingsDeleteRequestSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
     try {
-      const target = await skillSettingsTarget(input.data);
-      const result = await bridge.request(target.workerId, {
-        type: "skills.settings.delete",
-        cwd: target.cwd,
-        providerId: target.providerId,
-        providerKind: target.providerKind,
-        skillId: input.data.skillId,
+      const input = checkedCustomizationRequest({
+        raw: request.body,
+        operation: "skills.settings.delete",
       });
-      publishLiveInvalidation("customization", {
-        projectId: input.data.projectId,
+      const settingsContext = settingsContextFromCustomizationScope(
+        input.scope,
+      );
+      const target = await skillSettingsTarget(settingsContext);
+      const scope = settingsCustomizationScope(settingsContext);
+      if (!customizationScopesMatch(input.scope, scope)) {
+        return reply.code(409).send({ error: "Customization scope changed." });
+      }
+      const result = checkedCustomizationResponse({
+        raw: await bridge.request(target.workerId, {
+          type: "skills.settings.delete",
+          operationId: input.operationId,
+          serverId,
+          scope,
+          protectedRequest: input.protectedRequest,
+          cwd: target.cwd,
+          providerId: target.providerId,
+          providerKind: target.providerKind,
+        }),
+        operationId: input.operationId,
+        operation: input.operation,
+        scope,
       });
-      return reply.send(skillSettingsMutationResultSchema.parse(result));
+      if (result.result === "succeeded") {
+        publishLiveInvalidation("customization", {
+          projectId: input.scope.projectId,
+        });
+      }
+      return reply.send(result);
     } catch (error) {
       const status =
         error instanceof SkillSettingsRequestError
@@ -25748,8 +25850,57 @@ export async function buildApp({
     );
   });
 
+  app.get<{
+    Params: { chatId: string };
+    Querystring: { operationId?: string };
+  }>("/api/chats/:chatId/skills", async (request, reply) => {
+    const operationId =
+      endpointContentContextSchema.shape.operationId.safeParse(
+        request.query.operationId,
+      );
+    if (!operationId.success) {
+      return reply
+        .code(400)
+        .send({ error: "A valid operationId is required." });
+    }
+    const context = await repository.getChatExecutionContext(
+      applicationOwnerId(),
+      request.params.chatId,
+    );
+    if (!context) return reply.code(404).send({ error: "Chat not found." });
+    if (!bridge.isConnected(context.workerId)) {
+      return reply.code(503).send({ error: "Project worker is offline." });
+    }
+    try {
+      const runtime = await runtimeForContext(context);
+      if (!runtime) {
+        return reply
+          .code(409)
+          .send({ error: "Choose a model before listing skills." });
+      }
+      const scope = chatCustomizationScope(context, runtime);
+      const skills = checkedCustomizationResponse({
+        raw: await bridge.request(context.workerId, {
+          type: "skills.list",
+          operationId: operationId.data,
+          serverId,
+          scope,
+          cwd: context.cwd,
+          model: runtime.model,
+          provider: runtime.provider,
+        }),
+        operationId: operationId.data,
+        operation: "skills.list",
+        scope,
+      });
+      return reply.send(skills);
+    } catch (error) {
+      return sendWorkerRequestFailure(reply, error);
+    }
+  });
+
   app.get<{ Params: { chatId: string } }>(
-    "/api/chats/:chatId/skills",
+    "/api/chats/:chatId/customizations/target",
     async (request, reply) => {
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -25759,30 +25910,29 @@ export async function buildApp({
       if (!bridge.isConnected(context.workerId)) {
         return reply.code(503).send({ error: "Project worker is offline." });
       }
-      try {
-        const runtime = await runtimeForContext(context);
-        if (!runtime) {
-          return reply
-            .code(409)
-            .send({ error: "Choose a model before listing skills." });
-        }
-        const skills = await bridge.request(context.workerId, {
-          type: "skills.list",
-          cwd: context.cwd,
-          model: runtime.model,
-          provider: runtime.provider,
-        });
-        return reply.send(skillListSchema.parse(skills));
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
+      const runtime = await runtimeForContext(context);
+      if (!runtime) {
+        return reply
+          .code(409)
+          .send({ error: "Choose a model before using customizations." });
       }
+      return reply.send(chatCustomizationScope(context, runtime));
     },
   );
 
   app.get<{
     Params: { chatId: string };
-    Querystring: { refresh?: string };
+    Querystring: { operationId?: string; refresh?: string };
   }>("/api/chats/:chatId/customizations", async (request, reply) => {
+    const operationId =
+      endpointContentContextSchema.shape.operationId.safeParse(
+        request.query.operationId,
+      );
+    if (!operationId.success) {
+      return reply
+        .code(400)
+        .send({ error: "A valid operationId is required." });
+    }
     const context = await repository.getChatExecutionContext(
       applicationOwnerId(),
       request.params.chatId,
@@ -25798,23 +25948,44 @@ export async function buildApp({
           .code(409)
           .send({ error: "Choose a model before listing customizations." });
       }
-      const inventory = await bridge.request(context.workerId, {
-        type: "customization.inventory.read",
-        cwd: context.cwd,
-        threadId: context.threadId,
-        forceReload: request.query.refresh === "true",
-        model: runtime.model,
-        provider: runtime.provider,
+      const scope = chatCustomizationScope(context, runtime);
+      const inventory = checkedCustomizationResponse({
+        raw: await bridge.request(context.workerId, {
+          type: "customization.inventory.read",
+          operationId: operationId.data,
+          serverId,
+          scope,
+          cwd: context.cwd,
+          threadId: context.threadId,
+          forceReload: request.query.refresh === "true",
+          model: runtime.model,
+          provider: runtime.provider,
+        }),
+        operationId: operationId.data,
+        operation: "customization.inventory.read",
+        scope,
       });
-      return reply.send(codexCustomizationInventorySchema.parse(inventory));
+      return reply.send(inventory);
     } catch (error) {
       return sendWorkerRequestFailure(reply, error);
     }
   });
 
-  app.get<{ Params: { chatId: string } }>(
+  app.get<{
+    Params: { chatId: string };
+    Querystring: { operationId?: string };
+  }>(
     "/api/chats/:chatId/customizations/external-preview",
     async (request, reply) => {
+      const operationId =
+        endpointContentContextSchema.shape.operationId.safeParse(
+          request.query.operationId,
+        );
+      if (!operationId.success) {
+        return reply
+          .code(400)
+          .send({ error: "A valid operationId is required." });
+      }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,
@@ -25830,13 +26001,22 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before previewing imports." });
         }
-        const preview = await bridge.request(context.workerId, {
-          type: "customization.external.preview",
-          cwd: context.cwd,
-          model: runtime.model,
-          provider: runtime.provider,
+        const scope = chatCustomizationScope(context, runtime);
+        const preview = checkedCustomizationResponse({
+          raw: await bridge.request(context.workerId, {
+            type: "customization.external.preview",
+            operationId: operationId.data,
+            serverId,
+            scope,
+            cwd: context.cwd,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+          operationId: operationId.data,
+          operation: "customization.external.preview",
+          scope,
         });
-        return reply.send(codexExternalImportPreviewSchema.parse(preview));
+        return reply.send(preview);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
@@ -25882,9 +26062,12 @@ export async function buildApp({
   app.patch<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/customizations/skill",
     async (request, reply) => {
-      const input = codexSkillConfigUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
+      const input = protectedCustomizationRequestSchema.safeParse(request.body);
+      if (
+        !input.success ||
+        input.data.operation !== "customization.skill.configure"
+      ) {
+        return reply.code(400).send({ error: "Invalid protected request." });
       }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -25901,16 +26084,31 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before configuring skills." });
         }
-        const result = await bridge.request(context.workerId, {
-          type: "customization.skill.configure",
-          cwd: context.cwd,
-          ...input.data,
-          model: runtime.model,
-          provider: runtime.provider,
+        const scope = chatCustomizationScope(context, runtime);
+        if (!customizationScopesMatch(input.data.scope, scope)) {
+          return reply
+            .code(409)
+            .send({ error: "Customization scope changed." });
+        }
+        const result = checkedCustomizationResponse({
+          raw: await bridge.request(context.workerId, {
+            type: "customization.skill.configure",
+            operationId: input.data.operationId,
+            serverId,
+            scope,
+            protectedRequest: input.data.protectedRequest,
+            cwd: context.cwd,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+          operationId: input.data.operationId,
+          operation: input.data.operation,
+          scope,
         });
-        const configured = codexSkillConfigResultSchema.parse(result);
-        publishChatInvalidation(context.chatId, "customization");
-        return reply.send(configured);
+        if (result.result === "succeeded") {
+          publishChatInvalidation(context.chatId, "customization");
+        }
+        return reply.send(result);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
@@ -25920,9 +26118,12 @@ export async function buildApp({
   app.put<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/customizations/skill-roots",
     async (request, reply) => {
-      const input = codexSkillRootsUpdateSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
+      const input = protectedCustomizationRequestSchema.safeParse(request.body);
+      if (
+        !input.success ||
+        input.data.operation !== "customization.skill-roots.set"
+      ) {
+        return reply.code(400).send({ error: "Invalid protected request." });
       }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -25939,16 +26140,31 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before configuring skill roots." });
         }
-        const result = await bridge.request(context.workerId, {
-          type: "customization.skill-roots.set",
-          cwd: context.cwd,
-          roots: input.data.roots,
-          model: runtime.model,
-          provider: runtime.provider,
+        const scope = chatCustomizationScope(context, runtime);
+        if (!customizationScopesMatch(input.data.scope, scope)) {
+          return reply
+            .code(409)
+            .send({ error: "Customization scope changed." });
+        }
+        const result = checkedCustomizationResponse({
+          raw: await bridge.request(context.workerId, {
+            type: "customization.skill-roots.set",
+            operationId: input.data.operationId,
+            serverId,
+            scope,
+            protectedRequest: input.data.protectedRequest,
+            cwd: context.cwd,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+          operationId: input.data.operationId,
+          operation: input.data.operation,
+          scope,
         });
-        const roots = codexSkillRootsResultSchema.parse(result);
-        publishChatInvalidation(context.chatId, "customization");
-        return reply.send(roots);
+        if (result.result === "succeeded") {
+          publishChatInvalidation(context.chatId, "customization");
+        }
+        return reply.send(result);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
@@ -26073,9 +26289,12 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/customizations/external-import",
     async (request, reply) => {
-      const input = codexExternalImportApplySchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
+      const input = protectedCustomizationRequestSchema.safeParse(request.body);
+      if (
+        !input.success ||
+        input.data.operation !== "customization.external.apply"
+      ) {
+        return reply.code(400).send({ error: "Invalid protected request." });
       }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -26092,16 +26311,27 @@ export async function buildApp({
             error: "Choose a model before importing external configuration.",
           });
         }
-        const status = codexExternalImportStatusSchema.parse(
-          await bridge.request(context.workerId, {
+        const scope = chatCustomizationScope(context, runtime);
+        if (!customizationScopesMatch(input.data.scope, scope)) {
+          return reply
+            .code(409)
+            .send({ error: "Customization scope changed." });
+        }
+        const status = checkedCustomizationResponse({
+          raw: await bridge.request(context.workerId, {
             type: "customization.external.apply",
+            operationId: input.data.operationId,
+            serverId,
+            scope,
+            protectedRequest: input.data.protectedRequest,
             cwd: context.cwd,
-            itemIds: input.data.itemIds,
             model: runtime.model,
             provider: runtime.provider,
           }),
-        );
-        observeExternalImportStatus(context, runtime, status);
+          operationId: input.data.operationId,
+          operation: input.data.operation,
+          scope,
+        });
         return reply.code(202).send(status);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
@@ -26109,17 +26339,15 @@ export async function buildApp({
     },
   );
 
-  app.get<{
-    Params: { chatId: string };
-    Querystring: { importId?: string };
-  }>(
+  app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/customizations/external-import/status",
     async (request, reply) => {
-      const importId = codexExternalImportStatusSchema.shape.importId.safeParse(
-        request.query.importId,
-      );
-      if (!importId.success) {
-        return reply.code(400).send(invalidBody(importId.error.issues));
+      const input = protectedCustomizationRequestSchema.safeParse(request.body);
+      if (
+        !input.success ||
+        input.data.operation !== "customization.external.status"
+      ) {
+        return reply.code(400).send({ error: "Invalid protected request." });
       }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -26136,12 +26364,27 @@ export async function buildApp({
             error: "Choose a model before checking an external import.",
           });
         }
-        const status = await readExternalImportStatus(
-          context,
-          runtime,
-          importId.data,
-        );
-        observeExternalImportStatus(context, runtime, status);
+        const scope = chatCustomizationScope(context, runtime);
+        if (!customizationScopesMatch(input.data.scope, scope)) {
+          return reply
+            .code(409)
+            .send({ error: "Customization scope changed." });
+        }
+        const status = checkedCustomizationResponse({
+          raw: await bridge.request(context.workerId, {
+            type: "customization.external.status",
+            operationId: input.data.operationId,
+            serverId,
+            scope,
+            protectedRequest: input.data.protectedRequest,
+            cwd: context.cwd,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+          operationId: input.data.operationId,
+          operation: input.data.operation,
+          scope,
+        });
         return reply.send(status);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);

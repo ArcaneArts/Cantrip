@@ -62,6 +62,7 @@ export function chatWorkerEncryptionReadiness(
   const requiredComponents = [
     "attachment-content",
     "chat-content",
+    "customization-content",
     "interaction-content",
     "mcp-secret",
     "policy-content",
@@ -137,6 +138,7 @@ export async function ensureChatWorkerEncryption(input: {
       components: [
         "attachment-content",
         "chat-content",
+        "customization-content",
         "interaction-content",
         "mcp-secret",
         "policy-content",

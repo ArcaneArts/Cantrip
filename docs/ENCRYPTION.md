@@ -2088,8 +2088,8 @@ change the original database-dump guarantee.
 | Run configuration inspection, authoring documents, setup scripts, action commands, and diagnostics | Operation-bound `run-content` envelopes across app, MCP, CLI, server, and worker; the server sees only bounded readiness metadata, IDs, revisions, and lifecycle state             | Worker-side validation, selection, authoring, and execution semantics with opaque server routing                                                                   | E2EE complete                                          | P1       | Medium-High |
 | Run logs, worktree-setup output, and detailed setup failures                                       | Operation-bound `run-content` responses; durable setup rows retain stable codes and generic messages rather than worker diagnostics                                                | Stable public lifecycle/result codes with endpoint-opened output, signals, and detailed diagnostics                                                                | E2EE/minimization complete                             | P1       | Medium      |
 | Durable project/chat job progress and detailed errors                                              | Several folder setup, GitHub conversion, replica, chat import, and chat relocation jobs persist free-form progress and error messages                                              | Stable public lifecycle/error codes plus protected details where endpoint presentation is required                                                                 | Planned minimization                                   | P1       | Medium      |
-| Skill files, skill inventories, hooks, roots, external-import previews, and customization errors   | Relay plaintext, including local paths, commands, descriptions, and complete editable skill content                                                                                | New worker-scoped `customization-content` operation envelopes with client-only presentation                                                                        | Component foundation complete; payload rollout planned | P1       | Medium      |
-| MCP runtime inventory and resource contents                                                        | Saved and discovered MCP configuration is protected, but tool/resource metadata and arbitrary resource text/blob reads are relay plaintext                                         | Reuse `customization-content` for runtime inventory and resource-read request/response bodies                                                                      | Planned                                                | P1       | Medium      |
+| Skill files, skill inventories, hooks, roots, external-import previews, and customization errors   | Operation-bound `customization-content` envelopes across app, server, and worker; the server sees only routing scope, operation class, coarse lifecycle/result, and ciphertext     | Keep all names, paths, files, contents, commands, matchers, warnings, errors, previews, and import details client/worker-only                                      | E2EE complete                                          | P1       | Medium      |
+| MCP runtime inventory and resource contents                                                        | Saved/discovered configuration and the combined runtime inventory are protected; resource reads plus OAuth/reload requests, results, and detailed status remain relay plaintext    | Reuse `customization-content` for MCP resource-read, OAuth, reload, and status request/response bodies                                                             | Runtime inventory E2EE; operation rollout planned      | P1       | Medium      |
 | Discovered project and terminal script commands                                                    | Operation-bound `repository-content` responses opened only by the requesting client; discovery remains worker-local                                                                | Keep command, name, source, and description opaque to the relay server                                                                                             | E2EE complete                                          | P1       | Low-Medium  |
 | Client-control notification title and message                                                      | Agent-provided notification content crosses the server and live hub as plaintext                                                                                                   | Operation-bound endpoint ciphertext opened only by the selected authorized client                                                                                  | Planned                                                | P1       | Low-Medium  |
 | Session IP-address and user-agent hashes                                                           | Durable unsalted hashes permit enumeration/correlation and are not used by a current user-facing security feature                                                                  | Stop collecting and remove the columns unless a defined abuse-control feature requires a deliberately designed representation                                      | Planned minimization                                   | P2       | Low         |
@@ -2135,6 +2135,37 @@ discovered command names, descriptions, sources, or command strings. Client
 readiness authorizes and refreshes the assigned worker before requesting
 either this content or Run content, while MCP and CLI use the worker's active
 grants without another password prompt.
+
+### Skill and customization protected content
+
+Skill settings, chat skill lists, complete customization inventories, hooks,
+skill roots, external-source previews, import requests, import status, and
+detailed errors now use worker-scoped `customization-content` envelopes. The
+unlocked client seals semantic mutations and opens worker responses; the
+assigned worker opens requests, validates them with the existing customization
+schemas, performs the local operation, and seals its result. The application
+server routes only the owner/client/worker/project/chat/provider identifiers,
+operation ID and class, coarse lifecycle/result classification, sizes, and
+ciphertext. It cannot read skill names, descriptions, local paths, file lists,
+file contents, hook commands or matchers, roots, warnings, preview items,
+selected import items, recovery paths, or detailed errors.
+
+Associated data binds every envelope to the server identity, worker, complete
+resource scope, operation ID, operation class, direction, sequence, and key
+revision. The worker rejects scopes for another worker, and mutating handlers
+reject a repeated completed operation ID. Semantic failures are sealed inside
+the response rather than copied into relay-visible transport errors. The app
+polls an import's public pending/completed lifecycle while decrypting each
+detailed status response locally, so this cutover does not require the server
+to originate protected requests or retain customization plaintext.
+
+The customization target lookup is deliberately a public control-plane route:
+it returns only worker/project/chat/provider routing identifiers needed to
+select the correct worker grant and construct authenticated associated data.
+MCP resource reads and MCP OAuth/reload operations remain separately tracked
+until their plaintext request, response, and live-status paths are converted;
+the combined customization inventory that describes MCP runtime state is
+already protected by this cycle.
 
 The server should continue to see opaque IDs, worker assignments, lifecycle
 states, ordering, timestamps, sizes, flow-control values, counters, and stable
@@ -2319,6 +2350,15 @@ counts, worker presence, model-route choices, and traffic patterns.
     allowlisted lifecycle/routing metadata and stable setup error codes.
     Discovered project and terminal commands use operation-bound
     `repository-content` responses and remain opaque to the server.
+24. **Skill and customization content — complete:** `customization-content`
+    protects skill inventories and editable files, hooks, roots, external
+    previews/import selections and status, customization inventories, local
+    paths, commands, warnings, and detailed errors across app, server, and
+    worker. The worker performs schema validation and local mutations, the
+    client owns presentation, and the server retains only authenticated routing
+    scope plus coarse operation/result/lifecycle metadata. MCP resource,
+    OAuth, reload, and detailed live-status operations remain explicitly open
+    in the post-closure ledger for the next rollout.
 
 A usable first encrypted component is moderate in scope. A robust system with
 multi-device enrollment, unattended workers, device replacement, rotation,
