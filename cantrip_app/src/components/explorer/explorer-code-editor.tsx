@@ -10,17 +10,19 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   CantripApiError,
+  createCodeAttachment,
+  createCodeTab,
   createExplorerCodeAttachment,
+  deleteCodeTab,
   openCodeAttachmentFile,
   releaseCodeAttachment,
 } from "@/lib/api";
+import { clientLogger } from "@/lib/client-log-relay";
 import {
   preferDirectCodeAttachment,
   stopDirectCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
-
-const EDITOR_ROUTE_RETRY_DELAYS_MS = [150, 350, 750, 1_500] as const;
 
 export function isUnregisteredEditorRouteError(error: unknown): boolean {
   return (
@@ -30,25 +32,18 @@ export function isUnregisteredEditorRouteError(error: unknown): boolean {
   );
 }
 
-export async function createEditorAttachmentWithRouteRetry<T>(
+export async function createEditorAttachmentWithCompatibilityFallback<T>(
   create: () => Promise<T>,
-  wait: (delayMs: number) => Promise<void> = (delayMs) =>
-    new Promise((resolve) => setTimeout(resolve, delayMs)),
-): Promise<T> {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      return await create();
-    } catch (error) {
-      if (!isUnregisteredEditorRouteError(error)) throw error;
-      const delayMs = EDITOR_ROUTE_RETRY_DELAYS_MS[attempt];
-      if (delayMs === undefined) {
-        throw new CantripApiError(
-          "The connected Cantrip Server has not loaded Explorer editor support. Restart Cantrip, then retry.",
-          503,
-        );
-      }
-      await wait(delayMs);
-    }
+  createCompatibilityAttachment: () => Promise<T>,
+): Promise<{ attachment: T; compatibilityFallback: boolean }> {
+  try {
+    return { attachment: await create(), compatibilityFallback: false };
+  } catch (error) {
+    if (!isUnregisteredEditorRouteError(error)) throw error;
+    return {
+      attachment: await createCompatibilityAttachment(),
+      compatibilityFallback: true,
+    };
   }
 }
 
@@ -56,10 +51,14 @@ export function ExplorerCodeEditor({
   appearance,
   explorerId,
   path,
+  projectId,
+  worktreeId,
 }: {
   appearance: CodeAppearance;
   explorerId: string;
   path: string;
+  projectId: string;
+  worktreeId: string;
 }) {
   const [attachment, setAttachment] = useState<CodeAttachment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +73,7 @@ export function ExplorerCodeEditor({
   useEffect(() => {
     let cancelled = false;
     let attachmentId: string | null = null;
+    let compatibilityCodeTabId: string | null = null;
     let directTunnelId: string | null = null;
     let startTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -83,9 +83,41 @@ export function ExplorerCodeEditor({
 
     const connect = async () => {
       try {
-        const relay = await createEditorAttachmentWithRouteRetry(() =>
-          createExplorerCodeAttachment(explorerId, path, appearance),
+        const result = await createEditorAttachmentWithCompatibilityFallback(
+          () => createExplorerCodeAttachment(explorerId, path, appearance),
+          async () => {
+            // Explorer-only attachments were added after ordinary Code
+            // attachments. Keep newer desktop clients usable while a selected
+            // hosted server is still rolling forward, then remove the
+            // compatibility tab with the popout.
+            const codeTab = await createCodeTab(
+              projectId,
+              "Explorer editor",
+              worktreeId,
+            );
+            compatibilityCodeTabId = codeTab.id;
+            try {
+              return await createCodeAttachment(codeTab.id, appearance);
+            } catch (error) {
+              compatibilityCodeTabId = null;
+              await deleteCodeTab(codeTab.id).catch(() => undefined);
+              throw error;
+            }
+          },
         );
+        const relay = result.attachment;
+        if (result.compatibilityFallback) {
+          clientLogger.warn(
+            "Explorer editor used the legacy server compatibility path",
+            {
+              event: "surface.explorer.editor.compatibility-fallback",
+              operation: "create-code-attachment",
+              reasonCode: "server-version-skew",
+              status: "completed",
+              subsystem: "explorer",
+            },
+          );
+        }
         attachmentId = relay.attachmentId;
         const preferred = await preferDirectCodeAttachment(relay).catch(() => ({
           attachment: relay,
@@ -94,9 +126,13 @@ export function ExplorerCodeEditor({
         directTunnelId = preferred.directTunnelId;
         if (cancelled) {
           await stopDirectCodeAttachment(directTunnelId);
-          await releaseCodeAttachment(relay.attachmentId).catch(
-            () => undefined,
-          );
+          if (compatibilityCodeTabId) {
+            await deleteCodeTab(compatibilityCodeTabId).catch(() => undefined);
+          } else {
+            await releaseCodeAttachment(relay.attachmentId).catch(
+              () => undefined,
+            );
+          }
           return;
         }
         setAttachment(preferred.attachment);
@@ -117,11 +153,13 @@ export function ExplorerCodeEditor({
       cancelled = true;
       if (startTimer) clearTimeout(startTimer);
       void stopDirectCodeAttachment(directTunnelId);
-      if (attachmentId) {
+      if (compatibilityCodeTabId) {
+        void deleteCodeTab(compatibilityCodeTabId).catch(() => undefined);
+      } else if (attachmentId) {
         void releaseCodeAttachment(attachmentId).catch(() => undefined);
       }
     };
-  }, [appearance, explorerId, path, reloadVersion]);
+  }, [appearance, explorerId, path, projectId, reloadVersion, worktreeId]);
 
   useEffect(() => {
     if (!attachment) return;
