@@ -53,6 +53,8 @@ import {
   desktopPopoutTitlebarLeftInset,
   desktopPopoutGroupSearch,
   desktopPopoutGroupWindowLabel,
+  desktopProjectOverviewSearch,
+  desktopProjectOverviewWindowLabel,
   desktopWindowThemeOverride,
   isMacosDesktopRuntime,
   observeDesktopPopoutClosure,
@@ -60,10 +62,12 @@ import {
   openDesktopExplorerFile,
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
+  parseDesktopProjectOverviewTarget,
   prewarmDesktopExplorerFile,
   shouldUseOverlayTitlebar,
   type DesktopExplorerFileTarget,
   type DesktopPopoutGroupTarget,
+  type DesktopProjectOverviewTarget,
 } from "./desktop-popout";
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -175,6 +179,37 @@ describe("desktop pop-out groups", () => {
 
     expect(onClosed).toHaveBeenCalledOnce();
     expect(unlisten).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("desktop project overview pop-outs", () => {
+  const target: DesktopProjectOverviewTarget = {
+    projectId: "project one",
+    section: "history",
+    worktreeId: "worktree one",
+  };
+
+  it("round-trips the locked overview section and worktree", () => {
+    expect(
+      parseDesktopProjectOverviewTarget(desktopProjectOverviewSearch(target)),
+    ).toEqual(target);
+  });
+
+  it("rejects unknown overview sections", () => {
+    expect(
+      parseDesktopProjectOverviewTarget(
+        "?cantrip-project-overview=unknown&project=project",
+      ),
+    ).toBeNull();
+  });
+
+  it("uses a stable label scoped to the overview view", () => {
+    expect(desktopProjectOverviewWindowLabel(target)).toBe(
+      desktopProjectOverviewWindowLabel({ ...target }),
+    );
+    expect(desktopProjectOverviewWindowLabel(target)).not.toBe(
+      desktopProjectOverviewWindowLabel({ ...target, section: "graph" }),
+    );
   });
 });
 

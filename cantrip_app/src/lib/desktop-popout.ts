@@ -5,11 +5,21 @@ import type { BackgroundThrottlingPolicy } from "@tauri-apps/api/window";
 import type { DesktopExplorerWindowBroker } from "@/lib/desktop-explorer-window-broker";
 import { desktopExplorerWindowLaunchParameter } from "@/lib/desktop-explorer-window-protocol";
 import { clientLogger } from "@/lib/client-log-relay";
+import {
+  isProjectOverviewSection,
+  type ProjectOverviewSection,
+} from "@/lib/project-overview-section";
 
 export type DesktopPopoutGroupTarget = {
   activeTabKey: string;
   groupId: string;
   projectId: string;
+};
+
+export type DesktopProjectOverviewTarget = {
+  projectId: string;
+  section: ProjectOverviewSection;
+  worktreeId: string | null;
 };
 
 export type DesktopExplorerFileTarget = {
@@ -29,6 +39,7 @@ export type DesktopExplorerFileLaunchContext = {
 };
 
 const groupParameter = "cantrip-popout-group";
+const projectOverviewParameter = "cantrip-project-overview";
 const explorerFileParameter = "cantrip-explorer-file";
 const syntheticBuildProgressParameter = "cantrip-synthetic-build";
 const noDesktopListener = () => undefined;
@@ -108,6 +119,32 @@ export function desktopPopoutGroupSearch(
   return `?${parameters.toString()}`;
 }
 
+export function parseDesktopProjectOverviewTarget(
+  search: string,
+): DesktopProjectOverviewTarget | null {
+  const parameters = new URLSearchParams(search);
+  const projectId = parameters.get("project");
+  const section = parameters.get(projectOverviewParameter);
+  return projectId && isProjectOverviewSection(section)
+    ? {
+        projectId,
+        section,
+        worktreeId: parameters.get("worktree"),
+      }
+    : null;
+}
+
+export function desktopProjectOverviewSearch(
+  target: DesktopProjectOverviewTarget,
+): string {
+  const parameters = new URLSearchParams({
+    [projectOverviewParameter]: target.section,
+    project: target.projectId,
+  });
+  if (target.worktreeId) parameters.set("worktree", target.worktreeId);
+  return `?${parameters.toString()}`;
+}
+
 export function parseDesktopExplorerFileTarget(
   search: string,
 ): DesktopExplorerFileRouteTarget | null {
@@ -151,6 +188,15 @@ function stableLabelHash(value: string): string {
     hash = Math.imul(hash, 16_777_619);
   }
   return (hash >>> 0).toString(36);
+}
+
+export function desktopProjectOverviewWindowLabel(
+  target: DesktopProjectOverviewTarget,
+): string {
+  const project = target.projectId
+    .replace(/[^A-Za-z0-9-/:_]/g, "_")
+    .slice(0, 64);
+  return `cantrip-overview-${project}-${target.section}-${stableLabelHash(target.worktreeId ?? "primary")}`;
 }
 
 export function desktopExplorerFileWindowLabel(
@@ -425,6 +471,19 @@ export async function openDesktopPopoutGroup(
   return openDesktopWindow(
     desktopPopoutGroupWindowLabel(target.groupId),
     desktopPopoutGroupSearch(target),
+    title,
+    position,
+  );
+}
+
+export async function openDesktopProjectOverviewPopout(
+  target: DesktopProjectOverviewTarget,
+  title: string,
+  position?: { x: number; y: number },
+): Promise<"created" | "focused"> {
+  return openDesktopWindow(
+    desktopProjectOverviewWindowLabel(target),
+    desktopProjectOverviewSearch(target),
     title,
     position,
   );

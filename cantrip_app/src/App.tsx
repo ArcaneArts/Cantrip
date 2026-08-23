@@ -186,6 +186,7 @@ import {
 import {
   GitHistoryView,
   type GitHistoryHeaderState,
+  type GitViewSection,
 } from "@/components/git/git-history";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
@@ -225,6 +226,7 @@ import {
   type ProjectSettingsSection,
 } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
+import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
 import { EnvironmentRunMenu } from "@/components/run/environment-run-menu";
 import { WindowsLongPathDialog } from "@/components/projects/windows-long-path-dialog";
 import {
@@ -435,8 +437,10 @@ import {
   isMacosDesktopRuntime,
   openDesktopExplorerFile,
   openDesktopPopoutGroup,
+  openDesktopProjectOverviewPopout,
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
+  parseDesktopProjectOverviewTarget,
   prewarmDesktopExplorerFile,
   shouldUseOverlayTitlebar,
   updateDesktopWindowTheme,
@@ -445,6 +449,7 @@ import {
   watchDesktopPopoutGroup,
   watchDesktopWindowFocus,
 } from "@/lib/desktop-popout";
+import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 import {
   desktopFolderRevealLabel,
   desktopProjectRevealButtonLabel,
@@ -528,6 +533,11 @@ import {
 function modelDisplayName(model: ModelProfileSummary): string {
   const routeCount = model.routes.filter((route) => route.enabled).length;
   return `${model.name}${routeCount > 1 ? ` · Auto (${routeCount} routes)` : ""}`;
+}
+
+function projectOverviewSectionLabel(section: ProjectOverviewSection): string {
+  if (section === "prs") return "Pull requests";
+  return `${section.slice(0, 1).toUpperCase()}${section.slice(1)}`;
 }
 
 function codeAppearanceFor(
@@ -3703,6 +3713,13 @@ export function App() {
         : null,
     [desktopRuntime],
   );
+  const projectOverviewPopoutTarget = useMemo(
+    () =>
+      desktopRuntime
+        ? parseDesktopProjectOverviewTarget(window.location.search)
+        : null,
+    [desktopRuntime],
+  );
   const explorerFileTarget = useMemo(
     () =>
       desktopRuntime
@@ -3711,8 +3728,14 @@ export function App() {
     [desktopRuntime],
   );
   const popoutProjectId =
-    popoutTarget?.projectId ?? explorerFileTarget?.projectId ?? null;
-  const isPopout = popoutTarget !== null || explorerFileTarget !== null;
+    popoutTarget?.projectId ??
+    projectOverviewPopoutTarget?.projectId ??
+    explorerFileTarget?.projectId ??
+    null;
+  const isPopout =
+    popoutTarget !== null ||
+    projectOverviewPopoutTarget !== null ||
+    explorerFileTarget !== null;
   const narrowViewport = useNarrowViewport();
   const compactLayout = shouldUseCompactLayout(narrowViewport, desktopRuntime);
   const compactShell = compactLayout && !isPopout;
@@ -3725,6 +3748,18 @@ export function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutProjectId,
   );
+  const [projectOverviewSection, setProjectOverviewSection] =
+    useState<ProjectOverviewSection>(
+      () => projectOverviewPopoutTarget?.section ?? "overview",
+    );
+  const [projectOverviewWorktreeId, setProjectOverviewWorktreeId] = useState<
+    string | null
+  >(() => projectOverviewPopoutTarget?.worktreeId ?? null);
+  useEffect(() => {
+    if (projectOverviewPopoutTarget) return;
+    setProjectOverviewSection("overview");
+    setProjectOverviewWorktreeId(null);
+  }, [projectOverviewPopoutTarget, selectedProjectId]);
   const [createdRepositoryOnboarding, setCreatedRepositoryOnboarding] =
     useState<{ openInitialChat: boolean; projectId: string } | null>(null);
   const [dismissedLongPathFailure, setDismissedLongPathFailure] = useState<
@@ -3807,13 +3842,15 @@ export function App() {
     useState<ProjectSettingsSection>("general");
   const [commandBarOpen, setCommandBarOpen] = useState(false);
   const projectOverviewSelected =
-    !isPopout &&
     !sidebarFilePreview?.active &&
     !showImporter &&
     !showSettings &&
     !showServerAdmin &&
     !showProjectSettings &&
-    workspaceSelection.destination === "overview";
+    (projectOverviewPopoutTarget !== null ||
+      (!isPopout && workspaceSelection.destination === "overview"));
+  const activeProjectOverviewSection =
+    projectOverviewPopoutTarget?.section ?? projectOverviewSection;
   const [activeProjectWorkspaceId, setActiveProjectWorkspaceId] = useState<
     string | null
   >(() => window.localStorage.getItem(activeProjectWorkspaceStorageKey));
@@ -4407,6 +4444,7 @@ export function App() {
     enabled:
       Boolean(selectedProjectId) &&
       projectOverviewSelected &&
+      activeProjectOverviewSection === "overview" &&
       Boolean(
         projects.data?.some(
           (project) =>
@@ -4421,7 +4459,10 @@ export function App() {
     staleTime: 30_000,
   });
   const projectTokenUsage = useQuery({
-    enabled: Boolean(selectedProjectId) && projectOverviewSelected,
+    enabled:
+      Boolean(selectedProjectId) &&
+      projectOverviewSelected &&
+      activeProjectOverviewSection === "overview",
     queryFn: () => getProjectTokenUsage(selectedProjectId!),
     queryKey: ["project-token-usage", selectedProjectId],
     refetchInterval: projectResourcesLive ? false : 15_000,
@@ -5776,6 +5817,24 @@ export function App() {
       selectedProjectView?.kind === "issues")
       ? selectedProject
       : undefined;
+  const projectOverviewGitSection: GitViewSection | null =
+    activeProjectOverviewSection === "overview"
+      ? null
+      : activeProjectOverviewSection;
+  const projectOverviewGitProject =
+    projectOverviewSelected &&
+    projectOverviewGitSection &&
+    selectedProject?.capabilities.git
+      ? selectedProject
+      : undefined;
+  const displayedGitProject = gitHistoryProject ?? projectOverviewGitProject;
+  const resolvedProjectOverviewWorktreeId = (worktrees.data ?? []).some(
+    ({ id }) => id === projectOverviewWorktreeId,
+  )
+    ? projectOverviewWorktreeId
+    : (worktrees.data?.find(({ isPrimary }) => isPrimary)?.id ??
+      worktrees.data?.[0]?.id ??
+      null);
   const selectedChat =
     !sidebarFilePreviewVisible && selectedSurface?.kind === "chat"
       ? selectedSurface.entity
@@ -6155,6 +6214,20 @@ export function App() {
           title: currentSurface.title,
         }
       : null;
+  const activeProjectOverviewPopout =
+    desktopRuntime && !isPopout && projectOverviewSelected && selectedProject
+      ? {
+          target: {
+            projectId: selectedProject.id,
+            section: activeProjectOverviewSection,
+            worktreeId:
+              activeProjectOverviewSection === "overview"
+                ? null
+                : resolvedProjectOverviewWorktreeId,
+          },
+          title: `${selectedProject.name} · ${projectOverviewSectionLabel(activeProjectOverviewSection)}`,
+        }
+      : null;
   const groupOwnedElsewhere =
     !isPopout &&
     detachedGroupId !== null &&
@@ -6169,7 +6242,7 @@ export function App() {
           ? `project-settings:${selectedProjectId ?? "none"}`
           : currentSurface
             ? `${currentSurface.tabKey}:${gitHistoryHeader?.section ?? "content"}`
-            : `project:${selectedProjectId ?? "none"}`;
+            : `project:${selectedProjectId ?? "none"}:${activeProjectOverviewSection}`;
   const resumeDetachedGroup = useCallback(
     async (groupId: string) => {
       const explorerId = detachedExplorerIdRef.current;
@@ -6266,15 +6339,56 @@ export function App() {
       }
     })();
   };
+  const popOutProjectOverviewView = () => {
+    if (!activeProjectOverviewPopout || popoutPending) return;
+    void (async () => {
+      const startedAt = performance.now();
+      setPopoutPending(true);
+      setPopoutError(null);
+      try {
+        await openDesktopProjectOverviewPopout(
+          activeProjectOverviewPopout.target,
+          activeProjectOverviewPopout.title,
+        );
+        clientLogger.info("Project overview pop-out opened", {
+          durationMs: Math.round(performance.now() - startedAt),
+          event: "window.project-overview-popout.open.completed",
+          operation: "open-popout",
+          projectId: activeProjectOverviewPopout.target.projectId,
+          status: "opened",
+          subsystem: "desktop-window",
+        });
+      } catch (error) {
+        clientLogger.error("Project overview pop-out failed to open", {
+          durationMs: Math.round(performance.now() - startedAt),
+          ...operationalErrorMetadata(error),
+          event: "window.project-overview-popout.open.failed",
+          operation: "open-popout",
+          projectId: activeProjectOverviewPopout.target.projectId,
+          reasonCode: "native-window-error",
+          status: "failed",
+          subsystem: "desktop-window",
+        });
+        setPopoutError(errorText(error));
+      } finally {
+        setPopoutPending(false);
+      }
+    })();
+  };
 
   useEffect(() => {
     setChatRelocationOpen(false);
   }, [activeChat?.id]);
   useEffect(() => {
-    if (!isPopout || !currentSurface) return;
+    const popoutContentTitle =
+      currentSurface?.title ??
+      (projectOverviewPopoutTarget
+        ? projectOverviewSectionLabel(projectOverviewPopoutTarget.section)
+        : null);
+    if (!isPopout || !popoutContentTitle) return;
     const projectTitle =
       selectedProject?.github?.nameWithOwner ?? selectedProject?.name;
-    const title = [currentSurface.title, projectTitle, "Cantrip"]
+    const title = [popoutContentTitle, projectTitle, "Cantrip"]
       .filter(Boolean)
       .join(" — ");
     void updateDesktopWindowTitle(title).catch((error: unknown) => {
@@ -6287,7 +6401,7 @@ export function App() {
         subsystem: "desktop-window",
       });
     });
-  }, [currentSurface, isPopout, selectedProject]);
+  }, [currentSurface, isPopout, projectOverviewPopoutTarget, selectedProject]);
   useEffect(() => {
     if (!desktopRuntime || isPopout || !detachedGroupId) return;
     const observedGroupId = detachedGroupId;
@@ -6807,6 +6921,8 @@ export function App() {
       current?.projectId === projectId ? { ...current, active: false } : null,
     );
     setSelectedProjectId(projectId);
+    setProjectOverviewSection("overview");
+    setProjectOverviewWorktreeId(null);
     setWorkspaceSelection(emptyWorkspaceSelection(projectId));
     resetMobileBottomTabs();
     setPendingSurfaceSelection(null);
@@ -7549,13 +7665,19 @@ export function App() {
               ),
           }
         : null,
-    popout: activePopout
+    popout: activeProjectOverviewPopout
       ? {
           error: popoutError,
           pending: popoutPending,
-          open: popOutActiveView,
+          open: popOutProjectOverviewView,
         }
-      : null,
+      : activePopout
+        ? {
+            error: popoutError,
+            pending: popoutPending,
+            open: popOutActiveView,
+          }
+        : null,
     task:
       activeChat?.experience === "task"
         ? {
@@ -8319,7 +8441,11 @@ export function App() {
                   selectedProject?.name ??
                   "Project preferences")
                 ) : projectOverviewSelected && selectedProject ? (
-                  "Project overview"
+                  activeProjectOverviewSection === "overview" ? (
+                    "Project overview"
+                  ) : (
+                    `Project ${projectOverviewSectionLabel(activeProjectOverviewSection).toLowerCase()}`
+                  )
                 ) : gitHistoryProject ? (
                   <>
                     {gitHistoryProject.github?.nameWithOwner ??
@@ -8436,7 +8562,7 @@ export function App() {
               aria-hidden="true"
               className={cn(
                 "pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border transition-opacity duration-200",
-                contentScrolled && !gitHistoryProject
+                contentScrolled && !displayedGitProject
                   ? "opacity-100"
                   : "opacity-0",
               )}
@@ -8821,23 +8947,42 @@ export function App() {
               <Loader2 className="size-5 animate-spin" />
             </div>
           )
-        ) : gitHistoryProject ? (
+        ) : displayedGitProject ? (
           <GitHistoryView
-            key={selectedProjectView?.id}
+            key={
+              projectOverviewGitProject
+                ? `overview:${projectOverviewGitProject.id}`
+                : selectedProjectView?.id
+            }
+            activeSection={projectOverviewGitSection ?? undefined}
             chats={chats.data ?? []}
             contentScrolled={contentScrolled}
-            view={selectedProjectView?.kind ?? "history"}
-            standalone={isPopout}
-            project={gitHistoryProject}
+            includeOverviewTab={Boolean(
+              projectOverviewGitProject && !projectOverviewPopoutTarget,
+            )}
+            view={
+              projectOverviewGitSection === "issues"
+                ? "issues"
+                : (selectedProjectView?.kind ?? "history")
+            }
+            standalone={isPopout || Boolean(projectOverviewGitProject)}
+            project={displayedGitProject}
+            showSectionTabs={!projectOverviewPopoutTarget}
             worktreeId={
-              selectedProjectView?.worktreeId ??
-              worktrees.data?.find(({ isPrimary }) => isPrimary)?.id ??
-              ""
+              projectOverviewGitProject
+                ? (resolvedProjectOverviewWorktreeId ?? "")
+                : (selectedProjectView?.worktreeId ??
+                  worktrees.data?.find(({ isPrimary }) => isPrimary)?.id ??
+                  "")
             }
             worktrees={worktrees.data ?? []}
             statuses={worktreeStatuses}
             workers={workers.data ?? []}
             onSelectWorktree={(worktreeId) => {
+              if (projectOverviewGitProject) {
+                setProjectOverviewWorktreeId(worktreeId);
+                return;
+              }
               if (
                 !selectedProjectView ||
                 selectedProjectView.kind !== "history"
@@ -8861,37 +9006,42 @@ export function App() {
                 worktreeId,
               });
             }}
+            onSectionChange={
+              projectOverviewGitProject && !projectOverviewPopoutTarget
+                ? setProjectOverviewSection
+                : undefined
+            }
             onCreateChat={(worktreeId) =>
               newChat.mutate({
-                projectId: gitHistoryProject.id,
+                projectId: displayedGitProject.id,
                 worktreeId,
                 worktreeMode: "pinned",
               })
             }
             onCreateTerminal={(worktreeId) =>
               newTerminal.mutate({
-                projectId: gitHistoryProject.id,
+                projectId: displayedGitProject.id,
                 worktreeId,
               })
             }
             onCreateExplorer={(worktreeId) =>
               newExplorer.mutate({
-                projectId: gitHistoryProject.id,
+                projectId: displayedGitProject.id,
                 worktreeId,
               })
             }
             onCreateHistory={(worktreeId) =>
               newProjectView.mutate({
-                projectId: gitHistoryProject.id,
+                projectId: displayedGitProject.id,
                 kind: "history",
                 worktreeId,
               })
             }
             onOpenChat={(chatId) =>
-              openCreatedTab(gitHistoryProject.id, "chat", chatId)
+              openCreatedTab(displayedGitProject.id, "chat", chatId)
             }
             onOpenGraphFile={(worktreeId, path) =>
-              openProjectExplorerFile(gitHistoryProject.id, worktreeId, path)
+              openProjectExplorerFile(displayedGitProject.id, worktreeId, path)
             }
             onHeaderChange={setGitHistoryHeader}
           />
@@ -9168,50 +9318,63 @@ export function App() {
               </EmptyStateContent>
             </EmptyState>
           ) : projectOverviewSelected ? (
-            <ProjectOverview
-              compact={compactShell}
-              creatingKinds={creatingSurfaceKinds}
-              project={selectedProject}
-              stats={repositoryStats.data}
-              statsError={
-                repositoryStats.isError
-                  ? errorText(repositoryStats.error)
-                  : null
-              }
-              statsLoading={repositoryStats.isLoading}
-              usage={projectTokenUsage.data}
-              usageError={
-                projectTokenUsage.isError
-                  ? errorText(projectTokenUsage.error)
-                  : null
-              }
-              usageLoading={projectTokenUsage.isLoading}
-              surfaces={projectSurfaces}
-              workerOnline={Boolean(
-                workers.data?.find(
-                  ({ workerId }) => workerId === selectedProjectWorkerId,
-                )?.online,
-              )}
-              worktrees={worktrees.data ?? []}
-              onCreateSurface={(kind, target) =>
-                createProjectSurface(
-                  selectedProject.id,
-                  kind,
-                  undefined,
-                  target,
-                )
-              }
-              placement={selectedPlacementContext}
-              onOpenSurface={selectTopTab}
-              onOpenTabs={() => setMobileTabGridOpen(true)}
-              onRevealProject={(preferLocalFolder) =>
-                revealProjectInNativeFileManager(
-                  selectedProject,
-                  preferLocalFolder,
-                )
-              }
-              revealLabel={projectRevealButtonLabel ?? undefined}
-            />
+            <div className="flex min-h-0 flex-1 flex-col">
+              {!projectOverviewPopoutTarget ? (
+                <div className="relative flex h-10 shrink-0 items-center px-3">
+                  <ProjectOverviewNavigation
+                    activeTab={activeProjectOverviewSection}
+                    githubEnabled={Boolean(selectedProject.github)}
+                    gitEnabled={selectedProject.capabilities.git}
+                    onTabChange={setProjectOverviewSection}
+                  />
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border" />
+                </div>
+              ) : null}
+              <ProjectOverview
+                compact={compactShell}
+                creatingKinds={creatingSurfaceKinds}
+                project={selectedProject}
+                stats={repositoryStats.data}
+                statsError={
+                  repositoryStats.isError
+                    ? errorText(repositoryStats.error)
+                    : null
+                }
+                statsLoading={repositoryStats.isLoading}
+                usage={projectTokenUsage.data}
+                usageError={
+                  projectTokenUsage.isError
+                    ? errorText(projectTokenUsage.error)
+                    : null
+                }
+                usageLoading={projectTokenUsage.isLoading}
+                surfaces={projectSurfaces}
+                workerOnline={Boolean(
+                  workers.data?.find(
+                    ({ workerId }) => workerId === selectedProjectWorkerId,
+                  )?.online,
+                )}
+                worktrees={worktrees.data ?? []}
+                onCreateSurface={(kind, target) =>
+                  createProjectSurface(
+                    selectedProject.id,
+                    kind,
+                    undefined,
+                    target,
+                  )
+                }
+                placement={selectedPlacementContext}
+                onOpenSurface={selectTopTab}
+                onOpenTabs={() => setMobileTabGridOpen(true)}
+                onRevealProject={(preferLocalFolder) =>
+                  revealProjectInNativeFileManager(
+                    selectedProject,
+                    preferLocalFolder,
+                  )
+                }
+                revealLabel={projectRevealButtonLabel ?? undefined}
+              />
+            </div>
           ) : (
             <EmptyState>
               <EmptyStateContent>

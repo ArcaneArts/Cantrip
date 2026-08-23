@@ -27,10 +27,7 @@ import {
   GitBranch,
   GitCommitHorizontal,
   GitFork,
-  GitPullRequest,
-  History,
   Loader2,
-  Network,
   Plus,
   RefreshCw,
   ScanLine,
@@ -74,6 +71,8 @@ import {
 import { cn } from "@/lib/utils";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { useCompactLayout } from "@/lib/use-compact-layout";
+import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
+import type { ProjectOverviewSection } from "@/lib/project-overview-section";
 
 import { GitChangesPanel } from "./git-changes-panel";
 import { GitBranchPanel } from "./git-branch-panel";
@@ -111,13 +110,6 @@ import {
   GitRepositoryGraphView,
   type GitRepositoryGraphStatus,
 } from "./git-graph";
-
-const gitViewTabs: readonly NavigationTab<GitViewSection>[] = [
-  { id: "history", label: "History", icon: History },
-  { id: "issues", label: "Issues", icon: CircleDot },
-  { id: "prs", label: "PRs", icon: GitPullRequest },
-  { id: "graph", label: "Graph", icon: Network },
-];
 
 const gitIssueStateTabs: readonly NavigationTab<GithubIssueState>[] = [
   { id: "open", label: "Open", icon: CircleDot },
@@ -434,8 +426,10 @@ export interface GitHistoryHeaderState {
 export type GitViewSection = "history" | "issues" | "prs" | "graph";
 
 export function GitHistoryView({
+  activeSection,
   chats,
   contentScrolled = false,
+  includeOverviewTab = false,
   onCreateChat,
   onCreateExplorer,
   onCreateHistory,
@@ -443,17 +437,21 @@ export function GitHistoryView({
   onHeaderChange,
   onOpenChat,
   onOpenGraphFile,
+  onSectionChange,
   onSelectWorktree,
   project,
   standalone = false,
   statuses,
+  showSectionTabs = true,
   view,
   workers,
   worktreeId,
   worktrees,
 }: {
+  activeSection?: GitViewSection;
   chats: ChatSummary[];
   contentScrolled?: boolean;
+  includeOverviewTab?: boolean;
   onCreateChat(worktreeId: string): void;
   onCreateExplorer(worktreeId: string): void;
   onCreateHistory(worktreeId: string): void;
@@ -461,10 +459,12 @@ export function GitHistoryView({
   onHeaderChange(state: GitHistoryHeaderState | null): void;
   onOpenChat(chatId: string): void;
   onOpenGraphFile(worktreeId: string, path: string): void;
+  onSectionChange?(section: ProjectOverviewSection): void;
   onSelectWorktree(worktreeId: string): void;
   project: ProjectSummary;
   standalone?: boolean;
   statuses: WorktreeStatusMap;
+  showSectionTabs?: boolean;
   view: "history" | "issues";
   workers: WorkerSummary[];
   worktreeId: string;
@@ -474,7 +474,15 @@ export function GitHistoryView({
   const gitResourcesLive = useAppLiveStatus() === "live";
   const compactLayout = useCompactLayout();
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const [section, setSection] = useState<GitViewSection>(view);
+  const [internalSection, setInternalSection] = useState<GitViewSection>(view);
+  const section = activeSection ?? internalSection;
+  const setSection = useCallback(
+    (next: GitViewSection) => {
+      setInternalSection(next);
+      onSectionChange?.(next);
+    },
+    [onSectionChange],
+  );
   const [activeDrawer, setActiveDrawer] = useState<GitHistoryDrawer | null>(
     null,
   );
@@ -526,11 +534,14 @@ export function GitHistoryView({
     setActiveDrawer((current) => toggleGitHistoryToolDrawer(current, kind));
   };
   const closeDrawer = () => setActiveDrawer(null);
-  const showCommitInGraph = useCallback((revision: string) => {
-    setGraphRevision(revision);
-    setActiveDrawer(null);
-    setSection("graph");
-  }, []);
+  const showCommitInGraph = useCallback(
+    (revision: string) => {
+      setGraphRevision(revision);
+      setActiveDrawer(null);
+      setSection("graph");
+    },
+    [setSection],
+  );
   const selectedWorktree = worktrees.find(({ id }) => id === worktreeId);
   const selectedWorker = workers.find(
     ({ workerId }) => workerId === selectedWorktree?.workerId,
@@ -776,7 +787,7 @@ export function GitHistoryView({
   ]);
 
   useEffect(() => {
-    setSection(view);
+    setInternalSection(view);
   }, [project.id, view]);
 
   useEffect(() => {
@@ -898,17 +909,18 @@ export function GitHistoryView({
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-slot="git-history">
       <div className="relative flex h-10 shrink-0 items-center gap-2 px-3">
-        <NavigationTabBar<GitViewSection>
-          activeTab={section}
-          ariaLabel="Git sections"
-          className="w-fit max-w-full"
-          tabs={gitViewTabs.map((tab) => ({
-            ...tab,
-            disabled:
-              (tab.id === "issues" || tab.id === "prs") && !project.github,
-          }))}
-          onTabChange={setSection}
-        />
+        {showSectionTabs ? (
+          <ProjectOverviewNavigation
+            activeTab={section}
+            githubEnabled={Boolean(project.github)}
+            gitEnabled
+            includeOverview={includeOverviewTab}
+            onTabChange={(next) => {
+              if (next === "overview") onSectionChange?.(next);
+              else setSection(next);
+            }}
+          />
+        ) : null}
 
         <div className="ml-auto flex items-center gap-1">
           {section === "history" && standalone ? (
