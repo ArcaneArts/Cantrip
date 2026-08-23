@@ -28,7 +28,9 @@ import {
 } from "./tunnel-proxy.js";
 
 interface Endpoint {
+  address: { kind: "tcp"; host: "127.0.0.1"; port: number };
   server: HttpServer;
+  sessionId: string;
   sockets: Set<WebSocket>;
 }
 
@@ -136,8 +138,28 @@ export class CodeDirectEndpointManager {
     sessionId: string,
   ): Promise<{ kind: "tcp"; host: "127.0.0.1"; port: number }> {
     this.revoke(capabilityId, "Direct Code capability rotated");
+    return this.#create(capabilityId, sessionId);
+  }
+
+  async prepareProtected(
+    tunnelId: string,
+    sessionId: string,
+  ): Promise<{ kind: "tcp"; host: "127.0.0.1"; port: number }> {
+    const endpointId = `protected:${tunnelId}`;
+    const existing = this.#endpoints.get(endpointId);
+    if (existing?.sessionId === sessionId) return existing.address;
+    this.revoke(endpointId, "Protected Code session rotated");
+    return this.#create(endpointId, sessionId);
+  }
+
+  async #create(
+    endpointId: string,
+    sessionId: string,
+  ): Promise<{ kind: "tcp"; host: "127.0.0.1"; port: number }> {
     const endpoint: Endpoint = {
+      address: { kind: "tcp", host: "127.0.0.1", port: 0 },
       server: createServer(),
+      sessionId,
       sockets: new Set(),
     };
     const webSockets = new WebSocketServer({
@@ -186,16 +208,21 @@ export class CodeDirectEndpointManager {
       endpoint.server.close();
       throw new Error("Direct Code endpoint did not bind a loopback port.");
     }
-    this.#endpoints.set(capabilityId, endpoint);
+    endpoint.address = {
+      kind: "tcp",
+      host: "127.0.0.1",
+      port: address.port,
+    };
+    this.#endpoints.set(endpointId, endpoint);
     workerLogger.event("info", "Cantrip Code direct endpoint prepared", {
       event: "code.direct.prepared",
       subsystem: "code",
       operation: "prepare-direct-endpoint",
       status: "completed",
-      capabilityId,
+      capabilityId: endpointId,
       sessionId,
     });
-    return { kind: "tcp", host: "127.0.0.1", port: address.port };
+    return endpoint.address;
   }
 
   revoke(capabilityId: string, reason: string): void {

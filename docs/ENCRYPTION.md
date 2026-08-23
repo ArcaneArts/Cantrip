@@ -2292,6 +2292,15 @@ adapter-migration gap. The generic tunnel row is not complete until that source
 moves to an authorized client or worker and uses the same protected frame
 contract.
 
+The Code relocation foundation now reserves a protected `worker-code`
+destination. Its private record binds the Code session to the worker and data
+key, while its public projection exposes only the existing Code resource and
+worker routing IDs. The worker opens or reuses a loopback Code endpoint only
+after opening that record, and the generic broker selects a `code` protected
+target without learning the session ID. This foundation is intentionally not
+marked complete until every client creates that record, HTTP/WebSocket traffic
+uses its endpoint AEAD frames, and the old server HTTP adapter is deleted.
+
 The server should continue to see opaque IDs, worker assignments, lifecycle
 states, ordering, timestamps, sizes, flow-control values, counters, and stable
 error codes. Run instance state, tab/group relationships, worker capabilities,

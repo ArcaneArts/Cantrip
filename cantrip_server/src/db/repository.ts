@@ -474,7 +474,7 @@ export interface TunnelAttachmentAuthorization {
   destination:
     | Extract<TunnelPublicDestinationEndpoint, { kind: "worker-tcp" }>
     | (Extract<TunnelPublicDestinationEndpoint, { kind: "worker-adapter" }> & {
-        adapter: "project-share";
+        adapter: "code" | "project-share";
       });
   expiresAt: Date;
   ownerId: string;
@@ -7537,7 +7537,8 @@ export class ServerRepository {
       (destination.kind !== "worker-tcp" &&
         !(
           destination.kind === "worker-adapter" &&
-          destination.adapter === "project-share"
+          (destination.adapter === "code" ||
+            destination.adapter === "project-share")
         )) ||
       !protectedRecord
     ) {
@@ -7547,9 +7548,7 @@ export class ServerRepository {
       attachmentId,
       clientId: row.attachment.clientId,
       destination:
-        destination.kind === "worker-tcp"
-          ? destination
-          : { ...destination, adapter: "project-share" },
+        destination.kind === "worker-tcp" ? destination : destination,
       expiresAt: row.attachment.expiresAt!,
       ownerId: row.tunnel.ownerId,
       projectId: row.tunnel.projectId,
@@ -7591,7 +7590,8 @@ export class ServerRepository {
       (destination.kind !== "worker-tcp" &&
         !(
           destination.kind === "worker-adapter" &&
-          destination.adapter === "project-share"
+          (destination.adapter === "code" ||
+            destination.adapter === "project-share")
         )) ||
       !protectedRecord
     ) {
@@ -7601,9 +7601,7 @@ export class ServerRepository {
       attachmentId,
       clientId: row.attachment.clientId,
       destination:
-        destination.kind === "worker-tcp"
-          ? destination
-          : { ...destination, adapter: "project-share" },
+        destination.kind === "worker-tcp" ? destination : destination,
       expiresAt: row.attachment.expiresAt,
       ownerId: row.tunnel.ownerId,
       projectId: row.tunnel.projectId,
