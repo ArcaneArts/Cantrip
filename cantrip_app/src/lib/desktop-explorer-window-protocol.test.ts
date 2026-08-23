@@ -36,6 +36,17 @@ describe("desktop Explorer window protocol", () => {
     expect(
       isDesktopExplorerWindowRequest({
         launchId: "launch-one",
+        type: "editor.frame-loaded",
+      }),
+    ).toBe(true);
+    expect(
+      isDesktopExplorerWindowRequest({
+        type: "editor.frame-loaded",
+      }),
+    ).toBe(false);
+    expect(
+      isDesktopExplorerWindowRequest({
+        launchId: "launch-one",
         requestId: "request-one",
         type: "file.read",
       }),

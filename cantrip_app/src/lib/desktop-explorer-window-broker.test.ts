@@ -79,7 +79,8 @@ describe("desktop Explorer window broker", () => {
     const configured = new Promise<number>((resolve) => {
       resolveConfigured = resolve;
     });
-    const client = new DesktopExplorerWindowClient(broker.launchId, {
+    let client!: DesktopExplorerWindowClient;
+    client = new DesktopExplorerWindowClient(broker.launchId, {
       onContext: vi.fn(),
       onEditor: resolveEditor,
       onEditorConfigured: resolveConfigured,
@@ -90,8 +91,17 @@ describe("desktop Explorer window broker", () => {
 
     await expect(editor).resolves.toEqual(attachment);
     expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).not.toHaveBeenCalled();
     expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
 
+    client.editorFrameLoaded();
+    await vi.waitFor(() =>
+      expect(
+        desktopCode.setDirectCodeAttachmentPresentation,
+      ).toHaveBeenCalledOnce(),
+    );
     finishPresentation();
     await expect(configured).resolves.toEqual(expect.any(Number));
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
@@ -121,7 +131,8 @@ describe("desktop Explorer window broker", () => {
       { configureInitialFile: false, requireDirectBridge: true },
     );
     const onConfigured = vi.fn();
-    const client = new DesktopExplorerWindowClient(broker.launchId, {
+    let client!: DesktopExplorerWindowClient;
+    client = new DesktopExplorerWindowClient(broker.launchId, {
       onContext: vi.fn(),
       onEditor: vi.fn(),
       onEditorConfigured: onConfigured,
@@ -129,6 +140,7 @@ describe("desktop Explorer window broker", () => {
       onLaunchError: vi.fn(),
     });
     client.start();
+    client.editorFrameLoaded();
 
     await broker.ready;
     expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
@@ -144,7 +156,6 @@ describe("desktop Explorer window broker", () => {
   });
 
   it("recovers transient control failures without poisoning the editor broker", async () => {
-    vi.useFakeTimers();
     desktopCode.setDirectCodeAttachmentPresentation
       .mockRejectedValueOnce(new TypeError("Load failed"))
       .mockResolvedValueOnce({ presentation: "editor" });
@@ -161,8 +172,16 @@ describe("desktop Explorer window broker", () => {
       } as ExplorerSummary,
       path: "src/recovered.ts",
     });
+    let client!: DesktopExplorerWindowClient;
+    client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext: vi.fn(),
+      onEditor: () => client.editorFrameLoaded(),
+      onEditorConfigured: vi.fn(),
+      onEditorError: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
 
-    await vi.runAllTimersAsync();
     await expect(broker.ready).resolves.toBeUndefined();
     expect(broker.failed).toBe(false);
     expect(
@@ -170,6 +189,7 @@ describe("desktop Explorer window broker", () => {
     ).toHaveBeenCalledTimes(2);
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(2);
 
+    client.dispose();
     await broker.dispose();
   });
 
@@ -187,12 +207,22 @@ describe("desktop Explorer window broker", () => {
       } as ExplorerSummary,
       path: "src/failed.ts",
     });
+    let client!: DesktopExplorerWindowClient;
+    client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext: vi.fn(),
+      onEditor: () => client.editorFrameLoaded(),
+      onEditorConfigured: vi.fn(),
+      onEditorError: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
 
     await expect(broker.ready).rejects.toThrow(
       "Workbench rejected the request.",
     );
     expect(broker.failed).toBe(true);
 
+    client.dispose();
     await broker.dispose();
   });
 });

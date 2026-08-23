@@ -110,6 +110,11 @@ export function createDesktopExplorerWindowBroker(
   let preparedAtMs: number | null = null;
   let configuredAtMs: number | null = null;
   let editorError: string | null = null;
+  let frameLoaded = false;
+  let resolveFrameLoaded!: () => void;
+  const frameLoadedPromise = new Promise<void>((resolve) => {
+    resolveFrameLoaded = resolve;
+  });
 
   const send = (response: DesktopExplorerWindowResponse) => {
     if (!disposed) channel.postMessage(response);
@@ -141,6 +146,7 @@ export function createDesktopExplorerWindowBroker(
     });
   const bridgeReady = editorPromise.then(async (result) => {
     if (!result) throw new Error(editorError ?? "Cantrip Code is unavailable.");
+    await frameLoadedPromise;
     await retryEditorControl(() =>
       setDirectCodeAttachmentPresentation(result.attachment, "editor"),
     );
@@ -194,6 +200,13 @@ export function createDesktopExplorerWindowBroker(
       }
       if (editorError) {
         send({ error: editorError, launchId, type: "editor.failed" });
+      }
+      return;
+    }
+    if (request.type === "editor.frame-loaded") {
+      if (!frameLoaded) {
+        frameLoaded = true;
+        resolveFrameLoaded();
       }
       return;
     }

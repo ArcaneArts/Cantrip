@@ -37,7 +37,11 @@ afterEach(async () => {
 async function fixture(
   options: Pick<
     CodeSupervisorOptions,
-    "bridge" | "editorIdleTimeoutMs" | "idleSweepIntervalMs" | "idleTimeoutMs"
+    | "bridge"
+    | "editorIdleTimeoutMs"
+    | "idleSweepIntervalMs"
+    | "idleTimeoutMs"
+    | "profileIdleTimeoutMs"
   > = {},
 ) {
   const root = await mkdtemp(path.join(tmpdir(), "cantrip-code-supervisor-"));
@@ -240,6 +244,36 @@ describe("Cantrip Code supervisor", () => {
       status: "stopped",
       processInstanceId: null,
     });
+  });
+
+  it("keeps an idle profile warm for the next editor attachment", async () => {
+    const { repository, supervisor } = await fixture();
+    const first = await supervisor.open(
+      openCommand("first-editor", repository, "primary"),
+    );
+    await supervisor.stop("first-editor");
+
+    const second = await supervisor.open(
+      openCommand("second-editor", repository, "primary"),
+    );
+    expect(second.processInstanceId).toBe(first.processInstanceId);
+  });
+
+  it("evicts a warm profile after its idle timeout", async () => {
+    const { repository, supervisor } = await fixture({
+      idleSweepIntervalMs: 60_000,
+      profileIdleTimeoutMs: 1_000,
+    });
+    const first = await supervisor.open(
+      openCommand("first-idle-editor", repository, "primary"),
+    );
+    await supervisor.stop("first-idle-editor");
+    await supervisor.evictIdleSessions(Date.now() + 2_000);
+
+    const second = await supervisor.open(
+      openCommand("second-idle-editor", repository, "primary"),
+    );
+    expect(second.processInstanceId).not.toBe(first.processInstanceId);
   });
 
   it("shares a persistent profile process and always writes the Cantrip theme", async () => {

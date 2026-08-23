@@ -68,6 +68,7 @@ interface ProfileProcess {
   connectionToken: string | null;
   crashTimes: number[];
   instanceId: string | null;
+  idleSinceMs: number | null;
   launchPromise: Promise<void> | null;
   logPath: string;
   port: number | null;
@@ -95,6 +96,7 @@ export interface CodeSupervisorOptions {
   editorIdleTimeoutMs?: number;
   idleSweepIntervalMs?: number;
   idleTimeoutMs?: number;
+  profileIdleTimeoutMs?: number;
   readinessTimeoutMs?: number;
   workerId?: string;
   workerName?: string;
@@ -105,6 +107,7 @@ const CRASH_WINDOW_MS = 5 * 60_000;
 const PROCESS_STOP_TIMEOUT_MS = 2_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_EDITOR_IDLE_TIMEOUT_MS = 30_000;
+const DEFAULT_PROFILE_IDLE_TIMEOUT_MS = 30 * 60_000;
 const MAX_RESTORED_SESSION_RECORDS = 10_000;
 const RUNTIME_STATE_SCHEMA_VERSION = 2;
 const PROFILE_BUILD_FINGERPRINT_FILE = ".cantrip-code-build";
@@ -198,6 +201,7 @@ export class CodeSupervisor {
   readonly #openOperations = new Map<string, Promise<CodeRuntimeStatus>>();
   readonly #profileOperations = new Map<string, Promise<ProfileProcess>>();
   readonly #profiles = new Map<string, ProfileProcess>();
+  readonly #profileIdleTimeoutMs: number;
   readonly #readinessTimeoutMs: number;
   readonly #sessions = new Map<string, CodeSession>();
   readonly #workerId: string;
@@ -218,12 +222,20 @@ export class CodeSupervisor {
       1_000,
       options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
     );
+    this.#profileIdleTimeoutMs = Math.max(
+      1_000,
+      options.profileIdleTimeoutMs ?? DEFAULT_PROFILE_IDLE_TIMEOUT_MS,
+    );
     this.#idleSweepIntervalMs = Math.max(
       1_000,
       options.idleSweepIntervalMs ??
         Math.min(
           60_000,
-          Math.min(this.#idleTimeoutMs, this.#editorIdleTimeoutMs) / 4,
+          Math.min(
+            this.#idleTimeoutMs,
+            this.#editorIdleTimeoutMs,
+            this.#profileIdleTimeoutMs,
+          ) / 4,
         ),
     );
     this.#readinessTimeoutMs = options.readinessTimeoutMs ?? 15_000;
@@ -345,6 +357,7 @@ export class CodeSupervisor {
       this.#sessions.set(command.sessionId, session);
       const profile = await this.#profile(command.profileId, profileKey);
       profile.sessions.add(command.sessionId);
+      profile.idleSinceMs = null;
       await this.#writeWorkspace(session);
       workerLogger.event("debug", "Cantrip Code workspace prepared", {
         event: "code.workspace.prepared",
@@ -557,16 +570,12 @@ export class CodeSupervisor {
     session.lastActivityAt = isoNow();
     const profile = this.#profiles.get(session.profileKey);
     profile?.sessions.delete(sessionId);
+    if (profile?.sessions.size === 0) profile.idleSinceMs = Date.now();
     this.#bridge.unregister(sessionId);
     session.status = "stopped";
-    const result = this.#status(session);
     this.#sessions.delete(sessionId);
-    if (profile && profile.sessions.size === 0) {
-      await this.#terminateProfile(profile);
-      this.#profiles.delete(profile.profileKey);
-    }
     await this.#persistState();
-    return result;
+    return this.#stoppedStatus(sessionId);
   }
 
   proxyTarget(sessionId: string): CodeProxyTarget {
@@ -616,6 +625,25 @@ export class CodeSupervisor {
       if (!session || !this.#isIdle(session, now)) continue;
       await this.stop(sessionId);
       evicted.push(sessionId);
+    }
+    const idleProfiles = [...this.#profiles.values()].filter(
+      (profile) =>
+        profile.sessions.size === 0 &&
+        profile.idleSinceMs !== null &&
+        now - profile.idleSinceMs >= this.#profileIdleTimeoutMs,
+    );
+    for (const profile of idleProfiles) {
+      if (
+        profile.sessions.size !== 0 ||
+        profile.idleSinceMs === null ||
+        now - profile.idleSinceMs < this.#profileIdleTimeoutMs
+      ) {
+        continue;
+      }
+      await this.#terminateProfile(profile);
+      if (profile.sessions.size === 0) {
+        this.#profiles.delete(profile.profileKey);
+      }
     }
     return evicted;
   }
@@ -685,6 +713,7 @@ export class CodeSupervisor {
         child: null,
         connectionToken: null,
         crashTimes: [],
+        idleSinceMs: null,
         instanceId: null,
         launchPromise: null,
         logPath: path.join(this.#codeRoot, "logs", `${profileKey}.log`),
