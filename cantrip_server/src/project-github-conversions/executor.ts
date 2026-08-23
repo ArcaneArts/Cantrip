@@ -170,8 +170,6 @@ export class ProjectGithubConversionJobExecutor {
           claimed.commandId,
           {
             code: "worker-offline",
-            message:
-              "The owning worker is offline. Conversion will resume after it reconnects.",
             retryable: true,
           },
         );
@@ -184,8 +182,6 @@ export class ProjectGithubConversionJobExecutor {
           claimed.commandId,
           {
             code: "capability-missing",
-            message:
-              "The owning worker does not support managed folder conversion.",
             retryable: false,
           },
         );
@@ -245,8 +241,6 @@ export class ProjectGithubConversionJobExecutor {
                 claimed.commandId,
                 {
                   code: "worker-offline",
-                  message:
-                    "The owning worker disconnected during conversion. Conversion will resume after it reconnects.",
                   retryable: true,
                 },
               )
@@ -255,10 +249,6 @@ export class ProjectGithubConversionJobExecutor {
                 claimed.commandId,
                 {
                   code: "reconciliation-failed",
-                  message:
-                    error instanceof Error
-                      ? error.message.slice(0, 4_000)
-                      : "The worker could not reconcile the project with GitHub.",
                   retryable: false,
                 },
               );

@@ -496,6 +496,11 @@ import {
   projectSetupJobRefreshInterval,
   projectSetupPercent,
 } from "@/lib/project-setup-progress";
+import {
+  projectFolderSetupErrorMessage,
+  projectReplicaProgressMessage,
+  projectSetupErrorMessage,
+} from "@/lib/job-status-message";
 import type {
   TabLayoutCommand,
   WorkspaceDropOperation,
@@ -986,7 +991,8 @@ function RepositoryImporter({
                         importing,
                       );
                       const importError =
-                        project?.setupError ?? importErrors.get(repository.id);
+                        projectSetupErrorMessage(project?.setupError ?? null) ??
+                        importErrors.get(repository.id);
                       return (
                         <tr
                           key={repository.id}
@@ -8765,9 +8771,13 @@ export function App() {
                       ? `${selectedProject.name} is getting a new empty directory on its owning worker.`
                       : selectedLongPathSetupJob
                         ? "Git for Windows needs long-path support before this repository can be stored in Cantrip's managed AppData directory."
-                        : (selectedFolderSetupJob?.error?.message ??
-                          selectedProject.setupError ??
-                          "The worker could not prepare this project.")}
+                        : selectedFolderSetupJob?.error
+                          ? projectFolderSetupErrorMessage(
+                              selectedFolderSetupJob.error.code,
+                            )
+                          : (projectSetupErrorMessage(
+                              selectedProject.setupError,
+                            ) ?? "The worker could not prepare this project.")}
                 </EmptyStateDescription>
                 {selectedProject.setupStatus === "cloning" ? (
                   <div className="mx-auto mt-4 w-full max-w-sm text-left">
@@ -8793,8 +8803,11 @@ export function App() {
                     </div>
                     <div className="mt-2 flex items-start justify-between gap-3 text-xs text-muted-foreground">
                       <span>
-                        {selectedProjectSetupJob?.progress.message ??
-                          "Waiting for the worker to start cloning."}
+                        {selectedProjectSetupJob
+                          ? projectReplicaProgressMessage(
+                              selectedProjectSetupJob.progress.stage,
+                            )
+                          : "Waiting for the worker to start cloning."}
                       </span>
                       <span className="shrink-0 tabular-nums">
                         {selectedProjectSetupJob

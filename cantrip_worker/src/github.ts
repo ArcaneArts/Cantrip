@@ -157,29 +157,26 @@ async function attachUnbornHeadToOrigin(cwd: string): Promise<string | null> {
 
 export function parseGithubCloneProgress(
   output: string,
-): Pick<ProjectReplicaJobProgressEvent, "message" | "percent"> | null {
+): Pick<ProjectReplicaJobProgressEvent, "percent"> | null {
   const matches = [
     {
       expression: /Receiving objects:\s+(\d+)%/giu,
-      label: "Receiving repository objects",
       offset: 30,
       range: 42,
     },
     {
       expression: /Resolving deltas:\s+(\d+)%/giu,
-      label: "Resolving repository deltas",
       offset: 72,
       range: 12,
     },
     {
       expression: /Updating files:\s+(\d+)%/giu,
-      label: "Updating repository files",
       offset: 84,
       range: 4,
     },
   ] as const;
   let latest:
-    | (Pick<ProjectReplicaJobProgressEvent, "message" | "percent"> & {
+    | (Pick<ProjectReplicaJobProgressEvent, "percent"> & {
         index: number;
       })
     | null = null;
@@ -190,14 +187,13 @@ export function parseGithubCloneProgress(
       if (!latest || index >= latest.index) {
         latest = {
           index,
-          message: `${candidate.label} (${gitPercent}%).`,
           percent:
             candidate.offset + Math.floor((gitPercent * candidate.range) / 100),
         };
       }
     }
   }
-  return latest ? { message: latest.message, percent: latest.percent } : null;
+  return latest ? { percent: latest.percent } : null;
 }
 
 export function summarizeGithubCloneFailure(output: string): string {
@@ -265,7 +261,6 @@ async function cloneGithubRepository(
     let currentProgress: ProjectReplicaJobProgressEvent = {
       stage: "materializing",
       percent: 30,
-      message: "Cloning into worker-owned staging storage.",
     };
     const finish = (error?: Error) => {
       if (settled) return;
@@ -2038,7 +2033,9 @@ export class GithubClient {
       expectedRevision: null,
     });
     if (provisioned.status === "blocked") {
-      throw new Error(provisioned.error.message);
+      throw new Error(
+        `Repository provisioning failed with code ${provisioned.error.code}.`,
+      );
     }
     return projectCloneResultSchema.parse({
       path: provisioned.path,
@@ -2128,10 +2125,6 @@ export class GithubClient {
           ? "validating"
           : "validating-placement",
       percent: 10,
-      message:
-        input.placement.mode === "managed"
-          ? "Validating the managed replica target."
-          : "Validating the custom repository placement.",
     });
     let prepared;
     try {
@@ -2165,7 +2158,6 @@ export class GithubClient {
       reportProgress({
         stage: "inspecting-existing-checkout",
         percent: 35,
-        message: "Inspecting the existing checkout without modifying it.",
       });
       try {
         const topLevel = (
@@ -2331,8 +2323,6 @@ export class GithubClient {
       reportProgress({
         stage: "fetching",
         percent: 35,
-        message:
-          "Fetching repository references without changing the worktree.",
       });
       try {
         await execFileAsync(
@@ -2350,7 +2340,6 @@ export class GithubClient {
       reportProgress({
         stage: "inspecting",
         percent: 55,
-        message: "Checking worktree cleanliness and revision identity.",
       });
       const status = (
         await execFileAsync(
@@ -2404,10 +2393,6 @@ export class GithubClient {
       reportProgress({
         stage: "materializing",
         percent: 30,
-        message:
-          prepared.mode === "direct"
-            ? "Cloning into custom-placement staging storage."
-            : "Cloning into worker-owned staging storage.",
       });
       try {
         if (prepared.mode === "direct") {
@@ -2435,8 +2420,6 @@ export class GithubClient {
           reportProgress({
             stage: "resolving-revision",
             percent: 88,
-            message:
-              "Resolving and checking out the requested immutable revision.",
           });
           try {
             await execFileAsync(
@@ -2550,7 +2533,6 @@ export class GithubClient {
     reportProgress({
       stage: "verifying",
       percent: 90,
-      message: "Verifying the materialized repository identity and revision.",
     });
 
     const canonicalTarget = await realpath(target);
@@ -2783,9 +2765,6 @@ export class GithubClient {
     reportProgress({
       stage: "validating",
       percent: 10,
-      message: customPlacement
-        ? "Validating the custom worker repository placement."
-        : "Validating the worker-managed replica.",
     });
     const validation =
       placementMode === "direct"
@@ -2834,7 +2813,6 @@ export class GithubClient {
     reportProgress({
       stage: "fetching",
       percent: 30,
-      message: "Fetching origin references without changing the checkout.",
     });
     try {
       await execFileAsync("git", ["-C", target, "fetch", "origin", "--prune"], {
@@ -2852,7 +2830,6 @@ export class GithubClient {
     reportProgress({
       stage: "inspecting",
       percent: 50,
-      message: "Checking cleanliness, ancestry, and revision availability.",
     });
     const status = (
       await execFileAsync(
@@ -2957,7 +2934,6 @@ export class GithubClient {
     reportProgress({
       stage: "fast-forwarding",
       percent: 75,
-      message: "Fast-forwarding the clean Primary checkout.",
     });
     await execFileAsync(
       "git",
@@ -3357,7 +3333,6 @@ export class GithubClient {
     reportProgress({
       stage: "inspecting",
       percent: 30,
-      message: "Checking local files, worktrees, and published history.",
     });
     const status = (
       await execFileAsync(
@@ -3445,7 +3420,6 @@ export class GithubClient {
     reportProgress({
       stage: "removing",
       percent: 80,
-      message: "Removing verified worker-local replica files.",
     });
     if (
       customPlacement &&

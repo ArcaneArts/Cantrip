@@ -39,6 +39,7 @@ import {
   startProjectGithubConversion,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { projectGithubConversionJobMessage } from "@/lib/job-status-message";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 
@@ -228,7 +229,9 @@ export function ProjectGithubConversion({
                       : "Conversion waiting"}
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  {job.error?.message ?? job.repository.nameWithOwner}
+                  {job.error
+                    ? projectGithubConversionJobMessage(job)
+                    : job.repository.nameWithOwner}
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
                   Git features remain disabled until worker reconciliation and
@@ -266,7 +269,7 @@ export function ProjectGithubConversion({
               </p>
               {job?.state === "failed" && job.error ? (
                 <p className="mt-2 text-sm text-destructive">
-                  Previous attempt: {job.error.message}
+                  Previous attempt: {projectGithubConversionJobMessage(job)}
                 </p>
               ) : null}
               {!worker?.online ? (

@@ -164,8 +164,6 @@ export class ProjectFolderSetupJobExecutor {
           claimed.commandId,
           {
             code: "worker-offline",
-            message:
-              "The owning worker is offline. Folder setup will resume after it reconnects.",
             retryable: true,
           },
         );
@@ -178,8 +176,6 @@ export class ProjectFolderSetupJobExecutor {
           claimed.commandId,
           {
             code: "capability-missing",
-            message:
-              "The owning worker does not support managed folder creation.",
             retryable: false,
           },
         );
@@ -223,8 +219,6 @@ export class ProjectFolderSetupJobExecutor {
                 claimed.commandId,
                 {
                   code: "worker-offline",
-                  message:
-                    "The owning worker disconnected during folder setup. Setup will resume after it reconnects.",
                   retryable: true,
                 },
               )
@@ -233,10 +227,6 @@ export class ProjectFolderSetupJobExecutor {
                 claimed.commandId,
                 {
                   code: "materialization-failed",
-                  message:
-                    error instanceof Error
-                      ? error.message.slice(0, 4_000)
-                      : "The worker could not create the managed folder.",
                   retryable: false,
                 },
               );

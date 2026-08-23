@@ -104,7 +104,6 @@ function importJob(
     progress: {
       stage: "succeeded",
       percent: 100,
-      message: "Chat is ready.",
       updatedAt: now,
     },
     error: null,
@@ -258,7 +257,6 @@ describe("external Codex chat import settings", () => {
       progress: {
         stage: "hydrating",
         percent: 80,
-        message: "Injecting the canonical history.",
         updatedAt: now,
       },
     });
@@ -268,13 +266,11 @@ describe("external Codex chat import settings", () => {
       managedThreadId: null,
       error: {
         code: "worker-offline",
-        message: "The destination worker is offline.",
         retryable: true,
       },
       progress: {
         stage: "blocked",
         percent: 75,
-        message: "Waiting for the worker.",
         updatedAt: now,
       },
     });

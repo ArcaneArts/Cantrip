@@ -132,12 +132,11 @@ function toISOString(value: Date): string {
 }
 
 function progress(
-  stage: string,
+  stage: ChatImportProgress["stage"],
   percent: number,
-  message: string,
   now = new Date(),
 ): ChatImportProgress {
-  return { stage, percent, message, updatedAt: toISOString(now) };
+  return { stage, percent, updatedAt: toISOString(now) };
 }
 
 function toJob(row: ChatImportJobRow): ChatImportJobSummary {
@@ -158,14 +157,12 @@ function toJob(row: ChatImportJobRow): ChatImportJobSummary {
     idempotencyKey: row.idempotencyKey,
     attempt: row.attempt,
     progress: row.progress,
-    error:
-      row.lastErrorCode && row.lastErrorMessage !== null
-        ? {
-            code: row.lastErrorCode,
-            message: row.lastErrorMessage,
-            retryable: row.errorRetryable ?? false,
-          }
-        : null,
+    error: row.lastErrorCode
+      ? {
+          code: row.lastErrorCode,
+          retryable: row.errorRetryable ?? false,
+        }
+      : null,
     sourceMetadata: row.sourceMetadata,
     attachmentCount: row.attachmentCount,
     attachmentWarningCount: row.attachmentWarningCount,
@@ -431,12 +428,7 @@ export class ChatImportJobRepository {
             state: "queued",
             idempotencyKey: input.idempotencyKey,
             payloadFingerprint: fingerprint,
-            progress: progress(
-              "queued",
-              0,
-              "Waiting to read the source chat.",
-              now,
-            ),
+            progress: progress("queued", 0, now),
             availableAt: now,
             createdAt: now,
             updatedAt: now,
@@ -570,14 +562,8 @@ export class ChatImportJobRepository {
         commandId: null,
         leaseExpiresAt: null,
         availableAt: now,
-        progress: progress(
-          "queued",
-          0,
-          "Recovered after the server restarted.",
-          now,
-        ),
+        progress: progress("queued", 0, now),
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })
@@ -591,14 +577,8 @@ export class ChatImportJobRepository {
         commandId: null,
         leaseExpiresAt: null,
         availableAt: now,
-        progress: progress(
-          "awaiting-hydration",
-          75,
-          "Recovered runtime hydration after the server restarted.",
-          now,
-        ),
+        progress: progress("awaiting-hydration", 75, now),
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })
@@ -643,15 +623,9 @@ export class ChatImportJobRepository {
           startedAt: candidate.startedAt ?? now,
           progress:
             nextState === "reading"
-              ? progress("reading", 10, "Reading source chat history.", now)
-              : progress(
-                  "hydrating",
-                  80,
-                  "Creating a managed Codex thread.",
-                  now,
-                ),
+              ? progress("reading", 10, now)
+              : progress("hydrating", 80, now),
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -764,12 +738,7 @@ export class ChatImportJobRepository {
       .set({
         state: "importing",
         stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
-        progress: progress(
-          "importing",
-          60,
-          "Saving the canonical transcript.",
-          now,
-        ),
+        progress: progress("importing", 60, now),
         updatedAt: now,
       })
       .where(
@@ -1075,14 +1044,8 @@ export class ChatImportJobRepository {
           attachmentWarningCount: importedAttachments.filter(
             ({ descriptor }) => descriptor.status !== "available",
           ).length,
-          progress: progress(
-            "awaiting-hydration",
-            75,
-            "Chat history is saved and waiting for runtime hydration.",
-            now,
-          ),
+          progress: progress("awaiting-hydration", 75, now),
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -1342,16 +1305,8 @@ export class ChatImportJobRepository {
           managedThreadId: input.threadId,
           targetModelRouteId: input.modelRouteId,
           targetProviderAccountId: input.providerAccountId,
-          progress: progress(
-            "succeeded",
-            100,
-            job.attachmentWarningCount > 0
-              ? `Chat history is ready with ${job.attachmentWarningCount} unavailable attachment${job.attachmentWarningCount === 1 ? "" : "s"}.`
-              : "Chat history is imported and ready to continue.",
-            now,
-          ),
+          progress: progress("succeeded", 100, now),
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           completedAt: now,
           updatedAt: now,
@@ -1385,14 +1340,8 @@ export class ChatImportJobRepository {
         stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
         commandId: null,
         leaseExpiresAt: null,
-        progress: progress(
-          "succeeded",
-          100,
-          "Chat history is imported. A new runtime will start when you continue.",
-          now,
-        ),
+        progress: progress("succeeded", 100, now),
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         completedAt: now,
         updatedAt: now,
@@ -1422,14 +1371,8 @@ export class ChatImportJobRepository {
         stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
         commandId: null,
         leaseExpiresAt: null,
-        progress: progress(
-          "succeeded",
-          100,
-          "Chat history is imported. A new runtime will start when you continue.",
-          now,
-        ),
+        progress: progress("succeeded", 100, now),
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         completedAt: now,
         updatedAt: now,
@@ -1479,14 +1422,8 @@ export class ChatImportJobRepository {
         stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
         commandId: null,
         leaseExpiresAt: null,
-        progress: progress(
-          state,
-          state === "failed" ? 100 : 0,
-          error.message,
-          now,
-        ),
+        progress: progress(state, state === "failed" ? 100 : 0, now),
         lastErrorCode: error.code,
-        lastErrorMessage: error.message,
         errorRetryable: error.retryable,
         completedAt: state === "failed" ? now : null,
         updatedAt: now,
@@ -1538,15 +1475,9 @@ export class ChatImportJobRepository {
           completedAt: null,
           progress:
             nextState === "queued"
-              ? progress("queued", 0, "Retry requested.", now)
-              : progress(
-                  "awaiting-hydration",
-                  75,
-                  "Runtime hydration retry requested.",
-                  now,
-                ),
+              ? progress("queued", 0, now)
+              : progress("awaiting-hydration", 75, now),
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -1569,14 +1500,8 @@ export class ChatImportJobRepository {
         state: "queued",
         stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
         availableAt: now,
-        progress: progress(
-          "queued",
-          0,
-          "Source worker reconnected; retrying.",
-          now,
-        ),
+        progress: progress("queued", 0, now),
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })
@@ -1595,14 +1520,8 @@ export class ChatImportJobRepository {
         state: "awaiting-hydration",
         stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
         availableAt: now,
-        progress: progress(
-          "awaiting-hydration",
-          75,
-          "Destination worker reconnected; retrying hydration.",
-          now,
-        ),
+        progress: progress("awaiting-hydration", 75, now),
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })

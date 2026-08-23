@@ -3027,14 +3027,31 @@ export const projectReplicaJobErrorCodeSchema = z.enum([
 
 export const projectReplicaJobErrorSchema = z.object({
   code: projectReplicaJobErrorCodeSchema,
-  message: z.string().min(1).max(4_000),
   retryable: z.boolean(),
 });
 
+export const projectReplicaJobProgressStageSchema = z.enum([
+  "queued",
+  "dispatching",
+  "validating",
+  "validating-placement",
+  "inspecting-existing-checkout",
+  "fetching",
+  "inspecting",
+  "materializing",
+  "resolving-revision",
+  "verifying",
+  "fast-forwarding",
+  "removing",
+  "blocked",
+  "failed",
+  "succeeded",
+  "cancelled",
+]);
+
 export const projectReplicaJobProgressSchema = z.object({
-  stage: z.string().min(1).max(120),
+  stage: projectReplicaJobProgressStageSchema,
   percent: z.number().int().min(0).max(100),
-  message: z.string().min(1).max(1_000),
   updatedAt: z.string().datetime(),
 });
 
@@ -6794,10 +6811,28 @@ export const chatRelocationErrorSchema = z.object({
   retryable: z.boolean(),
 });
 
+export const chatRelocationJobErrorSchema = chatRelocationErrorSchema.omit({
+  message: true,
+});
+
+export const chatRelocationProgressStageSchema = z.enum([
+  "queued",
+  "waiting-for-idle",
+  "recovering",
+  "validating",
+  "preparing-replica",
+  "transferring-attachments",
+  "hydrating-runtime",
+  "ready-to-commit",
+  "blocked",
+  "failed",
+  "succeeded",
+  "cancelled",
+]);
+
 export const chatRelocationProgressSchema = z.object({
-  stage: z.string().min(1).max(120),
+  stage: chatRelocationProgressStageSchema,
   percent: z.number().int().min(0).max(100),
-  message: z.string().min(1).max(1_000),
   updatedAt: z.string().datetime(),
 });
 
@@ -6893,7 +6928,7 @@ export const chatRelocationJobSummarySchema = z.object({
   targetProviderAccountId: z.string().min(1).nullable().default(null),
   attempt: z.number().int().nonnegative(),
   progress: chatRelocationProgressSchema,
-  error: chatRelocationErrorSchema.nullable(),
+  error: chatRelocationJobErrorSchema.nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   startedAt: z.string().datetime().nullable(),
@@ -8805,7 +8840,6 @@ export const projectFolderSetupJobErrorSchema = z.object({
     "capability-missing",
     "materialization-failed",
   ]),
-  message: z.string().min(1).max(4_000),
   retryable: z.boolean(),
 });
 
@@ -8848,6 +8882,9 @@ export const projectGithubConversionErrorSchema = z.object({
   message: z.string().min(1).max(4_000),
   retryable: z.boolean(),
 });
+
+export const projectGithubConversionJobErrorSchema =
+  projectGithubConversionErrorSchema.omit({ message: true });
 
 const projectGithubConversionPreflightBaseSchema = z.object({
   projectId: z.string().uuid(),
@@ -8931,7 +8968,7 @@ export const projectGithubConversionJobSummarySchema = z.object({
   stateRevision: z.number().int().positive(),
   attempt: z.number().int().nonnegative(),
   initialCommitRequested: z.boolean(),
-  error: projectGithubConversionErrorSchema.nullable(),
+  error: projectGithubConversionJobErrorSchema.nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   startedAt: z.string().datetime().nullable(),
@@ -8959,7 +8996,7 @@ export const projectGithubConversionBlockedSchema = z.object({
   status: z.literal("blocked"),
   jobId: z.string().uuid(),
   attempt: z.number().int().positive(),
-  error: projectGithubConversionErrorSchema,
+  error: projectGithubConversionJobErrorSchema,
 });
 
 export const projectGithubConversionExecutionResultSchema =
@@ -11213,10 +11250,24 @@ export const chatImportErrorSchema = z.object({
   retryable: z.boolean(),
 });
 
+export const chatImportJobErrorSchema = chatImportErrorSchema.omit({
+  message: true,
+});
+
+export const chatImportProgressStageSchema = z.enum([
+  "queued",
+  "reading",
+  "importing",
+  "awaiting-hydration",
+  "hydrating",
+  "blocked",
+  "failed",
+  "succeeded",
+]);
+
 export const chatImportProgressSchema = z.object({
-  stage: z.string().min(1).max(100),
+  stage: chatImportProgressStageSchema,
   percent: z.number().int().min(0).max(100),
-  message: z.string().min(1).max(2_000),
   updatedAt: z.string().datetime(),
 });
 
@@ -11237,7 +11288,7 @@ export const chatImportJobSummarySchema = z.object({
   idempotencyKey: z.string().min(1).max(200),
   attempt: z.number().int().nonnegative(),
   progress: chatImportProgressSchema,
-  error: chatImportErrorSchema.nullable(),
+  error: chatImportJobErrorSchema.nullable(),
   sourceMetadata: externalChatTranscriptMetadataSchema.nullable(),
   attachmentCount: z.number().int().nonnegative(),
   attachmentWarningCount: z.number().int().nonnegative(),
@@ -14125,6 +14176,9 @@ export type ProjectGithubRoutingRepository = z.infer<
 export type ProjectGithubConversionError = z.infer<
   typeof projectGithubConversionErrorSchema
 >;
+export type ProjectGithubConversionJobError = z.infer<
+  typeof projectGithubConversionJobErrorSchema
+>;
 export type ProjectGithubConversionPreflightResult = z.infer<
   typeof projectGithubConversionPreflightResultSchema
 >;
@@ -14424,6 +14478,9 @@ export type ChatRelocationErrorCode = z.infer<
   typeof chatRelocationErrorCodeSchema
 >;
 export type ChatRelocationError = z.infer<typeof chatRelocationErrorSchema>;
+export type ChatRelocationJobError = z.infer<
+  typeof chatRelocationJobErrorSchema
+>;
 export type ChatRelocationProgress = z.infer<
   typeof chatRelocationProgressSchema
 >;
@@ -14956,6 +15013,7 @@ export type ExternalChatReadWorkerResult = z.infer<
 >;
 export type ChatImportState = z.infer<typeof chatImportStateSchema>;
 export type ChatImportError = z.infer<typeof chatImportErrorSchema>;
+export type ChatImportJobError = z.infer<typeof chatImportJobErrorSchema>;
 export type ChatImportProgress = z.infer<typeof chatImportProgressSchema>;
 export type ChatImportJobSummary = z.infer<typeof chatImportJobSummarySchema>;
 export type ChatImportSelection = z.infer<typeof chatImportSelectionSchema>;

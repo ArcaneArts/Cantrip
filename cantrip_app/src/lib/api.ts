@@ -3682,70 +3682,21 @@ async function openProjectReplicaJob(value: unknown) {
   const protectedRepository = repositoryRoutingHandleSchema.safeParse(
     job.repository,
   ).success;
-  const protectedProgress = repositoryRoutingHandleSchema.safeParse(
-    job.progress.message,
-  ).success;
-  const protectedError = Boolean(
-    job.error &&
-    repositoryRoutingHandleSchema.safeParse(job.error.message).success,
-  );
-  if (!protectedRepository && !protectedProgress && !protectedError) {
-    return job;
-  }
+  if (!protectedRepository) return job;
   try {
     const resolved = await resolveWorkerRepositoryMetadata({
       workerId: job.workerId,
       scopeId: job.projectId,
-      values: {
-        ...(protectedRepository ? { nameWithOwner: job.repository } : {}),
-        ...(protectedProgress ? { warning: job.progress.message } : {}),
-        ...(protectedError ? { message: job.error!.message } : {}),
-      },
+      values: { nameWithOwner: job.repository },
     });
     return projectReplicaJobSummarySchema.parse({
       ...job,
-      repository: protectedRepository
-        ? resolved.values.nameWithOwner
-        : job.repository,
-      progress: protectedProgress
-        ? {
-            ...job.progress,
-            message:
-              typeof resolved.values.warning === "string"
-                ? resolved.values.warning
-                : "Protected worker warning unavailable",
-          }
-        : job.progress,
-      error:
-        protectedError && job.error
-          ? {
-              ...job.error,
-              message:
-                typeof resolved.values.message === "string"
-                  ? resolved.values.message
-                  : "Protected worker error unavailable",
-            }
-          : job.error,
+      repository: resolved.values.nameWithOwner,
     });
   } catch {
     return projectReplicaJobSummarySchema.parse({
       ...job,
-      repository: protectedRepository
-        ? "Protected repository unavailable"
-        : job.repository,
-      progress: protectedProgress
-        ? {
-            ...job.progress,
-            message: "Protected worker warning unavailable",
-          }
-        : job.progress,
-      error:
-        protectedError && job.error
-          ? {
-              ...job.error,
-              message: "Protected worker error unavailable",
-            }
-          : job.error,
+      repository: "Protected repository unavailable",
     });
   }
 }
@@ -4024,19 +3975,13 @@ async function openProjectGithubConversionJob(value: unknown) {
     const resolved = await resolveWorkerRepositoryMetadata({
       workerId: job.workerId,
       scopeId: job.projectId,
-      values: {
-        ...job.repository,
-        ...(job.error ? { message: job.error.message } : {}),
-      },
+      values: job.repository,
     });
     return projectGithubConversionJobSummarySchema.parse({
       ...job,
       repository: projectGithubConversionRepositorySchema.parse(
         resolved.values,
       ),
-      error: job.error
-        ? { ...job.error, message: resolved.values.message }
-        : null,
     });
   } catch {
     return projectGithubConversionJobSummarySchema.parse({
@@ -4046,9 +3991,6 @@ async function openProjectGithubConversionJob(value: unknown) {
         nameWithOwner: "protected/unavailable",
         url: "https://protected.invalid",
       },
-      error: job.error
-        ? { ...job.error, message: "Protected conversion error unavailable" }
-        : null,
     });
   }
 }

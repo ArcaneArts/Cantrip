@@ -139,7 +139,6 @@ describe("durable project replica jobs", () => {
         {
           stage: "fetching",
           percent: 35,
-          message: "Fetching repository references.",
         },
       ),
     ).toMatchObject({
@@ -435,7 +434,7 @@ describe("durable project replica jobs", () => {
     ).toMatchObject({
       state: "succeeded",
       projectReplicaId: secondReplica.projectReplicaId,
-      progress: { message: "The retained checkout was left untouched." },
+      progress: { stage: "succeeded", percent: 100 },
     });
     const reprovision =
       await second.repository.projectReplicaJobs.createProvision(
@@ -484,7 +483,6 @@ describe("durable project replica jobs", () => {
       offlineAttempt!.commandId,
       {
         code: "worker-offline",
-        message: "Worker is offline.",
         retryable: true,
       },
     );

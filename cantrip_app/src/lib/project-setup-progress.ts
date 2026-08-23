@@ -67,12 +67,7 @@ export function isWindowsLongPathSetupFailure(
 ): boolean {
   const error = job?.error;
   if (!error) return false;
-  return (
-    error.code === "windows-long-paths-disabled" ||
-    /\b(?:filename|file name|path)(?: or extension)?(?: is)? too long\b/iu.test(
-      error.message,
-    )
-  );
+  return error.code === "windows-long-paths-disabled";
 }
 
 export function projectSetupFailureKey(

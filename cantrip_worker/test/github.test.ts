@@ -1004,7 +1004,6 @@ describe("GitHub project files", () => {
         "remote: Counting objects: 100%\rReceiving objects: 42% (42/100)",
       ),
     ).toEqual({
-      message: "Receiving repository objects (42%).",
       percent: 47,
     });
     expect(
@@ -1012,7 +1011,6 @@ describe("GitHub project files", () => {
         "Receiving objects: 100%\rResolving deltas: 50% (10/20)",
       ),
     ).toEqual({
-      message: "Resolving repository deltas (50%).",
       percent: 78,
     });
   });

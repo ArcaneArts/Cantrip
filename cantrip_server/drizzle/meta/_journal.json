@@ -1037,6 +1037,13 @@
       "when": 1787461319704,
       "tag": "0147_quiet_warstar",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1787464015473,
+      "tag": "0148_slim_johnny_blaze",
+      "breakpoints": true
     }
   ]
 }

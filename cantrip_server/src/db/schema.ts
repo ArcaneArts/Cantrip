@@ -1338,6 +1338,10 @@ export const projects = pgTable(
       "projects_managed_folder_identity_check",
       sql`(${table.originKind} = 'managed-folder' AND ${table.folderManagement} IN ('managed', 'external') AND ${table.githubRepositoryBlindIndex} IS NULL AND ${table.githubRepositoryId} IS NULL AND ${table.githubRepositoryFullName} IS NULL AND ${table.githubRepositoryUrl} IS NULL AND ${table.worktreePolicy} = 'direct') OR (${table.originKind} <> 'managed-folder' AND ${table.folderManagement} IS NULL AND ${table.githubRepositoryBlindIndex} IS NOT NULL)`,
     ),
+    check(
+      "projects_setup_error_minimized_check",
+      sql`${table.setupError} IS NULL OR ${table.setupError} ~ '^(?:[a-z]+(?:-[a-z]+)*|ctrr_[A-Za-z0-9_-]{43})$'`,
+    ),
   ],
 );
 
@@ -1938,7 +1942,6 @@ export const projectFolderSetupJobs = pgTable(
     commandId: text("command_id"),
     lastErrorCode:
       text("last_error_code").$type<ProjectFolderSetupJobError["code"]>(),
-    lastErrorMessage: text("last_error_message"),
     errorRetryable: boolean("error_retryable"),
     availableAt: timestamp("available_at", { withTimezone: true })
       .notNull()
@@ -1981,7 +1984,7 @@ export const projectFolderSetupJobs = pgTable(
     ),
     check(
       "project_folder_setup_jobs_error_shape_check",
-      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+      sql`(${table.lastErrorCode} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
     ),
   ],
 );
@@ -2014,7 +2017,6 @@ export const projectGithubConversionJobs = pgTable(
     commandId: text("command_id"),
     lastErrorCode:
       text("last_error_code").$type<ProjectGithubConversionError["code"]>(),
-    lastErrorMessage: text("last_error_message"),
     errorRetryable: boolean("error_retryable"),
     availableAt: timestamp("available_at", { withTimezone: true })
       .notNull()
@@ -2065,7 +2067,7 @@ export const projectGithubConversionJobs = pgTable(
     ),
     check(
       "project_github_conversion_jobs_error_shape_check",
-      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+      sql`(${table.lastErrorCode} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
     ),
   ],
 );
@@ -2111,7 +2113,6 @@ export const projectReplicaJobs = pgTable(
     commandId: text("command_id"),
     progress: jsonb("progress").$type<ProjectReplicaJobProgress>().notNull(),
     lastErrorCode: text("last_error_code").$type<ProjectReplicaJobErrorCode>(),
-    lastErrorMessage: text("last_error_message"),
     errorRetryable: boolean("error_retryable"),
     availableAt: timestamp("available_at", { withTimezone: true })
       .notNull()
@@ -2180,7 +2181,11 @@ export const projectReplicaJobs = pgTable(
     check("project_replica_jobs_attempt_check", sql`${table.attempt} >= 0`),
     check(
       "project_replica_jobs_error_shape_check",
-      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+      sql`(${table.lastErrorCode} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+    ),
+    check(
+      "project_replica_jobs_progress_minimized_check",
+      sql`jsonb_typeof(${table.progress}) = 'object' AND ${table.progress} - 'stage' - 'percent' - 'updatedAt' = '{}'::jsonb AND (${table.progress}->>'stage') IN ('queued', 'dispatching', 'validating', 'validating-placement', 'inspecting-existing-checkout', 'fetching', 'inspecting', 'materializing', 'resolving-revision', 'verifying', 'fast-forwarding', 'removing', 'blocked', 'failed', 'succeeded', 'cancelled')`,
     ),
   ],
 );
@@ -3303,7 +3308,6 @@ export const chatRelocationJobs = pgTable(
     commandId: text("command_id"),
     progress: jsonb("progress").$type<ChatRelocationProgress>().notNull(),
     lastErrorCode: text("last_error_code").$type<ChatRelocationErrorCode>(),
-    lastErrorMessage: text("last_error_message"),
     errorRetryable: boolean("error_retryable"),
     availableAt: timestamp("available_at", { withTimezone: true })
       .notNull()
@@ -3354,7 +3358,11 @@ export const chatRelocationJobs = pgTable(
     check("chat_relocation_jobs_attempt_check", sql`${table.attempt} >= 0`),
     check(
       "chat_relocation_jobs_error_shape_check",
-      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+      sql`(${table.lastErrorCode} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+    ),
+    check(
+      "chat_relocation_jobs_progress_minimized_check",
+      sql`jsonb_typeof(${table.progress}) = 'object' AND ${table.progress} - 'stage' - 'percent' - 'updatedAt' = '{}'::jsonb AND (${table.progress}->>'stage') IN ('queued', 'waiting-for-idle', 'recovering', 'validating', 'preparing-replica', 'transferring-attachments', 'hydrating-runtime', 'ready-to-commit', 'blocked', 'failed', 'succeeded', 'cancelled')`,
     ),
   ],
 );
@@ -3410,7 +3418,6 @@ export const chatImportJobs = pgTable(
       .notNull()
       .default(0),
     lastErrorCode: text("last_error_code").$type<ChatImportError["code"]>(),
-    lastErrorMessage: text("last_error_message"),
     errorRetryable: boolean("error_retryable"),
     availableAt: timestamp("available_at", { withTimezone: true })
       .notNull()
@@ -3457,7 +3464,11 @@ export const chatImportJobs = pgTable(
     check("chat_import_jobs_attempt_check", sql`${table.attempt} >= 0`),
     check(
       "chat_import_jobs_error_shape_check",
-      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+      sql`(${table.lastErrorCode} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+    ),
+    check(
+      "chat_import_jobs_progress_minimized_check",
+      sql`jsonb_typeof(${table.progress}) = 'object' AND ${table.progress} - 'stage' - 'percent' - 'updatedAt' = '{}'::jsonb AND (${table.progress}->>'stage') IN ('queued', 'reading', 'importing', 'awaiting-hydration', 'hydrating', 'blocked', 'failed', 'succeeded')`,
     ),
   ],
 );

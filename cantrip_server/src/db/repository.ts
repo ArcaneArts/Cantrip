@@ -11695,28 +11695,6 @@ export class ServerRepository {
       : null;
   }
 
-  async failGithubProjectSetup(
-    ownerId: string,
-    projectId: string,
-    error: string,
-  ): Promise<boolean> {
-    const result = await this.database
-      .update(schema.projects)
-      .set({
-        setupStatus: "failed",
-        setupError: error,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.projects.id, projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .returning({ id: schema.projects.id });
-    return Boolean(result[0]);
-  }
-
   async getProjectRemovalContext(
     ownerId: string,
     projectId: string,

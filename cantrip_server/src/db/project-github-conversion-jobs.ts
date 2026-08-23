@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   projectGithubConversionJobSummarySchema,
-  type ProjectGithubConversionError,
+  type ProjectGithubConversionJobError,
   type ProjectGithubConversionJobSummary,
   type ProjectGithubConversionReady,
   type EncryptedProjectGithubConversionStart,
@@ -59,14 +59,12 @@ function toJob(row: JobRow): ProjectGithubConversionJobSummary {
     stateRevision: row.stateRevision,
     attempt: row.attempt,
     initialCommitRequested: row.initialCommitMessage !== null,
-    error:
-      row.lastErrorCode && row.lastErrorMessage !== null
-        ? {
-            code: row.lastErrorCode,
-            message: row.lastErrorMessage,
-            retryable: row.errorRetryable ?? false,
-          }
-        : null,
+    error: row.lastErrorCode
+      ? {
+          code: row.lastErrorCode,
+          retryable: row.errorRetryable ?? false,
+        }
+      : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,
@@ -328,7 +326,6 @@ export class ProjectGithubConversionJobRepository {
           startedAt: candidate.startedAt ?? now,
           completedAt: null,
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           updatedAt: now,
         })
@@ -385,7 +382,7 @@ export class ProjectGithubConversionJobRepository {
   async block(
     jobId: string,
     commandId: string,
-    error: ProjectGithubConversionError,
+    error: ProjectGithubConversionJobError,
   ): Promise<ProjectGithubConversionJobSummary> {
     return this.settle(jobId, commandId, "blocked", error);
   }
@@ -393,7 +390,7 @@ export class ProjectGithubConversionJobRepository {
   async fail(
     jobId: string,
     commandId: string,
-    error: ProjectGithubConversionError,
+    error: ProjectGithubConversionJobError,
   ): Promise<ProjectGithubConversionJobSummary> {
     return this.settle(jobId, commandId, "failed", error);
   }
@@ -402,7 +399,7 @@ export class ProjectGithubConversionJobRepository {
     jobId: string,
     commandId: string,
     state: "blocked" | "failed",
-    error: ProjectGithubConversionError,
+    error: ProjectGithubConversionJobError,
   ): Promise<ProjectGithubConversionJobSummary> {
     const now = new Date();
     const rows = await this.database
@@ -414,7 +411,6 @@ export class ProjectGithubConversionJobRepository {
         leaseExpiresAt: null,
         completedAt: state === "failed" ? now : null,
         lastErrorCode: error.code,
-        lastErrorMessage: error.message,
         errorRetryable: error.retryable,
         updatedAt: now,
       })
@@ -589,7 +585,6 @@ export class ProjectGithubConversionJobRepository {
           commandId: null,
           leaseExpiresAt: null,
           lastErrorCode: null,
-          lastErrorMessage: null,
           errorRetryable: null,
           completedAt: now,
           updatedAt: now,
@@ -622,7 +617,6 @@ export class ProjectGithubConversionJobRepository {
         availableAt: now,
         completedAt: null,
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })
@@ -649,7 +643,6 @@ export class ProjectGithubConversionJobRepository {
         leaseExpiresAt: null,
         availableAt: now,
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })
@@ -677,7 +670,6 @@ export class ProjectGithubConversionJobRepository {
         stateRevision: sql`${schema.projectGithubConversionJobs.stateRevision} + 1`,
         availableAt: now,
         lastErrorCode: null,
-        lastErrorMessage: null,
         errorRetryable: null,
         updatedAt: now,
       })
