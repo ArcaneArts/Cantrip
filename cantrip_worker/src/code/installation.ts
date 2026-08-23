@@ -55,6 +55,7 @@ export interface DiscoverCantripCodeOptions {
 
 const MANIFEST_NAME = "cantrip-code.manifest.json";
 const WORKBENCH_PACKAGE = "extensions/cantrip-workbench/package.json";
+const UNBOUNDED_CODE_SESSIONS = Number.MAX_SAFE_INTEGER;
 
 function defaultWorkerRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -390,7 +391,7 @@ export async function discoverCantripCode(
           upstreamRevision: installation.editorBuild.upstreamRevision,
           patchset: installation.editorBuild.patchset,
           transport: "web-proxy",
-          maxSessions: 4,
+          maxSessions: UNBOUNDED_CODE_SESSIONS,
           reason: null,
         },
       };
@@ -406,7 +407,7 @@ export async function discoverCantripCode(
       upstreamRevision: null,
       patchset: 0,
       transport: "web-proxy",
-      maxSessions: 4,
+      maxSessions: UNBOUNDED_CODE_SESSIONS,
       reason: lastError,
     },
   };

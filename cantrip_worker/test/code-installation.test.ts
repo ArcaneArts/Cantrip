@@ -100,7 +100,12 @@ describe("Cantrip Code installation discovery", () => {
     });
     await expect(
       discoverCantripCode({ rootOverride: root, workerRoot: root }),
-    ).resolves.toMatchObject({ capabilities: { available: true } });
+    ).resolves.toMatchObject({
+      capabilities: {
+        available: true,
+        maxSessions: Number.MAX_SAFE_INTEGER,
+      },
+    });
   });
 
   it("rejects tampered and target-incompatible bundles", async () => {

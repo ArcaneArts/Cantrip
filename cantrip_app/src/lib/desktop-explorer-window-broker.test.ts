@@ -42,7 +42,15 @@ describe("desktop Explorer window broker", () => {
     );
     api.createCodeTab.mockResolvedValue({ id: "code-tab-one" });
     api.createCodeAttachment.mockResolvedValue(attachment);
-    api.deleteCodeTab.mockResolvedValue(undefined);
+    let finishStaleCleanup!: () => void;
+    const staleCleanup = new Promise<void>((resolve) => {
+      finishStaleCleanup = resolve;
+    });
+    api.deleteCodeTab.mockImplementation((codeTabId: string) =>
+      codeTabId === "stale-code-tab"
+        ? staleCleanup
+        : Promise.resolve(undefined),
+    );
     desktopCode.preferDirectCodeAttachment.mockResolvedValue({
       attachment,
       directTunnelId: "direct-code:session-one",
@@ -74,12 +82,14 @@ describe("desktop Explorer window broker", () => {
     client.start();
 
     await expect(editor).resolves.toEqual(attachment);
+    expect(api.createCodeTab).toHaveBeenCalledOnce();
     expect(
       desktopCode.setDirectCodeAttachmentPresentation,
     ).toHaveBeenCalledOnce();
     expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
 
     client.dispose();
+    finishStaleCleanup();
     await broker.dispose();
     expect(api.deleteCodeTab).toHaveBeenCalledWith("stale-code-tab");
     expect(api.deleteCodeTab).toHaveBeenCalledWith("code-tab-one");
