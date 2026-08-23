@@ -1,0 +1,15 @@
+export const projectOverviewSections = [
+  "overview",
+  "history",
+  "issues",
+  "prs",
+  "graph",
+] as const;
+
+export type ProjectOverviewSection = (typeof projectOverviewSections)[number];
+
+export function isProjectOverviewSection(
+  value: string | null,
+): value is ProjectOverviewSection {
+  return projectOverviewSections.some((section) => section === value);
+}
