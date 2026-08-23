@@ -25,7 +25,9 @@ export class DesktopExplorerWindowClient {
   readonly #channel: BroadcastChannel;
   readonly #launchId: string;
   readonly #pending = new Map<string, PendingRequest>();
+  #contextReceived = false;
   #disposed = false;
+  #launchRetry: ReturnType<typeof setInterval> | null = null;
   #launchTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -42,15 +44,15 @@ export class DesktopExplorerWindowClient {
 
   start(): void {
     if (this.#disposed) return;
-    this.#channel.postMessage({
-      launchId: this.#launchId,
-      type: "launch.request",
-    } satisfies DesktopExplorerWindowRequest);
+    this.#requestLaunch();
+    this.#launchRetry = setInterval(() => this.#requestLaunch(), 100);
     this.#launchTimeout = setTimeout(() => {
+      if (this.#launchRetry) clearInterval(this.#launchRetry);
+      this.#launchRetry = null;
       this.#callbacks.onLaunchError(
         "The main Cantrip window did not provide this editor session.",
       );
-    }, 3_000);
+    }, 5_000);
   }
 
   readFile(): Promise<ExplorerFile> {
@@ -68,6 +70,7 @@ export class DesktopExplorerWindowClient {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    if (this.#launchRetry) clearInterval(this.#launchRetry);
     if (this.#launchTimeout) clearTimeout(this.#launchTimeout);
     this.#channel.removeEventListener("message", this.#onMessage);
     this.#channel.close();
@@ -87,6 +90,10 @@ export class DesktopExplorerWindowClient {
       return;
     }
     if (response.type === "launch.ready") {
+      if (this.#contextReceived) return;
+      this.#contextReceived = true;
+      if (this.#launchRetry) clearInterval(this.#launchRetry);
+      this.#launchRetry = null;
       if (this.#launchTimeout) clearTimeout(this.#launchTimeout);
       this.#launchTimeout = null;
       this.#callbacks.onContext(response.context);
@@ -112,6 +119,14 @@ export class DesktopExplorerWindowClient {
       pending.resolve(response.file);
     }
   };
+
+  #requestLaunch(): void {
+    if (this.#disposed) return;
+    this.#channel.postMessage({
+      launchId: this.#launchId,
+      type: "launch.request",
+    } satisfies DesktopExplorerWindowRequest);
+  }
 
   #request<T extends Blob | ExplorerFile>(
     request:

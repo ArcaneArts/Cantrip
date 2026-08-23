@@ -27,6 +27,10 @@ import {
   type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
+import {
+  registerActiveExplorerEditorCodeTab,
+  unregisterActiveExplorerEditorCodeTab,
+} from "@/lib/explorer-editor-session-registry";
 
 export function isUnregisteredEditorRouteError(error: unknown): boolean {
   return (
@@ -105,10 +109,12 @@ export function ExplorerCodeEditor({
               worktreeId,
             );
             compatibilityCodeTabId = codeTab.id;
+            registerActiveExplorerEditorCodeTab(codeTab.id);
             try {
               return await createCodeAttachment(codeTab.id, appearance);
             } catch (error) {
               compatibilityCodeTabId = null;
+              unregisterActiveExplorerEditorCodeTab(codeTab.id);
               await deleteCodeTab(codeTab.id).catch(() => undefined);
               throw error;
             }
@@ -136,6 +142,7 @@ export function ExplorerCodeEditor({
         if (cancelled) {
           await stopDirectCodeAttachment(directTunnelId);
           if (compatibilityCodeTabId) {
+            unregisterActiveExplorerEditorCodeTab(compatibilityCodeTabId);
             await deleteCodeTab(compatibilityCodeTabId).catch(() => undefined);
           } else {
             await releaseCodeAttachment(relay.attachmentId).catch(
@@ -166,6 +173,7 @@ export function ExplorerCodeEditor({
       if (startTimer) clearTimeout(startTimer);
       void stopDirectCodeAttachment(directTunnelId);
       if (compatibilityCodeTabId) {
+        unregisterActiveExplorerEditorCodeTab(compatibilityCodeTabId);
         void deleteCodeTab(compatibilityCodeTabId).catch(() => undefined);
       } else if (attachmentId) {
         void releaseCodeAttachment(attachmentId).catch(() => undefined);

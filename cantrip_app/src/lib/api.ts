@@ -473,7 +473,10 @@ import {
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
-import { isVisibleProjectCodeTab } from "@/lib/code-tab-visibility";
+import {
+  INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE,
+  isVisibleProjectCodeTab,
+} from "@/lib/code-tab-visibility";
 import {
   openSurfaceStreamContent,
   protectSurfaceStreamContent,
@@ -4902,7 +4905,9 @@ export async function ensureBrowserTunnel(
     );
   const workerId = parsed.workerId ?? existing?.destination.workerId;
   if (!workerId) {
-    throw new Error("A destination worker is required for this Browser tunnel.");
+    throw new Error(
+      "A destination worker is required for this Browser tunnel.",
+    );
   }
   await ensureTunnelWorker(workerId);
   const tunnelId = existing?.id ?? crypto.randomUUID();
@@ -5185,14 +5190,25 @@ export async function getProjectViews(projectId: string) {
   );
 }
 
-export async function getCodeTabs(projectId: string) {
+async function getOpenedCodeTabs(projectId: string) {
   const codeTabs = codeTabWireListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/code-tabs`),
   );
-  const opened = await Promise.all(
+  return Promise.all(
     codeTabs.map((codeTab) => surfaceTitleEncryption.openCodeTab(codeTab)),
   );
-  return opened.filter((codeTab) => isVisibleProjectCodeTab(codeTab.title));
+}
+
+export async function getCodeTabs(projectId: string) {
+  return (await getOpenedCodeTabs(projectId)).filter((codeTab) =>
+    isVisibleProjectCodeTab(codeTab.title),
+  );
+}
+
+export async function getInternalExplorerEditorCodeTabs(projectId: string) {
+  return (await getOpenedCodeTabs(projectId)).filter(
+    (codeTab) => codeTab.title === INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE,
+  );
 }
 
 export async function createCodeTab(
@@ -5260,6 +5276,7 @@ export async function updateCodeTabWorktree(
 
 export async function deleteCodeTab(codeTabId: string) {
   await request(`/api/code-tabs/${encodeURIComponent(codeTabId)}`, {
+    keepalive: true,
     method: "DELETE",
   });
 }

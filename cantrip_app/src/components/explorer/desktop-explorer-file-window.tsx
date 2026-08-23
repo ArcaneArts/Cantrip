@@ -236,6 +236,11 @@ function EditorPane({
           title={`Cantrip Code — ${context.path}`}
         />
       ) : null}
+      {loaded && error ? (
+        <p className="absolute inset-x-4 top-4 z-10 border border-destructive/30 bg-background/95 p-3 text-sm text-destructive shadow-lg">
+          {error}
+        </p>
+      ) : null}
       {!loaded ? (
         <div className="absolute inset-0 grid place-items-center bg-background p-6">
           {error ? (

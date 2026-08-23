@@ -6,6 +6,7 @@ import {
   createExplorerCodeAttachment,
   deleteCodeTab,
   getExplorerFile,
+  getInternalExplorerEditorCodeTabs,
   loadExplorerMedia,
   openCodeAttachmentFile,
   releaseCodeAttachment,
@@ -27,6 +28,11 @@ import {
   type DesktopExplorerWindowResponse,
 } from "@/lib/desktop-explorer-window-protocol";
 import { errorMessage } from "@/lib/error-message";
+import {
+  isActiveExplorerEditorCodeTab,
+  registerActiveExplorerEditorCodeTab,
+  unregisterActiveExplorerEditorCodeTab,
+} from "@/lib/explorer-editor-session-registry";
 
 interface PreparedEditorAttachment {
   attachment: CodeAttachment;
@@ -42,14 +48,33 @@ export interface DesktopExplorerWindowBroker {
 async function releasePreparedEditor(
   prepared: PreparedEditorAttachment,
 ): Promise<void> {
-  await stopDirectCodeAttachment(prepared.directTunnelId);
   if (prepared.compatibilityCodeTabId) {
-    await deleteCodeTab(prepared.compatibilityCodeTabId).catch(() => undefined);
-    return;
+    unregisterActiveExplorerEditorCodeTab(prepared.compatibilityCodeTabId);
   }
-  await releaseCodeAttachment(prepared.attachment.attachmentId).catch(
-    () => undefined,
+  await Promise.allSettled([
+    stopDirectCodeAttachment(prepared.directTunnelId),
+    prepared.compatibilityCodeTabId
+      ? deleteCodeTab(prepared.compatibilityCodeTabId)
+      : releaseCodeAttachment(prepared.attachment.attachmentId),
+  ]);
+}
+
+async function removeStaleEditorCodeTabs(projectId: string): Promise<void> {
+  const staleTabs = (await getInternalExplorerEditorCodeTabs(projectId)).filter(
+    (codeTab) => !isActiveExplorerEditorCodeTab(codeTab.id),
   );
+  if (staleTabs.length === 0) return;
+  await Promise.allSettled(
+    staleTabs.map((codeTab) => deleteCodeTab(codeTab.id)),
+  );
+  clientLogger.warn("Stale Explorer editor sessions were removed", {
+    counts: { sessions: staleTabs.length },
+    event: "surface.explorer.editor.stale-sessions-removed",
+    operation: "recover-editor-sessions",
+    reasonCode: "orphaned-editor-window",
+    status: "completed",
+    subsystem: "explorer",
+  });
 }
 
 async function prepareEditorAttachment(
@@ -73,12 +98,14 @@ async function prepareEditorAttachment(
       ) {
         throw error;
       }
+      await removeStaleEditorCodeTabs(context.explorer.projectId);
       const codeTab = await createCodeTab(
         context.explorer.projectId,
         INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE,
         context.explorer.worktreeId,
       );
       compatibilityCodeTabId = codeTab.id;
+      registerActiveExplorerEditorCodeTab(codeTab.id);
       attachment = await createCodeAttachment(codeTab.id, context.appearance);
       clientLogger.warn(
         "Explorer editor used the legacy server compatibility path",
@@ -91,7 +118,6 @@ async function prepareEditorAttachment(
         },
       );
     }
-
     const preferred = await preferDirectCodeAttachment(attachment);
     attachment = preferred.attachment;
     directTunnelId = preferred.directTunnelId;
@@ -100,16 +126,11 @@ async function prepareEditorAttachment(
         "This server is too old to open an Explorer editor without a desktop worker tunnel.",
       );
     }
-    if (directTunnelId) {
-      await setDirectCodeAttachmentPresentation(attachment, "editor");
-      await openDirectCodeAttachmentFile(attachment, context.path);
-    } else {
-      await openCodeAttachmentFile(attachment.attachmentId, context.path);
-    }
     return { attachment, compatibilityCodeTabId, directTunnelId };
   } catch (error) {
     if (directTunnelId) await stopDirectCodeAttachment(directTunnelId);
     if (compatibilityCodeTabId) {
+      unregisterActiveExplorerEditorCodeTab(compatibilityCodeTabId);
       await deleteCodeTab(compatibilityCodeTabId).catch(() => undefined);
     } else if (attachment) {
       await releaseCodeAttachment(attachment.attachmentId).catch(
@@ -117,6 +138,20 @@ async function prepareEditorAttachment(
       );
     }
     throw error;
+  }
+}
+
+async function configureEditorAttachment(
+  prepared: PreparedEditorAttachment,
+  path: string,
+): Promise<void> {
+  if (prepared.compatibilityCodeTabId) {
+    await setDirectCodeAttachmentPresentation(prepared.attachment, "editor");
+  }
+  if (prepared.directTunnelId) {
+    await openDirectCodeAttachmentFile(prepared.attachment, path);
+  } else {
+    await openCodeAttachmentFile(prepared.attachment.attachmentId, path);
   }
 }
 
@@ -147,6 +182,15 @@ export function createDesktopExplorerWindowBroker(
         preparedAtMs: Date.now(),
         type: "editor.ready",
       });
+      void configureEditorAttachment(result, context.path).catch(
+        (error: unknown) => {
+          editorError = errorMessage(
+            error,
+            "Cantrip Code could not open this file.",
+          );
+          send({ error: editorError, launchId, type: "editor.failed" });
+        },
+      );
       return result;
     })
     .catch((error: unknown) => {
@@ -175,7 +219,8 @@ export function createDesktopExplorerWindowBroker(
           preparedAtMs: Date.now(),
           type: "editor.ready",
         });
-      } else if (editorError) {
+      }
+      if (editorError) {
         send({ error: editorError, launchId, type: "editor.failed" });
       }
       return;
