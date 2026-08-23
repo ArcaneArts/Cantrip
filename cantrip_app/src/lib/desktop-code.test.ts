@@ -107,6 +107,25 @@ describe("openDirectCodeAttachmentFile", () => {
       ),
     ).rejects.toThrow("File no longer exists.");
   });
+
+  it("forwards caller cancellation to the file control request", async () => {
+    const controller = new AbortController();
+    mocks.fetch.mockResolvedValue({
+      json: async () => ({ relativePath: "src/index.ts" }),
+      ok: true,
+    });
+
+    await openDirectCodeAttachmentFile(
+      { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+      "src/index.ts",
+      { signal: controller.signal },
+    );
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
 });
 
 describe("setDirectCodeAttachmentPresentation", () => {
@@ -131,6 +150,25 @@ describe("setDirectCodeAttachmentPresentation", () => {
         headers: { "content-type": "application/json" },
         method: "POST",
       },
+    );
+  });
+
+  it("forwards caller cancellation to the presentation control request", async () => {
+    const controller = new AbortController();
+    mocks.fetch.mockResolvedValue({
+      json: async () => ({ presentation: "editor" }),
+      ok: true,
+    });
+
+    await setDirectCodeAttachmentPresentation(
+      { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+      "editor",
+      { signal: controller.signal },
+    );
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ signal: controller.signal }),
     );
   });
 });

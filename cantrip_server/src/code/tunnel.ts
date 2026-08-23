@@ -41,6 +41,13 @@ export interface CodeTunnelBrokerOptions {
   maxLifetimeMs?: number;
 }
 
+type CleanupTunnelResources = (
+  ownerId: string,
+  tunnelId: string,
+  reason: string,
+  code?: number,
+) => Promise<void> | void;
+
 type CodeTunnelChange = (input: {
   attachmentId: string;
   ownerId: string;
@@ -53,9 +60,11 @@ export class CodeTunnelBroker {
   readonly #idleTtlMs: number;
   readonly #maxAttachments: number;
   readonly #maxLifetimeMs: number;
+  readonly #removals = new Map<string, Promise<boolean>>();
   readonly #sweepTimer: ReturnType<typeof setInterval>;
   readonly #workerDisconnectSubscriptions = new Map<string, () => void>();
   #changed: CodeTunnelChange | null = null;
+  #cleanupTunnelResources: CleanupTunnelResources | null = null;
   #repository: ServerRepository | null = null;
 
   constructor(
@@ -75,12 +84,14 @@ export class CodeTunnelBroker {
   configureControlPlane(
     repository: ServerRepository,
     changed: CodeTunnelChange,
+    cleanupTunnelResources?: CleanupTunnelResources,
   ): void {
     if (this.#attachments.size > 0) {
       throw new Error("Code control plane must be configured before use.");
     }
     this.#repository = repository;
     this.#changed = changed;
+    this.#cleanupTunnelResources = cleanupTunnelResources ?? null;
   }
 
   async createProtectedAttachment(
@@ -167,8 +178,7 @@ export class CodeTunnelBroker {
   ): Promise<boolean> {
     const binding = this.#attachments.get(attachmentId);
     if (!binding || binding.ownerId !== ownerId) return false;
-    await this.#removeAttachment(binding);
-    return true;
+    return this.#removeAttachment(binding);
   }
 
   async revokeSession(sessionId: string): Promise<void> {
@@ -187,7 +197,15 @@ export class CodeTunnelBroker {
 
   async close(): Promise<void> {
     clearInterval(this.#sweepTimer);
-    await this.#revokeWhere(() => true);
+    const bindings = [...this.#attachments.values()];
+    const removals = await Promise.allSettled(
+      bindings.map((binding) => this.#removeAttachment(binding)),
+    );
+    removals.forEach((result, index) => {
+      if (result.status === "rejected") {
+        this.#reportCleanupFailure(bindings[index]!, result.reason);
+      }
+    });
     for (const unsubscribe of this.#workerDisconnectSubscriptions.values()) {
       unsubscribe();
     }
@@ -201,22 +219,56 @@ export class CodeTunnelBroker {
         binding.expiresAt <= now ||
         binding.createdAt + this.#maxLifetimeMs <= now
       ) {
-        void this.#removeAttachment(binding);
+        void this.#removeAttachment(binding).catch((error) =>
+          this.#reportCleanupFailure(binding, error),
+        );
       }
     }
   }
 
   async #removeAttachment(
     binding: ProtectedCodeAttachmentBinding,
-  ): Promise<void> {
-    if (this.#attachments.get(binding.attachmentId) !== binding) return;
+  ): Promise<boolean> {
+    if (this.#attachments.get(binding.attachmentId) !== binding) return false;
+    const pending = this.#removals.get(binding.attachmentId);
+    if (pending) return pending;
+    const removal = this.#removeOwnedAttachment(binding).finally(() => {
+      if (this.#removals.get(binding.attachmentId) === removal) {
+        this.#removals.delete(binding.attachmentId);
+      }
+    });
+    this.#removals.set(binding.attachmentId, removal);
+    return removal;
+  }
+
+  async #removeOwnedAttachment(
+    binding: ProtectedCodeAttachmentBinding,
+  ): Promise<boolean> {
+    if (!this.#repository) {
+      throw new Error("Cantrip Code protected control plane is unavailable.");
+    }
+    await Promise.all([
+      this.#cleanupTunnelResources?.(
+        binding.ownerId,
+        binding.tunnelId,
+        "Code attachment revoked",
+        1008,
+      ),
+      this.bridge.isConnected(binding.workerId)
+        ? this.bridge
+            .request(
+              binding.workerId,
+              { type: "code.endpoint.revoke", tunnelId: binding.tunnelId },
+              { timeoutMs: 5_000 },
+            )
+            .catch(() => undefined)
+        : Promise.resolve(),
+    ]);
+    await this.#repository.removeManagedTunnel(binding.ownerId, {
+      kind: "code",
+      id: binding.tunnelId,
+    });
     this.#attachments.delete(binding.attachmentId);
-    await this.#repository
-      ?.removeManagedTunnel(binding.ownerId, {
-        kind: "code",
-        id: binding.tunnelId,
-      })
-      .catch(() => false);
     this.#changed?.({
       attachmentId: binding.attachmentId,
       ownerId: binding.ownerId,
@@ -232,6 +284,7 @@ export class CodeTunnelBroker {
         .catch(() => undefined);
     }
     this.#stopTrackingWorkerIfUnused(binding.workerId);
+    return true;
   }
 
   async #revokeWhere(
@@ -249,7 +302,9 @@ export class CodeTunnelBroker {
     const unsubscribe = this.bridge.subscribeWorkerDisconnect(workerId, () => {
       for (const binding of [...this.#attachments.values()]) {
         if (binding.workerId !== workerId) continue;
-        void this.#removeAttachment(binding);
+        void this.#removeAttachment(binding).catch((error) =>
+          this.#reportCleanupFailure(binding, error),
+        );
       }
       this.#stopTrackingWorkerIfUnused(workerId);
     });
@@ -265,5 +320,24 @@ export class CodeTunnelBroker {
       return;
     this.#workerDisconnectSubscriptions.get(workerId)?.();
     this.#workerDisconnectSubscriptions.delete(workerId);
+  }
+
+  #reportCleanupFailure(
+    binding: ProtectedCodeAttachmentBinding,
+    error: unknown,
+  ): void {
+    serverLogger.warn("Protected Cantrip Code cleanup failed", {
+      event: "code.attachment.cleanup-failed",
+      subsystem: "code",
+      operation: "revoke-attachment",
+      reasonCode: "managed-tunnel-cleanup-failed",
+      status: "failed",
+      attachmentId: binding.attachmentId,
+      codeTabId: binding.codeTabId,
+      sessionId: binding.sessionId,
+      tunnelId: binding.tunnelId,
+      workerId: binding.workerId,
+      errorClass: error instanceof Error ? error.name : "Error",
+    });
   }
 }

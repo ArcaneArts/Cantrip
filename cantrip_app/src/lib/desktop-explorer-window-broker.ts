@@ -37,6 +37,7 @@ export interface DesktopExplorerWindowBroker {
 export interface DesktopExplorerWindowBrokerOptions {
   configureInitialFile?: boolean;
   requireDirectBridge?: boolean;
+  signal?: AbortSignal;
 }
 
 const editorControlRetryDelaysMs = [250, 750] as const;
@@ -47,49 +48,67 @@ function isTransientEditorControlError(error: unknown): boolean {
   );
 }
 
-async function retryEditorControl<T>(operation: () => Promise<T>): Promise<T> {
+function waitForAbortable<T>(
+  operation: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    operation.then(
+      (result) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(result);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+    if (signal.aborted) onAbort();
+  });
+}
+
+async function abortableDelay(
+  delayMs: number,
+  signal: AbortSignal,
+): Promise<void> {
+  await waitForAbortable(
+    new Promise<void>((resolve) => setTimeout(resolve, delayMs)),
+    signal,
+  );
+}
+
+async function retryEditorControl<T>(
+  operation: () => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
+    signal.throwIfAborted();
     try {
       return await operation();
     } catch (error) {
+      if (signal.aborted) signal.throwIfAborted();
       const retryDelayMs = editorControlRetryDelaysMs[attempt];
       if (retryDelayMs === undefined || !isTransientEditorControlError(error)) {
         throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      await abortableDelay(retryDelayMs, signal);
     }
   }
 }
 
 async function releasePreparedEditor(
-  prepared: PreparedEditorAttachment,
+  attachmentId: string,
+  directTunnelId: string,
 ): Promise<void> {
   await Promise.allSettled([
-    stopDirectCodeAttachment(prepared.directTunnelId),
-    releaseCodeAttachment(prepared.attachment.attachmentId),
+    stopDirectCodeAttachment(directTunnelId),
+    releaseCodeAttachment(attachmentId),
   ]);
-}
-
-async function prepareEditorAttachment(
-  context: DesktopExplorerWindowContext,
-): Promise<PreparedEditorAttachment> {
-  const wire = await createProtectedExplorerCodeAttachment(
-    context.explorer.id,
-    context.path,
-    context.explorer.activeWorkerId,
-    context.appearance,
-  );
-  try {
-    const preferred = await preferProtectedCodeAttachment(wire);
-    return {
-      attachment: preferred.attachment,
-      directTunnelId: wire.tunnelId,
-    };
-  } catch (error) {
-    await stopDirectCodeAttachment(wire.tunnelId);
-    await releaseCodeAttachment(wire.attachmentId).catch(() => undefined);
-    throw error;
-  }
 }
 
 export function createDesktopExplorerWindowBroker(
@@ -105,8 +124,15 @@ export function createDesktopExplorerWindowBroker(
   const channel = new BroadcastChannel(
     desktopExplorerWindowChannelName(launchId),
   );
+  const preparationController = new AbortController();
+  if (options.signal?.aborted) {
+    preparationController.abort(options.signal.reason);
+  }
   let disposed = false;
   let prepared: PreparedEditorAttachment | null = null;
+  let ownedAttachmentId: string | null = null;
+  let ownedDirectTunnelId: string | null = null;
+  let releasePromise: Promise<void> | null = null;
   let preparedAtMs: number | null = null;
   let configuredAtMs: number | null = null;
   let editorError: string | null = null;
@@ -120,6 +146,7 @@ export function createDesktopExplorerWindowBroker(
     if (!disposed) channel.postMessage(response);
   };
   const reportEditorError = (error: unknown) => {
+    if (disposed || preparationController.signal.aborted) return;
     const message = errorMessage(
       error,
       "Cantrip Code could not open this file.",
@@ -128,8 +155,45 @@ export function createDesktopExplorerWindowBroker(
     editorError = message;
     send({ error: message, launchId, type: "editor.failed" });
   };
-  const editorPromise = prepareEditorAttachment(context)
+  const releaseOwnedEditor = (): Promise<void> => {
+    if (!ownedAttachmentId || !ownedDirectTunnelId) {
+      return Promise.resolve();
+    }
+    releasePromise ??= releasePreparedEditor(
+      ownedAttachmentId,
+      ownedDirectTunnelId,
+    );
+    return releasePromise;
+  };
+  const rawEditorPromise = (async (): Promise<PreparedEditorAttachment> => {
+    preparationController.signal.throwIfAborted();
+    const wire = await createProtectedExplorerCodeAttachment(
+      context.explorer.id,
+      context.path,
+      context.explorer.activeWorkerId,
+      context.appearance,
+    );
+    ownedAttachmentId = wire.attachmentId;
+    ownedDirectTunnelId = wire.tunnelId;
+    preparationController.signal.throwIfAborted();
+    const preferred = await preferProtectedCodeAttachment(wire, {
+      signal: preparationController.signal,
+    });
+    preparationController.signal.throwIfAborted();
+    return {
+      attachment: preferred.attachment,
+      directTunnelId: wire.tunnelId,
+    };
+  })().catch(async (error: unknown) => {
+    await releaseOwnedEditor();
+    throw error;
+  });
+  const editorPromise = waitForAbortable(
+    rawEditorPromise,
+    preparationController.signal,
+  )
     .then((result) => {
+      preparationController.signal.throwIfAborted();
       prepared = result;
       preparedAtMs = Date.now();
       send({
@@ -141,28 +205,40 @@ export function createDesktopExplorerWindowBroker(
       return result;
     })
     .catch((error: unknown) => {
+      if (preparationController.signal.aborted) throw error;
       reportEditorError(error);
       return null;
     });
   const bridgeReady = editorPromise.then(async (result) => {
     if (!result) throw new Error(editorError ?? "Cantrip Code is unavailable.");
-    await frameLoadedPromise;
-    await retryEditorControl(() =>
-      setDirectCodeAttachmentPresentation(result.attachment, "editor"),
+    await waitForAbortable(frameLoadedPromise, preparationController.signal);
+    await retryEditorControl(
+      () =>
+        setDirectCodeAttachmentPresentation(result.attachment, "editor", {
+          signal: preparationController.signal,
+        }),
+      preparationController.signal,
     );
     return result;
   });
   let navigationQueue = Promise.resolve();
   const openFile = (path: string, requestedAtMs = Date.now()) => {
     const navigate = navigationQueue.then(async () => {
+      preparationController.signal.throwIfAborted();
       const result = await bridgeReady;
+      preparationController.signal.throwIfAborted();
       context = { ...context, path, requestedAtMs };
       configuredAtMs = null;
       editorError = null;
       send({ context, launchId, type: "launch.ready" });
-      await retryEditorControl(() =>
-        openDirectCodeAttachmentFile(result.attachment, path),
+      await retryEditorControl(
+        () =>
+          openDirectCodeAttachmentFile(result.attachment, path, {
+            signal: preparationController.signal,
+          }),
+        preparationController.signal,
       );
+      preparationController.signal.throwIfAborted();
       configuredAtMs = Date.now();
       send({ configuredAtMs, launchId, type: "editor.configured" });
     });
@@ -176,6 +252,19 @@ export function createDesktopExplorerWindowBroker(
     ? openFile(context.path, context.requestedAtMs)
     : bridgeReady.then(() => undefined);
   void ready.catch((error: unknown) => reportEditorError(error));
+
+  const dispose = (): Promise<void> => {
+    if (!disposed) {
+      disposed = true;
+      preparationController.abort(options.signal?.reason);
+      options.signal?.removeEventListener("abort", abortFromOwner);
+      channel.close();
+    }
+    return releaseOwnedEditor();
+  };
+  const abortFromOwner = () => void dispose();
+  options.signal?.addEventListener("abort", abortFromOwner, { once: true });
+  if (options.signal?.aborted) abortFromOwner();
 
   channel.addEventListener("message", (event) => {
     const request = event.data;
@@ -258,12 +347,6 @@ export function createDesktopExplorerWindowBroker(
     launchId,
     openFile,
     ready,
-    async dispose() {
-      if (disposed) return;
-      disposed = true;
-      channel.close();
-      const result = prepared ?? (await editorPromise);
-      if (result) await releasePreparedEditor(result);
-    },
+    dispose,
   };
 }

@@ -61,7 +61,8 @@ describe("protected Cantrip Code attachments", () => {
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker);
-    broker.configureControlPlane(repository, vi.fn());
+    const cleanupTunnelResources = vi.fn(async () => undefined);
+    broker.configureControlPlane(repository, vi.fn(), cleanupTunnelResources);
 
     try {
       const attachment = await broker.createProtectedAttachment({
@@ -102,6 +103,141 @@ describe("protected Cantrip Code attachments", () => {
         kind: "code",
         id: tunnelId,
       });
+      expect(cleanupTunnelResources).toHaveBeenCalledWith(
+        "user-1",
+        tunnelId,
+        "Code attachment revoked",
+        1008,
+      );
+      expect(worker.request).toHaveBeenCalledWith(
+        "worker-1",
+        { type: "code.endpoint.revoke", tunnelId },
+        { timeoutMs: 5_000 },
+      );
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("retains attachment ownership when managed tunnel cleanup rejects", async () => {
+    const tunnelId = "11111111-1111-4111-8111-111111111111";
+    const removeManagedTunnel = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("database unavailable"))
+      .mockResolvedValueOnce(true);
+    const repository = {
+      registerManagedTunnel: vi.fn(async () => ({ id: tunnelId })),
+      removeManagedTunnel,
+    } as unknown as ServerRepository;
+    const worker = {
+      isConnected: () => true,
+      request: vi.fn(async () => null),
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus;
+    const broker = new CodeTunnelBroker(worker);
+    broker.configureControlPlane(repository, vi.fn(), vi.fn());
+    const protectedRecord = {
+      operationId: tunnelId,
+      revision: 1,
+      protectedContent: {
+        formatVersion: 1 as const,
+        domain: "tunnel-content" as const,
+        keyRevision: 1,
+        envelope: {
+          version: 1 as const,
+          algorithm: "AES-256-GCM" as const,
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+    };
+
+    try {
+      await broker.createProtectedAttachment({
+        codeTabId: "code-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord,
+        runtime,
+        sessionId: runtime.sessionId,
+        tunnelId,
+        workerId: "worker-1",
+      });
+
+      await expect(broker.revokeAttachment(tunnelId, "user-1")).rejects.toThrow(
+        "database unavailable",
+      );
+      await expect(broker.revokeAttachment(tunnelId, "user-1")).resolves.toBe(
+        true,
+      );
+      expect(removeManagedTunnel).toHaveBeenCalledTimes(2);
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("deduplicates concurrent attachment cleanup", async () => {
+    const tunnelId = "11111111-1111-4111-8111-111111111111";
+    let finishRemoval: (() => void) | undefined;
+    const removalGate = new Promise<void>((resolve) => {
+      finishRemoval = resolve;
+    });
+    const removeManagedTunnel = vi.fn(async () => {
+      await removalGate;
+      return true;
+    });
+    const repository = {
+      registerManagedTunnel: vi.fn(async () => ({ id: tunnelId })),
+      removeManagedTunnel,
+    } as unknown as ServerRepository;
+    const worker = {
+      isConnected: () => true,
+      request: vi.fn(async () => null),
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus;
+    const cleanupTunnelResources = vi.fn(async () => undefined);
+    const broker = new CodeTunnelBroker(worker);
+    broker.configureControlPlane(repository, vi.fn(), cleanupTunnelResources);
+    const protectedRecord = {
+      operationId: tunnelId,
+      revision: 1,
+      protectedContent: {
+        formatVersion: 1 as const,
+        domain: "tunnel-content" as const,
+        keyRevision: 1,
+        envelope: {
+          version: 1 as const,
+          algorithm: "AES-256-GCM" as const,
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+    };
+
+    try {
+      await broker.createProtectedAttachment({
+        codeTabId: "code-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord,
+        runtime,
+        sessionId: runtime.sessionId,
+        tunnelId,
+        workerId: "worker-1",
+      });
+
+      const first = broker.revokeAttachment(tunnelId, "user-1");
+      const second = broker.revokeAttachment(tunnelId, "user-1");
+      await vi.waitFor(() =>
+        expect(removeManagedTunnel).toHaveBeenCalledOnce(),
+      );
+      finishRemoval?.();
+
+      await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+      expect(cleanupTunnelResources).toHaveBeenCalledOnce();
+      expect(worker.request).toHaveBeenCalledOnce();
     } finally {
       await broker.close();
     }

@@ -1,4 +1,7 @@
-import type { CodeAppearance } from "@cantrip/protocol";
+import type {
+  CodeAppearance,
+  CodeProtectedAttachmentWire,
+} from "@cantrip/protocol";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -20,14 +23,14 @@ import {
   type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
+import { SerialTaskQueue } from "@/lib/serial-task-queue";
+import {
+  retireAttachmentBestEffort,
+  SerializedAttachmentLifecycle,
+} from "@/lib/serialized-attachment-lifecycle";
 
 const FILE_OPEN_RETRY_DELAY_MS = 250;
 const FILE_OPEN_RECONNECT_LIMIT = 1;
-
-interface OwnedCodeAttachment {
-  attachmentId: string;
-  directTunnelId: string | null;
-}
 
 function shouldRetryFileOpen(error: unknown): boolean {
   return /(?:failed to fetch|load failed|network|not connected|unavailable)/iu.test(
@@ -53,6 +56,18 @@ export function ExplorerCodeEditor({
   const [reloadVersion, setReloadVersion] = useState(0);
   const automaticReconnectsRef = useRef(0);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const navigationQueueRef = useRef(new SerialTaskQueue());
+  const attachmentLifecycleRef =
+    useRef<SerializedAttachmentLifecycle<CodeProtectedAttachmentWire> | null>(
+      null,
+    );
+  attachmentLifecycleRef.current ??=
+    new SerializedAttachmentLifecycle<CodeProtectedAttachmentWire>((wire) =>
+      retireAttachmentBestEffort(
+        () => stopDirectCodeAttachment(wire.tunnelId),
+        () => releaseCodeAttachment(wire.attachmentId),
+      ),
+    );
   const pathRef = useRef(path);
   pathRef.current = path;
 
@@ -61,37 +76,30 @@ export function ExplorerCodeEditor({
   }, []);
 
   useEffect(() => {
-    const connectionController = new AbortController();
     let cancelled = false;
-    let connection: Promise<OwnedCodeAttachment | null> | null = null;
     let startTimer: ReturnType<typeof setTimeout> | undefined;
 
     setPreferredAttachment(null);
     setError(null);
     setReady(false);
 
-    const connect = async (): Promise<OwnedCodeAttachment | null> => {
-      let attachmentId: string | null = null;
+    const connect = async () => {
       try {
-        const wire = await createProtectedExplorerCodeAttachment(
-          explorerId,
-          pathRef.current,
-          workerId,
-          appearance,
+        const preferred = await attachmentLifecycleRef.current!.replace(
+          () =>
+            createProtectedExplorerCodeAttachment(
+              explorerId,
+              pathRef.current,
+              workerId,
+              appearance,
+            ),
+          (wire, signal) =>
+            preferProtectedCodeAttachment(wire, {
+              signal,
+            }),
         );
-        attachmentId = wire.attachmentId;
-        const preferred = await preferProtectedCodeAttachment(wire, {
-          signal: connectionController.signal,
-        });
-        if (!cancelled) setPreferredAttachment(preferred);
-        return {
-          attachmentId: wire.attachmentId,
-          directTunnelId: preferred.directTunnelId,
-        };
+        if (!cancelled && preferred) setPreferredAttachment(preferred);
       } catch (connectError) {
-        if (attachmentId) {
-          await releaseCodeAttachment(attachmentId).catch(() => undefined);
-        }
         if (!cancelled) {
           setError(
             errorMessage(
@@ -100,27 +108,18 @@ export function ExplorerCodeEditor({
             ),
           );
         }
-        return null;
       }
     };
 
     startTimer = setTimeout(() => {
-      connection = connect();
+      void connect();
     }, 0);
     return () => {
       cancelled = true;
-      connectionController.abort(
-        new DOMException("Explorer Code connection superseded.", "AbortError"),
-      );
       if (startTimer) clearTimeout(startTimer);
-      // A server attachment may already exist while its native tunnel is still
-      // connecting. Releasing it before setup settles revokes the capability
-      // out from under the forward and turns the local WebSocket into a 1006.
-      void connection?.then(async (owned) => {
-        if (!owned) return;
-        await stopDirectCodeAttachment(owned.directTunnelId);
-        await releaseCodeAttachment(owned.attachmentId).catch(() => undefined);
-      });
+      void attachmentLifecycleRef.current!.retire(
+        "Explorer Code connection superseded.",
+      );
     };
   }, [appearance, explorerId, reloadVersion, workerId]);
 
@@ -130,6 +129,7 @@ export function ExplorerCodeEditor({
 
   useEffect(() => {
     if (!preferredAttachment) return;
+    const navigationController = new AbortController();
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     setError(null);
@@ -139,10 +139,12 @@ export function ExplorerCodeEditor({
         await setDirectCodeAttachmentPresentation(
           preferredAttachment.attachment,
           "editor",
+          { signal: navigationController.signal },
         );
         const result = await openDirectCodeAttachmentFile(
           preferredAttachment.attachment,
           path,
+          { signal: navigationController.signal },
         );
         if (!cancelled && result.relativePath === path) {
           automaticReconnectsRef.current = 0;
@@ -171,9 +173,14 @@ export function ExplorerCodeEditor({
         );
       }
     };
-    void openFile(0);
+    void navigationQueueRef.current.run(async () => {
+      if (!cancelled) await openFile(0);
+    });
     return () => {
       cancelled = true;
+      navigationController.abort(
+        new DOMException("Explorer Code navigation superseded.", "AbortError"),
+      );
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, [path, preferredAttachment]);

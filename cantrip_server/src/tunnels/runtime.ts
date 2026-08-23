@@ -208,6 +208,16 @@ export class TunnelRuntimeManager {
     });
   }
 
+  closeTunnel(tunnelId: string, reason: string, code = 1012): number {
+    const attachmentIds = [...this.#active.values()]
+      .filter((active) => active.authorization.tunnelId === tunnelId)
+      .map((active) => active.authorization.attachmentId);
+    for (const attachmentId of attachmentIds) {
+      this.closeActive(attachmentId, reason, code);
+    }
+    return attachmentIds.length;
+  }
+
   async revoke(
     ownerId: string,
     attachmentId: string,

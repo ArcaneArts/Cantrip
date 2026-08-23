@@ -1422,7 +1422,14 @@ export async function buildApp({
     tunnelStreamBroker,
     publishTunnelRuntimeChange,
   );
-  codeTunnel.configureControlPlane(repository, publishTunnelRuntimeChange);
+  codeTunnel.configureControlPlane(
+    repository,
+    publishTunnelRuntimeChange,
+    async (ownerId, tunnelId, reason, code) => {
+      tunnelRuntime.closeTunnel(tunnelId, reason, code);
+      await directAttachments.revokeResource(ownerId, "tunnel", tunnelId);
+    },
+  );
   const tunnelAttachmentExpiryTimer = setInterval(() => {
     void repository
       .expireDesktopTunnelAttachments()

@@ -1,6 +1,7 @@
 import type {
   CodeAppearance,
   CodeAttachment,
+  CodeProtectedAttachmentWire,
   CodeRuntimeStatus,
   CodeTabStatus,
   CodeTabSummary,
@@ -25,6 +26,10 @@ import {
   preferProtectedCodeAttachment,
   stopDirectCodeAttachment,
 } from "@/lib/desktop-code";
+import {
+  retireAttachmentBestEffort,
+  SerializedAttachmentLifecycle,
+} from "@/lib/serialized-attachment-lifecycle";
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const CODE_RUNTIME_POLL_DELAY_MS = 500;
@@ -153,6 +158,18 @@ export function CodeView({
     string | null
   >(null);
   const appearanceRef = useRef(appearance);
+  const attachmentLifecycleRef =
+    useRef<SerializedAttachmentLifecycle<CodeProtectedAttachmentWire> | null>(
+      null,
+    );
+  attachmentLifecycleRef.current ??=
+    new SerializedAttachmentLifecycle<CodeProtectedAttachmentWire>((wire) =>
+      retireAttachmentBestEffort(
+        () => stopDirectCodeAttachment(wire.tunnelId),
+        () => releaseCodeAttachment(wire.attachmentId),
+      ),
+    );
+  const cancelConnectionRef = useRef<() => void>(() => undefined);
   const connectionGeneration = useRef(0);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const stopped = useRef(false);
@@ -167,13 +184,18 @@ export function CodeView({
   }, []);
 
   useEffect(() => {
-    const connectionController = new AbortController();
     const generation = ++connectionGeneration.current;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let directHealthTimer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
     let ownedAttachmentId: string | null = null;
     let ownedDirectTunnelId: string | null = null;
+    const cancelConnection = () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (directHealthTimer) clearTimeout(directHealthTimer);
+    };
+    cancelConnectionRef.current = cancelConnection;
     stopped.current = false;
     setAttachment(null);
     setActionError(null);
@@ -199,17 +221,23 @@ export function CodeView({
         worktreeId: codeTab.worktreeId,
       });
       try {
-        const protectedWire = await createProtectedCodeAttachment(
-          codeTab.id,
-          codeTab.activeWorkerId,
-          appearanceRef.current,
+        const selected = await attachmentLifecycleRef.current!.replace(
+          async () => {
+            const wire = await createProtectedCodeAttachment(
+              codeTab.id,
+              codeTab.activeWorkerId,
+              appearanceRef.current,
+            );
+            ownedAttachmentId = wire.attachmentId;
+            ownedDirectTunnelId = wire.tunnelId;
+            return wire;
+          },
+          async (wire, signal) => ({
+            preferred: await preferProtectedCodeAttachment(wire, { signal }),
+          }),
         );
-        ownedAttachmentId = protectedWire.attachmentId;
-        const initialAttachment = (
-          await preferProtectedCodeAttachment(protectedWire, {
-            signal: connectionController.signal,
-          })
-        ).attachment;
+        if (!selected) return;
+        const initialAttachment = selected.preferred.attachment;
         ownedAttachmentId = initialAttachment.attachmentId;
         logCodeEvent("info", "relay attachment created", {
           attachmentId: initialAttachment.attachmentId,
@@ -219,15 +247,13 @@ export function CodeView({
           status: initialAttachment.runtime.status,
           url: codeAttachmentUrlForLog(initialAttachment.url),
         });
-        const preferred = {
-          attachment: initialAttachment,
-          directTunnelId: protectedWire.tunnelId,
-        };
+        const preferred = selected.preferred;
         const next = preferred.attachment;
         ownedDirectTunnelId = preferred.directTunnelId;
         if (cancelled || generation !== connectionGeneration.current) {
-          void stopDirectCodeAttachment(ownedDirectTunnelId);
-          void releaseCodeAttachment(next.attachmentId).catch(() => undefined);
+          await attachmentLifecycleRef.current!.retire(
+            "Code connection superseded after preparation.",
+          );
           return;
         }
         setAttachment(next);
@@ -250,8 +276,10 @@ export function CodeView({
             try {
               if (!(await directCodeAttachmentHealthy(ownedDirectTunnelId)))
                 throw new Error("Direct Code route is unavailable.");
+              if (cancelled) return;
               failures = 0;
             } catch (error) {
+              if (cancelled) return;
               failures += 1;
               logCodeEvent("warn", "direct attachment health check failed", {
                 attachmentId: next.attachmentId,
@@ -260,26 +288,18 @@ export function CodeView({
                 sessionId: next.sessionId,
               });
               if (failures >= 2 && !cancelled) {
-                const tunnelId = ownedDirectTunnelId;
-                ownedDirectTunnelId = null;
-                void stopDirectCodeAttachment(tunnelId);
                 reload();
                 return;
               }
             }
-            directHealthTimer = setTimeout(checkDirectRoute, 5_000);
+            if (!cancelled)
+              directHealthTimer = setTimeout(checkDirectRoute, 5_000);
           };
           directHealthTimer = setTimeout(checkDirectRoute, 5_000);
         }
       } catch (error) {
-        const failedAttachmentId = ownedAttachmentId;
-        const failedTunnelId = ownedDirectTunnelId;
         ownedAttachmentId = null;
         ownedDirectTunnelId = null;
-        void stopDirectCodeAttachment(failedTunnelId);
-        if (failedAttachmentId) {
-          void releaseCodeAttachment(failedAttachmentId).catch(() => undefined);
-        }
         if (cancelled || generation !== connectionGeneration.current) return;
         setConnectError(errorText(error));
         setConnecting(false);
@@ -305,12 +325,7 @@ export function CodeView({
     // effect before any worker attachment is created in development.
     retryTimer = setTimeout(() => void connect(0), 0);
     return () => {
-      cancelled = true;
-      connectionController.abort(
-        new DOMException("Code connection superseded.", "AbortError"),
-      );
-      if (retryTimer) clearTimeout(retryTimer);
-      if (directHealthTimer) clearTimeout(directHealthTimer);
+      cancelConnection();
       if (ownedAttachmentId) {
         logCodeEvent("info", "attachment released", {
           attachmentId: ownedAttachmentId,
@@ -319,10 +334,9 @@ export function CodeView({
           generation,
         });
       }
-      void stopDirectCodeAttachment(ownedDirectTunnelId);
-      if (ownedAttachmentId) {
-        void releaseCodeAttachment(ownedAttachmentId).catch(() => undefined);
-      }
+      void attachmentLifecycleRef.current!.retire(
+        "Code connection superseded.",
+      );
     };
   }, [codeTab.activeWorkerId, codeTab.id, codeTab.worktreeId, reloadVersion]);
 
@@ -541,12 +555,16 @@ export function CodeView({
       stopped.current = true;
       paused = true;
       connectionGeneration.current += 1;
+      cancelConnectionRef.current();
+      setAttachment(null);
+      await attachmentLifecycleRef.current!.retire(
+        "Code worktree change started.",
+      );
       try {
         await stopCodeTab(codeTab.id);
       } catch (error) {
         if (!isCodeSessionUnavailableError(error)) throw error;
       }
-      setAttachment(null);
       setConnectError(null);
       setConnecting(false);
       setRetrying(false);
@@ -576,13 +594,17 @@ export function CodeView({
       runAction("stop", async () => {
         stopped.current = true;
         connectionGeneration.current += 1;
+        cancelConnectionRef.current();
+        setAttachment(null);
+        await attachmentLifecycleRef.current!.retire("Code editor stopped.");
         try {
           await stopCodeTab(codeTab.id);
         } catch (error) {
           if (!isCodeSessionUnavailableError(error)) throw error;
         }
-        setAttachment(null);
         setConnectError(null);
+        setConnecting(false);
+        setRetrying(false);
         setActionMessage("Editor stopped.");
       }),
     [codeTab.id, runAction],
@@ -593,6 +615,9 @@ export function CodeView({
       runAction("restart", async () => {
         stopped.current = true;
         connectionGeneration.current += 1;
+        cancelConnectionRef.current();
+        setAttachment(null);
+        await attachmentLifecycleRef.current!.retire("Code editor restarted.");
         try {
           await stopCodeTab(codeTab.id);
         } catch (error) {
