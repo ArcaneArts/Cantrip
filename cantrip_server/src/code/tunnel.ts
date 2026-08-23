@@ -9,7 +9,9 @@ import {
 import {
   CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
   type CodeAttachment,
+  type CodeProtectedAttachmentWire,
   type CodeRuntimeStatus,
+  type ProtectedTunnelContentRecord,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer } from "ws";
 
@@ -43,6 +45,20 @@ export interface CodeAttachmentBinding {
   workerId: string;
 }
 
+interface ProtectedCodeAttachmentBinding {
+  attachmentId: string;
+  authSessionId: string | null;
+  codeTabId: string;
+  createdAt: number;
+  expiresAt: number;
+  ownerId: string;
+  projectId: string;
+  sessionId: string;
+  stopSessionOnRelease: boolean;
+  tunnelId: string;
+  workerId: string;
+}
+
 export interface CreateCodeAttachmentInput {
   authSessionId?: string | null;
   codeTabId: string;
@@ -52,6 +68,11 @@ export interface CreateCodeAttachmentInput {
   sessionId: string;
   stopSessionOnRelease?: boolean;
   workerId: string;
+}
+
+export interface CreateProtectedCodeAttachmentInput extends CreateCodeAttachmentInput {
+  protectedRecord: ProtectedTunnelContentRecord;
+  tunnelId: string;
 }
 
 export interface CodeDirectAttachmentContext {
@@ -84,6 +105,10 @@ const surfaceWebSockets = new WeakMap<Server, WebSocketServer>();
 export class CodeTunnelBroker {
   readonly #allowedFrameAncestors: string;
   readonly #attachments = new Map<string, CodeAttachmentBinding>();
+  readonly #protectedAttachments = new Map<
+    string,
+    ProtectedCodeAttachmentBinding
+  >();
   readonly #idleTtlMs: number;
   readonly #maxAttachments: number;
   readonly #maxLifetimeMs: number;
@@ -297,6 +322,87 @@ export class CodeTunnelBroker {
     };
   }
 
+  async createProtectedAttachment(
+    input: CreateProtectedCodeAttachmentInput,
+  ): Promise<CodeProtectedAttachmentWire> {
+    this.#prune();
+    if (
+      this.#attachments.size + this.#protectedAttachments.size >=
+      this.#maxAttachments
+    ) {
+      throw new Error(
+        "This server has reached its Cantrip Code attachment limit.",
+      );
+    }
+    if (!this.bridge.isConnected(input.workerId)) {
+      throw new Error("Cantrip Code worker is offline.");
+    }
+    if (!this.#repository) {
+      throw new Error("Cantrip Code protected control plane is unavailable.");
+    }
+    const tunnel = await this.#repository.registerManagedTunnel(
+      input.ownerId,
+      {
+        name: "Cantrip Code",
+        description: "Protected editor access for the owning Code surface.",
+        projectId: input.projectId,
+        origin: "code",
+        management: "managed-ephemeral",
+        protocolHint: "http-websocket",
+        source: { kind: "desktop-loopback" },
+        destination: {
+          kind: "worker-adapter",
+          workerId: input.workerId,
+          adapter: "code",
+          resourceId: input.tunnelId,
+        },
+        managedBy: { kind: "code", id: input.tunnelId },
+        desiredState: "started",
+        status: "starting",
+      },
+      { id: input.tunnelId, protectedRecord: input.protectedRecord },
+    );
+    if (!tunnel || tunnel.id !== input.tunnelId) {
+      throw new Error("Could not register the protected Code tunnel.");
+    }
+    const now = Date.now();
+    const binding: ProtectedCodeAttachmentBinding = {
+      attachmentId: tunnel.id,
+      authSessionId: input.authSessionId ?? null,
+      codeTabId: input.codeTabId,
+      createdAt: now,
+      expiresAt: now + this.#idleTtlMs,
+      ownerId: input.ownerId,
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      stopSessionOnRelease: input.stopSessionOnRelease ?? false,
+      tunnelId: tunnel.id,
+      workerId: input.workerId,
+    };
+    this.#protectedAttachments.set(binding.attachmentId, binding);
+    this.#trackWorkerDisconnect(binding.workerId);
+    this.#changed?.({
+      attachmentId: binding.attachmentId,
+      ownerId: binding.ownerId,
+      projectId: binding.projectId,
+      tunnelId: binding.tunnelId,
+    });
+    serverLogger.info("Protected Cantrip Code attachment created", {
+      attachmentId: binding.attachmentId,
+      codeTabId: binding.codeTabId,
+      sessionId: binding.sessionId,
+      tunnelId: binding.tunnelId,
+      workerId: binding.workerId,
+    });
+    return {
+      attachmentId: binding.attachmentId,
+      tunnelId: binding.tunnelId,
+      sessionId: binding.sessionId,
+      expiresAt: new Date(binding.expiresAt).toISOString(),
+      runtime: input.runtime,
+    };
+  }
+
   basePath(token: string): string {
     return `/code/${token}`;
   }
@@ -316,6 +422,18 @@ export class CodeTunnelBroker {
     attachmentId: string,
     ownerId: string,
   ): CodeDirectAttachmentContext | null {
+    const protectedBinding = this.#protectedAttachments.get(attachmentId);
+    if (protectedBinding?.ownerId === ownerId) {
+      this.#touchProtected(protectedBinding);
+      return {
+        codeTabId: protectedBinding.codeTabId,
+        expiresAt: new Date(protectedBinding.createdAt + this.#maxLifetimeMs),
+        ownerId: protectedBinding.ownerId,
+        projectId: protectedBinding.projectId,
+        sessionId: protectedBinding.sessionId,
+        workerId: protectedBinding.workerId,
+      };
+    }
     const binding = [...this.#attachments.values()].find(
       (candidate) =>
         candidate.attachmentId === attachmentId &&
@@ -338,6 +456,11 @@ export class CodeTunnelBroker {
     attachmentId: string,
     ownerId: string,
   ): Promise<boolean> {
+    const protectedBinding = this.#protectedAttachments.get(attachmentId);
+    if (protectedBinding?.ownerId === ownerId) {
+      await this.#removeProtectedAttachment(protectedBinding);
+      return true;
+    }
     for (const [token, binding] of this.#attachments) {
       if (
         binding.attachmentId === attachmentId &&
@@ -352,21 +475,29 @@ export class CodeTunnelBroker {
 
   async revokeSession(sessionId: string): Promise<void> {
     await this.#revokeWhere((binding) => binding.sessionId === sessionId);
+    await this.#revokeProtectedWhere(
+      (binding) => binding.sessionId === sessionId,
+    );
   }
 
   async revokeAuthSession(authSessionId: string): Promise<void> {
     await this.#revokeWhere(
       (binding) => binding.authSessionId === authSessionId,
     );
+    await this.#revokeProtectedWhere(
+      (binding) => binding.authSessionId === authSessionId,
+    );
   }
 
   async revokeOwner(ownerId: string): Promise<void> {
     await this.#revokeWhere((binding) => binding.ownerId === ownerId);
+    await this.#revokeProtectedWhere((binding) => binding.ownerId === ownerId);
   }
 
   async close(): Promise<void> {
     clearInterval(this.#sweepTimer);
     await this.#revokeWhere(() => true);
+    await this.#revokeProtectedWhere(() => true);
     for (const unsubscribe of this.#workerDisconnectSubscriptions.values()) {
       unsubscribe();
     }
@@ -463,6 +594,14 @@ export class CodeTunnelBroker {
         void this.#removeAttachment(token, binding);
       }
     }
+    for (const binding of this.#protectedAttachments.values()) {
+      if (
+        binding.expiresAt <= now ||
+        binding.createdAt + this.#maxLifetimeMs <= now
+      ) {
+        void this.#removeProtectedAttachment(binding);
+      }
+    }
   }
 
   #touch(binding: CodeAttachmentBinding, now = Date.now()): void {
@@ -472,6 +611,16 @@ export class CodeTunnelBroker {
       now + this.#idleTtlMs,
     );
     binding.telemetry?.renew(new Date(binding.expiresAt));
+  }
+
+  #touchProtected(
+    binding: ProtectedCodeAttachmentBinding,
+    now = Date.now(),
+  ): void {
+    binding.expiresAt = Math.min(
+      binding.createdAt + this.#maxLifetimeMs,
+      now + this.#idleTtlMs,
+    );
   }
 
   async #removeAttachment(
@@ -525,6 +674,45 @@ export class CodeTunnelBroker {
     );
   }
 
+  async #removeProtectedAttachment(
+    binding: ProtectedCodeAttachmentBinding,
+  ): Promise<void> {
+    if (this.#protectedAttachments.get(binding.attachmentId) !== binding)
+      return;
+    this.#protectedAttachments.delete(binding.attachmentId);
+    await this.#repository
+      ?.removeManagedTunnel(binding.ownerId, {
+        kind: "code",
+        id: binding.tunnelId,
+      })
+      .catch(() => false);
+    this.#changed?.({
+      attachmentId: binding.attachmentId,
+      ownerId: binding.ownerId,
+      projectId: binding.projectId,
+      tunnelId: binding.tunnelId,
+    });
+    if (binding.stopSessionOnRelease) {
+      await this.bridge
+        .request(binding.workerId, {
+          type: "code.stop",
+          sessionId: binding.sessionId,
+        })
+        .catch(() => undefined);
+    }
+    this.#stopTrackingWorkerIfUnused(binding.workerId);
+  }
+
+  async #revokeProtectedWhere(
+    predicate: (binding: ProtectedCodeAttachmentBinding) => boolean,
+  ): Promise<void> {
+    await Promise.all(
+      [...this.#protectedAttachments.values()]
+        .filter(predicate)
+        .map((binding) => this.#removeProtectedAttachment(binding)),
+    );
+  }
+
   #recordMetrics(
     binding: CodeAttachmentBinding,
     input: {
@@ -550,6 +738,10 @@ export class CodeTunnelBroker {
         if (binding.workerId !== workerId) continue;
         void this.#removeAttachment(token, binding);
       }
+      for (const binding of [...this.#protectedAttachments.values()]) {
+        if (binding.workerId !== workerId) continue;
+        void this.#removeProtectedAttachment(binding);
+      }
       this.#stopTrackingWorkerIfUnused(workerId);
     });
     this.#workerDisconnectSubscriptions.set(workerId, unsubscribe);
@@ -558,6 +750,9 @@ export class CodeTunnelBroker {
   #stopTrackingWorkerIfUnused(workerId: string): void {
     if (
       [...this.#attachments.values()].some(
+        (binding) => binding.workerId === workerId,
+      ) ||
+      [...this.#protectedAttachments.values()].some(
         (binding) => binding.workerId === workerId,
       )
     )

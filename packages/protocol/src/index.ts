@@ -5117,6 +5117,31 @@ export const codeAttachmentSchema = z.object({
   runtime: codeRuntimeStatusSchema,
 });
 
+export const codeProtectedAttachmentWireSchema = z
+  .object({
+    attachmentId: tunnelResourceIdSchema,
+    tunnelId: tunnelResourceIdSchema,
+    sessionId: tunnelResourceIdSchema,
+    expiresAt: z.string().datetime(),
+    runtime: codeRuntimeStatusSchema,
+  })
+  .strict()
+  .refine(({ attachmentId, tunnelId }) => attachmentId === tunnelId, {
+    message: "A protected Code attachment must reuse its tunnel identity.",
+    path: ["attachmentId"],
+  });
+
+export const codeProtectedAttachmentIntentSchema = z
+  .object({
+    sessionId: tunnelResourceIdSchema,
+    runtime: codeRuntimeStatusSchema,
+  })
+  .strict()
+  .refine(({ sessionId, runtime }) => sessionId === runtime.sessionId, {
+    message: "A Code attachment intent must bind its runtime session.",
+    path: ["runtime", "sessionId"],
+  });
+
 export const projectShareAttachmentSchema = z.object({
   attachmentId: z.string().min(1).max(200),
   projectId: z.string().min(1).max(200),
@@ -5186,6 +5211,29 @@ export const projectSharePublicOriginSchema = z.url().refine((value) => {
 export const codeAttachmentCreateSchema = z.object({
   appearance: codeAppearanceSchema.default("dark"),
 });
+
+export const codeProtectedAttachmentCreateSchema = codeAttachmentCreateSchema
+  .extend({
+    tunnelId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    protectedRecord: protectedTunnelContentRecordSchema,
+  })
+  .strict()
+  .refine(
+    ({ tunnelId, protectedRecord }) =>
+      tunnelId === protectedRecord.operationId &&
+      protectedRecord.revision === 1,
+    {
+      message:
+        "A protected Code attachment must begin with its tunnel-bound record.",
+      path: ["protectedRecord"],
+    },
+  );
+
+export const explorerCodeProtectedAttachmentCreateSchema =
+  codeProtectedAttachmentCreateSchema.extend({
+    path: repositoryRelativePathSchema,
+  });
 
 export const explorerCodeAttachmentCreateSchema = codeAttachmentCreateSchema
   .extend({
@@ -14594,8 +14642,20 @@ export type CodeAgentTurnNotificationResult = z.infer<
 >;
 export type CodeAttachment = z.infer<typeof codeAttachmentSchema>;
 export type CodeAttachmentCreate = z.infer<typeof codeAttachmentCreateSchema>;
+export type CodeProtectedAttachmentWire = z.infer<
+  typeof codeProtectedAttachmentWireSchema
+>;
+export type CodeProtectedAttachmentIntent = z.infer<
+  typeof codeProtectedAttachmentIntentSchema
+>;
+export type CodeProtectedAttachmentCreate = z.infer<
+  typeof codeProtectedAttachmentCreateSchema
+>;
 export type ExplorerCodeAttachmentCreate = z.infer<
   typeof explorerCodeAttachmentCreateSchema
+>;
+export type ExplorerCodeProtectedAttachmentCreate = z.infer<
+  typeof explorerCodeProtectedAttachmentCreateSchema
 >;
 export type CodeOpenFileResult = z.infer<typeof codeOpenFileResultSchema>;
 export type CodeOpenFileRequest = z.infer<typeof codeOpenFileRequestSchema>;

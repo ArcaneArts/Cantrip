@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   isTauri: vi.fn(),
   startDirectDesktopTunnel: vi.fn(),
+  startDesktopTunnel: vi.fn(),
+  stopDesktopTunnel: vi.fn(),
   fetch: vi.fn(),
 }));
 
@@ -21,13 +23,16 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("@/lib/desktop-tunnel", () => ({
   desktopTunnelClientId: vi.fn(() => "desktop-client"),
+  startDesktopTunnel: mocks.startDesktopTunnel,
   startDirectDesktopTunnel: mocks.startDirectDesktopTunnel,
+  stopDesktopTunnel: mocks.stopDesktopTunnel,
 }));
 
 import {
   directCodeAttachmentHealthy,
   openDirectCodeAttachmentFile,
   preferDirectCodeAttachment,
+  preferProtectedCodeAttachment,
   setDirectCodeAttachmentPresentation,
 } from "./desktop-code";
 
@@ -157,5 +162,33 @@ describe("preferDirectCodeAttachment", () => {
       "http://127.0.0.1:52345/code/?workspace=%2Fworker%2Fproject.code-workspace",
     );
     expect(preferred.directTunnelId).toBe("direct-1");
+  });
+});
+
+describe("preferProtectedCodeAttachment", () => {
+  it("opens the protected generic tunnel at the worker-local Code path", async () => {
+    mocks.startDesktopTunnel.mockResolvedValue({
+      attachmentId: "transport-1",
+      localHost: "127.0.0.1",
+      localPort: 52345,
+      tunnelId: "11111111-1111-4111-8111-111111111111",
+    });
+
+    const preferred = await preferProtectedCodeAttachment({
+      attachmentId: "11111111-1111-4111-8111-111111111111",
+      tunnelId: "11111111-1111-4111-8111-111111111111",
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      expiresAt: "2026-08-13T12:00:00.000Z",
+      runtime: {
+        workspaceUri: "file:///worker/project.code-workspace",
+      },
+    } as never);
+
+    expect(preferred.attachment.url).toBe(
+      "http://127.0.0.1:52345/code/?workspace=%2Fworker%2Fproject.code-workspace",
+    );
+    expect(preferred.directTunnelId).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
   });
 });

@@ -136,8 +136,7 @@ export class TunnelDestinationRouter {
       }
       if (
         content.destination.kind === "worker-code" &&
-        header.target.targetKind === "code" &&
-        content.destination.resourceId === header.target.recordId
+        header.target.targetKind === "code"
       ) {
         const endpoint = await this.codeEndpoints.prepareProtected(
           header.tunnelId,

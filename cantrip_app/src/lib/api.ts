@@ -74,6 +74,9 @@ import {
   chatReasoningStateSchema,
   chatReasoningUpdateSchema,
   codeAttachmentSchema,
+  codeProtectedAttachmentCreateSchema,
+  codeProtectedAttachmentIntentSchema,
+  codeProtectedAttachmentWireSchema,
   codeOpenFileResultSchema,
   codeRuntimeStatusSchema,
   codeGraphActionAcknowledgementSchema,
@@ -102,6 +105,7 @@ import {
   explorerFileWriteSchema,
   explorerWireListSchema,
   explorerWireSummarySchema,
+  explorerCodeProtectedAttachmentCreateSchema,
   explorerViewStateUpdateSchema,
   executionPlacementResolutionSchema,
   executionPlacementResolveRequestSchema,
@@ -5434,6 +5438,70 @@ export async function createCodeAttachment(
   );
 }
 
+async function protectedCodeAttachmentInput(input: {
+  appearance: CodeAppearance;
+  sessionId: string;
+  tunnelId: string;
+  workerId: string;
+}) {
+  await ensureTunnelWorker(input.workerId);
+  const protectedRecord = await protectTunnelContentRecord({
+    content: {
+      name: "Cantrip Code",
+      description: "Protected editor access for this Code surface.",
+      source: { kind: "desktop-loopback" },
+      destination: {
+        kind: "worker-code",
+        workerId: input.workerId,
+        resourceId: input.tunnelId,
+        sessionId: input.sessionId,
+      },
+      dataProtection: createTunnelDataProtection(),
+    },
+    operationId: input.tunnelId,
+    revision: 1,
+    tunnelId: input.tunnelId,
+    workerId: input.workerId,
+  });
+  return {
+    appearance: input.appearance,
+    protectedRecord,
+    sessionId: input.sessionId,
+    tunnelId: input.tunnelId,
+  };
+}
+
+export async function createProtectedCodeAttachment(
+  codeTabId: string,
+  workerId: string,
+  appearance: CodeAppearance,
+) {
+  const tunnelId = crypto.randomUUID();
+  const intent = codeProtectedAttachmentIntentSchema.parse(
+    await post(
+      `/api/code-tabs/${encodeURIComponent(codeTabId)}/protected-attachment-intents`,
+      { appearance },
+    ),
+  );
+  const sessionId = intent.sessionId;
+  const input = await protectedCodeAttachmentInput({
+    appearance,
+    sessionId,
+    tunnelId,
+    workerId,
+  });
+  const wire = codeProtectedAttachmentWireSchema.parse(
+    await post(
+      `/api/code-tabs/${encodeURIComponent(codeTabId)}/protected-attachments`,
+      codeProtectedAttachmentCreateSchema.parse(input),
+    ),
+  );
+  if (wire.sessionId !== intent.sessionId) {
+    throw new Error("Protected Code attachment changed runtime sessions.");
+  }
+  return wire;
+}
+
 export async function createExplorerCodeAttachment(
   explorerId: string,
   relativePath: string,
@@ -5443,6 +5511,31 @@ export async function createExplorerCodeAttachment(
     await post(
       `/api/explorers/${encodeURIComponent(explorerId)}/code-attachments`,
       { appearance, path: relativePath },
+    ),
+  );
+}
+
+export async function createProtectedExplorerCodeAttachment(
+  explorerId: string,
+  relativePath: string,
+  workerId: string,
+  appearance: CodeAppearance,
+) {
+  const tunnelId = crypto.randomUUID();
+  const sessionId = crypto.randomUUID();
+  const input = await protectedCodeAttachmentInput({
+    appearance,
+    sessionId,
+    tunnelId,
+    workerId,
+  });
+  return codeProtectedAttachmentWireSchema.parse(
+    await post(
+      `/api/explorers/${encodeURIComponent(explorerId)}/protected-code-attachments`,
+      explorerCodeProtectedAttachmentCreateSchema.parse({
+        ...input,
+        path: relativePath,
+      }),
     ),
   );
 }

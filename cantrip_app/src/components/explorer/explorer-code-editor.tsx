@@ -1,4 +1,5 @@
 import type { CodeAppearance } from "@cantrip/protocol";
+import { isTauri } from "@tauri-apps/api/core";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -13,6 +14,7 @@ import {
   createCodeAttachment,
   createCodeTab,
   createExplorerCodeAttachment,
+  createProtectedExplorerCodeAttachment,
   deleteCodeTab,
   openCodeAttachmentFile,
   releaseCodeAttachment,
@@ -22,6 +24,7 @@ import { INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE } from "@/lib/code-tab-visibili
 import {
   openDirectCodeAttachmentFile,
   preferDirectCodeAttachment,
+  preferProtectedCodeAttachment,
   setDirectCodeAttachmentPresentation,
   stopDirectCodeAttachment,
   type PreferredCodeAttachment,
@@ -64,12 +67,14 @@ export function ExplorerCodeEditor({
   explorerId,
   path,
   projectId,
+  workerId,
   worktreeId,
 }: {
   appearance: CodeAppearance;
   explorerId: string;
   path: string;
   projectId: string;
+  workerId: string;
   worktreeId: string;
 }) {
   const [preferredAttachment, setPreferredAttachment] =
@@ -96,6 +101,29 @@ export function ExplorerCodeEditor({
 
     const connect = async () => {
       try {
+        if (isTauri()) {
+          const wire = await createProtectedExplorerCodeAttachment(
+            explorerId,
+            path,
+            workerId,
+            appearance,
+          );
+          attachmentId = wire.attachmentId;
+          const preferred = await preferProtectedCodeAttachment(wire);
+          directTunnelId = preferred.directTunnelId;
+          if (cancelled) {
+            await stopDirectCodeAttachment(directTunnelId);
+            await releaseCodeAttachment(wire.attachmentId).catch(
+              () => undefined,
+            );
+            return;
+          }
+          setPreferredAttachment({
+            ...preferred,
+            compatibilityFallback: false,
+          });
+          return;
+        }
         const result = await createEditorAttachmentWithCompatibilityFallback(
           () => createExplorerCodeAttachment(explorerId, path, appearance),
           async () => {
@@ -179,7 +207,15 @@ export function ExplorerCodeEditor({
         void releaseCodeAttachment(attachmentId).catch(() => undefined);
       }
     };
-  }, [appearance, explorerId, path, projectId, reloadVersion, worktreeId]);
+  }, [
+    appearance,
+    explorerId,
+    path,
+    projectId,
+    reloadVersion,
+    workerId,
+    worktreeId,
+  ]);
 
   useEffect(() => {
     if (!preferredAttachment) return;

@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({
   createCodeAttachment: vi.fn(),
   createCodeTab: vi.fn(),
   createExplorerCodeAttachment: vi.fn(),
+  createProtectedExplorerCodeAttachment: vi.fn(),
   deleteCodeTab: vi.fn(),
   getExplorerFile: vi.fn(),
   getInternalExplorerEditorCodeTabs: vi.fn(),
@@ -18,6 +19,7 @@ const api = vi.hoisted(() => ({
 const desktopCode = vi.hoisted(() => ({
   openDirectCodeAttachmentFile: vi.fn(),
   preferDirectCodeAttachment: vi.fn(),
+  preferProtectedCodeAttachment: vi.fn(),
   setDirectCodeAttachmentPresentation: vi.fn(),
   stopDirectCodeAttachment: vi.fn(),
 }));
@@ -29,7 +31,12 @@ import { createDesktopExplorerWindowBroker } from "./desktop-explorer-window-bro
 import { DesktopExplorerWindowClient } from "./desktop-explorer-window-client";
 
 describe("desktop Explorer window broker", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    api.createProtectedExplorerCodeAttachment.mockRejectedValue(
+      new CantripApiError("Not Found", 404),
+    );
+  });
 
   it("loads the hidden iframe before announcing that its workbench is configured", async () => {
     const attachment = {
