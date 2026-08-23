@@ -415,7 +415,6 @@ mod desktop {
         let (relay_refresh_sender, relay_refresh_receiver) = mpsc::channel(1);
         let task = tauri::async_runtime::spawn(run_forward(
             listener,
-            local_port,
             request,
             counters.clone(),
             stop_receiver,
@@ -627,7 +626,6 @@ mod desktop {
 
     async fn run_forward(
         listener: TcpListener,
-        local_port: u16,
         mut request: StartTunnelForwardRequest,
         counters: Arc<ForwardCounters>,
         mut stop: oneshot::Receiver<()>,
@@ -671,7 +669,7 @@ mod desktop {
                     )),
                     Err(reason) => {
                         direct_fallback_reason = Some(reason);
-                        connect_relay(relay.as_ref(), &request, local_port)
+                        connect_relay(relay.as_ref(), &request)
                             .await
                             .map(|(socket, identity)| {
                                 (
@@ -687,7 +685,7 @@ mod desktop {
                     }
                 }
             } else {
-                connect_relay(relay.as_ref(), &request, local_port)
+                connect_relay(relay.as_ref(), &request)
                     .await
                     .map(|(socket, identity)| {
                         (
@@ -761,7 +759,6 @@ mod desktop {
     async fn connect_relay(
         relay: Option<&RelayRoute>,
         request: &StartTunnelForwardRequest,
-        local_port: u16,
     ) -> Result<
         (
             tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
@@ -773,14 +770,13 @@ mod desktop {
         if unix_epoch_ms() >= relay.expires_at_epoch_ms {
             return Err("The tunnel attachment credential expired.".into());
         }
-        connect_attachment(&relay.url, &relay.secret, request, local_port).await
+        connect_attachment(&relay.url, &relay.secret, request).await
     }
 
     async fn connect_attachment(
         url: &Url,
         secret: &str,
         request: &StartTunnelForwardRequest,
-        local_port: u16,
     ) -> Result<
         (
             tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
@@ -806,8 +802,6 @@ mod desktop {
         let initialize = serde_json::json!({
             "type": "initialize",
             "clientId": request.client_id,
-            "localHost": "127.0.0.1",
-            "localPort": local_port,
         });
         web_socket
             .send(Message::Text(initialize.to_string().into()))
@@ -1311,9 +1305,7 @@ mod desktop {
             };
             let relay = request.relay.as_ref().unwrap();
             let url = web_socket_url(&relay.server_url, &relay.connect_path).unwrap();
-            let (web_socket, identity) = connect_attachment(&url, secret, &request, local_port)
-                .await
-                .unwrap();
+            let (web_socket, identity) = connect_attachment(&url, secret, &request).await.unwrap();
             let (stop_sender, mut stop_receiver) = oneshot::channel();
             let counters = Arc::new(ForwardCounters::default());
             let session_counters = counters.clone();

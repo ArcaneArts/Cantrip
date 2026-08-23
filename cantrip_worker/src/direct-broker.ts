@@ -566,7 +566,6 @@ export class DirectBroker {
           sequence: header.sequence + 1,
           kind: "close",
           code: "endpoint-disconnected",
-          message: null,
         },
         new Uint8Array(),
       );

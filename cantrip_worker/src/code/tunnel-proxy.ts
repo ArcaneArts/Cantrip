@@ -436,15 +436,11 @@ export class CodeTunnelProxy {
       return;
     }
     if (this.#streams.has(key(header))) {
-      this.#reject(header, "protocol-error", "Tunnel stream already exists.");
+      this.#reject(header, "protocol-error");
       return;
     }
     if (this.#streams.size >= MAX_STREAMS) {
-      this.#reject(
-        header,
-        "limit-exceeded",
-        "Cantrip Code stream limit reached.",
-      );
+      this.#reject(header, "limit-exceeded");
       return;
     }
     const stream: OpeningStream = {
@@ -1021,7 +1017,6 @@ export class CodeTunnelProxy {
   #reject(
     header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
     code: Extract<TunnelDataPlaneFrameHeader, { kind: "rejected" }>["code"],
-    message: string,
   ): void {
     this.#emit(
       {
@@ -1034,7 +1029,6 @@ export class CodeTunnelProxy {
         sequence: 0,
         kind: "rejected",
         code,
-        message,
       },
       EMPTY_PAYLOAD,
     );
@@ -1059,7 +1053,7 @@ export class CodeTunnelProxy {
       });
     }
     this.#emit(
-      { ...responseBase(stream), kind: "close", code, message: null },
+      { ...responseBase(stream), kind: "close", code },
       EMPTY_PAYLOAD,
     );
     this.#destroy(stream);

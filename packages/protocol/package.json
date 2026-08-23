@@ -56,6 +56,10 @@
       "types": "./src/customization-content.ts",
       "import": "./dist/customization-content.js"
     },
+    "./tunnel-content": {
+      "types": "./src/tunnel-content.ts",
+      "import": "./dist/tunnel-content.js"
+    },
     "./workflow-content": {
       "types": "./src/workflow-content.ts",
       "import": "./dist/workflow-content.js"

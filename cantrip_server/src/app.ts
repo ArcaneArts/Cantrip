@@ -33,7 +33,7 @@ import {
   browserWireListSchema,
   browserServiceListSchema,
   browserWireSummarySchema,
-  browserTunnelRequestSchema,
+  browserTunnelWireRequestSchema,
   browserPrivateStateOpaqueSchema,
   encryptedBrowserUpdateSchema,
   cantripAgentOperationResultSchema,
@@ -385,15 +385,15 @@ import {
   terminalServerMessageSchema,
   terminalWireSummarySchema,
   encryptedTerminalUpdateSchema,
-  tunnelListSchema,
-  tunnelSummarySchema,
+  tunnelWireListSchema,
+  tunnelWireSummarySchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
   tunnelAttachmentInitializeSchema,
   tunnelDirectActivationSchema,
   tunnelAttachmentReadySchema,
-  tunnelUserCreateSchema,
-  tunnelUserUpdateSchema,
+  tunnelUserWireCreateSchema,
+  tunnelUserWireUpdateSchema,
   userSettingsUpdateSchema,
   workerCredentialListSchema,
   workerCredentialRotateResultSchema,
@@ -664,7 +664,6 @@ import {
 } from "./projects/capabilities.js";
 import { TunnelRuntimeManager } from "./tunnels/runtime.js";
 import { TunnelStreamBroker } from "./tunnels/broker.js";
-import { browserTunnelTarget } from "./tunnels/browser-target.js";
 import { terminalRelayOutputMessage } from "./terminals/relay.js";
 import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
 import type { DatabaseConnection } from "./db/index.js";
@@ -12016,7 +12015,7 @@ export async function buildApp({
 
   app.get("/api/tunnels", { logLevel: "warn" }, async (request, reply) => {
     const tunnels = await repository.listTunnels(principalOwnerId(request));
-    return reply.send(tunnelListSchema.parse(tunnels));
+    return reply.send(tunnelWireListSchema.parse(tunnels));
   });
 
   app.get<{ Params: { projectId: string } }>(
@@ -12034,7 +12033,7 @@ export async function buildApp({
         ownerId,
         request.params.projectId,
       );
-      return reply.send(tunnelListSchema.parse(tunnels));
+      return reply.send(tunnelWireListSchema.parse(tunnels));
     },
   );
 
@@ -12047,13 +12046,13 @@ export async function buildApp({
         request.params.tunnelId,
       );
       return tunnel
-        ? reply.send(tunnelSummarySchema.parse(tunnel))
+        ? reply.send(tunnelWireSummarySchema.parse(tunnel))
         : reply.code(404).send({ error: "Tunnel not found." });
     },
   );
 
   app.post("/api/tunnels", async (request, reply) => {
-    const input = tunnelUserCreateSchema.safeParse(request.body);
+    const input = tunnelUserWireCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -12063,7 +12062,7 @@ export async function buildApp({
         input.data,
       );
       return tunnel
-        ? reply.code(201).send(tunnelSummarySchema.parse(tunnel))
+        ? reply.code(201).send(tunnelWireSummarySchema.parse(tunnel))
         : reply
             .code(404)
             .send({ error: "Project or destination worker not found." });
@@ -12180,9 +12179,10 @@ export async function buildApp({
           tunnelRoute: {
             ...route,
             target: {
-              kind: "tcp",
-              host: authorization.destination.host,
-              port: authorization.destination.port,
+              kind: "protected-tunnel",
+              targetKind: "tcp",
+              recordId: authorization.tunnelId,
+              protectedRecord: authorization.protectedRecord,
             },
           },
           worker,
@@ -12229,7 +12229,6 @@ export async function buildApp({
         !(await repository.activateDesktopTunnelAttachment(
           authorization.attachmentId,
           authorization.clientId,
-          input.data.localPort,
         ))
       ) {
         return reply.code(409).send({ error: "Tunnel attachment is stale." });
@@ -12313,7 +12312,7 @@ export async function buildApp({
   app.patch<{ Params: { tunnelId: string } }>(
     "/api/tunnels/:tunnelId",
     async (request, reply) => {
-      const input = tunnelUserUpdateSchema.safeParse(request.body);
+      const input = tunnelUserWireUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -12324,7 +12323,7 @@ export async function buildApp({
           input.data,
         );
         return tunnel
-          ? reply.send(tunnelSummarySchema.parse(tunnel))
+          ? reply.send(tunnelWireSummarySchema.parse(tunnel))
           : reply.code(404).send({
               error: "Tunnel, project, or destination worker not found.",
             });
@@ -22744,7 +22743,7 @@ export async function buildApp({
   app.post<{ Params: { browserId: string } }>(
     "/api/browsers/:browserId/tunnel",
     async (request, reply) => {
-      const input = browserTunnelRequestSchema.safeParse(request.body);
+      const input = browserTunnelWireRequestSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -22756,7 +22755,7 @@ export async function buildApp({
       if (!context || context.surface.kind !== "browser") {
         return reply.code(404).send({ error: "Browser not found." });
       }
-      const workerId = input.data.workerId ?? context.workerId;
+      const workerId = input.data.workerId;
       const project = await repository.getProject(
         ownerId,
         context.surface.projectId,
@@ -22776,19 +22775,6 @@ export async function buildApp({
       if (!workerOwned) {
         return reply.code(404).send({ error: "Destination worker not found." });
       }
-      let target;
-      try {
-        target = browserTunnelTarget(
-          {
-            protocol: input.data.protocol,
-            host: input.data.host,
-            port: input.data.port,
-          },
-          workerId,
-        );
-      } catch (error) {
-        return reply.code(400).send({ error: errorMessage(error) });
-      }
       const managedBy = {
         kind: "browser" as const,
         id: context.surface.id,
@@ -22797,39 +22783,54 @@ export async function buildApp({
       const targetChanged = Boolean(
         existing &&
         (existing.destination.kind !== "worker-tcp" ||
-          existing.destination.workerId !== target.destination.workerId ||
-          existing.destination.host !== target.destination.host ||
-          existing.destination.port !== target.destination.port ||
-          existing.protocolHint !== target.protocolHint),
+          existing.destination.workerId !== workerId ||
+          existing.protocolHint !== input.data.protocolHint),
       );
-      if (targetChanged && existing) {
+      let tunnel;
+      try {
+        tunnel = await repository.registerManagedTunnel(
+          ownerId,
+          {
+            name: "Browser tunnel",
+            description: null,
+            projectId: context.surface.projectId,
+            origin: "browser",
+            management: "managed-ephemeral",
+            protocolHint: input.data.protocolHint,
+            source: { kind: "desktop-loopback" },
+            destination: { kind: "worker-tcp", workerId },
+            managedBy,
+            desiredState: "started",
+            status:
+              existing && !targetChanged
+                ? existing.status
+                : bridge.isConnected(workerId)
+                  ? "stopped"
+                  : "offline",
+          },
+          {
+            id: input.data.tunnelId,
+            protectedRecord: input.data.protectedRecord,
+          },
+        );
+      } catch (error) {
+        if (error instanceof TunnelManagementError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+      if (targetChanged && existing && tunnel) {
         await Promise.all(
           existing.attachments.map(({ id }) =>
-            tunnelRuntime.revoke(ownerId, id),
+            tunnelRuntime.revoke(ownerId, id, {
+              preserveTunnelState: true,
+            }),
           ),
         );
+        tunnel = await repository.getManagedTunnel(ownerId, managedBy);
       }
-      const tunnel = await repository.registerManagedTunnel(ownerId, {
-        name: `Browser tunnel · ${target.label}`.slice(0, 120),
-        description:
-          "Temporary local access created by the owning Browser tab.",
-        projectId: context.surface.projectId,
-        origin: "browser",
-        management: "managed-ephemeral",
-        protocolHint: target.protocolHint,
-        source: { kind: "desktop-loopback" },
-        destination: target.destination,
-        managedBy,
-        desiredState: "started",
-        status:
-          existing && !targetChanged
-            ? existing.status
-            : bridge.isConnected(workerId)
-              ? "stopped"
-              : "offline",
-      });
       return tunnel
-        ? reply.send(tunnelSummarySchema.parse(tunnel))
+        ? reply.send(tunnelWireSummarySchema.parse(tunnel))
         : reply.code(404).send({
             error: "Browser project or destination worker not found.",
           });

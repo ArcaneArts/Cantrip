@@ -765,6 +765,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     tunnelTcpDestination,
     projectShareTunnel,
     codeTunnel,
+    workerEncryption,
+    config.workerId,
   );
   const skillManager = new SkillManager(config.dataDirectory);
   const remoteSurfaces = new RemoteSurfaceManager({

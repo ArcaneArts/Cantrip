@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 import {
   browserServiceFleetDiscoverySchema,
@@ -8,7 +9,7 @@ import {
   browserWireSummarySchema,
   cantripVersionSchema,
   tunnelAttachmentCreateResultSchema,
-  tunnelSummarySchema,
+  tunnelWireSummarySchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -106,6 +107,25 @@ let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 let browserId: string;
 let browserTunnelId: string;
+
+function protectedTunnelRecord(operationId: string, revision: number) {
+  return {
+    operationId,
+    revision,
+    protectedContent: {
+      formatVersion: 1,
+      domain: "tunnel-content" as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
+  };
+}
 let projectId: string;
 
 beforeAll(async () => {
@@ -162,6 +182,7 @@ beforeAll(async () => {
     workerId: "test-worker",
     ...protectedProjectFields(),
     repositoryId: "browser-services-api",
+    repositoryBlindIndex: "b".repeat(64),
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
   });
@@ -320,14 +341,20 @@ describe.sequential("browser service discovery API", () => {
   });
 
   it("creates an attachable managed tunnel using the Browser surface worker", async () => {
+    const requestedTunnelId = randomUUID();
     const response = await app.inject({
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
-      payload: { protocol: "http", host: "localhost", port: 5173 },
+      payload: {
+        tunnelId: requestedTunnelId,
+        protocolHint: "http-websocket",
+        workerId: "test-worker",
+        protectedRecord: protectedTunnelRecord(randomUUID(), 1),
+      },
     });
 
     expect(response.statusCode).toBe(200);
-    const tunnel = tunnelSummarySchema.parse(response.json());
+    const tunnel = tunnelWireSummarySchema.parse(response.json());
     browserTunnelId = tunnel.id;
     expect(tunnel).toMatchObject({
       projectId: expect.any(String),
@@ -335,12 +362,7 @@ describe.sequential("browser service discovery API", () => {
       management: "managed-ephemeral",
       protocolHint: "http-websocket",
       source: { kind: "desktop-loopback" },
-      destination: {
-        kind: "worker-tcp",
-        workerId: "test-worker",
-        host: "localhost",
-        port: 5173,
-      },
+      destination: { kind: "worker-tcp", workerId: "test-worker" },
       managedBy: { kind: "browser", id: browserId },
       capabilities: {
         canEdit: false,
@@ -360,28 +382,60 @@ describe.sequential("browser service discovery API", () => {
       attachmentResponse.json(),
     );
 
+    const staleRetarget = await app.inject({
+      method: "POST",
+      url: `/api/browsers/${browserId}/tunnel`,
+      payload: {
+        tunnelId: tunnel.id,
+        protocolHint: "https-websocket",
+        workerId: "test-worker",
+        protectedRecord: protectedTunnelRecord(
+          tunnel.protectedRecord!.operationId,
+          1,
+        ),
+      },
+    });
+    expect(staleRetarget.statusCode).toBe(409);
+    expect(
+      tunnelWireSummarySchema
+        .parse(
+          (
+            await app.inject({
+              method: "GET",
+              url: `/api/tunnels/${tunnel.id}`,
+            })
+          ).json(),
+        )
+        .attachments.find(({ id }) => id === attachment.attachmentId)?.status,
+    ).toBe("starting");
+
     const sameTarget = await app.inject({
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
       payload: {
-        protocol: "http",
-        host: "localhost",
-        port: 5173,
+        tunnelId: tunnel.id,
+        protocolHint: "http-websocket",
         workerId: "test-worker",
+        protectedRecord: protectedTunnelRecord(randomUUID(), 2),
       },
     });
-    expect(tunnelSummarySchema.parse(sameTarget.json()).id).toBe(tunnel.id);
+    expect(tunnelWireSummarySchema.parse(sameTarget.json()).id).toBe(tunnel.id);
 
     const retarget = await app.inject({
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
-      payload: { protocol: "https", host: "127.0.0.1", port: 8443 },
+      payload: {
+        tunnelId: tunnel.id,
+        protocolHint: "https-websocket",
+        workerId: "test-worker",
+        protectedRecord: protectedTunnelRecord(randomUUID(), 3),
+      },
     });
-    const retargeted = tunnelSummarySchema.parse(retarget.json());
+    const retargeted = tunnelWireSummarySchema.parse(retarget.json());
     expect(retargeted).toMatchObject({
       id: tunnel.id,
       protocolHint: "https-websocket",
-      destination: { workerId: "test-worker", port: 8443 },
+      destination: { workerId: "test-worker" },
     });
     expect(
       retargeted.attachments.find(({ id }) => id === attachment.attachmentId)
@@ -392,20 +446,19 @@ describe.sequential("browser service discovery API", () => {
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
       payload: {
-        protocol: "http",
-        host: "127.0.0.1",
-        port: 3000,
+        tunnelId: tunnel.id,
+        protocolHint: "http-websocket",
         workerId: "secondary-worker",
+        protectedRecord: protectedTunnelRecord(randomUUID(), 4),
       },
     });
-    expect(tunnelSummarySchema.parse(explicitWorker.json())).toMatchObject({
+    expect(tunnelWireSummarySchema.parse(explicitWorker.json())).toMatchObject({
       id: tunnel.id,
       projectId: tunnel.projectId,
       status: "offline",
       destination: {
         kind: "worker-tcp",
         workerId: "secondary-worker",
-        port: 3000,
       },
     });
   });

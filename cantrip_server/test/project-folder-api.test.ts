@@ -243,6 +243,25 @@ const bridge: WorkerCommandBus = {
 let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 
+function protectedTunnelRecord(operationId: string) {
+  return {
+    operationId,
+    revision: 1,
+    protectedContent: {
+      formatVersion: 1,
+      domain: "tunnel-content" as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
+  };
+}
+
 beforeAll(async () => {
   database = await connectDatabase(config);
   await database.repository.ensureDefaultModelConfiguration(
@@ -949,19 +968,19 @@ describe("managed folder project lifecycle", () => {
       ]);
     }
 
+    const wrongTunnelId = randomUUID();
     const wrongTunnel = await app.inject({
       method: "POST",
       url: "/api/tunnels",
       payload: {
-        name: "Wrong worker",
+        id: wrongTunnelId,
         projectId: project.id,
         protocolHint: "http",
         destination: {
           kind: "worker-tcp",
           workerId: "legacy-worker",
-          host: "127.0.0.1",
-          port: 4_173,
         },
+        protectedRecord: protectedTunnelRecord(wrongTunnelId),
       },
     });
     expect(wrongTunnel.statusCode).toBe(409);
@@ -969,19 +988,19 @@ describe("managed folder project lifecycle", () => {
       error: "This worker-managed folder is bound to its owning worker.",
     });
 
+    const ownerTunnelId = randomUUID();
     const ownerTunnel = await app.inject({
       method: "POST",
       url: "/api/tunnels",
       payload: {
-        name: "Folder preview",
+        id: ownerTunnelId,
         projectId: project.id,
         protocolHint: "http",
         destination: {
           kind: "worker-tcp",
           workerId: "folder-worker",
-          host: "127.0.0.1",
-          port: 4_173,
         },
+        protectedRecord: protectedTunnelRecord(ownerTunnelId),
       },
     });
     expect(ownerTunnel.statusCode).toBe(201);

@@ -260,7 +260,13 @@ export class ProjectShareHttpEndpoint implements TunnelDataPlaneEndpoint {
       return true;
     }
     if (header.kind === "rejected" || header.kind === "error") {
-      this.#fail(stream.connectionId, 502, header.message);
+      this.#fail(
+        stream.connectionId,
+        502,
+        header.kind === "rejected"
+          ? `Project share tunnel rejected (${header.code}).`
+          : `Project share tunnel failed (${header.code}).`,
+      );
       return true;
     }
     if (header.kind === "close") {
@@ -409,7 +415,6 @@ export class ProjectShareHttpEndpoint implements TunnelDataPlaneEndpoint {
         ...this.#identity(stream, stream.localSequence++),
         kind: "close",
         code: message ? "revoked" : "normal",
-        message,
       },
       EMPTY_PAYLOAD,
     );

@@ -49,10 +49,9 @@ import type {
   ExecutionPlacement,
   ExternalChatSourceKind,
   ExternalChatTranscriptMetadata,
-  TunnelDestinationEndpoint,
-  TunnelSourceEndpoint,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
+import type { EndpointContentOpaque } from "@cantrip/protocol/endpoint-content";
 import type {
   AttachmentProtectedMetadata,
   ChatAttachmentOpaqueSummary,
@@ -1352,29 +1351,29 @@ export const tunnels = pgTable(
     projectId: text("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
-    name: text("name").notNull(),
-    description: text("description"),
     position: integer("position").notNull().default(0),
     origin: text("origin").notNull(),
     management: text("management").notNull(),
     protocolHint: text("protocol_hint").notNull(),
-    sourceEndpoint: jsonb("source_endpoint")
-      .$type<TunnelSourceEndpoint>()
-      .notNull(),
+    sourceKind: text("source_kind").notNull(),
+    sourceAdapter: text("source_adapter"),
     sourceWorkerId: text("source_worker_id").references(() => workers.id, {
       onDelete: "cascade",
     }),
-    destinationEndpoint: jsonb("destination_endpoint")
-      .$type<TunnelDestinationEndpoint>()
-      .notNull(),
+    destinationKind: text("destination_kind").notNull(),
+    destinationAdapter: text("destination_adapter"),
+    destinationResourceId: text("destination_resource_id"),
     destinationWorkerId: text("destination_worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
+    protectedContent: jsonb("protected_content").$type<EndpointContentOpaque>(),
+    protectedOperationId: text("protected_operation_id"),
+    protectedRevision: integer("protected_revision").notNull().default(0),
     managedByKind: text("managed_by_kind"),
     managedById: text("managed_by_id"),
     desiredState: text("desired_state").notNull().default("stopped"),
     status: text("status").notNull().default("stopped"),
-    lastError: text("last_error"),
+    errorCode: text("error_code"),
     activeConnectionCount: integer("active_connection_count")
       .notNull()
       .default(0),
@@ -1428,7 +1427,23 @@ export const tunnels = pgTable(
     ),
     check(
       "tunnels_source_worker_check",
-      sql`(${table.sourceEndpoint}->>'kind' = 'worker-listener' AND ${table.sourceWorkerId} IS NOT NULL) OR (${table.sourceEndpoint}->>'kind' <> 'worker-listener' AND ${table.sourceWorkerId} IS NULL)`,
+      sql`(${table.sourceKind} = 'worker-listener' AND ${table.sourceWorkerId} IS NOT NULL) OR (${table.sourceKind} <> 'worker-listener' AND ${table.sourceWorkerId} IS NULL)`,
+    ),
+    check(
+      "tunnels_source_endpoint_check",
+      sql`(${table.sourceKind} = 'server-http' AND ${table.sourceAdapter} IN ('code', 'project-share')) OR (${table.sourceKind} IN ('desktop-loopback', 'worker-listener') AND ${table.sourceAdapter} IS NULL)`,
+    ),
+    check(
+      "tunnels_destination_endpoint_check",
+      sql`(${table.destinationKind} = 'worker-tcp' AND ${table.destinationAdapter} IS NULL AND ${table.destinationResourceId} IS NULL) OR (${table.destinationKind} = 'worker-adapter' AND ${table.destinationAdapter} IN ('code', 'project-share') AND ${table.destinationResourceId} IS NOT NULL)`,
+    ),
+    check(
+      "tunnels_protected_content_check",
+      sql`(${table.protectedRevision} = 0 AND ${table.protectedOperationId} IS NULL AND ${table.protectedContent} IS NULL) OR (${table.protectedRevision} > 0 AND ${table.protectedOperationId} IS NOT NULL AND ${table.protectedContent} IS NOT NULL)`,
+    ),
+    check(
+      "tunnels_private_endpoint_content_check",
+      sql`(${table.sourceKind} <> 'worker-listener' AND ${table.destinationKind} <> 'worker-tcp') OR ${table.protectedRevision} > 0`,
     ),
     check(
       "tunnels_active_connections_check",
@@ -1451,8 +1466,6 @@ export const tunnelAttachments = pgTable(
       .references(() => tunnels.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     clientId: text("client_id"),
-    localHost: text("local_host"),
-    localPort: integer("local_port"),
     secretHash: text("secret_hash"),
     status: text("status").notNull().default("starting"),
     activeConnectionCount: integer("active_connection_count")
@@ -1464,7 +1477,7 @@ export const tunnelAttachments = pgTable(
     bytesToSource: bigint("bytes_to_source", { mode: "number" })
       .notNull()
       .default(0),
-    lastError: text("last_error"),
+    errorCode: text("error_code"),
     secretExpiresAt: timestamp("secret_expires_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
@@ -1493,10 +1506,6 @@ export const tunnelAttachments = pgTable(
     check(
       "tunnel_attachments_status_check",
       sql`${table.status} IN ('stopped', 'starting', 'active', 'offline', 'degraded', 'stopping', 'failed')`,
-    ),
-    check(
-      "tunnel_attachments_local_endpoint_check",
-      sql`(${table.kind} = 'desktop-loopback' AND ${table.clientId} IS NOT NULL AND ((${table.localHost} IS NULL AND ${table.localPort} IS NULL) OR (${table.localHost} IN ('127.0.0.1', 'localhost', '::1') AND ${table.localPort} BETWEEN 1 AND 65535))) OR (${table.kind} = 'server-relay' AND ${table.clientId} IS NULL AND ${table.localHost} IS NULL AND ${table.localPort} IS NULL)`,
     ),
     check(
       "tunnel_attachments_active_connections_check",
