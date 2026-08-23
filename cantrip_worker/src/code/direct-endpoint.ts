@@ -45,6 +45,11 @@ interface Endpoint {
   tunnelId: string;
 }
 
+interface EndpointPreparation {
+  promise: Promise<{ kind: "tcp"; host: "127.0.0.1"; port: number }>;
+  sessionId: string;
+}
+
 interface CodeEndpointPreparationContext {
   attachmentId?: string;
   connectionId?: string;
@@ -162,6 +167,9 @@ async function readControlRequest(request: IncomingMessage): Promise<unknown> {
 
 export class CodeDirectEndpointManager {
   readonly #endpoints = new Map<string, Endpoint>();
+  readonly #controlTails = new Map<string, Promise<void>>();
+  readonly #preparations = new Map<string, EndpointPreparation>();
+  readonly #sessionGenerations = new Map<string, number>();
 
   constructor(private readonly supervisor: CodeSupervisor) {}
 
@@ -177,13 +185,30 @@ export class CodeDirectEndpointManager {
       existing.fallbackConnection = connection;
       return existing.address;
     }
+    const pending = this.#preparations.get(endpointId);
+    if (pending?.sessionId === sessionId) {
+      const address = await pending.promise;
+      const prepared = this.#endpoints.get(endpointId);
+      if (prepared?.sessionId === sessionId) {
+        prepared.fallbackConnection = connection;
+      }
+      return address;
+    }
     this.revoke(endpointId, "Protected Code session rotated");
+    const preparation = {} as EndpointPreparation;
+    preparation.sessionId = sessionId;
+    preparation.promise = (async () => {
+      const endpoint = await this.#create({ sessionId, tunnelId }, connection);
+      if (this.#preparations.get(endpointId) !== preparation) {
+        this.#closeEndpoint(endpoint, "Protected Code preparation superseded");
+        throw new Error("Protected Code endpoint preparation was superseded.");
+      }
+      this.#endpoints.set(endpointId, endpoint);
+      return endpoint.address;
+    })();
+    this.#preparations.set(endpointId, preparation);
     try {
-      const address = await this.#create(
-        endpointId,
-        { sessionId, tunnelId },
-        connection,
-      );
+      const address = await preparation.promise;
       workerLogger.event("info", "Cantrip Code direct endpoint prepared", {
         event: "code.direct.prepared",
         subsystem: "code",
@@ -204,14 +229,17 @@ export class CodeDirectEndpointManager {
         ...workerLogErrorIdentity(error),
       });
       throw error;
+    } finally {
+      if (this.#preparations.get(endpointId) === preparation) {
+        this.#preparations.delete(endpointId);
+      }
     }
   }
 
   async #create(
-    endpointId: string,
     context: CodeEndpointContext,
     connection: CodeEndpointPreparationContext,
-  ): Promise<{ kind: "tcp"; host: "127.0.0.1"; port: number }> {
+  ): Promise<Endpoint> {
     const { sessionId, tunnelId } = context;
     const endpoint: Endpoint = {
       address: { kind: "tcp", host: "127.0.0.1", port: 0 },
@@ -292,8 +320,7 @@ export class CodeDirectEndpointManager {
       host: "127.0.0.1",
       port: address.port,
     };
-    this.#endpoints.set(endpointId, endpoint);
-    return endpoint.address;
+    return endpoint;
   }
 
   bindProtectedConnection(
@@ -308,9 +335,14 @@ export class CodeDirectEndpointManager {
   }
 
   revoke(capabilityId: string, reason: string): void {
+    this.#preparations.delete(capabilityId);
     const endpoint = this.#endpoints.get(capabilityId);
     if (!endpoint) return;
     this.#endpoints.delete(capabilityId);
+    this.#closeEndpoint(endpoint, reason);
+  }
+
+  #closeEndpoint(endpoint: Endpoint, reason: string): void {
     for (const socket of endpoint.sockets) {
       socket.close(1008, reason.slice(0, 123));
     }
@@ -318,16 +350,38 @@ export class CodeDirectEndpointManager {
     endpoint.server.closeAllConnections();
   }
 
-  closeSession(sessionId: string): void {
+  async closeSession(sessionId: string): Promise<void> {
+    this.#sessionGenerations.set(
+      sessionId,
+      (this.#sessionGenerations.get(sessionId) ?? 0) + 1,
+    );
     for (const [endpointId, endpoint] of this.#endpoints) {
       if (endpoint.sessionId === sessionId) {
         this.revoke(endpointId, "Code session stopped");
       }
     }
+    for (const [endpointId, preparation] of this.#preparations) {
+      if (preparation.sessionId === sessionId) {
+        this.revoke(endpointId, "Code session stopped");
+      }
+    }
+    await this.#controlTails.get(sessionId);
+  }
+
+  disconnect(): void {
+    for (const capabilityId of new Set([
+      ...this.#endpoints.keys(),
+      ...this.#preparations.keys(),
+    ])) {
+      this.revoke(capabilityId, "Worker control connection lost");
+    }
   }
 
   close(): void {
-    for (const capabilityId of [...this.#endpoints.keys()]) {
+    for (const capabilityId of new Set([
+      ...this.#endpoints.keys(),
+      ...this.#preparations.keys(),
+    ])) {
       this.revoke(capabilityId, "Worker stopping");
     }
   }
@@ -580,6 +634,7 @@ export class CodeDirectEndpointManager {
     response: ServerResponse,
   ): Promise<void> {
     const { sessionId } = context;
+    const sessionGeneration = this.#sessionGenerations.get(sessionId) ?? 0;
     if (request.method === "OPTIONS") {
       writeControlResponse(response, 204);
       return;
@@ -608,7 +663,11 @@ export class CodeDirectEndpointManager {
     }
     try {
       const result = codeOpenFileResultSchema.parse(
-        await this.supervisor.openFile(sessionId, input.data.relativePath),
+        await this.#enqueueControl(sessionId, () =>
+          (this.#sessionGenerations.get(sessionId) ?? 0) === sessionGeneration
+            ? this.supervisor.openFile(sessionId, input.data.relativePath)
+            : Promise.reject(new Error("Cantrip Code session stopped.")),
+        ),
       );
       writeControlResponse(response, 200, result);
       workerLogger.event("debug", "Cantrip Code direct file opened", {
@@ -637,12 +696,32 @@ export class CodeDirectEndpointManager {
     }
   }
 
+  #enqueueControl<T>(
+    sessionId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.#controlTails.get(sessionId) ?? Promise.resolve();
+    const result = previous.then(operation);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#controlTails.set(sessionId, tail);
+    void tail.then(() => {
+      if (this.#controlTails.get(sessionId) === tail) {
+        this.#controlTails.delete(sessionId);
+      }
+    });
+    return result;
+  }
+
   async #setPresentation(
     context: CodeEndpointContext,
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> {
     const { sessionId } = context;
+    const sessionGeneration = this.#sessionGenerations.get(sessionId) ?? 0;
     if (request.method === "OPTIONS") {
       writeControlResponse(response, 204);
       return;
@@ -670,7 +749,11 @@ export class CodeDirectEndpointManager {
       return;
     }
     try {
-      await this.supervisor.setPresentation(sessionId, "editor");
+      await this.#enqueueControl(sessionId, () =>
+        (this.#sessionGenerations.get(sessionId) ?? 0) === sessionGeneration
+          ? this.supervisor.setPresentation(sessionId, "editor")
+          : Promise.reject(new Error("Cantrip Code session stopped.")),
+      );
       writeControlResponse(response, 200, input.data);
       workerLogger.event("debug", "Cantrip Code direct presentation updated", {
         event: "code.direct.presentation-updated",

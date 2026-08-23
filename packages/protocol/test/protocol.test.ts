@@ -5108,6 +5108,12 @@ describe("Cantrip protocol", () => {
     ).toBe("code.openFile");
     expect(
       workerCommandSchema.parse({
+        type: "code.endpoint.revoke",
+        tunnelId: "11111111-1111-4111-8111-111111111111",
+      }).type,
+    ).toBe("code.endpoint.revoke");
+    expect(
+      workerCommandSchema.parse({
         type: "code.prepareAgentTurn",
         cwd: "/workspace/Cantrip",
       }).type,

@@ -2845,8 +2845,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "code.status":
         return code.status(command.sessionId);
       case "code.stop":
-        codeDirectEndpoints.closeSession(command.sessionId);
+        await codeDirectEndpoints.closeSession(command.sessionId);
         return code.stop(command.sessionId);
+      case "code.endpoint.revoke":
+        codeDirectEndpoints.revoke(
+          `protected:${command.tunnelId}`,
+          "Code attachment released",
+        );
+        return { tunnelId: command.tunnelId };
       case "code.saveAll":
         return code.saveAll(command.sessionId);
       case "code.openFile":
@@ -4539,6 +4545,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     () => {
       tunnelDestinations.disconnect();
       directBroker.revokeAll();
+      codeDirectEndpoints.disconnect();
     },
     undefined,
     () => providerAuthObserver.reemitAll(),

@@ -12615,6 +12615,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1),
   }),
   z.object({
+    type: z.literal("code.endpoint.revoke"),
+    tunnelId: z.string().uuid(),
+  }),
+  z.object({
     type: z.literal("code.saveAll"),
     sessionId: z.string().min(1),
   }),

@@ -123,7 +123,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "794d634c9d77ded0dab79d3b92edae59c63272c203a224ab75cf5fbb472484e6",
   workerCommands:
-    "ed47e87685d0080a8d27373a5021ee9aafa16b8c0524ca373d9458248d4a129a",
+    "acdf3adab5cdd68c3e6e2be06ba838839c1c568b4da8ad85fc5da1229b57db2c",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };

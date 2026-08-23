@@ -36,6 +36,19 @@ const wire = {
   runtime: attachment.runtime,
 };
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  return {
+    promise: new Promise<T>((settle) => {
+      resolve = settle;
+    }),
+    resolve,
+  };
+}
+
 describe("desktop Explorer window broker", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -52,6 +65,7 @@ describe("desktop Explorer window broker", () => {
       relativePath: "src/index.ts",
     });
     desktopCode.stopDirectCodeAttachment.mockResolvedValue(undefined);
+    api.releaseCodeAttachment.mockResolvedValue(undefined);
   });
 
   it("configures the protected workbench before announcing the initial file", async () => {
@@ -107,6 +121,7 @@ describe("desktop Explorer window broker", () => {
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
       attachment,
       "src/index.ts",
+      { signal: expect.any(AbortSignal) },
     );
 
     client.dispose();
@@ -149,6 +164,7 @@ describe("desktop Explorer window broker", () => {
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
       attachment,
       "src/warm.ts",
+      { signal: expect.any(AbortSignal) },
     );
 
     client.dispose();
@@ -224,5 +240,147 @@ describe("desktop Explorer window broker", () => {
 
     client.dispose();
     await broker.dispose();
+  });
+
+  it("aborts superseded preparation and releases a delayed result exactly once", async () => {
+    const preference = deferred<{
+      attachment: CodeAttachment;
+      directTunnelId: string;
+    }>();
+    desktopCode.preferProtectedCodeAttachment.mockReturnValue(
+      preference.promise,
+    );
+    const owner = new AbortController();
+    const broker = createDesktopExplorerWindowBroker(
+      {
+        appearance: "dark",
+        explorer: {
+          activeWorkerId: "worker-one",
+          id: "explorer-superseded",
+          projectId: "project-one",
+          worktreeId: "worktree-one",
+        } as ExplorerSummary,
+        path: ".cantrip-editor-prewarm",
+      },
+      {
+        configureInitialFile: false,
+        requireDirectBridge: true,
+        signal: owner.signal,
+      },
+    );
+    const onEditor = vi.fn();
+    const client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext: vi.fn(),
+      onEditor,
+      onEditorConfigured: vi.fn(),
+      onEditorError: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+    await vi.waitFor(() =>
+      expect(desktopCode.preferProtectedCodeAttachment).toHaveBeenCalledOnce(),
+    );
+    const preparationSignal = desktopCode.preferProtectedCodeAttachment.mock
+      .calls[0]?.[1]?.signal as AbortSignal;
+    const ready = expect(broker.ready).rejects.toBeDefined();
+
+    owner.abort(new DOMException("superseded", "AbortError"));
+    await broker.dispose();
+
+    expect(preparationSignal.aborted).toBe(true);
+    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
+    expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
+    preference.resolve({ attachment, directTunnelId: wire.tunnelId });
+    await ready;
+    await Promise.resolve();
+    expect(onEditor).not.toHaveBeenCalled();
+    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledTimes(1);
+    expect(api.releaseCodeAttachment).toHaveBeenCalledTimes(1);
+
+    await broker.dispose();
+    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledTimes(1);
+    expect(api.releaseCodeAttachment).toHaveBeenCalledTimes(1);
+    client.dispose();
+  });
+
+  it("cleans up late attachment ownership after prompt disposal", async () => {
+    const created = deferred<typeof wire>();
+    api.createProtectedExplorerCodeAttachment.mockReturnValue(created.promise);
+    const broker = createDesktopExplorerWindowBroker(
+      {
+        appearance: "dark",
+        explorer: {
+          activeWorkerId: "worker-one",
+          id: "explorer-delayed-create",
+          projectId: "project-one",
+          worktreeId: "worktree-one",
+        } as ExplorerSummary,
+        path: ".cantrip-editor-prewarm",
+      },
+      { configureInitialFile: false },
+    );
+    const ready = expect(broker.ready).rejects.toBeDefined();
+    await expect(broker.dispose()).resolves.toBeUndefined();
+    expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
+    expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
+
+    created.resolve(wire);
+    await ready;
+    await vi.waitFor(() =>
+      expect(api.releaseCodeAttachment).toHaveBeenCalledOnce(),
+    );
+    expect(desktopCode.preferProtectedCodeAttachment).not.toHaveBeenCalled();
+    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
+    expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
+  });
+
+  it("does not wait for attachment creation that ignores disposal", async () => {
+    api.createProtectedExplorerCodeAttachment.mockReturnValue(
+      new Promise(() => undefined),
+    );
+    const broker = createDesktopExplorerWindowBroker(
+      {
+        appearance: "dark",
+        explorer: {
+          activeWorkerId: "worker-one",
+          id: "explorer-stuck-create",
+          projectId: "project-one",
+          worktreeId: "worktree-one",
+        } as ExplorerSummary,
+        path: ".cantrip-editor-prewarm",
+      },
+      { configureInitialFile: false },
+    );
+    const ready = expect(broker.ready).rejects.toBeDefined();
+
+    await expect(broker.dispose()).resolves.toBeUndefined();
+    await ready;
+
+    expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
+    expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
+  });
+
+  it("does not create an attachment for an already superseded owner", async () => {
+    const owner = new AbortController();
+    owner.abort(new DOMException("superseded", "AbortError"));
+
+    const broker = createDesktopExplorerWindowBroker(
+      {
+        appearance: "dark",
+        explorer: {
+          activeWorkerId: "worker-one",
+          id: "explorer-already-superseded",
+          projectId: "project-one",
+          worktreeId: "worktree-one",
+        } as ExplorerSummary,
+        path: ".cantrip-editor-prewarm",
+      },
+      { configureInitialFile: false, signal: owner.signal },
+    );
+
+    await expect(broker.ready).rejects.toBe(owner.signal.reason);
+    await expect(broker.dispose()).resolves.toBeUndefined();
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(desktopCode.preferProtectedCodeAttachment).not.toHaveBeenCalled();
   });
 });

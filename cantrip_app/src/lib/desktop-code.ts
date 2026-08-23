@@ -540,6 +540,7 @@ export async function directCodeAttachmentHealthy(
 export async function openDirectCodeAttachmentFile(
   attachment: CodeAttachment,
   relativePath: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<CodeOpenFileResult> {
   const endpoint = new URL("_cantrip/open-file", attachment.url);
   const response = await fetch(endpoint, {
@@ -547,6 +548,7 @@ export async function openDirectCodeAttachmentFile(
     credentials: "omit",
     headers: { "content-type": "application/json" },
     method: "POST",
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   const body = (await response.json().catch(() => null)) as unknown;
   if (!response.ok) {
@@ -565,6 +567,7 @@ export async function openDirectCodeAttachmentFile(
 export async function setDirectCodeAttachmentPresentation(
   attachment: CodeAttachment,
   presentation: "editor",
+  options: { signal?: AbortSignal } = {},
 ): Promise<CodePresentationUpdate> {
   const endpoint = new URL("_cantrip/presentation", attachment.url);
   const response = await fetch(endpoint, {
@@ -572,6 +575,7 @@ export async function setDirectCodeAttachmentPresentation(
     credentials: "omit",
     headers: { "content-type": "application/json" },
     method: "POST",
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   const body = (await response.json().catch(() => null)) as unknown;
   if (!response.ok) {

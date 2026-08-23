@@ -63,6 +63,37 @@ function protectedConnect(
   };
 }
 
+function closeConnection(
+  header: TunnelDataPlaneFrameHeader,
+): Extract<TunnelDataPlaneFrameHeader, { kind: "close" }> {
+  return {
+    protocolVersion: header.protocolVersion,
+    tunnelId: header.tunnelId,
+    attachmentId: header.attachmentId,
+    sourceEndpointId: header.sourceEndpointId,
+    destinationEndpointId: header.destinationEndpointId,
+    connectionId: header.connectionId,
+    sequence: header.sequence + 1,
+    kind: "close",
+    code: "endpoint-disconnected",
+  };
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+async function nextTurn(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 function fixture() {
   const tcp = {
     close: vi.fn(),
@@ -288,5 +319,113 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
         }),
       ]),
     );
+  });
+
+  it("cancels a delayed protected record open and permits a fresh connection", async () => {
+    const firstRecord = deferred<ReturnType<typeof codeContent>>();
+    tunnelContent.open
+      .mockImplementationOnce(() => firstRecord.promise)
+      .mockResolvedValue(codeContent());
+    const { codeEndpoints, emitted, router, tcp } = fixture();
+    vi.mocked(codeEndpoints.prepareProtected).mockResolvedValue({
+      kind: "tcp",
+      host: "127.0.0.1",
+      port: 43_210,
+    });
+    const first = protectedConnect();
+
+    router.handleFrame(first, new Uint8Array());
+    await vi.waitFor(() => expect(tunnelContent.open).toHaveBeenCalledOnce());
+    router.handleFrame(closeConnection(first), new Uint8Array());
+    expect(codeEndpoints.prepareProtected).not.toHaveBeenCalled();
+    expect(tcp.handleFrame).not.toHaveBeenCalled();
+    expect(emitted).not.toHaveBeenCalled();
+
+    const second = protectedConnect();
+    router.handleFrame(second, new Uint8Array());
+    await vi.waitFor(() => expect(tcp.handleFrame).toHaveBeenCalledOnce());
+    firstRecord.resolve(codeContent());
+    await nextTurn();
+
+    expect(codeEndpoints.prepareProtected).toHaveBeenCalledOnce();
+    expect(tcp.handleFrame).toHaveBeenCalledOnce();
+    expect(tcp.handleFrame).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: "connection-1",
+        target: { kind: "tcp", host: "127.0.0.1", port: 43_210 },
+      }),
+      new Uint8Array(),
+      expect.any(Function),
+    );
+  });
+
+  it("cancels delayed Code preparation without binding or leaking into a fresh connection", async () => {
+    tunnelContent.open.mockResolvedValue(codeContent());
+    const firstEndpoint = deferred<{
+      kind: "tcp";
+      host: string;
+      port: number;
+    }>();
+    const { codeEndpoints, emitted, router, tcp } = fixture();
+    vi.mocked(codeEndpoints.prepareProtected)
+      .mockImplementationOnce(() => firstEndpoint.promise)
+      .mockResolvedValue({
+        kind: "tcp",
+        host: "127.0.0.1",
+        port: 43_211,
+      });
+    const first = protectedConnect();
+
+    router.handleFrame(first, new Uint8Array());
+    await vi.waitFor(() =>
+      expect(codeEndpoints.prepareProtected).toHaveBeenCalledOnce(),
+    );
+    router.handleFrame(closeConnection(first), new Uint8Array());
+    firstEndpoint.resolve({
+      kind: "tcp",
+      host: "127.0.0.1",
+      port: 43_210,
+    });
+    await nextTurn();
+
+    expect(tcp.handleFrame).not.toHaveBeenCalled();
+    expect(codeEndpoints.bindProtectedConnection).not.toHaveBeenCalled();
+    expect(emitted).not.toHaveBeenCalled();
+
+    const second = protectedConnect({ connectionId: "connection-2" });
+    router.handleFrame(second, new Uint8Array());
+    await vi.waitFor(() => expect(tcp.handleFrame).toHaveBeenCalledOnce());
+    const onConnected = vi.mocked(tcp.handleFrame).mock.calls[0]?.[2];
+    onConnected?.(54_321);
+    expect(codeEndpoints.bindProtectedConnection).toHaveBeenCalledWith(
+      "tunnel-1",
+      43_211,
+      54_321,
+      expect.objectContaining({ connectionId: "connection-2" }),
+    );
+  });
+
+  it("invalidates delayed protected preparation when the router disconnects", async () => {
+    tunnelContent.open.mockResolvedValue(codeContent());
+    const endpoint = deferred<{
+      kind: "tcp";
+      host: string;
+      port: number;
+    }>();
+    const { codeEndpoints, emitted, router, tcp } = fixture();
+    vi.mocked(codeEndpoints.prepareProtected).mockReturnValue(endpoint.promise);
+
+    router.handleFrame(protectedConnect(), new Uint8Array());
+    await vi.waitFor(() =>
+      expect(codeEndpoints.prepareProtected).toHaveBeenCalledOnce(),
+    );
+    router.disconnect();
+    endpoint.resolve({ kind: "tcp", host: "127.0.0.1", port: 43_210 });
+    await nextTurn();
+
+    expect(tcp.disconnect).toHaveBeenCalledOnce();
+    expect(tcp.handleFrame).not.toHaveBeenCalled();
+    expect(codeEndpoints.bindProtectedConnection).not.toHaveBeenCalled();
+    expect(emitted).not.toHaveBeenCalled();
   });
 });

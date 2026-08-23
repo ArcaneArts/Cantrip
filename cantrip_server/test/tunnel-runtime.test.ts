@@ -324,6 +324,35 @@ describe("desktop tunnel runtime", () => {
     runtime.close();
   });
 
+  it("closes child desktop attachments by their owning Code tunnel", async () => {
+    const repository = {
+      activateDesktopTunnelAttachment: async () => true,
+      markDesktopTunnelAttachmentOffline: async () => undefined,
+    } as unknown as ServerRepository;
+    const bridge = new EchoWorkerBridge();
+    const runtime = new TunnelRuntimeManager(repository, bridge, () => {});
+    const socket = new FakeDesktopSocket();
+    await runtime.attach(socket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+    });
+
+    expect(authorization.attachmentId).not.toBe(authorization.tunnelId);
+    expect(
+      runtime.closeTunnel(
+        authorization.tunnelId,
+        "Code attachment revoked",
+        1008,
+      ),
+    ).toBe(1);
+    expect(runtime.stats().activeRoutes).toBe(0);
+    expect(socket.readyState).toBe(3);
+    expect(runtime.closeTunnel("different-tunnel", "Unrelated cleanup")).toBe(
+      0,
+    );
+    runtime.close();
+  });
+
   it("unsubscribes worker disconnect handling when the desktop socket closes", async () => {
     const repository = {
       activateDesktopTunnelAttachment: async () => true,

@@ -63,6 +63,7 @@ function protectedTargetRejectionCode(
 
 export class TunnelDestinationRouter {
   #emit: FrameEmitter | null = null;
+  readonly #pendingProtections = new Map<string, symbol>();
   readonly #protections = new Map<string, ProtectedConnection>();
 
   constructor(
@@ -88,12 +89,29 @@ export class TunnelDestinationRouter {
   ): void {
     if (header.kind === "connect") {
       if (header.target.kind === "protected-tunnel") {
-        void this.#handleProtectedConnect(header, payload, diagnostics);
-      } else if (header.target.kind === "tcp")
+        const key = connectionKey(header);
+        const generation = Symbol();
+        this.#pendingProtections.set(key, generation);
+        void this.#handleProtectedConnect(
+          header,
+          payload,
+          diagnostics,
+          generation,
+        );
+      } else if (header.target.kind === "tcp") {
+        this.#pendingProtections.delete(connectionKey(header));
         this.tcp.handleFrame(header, payload);
+      }
       return;
     }
-    const protection = this.#protections.get(connectionKey(header));
+    const key = connectionKey(header);
+    if (
+      (header.kind === "close" || header.kind === "error") &&
+      this.#pendingProtections.delete(key)
+    ) {
+      return;
+    }
+    const protection = this.#protections.get(key);
     if (protection) {
       if (header.kind === "data") {
         try {
@@ -127,7 +145,7 @@ export class TunnelDestinationRouter {
       } else {
         this.#handleProtectedFrame(protection.targetKind, header, payload);
         if (header.kind === "close" || header.kind === "error") {
-          this.#protections.delete(connectionKey(header));
+          this.#protections.delete(key);
         }
       }
       return;
@@ -136,11 +154,13 @@ export class TunnelDestinationRouter {
   }
 
   disconnect(): void {
+    this.#pendingProtections.clear();
     this.#protections.clear();
     this.tcp.disconnect();
   }
 
   close(): void {
+    this.#pendingProtections.clear();
     this.#protections.clear();
     this.tcp.close();
   }
@@ -149,7 +169,9 @@ export class TunnelDestinationRouter {
     header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
     payload: Uint8Array,
     diagnostics: TunnelDiagnosticContext,
+    generation: symbol,
   ): Promise<void> {
+    const key = connectionKey(header);
     let reasonCode: ProtectedTargetRejectionReason = "invalid-target-binding";
     let sessionId: string | undefined;
     const targetKind =
@@ -181,6 +203,7 @@ export class TunnelDestinationRouter {
         tunnelId: header.tunnelId,
         workerId: this.workerId,
       });
+      if (!this.#isPendingProtection(key, generation)) return;
       reasonCode = "worker-id-mismatch";
       if (content.destination.workerId !== this.workerId) {
         throw new Error("Protected tunnel target belongs to another endpoint.");
@@ -194,12 +217,9 @@ export class TunnelDestinationRouter {
         header.target.targetKind === "tcp"
       ) {
         reasonCode = "tcp-target-handoff-failed";
-        this.#protections.set(connectionKey(header), {
-          configuration: content.dataProtection,
-          diagnosticTraceId: diagnostics.diagnosticTraceId,
-          targetKind: "tcp",
-        });
-        this.tcp.handleFrame(
+        this.#handoffProtectedConnect(
+          key,
+          generation,
           {
             ...header,
             target: {
@@ -209,6 +229,8 @@ export class TunnelDestinationRouter {
             },
           },
           payload,
+          content.dataProtection,
+          diagnostics,
         );
         return;
       }
@@ -226,15 +248,15 @@ export class TunnelDestinationRouter {
             diagnosticTraceId: diagnostics.diagnosticTraceId,
           },
         );
+        if (!this.#isPendingProtection(key, generation)) return;
         reasonCode = "code-endpoint-handoff-failed";
-        this.#protections.set(connectionKey(header), {
-          configuration: content.dataProtection,
-          diagnosticTraceId: diagnostics.diagnosticTraceId,
-          targetKind: "tcp",
-        });
-        this.tcp.handleFrame(
+        this.#handoffProtectedConnect(
+          key,
+          generation,
           { ...header, target: endpoint },
           payload,
+          content.dataProtection,
+          diagnostics,
           (remotePort) =>
             this.codeEndpoints.bindProtectedConnection(
               header.tunnelId,
@@ -264,13 +286,11 @@ export class TunnelDestinationRouter {
           shareId: content.destination.resourceId,
           username: content.destination.username,
         });
+        if (!this.#isPendingProtection(key, generation)) return;
         reasonCode = "project-share-handoff-failed";
-        this.#protections.set(connectionKey(header), {
-          configuration: content.dataProtection,
-          diagnosticTraceId: diagnostics.diagnosticTraceId,
-          targetKind: "tcp",
-        });
-        this.tcp.handleFrame(
+        this.#handoffProtectedConnect(
+          key,
+          generation,
           {
             ...header,
             target: {
@@ -280,12 +300,15 @@ export class TunnelDestinationRouter {
             },
           },
           payload,
+          content.dataProtection,
+          diagnostics,
         );
         return;
       }
       throw new Error("Protected tunnel target belongs to another endpoint.");
     } catch (error) {
-      this.#protections.delete(connectionKey(header));
+      if (!this.#finishPendingProtection(key, generation)) return;
+      this.#protections.delete(key);
       workerLogger.rateLimited(
         `tunnel-protected-target-rejected:${diagnostics.diagnosticTraceId ?? "untraced"}:${header.tunnelId}:${reasonCode}`,
         "warn",
@@ -315,6 +338,35 @@ export class TunnelDestinationRouter {
         new Uint8Array(),
       );
     }
+  }
+
+  #handoffProtectedConnect(
+    key: string,
+    generation: symbol,
+    header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
+    payload: Uint8Array,
+    configuration: TunnelDataProtectionConfiguration,
+    diagnostics: TunnelDiagnosticContext,
+    onConnected?: (remotePort: number) => void,
+  ): void {
+    if (!this.#isPendingProtection(key, generation)) return;
+    this.#protections.set(key, {
+      configuration,
+      diagnosticTraceId: diagnostics.diagnosticTraceId,
+      targetKind: "tcp",
+    });
+    this.tcp.handleFrame(header, payload, onConnected);
+    this.#finishPendingProtection(key, generation);
+  }
+
+  #isPendingProtection(key: string, generation: symbol): boolean {
+    return this.#pendingProtections.get(key) === generation;
+  }
+
+  #finishPendingProtection(key: string, generation: symbol): boolean {
+    if (!this.#isPendingProtection(key, generation)) return false;
+    this.#pendingProtections.delete(key);
+    return true;
   }
 
   #emitTcp(header: TunnelDataPlaneFrameHeader, payload: Uint8Array): boolean {

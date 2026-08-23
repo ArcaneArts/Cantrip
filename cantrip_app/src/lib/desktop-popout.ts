@@ -45,6 +45,7 @@ type ExplorerEditorWarmSlot = {
 };
 
 type ExplorerEditorWarmState = {
+  controller: AbortController;
   key: string;
   promise: Promise<ExplorerEditorWarmSlot>;
   retired: boolean;
@@ -281,7 +282,11 @@ async function closeExplorerEditorWarmSlot(
 }
 
 function retireExplorerEditorWarmState(state: ExplorerEditorWarmState): void {
+  if (state.retired) return;
   state.retired = true;
+  state.controller.abort(
+    new DOMException("Explorer editor prewarm was superseded.", "AbortError"),
+  );
   void state.promise
     .then((slot) => closeExplorerEditorWarmSlot(slot))
     .catch(() => undefined);
@@ -415,22 +420,24 @@ export async function openDesktopPopoutGroup(
 async function createExplorerEditorWarmSlot(
   context: DesktopExplorerFileLaunchContext,
   key: string,
-  retired: () => boolean,
+  signal: AbortSignal,
 ): Promise<ExplorerEditorWarmSlot> {
   const startedAt = Date.now();
   const { createDesktopExplorerWindowBroker } =
     await import("@/lib/desktop-explorer-window-broker");
+  signal.throwIfAborted();
   const broker = createDesktopExplorerWindowBroker(
     {
       ...context,
       path: explorerEditorPrewarmPath,
     },
-    { configureInitialFile: false, requireDirectBridge: true },
+    { configureInitialFile: false, requireDirectBridge: true, signal },
   );
   const label = desktopExplorerEditorWarmWindowLabel(context, broker.launchId);
   const slot = { broker, key, label };
   explorerWindowBrokers.set(label, broker);
   try {
+    signal.throwIfAborted();
     await openDesktopWindow(
       label,
       desktopExplorerFileSearch(
@@ -446,7 +453,9 @@ async function createExplorerEditorWarmSlot(
       undefined,
       { focus: false, visible: false },
     );
+    signal.throwIfAborted();
     const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+    signal.throwIfAborted();
     const popout = await WebviewWindow.getByLabel(label);
     if (!popout) {
       throw new Error("The prewarmed Explorer editor window closed.");
@@ -455,9 +464,7 @@ async function createExplorerEditorWarmSlot(
       void disposeExplorerWindowBroker(label, broker);
     });
     await broker.ready;
-    if (retired()) {
-      throw new Error("The prewarmed Explorer editor was superseded.");
-    }
+    signal.throwIfAborted();
     clientLogger.info("Explorer editor bridge prewarmed", {
       durationMs: Date.now() - startedAt,
       event: "surface.explorer.editor-window.prewarmed",
@@ -488,6 +495,7 @@ export async function prewarmDesktopExplorerFile(
     retireExplorerEditorWarmState(explorerEditorWarmState);
   }
   const state: ExplorerEditorWarmState = {
+    controller: new AbortController(),
     key,
     promise: Promise.resolve(null as never),
     retired: false,
@@ -495,7 +503,7 @@ export async function prewarmDesktopExplorerFile(
   state.promise = createExplorerEditorWarmSlot(
     context,
     key,
-    () => state.retired,
+    state.controller.signal,
   );
   explorerEditorWarmState = state;
   await state.promise.catch((error: unknown) => {
