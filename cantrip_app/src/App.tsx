@@ -8109,6 +8109,16 @@ export function App() {
           >
             {linkedConsoleChat ? (
               <TerminalView
+                eliteContentGlitchEnabled={
+                  (settings.data?.preferences.eliteMode ?? false) &&
+                  (settings.data?.preferences.eliteRevealConfig
+                    ?.glitchTerminalContents ??
+                    DEFAULT_ELITE_REVEAL_CONFIG.glitchTerminalContents)
+                }
+                eliteRevealConfig={
+                  settings.data?.preferences.eliteRevealConfig ??
+                  DEFAULT_ELITE_REVEAL_CONFIG
+                }
                 terminal={selectedTerminal}
                 onExit={() => setChatConsoleOpen(linkedConsoleChat.id, false)}
                 onOpenExternalLink={openTerminalLinkExternally}
@@ -8116,6 +8126,16 @@ export function App() {
               />
             ) : (
               <TerminalView
+                eliteContentGlitchEnabled={
+                  (settings.data?.preferences.eliteMode ?? false) &&
+                  (settings.data?.preferences.eliteRevealConfig
+                    ?.glitchTerminalContents ??
+                    DEFAULT_ELITE_REVEAL_CONFIG.glitchTerminalContents)
+                }
+                eliteRevealConfig={
+                  settings.data?.preferences.eliteRevealConfig ??
+                  DEFAULT_ELITE_REVEAL_CONFIG
+                }
                 terminal={selectedTerminal}
                 commandPaletteOpen={
                   terminalCommandPaletteTerminalId === selectedTerminal.id

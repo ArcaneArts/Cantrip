@@ -22,7 +22,7 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain("Text</button>");
     expect(markup).toContain("Table</button>");
     expect(markup).toContain("Widgets</button>");
-    expect(markup).toContain("1–3 glitches · 9 ms · 50 ms spread");
+    expect(markup).toContain("4–8 glitches · 16 ms · 50 ms spread");
     expect(markup).toContain('data-elite-lab=""');
     expect(markup).toContain('role="switch"');
     expect(markup).toContain('aria-checked="false"');
@@ -35,9 +35,10 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain('aria-label="Right half frame weight"');
     expect(markup).toContain('aria-label="Chromatic shift weight"');
     expect(markup).toContain('aria-label="Scanline bands weight"');
-    expect(markup.match(/value="0\.1"/g)).toHaveLength(3);
+    expect(markup).toContain("Glitch Terminal Contents");
+    expect(markup.match(/value="0\.01"/g)).toHaveLength(3);
     expect(markup).toContain('value="0.25"');
-    expect(markup).toContain('value="0.5"');
+    expect(markup).toContain('value="0.33"');
   });
 
   it("marks fixture items with explicit reveal semantics", () => {

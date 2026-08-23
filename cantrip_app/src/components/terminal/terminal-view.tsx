@@ -1,7 +1,14 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import type { TerminalServerMessage, TerminalSummary } from "@cantrip/protocol";
-import { terminalServerMessageSchema } from "@cantrip/protocol";
+import type {
+  EliteRevealConfig,
+  TerminalServerMessage,
+  TerminalSummary,
+} from "@cantrip/protocol";
+import {
+  DEFAULT_ELITE_REVEAL_CONFIG,
+  terminalServerMessageSchema,
+} from "@cantrip/protocol";
 import {
   terminalInputContentSchema,
   terminalOutputContentSchema,
@@ -25,6 +32,10 @@ import {
 } from "@/lib/surface-stream-encryption";
 
 import { terminalCommandInput } from "./terminal-command-palette";
+import {
+  createTerminalContentGlitchRenderer,
+  type TerminalContentGlitchRenderer,
+} from "./terminal-content-glitch";
 import {
   MobileTerminalCommandBar,
   mobileTerminalKeyInput,
@@ -60,6 +71,8 @@ function terminalTheme() {
 
 export function TerminalView({
   commandPaletteOpen = false,
+  eliteContentGlitchEnabled = false,
+  eliteRevealConfig = DEFAULT_ELITE_REVEAL_CONFIG,
   onCommandPaletteOpenChange,
   onPendingInputSent,
   onServicePanelOpenChange,
@@ -71,6 +84,8 @@ export function TerminalView({
   onOpenLink,
 }: {
   commandPaletteOpen?: boolean;
+  eliteContentGlitchEnabled?: boolean;
+  eliteRevealConfig?: EliteRevealConfig;
   onCommandPaletteOpenChange?(open: boolean): void;
   onPendingInputSent?(inputId: string): void;
   onServicePanelOpenChange?(open: boolean): void;
@@ -82,9 +97,13 @@ export function TerminalView({
   onOpenLink?(url: string): void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const eliteContentGlitchEnabledRef = useRef(eliteContentGlitchEnabled);
+  const eliteRevealConfigRef = useRef(eliteRevealConfig);
   const inputSenderRef = useRef<((data: string) => boolean) | null>(null);
   const reconnectAttemptRef = useRef(0);
   const terminalSurfaceRef = useRef<HTMLDivElement>(null);
+  const terminalContentGlitchRendererRef =
+    useRef<TerminalContentGlitchRenderer | null>(null);
   const terminalIdRef = useRef(terminal.id);
   const xtermRef = useRef<Terminal | null>(null);
   const onExitRef = useRef(onExit);
@@ -105,6 +124,8 @@ export function TerminalView({
   const hasLoaded =
     loadedTerminalId === terminal.id || loadedTerminalIds.has(terminal.id);
   const mobileCommandBarVisible = mobileKeyboard.open && terminalFocused;
+  eliteContentGlitchEnabledRef.current = eliteContentGlitchEnabled;
+  eliteRevealConfigRef.current = eliteRevealConfig;
   onExitRef.current = onExit;
   onOpenExternalLinkRef.current = onOpenExternalLink;
   onOpenLinkRef.current = onOpenLink;
@@ -145,6 +166,14 @@ export function TerminalView({
     xterm.loadAddon(fit);
     xterm.open(container);
     xtermRef.current = xterm;
+    const terminalContentGlitchRenderer = createTerminalContentGlitchRenderer(
+      xterm,
+      {
+        config: () => eliteRevealConfigRef.current,
+        enabled: () => eliteContentGlitchEnabledRef.current,
+      },
+    );
+    terminalContentGlitchRendererRef.current = terminalContentGlitchRenderer;
     const terminalLinks = installTerminalLinkLayer({
       terminal: xterm,
       onOpen: (url) => onOpenLinkRef.current?.(url),
@@ -359,9 +388,17 @@ export function TerminalView({
                 schema: terminalOutputContentSchema,
               });
               if (!disposed) {
+                const animateContent =
+                  ready && eliteContentGlitchEnabledRef.current;
+                if (animateContent) {
+                  terminalContentGlitchRenderer.beforeWrite();
+                }
                 await new Promise<void>((resolve) => {
                   xterm.write(content.data, resolve);
                 });
+                if (animateContent) {
+                  terminalContentGlitchRenderer.afterWrite();
+                }
               }
             })
             .catch(() => {
@@ -527,6 +564,12 @@ export function TerminalView({
       container.removeEventListener("focusout", handleTerminalFocusOut);
       if (inputSenderRef.current === sendInput) inputSenderRef.current = null;
       if (xtermRef.current === xterm) xtermRef.current = null;
+      if (
+        terminalContentGlitchRendererRef.current ===
+        terminalContentGlitchRenderer
+      ) {
+        terminalContentGlitchRendererRef.current = null;
+      }
       resizeObserver.disconnect();
       themeObserver.disconnect();
       socket?.close(1000, "Terminal view closed");
@@ -539,9 +582,16 @@ export function TerminalView({
       });
       releaseDirect();
       terminalLinks.dispose();
+      terminalContentGlitchRenderer.dispose();
       xterm.dispose();
     };
   }, [connectionKey, terminal.activeWorkerId, terminal.id]);
+
+  useEffect(() => {
+    if (!eliteContentGlitchEnabled) {
+      terminalContentGlitchRendererRef.current?.clear();
+    }
+  }, [eliteContentGlitchEnabled]);
 
   useEffect(() => {
     if (!pendingInput) return;

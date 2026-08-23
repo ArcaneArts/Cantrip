@@ -37,6 +37,7 @@ describe("Elite reveal sequencing", () => {
   it("normalizes timing and count boundaries", () => {
     expect(
       normalizeEliteRevealConfig({
+        glitchTerminalContents: false,
         glitchCountMax: -10,
         glitchCountMin: 99,
         glitchShowMs: 2,
@@ -49,6 +50,7 @@ describe("Elite reveal sequencing", () => {
         },
       }),
     ).toEqual({
+      glitchTerminalContents: false,
       glitchCountMax: 8,
       glitchCountMin: 8,
       glitchShowMs: 5,
