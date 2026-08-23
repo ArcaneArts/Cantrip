@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CantripMcpBinding } from "@cantrip/protocol";
 
 import { CantripServerRequestError } from "../src/cli-client.js";
-import { invokeCantripMcpOperation } from "../src/mcp/client.js";
+import {
+  fetchCantripMcpServerCompatibility,
+  invokeCantripMcpOperation,
+  legacyCantripMcpServerCompatibility,
+} from "../src/mcp/client.js";
 
 const binding: CantripMcpBinding = {
   bindingId: "00000000-0000-4000-8000-000000000001",
@@ -23,6 +27,47 @@ const binding: CantripMcpBinding = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Cantrip MCP server client", () => {
+  it("negotiates the current relay protocol and ignores unknown future operations", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          bindingProtocolVersions: [1, 2],
+          operations: ["context.get", "future.operation"],
+        }),
+      ),
+    );
+
+    await expect(
+      fetchCantripMcpServerCompatibility({
+        serverUrl: "https://cantrip.example",
+        token: "worker-secret",
+        workerId: "worker-one",
+      }),
+    ).resolves.toEqual({
+      bindingProtocolVersion: 2,
+      operations: ["context.get"],
+    });
+  });
+
+  it("falls back to the legacy relay protocol when the capability route is absent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ error: "Not found" }, { status: 404 })),
+    );
+
+    await expect(
+      fetchCantripMcpServerCompatibility({
+        serverUrl: "https://cantrip.example",
+        token: "worker-secret",
+        workerId: "worker-one",
+      }),
+    ).resolves.toMatchObject({
+      bindingProtocolVersion: 1,
+      operations: expect.arrayContaining(["context.get", "policy.read"]),
+    });
+  });
+
   it("forwards the full binding for authoritative server revalidation", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({
@@ -83,6 +128,37 @@ describe("Cantrip MCP server client", () => {
     ).rejects.toMatchObject<Partial<CantripServerRequestError>>({
       status: 409,
       code: "stale-binding",
+    });
+  });
+
+  it("sends a privacy-safe legacy binding to older servers", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ summary: "Context is current." }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const legacyBinding: CantripMcpBinding = {
+      ...binding,
+      allowedOperations: ["context.get", "tool.help"],
+    };
+    const legacyCanonicalRoot = `ctrr_${"A".repeat(43)}`;
+
+    await invokeCantripMcpOperation({
+      binding: legacyBinding,
+      compatibility: legacyCantripMcpServerCompatibility(),
+      legacyCanonicalRoot,
+      request: { operation: "context.get", arguments: {} },
+      requestId: "request-legacy",
+      serverUrl: "https://cantrip.example",
+      token: "worker-secret",
+    });
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      binding: {
+        canonicalRoot: legacyCanonicalRoot,
+        allowedOperations: ["context.get"],
+      },
+      request: { operation: "context.get", arguments: {} },
     });
   });
 

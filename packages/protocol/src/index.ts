@@ -7474,27 +7474,29 @@ export const cantripAgentOperationRequestSchema = z
   })
   .strict();
 
+const cantripMcpBindingFields = {
+  bindingId: z.string().uuid(),
+  ownerId: z.string().min(1).max(200),
+  projectId: z.string().min(1).max(200),
+  chatId: z.string().min(1).max(200),
+  executionLaneId: z.string().min(1).max(200),
+  workerId: z.string().min(1).max(200),
+  worktreeId: z.string().min(1).max(200),
+  rootKind: projectRootKindSchema,
+  permissionProfileId: permissionProfileIdSchema,
+  allowedOperations: z
+    .array(cantripAgentOperationNameSchema)
+    .min(1)
+    .max(cantripAgentOperationNameSchema.options.length)
+    .refine((operations) => new Set(operations).size === operations.length, {
+      message: "Cantrip MCP binding operations must be unique.",
+    }),
+  issuedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+};
+
 export const cantripMcpBindingSchema = z
-  .object({
-    bindingId: z.string().uuid(),
-    ownerId: z.string().min(1).max(200),
-    projectId: z.string().min(1).max(200),
-    chatId: z.string().min(1).max(200),
-    executionLaneId: z.string().min(1).max(200),
-    workerId: z.string().min(1).max(200),
-    worktreeId: z.string().min(1).max(200),
-    rootKind: projectRootKindSchema,
-    permissionProfileId: permissionProfileIdSchema,
-    allowedOperations: z
-      .array(cantripAgentOperationNameSchema)
-      .min(1)
-      .max(cantripAgentOperationNameSchema.options.length)
-      .refine((operations) => new Set(operations).size === operations.length, {
-        message: "Cantrip MCP binding operations must be unique.",
-      }),
-    issuedAt: z.iso.datetime(),
-    expiresAt: z.iso.datetime(),
-  })
+  .object(cantripMcpBindingFields)
   .strict()
   .superRefine((binding, context) => {
     const issuedAt = Date.parse(binding.issuedAt);
@@ -7537,6 +7539,70 @@ export const workerCantripMcpOperationCallSchema = z
     requestId: z.string().min(1).max(200),
     binding: cantripMcpBindingSchema,
     request: cantripAgentOperationRequestSchema,
+  })
+  .strict();
+
+const compatibleCantripMcpBindingSchema = z.object({
+  ...cantripMcpBindingFields,
+  canonicalRoot: z.string().min(1).max(8_192).optional(),
+  allowedOperations: z.array(z.string().min(1).max(100)).min(1).max(100),
+});
+
+/**
+ * Accepts both the current binding and the legacy binding used during rolling
+ * worker/server upgrades. Unknown binding claims never grant authority: they
+ * are discarded, and only locally known operation names survive normalization.
+ */
+export const compatibleWorkerCantripMcpOperationCallSchema = z
+  .object({
+    requestId: z.string().min(1).max(200),
+    binding: compatibleCantripMcpBindingSchema,
+    request: cantripAgentOperationRequestSchema,
+  })
+  .strict()
+  .transform(({ binding, ...call }) => {
+    const {
+      canonicalRoot: _legacyCanonicalRoot,
+      allowedOperations,
+      ...currentBinding
+    } = binding;
+    return {
+      ...call,
+      binding: {
+        ...currentBinding,
+        allowedOperations: allowedOperations.filter(
+          (operation) =>
+            cantripAgentOperationNameSchema.safeParse(operation).success,
+        ),
+      },
+    };
+  })
+  .pipe(workerCantripMcpOperationCallSchema);
+
+export const CANTRIP_MCP_BINDING_PROTOCOL_VERSIONS = [1, 2] as const;
+
+export const workerCantripMcpCapabilitiesQuerySchema = z
+  .object({
+    workerId: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const workerCantripMcpServerCapabilitiesSchema = z
+  .object({
+    bindingProtocolVersions: z
+      .array(z.number().int().min(1).max(100))
+      .min(1)
+      .max(10)
+      .refine((versions) => new Set(versions).size === versions.length, {
+        message: "Cantrip MCP binding protocol versions must be unique.",
+      }),
+    operations: z
+      .array(z.string().min(1).max(100))
+      .min(1)
+      .max(100)
+      .refine((operations) => new Set(operations).size === operations.length, {
+        message: "Cantrip MCP server operations must be unique.",
+      }),
   })
   .strict();
 
