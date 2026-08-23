@@ -2,13 +2,24 @@ import MarkdownRenderer from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { SyntaxHighlightedCode } from "@/components/chat/markdown-code";
+import {
+  markdownFileLinkUrlTransform,
+  markdownFilePathFromHref,
+} from "@/components/chat/markdown-file-link";
 import { cn } from "@/lib/utils";
 
 export function handleMarkdownLinkClick(
   event: { preventDefault(): void },
   href: string | undefined,
   onOpenLink: ((url: string) => void) | undefined,
+  onOpenFile?: (path: string) => void,
 ): boolean {
+  const filePath = markdownFilePathFromHref(href);
+  if (filePath) {
+    event.preventDefault();
+    onOpenFile?.(filePath);
+    return true;
+  }
   if (!onOpenLink || !href) return false;
   event.preventDefault();
   onOpenLink(href);
@@ -18,10 +29,12 @@ export function handleMarkdownLinkClick(
 export function Markdown({
   children,
   inverse = false,
+  onOpenFile,
   onOpenLink,
 }: {
   children: string;
   inverse?: boolean;
+  onOpenFile?(path: string): void;
   onOpenLink?(url: string): void;
 }) {
   return (
@@ -34,25 +47,34 @@ export function Markdown({
     >
       <MarkdownRenderer
         remarkPlugins={[remarkGfm]}
+        urlTransform={onOpenFile ? markdownFileLinkUrlTransform : undefined}
         components={{
-          a: ({ children: linkChildren, ...props }) => (
-            <a
-              {...props}
-              className={cn(
-                "break-all underline underline-offset-4",
-                inverse
-                  ? "decoration-primary-foreground/60"
-                  : "decoration-foreground/40",
-              )}
-              rel="noreferrer"
-              target="_blank"
-              onClick={(event) =>
-                handleMarkdownLinkClick(event, props.href, onOpenLink)
-              }
-            >
-              {linkChildren}
-            </a>
-          ),
+          a: ({ children: linkChildren, ...props }) => {
+            const filePath = markdownFilePathFromHref(props.href);
+            return (
+              <a
+                {...props}
+                className={cn(
+                  "break-all underline underline-offset-4",
+                  inverse
+                    ? "decoration-primary-foreground/60"
+                    : "decoration-foreground/40",
+                )}
+                rel="noreferrer"
+                target={filePath ? undefined : "_blank"}
+                onClick={(event) =>
+                  handleMarkdownLinkClick(
+                    event,
+                    props.href,
+                    onOpenLink,
+                    onOpenFile,
+                  )
+                }
+              >
+                {linkChildren}
+              </a>
+            );
+          },
           blockquote: ({ children: quoteChildren }) => (
             <blockquote
               className={cn(
