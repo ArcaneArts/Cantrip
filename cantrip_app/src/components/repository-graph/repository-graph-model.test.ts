@@ -131,7 +131,7 @@ describe("repository graph model", () => {
     ).toBeGreaterThan(1);
   });
 
-  it("fans every directory's child branches across its full local circle", () => {
+  it("fans directory branches broadly without folding them over their parent", () => {
     const nodes: RepositoryGraphInputNode[] = [
       node("root", null, "directory"),
       node("trunk", "root", "directory"),
@@ -146,23 +146,52 @@ describe("repository graph model", () => {
     const branches = nodes
       .filter(({ parentId }) => parentId === "trunk")
       .map(({ id }) => scene.nodesById.get(id)!);
-    const relativeAngles = branches.map((branch) => {
+    const signedRelativeAngles = branches.map((branch) => {
       const offset = { x: branch.x - trunk.x, y: branch.y - trunk.y };
       const cross = outward.x * offset.y - outward.y * offset.x;
       const dot = outward.x * offset.x + outward.y * offset.y;
-      return (Math.atan2(cross, dot) + Math.PI * 2) % (Math.PI * 2);
+      return Math.atan2(cross, dot);
     });
     const occupiedQuadrants = new Set(
-      relativeAngles.map(
-        (angle) => Math.floor((angle + 0.000_001) / (Math.PI / 2)) % 4,
+      signedRelativeAngles.map(
+        (angle) => Math.floor((angle + Math.PI) / (Math.PI / 2)) % 4,
       ),
     );
 
-    expect(relativeAngles[0]).toBeLessThan(0.000_001);
     expect(occupiedQuadrants.size).toBe(4);
+    expect(Math.max(...signedRelativeAngles)).toBeGreaterThan(Math.PI * 0.6);
+    expect(Math.min(...signedRelativeAngles)).toBeLessThan(-Math.PI * 0.6);
     expect(
-      relativeAngles.some((angle) => Math.abs(angle - Math.PI) < 0.1),
+      signedRelativeAngles.every((angle) => Math.abs(angle) < Math.PI * 0.85),
     ).toBe(true);
+  });
+
+  it("bends long single-directory paths into a stable two-dimensional trunk", () => {
+    const nodes: RepositoryGraphInputNode[] = [node("root", null, "directory")];
+    let parentId = "root";
+    for (let depth = 1; depth <= 10; depth += 1) {
+      const id = `nested-${depth}`;
+      nodes.push(node(id, parentId, "directory"));
+      parentId = id;
+    }
+
+    const scene = buildRepositoryGraphScene(nodes);
+    const first = scene.nodesById.get("nested-1")!;
+    const middle = scene.nodesById.get("nested-5")!;
+    const last = scene.nodesById.get("nested-10")!;
+    const width = scene.bounds.maxX - scene.bounds.minX;
+    const height = scene.bounds.maxY - scene.bounds.minY;
+
+    expect(Math.abs(first.x)).toBeLessThan(0.000_001);
+    expect(Math.abs(middle.x)).toBeGreaterThan(100);
+    expect(Math.abs(last.x)).toBeGreaterThan(Math.abs(middle.x));
+    expect(width / height).toBeGreaterThan(0.65);
+    expect(width / height).toBeLessThan(1.5);
+
+    const rebuilt = buildRepositoryGraphScene(nodes);
+    expect(rebuilt.nodes.map(({ id, x, y }) => ({ id, x, y }))).toEqual(
+      scene.nodes.map(({ id, x, y }) => ({ id, x, y })),
+    );
   });
 
   it("bounds large hierarchies and reports aggregation without dropping the source count", () => {
