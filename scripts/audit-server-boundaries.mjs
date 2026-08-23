@@ -9,6 +9,10 @@ const serverSourcePath = resolve(repositoryRoot, "cantrip_server/src");
 const appPath = resolve(serverSourcePath, "app.ts");
 const schemaPath = resolve(serverSourcePath, "db/schema.ts");
 const protocolPath = resolve(repositoryRoot, "packages/protocol/src/index.ts");
+const endpointContentProtocolPath = resolve(
+  repositoryRoot,
+  "packages/protocol/src/endpoint-content.ts",
+);
 const liveProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/live.ts",
@@ -3403,6 +3407,99 @@ async function durableJobStatusBoundaryAudit() {
   };
 }
 
+async function clientControlNotificationBoundaryAudit() {
+  const paths = {
+    contentProtocol: resolve(
+      repositoryRoot,
+      "packages/protocol/src/client-control-content.ts",
+    ),
+    endpointProtocol: endpointContentProtocolPath,
+    encryptionProtocol: resolve(
+      repositoryRoot,
+      "packages/protocol/src/encryption.ts",
+    ),
+    liveProtocol: liveProtocolPath,
+    server: appPath,
+    worker: resolve(
+      repositoryRoot,
+      "cantrip_worker/src/mcp/client-control-operations.ts",
+    ),
+    workerEncryption: resolve(
+      repositoryRoot,
+      "cantrip_worker/src/client-control-content-encryption.ts",
+    ),
+    client: resolve(repositoryRoot, "cantrip_app/src/App.tsx"),
+    clientEncryption: resolve(
+      repositoryRoot,
+      "cantrip_app/src/lib/client-control-content-encryption.ts",
+    ),
+  };
+  const texts = Object.fromEntries(
+    await Promise.all(
+      Object.entries(paths).map(async ([name, path]) => [
+        name,
+        await readFile(path, "utf8"),
+      ]),
+    ),
+  );
+  const failures = [];
+  for (const marker of [
+    "clientNotificationContentSchema",
+    "protectedClientNotificationSchema",
+    'domain === "client-control-content"',
+  ]) {
+    if (!texts.contentProtocol.includes(marker)) {
+      failures.push(
+        `protocol: missing protected notification marker ${marker}`,
+      );
+    }
+  }
+  for (const textName of ["endpointProtocol", "encryptionProtocol"]) {
+    if (!texts[textName].includes('"client-control-content"')) {
+      failures.push(`${textName}: client-control component domain is missing`);
+    }
+  }
+  const notifyStart = texts.liveProtocol.indexOf('kind: z.literal("notify")');
+  const notifyEnd = texts.liveProtocol.indexOf(".strict()", notifyStart);
+  const notifyContract = texts.liveProtocol.slice(notifyStart, notifyEnd);
+  for (const marker of ["workerId", "operationId", "protectedContent"]) {
+    if (!notifyContract.includes(marker)) {
+      failures.push(`live notification: missing opaque field ${marker}`);
+    }
+  }
+  for (const semantic of ["level", "title", "message"]) {
+    if (new RegExp(`\\b${semantic}\\s*:`, "u").test(notifyContract)) {
+      failures.push(`live notification: plaintext ${semantic} returned`);
+    }
+  }
+  if (texts.server.includes("cantripMcpClientNotifyInputSchema")) {
+    failures.push("server: plaintext notification input schema returned");
+  }
+  for (const [textName, marker] of [
+    ["server", "protectedClientNotificationSchema"],
+    ["worker", "protectWorkerClientNotification"],
+    ["workerEncryption", 'domain: "client-control-content"'],
+    ["client", "openClientNotification"],
+    ["clientEncryption", 'domain: "client-control-content"'],
+  ]) {
+    if (!texts[textName].includes(marker)) {
+      failures.push(`${textName}: protected notification path is missing`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Client-control notification E2EE boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    guards: [
+      "notification-content:worker-sealed",
+      "live-control:opaque-envelope-only",
+      "notification-content:client-opened",
+    ],
+  };
+}
+
 async function analyticsAuditLogPrivacyBoundaryAudit() {
   const paths = {
     schema: resolve(serverSourcePath, "db/schema.ts"),
@@ -4017,8 +4114,8 @@ function agentOperationContentClassification(operation) {
   }
   if (operation === "client.notify") {
     return {
-      classification: "tracked-rollout-gap",
-      rationale: "client-notification semantic content is plaintext",
+      classification: "endpoint-protected",
+      rationale: "worker-sealed client-control-content notification envelope",
     };
   }
   if (/^(?:browser|explorer|policy|terminal)\./u.test(operation)) {
@@ -4042,8 +4139,8 @@ function agentOperationContentClassification(operation) {
 function clientControlContentClassification(command) {
   return command === "notify"
     ? {
-        classification: "tracked-rollout-gap",
-        rationale: "notification title and message are semantic plaintext",
+        classification: "endpoint-protected",
+        rationale: "operation-bound client-control-content ciphertext",
       }
     : {
         classification: "intentionally-public-control-plane",
@@ -4537,6 +4634,7 @@ async function buildInventory() {
     workspaceNameRepository,
     tunnelConfiguration,
     durableJobStatus,
+    clientControlNotification,
     analyticsAuditLogPrivacy,
     attachmentContentRepository,
     privateDisplayLabelDependencies,
@@ -4572,6 +4670,7 @@ async function buildInventory() {
     workspaceNameRepositoryBoundaryAudit(),
     tunnelConfigurationBoundaryAudit(),
     durableJobStatusBoundaryAudit(),
+    clientControlNotificationBoundaryAudit(),
     analyticsAuditLogPrivacyBoundaryAudit(),
     attachmentContentRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
@@ -4812,6 +4911,10 @@ async function buildInventory() {
     durableJobStatusPrivacyBoundary: {
       status: "minimized",
       ...durableJobStatus,
+    },
+    clientControlNotificationE2eeBoundary: {
+      status: "enforced",
+      ...clientControlNotification,
     },
     analyticsAuditLogPrivacyBoundary: {
       status: "minimized",

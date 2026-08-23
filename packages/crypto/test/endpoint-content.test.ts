@@ -17,6 +17,7 @@ describe("endpoint content encryption", () => {
       "run-content",
       "customization-content",
       "tunnel-content",
+      "client-control-content",
     ] as const;
     try {
       for (const domain of domains) {

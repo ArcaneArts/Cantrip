@@ -281,6 +281,7 @@ import {
   useAppLiveScope,
   useAppLiveStatus,
 } from "@/lib/app-live-react";
+import { openClientNotification } from "@/lib/client-control-content-encryption";
 import {
   chatResourceRefreshIntervalMs,
   chatTranscriptNeedsFastRefresh,
@@ -6745,13 +6746,20 @@ export function App() {
         window.focus();
       }
       switch (command.kind) {
-        case "notify":
+        case "notify": {
+          const notification = await openClientNotification({
+            opaque: command.protectedContent,
+            operationId: command.operationId,
+            projectId: command.projectId,
+            workerId: command.workerId,
+          });
           showAppToast({
-            tone: command.level,
-            title: command.title,
-            message: command.message,
+            tone: notification.level,
+            title: notification.title,
+            message: notification.message,
           });
           return { status: "applied" as const };
+        }
         case "focus-project":
           selectProjectFromCommandBar(command.projectId);
           return { status: "applied" as const };

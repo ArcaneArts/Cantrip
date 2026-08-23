@@ -39,7 +39,7 @@ import {
   cantripAgentOperationResultSchema,
   cantripMcpClientFocusProjectInputSchema,
   cantripMcpClientFocusSurfaceInputSchema,
-  cantripMcpClientNotifyInputSchema,
+  protectedClientNotificationSchema,
   cantripMcpClientShowInteractionInputSchema,
   cantripCliCommandResultSchema,
   cantripVersionSchema,
@@ -5874,7 +5874,7 @@ export async function buildApp({
         });
       }
       case "client.notify": {
-        const input = cantripMcpClientNotifyInputSchema.parse(call.arguments);
+        const input = protectedClientNotificationSchema.parse(call.arguments);
         const target = {
           kind: "project" as const,
           projectId: context.projectId,
@@ -5884,6 +5884,7 @@ export async function buildApp({
           {
             kind: "notify",
             projectId: context.projectId,
+            workerId: context.workerId,
             ...input,
           },
         );

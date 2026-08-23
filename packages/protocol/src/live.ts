@@ -6,6 +6,7 @@ import {
   type JsonMessageDecodeResult,
 } from "./json-message.js";
 import { workflowJsonObjectSchemaWithLimits } from "./workflows.js";
+import { clientNotificationOpaqueSchema } from "./client-control-content.js";
 
 export const appLiveProtocolVersionSchema = z.literal(1);
 
@@ -34,9 +35,9 @@ export const clientControlCommandSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("notify"),
       projectId: liveIdSchema,
-      level: z.enum(["info", "warning", "error"]),
-      title: z.string().trim().min(1).max(120),
-      message: z.string().trim().min(1).max(2_000),
+      workerId: liveIdSchema,
+      operationId: z.string().uuid(),
+      protectedContent: clientNotificationOpaqueSchema,
     })
     .strict(),
   z
