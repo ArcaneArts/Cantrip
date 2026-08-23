@@ -230,7 +230,7 @@ export function ProjectSwitcher({
             size="icon"
             variant="ghost"
             className="size-7 shrink-0"
-            title={`Add project to ${activeWorkspace?.name ?? "current workspace"}`}
+            aria-label={`Add project to ${activeWorkspace?.name ?? "current workspace"}`}
           >
             <Plus className="size-4" />
             <span className="sr-only">

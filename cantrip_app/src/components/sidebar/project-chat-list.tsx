@@ -479,7 +479,7 @@ function SortableProject({
             trigger={
               <button
                 type="button"
-                title={`Add to ${project.name}`}
+                aria-label={`Add to ${project.name}`}
                 onClick={(event) => event.stopPropagation()}
                 className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 [@media(pointer:coarse)]:opacity-100"
               >
@@ -495,7 +495,7 @@ function SortableProject({
               <button
                 data-actions-trigger
                 type="button"
-                title={`Project actions for ${project.name}`}
+                aria-label={`Project actions for ${project.name}`}
                 onClick={(event) => event.stopPropagation()}
                 className="mr-1 grid size-7 shrink-0 place-items-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100"
               >

@@ -16,7 +16,6 @@ import {
   Loader2,
   Network,
   Pencil,
-  RefreshCw,
   SquareTerminal,
   Trash2,
 } from "lucide-react";
@@ -128,13 +127,6 @@ function SidebarFileRow({
       }}
       role="treeitem"
       tabIndex={editing ? -1 : 0}
-      title={
-        editing
-          ? undefined
-          : entry.kind === "file" && entry.viewable
-            ? `${entry.path}\nDouble-click to keep open`
-            : entry.path
-      }
     >
       <span
         className="flex min-w-0 flex-1 items-center gap-1.5"
@@ -439,8 +431,9 @@ export function ProjectSidebarFileTree({
   const [deleteTarget, setDeleteTarget] = useState<ExplorerEntry | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [filesCollapsed, setFilesCollapsed] = useState(false);
   const { directory, entries } = useExplorerDirectory({
-    enabled: Boolean(explorer),
+    enabled: Boolean(explorer) && !filesCollapsed,
     explorerId: explorer?.id ?? "unavailable",
     gitStatus: undefined,
     path: "",
@@ -538,24 +531,18 @@ export function ProjectSidebarFileTree({
         className="mt-2 border-t border-border/70 pt-2"
         aria-label="Files"
       >
-        <div className="mb-1 flex h-6 items-center gap-2 px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+        <button
+          aria-expanded={!filesCollapsed}
+          className="mb-1 flex h-6 w-full items-center gap-2 rounded px-2 text-left text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70 hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+          onClick={() => setFilesCollapsed((collapsed) => !collapsed)}
+          type="button"
+        >
           <span className="min-w-0 flex-1 truncate">Files</span>
-          {pinningPath ? <Loader2 className="size-3 animate-spin" /> : null}
-          {explorer ? (
-            <button
-              aria-label="Refresh files"
-              className="grid size-5 place-items-center rounded hover:bg-muted hover:text-foreground"
-              onClick={() => void directory.refetch()}
-              title="Refresh files"
-              type="button"
-            >
-              <RefreshCw
-                className={cn("size-3", directory.isFetching && "animate-spin")}
-              />
-            </button>
+          {!filesCollapsed && pinningPath ? (
+            <Loader2 className="size-3 animate-spin" />
           ) : null}
-        </div>
-        {renameError ? (
+        </button>
+        {!filesCollapsed && renameError ? (
           <p
             className="px-2 pb-1 text-[10px] leading-4 text-destructive"
             role="alert"
@@ -563,7 +550,8 @@ export function ProjectSidebarFileTree({
             {renameError}
           </p>
         ) : null}
-        {loading || (explorer && directory.isLoading) ? (
+        {filesCollapsed ? null : loading ||
+          (explorer && directory.isLoading) ? (
           <div className="flex h-16 items-center justify-center text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
           </div>
