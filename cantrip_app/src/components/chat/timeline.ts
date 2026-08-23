@@ -158,15 +158,57 @@ function mergeTurnMetadata(
   };
 }
 
-function visibleWorkMessage(message: ChatMessage): ChatMessage | null {
-  const content = message.content.filter(
-    (item) =>
-      item.type !== "activity" ||
-      (item.activity.type !== "usage" &&
-        item.activity.type !== "rateLimit" &&
-        item.activity.type !== "instructionContext" &&
-        item.activity.type !== "turnSummary"),
-  );
+export function settleRunningActivity(
+  activity: AgentActivity,
+  status: "completed" | "failed",
+  completedAtMs: number | null = null,
+): AgentActivity {
+  return activity.status === "running"
+    ? ({
+        ...activity,
+        status,
+        ...(completedAtMs === null
+          ? {}
+          : {
+              updatedAtMs: Math.max(activity.updatedAtMs ?? 0, completedAtMs),
+              completedAtMs,
+            }),
+      } as AgentActivity)
+    : activity;
+}
+
+function terminalActivityStatus(
+  followingMessage: ChatMessage | undefined,
+  turnSummary: AgentActivity | undefined,
+): "completed" | "failed" | null {
+  if (turnSummary?.type === "turnSummary") {
+    return turnSummary.status === "completed" ? "completed" : "failed";
+  }
+  if (followingMessage?.role === "system") return "failed";
+  return terminalMessage(followingMessage) ? "completed" : null;
+}
+
+function visibleWorkMessage(
+  message: ChatMessage,
+  terminalStatus: "completed" | "failed" | null,
+): ChatMessage | null {
+  const content = message.content
+    .filter(
+      (item) =>
+        item.type !== "activity" ||
+        (item.activity.type !== "usage" &&
+          item.activity.type !== "rateLimit" &&
+          item.activity.type !== "instructionContext" &&
+          item.activity.type !== "turnSummary"),
+    )
+    .map((item) =>
+      item.type === "activity" && terminalStatus
+        ? {
+            ...item,
+            activity: settleRunningActivity(item.activity, terminalStatus),
+          }
+        : item,
+    );
   return content.length > 0 ? { ...message, content } : null;
 }
 
@@ -197,16 +239,20 @@ export function buildChatTimeline(
     const grouped = groupedMessages.flatMap(messageActivities);
     const followingMessage = messages[endIndex + 1];
     const metadata = activityTurnMetadata(grouped);
-    const displayedMessages = groupedMessages.flatMap((groupedMessage) => {
-      const visible = visibleWorkMessage(groupedMessage);
-      return visible ? [visible] : [];
-    });
     const turnSummary = [...grouped]
       .reverse()
       .find(
         (activity) =>
           activity.type === "turnSummary" && activity.status !== "running",
       );
+    const terminalStatus = terminalActivityStatus(
+      followingMessage,
+      turnSummary,
+    );
+    const displayedMessages = groupedMessages.flatMap((groupedMessage) => {
+      const visible = visibleWorkMessage(groupedMessage, terminalStatus);
+      return visible ? [visible] : [];
+    });
     const endedAt = terminalMessage(followingMessage)
       ? followingMessage!.createdAt
       : turnSummary?.type === "turnSummary" && turnSummary.completedAt !== null
