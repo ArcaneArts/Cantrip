@@ -16,10 +16,14 @@
     <title>Cantrip</title>
     <script>
       (() => {
-        const cacheKey = "cantrip.theme.preference";
+        const themeCacheKey = "cantrip.theme.preference";
+        const highContrastCacheKey = "cantrip.theme.highContrast";
         let preference;
+        let highContrast = false;
         try {
-          preference = window.localStorage.getItem(cacheKey);
+          preference = window.localStorage.getItem(themeCacheKey);
+          highContrast =
+            window.localStorage.getItem(highContrastCacheKey) === "true";
         } catch {
           // Storage can be unavailable in hardened or private browser contexts.
         }
@@ -31,6 +35,10 @@
           (preference === "system" &&
             window.matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.classList.toggle(
+          "high-contrast",
+          highContrast,
+        );
         document.documentElement.style.colorScheme = dark ? "dark" : "light";
       })();
     </script>
