@@ -33,6 +33,7 @@ import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-gr
 import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
 import {
   defaultExplorerFileMode,
+  markdownPreviewUsesPlainText,
   monacoLanguageForPath,
   structuredFileFormatForPath,
   usesCantripCodeEditor,
@@ -1008,7 +1009,12 @@ export function ExplorerView({
                 editableLanguage === null ||
                 fileMode === "visual") ? (
               <div className="h-full overflow-auto">
-                {file.data.markdown ? (
+                {file.data.markdown &&
+                markdownPreviewUsesPlainText(file.data.path) ? (
+                  <pre className="min-h-full whitespace-pre-wrap break-words p-6 font-mono text-xs leading-5 sm:p-10">
+                    {draft}
+                  </pre>
+                ) : file.data.markdown ? (
                   <article className="mx-auto max-w-4xl p-6 sm:p-10">
                     <Markdown>{draft}</Markdown>
                   </article>

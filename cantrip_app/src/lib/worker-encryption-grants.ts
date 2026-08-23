@@ -49,6 +49,41 @@ const defaultApi: WorkerGrantApi = {
   revokeGrant: revokeEncryptionGrant,
 };
 
+const pendingGrantAuthorizations = new WeakMap<
+  ClientEncryptionService,
+  WeakMap<WorkerGrantApi, Map<string, Promise<EncryptionKeyGrant>>>
+>();
+
+function pendingGrantMap(
+  service: ClientEncryptionService,
+  api: WorkerGrantApi,
+): Map<string, Promise<EncryptionKeyGrant>> {
+  let serviceAuthorizations = pendingGrantAuthorizations.get(service);
+  if (!serviceAuthorizations) {
+    serviceAuthorizations = new WeakMap();
+    pendingGrantAuthorizations.set(service, serviceAuthorizations);
+  }
+  let authorizations = serviceAuthorizations.get(api);
+  if (!authorizations) {
+    authorizations = new Map();
+    serviceAuthorizations.set(api, authorizations);
+  }
+  return authorizations;
+}
+
+function activeComponentGrant(
+  grants: EncryptionKeyGrant[],
+  component: WorkerEncryptionComponentScope,
+  keyRevision: number,
+): EncryptionKeyGrant | undefined {
+  return grants.find(
+    (grant) =>
+      grant.state === "active" &&
+      grant.component === component &&
+      grant.keyRevision === keyRevision,
+  );
+}
+
 function workerPrincipal(
   principals: EncryptionPrincipal[],
   workerId: string,
@@ -113,43 +148,73 @@ export async function authorizeWorkerEncryption(input: {
     );
   }
   const keyRevision = input.keyRevision ?? snapshot.masterKeyRevision;
+  const existingGrants = await api.listGrants(principal.id);
+  const authorizations = pendingGrantMap(service, api);
   const created: EncryptionKeyGrant[] = [];
   for (const component of components) {
-    const componentKey = service.componentKey({
+    const existing = activeComponentGrant(
+      existingGrants,
       component,
-      identity: input.identity,
       keyRevision,
-    });
-    try {
-      const wrappedKey = await wrapComponentKeyForWorker({
-        ownerId: input.identity.ownerId,
-        workerId: input.workerId,
-        component,
-        componentKey,
-        keyRevision,
-        workerPublicKey: principal.publicKey,
-      });
-      try {
-        created.push(
-          await api.createGrant(principal.id, {
-            component,
-            keyRevision,
-            wrappedKey,
-          }),
-        );
-      } catch (error) {
-        const existing = (await api.listGrants(principal.id)).find(
-          (grant) =>
-            grant.state === "active" &&
-            grant.component === component &&
-            grant.keyRevision === keyRevision,
-        );
-        if (!existing) throw error;
-        created.push(existing);
-      }
-    } finally {
-      clearSensitiveBytes(componentKey);
+    );
+    if (existing) {
+      created.push(existing);
+      continue;
     }
+    const authorizationKey = JSON.stringify([
+      input.identity.ownerId,
+      input.identity.serverId,
+      input.workerId,
+      principal.id,
+      principal.revision,
+      component,
+      keyRevision,
+    ]);
+    let authorization = authorizations.get(authorizationKey);
+    if (!authorization) {
+      authorization = (async () => {
+        const componentKey = service.componentKey({
+          component,
+          identity: input.identity,
+          keyRevision,
+        });
+        try {
+          const wrappedKey = await wrapComponentKeyForWorker({
+            ownerId: input.identity.ownerId,
+            workerId: input.workerId,
+            component,
+            componentKey,
+            keyRevision,
+            workerPublicKey: principal.publicKey,
+          });
+          try {
+            return await api.createGrant(principal.id, {
+              component,
+              keyRevision,
+              wrappedKey,
+            });
+          } catch (error) {
+            const concurrent = activeComponentGrant(
+              await api.listGrants(principal.id),
+              component,
+              keyRevision,
+            );
+            if (!concurrent) throw error;
+            return concurrent;
+          }
+        } finally {
+          clearSensitiveBytes(componentKey);
+        }
+      })();
+      authorizations.set(authorizationKey, authorization);
+      const clearAuthorization = () => {
+        if (authorizations.get(authorizationKey) === authorization) {
+          authorizations.delete(authorizationKey);
+        }
+      };
+      void authorization.then(clearAuthorization, clearAuthorization);
+    }
+    created.push(await authorization);
   }
   return created;
 }

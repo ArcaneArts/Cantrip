@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   defaultExplorerFileMode,
+  markdownPreviewUsesPlainText,
   monacoLanguageForPath,
   monacoModelPath,
   structuredFileFormatForPath,
@@ -38,6 +39,14 @@ describe("explorer file editing", () => {
     expect(usesCantripCodeEditor("README.md", "edit")).toBe(true);
     expect(usesCantripCodeEditor("README.md", "preview")).toBe(false);
     expect(usesCantripCodeEditor("assets/photo.png", "edit")).toBe(false);
+  });
+
+  it("keeps plain-text license documents out of Markdown code-block parsing", () => {
+    expect(markdownPreviewUsesPlainText("LICENSE.md")).toBe(true);
+    expect(markdownPreviewUsesPlainText("licenses/COPYING.GPL.md")).toBe(true);
+    expect(markdownPreviewUsesPlainText("README.md")).toBe(false);
+    expect(markdownPreviewUsesPlainText("docs/license-guide.md")).toBe(false);
+    expect(markdownPreviewUsesPlainText("LICENSE.txt")).toBe(false);
   });
 
   it("identifies supported structured file formats", () => {

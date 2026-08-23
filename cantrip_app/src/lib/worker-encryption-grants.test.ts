@@ -187,4 +187,50 @@ describe("client-created worker encryption grants", () => {
       }),
     ).rejects.toMatchObject({ code: "locked" });
   });
+
+  it("shares concurrent authorization for the same worker component", async () => {
+    const workerKeyPair = await generateHpkeKeyPair(false);
+    const workerId = "worker-concurrent";
+    const { api } = apiFor({
+      id: "33333333-3333-4333-8333-333333333333",
+      ownerId: identity.ownerId,
+      kind: "worker",
+      workerId,
+      label: null,
+      publicKey: await publicKeyForPair(workerKeyPair),
+      state: "approved",
+      revision: 2,
+      approvedAt: timestamp,
+      revokedAt: null,
+      revokedReason: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    const createGrant = api.createGrant.bind(api);
+    let createCalls = 0;
+    api.createGrant = async (principalId, input) => {
+      createCalls += 1;
+      await Promise.resolve();
+      return createGrant(principalId, input);
+    };
+    const service = new ClientEncryptionService();
+    service.setAccountMasterKey({
+      accountMasterKey: generateAccountMasterKey(),
+      identity,
+      masterKeyRevision: 1,
+    });
+
+    const authorize = () =>
+      authorizeWorkerEncryption({
+        api,
+        components: ["surface-private-state"],
+        identity,
+        service,
+        workerId,
+      });
+    const [first, second] = await Promise.all([authorize(), authorize()]);
+
+    expect(createCalls).toBe(1);
+    expect(second[0]?.id).toBe(first[0]?.id);
+  });
 });

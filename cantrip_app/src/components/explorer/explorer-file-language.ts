@@ -103,6 +103,13 @@ export function defaultExplorerFileMode(path: string): ExplorerFileMode {
   return structuredFileFormatForPath(path) ? "visual" : "preview";
 }
 
+export function markdownPreviewUsesPlainText(path: string): boolean {
+  const filename = path.split("/").at(-1)?.toLowerCase() ?? "";
+  return /^(?:copying|licen[cs]e)(?:[-_.](?:apache|bsd|gpl|lgpl|mit|mpl|v?\d+(?:\.\d+)*))*\.md$/u.test(
+    filename,
+  );
+}
+
 export function usesCantripCodeEditor(
   path: string,
   mode: ExplorerFileMode,
