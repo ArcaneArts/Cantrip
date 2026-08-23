@@ -32,6 +32,20 @@ describe("forwardableCodeWebSocketClose", () => {
 });
 
 describe("CodeDirectEndpointManager file-open control", () => {
+  it("reuses the worker-local endpoint for a protected tunnel session", async () => {
+    const manager = new CodeDirectEndpointManager({} as CodeSupervisor);
+    try {
+      const first = await manager.prepareProtected("tunnel-1", "session-1");
+      const second = await manager.prepareProtected("tunnel-1", "session-1");
+      expect(second).toEqual(first);
+
+      const rotated = await manager.prepareProtected("tunnel-1", "session-2");
+      expect(rotated.port).not.toBe(first.port);
+    } finally {
+      manager.close();
+    }
+  });
+
   it("opens a file in the bound session without server mediation", async () => {
     const openFile = vi
       .fn()

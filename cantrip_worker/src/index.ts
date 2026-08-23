@@ -762,6 +762,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     tunnelTcpDestination,
     projectShares,
     codeTunnel,
+    codeDirectEndpoints,
     workerEncryption,
     config.workerId,
   );

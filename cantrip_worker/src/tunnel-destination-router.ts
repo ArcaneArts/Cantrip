@@ -2,6 +2,7 @@ import type { TunnelDataPlaneFrameHeader } from "@cantrip/protocol";
 import type { TunnelDataProtectionConfiguration } from "@cantrip/protocol/tunnel-content";
 
 import type { CodeTunnelProxy } from "./code/tunnel-proxy.js";
+import type { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import type { ProjectShareManager } from "./project-share-manager.js";
 import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
 import {
@@ -19,7 +20,7 @@ type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 
 interface ProtectedConnection {
   configuration: TunnelDataProtectionConfiguration;
-  targetKind: "project-share" | "tcp";
+  targetKind: "tcp";
 }
 
 export class TunnelDestinationRouter {
@@ -30,6 +31,7 @@ export class TunnelDestinationRouter {
     private readonly tcp: TunnelTcpDestinationAdapter,
     private readonly projectShares: ProjectShareManager,
     private readonly code: CodeTunnelProxy,
+    private readonly codeEndpoints: CodeDirectEndpointManager,
     private readonly encryption: WorkerEncryptionService,
     private readonly workerId: string,
   ) {}
@@ -130,6 +132,22 @@ export class TunnelDestinationRouter {
           },
           payload,
         );
+        return;
+      }
+      if (
+        content.destination.kind === "worker-code" &&
+        header.target.targetKind === "code" &&
+        content.destination.resourceId === header.target.recordId
+      ) {
+        const endpoint = await this.codeEndpoints.prepareProtected(
+          header.tunnelId,
+          content.destination.sessionId,
+        );
+        this.#protections.set(connectionKey(header), {
+          configuration: content.dataProtection,
+          targetKind: "tcp",
+        });
+        this.tcp.handleFrame({ ...header, target: endpoint }, payload);
         return;
       }
       if (
