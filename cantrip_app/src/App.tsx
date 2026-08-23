@@ -5790,7 +5790,12 @@ export function App() {
       : undefined;
   const explorerToPrewarm = selectedExplorer ?? explorers.data?.[0];
   useEffect(() => {
-    if (!desktopRuntime || isPopout || !explorerToPrewarm) {
+    if (
+      !desktopRuntime ||
+      isPopout ||
+      sidebarFilePreviewVisible ||
+      !explorerToPrewarm
+    ) {
       if (!isPopout) clearDesktopExplorerFilePrewarm();
       return;
     }
@@ -5798,7 +5803,13 @@ export function App() {
       appearance: codeAppearance,
       explorer: explorerToPrewarm,
     });
-  }, [codeAppearance, desktopRuntime, explorerToPrewarm, isPopout]);
+  }, [
+    codeAppearance,
+    desktopRuntime,
+    explorerToPrewarm,
+    isPopout,
+    sidebarFilePreviewVisible,
+  ]);
   const selectedBrowser =
     !sidebarFilePreviewVisible && selectedSurface?.kind === "browser"
       ? selectedSurface.entity

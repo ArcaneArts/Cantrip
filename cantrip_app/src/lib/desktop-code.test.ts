@@ -30,6 +30,7 @@ import {
   openDirectCodeAttachmentFile,
   preferProtectedCodeAttachment,
   setDirectCodeAttachmentPresentation,
+  waitForDirectCodeAttachmentReady,
 } from "./desktop-code";
 
 beforeEach(() => {
@@ -139,6 +140,7 @@ describe("preferProtectedCodeAttachment", () => {
       localPort: 52345,
       tunnelId: "11111111-1111-4111-8111-111111111111",
     });
+    mocks.fetch.mockResolvedValue({ ok: true });
 
     const preferred = await preferProtectedCodeAttachment({
       attachmentId: "11111111-1111-4111-8111-111111111111",
@@ -156,5 +158,26 @@ describe("preferProtectedCodeAttachment", () => {
     expect(preferred.directTunnelId).toBe(
       "11111111-1111-4111-8111-111111111111",
     );
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:52345/code/_cantrip/health"),
+      { cache: "no-store", credentials: "omit" },
+    );
+  });
+});
+
+describe("waitForDirectCodeAttachmentReady", () => {
+  it("retries a loopback startup race before exposing the attachment", async () => {
+    mocks.fetch
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce({ ok: true });
+
+    await expect(
+      waitForDirectCodeAttachmentReady(
+        { url: "http://127.0.0.1:52345/code/" },
+        { attempts: 2, retryDelayMs: 0 },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
   });
 });
