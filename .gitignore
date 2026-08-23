@@ -59,8 +59,8 @@ cantrip_codex/.upstream-backup-*/
 
 # Locally assembled release artifacts.
 artifacts/
-!/.repro/**/artifacts/
-!/.repro/**/artifacts/*.txt
+!/.repro/20260823-112446-explorer-code-desktop-health-request-fai/artifacts/
+!/.repro/20260823-112446-explorer-code-desktop-health-request-fai/artifacts/*.txt
 
 # Cantrip Code source is tracked, but its prepared source, dependency tree,
 # caches, compiled workbench, and packaged server are always generated.
