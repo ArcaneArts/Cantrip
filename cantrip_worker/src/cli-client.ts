@@ -27,20 +27,30 @@ export async function invokeCantripCliCommand(options: {
   workerId: string;
 }): Promise<CantripCliCommandResult> {
   const url = new URL("/api/internal/cli", options.serverUrl);
+  const call = workerCliCommandCallSchema.parse({
+    ...options.request,
+    chatContext: options.chatContext ?? null,
+    requestId: options.requestId,
+    workerId: options.workerId,
+  });
+  const context =
+    call.context.selection === "auto"
+      ? {
+          codexThreadId: call.context.codexThreadId,
+          terminalId: call.context.terminalId,
+          cwd: call.context.cwd,
+        }
+      : call.context;
   const response = await fetch(url, {
     method: "POST",
     headers: {
       authorization: `Bearer ${options.token}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify(
-      workerCliCommandCallSchema.parse({
-        ...options.request,
-        chatContext: options.chatContext ?? null,
-        requestId: options.requestId,
-        workerId: options.workerId,
-      }),
-    ),
+    // Older servers use a strict context schema from before explicit context
+    // selection existed. Omitting the default preserves rolling-upgrade
+    // compatibility while current servers restore `auto` from their default.
+    body: JSON.stringify({ ...call, context }),
   });
   const payload = (await response.json()) as unknown;
   if (!response.ok) {
