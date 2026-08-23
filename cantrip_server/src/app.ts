@@ -45,6 +45,9 @@ import {
   cantripVersionSchema,
   codeAttachmentCreateSchema,
   codeAttachmentSchema,
+  codeProtectedAttachmentCreateSchema,
+  codeProtectedAttachmentIntentSchema,
+  codeProtectedAttachmentWireSchema,
   codeOpenFileRequestSchema,
   codeOpenFileResultSchema,
   codeAgentTurnNotificationResultSchema,
@@ -59,6 +62,7 @@ import {
   codeTabWireListSchema,
   codeTabWireSummarySchema,
   encryptedCodeTabUpdateSchema,
+  explorerCodeProtectedAttachmentCreateSchema,
   codeThemeUpdateSchema,
   desktopUpdateActiveWorkSummarySchema,
   serviceLogReadResultSchema,
@@ -22112,6 +22116,193 @@ export async function buildApp({
   );
 
   app.post<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId/protected-attachment-intents",
+    async (request, reply) => {
+      const input = codeAttachmentCreateSchema.safeParse(request.body ?? {});
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const context = await repository.getCodeTabExecutionContext(
+        ownerId,
+        request.params.codeTabId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code tab not found." });
+      }
+      if (!context.capabilities.available) {
+        return reply.code(409).send({
+          error:
+            context.capabilities.reason ??
+            "Cantrip Code is unavailable on this worker.",
+        });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      let probe;
+      try {
+        probe = codeProbeResultSchema.parse(
+          await bridge.request(context.workerId, { type: "code.probe" }),
+        );
+      } catch (error) {
+        return reply.code(503).send({ error: errorMessage(error) });
+      }
+      if (!probe.capabilities.available || !probe.editorBuild) {
+        return reply.code(409).send({
+          error:
+            probe.capabilities.reason ??
+            "This worker has no compatible Cantrip Code build.",
+        });
+      }
+      const session = await repository.getOrCreateCodeSession(
+        ownerId,
+        request.params.codeTabId,
+        probe.editorBuild,
+        randomUUID(),
+      );
+      if (!session) {
+        return reply.code(409).send({
+          error: "The Code tab changed while its editor was opening.",
+        });
+      }
+      let runtime: CodeRuntimeStatus | null = null;
+      try {
+        runtime = codeRuntimeStatusSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "code.open",
+            sessionId: session.id,
+            codeTabId: context.codeTab.id,
+            projectId: context.codeTab.projectId,
+            worktreeId: context.worktreeId,
+            worktreeName: context.worktreeName,
+            cwd: context.cwd,
+            profileId: scopedCodeProfileId(ownerId, context.codeTab.profileId),
+            themeMode: "follow-cantrip",
+            appearance: input.data.appearance,
+            presentation: "workbench",
+          }),
+        );
+        if (
+          !(await updateCodeSessionRuntime(
+            ownerId,
+            context.codeTab.id,
+            session.id,
+            runtime,
+            true,
+          ))
+        ) {
+          throw new Error(
+            "The Code session changed while its runtime was starting.",
+          );
+        }
+      } catch (error) {
+        const message = errorMessage(error);
+        if (runtime) {
+          void bridge
+            .request(context.workerId, {
+              type: "code.stop",
+              sessionId: session.id,
+            })
+            .catch(() => undefined);
+        }
+        const failedRuntime = codeRuntimeStatusSchema.parse({
+          sessionId: session.id,
+          status:
+            error instanceof WorkerUnavailableError ? "offline" : "failed",
+          editorBuild: probe.editorBuild,
+          processInstanceId: null,
+          bridgeConnected: false,
+          dirtyEditors: [],
+          workbench: {
+            activeEditor: null,
+            git: null,
+            conflicts: [],
+            savePolicy: "always",
+            agentStatus: "idle",
+          },
+          startedAt: null,
+          lastActivityAt: new Date().toISOString(),
+          lastError: message,
+        });
+        await updateCodeSessionRuntime(
+          ownerId,
+          context.codeTab.id,
+          session.id,
+          failedRuntime,
+        );
+        return sendWorkerRequestFailure(reply, error, message);
+      }
+      if (!runtime) {
+        return reply.code(502).send({ error: "Code editor did not start." });
+      }
+      return reply.code(201).send(
+        codeProtectedAttachmentIntentSchema.parse({
+          sessionId: session.id,
+          runtime,
+        }),
+      );
+    },
+  );
+
+  app.post<{ Params: { codeTabId: string } }>(
+    "/api/code-tabs/:codeTabId/protected-attachments",
+    async (request, reply) => {
+      const input = codeProtectedAttachmentCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const context = await repository.getCodeTabExecutionContext(
+        ownerId,
+        request.params.codeTabId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Code tab not found." });
+      }
+      const session = (
+        (await repository.listCodeSessions(ownerId, context.codeTab.id)) ?? []
+      ).find((candidate) => candidate.id === input.data.sessionId);
+      if (!session || session.workerId !== context.workerId) {
+        return reply.code(409).send({ error: "Code session is unavailable." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      let runtime: CodeRuntimeStatus;
+      try {
+        runtime = codeRuntimeStatusSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "code.status",
+            sessionId: session.id,
+          }),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+      try {
+        return reply.code(201).send(
+          codeProtectedAttachmentWireSchema.parse(
+            await codeTunnel.createProtectedAttachment({
+              authSessionId: authenticatedPrincipal(request).sessionId,
+              codeTabId: context.codeTab.id,
+              ownerId,
+              projectId: context.codeTab.projectId,
+              protectedRecord: input.data.protectedRecord,
+              runtime,
+              sessionId: session.id,
+              tunnelId: input.data.tunnelId,
+              workerId: context.workerId,
+            }),
+          ),
+        );
+      } catch (error) {
+        return reply.code(503).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { codeTabId: string } }>(
     "/api/code-tabs/:codeTabId/attachments",
     async (request, reply) => {
       const input = codeAttachmentCreateSchema.safeParse(request.body ?? {});
@@ -24026,6 +24217,88 @@ export async function buildApp({
       ))
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Explorer not found." }),
+  );
+
+  app.post<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId/protected-code-attachments",
+    async (request, reply) => {
+      const input = explorerCodeProtectedAttachmentCreateSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const context = await repository.getExplorerExecutionContext(
+        ownerId,
+        request.params.explorerId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Explorer not found." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      let probe;
+      try {
+        probe = codeProbeResultSchema.parse(
+          await bridge.request(context.workerId, { type: "code.probe" }),
+        );
+      } catch (error) {
+        return reply.code(503).send({ error: errorMessage(error) });
+      }
+      if (!probe.capabilities.available || !probe.editorBuild) {
+        return reply.code(409).send({
+          error:
+            probe.capabilities.reason ??
+            "This worker has no compatible Cantrip Code build.",
+        });
+      }
+      const sessionId = input.data.sessionId;
+      const surfaceId = `explorer:${context.explorerId}:${sessionId}`;
+      let runtime: CodeRuntimeStatus;
+      try {
+        runtime = codeRuntimeStatusSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "code.open",
+            sessionId,
+            codeTabId: surfaceId,
+            projectId: context.projectId,
+            worktreeId: context.worktreeId,
+            cwd: context.root,
+            profileId: scopedCodeProfileId(ownerId, "default"),
+            themeMode: "follow-cantrip",
+            appearance: input.data.appearance,
+            presentation: "editor",
+          }),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+      try {
+        return reply.code(201).send(
+          codeProtectedAttachmentWireSchema.parse(
+            await codeTunnel.createProtectedAttachment({
+              authSessionId: authenticatedPrincipal(request).sessionId,
+              codeTabId: surfaceId,
+              ownerId,
+              projectId: context.projectId,
+              protectedRecord: input.data.protectedRecord,
+              runtime,
+              sessionId,
+              stopSessionOnRelease: true,
+              tunnelId: input.data.tunnelId,
+              workerId: context.workerId,
+            }),
+          ),
+        );
+      } catch (error) {
+        await bridge
+          .request(context.workerId, { type: "code.stop", sessionId })
+          .catch(() => undefined);
+        return reply.code(503).send({ error: errorMessage(error) });
+      }
+    },
   );
 
   app.post<{ Params: { explorerId: string } }>(

@@ -66,6 +66,14 @@ export const tunnelContentDestinationEndpointSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({
+        kind: z.literal("worker-adapter"),
+        workerId: tunnelContentIdSchema,
+        adapter: z.literal("code"),
+        resourceId: tunnelContentIdSchema,
+      })
+      .strict(),
+    z
+      .object({
         kind: z.literal("worker-project-share"),
         workerId: tunnelContentIdSchema,
         resourceId: tunnelContentIdSchema,

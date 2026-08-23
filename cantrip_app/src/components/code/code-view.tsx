@@ -5,6 +5,7 @@ import type {
   CodeTabStatus,
   CodeTabSummary,
 } from "@cantrip/protocol";
+import { isTauri } from "@tauri-apps/api/core";
 import { AlertTriangle, Code2, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import {
   CantripApiError,
   createCodeAttachment,
+  createProtectedCodeAttachment,
   getCodeRuntime,
   releaseCodeAttachment,
   saveAllCodeTab,
@@ -23,6 +25,7 @@ import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
   directCodeAttachmentHealthy,
   preferDirectCodeAttachment,
+  preferProtectedCodeAttachment,
   stopDirectCodeAttachment,
 } from "@/lib/desktop-code";
 
@@ -198,32 +201,51 @@ export function CodeView({
         worktreeId: codeTab.worktreeId,
       });
       try {
-        const relayAttachment = await createCodeAttachment(
-          codeTab.id,
-          appearanceRef.current,
-        );
-        ownedAttachmentId = relayAttachment.attachmentId;
+        const protectedWire = isTauri()
+          ? await createProtectedCodeAttachment(
+              codeTab.id,
+              codeTab.activeWorkerId,
+              appearanceRef.current,
+            )
+          : null;
+        if (protectedWire) ownedAttachmentId = protectedWire.attachmentId;
+        const relayAttachment = protectedWire
+          ? null
+          : await createCodeAttachment(codeTab.id, appearanceRef.current);
+        const initialAttachment = protectedWire
+          ? (await preferProtectedCodeAttachment(protectedWire)).attachment
+          : relayAttachment!;
+        ownedAttachmentId = initialAttachment.attachmentId;
         logCodeEvent("info", "relay attachment created", {
-          attachmentId: relayAttachment.attachmentId,
-          bridgeConnected: relayAttachment.runtime.bridgeConnected,
+          attachmentId: initialAttachment.attachmentId,
+          bridgeConnected: initialAttachment.runtime.bridgeConnected,
           elapsedMs: Math.round(performance.now() - startedAt),
-          sessionId: relayAttachment.sessionId,
-          status: relayAttachment.runtime.status,
-          url: codeAttachmentUrlForLog(relayAttachment.url),
+          sessionId: initialAttachment.sessionId,
+          status: initialAttachment.runtime.status,
+          url: codeAttachmentUrlForLog(initialAttachment.url),
         });
-        const preferred = await preferDirectCodeAttachment(
-          relayAttachment,
-        ).catch((error: unknown) => {
-          logCodeEvent("warn", "direct attachment unavailable; using relay", {
-            attachmentId: relayAttachment.attachmentId,
-            error: errorText(error),
-            sessionId: relayAttachment.sessionId,
-          });
-          return {
-            attachment: relayAttachment,
-            directTunnelId: null,
-          };
-        });
+        const preferred = protectedWire
+          ? {
+              attachment: initialAttachment,
+              directTunnelId: protectedWire.tunnelId,
+            }
+          : await preferDirectCodeAttachment(initialAttachment).catch(
+              (error: unknown) => {
+                logCodeEvent(
+                  "warn",
+                  "direct attachment unavailable; using relay",
+                  {
+                    attachmentId: initialAttachment.attachmentId,
+                    error: errorText(error),
+                    sessionId: initialAttachment.sessionId,
+                  },
+                );
+                return {
+                  attachment: initialAttachment,
+                  directTunnelId: null,
+                };
+              },
+            );
         const next = preferred.attachment;
         ownedDirectTunnelId = preferred.directTunnelId;
         if (cancelled || generation !== connectionGeneration.current) {
@@ -264,6 +286,10 @@ export function CodeView({
                 const tunnelId = ownedDirectTunnelId;
                 ownedDirectTunnelId = null;
                 void stopDirectCodeAttachment(tunnelId);
+                if (!relayAttachment) {
+                  reload();
+                  return;
+                }
                 setAttachment(relayAttachment);
                 logCodeEvent("warn", "direct attachment fell back to relay", {
                   attachmentId: next.attachmentId,
@@ -278,6 +304,14 @@ export function CodeView({
           directHealthTimer = setTimeout(checkDirectRoute, 5_000);
         }
       } catch (error) {
+        const failedAttachmentId = ownedAttachmentId;
+        const failedTunnelId = ownedDirectTunnelId;
+        ownedAttachmentId = null;
+        ownedDirectTunnelId = null;
+        void stopDirectCodeAttachment(failedTunnelId);
+        if (failedAttachmentId) {
+          void releaseCodeAttachment(failedAttachmentId).catch(() => undefined);
+        }
         if (cancelled || generation !== connectionGeneration.current) return;
         setConnectError(errorText(error));
         setConnecting(false);

@@ -73,6 +73,7 @@ export function ExplorerFilePopout({
           explorerId={explorer.id}
           path={path}
           projectId={explorer.projectId}
+          workerId={explorer.activeWorkerId}
           worktreeId={explorer.worktreeId}
         />
       ) : null}

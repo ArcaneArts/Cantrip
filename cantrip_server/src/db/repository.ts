@@ -12910,7 +12910,7 @@ export class ServerRepository {
     ownerId: string,
     codeTabId: string,
     editorBuild: CodeEditorBuild,
-    preferredSessionId = randomUUID(),
+    preferredSessionId: string = randomUUID(),
   ): Promise<CodeSessionSummary | null> {
     const context = await this.getCodeTabExecutionContext(ownerId, codeTabId);
     if (!context) return null;

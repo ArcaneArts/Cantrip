@@ -4,6 +4,7 @@ import {
   createCodeAttachment,
   createCodeTab,
   createExplorerCodeAttachment,
+  createProtectedExplorerCodeAttachment,
   deleteCodeTab,
   getExplorerFile,
   getInternalExplorerEditorCodeTabs,
@@ -18,6 +19,7 @@ import { INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE } from "@/lib/code-tab-visibili
 import {
   openDirectCodeAttachmentFile,
   preferDirectCodeAttachment,
+  preferProtectedCodeAttachment,
   setDirectCodeAttachmentPresentation,
   stopDirectCodeAttachment,
 } from "@/lib/desktop-code";
@@ -93,6 +95,30 @@ async function prepareEditorAttachment(
   let compatibilityCodeTabId: string | null = null;
   let directTunnelId: string | null = null;
   try {
+    try {
+      const wire = await createProtectedExplorerCodeAttachment(
+        context.explorer.id,
+        context.path,
+        context.explorer.activeWorkerId,
+        context.appearance,
+      );
+      try {
+        attachment = (await preferProtectedCodeAttachment(wire)).attachment;
+      } catch (error) {
+        await releaseCodeAttachment(wire.attachmentId).catch(() => undefined);
+        throw error;
+      }
+      directTunnelId = wire.tunnelId;
+      return { attachment, compatibilityCodeTabId, directTunnelId };
+    } catch (error) {
+      if (
+        !(error instanceof CantripApiError) ||
+        error.status !== 404 ||
+        error.message !== "Not Found"
+      ) {
+        throw error;
+      }
+    }
     try {
       attachment = await createExplorerCodeAttachment(
         context.explorer.id,

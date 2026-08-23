@@ -3,6 +3,7 @@ import {
   codeOpenFileResultSchema,
   codePresentationUpdateSchema,
   type CodeAttachment,
+  type CodeProtectedAttachmentWire,
   type CodeOpenFileResult,
   type CodePresentationUpdate,
 } from "@cantrip/protocol";
@@ -10,12 +11,55 @@ import {
 import { createDirectCodeAttachment, deleteDirectAttachment } from "@/lib/api";
 import {
   desktopTunnelClientId,
+  startDesktopTunnel,
   startDirectDesktopTunnel,
+  stopDesktopTunnel,
 } from "@/lib/desktop-tunnel";
 
 export interface PreferredCodeAttachment {
   attachment: CodeAttachment;
   directTunnelId: string | null;
+}
+
+const protectedAttachmentIds = new Map<string, string>();
+
+export async function preferProtectedCodeAttachment(
+  wire: CodeProtectedAttachmentWire,
+): Promise<PreferredCodeAttachment> {
+  if (!isTauri()) {
+    throw new Error(
+      "Protected Code localhost attachments require the desktop app.",
+    );
+  }
+  const forward = await startDesktopTunnel(wire.tunnelId);
+  try {
+    const url = new URL(
+      `http://${forward.localHost}:${forward.localPort}/code/`,
+    );
+    if (wire.runtime.workspaceUri) {
+      const workspace = new URL(wire.runtime.workspaceUri);
+      if (workspace.protocol !== "file:") {
+        throw new Error("Cantrip Code supplied an invalid workspace URI.");
+      }
+      url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
+    }
+    protectedAttachmentIds.set(wire.tunnelId, forward.attachmentId);
+    return {
+      attachment: {
+        attachmentId: wire.attachmentId,
+        sessionId: wire.sessionId,
+        url: url.toString(),
+        expiresAt: wire.expiresAt,
+        runtime: wire.runtime,
+      },
+      directTunnelId: wire.tunnelId,
+    };
+  } catch (error) {
+    await stopDesktopTunnel(wire.tunnelId, forward.attachmentId).catch(
+      () => undefined,
+    );
+    throw error;
+  }
 }
 
 export async function preferDirectCodeAttachment(
@@ -62,7 +106,7 @@ export async function directCodeAttachmentHealthy(
   >("list_tunnel_forwards");
   return forwards.some(
     (forward) =>
-      forward.tunnelId === tunnelId && forward.routeState === "local-direct",
+      forward.tunnelId === tunnelId && forward.routeState !== "degraded",
   );
 }
 
@@ -120,5 +164,13 @@ export async function stopDirectCodeAttachment(
   tunnelId: string | null,
 ): Promise<void> {
   if (!tunnelId || !isTauri()) return;
+  const protectedAttachmentId = protectedAttachmentIds.get(tunnelId);
+  if (protectedAttachmentId) {
+    protectedAttachmentIds.delete(tunnelId);
+    await stopDesktopTunnel(tunnelId, protectedAttachmentId).catch(
+      () => undefined,
+    );
+    return;
+  }
   await invoke("stop_tunnel_forward", { tunnelId }).catch(() => undefined);
 }

@@ -17,6 +17,8 @@ import {
   CodeTunnelBroker,
   createCodeSurfaceServer,
 } from "../src/code/tunnel.js";
+import type { ServerRepository } from "../src/db/repository.js";
+import { TunnelStreamBroker } from "../src/tunnels/broker.js";
 import type {
   WorkerCommandBus,
   WorkerRequestOptions,
@@ -262,6 +264,86 @@ const runtime: CodeRuntimeStatus = {
 };
 
 describe("Cantrip Code isolated editor surface", () => {
+  it("registers protected desktop Code as an opaque generic tunnel", async () => {
+    const worker = new LoopbackWorker();
+    const tunnelId = "11111111-1111-4111-8111-111111111111";
+    const protectedRecord = {
+      operationId: tunnelId,
+      revision: 1,
+      protectedContent: {
+        formatVersion: 1 as const,
+        domain: "tunnel-content" as const,
+        keyRevision: 1,
+        envelope: {
+          version: 1 as const,
+          algorithm: "AES-256-GCM" as const,
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+    };
+    const registerManagedTunnel = vi.fn(async () => ({ id: tunnelId }));
+    const removeManagedTunnel = vi.fn(async () => true);
+    const repository = {
+      registerManagedTunnel,
+      removeManagedTunnel,
+    } as unknown as ServerRepository;
+    const routes = new TunnelStreamBroker();
+    const broker = new CodeTunnelBroker(worker, {
+      surfaceOrigin: "http://127.0.0.1:4311",
+      allowedFrameAncestors: ["tauri://localhost"],
+    });
+    broker.configureControlPlane(repository, routes, vi.fn());
+    try {
+      const attachment = await broker.createProtectedAttachment({
+        authSessionId: "auth-session-1",
+        codeTabId: "code-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord,
+        runtime,
+        sessionId: runtime.sessionId,
+        tunnelId,
+        workerId: "worker-1",
+      });
+
+      expect(attachment).toMatchObject({
+        attachmentId: tunnelId,
+        sessionId: runtime.sessionId,
+        tunnelId,
+      });
+      expect(registerManagedTunnel).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({
+          source: { kind: "desktop-loopback" },
+          destination: {
+            kind: "worker-adapter",
+            workerId: "worker-1",
+            adapter: "code",
+            resourceId: tunnelId,
+          },
+          managedBy: { kind: "code", id: tunnelId },
+        }),
+        { id: tunnelId, protectedRecord },
+      );
+      expect(broker.attachmentContext(tunnelId, "user-1")).toMatchObject({
+        codeTabId: "code-1",
+        sessionId: runtime.sessionId,
+      });
+      await expect(broker.revokeAttachment(tunnelId, "user-1")).resolves.toBe(
+        true,
+      );
+      expect(removeManagedTunnel).toHaveBeenCalledWith("user-1", {
+        kind: "code",
+        id: tunnelId,
+      });
+    } finally {
+      await broker.close();
+      routes.close();
+    }
+  });
+
   it("charges generic Code streams to hosted relay quotas", async () => {
     const worker = new LoopbackWorker();
     const consumeRelayBytes = vi.fn(() => false);
