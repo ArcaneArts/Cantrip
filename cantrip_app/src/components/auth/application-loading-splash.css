@@ -9,26 +9,26 @@
 }
 
 .application-loading-splash__brand {
-  --elite-reveal-frame: color-mix(in oklab, var(--primary) 88%, transparent);
-}
-
-.application-loading-splash__brand > .elite-reveal__content {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: clamp(1rem, 3vw, 2.5rem);
 }
 
-.application-loading-splash__brand[data-state="glitch"]
-  > .elite-reveal__content {
-  animation: application-loading-splash-flicker 48ms steps(3, end) infinite;
-}
-
 .application-loading-splash__logo {
-  display: block;
   width: clamp(6rem, 18vw, 12rem);
   height: clamp(6rem, 18vw, 12rem);
   flex: 0 0 auto;
+}
+
+.application-loading-splash__logo > .elite-reveal__content {
+  width: 100%;
+  height: 100%;
+}
+
+.application-loading-splash__logo[data-state="glitch"]
+  > .elite-reveal__content {
+  animation: application-loading-splash-bolt-flicker 48ms steps(3, end) infinite;
 }
 
 .application-loading-splash__mark {
@@ -40,6 +40,17 @@
   mask: url("/favicon.svg") center / contain no-repeat;
 }
 
+.application-loading-splash__wordmark[data-state="glitch"]
+  > .elite-reveal__content {
+  animation: application-loading-splash-wordmark-flicker 42ms steps(3, end)
+    infinite;
+}
+
+.application-loading-splash__logo > .elite-reveal__signal,
+.application-loading-splash__wordmark > .elite-reveal__signal {
+  display: none;
+}
+
 .application-loading-splash__name {
   margin: 0;
   font-size: clamp(2.75rem, 9vw, 6rem);
@@ -48,7 +59,7 @@
   letter-spacing: -0.06em;
 }
 
-@keyframes application-loading-splash-flicker {
+@keyframes application-loading-splash-bolt-flicker {
   0% {
     opacity: 0.46;
   }
@@ -63,6 +74,24 @@
 
   100% {
     opacity: 0.92;
+  }
+}
+
+@keyframes application-loading-splash-wordmark-flicker {
+  0% {
+    opacity: 0.92;
+  }
+
+  34% {
+    opacity: 0.52;
+  }
+
+  67% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.68;
   }
 }
 
