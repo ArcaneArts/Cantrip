@@ -115,7 +115,7 @@ export function PersistentExplorerViews({
         onChanged={onChanged}
         onHeaderChange={active ? onHeaderChange : undefined}
         onLifecycleChange={handleLifecycleChange}
-        onOpenFile={onOpenFile}
+        onOpenFile={explorer.selectedPath ? undefined : onOpenFile}
         onRevealFolder={onRevealFolder}
         revealLabel={revealLabel}
         onOpenTerminal={onOpenTerminal}

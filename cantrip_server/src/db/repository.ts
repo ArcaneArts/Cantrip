@@ -12552,12 +12552,14 @@ export class ServerRepository {
         })
         .returning();
       const explorer = firstOrThrow(result, "creating an explorer");
-      await attachProjectTab(transaction, {
-        projectId,
-        tabGroupId: input.tabGroupId,
-        tabId: explorer.id,
-        tabKind: "explorer",
-      });
+      if (input.attachToTabLayout !== false) {
+        await attachProjectTab(transaction, {
+          projectId,
+          tabGroupId: input.tabGroupId,
+          tabId: explorer.id,
+          tabKind: "explorer",
+        });
+      }
       return toExplorerWireSummary(explorer);
     });
   }
