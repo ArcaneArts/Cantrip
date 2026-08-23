@@ -414,6 +414,60 @@ describe.sequential("tunnel control plane", () => {
     expect(remove.statusCode).toBe(409);
   });
 
+  it("attaches desktops to protected Cantrip Code tunnels", async () => {
+    const tunnelId = randomUUID();
+    const tunnel = await database.repository.registerManagedTunnel(
+      LOCAL_USER_ID,
+      {
+        name: "Cantrip Code",
+        description: "Protected desktop Code access.",
+        projectId,
+        origin: "code",
+        management: "managed-ephemeral",
+        protocolHint: "http-websocket",
+        source: { kind: "desktop-loopback" },
+        destination: {
+          kind: "worker-adapter",
+          workerId: "worker-b",
+          adapter: "code",
+          resourceId: tunnelId,
+        },
+        managedBy: { kind: "code", id: tunnelId },
+        desiredState: "started",
+        status: "starting",
+      },
+      { id: tunnelId, protectedRecord: protectedRecord(tunnelId, 1) },
+    );
+    expect(tunnel).toMatchObject({
+      id: tunnelId,
+      capabilities: { canAttach: true },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${tunnelId}/attachments`,
+      payload: { clientId: "desktop-code-test" },
+    });
+    expect(response.statusCode).toBe(201);
+    const attachment = tunnelAttachmentCreateResultSchema.parse(
+      response.json(),
+    );
+    expect(attachment.tunnelId).toBe(tunnelId);
+    await expect(
+      database.repository.getDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        attachment.attachmentId,
+      ),
+    ).resolves.toMatchObject({
+      destination: {
+        kind: "worker-adapter",
+        workerId: "worker-b",
+        adapter: "code",
+        resourceId: tunnelId,
+      },
+      tunnelId,
+    });
+  });
   it("clears organizational project links without deleting tunnels", async () => {
     expect(
       await database.repository.deleteProject(LOCAL_USER_ID, projectId),

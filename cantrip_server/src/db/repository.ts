@@ -1002,7 +1002,9 @@ function tunnelCapabilities(
   const userManaged = tunnel.management === "user-managed";
   if (!userManaged) {
     const protectedDesktopAttachment =
-      (tunnel.origin === "browser" || tunnel.origin === "project-share") &&
+      (tunnel.origin === "browser" ||
+        tunnel.origin === "code" ||
+        tunnel.origin === "project-share") &&
       tunnel.management === "managed-ephemeral" &&
       tunnel.sourceKind === "desktop-loopback";
     return {
@@ -7240,6 +7242,7 @@ export class ServerRepository {
           tunnel.management === "user-managed" ||
           (tunnel.management === "managed-ephemeral" &&
             (tunnel.origin === "browser" ||
+              tunnel.origin === "code" ||
               tunnel.origin === "project-share") &&
             tunnel.sourceKind === "desktop-loopback")
         ) ||
