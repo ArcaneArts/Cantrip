@@ -60,6 +60,10 @@
       "types": "./src/tunnel-content.ts",
       "import": "./dist/tunnel-content.js"
     },
+    "./client-control-content": {
+      "types": "./src/client-control-content.ts",
+      "import": "./dist/client-control-content.js"
+    },
     "./workflow-content": {
       "types": "./src/workflow-content.ts",
       "import": "./dist/workflow-content.js"

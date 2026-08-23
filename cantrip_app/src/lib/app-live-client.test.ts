@@ -555,9 +555,20 @@ describe("application live client", () => {
       command: {
         kind: "notify",
         projectId: "project-one",
-        level: "warning",
-        title: "Expired",
-        message: "This notice must not be applied.",
+        workerId: "worker-one",
+        operationId: "00000000-0000-4000-8000-000000000020",
+        protectedContent: {
+          formatVersion: 1,
+          domain: "client-control-content",
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "AAAAAAAAAAAAAAAA",
+            ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+          },
+        },
       },
     });
     await settle();

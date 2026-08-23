@@ -1,11 +1,14 @@
 import {
   CANTRIP_MCP_OPERATIONS,
+  clientNotificationContentSchema,
+  protectedClientNotificationSchema,
   type CantripMcpBinding,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import { executeCantripMcpClientControlOperation } from "../src/mcp/client-control-operations.js";
 import { executeCantripMcpOperation } from "../src/mcp/operations.js";
+import { openWorkerEndpointContent } from "../src/endpoint-content-encryption.js";
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 const binding: CantripMcpBinding = {
@@ -23,7 +26,15 @@ const binding: CantripMcpBinding = {
   expiresAt: "2026-08-21T18:00:00.000Z",
 };
 
-const service = {} as WorkerEncryptionService;
+const clientControlKey = new Uint8Array(32).fill(7);
+const service = {
+  componentKey: () => ({
+    key: new Uint8Array(clientControlKey),
+    keyRevision: 1,
+  }),
+  ownerId: () => binding.ownerId,
+  serverIdentity: () => "server-one",
+} as unknown as WorkerEncryptionService;
 const correlationId = "00000000-0000-4000-8000-000000000010";
 
 function result(status: "applied" | "unavailable") {
@@ -73,10 +84,11 @@ describe("Cantrip MCP client-control normalization", () => {
       .fn()
       .mockResolvedValueOnce(result("applied"))
       .mockResolvedValueOnce(result("unavailable"));
+    const operationId = "00000000-0000-4000-8000-000000000020";
     const notified = await executeCantripMcpOperation({
       binding,
       service,
-      requestId: "notify-one",
+      requestId: operationId,
       request: {
         operation: "client.notify",
         arguments: {
@@ -92,14 +104,42 @@ describe("Cantrip MCP client-control normalization", () => {
       binding,
       {
         operation: "client.notify",
-        arguments: {
-          level: "info",
-          title: "Ready",
-          message: "Focused validation passed.",
-        },
+        arguments: expect.objectContaining({
+          operationId,
+          protectedContent: expect.objectContaining({
+            domain: "client-control-content",
+          }),
+        }),
       },
-      "notify-one",
+      operationId,
     );
+    const forwarded = protectedClientNotificationSchema.parse(
+      execute.mock.calls[0]?.[1].arguments,
+    );
+    expect(JSON.stringify(forwarded)).not.toContain(
+      "Focused validation passed",
+    );
+    await expect(
+      openWorkerEndpointContent({
+        context: {
+          domain: "client-control-content",
+          serverId: "server-one",
+          workerId: binding.workerId,
+          scopeId: binding.projectId,
+          operationId,
+          operation: "client.notify",
+          direction: "event",
+          sequence: 0,
+        },
+        opaque: forwarded.protectedContent,
+        schema: clientNotificationContentSchema,
+        service,
+      }),
+    ).resolves.toEqual({
+      level: "info",
+      title: "Ready",
+      message: "Focused validation passed.",
+    });
     expect(notified).toMatchObject({
       target: { kind: "project", projectId: binding.projectId },
       mutated: true,

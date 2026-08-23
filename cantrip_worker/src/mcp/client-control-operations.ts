@@ -10,9 +10,11 @@ import {
   clientControlResultStatusSchema,
   executionTargetResolutionSchema,
   executionTargetSchema,
+  protectedClientNotificationSchema,
   type CantripAgentOperationResult,
 } from "@cantrip/protocol";
 
+import { protectWorkerClientNotification } from "../client-control-content-encryption.js";
 import {
   dataRecord,
   type CantripMcpOperationOptions,
@@ -74,9 +76,19 @@ export async function executeCantripMcpClientControlOperation(
         kind: "project" as const,
         projectId: options.binding.projectId,
       };
+      const notification = protectedClientNotificationSchema.parse({
+        operationId: options.requestId,
+        protectedContent: await protectWorkerClientNotification({
+          content: arguments_,
+          operationId: options.requestId,
+          projectId: options.binding.projectId,
+          service: options.service,
+          workerId: options.binding.workerId,
+        }),
+      });
       const result = await options.execute(
         options.binding,
-        { operation: "client.notify", arguments: arguments_ },
+        { operation: "client.notify", arguments: notification },
         options.requestId,
       );
       const data = clientControlData(result);

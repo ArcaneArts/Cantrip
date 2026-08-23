@@ -2068,13 +2068,12 @@ now uses endpoint AEAD. Desktop and remote-web Code HTTP/WebSocket traffic uses
 the same opaque generic tunnel, and the server-terminated Code adapter has been
 deleted. Durable project and chat jobs now retain stable lifecycle/error codes,
 bounded progress percentages, and timestamps instead of free-form status text.
-The notification-content and session-metadata rows below still reopen the
-whole-product claim. Until the remaining-work ledger below is complete, the
-broad guarantee must be phrased narrowly: the implemented protected data
-classes cannot be decrypted from the database without the user's login password
-or an authorized client/worker private key. No recovery secret, local encryption
-password, or second user-managed credential is introduced by the remaining
-work.
+The session-metadata row below still reopens the whole-product claim. Until the
+remaining-work ledger below is complete, the broad guarantee must be phrased
+narrowly: the implemented protected data classes cannot be decrypted from the
+database without the user's login password or an authorized client/worker
+private key. No recovery secret, local encryption password, or second
+user-managed credential is introduced by the remaining work.
 
 ## Post-closure review and remaining-work ledger
 
@@ -2096,16 +2095,16 @@ change the original database-dump guarantee.
 | Skill files, skill inventories, hooks, roots, external-import previews, and customization errors   | Operation-bound `customization-content` envelopes across app, server, and worker; the server sees only routing scope, operation class, coarse lifecycle/result, and ciphertext                                    | Keep all names, paths, files, contents, commands, matchers, warnings, errors, previews, and import details client/worker-only                                                               | E2EE complete                              | P1       | Medium      |
 | MCP runtime inventory and resource contents                                                        | Operation-bound `customization-content` envelopes protect runtime inventory, resource reads, OAuth/reload operations, authorization URLs, resource bodies, and diagnostics                                        | Keep tool/resource schemas and metadata, request parameters, returned content, URLs, server names, and detailed errors client/worker-only                                                   | E2EE complete                              | P1       | Medium      |
 | Discovered project and terminal script commands                                                    | Operation-bound `repository-content` responses opened only by the requesting client; discovery remains worker-local                                                                                               | Keep command, name, source, and description opaque to the relay server                                                                                                                      | E2EE complete                              | P1       | Low-Medium  |
-| Client-control notification title and message                                                      | Agent-provided notification content crosses the server and live hub as plaintext                                                                                                                                  | Operation-bound endpoint ciphertext opened only by the selected authorized client                                                                                                           | Planned                                    | P1       | Low-Medium  |
+| Client-control notification title and message                                                      | Worker-sealed `client-control-content` ciphertext crosses the server and live hub; the relay sees project/worker/operation routing and bounded timing only                                                        | Operation-bound endpoint ciphertext opened only by the selected authorized client                                                                                                           | E2EE complete                              | P1       | Low-Medium  |
 | Session IP-address and user-agent hashes                                                           | Durable unsalted hashes permit enumeration/correlation and are not used by a current user-facing security feature                                                                                                 | Stop collecting and remove the columns unless a defined abuse-control feature requires a deliberately designed representation                                                               | Planned minimization                       | P2       | Low         |
 
 The remaining encryption work uses the existing password-rooted Account Master
-Key hierarchy. `run-content`, `customization-content`, and `tunnel-content`
-component keys are derived under the Account Master Key and granted to only the
-workers that need them. Users do not receive another password, recovery secret,
-or manual key-management step.
+Key hierarchy. `run-content`, `customization-content`, `tunnel-content`, and
+`client-control-content` component keys are derived under the Account Master Key
+and granted to only the workers that need them. Users do not receive another
+password, recovery secret, or manual key-management step.
 
-The three component domains now exist in the versioned protocol and key
+The four component domains now exist in the versioned protocol and key
 hierarchy. A shared endpoint-content envelope authenticates the domain, server,
 worker, resource scope, operation, direction, sequence, and key revision. The
 client and worker adapters serialize only schema-validated content, clear
@@ -2140,6 +2139,17 @@ discovered command names, descriptions, sources, or command strings. Client
 readiness authorizes and refreshes the assigned worker before requesting
 either this content or Run content, while MCP and CLI use the worker's active
 grants without another password prompt.
+
+### Client-control notification protected content
+
+Agent-authored notification level, title, and message are sealed by the owning
+worker under `client-control-content` before the MCP operation crosses the
+server. The endpoint envelope binds the server, worker, project, operation UUID,
+`client.notify` operation name, event direction, sequence, and key revision.
+The server validates only the bounded opaque contract and routes it to one
+project-active capable client. That client authenticates and opens the payload
+immediately before displaying the toast; a locked client or altered routing
+context declines the ephemeral request without exposing plaintext.
 
 ### Skill and customization protected content
 
@@ -2541,6 +2551,14 @@ counts, worker presence, model-route choices, and traffic patterns.
     messages and project setup prose, and adds database checks that reject new
     semantic job status. The generated boundary audit freezes these minimized
     table and wire contracts.
+29. **Client-control notification content — complete:** the worker-owned MCP
+    adapter encrypts notification level, title, and message under the dedicated
+    `client-control-content` component before invoking the server. The live hub
+    forwards an operation-bound envelope plus project/worker routing metadata;
+    the selected authorized client decrypts only after validating that bound
+    context. Plaintext notification fields are absent from the server operation
+    and live-control contracts, and worker grants are refreshed through the
+    existing password-rooted key hierarchy without another user secret.
 
 A usable first encrypted component is moderate in scope. A robust system with
 multi-device enrollment, unattended workers, device replacement, rotation,
