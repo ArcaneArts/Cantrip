@@ -181,6 +181,8 @@ import {
   modelProviderAccountUpdateSchema,
   providerConnectionTestResultSchema,
   providerModelCatalogResultSchema,
+  providerQuotaSnapshotSchema,
+  providerRateLimitResetConsumeResultSchema,
   modelProviderSummarySchema,
   encryptedManagedFolderProjectCreateSchema,
   mcpServerCopySchema,
@@ -1085,6 +1087,36 @@ export async function logoutCodex(
   workerId?: string,
 ) {
   await post("/api/codex/auth/logout", { providerId, accountId, workerId });
+}
+
+export async function getProviderRateLimitResets(
+  providerId: string,
+  accountId: string,
+  workerId: string,
+) {
+  const query = new URLSearchParams({ workerId });
+  return providerQuotaSnapshotSchema.parse(
+    await request(
+      `/api/settings/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}/rate-limit-resets?${query.toString()}`,
+    ),
+  );
+}
+
+export async function consumeProviderRateLimitReset(
+  providerId: string,
+  accountId: string,
+  input: {
+    creditId?: string | null;
+    idempotencyKey: string;
+    workerId: string;
+  },
+) {
+  return providerRateLimitResetConsumeResultSchema.parse(
+    await post(
+      `/api/settings/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}/rate-limit-resets/consume`,
+      input,
+    ),
+  );
 }
 
 export async function getSettings() {

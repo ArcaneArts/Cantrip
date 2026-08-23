@@ -28,6 +28,8 @@ import {
   isManagedCodeGraphMcpName,
   pendingPlanQuestionSchema,
   permissionProfileCapabilitySchema,
+  providerRateLimitResetConsumeOutcomeSchema,
+  providerRateLimitResetConsumeResultSchema,
   YOLO_PERMISSION_PROFILE_ID,
   normalizedAgentMessageSchema,
   threadGoalSchema,
@@ -61,6 +63,8 @@ import {
   type McpServerConfiguration,
   type ProviderAccessTokenLease,
   type ProviderQuotaSnapshot,
+  type ProviderRateLimitResetConsumeInput,
+  type ProviderRateLimitResetConsumeResult,
   type ThreadGoal,
   type ChatAttachmentSummary,
   type WorkerCommand,
@@ -3519,6 +3523,40 @@ export class CodexAppServer implements CodexRuntime {
       );
       throw error;
     }
+  }
+
+  async consumeRateLimitResetCredit(
+    provider: RuntimeProvider & { kind: "chatgpt" },
+    input: ProviderRateLimitResetConsumeInput,
+  ): Promise<ProviderRateLimitResetConsumeResult> {
+    const startedAtMs = Date.now();
+    await this.ensureCatalogStarted(provider);
+    const response = (await this.request(
+      "account/rateLimitResetCredit/consume",
+      input,
+    )) as { outcome?: unknown };
+    const outcome = providerRateLimitResetConsumeOutcomeSchema.parse(
+      response.outcome,
+    );
+    const quotaSnapshot = await this.readQuotaSnapshot(provider).catch(
+      () => null,
+    );
+    workerLogger.event("info", "ChatGPT rate-limit reset processed", {
+      event: "provider.quota.reset",
+      subsystem: "provider",
+      operation: "consume-rate-limit-reset",
+      status: outcome,
+      durationMs: Date.now() - startedAtMs,
+      counts: {
+        availableResets:
+          quotaSnapshot?.rateLimitResetCredits?.availableCount ?? 0,
+      },
+      ...codexProviderLogContext(provider),
+    });
+    return providerRateLimitResetConsumeResultSchema.parse({
+      outcome,
+      quotaSnapshot,
+    });
   }
 
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {

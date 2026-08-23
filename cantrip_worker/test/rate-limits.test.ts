@@ -73,6 +73,20 @@ describe("Codex weekly rate limits", () => {
             secondary: null,
           },
         },
+        rateLimitResetCredits: {
+          availableCount: 1,
+          credits: [
+            {
+              id: "reset-1",
+              resetType: "codexRateLimits",
+              status: "available",
+              grantedAt: 1_786_000_000,
+              expiresAt: 1_789_000_000,
+              title: "Usage reset",
+              description: null,
+            },
+          ],
+        },
       },
       {
         snapshotId: "snapshot-1",
@@ -89,6 +103,10 @@ describe("Codex weekly rate limits", () => {
       codexVersion: "0.148.0",
     });
     expect(snapshot.windows).toHaveLength(3);
+    expect(snapshot.rateLimitResetCredits).toMatchObject({
+      availableCount: 1,
+      credits: [{ id: "reset-1", status: "available" }],
+    });
     expect(
       snapshot.windows.map((window) => [
         window.limitId,

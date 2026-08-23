@@ -1,5 +1,6 @@
 import type {
   ModelProviderAccountSummary,
+  ProviderQuotaSnapshot,
   ProviderWeeklyUsage,
 } from "@cantrip/protocol";
 
@@ -25,6 +26,28 @@ export function providerAccountWeeklyUsage(
     resetsAt: Number.isFinite(resetMilliseconds)
       ? Math.floor(resetMilliseconds / 1_000)
       : null,
+  };
+}
+
+export function providerWeeklyUsageFromQuotaSnapshot(
+  snapshot: ProviderQuotaSnapshot | null | undefined,
+): ProviderWeeklyUsage | null {
+  const weekly = snapshot?.windows.find((window) => window.isWeeklyProjection);
+  return weekly
+    ? { usedPercent: weekly.usedPercent, resetsAt: weekly.resetsAt }
+    : null;
+}
+
+export function providerRateLimitResetImpact(
+  usage: ProviderWeeklyUsage | null,
+): { gainPercent: number; remainingPercent: number } | null {
+  if (!usage) return null;
+  const remainingPercent = Math.round(
+    providerWeeklyRemainingPercent(usage.usedPercent),
+  );
+  return {
+    remainingPercent,
+    gainPercent: 100 - remainingPercent,
   };
 }
 

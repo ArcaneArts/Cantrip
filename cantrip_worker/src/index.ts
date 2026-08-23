@@ -1452,6 +1452,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return catalogRuntimeFor(
           provider().credentialHomeKey!,
         ).readQuotaSnapshot({ ...provider(), kind: "chatgpt" });
+      case "provider.rate-limit-reset.consume":
+        return catalogRuntimeFor(
+          provider().credentialHomeKey!,
+        ).consumeRateLimitResetCredit(
+          { ...provider(), kind: "chatgpt" },
+          {
+            idempotencyKey: command.idempotencyKey,
+            creditId: command.creditId,
+          },
+        );
       case "codex.auth.status":
         return command.providerKind === "grok"
           ? grokFor(command.credentialHomeKey ?? command.providerId).status()

@@ -139,6 +139,7 @@ server.on("connection", (socket) => {
   let chatGptAuthenticated = false;
   let freshThreadCompactionRejected = false;
   let pendingChatGptTurn = null;
+  let resetConsumed = false;
   socket.on("message", (raw) => {
     const message = JSON.parse(String(raw));
     if (message.id === 9001 && message.result) {
@@ -204,7 +205,7 @@ server.on("connection", (socket) => {
           rateLimits: {
             primary: null,
             secondary: {
-              usedPercent: 24,
+              usedPercent: resetConsumed ? 0 : 24,
               windowDurationMins: 10080,
               resetsAt: 1787000000
             }
@@ -218,8 +219,36 @@ server.on("connection", (socket) => {
               },
               secondary: null
             }
+          },
+          rateLimitResetCredits: resetConsumed ? {
+            availableCount: 0,
+            credits: []
+          } : {
+            availableCount: 1,
+            credits: [{
+              id: "reset-1",
+              resetType: "codexRateLimits",
+              status: "available",
+              grantedAt: 1786000000,
+              expiresAt: 1789000000,
+              title: "Usage reset",
+              description: null
+            }]
           }
         }
+      }));
+      return;
+    }
+    if (message.method === "account/rateLimitResetCredit/consume") {
+      if (
+        message.params.idempotencyKey !==
+          "2c580d9a-ab1d-4ec6-bf03-4e5355f898a8" ||
+        message.params.creditId !== "reset-1"
+      ) process.exit(34);
+      resetConsumed = true;
+      socket.send(JSON.stringify({
+        id: message.id,
+        result: { outcome: "reset" }
       }));
       return;
     }
@@ -347,34 +376,22 @@ describe("portable provider accounts on a brand-new worker", () => {
       forceRefresh?: boolean;
       providerId: string;
     }> = [];
-    const accessTokens = new ProviderAccessTokenClient(
-      {
-        serverUrl: "https://cantrip.example.test",
-        token: `ctwk_${"p".repeat(43)}`,
-        workerId: "brand-new-worker",
+    const accessTokens = {
+      async get(
+        providerId: string,
+        _providerAccountId: string,
+        request: { forceRefresh?: boolean } = {},
+      ) {
+        leaseRequests.push({
+          forceRefresh: request.forceRefresh ?? false,
+          providerId,
+        });
+        return lease(
+          providerId === chatGptProvider.id ? "chatgpt" : "grok",
+          request.forceRefresh ? 2 : 1,
+        );
       },
-      {
-        fetch: async (input, init) => {
-          const providerId = decodeURIComponent(
-            new URL(String(input)).pathname.split("/").at(-4) ?? "",
-          );
-          const request = JSON.parse(String(init?.body ?? "{}")) as {
-            forceRefresh?: boolean;
-          };
-          leaseRequests.push({
-            forceRefresh: request.forceRefresh,
-            providerId,
-          });
-          return Response.json(
-            lease(
-              providerId === chatGptProvider.id ? "chatgpt" : "grok",
-              request.forceRefresh ? 2 : 1,
-            ),
-          );
-        },
-        now: () => Date.UTC(2030, 0, 1),
-      },
-    );
+    } as unknown as ProviderAccessTokenClient;
     const grokUpstreamTokens: string[] = [];
     const grok = createServerManagedGrokClient(
       grokProvider.id,
@@ -446,6 +463,32 @@ describe("portable provider accounts on a brand-new worker", () => {
         models: [{ model: "gpt-5.6-sol" }],
         weeklyUsage: { usedPercent: 24 },
       });
+      await expect(
+        chatGptCatalog.readQuotaSnapshot(chatGptProvider),
+      ).resolves.toMatchObject({
+        rateLimitResetCredits: {
+          availableCount: 1,
+          credits: [{ id: "reset-1", status: "available" }],
+        },
+      });
+      const resetResult = await chatGptCatalog.consumeRateLimitResetCredit(
+        chatGptProvider,
+        {
+          idempotencyKey: "2c580d9a-ab1d-4ec6-bf03-4e5355f898a8",
+          creditId: "reset-1",
+        },
+      );
+      expect(resetResult).toMatchObject({
+        outcome: "reset",
+        quotaSnapshot: {
+          rateLimitResetCredits: { availableCount: 0, credits: [] },
+        },
+      });
+      expect(
+        resetResult.quotaSnapshot?.windows.find(
+          (window) => window.isWeeklyProjection,
+        ),
+      ).toMatchObject({ usedPercent: 0 });
       await expect(grok.listModels()).resolves.toMatchObject({
         models: [{ id: "grok-code-fast-1" }],
       });

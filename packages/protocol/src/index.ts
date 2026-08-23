@@ -11449,12 +11449,54 @@ export const providerQuotaWindowObservationSchema = z.object({
   rawPayload: z.record(z.string(), z.unknown()).default({}),
 });
 
+export const providerRateLimitResetCreditSchema = z.object({
+  id: z.string().trim().min(1).max(1_000),
+  resetType: z.enum(["codexRateLimits", "unknown"]),
+  status: z.enum(["available", "redeeming", "redeemed", "unknown"]),
+  grantedAt: z.number().int().nonnegative(),
+  expiresAt: z.number().int().nonnegative().nullable(),
+  title: z.string().max(1_000).nullable(),
+  description: z.string().max(4_000).nullable(),
+});
+
+export const providerRateLimitResetCreditsSummarySchema = z.object({
+  availableCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  credits: z.array(providerRateLimitResetCreditSchema).max(100).nullable(),
+});
+
+export const providerRateLimitResetConsumeOutcomeSchema = z.enum([
+  "reset",
+  "nothingToReset",
+  "noCredit",
+  "alreadyRedeemed",
+]);
+
+export const providerRateLimitResetConsumeInputSchema = z
+  .object({
+    idempotencyKey: z.string().uuid(),
+    creditId: z.string().trim().min(1).max(1_000).nullable().optional(),
+  })
+  .strict();
+
+export const providerRateLimitResetConsumeRequestSchema =
+  providerRateLimitResetConsumeInputSchema
+    .extend({ workerId: z.string().min(1).max(500) })
+    .strict();
+
 export const providerQuotaSnapshotSchema = z.object({
   snapshotId: z.string().min(1).max(200),
   observedAt: z.string().datetime(),
   workerVersion: z.string().max(200).nullable(),
   codexVersion: z.string().max(500).nullable(),
   windows: z.array(providerQuotaWindowObservationSchema).max(500),
+  rateLimitResetCredits: providerRateLimitResetCreditsSummarySchema
+    .nullable()
+    .default(null),
+});
+
+export const providerRateLimitResetConsumeResultSchema = z.object({
+  outcome: providerRateLimitResetConsumeOutcomeSchema,
+  quotaSnapshot: providerQuotaSnapshotSchema.nullable(),
 });
 
 export const chatGptModelInventorySchema = z.object({
@@ -11653,6 +11695,17 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       accountId: z.string().min(1),
       credentialHomeKey: z.string().min(1).max(500),
     }),
+  }),
+  z.object({
+    type: z.literal("provider.rate-limit-reset.consume"),
+    provider: workerRuntimeProviderSchema.extend({
+      kind: z.literal("chatgpt"),
+      accountId: z.string().min(1),
+      credentialHomeKey: z.string().min(1).max(500),
+    }),
+    idempotencyKey:
+      providerRateLimitResetConsumeInputSchema.shape.idempotencyKey,
+    creditId: providerRateLimitResetConsumeInputSchema.shape.creditId,
   }),
   z.object({
     type: z.literal("codex.auth.status"),
@@ -15032,6 +15085,24 @@ export type ChatGptModelInventory = z.infer<typeof chatGptModelInventorySchema>;
 export type ProviderQuotaSnapshot = z.infer<typeof providerQuotaSnapshotSchema>;
 export type ProviderQuotaWindowObservation = z.infer<
   typeof providerQuotaWindowObservationSchema
+>;
+export type ProviderRateLimitResetCredit = z.infer<
+  typeof providerRateLimitResetCreditSchema
+>;
+export type ProviderRateLimitResetCreditsSummary = z.infer<
+  typeof providerRateLimitResetCreditsSummarySchema
+>;
+export type ProviderRateLimitResetConsumeInput = z.infer<
+  typeof providerRateLimitResetConsumeInputSchema
+>;
+export type ProviderRateLimitResetConsumeRequest = z.infer<
+  typeof providerRateLimitResetConsumeRequestSchema
+>;
+export type ProviderRateLimitResetConsumeOutcome = z.infer<
+  typeof providerRateLimitResetConsumeOutcomeSchema
+>;
+export type ProviderRateLimitResetConsumeResult = z.infer<
+  typeof providerRateLimitResetConsumeResultSchema
 >;
 export type GrokModelInventoryItem = z.infer<
   typeof grokModelInventoryItemSchema

@@ -573,6 +573,40 @@ describe("model catalog protocol", () => {
         },
       }).type,
     ).toBe("model.chatgpt.catalog");
+    expect(
+      workerCommandSchema.parse({
+        type: "provider.rate-limit-reset.consume",
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://chatgpt.com/backend-api/codex/responses",
+          apiKey: null,
+          accountId: "account-1",
+          credentialHomeKey: "account-1",
+        },
+        idempotencyKey: "ea13cab0-8573-4df4-9ef6-452507aab71f",
+        creditId: "reset-1",
+      }),
+    ).toMatchObject({
+      type: "provider.rate-limit-reset.consume",
+      creditId: "reset-1",
+    });
+    expect(
+      workerCommandSchema.safeParse({
+        type: "provider.rate-limit-reset.consume",
+        provider: {
+          id: "provider-1",
+          name: "Grok",
+          kind: "grok",
+          baseUrl: "https://cli-chat-proxy.grok.com/v1",
+          apiKey: null,
+          accountId: "account-1",
+          credentialHomeKey: "account-1",
+        },
+        idempotencyKey: "ea13cab0-8573-4df4-9ef6-452507aab71f",
+      }).success,
+    ).toBe(false);
   });
 
   it("preserves provider-advertised reasoning efforts", () => {
