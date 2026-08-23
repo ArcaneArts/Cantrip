@@ -68,6 +68,9 @@ test("applies editor-only settings without changing ordinary workbenches", async
     getConfiguration(section) {
       return {
         async update(key, value, target) {
+          if (section === "window" && key === "menuBarVisibility") {
+            throw new Error("window.menuBarVisibility is application-scoped");
+          }
           updates.push([section, key, value, target]);
         },
       };
@@ -100,6 +103,12 @@ test("applies editor-only settings without changing ordinary workbenches", async
         key === "showTabs" &&
         value === "none",
     ),
+  );
+  assert.equal(
+    updates.some(
+      ([section, key]) => section === "window" && key === "menuBarVisibility",
+    ),
+    false,
   );
   assert.ok(
     updates.some(

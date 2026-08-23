@@ -1001,7 +1001,6 @@ export class CodeSupervisor {
       Object.assign(settings, {
         "breadcrumbs.enabled": true,
         "window.commandCenter": false,
-        "window.menuBarVisibility": "hidden",
         "workbench.activityBar.location": "hidden",
         "workbench.editor.editorActionsLocation": "hidden",
         "workbench.editor.empty.hint": "hidden",
