@@ -188,6 +188,7 @@ interface ActiveTurn {
   itemStartedAtMs: Map<string, number>;
   latestUsage: TokenUsageBreakdown | null;
   liveAgentMessageFingerprints: Set<string>;
+  observedActivityFingerprints: Set<string>;
   model: RunAgentTurnOptions["model"];
   providerId: string;
   providerKind: string;
@@ -232,6 +233,7 @@ type AgentEventState = Pick<
   | "itemStartedAtMs"
   | "latestUsage"
   | "liveAgentMessageFingerprints"
+  | "observedActivityFingerprints"
   | "onActivity"
   | "onMessage"
   | "pendingActivities"
@@ -252,6 +254,7 @@ interface AgentRuntimeState extends AgentEventState {
   nickname: string | null;
   parentThreadId: string;
   role: string | null;
+  segmentTurnIds: Set<string>;
   status: AgentRuntimeStatus;
   threadId: string;
 }
@@ -308,6 +311,11 @@ const MAX_TURN_ITEM_TIMESTAMPS = 1_000;
 const MAX_AGENT_THREADS_PER_EXECUTION = 256;
 const MAX_ORPHAN_AGENT_THREADS = 256;
 const MAX_KNOWN_AGENT_THREADS = 512;
+const MAX_OBSERVED_ACTIVITY_FINGERPRINTS = 2_000;
+const MAX_RECOVERED_AGENT_THREADS = 64;
+const MAX_RECOVERED_TURNS_PER_AGENT = 8;
+const MAX_RECOVERED_ITEMS_PER_TURN = 1_000;
+const RECOVERY_TURN_CLOCK_SLOP_MS = 5_000;
 
 function boundedMapSet<K, V>(map: Map<K, V>, key: K, value: V, limit: number) {
   if (!map.has(key) && map.size >= limit) {
@@ -346,11 +354,40 @@ function scopedAgentActivity(
     : activity;
 }
 
+function agentActivityDeliveryFingerprint(activity: AgentActivity): string {
+  return JSON.stringify([
+    activity.agentScope?.agentThreadId ??
+      activity.correlation?.threadId ??
+      null,
+    activity.correlation?.turnId ?? null,
+    activity.correlation?.itemId ?? activity.id,
+    activity.type,
+    activity.status,
+  ]);
+}
+
+function rememberObservedActivity(
+  state: AgentEventState,
+  activity: AgentActivity,
+): void {
+  if (
+    state.observedActivityFingerprints.size >=
+    MAX_OBSERVED_ACTIVITY_FINGERPRINTS
+  ) {
+    const oldest = state.observedActivityFingerprints.values().next().value;
+    if (oldest !== undefined) state.observedActivityFingerprints.delete(oldest);
+  }
+  state.observedActivityFingerprints.add(
+    agentActivityDeliveryFingerprint(activity),
+  );
+}
+
 function emitTurnActivity(
   state: AgentEventState,
   activity: AgentActivity,
 ): void {
   const scoped = scopedAgentActivity(state, activity);
+  rememberObservedActivity(state, scoped);
   const itemId = scoped.correlation?.itemId;
   if (itemId) {
     if (scoped.status === "running") {
@@ -513,10 +550,19 @@ export interface CodexThreadTurn {
 
 export interface CodexThreadReadResponse {
   thread: {
+    agentNickname?: string | null;
+    agentRole?: string | null;
     id: string;
+    parentThreadId?: string | null;
+    source?: unknown;
     status: { type: "active" | "idle" | "notLoaded" | "systemError" };
     turns: CodexThreadTurn[];
   };
+}
+
+interface CodexThreadListResponse {
+  data: Array<CodexThreadReadResponse["thread"]>;
+  nextCursor: string | null;
 }
 
 interface WorkspaceFileState {
@@ -3017,7 +3063,7 @@ export function normalizeCodexThreadItem(
       tool: item.tool,
       senderThreadId: item.senderThreadId,
       receiverThreadIds: item.receiverThreadIds.slice(0, 100),
-      prompt: null,
+      prompt: boundedText(item.prompt, 100_000),
       model: item.model,
       agentStates: Object.entries(item.agentsStates)
         .flatMap(([threadId, state]) =>
@@ -3877,6 +3923,7 @@ export class CodexAppServer implements CodexRuntime {
         itemStartedAtMs: new Map(),
         latestUsage: null,
         liveAgentMessageFingerprints: new Set(),
+        observedActivityFingerprints: new Set(),
         model: options.model,
         providerId: options.provider.id,
         providerKind: options.provider.kind,
@@ -4041,6 +4088,7 @@ export class CodexAppServer implements CodexRuntime {
         itemStartedAtMs: new Map(),
         latestUsage: null,
         liveAgentMessageFingerprints: new Set(),
+        observedActivityFingerprints: new Set(),
         model: options.model,
         providerId: options.provider.id,
         providerKind: options.provider.kind,
@@ -5640,6 +5688,12 @@ export class CodexAppServer implements CodexRuntime {
   private bindRootTurn(execution: RootExecution, turnId: string): void {
     if (execution.rootTurnId !== turnId) {
       execution.rootTurnId = turnId;
+      execution.active.observedActivityFingerprints.clear();
+      for (const state of execution.agents.values()) {
+        state.segmentTurnIds.clear();
+        state.observedActivityFingerprints.clear();
+        state.liveAgentMessageFingerprints.clear();
+      }
       this.refreshExecutionScopes(execution);
     }
     for (const [knownTurnId, candidate] of this.#activeTurns) {
@@ -5686,6 +5740,7 @@ export class CodexAppServer implements CodexRuntime {
       lastActiveAtMs: now,
       latestUsage: null,
       liveAgentMessageFingerprints: new Set(),
+      observedActivityFingerprints: new Set(),
       nickname: metadata.nickname ?? null,
       onActivity: active.onActivity,
       onMessage: active.onMessage,
@@ -5694,6 +5749,7 @@ export class CodexAppServer implements CodexRuntime {
       pendingAgentMessage: null,
       reasoningSummaries: new Map(),
       role: metadata.role ?? null,
+      segmentTurnIds: new Set(),
       startedAtMs: now,
       status: "starting",
       structuredChat: false,
@@ -5788,18 +5844,29 @@ export class CodexAppServer implements CodexRuntime {
 
   private emitAgentCommunication(input: {
     diagnosticId: string | null;
+    itemId?: string | null;
     kind: AgentCommunicationKind;
+    message?: string | null;
+    milestoneId?: string | null;
     sourceMethod: string;
     state: AgentRuntimeState;
     status: AgentActivity["status"];
     turnId?: string | null;
   }): void {
     if (!input.state.agentScope) return;
+    const milestoneId =
+      input.milestoneId ??
+      ((input.kind === "returned" ||
+        input.kind === "failed" ||
+        input.kind === "interrupted") &&
+      input.turnId
+        ? `${input.kind}:${input.turnId}`
+        : input.kind);
     emitTurnActivity(
       input.state,
       agentActivitySchema.parse({
         type: "agentCommunication",
-        id: `agent:${input.state.agentScope.rootTurnId}:${input.state.threadId}:${input.kind}`,
+        id: `agent:${input.state.agentScope.rootTurnId}:${input.state.threadId}:${milestoneId}`,
         kind: input.kind,
         senderThreadId:
           input.kind === "spawned" || input.kind === "followupSent"
@@ -5809,7 +5876,7 @@ export class CodexAppServer implements CodexRuntime {
           input.kind === "spawned" || input.kind === "followupSent"
             ? [input.state.threadId]
             : [input.state.parentThreadId],
-        message: null,
+        message: boundedText(input.message, 100_000),
         status: input.status,
         updatedAtMs: Date.now(),
         correlation: eventCorrelation(
@@ -5817,7 +5884,7 @@ export class CodexAppServer implements CodexRuntime {
           input.diagnosticId,
           input.state.threadId,
           input.turnId ?? input.state.currentTurnId,
-          null,
+          input.itemId ?? null,
         ),
       }),
     );
@@ -5849,6 +5916,9 @@ export class CodexAppServer implements CodexRuntime {
   private associateAgentsFromItem(
     item: CodexThreadItem,
     notificationThreadId: string,
+    notificationTurnId: string,
+    sourceMethod: string,
+    diagnosticId: string | null,
   ): void {
     if (item.type === "collabAgentToolCall") {
       const parentThreadId = this.#rootExecutionsByThread.has(
@@ -5856,7 +5926,11 @@ export class CodexAppServer implements CodexRuntime {
       )
         ? item.senderThreadId
         : notificationThreadId;
-      for (const threadId of item.receiverThreadIds) {
+      const targetThreadIds = new Set([
+        ...item.receiverThreadIds,
+        ...Object.keys(item.agentsStates),
+      ]);
+      for (const threadId of targetThreadIds) {
         if (threadId === parentThreadId) continue;
         const state = this.associateAgentThread({
           threadId,
@@ -5868,6 +5942,39 @@ export class CodexAppServer implements CodexRuntime {
             state,
             this.collaborationAgentStatus(advertised.status),
           );
+        }
+        if (state) {
+          const tool = item.tool.replaceAll("_", "").toLowerCase();
+          const advertisedMessage = boundedText(advertised?.message, 100_000);
+          const kind: AgentCommunicationKind =
+            tool === "spawnagent"
+              ? "spawned"
+              : tool === "sendinput" || tool === "resumeagent"
+                ? "followupSent"
+                : tool === "wait" && advertisedMessage
+                  ? "returned"
+                  : tool === "wait"
+                    ? "waiting"
+                    : tool === "closeagent"
+                      ? "interrupted"
+                      : "statusChanged";
+          this.emitAgentCommunication({
+            diagnosticId,
+            itemId: item.id,
+            kind,
+            message:
+              kind === "returned" ? advertisedMessage : (item.prompt ?? null),
+            milestoneId: kind === "spawned" ? "spawn" : `${kind}:${item.id}`,
+            sourceMethod,
+            state,
+            status:
+              item.status === "inProgress"
+                ? "running"
+                : item.status === "failed"
+                  ? "failed"
+                  : "completed",
+            turnId: notificationTurnId,
+          });
         }
       }
       return;
@@ -5891,6 +5998,214 @@ export class CodexAppServer implements CodexRuntime {
               : "running",
         );
       }
+    }
+  }
+
+  private async discoverSubagentThreads(
+    execution: RootExecution,
+  ): Promise<void> {
+    if (!this.methodAvailable("thread/list")) return;
+    let cursor: string | null = null;
+    let discovered = 0;
+    do {
+      const response = (await this.request(
+        "thread/list",
+        {
+          ancestorThreadId: execution.rootThreadId,
+          cursor,
+          limit: Math.min(100, MAX_RECOVERED_AGENT_THREADS - discovered),
+          sortKey: "created_at",
+          sortDirection: "asc",
+          useStateDbOnly: true,
+        },
+        COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS,
+      )) as CodexThreadListResponse;
+      if (!Array.isArray(response.data)) {
+        throw new Error("Codex returned an invalid descendant thread page.");
+      }
+      for (const thread of response.data) {
+        const metadata = childThreadMetadataFromNotification({ thread });
+        if (metadata) this.associateAgentThread(metadata);
+      }
+      discovered += response.data.length;
+      cursor = optionalString(response.nextCursor);
+    } while (cursor && discovered < MAX_RECOVERED_AGENT_THREADS);
+  }
+
+  private recoveredAgentTurns(
+    response: CodexThreadReadResponse,
+    state: AgentRuntimeState,
+    executionStartedAtMs: number,
+    executionCompletedAtMs: number,
+  ): CodexThreadTurn[] {
+    const windowStart = executionStartedAtMs - RECOVERY_TURN_CLOCK_SLOP_MS;
+    const windowEnd = executionCompletedAtMs + RECOVERY_TURN_CLOCK_SLOP_MS;
+    return response.thread.turns
+      .filter((turn) => {
+        if (state.segmentTurnIds.has(turn.id)) return true;
+        if (turn.startedAt === null) return false;
+        const startedAtMs = turn.startedAt * 1_000;
+        return startedAtMs >= windowStart && startedAtMs <= windowEnd;
+      })
+      .slice(-MAX_RECOVERED_TURNS_PER_AGENT)
+      .map((turn) => ({
+        ...turn,
+        items: turn.items.slice(-MAX_RECOVERED_ITEMS_PER_TURN),
+      }));
+  }
+
+  private async reconcileAgentThread(
+    execution: RootExecution,
+    state: AgentRuntimeState,
+    executionCompletedAtMs: number,
+  ): Promise<void> {
+    const response = (await this.request(
+      "thread/read",
+      { threadId: state.threadId, includeTurns: true },
+      COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS,
+    )) as CodexThreadReadResponse;
+    const metadata = childThreadMetadataFromNotification({
+      thread: response.thread,
+    });
+    if (metadata) this.associateAgentThread(metadata);
+    const turns = this.recoveredAgentTurns(
+      response,
+      state,
+      execution.active.startedAtMs,
+      executionCompletedAtMs,
+    );
+    for (const turn of turns) {
+      state.segmentTurnIds.add(turn.id);
+      const normalized = normalizeCodexThreadTurn(
+        turn,
+        execution.active.cwd,
+        state.threadId,
+      );
+      for (const item of normalized.items) {
+        if (item.type === "userMessage") {
+          this.emitAgentCommunication({
+            diagnosticId: null,
+            itemId: item.id,
+            kind:
+              response.thread.turns[0]?.id === turn.id
+                ? "spawned"
+                : "followupSent",
+            message: item.text || null,
+            milestoneId:
+              response.thread.turns[0]?.id === turn.id
+                ? "spawn"
+                : `followupSent:${item.id}`,
+            sourceMethod: "thread/read",
+            state,
+            status: "completed",
+            turnId: turn.id,
+          });
+          continue;
+        }
+        if (item.type === "agentMessage") {
+          const { type: _type, ...message } = item;
+          const scoped = normalizedAgentMessageSchema.parse({
+            ...message,
+            agentScope: state.agentScope,
+          });
+          const fingerprint = agentMessageFingerprint(scoped);
+          if (state.liveAgentMessageFingerprints.has(fingerprint)) continue;
+          state.liveAgentMessageFingerprints.add(fingerprint);
+          state.onMessage?.(scoped);
+          continue;
+        }
+        const scoped = scopedAgentActivity(state, item.activity);
+        if (
+          state.observedActivityFingerprints.has(
+            agentActivityDeliveryFingerprint(scoped),
+          )
+        ) {
+          continue;
+        }
+        emitTurnActivity(state, item.activity);
+      }
+      if (turn.status !== "inProgress") {
+        const status =
+          turn.status === "completed"
+            ? "completed"
+            : turn.status === "interrupted"
+              ? "interrupted"
+              : "failed";
+        this.updateAgentStatus(state, status);
+        this.emitAgentCommunication({
+          diagnosticId: null,
+          kind:
+            status === "completed"
+              ? "returned"
+              : status === "interrupted"
+                ? "interrupted"
+                : "failed",
+          sourceMethod: "thread/read",
+          state,
+          status: status === "completed" ? "completed" : "failed",
+          turnId: turn.id,
+        });
+      }
+    }
+  }
+
+  private async reconcileSubagentExecution(
+    active: ActiveTurn,
+    executionCompletedAtMs: number,
+  ): Promise<void> {
+    if (active.executionKind !== "chat") return;
+    const execution = this.#rootExecutionsByActive.get(active);
+    if (!execution?.rootTurnId || (!active.onActivity && !active.onMessage)) {
+      return;
+    }
+    try {
+      await this.discoverSubagentThreads(execution);
+    } catch (error) {
+      workerLogger.event(
+        "warn",
+        "Could not discover descendant Codex threads",
+        {
+          event: "codex.subagent.reconciliation",
+          subsystem: "codex",
+          operation: "list-descendant-threads",
+          status: "failed",
+          chatId: active.chatId ?? undefined,
+          threadId: execution.rootThreadId,
+          turnId: execution.rootTurnId,
+          error: workerLogError(error),
+        },
+      );
+    }
+    const states = [...execution.agents.values()]
+      .sort((left, right) => left.depth - right.depth)
+      .slice(0, MAX_RECOVERED_AGENT_THREADS);
+    for (let offset = 0; offset < states.length; offset += 4) {
+      await Promise.all(
+        states.slice(offset, offset + 4).map(async (state) => {
+          try {
+            await this.reconcileAgentThread(
+              execution,
+              state,
+              executionCompletedAtMs,
+            );
+          } catch (error) {
+            workerLogger.event(
+              "warn",
+              "Could not reconcile a descendant Codex thread",
+              {
+                event: "codex.subagent.reconciliation",
+                subsystem: "codex",
+                operation: "read-descendant-thread",
+                status: "failed",
+                chatId: active.chatId ?? undefined,
+                threadId: state.threadId,
+                turnId: execution.rootTurnId ?? undefined,
+                error: workerLogError(error),
+              },
+            );
+          }
+        }),
+      );
     }
   }
 
@@ -6001,8 +6316,10 @@ export class CodexAppServer implements CodexRuntime {
       state.pendingAgentMessage = null;
       state.startedAtMs = Date.now();
       state.liveAgentMessageFingerprints.clear();
+      state.observedActivityFingerprints.clear();
       state.reasoningSummaries.clear();
     }
+    state.segmentTurnIds.add(turnId);
     state.status = "running";
     state.lastActiveAtMs = Date.now();
     state.agentScope = this.agentScope(execution, state);
@@ -6686,9 +7003,11 @@ export class CodexAppServer implements CodexRuntime {
           this.emitAgentCommunication({
             diagnosticId,
             kind: "spawned",
+            milestoneId: "spawn",
             sourceMethod: message.method,
             state,
             status: "running",
+            turnId: state.agentScope?.rootTurnId ?? null,
           });
         }
       }
@@ -6984,7 +7303,13 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/started") {
       const params = message.params as ItemLifecycleParams;
-      this.associateAgentsFromItem(params.item, params.threadId);
+      this.associateAgentsFromItem(
+        params.item,
+        params.threadId,
+        params.turnId,
+        message.method,
+        diagnosticId,
+      );
       const state = this.notificationTarget(
         params.threadId,
         params.turnId,
@@ -7061,7 +7386,13 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/completed") {
       const params = message.params as ItemLifecycleParams;
-      this.associateAgentsFromItem(params.item, params.threadId);
+      this.associateAgentsFromItem(
+        params.item,
+        params.threadId,
+        params.turnId,
+        message.method,
+        diagnosticId,
+      );
       const state = this.notificationTarget(
         params.threadId,
         params.turnId,
@@ -7552,6 +7883,7 @@ export class CodexAppServer implements CodexRuntime {
           null,
         ),
       );
+      await this.reconcileSubagentExecution(active, Date.now());
       const text = active.finalText ?? active.delta;
       if (active.executionKind === "chat" && this.#goals.has(active.threadId)) {
         await this.replayCompletedTurn(active, turnId);
@@ -7773,6 +8105,7 @@ export class CodexAppServer implements CodexRuntime {
           null,
         ),
       );
+      await this.reconcileSubagentExecution(active, Date.now());
     } finally {
       this.releaseActiveTurn(active);
       clearTurnInspectionTelemetry(active);

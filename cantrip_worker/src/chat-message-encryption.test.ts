@@ -349,5 +349,71 @@ describe("worker chat message encryption", () => {
       },
     });
     expect(rootEvent.message.id).not.toBe(childEvent.message.id);
+
+    const recoverySealer = new EncryptedChatEventSealer(
+      service,
+      "chat-subagents",
+      { explanation: null, steps: [], question: null },
+    );
+    const recoveredChildEvent = await recoverySealer.message({
+      id: "same-message",
+      text: "Child",
+      phase: "final_answer",
+      agentScope: childScope,
+      correlation: {
+        sourceMethod: "thread/read",
+        diagnosticId: null,
+        threadId: "child-thread",
+        turnId: "same-turn",
+        itemId: "same-message",
+      },
+    });
+    expect(recoveredChildEvent.message.id).toBe(childEvent.message.id);
+    expect(recoveredChildEvent.message.idempotencyKey).toBe(
+      childEvent.message.idempotencyKey,
+    );
+
+    const privateHandoff = "PRIVATE_CHILD_HANDOFF_SENTINEL";
+    const communicationEvent = await sealer.activity({
+      type: "agentCommunication",
+      id: "child-handoff",
+      kind: "followupSent",
+      senderThreadId: "root-thread",
+      receiverThreadIds: ["child-thread"],
+      message: privateHandoff,
+      status: "completed",
+      agentScope: childScope,
+      correlation: {
+        sourceMethod: "item/completed",
+        diagnosticId: null,
+        threadId: "child-thread",
+        turnId: "same-turn",
+        itemId: "child-handoff",
+      },
+    });
+    expect(JSON.stringify(communicationEvent)).not.toContain(privateHandoff);
+    expect(JSON.stringify(communicationEvent)).not.toContain("Scout");
+    expect(JSON.stringify(communicationEvent)).not.toContain("explorer");
+    await expect(
+      decryptChatMessageProtectedContent({
+        ownerId,
+        messageId: communicationEvent.message.id,
+        keyRevision: 1,
+        componentKey,
+        encrypted: communicationEvent.message.protectedContent,
+        publicClassification: communicationEvent.message.classification,
+      }),
+    ).resolves.toMatchObject({
+      content: [
+        {
+          type: "activity",
+          activity: {
+            type: "agentCommunication",
+            message: privateHandoff,
+            agentScope: childScope,
+          },
+        },
+      ],
+    });
   });
 });
