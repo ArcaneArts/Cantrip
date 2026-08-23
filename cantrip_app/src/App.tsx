@@ -166,6 +166,7 @@ import {
 } from "@/components/chat/github-mentions";
 import { PromptQueue } from "@/components/chat/prompt-queue";
 import type { CodeHeaderState } from "@/components/code/code-view";
+import { runCodeWorktreeChange } from "@/components/code/code-worktree-change";
 import {
   activeSkillMention,
   filterSkills,
@@ -4897,12 +4898,25 @@ export function App() {
     mode?: "agent-managed" | "pinned";
   }) => {
     if (!(await prepareExplorerRebind(input.target))) return false;
-    try {
-      await bindWorktreeMutation.mutateAsync(input);
-      return true;
-    } catch {
-      return false;
-    }
+    const codeNeedsPause =
+      input.target.kind === "code" &&
+      Boolean(
+        codeHeader?.runtime ||
+        codeHeader?.status === "starting" ||
+        codeHeader?.status === "running",
+      );
+    return runCodeWorktreeChange({
+      active: codeNeedsPause,
+      header: codeHeader,
+      rebind: async () => {
+        try {
+          await bindWorktreeMutation.mutateAsync(input);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    });
   };
   const createWorktreeMutation = useMutation({
     mutationFn: ({
@@ -7533,14 +7547,19 @@ export function App() {
                     workers={workers.data ?? []}
                     leaseOwner={activeChat?.title}
                     actions={{
+                      branchDisabled:
+                        bindWorktreeMutation.isPending ||
+                        activeChat?.status === "running" ||
+                        selectedTerminal?.status === "running",
                       chatMode: activeChat?.worktreeMode,
                       pending: bindWorktreeMutation.isPending,
                       disabled:
                         bindWorktreeMutation.isPending ||
                         activeChat?.status === "running" ||
                         selectedTerminal?.status === "running" ||
-                        selectedCodeTab?.status === "running" ||
-                        selectedCodeTab?.status === "starting",
+                        ((selectedCodeTab?.status === "running" ||
+                          selectedCodeTab?.status === "starting") &&
+                          !codeHeader),
                       error: worktreeActionError,
                       onCreate: () =>
                         setWorktreeCreateTarget(activeWorktreeTarget),

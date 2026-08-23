@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   compactWorktreePath,
   worktreeExistingBranchOptions,
+  worktreeForBranch,
   worktreeHasConflicts,
   worktreeSwitchBranchOptions,
   worktreeTooltip,
@@ -152,5 +153,32 @@ describe("worktree switcher presentation", () => {
         ({ fullRef }) => fullRef,
       ),
     ).toEqual([current.fullRef, topic.fullRef, remote.fullRef]);
+  });
+
+  it("routes checked-out local and tracked remote branches to their worktree", () => {
+    const topicWorktree = {
+      ...worktree,
+      id: "worktree-topic",
+      branch: "topic/zeta",
+      name: "Topic worktree",
+    };
+    const local = branch("topic/zeta", "local");
+    const remote = {
+      ...branch("origin/topic/zeta", "remote"),
+      trackingLocalBranches: ["topic/zeta"],
+    };
+
+    expect(worktreeForBranch([worktree, topicWorktree], local)?.id).toBe(
+      topicWorktree.id,
+    );
+    expect(worktreeForBranch([worktree, topicWorktree], remote)?.id).toBe(
+      topicWorktree.id,
+    );
+    expect(
+      worktreeForBranch(
+        [worktree, topicWorktree],
+        branch("unclaimed", "local"),
+      ),
+    ).toBeUndefined();
   });
 });

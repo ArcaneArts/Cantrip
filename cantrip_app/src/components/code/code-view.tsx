@@ -38,7 +38,9 @@ export interface CodeHeaderState {
   runtime: CodeRuntimeStatus | null;
   status: CodeTabStatus | CodeRuntimeStatus["status"];
   reload(): void;
+  prepareWorktreeChange(): Promise<boolean>;
   restart(): Promise<void>;
+  resumeAfterWorktreeChange(): void;
   saveAll(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -519,6 +521,51 @@ export function CodeView({
     [codeTab.id, runAction],
   );
 
+  const prepareWorktreeChange = useCallback(async () => {
+    setBusyAction("worktree");
+    setActionError(null);
+    setActionMessage(null);
+    let paused = false;
+    try {
+      const result = await saveAllCodeTab(codeTab.id);
+      if (result.failed.length > 0) {
+        throw new Error(
+          `Could not save ${result.failed.length} editor${result.failed.length === 1 ? "" : "s"}: ${result.failed[0]?.message ?? "Unknown error"}`,
+        );
+      }
+      stopped.current = true;
+      paused = true;
+      connectionGeneration.current += 1;
+      try {
+        await stopCodeTab(codeTab.id);
+      } catch (error) {
+        if (!isCodeSessionUnavailableError(error)) throw error;
+      }
+      setAttachment(null);
+      setConnectError(null);
+      setConnecting(false);
+      setRetrying(false);
+      onChangedRef.current?.();
+      return true;
+    } catch (error) {
+      setActionError(errorText(error));
+      if (paused) {
+        stopped.current = false;
+        setReloadVersion((version) => version + 1);
+      }
+      return false;
+    } finally {
+      setBusyAction(null);
+    }
+  }, [codeTab.id]);
+
+  const resumeAfterWorktreeChange = useCallback(() => {
+    stopped.current = false;
+    setAttachment(null);
+    setConnectError(null);
+    setReloadVersion((version) => version + 1);
+  }, []);
+
   const stop = useCallback(
     () =>
       runAction("stop", async () => {
@@ -565,7 +612,9 @@ export function CodeView({
         attachment?.runtime.status ??
         (stopped.current ? "stopped" : codeTab.status),
       reload,
+      prepareWorktreeChange,
       restart,
+      resumeAfterWorktreeChange,
       saveAll,
       stop,
     }),
@@ -578,8 +627,10 @@ export function CodeView({
       connectError,
       connecting,
       reload,
+      prepareWorktreeChange,
       restart,
       retrying,
+      resumeAfterWorktreeChange,
       saveAll,
       stop,
     ],
