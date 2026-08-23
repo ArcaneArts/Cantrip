@@ -5315,6 +5315,17 @@ export async function renameChat(chatId: string, title: string) {
   );
 }
 
+export async function acknowledgeChatCompletion(chatId: string) {
+  return chatTitleEncryption.open(
+    chatWireSummarySchema.parse(
+      await post(
+        `/api/chats/${encodeURIComponent(chatId)}/completion/read`,
+        {},
+      ),
+    ),
+  );
+}
+
 export async function updateChatWorktree(
   chatId: string,
   input: ChatWorktreeUpdate,

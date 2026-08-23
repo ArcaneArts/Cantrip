@@ -1314,6 +1314,7 @@ function toChatWireSummary(
     permissionProfileId: chat.permissionProfileId,
     planMode: chat.planMode as ChatWireSummary["planMode"],
     hasPendingPlanQuestion: chat.hasPendingPlanQuestion,
+    hasUnreadCompletion: chat.hasUnreadCompletion,
     automationPaused: chat.automationPaused,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
@@ -10449,7 +10450,11 @@ export class ServerRepository {
       }
       await transaction
         .update(schema.chats)
-        .set({ status: "failed", updatedAt: now })
+        .set({
+          status: "failed",
+          hasUnreadCompletion: true,
+          updatedAt: now,
+        })
         .where(
           and(
             inArray(schema.chats.status, ["running", "waiting-for-approval"]),
@@ -10458,7 +10463,7 @@ export class ServerRepository {
         );
       await transaction
         .update(schema.chats)
-        .set({ status: "idle", updatedAt: now })
+        .set({ status: "idle", hasUnreadCompletion: true, updatedAt: now })
         .where(
           and(
             inArray(schema.chats.status, ["running", "waiting-for-approval"]),
@@ -10767,7 +10772,13 @@ export class ServerRepository {
       if (!suspended[0]) return false;
       await transaction
         .update(schema.chats)
-        .set({ status, updatedAt: now })
+        .set({
+          status,
+          ...(status === "idle" || status === "failed"
+            ? { hasUnreadCompletion: true }
+            : {}),
+          updatedAt: now,
+        })
         .where(eq(schema.chats.id, chatId));
       return true;
     });
@@ -14846,8 +14857,43 @@ export class ServerRepository {
   ): Promise<void> {
     await this.database
       .update(schema.chats)
-      .set({ status, updatedAt: new Date() })
+      .set({
+        status,
+        ...(status === "idle" || status === "failed"
+          ? {
+              hasUnreadCompletion: sql<boolean>`case
+                  when ${schema.chats.status} in ('running', 'waiting-for-approval')
+                    then true
+                  else ${schema.chats.hasUnreadCompletion}
+                end`,
+            }
+          : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.chats.id, chatId));
+  }
+
+  async acknowledgeChatCompletion(
+    ownerId: string,
+    chatId: string,
+  ): Promise<ChatWireSummary | null> {
+    const rows = await this.database
+      .update(schema.chats)
+      .set({ hasUnreadCompletion: false })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          inArray(
+            schema.chats.projectId,
+            this.database
+              .select({ id: schema.projects.id })
+              .from(schema.projects)
+              .where(eq(schema.projects.ownerId, ownerId)),
+          ),
+        ),
+      )
+      .returning();
+    return rows[0] ? toChatWireSummary(rows[0]) : null;
   }
 
   async recordAgentInteractionRequest(

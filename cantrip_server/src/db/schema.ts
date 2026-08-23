@@ -2334,6 +2334,9 @@ export const chats = pgTable(
     hasPendingPlanQuestion: boolean("has_pending_plan_question")
       .notNull()
       .default(false),
+    hasUnreadCompletion: boolean("has_unread_completion")
+      .notNull()
+      .default(false),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

@@ -1,0 +1,1 @@
+ALTER TABLE "chats" ADD COLUMN "has_unread_completion" boolean DEFAULT false NOT NULL;

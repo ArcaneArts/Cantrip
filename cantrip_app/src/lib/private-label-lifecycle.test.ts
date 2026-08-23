@@ -228,6 +228,7 @@ function chatWire(
     permissionProfileId: null,
     planMode: "default",
     hasPendingPlanQuestion: false,
+    hasUnreadCompletion: false,
     automationPaused: false,
     createdAt: timestamp,
     updatedAt: timestamp,

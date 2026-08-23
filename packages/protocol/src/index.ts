@@ -4373,6 +4373,7 @@ const chatSummaryBaseSchema = z.object({
   permissionProfileId: z.string().min(1).max(200).nullable(),
   planMode: z.enum(["default", "plan"]),
   hasPendingPlanQuestion: z.boolean(),
+  hasUnreadCompletion: z.boolean().default(false),
   automationPaused: z.boolean().default(false),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
