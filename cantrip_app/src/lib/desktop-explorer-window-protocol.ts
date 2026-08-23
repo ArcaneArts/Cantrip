@@ -41,6 +41,11 @@ export type DesktopExplorerWindowResponse =
       type: "editor.ready";
     }
   | {
+      configuredAtMs: number;
+      launchId: string;
+      type: "editor.configured";
+    }
+  | {
       error: string;
       launchId: string;
       type: "editor.failed";
@@ -131,6 +136,9 @@ export function isDesktopExplorerWindowResponse(
       typeof message.attachment === "object" &&
       typeof message.preparedAtMs === "number"
     );
+  }
+  if (message.type === "editor.configured") {
+    return typeof message.configuredAtMs === "number";
   }
   if (message.type === "editor.failed") {
     return typeof message.error === "string";

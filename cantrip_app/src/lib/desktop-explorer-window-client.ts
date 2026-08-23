@@ -16,6 +16,7 @@ type PendingRequest = {
 export interface DesktopExplorerWindowClientCallbacks {
   onContext(context: DesktopExplorerWindowContext): void;
   onEditor(attachment: CodeAttachment, preparedAtMs: number): void;
+  onEditorConfigured(configuredAtMs: number): void;
   onEditorError(error: string): void;
   onLaunchError(error: string): void;
 }
@@ -101,6 +102,10 @@ export class DesktopExplorerWindowClient {
     }
     if (response.type === "editor.ready") {
       this.#callbacks.onEditor(response.attachment, response.preparedAtMs);
+      return;
+    }
+    if (response.type === "editor.configured") {
+      this.#callbacks.onEditorConfigured(response.configuredAtMs);
       return;
     }
     if (response.type === "editor.failed") {

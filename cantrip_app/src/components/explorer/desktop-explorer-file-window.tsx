@@ -14,6 +14,7 @@ import {
   structuredFileFormatForPath,
   type VisualFileFormat,
 } from "@/components/explorer/explorer-file-language";
+import { DesktopExplorerWindowHeader } from "@/components/explorer/desktop-explorer-window-shell";
 import { Button } from "@/components/ui/button";
 import { clientLogger } from "@/lib/client-log-relay";
 import { DesktopExplorerWindowClient } from "@/lib/desktop-explorer-window-client";
@@ -204,44 +205,64 @@ function ModeButton({
 
 function EditorPane({
   attachment,
+  configuredAtMs,
   context,
   error,
   preparedAtMs,
 }: {
   attachment: CodeAttachment | null;
+  configuredAtMs: number | null;
   context: DesktopExplorerWindowContext;
   error: string | null;
   preparedAtMs: number | null;
 }) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => setLoaded(false), [attachment?.url]);
+  const ready = loaded && configuredAtMs !== null;
+  useEffect(() => {
+    if (!ready) return;
+    clientLogger.info("Explorer editor window rendered", {
+      configuredAtMs,
+      durationMs: Date.now() - context.requestedAtMs,
+      event: "surface.explorer.editor-window.rendered",
+      operation: "render-editor",
+      preparedAtMs,
+      status: "ready",
+      subsystem: "explorer",
+    });
+  }, [configuredAtMs, context.requestedAtMs, preparedAtMs, ready]);
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden bg-background">
       {attachment ? (
         <iframe
           allow="clipboard-read; clipboard-write"
-          className="size-full border-0 bg-background"
+          aria-hidden={!ready}
+          className={cn(
+            "size-full border-0 bg-background",
+            ready ? "opacity-100" : "pointer-events-none opacity-0",
+          )}
           onLoad={() => {
             setLoaded(true);
-            clientLogger.info("Explorer editor window rendered", {
+            clientLogger.debug("Explorer editor workbench frame loaded", {
               durationMs: Date.now() - context.requestedAtMs,
-              event: "surface.explorer.editor-window.rendered",
-              operation: "render-editor",
+              event: "surface.explorer.editor-window.frame-loaded",
+              operation: "load-workbench-frame",
               preparedAtMs,
-              status: "ready",
+              status: "completed",
               subsystem: "explorer",
             });
           }}
           src={attachment.url}
+          tabIndex={ready ? 0 : -1}
           title={`Cantrip Code — ${context.path}`}
         />
       ) : null}
-      {loaded && error ? (
+      {ready && error ? (
         <p className="absolute inset-x-4 top-4 z-10 border border-destructive/30 bg-background/95 p-3 text-sm text-destructive shadow-lg">
           {error}
         </p>
       ) : null}
-      {!loaded ? (
+      {!ready ? (
         <div className="absolute inset-0 grid place-items-center bg-background p-6">
           {error ? (
             <p className="max-w-lg border-y border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
@@ -256,13 +277,20 @@ function EditorPane({
   );
 }
 
-export function DesktopExplorerFileWindow({ launchId }: { launchId: string }) {
+export function DesktopExplorerFileWindow({
+  initialPath,
+  launchId,
+}: {
+  initialPath: string;
+  launchId: string;
+}) {
   const [context, setContext] = useState<DesktopExplorerWindowContext | null>(
     null,
   );
   const [mode, setMode] = useState<ExplorerFileMode>("edit");
   const [attachment, setAttachment] = useState<CodeAttachment | null>(null);
   const [preparedAtMs, setPreparedAtMs] = useState<number | null>(null);
+  const [configuredAtMs, setConfiguredAtMs] = useState<number | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [file, setFile] = useState<ExplorerFile | null>(null);
@@ -288,8 +316,10 @@ export function DesktopExplorerFileWindow({ launchId }: { launchId: string }) {
         onEditor: (next, prepared) => {
           setAttachment(next);
           setPreparedAtMs(prepared);
+          setConfiguredAtMs(null);
           setEditorError(null);
         },
+        onEditorConfigured: setConfiguredAtMs,
         onEditorError: setEditorError,
         onLaunchError: setLaunchError,
       }),
@@ -301,12 +331,13 @@ export function DesktopExplorerFileWindow({ launchId }: { launchId: string }) {
     return () => client.dispose();
   }, [client]);
 
-  const mediaType = context ? explorerMediaTypeForPath(context.path) : null;
+  const path = context?.path ?? initialPath;
+  const mediaType = context ? explorerMediaTypeForPath(path) : null;
   const structuredFormat: VisualFileFormat | null = context
-    ? structuredFileFormatForPath(context.path)
+    ? structuredFileFormatForPath(path)
     : null;
   const availableModes = context
-    ? desktopExplorerWindowModes(context.path)
+    ? desktopExplorerWindowModes(path)
     : (["preview", "edit"] satisfies ExplorerFileMode[]);
   useEffect(() => {
     if (!context || mode === "edit") return;
@@ -351,26 +382,11 @@ export function DesktopExplorerFileWindow({ launchId }: { launchId: string }) {
   }, [dirty]);
 
   useEffect(() => {
-    if (!context) return;
-    const title = [fileName(context.path), context.projectTitle, "Cantrip"]
+    const title = [fileName(path), context?.projectTitle, "Cantrip"]
       .filter(Boolean)
       .join(" — ");
     void updateDesktopWindowTitle(title);
-  }, [context]);
-
-  if (!context) {
-    return (
-      <main className="grid h-svh place-items-center bg-background p-6 text-foreground">
-        {launchError ? (
-          <p className="max-w-lg text-center text-sm text-destructive">
-            {launchError}
-          </p>
-        ) : (
-          <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        )}
-      </main>
-    );
-  }
+  }, [context?.projectTitle, path]);
 
   const save = async () => {
     if (!file || !dirty) return;
@@ -391,66 +407,80 @@ export function DesktopExplorerFileWindow({ launchId }: { launchId: string }) {
 
   return (
     <main className="flex h-svh min-h-0 flex-col overflow-hidden bg-background text-foreground">
-      <header
-        className="relative flex h-9 shrink-0 items-center border-b border-border/70 bg-background pr-2"
-        style={{
-          paddingLeft: overlayTitlebar
-            ? desktopPopoutTitlebarLeftInset(true, true)
-            : "0.5rem",
-        }}
-      >
-        <div className="absolute inset-0" data-tauri-drag-region="" />
-        <span className="relative min-w-0 flex-1 truncate px-2 text-xs text-muted-foreground">
-          {context.path}
-        </span>
-        <div className="relative flex items-center gap-0.5 rounded-md bg-muted/40 p-0.5">
-          <ModeButton
-            active={mode === "preview"}
-            onClick={() => setMode("preview")}
-          >
-            <Eye className="size-3.5" />
-            Read only
-          </ModeButton>
-          {availableModes.includes("visual") ? (
-            <ModeButton
-              active={mode === "visual"}
-              onClick={() => setMode("visual")}
-            >
-              <SlidersHorizontal className="size-3.5" />
-              Visual
-            </ModeButton>
-          ) : null}
-          <ModeButton active={mode === "edit"} onClick={() => setMode("edit")}>
-            <Code2 className="size-3.5" />
-            Editor
-          </ModeButton>
-        </div>
-        {mode === "visual" && dirty ? (
-          <Button
-            className="relative ml-1 h-7 px-2.5 text-xs"
-            onClick={() => void save()}
-            pending={saving}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <Save className="size-3.5" />
-            Save
-          </Button>
-        ) : null}
-      </header>
+      <DesktopExplorerWindowHeader
+        actions={
+          <>
+            <div className="flex items-center gap-0.5 rounded-md bg-muted/40 p-0.5">
+              <ModeButton
+                active={mode === "preview"}
+                disabled={!context}
+                onClick={() => setMode("preview")}
+              >
+                <Eye className="size-3.5" />
+                Read only
+              </ModeButton>
+              {availableModes.includes("visual") ? (
+                <ModeButton
+                  active={mode === "visual"}
+                  disabled={!context}
+                  onClick={() => setMode("visual")}
+                >
+                  <SlidersHorizontal className="size-3.5" />
+                  Visual
+                </ModeButton>
+              ) : null}
+              <ModeButton
+                active={mode === "edit"}
+                disabled={!context}
+                onClick={() => setMode("edit")}
+              >
+                <Code2 className="size-3.5" />
+                Editor
+              </ModeButton>
+            </div>
+            {mode === "visual" && dirty ? (
+              <Button
+                className="ml-1 h-7 px-2.5 text-xs"
+                onClick={() => void save()}
+                pending={saving}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <Save className="size-3.5" />
+                Save
+              </Button>
+            ) : null}
+          </>
+        }
+        path={path}
+        titlebarLeftInset={desktopPopoutTitlebarLeftInset(
+          true,
+          overlayTitlebar,
+        )}
+      />
 
-      <div
-        className={cn("min-h-0 flex-1", mode === "edit" ? "flex" : "hidden")}
-      >
-        <EditorPane
-          attachment={attachment}
-          context={context}
-          error={editorError}
-          preparedAtMs={preparedAtMs}
-        />
-      </div>
-      {mode !== "edit" ? (
+      {!context ? (
+        <div className="grid min-h-0 flex-1 place-items-center bg-background p-6">
+          {launchError ? (
+            <p className="max-w-lg text-center text-sm text-destructive">
+              {launchError}
+            </p>
+          ) : (
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          )}
+        </div>
+      ) : mode === "edit" ? (
+        <div className="flex min-h-0 flex-1">
+          <EditorPane
+            attachment={attachment}
+            configuredAtMs={configuredAtMs}
+            context={context}
+            error={editorError}
+            preparedAtMs={preparedAtMs}
+          />
+        </div>
+      ) : (
         <section className="relative min-h-0 flex-1 overflow-hidden">
           {contentError ? (
             <div className="absolute inset-x-0 top-0 z-10 border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive">
@@ -466,7 +496,7 @@ export function DesktopExplorerFileWindow({ launchId }: { launchId: string }) {
               blob={media}
               kind={mediaType.kind}
               mimeType={mediaType.mimeType}
-              path={context.path}
+              path={path}
             />
           ) : mode === "visual" && file && structuredFormat ? (
             <Suspense
@@ -481,7 +511,7 @@ export function DesktopExplorerFileWindow({ launchId }: { launchId: string }) {
                 format={structuredFormat}
                 onChange={setDraft}
                 onSave={() => void save()}
-                path={context.path}
+                path={path}
               />
             </Suspense>
           ) : file ? (
@@ -491,12 +521,12 @@ export function DesktopExplorerFileWindow({ launchId }: { launchId: string }) {
                   <Markdown>{draft}</Markdown>
                 </article>
               ) : (
-                <SourceView code={draft} path={context.path} />
+                <SourceView code={draft} path={path} />
               )}
             </div>
           ) : null}
         </section>
-      ) : null}
+      )}
     </main>
   );
 }

@@ -29,7 +29,7 @@ import { createDesktopExplorerWindowBroker } from "./desktop-explorer-window-bro
 import { DesktopExplorerWindowClient } from "./desktop-explorer-window-client";
 
 describe("desktop Explorer window broker", () => {
-  it("hands the iframe URL to the child before waiting for its workbench bridge", async () => {
+  it("loads the hidden iframe before announcing that its workbench is configured", async () => {
     const attachment = {
       attachmentId: "attachment-one",
       url: "http://127.0.0.1:43123/code/",
@@ -55,9 +55,14 @@ describe("desktop Explorer window broker", () => {
       attachment,
       directTunnelId: "direct-code:session-one",
     });
+    let finishPresentation!: () => void;
+    const presentation = new Promise<void>((resolve) => {
+      finishPresentation = resolve;
+    });
     desktopCode.setDirectCodeAttachmentPresentation.mockReturnValue(
-      new Promise(() => undefined),
+      presentation,
     );
+    desktopCode.openDirectCodeAttachmentFile.mockResolvedValue(undefined);
     desktopCode.stopDirectCodeAttachment.mockResolvedValue(undefined);
 
     const broker = createDesktopExplorerWindowBroker({
@@ -73,9 +78,14 @@ describe("desktop Explorer window broker", () => {
     const editor = new Promise<CodeAttachment>((resolve) => {
       resolveEditor = resolve;
     });
+    let resolveConfigured!: (value: number) => void;
+    const configured = new Promise<number>((resolve) => {
+      resolveConfigured = resolve;
+    });
     const client = new DesktopExplorerWindowClient(broker.launchId, {
       onContext: vi.fn(),
       onEditor: resolveEditor,
+      onEditorConfigured: resolveConfigured,
       onEditorError: vi.fn(),
       onLaunchError: vi.fn(),
     });
@@ -87,6 +97,13 @@ describe("desktop Explorer window broker", () => {
       desktopCode.setDirectCodeAttachmentPresentation,
     ).toHaveBeenCalledOnce();
     expect(desktopCode.openDirectCodeAttachmentFile).not.toHaveBeenCalled();
+
+    finishPresentation();
+    await expect(configured).resolves.toEqual(expect.any(Number));
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
+      attachment,
+      "src/index.ts",
+    );
 
     client.dispose();
     finishStaleCleanup();

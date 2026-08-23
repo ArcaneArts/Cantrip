@@ -78,6 +78,19 @@ describe("desktop Explorer window protocol", () => {
     ).toBe(true);
     expect(
       isDesktopExplorerWindowResponse({
+        configuredAtMs: 123,
+        launchId: "launch-one",
+        type: "editor.configured",
+      }),
+    ).toBe(true);
+    expect(
+      isDesktopExplorerWindowResponse({
+        launchId: "launch-one",
+        type: "editor.configured",
+      }),
+    ).toBe(false);
+    expect(
+      isDesktopExplorerWindowResponse({
         context: {},
         launchId: "launch-one",
         type: "launch.ready",
