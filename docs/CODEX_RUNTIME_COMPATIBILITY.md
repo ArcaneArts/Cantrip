@@ -100,6 +100,57 @@ portable functions for providers without namespace support, and explicit empty
 dynamic-tool behavior. The complete transport, binding, and catalog contract is
 in [`MCP.md`](MCP.md).
 
+## Native subagent compatibility
+
+Compatible Codex sessions enable native collaboration explicitly with
+`features.multi_agent=true` and `agents.enabled=true`. This only makes the
+native tools available; Cantrip does not add an instruction that proactively
+delegates work. With no custom child configuration the worker omits
+`agents.default_subagent_model` and
+`agents.default_subagent_reasoning_effort`, preserving Codex inheritance. A
+custom child model is resolved by the server on the same provider/account as
+the root, added to the worker-generated model catalog, and applied only to that
+turn.
+
+The worker heartbeat advertises `nativeSubagents` with an availability flag
+and a positive protocol version. Protocol version 1 covers root-execution
+ownership, nested child notification routing, protected agent scope and
+communications, recovery, child interaction routing, and deterministic root
+completion isolation. The server sends subagent defaults and
+`subagentProtocolVersion` only when the worker's advertised version exactly
+matches the server's supported version.
+
+Compatibility is deliberately asymmetric and fail-safe:
+
+- A legacy worker that omits `nativeSubagents` still connects and runs ordinary
+  root turns. Its capability defaults to unavailable, custom child
+  configuration is rejected with an actionable error, and the server omits all
+  new turn fields.
+- A current version-1 worker receives version-1 turn fields and may use native
+  children. Inherited configuration leaves native inheritance intact; a custom
+  child must pass same-provider route validation before dispatch.
+- A newer worker may advertise a higher positive protocol version without
+  making its whole heartbeat invalid. It remains usable for ordinary root
+  turns, but Cantrip marks native subagents unavailable and does not send an
+  older protocol command. A server/worker upgrade must add an explicit
+  compatible negotiation path before enabling that version.
+- An unavailable or mismatched capability never silently falls back from an
+  explicitly selected custom child to inheritance or another provider.
+
+The legacy single-field chat model and reasoning mutations remain compatibility
+adapters over the atomic model-configuration repository operation. They are not
+removed while supported clients can still call them; new clients use the
+atomic root/subagent configuration mutation so a turn cannot observe an
+invalid intermediate combination.
+
+Child prompts, handoffs, reasoning, commands, paths, results, nicknames, and
+roles remain inside the owning chat's encrypted payloads. The server uses only
+opaque correlation and operational metadata. Reconnect recovery through
+`thread/list` and `thread/read` runs on the worker and passes through the same
+normalization, redaction, encryption, and idempotency boundary as live events.
+The full product contract and scenario matrix are in
+[`SUBAGENTS.md`](SUBAGENTS.md).
+
 These new methods are capability-visible but not yet product operations.
 Cantrip's existing prompt queue remains server-owned, encrypted, and portable
 across workers, while Codex's queue belongs to one runtime thread. Replacing or

@@ -5,8 +5,9 @@
 This document is the implemented product and technical contract for Cantrip's
 turn-scoped Trajectory view in agent Inspect surfaces.
 
-Trajectory is a time-lane visualization of one agent turn. It is not a causal
-node graph and it is not a whole-conversation analytics view.
+Trajectory is a time-track visualization of one root agent turn and every
+native subagent that participated in it. It is not a causal node graph and it
+is not a whole-conversation analytics view.
 
 ## Decisions
 
@@ -27,8 +28,15 @@ node graph and it is not a whole-conversation analytics view.
 - Task planning/finalization and Task implementation activity surfaces use the
   same Trajectory/State tabs. They default to Trajectory and scope it to the
   Task's current turn.
-- The graph has Input, Model, and Tools lanes. It includes all persisted event
-  families, with filters for reducing what is shown.
+- The graph has one horizontal track per agent. Each track combines Input,
+  Model, and Tools segments using the existing semantic colors. The root is
+  pinned first; active descendants precede inactive descendants.
+- Nested agents are flattened and path-indented. The graph grows through five
+  tracks and then scrolls vertically without desynchronizing the shared time
+  axis, playhead, zoom, or pan state.
+- Filters include every agent that participated in the selected root turn in
+  addition to the existing semantic category, event-family, status, timing,
+  and search controls.
 - Clicking the timeline positions a visible playhead and scrolls the event
   history to the corresponding point. Clicking a concrete event also selects
   it and exposes its details.
@@ -216,12 +224,20 @@ It returns a `TrajectoryTurn` containing:
 - a flag describing whether exact runtime timing is complete; and
 - the next transition time needed by a running event.
 
+The turn also carries an ordered agent inventory derived from the shared
+decrypted `AgentTurnProjection`. The root is always first. Active descendants
+sort by most recent activity, then inactive descendants by most recent
+completion/activity, with stable agent path and thread ID tie-breakers. The
+projection is recomputed when its source messages change, not on elapsed-time
+clock ticks.
+
 Each `TrajectoryEvent` contains at minimum:
 
 - stable trajectory ID;
 - original message ID and sequence;
 - content index;
 - activity, thread, turn, item, and diagnostic IDs when available;
+- root-turn and agent-thread identity plus the decrypted agent path/depth;
 - lane and event kind;
 - lifecycle status;
 - start, last-update, and completion time;
@@ -233,8 +249,8 @@ Each `TrajectoryEvent` contains at minimum:
 ### Lifecycle merging
 
 One runtime item may be persisted several times as it moves from running to
-completed. Merge records by correlated item ID, falling back to
-`activity.type:activity.id`.
+completed. Merge records within its agent scope by correlated item ID, falling
+back to `agentThreadId:activity.type:activity.id`.
 
 - Retain the earliest valid item start.
 - Retain the latest valid update and terminal completion.
@@ -243,6 +259,8 @@ completed. Merge records by correlated item ID, falling back to
   contract; never concatenate multiple full snapshots.
 - Merge file-change paths by path and retain the latest state/preview.
 - Never emit both a running and completed row for the same lifecycle item.
+- A child final response or `turn/completed` event updates only that child's
+  track; it cannot terminate or supply the final response for the root track.
 - Resolve equal timestamps by message sequence, content index, then stable ID.
 - If a selected event receives a live replacement, update its details in place
   and preserve the selection and scroll position.
@@ -283,19 +301,25 @@ Show compact turn statistics above the graph: elapsed duration, event count,
 tool-call count, and status. These are summaries, not alternate conversation
 scopes.
 
-### Lanes
+### Agent tracks and semantic categories
 
-Use three stable lanes:
+Render one stable track for each agent in the selected root turn. A track is a
+single multicolored bar; Input, Model, and Tools remain event categories and
+colors rather than three vertical graph lanes:
 
-| Lane | Events |
-| --- | --- |
-| Input | Effective system/developer context, user prompt, attachments, persisted system/context messages |
-| Model | Overall model-turn span, reasoning, plans, commentary, final response, compaction, usage, rate-limit and notice markers |
-| Tools | Commands, file changes, worktree operations, MCP/dynamic tools, collaboration, subagents, web search, image view and review-mode activity |
+| Category | Events                                                                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Input    | Effective system/developer context, root prompt and attachments, child assignments, and root-to-child follow-ups                                 |
+| Model    | Overall agent-turn span, reasoning, plans, commentary, final response, compaction, returned child results, usage, rate-limit, and notice markers |
+| Tools    | Commands, file changes, worktree operations, MCP/dynamic tools, collaboration controls, web search, image view, and review-mode activity         |
 
-Usage, rate-limit, warning, and error records are markers unless they have a
-meaningful captured duration. Concurrent records may occupy compact sub-rows
-inside a lane so one bar does not hide another.
+The root track is pinned first. Active descendants sort by most recent activity
+ahead of inactive descendants, which sort by most recent completion/activity;
+agent path and thread ID break ties. Flatten nested descendants and indent their
+labels by depth. Grow the track viewport through five rows, then apply internal
+vertical scrolling. Usage, rate-limit, warning, and error records are markers
+unless they have a meaningful captured duration. Concurrent records may occupy
+compact sub-rows inside one agent track so one bar does not hide another.
 
 Use semantic colors consistently between overview bars, history badges, and
 details. Status must also be communicated by icon/pattern/label rather than
@@ -303,7 +327,7 @@ color alone.
 
 ### Playhead and seeking
 
-Render a vertical playhead across all three lanes.
+Render a vertical playhead across all visible agent tracks.
 
 Pointer behavior:
 
@@ -348,6 +372,8 @@ Default: every supported event is visible.
 
 Filters include:
 
+- agent: All agents, Root only, or any descendant that participated in the
+  selected root turn;
 - lane: Input, Model, Tools;
 - event family/type;
 - status: running, completed, failed, declined;
@@ -372,6 +398,7 @@ targeted turn after filters are applied.
 
 Each collapsed row shows:
 
+- agent identity and nested depth when the event belongs to a descendant;
 - event type badge/icon;
 - concise label;
 - status;
@@ -532,8 +559,10 @@ search.
 
 ## Live Update and Cache Contract
 
-Trajectory consumes the same `messages.data` array as the transcript and
-State. Do not introduce another polling or whole-history query.
+Trajectory consumes the same `messages.data` array as the transcript and State
+and reuses the decrypted, message-derived `AgentTurnProjection` used by
+subagent lifecycle cards and the read-only child panel. Do not introduce
+another polling or whole-history query.
 
 - React Query live-overlay upserts update the projection by stable message and
   activity IDs.
@@ -549,6 +578,9 @@ State. Do not introduce another polling or whole-history query.
   output updates cannot repeatedly rebuild the whole turn.
 - Use the shared inspector clock only while a visible targeted turn contains
   running intervals.
+- Rebuild agent/event membership only when messages are decrypted, replaced,
+  reconciled, retained, or deleted. Timer ticks update elapsed and
+  transition-dependent fields without rescanning child transcripts.
 
 ## Worker Timing Normalization
 
@@ -654,6 +686,10 @@ fallbacks.
 - exact, derived, and instant timing;
 - imported/legacy history with missing correlation and timestamps;
 - every activity type mapped to the expected lane;
+- root pinned first, active/inactive descendant ordering, nested indentation,
+  and five-row overflow behavior;
+- child completion cannot complete the root trajectory;
+- dynamic agent filters and child-event focus routing;
 - filter/search combinations and reset behavior;
 - selected event replacement without selection loss; and
 - disappearance of a pinned turn after cache recovery.
@@ -690,15 +726,16 @@ fallbacks.
 2. Long reasoning followed by commentary and final output.
 3. Several sequential and parallel commands with streaming/truncated output.
 4. File changes interleaved with commands.
-5. MCP, dynamic, collaboration, subagent, web-search, image-view, and review
-   events.
-6. Failed, declined, interrupted, rate-limited, and approval-waiting turns.
-7. A new turn beginning while Inspect follows the previous last turn.
-8. A historical **Worked for** trajectory inspected while another turn runs.
-9. A Task moving through planning, finalization, and implementation turns.
-10. A legacy/imported chat with incomplete timing.
-11. A dense turn containing hundreds or thousands of updates.
-12. App live-stream loss and recovery while an event is selected.
+5. MCP, dynamic, collaboration, web-search, image-view, and review events.
+6. One, five, and more-than-five agents, including nested delegation,
+   follow-ups, returned results, failures, and interruptions.
+7. Failed, declined, interrupted, rate-limited, and approval-waiting turns.
+8. A new turn beginning while Inspect follows the previous last turn.
+9. A historical **Worked for** trajectory inspected while another turn runs.
+10. A Task moving through planning, finalization, and implementation turns.
+11. A legacy/imported chat with incomplete timing.
+12. A dense turn containing hundreds or thousands of updates.
+13. App live-stream loss and recovery while an event is selected.
 
 Run focused app, protocol, and worker tests plus the normal repository check
 appropriate to the final implementation. Documentation-only milestones still
@@ -714,13 +751,19 @@ require `git diff --check`.
 - Starting a new turn replaces the default followed trajectory.
 - Every completed **Worked for** group with trajectory data can open Inspect on
   that exact historical turn.
-- The graph is a one-turn Input/Model/Tools time-lane visualization, not a
-  causal graph.
+- The graph is a one-root-turn, per-agent time-track visualization, not a
+  causal graph. Each agent track combines Input/Model/Tools colors.
+- Root is pinned first; active descendants precede inactive descendants;
+  nested labels are indented; and the graph scrolls internally after five
+  tracks.
 - Clicking the graph places a visible playhead and scrolls to the deterministic
   corresponding history event.
 - Clicking any event exposes Summary, Preview, and Raw details inside the same
   Inspect/Task surface.
-- All event families are included by default and can be filtered/searched.
+- All event families are included by default and can be filtered/searched,
+  including a dynamic filter for every participating agent.
+- Selecting a child event can open and focus the corresponding read-only
+  subagent transcript without exposing child controls.
 - Live lifecycle updates modify existing events without duplication, scroll
   jumps, animation replay, or selection loss.
 - Exact, derived, instant, truncated, redacted, and unavailable data are

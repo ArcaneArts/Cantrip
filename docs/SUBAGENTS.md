@@ -1,6 +1,6 @@
 # Native Subagents
 
-Status: implementation plan
+Status: implemented
 
 Scope: native Codex subagents, model configuration, encrypted event transport, chat presentation, and trajectory visualization
 

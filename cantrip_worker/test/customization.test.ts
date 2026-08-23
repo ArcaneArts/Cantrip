@@ -98,6 +98,20 @@ describe("Codex customization inventory", () => {
     });
     expect(capabilities.plugins.list.reason).toContain("not yet implemented");
 
+    const newerSubagentProtocol = customizationCapabilities({
+      ...report,
+      nativeSubagents: {
+        available: true,
+        protocolVersion: 2,
+        reason: null,
+      },
+    });
+    expect(newerSubagentProtocol.nativeSubagents).toMatchObject({
+      available: false,
+      protocolVersion: null,
+      reason: expect.stringContaining("protocol 2"),
+    });
+
     const partial = customizationCapabilities({
       ...report,
       methods: { ...report.methods, "skills/config/write": "unavailable" },

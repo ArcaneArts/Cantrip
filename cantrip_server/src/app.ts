@@ -121,6 +121,7 @@ import {
   encryptedChatTurnCreateSchema,
   modelConfigurationFailureSchema,
   modelConfigurationSchema,
+  nativeSubagentCapabilityCompatible,
   NATIVE_SUBAGENT_PROTOCOL_VERSION,
   projectAutomationProtectedDispatchResultSchema,
   encryptedQueuedPromptListSchema,
@@ -7515,12 +7516,19 @@ export async function buildApp({
         applicationOwnerId(),
         context.workerId,
       );
-      if (worker?.codexRuntime.nativeSubagents?.available !== true) {
+      if (
+        !worker ||
+        !nativeSubagentCapabilityCompatible(worker.codexRuntime.nativeSubagents)
+      ) {
+        const capability = worker?.codexRuntime.nativeSubagents;
         throw new ModelConfigurationResolutionError({
           code: "worker-subagents-unavailable",
           error:
-            worker?.codexRuntime.nativeSubagents?.reason ??
-            "The selected worker does not support native subagents.",
+            capability?.available === true &&
+            capability.protocolVersion !== null
+              ? `The selected worker reports native subagent protocol ${capability.protocolVersion}, but this server supports protocol ${NATIVE_SUBAGENT_PROTOCOL_VERSION}.`
+              : (capability?.reason ??
+                "The selected worker does not support native subagents."),
           field: "customSubagentModel",
           retryable: false,
         });
@@ -9153,8 +9161,10 @@ export async function buildApp({
                       provider: subagentRuntime.provider,
                     }
                   : null,
-                ...(attributedWorker?.codexRuntime.nativeSubagents
-                  ?.available === true
+                ...(attributedWorker &&
+                nativeSubagentCapabilityCompatible(
+                  attributedWorker.codexRuntime.nativeSubagents,
+                )
                   ? {
                       subagentProtocolVersion: NATIVE_SUBAGENT_PROTOCOL_VERSION,
                     }

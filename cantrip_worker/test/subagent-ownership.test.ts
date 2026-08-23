@@ -172,6 +172,7 @@ server.on("connection", (socket) => {
       const text = threadId === childThreadId ? "Child result" : threadId === nestedThreadId ? "Nested result" : "Recovered child result";
       const nickname = threadId === childThreadId ? "Scout" : threadId === nestedThreadId ? "Indexer" : "Recovery";
       const parentThreadId = threadId === nestedThreadId ? childThreadId : rootThreadId;
+      const turnStatus = threadId === recoveredThreadId ? "failed" : "completed";
       reply(socket, message.id, {
         thread: {
           id: threadId,
@@ -182,7 +183,7 @@ server.on("connection", (socket) => {
           source: { subAgent: { threadSpawn: { parentThreadId, depth: threadId === nestedThreadId ? 2 : 1, agentPath: threadId === nestedThreadId ? "root/Scout/Indexer" : "root/" + nickname } } },
           turns: [{
             id: turnId,
-            status: "completed",
+            status: turnStatus,
             error: null,
             startedAt: fixtureStartedAt,
             completedAt: fixtureStartedAt + 1,
@@ -249,6 +250,51 @@ server.on("connection", (socket) => {
       notify(socket, "turn/started", {
         threadId: childThreadId,
         turn: { id: childTurnId, startedAt: 1 }
+      });
+      notify(socket, "item/completed", {
+        threadId: rootThreadId,
+        turnId: rootTurnId,
+        item: {
+          type: "collabAgentToolCall",
+          id: "followup-child",
+          tool: "send_input",
+          senderThreadId: rootThreadId,
+          receiverThreadIds: [childThreadId],
+          prompt: "Check the handoff path too",
+          model: null,
+          status: "completed",
+          agentsStates: { [childThreadId]: { status: "running", message: null } }
+        }
+      });
+      notify(socket, "item/completed", {
+        threadId: rootThreadId,
+        turnId: rootTurnId,
+        item: {
+          type: "collabAgentToolCall",
+          id: "wait-child",
+          tool: "wait",
+          senderThreadId: rootThreadId,
+          receiverThreadIds: [childThreadId],
+          prompt: null,
+          model: null,
+          status: "completed",
+          agentsStates: { [childThreadId]: { status: "completed", message: "Handoff response" } }
+        }
+      });
+      notify(socket, "item/completed", {
+        threadId: rootThreadId,
+        turnId: rootTurnId,
+        item: {
+          type: "collabAgentToolCall",
+          id: "interrupt-child",
+          tool: "close_agent",
+          senderThreadId: rootThreadId,
+          receiverThreadIds: [childThreadId],
+          prompt: null,
+          model: null,
+          status: "completed",
+          agentsStates: { [childThreadId]: { status: "interrupted", message: null } }
+        }
       });
       notify(socket, "item/completed", {
         threadId: childThreadId,
@@ -486,6 +532,40 @@ describe("native subagent execution ownership", () => {
             activity.type === "agentCommunication" &&
             activity.kind === "returned" &&
             activity.agentScope?.agentThreadId === "nested-thread",
+        ),
+      ).toBe(true);
+      expect(
+        activities.some(
+          (activity) =>
+            activity.type === "agentCommunication" &&
+            activity.kind === "failed" &&
+            activity.agentScope?.agentThreadId === "recovered-thread",
+        ),
+      ).toBe(true);
+      expect(
+        activities
+          .filter(
+            (activity) =>
+              activity.type === "agentCommunication" &&
+              activity.agentScope?.agentThreadId === "child-thread",
+          )
+          .map((activity) =>
+            activity.type === "agentCommunication" ? activity.kind : null,
+          ),
+      ).toEqual(
+        expect.arrayContaining([
+          "spawned",
+          "followupSent",
+          "returned",
+          "interrupted",
+        ]),
+      );
+      expect(
+        activities.some(
+          (activity) =>
+            activity.type === "agentCommunication" &&
+            activity.kind === "returned" &&
+            activity.message === "Handoff response",
         ),
       ).toBe(true);
     } finally {
