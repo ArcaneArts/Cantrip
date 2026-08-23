@@ -33,6 +33,7 @@ export type ModelConfiguration = z.infer<typeof modelConfigurationSchema>;
 
 export const modelConfigurationFailureCodeSchema = z.enum([
   "worker-offline",
+  "worker-subagents-unavailable",
   "chat-runtime-active",
   "root-model-unavailable",
   "subagent-model-unavailable",

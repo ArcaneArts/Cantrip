@@ -543,6 +543,23 @@ export const codexRuntimeFeatureSchema = z.object({
   defaultEnabled: z.boolean(),
 });
 
+export const NATIVE_SUBAGENT_PROTOCOL_VERSION = 1 as const;
+
+export const nativeSubagentRuntimeCapabilitySchema = z
+  .object({
+    available: z.boolean(),
+    protocolVersion: z.literal(NATIVE_SUBAGENT_PROTOCOL_VERSION).nullable(),
+    reason: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export const unavailableNativeSubagentRuntimeCapability =
+  nativeSubagentRuntimeCapabilitySchema.parse({
+    available: false,
+    protocolVersion: null,
+    reason: "This worker has not reported native subagent support.",
+  });
+
 export const codexRuntimeReportSchema = z.object({
   adapter: z.literal("app-server"),
   compatibility: z.enum(["compatible", "partial", "incompatible", "missing"]),
@@ -563,6 +580,9 @@ export const codexRuntimeReportSchema = z.object({
     .nullable(),
   methods: z.record(z.string().min(1), codexRuntimeMethodStateSchema),
   features: z.array(codexRuntimeFeatureSchema),
+  nativeSubagents: nativeSubagentRuntimeCapabilitySchema.default(
+    unavailableNativeSubagentRuntimeCapability,
+  ),
   degradedReasons: z.array(z.string().min(1)),
 });
 
@@ -872,11 +892,16 @@ export const customizationCapabilitySchema = z.object({
   stability: z.enum(["stable", "experimental", "unsupported"]),
 });
 
+export const nativeSubagentCustomizationCapabilitySchema =
+  customizationCapabilitySchema.extend({
+    protocolVersion: z.literal(NATIVE_SUBAGENT_PROTOCOL_VERSION).nullable(),
+  });
+
 export const codexCustomizationCapabilitiesSchema = z.object({
   isolatedCodexHome: z.literal(true),
   collaborationModes: customizationCapabilitySchema,
   threadGoals: customizationCapabilitySchema,
-  nativeSubagents: customizationCapabilitySchema,
+  nativeSubagents: nativeSubagentCustomizationCapabilitySchema,
   customAgents: customizationCapabilitySchema,
   hooks: customizationCapabilitySchema,
   skills: z.object({
@@ -2214,6 +2239,10 @@ export const userSettingsSchema = z.object({
 export const userSettingsUpdateSchema = userSettingsSchema.partial().extend({
   eliteMode: z.boolean().optional(),
   eliteRevealConfig: eliteRevealConfigSchema.optional(),
+  defaultReasoningEffort: reasoningEffortSchema.nullable().optional(),
+  defaultCustomSubagentModel: z.boolean().optional(),
+  defaultSubagentModelId: z.string().min(1).nullable().optional(),
+  defaultSubagentReasoningEffort: reasoningEffortSchema.nullable().optional(),
   defaultPermissionProfileId: configurablePermissionProfileIdSchema.optional(),
   defaultWorkerId: z.string().min(1).nullable().optional(),
   automaticReplicaProvisioning: z.boolean().optional(),
@@ -13159,6 +13188,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
         .strict()
         .nullable()
         .optional(),
+      subagentProtocolVersion: z
+        .literal(NATIVE_SUBAGENT_PROTOCOL_VERSION)
+        .optional(),
       permissionProfileId: permissionProfileIdSchema,
       planMode: planModeSchema,
       mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
@@ -13741,6 +13773,9 @@ export type CodexRuntimeFeatureStage = z.infer<
   typeof codexRuntimeFeatureStageSchema
 >;
 export type CodexRuntimeFeature = z.infer<typeof codexRuntimeFeatureSchema>;
+export type NativeSubagentRuntimeCapability = z.infer<
+  typeof nativeSubagentRuntimeCapabilitySchema
+>;
 export type CodexRuntimeReport = z.infer<typeof codexRuntimeReportSchema>;
 export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
 export type WorkerSummary = z.infer<typeof workerSummarySchema>;

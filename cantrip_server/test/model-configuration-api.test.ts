@@ -96,7 +96,14 @@ describe.sequential("atomic model configuration API", () => {
       platform: "darwin",
       architecture: "arm64",
       codexVersion: "0.149.0",
-      codexRuntime: unprobedCodexRuntimeReport,
+      codexRuntime: {
+        ...unprobedCodexRuntimeReport,
+        nativeSubagents: {
+          available: true,
+          protocolVersion: 1,
+          reason: null,
+        },
+      },
       managedFolders: {
         create: true,
         attachExisting: true,
@@ -358,5 +365,6 @@ describe.sequential("atomic model configuration API", () => {
       model: { id: child.id, name: "child-native" },
       provider: { id: providerA.id },
     });
+    expect(observedTurn?.subagentProtocolVersion).toBe(1);
   });
 });

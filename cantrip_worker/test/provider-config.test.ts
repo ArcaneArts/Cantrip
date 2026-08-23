@@ -31,6 +31,8 @@ describe("Codex provider configuration", () => {
     ] as const) {
       const arguments_ = codexProviderConfiguration(provider(kind)).arguments;
       expect(arguments_).toContain("features.fast_mode=false");
+      expect(arguments_).toContain("features.multi_agent=true");
+      expect(arguments_).toContain("agents.enabled=true");
       expect(arguments_.join(" ")).not.toContain("service_tier=");
     }
   });

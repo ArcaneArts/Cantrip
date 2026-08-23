@@ -1415,6 +1415,9 @@ function ChatTranscript({
     chat,
     settings?.preferences.defaultModelId ?? null,
   );
+  const activeChatWorker = workers.data?.find(
+    ({ workerId }) => workerId === chat.activeWorkerId,
+  );
   const selectedModel = settings?.models.find(
     (model) => model.id === selectedModelId,
   );
@@ -3562,6 +3565,9 @@ function ChatTranscript({
                     chat.status === "waiting-for-approval"
                   }
                   reasoningState={reasoningState.data}
+                  subagentCapability={
+                    activeChatWorker?.codexRuntime.nativeSubagents
+                  }
                   onSave={(configuration) =>
                     selectModelConfiguration.mutateAsync(configuration)
                   }

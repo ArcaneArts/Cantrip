@@ -3,6 +3,7 @@ import {
   type ChatReasoningState,
   type ModelConfiguration,
   type ModelProfileSummary,
+  type NativeSubagentRuntimeCapability,
   type ReasoningEffort,
   type UserSettings,
   type UserSettingsUpdate,
@@ -55,6 +56,7 @@ export interface ModelReasoningPickerProps {
   pending?: boolean;
   readOnly?: boolean;
   reasoningState?: ChatReasoningState;
+  subagentCapability?: NativeSubagentRuntimeCapability;
   onSave(configuration: ModelConfiguration): Promise<unknown> | unknown;
 }
 
@@ -255,6 +257,7 @@ export function ModelReasoningPicker({
   pending = false,
   readOnly = false,
   reasoningState,
+  subagentCapability,
 }: ModelReasoningPickerProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(configuration);
@@ -274,6 +277,7 @@ export function ModelReasoningPicker({
     [draft.subagentModelId, draft.subagentReasoningEffort],
   );
   const effectivePending = pending || saving;
+  const subagentsAvailable = subagentCapability?.available ?? true;
 
   useEffect(() => {
     if (!open) setDraft(configuration);
@@ -308,9 +312,12 @@ export function ModelReasoningPicker({
     }
   };
 
-  const subagentSummary = configuration.customSubagentModel
-    ? (selectedSubagentModel?.name ?? "Custom subagent model")
-    : "Subagents inherit root";
+  const subagentSummary =
+    subagentCapability && !subagentsAvailable
+      ? "Subagents unavailable"
+      : configuration.customSubagentModel
+        ? (selectedSubagentModel?.name ?? "Custom subagent model")
+        : "Subagents inherit root";
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -368,6 +375,12 @@ export function ModelReasoningPicker({
               awaiting input.
             </p>
           ) : null}
+          {subagentCapability && !subagentsAvailable ? (
+            <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+              {subagentCapability.reason ??
+                "The selected worker does not support native subagents."}
+            </p>
+          ) : null}
 
           <section className="space-y-2">
             <div>
@@ -416,7 +429,11 @@ export function ModelReasoningPicker({
                 type="checkbox"
                 className="mt-0.5 size-4 accent-primary"
                 checked={draft.customSubagentModel}
-                disabled={readOnly || effectivePending}
+                disabled={
+                  readOnly ||
+                  effectivePending ||
+                  (!subagentsAvailable && !draft.customSubagentModel)
+                }
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
@@ -441,7 +458,7 @@ export function ModelReasoningPicker({
                   size="default"
                   className="w-full"
                   value={draft.subagentModelId ?? ""}
-                  disabled={readOnly || effectivePending}
+                  disabled={readOnly || effectivePending || !subagentsAvailable}
                   aria-label="Subagent model"
                   onChange={(event) =>
                     setDraft((current) => ({
@@ -475,7 +492,7 @@ export function ModelReasoningPicker({
                   label="Subagent reasoning effort"
                   choices={subagentChoices}
                   value={draft.subagentReasoningEffort}
-                  disabled={readOnly || effectivePending}
+                  disabled={readOnly || effectivePending || !subagentsAvailable}
                   onChange={(subagentReasoningEffort) =>
                     setDraft((current) => ({
                       ...current,
@@ -509,7 +526,12 @@ export function ModelReasoningPicker({
           </Button>
           <Button
             type="button"
-            disabled={readOnly || effectivePending || !draft.modelId}
+            disabled={
+              readOnly ||
+              effectivePending ||
+              !draft.modelId ||
+              (draft.customSubagentModel && !subagentsAvailable)
+            }
             onClick={() => void save()}
           >
             {effectivePending ? (

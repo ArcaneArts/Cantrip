@@ -93,6 +93,23 @@ describe("model reasoning picker", () => {
     expect(markup).not.toContain("lucide-brain");
   });
 
+  it("gates custom subagents when the selected worker is incompatible", () => {
+    const markup = renderToStaticMarkup(
+      <ModelReasoningPicker
+        configuration={inheritedConfiguration}
+        models={models}
+        subagentCapability={{
+          available: false,
+          protocolVersion: null,
+          reason: "Upgrade the selected worker.",
+        }}
+        onSave={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("Subagents unavailable");
+  });
+
   it("maps legacy chats to inherited subagent defaults", () => {
     expect(
       chatModelConfiguration(
