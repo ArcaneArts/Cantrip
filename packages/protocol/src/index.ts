@@ -11852,6 +11852,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     mode: chatTurnModeSchema,
     modelId: z.string().min(1).max(200),
     reasoningEffort: reasoningEffortSchema.nullable(),
+    customSubagentModel: z.boolean().optional(),
+    subagentModelId: z.string().min(1).max(200).nullable().optional(),
+    subagentReasoningEffort: reasoningEffortSchema.nullable().optional(),
     idempotencyKey: z.string().min(1).max(200),
   }),
   z.object({
@@ -13117,6 +13120,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     mode: chatTurnModeSchema,
     modelId: z.string().min(1).max(200),
     reasoningEffort: reasoningEffortSchema.nullable(),
+    customSubagentModel: z.boolean().optional(),
+    subagentModelId: z.string().min(1).max(200).nullable().optional(),
+    subagentReasoningEffort: reasoningEffortSchema.nullable().optional(),
     idempotencyKey: z.string().min(1).max(200),
   }),
   z
@@ -13145,6 +13151,14 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       skillNames: z.array(z.string().min(1)).max(64).default([]),
       model: workerRuntimeModelSchema,
       provider: workerRuntimeProviderSchema,
+      subagentDefaults: z
+        .object({
+          model: workerRuntimeModelSchema,
+          provider: workerRuntimeProviderSchema,
+        })
+        .strict()
+        .nullable()
+        .optional(),
       permissionProfileId: permissionProfileIdSchema,
       planMode: planModeSchema,
       mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
