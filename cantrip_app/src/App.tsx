@@ -7890,7 +7890,7 @@ export function App() {
               <ProjectChatList
                 browsers={browsers.data ?? []}
                 folderSetupJobs={folderSetupJobs}
-                projects={visibleProjects}
+                projects={projects.data ?? []}
                 projectSetupJobs={projectSetupJobs}
                 chats={chats.data ?? []}
                 codeTabs={codeTabs.data ?? []}
@@ -7900,10 +7900,10 @@ export function App() {
                 workers={workers.data ?? []}
                 worktrees={worktrees.data ?? []}
                 worktreeStatuses={worktreeStatuses}
+                overviewSelected={projectOverviewSelected}
                 selectedProjectId={selectedProjectId}
                 selectedTabKey={selectedTabKey}
                 tabLayout={tabLayout.data ?? null}
-                creatingKinds={creatingSurfaceKinds}
                 fileExplorer={sidebarExplorer}
                 fileGraphAvailable={explorerRepositoryGraphAvailable(
                   selectedProject?.capabilities,
@@ -7928,10 +7928,6 @@ export function App() {
                     : null
                 }
                 fileRevealLabel={projectRevealButtonLabel ?? undefined}
-                onCreateSurface={(projectId, kind, target) => {
-                  setDesktopSidebarDrawerOpen(false);
-                  createProjectSurface(projectId, kind, undefined, target);
-                }}
                 onChangeChatWorktree={(chatId, worktreeId, mode) => {
                   const chat = chats.data?.find(({ id }) => id === chatId);
                   if (chat) bindChatWorktree(chat, worktreeId, mode);

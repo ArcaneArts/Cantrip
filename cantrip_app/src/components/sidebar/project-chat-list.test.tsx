@@ -2,7 +2,7 @@ import { chatSummarySchema } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ChatActivityStatus } from "./project-chat-list";
+import { ChatActivityStatus, ProjectOverviewTab } from "./project-chat-list";
 
 const chat = chatSummarySchema.parse({
   id: "chat-1",
@@ -37,5 +37,30 @@ describe("chat activity status", () => {
     expect(completed).toContain("Agent turn finished; open to dismiss");
     expect(running).toContain("animate-spin");
     expect(running).not.toContain("bg-sky-400");
+  });
+});
+
+describe("project overview sidebar tab", () => {
+  it("uses a compact Overview destination instead of the project name", () => {
+    const markup = renderToStaticMarkup(
+      <ProjectOverviewTab
+        active
+        onOpenSettings={() => undefined}
+        onRemove={() => undefined}
+        onSelect={() => undefined}
+        project={
+          {
+            id: "project-1",
+            name: "BileTools",
+            setupStatus: "ready",
+          } as Parameters<typeof ProjectOverviewTab>[0]["project"]
+        }
+        revealDisabled={false}
+      />,
+    );
+
+    expect(markup).toContain(">Overview</span>");
+    expect(markup).toContain("h-8");
+    expect(markup).not.toContain(">BileTools</span>");
   });
 });
