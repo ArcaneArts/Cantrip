@@ -25,6 +25,7 @@ const timestamp = "2026-08-19T12:00:00.000Z";
 const requiredTaskWorkerComponents = [
   "attachment-content",
   "task-content",
+  "customization-content",
   "mcp-secret",
   "policy-content",
   "provider-credential",

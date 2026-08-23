@@ -262,6 +262,13 @@ function workflowContentFixture() {
   return terminalStateFixture().protectedState;
 }
 
+function customizationContentFixture() {
+  return {
+    ...terminalStateFixture().protectedState,
+    domain: "customization-content" as const,
+  };
+}
+
 function protectedChatMessageFixture() {
   return {
     id: "11111111-1111-4111-8111-111111111111",
@@ -3664,6 +3671,16 @@ describe("Cantrip protocol", () => {
   });
 
   it("validates native customization worker commands and bounded MCP reads", () => {
+    const protectedContent = {
+      operationId: "8f8df681-8b15-4a74-82e9-e9025709d4fc",
+      serverId: "https://cantrip.example",
+      scope: {
+        workerId: "worker-1",
+        projectId: "project-1",
+        chatId: "chat-1",
+        providerId: "provider-1",
+      },
+    };
     const runtime = {
       cwd: "/workspace/Cantrip",
       model: {
@@ -3684,12 +3701,14 @@ describe("Cantrip protocol", () => {
       workerCommandSchema.parse({
         type: "customization.inventory.read",
         threadId: "thread-1",
+        ...protectedContent,
         ...runtime,
       }),
     ).toMatchObject({ forceReload: false, threadId: "thread-1" });
     expect(
       workerCommandSchema.parse({
         type: "customization.external.preview",
+        ...protectedContent,
         ...runtime,
       }).type,
     ).toBe("customization.external.preview");
@@ -3708,9 +3727,9 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.parse({
         type: "customization.skill.configure",
+        ...protectedContent,
         ...runtime,
-        path: "/workspace/Cantrip/.agents/review/SKILL.md",
-        enabled: false,
+        protectedRequest: customizationContentFixture(),
       }).type,
     ).toBe("customization.skill.configure");
     expect(
@@ -3735,8 +3754,9 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.parse({
         type: "customization.external.apply",
+        ...protectedContent,
         ...runtime,
-        itemIds: ["candidate-1"],
+        protectedRequest: customizationContentFixture(),
       }).type,
     ).toBe("customization.external.apply");
   });

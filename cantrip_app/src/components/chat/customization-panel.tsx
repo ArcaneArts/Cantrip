@@ -1023,11 +1023,10 @@ export function CustomizationPanel({
     queryKey: ["chat-customizations", chatId, "external-import", importId],
     queryFn: () => getChatExternalImportStatus(chatId, importId!),
     enabled: open && importId !== null,
-    refetchInterval: customizationResourcesLive
-      ? false
-      : (query) => (query.state.data?.status === "pending" ? 1_000 : false),
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending" ? 1_000 : false,
     refetchOnWindowFocus: false,
-    staleTime: customizationResourcesLive ? Infinity : 0,
+    staleTime: 0,
   });
   const oauthInProgress =
     mcpOauth.isPending ||

@@ -111,7 +111,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "37a191f07cf71abedf3f2b8a284298850eafbb45666c934422e1bbad94080928",
+    "247b76b5a6064bd89bc02f74624e98c9b93fd777ad6b60352b4ec4d533c92992",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:
@@ -3518,8 +3518,24 @@ function applicationRouteContentClassification(route) {
       rationale: "operation-bound Run or discovered-command content",
     };
   }
+  if (route.path.endsWith("/customizations/target")) {
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale: "customization worker and resource routing identifiers",
+    };
+  }
   if (
-    /(?:\/customizations(?:\/|$)|\/skills(?:\/|$)|\/tunnels(?:\/|$))/u.test(
+    /\/skills(?:\/|$)/u.test(route.path) ||
+    (/\/customizations(?:\/|$)/u.test(route.path) &&
+      !/\/mcp-(?:oauth|reload|resource)(?:\/|$)/u.test(route.path))
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "operation-bound customization content",
+    };
+  }
+  if (
+    /(?:\/customizations\/mcp-(?:oauth|reload|resource)(?:\/|$)|\/tunnels(?:\/|$))/u.test(
       route.path,
     )
   ) {
@@ -3578,7 +3594,17 @@ function workerCommandContentClassification(command) {
       rationale: "bounded worktree-readiness metadata without Run semantics",
     };
   }
-  if (/^(?:skills\.|customization\.)/u.test(command)) {
+  if (
+    /^skills\./u.test(command) ||
+    (/^customization\./u.test(command) &&
+      !/^customization\.mcp\./u.test(command))
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "operation-bound customization content",
+    };
+  }
+  if (/^customization\.mcp\./u.test(command)) {
     return {
       classification: "tracked-rollout-gap",
       rationale: "post-closure remaining-work ledger",

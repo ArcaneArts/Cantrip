@@ -16,8 +16,13 @@ export * from "./repository-operation.js";
 export * from "./endpoint-content.js";
 export * from "./workflow-content.js";
 export * from "./run-configurations.js";
+export * from "./customization-content.js";
 
 import { endpointContentOpaqueSchema } from "./endpoint-content.js";
+import {
+  customizationContentScopeSchema,
+  protectedCustomizationRequestSchema,
+} from "./customization-content.js";
 
 import {
   chatPlanOpaqueStateSchema,
@@ -11475,6 +11480,17 @@ const workerRepositoryNameSchema = z.union([
   repositoryRoutingHandleSchema,
 ]);
 
+const customizationWorkerContentFields = {
+  operationId: z.string().uuid(),
+  serverId: z.string().min(1).max(2_000),
+  scope: customizationContentScopeSchema,
+};
+
+const protectedCustomizationWorkerRequestFields = {
+  ...customizationWorkerContentFields,
+  protectedRequest: protectedCustomizationRequestSchema.shape.protectedRequest,
+};
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
@@ -12469,42 +12485,42 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("skills.list"),
+    ...customizationWorkerContentFields,
     cwd: z.string().min(1),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("skills.settings.list"),
+    ...customizationWorkerContentFields,
     cwd: z.string().min(1).max(8_192).nullable(),
     providerId: z.string().min(1).max(200),
     providerKind: modelProviderKindSchema,
   }),
   z.object({
     type: z.literal("skills.settings.read"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1).max(8_192).nullable(),
     providerId: z.string().min(1).max(200),
     providerKind: modelProviderKindSchema,
-    skillId: skillSettingsItemSchema.shape.id,
-    file: skillSettingsFileSchema.shape.path,
   }),
   z.object({
     type: z.literal("skills.settings.write"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1).max(8_192).nullable(),
     providerId: z.string().min(1).max(200),
     providerKind: modelProviderKindSchema,
-    skillId: skillSettingsItemSchema.shape.id,
-    file: skillSettingsFileSchema.shape.path,
-    content: skillSettingsFileUpdateSchema.shape.content,
   }),
   z.object({
     type: z.literal("skills.settings.delete"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1).max(8_192).nullable(),
     providerId: z.string().min(1).max(200),
     providerKind: modelProviderKindSchema,
-    skillId: skillSettingsItemSchema.shape.id,
   }),
   z.object({
     type: z.literal("customization.inventory.read"),
+    ...customizationWorkerContentFields,
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     forceReload: z.boolean().default(false),
@@ -12513,6 +12529,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("customization.external.preview"),
+    ...customizationWorkerContentFields,
     cwd: z.string().min(1),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
@@ -12527,16 +12544,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("customization.skill.configure"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1),
-    path: codexSkillConfigUpdateSchema.shape.path,
-    enabled: z.boolean(),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("customization.skill-roots.set"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1),
-    roots: codexSkillRootsUpdateSchema.shape.roots,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
@@ -12562,15 +12578,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("customization.external.apply"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1),
-    itemIds: codexExternalImportApplySchema.shape.itemIds,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
     type: z.literal("customization.external.status"),
+    ...protectedCustomizationWorkerRequestFields,
     cwd: z.string().min(1),
-    importId: codexExternalImportStatusSchema.shape.importId,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),

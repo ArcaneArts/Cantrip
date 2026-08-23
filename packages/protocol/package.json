@@ -52,6 +52,10 @@
       "types": "./src/endpoint-content.ts",
       "import": "./dist/endpoint-content.js"
     },
+    "./customization-content": {
+      "types": "./src/customization-content.ts",
+      "import": "./dist/customization-content.js"
+    },
     "./workflow-content": {
       "types": "./src/workflow-content.ts",
       "import": "./dist/workflow-content.js"

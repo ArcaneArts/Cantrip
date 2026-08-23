@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  skillSettingsDocumentSchema,
-  skillSettingsInventorySchema,
-  skillSettingsMutationResultSchema,
+  protectedCustomizationRequestSchema,
+  protectedCustomizationResponseSchema,
   unprobedCodexRuntimeReport,
+  type CustomizationContentOperation,
+  type CustomizationContentScope,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -35,33 +36,47 @@ const config: ServerConfig = {
   workerToken: "test-worker-token",
 };
 
-const projectSkill = {
-  id: "project:cHJvamVjdC1yZXZpZXc",
-  name: "project-review",
-  description: "Review this repository.",
-  displayName: null,
-  scope: "repo" as const,
-  location: "project" as const,
-  path: `${projectPath}/.agents/skills/project-review/SKILL.md`,
-  editable: true,
-  deletable: true,
+const protectedCustomizationContent = {
+  formatVersion: 1 as const,
+  keyRevision: 1,
+  domain: "customization-content" as const,
+  envelope: {
+    version: 1 as const,
+    algorithm: "AES-256-GCM" as const,
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
 };
-const inventory = skillSettingsInventorySchema.parse({
-  project: [projectSkill],
-  global: [],
-  errors: [],
-});
-const document = skillSettingsDocumentSchema.parse({
-  skill: projectSkill,
-  file: { path: "SKILL.md", sizeBytes: 80 },
-  files: [{ path: "SKILL.md", sizeBytes: 80 }],
-  content:
-    "---\nname: project-review\ndescription: Review this repository.\n---\n",
-});
-const changed = skillSettingsMutationResultSchema.parse({
-  changed: true,
-  recoveryPath: null,
-});
+
+function protectedResponse(
+  operationId: string,
+  operation: CustomizationContentOperation,
+  scope: CustomizationContentScope,
+) {
+  return protectedCustomizationResponseSchema.parse({
+    operationId,
+    operation,
+    scope,
+    result: "succeeded",
+    lifecycle: null,
+    protectedResponse: protectedCustomizationContent,
+  });
+}
+
+function protectedRequest(
+  operationId: string,
+  operation: CustomizationContentOperation,
+  scope: CustomizationContentScope,
+) {
+  return protectedCustomizationRequestSchema.parse({
+    operationId,
+    operation,
+    scope,
+    protectedRequest: protectedCustomizationContent,
+  });
+}
+
 const commands: WorkerCommand[] = [];
 const workerBridge: WorkerCommandBus = {
   attach() {},
@@ -80,11 +95,12 @@ const workerBridge: WorkerCommandBus = {
   },
   async request(_workerId, command) {
     commands.push(command);
-    if (command.type === "skills.settings.list") return inventory;
-    if (command.type === "skills.settings.read") return document;
-    if (command.type === "skills.settings.write") return changed;
-    if (command.type === "skills.settings.delete") {
-      return { ...changed, recoveryPath: "/worker/recovery/project-review" };
+    if (command.type.startsWith("skills.settings.")) {
+      return protectedResponse(
+        command.operationId,
+        command.type,
+        command.scope,
+      );
     }
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
@@ -119,6 +135,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "test-worker",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "A".repeat(43),
     repositoryId: "skills-settings-api",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
@@ -148,15 +165,16 @@ afterAll(async () => {
 
 describe.sequential("skills settings API", () => {
   it("lists project and global skills through the owning worker", async () => {
+    const operationId = crypto.randomUUID();
     const response = await app.inject({
       method: "GET",
-      url: `/api/skills?workerId=test-worker&providerId=${providerId}&projectId=${projectId}`,
+      url: `/api/skills?workerId=test-worker&providerId=${providerId}&projectId=${projectId}&operationId=${operationId}`,
     });
 
     expect(response.statusCode).toBe(200);
-    expect(skillSettingsInventorySchema.parse(response.json())).toEqual(
-      inventory,
-    );
+    expect(
+      protectedCustomizationResponseSchema.parse(response.json()),
+    ).toMatchObject({ operationId, operation: "skills.settings.list" });
     expect(commands.at(-1)).toMatchObject({
       type: "skills.settings.list",
       cwd: projectPath,
@@ -165,61 +183,66 @@ describe.sequential("skills settings API", () => {
   });
 
   it("reads and updates a selected skill file", async () => {
-    const requestContext = {
+    const scope = {
       workerId: "test-worker",
       providerId,
       projectId,
-      skillId: projectSkill.id,
-      file: "SKILL.md",
+      chatId: null,
     };
+    const readOperationId = crypto.randomUUID();
     const readResponse = await app.inject({
       method: "POST",
       url: "/api/skills/read",
-      payload: requestContext,
+      payload: protectedRequest(readOperationId, "skills.settings.read", scope),
     });
     expect(readResponse.statusCode).toBe(200);
-    expect(skillSettingsDocumentSchema.parse(readResponse.json())).toEqual(
-      document,
-    );
+    expect(
+      protectedCustomizationResponseSchema.parse(readResponse.json()),
+    ).toMatchObject({
+      operationId: readOperationId,
+      operation: "skills.settings.read",
+    });
 
+    const writeOperationId = crypto.randomUUID();
     const writeResponse = await app.inject({
       method: "PUT",
       url: "/api/skills/file",
-      payload: {
-        ...requestContext,
-        content: `${document.content}\nUpdated.\n`,
-      },
+      payload: protectedRequest(
+        writeOperationId,
+        "skills.settings.write",
+        scope,
+      ),
     });
     expect(writeResponse.statusCode).toBe(200);
     expect(commands.at(-1)).toMatchObject({
       type: "skills.settings.write",
       cwd: projectPath,
-      skillId: projectSkill.id,
+      protectedRequest: protectedCustomizationContent,
     });
   });
 
   it("deletes through the recovery-aware worker command", async () => {
+    const operationId = crypto.randomUUID();
     const response = await app.inject({
       method: "DELETE",
       url: "/api/skills",
-      payload: {
+      payload: protectedRequest(operationId, "skills.settings.delete", {
         workerId: "test-worker",
         providerId,
         projectId,
-        skillId: projectSkill.id,
-      },
+        chatId: null,
+      }),
     });
     expect(response.statusCode).toBe(200);
-    expect(skillSettingsMutationResultSchema.parse(response.json())).toEqual({
-      changed: true,
-      recoveryPath: "/worker/recovery/project-review",
-    });
+    expect(
+      protectedCustomizationResponseSchema.parse(response.json()),
+    ).toMatchObject({ operationId, operation: "skills.settings.delete" });
   });
 
   it("rejects a worker that does not own the project", async () => {
     const response = await app.inject({
       method: "GET",
-      url: `/api/skills?workerId=other-worker&providerId=${providerId}&projectId=${projectId}`,
+      url: `/api/skills?workerId=other-worker&providerId=${providerId}&projectId=${projectId}&operationId=${crypto.randomUUID()}`,
     });
     expect(response.statusCode).toBe(409);
   });

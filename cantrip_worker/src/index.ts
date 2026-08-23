@@ -7,6 +7,14 @@ import {
   chatAttachmentSummarySchema,
   cantripMcpOperationsForPermissionProfile,
   cantripMcpToolNamesForOperations,
+  codexCustomizationInventorySchema,
+  codexExternalImportApplySchema,
+  codexExternalImportPreviewSchema,
+  codexExternalImportStatusSchema,
+  codexSkillConfigResultSchema,
+  codexSkillConfigUpdateSchema,
+  codexSkillRootsResultSchema,
+  codexSkillRootsUpdateSchema,
   gitAgentDraftCreateSchema,
   gitAgentDraftModelOutputSchema,
   gitAgentDraftResultSchema,
@@ -30,6 +38,13 @@ import {
   runSetupDetailContentSchema,
   workerRunConfigurationWriteResultSchema,
   scriptCommandListSchema,
+  skillListSchema,
+  skillSettingsDeleteRequestSchema,
+  skillSettingsDocumentSchema,
+  skillSettingsFileRequestSchema,
+  skillSettingsFileUpdateSchema,
+  skillSettingsInventorySchema,
+  skillSettingsMutationResultSchema,
   workerCommandSchema,
   workerEncryptionRefreshResultSchema,
   workerProviderConnectionTestResultSchema,
@@ -168,6 +183,11 @@ import {
   protectWorkerRepositoryOperationContent,
   RepositoryOperationReplayGuard,
 } from "./repository-operation-encryption.js";
+import {
+  CustomizationContentReplayGuard,
+  openWorkerCustomizationRequest,
+  protectWorkerCustomizationResponse,
+} from "./customization-content-encryption.js";
 import {
   managedOperationContext,
   managedOperationIsActive,
@@ -619,6 +639,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   );
   const surfaceStreamReplay = new SurfaceStreamReplayGuard();
   const repositoryOperationReplay = new RepositoryOperationReplayGuard();
+  const customizationContentReplay = new CustomizationContentReplayGuard();
   const repositoryManagedOperations = new RepositoryManagedOperationStore(
     config.dataDirectory,
   );
@@ -2815,48 +2836,167 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "code.agentTurnState":
         return code.agentTurnState(command.cwd, command.phase, command.paths);
       case "skills.list":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).listSkills({
-          cwd: command.cwd,
-          model: command.model,
-          provider: provider(),
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: skillListSchema,
+          service: workerEncryption,
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).listSkills({
+              cwd: command.cwd,
+              model: command.model,
+              provider: provider(),
+            }),
         });
       case "skills.settings.list":
-        return skillManager.list(command);
-      case "skills.settings.read":
-        return skillManager.read(command, command.skillId, command.file);
-      case "skills.settings.write":
-        return skillManager.write(
-          command,
-          command.skillId,
-          command.file,
-          command.content,
-        );
-      case "skills.settings.delete":
-        return skillManager.delete(command, command.skillId);
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: skillSettingsInventorySchema,
+          service: workerEncryption,
+          execute: () => skillManager.list(command),
+        });
+      case "skills.settings.read": {
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: skillSettingsFileRequestSchema.pick({
+            skillId: true,
+            file: true,
+          }),
+          service: workerEncryption,
+        });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: skillSettingsDocumentSchema,
+          service: workerEncryption,
+          execute: () => skillManager.read(command, input.skillId, input.file),
+        });
+      }
+      case "skills.settings.write": {
+        customizationContentReplay.reserve({
+          serverId: command.serverId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+        });
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: skillSettingsFileUpdateSchema.pick({
+            skillId: true,
+            file: true,
+            content: true,
+          }),
+          service: workerEncryption,
+        });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: skillSettingsMutationResultSchema,
+          service: workerEncryption,
+          execute: () =>
+            skillManager.write(
+              command,
+              input.skillId,
+              input.file,
+              input.content,
+            ),
+        });
+      }
+      case "skills.settings.delete": {
+        customizationContentReplay.reserve({
+          serverId: command.serverId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+        });
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: skillSettingsDeleteRequestSchema.pick({ skillId: true }),
+          service: workerEncryption,
+        });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: skillSettingsMutationResultSchema,
+          service: workerEncryption,
+          execute: () => skillManager.delete(command, input.skillId),
+        });
+      }
       case "customization.inventory.read":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).readCustomizationInventory(
-          {
-            cwd: command.cwd,
-            threadId: command.threadId,
-            model: command.model,
-            provider: provider(),
-          },
-          command.forceReload,
-        );
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexCustomizationInventorySchema,
+          service: workerEncryption,
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).readCustomizationInventory(
+              {
+                cwd: command.cwd,
+                threadId: command.threadId,
+                model: command.model,
+                provider: provider(),
+              },
+              command.forceReload,
+            ),
+        });
       case "customization.external.preview":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).previewExternalAgentConfig({
-          cwd: command.cwd,
-          model: command.model,
-          provider: provider(),
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexExternalImportPreviewSchema,
+          service: workerEncryption,
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).previewExternalAgentConfig({
+              cwd: command.cwd,
+              model: command.model,
+              provider: provider(),
+            }),
         });
       case "customization.mcp.resource.read":
         return runtimeFor({
@@ -2869,27 +3009,81 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           server: command.server,
           uri: command.uri,
         });
-      case "customization.skill.configure":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).configureSkill({
-          cwd: command.cwd,
-          model: command.model,
-          provider: provider(),
-          path: command.path,
-          enabled: command.enabled,
+      case "customization.skill.configure": {
+        customizationContentReplay.reserve({
+          serverId: command.serverId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
         });
-      case "customization.skill-roots.set":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).setSkillRoots({
-          cwd: command.cwd,
-          model: command.model,
-          provider: provider(),
-          roots: command.roots,
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: codexSkillConfigUpdateSchema,
+          service: workerEncryption,
         });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexSkillConfigResultSchema,
+          service: workerEncryption,
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).configureSkill({
+              cwd: command.cwd,
+              model: command.model,
+              provider: provider(),
+              path: input.path,
+              enabled: input.enabled,
+            }),
+        });
+      }
+      case "customization.skill-roots.set": {
+        customizationContentReplay.reserve({
+          serverId: command.serverId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+        });
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: codexSkillRootsUpdateSchema,
+          service: workerEncryption,
+        });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexSkillRootsResultSchema,
+          service: workerEncryption,
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).setSkillRoots({
+              cwd: command.cwd,
+              model: command.model,
+              provider: provider(),
+              roots: input.roots,
+            }),
+        });
+      }
       case "customization.mcp.oauth.start":
         return runtimeFor({
           model: command.model,
@@ -2914,21 +3108,71 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           model: command.model,
           provider: provider(),
         });
-      case "customization.external.apply":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).applyExternalAgentConfig({
-          cwd: command.cwd,
-          model: command.model,
-          provider: provider(),
-          itemIds: command.itemIds,
+      case "customization.external.apply": {
+        customizationContentReplay.reserve({
+          serverId: command.serverId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
         });
-      case "customization.external.status":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).externalImportStatus(command.importId);
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: codexExternalImportApplySchema,
+          service: workerEncryption,
+        });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexExternalImportStatusSchema,
+          service: workerEncryption,
+          lifecycle: (status) => status.status,
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).applyExternalAgentConfig({
+              cwd: command.cwd,
+              model: command.model,
+              provider: provider(),
+              itemIds: input.itemIds,
+            }),
+        });
+      }
+      case "customization.external.status": {
+        const input = await openWorkerCustomizationRequest({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          opaque: command.protectedRequest,
+          schema: codexExternalImportStatusSchema.pick({ importId: true }),
+          service: workerEncryption,
+        });
+        return protectWorkerCustomizationResponse({
+          serverId: command.serverId,
+          workerId: config.workerId,
+          scope: command.scope,
+          operationId: command.operationId,
+          operation: command.type,
+          schema: codexExternalImportStatusSchema,
+          service: workerEncryption,
+          lifecycle: (status) => status.status,
+          execute: () =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).externalImportStatus(input.importId),
+        });
+      }
       case "permission-profiles.list":
         return runtimeFor({
           model: command.model,
