@@ -71,6 +71,10 @@ const DEFAULT_NODE_GAP = 16;
 const SPATIAL_CELL_SIZE = 96;
 const FULL_CIRCLE = Math.PI * 2;
 const RADIAL_START_ANGLE = -Math.PI / 2;
+const OUTWARD_BRANCH_FAN = Math.PI * (5 / 3);
+const BINARY_BRANCH_FAN = Math.PI * (4 / 3);
+const UNARY_BRANCH_BEND_STEP = Math.PI / 12;
+const UNARY_BRANCH_MAX_BEND = Math.PI / 3;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 function cellKey(x: number, y: number): string {
@@ -91,6 +95,14 @@ function compareNodes(
 
 function boundedNodeRadius(radius: number): number {
   return Math.max(2, Math.min(32, radius));
+}
+
+function stableTurnDirection(nodeId: string): -1 | 1 {
+  let hash = 0;
+  for (let index = 0; index < nodeId.length; index += 1) {
+    hash = (Math.imul(hash, 31) + nodeId.charCodeAt(index)) | 0;
+  }
+  return (hash & 1) === 0 ? -1 : 1;
 }
 
 type LocalNodePacking = {
@@ -329,8 +341,20 @@ function layoutVisibleNodes(
   const positions = new Map<string, RepositoryGraphPoint & { depth: number }>([
     [rootId, { depth: 0, x: 0, y: 0 }],
   ]);
-  const placements: Array<{ nodeId: string; outwardAngle: number }> = [
-    { nodeId: rootId, outwardAngle: RADIAL_START_ANGLE },
+  const placements: Array<{
+    chainBaseAngle: number;
+    chainDepth: number;
+    chainDirection: -1 | 1;
+    nodeId: string;
+    outwardAngle: number;
+  }> = [
+    {
+      chainBaseAngle: RADIAL_START_ANGLE,
+      chainDepth: 0,
+      chainDirection: stableTurnDirection(rootId),
+      nodeId: rootId,
+      outwardAngle: RADIAL_START_ANGLE,
+    },
   ];
   while (placements.length > 0) {
     const placement = placements.pop()!;
@@ -342,27 +366,61 @@ function layoutVisibleNodes(
       (total, child) => total + (subtreeFootprints.get(child.id) ?? nodeGap),
       0,
     );
-    const childExtents = descendants.map(
-      (child) =>
-        FULL_CIRCLE *
-        ((subtreeFootprints.get(child.id) ?? nodeGap) / childFootprint),
-    );
-    // Every directory gets a fresh full-circle fan. The first child continues
-    // away from the parent's incoming edge, then its siblings fill the rest of
-    // the local circle instead of inheriting an increasingly narrow wedge.
-    let cursor = placement.outwardAngle - childExtents[0]! / 2;
     const childPlacements: Array<{
       angle: number;
+      chainBaseAngle: number;
+      chainDepth: number;
+      chainDirection: -1 | 1;
       node: RepositoryGraphInputNode;
     }> = [];
-    descendants.forEach((child, index) => {
-      const childExtent = childExtents[index]!;
+    let branchFan = FULL_CIRCLE;
+    if (descendants.length === 1) {
+      const child = descendants[0]!;
+      const chainDepth =
+        placement.nodeId === rootId ? 0 : placement.chainDepth + 1;
+      const angle =
+        placement.chainBaseAngle +
+        placement.chainDirection *
+          Math.min(UNARY_BRANCH_MAX_BEND, chainDepth * UNARY_BRANCH_BEND_STEP);
       childPlacements.push({
-        angle: cursor + childExtent / 2,
+        angle,
+        chainBaseAngle: placement.chainBaseAngle,
+        chainDepth,
+        chainDirection: placement.chainDirection,
         node: child,
       });
-      cursor += childExtent;
-    });
+    } else {
+      // Keep the full circle at the root, but leave an open cone around the
+      // incoming edge elsewhere. This gives sibling subtrees a broad Gource-
+      // style fan without folding one of them directly back over its parent.
+      branchFan =
+        placement.nodeId === rootId
+          ? FULL_CIRCLE
+          : descendants.length === 2
+            ? BINARY_BRANCH_FAN
+            : OUTWARD_BRANCH_FAN;
+      const childExtents = descendants.map(
+        (child) =>
+          branchFan *
+          ((subtreeFootprints.get(child.id) ?? nodeGap) / childFootprint),
+      );
+      let cursor =
+        placement.nodeId === rootId
+          ? RADIAL_START_ANGLE
+          : placement.outwardAngle - branchFan / 2;
+      descendants.forEach((child, index) => {
+        const childExtent = childExtents[index]!;
+        const angle = cursor + childExtent / 2;
+        childPlacements.push({
+          angle,
+          chainBaseAngle: angle,
+          chainDepth: 0,
+          chainDirection: stableTurnDirection(child.id),
+          node: child,
+        });
+        cursor += childExtent;
+      });
+    }
     const parentLocalRadius =
       localPackings.get(placement.nodeId)?.radius ?? nodeGap;
     const maximumChildLocalRadius = Math.max(
@@ -373,10 +431,14 @@ function layoutVisibleNodes(
     );
     let branchRadius = Math.max(
       parentLocalRadius + maximumChildLocalRadius + radialGap,
-      childFootprint / FULL_CIRCLE,
+      childFootprint / branchFan,
     );
     if (childPlacements.length > 1) {
-      for (let index = 0; index < childPlacements.length; index += 1) {
+      const pairCount =
+        branchFan >= FULL_CIRCLE - 0.000_001
+          ? childPlacements.length
+          : childPlacements.length - 1;
+      for (let index = 0; index < pairCount; index += 1) {
         const current = childPlacements[index]!;
         const next = childPlacements[(index + 1) % childPlacements.length]!;
         const delta =
@@ -403,6 +465,9 @@ function layoutVisibleNodes(
         y: parentPosition.y + Math.sin(childPlacement.angle) * branchRadius,
       });
       placements.push({
+        chainBaseAngle: childPlacement.chainBaseAngle,
+        chainDepth: childPlacement.chainDepth,
+        chainDirection: childPlacement.chainDirection,
         nodeId: childPlacement.node.id,
         outwardAngle: childPlacement.angle,
       });
