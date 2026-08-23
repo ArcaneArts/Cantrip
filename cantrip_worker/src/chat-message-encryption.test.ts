@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   EncryptedChatEventSealer,
   encryptChatTurnResult,
+  openEncryptedChatTurn,
+  protectChatMessage,
   protectChatTurn,
   reprotectChatMessages,
 } from "./chat-message-encryption.js";
@@ -219,5 +221,133 @@ describe("worker chat message encryption", () => {
       service,
     });
     expect(result.measuredUsage).toEqual(usage);
+  });
+
+  it("keeps child transcript content out of reconstructed root prompts", async () => {
+    const ownerId = "owner-chat-subagents";
+    const componentKey = new Uint8Array(32).fill(11);
+    const service = {
+      ownerId: () => ownerId,
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision: 1,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const rootScope = {
+      agentThreadId: "root-thread",
+      rootThreadId: "root-thread",
+      parentThreadId: null,
+      rootTurnId: "root-turn",
+      agentPath: ["root"],
+      nickname: null,
+      role: null,
+      depth: 0,
+      isRoot: true,
+    };
+    const childScope = {
+      ...rootScope,
+      agentThreadId: "child-thread",
+      parentThreadId: "root-thread",
+      agentPath: ["root", "Scout"],
+      nickname: "Scout",
+      role: "explorer",
+      depth: 1,
+      isRoot: false,
+    };
+    const rootMessage = await protectChatMessage({
+      id: "11111111-1111-4111-8111-111111111111",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Root answer", agentScope: rootScope }],
+        idempotencyKey: "root-answer",
+      },
+      service,
+    });
+    const childMessage = await protectChatMessage({
+      id: "22222222-2222-4222-8222-222222222222",
+      message: {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Private child answer",
+            agentScope: childScope,
+          },
+        ],
+        idempotencyKey: "child-answer",
+      },
+      service,
+    });
+    const prompt = await protectChatMessage({
+      id: "33333333-3333-4333-8333-333333333333",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: "Continue root work" }],
+        idempotencyKey: "prompt",
+      },
+      service,
+    });
+    const summary = (message: typeof rootMessage, sequence: number) => ({
+      ...message.classification,
+      id: message.id,
+      chatId: "chat-subagents",
+      worktreeId: "worktree-subagents",
+      executionLaneId: null,
+      sequence,
+      protectedContent: message.protectedContent,
+      modelId: null,
+      modelRouteId: null,
+      providerId: null,
+      providerName: null,
+      providerModelName: null,
+      reasoningEffort: null,
+      appliedReasoningEffort: null,
+      reasoningAdjusted: false,
+      idempotencyKey: message.idempotencyKey,
+      createdAt: "2026-08-23T12:00:00.000Z",
+    });
+
+    const reconstructed = await openEncryptedChatTurn({
+      history: [summary(childMessage, 1), summary(rootMessage, 2)],
+      prompt,
+      service,
+      threadId: null,
+    });
+    expect(reconstructed).toContain("Root answer");
+    expect(reconstructed).toContain("Continue root work");
+    expect(reconstructed).not.toContain("Private child answer");
+
+    const sealer = new EncryptedChatEventSealer(service, "chat-subagents", {
+      explanation: null,
+      steps: [],
+      question: null,
+    });
+    const rootEvent = await sealer.message({
+      id: "same-message",
+      text: "Root",
+      phase: "final_answer",
+      agentScope: rootScope,
+      correlation: {
+        sourceMethod: "item/completed",
+        diagnosticId: null,
+        threadId: "root-thread",
+        turnId: "same-turn",
+        itemId: "same-message",
+      },
+    });
+    const childEvent = await sealer.message({
+      id: "same-message",
+      text: "Child",
+      phase: "final_answer",
+      agentScope: childScope,
+      correlation: {
+        sourceMethod: "item/completed",
+        diagnosticId: null,
+        threadId: "child-thread",
+        turnId: "same-turn",
+        itemId: "same-message",
+      },
+    });
+    expect(rootEvent.message.id).not.toBe(childEvent.message.id);
   });
 });

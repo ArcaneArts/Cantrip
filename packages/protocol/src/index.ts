@@ -11041,6 +11041,7 @@ export const normalizedAgentMessageSchema = z.object({
   text: z.string().min(1),
   phase: agentMessagePhaseSchema.nullable(),
   correlation: codexEventCorrelationSchema.nullable().optional(),
+  agentScope: agentScopeSchema.optional(),
 });
 
 export const agentThreadSyncItemSchema = z.discriminatedUnion("type", [
