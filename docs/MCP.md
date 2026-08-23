@@ -59,6 +59,14 @@ the owner and worker from the worker credential, reloads the current chat lane,
 and independently checks expiry, permission profile, operation allowlist, and
 lane identity before dispatch.
 
+Successful tool calls use the human-readable `summary` as their text content
+and carry the complete validated object once in `structuredContent`; they do
+not serialize that object into both channels. List tools expose bounded pages.
+`worktree_list` omits released lanes and idle suspended Primary lanes by
+default, while retaining suspended secondary lanes because those still protect
+resumable work. Set `includeLeaseHistory: true` only for explicit lease-history
+inspection.
+
 Successful Run mutations are audited as `run.mcp.started` or
 `run.mcp.stopped` against the durable Run ID. That identity links to the exact
 project, worktree, worker, action ID, and configuration revision without adding
@@ -123,7 +131,7 @@ boundary.
 | `run_status`              | Read                            | Refresh one Run, or the latest Run in the bound worktree, from its owning worker.               |
 | `run_read`                | Read                            | Read a bounded tail of volatile, worker-owned Run output.                                       |
 | `run_setup_status`        | Read                            | Read durable setup state and bounded output when its worker is available.                       |
-| `worktree_list`           | Read                            | List validated worktrees and leases without exposing worker filesystem paths.                   |
+| `worktree_list`           | Read                            | Page through worktrees and work-protecting leases without exposing worker filesystem paths.     |
 | `worktree_status`         | Read                            | Read bounded Git status for the current or an exact listed worktree.                            |
 | `explorer_list`           | Read                            | List a bounded directory page through an exact Explorer target.                                 |
 | `explorer_read`           | Read                            | Read bounded protected text and its version from an Explorer target.                            |

@@ -141,6 +141,10 @@ const notes: Partial<Record<ToolName, string[]>> = {
   run_start: [
     "Copy actionId and configRevision from the same run_config_list or run_config_read result.",
   ],
+  worktree_list: [
+    "By default, lease output omits released lanes and idle suspended Primary lanes while retaining suspended secondary lanes that still protect work.",
+    "Set includeLeaseHistory to true only when inspecting historical lease state.",
+  ],
 };
 
 export function cantripMcpToolHelp(

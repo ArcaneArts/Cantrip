@@ -791,6 +791,7 @@ import {
   cantripMcpBindingReadiness,
   CantripMcpBindingError,
 } from "./agent-tools/binding.js";
+import { visibleWorktreeLeases } from "./agent-tools/worktree-list.js";
 import {
   createServerLogStream,
   SERVER_LOG_REDACTION_PATHS,
@@ -6285,13 +6286,20 @@ export async function buildApp({
         });
       }
       case "worktree.list": {
+        const includeLeaseHistory = call.arguments.includeLeaseHistory === true;
         const [items, leases] = await Promise.all([
           worktrees(),
           repository.listProjectExecutionLanes(
             applicationOwnerId(),
             context.projectId,
+            { includeHistory: includeLeaseHistory },
           ),
         ]);
+        const visibleLeases = visibleWorktreeLeases(
+          items,
+          leases,
+          includeLeaseHistory,
+        );
         if (
           call.arguments.cursor !== undefined ||
           call.arguments.limit !== undefined
@@ -6305,7 +6313,7 @@ export async function buildApp({
             cursor + selected.length < boundedItems.length
               ? cursor + selected.length
               : null;
-          const selectedLeases = leases.filter(({ worktreeId }) =>
+          const selectedLeases = visibleLeases.filter(({ worktreeId }) =>
             selectedIds.has(worktreeId),
           );
           return cantripCliCommandResultSchema.parse({
@@ -6331,7 +6339,7 @@ export async function buildApp({
           data: {
             currentWorktreeId: context.worktreeId,
             worktrees: items,
-            leases,
+            leases: visibleLeases,
           },
         });
       }
