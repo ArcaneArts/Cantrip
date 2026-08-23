@@ -6,8 +6,10 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import {
+  compactWorktreePath,
   worktreeExistingBranchOptions,
   worktreeHasConflicts,
+  worktreeSwitchBranchOptions,
   worktreeTooltip,
 } from "./worktree-control";
 
@@ -123,5 +125,32 @@ describe("worktree existing branch options", () => {
         branch("main", "local"),
       ]).map(({ name }) => name),
     ).toEqual(["main", "topic/zeta"]);
+  });
+});
+
+describe("worktree switcher presentation", () => {
+  it("compacts long POSIX and Windows paths to their useful tail", () => {
+    expect(
+      compactWorktreePath(
+        "/Users/me/Library/Application Support/art.cantrip/repositories/Cantrip",
+      ),
+    ).toBe("…/art.cantrip/repositories/Cantrip");
+    expect(compactWorktreePath("Z:\\workers\\Org\\Cantrip", 2)).toBe(
+      "…\\Org\\Cantrip",
+    );
+    expect(compactWorktreePath("worktrees/fix-auth")).toBe(
+      "worktrees/fix-auth",
+    );
+  });
+
+  it("puts the current branch first, followed by local then remote branches", () => {
+    const remote = branch("main", "remote");
+    const topic = branch("topic/zeta", "local");
+    const current = { ...branch("main", "local"), current: true };
+    expect(
+      worktreeSwitchBranchOptions([remote, topic, current]).map(
+        ({ fullRef }) => fullRef,
+      ),
+    ).toEqual([current.fullRef, topic.fullRef, remote.fullRef]);
   });
 });

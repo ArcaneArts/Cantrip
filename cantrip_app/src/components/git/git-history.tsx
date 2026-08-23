@@ -916,6 +916,7 @@ export function GitHistoryView({
               {selectedWorktree ? (
                 <WorktreeControl
                   currentWorktreeId={worktreeId}
+                  projectId={project.id}
                   worktrees={worktrees}
                   statuses={statuses}
                   workers={workers}
