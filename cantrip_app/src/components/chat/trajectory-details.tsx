@@ -109,6 +109,15 @@ function activitySummaryFields(
         { label: "Agent", value: activity.agentPath },
         { label: "Lifecycle", value: activity.kind },
       ];
+    case "agentCommunication":
+      return [
+        { label: "Communication", value: activity.kind },
+        { label: "Sender", value: activity.senderThreadId },
+        {
+          label: "Recipients",
+          value: activity.receiverThreadIds.join(" · ") || "None",
+        },
+      ];
     case "webSearch":
       return [
         { label: "Query", value: activity.query || "Not captured" },
@@ -217,6 +226,8 @@ function previewText(event: TrajectoryEvent): string | null {
       return activity.prompt ?? event.preview;
     case "subAgent":
       return `${activity.kind}: ${activity.agentPath}`;
+    case "agentCommunication":
+      return activity.message ?? `${activity.kind}: subagent communication`;
     case "webSearch":
       return [activity.query, activity.action].filter(Boolean).join("\n\n");
     case "imageView":

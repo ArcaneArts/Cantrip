@@ -9,6 +9,7 @@ import {
 export * from "./json-message.js";
 
 export * from "./communication-content.js";
+export * from "./model-configuration.js";
 export * from "./attachment-content.js";
 export * from "./explorer.js";
 export * from "./surface-stream.js";
@@ -42,6 +43,7 @@ import {
   interactionResponseOpaqueContentSchema,
   queuedPromptOpaqueContentSchema,
 } from "./communication-content.js";
+import { modelConfigurationSchema } from "./model-configuration.js";
 import {
   attachmentChunkOpaqueSchema,
   attachmentProtectedMetadataSchema,
@@ -2190,6 +2192,12 @@ export const userSettingsSchema = z.object({
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
   defaultModelId: z.string().min(1).nullable(),
+  defaultReasoningEffort: reasoningEffortSchema.nullable().default(null),
+  defaultCustomSubagentModel: z.boolean().default(false),
+  defaultSubagentModelId: z.string().min(1).nullable().default(null),
+  defaultSubagentReasoningEffort: reasoningEffortSchema
+    .nullable()
+    .default(null),
   defaultPermissionProfileId: configurablePermissionProfileIdSchema.default(
     DEFAULT_PERMISSION_PROFILE_ID,
   ),
@@ -4470,6 +4478,9 @@ const chatSummaryBaseSchema = z.object({
   worktreeMode: z.enum(["agent-managed", "pinned"]),
   modelId: z.string().min(1).nullable(),
   reasoningEffort: reasoningEffortSchema.nullable().default(null),
+  customSubagentModel: z.boolean().optional(),
+  subagentModelId: z.string().min(1).nullable().optional(),
+  subagentReasoningEffort: reasoningEffortSchema.nullable().optional(),
   permissionProfileId: z.string().min(1).max(200).nullable(),
   planMode: z.enum(["default", "plan"]),
   hasPendingPlanQuestion: z.boolean(),
@@ -6540,6 +6551,31 @@ export const codexEventCorrelationSchema = z.object({
   itemId: z.string().min(1).max(200).nullable(),
 });
 
+export const agentScopeSchema = z
+  .object({
+    agentThreadId: z.string().min(1).max(200),
+    rootThreadId: z.string().min(1).max(200),
+    parentThreadId: z.string().min(1).max(200).nullable(),
+    rootTurnId: z.string().min(1).max(200),
+    agentPath: z.array(z.string().min(1).max(200)).max(32),
+    nickname: z.string().min(1).max(200).nullable(),
+    role: z.string().min(1).max(500).nullable(),
+    depth: z.number().int().nonnegative().max(32),
+    isRoot: z.boolean(),
+  })
+  .strict();
+
+export const agentCommunicationKindSchema = z.enum([
+  "spawned",
+  "messageSent",
+  "followupSent",
+  "waiting",
+  "statusChanged",
+  "interrupted",
+  "returned",
+  "failed",
+]);
+
 const agentActivityBaseShape = {
   id: z.string().min(1),
   status: agentActivityStatusSchema,
@@ -6547,6 +6583,7 @@ const agentActivityBaseShape = {
   updatedAtMs: agentActivityTimestampSchema.optional(),
   completedAtMs: agentActivityTimestampSchema.nullable().optional(),
   correlation: codexEventCorrelationSchema.nullable().optional(),
+  agentScope: agentScopeSchema.optional(),
   raw: agentActivityRawEnvelopeSchema.optional(),
 };
 
@@ -6675,6 +6712,14 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...agentActivityBaseShape,
+    type: z.literal("agentCommunication"),
+    kind: agentCommunicationKindSchema,
+    senderThreadId: z.string().min(1).max(200),
+    receiverThreadIds: z.array(z.string().min(1).max(200)).max(100),
+    message: z.string().max(100_000).nullable(),
+  }),
+  z.object({
+    ...agentActivityBaseShape,
     type: z.literal("webSearch"),
     query: z.string(),
     action: z.string().nullable(),
@@ -6735,6 +6780,7 @@ export const chatMessageContentSchema = z.array(
       text: z.string().min(1),
       phase: agentMessagePhaseSchema.nullable().optional(),
       correlation: codexEventCorrelationSchema.nullable().optional(),
+      agentScope: agentScopeSchema.optional(),
     }),
     z.object({
       type: z.literal("activity"),
@@ -8582,6 +8628,9 @@ export const queuedPromptSchema = z.object({
   mode: chatTurnModeSchema.default("default"),
   modelId: z.string().min(1),
   reasoningEffort: reasoningEffortSchema.nullable().default(null),
+  customSubagentModel: z.boolean().default(false),
+  subagentModelId: z.string().min(1).nullable().default(null),
+  subagentReasoningEffort: reasoningEffortSchema.nullable().default(null),
   worktreeId: z.string().min(1).nullable(),
   position: z.number().int().nonnegative(),
   frozen: z.boolean(),
@@ -8621,6 +8670,15 @@ export const queuedPromptOrderSchema = z.object({
 export const chatModelUpdateSchema = z.object({
   modelId: z.string().min(1),
 });
+
+export const chatModelConfigurationUpdateSchema =
+  modelConfigurationSchema.refine(
+    (configuration) => configuration.modelId !== null,
+    {
+      message: "A root model must be selected.",
+      path: ["modelId"],
+    },
+  );
 
 export const chatReasoningOptionSchema = modelReasoningEffortOptionSchema;
 
@@ -14828,6 +14886,10 @@ export type TerminalSnapshotResult = z.infer<
 >;
 export type AgentMessagePhase = z.infer<typeof agentMessagePhaseSchema>;
 export type CodexEventCorrelation = z.infer<typeof codexEventCorrelationSchema>;
+export type AgentScope = z.infer<typeof agentScopeSchema>;
+export type AgentCommunicationKind = z.infer<
+  typeof agentCommunicationKindSchema
+>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
@@ -14945,6 +15007,9 @@ export type QueuedPromptCreate = z.infer<typeof queuedPromptCreateSchema>;
 export type QueuedPromptUpdate = z.infer<typeof queuedPromptUpdateSchema>;
 export type QueuedPromptOrder = z.infer<typeof queuedPromptOrderSchema>;
 export type ChatModelUpdate = z.infer<typeof chatModelUpdateSchema>;
+export type ChatModelConfigurationUpdate = z.infer<
+  typeof chatModelConfigurationUpdateSchema
+>;
 export type ChatReasoningOption = z.infer<typeof chatReasoningOptionSchema>;
 export type ChatReasoningState = z.infer<typeof chatReasoningStateSchema>;
 export type ChatReasoningUpdate = z.infer<typeof chatReasoningUpdateSchema>;

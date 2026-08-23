@@ -1058,6 +1058,13 @@
       "when": 1787501637081,
       "tag": "0150_natural_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1787519983118,
+      "tag": "0151_fat_harpoon",
+      "breakpoints": true
     }
   ]
 }

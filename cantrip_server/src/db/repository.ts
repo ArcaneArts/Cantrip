@@ -11,6 +11,7 @@ import {
   chatPlanOpaqueStateSchema,
   encryptedChatPlanWireStateSchema,
   encryptedQueuedPromptSchema,
+  modelConfigurationSchema,
   queuedPromptOpaqueContentSchema,
   normalizeResponsesBaseUrl,
   projectCapabilitiesForOriginKind,
@@ -54,6 +55,7 @@ import type {
   ChatMessagePageInfo,
   ChatMessagePageQuery,
   ChatWireSummary,
+  ChatModelConfigurationUpdate,
   EncryptedChatUpdate,
   ChatWorktreeUpdate,
   CodeCapabilities,
@@ -84,6 +86,7 @@ import type {
   ModelProfileCreate,
   ModelProfileSummary,
   ModelProfileUpdate,
+  ModelConfiguration,
   EncryptedMcpServerCreate,
   EncryptedMcpServerUpdate,
   McpServerOpaqueRuntime,
@@ -412,6 +415,7 @@ export interface ChatExecutionContext {
   status: ChatWireSummary["status"];
   modelId: string | null;
   reasoningEffort: ReasoningEffort | null;
+  modelConfiguration: ModelConfiguration;
   modelRouteId: string | null;
   providerAccountId: string | null;
   permissionProfileId: string | null;
@@ -1374,6 +1378,9 @@ function toChatWireSummary(
     worktreeMode: chat.worktreeMode as ChatWireSummary["worktreeMode"],
     modelId: chat.modelId,
     reasoningEffort: chat.reasoningEffort,
+    customSubagentModel: chat.customSubagentModel,
+    subagentModelId: chat.subagentModelId,
+    subagentReasoningEffort: chat.subagentReasoningEffort,
     permissionProfileId: chat.permissionProfileId,
     planMode: chat.planMode as ChatWireSummary["planMode"],
     hasPendingPlanQuestion: chat.hasPendingPlanQuestion,
@@ -1382,6 +1389,25 @@ function toChatWireSummary(
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
   };
+}
+
+function chatModelConfiguration(
+  chat: Pick<
+    typeof schema.chats.$inferSelect,
+    | "modelId"
+    | "reasoningEffort"
+    | "customSubagentModel"
+    | "subagentModelId"
+    | "subagentReasoningEffort"
+  >,
+): ModelConfiguration {
+  return modelConfigurationSchema.parse({
+    modelId: chat.modelId,
+    reasoningEffort: chat.reasoningEffort,
+    customSubagentModel: chat.customSubagentModel,
+    subagentModelId: chat.subagentModelId,
+    subagentReasoningEffort: chat.subagentReasoningEffort,
+  });
 }
 
 function toArchivedChatWireSummary(
@@ -2086,6 +2112,9 @@ function toQueuedPrompt(
     attachments: [],
     modelId: prompt.modelId,
     reasoningEffort: prompt.reasoningEffort,
+    customSubagentModel: prompt.customSubagentModel,
+    subagentModelId: prompt.subagentModelId,
+    subagentReasoningEffort: prompt.subagentReasoningEffort,
     worktreeId: prompt.worktreeId,
     position: prompt.position,
     frozen: prompt.frozen,
@@ -2983,6 +3012,10 @@ export class ServerRepository {
         desktopStreamQuality:
           settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
         defaultModelId: settings.defaultModelId,
+        defaultReasoningEffort: settings.defaultReasoningEffort,
+        defaultCustomSubagentModel: settings.defaultCustomSubagentModel,
+        defaultSubagentModelId: settings.defaultSubagentModelId,
+        defaultSubagentReasoningEffort: settings.defaultSubagentReasoningEffort,
         defaultPermissionProfileId:
           settings.defaultPermissionProfileId as UserSettings["defaultPermissionProfileId"],
         defaultWorkerId: settings.defaultWorkerId,
@@ -3450,6 +3483,10 @@ export class ServerRepository {
       desktopStreamQuality:
         settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
       defaultModelId: settings.defaultModelId,
+      defaultReasoningEffort: settings.defaultReasoningEffort,
+      defaultCustomSubagentModel: settings.defaultCustomSubagentModel,
+      defaultSubagentModelId: settings.defaultSubagentModelId,
+      defaultSubagentReasoningEffort: settings.defaultSubagentReasoningEffort,
       defaultPermissionProfileId:
         settings.defaultPermissionProfileId as UserSettings["defaultPermissionProfileId"],
       defaultWorkerId: settings.defaultWorkerId,
@@ -3469,6 +3506,28 @@ export class ServerRepository {
       if (!model) {
         return null;
       }
+    }
+    if (input.defaultSubagentModelId) {
+      const model = await this.getModelRuntime(
+        ownerId,
+        input.defaultSubagentModelId,
+      );
+      if (!model) {
+        return null;
+      }
+    }
+    if (
+      input.defaultCustomSubagentModel !== undefined ||
+      input.defaultSubagentModelId !== undefined
+    ) {
+      const current = await this.getUserSettings(ownerId);
+      const customSubagentModel =
+        input.defaultCustomSubagentModel ?? current.defaultCustomSubagentModel;
+      const subagentModelId =
+        input.defaultSubagentModelId !== undefined
+          ? input.defaultSubagentModelId
+          : current.defaultSubagentModelId;
+      if (customSubagentModel && !subagentModelId) return null;
     }
     if (
       input.defaultWorkerId &&
@@ -10658,6 +10717,7 @@ export class ServerRepository {
           status: "running",
           modelId: row.chat.modelId,
           reasoningEffort: row.chat.reasoningEffort,
+          modelConfiguration: chatModelConfiguration(row.chat),
           modelRouteId: runtime.modelRouteId,
           providerAccountId: runtime.providerAccountId,
           permissionProfileId: row.chat.permissionProfileId,
@@ -11960,6 +12020,21 @@ export class ServerRepository {
     const workerId = selected.workerId;
     const isPrimary = selected.worktree.isPrimary;
     const startingHead = selected.worktree.head;
+    const defaultSettings = firstOrThrow(
+      await this.database
+        .select({
+          modelId: schema.userSettings.defaultModelId,
+          reasoningEffort: schema.userSettings.defaultReasoningEffort,
+          customSubagentModel: schema.userSettings.defaultCustomSubagentModel,
+          subagentModelId: schema.userSettings.defaultSubagentModelId,
+          subagentReasoningEffort:
+            schema.userSettings.defaultSubagentReasoningEffort,
+        })
+        .from(schema.userSettings)
+        .where(eq(schema.userSettings.userId, ownerId))
+        .limit(1),
+      "loading default chat model configuration",
+    );
 
     const position = await this.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
@@ -11978,6 +12053,11 @@ export class ServerRepository {
           activeWorkerId: workerId,
           activeWorktreeId: worktreeId,
           worktreeMode: input.worktreeMode,
+          modelId: defaultSettings.modelId,
+          reasoningEffort: defaultSettings.reasoningEffort,
+          customSubagentModel: defaultSettings.customSubagentModel,
+          subagentModelId: defaultSettings.subagentModelId,
+          subagentReasoningEffort: defaultSettings.subagentReasoningEffort,
         })
         .returning();
       const chat = firstOrThrow(result, "creating a chat");
@@ -14294,6 +14374,9 @@ export class ServerRepository {
           worktreeMode: input.worktreeMode ?? row.chat.worktreeMode,
           modelId: row.chat.modelId,
           reasoningEffort: row.chat.reasoningEffort,
+          customSubagentModel: row.chat.customSubagentModel,
+          subagentModelId: row.chat.subagentModelId,
+          subagentReasoningEffort: row.chat.subagentReasoningEffort,
           permissionProfileId: row.chat.permissionProfileId,
         })
         .returning();
@@ -14435,6 +14518,76 @@ export class ServerRepository {
     return toChatWireSummary(firstOrThrow(result, "selecting a chat model"));
   }
 
+  async getChatModelConfiguration(
+    ownerId: string,
+    chatId: string,
+  ): Promise<ModelConfiguration | null> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    return rows[0] ? chatModelConfiguration(rows[0].chat) : null;
+  }
+
+  async setChatModelConfiguration(
+    ownerId: string,
+    chatId: string,
+    input: ChatModelConfigurationUpdate,
+  ): Promise<ChatWireSummary | null> {
+    if (!input.modelId) return null;
+
+    const modelIds = [
+      input.modelId,
+      ...(input.subagentModelId ? [input.subagentModelId] : []),
+    ];
+    const ownedModels = await this.database
+      .select({ id: schema.modelProfiles.id })
+      .from(schema.modelProfiles)
+      .where(
+        and(
+          eq(schema.modelProfiles.ownerId, ownerId),
+          inArray(schema.modelProfiles.id, modelIds),
+        ),
+      );
+    if (
+      new Set(ownedModels.map(({ id }) => id)).size !== new Set(modelIds).size
+    )
+      return null;
+
+    const result = await this.database
+      .update(schema.chats)
+      .set({
+        modelId: input.modelId,
+        reasoningEffort: input.reasoningEffort,
+        customSubagentModel: input.customSubagentModel,
+        subagentModelId: input.subagentModelId,
+        subagentReasoningEffort: input.subagentReasoningEffort,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          inArray(
+            schema.chats.projectId,
+            this.database
+              .select({ id: schema.projects.id })
+              .from(schema.projects)
+              .where(eq(schema.projects.ownerId, ownerId)),
+          ),
+        ),
+      )
+      .returning();
+    return result[0] ? toChatWireSummary(result[0]) : null;
+  }
+
   async setChatReasoningEffort(
     ownerId: string,
     chatId: string,
@@ -14519,10 +14672,6 @@ export class ServerRepository {
         .returning();
       if (!result[0]) return null;
 
-      await transaction
-        .update(schema.modelProfiles)
-        .set({ defaultReasoningEffort: reasoningEffort, updatedAt: new Date() })
-        .where(eq(schema.modelProfiles.id, modelId));
       return toChatWireSummary(result[0]);
     });
   }
@@ -14704,6 +14853,7 @@ export class ServerRepository {
       isPrimary: row.worktree.isPrimary,
       modelId: row.chat.modelId,
       reasoningEffort: row.chat.reasoningEffort,
+      modelConfiguration: chatModelConfiguration(row.chat),
       modelRouteId: row.runtime?.modelRouteId ?? null,
       providerAccountId: row.runtime?.providerAccountId ?? null,
       permissionProfileId: row.chat.permissionProfileId,
@@ -15989,6 +16139,9 @@ export class ServerRepository {
         attachments,
         modelId: prompt.modelId,
         reasoningEffort: prompt.reasoningEffort,
+        customSubagentModel: prompt.customSubagentModel,
+        subagentModelId: prompt.subagentModelId,
+        subagentReasoningEffort: prompt.subagentReasoningEffort,
         worktreeId: prompt.worktreeId,
         position: (last[0]?.position ?? -1) + 1,
         frozen: prompt.frozen,
@@ -16013,6 +16166,9 @@ export class ServerRepository {
         mode: prompt.classification.mode,
         attachments,
         reasoningEffort: prompt.reasoningEffort,
+        customSubagentModel: prompt.customSubagentModel,
+        subagentModelId: prompt.subagentModelId,
+        subagentReasoningEffort: prompt.subagentReasoningEffort,
         worktreeId: prompt.worktreeId,
         frozen: prompt.frozen,
         updatedAt: new Date(),

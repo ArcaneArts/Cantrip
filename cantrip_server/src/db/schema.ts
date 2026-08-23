@@ -924,6 +924,15 @@ export const userSettings = pgTable(
         onDelete: "set null",
       },
     ),
+    defaultReasoningEffort: text("default_reasoning_effort"),
+    defaultCustomSubagentModel: boolean("default_custom_subagent_model")
+      .notNull()
+      .default(false),
+    defaultSubagentModelId: text("default_subagent_model_id").references(
+      () => modelProfiles.id,
+      { onDelete: "set null" },
+    ),
+    defaultSubagentReasoningEffort: text("default_subagent_reasoning_effort"),
     defaultPermissionProfileId: text("default_permission_profile_id")
       .notNull()
       .default(":workspace"),
@@ -959,6 +968,10 @@ export const userSettings = pgTable(
     check(
       "user_settings_default_permission_profile_check",
       sql`${table.defaultPermissionProfileId} IN (':read-only', ':workspace', ':danger-full-access', ':yolo')`,
+    ),
+    check(
+      "user_settings_custom_subagent_model_check",
+      sql`NOT ${table.defaultCustomSubagentModel} OR ${table.defaultSubagentModelId} IS NOT NULL`,
     ),
   ],
 );
@@ -2333,6 +2346,14 @@ export const chats = pgTable(
       onDelete: "restrict",
     }),
     reasoningEffort: text("reasoning_effort"),
+    customSubagentModel: boolean("custom_subagent_model")
+      .notNull()
+      .default(false),
+    subagentModelId: text("subagent_model_id").references(
+      () => modelProfiles.id,
+      { onDelete: "set null" },
+    ),
+    subagentReasoningEffort: text("subagent_reasoning_effort"),
     permissionProfileId: text("permission_profile_id"),
     automationPaused: boolean("automation_paused").notNull().default(false),
     planMode: text("plan_mode").notNull().default("default"),
@@ -2366,6 +2387,10 @@ export const chats = pgTable(
     check(
       "chats_protected_plan_question_check",
       sql`NOT ${table.hasPendingPlanQuestion} OR ${table.protectedPlan} IS NOT NULL`,
+    ),
+    check(
+      "chats_custom_subagent_model_check",
+      sql`NOT ${table.customSubagentModel} OR ${table.subagentModelId} IS NOT NULL`,
     ),
   ],
 );
@@ -3532,6 +3557,14 @@ export const queuedPrompts = pgTable(
       .notNull()
       .references(() => modelProfiles.id, { onDelete: "restrict" }),
     reasoningEffort: text("reasoning_effort"),
+    customSubagentModel: boolean("custom_subagent_model")
+      .notNull()
+      .default(false),
+    subagentModelId: text("subagent_model_id").references(
+      () => modelProfiles.id,
+      { onDelete: "set null" },
+    ),
+    subagentReasoningEffort: text("subagent_reasoning_effort"),
     worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
       onDelete: "restrict",
     }),
@@ -3553,6 +3586,10 @@ export const queuedPrompts = pgTable(
     check(
       "queued_prompts_content_shape_check",
       sql`(${table.text} IS NOT NULL AND ${table.opaqueContent} IS NULL) OR (${table.text} IS NULL AND ${table.opaqueContent} IS NOT NULL)`,
+    ),
+    check(
+      "queued_prompts_custom_subagent_model_check",
+      sql`NOT ${table.customSubagentModel} OR ${table.subagentModelId} IS NOT NULL`,
     ),
   ],
 );
