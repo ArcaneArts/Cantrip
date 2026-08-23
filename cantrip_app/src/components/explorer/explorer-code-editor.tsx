@@ -22,6 +22,12 @@ import {
 import { errorMessage } from "@/lib/error-message";
 
 const FILE_OPEN_RETRY_DELAY_MS = 250;
+const FILE_OPEN_RECONNECT_LIMIT = 1;
+
+interface OwnedCodeAttachment {
+  attachmentId: string;
+  directTunnelId: string | null;
+}
 
 function shouldRetryFileOpen(error: unknown): boolean {
   return /(?:failed to fetch|load failed|network|not connected|unavailable)/iu.test(
@@ -45,6 +51,7 @@ export function ExplorerCodeEditor({
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const automaticReconnectsRef = useRef(0);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const pathRef = useRef(path);
   pathRef.current = path;
@@ -55,15 +62,15 @@ export function ExplorerCodeEditor({
 
   useEffect(() => {
     let cancelled = false;
-    let attachmentId: string | null = null;
-    let directTunnelId: string | null = null;
+    let connection: Promise<OwnedCodeAttachment | null> | null = null;
     let startTimer: ReturnType<typeof setTimeout> | undefined;
 
     setPreferredAttachment(null);
     setError(null);
     setReady(false);
 
-    const connect = async () => {
+    const connect = async (): Promise<OwnedCodeAttachment | null> => {
+      let attachmentId: string | null = null;
       try {
         const wire = await createProtectedExplorerCodeAttachment(
           explorerId,
@@ -73,14 +80,15 @@ export function ExplorerCodeEditor({
         );
         attachmentId = wire.attachmentId;
         const preferred = await preferProtectedCodeAttachment(wire);
-        directTunnelId = preferred.directTunnelId;
-        if (cancelled) {
-          await stopDirectCodeAttachment(directTunnelId);
-          await releaseCodeAttachment(wire.attachmentId).catch(() => undefined);
-          return;
-        }
-        setPreferredAttachment(preferred);
+        if (!cancelled) setPreferredAttachment(preferred);
+        return {
+          attachmentId: wire.attachmentId,
+          directTunnelId: preferred.directTunnelId,
+        };
       } catch (connectError) {
+        if (attachmentId) {
+          await releaseCodeAttachment(attachmentId).catch(() => undefined);
+        }
         if (!cancelled) {
           setError(
             errorMessage(
@@ -89,19 +97,30 @@ export function ExplorerCodeEditor({
             ),
           );
         }
+        return null;
       }
     };
 
-    startTimer = setTimeout(() => void connect(), 0);
+    startTimer = setTimeout(() => {
+      connection = connect();
+    }, 0);
     return () => {
       cancelled = true;
       if (startTimer) clearTimeout(startTimer);
-      void stopDirectCodeAttachment(directTunnelId);
-      if (attachmentId) {
-        void releaseCodeAttachment(attachmentId).catch(() => undefined);
-      }
+      // A server attachment may already exist while its native tunnel is still
+      // connecting. Releasing it before setup settles revokes the capability
+      // out from under the forward and turns the local WebSocket into a 1006.
+      void connection?.then(async (owned) => {
+        if (!owned) return;
+        await stopDirectCodeAttachment(owned.directTunnelId);
+        await releaseCodeAttachment(owned.attachmentId).catch(() => undefined);
+      });
     };
   }, [appearance, explorerId, reloadVersion, workerId]);
+
+  useEffect(() => {
+    automaticReconnectsRef.current = 0;
+  }, [path]);
 
   useEffect(() => {
     if (!preferredAttachment) return;
@@ -120,6 +139,7 @@ export function ExplorerCodeEditor({
           path,
         );
         if (!cancelled && result.relativePath === path) {
+          automaticReconnectsRef.current = 0;
           setError(null);
           setReady(true);
         }
@@ -130,6 +150,14 @@ export function ExplorerCodeEditor({
             () => void openFile(attempt + 1),
             FILE_OPEN_RETRY_DELAY_MS,
           );
+          return;
+        }
+        if (
+          shouldRetryFileOpen(openError) &&
+          automaticReconnectsRef.current < FILE_OPEN_RECONNECT_LIMIT
+        ) {
+          automaticReconnectsRef.current += 1;
+          reload();
           return;
         }
         setError(
