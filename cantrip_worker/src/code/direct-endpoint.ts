@@ -10,6 +10,8 @@ import { randomUUID } from "node:crypto";
 
 import {
   CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
+  codeOpenFileRequestSchema,
+  codeOpenFileResultSchema,
   isForwardableCodeAdapterWebSocketCloseCode,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
@@ -30,6 +32,8 @@ interface Endpoint {
 }
 
 const BASE_PATH = "/code";
+const OPEN_FILE_PATH = `${BASE_PATH}/_cantrip/open-file`;
+const MAX_CONTROL_REQUEST_BYTES = 16 * 1_024;
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
 const FRAME_ANCESTORS =
   "frame-ancestors 'self' http://127.0.0.1:1420 http://tauri.localhost https://tauri.localhost tauri://localhost";
@@ -89,6 +93,35 @@ function writeResponseHeaders(
   response.setHeader("Referrer-Policy", "no-referrer");
   response.setHeader("X-Content-Type-Options", "nosniff");
   response.writeHead(upstream.statusCode ?? 502);
+}
+
+function writeControlResponse(
+  response: ServerResponse,
+  statusCode: number,
+  body?: unknown,
+): void {
+  response.writeHead(statusCode, {
+    "access-control-allow-headers": "content-type",
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-origin": "*",
+    "cache-control": "no-store",
+    ...(body === undefined ? {} : { "content-type": "application/json" }),
+  });
+  response.end(body === undefined ? undefined : JSON.stringify(body));
+}
+
+async function readControlRequest(request: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > MAX_CONTROL_REQUEST_BYTES) {
+      throw new Error("Cantrip Code control request is too large.");
+    }
+    chunks.push(buffer);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
 export class CodeDirectEndpointManager {
@@ -196,7 +229,15 @@ export class CodeDirectEndpointManager {
     request: IncomingMessage,
     response: ServerResponse,
   ): void {
-    if (request.url === `${BASE_PATH}/_cantrip/health`) {
+    let pathname: string;
+    try {
+      pathname = new URL(request.url ?? "/", "http://cantrip-code.invalid")
+        .pathname;
+    } catch {
+      response.writeHead(404, { "cache-control": "no-store" }).end("Not found");
+      return;
+    }
+    if (pathname === `${BASE_PATH}/_cantrip/health`) {
       response
         .writeHead(200, {
           "access-control-allow-origin": "*",
@@ -204,6 +245,10 @@ export class CodeDirectEndpointManager {
           "content-type": "application/json",
         })
         .end('{"status":"ok"}');
+      return;
+    }
+    if (pathname === OPEN_FILE_PATH) {
+      void this.#openFile(sessionId, request, response);
       return;
     }
     if (!this.#validPath(request.url)) {
@@ -266,6 +311,68 @@ export class CodeDirectEndpointManager {
             ? error.message
             : "Cantrip Code is unavailable.",
         );
+    }
+  }
+
+  async #openFile(
+    sessionId: string,
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    if (request.method === "OPTIONS") {
+      writeControlResponse(response, 204);
+      return;
+    }
+    if (request.method !== "POST") {
+      writeControlResponse(response, 405, {
+        error: "Cantrip Code file-open requests require POST.",
+      });
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readControlRequest(request);
+    } catch {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code requires a valid JSON request body.",
+      });
+      return;
+    }
+    const input = codeOpenFileRequestSchema.safeParse(body);
+    if (!input.success) {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code requires a valid worktree-relative file path.",
+      });
+      return;
+    }
+    try {
+      const result = codeOpenFileResultSchema.parse(
+        await this.supervisor.openFile(sessionId, input.data.relativePath),
+      );
+      writeControlResponse(response, 200, result);
+      workerLogger.event("debug", "Cantrip Code direct file opened", {
+        event: "code.direct.file-opened",
+        subsystem: "code",
+        operation: "open-file",
+        status: "completed",
+        sessionId,
+      });
+    } catch (error) {
+      workerLogger.event("warn", "Cantrip Code direct file open failed", {
+        event: "code.direct.file-open-failed",
+        subsystem: "code",
+        operation: "open-file",
+        reasonCode: "open-failed",
+        status: "failed",
+        sessionId,
+        error: workerLogError(error),
+      });
+      writeControlResponse(response, 503, {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Cantrip Code could not open this file.",
+      });
     }
   }
 

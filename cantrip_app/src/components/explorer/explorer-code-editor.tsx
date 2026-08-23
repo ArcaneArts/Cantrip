@@ -1,4 +1,4 @@
-import type { CodeAppearance, CodeAttachment } from "@cantrip/protocol";
+import type { CodeAppearance } from "@cantrip/protocol";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -19,8 +19,10 @@ import {
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
 import {
+  openDirectCodeAttachmentFile,
   preferDirectCodeAttachment,
   stopDirectCodeAttachment,
+  type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
 
@@ -60,7 +62,8 @@ export function ExplorerCodeEditor({
   projectId: string;
   worktreeId: string;
 }) {
-  const [attachment, setAttachment] = useState<CodeAttachment | null>(null);
+  const [preferredAttachment, setPreferredAttachment] =
+    useState<PreferredCodeAttachment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -77,7 +80,7 @@ export function ExplorerCodeEditor({
     let directTunnelId: string | null = null;
     let startTimer: ReturnType<typeof setTimeout> | undefined;
 
-    setAttachment(null);
+    setPreferredAttachment(null);
     setError(null);
     setReady(false);
 
@@ -135,7 +138,7 @@ export function ExplorerCodeEditor({
           }
           return;
         }
-        setAttachment(preferred.attachment);
+        setPreferredAttachment(preferred);
       } catch (connectError) {
         if (!cancelled) {
           setError(
@@ -162,9 +165,15 @@ export function ExplorerCodeEditor({
   }, [appearance, explorerId, path, projectId, reloadVersion, worktreeId]);
 
   useEffect(() => {
-    if (!attachment) return;
+    if (!preferredAttachment) return;
     let cancelled = false;
-    void openCodeAttachmentFile(attachment.attachmentId, path)
+    const openFile = preferredAttachment.directTunnelId
+      ? openDirectCodeAttachmentFile(preferredAttachment.attachment, path)
+      : openCodeAttachmentFile(
+          preferredAttachment.attachment.attachmentId,
+          path,
+        );
+    void openFile
       .then((result) => {
         if (!cancelled && result.relativePath === path) {
           setError(null);
@@ -181,11 +190,11 @@ export function ExplorerCodeEditor({
     return () => {
       cancelled = true;
     };
-  }, [attachment, path]);
+  }, [path, preferredAttachment]);
 
   useEffect(() => {
-    if (!attachment) return;
-    const attachmentOrigin = new URL(attachment.url).origin;
+    if (!preferredAttachment) return;
+    const attachmentOrigin = new URL(preferredAttachment.attachment.url).origin;
     const recover = (event: MessageEvent<unknown>) => {
       if (
         event.origin === attachmentOrigin &&
@@ -197,19 +206,19 @@ export function ExplorerCodeEditor({
     };
     window.addEventListener("message", recover);
     return () => window.removeEventListener("message", recover);
-  }, [attachment, reload]);
+  }, [preferredAttachment, reload]);
 
   return (
     <section
       className="relative flex min-h-0 flex-1 overflow-hidden bg-background"
       data-slot="explorer-code-editor"
     >
-      {attachment ? (
+      {preferredAttachment ? (
         <iframe
           allow="clipboard-read; clipboard-write"
           className={codeWorkbenchFrameClassName(ready)}
           ref={frameRef}
-          src={attachment.url}
+          src={preferredAttachment.attachment.url}
           title={`Cantrip Code — ${path}`}
         />
       ) : null}
