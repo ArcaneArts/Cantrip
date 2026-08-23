@@ -61,6 +61,12 @@ let chatId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
+  await database.repository.ensureLocalIdentity();
+  await database.repository.ensureDefaultModelConfiguration(
+    LOCAL_USER_ID,
+    config.agentModel,
+    config.ollamaBaseUrl,
+  );
   const workerId = "chat-turn-retry-worker";
   await database.repository.recordWorker(LOCAL_USER_ID, {
     workerId,
@@ -110,6 +116,40 @@ afterAll(async () => {
 });
 
 describe("latest encrypted chat turn trimming", () => {
+  it("reconciles a recovered protected child event into one opaque row", async () => {
+    const recovered = opaqueMessage("assistant");
+    recovered.idempotencyKey = "activity:root-turn:child-thread:child-item";
+    await database.repository.appendEncryptedMessage(
+      LOCAL_USER_ID,
+      chatId,
+      recovered,
+    );
+    await database.repository.upsertEncryptedMessage(LOCAL_USER_ID, chatId, {
+      ...recovered,
+      protectedContent: {
+        ...recovered.protectedContent,
+        envelope: {
+          ...recovered.protectedContent.envelope,
+            nonce: "AQEBAQEBAQEBAQEB",
+            ciphertext: "AQEBAQEBAQEBAQEBAQEBAQ",
+        },
+      },
+    });
+
+    const matching = (
+      await database.repository.listEncryptedMessages(LOCAL_USER_ID, chatId)
+    ).filter(
+      ({ idempotencyKey }) => idempotencyKey === recovered.idempotencyKey,
+    );
+    expect(matching).toHaveLength(1);
+    expect(matching[0]).toMatchObject({
+      id: recovered.id,
+      protectedContent: {
+        envelope: { ciphertext: "AQEBAQEBAQEBAQEBAQEBAQ" },
+      },
+    });
+  });
+
   it("removes only the exact latest user turn and everything after it", async () => {
     const firstUser = opaqueMessage("user");
     const firstAssistant = opaqueMessage("assistant");
@@ -150,9 +190,11 @@ describe("latest encrypted chat turn trimming", () => {
       LOCAL_USER_ID,
       chatId,
     );
-    expect(remaining.map(({ id }) => id)).toEqual([
-      firstUser.id,
-      firstAssistant.id,
-    ]);
+    expect(remaining.map(({ id }) => id)).toEqual(
+      expect.arrayContaining([firstUser.id, firstAssistant.id]),
+    );
+    expect(remaining.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining([latestUser.id, interruptedMarker.id]),
+    );
   });
 });

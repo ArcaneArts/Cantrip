@@ -85,6 +85,24 @@ function activityContinuationSummary(activity: AgentActivity): string {
   }
 }
 
+function rootContinuationContent(content: ChatMessage["content"]) {
+  const scopes = content.flatMap((item) => {
+    if (item.type === "text") return item.agentScope ? [item.agentScope] : [];
+    if (item.type === "activity") {
+      return item.activity.agentScope ? [item.activity.agentScope] : [];
+    }
+    return [];
+  });
+  if (scopes.length > 0 && scopes.every((scope) => !scope.isRoot)) return [];
+  return content.filter((item) => {
+    if (item.type === "text") return !item.agentScope || item.agentScope.isRoot;
+    if (item.type === "activity") {
+      return !item.activity.agentScope || item.activity.agentScope.isRoot;
+    }
+    return true;
+  });
+}
+
 export function continuationPrompt(
   messages: ChatMessage[],
   prompt: string,
@@ -92,8 +110,8 @@ export function continuationPrompt(
   if (messages.length === 0) return prompt;
   const transcript = messages
     .slice(-100)
-    .map((message) => {
-      const content = message.content
+    .flatMap((message) => {
+      const content = rootContinuationContent(message.content)
         .flatMap((item) => {
           if (item.type === "text") return [item.text];
           if (item.type === "attachment") {
@@ -102,7 +120,7 @@ export function continuationPrompt(
           return [activityContinuationSummary(item.activity)];
         })
         .join("\n");
-      return `${message.role.toUpperCase()}: ${content}`;
+      return content ? [`${message.role.toUpperCase()}: ${content}`] : [];
     })
     .join("\n\n");
   return `Continue this existing Cantrip conversation. The server-owned history follows:\n\n${transcript}\n\nUSER: ${prompt}`;

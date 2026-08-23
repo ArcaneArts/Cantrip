@@ -40,6 +40,10 @@ const compatibility = {
     platformOs: "macos",
     userAgent: "codex_cli_rs/0.149.0",
   },
+  methods: {
+    "thread/list": "available" as const,
+    "thread/read": "available" as const,
+  },
   nativeSubagents: {
     available: true,
     protocolVersion: NATIVE_SUBAGENT_PROTOCOL_VERSION,
@@ -84,6 +88,9 @@ const childThreadId = "child-thread";
 const childTurnId = "child-turn";
 const nestedThreadId = "nested-thread";
 const nestedTurnId = "nested-turn";
+const recoveredThreadId = "recovered-thread";
+const recoveredTurnId = "recovered-turn";
+const fixtureStartedAt = Math.floor(Date.now() / 1000);
 
 const server = new WebSocketServer({ host: "127.0.0.1", port: 0 }, () => {
   const address = server.address();
@@ -122,6 +129,71 @@ server.on("connection", (socket) => {
     }
     if (message.method === "thread/start") {
       reply(socket, message.id, { thread: { id: rootThreadId } });
+      return;
+    }
+    if (message.method === "thread/list") {
+      reply(socket, message.id, {
+        data: [
+          {
+            id: childThreadId,
+            parentThreadId: rootThreadId,
+            agentNickname: "Scout",
+            agentRole: "explorer",
+            status: { type: "idle" },
+            source: { subAgent: { threadSpawn: { parentThreadId: rootThreadId, depth: 1, agentPath: "root/Scout" } } },
+            turns: []
+          },
+          {
+            id: nestedThreadId,
+            parentThreadId: childThreadId,
+            agentNickname: "Indexer",
+            agentRole: "explorer",
+            status: { type: "idle" },
+            source: { subAgent: { threadSpawn: { parentThreadId: childThreadId, depth: 2, agentPath: "root/Scout/Indexer" } } },
+            turns: []
+          },
+          {
+            id: recoveredThreadId,
+            parentThreadId: rootThreadId,
+            agentNickname: "Recovery",
+            agentRole: "reviewer",
+            status: { type: "idle" },
+            source: { subAgent: { threadSpawn: { parentThreadId: rootThreadId, depth: 1, agentPath: "root/Recovery" } } },
+            turns: []
+          }
+        ],
+        nextCursor: null
+      });
+      return;
+    }
+    if (message.method === "thread/read") {
+      const threadId = message.params.threadId;
+      const turnId = threadId === childThreadId ? childTurnId : threadId === nestedThreadId ? nestedTurnId : recoveredTurnId;
+      const text = threadId === childThreadId ? "Child result" : threadId === nestedThreadId ? "Nested result" : "Recovered child result";
+      const nickname = threadId === childThreadId ? "Scout" : threadId === nestedThreadId ? "Indexer" : "Recovery";
+      const parentThreadId = threadId === nestedThreadId ? childThreadId : rootThreadId;
+      reply(socket, message.id, {
+        thread: {
+          id: threadId,
+          parentThreadId,
+          agentNickname: nickname,
+          agentRole: threadId === recoveredThreadId ? "reviewer" : "explorer",
+          status: { type: "idle" },
+          source: { subAgent: { threadSpawn: { parentThreadId, depth: threadId === nestedThreadId ? 2 : 1, agentPath: threadId === nestedThreadId ? "root/Scout/Indexer" : "root/" + nickname } } },
+          turns: [{
+            id: turnId,
+            status: "completed",
+            error: null,
+            startedAt: fixtureStartedAt,
+            completedAt: fixtureStartedAt + 1,
+            durationMs: 10,
+            items: [
+              { type: "userMessage", id: "prompt-" + threadId, clientId: null, content: [{ type: "text", text: "Private task for " + nickname }] },
+              { type: "agentMessage", id: threadId === childThreadId ? "child-message" : threadId === nestedThreadId ? "nested-message" : "message-" + threadId, text, phase: "final_answer" }
+            ]
+          }]
+        }
+      });
       return;
     }
     if (message.method !== "turn/start") {
@@ -389,8 +461,25 @@ describe("native subagent execution ownership", () => {
             depth: 0,
             path: ["root"],
           },
+          {
+            text: "Recovered child result",
+            threadId: "recovered-thread",
+            depth: 1,
+            path: ["root", "Recovery"],
+          },
         ]),
       );
+      expect(
+        messages
+          .filter(({ text }) => text === "Child result")
+          .map(({ id, phase }) => ({ id, phase })),
+      ).toEqual([
+        { id: "child-message", phase: "commentary" },
+        { id: "child-message", phase: "final_answer" },
+      ]);
+      expect(
+        messages.filter(({ text }) => text === "Nested result"),
+      ).toHaveLength(1);
       expect(
         activities.some(
           (activity) =>

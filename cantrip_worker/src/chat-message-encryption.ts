@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import {
   clearSensitiveBytes,
@@ -52,6 +52,14 @@ function activitySummary(activity: AgentActivity): string {
 function rootContinuationContent(
   content: ChatMessage["content"],
 ): ChatMessage["content"] {
+  const scopes = content.flatMap((item) => {
+    if (item.type === "text") return item.agentScope ? [item.agentScope] : [];
+    if (item.type === "activity") {
+      return item.activity.agentScope ? [item.activity.agentScope] : [];
+    }
+    return [];
+  });
+  if (scopes.length > 0 && scopes.every((scope) => !scope.isRoot)) return [];
   return content.filter((item) => {
     if (item.type === "text") {
       return !item.agentScope || item.agentScope.isRoot;
@@ -354,7 +362,17 @@ export class EncryptedChatEventSealer {
   #id(key: string): string {
     const existing = this.#ids.get(key);
     if (existing) return existing;
-    const created = randomUUID();
+    const bytes = createHash("sha256")
+      .update("cantrip:protected-agent-event\0")
+      .update(this.#chatId)
+      .update("\0")
+      .update(key)
+      .digest()
+      .subarray(0, 16);
+    bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+    bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+    const hex = bytes.toString("hex");
+    const created = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
     this.#ids.set(key, created);
     return created;
   }
