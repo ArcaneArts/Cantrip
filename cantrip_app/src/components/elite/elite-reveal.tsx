@@ -2,6 +2,7 @@ import {
   DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS,
   DEFAULT_ELITE_REVEAL_CONFIG as PROTOCOL_DEFAULT_ELITE_REVEAL_CONFIG,
   eliteGlitchVariantSchema,
+  MAX_ELITE_GLITCH_COUNT,
   type EliteGlitchVariant,
   type EliteGlitchVariantWeights,
   type EliteRevealConfig,
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 import "./elite-reveal.css";
 
 export const ELITE_GLITCH_VARIANTS = eliteGlitchVariantSchema.options;
+export { MAX_ELITE_GLITCH_COUNT };
 export type { EliteGlitchVariant, EliteRevealConfig } from "@cantrip/protocol";
 export type EliteRevealContentKind = "box" | "control" | "text";
 
@@ -37,7 +39,7 @@ export const ELITE_CHROMATIC_PAIRS = [
 export const DEFAULT_ELITE_REVEAL_CONFIG = PROTOCOL_DEFAULT_ELITE_REVEAL_CONFIG;
 
 const numericLimits = {
-  glitchCount: { max: 8, min: 1 },
+  glitchCount: { max: MAX_ELITE_GLITCH_COUNT, min: 1 },
   glitchShowMs: { max: 120, min: 5 },
   staggerSpreadMs: { max: 250, min: 0 },
   variantWeight: { max: 10, min: 0 },

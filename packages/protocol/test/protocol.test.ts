@@ -163,6 +163,7 @@ import {
   gitRevisionFileDiffSchema,
   gitRevisionCandidateListSchema,
   mentionedSkillNames,
+  MAX_ELITE_GLITCH_COUNT,
   MIN_SIDEBAR_WIDTH,
   isZaiCodingPlanBaseUrl,
   normalizeResponsesBaseUrl,
@@ -5461,6 +5462,23 @@ describe("Cantrip protocol", () => {
           ...DEFAULT_ELITE_REVEAL_CONFIG,
           glitchCountMax: 1,
           glitchCountMin: 2,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      userSettingsUpdateSchema.safeParse({
+        eliteRevealConfig: {
+          ...DEFAULT_ELITE_REVEAL_CONFIG,
+          glitchCountMax: MAX_ELITE_GLITCH_COUNT,
+          glitchCountMin: MAX_ELITE_GLITCH_COUNT,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      userSettingsUpdateSchema.safeParse({
+        eliteRevealConfig: {
+          ...DEFAULT_ELITE_REVEAL_CONFIG,
+          glitchCountMax: MAX_ELITE_GLITCH_COUNT + 1,
         },
       }).success,
     ).toBe(false);

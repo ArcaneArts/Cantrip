@@ -2109,6 +2109,8 @@ export const eliteGlitchVariantSchema = z.enum([
 
 export type EliteGlitchVariant = z.infer<typeof eliteGlitchVariantSchema>;
 
+export const MAX_ELITE_GLITCH_COUNT = 32;
+
 const eliteGlitchVariantWeightSchema = z.number().min(0).max(10);
 
 export const eliteGlitchVariantWeightsSchema = z.object({
@@ -2140,8 +2142,8 @@ export const DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS: EliteGlitchVariantWeights = {
 export const eliteRevealConfigSchema = z
   .object({
     glitchTerminalContents: z.boolean().default(false),
-    glitchCountMax: z.number().int().min(1).max(8),
-    glitchCountMin: z.number().int().min(1).max(8),
+    glitchCountMax: z.number().int().min(1).max(MAX_ELITE_GLITCH_COUNT),
+    glitchCountMin: z.number().int().min(1).max(MAX_ELITE_GLITCH_COUNT),
     glitchShowMs: z.number().int().min(5).max(120),
     staggerSpreadMs: z.number().int().min(0).max(250),
     variants: z.array(eliteGlitchVariantSchema).max(8),

@@ -36,6 +36,7 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain('aria-label="Chromatic shift weight"');
     expect(markup).toContain('aria-label="Scanline bands weight"');
     expect(markup).toContain("Glitch Terminal Contents");
+    expect(markup.match(/max="32"/g)).toHaveLength(2);
     expect(markup.match(/value="0\.01"/g)).toHaveLength(3);
     expect(markup).toContain('value="0.25"');
     expect(markup).toContain('value="0.33"');
