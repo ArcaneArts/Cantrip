@@ -30,6 +30,9 @@ describe("worker chat message encryption", () => {
       mode: "default",
       modelId: "model-one",
       reasoningEffort: null,
+      customSubagentModel: true,
+      subagentModelId: "model-child",
+      subagentReasoningEffort: "high",
       idempotencyKey: "automation:one",
       service,
     });
@@ -43,6 +46,11 @@ describe("worker chat message encryption", () => {
         publicClassification: turn.queuedPrompt.classification,
       }),
     ).resolves.toMatchObject({ text: "Run the unattended automation." });
+    expect(turn.queuedPrompt).toMatchObject({
+      customSubagentModel: true,
+      subagentModelId: "model-child",
+      subagentReasoningEffort: "high",
+    });
 
     const [copy] = await reprotectChatMessages({
       messages: [

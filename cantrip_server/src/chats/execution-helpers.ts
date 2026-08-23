@@ -64,6 +64,8 @@ function activityContinuationSummary(activity: AgentActivity): string {
       return `[collaboration: ${activity.tool} ${activity.status}]`;
     case "subAgent":
       return `[subagent: ${activity.agentPath} ${activity.kind}]`;
+    case "agentCommunication":
+      return `[subagent communication: ${activity.kind}]`;
     case "webSearch":
       return `[web search: ${activity.query}]`;
     case "imageView":

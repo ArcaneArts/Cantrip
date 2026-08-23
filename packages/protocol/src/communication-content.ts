@@ -249,6 +249,14 @@ export const queuedPromptOpaqueContentSchema = z
     protectedContent: encryptedQueuedPromptProtectedContentSchema,
     modelId: z.string().min(1).max(200),
     reasoningEffort: z.string().min(1).max(100).nullable().default(null),
+    customSubagentModel: z.boolean().default(false),
+    subagentModelId: z.string().min(1).max(200).nullable().default(null),
+    subagentReasoningEffort: z
+      .string()
+      .min(1)
+      .max(100)
+      .nullable()
+      .default(null),
     worktreeId: z.string().min(1).max(200).nullable().default(null),
     frozen: z.boolean().default(false),
     idempotencyKey: z.string().min(1).max(200),
@@ -256,6 +264,13 @@ export const queuedPromptOpaqueContentSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.customSubagentModel && !value.subagentModelId) {
+      context.addIssue({
+        code: "custom",
+        message: "A custom queued subagent model must be selected.",
+        path: ["subagentModelId"],
+      });
+    }
     if (
       value.pendingMessage.classification.mode !== value.classification.mode ||
       JSON.stringify(value.pendingMessage.classification.attachmentIds) !==

@@ -76,6 +76,9 @@ export async function createEncryptedChatTurn(
     modelId: string;
     promptId: string;
     reasoningEffort: ReasoningEffort | null;
+    customSubagentModel?: boolean;
+    subagentModelId?: string | null;
+    subagentReasoningEffort?: ReasoningEffort | null;
     text: string;
   },
   options: TrustedOptions = {},
@@ -129,6 +132,9 @@ export async function createEncryptedChatTurn(
         }),
         modelId: input.modelId,
         reasoningEffort: input.reasoningEffort,
+        customSubagentModel: input.customSubagentModel ?? false,
+        subagentModelId: input.subagentModelId ?? null,
+        subagentReasoningEffort: input.subagentReasoningEffort ?? null,
         worktreeId: null,
         frozen: false,
         idempotencyKey: input.idempotencyKey,
@@ -202,6 +208,9 @@ export async function openQueuedPromptOpaqueSummary(
       mode: prompt.classification.mode,
       modelId: prompt.modelId,
       reasoningEffort: prompt.reasoningEffort,
+      customSubagentModel: prompt.customSubagentModel,
+      subagentModelId: prompt.subagentModelId,
+      subagentReasoningEffort: prompt.subagentReasoningEffort,
       worktreeId: prompt.worktreeId,
       position: prompt.position,
       frozen: prompt.frozen,
@@ -233,6 +242,9 @@ export async function replaceEncryptedQueuedPrompt(
       modelId: current.modelId,
       promptId: current.id,
       reasoningEffort: input.reasoningEffort,
+      customSubagentModel: current.customSubagentModel,
+      subagentModelId: current.subagentModelId,
+      subagentReasoningEffort: current.subagentReasoningEffort,
       text: input.text,
     },
     options,

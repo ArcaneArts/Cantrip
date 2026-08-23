@@ -38,6 +38,9 @@ describe("ordinary chat trusted-endpoint encryption", () => {
         modelId: "model-one",
         promptId: "22222222-2222-4222-8222-222222222222",
         reasoningEffort: "high",
+        customSubagentModel: true,
+        subagentModelId: "model-child",
+        subagentReasoningEffort: "medium",
         text: "SENTINEL private ordinary prompt",
       },
       options,
@@ -85,6 +88,11 @@ describe("ordinary chat trusted-endpoint encryption", () => {
         },
         options,
       ),
-    ).resolves.toMatchObject({ text: "SENTINEL private ordinary prompt" });
+    ).resolves.toMatchObject({
+      text: "SENTINEL private ordinary prompt",
+      customSubagentModel: true,
+      subagentModelId: "model-child",
+      subagentReasoningEffort: "medium",
+    });
   });
 });

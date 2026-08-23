@@ -220,6 +220,9 @@ function activityPreview(activity: AgentActivity): string | null {
     case "subAgent":
       preview = `${activity.kind} · ${activity.agentPath}`;
       break;
+    case "agentCommunication":
+      preview = activity.message ?? activity.kind;
+      break;
     case "webSearch":
       preview = activity.action ?? activity.query;
       break;

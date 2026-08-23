@@ -2,7 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
+import {
+  queuedPromptOpaqueContentSchema,
+  unprobedCodexRuntimeReport,
+} from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { ServerConfig } from "../src/config.js";
@@ -48,8 +51,8 @@ afterAll(async () => {
   await rm(dataDirectory, { recursive: true, force: true });
 });
 
-describe.sequential("remembered model reasoning defaults", () => {
-  it("seeds newly selected chats without rewriting existing chats", async () => {
+describe.sequential("durable chat model configuration", () => {
+  it("copies account defaults into new chats without rewriting existing chats", async () => {
     await database.repository.recordWorker(LOCAL_USER_ID, {
       workerId: "reasoning-worker",
       name: "Reasoning Worker",
@@ -57,6 +60,12 @@ describe.sequential("remembered model reasoning defaults", () => {
       architecture: "arm64",
       codexVersion: "0.146.1",
       codexRuntime: unprobedCodexRuntimeReport,
+      managedFolders: {
+        create: true,
+        attachExisting: true,
+        convertToGithub: true,
+        remove: true,
+      },
       remoteSurfaces: {
         browser: false,
         transports: ["websocket"],
@@ -64,28 +73,28 @@ describe.sequential("remembered model reasoning defaults", () => {
       },
       startedAt: new Date().toISOString(),
     });
-    const project = await database.repository.createGithubProject(
+    const createdProject = await database.repository.createManagedFolderProject(
       LOCAL_USER_ID,
       {
         workerId: "reasoning-worker",
         ...protectedProjectFields(),
-        repositoryId: "reasoning-repository",
-        nameWithOwner: "ArcaneArts/Reasoning",
-        url: "https://github.com/ArcaneArts/Reasoning",
       },
     );
-    await database.repository.completeGithubProjectSetup(
-      LOCAL_USER_ID,
-      project.id,
-      "reasoning-worker",
+    const setup = await database.repository.projectFolderSetupJobs.claimNext();
+    if (!setup) throw new Error("Could not claim the folder setup job.");
+    await database.repository.projectFolderSetupJobs.complete(
+      setup.job.id,
+      setup.commandId,
       {
+        status: "ready",
+        jobId: setup.job.id,
+        attempt: setup.job.attempt,
         path: path.join(dataDirectory, "repository"),
-        displayPath: "ArcaneArts/Reasoning",
+        displayPath: "Reasoning",
         reused: false,
-        updated: false,
-        warning: null,
       },
     );
+    const project = createdProject.project;
     const provider = await database.repository.createModelProvider(
       LOCAL_USER_ID,
       {
@@ -106,65 +115,152 @@ describe.sequential("remembered model reasoning defaults", () => {
     });
     if (!model) throw new Error("Could not create reasoning model.");
 
+    await database.repository.updateSettings(LOCAL_USER_ID, {
+      defaultModelId: model.id,
+      defaultReasoningEffort: "high",
+      defaultCustomSubagentModel: true,
+      defaultSubagentModelId: model.id,
+      defaultSubagentReasoningEffort: "medium",
+    });
+
     const firstChat = await database.repository.createChat(
       LOCAL_USER_ID,
       project.id,
       { ...protectedChatFields(), worktreeMode: "agent-managed" },
     );
+    if (!firstChat) throw new Error("Could not create the first chat.");
+    expect(firstChat).toMatchObject({
+      modelId: model.id,
+      reasoningEffort: "high",
+      customSubagentModel: true,
+      subagentModelId: model.id,
+      subagentReasoningEffort: "medium",
+    });
+
+    const updatedFirstChat =
+      await database.repository.setChatModelConfiguration(
+        LOCAL_USER_ID,
+        firstChat.id,
+        {
+          modelId: model.id,
+          reasoningEffort: "high",
+          customSubagentModel: false,
+          subagentModelId: model.id,
+          subagentReasoningEffort: "medium",
+        },
+      );
+    expect(updatedFirstChat).toMatchObject({
+      modelId: model.id,
+      reasoningEffort: "high",
+      customSubagentModel: false,
+      subagentModelId: model.id,
+      subagentReasoningEffort: "medium",
+    });
+    await expect(
+      database.repository.getChatModelConfiguration(
+        LOCAL_USER_ID,
+        firstChat.id,
+      ),
+    ).resolves.toEqual({
+      modelId: model.id,
+      reasoningEffort: "high",
+      customSubagentModel: false,
+      subagentModelId: model.id,
+      subagentReasoningEffort: "medium",
+    });
+
+    await database.repository.updateSettings(LOCAL_USER_ID, {
+      defaultReasoningEffort: "low",
+      defaultCustomSubagentModel: false,
+    });
+
     const secondChat = await database.repository.createChat(
       LOCAL_USER_ID,
       project.id,
       { ...protectedChatFields(), worktreeMode: "agent-managed" },
     );
-    if (!firstChat || !secondChat) throw new Error("Could not create chats.");
-
-    await database.repository.setChatModel(LOCAL_USER_ID, firstChat.id, {
+    if (!secondChat) throw new Error("Could not create the second chat.");
+    expect(secondChat).toMatchObject({
       modelId: model.id,
+      reasoningEffort: "low",
+      customSubagentModel: false,
+      subagentModelId: model.id,
+      subagentReasoningEffort: "medium",
     });
-    await database.repository.setChatReasoningEffortAndRememberDefault(
-      LOCAL_USER_ID,
-      firstChat.id,
-      model.id,
-      "high",
-    );
 
-    expect(
-      await database.repository.getModelReasoningDefault(
-        LOCAL_USER_ID,
-        model.id,
-      ),
-    ).toBe("high");
-    expect(
-      (await database.repository.getSettings(LOCAL_USER_ID)).models.find(
-        ({ id }) => id === model.id,
-      )?.defaultReasoningEffort,
-    ).toBe("high");
-    expect(
-      (
-        await database.repository.getChatExecutionContext(
-          LOCAL_USER_ID,
-          secondChat.id,
-        )
-      )?.reasoningEffort,
-    ).toBeNull();
-
-    const remembered = await database.repository.getModelReasoningDefault(
-      LOCAL_USER_ID,
-      model.id,
-    );
-    await database.repository.setChatModel(
+    const classification = {
+      mode: "default" as const,
+      attachmentIds: [] as string[],
+    };
+    const pendingMessage = {
+      id: "11111111-1111-4111-8111-111111111111",
+      classification: { role: "user" as const, ...classification },
+      protectedContent: {
+        formatVersion: 1 as const,
+        keyRevision: 1,
+        envelope: {
+          version: 1 as const,
+          algorithm: "AES-256-GCM" as const,
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+      reasoningEffort: "low",
+      idempotencyKey: "subagent-queue-snapshot",
+    };
+    const queued = await database.repository.createEncryptedQueuedPrompt(
       LOCAL_USER_ID,
       secondChat.id,
-      { modelId: model.id },
-      remembered,
+      queuedPromptOpaqueContentSchema.parse({
+        id: "22222222-2222-4222-8222-222222222222",
+        classification,
+        protectedContent: pendingMessage.protectedContent,
+        modelId: model.id,
+        reasoningEffort: "low",
+        customSubagentModel: true,
+        subagentModelId: model.id,
+        subagentReasoningEffort: "medium",
+        worktreeId: null,
+        frozen: false,
+        idempotencyKey: "subagent-queue-snapshot",
+        pendingMessage,
+      }),
+      [],
     );
+    expect(queued).toMatchObject({
+      customSubagentModel: true,
+      subagentModelId: model.id,
+      subagentReasoningEffort: "medium",
+    });
+
     await database.repository.setChatReasoningEffortAndRememberDefault(
       LOCAL_USER_ID,
       firstChat.id,
       model.id,
-      "low",
+      "medium",
     );
 
+    expect(
+      await database.repository.getModelReasoningDefault(
+        LOCAL_USER_ID,
+        model.id,
+      ),
+    ).toBeNull();
+    expect(
+      (
+        await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          firstChat.id,
+        )
+      )?.modelConfiguration,
+    ).toEqual({
+      modelId: model.id,
+      reasoningEffort: "medium",
+      customSubagentModel: false,
+      subagentModelId: model.id,
+      subagentReasoningEffort: "medium",
+    });
     expect(
       (
         await database.repository.getChatExecutionContext(
@@ -172,12 +268,6 @@ describe.sequential("remembered model reasoning defaults", () => {
           secondChat.id,
         )
       )?.reasoningEffort,
-    ).toBe("high");
-    expect(
-      await database.repository.getModelReasoningDefault(
-        LOCAL_USER_ID,
-        model.id,
-      ),
     ).toBe("low");
   });
 });

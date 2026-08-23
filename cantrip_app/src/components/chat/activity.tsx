@@ -140,6 +140,7 @@ function RichActivityIcon({ activity }: { activity: AgentActivity }) {
       return <Combine className={className} />;
     case "collabToolCall":
     case "subAgent":
+    case "agentCommunication":
       return <Bot className={className} />;
     case "webSearch":
       return <Search className={className} />;
@@ -185,6 +186,8 @@ export function activityLabel(activity: AgentActivity): string {
       return `Collaboration · ${activity.tool}`;
     case "subAgent":
       return `Subagent · ${activity.agentPath}`;
+    case "agentCommunication":
+      return `Subagent · ${activity.kind}`;
     case "webSearch":
       return activity.query ? `Searched · ${activity.query}` : "Web search";
     case "imageView":
@@ -330,6 +333,17 @@ function RichActivityDetails({ activity }: { activity: AgentActivity }) {
       );
     case "subAgent":
       return <p className="break-all font-mono">{activity.agentThreadId}</p>;
+    case "agentCommunication":
+      return (
+        <div className="space-y-2">
+          {activity.message ? (
+            <p className="whitespace-pre-wrap">{activity.message}</p>
+          ) : null}
+          <p className="break-all font-mono text-[11px]">
+            {activity.senderThreadId} → {activity.receiverThreadIds.join(", ")}
+          </p>
+        </div>
+      );
     case "webSearch":
       return activity.action ? <p>{activity.action}</p> : null;
     case "imageView":

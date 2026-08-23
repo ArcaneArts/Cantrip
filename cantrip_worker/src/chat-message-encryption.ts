@@ -231,6 +231,9 @@ export async function protectChatTurn(input: {
   modelId: string;
   promptId: string;
   reasoningEffort: ReasoningEffort | null;
+  customSubagentModel?: boolean;
+  subagentModelId?: string | null;
+  subagentReasoningEffort?: ReasoningEffort | null;
   service: WorkerEncryptionService;
   text: string;
 }) {
@@ -261,6 +264,9 @@ export async function protectChatTurn(input: {
       }),
       modelId: input.modelId,
       reasoningEffort: input.reasoningEffort,
+      customSubagentModel: input.customSubagentModel ?? false,
+      subagentModelId: input.subagentModelId ?? null,
+      subagentReasoningEffort: input.subagentReasoningEffort ?? null,
       worktreeId: null,
       frozen: false,
       idempotencyKey: input.idempotencyKey,
