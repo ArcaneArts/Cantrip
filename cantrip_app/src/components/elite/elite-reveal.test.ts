@@ -7,6 +7,7 @@ import {
   ELITE_CHROMATIC_PAIRS,
   ELITE_GLITCH_VARIANTS,
   ELITE_GLITCH_VARIANT_WEIGHTS,
+  MAX_ELITE_GLITCH_COUNT,
   eliteStaggerDelayForVisibleRank,
   normalizeEliteRevealConfig,
   selectEliteGlitchVariant,
@@ -51,8 +52,8 @@ describe("Elite reveal sequencing", () => {
       }),
     ).toEqual({
       glitchTerminalContents: false,
-      glitchCountMax: 8,
-      glitchCountMin: 8,
+      glitchCountMax: MAX_ELITE_GLITCH_COUNT,
+      glitchCountMin: MAX_ELITE_GLITCH_COUNT,
       glitchShowMs: 5,
       staggerSpreadMs: 250,
       variants: ["outline"],
@@ -78,6 +79,20 @@ describe("Elite reveal sequencing", () => {
       "text-jitter",
       "outline",
     ]);
+  });
+
+  it("creates sequences at the expanded glitch count limit", () => {
+    expect(
+      createEliteGlitchSequence(
+        {
+          ...config,
+          glitchCountMax: MAX_ELITE_GLITCH_COUNT,
+          glitchCountMin: MAX_ELITE_GLITCH_COUNT,
+        },
+        "text",
+        () => 0,
+      ),
+    ).toHaveLength(MAX_ELITE_GLITCH_COUNT);
   });
 
   it("uses the requested default weights", () => {

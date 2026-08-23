@@ -24,6 +24,7 @@ import {
   DEFAULT_ELITE_REVEAL_CONFIG,
   ELITE_GLITCH_VARIANTS,
   EliteReveal,
+  MAX_ELITE_GLITCH_COUNT,
   eliteRevealConfigSignature,
   normalizeEliteRevealConfig,
   type EliteGlitchVariant,
@@ -702,14 +703,14 @@ function EliteConfigurator({
           </div>
           <NumberOption
             label="Minimum glitches"
-            maximum={8}
+            maximum={MAX_ELITE_GLITCH_COUNT}
             minimum={1}
             onChange={(value) => setNumber("glitchCountMin", value)}
             value={draft.glitchCountMin}
           />
           <NumberOption
             label="Maximum glitches"
-            maximum={8}
+            maximum={MAX_ELITE_GLITCH_COUNT}
             minimum={1}
             onChange={(value) => setNumber("glitchCountMax", value)}
             value={draft.glitchCountMax}
