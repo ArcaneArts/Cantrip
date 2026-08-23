@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   providerQuotaSnapshotSchema,
   type ProviderQuotaSnapshot,
+  type ProviderRateLimitResetCreditsSummary,
   type ProviderWeeklyUsage,
 } from "@cantrip/protocol";
 
@@ -26,6 +27,7 @@ interface RateLimitSnapshot {
 export interface AccountRateLimitsResult {
   rateLimits?: RateLimitSnapshot;
   rateLimitsByLimitId?: Record<string, RateLimitSnapshot> | null;
+  rateLimitResetCredits?: ProviderRateLimitResetCreditsSummary | null;
 }
 
 export interface QuotaSnapshotOptions {
@@ -100,6 +102,7 @@ export function quotaSnapshotFromRateLimits(
     workerVersion: options.workerVersion,
     codexVersion: options.codexVersion,
     windows,
+    rateLimitResetCredits: result.rateLimitResetCredits ?? null,
   });
 }
 

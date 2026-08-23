@@ -1,10 +1,15 @@
-import type { ModelProviderAccountSummary } from "@cantrip/protocol";
+import type {
+  ModelProviderAccountSummary,
+  ProviderQuotaSnapshot,
+} from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
   providerAccountWeeklyUsage,
+  providerRateLimitResetImpact,
   providerWeeklyAvailability,
   providerWeeklyRemainingPercent,
+  providerWeeklyUsageFromQuotaSnapshot,
 } from "./provider-usage-display";
 
 function account(
@@ -46,6 +51,41 @@ describe("provider weekly availability", () => {
       ),
     ).toEqual({ usedPercent: 0, resetsAt: 1_787_594_400 });
     expect(providerAccountWeeklyUsage(account("missing", null))).toBeNull();
+  });
+
+  it("calculates the capacity restored by a banked usage reset", () => {
+    const snapshot: ProviderQuotaSnapshot = {
+      snapshotId: "quota-1",
+      observedAt: "2026-08-16T00:00:00.000Z",
+      workerVersion: "1.2.3",
+      codexVersion: "codex-cli 0.148.0",
+      windows: [
+        {
+          limitId: "codex",
+          limitName: "Codex",
+          planType: "pro",
+          reachedType: null,
+          windowKind: "secondary",
+          usedPercent: 97,
+          windowDurationMinutes: 10_080,
+          resetsAt: 1_787_000_000,
+          isWeeklyProjection: true,
+          rawPayload: {},
+        },
+      ],
+      rateLimitResetCredits: {
+        availableCount: 1,
+        credits: null,
+      },
+    };
+
+    const usage = providerWeeklyUsageFromQuotaSnapshot(snapshot);
+    expect(usage).toEqual({ usedPercent: 97, resetsAt: 1_787_000_000 });
+    expect(providerRateLimitResetImpact(usage)).toEqual({
+      remainingPercent: 3,
+      gainPercent: 97,
+    });
+    expect(providerRateLimitResetImpact(null)).toBeNull();
   });
 
   it("adds remaining capacity across every reported signed-in account", () => {

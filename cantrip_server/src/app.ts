@@ -262,6 +262,9 @@ import {
   providerCredentialWireRecordSchema,
   providerConnectionTestResultSchema,
   providerModelCatalogResultSchema,
+  providerQuotaSnapshotSchema,
+  providerRateLimitResetConsumeRequestSchema,
+  providerRateLimitResetConsumeResultSchema,
   providerTelemetryWireAnalyticsSchema,
   providerTelemetryDeleteResultSchema,
   workerProviderConnectionTestResultSchema,
@@ -821,6 +824,7 @@ import {
 } from "./models/account-provider.js";
 import { providerAccountAuthStatus } from "./models/provider-account-status.js";
 import {
+  persistProviderQuotaSnapshot,
   persistProviderRateLimitActivity,
   readAndPersistProviderQuotaSnapshot,
 } from "./models/provider-quota.js";
@@ -13090,10 +13094,174 @@ export async function buildApp({
     return {
       ...account,
       credentialState: summary.credentialState,
+      planType: summary.planType,
       providerKind: provider.kind,
       workerBindings: summary.workerBindings,
     };
   }
+
+  async function resolveChatGptRateLimitResetTarget(
+    providerId: string,
+    accountId: string,
+    workerId: string,
+  ) {
+    const [account, provider, worker] = await Promise.all([
+      resolveAccountAuthTarget(providerId, accountId),
+      repository.getModelProvider(applicationOwnerId(), providerId),
+      repository.getWorker(applicationOwnerId(), workerId),
+    ]);
+    if (!provider || provider.kind !== "chatgpt") {
+      throw new Error(
+        "Rate-limit reset credits are only available for ChatGPT accounts.",
+      );
+    }
+    if (!worker) throw new Error("Worker not found.");
+    if (!bridge.isConnected(workerId)) throw new Error("Worker is offline.");
+    const legacyAvailable =
+      account.credentialState === "migration-needed" &&
+      account.workerBindings.some(
+        (binding) =>
+          binding.workerId === workerId && binding.authState === "signed-in",
+      );
+    if (account.credentialState !== "signed-in" && !legacyAvailable) {
+      throw new Error("ChatGPT account is not signed in.");
+    }
+    return { account, provider };
+  }
+
+  app.get<{
+    Params: { providerId: string; accountId: string };
+    Querystring: { workerId?: string };
+  }>(
+    "/api/settings/providers/:providerId/accounts/:accountId/rate-limit-resets",
+    async (request, reply) => {
+      const workerId = request.query.workerId;
+      if (!workerId) {
+        return reply.code(400).send({ error: "workerId is required" });
+      }
+      try {
+        const { account, provider } = await resolveChatGptRateLimitResetTarget(
+          request.params.providerId,
+          request.params.accountId,
+          workerId,
+        );
+        const { snapshot } = await readAndPersistProviderQuotaSnapshot(
+          repository,
+          bridge,
+          {
+            ownerId: applicationOwnerId(),
+            providerId: provider.id,
+            accountId: account.accountId,
+            accountPlanType: account.planType,
+            workerId,
+            trigger: "reset-credit-status",
+            provider: {
+              name: provider.name,
+              kind: "chatgpt",
+              baseUrl: provider.baseUrl,
+              credentialHomeKey: account.credentialHomeKey,
+            },
+          },
+        );
+        publishLiveInvalidation("settings");
+        return reply.send(providerQuotaSnapshotSchema.parse(snapshot));
+      } catch (error) {
+        const message = errorMessage(error);
+        if (message.endsWith("not found.")) {
+          return reply.code(404).send({ error: message });
+        }
+        if (
+          message.includes("only available for ChatGPT") ||
+          message.includes("not signed in")
+        ) {
+          return reply.code(409).send({ error: message });
+        }
+        return sendWorkerRequestFailure(reply, error, message);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { providerId: string; accountId: string };
+    Body: unknown;
+  }>(
+    "/api/settings/providers/:providerId/accounts/:accountId/rate-limit-resets/consume",
+    async (request, reply) => {
+      const input = providerRateLimitResetConsumeRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const { account, provider } = await resolveChatGptRateLimitResetTarget(
+          request.params.providerId,
+          request.params.accountId,
+          input.data.workerId,
+        );
+        const result = providerRateLimitResetConsumeResultSchema.parse(
+          await bridge.request(
+            input.data.workerId,
+            {
+              type: "provider.rate-limit-reset.consume",
+              provider: {
+                id: provider.id,
+                name: provider.name,
+                kind: "chatgpt",
+                baseUrl: provider.baseUrl,
+                protectedApiKey: null,
+                accountId: account.accountId,
+                credentialHomeKey: account.credentialHomeKey,
+              },
+              idempotencyKey: input.data.idempotencyKey,
+              creditId: input.data.creditId,
+            },
+            { ownerId: applicationOwnerId(), timeoutMs: 2 * 60_000 },
+          ),
+        );
+        if (result.quotaSnapshot) {
+          try {
+            await persistProviderQuotaSnapshot(
+              repository,
+              {
+                ownerId: applicationOwnerId(),
+                providerId: provider.id,
+                accountId: account.accountId,
+                accountPlanType: account.planType,
+                workerId: input.data.workerId,
+                trigger: "reset-credit-consumed",
+              },
+              result.quotaSnapshot,
+            );
+          } catch {
+            request.log.warn(
+              {
+                event: "provider.quota.reset-persist-failed",
+                providerId: provider.id,
+                accountId: account.accountId,
+                workerId: input.data.workerId,
+              },
+              "ChatGPT usage reset succeeded but its quota snapshot could not be persisted",
+            );
+          }
+        }
+        publishLiveInvalidation("settings");
+        return reply.send(result);
+      } catch (error) {
+        const message = errorMessage(error);
+        if (message.endsWith("not found.")) {
+          return reply.code(404).send({ error: message });
+        }
+        if (
+          message.includes("only available for ChatGPT") ||
+          message.includes("not signed in")
+        ) {
+          return reply.code(409).send({ error: message });
+        }
+        return sendWorkerRequestFailure(reply, error, message);
+      }
+    },
+  );
 
   async function accountAuthRunnerAvailable(
     workerId: string | undefined,

@@ -53,6 +53,8 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
   BUILTIN_PERMISSION_PROFILES,
@@ -72,11 +74,13 @@ import {
   createModelProfile,
   createModelProvider,
   createModelProviderAccount,
+  consumeProviderRateLimitReset,
   deleteModelProviderAccount,
   deleteModelProfile,
   deleteModelProvider,
   getSettings,
   getCodexAuthStatus,
+  getProviderRateLimitResets,
   getWorkers,
   logoutCodex,
   startCodexDeviceLogin,
@@ -123,7 +127,9 @@ import {
 } from "./provider-catalog-display";
 import {
   providerAccountWeeklyUsage,
+  providerRateLimitResetImpact,
   providerWeeklyAvailability,
+  providerWeeklyUsageFromQuotaSnapshot,
   providerWeeklyRemainingPercent,
 } from "./provider-usage-display";
 import { ProviderAccountPriorityChips } from "./provider-account-priority";
@@ -639,6 +645,15 @@ export function SettingsPage({
     null,
   );
   const [accountLabelDraft, setAccountLabelDraft] = useState("");
+  const [rateLimitResetDialogOpen, setRateLimitResetDialogOpen] =
+    useState(false);
+  const [rateLimitResetAttempt, setRateLimitResetAttempt] = useState<{
+    creditId: string | null;
+    idempotencyKey: string;
+  } | null>(null);
+  const [rateLimitResetNotice, setRateLimitResetNotice] = useState<
+    string | null
+  >(null);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelProfileSummary | null>(
     null,
@@ -677,11 +692,43 @@ export function SettingsPage({
       deviceLogin ? 10_000 : 30_000,
     ),
   });
+  const rateLimitResetQueryKey = [
+    "provider-rate-limit-resets",
+    accountProvider?.id ?? null,
+    selectedAccount?.id ?? null,
+    worker?.workerId ?? null,
+  ] as const;
+  const rateLimitResets = useQuery({
+    enabled: Boolean(
+      providerDialogOpen &&
+      accountProvider?.kind === "chatgpt" &&
+      selectedAccount &&
+      worker &&
+      codexAuth.data?.authMode === "chatgpt",
+    ),
+    queryFn: () =>
+      getProviderRateLimitResets(
+        accountProvider!.id,
+        selectedAccount!.id,
+        worker!.workerId,
+      ),
+    queryKey: rateLimitResetQueryKey,
+    retry: false,
+    staleTime: 30_000,
+  });
   const selectedWeeklyUsage =
-    codexAuth.data?.weeklyUsage ?? providerAccountWeeklyUsage(selectedAccount);
+    providerWeeklyUsageFromQuotaSnapshot(rateLimitResets.data) ??
+    codexAuth.data?.weeklyUsage ??
+    providerAccountWeeklyUsage(selectedAccount);
   const weeklyRemainingPercent = selectedWeeklyUsage
     ? providerWeeklyRemainingPercent(selectedWeeklyUsage.usedPercent)
     : null;
+  const rateLimitResetImpact =
+    providerRateLimitResetImpact(selectedWeeklyUsage);
+  const resetCredits = rateLimitResets.data?.rateLimitResetCredits ?? null;
+  const availableResetCredit =
+    resetCredits?.credits?.find((credit) => credit.status === "available") ??
+    null;
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -821,6 +868,42 @@ export function SettingsPage({
       await Promise.all([codexAuth.refetch(), refresh()]);
     },
   });
+  const consumeRateLimitReset = useMutation({
+    mutationFn: (attempt: {
+      creditId: string | null;
+      idempotencyKey: string;
+    }) =>
+      consumeProviderRateLimitReset(accountProvider!.id, selectedAccount!.id, {
+        creditId: attempt.creditId,
+        idempotencyKey: attempt.idempotencyKey,
+        workerId: worker!.workerId,
+      }),
+    onSuccess: (result) => {
+      if (result.quotaSnapshot) {
+        queryClient.setQueryData(rateLimitResetQueryKey, result.quotaSnapshot);
+      } else {
+        void queryClient.invalidateQueries({
+          queryKey: rateLimitResetQueryKey,
+        });
+      }
+      void Promise.allSettled([
+        codexAuth.refetch(),
+        refresh(),
+        queryClient.invalidateQueries({ queryKey: ["provider-quota"] }),
+      ]);
+      setRateLimitResetNotice(
+        result.outcome === "reset"
+          ? "Usage reset applied. The account quota has been refreshed."
+          : result.outcome === "nothingToReset"
+            ? "The reset was not used because this account has no eligible usage to reset."
+            : result.outcome === "alreadyRedeemed"
+              ? "This reset attempt was already applied. The latest quota is shown."
+              : "No banked usage reset is available on this account.",
+      );
+      setRateLimitResetDialogOpen(false);
+      setRateLimitResetAttempt(null);
+    },
+  });
 
   useEffect(() => {
     if (codexAuth.data?.authMode !== accountProvider?.kind) return;
@@ -838,6 +921,10 @@ export function SettingsPage({
     setDeviceLogin(null);
     setDeviceCodeCopied(false);
     setDeviceLinkCopied(false);
+    setRateLimitResetDialogOpen(false);
+    setRateLimitResetAttempt(null);
+    setRateLimitResetNotice(null);
+    consumeRateLimitReset.reset();
   }, [selectedAccount?.id, selectedAccount?.label]);
 
   const reloadAccountProvider = async (providerId: string) => {
@@ -908,6 +995,7 @@ export function SettingsPage({
     setConnectionTestResult(null);
     beginCodexLogin.reset();
     signOutCodex.reset();
+    consumeRateLimitReset.reset();
     setEditingProvider(provider);
     setProviderName(provider?.name ?? "");
     setProviderKind(provider?.kind ?? "ollama");
@@ -920,6 +1008,9 @@ export function SettingsPage({
     setDeviceLogin(null);
     setDeviceCodeCopied(false);
     setDeviceLinkCopied(false);
+    setRateLimitResetDialogOpen(false);
+    setRateLimitResetAttempt(null);
+    setRateLimitResetNotice(null);
     setProviderDialogOpen(true);
   };
 
@@ -2022,6 +2113,76 @@ export function SettingsPage({
                       ) : null}
                     </div>
                   ) : null}
+                  {accountProvider.kind === "chatgpt" ? (
+                    <div className="grid gap-2 border-t pt-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium">
+                            Banked usage resets
+                          </p>
+                          {rateLimitResets.isLoading ? (
+                            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <Loader2 className="size-3 animate-spin" />
+                              Checking reset availability…
+                            </p>
+                          ) : resetCredits ? (
+                            <p className="text-[11px] text-muted-foreground">
+                              {resetCredits.availableCount === 0
+                                ? "No resets available"
+                                : `${resetCredits.availableCount} ${resetCredits.availableCount === 1 ? "reset" : "resets"} available`}
+                              {availableResetCredit?.expiresAt
+                                ? ` · Next expires ${new Date(availableResetCredit.expiresAt * 1_000).toLocaleString()}`
+                                : ""}
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-muted-foreground">
+                              No banked resets reported
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            rateLimitResets.isLoading ||
+                            !resetCredits?.availableCount ||
+                            !rateLimitResetImpact ||
+                            rateLimitResetImpact.gainPercent <= 0 ||
+                            !worker
+                          }
+                          onClick={() => {
+                            consumeRateLimitReset.reset();
+                            setRateLimitResetNotice(null);
+                            setRateLimitResetAttempt({
+                              creditId: availableResetCredit?.id ?? null,
+                              idempotencyKey: crypto.randomUUID(),
+                            });
+                            setRateLimitResetDialogOpen(true);
+                          }}
+                        >
+                          <RefreshCw className="size-3.5" />
+                          Use reset
+                        </Button>
+                      </div>
+                      {rateLimitResets.isError ? (
+                        <InlineAlert size="sm" tone="error">
+                          {errorText(
+                            rateLimitResets.error,
+                            "Could not check reset availability.",
+                          )}
+                        </InlineAlert>
+                      ) : null}
+                      {rateLimitResetNotice ? (
+                        <InlineAlert
+                          size="sm"
+                          onDismiss={() => setRateLimitResetNotice(null)}
+                        >
+                          {rateLimitResetNotice}
+                        </InlineAlert>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : !worker ? (
                 <div className="grid gap-1 border-y py-3 text-sm text-muted-foreground">
@@ -2171,6 +2332,52 @@ export function SettingsPage({
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        confirmDisabled={!rateLimitResetAttempt || !rateLimitResetImpact}
+        confirmLabel="Use 1 reset"
+        confirmPendingLabel="Using reset…"
+        description={
+          rateLimitResetImpact ? (
+            <span className="grid gap-2">
+              <span>
+                This account has {rateLimitResetImpact.remainingPercent}% of its
+                7-day usage remaining. Using this reset will restore about{" "}
+                {rateLimitResetImpact.gainPercent} percentage points, returning
+                it to 100%.
+              </span>
+              <span>
+                This burns one banked reset and cannot be undone. Continue?
+              </span>
+            </span>
+          ) : (
+            "This burns one banked reset and cannot be undone. Continue?"
+          )
+        }
+        error={
+          consumeRateLimitReset.isError
+            ? errorText(
+                consumeRateLimitReset.error,
+                "Could not use this reset.",
+              )
+            : undefined
+        }
+        onConfirm={() => {
+          if (rateLimitResetAttempt) {
+            consumeRateLimitReset.mutate(rateLimitResetAttempt);
+          }
+        }}
+        onOpenChange={(open) => {
+          setRateLimitResetDialogOpen(open);
+          if (!open) {
+            setRateLimitResetAttempt(null);
+            consumeRateLimitReset.reset();
+          }
+        }}
+        open={rateLimitResetDialogOpen}
+        pending={consumeRateLimitReset.isPending}
+        title="Use a ChatGPT usage reset?"
+      />
 
       <Dialog open={modelDialogOpen} onOpenChange={setModelDialogOpen}>
         <DialogContent className="max-w-3xl">
