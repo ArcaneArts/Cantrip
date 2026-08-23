@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
+import { buildAgentTurnProjection } from "./agent-turn-projection";
 import {
   filterTrajectoryEvents,
   projectTrajectory,
@@ -82,6 +83,14 @@ function toggleSet<T>(current: ReadonlySet<T>, value: T): Set<T> {
   return next;
 }
 
+export function trajectorySubagentTarget(
+  event: TrajectoryEvent,
+): { agentKey: string; focusItemKey: string | null } | null {
+  return event.agentIsRoot
+    ? null
+    : { agentKey: event.agentKey, focusItemKey: event.focusItemKey };
+}
+
 function EventStatus({ event }: { event: TrajectoryEvent }) {
   if (event.status === "running") {
     return <Loader2 className="size-3.5 animate-spin text-muted-foreground" />;
@@ -115,6 +124,7 @@ function TrajectoryEventRow({
 }) {
   return (
     <li
+      data-agent-key={event.agentKey}
       className="min-w-0 border-b last:border-b-0"
       data-event-id={event.id}
       data-event-kind={event.kind}
@@ -155,6 +165,12 @@ function TrajectoryEventRow({
             </p>
           ) : null}
           <div className="mt-1 flex gap-2 font-mono text-[9px] uppercase tracking-wide text-muted-foreground/70">
+            <span
+              className="max-w-28 truncate normal-case"
+              title={event.agentLabel}
+            >
+              {event.agentLabel}
+            </span>
             <span>{event.lane}</span>
             <span>{trajectoryKindLabel(event.kind)}</span>
             <span>{formatEventDuration(event)}</span>
@@ -172,12 +188,14 @@ export function AgentTrajectory({
   active,
   messages,
   onBackToCurrent,
+  onOpenSubagent,
   targetTurnKey,
   visible,
 }: {
   active: boolean;
   messages: ChatMessage[];
   onBackToCurrent?(): void;
+  onOpenSubagent?(agentKey: string, focusItemKey: string | null): void;
   targetTurnKey?: string | null;
   visible: boolean;
 }) {
@@ -187,6 +205,9 @@ export function AgentTrajectory({
   const [followingLive, setFollowingLive] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
+  const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [hiddenLanes, setHiddenLanes] = useState<Set<TrajectoryLane>>(
     () => new Set(),
   );
@@ -204,15 +225,20 @@ export function AgentTrajectory({
   }, [active, messages, targetTurnKey, visible]);
 
   const nowMs = visible ? Math.max(clockMs, Date.now()) : clockMs;
+  const agentProjection = useMemo(
+    () => buildAgentTurnProjection(deferredMessages),
+    [deferredMessages],
+  );
   const turn = useMemo(
     () =>
       projectTrajectory({
         active,
+        agentProjection,
         messages: deferredMessages,
         nowMs,
         targetTurnKey,
       }),
-    [active, deferredMessages, nowMs, targetTurnKey],
+    [active, agentProjection, deferredMessages, nowMs, targetTurnKey],
   );
   const {
     contentRef: eventListContentRef,
@@ -247,6 +273,7 @@ export function AgentTrajectory({
   const events = useMemo(
     () =>
       filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenAgents,
         hiddenKinds,
         hiddenLanes,
         hiddenStatuses,
@@ -255,6 +282,7 @@ export function AgentTrajectory({
       }),
     [
       hiddenKinds,
+      hiddenAgents,
       hiddenLanes,
       hiddenStatuses,
       hiddenTimingQualities,
@@ -263,6 +291,7 @@ export function AgentTrajectory({
     ],
   );
   const activeFilterCount =
+    hiddenAgents.size +
     hiddenLanes.size +
     hiddenKinds.size +
     hiddenStatuses.size +
@@ -280,6 +309,7 @@ export function AgentTrajectory({
     setPlayheadMs(turn?.timelineStartMs ?? null);
     setFollowingLive(false);
     setSelectedEventId(null);
+    setHiddenAgents(new Set());
   }, [turn?.key]);
 
   useEffect(() => {
@@ -292,6 +322,14 @@ export function AgentTrajectory({
   }, [events, playheadMs, selectedEventId, turn]);
 
   const selectAndReveal = (event: TrajectoryEvent, nextPlayheadMs: number) => {
+    const subagentTarget = trajectorySubagentTarget(event);
+    if (subagentTarget && onOpenSubagent) {
+      setFollowingLive(false);
+      setPlayheadMs(nextPlayheadMs);
+      setSelectedEventId(event.id);
+      onOpenSubagent(subagentTarget.agentKey, subagentTarget.focusItemKey);
+      return;
+    }
     rowRefs.current.get(event.id)?.scrollIntoView({
       behavior: preferredScrollBehavior(),
       block: "center",
@@ -324,6 +362,7 @@ export function AgentTrajectory({
   };
 
   const resetFilters = () => {
+    setHiddenAgents(new Set());
     setHiddenLanes(new Set());
     setHiddenKinds(new Set());
     setHiddenStatuses(new Set());
@@ -402,6 +441,9 @@ export function AgentTrajectory({
             {turn.events.length} events
           </span>
           <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground">
+            {turn.agents.length} agents
+          </span>
+          <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground">
             {turn.laneCounts.tools} tools
           </span>
           {!turn.completed ? (
@@ -448,6 +490,7 @@ export function AgentTrajectory({
 
       <div className="shrink-0 border-b bg-muted/10">
         <TrajectoryTimeline
+          agents={turn.agents.filter((agent) => !hiddenAgents.has(agent.key))}
           events={events}
           onMovePlayhead={movePlayhead}
           onSelectEvent={selectAndReveal}
@@ -481,8 +524,69 @@ export function AgentTrajectory({
           <div className="absolute right-0 z-20 mt-1 max-h-80 min-w-56 overflow-y-auto rounded-md border bg-popover p-2 text-popover-foreground shadow-lg">
             <div className="mb-1 flex items-center justify-between gap-1">
               <p className="px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Event types
+                Agents
               </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  className="h-6 px-2 text-[10px]"
+                  onClick={() => setHiddenAgents(new Set())}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  All
+                </Button>
+                <Button
+                  className="h-6 px-2 text-[10px]"
+                  onClick={() =>
+                    setHiddenAgents(
+                      new Set(
+                        turn.agents
+                          .filter((agent) => !agent.root)
+                          .map((agent) => agent.key),
+                      ),
+                    )
+                  }
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  Root only
+                </Button>
+              </div>
+            </div>
+            {turn.agents.map((agent) => (
+              <label
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted/50"
+                key={agent.key}
+                style={{ paddingLeft: 8 + Math.min(agent.depth, 5) * 10 }}
+              >
+                <input
+                  checked={!hiddenAgents.has(agent.key)}
+                  onChange={() =>
+                    setHiddenAgents((current) => toggleSet(current, agent.key))
+                  }
+                  type="checkbox"
+                />
+                <span className="min-w-0 flex-1 truncate">{agent.label}</span>
+                <span
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    agent.active
+                      ? "bg-sky-500"
+                      : agent.status === "failed" ||
+                          agent.status === "interrupted"
+                        ? "bg-destructive"
+                        : "bg-emerald-500",
+                  )}
+                />
+              </label>
+            ))}
+            <p className="mt-2 border-t px-2 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Event types
+            </p>
+            <div className="mb-1 flex items-center justify-between gap-1">
+              <span />
               <div className="flex items-center gap-1">
                 <Button
                   className="h-6 px-2 text-[10px]"

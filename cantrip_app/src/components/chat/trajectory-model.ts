@@ -1,6 +1,18 @@
-import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
+import type {
+  AgentActivity,
+  AgentScope,
+  ChatMessage,
+  CodexEventCorrelation,
+} from "@cantrip/protocol";
 
 import { activityLabel } from "./activity";
+import {
+  agentTurnKey,
+  buildAgentTurnProjection,
+  type AgentTurnProjection,
+  type AgentTurnParticipant,
+  type AgentTurnStatus,
+} from "./agent-turn-projection";
 import {
   resolveTrajectoryTiming,
   type TrajectoryTimingQuality,
@@ -9,12 +21,30 @@ import { settleRunningActivity } from "./timeline";
 
 export type TrajectoryLane = "input" | "model" | "tools";
 
+export interface TrajectoryAgent {
+  active: boolean;
+  depth: number;
+  key: string;
+  label: string;
+  lastActiveAtMs: number;
+  parentThreadId: string | null;
+  path: string[];
+  root: boolean;
+  status: AgentTurnStatus;
+  threadId: string | null;
+}
+
 export interface TrajectoryEvent {
   activity: AgentActivity | null;
+  agentDepth: number;
+  agentIsRoot: boolean;
+  agentKey: string;
+  agentLabel: string;
   completedAtMs: number | null;
   contentIndex: number;
   diagnosticId: string | null;
   id: string;
+  focusItemKey: string | null;
   itemId: string | null;
   kind: string;
   label: string;
@@ -32,6 +62,7 @@ export interface TrajectoryEvent {
 }
 
 export interface TrajectoryTurn {
+  agents: TrajectoryAgent[];
   completed: boolean;
   completedAtMs: number | null;
   elapsedMs: number;
@@ -51,6 +82,7 @@ export interface TrajectoryTurn {
 }
 
 export interface TrajectoryFilters {
+  hiddenAgents: ReadonlySet<string>;
   hiddenKinds: ReadonlySet<string>;
   hiddenLanes: ReadonlySet<TrajectoryLane>;
   hiddenStatuses: ReadonlySet<AgentActivity["status"]>;
@@ -66,6 +98,7 @@ interface TurnSlice {
 
 interface ActivityRecord {
   activity: AgentActivity;
+  agentScope: AgentScope | null;
   contentIndex: number;
   firstObservedAtMs: number;
   lastObservedAtMs: number;
@@ -95,6 +128,24 @@ function timestamp(value: string): number {
 }
 
 function correlationTurnId(message: ChatMessage): string | null {
+  for (const content of message.content) {
+    const scope =
+      content.type === "activity"
+        ? content.activity.agentScope
+        : content.type === "text"
+          ? content.agentScope
+          : null;
+    if (scope?.isRoot) return scope.rootTurnId;
+  }
+  for (const content of message.content) {
+    const scope =
+      content.type === "activity"
+        ? content.activity.agentScope
+        : content.type === "text"
+          ? content.agentScope
+          : null;
+    if (scope) return scope.rootTurnId;
+  }
   for (const content of message.content) {
     const turnId =
       content.type === "activity"
@@ -148,6 +199,16 @@ function turnSlices(messages: readonly ChatMessage[]): TurnSlice[] {
 
 function activityLane(activity: AgentActivity): TrajectoryLane {
   if (activity.type === "instructionContext") return "input";
+  if (activity.type === "agentCommunication") {
+    if (
+      activity.kind === "spawned" ||
+      activity.kind === "messageSent" ||
+      activity.kind === "followupSent"
+    ) {
+      return "input";
+    }
+    if (activity.kind === "returned") return "model";
+  }
   switch (activity.type) {
     case "reasoning":
     case "plan":
@@ -263,16 +324,22 @@ function terminalMessage(message: ChatMessage): boolean {
   return (
     message.role === "assistant" &&
     message.content.some(
-      (content) => content.type === "text" && content.phase !== "commentary",
+      (content) =>
+        content.type === "text" &&
+        content.phase !== "commentary" &&
+        (content.agentScope?.isRoot ?? true),
     )
   );
 }
 
 function lifecycleKey(activity: AgentActivity): string {
+  const owner = activity.agentScope
+    ? `${activity.agentScope.rootTurnId}:${activity.agentScope.agentThreadId}`
+    : (activity.correlation?.threadId ?? "root");
   const itemId = activity.correlation?.itemId;
   return itemId
-    ? `item:${activity.correlation?.turnId ?? "turn"}:${itemId}`
-    : `activity:${activity.type}:${activity.id}`;
+    ? `${owner}:item:${activity.correlation?.turnId ?? "turn"}:${itemId}`
+    : `${owner}:activity:${activity.type}:${activity.id}`;
 }
 
 function laterRecord(
@@ -310,6 +377,7 @@ function recordsForMessage(message: ChatMessage): ActivityRecord[] {
     return [
       {
         activity: content.activity,
+        agentScope: content.activity.agentScope ?? null,
         completedAtMs: content.activity.completedAtMs ?? null,
         contentIndex,
         firstObservedAtMs: observedAtMs,
@@ -420,19 +488,22 @@ function messageEvent(
   label: string,
   preview: string,
   lane: TrajectoryLane,
+  agent: TrajectoryAgent,
+  source: CodexEventCorrelation | null,
+  focusItemKey: string | null,
 ): TrajectoryEvent {
   const eventAtMs = timestamp(message.createdAt);
-  const correlation = message.content.find(
-    (content) => content.type === "text" && content.correlation,
-  );
-  const source =
-    correlation?.type === "text" ? correlation.correlation : undefined;
   return {
     activity: null,
+    agentDepth: agent.depth,
+    agentIsRoot: agent.root,
+    agentKey: agent.key,
+    agentLabel: agent.label,
     completedAtMs: eventAtMs,
     contentIndex,
     diagnosticId: source?.diagnosticId ?? null,
-    id: `${kind}:${message.id}`,
+    id: `${agent.key}:${kind}:${message.id}:${contentIndex}`,
+    focusItemKey,
     itemId: source?.itemId ?? null,
     kind,
     label,
@@ -455,8 +526,163 @@ function formatTurnTitle(opening: ChatMessage): string {
   return text || "Agent turn";
 }
 
+function scopeFromContent(
+  content: ChatMessage["content"][number],
+): AgentScope | null {
+  if (content.type === "text") return content.agentScope ?? null;
+  if (content.type === "activity") {
+    return content.activity.agentScope ?? null;
+  }
+  return null;
+}
+
+function rootScope(messages: readonly ChatMessage[]): AgentScope | null {
+  for (const message of messages) {
+    for (const content of message.content) {
+      const scope = scopeFromContent(content);
+      if (scope?.isRoot) return scope;
+    }
+  }
+  return null;
+}
+
+function participantLabel(participant: AgentTurnParticipant): string {
+  return (
+    participant.scope.nickname ??
+    participant.scope.agentPath.at(-1) ??
+    `Agent ${participant.scope.agentThreadId.slice(0, 8)}`
+  );
+}
+
+export function orderTrajectoryAgents(
+  agents: readonly TrajectoryAgent[],
+): TrajectoryAgent[] {
+  return [...agents].sort((left, right) => {
+    if (left.root !== right.root) return left.root ? -1 : 1;
+    if (left.active !== right.active) return left.active ? -1 : 1;
+    if (left.lastActiveAtMs !== right.lastActiveAtMs) {
+      return right.lastActiveAtMs - left.lastActiveAtMs;
+    }
+    return (
+      left.path.join("/").localeCompare(right.path.join("/")) ||
+      (left.threadId ?? left.key).localeCompare(right.threadId ?? right.key)
+    );
+  });
+}
+
+function trajectoryAgents(input: {
+  agentProjection?: AgentTurnProjection;
+  completed: boolean;
+  failed: boolean;
+  messages: readonly ChatMessage[];
+  selectedKey: string;
+}): TrajectoryAgent[] {
+  const projection =
+    input.agentProjection ?? buildAgentTurnProjection(input.messages);
+  const scope = rootScope(input.messages);
+  const inferredRootTurnId =
+    scope?.rootTurnId ?? projection.agents[0]?.scope.rootTurnId ?? null;
+  const childAgents = projection.agents
+    .filter(
+      (participant) =>
+        !inferredRootTurnId ||
+        participant.scope.rootTurnId === inferredRootTurnId,
+    )
+    .map((participant): TrajectoryAgent => {
+      const active = !input.completed && participant.active;
+      return {
+        active,
+        depth: participant.scope.depth,
+        key: participant.key,
+        label: participantLabel(participant),
+        lastActiveAtMs: participant.lastActiveAtMs,
+        parentThreadId: participant.scope.parentThreadId,
+        path: participant.scope.agentPath,
+        root: false,
+        status:
+          input.completed && participant.active
+            ? "completed"
+            : participant.status,
+        threadId: participant.scope.agentThreadId,
+      };
+    });
+  const rootThreadId =
+    scope?.agentThreadId ??
+    input.messages
+      .flatMap((message) => message.content)
+      .flatMap((content) => {
+        if (content.type === "attachment") return [];
+        const contentScope = scopeFromContent(content);
+        const correlation =
+          content.type === "text"
+            ? content.correlation
+            : content.activity.correlation;
+        return !contentScope || contentScope.isRoot
+          ? [correlation?.threadId ?? null]
+          : [];
+      })
+      .find((threadId): threadId is string => Boolean(threadId)) ??
+    null;
+  const rootKey = scope
+    ? agentTurnKey(scope.rootTurnId, scope.agentThreadId)
+    : `root:${input.selectedKey}`;
+  const lastActiveAtMs = Math.max(
+    ...input.messages.map((message) => timestamp(message.createdAt)),
+    0,
+  );
+  return orderTrajectoryAgents([
+    {
+      active: !input.completed,
+      depth: 0,
+      key: rootKey,
+      label: "Root agent",
+      lastActiveAtMs,
+      parentThreadId: null,
+      path: ["Root agent"],
+      root: true,
+      status: input.completed
+        ? input.failed
+          ? "failed"
+          : "completed"
+        : "running",
+      threadId: rootThreadId,
+    },
+    ...childAgents,
+  ]);
+}
+
+function eventAgent(
+  scope: AgentScope | null,
+  correlationThreadId: string | null | undefined,
+  agents: readonly TrajectoryAgent[],
+): TrajectoryAgent {
+  const root = agents.find((agent) => agent.root)!;
+  if (scope?.isRoot) return root;
+  if (scope) {
+    return (
+      agents.find(
+        (agent) =>
+          agent.key === agentTurnKey(scope.rootTurnId, scope.agentThreadId),
+      ) ?? root
+    );
+  }
+  return (
+    agents.find(
+      (agent) => !agent.root && agent.threadId === correlationThreadId,
+    ) ?? root
+  );
+}
+
+function activityFocusItemKey(activity: AgentActivity): string | null {
+  const scope = activity.agentScope;
+  return scope && !scope.isRoot
+    ? `${scope.rootTurnId}:${scope.agentThreadId}:activity:${activity.id}`
+    : null;
+}
+
 export function projectTrajectory(input: {
   active: boolean;
+  agentProjection?: AgentTurnProjection;
   messages: readonly ChatMessage[];
   nowMs: number;
   targetTurnKey?: string | null;
@@ -472,7 +698,9 @@ export function projectTrajectory(input: {
     selected.messages[0]!;
   const summaryActivities = selected.messages.flatMap((message) =>
     message.content.flatMap((content) =>
-      content.type === "activity" && content.activity.type === "turnSummary"
+      content.type === "activity" &&
+      content.activity.type === "turnSummary" &&
+      (content.activity.agentScope?.isRoot ?? true)
         ? [content.activity]
         : [],
     ),
@@ -507,48 +735,70 @@ export function projectTrajectory(input: {
       (terminal ? timestamp(terminal.createdAt) : null) ??
       timestamp(selected.messages.at(-1)!.createdAt))
     : null;
+  const agents = trajectoryAgents({
+    agentProjection: input.agentProjection,
+    completed,
+    failed: terminalActivityStatus === "failed",
+    messages: selected.messages,
+    selectedKey: selected.key,
+  });
 
   const events: TrajectoryEvent[] = [];
   for (const message of selected.messages) {
     if (message.role === "user") {
+      const firstTextIndex = message.content.findIndex(
+        (content) => content.type === "text",
+      );
+      const firstText = message.content[firstTextIndex];
+      const scope =
+        firstText?.type === "text" ? (firstText.agentScope ?? null) : null;
+      const source =
+        firstText?.type === "text" ? (firstText.correlation ?? null) : null;
+      const agent = eventAgent(scope, source?.threadId, agents);
       events.push(
         messageEvent(
           message,
-          0,
+          Math.max(0, firstTextIndex),
           "input",
           "User input",
           messageText(message),
           "input",
+          agent,
+          source,
+          scope && !scope.isRoot
+            ? `${message.id}:text:${Math.max(0, firstTextIndex)}`
+            : null,
         ),
       );
       continue;
     }
-    const texts = message.content.flatMap((content, contentIndex) =>
-      content.type === "text" ? [{ content, contentIndex }] : [],
-    );
-    if (texts.length === 0) continue;
-    const preview = texts.map(({ content }) => content.text).join("\n\n");
-    const commentary = texts.every(
-      ({ content }) => content.phase === "commentary",
-    );
-    events.push(
-      messageEvent(
-        message,
-        texts[0]!.contentIndex,
-        message.role === "system"
-          ? "system"
-          : commentary
-            ? "commentary"
-            : "response",
-        message.role === "system"
-          ? "System message"
-          : commentary
-            ? "Model commentary"
-            : "Assistant response",
-        preview,
-        "model",
-      ),
-    );
+    for (const [contentIndex, content] of message.content.entries()) {
+      if (content.type !== "text") continue;
+      const commentary = content.phase === "commentary";
+      const scope = content.agentScope ?? null;
+      const agent = eventAgent(scope, content.correlation?.threadId, agents);
+      events.push(
+        messageEvent(
+          message,
+          contentIndex,
+          message.role === "system"
+            ? "system"
+            : commentary
+              ? "commentary"
+              : "response",
+          message.role === "system"
+            ? "System message"
+            : commentary
+              ? "Model commentary"
+              : "Assistant response",
+          content.text,
+          "model",
+          agent,
+          content.correlation ?? null,
+          scope && !scope.isRoot ? `${message.id}:text:${contentIndex}` : null,
+        ),
+      );
+    }
   }
 
   for (const [id, record] of collectActivityRecords(selected.messages)) {
@@ -577,11 +827,17 @@ export function projectTrajectory(input: {
       rawSearchText: protectedSearchText,
     } = activityPresentation(activity);
     const correlation = activity.correlation;
+    const agent = eventAgent(record.agentScope, correlation?.threadId, agents);
     events.push({
       activity,
+      agentDepth: agent.depth,
+      agentIsRoot: agent.root,
+      agentKey: agent.key,
+      agentLabel: agent.label,
       completedAtMs: activity.status === "running" ? null : timing.endMs,
       contentIndex: record.contentIndex,
       diagnosticId: correlation?.diagnosticId ?? null,
+      focusItemKey: activityFocusItemKey(activity),
       id,
       itemId: correlation?.itemId ?? null,
       kind: activity.type,
@@ -590,7 +846,7 @@ export function projectTrajectory(input: {
       messageId: record.messageId,
       preview,
       searchableText:
-        `${label} ${preview ?? ""} ${protectedSearchText}`.toLocaleLowerCase(),
+        `${agent.label} ${agent.path.join(" ")} ${label} ${preview ?? ""} ${protectedSearchText}`.toLocaleLowerCase(),
       sequence: record.sequence,
       startMs: timing.startMs,
       status: activity.status,
@@ -626,6 +882,7 @@ export function projectTrajectory(input: {
     ...events.map((event) => event.updatedAtMs),
   );
   return {
+    agents,
     completed,
     completedAtMs,
     elapsedMs: Math.max(0, endMs - startedAtMs),
@@ -656,6 +913,7 @@ export function filterTrajectoryEvents(
   const query = filters.query.trim().toLocaleLowerCase();
   return events.filter(
     (event) =>
+      !filters.hiddenAgents.has(event.agentKey) &&
       !filters.hiddenLanes.has(event.lane) &&
       !filters.hiddenKinds.has(event.kind) &&
       !filters.hiddenStatuses.has(event.status) &&

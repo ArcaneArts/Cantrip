@@ -168,6 +168,7 @@ function Summary({ event }: { event: TrajectoryEvent }) {
   return (
     <dl className="px-3 py-2">
       <DetailField label="Event" value={event.label} />
+      <DetailField label="Agent" value={event.agentLabel} />
       <DetailField label="Type" value={trajectoryKindLabel(event.kind)} />
       <DetailField label="Lane" value={event.lane} />
       <DetailField label="Status" value={event.status} />

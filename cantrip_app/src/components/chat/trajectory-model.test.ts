@@ -1,8 +1,9 @@
-import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
+import type { AgentActivity, AgentScope, ChatMessage } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
   filterTrajectoryEvents,
+  orderTrajectoryAgents,
   projectTrajectory,
   trajectoryEventKinds,
 } from "./trajectory-model";
@@ -57,6 +58,219 @@ function activityMessage(
 }
 
 describe("trajectory projection", () => {
+  it("pins root, sorts active agents by recency, and scopes events to tracks", () => {
+    const rootScope: AgentScope = {
+      agentThreadId: "root-thread",
+      rootThreadId: "root-thread",
+      parentThreadId: null,
+      rootTurnId: "root-turn",
+      agentPath: ["root"],
+      nickname: null,
+      role: null,
+      depth: 0,
+      isRoot: true,
+    };
+    const scoutScope: AgentScope = {
+      ...rootScope,
+      agentThreadId: "scout-thread",
+      parentThreadId: "root-thread",
+      agentPath: ["root", "Scout"],
+      nickname: "Scout",
+      role: "explorer",
+      depth: 1,
+      isRoot: false,
+    };
+    const reviewerScope: AgentScope = {
+      ...scoutScope,
+      agentThreadId: "reviewer-thread",
+      parentThreadId: "scout-thread",
+      agentPath: ["root", "Scout", "Reviewer"],
+      nickname: "Reviewer",
+      role: "reviewer",
+      depth: 2,
+    };
+    const turn = projectTrajectory({
+      active: true,
+      messages: [
+        message("user", 1, "user", 1_000, [
+          { type: "text", text: "Inspect in parallel" },
+        ]),
+        activityMessage("scout-spawn", 2, 1_100, {
+          type: "agentCommunication",
+          id: "scout-spawn",
+          kind: "spawned",
+          senderThreadId: "root-thread",
+          receiverThreadIds: ["scout-thread"],
+          message: "Inspect parsing",
+          status: "completed",
+          updatedAtMs: 1_100,
+          agentScope: scoutScope,
+        }),
+        activityMessage("reviewer-spawn", 3, 1_300, {
+          type: "agentCommunication",
+          id: "reviewer-spawn",
+          kind: "spawned",
+          senderThreadId: "scout-thread",
+          receiverThreadIds: ["reviewer-thread"],
+          message: "Review parser findings",
+          status: "completed",
+          updatedAtMs: 1_300,
+          agentScope: reviewerScope,
+        }),
+        activityMessage("reviewer-command", 4, 1_400, {
+          type: "command",
+          id: "reviewer-command",
+          command: "pnpm test parser",
+          cwd: "/workspace",
+          status: "running",
+          exitCode: null,
+          output: null,
+          updatedAtMs: 1_400,
+          correlation: {
+            ...correlation("reviewer-turn", "reviewer-command"),
+            threadId: "reviewer-thread",
+          },
+          agentScope: reviewerScope,
+        }),
+        activityMessage("root-plan", 5, 1_500, {
+          type: "plan",
+          id: "root-plan",
+          status: "completed",
+          text: "Coordinate results",
+          explanation: null,
+          steps: [],
+          agentScope: rootScope,
+        }),
+      ],
+      nowMs: 1_600,
+    });
+
+    expect(turn?.key).toBe("runtime:root-turn");
+    expect(turn?.agents.map((agent) => agent.label)).toEqual([
+      "Root agent",
+      "Reviewer",
+      "Scout",
+    ]);
+    expect(turn?.agents.map((agent) => agent.depth)).toEqual([0, 2, 1]);
+    const reviewerCommand = turn?.events.find(
+      (event) => event.kind === "command",
+    );
+    expect(reviewerCommand).toMatchObject({
+      agentDepth: 2,
+      agentIsRoot: false,
+      agentLabel: "Reviewer",
+      focusItemKey: "root-turn:reviewer-thread:activity:reviewer-command",
+    });
+    expect(
+      filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenAgents: new Set([reviewerCommand?.agentKey ?? "missing"]),
+        hiddenKinds: new Set(),
+        hiddenLanes: new Set(),
+        hiddenStatuses: new Set(),
+        hiddenTimingQualities: new Set(),
+        query: "",
+      }).some((event) => event.agentLabel === "Reviewer"),
+    ).toBe(false);
+  });
+
+  it("orders inactive descendants after active descendants", () => {
+    const agents = orderTrajectoryAgents([
+      {
+        active: false,
+        depth: 1,
+        key: "inactive",
+        label: "Inactive",
+        lastActiveAtMs: 5_000,
+        parentThreadId: "root",
+        path: ["root", "Inactive"],
+        root: false,
+        status: "completed",
+        threadId: "inactive",
+      },
+      {
+        active: false,
+        depth: 0,
+        key: "root",
+        label: "Root agent",
+        lastActiveAtMs: 1_000,
+        parentThreadId: null,
+        path: ["root"],
+        root: true,
+        status: "completed",
+        threadId: "root",
+      },
+      {
+        active: true,
+        depth: 1,
+        key: "active",
+        label: "Active",
+        lastActiveAtMs: 2_000,
+        parentThreadId: "root",
+        path: ["root", "Active"],
+        root: false,
+        status: "running",
+        threadId: "active",
+      },
+    ]);
+    expect(agents.map((agent) => agent.key)).toEqual([
+      "root",
+      "active",
+      "inactive",
+    ]);
+  });
+
+  it("does not treat child final text or summaries as root completion", () => {
+    const childScope: AgentScope = {
+      agentThreadId: "child-thread",
+      rootThreadId: "root-thread",
+      parentThreadId: "root-thread",
+      rootTurnId: "root-turn",
+      agentPath: ["root", "Child"],
+      nickname: "Child",
+      role: null,
+      depth: 1,
+      isRoot: false,
+    };
+    const turn = projectTrajectory({
+      active: true,
+      messages: [
+        message("user", 1, "user", 1_000, [
+          { type: "text", text: "Keep working" },
+        ]),
+        message("child-final", 2, "assistant", 1_200, [
+          {
+            type: "text",
+            text: "Child is done",
+            phase: "final_answer",
+            agentScope: childScope,
+          },
+        ]),
+        activityMessage("child-summary", 3, 1_250, {
+          type: "turnSummary",
+          id: "child-summary",
+          status: "failed",
+          durationMs: 250,
+          startedAt: 1,
+          completedAt: 1.25,
+          agentScope: childScope,
+        }),
+      ],
+      nowMs: 1_300,
+    });
+    expect(turn?.completed).toBe(false);
+    expect(turn?.agents[0]).toMatchObject({
+      label: "Root agent",
+      active: true,
+      status: "running",
+    });
+    expect(
+      turn?.events.find((event) => event.kind === "response"),
+    ).toMatchObject({
+      agentIsRoot: false,
+      agentLabel: "Child",
+    });
+  });
+
   it("follows the newest turn and can resolve an older stable key", () => {
     const messages = [
       message("user-1", 1, "user", 1_000, [
@@ -408,6 +622,7 @@ describe("trajectory projection", () => {
     ]);
     expect(
       filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenAgents: new Set(),
         hiddenKinds: new Set(),
         hiddenLanes: new Set(["input"]),
         hiddenStatuses: new Set(),
@@ -417,6 +632,7 @@ describe("trajectory projection", () => {
     ).toEqual(["webSearch"]);
     expect(
       filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenAgents: new Set(),
         hiddenKinds: new Set(["webSearch"]),
         hiddenLanes: new Set(),
         hiddenStatuses: new Set(),
@@ -426,6 +642,7 @@ describe("trajectory projection", () => {
     ).toEqual(["input"]);
     expect(
       filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenAgents: new Set(),
         hiddenKinds: new Set(),
         hiddenLanes: new Set(),
         hiddenStatuses: new Set(),
@@ -435,6 +652,7 @@ describe("trajectory projection", () => {
     ).toEqual(["webSearch"]);
     expect(
       filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenAgents: new Set(),
         hiddenKinds: new Set(),
         hiddenLanes: new Set(),
         hiddenStatuses: new Set(["completed"]),
@@ -444,6 +662,7 @@ describe("trajectory projection", () => {
     ).toEqual([]);
     expect(
       filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenAgents: new Set(),
         hiddenKinds: new Set(),
         hiddenLanes: new Set(),
         hiddenStatuses: new Set(),
