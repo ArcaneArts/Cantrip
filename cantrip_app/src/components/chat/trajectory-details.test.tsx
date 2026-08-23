@@ -36,9 +36,14 @@ function event(): TrajectoryEvent {
         itemId: "command-1",
       },
     },
+    agentDepth: 0,
+    agentIsRoot: true,
+    agentKey: "root",
+    agentLabel: "Root agent",
     completedAtMs: 1_250,
     contentIndex: 0,
     diagnosticId: "diagnostic-1",
+    focusItemKey: null,
     id: "event-1",
     itemId: "command-1",
     kind: "command",
@@ -63,6 +68,7 @@ describe("TrajectoryDetails", () => {
       <TrajectoryDetails event={event()} onBack={() => undefined} />,
     );
     expect(markup).toContain("Summary details");
+    expect(markup).toContain("Root agent");
     expect(markup).toContain("diagnostic-1");
     expect(markup).toContain("item/completed");
     expect(markup).toContain("250 ms");

@@ -18,9 +18,14 @@ function event(
 ): TrajectoryEvent {
   return {
     activity: null,
+    agentDepth: 0,
+    agentIsRoot: true,
+    agentKey: "root",
+    agentLabel: "Root agent",
     completedAtMs: updatedAtMs,
     contentIndex: 0,
     diagnosticId: null,
+    focusItemKey: null,
     id,
     itemId: null,
     kind: "response",
@@ -40,6 +45,20 @@ function event(
 }
 
 const turn: TrajectoryTurn = {
+  agents: [
+    {
+      active: false,
+      depth: 0,
+      key: "root",
+      label: "Root agent",
+      lastActiveAtMs: 2_000,
+      parentThreadId: null,
+      path: ["Root agent"],
+      root: true,
+      status: "completed",
+      threadId: "root-thread",
+    },
+  ],
   completed: true,
   completedAtMs: 2_000,
   elapsedMs: 1_000,
@@ -131,6 +150,20 @@ describe("trajectory timeline navigation", () => {
     );
     expect(trajectoryTimelineMarks(dense, turn)).toHaveLength(1);
     expect(trajectoryTimelineMarks(dense, turn)[0]?.count).toBe(4);
+    expect(
+      trajectoryTimelineMarks(
+        [
+          dense[0]!,
+          {
+            ...dense[1]!,
+            agentKey: "child",
+            agentLabel: "Child",
+            agentIsRoot: false,
+          },
+        ],
+        turn,
+      ),
+    ).toHaveLength(2);
   });
 
   it("renders full-bleed event bars with hover details", () => {
@@ -157,6 +190,53 @@ describe("trajectory timeline navigation", () => {
     expect(markup).not.toContain('data-slot="trajectory-playhead"');
     expect(markup).toContain('data-event-id="tools"');
     expect(markup).toContain('data-timing-quality="exact"');
-    expect(markup).toContain("tools, completed, exact timing</title>");
+    expect(markup).toContain(
+      "Root agent, tools, completed, exact timing</title>",
+    );
+    expect(markup).toContain("fill-sky-500");
+    expect(markup).toContain("fill-violet-500");
+    expect(markup).toContain("fill-amber-500");
+    expect(markup).toContain('data-scrollable="false"');
+  });
+
+  it("indents agent tracks and scrolls after five rows", () => {
+    const agents = Array.from({ length: 6 }, (_, index) => ({
+      active: index < 3,
+      depth: index === 0 ? 0 : Math.min(index, 3),
+      key: index === 0 ? "root" : `child-${index}`,
+      label: index === 0 ? "Root agent" : `Child ${index}`,
+      lastActiveAtMs: 2_000 - index,
+      parentThreadId: index === 0 ? null : "root-thread",
+      path: index === 0 ? ["root"] : ["root", `Child ${index}`],
+      root: index === 0,
+      status: index < 3 ? ("running" as const) : ("completed" as const),
+      threadId: index === 0 ? "root-thread" : `child-${index}`,
+    }));
+    const markup = renderToStaticMarkup(
+      <TrajectoryTimeline
+        agents={agents}
+        events={[]}
+        onMovePlayhead={vi.fn()}
+        onSelectEvent={vi.fn()}
+        playheadMs={1_500}
+        turn={{ ...turn, agents }}
+      />,
+    );
+    expect(markup).toContain('data-scrollable="true"');
+    expect(markup).toContain('data-slot="trajectory-track-viewport"');
+    expect(markup).toContain("Root agent</span>");
+    expect(markup).toContain("Child 5</span>");
+    expect(markup.match(/data-agent-key=/g)).toHaveLength(6);
+    const fiveTrackMarkup = renderToStaticMarkup(
+      <TrajectoryTimeline
+        agents={agents.slice(0, 5)}
+        events={[]}
+        onMovePlayhead={vi.fn()}
+        onSelectEvent={vi.fn()}
+        playheadMs={1_500}
+        turn={{ ...turn, agents: agents.slice(0, 5) }}
+      />,
+    );
+    expect(fiveTrackMarkup).toContain('data-scrollable="false"');
   });
 });

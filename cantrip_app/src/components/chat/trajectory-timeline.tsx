@@ -3,20 +3,17 @@ import type { KeyboardEvent, PointerEvent } from "react";
 import { cn } from "@/lib/utils";
 
 import type {
+  TrajectoryAgent,
   TrajectoryEvent,
   TrajectoryLane,
   TrajectoryTurn,
 } from "./trajectory-model";
 
 const SVG_WIDTH = 1_000;
-const SVG_HEIGHT = 72;
+const TRACK_HEIGHT = 28;
+const MAX_VISIBLE_TRACKS = 5;
 const PLOT_LEFT = 0;
 const PLOT_RIGHT = 0;
-const laneY: Record<TrajectoryLane, number> = {
-  input: 12,
-  model: 36,
-  tools: 60,
-};
 
 interface TimelineMark {
   count: number;
@@ -119,7 +116,7 @@ export function trajectoryTimelineMarks(
       marks.push({ count: 1, event, width: position.width, x: position.x });
       continue;
     }
-    const bucketKey = `${event.lane}:${Math.floor(position.x)}`;
+    const bucketKey = `${event.agentKey}:${event.lane}:${Math.floor(position.x)}`;
     const existing = denseBuckets.get(bucketKey);
     if (existing) {
       existing.count += 1;
@@ -191,7 +188,9 @@ export function TrajectoryTimeline({
   onSelectEvent,
   playheadMs,
   turn,
+  agents = turn.agents,
 }: {
+  agents?: readonly TrajectoryAgent[];
   events: readonly TrajectoryEvent[];
   onMovePlayhead(timeMs: number): void;
   onSelectEvent(event: TrajectoryEvent, timeMs: number): void;
@@ -200,6 +199,9 @@ export function TrajectoryTimeline({
 }) {
   const duration = Math.max(1, turn.timelineEndMs - turn.timelineStartMs);
   const marks = trajectoryTimelineMarks(events, turn);
+  const tracks = agents;
+  const svgHeight = Math.max(TRACK_HEIGHT, tracks.length * TRACK_HEIGHT);
+  const agentIndex = new Map(tracks.map((agent, index) => [agent.key, index]));
   const selectAtTime = (timeMs: number) => {
     onMovePlayhead(timeMs);
     const event = trajectoryEventAtTime(events, timeMs);
@@ -233,73 +235,123 @@ export function TrajectoryTimeline({
   };
 
   return (
-    <svg
-      aria-label="Turn trajectory timeline"
-      aria-valuemax={turn.timelineEndMs}
-      aria-valuemin={turn.timelineStartMs}
-      aria-valuenow={Math.round(playheadMs)}
-      aria-valuetext={`${accessibleDuration(playheadMs - turn.timelineStartMs)} of ${accessibleDuration(duration)}`}
-      className="block h-[72px] w-full cursor-crosshair select-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      onKeyDown={seekFromKeyboard}
-      onPointerDown={seekFromPointer}
-      preserveAspectRatio="none"
-      role="slider"
-      tabIndex={0}
-      viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+    <div
+      className="overflow-y-auto overscroll-contain"
+      data-scrollable={tracks.length > MAX_VISIBLE_TRACKS ? "true" : "false"}
+      data-slot="trajectory-track-viewport"
+      style={{ maxHeight: TRACK_HEIGHT * MAX_VISIBLE_TRACKS }}
     >
-      {marks.map((mark) => {
-        const { event } = mark;
-        const height = event.timingQuality === "instant" ? 18 : 16;
-        const label =
-          mark.count === 1
-            ? `${event.label}, ${event.status}, ${event.timingQuality} timing`
-            : `${mark.count} ${event.lane} events near ${accessibleDuration(event.startMs - turn.timelineStartMs)}`;
-        return (
-          <rect
-            aria-label={label}
-            className={cn(
-              laneClass(event.lane),
-              "outline-none focus-visible:stroke-foreground",
-              event.status === "running"
-                ? "opacity-100 motion-safe:animate-pulse"
-                : "opacity-80",
-              (event.status === "failed" || event.status === "declined") &&
-                "stroke-destructive",
-            )}
-            data-aggregate-count={mark.count}
-            data-event-id={event.id}
-            data-timing-quality={event.timingQuality}
-            height={height}
-            key={`${event.id}:${mark.count}`}
-            onFocus={() => onMovePlayhead(event.startMs)}
-            onKeyDown={(keyboardEvent) => {
-              if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") {
-                return;
-              }
-              keyboardEvent.preventDefault();
-              onMovePlayhead(event.startMs);
-              onSelectEvent(event, event.startMs);
-            }}
-            onPointerDown={(pointerEvent) => {
-              pointerEvent.stopPropagation();
-              onMovePlayhead(event.startMs);
-              onSelectEvent(event, event.startMs);
-            }}
-            role="button"
-            rx="2"
-            strokeDasharray={
-              event.timingQuality === "derived" ? "3 2" : undefined
-            }
-            strokeWidth={event.timingQuality === "derived" ? 1 : undefined}
-            tabIndex={0}
-            width={mark.width}
-            x={mark.x}
-            y={laneY[event.lane] - height / 2}
-          >
-            <title>{label}</title>
-          </rect>
-        );
-      })}
-    </svg>
+      <div className="flex min-w-0" style={{ height: svgHeight }}>
+        <div
+          aria-label="Trajectory agents"
+          className="relative w-28 shrink-0 border-r bg-background/40"
+        >
+          {tracks.map((agent, index) => (
+            <div
+              className="absolute inset-x-0 flex items-center truncate pr-1 text-[10px] text-muted-foreground"
+              data-agent-key={agent.key}
+              key={agent.key}
+              style={{
+                height: TRACK_HEIGHT,
+                paddingLeft: 6 + Math.min(agent.depth, 5) * 9,
+                top: index * TRACK_HEIGHT,
+              }}
+              title={agent.path.join(" / ")}
+            >
+              <span className="truncate">{agent.label}</span>
+            </div>
+          ))}
+        </div>
+        <svg
+          aria-label="Turn trajectory timeline"
+          aria-valuemax={turn.timelineEndMs}
+          aria-valuemin={turn.timelineStartMs}
+          aria-valuenow={Math.round(playheadMs)}
+          aria-valuetext={`${accessibleDuration(playheadMs - turn.timelineStartMs)} of ${accessibleDuration(duration)}`}
+          className="block min-w-0 flex-1 cursor-crosshair select-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          onKeyDown={seekFromKeyboard}
+          onPointerDown={seekFromPointer}
+          preserveAspectRatio="none"
+          role="slider"
+          style={{ height: svgHeight }}
+          tabIndex={0}
+          viewBox={`0 0 ${SVG_WIDTH} ${svgHeight}`}
+        >
+          {tracks.map((agent, index) => {
+            const centerY = index * TRACK_HEIGHT + TRACK_HEIGHT / 2;
+            return (
+              <line
+                className="stroke-border"
+                key={agent.key}
+                strokeWidth="1"
+                x1={PLOT_LEFT}
+                x2={SVG_WIDTH - PLOT_RIGHT}
+                y1={centerY}
+                y2={centerY}
+              />
+            );
+          })}
+          {marks.map((mark) => {
+            const { event } = mark;
+            const trackIndex = agentIndex.get(event.agentKey);
+            if (trackIndex === undefined) return null;
+            const height = event.timingQuality === "instant" ? 18 : 16;
+            const label =
+              mark.count === 1
+                ? `${event.agentLabel}, ${event.label}, ${event.status}, ${event.timingQuality} timing`
+                : `${mark.count} ${event.lane} events for ${event.agentLabel} near ${accessibleDuration(event.startMs - turn.timelineStartMs)}`;
+            return (
+              <rect
+                aria-label={label}
+                className={cn(
+                  laneClass(event.lane),
+                  "outline-none focus-visible:stroke-foreground",
+                  event.status === "running"
+                    ? "opacity-100 motion-safe:animate-pulse"
+                    : "opacity-80",
+                  (event.status === "failed" || event.status === "declined") &&
+                    "stroke-destructive",
+                )}
+                data-agent-key={event.agentKey}
+                data-aggregate-count={mark.count}
+                data-event-id={event.id}
+                data-timing-quality={event.timingQuality}
+                height={height}
+                key={`${event.id}:${mark.count}`}
+                onFocus={() => onMovePlayhead(event.startMs)}
+                onKeyDown={(keyboardEvent) => {
+                  if (
+                    keyboardEvent.key !== "Enter" &&
+                    keyboardEvent.key !== " "
+                  ) {
+                    return;
+                  }
+                  keyboardEvent.preventDefault();
+                  onMovePlayhead(event.startMs);
+                  onSelectEvent(event, event.startMs);
+                }}
+                onPointerDown={(pointerEvent) => {
+                  pointerEvent.stopPropagation();
+                  onMovePlayhead(event.startMs);
+                  onSelectEvent(event, event.startMs);
+                }}
+                role="button"
+                rx="2"
+                strokeDasharray={
+                  event.timingQuality === "derived" ? "3 2" : undefined
+                }
+                strokeWidth={event.timingQuality === "derived" ? 1 : undefined}
+                tabIndex={0}
+                width={mark.width}
+                x={mark.x}
+                y={trackIndex * TRACK_HEIGHT + (TRACK_HEIGHT - height) / 2}
+              >
+                <title>{label}</title>
+              </rect>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
   );
 }

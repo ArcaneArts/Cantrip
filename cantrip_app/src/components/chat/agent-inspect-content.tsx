@@ -483,6 +483,7 @@ export function AgentInspectContent({
   initialTab = "trajectory",
   messages,
   onBackToCurrent,
+  onOpenSubagent,
   onTabChange,
   tab,
   trajectoryTargetKey,
@@ -493,6 +494,7 @@ export function AgentInspectContent({
   initialTab?: AgentInspectTab;
   messages: ChatMessage[];
   onBackToCurrent?(): void;
+  onOpenSubagent?(agentKey: string, focusItemKey: string | null): void;
   onTabChange?(tab: AgentInspectTab): void;
   tab?: AgentInspectTab;
   trajectoryTargetKey?: string | null;
@@ -530,6 +532,7 @@ export function AgentInspectContent({
             active={active}
             messages={messages}
             onBackToCurrent={onBackToCurrent}
+            onOpenSubagent={onOpenSubagent}
             targetTurnKey={trajectoryTargetKey}
             visible={visible}
           />

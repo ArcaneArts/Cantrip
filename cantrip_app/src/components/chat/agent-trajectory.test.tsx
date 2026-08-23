@@ -1,8 +1,9 @@
-import type { ChatMessage } from "@cantrip/protocol";
+import type { AgentScope, ChatMessage } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { AgentTrajectory } from "./agent-trajectory";
+import { AgentTrajectory, trajectorySubagentTarget } from "./agent-trajectory";
+import { projectTrajectory } from "./trajectory-model";
 
 function message(
   id: string,
@@ -33,6 +34,57 @@ function message(
 }
 
 describe("AgentTrajectory", () => {
+  it("renders dynamic agent tracks and targets child events at the sidebar", () => {
+    const childScope: AgentScope = {
+      agentThreadId: "child-thread",
+      rootThreadId: "root-thread",
+      parentThreadId: "root-thread",
+      rootTurnId: "root-turn",
+      agentPath: ["root", "Scout"],
+      nickname: "Scout",
+      role: "explorer",
+      depth: 1,
+      isRoot: false,
+    };
+    const messages = [
+      message("user", 1, "user", 1_000, [
+        { type: "text", text: "Delegate this" },
+      ]),
+      message("child-command", 2, "assistant", 1_200, [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "child-command",
+            command: "git status",
+            cwd: "/workspace",
+            status: "running",
+            exitCode: null,
+            output: null,
+            agentScope: childScope,
+          },
+        },
+      ]),
+    ];
+    const markup = renderToStaticMarkup(
+      <AgentTrajectory active messages={messages} visible />,
+    );
+    expect(markup).toContain("2 agents");
+    expect(markup).toContain("Root agent");
+    expect(markup).toContain("Scout");
+    expect(markup).toContain("Agents");
+
+    const childEvent = projectTrajectory({
+      active: true,
+      messages,
+      nowMs: 1_300,
+    })?.events.find((event) => event.agentLabel === "Scout");
+    expect(childEvent && trajectorySubagentTarget(childEvent)).toEqual({
+      agentKey: childEvent?.agentKey,
+      focusItemKey: "root-turn:child-thread:activity:child-command",
+    });
+  });
+
   it("renders a turn summary, lane controls, filters, and stable event rows", () => {
     const markup = renderToStaticMarkup(
       <AgentTrajectory

@@ -3738,6 +3738,7 @@ function ChatTranscript({
             active={inspectActive}
             integratedPanelHeader
             messages={messages.data ?? []}
+            onOpenSubagent={viewSubagent}
             onTabChange={setInspectTab}
             tab={inspectTab}
             trajectoryTargetKey={trajectoryTargetKey}
