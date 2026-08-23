@@ -13,6 +13,7 @@ export * from "./attachment-content.js";
 export * from "./explorer.js";
 export * from "./surface-stream.js";
 export * from "./repository-operation.js";
+export * from "./endpoint-content.js";
 export * from "./workflow-content.js";
 export * from "./run-configurations.js";
 

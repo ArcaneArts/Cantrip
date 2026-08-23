@@ -2,6 +2,7 @@ export * from "./associated-data.js";
 export * from "./attachment-content.js";
 export * from "./bytes.js";
 export * from "./communication-content.js";
+export * from "./endpoint-content.js";
 export * from "./hpke.js";
 export * from "./kdf.js";
 export * from "./payload.js";
