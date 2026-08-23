@@ -562,6 +562,8 @@ import {
 } from "@/lib/customization-content-encryption";
 import { ShortLivedRequestCache } from "@/lib/short-lived-request-cache";
 import {
+  createTunnelDataProtection,
+  openTunnelContentRecord,
   openTunnelSummary,
   protectTunnelContentRecord,
 } from "@/lib/tunnel-content-encryption";
@@ -761,6 +763,21 @@ export async function getTunnels(projectId?: string) {
   return Promise.all(tunnels.map((tunnel) => openTunnelSummary(tunnel)));
 }
 
+export async function getTunnelDataProtection(tunnelId: string) {
+  const wire = tunnelWireSummarySchema.parse(
+    await request(`/api/tunnels/${encodeURIComponent(tunnelId)}`),
+  );
+  if (!wire.protectedRecord) {
+    throw new Error("This tunnel does not have protected data-plane keys.");
+  }
+  const content = await openTunnelContentRecord({
+    tunnelId,
+    record: wire.protectedRecord,
+    workerId: wire.destination.workerId,
+  });
+  return { ...content.dataProtection };
+}
+
 export async function createTunnel(input: TunnelUserCreate) {
   const parsed = tunnelUserCreateSchema.parse(input);
   await ensureTunnelWorker(parsed.destination.workerId);
@@ -771,6 +788,7 @@ export async function createTunnel(input: TunnelUserCreate) {
       description: parsed.description,
       source: { kind: "desktop-loopback" },
       destination: parsed.destination,
+      dataProtection: createTunnelDataProtection(),
     },
     operationId: id,
     revision: 1,
@@ -799,10 +817,18 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
   const currentWire = tunnelWireSummarySchema.parse(
     await request(`/api/tunnels/${encodeURIComponent(tunnelId)}`),
   );
-  const current = await openTunnelSummary(currentWire);
-  if (!currentWire.protectedRecord || current.management !== "user-managed") {
+  if (
+    !currentWire.protectedRecord ||
+    currentWire.management !== "user-managed"
+  ) {
     throw new Error("This tunnel does not have editable protected content.");
   }
+  const currentContent = await openTunnelContentRecord({
+    tunnelId,
+    record: currentWire.protectedRecord,
+    workerId: currentWire.destination.workerId,
+  });
+  const current = await openTunnelSummary(currentWire);
   const destination = parsed.destination ?? current.destination;
   if (destination.kind !== "worker-tcp") {
     throw new Error("User tunnels require a worker TCP destination.");
@@ -817,6 +843,7 @@ export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
           : parsed.description,
       source: current.source,
       destination,
+      dataProtection: currentContent.dataProtection,
     },
     operationId: crypto.randomUUID(),
     revision: currentWire.protectedRecord.revision + 1,
@@ -4911,17 +4938,27 @@ export async function ensureBrowserTunnel(
   }
   await ensureTunnelWorker(workerId);
   const tunnelId = existing?.id ?? crypto.randomUUID();
+  const existingContent = existing?.protectedRecord
+    ? await openTunnelContentRecord({
+        tunnelId,
+        record: existing.protectedRecord,
+        workerId: existing.destination.workerId,
+      })
+    : null;
+  const destination = {
+    kind: "worker-tcp" as const,
+    workerId,
+    host: parsed.host,
+    port: parsed.port,
+  };
   const protectedRecord = await protectTunnelContentRecord({
     content: {
       name: `Browser tunnel · ${url.host}`.slice(0, 120),
       description: "Temporary local access created by the owning Browser tab.",
       source: { kind: "desktop-loopback" },
-      destination: {
-        kind: "worker-tcp",
-        workerId,
-        host: parsed.host,
-        port: parsed.port,
-      },
+      destination,
+      dataProtection:
+        existingContent?.dataProtection ?? createTunnelDataProtection(),
     },
     operationId: crypto.randomUUID(),
     revision: (existing?.protectedRecord?.revision ?? 0) + 1,
@@ -4936,6 +4973,11 @@ export async function ensureBrowserTunnel(
         protocolHint:
           parsed.protocol === "https" ? "https-websocket" : "http-websocket",
         workerId,
+        resetAttachments: Boolean(
+          existingContent &&
+          JSON.stringify(existingContent.destination) !==
+            JSON.stringify(destination),
+        ),
         protectedRecord,
       }),
     ),

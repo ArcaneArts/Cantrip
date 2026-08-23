@@ -28,11 +28,21 @@ pub struct DirectTunnelRoute {
 pub struct StartTunnelForwardRequest {
     pub attachment_id: String,
     pub client_id: String,
+    pub data_protection: Option<TunnelDataProtectionRequest>,
     pub direct: Option<DirectTunnelRequest>,
     pub expires_at: String,
     pub preferred_local_port: Option<u16>,
     pub relay: Option<RelayTunnelRequest>,
     pub tunnel_id: String,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TunnelDataProtectionRequest {
+    pub format_version: u8,
+    pub algorithm: String,
+    pub key_revision: u64,
+    pub key: String,
 }
 
 #[derive(Deserialize)]
@@ -154,8 +164,13 @@ pub fn refresh_tunnel_forward_relay(
 #[cfg(desktop)]
 mod desktop {
     use super::{
-        RelayTunnelRequest, StartTunnelForwardRequest, TunnelForwardSummary, TunnelForwards,
+        RelayTunnelRequest, StartTunnelForwardRequest, TunnelDataProtectionRequest,
+        TunnelForwardSummary, TunnelForwards,
     };
+    use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
+    use aes_gcm::{Aes256Gcm, Nonce};
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
     use futures_util::{SinkExt, StreamExt};
     use serde::{Deserialize, Serialize};
     use std::cmp::min;
@@ -184,7 +199,9 @@ mod desktop {
 
     const MAGIC: [u8; 4] = [0x43, 0x54, 0x54, 0x4e];
     const MAX_HEADER_BYTES: usize = 8 * 1024;
-    const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
+    const MAX_PLAINTEXT_BYTES: usize = 64 * 1024;
+    const AUTH_TAG_BYTES: usize = 16;
+    const MAX_PAYLOAD_BYTES: usize = MAX_PLAINTEXT_BYTES + AUTH_TAG_BYTES;
     const INITIAL_CREDIT_BYTES: u64 = 1024 * 1024;
     const MAX_CREDIT_BYTES: u64 = 8 * 1024 * 1024;
     const OUTBOUND_QUEUE: usize = 256;
@@ -256,6 +273,24 @@ mod desktop {
         DestinationToSource,
     }
 
+    impl Direction {
+        fn as_str(self) -> &'static str {
+            match self {
+                Self::SourceToDestination => "source-to-destination",
+                Self::DestinationToSource => "destination-to-source",
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct FrameProtection {
+        format_version: u8,
+        algorithm: String,
+        key_revision: u64,
+        nonce: String,
+    }
+
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "kind")]
     enum FrameHeader {
@@ -286,13 +321,14 @@ mod desktop {
             #[serde(flatten)]
             base: FrameBase,
             code: String,
-            message: String,
         },
         #[serde(rename = "data")]
         Data {
             #[serde(flatten)]
             base: FrameBase,
             direction: Direction,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            protection: Option<FrameProtection>,
         },
         #[serde(rename = "credit")]
         Credit {
@@ -312,14 +348,12 @@ mod desktop {
             #[serde(flatten)]
             base: FrameBase,
             code: String,
-            message: Option<String>,
         },
         #[serde(rename = "error")]
         Error {
             #[serde(flatten)]
             base: FrameBase,
             code: String,
-            message: String,
         },
     }
 
@@ -386,6 +420,11 @@ mod desktop {
 
     struct RelayRefresh {
         relay: RelayTunnelRequest,
+    }
+
+    struct DataProtection {
+        key_revision: u64,
+        key: Zeroizing<Vec<u8>>,
     }
 
     type OutboundFrame = (FrameHeader, Vec<u8>);
@@ -577,6 +616,126 @@ mod desktop {
         })
     }
 
+    fn data_protection(
+        input: Option<TunnelDataProtectionRequest>,
+    ) -> Result<Option<Arc<DataProtection>>, String> {
+        let Some(mut input) = input else {
+            return Ok(None);
+        };
+        if input.format_version != 1
+            || input.algorithm != "AES-256-GCM"
+            || input.key_revision == 0
+            || input.key.len() != 43
+        {
+            return Err("The tunnel data protection configuration is invalid.".into());
+        }
+        let encoded_key = Zeroizing::new(std::mem::take(&mut input.key));
+        let key = URL_SAFE_NO_PAD
+            .decode(encoded_key.as_bytes())
+            .map_err(|_| "The tunnel data protection key is invalid.".to_string())?;
+        if key.len() != 32 {
+            return Err("The tunnel data protection key is invalid.".into());
+        }
+        Ok(Some(Arc::new(DataProtection {
+            key_revision: input.key_revision,
+            key: Zeroizing::new(key),
+        })))
+    }
+
+    fn frame_associated_data(
+        base: &FrameBase,
+        direction: Direction,
+        protection: &FrameProtection,
+    ) -> Result<Vec<u8>, String> {
+        serde_json::to_vec(&(
+            base.protocol_version,
+            &base.tunnel_id,
+            &base.attachment_id,
+            &base.source_endpoint_id,
+            &base.destination_endpoint_id,
+            &base.connection_id,
+            base.sequence,
+            "data",
+            direction.as_str(),
+            protection.format_version,
+            &protection.algorithm,
+            protection.key_revision,
+            &protection.nonce,
+        ))
+        .map_err(|_| "Could not bind tunnel data to its route identity.".to_string())
+    }
+
+    fn seal_data_payload(
+        configuration: &DataProtection,
+        base: &FrameBase,
+        direction: Direction,
+        plaintext: &[u8],
+    ) -> Result<(FrameProtection, Vec<u8>), String> {
+        if plaintext.is_empty() || plaintext.len() > MAX_PLAINTEXT_BYTES {
+            return Err("A tunnel plaintext payload is invalid.".into());
+        }
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let protection = FrameProtection {
+            format_version: 1,
+            algorithm: "AES-256-GCM".into(),
+            key_revision: configuration.key_revision,
+            nonce: URL_SAFE_NO_PAD.encode(nonce),
+        };
+        let cipher = Aes256Gcm::new_from_slice(configuration.key.as_slice())
+            .map_err(|_| "The tunnel data protection key is invalid.".to_string())?;
+        let associated_data = frame_associated_data(base, direction, &protection)?;
+        let ciphertext = cipher
+            .encrypt(
+                &nonce,
+                Payload {
+                    msg: plaintext,
+                    aad: &associated_data,
+                },
+            )
+            .map_err(|_| "Could not protect tunnel data.".to_string())?;
+        Ok((protection, ciphertext))
+    }
+
+    fn open_data_payload(
+        configuration: Option<&DataProtection>,
+        base: &FrameBase,
+        direction: Direction,
+        protection: Option<&FrameProtection>,
+        payload: &[u8],
+    ) -> Result<Vec<u8>, String> {
+        match (configuration, protection) {
+            (None, None) if payload.len() <= MAX_PLAINTEXT_BYTES => Ok(payload.to_vec()),
+            (Some(configuration), Some(protection)) => {
+                if protection.format_version != 1
+                    || protection.algorithm != "AES-256-GCM"
+                    || protection.key_revision != configuration.key_revision
+                    || payload.len() <= AUTH_TAG_BYTES
+                {
+                    return Err("Tunnel data protection metadata is invalid.".into());
+                }
+                let nonce = URL_SAFE_NO_PAD
+                    .decode(protection.nonce.as_bytes())
+                    .map_err(|_| "Tunnel data protection nonce is invalid.".to_string())?;
+                if nonce.len() != 12 {
+                    return Err("Tunnel data protection nonce is invalid.".into());
+                }
+                let cipher = Aes256Gcm::new_from_slice(configuration.key.as_slice())
+                    .map_err(|_| "The tunnel data protection key is invalid.".to_string())?;
+                let associated_data = frame_associated_data(base, direction, protection)?;
+                cipher
+                    .decrypt(
+                        Nonce::from_slice(&nonce),
+                        Payload {
+                            msg: payload,
+                            aad: &associated_data,
+                        },
+                    )
+                    .map_err(|_| "Tunnel data authentication failed.".to_string())
+            }
+            _ => Err("Tunnel data protection does not match this endpoint.".into()),
+        }
+    }
+
     fn web_socket_url(server_url: &str, connect_path: &str) -> Result<Url, String> {
         let mut url = Url::parse(server_url)
             .map_err(|_| "The active Cantrip Server URL is invalid.".to_string())?;
@@ -632,6 +791,13 @@ mod desktop {
         ready: oneshot::Sender<Result<StartupRoute, String>>,
         mut relay_refreshes: mpsc::Receiver<RelayRefresh>,
     ) {
+        let protection = match data_protection(request.data_protection.take()) {
+            Ok(protection) => protection,
+            Err(error) => {
+                let _ = ready.send(Err(error));
+                return;
+            }
+        };
         let mut relay = request
             .relay
             .take()
@@ -736,7 +902,16 @@ mod desktop {
                 let _ = ready.send(Ok(startup));
             }
             retry_delay = Duration::from_millis(250);
-            match run_session(&listener, web_socket, identity, counters.clone(), &mut stop).await {
+            match run_session(
+                &listener,
+                web_socket,
+                identity,
+                protection.clone(),
+                counters.clone(),
+                &mut stop,
+            )
+            .await
+            {
                 Ok(true) => return,
                 result => {
                     let reason = match result {
@@ -841,6 +1016,7 @@ mod desktop {
             tokio_tungstenite::MaybeTlsStream<TcpStream>,
         >,
         identity: RouteIdentity,
+        protection: Option<Arc<DataProtection>>,
         counters: Arc<ForwardCounters>,
         stop: &mut oneshot::Receiver<()>,
     ) -> Result<bool, String> {
@@ -863,6 +1039,7 @@ mod desktop {
                         stream,
                         identity.clone(),
                         connection_id.clone(),
+                        protection.clone(),
                         outbound_sender.clone(),
                         receiver,
                         completed_sender.clone(),
@@ -919,6 +1096,7 @@ mod desktop {
         stream: TcpStream,
         identity: RouteIdentity,
         connection_id: String,
+        protection: Option<Arc<DataProtection>>,
         outbound: mpsc::Sender<OutboundFrame>,
         mut inbound: mpsc::Receiver<InboundFrame>,
         completed: mpsc::Sender<String>,
@@ -930,7 +1108,7 @@ mod desktop {
         let mut destination_sequence = 0_u64;
         let mut source_credit = 0_u64;
         let mut local_eof = false;
-        let mut buffer = vec![0_u8; MAX_PAYLOAD_BYTES];
+        let mut buffer = vec![0_u8; MAX_PLAINTEXT_BYTES];
         if outbound
             .try_send((
                 FrameHeader::Open {
@@ -947,8 +1125,8 @@ mod desktop {
         loop {
             let event = if !local_eof && source_credit > 0 {
                 let read_size = min(
-                    MAX_PAYLOAD_BYTES,
-                    usize::try_from(source_credit).unwrap_or(MAX_PAYLOAD_BYTES),
+                    MAX_PLAINTEXT_BYTES,
+                    usize::try_from(source_credit).unwrap_or(MAX_PLAINTEXT_BYTES),
                 );
                 tokio::select! {
                     read = reader.read(&mut buffer[..read_size]) => ConnectionEvent::Local(read),
@@ -977,13 +1155,27 @@ mod desktop {
                 ConnectionEvent::Local(Ok(size)) => {
                     ForwardCounters::add(&counters.bytes_from_local, size as u64);
                     source_credit = source_credit.saturating_sub(size as u64);
+                    let base = identity.base(&connection_id, source_sequence);
+                    let (frame_protection, payload) = match protection.as_deref() {
+                        Some(configuration) => match seal_data_payload(
+                            configuration,
+                            &base,
+                            Direction::SourceToDestination,
+                            &buffer[..size],
+                        ) {
+                            Ok(protected) => (Some(protected.0), protected.1),
+                            Err(_) => break,
+                        },
+                        None => (None, buffer[..size].to_vec()),
+                    };
                     if send_source(
                         &outbound,
                         FrameHeader::Data {
-                            base: identity.base(&connection_id, source_sequence),
+                            base,
                             direction: Direction::SourceToDestination,
+                            protection: frame_protection,
                         },
-                        buffer[..size].to_vec(),
+                        payload,
                     )
                     .is_err()
                     {
@@ -1012,19 +1204,30 @@ mod desktop {
                             source_credit = min(initial_credit_bytes, MAX_CREDIT_BYTES);
                         }
                         FrameHeader::Data {
+                            base,
                             direction: Direction::DestinationToSource,
-                            ..
+                            protection: frame_protection,
                         } if !payload.is_empty() => {
-                            if writer.write_all(&payload).await.is_err() {
+                            let plaintext = match open_data_payload(
+                                protection.as_deref(),
+                                &base,
+                                Direction::DestinationToSource,
+                                frame_protection.as_ref(),
+                                &payload,
+                            ) {
+                                Ok(plaintext) => plaintext,
+                                Err(_) => break,
+                            };
+                            if writer.write_all(&plaintext).await.is_err() {
                                 break;
                             }
-                            ForwardCounters::add(&counters.bytes_to_local, payload.len() as u64);
+                            ForwardCounters::add(&counters.bytes_to_local, plaintext.len() as u64);
                             if send_source(
                                 &outbound,
                                 FrameHeader::Credit {
                                     base: identity.base(&connection_id, source_sequence),
                                     direction: Direction::DestinationToSource,
-                                    bytes: payload.len() as u64,
+                                    bytes: plaintext.len() as u64,
                                 },
                                 Vec::new(),
                             )
@@ -1060,7 +1263,6 @@ mod desktop {
             FrameHeader::Close {
                 base: identity.base(&connection_id, source_sequence),
                 code: "normal".into(),
-                message: None,
             },
             Vec::new(),
         ));
@@ -1075,10 +1277,22 @@ mod desktop {
         outbound.try_send((header, payload)).map_err(|_| ())
     }
 
+    fn frame_payload_is_valid(header: &FrameHeader, payload: &[u8]) -> bool {
+        match header {
+            FrameHeader::Data { protection, .. } => {
+                !payload.is_empty()
+                    && payload.len() <= MAX_PAYLOAD_BYTES
+                    && match protection {
+                        Some(_) => payload.len() > AUTH_TAG_BYTES,
+                        None => payload.len() <= MAX_PLAINTEXT_BYTES,
+                    }
+            }
+            _ => payload.is_empty(),
+        }
+    }
+
     fn encode_frame(header: &FrameHeader, payload: &[u8]) -> Result<Vec<u8>, String> {
-        if payload.len() > MAX_PAYLOAD_BYTES
-            || (matches!(header, FrameHeader::Data { .. }) != !payload.is_empty())
-        {
+        if !frame_payload_is_valid(header, payload) {
             return Err("A tunnel frame payload is invalid.".into());
         }
         let encoded_header = serde_json::to_vec(header)
@@ -1106,9 +1320,7 @@ mod desktop {
         let header: FrameHeader = serde_json::from_slice(&frame[8..8 + header_length])
             .map_err(|_| "The tunnel frame header is invalid.".to_string())?;
         let payload = frame[8 + header_length..].to_vec();
-        if payload.len() > MAX_PAYLOAD_BYTES
-            || (matches!(header, FrameHeader::Data { .. }) != !payload.is_empty())
-        {
+        if !frame_payload_is_valid(&header, &payload) {
             return Err("The tunnel frame payload is invalid.".into());
         }
         Ok((header, payload))
@@ -1121,6 +1333,13 @@ mod desktop {
         use std::sync::Arc;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio_tungstenite::accept_hdr_async;
+
+        fn test_data_protection() -> Arc<DataProtection> {
+            Arc::new(DataProtection {
+                key_revision: 3,
+                key: Zeroizing::new(vec![7; 32]),
+            })
+        }
 
         #[test]
         fn rejects_credentialed_or_non_http_server_urls() {
@@ -1150,11 +1369,74 @@ mod desktop {
             let header = FrameHeader::Data {
                 base: identity.base("connection", 4),
                 direction: Direction::SourceToDestination,
+                protection: None,
             };
             let encoded = encode_frame(&header, &[0, 1, 2, 255]).unwrap();
             let (decoded, payload) = decode_frame(&encoded).unwrap();
             assert_eq!(decoded.base().sequence, 4);
             assert_eq!(payload, vec![0, 1, 2, 255]);
+        }
+
+        #[test]
+        fn protected_frames_authenticate_the_full_route_binding() {
+            let identity = RouteIdentity {
+                attachment_id: "attachment".into(),
+                destination_endpoint_id: "worker:one".into(),
+                source_endpoint_id: "desktop:one:attachment".into(),
+                tunnel_id: "tunnel".into(),
+            };
+            let base = identity.base("connection", 4);
+            let configuration = test_data_protection();
+            let plaintext = b"private bytes";
+            let (protection, ciphertext) = seal_data_payload(
+                &configuration,
+                &base,
+                Direction::SourceToDestination,
+                plaintext,
+            )
+            .unwrap();
+            assert_ne!(ciphertext, plaintext);
+            assert_eq!(
+                open_data_payload(
+                    Some(configuration.as_ref()),
+                    &base,
+                    Direction::SourceToDestination,
+                    Some(&protection),
+                    &ciphertext,
+                )
+                .unwrap(),
+                plaintext,
+            );
+            let mut wrong_base = base.clone();
+            wrong_base.sequence += 1;
+            assert!(open_data_payload(
+                Some(configuration.as_ref()),
+                &wrong_base,
+                Direction::SourceToDestination,
+                Some(&protection),
+                &ciphertext,
+            )
+            .is_err());
+            let vector_protection = FrameProtection {
+                format_version: 1,
+                algorithm: "AES-256-GCM".into(),
+                key_revision: 3,
+                nonce: "CQkJCQkJCQkJCQkJ".into(),
+            };
+            let vector_ciphertext = URL_SAFE_NO_PAD
+                .decode("RPfr583dsxTOFqJVg8rBpqDVEKBB_3Ez7M0m4OcZVNhpfMk")
+                .unwrap();
+            assert_eq!(
+                open_data_payload(
+                    Some(configuration.as_ref()),
+                    &base,
+                    Direction::SourceToDestination,
+                    Some(&vector_protection),
+                    &vector_ciphertext,
+                )
+                .unwrap(),
+                b"cross-runtime bytes",
+            );
         }
 
         #[tokio::test]
@@ -1167,6 +1449,7 @@ mod desktop {
         #[tokio::test]
         async fn relays_local_http_bytes_over_an_authenticated_web_socket() {
             let secret = "test-secret-that-is-long-enough-for-attachment-auth";
+            let request_bytes = b"GET /hmr HTTP/1.1\r\nHost: localhost\r\n\r\n";
             let authenticated = Arc::new(AtomicBool::new(false));
             let authenticated_by_server = authenticated.clone();
             let server_listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
@@ -1239,18 +1522,47 @@ mod desktop {
                     panic!("expected a data frame")
                 };
                 let (header, payload) = decode_frame(&data).unwrap();
-                assert!(matches!(header, FrameHeader::Data { .. }));
+                assert!(!payload
+                    .windows(request_bytes.len())
+                    .any(|window| window == request_bytes));
+                let FrameHeader::Data {
+                    base: data_base,
+                    direction: Direction::SourceToDestination,
+                    protection: frame_protection,
+                } = header
+                else {
+                    panic!("expected protected source data")
+                };
+                let server_protection = test_data_protection();
+                let plaintext = open_data_payload(
+                    Some(server_protection.as_ref()),
+                    &data_base,
+                    Direction::SourceToDestination,
+                    frame_protection.as_ref(),
+                    &payload,
+                )
+                .unwrap();
+                assert_eq!(plaintext, request_bytes);
+                let response_base = FrameBase {
+                    sequence: 1,
+                    ..base.clone()
+                };
+                let (response_protection, response_payload) = seal_data_payload(
+                    &server_protection,
+                    &response_base,
+                    Direction::DestinationToSource,
+                    &plaintext,
+                )
+                .unwrap();
                 web_socket
                     .send(Message::Binary(
                         encode_frame(
                             &FrameHeader::Data {
-                                base: FrameBase {
-                                    sequence: 1,
-                                    ..base.clone()
-                                },
+                                base: response_base,
                                 direction: Direction::DestinationToSource,
+                                protection: Some(response_protection),
                             },
-                            &payload,
+                            &response_payload,
                         )
                         .unwrap()
                         .into(),
@@ -1292,6 +1604,7 @@ mod desktop {
             let request = StartTunnelForwardRequest {
                 attachment_id: "attachment".into(),
                 client_id: "client".into(),
+                data_protection: None,
                 direct: None,
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 preferred_local_port: None,
@@ -1314,6 +1627,7 @@ mod desktop {
                     &listener,
                     web_socket,
                     identity,
+                    Some(test_data_protection()),
                     session_counters,
                     &mut stop_receiver,
                 )
@@ -1323,7 +1637,6 @@ mod desktop {
             let mut local = TcpStream::connect((Ipv4Addr::LOCALHOST, local_port))
                 .await
                 .unwrap();
-            let request_bytes = b"GET /hmr HTTP/1.1\r\nHost: localhost\r\n\r\n";
             local.write_all(request_bytes).await.unwrap();
             local.shutdown().await.unwrap();
             let mut echoed = Vec::new();

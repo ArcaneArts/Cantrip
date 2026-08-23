@@ -1,11 +1,18 @@
 import {
+  clearSensitiveBytes,
+  encodeBase64Url,
+  randomBytes,
+} from "@cantrip/crypto";
+import {
   protectedTunnelContentRecordSchema,
+  tunnelDataProtectionConfigurationSchema,
   tunnelContentRecordSchema,
   tunnelPublicDestinationEndpoint,
   tunnelPublicSourceEndpoint,
   type ProtectedTunnelContentRecord,
   type TunnelContentErrorCode,
   type TunnelContentRecord,
+  type TunnelDataProtectionConfiguration,
 } from "@cantrip/protocol/tunnel-content";
 import {
   tunnelSummarySchema,
@@ -18,8 +25,27 @@ import {
   openEndpointContent,
   protectEndpointContent,
 } from "./endpoint-content-encryption";
+import { clientEncryption } from "./client-encryption";
 
 const TUNNEL_RECORD_OPERATION = "tunnel.record";
+
+export function createTunnelDataProtection(): TunnelDataProtectionConfiguration {
+  const snapshot = clientEncryption.getSnapshot();
+  if (snapshot.status !== "ready" || !snapshot.masterKeyRevision) {
+    throw new Error("Encryption must be unlocked before creating a tunnel.");
+  }
+  const key = randomBytes(32);
+  try {
+    return tunnelDataProtectionConfigurationSchema.parse({
+      formatVersion: 1,
+      algorithm: "AES-256-GCM",
+      keyRevision: snapshot.masterKeyRevision,
+      key: encodeBase64Url(key),
+    });
+  } finally {
+    clearSensitiveBytes(key);
+  }
+}
 
 function scopeId(tunnelId: string): string {
   return JSON.stringify(["tunnel", tunnelId]);
@@ -84,7 +110,9 @@ export async function openTunnelContentRecord(input: {
   });
 }
 
-function stableErrorMessage(code: TunnelContentErrorCode | null): string | null {
+function stableErrorMessage(
+  code: TunnelContentErrorCode | null,
+): string | null {
   switch (code) {
     case "attachment-disconnected":
       return "The local tunnel endpoint disconnected.";
@@ -103,7 +131,9 @@ function stableErrorMessage(code: TunnelContentErrorCode | null): string | null 
   }
 }
 
-function managedPresentation(tunnel: TunnelWireSummary): TunnelContentRecord {
+type TunnelPresentation = Omit<TunnelContentRecord, "dataProtection">;
+
+function managedPresentation(tunnel: TunnelWireSummary): TunnelPresentation {
   const presentation =
     tunnel.origin === "code"
       ? {
@@ -134,7 +164,7 @@ function managedPresentation(tunnel: TunnelWireSummary): TunnelContentRecord {
 
 function publicEndpointsMatch(
   wire: TunnelWireSummary,
-  content: TunnelContentRecord,
+  content: TunnelPresentation,
 ): boolean {
   return (
     JSON.stringify(tunnelPublicSourceEndpoint(content.source)) ===
@@ -154,9 +184,15 @@ export async function openTunnelSummary(raw: unknown): Promise<TunnelSummary> {
       })
     : managedPresentation(wire);
   if (!publicEndpointsMatch(wire, content)) {
-    throw new Error("Protected tunnel content does not match its routing record.");
+    throw new Error(
+      "Protected tunnel content does not match its routing record.",
+    );
   }
-  const { errorCode, protectedRecord: _protectedRecord, ...publicSummary } = wire;
+  const {
+    errorCode,
+    protectedRecord: _protectedRecord,
+    ...publicSummary
+  } = wire;
   return tunnelSummarySchema.parse({
     ...publicSummary,
     name: content.name,
@@ -165,7 +201,8 @@ export async function openTunnelSummary(raw: unknown): Promise<TunnelSummary> {
     destination: content.destination,
     lastError: stableErrorMessage(errorCode),
     attachments: wire.attachments.map((attachment) => {
-      const { errorCode: attachmentErrorCode, ...publicAttachment } = attachment;
+      const { errorCode: attachmentErrorCode, ...publicAttachment } =
+        attachment;
       return {
         ...publicAttachment,
         localHost: null,

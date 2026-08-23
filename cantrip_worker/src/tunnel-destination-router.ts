@@ -1,8 +1,13 @@
 import type { TunnelDataPlaneFrameHeader } from "@cantrip/protocol";
+import type { TunnelDataProtectionConfiguration } from "@cantrip/protocol/tunnel-content";
 
 import type { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import type { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-adapter.js";
 import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
+import {
+  openTunnelDataFrame,
+  sealTunnelDataFrame,
+} from "./tunnel-data-protection.js";
 import type { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
@@ -14,6 +19,7 @@ type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 
 export class TunnelDestinationRouter {
   #emit: FrameEmitter | null = null;
+  readonly #protections = new Map<string, TunnelDataProtectionConfiguration>();
 
   constructor(
     private readonly tcp: TunnelTcpDestinationAdapter,
@@ -25,7 +31,10 @@ export class TunnelDestinationRouter {
 
   setFrameEmitter(emit: FrameEmitter, waitForCapacity: CapacityWaiter): void {
     this.#emit = emit;
-    this.tcp.setFrameEmitter(emit, waitForCapacity);
+    this.tcp.setFrameEmitter(
+      (header, payload) => this.#emitTcp(header, payload),
+      waitForCapacity,
+    );
     this.projectShares.setFrameEmitter(emit, waitForCapacity);
     this.code.setFrameEmitter(emit, waitForCapacity);
   }
@@ -43,18 +52,39 @@ export class TunnelDestinationRouter {
       }
       return;
     }
+    const protection = this.#protections.get(connectionKey(header));
+    if (protection) {
+      if (header.kind === "data") {
+        try {
+          this.tcp.handleFrame(
+            { ...header, protection: undefined },
+            openTunnelDataFrame(protection, header, payload),
+          );
+        } catch {
+          this.tcp.failProtectedFrame(header);
+        }
+      } else {
+        this.tcp.handleFrame(header, payload);
+        if (header.kind === "close" || header.kind === "error") {
+          this.#protections.delete(connectionKey(header));
+        }
+      }
+      return;
+    }
     this.tcp.handleFrame(header, payload);
     this.projectShares.handleFrame(header, payload);
     this.code.handleFrame(header, payload);
   }
 
   disconnect(): void {
+    this.#protections.clear();
     this.tcp.disconnect();
     this.projectShares.disconnect();
     this.code.disconnect();
   }
 
   close(): void {
+    this.#protections.clear();
     this.tcp.close();
     this.projectShares.close();
     this.code.close();
@@ -85,6 +115,7 @@ export class TunnelDestinationRouter {
       ) {
         throw new Error("Protected tunnel target belongs to another endpoint.");
       }
+      this.#protections.set(connectionKey(header), content.dataProtection);
       this.tcp.handleFrame(
         {
           ...header,
@@ -97,6 +128,7 @@ export class TunnelDestinationRouter {
         payload,
       );
     } catch {
+      this.#protections.delete(connectionKey(header));
       this.#emit?.(
         {
           protocolVersion: header.protocolVersion,
@@ -113,4 +145,33 @@ export class TunnelDestinationRouter {
       );
     }
   }
+
+  #emitTcp(header: TunnelDataPlaneFrameHeader, payload: Uint8Array): boolean {
+    const key = connectionKey(header);
+    const configuration = this.#protections.get(key);
+    let emittedHeader = header;
+    let emittedPayload = payload;
+    if (configuration && header.kind === "data") {
+      try {
+        const sealed = sealTunnelDataFrame(configuration, header, payload);
+        emittedHeader = sealed.header;
+        emittedPayload = sealed.payload;
+      } catch {
+        return false;
+      }
+    }
+    const sent = this.#emit?.(emittedHeader, emittedPayload) ?? false;
+    if (
+      header.kind === "rejected" ||
+      header.kind === "close" ||
+      header.kind === "error"
+    ) {
+      this.#protections.delete(key);
+    }
+    return sent;
+  }
+}
+
+function connectionKey(header: TunnelDataPlaneFrameHeader): string {
+  return `${header.tunnelId}\0${header.attachmentId}\0${header.connectionId}`;
 }

@@ -57,6 +57,28 @@ describe("generic tunnel data plane protocol", () => {
     expect(decoded.payload).toEqual(payload);
   });
 
+  it("round-trips protected data metadata without opening ciphertext", () => {
+    const header: TunnelDataPlaneFrameHeader = {
+      ...base,
+      kind: "data",
+      direction: "source-to-destination",
+      protection: {
+        formatVersion: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 2,
+        nonce: "n".repeat(16),
+      },
+    };
+    const ciphertext = new Uint8Array(17).fill(9);
+    const decoded = decodeTunnelDataPlaneFrame(
+      encodeTunnelDataPlaneFrame(header, ciphertext),
+    );
+    expect(decoded).toEqual({ header, payload: ciphertext });
+    expect(() =>
+      encodeTunnelDataPlaneFrame(header, new Uint8Array(16)),
+    ).toThrow(/authentication tag/i);
+  });
+
   it("models open, connect, acceptance, credit, half-close, and close", () => {
     const frames: TunnelDataPlaneFrameHeader[] = [
       { ...base, kind: "open", initialCreditBytes: 256 * 1_024 },

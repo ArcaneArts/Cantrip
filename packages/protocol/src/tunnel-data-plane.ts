@@ -4,7 +4,10 @@ import { protectedTunnelContentRecordSchema } from "./tunnel-content.js";
 
 export const TUNNEL_DATA_PLANE_PROTOCOL_VERSION = 1;
 export const TUNNEL_DATA_PLANE_MAX_HEADER_BYTES = 8 * 1_024;
-export const TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES = 64 * 1_024;
+export const TUNNEL_DATA_PLANE_MAX_PLAINTEXT_BYTES = 64 * 1_024;
+export const TUNNEL_DATA_PLANE_AUTH_TAG_BYTES = 16;
+export const TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES =
+  TUNNEL_DATA_PLANE_MAX_PLAINTEXT_BYTES + TUNNEL_DATA_PLANE_AUTH_TAG_BYTES;
 export const TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES = 8 * 1_024 * 1_024;
 
 const FRAME_MAGIC = new Uint8Array([0x43, 0x54, 0x54, 0x4e]);
@@ -20,6 +23,18 @@ const creditSchema = z
   .int()
   .positive()
   .max(TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES);
+
+export const tunnelDataFrameProtectionSchema = z
+  .object({
+    formatVersion: z.literal(1),
+    algorithm: z.literal("AES-256-GCM"),
+    keyRevision: z.number().int().positive().safe(),
+    nonce: z
+      .string()
+      .length(16)
+      .regex(/^[A-Za-z0-9_-]{16}$/u),
+  })
+  .strict();
 
 export const tunnelDataDirectionSchema = z.enum([
   "source-to-destination",
@@ -120,6 +135,7 @@ export const tunnelDataPlaneFrameHeaderSchema = z.discriminatedUnion("kind", [
   frameBaseSchema.extend({
     kind: z.literal("data"),
     direction: tunnelDataDirectionSchema,
+    protection: tunnelDataFrameProtectionSchema.optional(),
   }),
   frameBaseSchema.extend({
     kind: z.literal("credit"),
@@ -159,6 +175,23 @@ function validatePayload(
   }
   if (header.kind !== "data" && payload.byteLength !== 0) {
     throw new Error("Tunnel control frames cannot contain a payload.");
+  }
+  if (header.kind === "data") {
+    const protectedFrame = header.protection !== undefined;
+    if (
+      protectedFrame &&
+      payload.byteLength <= TUNNEL_DATA_PLANE_AUTH_TAG_BYTES
+    ) {
+      throw new Error(
+        "Protected tunnel data requires ciphertext and an authentication tag.",
+      );
+    }
+    if (
+      !protectedFrame &&
+      payload.byteLength > TUNNEL_DATA_PLANE_MAX_PLAINTEXT_BYTES
+    ) {
+      throw new Error("Plaintext tunnel data exceeds the protocol limit.");
+    }
   }
 }
 
@@ -216,6 +249,9 @@ export function decodeTunnelDataPlaneFrame(frame: Uint8Array): {
 }
 
 export type TunnelDataDirection = z.infer<typeof tunnelDataDirectionSchema>;
+export type TunnelDataFrameProtection = z.infer<
+  typeof tunnelDataFrameProtectionSchema
+>;
 export type TunnelDataPlaneCloseCode = z.infer<
   typeof tunnelDataPlaneCloseCodeSchema
 >;

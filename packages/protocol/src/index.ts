@@ -3910,7 +3910,9 @@ export const tunnelWireSummarySchema = z
   })
   .strict();
 
-export const tunnelWireListSchema = z.array(tunnelWireSummarySchema).max(10_000);
+export const tunnelWireListSchema = z
+  .array(tunnelWireSummarySchema)
+  .max(10_000);
 
 export const projectGitRepositoryStatsSchema = z.object({
   kind: z.literal("git").default("git"),
@@ -5479,6 +5481,7 @@ export const browserTunnelWireRequestSchema = z
     tunnelId: z.string().uuid(),
     protocolHint: z.enum(["http-websocket", "https-websocket"]),
     workerId: z.string().min(1).max(200),
+    resetAttachments: z.boolean().default(false),
     protectedRecord: protectedTunnelContentRecordSchema,
   })
   .strict();

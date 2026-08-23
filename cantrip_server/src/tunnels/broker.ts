@@ -1,6 +1,8 @@
 import {
+  TUNNEL_DATA_PLANE_AUTH_TAG_BYTES,
   TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES,
   TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES,
+  TUNNEL_DATA_PLANE_MAX_PLAINTEXT_BYTES,
   tunnelDataPlaneCloseCodeSchema,
   type TunnelDataPlaneCloseCode,
   type TunnelDataPlaneFrameHeader,
@@ -98,6 +100,15 @@ function routeKey(tunnelId: string, attachmentId: string): string {
 
 function connectionKey(route: Route, connectionId: string): string {
   return `${route.key}\0${connectionId}`;
+}
+
+function flowControlBytes(
+  header: TunnelDataPlaneFrameHeader,
+  payload: Uint8Array,
+): number {
+  return header.kind === "data" && header.protection
+    ? payload.byteLength - TUNNEL_DATA_PLANE_AUTH_TAG_BYTES
+    : payload.byteLength;
 }
 
 function identities(route: Route, connectionId: string, sequence: number) {
@@ -237,7 +248,10 @@ export class TunnelStreamBroker {
     const payloadValid =
       header.kind === "data"
         ? payload.byteLength > 0 &&
-          payload.byteLength <= TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES
+          payload.byteLength <= TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES &&
+          (header.protection
+            ? payload.byteLength > TUNNEL_DATA_PLANE_AUTH_TAG_BYTES
+            : payload.byteLength <= TUNNEL_DATA_PLANE_MAX_PLAINTEXT_BYTES)
         : payload.byteLength === 0;
     if (
       header.tunnelId !== route.tunnelId ||
@@ -330,6 +344,7 @@ export class TunnelStreamBroker {
       return;
     }
     if (header.kind === "data") {
+      const flowBytes = flowControlBytes(header, payload);
       if (!this.#consumeBandwidth(connection, payload.byteLength)) {
         this.#terminate(connection, "bandwidth-limit");
         return;
@@ -347,19 +362,19 @@ export class TunnelStreamBroker {
         return;
       }
       if (sender === "source") {
-        if (payload.byteLength > connection.sourceToDestinationCredit) {
+        if (flowBytes > connection.sourceToDestinationCredit) {
           this.#terminate(connection, "protocol-error");
           return;
         }
-        connection.sourceToDestinationCredit -= payload.byteLength;
+        connection.sourceToDestinationCredit -= flowBytes;
         this.#bytesFromSource += payload.byteLength;
         this.#forward(connection, "destination", header, payload);
       } else {
-        if (payload.byteLength > connection.destinationToSourceCredit) {
+        if (flowBytes > connection.destinationToSourceCredit) {
           this.#terminate(connection, "protocol-error");
           return;
         }
-        connection.destinationToSourceCredit -= payload.byteLength;
+        connection.destinationToSourceCredit -= flowBytes;
         this.#bytesToSource += payload.byteLength;
         this.#forward(connection, "source", header, payload);
       }

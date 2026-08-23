@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   deleteTunnelAttachment: vi.fn(),
   invoke: vi.fn(),
   isTauri: vi.fn(),
+  getTunnelDataProtection: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -20,6 +21,7 @@ vi.mock("@/lib/api", () => ({
   createTunnelAttachment: mocks.createTunnelAttachment,
   deleteDirectAttachment: mocks.deleteDirectAttachment,
   deleteTunnelAttachment: mocks.deleteTunnelAttachment,
+  getTunnelDataProtection: mocks.getTunnelDataProtection,
 }));
 vi.mock("@/lib/server-connections", () => ({
   getActiveServerUrl: () => "https://cantrip.example",
@@ -81,6 +83,12 @@ beforeEach(() => {
   mocks.activateDirectTunnelAttachment.mockResolvedValue(undefined);
   mocks.deleteDirectAttachment.mockResolvedValue(undefined);
   mocks.deleteTunnelAttachment.mockResolvedValue(undefined);
+  mocks.getTunnelDataProtection.mockResolvedValue({
+    formatVersion: 1,
+    algorithm: "AES-256-GCM",
+    keyRevision: 1,
+    key: "k".repeat(43),
+  });
   const values = new Map<string, string>();
   vi.stubGlobal("window", {
     localStorage: {

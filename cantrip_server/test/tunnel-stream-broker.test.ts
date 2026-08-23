@@ -80,6 +80,45 @@ function setup(
 }
 
 describe("generic tunnel stream broker", () => {
+  it("forwards protected payloads opaquely while charging plaintext flow credit", () => {
+    const { broker, destination, source } = setup();
+    source.emit({
+      ...identity,
+      connectionId: "protected-connection",
+      sequence: 0,
+      kind: "open",
+      initialCreditBytes: 3,
+    });
+    destination.emit({
+      ...identity,
+      connectionId: "protected-connection",
+      sequence: 0,
+      kind: "accepted",
+      initialCreditBytes: 3,
+    });
+    const ciphertext = new Uint8Array(19).fill(0xa5);
+    source.emit(
+      {
+        ...identity,
+        connectionId: "protected-connection",
+        sequence: 1,
+        kind: "data",
+        direction: "source-to-destination",
+        protection: {
+          formatVersion: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: "n".repeat(16),
+        },
+      },
+      ciphertext,
+    );
+
+    expect(destination.sent.at(-1)?.payload).toEqual(ciphertext);
+    expect(broker.stats().activeConnections).toBe(1);
+    broker.close();
+  });
+
   it("routes a bidirectional, credited, half-close-capable stream between arbitrary endpoints", () => {
     const { broker, destination, source } = setup();
     source.emit({
