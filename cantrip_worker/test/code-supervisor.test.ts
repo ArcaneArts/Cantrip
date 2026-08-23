@@ -218,7 +218,16 @@ describe("Cantrip Code supervisor", () => {
     expect(
       new Set(sessions.map((session) => session.processInstanceId)),
     ).toEqual(new Set([sessions[0]?.processInstanceId]));
+
+    await Promise.all(
+      sessions
+        .slice(0, -1)
+        .map((session) => supervisor.stop(session.sessionId)),
+    );
     expect(supervisor.status("unbounded-7").status).toBe("running");
+    expect(supervisor.proxyTarget("unbounded-7").processInstanceId).toBe(
+      sessions.at(-1)?.processInstanceId,
+    );
   });
 
   it("treats stopping an already-removed session as success", async () => {

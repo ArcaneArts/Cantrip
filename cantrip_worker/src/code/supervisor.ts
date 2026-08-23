@@ -196,6 +196,7 @@ export class CodeSupervisor {
   readonly #idleSweepIntervalMs: number;
   readonly #idleTimeoutMs: number;
   readonly #openOperations = new Map<string, Promise<CodeRuntimeStatus>>();
+  readonly #profileOperations = new Map<string, Promise<ProfileProcess>>();
   readonly #profiles = new Map<string, ProfileProcess>();
   readonly #readinessTimeoutMs: number;
   readonly #sessions = new Map<string, CodeSession>();
@@ -666,29 +667,46 @@ export class CodeSupervisor {
   ): Promise<ProfileProcess> {
     const existing = this.#profiles.get(profileKey);
     if (existing) return existing;
-    const profileDirectory = path.join(this.#codeRoot, "profiles", profileKey);
-    await Promise.all([
-      mkdir(path.join(profileDirectory, "user-data"), { recursive: true }),
-      mkdir(path.join(profileDirectory, "extensions"), { recursive: true }),
-      mkdir(path.join(profileDirectory, "server-data"), { recursive: true }),
-    ]);
-    const profile: ProfileProcess = {
-      child: null,
-      connectionToken: null,
-      crashTimes: [],
-      instanceId: null,
-      launchPromise: null,
-      logPath: path.join(this.#codeRoot, "logs", `${profileKey}.log`),
-      port: null,
-      profileId,
-      profileKey,
-      ready: false,
-      restartTimer: null,
-      sessions: new Set(),
-      stopping: false,
-    };
-    this.#profiles.set(profileKey, profile);
-    return profile;
+    const pending = this.#profileOperations.get(profileKey);
+    if (pending) return pending;
+
+    const operation = (async () => {
+      const profileDirectory = path.join(
+        this.#codeRoot,
+        "profiles",
+        profileKey,
+      );
+      await Promise.all([
+        mkdir(path.join(profileDirectory, "user-data"), { recursive: true }),
+        mkdir(path.join(profileDirectory, "extensions"), { recursive: true }),
+        mkdir(path.join(profileDirectory, "server-data"), { recursive: true }),
+      ]);
+      const profile: ProfileProcess = {
+        child: null,
+        connectionToken: null,
+        crashTimes: [],
+        instanceId: null,
+        launchPromise: null,
+        logPath: path.join(this.#codeRoot, "logs", `${profileKey}.log`),
+        port: null,
+        profileId,
+        profileKey,
+        ready: false,
+        restartTimer: null,
+        sessions: new Set(),
+        stopping: false,
+      };
+      this.#profiles.set(profileKey, profile);
+      return profile;
+    })();
+    this.#profileOperations.set(profileKey, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.#profileOperations.get(profileKey) === operation) {
+        this.#profileOperations.delete(profileKey);
+      }
+    }
   }
 
   async #ensureProfile(profile: ProfileProcess): Promise<void> {
