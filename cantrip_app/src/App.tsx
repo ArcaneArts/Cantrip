@@ -114,6 +114,7 @@ import {
   readAgentInspectWidth,
   updateAgentInspectOpenChats,
 } from "@/components/chat/agent-inspect-panel";
+import { randomAgentChatTitle } from "@/components/chat/agent-chat-name";
 import { useStickyChatScroll } from "@/components/chat/use-sticky-chat-scroll";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
@@ -4369,15 +4370,26 @@ export function App() {
       worktreeId?: string;
       worktreeMode?: "agent-managed" | "pinned";
       target?: ExecutionTarget;
-    }) =>
-      createChat(
+    }) => {
+      const existingTitles = [
+        ...(chats.data ?? []),
+        ...(terminals.data ?? []),
+        ...(explorers.data ?? []),
+        ...(browsers.data ?? []),
+        ...(codeTabs.data ?? []),
+        ...(projectViews.data ?? []),
+      ]
+        .filter((surface) => surface.projectId === projectId)
+        .map((surface) => surface.title);
+      return createChat(
         projectId,
-        "New agent",
+        randomAgentChatTitle(existingTitles),
         worktreeId,
         worktreeMode,
         tabGroupId,
         target,
-      ),
+      );
+    },
     onSuccess: (chat, { open }) => {
       queryClient.setQueryData<ChatSummary[]>(
         ["chats", chat.projectId],
