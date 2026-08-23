@@ -25,8 +25,6 @@ const requiredSecretNames = [
   "CANTRIP_ADMIN_EMAIL",
   "CANTRIP_API_DOMAIN",
   "CANTRIP_APP_ORIGINS",
-  "CANTRIP_CODE_DOMAIN",
-  "CANTRIP_CODE_SURFACE_ORIGIN",
   "CANTRIP_METRICS_TOKEN",
   "CANTRIP_PUBLIC_ORIGIN",
   "CANTRIP_SECRET_ENCRYPTION_KEYS",
@@ -75,8 +73,6 @@ const forwardedSecretNames = [
 const deploymentOverrides = Object.freeze({
   CANTRIP_AUTH_MODE: "accounts",
   CANTRIP_BOOTSTRAP_MODE: "hosted",
-  CANTRIP_CODE_SURFACE_HOST: "127.0.0.1",
-  CANTRIP_CODE_SURFACE_PORT: "4311",
   CANTRIP_COOKIE_SAME_SITE: "none",
   CANTRIP_COOKIE_SECURE: "true",
   CANTRIP_COORDINATION_MAX_INSTANCES: "1",
@@ -191,9 +187,6 @@ export function buildProductionEnvironment(secrets, config) {
   if (secret("CANTRIP_API_DOMAIN") !== config.apiDomain) {
     throw new Error(`CANTRIP_API_DOMAIN must equal ${config.apiDomain}.`);
   }
-  if (secret("CANTRIP_CODE_DOMAIN") !== config.codeDomain) {
-    throw new Error(`CANTRIP_CODE_DOMAIN must equal ${config.codeDomain}.`);
-  }
 
   const adminEmail = secret("CANTRIP_ADMIN_EMAIL");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(adminEmail)) {
@@ -246,22 +239,10 @@ export function buildProductionEnvironment(secrets, config) {
     "CANTRIP_PUBLIC_ORIGIN",
     secret("CANTRIP_PUBLIC_ORIGIN"),
   );
-  const codeOrigin = normalizedOrigin(
-    "CANTRIP_CODE_SURFACE_ORIGIN",
-    secret("CANTRIP_CODE_SURFACE_ORIGIN"),
-  );
   if (apiOrigin !== `https://${config.apiDomain}`) {
     throw new Error(
       `CANTRIP_PUBLIC_ORIGIN must equal https://${config.apiDomain}.`,
     );
-  }
-  if (codeOrigin !== `https://${config.codeDomain}`) {
-    throw new Error(
-      `CANTRIP_CODE_SURFACE_ORIGIN must equal https://${config.codeDomain}.`,
-    );
-  }
-  if (apiOrigin === codeOrigin) {
-    throw new Error("The API and Code surfaces require separate origins.");
   }
 
   const environment = {};
@@ -299,7 +280,6 @@ export function validateDeploymentConfig(config) {
   }
   for (const name of [
     "apiDomain",
-    "codeDomain",
     "infisicalEnvironment",
     "platform",
     "sshHost",
@@ -310,10 +290,7 @@ export function validateDeploymentConfig(config) {
       throw new Error(`Deployment configuration is missing ${name}.`);
     }
   }
-  if (config.apiDomain === config.codeDomain) {
-    throw new Error("Deployment API and Code domains must differ.");
-  }
-  for (const name of ["apiDomain", "codeDomain"]) {
+  for (const name of ["apiDomain"]) {
     if (
       !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/u.test(config[name])
     ) {
@@ -345,7 +322,7 @@ async function loadDeploymentConfig() {
       .filter((line) => line.endsWith(" {") && !line.startsWith("servers"))
       .map((line) => line.slice(0, -2)),
   );
-  for (const domain of [config.apiDomain, config.codeDomain]) {
+  for (const domain of [config.apiDomain]) {
     if (!caddySites.has(domain)) {
       throw new Error(`The production Caddyfile is missing ${domain}.`);
     }
@@ -400,7 +377,7 @@ async function validateProductionSource(root, expectedCommit) {
 }
 
 async function validateProductionDns(config) {
-  for (const domain of [config.apiDomain, config.codeDomain]) {
+  for (const domain of [config.apiDomain]) {
     let addresses;
     try {
       addresses = await dns.resolve4(domain);
@@ -602,16 +579,10 @@ export async function deployProduction({
     );
     writeRemoteEnvironment(config, keyPath, environmentFile);
     uploadAndInstall(config, keyPath, commit, artifactPath);
-    await Promise.all([
-      waitForPublicEndpoint(
-        `https://${config.apiDomain}/readyz`,
-        "Cantrip API",
-      ),
-      waitForPublicEndpoint(
-        `https://${config.codeDomain}/health`,
-        "Cantrip Code surface",
-      ),
-    ]);
+    await waitForPublicEndpoint(
+      `https://${config.apiDomain}/readyz`,
+      "Cantrip API",
+    );
   } finally {
     await rm(temporaryDirectory, { force: true, recursive: true });
   }

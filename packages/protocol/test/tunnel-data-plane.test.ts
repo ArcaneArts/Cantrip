@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
-  CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES,
-  CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES,
   decodeTunnelDataPlaneFrame,
   encodeTunnelDataPlaneFrame,
-  isForwardableCodeAdapterWebSocketCloseCode,
+  isForwardableCodeWebSocketCloseCode,
   isTunnelDataPlaneFrame,
   TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES,
   TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES,
@@ -25,21 +22,11 @@ const base = {
 
 describe("generic tunnel data plane protocol", () => {
   it("rejects reserved WebSocket close codes before forwarding", () => {
-    expect(isForwardableCodeAdapterWebSocketCloseCode(1_000)).toBe(true);
-    expect(isForwardableCodeAdapterWebSocketCloseCode(1_006)).toBe(false);
-    expect(isForwardableCodeAdapterWebSocketCloseCode(3_001)).toBe(true);
-    expect(isForwardableCodeAdapterWebSocketCloseCode(4_999)).toBe(true);
-    expect(isForwardableCodeAdapterWebSocketCloseCode(5_000)).toBe(false);
-  });
-
-  it("fits a complete maximum-size Code WebSocket record in initial credit", () => {
-    expect(CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES).toBe(
-      CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES +
-        CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES,
-    );
-    expect(CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES).toBeLessThanOrEqual(
-      TUNNEL_DATA_PLANE_MAX_CREDIT_BYTES,
-    );
+    expect(isForwardableCodeWebSocketCloseCode(1_000)).toBe(true);
+    expect(isForwardableCodeWebSocketCloseCode(1_006)).toBe(false);
+    expect(isForwardableCodeWebSocketCloseCode(3_001)).toBe(true);
+    expect(isForwardableCodeWebSocketCloseCode(4_999)).toBe(true);
+    expect(isForwardableCodeWebSocketCloseCode(5_000)).toBe(false);
   });
 
   it("round-trips bounded binary data", () => {

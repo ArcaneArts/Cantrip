@@ -268,18 +268,18 @@ flowchart LR
 
 When a Code tab opens:
 
-1. The server resolves its project, worker, worktree, profile, and authorization.
+1. The server resolves the project, worker, worktree, profile, and authorization.
 2. The server asks the selected worker to open or resume an editor session.
-3. The worker verifies the embedded Cantrip Code distribution.
-4. The worker creates or reuses the generated `.code-workspace` file.
-5. Cantrip Code binds to a random worker-loopback port.
-6. The worker creates an authenticated outbound tunnel to the server.
-7. The server issues a short-lived attachment and, when eligible, a bound
-   local-direct capability.
-8. Tauri prefers its local forwarded URL after verifying the worker broker;
-   other clients and failed probes embed the isolated server relay URL.
-9. A direct health failure swaps the view back to the relay URL without losing
-   the durable Code tab or editor session.
+3. The worker verifies the embedded Cantrip Code distribution and creates or
+   reuses the generated `.code-workspace` file.
+4. The unlocked client creates a session-bound protected tunnel record and a
+   random data-plane key; the server persists only ciphertext and routing IDs.
+5. Cantrip Code binds to a random worker-loopback port only after the worker
+   opens and validates that protected record.
+6. Tauri loads a stable localhost forward. Remote web uses a same-origin
+   service-worker HTTP edge and iframe WebSocket shim.
+7. Direct and relayed routes carry identical endpoint-encrypted generic tunnel
+   frames; a route change does not change the Code URL or downgrade protection.
 
 The attachment URL carries the selected generated workspace path as an encoded
 remote-workspace selector. It is not an editor credential; the browser's first
@@ -288,18 +288,18 @@ the authorized worker-local tunnel boundary.
 
 The editor port and raw editor token are never exposed directly, and the server
 never assumes it can open an inbound connection to a worker. Each Code tab owns one logical,
-project-associated managed tunnel in the unified tunnel control plane. Each
-renderer view is an independently revocable server-relay attachment on that
-tunnel. HTTP bodies and length-delimited WebSocket messages travel through the
-same bounded generic stream identities, credit flow control, routing,
-disconnect cleanup, counters, and worker transport used by other tunnel
-adapters; Code-specific translation remains only at the two HTTP/WebSocket
-edges.
+project-associated protected tunnel in the unified tunnel control plane. Each
+renderer view creates an independently revocable generic attachment. HTTP and
+WebSocket bytes travel through the same bounded stream identities, endpoint
+AEAD, credit flow control, routing, disconnect cleanup, counters, and worker
+transport used by other protected tunnels. Code-specific authentication and
+header translation exists only at the trusted client and worker-local edges.
 
-The worker-local direct adapter performs the same base-path, header, CSP, and
-initial WebSocket-auth translation as the server adapter. Its capability is
-bound to the Code tab/session attachment and is revoked when that tab, session,
-worktree, account session, or worker connection ends.
+The worker-local endpoint performs base-path, header, CSP, and initial
+WebSocket-auth translation. The dedicated server Code surface and plaintext
+compatibility adapter no longer exist. The endpoint is bound to the protected
+Code session and is revoked when that tab, session, worktree, account session,
+or worker connection ends.
 
 This extends the worker-owned surface principles in
 [`adr/0002-worker-owned-remote-surfaces.md`](adr/0002-worker-owned-remote-surfaces.md),

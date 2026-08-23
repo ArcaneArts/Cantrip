@@ -328,11 +328,6 @@ Copy the packaged `.env.example` to `.env`. The startup scripts use Node's
 `--env-file-if-exists` support. Important variables are:
 
 - `CANTRIP_SERVER_HOST` and `CANTRIP_SERVER_PORT`: listening address.
-- `CANTRIP_CODE_SURFACE_HOST` and `CANTRIP_CODE_SURFACE_PORT`: the isolated
-  editor-surface listener. It must not share the application API origin.
-- `CANTRIP_CODE_SURFACE_ORIGIN`: the public HTTP(S) origin browsers use for
-  short-lived Code attachments. Hosted reverse proxies should route this
-  separate origin to the Code surface listener without exposing worker ports.
 - `CANTRIP_DATA_DIR`: PGlite data and durable server state.
 - `DATABASE_URL`: PostgreSQL connection replacing PGlite; required in hosted
   mode.

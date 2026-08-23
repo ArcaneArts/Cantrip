@@ -1431,7 +1431,7 @@ export const tunnels = pgTable(
     ),
     check(
       "tunnels_source_endpoint_check",
-      sql`(${table.sourceKind} = 'server-http' AND ${table.sourceAdapter} = 'code') OR (${table.sourceKind} IN ('desktop-loopback', 'worker-listener') AND ${table.sourceAdapter} IS NULL)`,
+      sql`${table.sourceKind} IN ('desktop-loopback', 'worker-listener') AND ${table.sourceAdapter} IS NULL`,
     ),
     check(
       "tunnels_destination_endpoint_check",
@@ -1443,7 +1443,7 @@ export const tunnels = pgTable(
     ),
     check(
       "tunnels_private_endpoint_content_check",
-      sql`(${table.sourceKind} <> 'worker-listener' AND ${table.destinationKind} <> 'worker-tcp') OR ${table.protectedRevision} > 0`,
+      sql`${table.protectedRevision} > 0`,
     ),
     check(
       "tunnels_active_connections_check",
@@ -1501,7 +1501,7 @@ export const tunnelAttachments = pgTable(
       .where(sql`${table.secretHash} IS NOT NULL`),
     check(
       "tunnel_attachments_kind_check",
-      sql`${table.kind} IN ('desktop-loopback', 'server-relay')`,
+      sql`${table.kind} = 'desktop-loopback'`,
     ),
     check(
       "tunnel_attachments_status_check",

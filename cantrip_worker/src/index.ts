@@ -131,7 +131,6 @@ import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverMcpConfigurations } from "./mcp/discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
 import { CodeSupervisor } from "./code/supervisor.js";
-import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import { CodeGraphRuntimeManager } from "./codegraph/runtime.js";
 import { CodeGraphProjectSupervisor } from "./codegraph/supervisor.js";
@@ -584,7 +583,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   await workerStartupPhase("start-code-supervisor", () => code.start(), {
     workerId: config.workerId,
   });
-  const codeTunnel = new CodeTunnelProxy(code);
   const codeDirectEndpoints = new CodeDirectEndpointManager(code);
   const cliBroker = new CantripCliBroker(config);
   const mcpBroker = new CantripMcpBroker(config);
@@ -599,18 +597,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   directBroker.setTunnelTargetResolver(async (binding, target) => {
     if (target.kind !== "adapter") {
       return target;
-    }
-    if (target.adapter === "code") {
-      if (
-        binding.resourceKind !== "code" ||
-        binding.resourceId !== target.resourceId
-      ) {
-        throw new Error("Direct Code target escaped its capability binding.");
-      }
-      return codeDirectEndpoints.prepare(
-        binding.capabilityId,
-        target.resourceId,
-      );
     }
     if (target.adapter !== "terminal") return target;
     if (
@@ -628,7 +614,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   directBroker.setCapabilityRevoker((capabilityId, reason) => {
     terminalDirectEndpoints.revoke(capabilityId, reason);
-    codeDirectEndpoints.revoke(capabilityId, reason);
   });
   await workerStartupPhase("start-direct-broker", () => directBroker.start(), {
     workerId: config.workerId,
@@ -761,7 +746,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const tunnelDestinations = new TunnelDestinationRouter(
     tunnelTcpDestination,
     projectShares,
-    codeTunnel,
     codeDirectEndpoints,
     workerEncryption,
     config.workerId,
@@ -2861,7 +2845,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "code.status":
         return code.status(command.sessionId);
       case "code.stop":
-        codeTunnel.closeSession(command.sessionId);
+        codeDirectEndpoints.closeSession(command.sessionId);
         return code.stop(command.sessionId);
       case "code.saveAll":
         return code.saveAll(command.sessionId);

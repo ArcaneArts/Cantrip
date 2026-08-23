@@ -55,7 +55,7 @@ describe("CodeDirectEndpointManager file-open control", () => {
     } as unknown as CodeSupervisor);
 
     try {
-      const endpoint = await manager.prepare("capability-1", "session-1");
+      const endpoint = await manager.prepareProtected("tunnel-1", "session-1");
       const response = await fetch(
         `http://${endpoint.host}:${endpoint.port}/code/_cantrip/open-file`,
         {
@@ -83,7 +83,7 @@ describe("CodeDirectEndpointManager file-open control", () => {
     } as unknown as CodeSupervisor);
 
     try {
-      const endpoint = await manager.prepare("capability-2", "session-2");
+      const endpoint = await manager.prepareProtected("tunnel-2", "session-2");
       const response = await fetch(
         `http://${endpoint.host}:${endpoint.port}/code/_cantrip/open-file`,
         { method: "OPTIONS" },
@@ -108,7 +108,7 @@ describe("CodeDirectEndpointManager presentation control", () => {
     } as unknown as CodeSupervisor);
 
     try {
-      const endpoint = await manager.prepare("capability-3", "session-3");
+      const endpoint = await manager.prepareProtected("tunnel-3", "session-3");
       const response = await fetch(
         `http://${endpoint.host}:${endpoint.port}/code/_cantrip/presentation`,
         {

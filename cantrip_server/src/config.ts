@@ -67,9 +67,6 @@ export interface ServerConfig {
   requireHttps?: boolean;
   schedulerLeaseTtlMs?: number;
   sessionTtlSeconds?: number;
-  codeSurfaceHost?: string;
-  codeSurfaceOrigin?: string;
-  codeSurfacePort?: number;
   coordinationMaxInstances?: number;
   coordinationPresenceTtlMs?: number;
   workerToken: string;
@@ -122,41 +119,6 @@ export interface RemoteSurfaceWebRtcConfig {
   negotiationTimeoutMs: number;
   stunUrls: string[];
   turn?: RemoteSurfaceTurnConfig;
-}
-
-export interface CodeSurfaceConfig {
-  host: string;
-  origin: string;
-  port: number;
-}
-
-export function resolveCodeSurfaceConfig(
-  config: ServerConfig,
-): CodeSurfaceConfig {
-  const port = config.codeSurfacePort ?? config.port + 1;
-  if (port > 65_535) {
-    throw new Error(
-      "CANTRIP_CODE_SURFACE_PORT is required when CANTRIP_SERVER_PORT is 65535.",
-    );
-  }
-  const host = config.codeSurfaceHost ?? config.host;
-  const origin = new URL(
-    config.codeSurfaceOrigin ??
-      `http://${host.includes(":") ? `[${host}]` : host}:${port}`,
-  );
-  if (
-    !["http:", "https:"].includes(origin.protocol) ||
-    origin.pathname !== "/" ||
-    origin.search ||
-    origin.hash ||
-    origin.username ||
-    origin.password
-  ) {
-    throw new Error(
-      "CANTRIP_CODE_SURFACE_ORIGIN must be an HTTP(S) origin without a path or credentials.",
-    );
-  }
-  return { host, origin: origin.origin, port };
 }
 
 function readBoundedInteger(
@@ -548,15 +510,6 @@ export function readServerConfig(): ServerConfig {
   const trustedProxies = readTrustedProxies(deploymentMode);
 
   const port = readPort(process.env.CANTRIP_SERVER_PORT);
-  const codeSurfacePort = readPort(
-    process.env.CANTRIP_CODE_SURFACE_PORT,
-    "CANTRIP_CODE_SURFACE_PORT",
-    port < 65_535 ? port + 1 : 0,
-  );
-  const codeSurfaceHost = process.env.CANTRIP_CODE_SURFACE_HOST ?? host;
-  const codeSurfaceOrigin =
-    process.env.CANTRIP_CODE_SURFACE_ORIGIN ??
-    `http://${codeSurfaceHost.includes(":") ? `[${codeSurfaceHost}]` : codeSurfaceHost}:${codeSurfacePort}`;
   const publicOriginInput = process.env.CANTRIP_PUBLIC_ORIGIN?.trim();
   if (deploymentMode === "hosted" && !publicOriginInput) {
     throw new Error("Hosted deployments require CANTRIP_PUBLIC_ORIGIN.");
@@ -568,16 +521,6 @@ export function readServerConfig(): ServerConfig {
         deploymentMode === "hosted",
       )
     : undefined;
-  const normalizedCodeSurfaceOrigin = normalizeHttpOrigin(
-    "CANTRIP_CODE_SURFACE_ORIGIN",
-    codeSurfaceOrigin,
-    deploymentMode === "hosted",
-  );
-  if (publicOrigin && normalizedCodeSurfaceOrigin === publicOrigin) {
-    throw new Error(
-      "CANTRIP_CODE_SURFACE_ORIGIN must be isolated from CANTRIP_PUBLIC_ORIGIN.",
-    );
-  }
 
   const config: ServerConfig = {
     adminEmail,
@@ -724,9 +667,6 @@ export function readServerConfig(): ServerConfig {
       300,
       365 * 24 * 60 * 60,
     ),
-    codeSurfaceHost,
-    codeSurfaceOrigin: normalizedCodeSurfaceOrigin,
-    codeSurfacePort,
     workerToken,
     remoteSurfaceWebRtc: readRemoteSurfaceWebRtcConfig(),
     requireHttps: deploymentMode === "hosted",
@@ -886,6 +826,5 @@ export function readServerConfig(): ServerConfig {
       config.workerUploadBytesPerMinute,
     );
   }
-  resolveCodeSurfaceConfig(config);
   return config;
 }

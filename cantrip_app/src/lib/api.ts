@@ -73,11 +73,9 @@ import {
   encryptedQueuedPromptSchema,
   chatReasoningStateSchema,
   chatReasoningUpdateSchema,
-  codeAttachmentSchema,
   codeProtectedAttachmentCreateSchema,
   codeProtectedAttachmentIntentSchema,
   codeProtectedAttachmentWireSchema,
-  codeOpenFileResultSchema,
   codeRuntimeStatusSchema,
   codeGraphActionAcknowledgementSchema,
   codeGraphProjectStatusSchema,
@@ -5429,17 +5427,6 @@ export async function deleteCodeTab(codeTabId: string) {
   });
 }
 
-export async function createCodeAttachment(
-  codeTabId: string,
-  appearance: CodeAppearance,
-) {
-  return codeAttachmentSchema.parse(
-    await post(`/api/code-tabs/${encodeURIComponent(codeTabId)}/attachments`, {
-      appearance,
-    }),
-  );
-}
-
 async function protectedCodeAttachmentInput(input: {
   appearance: CodeAppearance;
   sessionId: string;
@@ -5504,19 +5491,6 @@ export async function createProtectedCodeAttachment(
   return wire;
 }
 
-export async function createExplorerCodeAttachment(
-  explorerId: string,
-  relativePath: string,
-  appearance: CodeAppearance,
-) {
-  return codeAttachmentSchema.parse(
-    await post(
-      `/api/explorers/${encodeURIComponent(explorerId)}/code-attachments`,
-      { appearance, path: relativePath },
-    ),
-  );
-}
-
 export async function createProtectedExplorerCodeAttachment(
   explorerId: string,
   relativePath: string,
@@ -5542,18 +5516,6 @@ export async function createProtectedExplorerCodeAttachment(
   );
 }
 
-export async function openCodeAttachmentFile(
-  attachmentId: string,
-  relativePath: string,
-) {
-  return codeOpenFileResultSchema.parse(
-    await post(
-      `/api/code-attachments/${encodeURIComponent(attachmentId)}/open-file`,
-      { relativePath },
-    ),
-  );
-}
-
 export async function getCodeRuntime(codeTabId: string, sessionId: string) {
   return codeRuntimeStatusSchema.parse(
     await request(
@@ -5567,18 +5529,6 @@ export async function releaseCodeAttachment(attachmentId: string) {
     keepalive: true,
     method: "DELETE",
   });
-}
-
-export async function createDirectCodeAttachment(
-  attachmentId: string,
-  clientId: string,
-) {
-  return directTunnelTicketSchema.parse(
-    await post(
-      `/api/code-attachments/${encodeURIComponent(attachmentId)}/direct`,
-      projectShareDirectCreateSchema.parse({ clientId }),
-    ),
-  );
 }
 
 export async function saveAllCodeTab(codeTabId: string) {

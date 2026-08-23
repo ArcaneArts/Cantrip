@@ -51,9 +51,6 @@ services:
       CANTRIP_APP_ORIGINS: ${CANTRIP_APP_ORIGIN:?set application origin}
       CANTRIP_AUTH_MODE: accounts
       CANTRIP_BOOTSTRAP_MODE: hosted
-      CANTRIP_CODE_SURFACE_HOST: 0.0.0.0
-      CANTRIP_CODE_SURFACE_ORIGIN: https://${CANTRIP_CODE_DOMAIN:?set Code domain}
-      CANTRIP_CODE_SURFACE_PORT: 4311
       CANTRIP_DATA_DIR: /var/lib/cantrip
       CANTRIP_DEPLOYMENT_MODE: hosted
       CANTRIP_PUBLIC_ORIGIN: https://${CANTRIP_API_DOMAIN:?set API domain}
@@ -134,7 +131,6 @@ services:
         condition: service_healthy
     environment:
       CANTRIP_API_DOMAIN: ${CANTRIP_API_DOMAIN:?set API domain}
-      CANTRIP_CODE_DOMAIN: ${CANTRIP_CODE_DOMAIN:?set Code domain}
     ports:
       - "80:80"
       - "443:443"

@@ -76,7 +76,6 @@ import {
   chatTurnCreateSchema,
   codeRuntimeStatusSchema,
   codeTabSummarySchema,
-  codeAdapterRequestHeadSchema,
   decodeWorkerRequestEnvelope,
   decodeWorkerServerEnvelope,
   decodeRemoteSurfaceFrame,
@@ -5163,26 +5162,6 @@ describe("Cantrip protocol", () => {
         startedAt: null,
         lastActivityAt: null,
         lastError: null,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("validates Code adapter request metadata carried by generic streams", () => {
-    const head = {
-      protocolVersion: 1 as const,
-      kind: "websocket" as const,
-      sessionId: "session-1",
-      path: "/code/token/socket",
-      basePath: "/code/token",
-      headers: [] as Array<[string, string]>,
-    };
-    expect(codeAdapterRequestHeadSchema.parse(head)).toEqual(head);
-    expect(
-      codeAdapterRequestHeadSchema.safeParse({
-        ...head,
-        kind: "http",
-        method: "GET",
-        path: "//not-a-path",
       }).success,
     ).toBe(false);
   });

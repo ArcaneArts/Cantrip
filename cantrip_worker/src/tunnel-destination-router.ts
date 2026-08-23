@@ -1,7 +1,6 @@
 import type { TunnelDataPlaneFrameHeader } from "@cantrip/protocol";
 import type { TunnelDataProtectionConfiguration } from "@cantrip/protocol/tunnel-content";
 
-import type { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import type { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import type { ProjectShareManager } from "./project-share-manager.js";
 import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
@@ -30,7 +29,6 @@ export class TunnelDestinationRouter {
   constructor(
     private readonly tcp: TunnelTcpDestinationAdapter,
     private readonly projectShares: ProjectShareManager,
-    private readonly code: CodeTunnelProxy,
     private readonly codeEndpoints: CodeDirectEndpointManager,
     private readonly encryption: WorkerEncryptionService,
     private readonly workerId: string,
@@ -42,7 +40,6 @@ export class TunnelDestinationRouter {
       (header, payload) => this.#emitTcp(header, payload),
       waitForCapacity,
     );
-    this.code.setFrameEmitter(emit, waitForCapacity);
   }
 
   handleFrame(header: TunnelDataPlaneFrameHeader, payload: Uint8Array): void {
@@ -51,9 +48,6 @@ export class TunnelDestinationRouter {
         void this.#handleProtectedConnect(header, payload);
       } else if (header.target.kind === "tcp")
         this.tcp.handleFrame(header, payload);
-      else if (header.target.adapter === "code") {
-        this.code.handleFrame(header, payload);
-      }
       return;
     }
     const protection = this.#protections.get(connectionKey(header));
@@ -77,19 +71,16 @@ export class TunnelDestinationRouter {
       return;
     }
     this.tcp.handleFrame(header, payload);
-    this.code.handleFrame(header, payload);
   }
 
   disconnect(): void {
     this.#protections.clear();
     this.tcp.disconnect();
-    this.code.disconnect();
   }
 
   close(): void {
     this.#protections.clear();
     this.tcp.close();
-    this.code.close();
   }
 
   async #handleProtectedConnect(

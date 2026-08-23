@@ -712,11 +712,8 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     let node_name = if cfg!(windows) { "node.exe" } else { "node" };
     let node = resources.join(node_name);
     let server_reservation = reserve_local_listener("server")?;
-    let code_surface_reservation = reserve_local_listener("Code surface")?;
     let port = reserved_port(&server_reservation, "server")?;
-    let code_surface_port = reserved_port(&code_surface_reservation, "Code surface")?;
     drop(server_reservation);
-    drop(code_surface_reservation);
 
     let server_url = format!("http://127.0.0.1:{port}");
     let token_seed = SystemTime::now()
@@ -732,12 +729,6 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         &[
             ("CANTRIP_SERVER_HOST", "127.0.0.1".into()),
             ("CANTRIP_SERVER_PORT", port.to_string()),
-            ("CANTRIP_CODE_SURFACE_HOST", "127.0.0.1".into()),
-            ("CANTRIP_CODE_SURFACE_PORT", code_surface_port.to_string()),
-            (
-                "CANTRIP_CODE_SURFACE_ORIGIN",
-                format!("http://127.0.0.1:{code_surface_port}"),
-            ),
             ("CANTRIP_DEPLOYMENT_MODE", "local".into()),
             ("CANTRIP_BOOTSTRAP_MODE", "tauri".into()),
             ("CANTRIP_AUTH_MODE", "none".into()),

@@ -20,7 +20,6 @@ export interface OpenProjectShareInput {
 
 export interface ProjectShareTunnelBrokerOptions {
   maxLifetimeMs?: number;
-  surfaceOrigin?: string;
 }
 
 type ProjectShareTunnelChange = (input: {

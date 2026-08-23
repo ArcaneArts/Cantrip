@@ -13,7 +13,6 @@ import {
 
 const config = {
   apiDomain: "winterhold.cantrip.art",
-  codeDomain: "code.winterhold.cantrip.art",
   infisicalEnvironment: "prod",
   platform: "linux/amd64",
   sshHost: "134.209.161.233",
@@ -27,8 +26,6 @@ function productionSecrets() {
     ["CANTRIP_ADMIN_EMAIL", "magic@arcane.art"],
     ["CANTRIP_API_DOMAIN", "winterhold.cantrip.art"],
     ["CANTRIP_APP_ORIGINS", "https://tauri.localhost,tauri://localhost"],
-    ["CANTRIP_CODE_DOMAIN", "code.winterhold.cantrip.art"],
-    ["CANTRIP_CODE_SURFACE_ORIGIN", "https://code.winterhold.cantrip.art"],
     ["CANTRIP_DROPLET_SSH_PRIVATE_KEY", "private deployment material"],
     ["CANTRIP_METRICS_TOKEN", `${"m".repeat(64)}\n`],
     ["CANTRIP_PUBLIC_ORIGIN", "https://winterhold.cantrip.art"],
@@ -112,8 +109,8 @@ test("validates the committed production target", () => {
     /requires linux\/amd64/u,
   );
   assert.throws(
-    () => validateDeploymentConfig({ ...config, apiDomain: config.codeDomain }),
-    /must differ/u,
+    () => validateDeploymentConfig({ ...config, apiDomain: "not a domain" }),
+    /apiDomain is invalid/u,
   );
 });
 
