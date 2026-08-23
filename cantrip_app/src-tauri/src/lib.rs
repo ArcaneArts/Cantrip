@@ -102,7 +102,7 @@ pub(crate) fn shutdown_owned_runtime(app: &tauri::AppHandle) -> bool {
         app.state::<synthetic_build::SyntheticBuildCoordinator>()
             .cancel_active();
         app.state::<ProjectShareMounts>().cleanup();
-        app.state::<TunnelForwards>().cleanup();
+        app.state::<TunnelForwards>().cleanup(app);
         app.state::<desktop_worker::DesktopWorkers>().stop_all();
         let runtime = app.state::<ManagedRuntime>();
         if let Ok(mut children) = runtime.children.lock() {

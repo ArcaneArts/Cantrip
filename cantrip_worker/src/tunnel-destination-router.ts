@@ -3,6 +3,7 @@ import type { TunnelDataProtectionConfiguration } from "@cantrip/protocol/tunnel
 
 import type { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import type { ProjectShareManager } from "./project-share-manager.js";
+import { workerLogErrorIdentity, workerLogger } from "./logger.js";
 import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
 import {
   openTunnelDataFrame,
@@ -19,7 +20,12 @@ type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 
 interface ProtectedConnection {
   configuration: TunnelDataProtectionConfiguration;
+  diagnosticTraceId?: string;
   targetKind: "tcp";
+}
+
+interface TunnelDiagnosticContext {
+  diagnosticTraceId?: string;
 }
 
 export class TunnelDestinationRouter {
@@ -42,10 +48,14 @@ export class TunnelDestinationRouter {
     );
   }
 
-  handleFrame(header: TunnelDataPlaneFrameHeader, payload: Uint8Array): void {
+  handleFrame(
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
+    diagnostics: TunnelDiagnosticContext = {},
+  ): void {
     if (header.kind === "connect") {
       if (header.target.kind === "protected-tunnel") {
-        void this.#handleProtectedConnect(header, payload);
+        void this.#handleProtectedConnect(header, payload, diagnostics);
       } else if (header.target.kind === "tcp")
         this.tcp.handleFrame(header, payload);
       return;
@@ -59,7 +69,26 @@ export class TunnelDestinationRouter {
             { ...header, protection: undefined },
             openTunnelDataFrame(protection.configuration, header, payload),
           );
-        } catch {
+        } catch (error) {
+          workerLogger.rateLimited(
+            `tunnel-protected-frame-open-failed:${header.tunnelId}`,
+            "warn",
+            "Protected tunnel data frame rejected",
+            {
+              event: "tunnel.protected-frame.rejected",
+              subsystem: "tunnel",
+              operation: "open-protected-frame",
+              reasonCode: "data-open-failed",
+              status: "rejected",
+              tunnelId: header.tunnelId,
+              attachmentId: header.attachmentId,
+              connectionId: header.connectionId,
+              ...(protection.diagnosticTraceId
+                ? { diagnosticTraceId: protection.diagnosticTraceId }
+                : {}),
+              ...workerLogErrorIdentity(error),
+            },
+          );
           this.tcp.failProtectedFrame(header);
         }
       } else {
@@ -86,7 +115,24 @@ export class TunnelDestinationRouter {
   async #handleProtectedConnect(
     header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
     payload: Uint8Array,
+    diagnostics: TunnelDiagnosticContext,
   ): Promise<void> {
+    let reasonCode = "invalid-target-binding";
+    let sessionId: string | undefined;
+    const targetKind =
+      header.target.kind === "protected-tunnel"
+        ? header.target.targetKind
+        : "unknown";
+    const context = () => ({
+      tunnelId: header.tunnelId,
+      attachmentId: header.attachmentId,
+      connectionId: header.connectionId,
+      mode: targetKind,
+      ...(sessionId ? { sessionId } : {}),
+      ...(diagnostics.diagnosticTraceId
+        ? { diagnosticTraceId: diagnostics.diagnosticTraceId }
+        : {}),
+    });
     try {
       if (
         header.target.kind !== "protected-tunnel" ||
@@ -94,6 +140,7 @@ export class TunnelDestinationRouter {
       ) {
         throw new Error("Protected tunnel target escaped its record binding.");
       }
+      reasonCode = "protected-record-open-failed";
       const content = await openWorkerTunnelContentRecord({
         record: header.target.protectedRecord,
         serverId: this.encryption.serverIdentity(),
@@ -101,15 +148,22 @@ export class TunnelDestinationRouter {
         tunnelId: header.tunnelId,
         workerId: this.workerId,
       });
+      reasonCode = "worker-id-mismatch";
       if (content.destination.workerId !== this.workerId) {
         throw new Error("Protected tunnel target belongs to another endpoint.");
       }
+      if (content.destination.kind === "worker-code") {
+        sessionId = content.destination.sessionId;
+      }
+      reasonCode = "target-kind-mismatch";
       if (
         content.destination.kind === "worker-tcp" &&
         header.target.targetKind === "tcp"
       ) {
+        reasonCode = "tcp-target-handoff-failed";
         this.#protections.set(connectionKey(header), {
           configuration: content.dataProtection,
+          diagnosticTraceId: diagnostics.diagnosticTraceId,
           targetKind: "tcp",
         });
         this.tcp.handleFrame(
@@ -129,15 +183,37 @@ export class TunnelDestinationRouter {
         content.destination.kind === "worker-code" &&
         header.target.targetKind === "code"
       ) {
+        reasonCode = "code-endpoint-preparation-failed";
         const endpoint = await this.codeEndpoints.prepareProtected(
           header.tunnelId,
           content.destination.sessionId,
+          {
+            attachmentId: header.attachmentId,
+            connectionId: header.connectionId,
+            diagnosticTraceId: diagnostics.diagnosticTraceId,
+          },
         );
+        reasonCode = "code-endpoint-handoff-failed";
         this.#protections.set(connectionKey(header), {
           configuration: content.dataProtection,
+          diagnosticTraceId: diagnostics.diagnosticTraceId,
           targetKind: "tcp",
         });
-        this.tcp.handleFrame({ ...header, target: endpoint }, payload);
+        this.tcp.handleFrame(
+          { ...header, target: endpoint },
+          payload,
+          (remotePort) =>
+            this.codeEndpoints.bindProtectedConnection(
+              header.tunnelId,
+              endpoint.port,
+              remotePort,
+              {
+                attachmentId: header.attachmentId,
+                connectionId: header.connectionId,
+                diagnosticTraceId: diagnostics.diagnosticTraceId,
+              },
+            ),
+        );
         return;
       }
       if (
@@ -145,6 +221,7 @@ export class TunnelDestinationRouter {
         header.target.targetKind === "project-share" &&
         content.destination.resourceId === header.target.recordId
       ) {
+        reasonCode = "project-share-preparation-failed";
         const share = await this.projectShares.open({
           password: content.destination.password,
           publicBasePath: content.destination.publicBasePath,
@@ -154,8 +231,10 @@ export class TunnelDestinationRouter {
           shareId: content.destination.resourceId,
           username: content.destination.username,
         });
+        reasonCode = "project-share-handoff-failed";
         this.#protections.set(connectionKey(header), {
           configuration: content.dataProtection,
+          diagnosticTraceId: diagnostics.diagnosticTraceId,
           targetKind: "tcp",
         });
         this.tcp.handleFrame(
@@ -172,8 +251,22 @@ export class TunnelDestinationRouter {
         return;
       }
       throw new Error("Protected tunnel target belongs to another endpoint.");
-    } catch {
+    } catch (error) {
       this.#protections.delete(connectionKey(header));
+      workerLogger.rateLimited(
+        `tunnel-protected-target-rejected:${diagnostics.diagnosticTraceId ?? "untraced"}:${header.tunnelId}:${reasonCode}`,
+        "warn",
+        "Protected tunnel target rejected",
+        {
+          event: "tunnel.protected-target.rejected",
+          subsystem: "tunnel",
+          operation: "open-protected-target",
+          reasonCode,
+          status: "rejected",
+          ...context(),
+          ...workerLogErrorIdentity(error),
+        },
+      );
       this.#emit?.(
         {
           protocolVersion: header.protocolVersion,
@@ -212,7 +305,26 @@ export class TunnelDestinationRouter {
         );
         emittedHeader = sealed.header;
         emittedPayload = sealed.payload;
-      } catch {
+      } catch (error) {
+        workerLogger.rateLimited(
+          `tunnel-protected-frame-seal-failed:${header.tunnelId}`,
+          "warn",
+          "Protected tunnel response frame failed",
+          {
+            event: "tunnel.protected-frame.failed",
+            subsystem: "tunnel",
+            operation: "seal-protected-frame",
+            reasonCode: "data-seal-failed",
+            status: "failed",
+            tunnelId: header.tunnelId,
+            attachmentId: header.attachmentId,
+            connectionId: header.connectionId,
+            ...(connection.diagnosticTraceId
+              ? { diagnosticTraceId: connection.diagnosticTraceId }
+              : {}),
+            ...workerLogErrorIdentity(error),
+          },
+        );
         return false;
       }
     }

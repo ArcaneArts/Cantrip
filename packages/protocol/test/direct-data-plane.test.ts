@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   directAttachmentTicketSchema,
+  directCapabilityPrepareCommandSchema,
   directRouteStateSchema,
+  directTunnelPrepareRequestSchema,
   workerHeartbeatSchema,
 } from "../src/index.js";
 
@@ -60,5 +62,51 @@ describe("direct data plane protocol", () => {
       "degraded",
       "failed",
     ]);
+  });
+
+  it("accepts only an optional UUID diagnostic trace on direct tunnel preparation", () => {
+    const diagnosticTraceId = crypto.randomUUID();
+    expect(directTunnelPrepareRequestSchema.parse(undefined)).toEqual({});
+    expect(directTunnelPrepareRequestSchema.parse({})).toEqual({});
+    expect(
+      directTunnelPrepareRequestSchema.parse({ diagnosticTraceId }),
+    ).toEqual({ diagnosticTraceId });
+    expect(
+      directTunnelPrepareRequestSchema.safeParse({
+        diagnosticTraceId: "not-a-uuid",
+      }).success,
+    ).toBe(false);
+    expect(
+      directTunnelPrepareRequestSchema.safeParse({
+        diagnosticTraceId,
+        capabilityId: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps the diagnostic trace at the top level of worker prepare commands", () => {
+    const diagnosticTraceId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 10_000).toISOString();
+    const command = directCapabilityPrepareCommandSchema.parse({
+      type: "direct.capability.prepare",
+      diagnosticTraceId,
+      binding: {
+        capabilityId: crypto.randomUUID(),
+        ownerId: "owner-1",
+        authSessionId: "session-1",
+        workerId: "worker-1",
+        resourceKind: "tunnel",
+        resourceId: "tunnel-1",
+        attachmentId: "attachment-1",
+        channels: ["tunnel-data"],
+        expiresAt,
+        leaseExpiresAt: expiresAt,
+      },
+      secret: "c".repeat(43),
+      tunnelRoute: null,
+    });
+
+    expect(command.diagnosticTraceId).toBe(diagnosticTraceId);
+    expect(command.binding).not.toHaveProperty("diagnosticTraceId");
   });
 });

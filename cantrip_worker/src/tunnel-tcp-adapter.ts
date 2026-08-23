@@ -13,6 +13,7 @@ type FrameEmitter = (
   payload: Uint8Array,
 ) => boolean;
 type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
+type ConnectionObserver = (localPort: number) => void;
 
 interface TcpStream {
   destinationToSourceCredit: number;
@@ -77,9 +78,13 @@ export class TunnelTcpDestinationAdapter {
     this.#waitForCapacity = waitForCapacity;
   }
 
-  handleFrame(header: TunnelDataPlaneFrameHeader, payload: Uint8Array): void {
+  handleFrame(
+    header: TunnelDataPlaneFrameHeader,
+    payload: Uint8Array,
+    onConnected?: ConnectionObserver,
+  ): void {
     if (header.kind === "connect") {
-      this.#connect(header);
+      this.#connect(header, onConnected);
       return;
     }
     const stream = this.#streams.get(key(header));
@@ -172,6 +177,7 @@ export class TunnelTcpDestinationAdapter {
 
   #connect(
     header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
+    onConnected?: ConnectionObserver,
   ): void {
     const streamKey = key(header);
     if (this.#streams.has(streamKey)) {
@@ -223,6 +229,13 @@ export class TunnelTcpDestinationAdapter {
     socket.once("connect", () => {
       if (!this.#streams.has(streamKey)) return;
       socket.setTimeout(0);
+      if (socket.localPort !== undefined) {
+        try {
+          onConnected?.(socket.localPort);
+        } catch {
+          // Diagnostic correlation must not affect tunnel connectivity.
+        }
+      }
       workerLogger.event("info", "Tunnel destination connected", {
         event: "tunnel.destination.connected",
         subsystem: "tunnel",

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::direct_probe::{DirectBrokerAdvertisement, DirectCapabilityBinding};
 
@@ -29,6 +29,7 @@ pub struct StartTunnelForwardRequest {
     pub attachment_id: String,
     pub client_id: String,
     pub data_protection: Option<TunnelDataProtectionRequest>,
+    pub diagnostic_trace_id: Option<String>,
     pub direct: Option<DirectTunnelRequest>,
     pub expires_at: String,
     pub preferred_local_port: Option<u16>,
@@ -58,6 +59,7 @@ pub struct RelayTunnelRequest {
 #[serde(rename_all = "camelCase")]
 pub struct TunnelForwardSummary {
     pub attachment_id: String,
+    pub diagnostic_trace_id: Option<String>,
     pub expires_at: String,
     pub local_host: &'static str,
     pub local_port: u16,
@@ -70,6 +72,24 @@ pub struct TunnelForwardSummary {
     pub bytes_to_local: u64,
     pub connections_closed: u64,
     pub connections_opened: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TunnelForwardTerminalSnapshot {
+    pub attachment_id: String,
+    pub tunnel_id: String,
+    pub direct_capability_id: Option<String>,
+    pub bytes_from_local: u64,
+    pub bytes_to_local: u64,
+    pub connections_closed: u64,
+    pub connections_opened: u64,
+    pub destination_accepted_count: u64,
+    pub destination_rejected_count: u64,
+    pub open_queued_count: u64,
+    pub open_sent_count: u64,
+    pub route_disconnect_count: u64,
+    pub route_selection_count: u64,
 }
 
 pub struct TunnelForwards {
@@ -91,14 +111,12 @@ impl Default for TunnelForwards {
 }
 
 impl TunnelForwards {
-    pub fn cleanup(&self) {
+    pub fn cleanup(&self, app: &AppHandle) {
         #[cfg(desktop)]
         if let Ok(mut forwards) = self.forwards.lock() {
             for (_, mut forward) in forwards.drain() {
-                if let Some(stop) = forward.stop.take() {
-                    let _ = stop.send(());
-                }
-                forward.task.abort();
+                desktop::abort_forward(&mut forward);
+                desktop::log_forward_stopping(app, &forward, "runtime-shutdown");
             }
         }
     }
@@ -106,28 +124,30 @@ impl TunnelForwards {
 
 #[tauri::command]
 pub async fn start_tunnel_forward(
+    app: AppHandle,
     state: State<'_, TunnelForwards>,
     request: StartTunnelForwardRequest,
 ) -> Result<TunnelForwardSummary, String> {
     #[cfg(desktop)]
-    return desktop::start(&state, request).await;
+    return desktop::start(&app, &state, request).await;
     #[cfg(mobile)]
     {
-        let _ = (state, request);
+        let _ = (app, state, request);
         Err("Local tunnel attachments are only available in the desktop app.".into())
     }
 }
 
 #[tauri::command]
-pub fn stop_tunnel_forward(
+pub async fn stop_tunnel_forward(
+    app: AppHandle,
     state: State<'_, TunnelForwards>,
     tunnel_id: String,
-) -> Result<bool, String> {
+) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
     #[cfg(desktop)]
-    return desktop::stop(&state, &tunnel_id);
+    return desktop::stop(&app, &state, &tunnel_id, "requested").await;
     #[cfg(mobile)]
     {
-        let _ = (state, tunnel_id);
+        let _ = (app, state, tunnel_id);
         Err("Local tunnel attachments are only available in the desktop app.".into())
     }
 }
@@ -165,7 +185,7 @@ pub fn refresh_tunnel_forward_relay(
 mod desktop {
     use super::{
         RelayTunnelRequest, StartTunnelForwardRequest, TunnelDataProtectionRequest,
-        TunnelForwardSummary, TunnelForwards,
+        TunnelForwardSummary, TunnelForwardTerminalSnapshot, TunnelForwards,
     };
     use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
     use aes_gcm::{Aes256Gcm, Nonce};
@@ -173,19 +193,20 @@ mod desktop {
     use base64::Engine;
     use futures_util::{SinkExt, StreamExt};
     use serde::{Deserialize, Serialize};
+    use serde_json::{json, Value};
     use std::cmp::min;
     use std::collections::HashMap;
     use std::convert::TryFrom;
     use std::net::{Ipv4Addr, SocketAddr};
     use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::async_runtime::JoinHandle as TauriJoinHandle;
-    use tauri::State;
+    use tauri::{AppHandle, Manager, State};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
-    use tokio::sync::{mpsc, oneshot};
-    use tokio::task::JoinHandle;
+    use tokio::sync::{mpsc, oneshot, Notify};
+    use tokio::task::{AbortHandle, JoinHandle};
     use tokio::time::{interval, sleep, timeout};
     use tokio_tungstenite::connect_async;
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -196,6 +217,7 @@ mod desktop {
     use zeroize::Zeroizing;
 
     use crate::direct_probe::{connect_verified, DirectProbeRequest};
+    use crate::local_logs::LocalServiceLogs;
 
     const MAGIC: [u8; 4] = [0x43, 0x54, 0x54, 0x4e];
     const MAX_HEADER_BYTES: usize = 8 * 1024;
@@ -221,14 +243,76 @@ mod desktop {
         bytes_to_local: AtomicU64,
         connections_closed: AtomicU64,
         connections_opened: AtomicU64,
+        destination_accepted: AtomicU64,
+        destination_rejected: AtomicU64,
+        opens_queued: AtomicU64,
+        opens_sent: AtomicU64,
+        route_disconnects: AtomicU64,
+        route_selections: AtomicU64,
         route_state: AtomicU8,
+        connections_drained: Notify,
+        connection_tasks: Mutex<HashMap<String, AbortHandle>>,
+        first_diagnostic_connection_id: Mutex<Option<String>>,
     }
 
     impl ForwardCounters {
-        fn add(counter: &AtomicU64, value: u64) {
-            let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                Some(current.saturating_add(value))
-            });
+        fn add(counter: &AtomicU64, value: u64) -> u64 {
+            counter
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                    Some(current.saturating_add(value))
+                })
+                .unwrap_or_else(|current| current)
+        }
+
+        fn register_connection(&self, connection_id: &str) -> bool {
+            if Self::add(&self.connections_opened, 1) != 0 {
+                return false;
+            }
+            if let Ok(mut first) = self.first_diagnostic_connection_id.lock() {
+                *first = Some(connection_id.to_string());
+            }
+            true
+        }
+
+        fn record_destination_rejection(&self) -> bool {
+            Self::add(&self.destination_rejected, 1) == 0
+        }
+
+        fn record_route_disconnect(&self) -> bool {
+            Self::add(&self.route_disconnects, 1) == 0
+        }
+
+        fn record_route_selection(&self) -> bool {
+            Self::add(&self.route_selections, 1) == 0
+        }
+
+        fn is_first_diagnostic_connection(&self, connection_id: &str) -> bool {
+            self.first_diagnostic_connection_id
+                .lock()
+                .ok()
+                .and_then(|first| first.clone())
+                .as_deref()
+                == Some(connection_id)
+        }
+
+        fn track_connection_task(&self, connection_id: &str, abort_handle: AbortHandle) {
+            if let Ok(mut tasks) = self.connection_tasks.lock() {
+                tasks.insert(connection_id.to_string(), abort_handle);
+            }
+        }
+
+        fn untrack_connection_task(&self, connection_id: &str) {
+            if let Ok(mut tasks) = self.connection_tasks.lock() {
+                tasks.remove(connection_id);
+            }
+        }
+
+        fn abort_connection_tasks(&self) {
+            if let Ok(mut tasks) = self.connection_tasks.lock() {
+                for (_, task) in tasks.drain() {
+                    task.abort();
+                }
+            }
         }
 
         fn apply(&self, summary: &mut TunnelForwardSummary) {
@@ -243,13 +327,154 @@ mod desktop {
                 _ => summary.route_state,
             };
         }
+
+        async fn wait_for_connections_drained(&self) {
+            loop {
+                let drained = self.connections_drained.notified();
+                if self.connections_closed.load(Ordering::Acquire)
+                    >= self.connections_opened.load(Ordering::Acquire)
+                {
+                    return;
+                }
+                drained.await;
+            }
+        }
+
+        fn terminal_snapshot(
+            &self,
+            summary: &TunnelForwardSummary,
+        ) -> TunnelForwardTerminalSnapshot {
+            TunnelForwardTerminalSnapshot {
+                attachment_id: summary.attachment_id.clone(),
+                tunnel_id: summary.tunnel_id.clone(),
+                direct_capability_id: summary.direct_capability_id.clone(),
+                bytes_from_local: self.bytes_from_local.load(Ordering::Acquire),
+                bytes_to_local: self.bytes_to_local.load(Ordering::Acquire),
+                connections_closed: self.connections_closed.load(Ordering::Acquire),
+                connections_opened: self.connections_opened.load(Ordering::Acquire),
+                destination_accepted_count: self.destination_accepted.load(Ordering::Acquire),
+                destination_rejected_count: self.destination_rejected.load(Ordering::Acquire),
+                open_queued_count: self.opens_queued.load(Ordering::Acquire),
+                open_sent_count: self.opens_sent.load(Ordering::Acquire),
+                route_disconnect_count: self.route_disconnects.load(Ordering::Acquire),
+                route_selection_count: self.route_selections.load(Ordering::Acquire),
+            }
+        }
     }
 
-    struct OpenConnection(Arc<ForwardCounters>);
+    struct OpenConnection {
+        app: Option<AppHandle>,
+        attachment_id: String,
+        close_reason: &'static str,
+        connection_id: String,
+        counters: Arc<ForwardCounters>,
+        diagnostic_trace_id: Option<String>,
+        emit_lifecycle_diagnostics: bool,
+        tunnel_id: String,
+        wire_reason_code: Option<String>,
+    }
+
+    impl OpenConnection {
+        fn new(
+            app: Option<AppHandle>,
+            attachment_id: String,
+            connection_id: String,
+            counters: Arc<ForwardCounters>,
+            diagnostic_trace_id: Option<String>,
+            emit_lifecycle_diagnostics: bool,
+            tunnel_id: String,
+        ) -> Self {
+            Self {
+                app,
+                attachment_id,
+                close_reason: "task-aborted",
+                connection_id,
+                counters,
+                diagnostic_trace_id,
+                emit_lifecycle_diagnostics,
+                tunnel_id,
+                wire_reason_code: None,
+            }
+        }
+
+        fn set_close_reason(&mut self, reason: &'static str) {
+            self.close_reason = reason;
+        }
+
+        fn set_wire_reason_code(&mut self, code: &str) {
+            self.wire_reason_code = Some(safe_reason_code(code));
+        }
+    }
 
     impl Drop for OpenConnection {
         fn drop(&mut self) {
-            ForwardCounters::add(&self.0.connections_closed, 1);
+            ForwardCounters::add(&self.counters.connections_closed, 1);
+            self.counters.connections_drained.notify_one();
+            if self.emit_lifecycle_diagnostics {
+                diagnostic_event(
+                    self.app.as_ref(),
+                    "info",
+                    "Desktop tunnel connection closed",
+                    json!({
+                        "attachmentId": self.attachment_id,
+                        "connectionId": self.connection_id,
+                        "diagnosticTraceId": self.diagnostic_trace_id,
+                        "event": "desktop.tunnel.connection.closed",
+                        "operation": "forward-connection",
+                        "reasonCode": self.close_reason,
+                        "status": "completed",
+                        "subsystem": "tunnel-forward",
+                        "tunnelId": self.tunnel_id,
+                        "wireReasonCode": self.wire_reason_code,
+                    }),
+                );
+            }
+        }
+    }
+
+    fn diagnostic_event(
+        app: Option<&AppHandle>,
+        level: &str,
+        message: &'static str,
+        mut context: Value,
+    ) {
+        strip_capability_material(&mut context);
+        if context
+            .get("diagnosticTraceId")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            return;
+        }
+        let Some(app) = app else { return };
+        app.state::<LocalServiceLogs>()
+            .runtime_event(level, message, Some(context));
+    }
+
+    fn strip_capability_material(context: &mut Value) {
+        if let Some(context) = context.as_object_mut() {
+            context.remove("capabilityId");
+            context.remove("directCapabilityId");
+        }
+    }
+
+    fn safe_reason_code(value: &str) -> String {
+        match value {
+            "target-unavailable"
+            | "target-rejected"
+            | "limit-exceeded"
+            | "unauthorized"
+            | "protocol-error"
+            | "congested"
+            | "normal"
+            | "revoked"
+            | "endpoint-disconnected"
+            | "idle-timeout"
+            | "lifetime-expired"
+            | "bandwidth-limit"
+            | "connection-failed"
+            | "io-error" => value.to_string(),
+            _ => "unknown-code".into(),
         }
     }
 
@@ -431,19 +656,55 @@ mod desktop {
     type InboundFrame = (FrameHeader, Vec<u8>);
 
     pub async fn start(
+        app: &AppHandle,
         state: &State<'_, TunnelForwards>,
         request: StartTunnelForwardRequest,
     ) -> Result<TunnelForwardSummary, String> {
         validate_identifiers(&request)?;
         let relay_fallback_available = request.relay.is_some();
-        stop(state, &request.tunnel_id)?;
-        let listener = bind_listener(request.preferred_local_port).await?;
+        let _ = stop(app, state, &request.tunnel_id, "replaced").await?;
+        let listener = match bind_listener(request.preferred_local_port).await {
+            Ok(listener) => listener,
+            Err(error) => {
+                diagnostic_event(
+                    Some(app),
+                    "warn",
+                    "Desktop tunnel listener failed to bind",
+                    json!({
+                        "attachmentId": request.attachment_id,
+                        "diagnosticTraceId": request.diagnostic_trace_id,
+                        "event": "desktop.tunnel.listener.bind-failed",
+                        "operation": "bind-listener",
+                        "reasonCode": "bind-failed",
+                        "status": "failed",
+                        "subsystem": "tunnel-forward",
+                        "tunnelId": request.tunnel_id,
+                    }),
+                );
+                return Err(error);
+            }
+        };
+        diagnostic_event(
+            Some(app),
+            "info",
+            "Desktop tunnel listener bound",
+            json!({
+                "attachmentId": request.attachment_id,
+                "diagnosticTraceId": request.diagnostic_trace_id,
+                "event": "desktop.tunnel.listener.bound",
+                "operation": "bind-listener",
+                "status": "ready",
+                "subsystem": "tunnel-forward",
+                "tunnelId": request.tunnel_id,
+            }),
+        );
         let local_port = listener
             .local_addr()
             .map_err(|error| format!("Could not inspect the local tunnel listener: {error}"))?
             .port();
         let summary_identity = (
             request.attachment_id.clone(),
+            request.diagnostic_trace_id.clone(),
             request.expires_at.clone(),
             request.tunnel_id.clone(),
         );
@@ -453,6 +714,7 @@ mod desktop {
         let (ready_sender, ready_receiver) = oneshot::channel();
         let (relay_refresh_sender, relay_refresh_receiver) = mpsc::channel(1);
         let task = tauri::async_runtime::spawn(run_forward(
+            app.clone(),
             listener,
             request,
             counters.clone(),
@@ -477,14 +739,15 @@ mod desktop {
         };
         let summary = TunnelForwardSummary {
             attachment_id: summary_identity.0,
-            expires_at: summary_identity.1,
+            diagnostic_trace_id: summary_identity.1,
+            expires_at: summary_identity.2,
             local_host: "127.0.0.1",
             local_port,
             route_state: startup.state,
             relay_fallback_available,
             direct_capability_id: startup.direct_capability_id,
             direct_fallback_reason: startup.direct_fallback_reason,
-            tunnel_id: summary_identity.2,
+            tunnel_id: summary_identity.3,
             bytes_from_local: 0,
             bytes_to_local: 0,
             connections_closed: 0,
@@ -529,19 +792,123 @@ mod desktop {
         Ok(true)
     }
 
-    pub fn stop(state: &State<'_, TunnelForwards>, tunnel_id: &str) -> Result<bool, String> {
-        let mut forwards = state
-            .forwards
-            .lock()
-            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-        let Some(mut forward) = forwards.remove(tunnel_id) else {
-            return Ok(false);
+    pub async fn stop(
+        app: &AppHandle,
+        state: &State<'_, TunnelForwards>,
+        tunnel_id: &str,
+        reason: &'static str,
+    ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
+        let forward = {
+            let mut forwards = state
+                .forwards
+                .lock()
+                .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+            forwards.remove(tunnel_id)
         };
+        let Some(mut forward) = forward else {
+            return Ok(None);
+        };
+        abort_forward(&mut forward);
+        log_forward_stopping(app, &forward, reason);
+        let _ = (&mut forward.task).await;
+        forward.counters.wait_for_connections_drained().await;
+        let snapshot = forward.counters.terminal_snapshot(&forward.summary);
+        log_forward_snapshot(app, &forward, &snapshot, reason);
+        log_forward_stopped(app, &forward, reason);
+        Ok(Some(snapshot))
+    }
+
+    pub(super) fn abort_forward(forward: &mut ForwardHandle) {
         if let Some(stop) = forward.stop.take() {
             let _ = stop.send(());
         }
         forward.task.abort();
-        Ok(true)
+        forward.counters.abort_connection_tasks();
+    }
+
+    pub(super) fn log_forward_stopping(
+        app: &AppHandle,
+        forward: &ForwardHandle,
+        reason: &'static str,
+    ) {
+        diagnostic_event(
+            Some(app),
+            "info",
+            "Desktop tunnel forward stopping",
+            json!({
+                "attachmentId": forward.summary.attachment_id,
+                "diagnosticTraceId": forward.summary.diagnostic_trace_id,
+                "event": "desktop.tunnel.forward.stopping",
+                "operation": "stop-forward",
+                "reasonCode": reason,
+                "status": "started",
+                "subsystem": "tunnel-forward",
+                "tunnelId": forward.summary.tunnel_id,
+            }),
+        );
+    }
+
+    fn log_forward_snapshot(
+        app: &AppHandle,
+        forward: &ForwardHandle,
+        snapshot: &TunnelForwardTerminalSnapshot,
+        reason: &'static str,
+    ) {
+        diagnostic_event(
+            Some(app),
+            "info",
+            "Desktop tunnel terminal snapshot captured",
+            json!({
+                "attachmentId": forward.summary.attachment_id,
+                "diagnosticTraceId": forward.summary.diagnostic_trace_id,
+                "event": "desktop.tunnel.forward.snapshot",
+                "operation": "stop-forward",
+                "reasonCode": reason,
+                "routeState": match forward.counters.route_state.load(Ordering::Relaxed) {
+                    1 => "local-direct",
+                    2 => "relayed",
+                    3 => "degraded",
+                    _ => forward.summary.route_state,
+                },
+                "status": "completed",
+                "subsystem": "tunnel-forward",
+                "tunnelId": forward.summary.tunnel_id,
+                "counts": {
+                    "bytesFromLocal": snapshot.bytes_from_local,
+                    "bytesToLocal": snapshot.bytes_to_local,
+                    "connectionsClosed": snapshot.connections_closed,
+                    "connectionsOpened": snapshot.connections_opened,
+                    "destinationAcceptedCount": snapshot.destination_accepted_count,
+                    "destinationRejectedCount": snapshot.destination_rejected_count,
+                    "openQueuedCount": snapshot.open_queued_count,
+                    "openSentCount": snapshot.open_sent_count,
+                    "routeDisconnectCount": snapshot.route_disconnect_count,
+                    "routeSelectionCount": snapshot.route_selection_count,
+                },
+            }),
+        );
+    }
+
+    pub(super) fn log_forward_stopped(
+        app: &AppHandle,
+        forward: &ForwardHandle,
+        reason: &'static str,
+    ) {
+        diagnostic_event(
+            Some(app),
+            "info",
+            "Desktop tunnel forward stopped",
+            json!({
+                "attachmentId": forward.summary.attachment_id,
+                "diagnosticTraceId": forward.summary.diagnostic_trace_id,
+                "event": "desktop.tunnel.forward.stopped",
+                "operation": "stop-forward",
+                "reasonCode": reason,
+                "status": "completed",
+                "subsystem": "tunnel-forward",
+                "tunnelId": forward.summary.tunnel_id,
+            }),
+        );
     }
 
     pub fn list(state: &State<'_, TunnelForwards>) -> Result<Vec<TunnelForwardSummary>, String> {
@@ -571,6 +938,13 @@ mod desktop {
             if value.is_empty() || value.len() > 200 || value.chars().any(char::is_control) {
                 return Err(format!("The {label} identity is invalid."));
             }
+        }
+        if request
+            .diagnostic_trace_id
+            .as_deref()
+            .is_some_and(|trace_id| Uuid::parse_str(trace_id).is_err())
+        {
+            return Err("The tunnel diagnostic trace identity is invalid.".into());
         }
         if let Some(relay) = &request.relay {
             validate_relay(relay)?;
@@ -784,6 +1158,7 @@ mod desktop {
     }
 
     async fn run_forward(
+        app: AppHandle,
         listener: TcpListener,
         mut request: StartTunnelForwardRequest,
         counters: Arc<ForwardCounters>,
@@ -791,6 +1166,7 @@ mod desktop {
         ready: oneshot::Sender<Result<StartupRoute, String>>,
         mut relay_refreshes: mpsc::Receiver<RelayRefresh>,
     ) {
+        let diagnostic_trace_id = request.diagnostic_trace_id.clone();
         let protection = match data_protection(request.data_protection.take()) {
             Ok(protection) => protection,
             Err(error) => {
@@ -898,11 +1274,30 @@ mod desktop {
                 },
                 Ordering::Relaxed,
             );
+            if counters.record_route_selection() {
+                diagnostic_event(
+                    Some(&app),
+                    "info",
+                    "Desktop tunnel route selected",
+                    json!({
+                        "attachmentId": request.attachment_id,
+                        "diagnosticTraceId": diagnostic_trace_id,
+                        "event": "desktop.tunnel.route.selected",
+                        "operation": "select-route",
+                        "routeState": startup.state,
+                        "status": "completed",
+                        "subsystem": "tunnel-forward",
+                        "tunnelId": request.tunnel_id,
+                    }),
+                );
+            }
             if let Some(ready) = ready.take() {
                 let _ = ready.send(Ok(startup));
             }
             retry_delay = Duration::from_millis(250);
             match run_session(
+                Some(&app),
+                diagnostic_trace_id.as_deref(),
                 &listener,
                 web_socket,
                 identity,
@@ -914,12 +1309,28 @@ mod desktop {
             {
                 Ok(true) => return,
                 result => {
-                    let reason = match result {
-                        Ok(false) => "remote tunnel closed".to_string(),
+                    let reason_code = match result {
+                        Ok(false) => "remote-closed",
                         Ok(true) => unreachable!(),
-                        Err(error) => error,
+                        Err(_) => "route-error",
                     };
-                    eprintln!("[Cantrip tunnel] route disconnected: {reason}");
+                    if counters.record_route_disconnect() {
+                        diagnostic_event(
+                            Some(&app),
+                            "warn",
+                            "Desktop tunnel route disconnected",
+                            json!({
+                                "attachmentId": request.attachment_id,
+                                "diagnosticTraceId": diagnostic_trace_id,
+                                "event": "desktop.tunnel.route.disconnected",
+                                "operation": "forward-route",
+                                "reasonCode": reason_code,
+                                "status": "degraded",
+                                "subsystem": "tunnel-forward",
+                                "tunnelId": request.tunnel_id,
+                            }),
+                        );
+                    }
                     counters.route_state.store(3, Ordering::Relaxed);
                     while let Ok(refresh) = relay_refreshes.try_recv() {
                         if let Ok(route) = relay_route(refresh.relay) {
@@ -1011,6 +1422,8 @@ mod desktop {
     }
 
     async fn run_session(
+        app: Option<&AppHandle>,
+        diagnostic_trace_id: Option<&str>,
         listener: &TcpListener,
         mut web_socket: tokio_tungstenite::WebSocketStream<
             tokio_tungstenite::MaybeTlsStream<TcpStream>,
@@ -1031,27 +1444,89 @@ mod desktop {
                 _ = &mut *stop => break Ok(true),
                 accepted = listener.accept() => {
                     let (stream, _) = accepted.map_err(|error| format!("The local tunnel listener failed: {error}"))?;
-                    ForwardCounters::add(&counters.connections_opened, 1);
-                    let open_connection = OpenConnection(counters.clone());
                     let connection_id = Uuid::new_v4().to_string();
-                    let (sender, receiver) = mpsc::channel(CONNECTION_QUEUE);
-                    let task = tokio::spawn(run_connection(
-                        stream,
-                        identity.clone(),
+                    let emit_lifecycle_diagnostics = counters.register_connection(&connection_id);
+                    if emit_lifecycle_diagnostics {
+                        diagnostic_event(
+                            app,
+                            "info",
+                            "Desktop tunnel accepted a local connection",
+                            json!({
+                                "attachmentId": identity.attachment_id,
+                                "connectionId": connection_id,
+                                "diagnosticTraceId": diagnostic_trace_id,
+                                "event": "desktop.tunnel.local-connection.accepted",
+                                "operation": "accept-local-connection",
+                                "status": "completed",
+                                "subsystem": "tunnel-forward",
+                                "tunnelId": identity.tunnel_id,
+                            }),
+                        );
+                    }
+                    let open_connection = OpenConnection::new(
+                        app.cloned(),
+                        identity.attachment_id.clone(),
                         connection_id.clone(),
-                        protection.clone(),
-                        outbound_sender.clone(),
-                        receiver,
-                        completed_sender.clone(),
-                        open_connection,
-                    ));
+                        counters.clone(),
+                        diagnostic_trace_id.map(str::to_string),
+                        emit_lifecycle_diagnostics,
+                        identity.tunnel_id.clone(),
+                    );
+                    let (sender, receiver) = mpsc::channel(CONNECTION_QUEUE);
+                    let (start_sender, start_receiver) = oneshot::channel();
+                    let task_identity = identity.clone();
+                    let task_connection_id = connection_id.clone();
+                    let task_protection = protection.clone();
+                    let task_outbound_sender = outbound_sender.clone();
+                    let task_completed_sender = completed_sender.clone();
+                    let task = tokio::spawn(async move {
+                        if start_receiver.await.is_ok() {
+                            run_connection(
+                                stream,
+                                task_identity,
+                                task_connection_id,
+                                task_protection,
+                                task_outbound_sender,
+                                receiver,
+                                task_completed_sender,
+                                open_connection,
+                            )
+                            .await;
+                        }
+                    });
+                    counters.track_connection_task(&connection_id, task.abort_handle());
                     connections.insert(connection_id, (sender, task));
+                    let _ = start_sender.send(());
                 }
                 outbound = outbound_receiver.recv() => {
                     let Some((header, payload)) = outbound else { break Ok(false) };
+                    let open_connection_id = match &header {
+                        FrameHeader::Open { base, .. } => Some(base.connection_id.clone()),
+                        _ => None,
+                    };
                     let frame = encode_frame(&header, &payload)?;
                     web_socket.send(Message::Binary(frame.into())).await
                         .map_err(|_| "The tunnel WebSocket disconnected.".to_string())?;
+                    if let Some(connection_id) = open_connection_id {
+                        ForwardCounters::add(&counters.opens_sent, 1);
+                        if counters.is_first_diagnostic_connection(&connection_id) {
+                            diagnostic_event(
+                                app,
+                                "info",
+                                "Desktop tunnel Open frame sent",
+                                json!({
+                                    "attachmentId": identity.attachment_id,
+                                    "connectionId": connection_id,
+                                    "diagnosticTraceId": diagnostic_trace_id,
+                                    "event": "desktop.tunnel.open.sent",
+                                    "operation": "send-open",
+                                    "status": "completed",
+                                    "subsystem": "tunnel-forward",
+                                    "tunnelId": identity.tunnel_id,
+                                }),
+                            );
+                        }
+                    }
                 }
                 incoming = web_socket.next() => {
                     let Some(incoming) = incoming else { break Ok(false) };
@@ -1073,6 +1548,7 @@ mod desktop {
                 completed = completed_receiver.recv() => {
                     if let Some(connection_id) = completed {
                         connections.remove(&connection_id);
+                        counters.untrack_connection_task(&connection_id);
                     }
                 }
                 _ = heartbeat.tick() => {
@@ -1081,8 +1557,16 @@ mod desktop {
                 }
             }
         };
-        for (_, (_, task)) in connections.drain() {
-            task.abort();
+        let tasks = connections
+            .drain()
+            .map(|(connection_id, (_, task))| {
+                counters.untrack_connection_task(&connection_id);
+                task.abort();
+                task
+            })
+            .collect::<Vec<_>>();
+        for task in tasks {
+            let _ = task.await;
         }
         result
     }
@@ -1100,9 +1584,9 @@ mod desktop {
         outbound: mpsc::Sender<OutboundFrame>,
         mut inbound: mpsc::Receiver<InboundFrame>,
         completed: mpsc::Sender<String>,
-        open_connection: OpenConnection,
+        mut open_connection: OpenConnection,
     ) {
-        let counters = &open_connection.0;
+        let counters = open_connection.counters.clone();
         let (mut reader, mut writer) = stream.into_split();
         let mut source_sequence = 1_u64;
         let mut destination_sequence = 0_u64;
@@ -1119,8 +1603,27 @@ mod desktop {
             ))
             .is_err()
         {
+            open_connection.set_close_reason("open-queue-full");
             let _ = completed.try_send(connection_id);
             return;
+        }
+        ForwardCounters::add(&counters.opens_queued, 1);
+        if open_connection.emit_lifecycle_diagnostics {
+            diagnostic_event(
+                open_connection.app.as_ref(),
+                "info",
+                "Desktop tunnel Open frame queued",
+                json!({
+                    "attachmentId": open_connection.attachment_id,
+                    "connectionId": connection_id,
+                    "diagnosticTraceId": open_connection.diagnostic_trace_id,
+                    "event": "desktop.tunnel.open.queued",
+                    "operation": "queue-open",
+                    "status": "completed",
+                    "subsystem": "tunnel-forward",
+                    "tunnelId": open_connection.tunnel_id,
+                }),
+            );
         }
         loop {
             let event = if !local_eof && source_credit > 0 {
@@ -1148,6 +1651,7 @@ mod desktop {
                     )
                     .is_err()
                     {
+                        open_connection.set_close_reason("outbound-queue-failed");
                         break;
                     }
                     source_sequence += 1;
@@ -1164,7 +1668,10 @@ mod desktop {
                             &buffer[..size],
                         ) {
                             Ok(protected) => (Some(protected.0), protected.1),
-                            Err(_) => break,
+                            Err(_) => {
+                                open_connection.set_close_reason("data-seal-failed");
+                                break;
+                            }
                         },
                         None => (None, buffer[..size].to_vec()),
                     };
@@ -1179,11 +1686,19 @@ mod desktop {
                     )
                     .is_err()
                     {
+                        open_connection.set_close_reason("outbound-queue-failed");
                         break;
                     }
                     source_sequence += 1;
                 }
-                ConnectionEvent::Local(Err(_)) | ConnectionEvent::Remote(None) => break,
+                ConnectionEvent::Local(Err(_)) => {
+                    open_connection.set_close_reason("local-read-failed");
+                    break;
+                }
+                ConnectionEvent::Remote(None) => {
+                    open_connection.set_close_reason("route-session-ended");
+                    break;
+                }
                 ConnectionEvent::Remote(Some((header, payload))) => {
                     let base = header.base();
                     if base.sequence != destination_sequence
@@ -1193,6 +1708,7 @@ mod desktop {
                         || base.destination_endpoint_id != identity.destination_endpoint_id
                         || base.connection_id != connection_id
                     {
+                        open_connection.set_close_reason("invalid-remote-frame");
                         break;
                     }
                     destination_sequence += 1;
@@ -1201,6 +1717,24 @@ mod desktop {
                             initial_credit_bytes,
                             ..
                         } if payload.is_empty() => {
+                            ForwardCounters::add(&counters.destination_accepted, 1);
+                            if open_connection.emit_lifecycle_diagnostics {
+                                diagnostic_event(
+                                    open_connection.app.as_ref(),
+                                    "info",
+                                    "Desktop tunnel destination accepted the connection",
+                                    json!({
+                                        "attachmentId": open_connection.attachment_id,
+                                        "connectionId": connection_id,
+                                        "diagnosticTraceId": open_connection.diagnostic_trace_id,
+                                        "event": "desktop.tunnel.destination.accepted",
+                                        "operation": "open-destination",
+                                        "status": "completed",
+                                        "subsystem": "tunnel-forward",
+                                        "tunnelId": open_connection.tunnel_id,
+                                    }),
+                                );
+                            }
                             source_credit = min(initial_credit_bytes, MAX_CREDIT_BYTES);
                         }
                         FrameHeader::Data {
@@ -1216,9 +1750,13 @@ mod desktop {
                                 &payload,
                             ) {
                                 Ok(plaintext) => plaintext,
-                                Err(_) => break,
+                                Err(_) => {
+                                    open_connection.set_close_reason("data-auth-failed");
+                                    break;
+                                }
                             };
                             if writer.write_all(&plaintext).await.is_err() {
+                                open_connection.set_close_reason("local-write-failed");
                                 break;
                             }
                             ForwardCounters::add(&counters.bytes_to_local, plaintext.len() as u64);
@@ -1233,6 +1771,7 @@ mod desktop {
                             )
                             .is_err()
                             {
+                                open_connection.set_close_reason("outbound-queue-failed");
                                 break;
                             }
                             source_sequence += 1;
@@ -1251,10 +1790,44 @@ mod desktop {
                         } if payload.is_empty() => {
                             let _ = writer.shutdown().await;
                         }
-                        FrameHeader::Rejected { .. }
-                        | FrameHeader::Close { .. }
-                        | FrameHeader::Error { .. } => break,
-                        _ => break,
+                        FrameHeader::Rejected { code, .. } => {
+                            let wire_reason_code = safe_reason_code(&code);
+                            if counters.record_destination_rejection() {
+                                diagnostic_event(
+                                    open_connection.app.as_ref(),
+                                    "warn",
+                                    "Desktop tunnel destination rejected the connection",
+                                    json!({
+                                        "attachmentId": open_connection.attachment_id,
+                                        "connectionId": connection_id,
+                                        "diagnosticTraceId": open_connection.diagnostic_trace_id,
+                                        "event": "desktop.tunnel.destination.rejected",
+                                        "operation": "open-destination",
+                                        "reasonCode": wire_reason_code,
+                                        "status": "rejected",
+                                        "subsystem": "tunnel-forward",
+                                        "tunnelId": open_connection.tunnel_id,
+                                    }),
+                                );
+                            }
+                            open_connection.set_wire_reason_code(&code);
+                            open_connection.set_close_reason("destination-rejected");
+                            break;
+                        }
+                        FrameHeader::Close { code, .. } => {
+                            open_connection.set_wire_reason_code(&code);
+                            open_connection.set_close_reason("destination-closed");
+                            break;
+                        }
+                        FrameHeader::Error { code, .. } => {
+                            open_connection.set_wire_reason_code(&code);
+                            open_connection.set_close_reason("destination-error");
+                            break;
+                        }
+                        _ => {
+                            open_connection.set_close_reason("unexpected-remote-frame");
+                            break;
+                        }
                     }
                 }
             }
@@ -1517,9 +2090,11 @@ mod desktop {
                     .await
                     .unwrap();
 
-                let data = web_socket.next().await.unwrap().unwrap();
-                let Message::Binary(data) = data else {
-                    panic!("expected a data frame")
+                let data = loop {
+                    let message = web_socket.next().await.unwrap().unwrap();
+                    if let Message::Binary(data) = message {
+                        break data;
+                    }
                 };
                 let (header, payload) = decode_frame(&data).unwrap();
                 assert!(!payload
@@ -1605,6 +2180,7 @@ mod desktop {
                 attachment_id: "attachment".into(),
                 client_id: "client".into(),
                 data_protection: None,
+                diagnostic_trace_id: None,
                 direct: None,
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 preferred_local_port: None,
@@ -1624,6 +2200,8 @@ mod desktop {
             let session_counters = counters.clone();
             let session = tokio::spawn(async move {
                 run_session(
+                    None,
+                    None,
                     &listener,
                     web_socket,
                     identity,
@@ -1652,6 +2230,10 @@ mod desktop {
             server.await.unwrap();
             assert_eq!(counters.connections_opened.load(Ordering::Relaxed), 1);
             assert_eq!(counters.connections_closed.load(Ordering::Relaxed), 1);
+            assert_eq!(counters.opens_queued.load(Ordering::Relaxed), 1);
+            assert_eq!(counters.opens_sent.load(Ordering::Relaxed), 1);
+            assert_eq!(counters.destination_accepted.load(Ordering::Relaxed), 1);
+            assert_eq!(counters.destination_rejected.load(Ordering::Relaxed), 0);
             assert_eq!(
                 counters.bytes_from_local.load(Ordering::Relaxed),
                 request_bytes.len() as u64,
@@ -1660,6 +2242,74 @@ mod desktop {
                 counters.bytes_to_local.load(Ordering::Relaxed),
                 request_bytes.len() as u64,
             );
+        }
+
+        #[test]
+        fn diagnostic_reason_codes_allow_only_short_stable_tokens() {
+            assert_eq!(safe_reason_code("target-rejected"), "target-rejected");
+            assert_eq!(safe_reason_code("normal"), "normal");
+            assert_eq!(safe_reason_code("close_unsafe"), "unknown-code");
+            assert_eq!(safe_reason_code("contains a path"), "unknown-code");
+            assert_eq!(safe_reason_code(&"x".repeat(65)), "unknown-code");
+            assert_eq!(safe_reason_code("SuperSecretToken123456"), "unknown-code");
+        }
+
+        #[test]
+        fn native_diagnostics_strip_capability_material() {
+            let mut context = json!({
+                "attachmentId": "attachment",
+                "capabilityId": "capability",
+                "directCapabilityId": "direct-capability",
+            });
+
+            strip_capability_material(&mut context);
+
+            assert_eq!(context.get("attachmentId"), Some(&json!("attachment")));
+            assert!(context.get("capabilityId").is_none());
+            assert!(context.get("directCapabilityId").is_none());
+        }
+
+        #[test]
+        fn diagnostic_connection_events_and_rejections_are_bounded() {
+            let counters = ForwardCounters::default();
+
+            assert!(counters.register_connection("connection-1"));
+            assert!(!counters.register_connection("connection-2"));
+            assert!(counters.is_first_diagnostic_connection("connection-1"));
+            assert!(!counters.is_first_diagnostic_connection("connection-2"));
+            assert!(counters.record_destination_rejection());
+            assert!(!counters.record_destination_rejection());
+            assert!(counters.record_route_disconnect());
+            assert!(!counters.record_route_disconnect());
+            assert!(counters.record_route_selection());
+            assert!(!counters.record_route_selection());
+        }
+
+        #[tokio::test]
+        async fn terminal_snapshot_waits_for_aborted_connection_drop_accounting() {
+            let counters = Arc::new(ForwardCounters::default());
+            assert!(counters.register_connection("connection-1"));
+            let connection = OpenConnection::new(
+                None,
+                "attachment".into(),
+                "connection-1".into(),
+                counters.clone(),
+                None,
+                true,
+                "tunnel".into(),
+            );
+            let task = tokio::spawn(async move {
+                let _connection = connection;
+                std::future::pending::<()>().await;
+            });
+            tokio::task::yield_now().await;
+
+            task.abort();
+            let _ = task.await;
+            counters.wait_for_connections_drained().await;
+
+            assert_eq!(counters.connections_opened.load(Ordering::Acquire), 1);
+            assert_eq!(counters.connections_closed.load(Ordering::Acquire), 1);
         }
     }
 }

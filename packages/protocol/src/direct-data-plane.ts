@@ -62,8 +62,16 @@ export const directCapabilitySecretSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/u);
 
+export const directTunnelPrepareRequestSchema = z
+  .object({
+    diagnosticTraceId: z.string().uuid().optional(),
+  })
+  .strict()
+  .default({});
+
 export const directCapabilityPrepareCommandSchema = z.object({
   type: z.literal("direct.capability.prepare"),
+  diagnosticTraceId: z.string().uuid().optional(),
   binding: directCapabilityBindingSchema,
   secret: directCapabilitySecretSchema,
   tunnelRoute: z
@@ -169,6 +177,9 @@ export type DirectCapabilityBinding = z.infer<
 export type DirectProbeResult = z.infer<typeof directProbeResultSchema>;
 export type DirectResourceKind = z.infer<typeof directResourceKindSchema>;
 export type DirectRouteState = z.infer<typeof directRouteStateSchema>;
+export type DirectTunnelPrepareRequest = z.infer<
+  typeof directTunnelPrepareRequestSchema
+>;
 export type DirectTunnelTicket = z.infer<typeof directTunnelTicketSchema>;
 export type DirectTransportTelemetry = z.infer<
   typeof directTransportTelemetrySchema

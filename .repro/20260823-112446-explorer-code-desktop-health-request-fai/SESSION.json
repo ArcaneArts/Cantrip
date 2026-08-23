@@ -1,0 +1,7 @@
+{
+  "created_at_utc": "2026-08-23T16:24:46.733358+00:00",
+  "session": "20260823-112446-explorer-code-desktop-health-request-fai",
+  "root": ".",
+  "issue": "Explorer Code desktop health request fails before protected Code endpoint becomes usable",
+  "status": "open"
+}

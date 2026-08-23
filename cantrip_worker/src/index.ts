@@ -4543,8 +4543,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     undefined,
     () => providerAuthObserver.reemitAll(),
   );
-  directBroker.setTunnelFrameHandler((header, payload) =>
-    tunnelDestinations.handleFrame(header, payload),
+  directBroker.setTunnelFrameHandler((header, payload, diagnostics) =>
+    tunnelDestinations.handleFrame(header, payload, diagnostics),
   );
   worktrees.setObservationEmitter((notification) =>
     commandConnection.sendNotification(notification),

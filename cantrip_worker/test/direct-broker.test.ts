@@ -10,10 +10,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { DirectBroker } from "../src/direct-broker.js";
+import { subscribeWorkerLogs } from "../src/logger.js";
 
 const brokers: DirectBroker[] = [];
+const subscriptions: Array<() => void> = [];
 
 afterEach(async () => {
+  for (const unsubscribe of subscriptions.splice(0)) unsubscribe();
   await Promise.all(brokers.splice(0).map((broker) => broker.close()));
 });
 
@@ -223,9 +226,14 @@ describe("DirectBroker", () => {
       target: { kind: "tcp" as const, host: "127.0.0.1", port: 4173 },
     };
     const secret = randomBytes(32).toString("base64url");
+    const diagnosticTraceId = randomUUID();
+    const records: Array<{ context?: unknown }> = [];
+    const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
+    subscriptions.push(unsubscribe);
     await broker.prepare({
       type: "direct.capability.prepare",
       binding: grant,
+      diagnosticTraceId,
       secret,
       tunnelRoute: route,
     });
@@ -279,7 +287,71 @@ describe("DirectBroker", () => {
     await expect(response).resolves.toMatchObject({
       header: { kind: "accepted", connectionId: open.connectionId },
     });
-    socket.close();
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          context: expect.objectContaining({
+            event: "direct.capability.prepared",
+            diagnosticTraceId,
+          }),
+        }),
+        expect.objectContaining({
+          context: expect.objectContaining({
+            event: "direct.capability.connected",
+            diagnosticTraceId,
+          }),
+        }),
+        expect.objectContaining({
+          context: expect.objectContaining({
+            event: "direct.connection.accepted",
+            diagnosticTraceId,
+            tunnelId,
+            attachmentId,
+            connectionId: open.connectionId,
+          }),
+        }),
+      ]),
+    );
+    const escapedConnectionId = randomUUID();
+    const closed = new Promise<number>((resolve) =>
+      socket.once("close", (code) => resolve(code)),
+    );
+    socket.send(
+      encodeTunnelDataPlaneFrame(
+        {
+          ...open,
+          tunnelId: randomUUID(),
+          connectionId: escapedConnectionId,
+        },
+        new Uint8Array(),
+      ),
+    );
+    await expect(closed).resolves.toBe(1003);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          context: expect.objectContaining({
+            event: "direct.capability.disconnected",
+            diagnosticTraceId,
+          }),
+        }),
+        expect.objectContaining({
+          context: expect.objectContaining({
+            event: "direct.frame.rejected",
+            reasonCode: "capability-binding-mismatch",
+            diagnosticTraceId,
+            tunnelId,
+            attachmentId,
+            connectionId: escapedConnectionId,
+          }),
+        }),
+      ]),
+    );
+    const captured = JSON.stringify(records);
+    expect(captured).not.toContain(grant.capabilityId);
+    expect(captured).not.toContain(secret);
+    unsubscribe();
+    subscriptions.splice(subscriptions.indexOf(unsubscribe), 1);
   });
 
   it("keeps the direct capability alive while a source acknowledges a destination close", async () => {
@@ -291,8 +363,8 @@ describe("DirectBroker", () => {
     const tunnelId = randomUUID();
     const grant = {
       ...binding(),
-      resourceKind: "code" as const,
-      resourceId: attachmentId,
+      resourceKind: "tunnel" as const,
+      resourceId: tunnelId,
       attachmentId,
       channels: ["tunnel-data"],
     };
@@ -357,7 +429,6 @@ describe("DirectBroker", () => {
           sequence: 0,
           kind: "close",
           code: "normal",
-          message: null,
         },
         new Uint8Array(),
       ),
@@ -372,7 +443,6 @@ describe("DirectBroker", () => {
           sequence: 1,
           kind: "close",
           code: "normal",
-          message: null,
         },
         new Uint8Array(),
       ),
