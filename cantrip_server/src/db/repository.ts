@@ -2519,10 +2519,8 @@ export class ServerRepository {
     authMethod: ActiveUserSession["authMethod"];
     csrfTokenHash: string;
     expiresAt: Date;
-    ipAddressHash: string | null;
     label: string | null;
     tokenHash: string;
-    userAgentHash: string | null;
     userId: string;
   }): Promise<UserSessionRow> {
     const rows = await this.database

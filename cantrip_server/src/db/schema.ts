@@ -257,8 +257,6 @@ export const userSessions = pgTable(
     csrfTokenHash: text("csrf_token_hash").notNull(),
     authMethod: text("auth_method").notNull(),
     label: text("label"),
-    userAgentHash: text("user_agent_hash"),
-    ipAddressHash: text("ip_address_hash"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
       .notNull()

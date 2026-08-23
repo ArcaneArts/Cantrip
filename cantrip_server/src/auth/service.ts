@@ -87,10 +87,6 @@ function cookieValue(request: FastifyRequest, name: string): string | null {
   return null;
 }
 
-function requestMetadataHash(value: string | undefined): string | null {
-  return value ? hashSecret(value) : null;
-}
-
 export class UserSessionService {
   readonly cookieName: string;
   readonly partitionedCookieName: string | null;
@@ -179,10 +175,8 @@ export class UserSessionService {
       authMethod,
       csrfTokenHash: hashSecret(csrfToken),
       expiresAt,
-      ipAddressHash: requestMetadataHash(request.ip),
       label: null,
       tokenHash: hashSecret(token),
-      userAgentHash: requestMetadataHash(request.headers["user-agent"]),
       userId: user.id,
     });
     const cookies = [
