@@ -28,6 +28,7 @@ interface PreparedEditorAttachment {
 
 export interface DesktopExplorerWindowBroker {
   dispose(): Promise<void>;
+  readonly failed: boolean;
   launchId: string;
   openFile(path: string, requestedAtMs?: number): Promise<void>;
   ready: Promise<void>;
@@ -36,6 +37,28 @@ export interface DesktopExplorerWindowBroker {
 export interface DesktopExplorerWindowBrokerOptions {
   configureInitialFile?: boolean;
   requireDirectBridge?: boolean;
+}
+
+const editorControlRetryDelaysMs = [250, 750] as const;
+
+function isTransientEditorControlError(error: unknown): boolean {
+  return /(?:failed to fetch|load failed|network|not connected|unavailable)/iu.test(
+    errorMessage(error, ""),
+  );
+}
+
+async function retryEditorControl<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      const retryDelayMs = editorControlRetryDelaysMs[attempt];
+      if (retryDelayMs === undefined || !isTransientEditorControlError(error)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
 }
 
 async function releasePreparedEditor(
@@ -118,7 +141,9 @@ export function createDesktopExplorerWindowBroker(
     });
   const bridgeReady = editorPromise.then(async (result) => {
     if (!result) throw new Error(editorError ?? "Cantrip Code is unavailable.");
-    await setDirectCodeAttachmentPresentation(result.attachment, "editor");
+    await retryEditorControl(() =>
+      setDirectCodeAttachmentPresentation(result.attachment, "editor"),
+    );
     return result;
   });
   let navigationQueue = Promise.resolve();
@@ -129,7 +154,9 @@ export function createDesktopExplorerWindowBroker(
       configuredAtMs = null;
       editorError = null;
       send({ context, launchId, type: "launch.ready" });
-      await openDirectCodeAttachmentFile(result.attachment, path);
+      await retryEditorControl(() =>
+        openDirectCodeAttachmentFile(result.attachment, path),
+      );
       configuredAtMs = Date.now();
       send({ configuredAtMs, launchId, type: "editor.configured" });
     });
@@ -212,6 +239,9 @@ export function createDesktopExplorerWindowBroker(
   });
 
   return {
+    get failed() {
+      return editorError !== null;
+    },
     launchId,
     openFile,
     ready,

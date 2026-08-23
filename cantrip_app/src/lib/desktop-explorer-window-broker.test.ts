@@ -38,6 +38,7 @@ const wire = {
 
 describe("desktop Explorer window broker", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     api.createProtectedExplorerCodeAttachment.mockResolvedValue(wire);
     desktopCode.preferProtectedCodeAttachment.mockResolvedValue({
@@ -139,6 +140,59 @@ describe("desktop Explorer window broker", () => {
     );
 
     client.dispose();
+    await broker.dispose();
+  });
+
+  it("recovers transient control failures without poisoning the editor broker", async () => {
+    vi.useFakeTimers();
+    desktopCode.setDirectCodeAttachmentPresentation
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce({ presentation: "editor" });
+    desktopCode.openDirectCodeAttachmentFile
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({ relativePath: "src/recovered.ts" });
+    const broker = createDesktopExplorerWindowBroker({
+      appearance: "dark",
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-recovery",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+      path: "src/recovered.ts",
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(broker.ready).resolves.toBeUndefined();
+    expect(broker.failed).toBe(false);
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledTimes(2);
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(2);
+
+    await broker.dispose();
+  });
+
+  it("marks a broker unavailable after non-transient startup failure", async () => {
+    desktopCode.setDirectCodeAttachmentPresentation.mockRejectedValueOnce(
+      new Error("Workbench rejected the request."),
+    );
+    const broker = createDesktopExplorerWindowBroker({
+      appearance: "dark",
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-failed",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+      path: "src/failed.ts",
+    });
+
+    await expect(broker.ready).rejects.toThrow(
+      "Workbench rejected the request.",
+    );
+    expect(broker.failed).toBe(true);
+
     await broker.dispose();
   });
 });
