@@ -111,7 +111,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "26d2d92e6b396a41f3e06f9e504688340da7955a1193d568e6962179f1e83a28",
+    "70f97d9a778672105364b3dfac2fd93b2a33c84bc9f1f6365c5b0e3441b40ab3",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:
@@ -4741,11 +4741,12 @@ async function buildInventory() {
           "attachment owner, authenticated user session, worker, Code tab, and editor session",
       },
       {
-        boundary: "capability-token",
-        contentClassification: "tracked-rollout-gap",
+        boundary: "application-principal",
+        contentClassification: "endpoint-protected",
         implementation: "cantrip_server/src/project-shares/tunnel.ts",
-        name: "Project share HTTP/WebSocket surface",
-        ownerBinding: "attachment owner, project, worker, and canonical root",
+        name: "Protected project-share tunnel control plane",
+        ownerBinding:
+          "authenticated owner, project, assigned worker, opaque revision-bound tunnel record, and desktop attachment",
       },
       {
         boundary: "application-principal",

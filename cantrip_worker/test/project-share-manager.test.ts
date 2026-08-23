@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { WorkerProjectShareOpenResult } from "@cantrip/protocol";
+import type { WorkerProjectShareDescriptor } from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ProjectShareManager } from "../src/project-share-manager.js";
@@ -12,7 +12,26 @@ const directories: string[] = [];
 const managers: ProjectShareManager[] = [];
 const PUBLIC_BASE_PATH = `/project-shares/${"a".repeat(43)}`;
 const SECOND_PUBLIC_BASE_PATH = `/project-shares/${"b".repeat(43)}`;
-const PUBLIC_ORIGIN = "https://surface.cantrip.example";
+const PUBLIC_ORIGIN = "http://127.0.0.1";
+const USERNAME = "cantrip-protected-share";
+const PASSWORD = "p".repeat(32);
+const REALM = "Cantrip Project Share";
+
+function shareInput(
+  root: string,
+  shareId: string,
+  publicBasePath = PUBLIC_BASE_PATH,
+) {
+  return {
+    password: PASSWORD,
+    publicBasePath,
+    publicOrigin: PUBLIC_ORIGIN,
+    realm: REALM,
+    root,
+    shareId,
+    username: USERNAME,
+  };
+}
 
 function md5(value: string): string {
   return createHash("md5").update(value).digest("hex");
@@ -27,7 +46,7 @@ function digestProperties(challenge: string): Record<string, string> {
 }
 
 async function authenticatedRequest(
-  descriptor: WorkerProjectShareOpenResult,
+  descriptor: WorkerProjectShareDescriptor,
   method: string,
   pathname: string,
   body?: string,
@@ -86,12 +105,7 @@ describe("ProjectShareManager", () => {
     const manager = new ProjectShareManager();
     managers.push(manager);
 
-    const descriptor = await manager.open({
-      publicBasePath: PUBLIC_BASE_PATH,
-      publicOrigin: PUBLIC_ORIGIN,
-      root,
-      shareId: "share-1",
-    });
+    const descriptor = await manager.open(shareInput(root, "share-1"));
     expect(descriptor).toMatchObject({
       loopbackHost: "127.0.0.1",
       protocol: "webdav",
@@ -207,43 +221,18 @@ describe("ProjectShareManager", () => {
     managers.push(manager);
 
     const [first, reused] = await Promise.all([
-      manager.open({
-        publicBasePath: PUBLIC_BASE_PATH,
-        publicOrigin: PUBLIC_ORIGIN,
-        root: firstRoot,
-        shareId: "share-1",
-      }),
-      manager.open({
-        publicBasePath: PUBLIC_BASE_PATH,
-        publicOrigin: PUBLIC_ORIGIN,
-        root: firstRoot,
-        shareId: "share-1",
-      }),
+      manager.open(shareInput(firstRoot, "share-1")),
+      manager.open(shareInput(firstRoot, "share-1")),
     ]);
     expect(reused).toEqual(first);
     await expect(
-      manager.open({
-        publicBasePath: PUBLIC_BASE_PATH,
-        publicOrigin: PUBLIC_ORIGIN,
-        root: secondRoot,
-        shareId: "share-1",
-      }),
+      manager.open(shareInput(secondRoot, "share-1")),
     ).rejects.toThrow("already bound to another root or public endpoint");
     await expect(
-      manager.open({
-        publicBasePath: SECOND_PUBLIC_BASE_PATH,
-        publicOrigin: PUBLIC_ORIGIN,
-        root: firstRoot,
-        shareId: "share-1",
-      }),
+      manager.open(shareInput(firstRoot, "share-1", SECOND_PUBLIC_BASE_PATH)),
     ).rejects.toThrow("already bound to another root or public endpoint");
     await expect(
-      manager.open({
-        publicBasePath: SECOND_PUBLIC_BASE_PATH,
-        publicOrigin: PUBLIC_ORIGIN,
-        root: secondRoot,
-        shareId: "share-2",
-      }),
+      manager.open(shareInput(secondRoot, "share-2", SECOND_PUBLIC_BASE_PATH)),
     ).rejects.toThrow("limit of 1 sessions reached");
   });
 });

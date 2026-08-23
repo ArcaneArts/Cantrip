@@ -2,6 +2,8 @@ import {
   clearSensitiveBytes,
   computeBlindLookupTag,
   deriveLookupKey,
+  encodeBase64Url,
+  randomBytes,
 } from "@cantrip/crypto";
 import {
   CHAT_MESSAGE_PAGE_DEFAULT_LIMIT,
@@ -231,7 +233,10 @@ import {
   providerTelemetryDeleteResultSchema,
   providerTelemetryExportSchema,
   projectShareAttachmentSchema,
+  projectShareAttachmentWireSchema,
   projectShareDirectCreateSchema,
+  projectShareTunnelCreateSchema,
+  type ProjectSummary,
   projectWireSummarySchema,
   encryptedProjectWorkspaceCreateSchema,
   encryptedProjectWorkspaceUpdateSchema,
@@ -1702,31 +1707,94 @@ export async function copyProjectMcpServer(
   return createProjectMcpServer(projectId, configuration, source.workerId);
 }
 
-export async function createProjectNetworkShare(projectId: string) {
-  return projectShareAttachmentSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/network-shares`,
-      {},
-    ),
-  );
+export async function createProjectNetworkShare(project: ProjectSummary) {
+  const source = project.source;
+  if (!source) throw new Error("Project source is unavailable.");
+  await ensureTunnelWorker(source.workerId);
+  let existing = tunnelWireListSchema
+    .parse(await request("/api/tunnels"))
+    .find(
+      ({ origin, projectId }) =>
+        origin === "project-share" && projectId === project.id,
+    );
+  if (existing && !existing.protectedRecord) {
+    await deleteProjectNetworkShare(existing.id);
+    existing = undefined;
+  }
+  const tunnelId = existing?.id ?? crypto.randomUUID();
+  const existingContent = existing?.protectedRecord
+    ? await openTunnelContentRecord({
+        tunnelId,
+        record: existing.protectedRecord,
+        workerId: existing.destination.workerId,
+      })
+    : null;
+  const tokenBytes = randomBytes(32);
+  const usernameBytes = randomBytes(18);
+  const passwordBytes = randomBytes(32);
+  try {
+    const publicBasePath = `/project-shares/${encodeBase64Url(tokenBytes)}`;
+    const username = `cantrip-${encodeBase64Url(usernameBytes)}`;
+    const password = encodeBase64Url(passwordBytes);
+    const protectedRecord = await protectTunnelContentRecord({
+      content: {
+        name: "Project files",
+        description: "Secure WebDAV access to this project's files.",
+        source: { kind: "desktop-loopback" },
+        destination: {
+          kind: "worker-project-share",
+          workerId: source.workerId,
+          resourceId: tunnelId,
+          root: source.path,
+          publicBasePath,
+          publicOrigin: "http://127.0.0.1",
+          username,
+          password,
+          realm: "Cantrip Project Share",
+        },
+        dataProtection:
+          existingContent?.dataProtection ?? createTunnelDataProtection(),
+      },
+      operationId: existing ? crypto.randomUUID() : tunnelId,
+      revision: (existing?.protectedRecord?.revision ?? 0) + 1,
+      tunnelId,
+      workerId: source.workerId,
+    });
+    const wire = projectShareAttachmentWireSchema.parse(
+      await post(
+        `/api/projects/${encodeURIComponent(project.id)}/network-shares`,
+        projectShareTunnelCreateSchema.parse({
+          tunnelId,
+          workerId: source.workerId,
+          protectedRecord,
+        }),
+      ),
+    );
+    if (wire.tunnelId !== tunnelId || wire.projectId !== project.id) {
+      throw new Error("Project share response belongs to another tunnel.");
+    }
+    return projectShareAttachmentSchema.parse({
+      attachmentId: wire.attachmentId,
+      projectId: wire.projectId,
+      protocol: wire.protocol,
+      url: `http://127.0.0.1${publicBasePath}/`,
+      username,
+      password,
+      realm: "Cantrip Project Share",
+      expiresAt: wire.expiresAt,
+      mountLeaseMs: wire.mountLeaseMs,
+    });
+  } finally {
+    clearSensitiveBytes(tokenBytes);
+    clearSensitiveBytes(usernameBytes);
+    clearSensitiveBytes(passwordBytes);
+  }
 }
 
 export async function deleteProjectNetworkShare(attachmentId: string) {
   await request(`/api/project-shares/${encodeURIComponent(attachmentId)}`, {
     method: "DELETE",
   });
-}
-
-export async function createDirectProjectNetworkShare(
-  attachmentId: string,
-  clientId: string,
-) {
-  return directTunnelTicketSchema.parse(
-    await post(
-      `/api/project-shares/${encodeURIComponent(attachmentId)}/direct`,
-      projectShareDirectCreateSchema.parse({ clientId }),
-    ),
-  );
 }
 
 export async function createDirectTerminalAttachment(

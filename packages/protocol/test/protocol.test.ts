@@ -209,6 +209,7 @@ import {
   userSettingsUpdateSchema,
   workerCommandSchema,
   workerEventSchema,
+  workerProjectShareDescriptorSchema,
   workerProjectShareOpenResultSchema,
   worktreeCreateMutationFailureSchema,
   worktreeInventorySchema,
@@ -3654,34 +3655,53 @@ describe("Cantrip protocol", () => {
   });
 
   it("validates worker-owned authenticated project share lifecycles", () => {
+    const shareId = "11111111-1111-4111-8111-111111111111";
     const publicBasePath = `/project-shares/${"x".repeat(43)}`;
+    const protectedRecord = {
+      operationId: shareId,
+      revision: 1,
+      protectedContent: {
+        formatVersion: 1,
+        domain: "tunnel-content",
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+    };
     expect(
       workerCommandSchema.parse({
         type: "project.share.open",
-        shareId: "share-1",
-        root: "/worker/projects/cantrip",
-        publicBasePath,
-        publicOrigin: "https://surface.cantrip.example",
+        shareId,
+        protectedRecord,
       }),
     ).toEqual({
       type: "project.share.open",
-      shareId: "share-1",
-      root: "/worker/projects/cantrip",
-      publicBasePath,
-      publicOrigin: "https://surface.cantrip.example",
+      shareId,
+      protectedRecord,
     });
     expect(
       workerCommandSchema.parse({
         type: "project.share.close",
-        shareId: "share-1",
+        shareId,
       }),
-    ).toEqual({ type: "project.share.close", shareId: "share-1" });
+    ).toEqual({ type: "project.share.close", shareId });
     expect(
       workerProjectShareOpenResultSchema.parse({
-        shareId: "share-1",
+        accepted: true,
+        shareId,
+      }),
+    ).toEqual({ accepted: true, shareId });
+    expect(
+      workerProjectShareDescriptorSchema.parse({
+        shareId,
         protocol: "webdav",
         publicBasePath,
-        publicOrigin: "https://surface.cantrip.example",
+        publicOrigin: "http://127.0.0.1",
         loopbackHost: "127.0.0.1",
         loopbackPort: 43_210,
         username: "cantrip-user",
@@ -3690,11 +3710,11 @@ describe("Cantrip protocol", () => {
       }),
     ).toMatchObject({ protocol: "webdav", loopbackPort: 43_210 });
     expect(
-      workerProjectShareOpenResultSchema.safeParse({
-        shareId: "share-1",
+      workerProjectShareDescriptorSchema.safeParse({
+        shareId,
         protocol: "webdav",
         publicBasePath,
-        publicOrigin: "https://surface.cantrip.example",
+        publicOrigin: "http://127.0.0.1",
         loopbackHost: "0.0.0.0",
         loopbackPort: 43_210,
         username: "cantrip-user",

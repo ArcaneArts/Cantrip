@@ -22,10 +22,6 @@ import {
 import { ManagedServerRelayTelemetry } from "../tunnels/managed-relay-telemetry.js";
 import { WorkerTunnelEndpoint } from "../tunnels/worker-endpoint.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
-import {
-  type ProjectShareTunnelBroker,
-  projectShareTokenFromRequest,
-} from "../project-shares/tunnel.js";
 import { CodeHttpEndpoint } from "./http-endpoint.js";
 
 export interface CodeAttachmentBinding {
@@ -622,7 +618,6 @@ function attachmentRequestPath(
 export function createCodeSurfaceServer(
   broker: CodeTunnelBroker,
   surfaceOrigin: string,
-  projectShares?: ProjectShareTunnelBroker,
 ): Server {
   const expectedOrigin = new URL(surfaceOrigin).origin;
   const webSockets = new WebSocketServer({
@@ -636,11 +631,6 @@ export function createCodeSurfaceServer(
         "content-type": "application/json",
       });
       response.end('{"status":"ok"}');
-      return;
-    }
-    const projectShareToken = projectShareTokenFromRequest(request);
-    if (projectShareToken && projectShares) {
-      projectShares.proxyHttp(projectShareToken, request, response);
       return;
     }
     const token = tokenFromRequest(request);

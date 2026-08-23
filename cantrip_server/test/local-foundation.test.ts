@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 import {
   agentInteractionRequestListSchema,
@@ -55,7 +56,7 @@ import {
   projectReplicaJobListSchema,
   projectReplicaListSchema,
   projectReplicaSummarySchema,
-  projectShareAttachmentSchema,
+  projectShareAttachmentWireSchema,
   projectWireSummarySchema,
   projectTokenUsageSchema,
   projectTabLayoutSummarySchema,
@@ -78,6 +79,7 @@ import {
   terminalListSchema,
   terminalSummarySchema,
   tunnelListSchema,
+  tunnelWireListSchema,
   unprobedCodexRuntimeReport,
   workerListSchema,
   workerManagementListSchema,
@@ -772,15 +774,8 @@ const workerBridge = {
       case "project.share.open":
         openedProjectShares.push(command);
         return {
+          accepted: true,
           shareId: command.shareId,
-          protocol: "webdav",
-          publicBasePath: command.publicBasePath,
-          publicOrigin: command.publicOrigin,
-          loopbackHost: "127.0.0.1",
-          loopbackPort: 43_210,
-          username: "cantrip-test-user",
-          password: "a-strong-random-test-password",
-          realm: "Cantrip Project Share",
         };
       case "project.share.close":
         closedProjectShareIds.push(command.shareId);
@@ -2596,41 +2591,65 @@ describe("local server foundation", () => {
         url: `/api/workspaces/${defaultWorkspace.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
+    const projectShareTunnelId = randomUUID();
+    const projectShareRecord = (operationId: string, revision: number) => ({
+      operationId,
+      revision,
+      protectedContent: {
+        formatVersion: 1 as const,
+        domain: "tunnel-content" as const,
+        keyRevision: 1,
+        envelope: {
+          version: 1 as const,
+          algorithm: "AES-256-GCM" as const,
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+    });
     const projectShareResponse = await firstApp.inject({
       method: "POST",
       url: `/api/projects/${project.id}/network-shares`,
+      payload: {
+        tunnelId: projectShareTunnelId,
+        workerId: project.source?.workerId,
+        protectedRecord: projectShareRecord(projectShareTunnelId, 1),
+      },
     });
     expect(projectShareResponse.statusCode).toBe(201);
-    const projectShare = projectShareAttachmentSchema.parse(
+    const projectShare = projectShareAttachmentWireSchema.parse(
       projectShareResponse.json(),
     );
     expect(projectShare).toMatchObject({
+      attachmentId: projectShareTunnelId,
       projectId: project.id,
       protocol: "webdav",
-      url: expect.stringMatching(
-        /^http:\/\/127\.0\.0\.1:4311\/project-shares\/[A-Za-z0-9_-]{43}\/$/u,
-      ),
-      username: "cantrip-test-user",
-      password: "a-strong-random-test-password",
+      tunnelId: projectShareTunnelId,
     });
-    const reusedProjectShare = projectShareAttachmentSchema.parse(
+    const reusedProjectShare = projectShareAttachmentWireSchema.parse(
       (
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/network-shares`,
+          payload: {
+            tunnelId: projectShareTunnelId,
+            workerId: project.source?.workerId,
+            protectedRecord: projectShareRecord(randomUUID(), 2),
+          },
         })
       ).json(),
     );
     expect(reusedProjectShare.attachmentId).toBe(projectShare.attachmentId);
     expect(openedProjectShares).toHaveLength(2);
     expect(openedProjectShares[0]).toMatchObject({
-      root: project.source?.path,
       shareId: projectShare.attachmentId,
-      publicBasePath: new URL(projectShare.url).pathname.replace(/\/$/u, ""),
-      publicOrigin: "http://127.0.0.1:4311",
+      protectedRecord: projectShareRecord(projectShareTunnelId, 1),
     });
-    expect(openedProjectShares[1]).toEqual(openedProjectShares[0]);
-    const projectShareTunnels = tunnelListSchema.parse(
+    expect(JSON.stringify(openedProjectShares)).not.toContain(
+      project.source?.path,
+    );
+    const projectShareTunnels = tunnelWireListSchema.parse(
       (
         await firstApp.inject({
           method: "GET",
@@ -2643,19 +2662,14 @@ describe("local server foundation", () => {
         projectId: project.id,
         origin: "project-share",
         protocolHint: "webdav",
-        source: { kind: "server-http", adapter: "project-share" },
+        source: { kind: "desktop-loopback" },
         destination: expect.objectContaining({
           kind: "worker-adapter",
           adapter: "project-share",
           resourceId: projectShare.attachmentId,
         }),
-        attachments: [
-          expect.objectContaining({
-            id: projectShare.attachmentId,
-            kind: "server-relay",
-            status: "active",
-          }),
-        ],
+        attachments: [],
+        protectedRecord: expect.objectContaining({ revision: 2 }),
       }),
     ]);
     expect(
@@ -2664,9 +2678,12 @@ describe("local server foundation", () => {
         url: `/api/project-shares/${projectShare.attachmentId}`,
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(closedProjectShareIds).toEqual([projectShare.attachmentId]);
+    expect(closedProjectShareIds).toEqual([
+      projectShare.attachmentId,
+      projectShare.attachmentId,
+    ]);
     expect(
-      tunnelListSchema.parse(
+      tunnelWireListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",

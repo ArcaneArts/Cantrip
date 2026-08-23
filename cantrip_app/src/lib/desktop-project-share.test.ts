@@ -31,7 +31,7 @@ const attachment = {
   projectId: project.id,
   protocol: "webdav" as const,
   realm: "Cantrip",
-  url: "https://cantrip.example/project-shares/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/",
+  url: "http://127.0.0.1/project-shares/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/",
   username: "cantrip",
 };
 
@@ -117,8 +117,6 @@ describe("desktop project reveal", () => {
   it("passes the bounded server mount lease to the native command", () => {
     expect(nativeProjectShareRequest(attachment, project)).toMatchObject({
       attachmentId: attachment.attachmentId,
-      directTunnelId: null,
-      fallbackUrl: null,
       mountLeaseMs: 43_200_000,
       projectId: project.id,
       projectName: project.name,
@@ -165,26 +163,9 @@ describe("desktop project reveal", () => {
     });
   });
 
-  it("binds a direct mount to its authoritative server fallback", () => {
-    expect(
-      nativeProjectShareRequest(attachment, project, {
-        fallbackUrl: attachment.url,
-        tunnelId: "share-tunnel-1",
-      }),
-    ).toMatchObject({
-      directTunnelId: "share-tunnel-1",
-      fallbackUrl: attachment.url,
-    });
-  });
-
   it("targets a folder beneath the mounted or local project root", () => {
     expect(
-      nativeProjectShareRequest(
-        attachment,
-        project,
-        undefined,
-        "src/components/explorer",
-      ),
+      nativeProjectShareRequest(attachment, project, "src/components/explorer"),
     ).toMatchObject({ relativePath: "src/components/explorer" });
     expect(
       nativeLocalProjectFolderRequest(

@@ -32,7 +32,7 @@ export const tunnelContentSourceEndpointSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("server-http"),
-      adapter: z.enum(["code", "project-share"]),
+      adapter: z.literal("code"),
     })
     .strict(),
   z
@@ -60,8 +60,23 @@ export const tunnelContentDestinationEndpointSchema = z.discriminatedUnion(
       .object({
         kind: z.literal("worker-adapter"),
         workerId: tunnelContentIdSchema,
-        adapter: z.enum(["code", "project-share"]),
+        adapter: z.literal("code"),
         resourceId: tunnelContentIdSchema,
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("worker-project-share"),
+        workerId: tunnelContentIdSchema,
+        resourceId: tunnelContentIdSchema,
+        root: z.string().min(1).max(8_192),
+        publicBasePath: z
+          .string()
+          .regex(/^\/project-shares\/[A-Za-z0-9_-]{43}$/u),
+        publicOrigin: z.literal("http://127.0.0.1"),
+        username: z.string().min(1).max(128),
+        password: z.string().min(24).max(256),
+        realm: z.string().min(1).max(200),
       })
       .strict(),
   ],
@@ -100,7 +115,7 @@ export const tunnelPublicSourceEndpointSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("server-http"),
-      adapter: z.enum(["code", "project-share"]),
+      adapter: z.literal("code"),
     })
     .strict(),
   z
@@ -145,6 +160,14 @@ export function tunnelPublicDestinationEndpoint(
 ): TunnelPublicDestinationEndpoint {
   if (destination.kind === "worker-tcp") {
     return { kind: destination.kind, workerId: destination.workerId };
+  }
+  if (destination.kind === "worker-project-share") {
+    return {
+      kind: "worker-adapter",
+      workerId: destination.workerId,
+      adapter: "project-share",
+      resourceId: destination.resourceId,
+    };
   }
   return destination;
 }

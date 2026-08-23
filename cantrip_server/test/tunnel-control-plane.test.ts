@@ -140,7 +140,7 @@ describe.sequential("tunnel control plane", () => {
       },
     });
 
-    expect(response.statusCode).toBe(201);
+    expect(response.statusCode, response.body).toBe(201);
     const tunnel = tunnelWireSummarySchema.parse(response.json());
     expect(tunnel).toMatchObject({
       projectId,
@@ -406,32 +406,32 @@ describe.sequential("tunnel control plane", () => {
   });
 
   it("persists and independently revokes managed server relays", async () => {
-    const share = await database.repository.registerManagedTunnel(
+    const codeRelay = await database.repository.registerManagedTunnel(
       LOCAL_USER_ID,
       {
-        name: "Project files",
-        description: "Secure WebDAV project access.",
+        name: "Cantrip Code",
+        description: "Server-terminated Code access.",
         projectId,
-        origin: "project-share",
+        origin: "code",
         management: "managed-ephemeral",
-        protocolHint: "webdav",
-        source: { kind: "server-http", adapter: "project-share" },
+        protocolHint: "http-websocket",
+        source: { kind: "server-http", adapter: "code" },
         destination: {
           kind: "worker-adapter",
           workerId: "worker-b",
-          adapter: "project-share",
-          resourceId: "share-1",
+          adapter: "code",
+          resourceId: "code-relay-1",
         },
-        managedBy: { kind: "project-share", id: "share-1" },
+        managedBy: { kind: "code", id: "code-relay-1" },
         desiredState: "started",
         status: "starting",
       },
     );
-    expect(share).not.toBeNull();
+    expect(codeRelay).not.toBeNull();
     expect(
       await database.repository.createManagedServerRelayAttachment(
         LOCAL_USER_ID,
-        share!.id,
+        codeRelay!.id,
         "share-1",
         new Date(Date.now() + 60_000),
       ),
@@ -460,10 +460,10 @@ describe.sequential("tunnel control plane", () => {
         })
       ).json(),
     );
-    const persisted = global.find(({ id }) => id === share!.id);
+    const persisted = global.find(({ id }) => id === codeRelay!.id);
     expect(persisted).toMatchObject({
       projectId,
-      origin: "project-share",
+      origin: "code",
       status: "active",
       activeConnectionCount: 1,
       bytesFromSource: 123,
@@ -477,11 +477,11 @@ describe.sequential("tunnel control plane", () => {
         },
       ],
     });
-    expect(project.some(({ id }) => id === share!.id)).toBe(true);
+    expect(project.some(({ id }) => id === codeRelay!.id)).toBe(true);
     expect(
       await database.repository.createManagedServerRelayAttachment(
         LOCAL_USER_ID,
-        share!.id,
+        codeRelay!.id,
         "share-2",
         new Date(Date.now() + 60_000),
       ),
@@ -492,7 +492,7 @@ describe.sequential("tunnel control plane", () => {
       { activeConnectionDelta: 2 },
     );
     expect(
-      (await database.repository.getTunnel(LOCAL_USER_ID, share!.id))
+      (await database.repository.getTunnel(LOCAL_USER_ID, codeRelay!.id))
         ?.activeConnectionCount,
     ).toBe(3);
     expect(
@@ -506,9 +506,9 @@ describe.sequential("tunnel control plane", () => {
         LOCAL_USER_ID,
         "share-1",
       ),
-    ).toMatchObject({ tunnelId: share!.id, tunnelRemoved: false });
+    ).toMatchObject({ tunnelId: codeRelay!.id, tunnelRemoved: false });
     expect(
-      await database.repository.getTunnel(LOCAL_USER_ID, share!.id),
+      await database.repository.getTunnel(LOCAL_USER_ID, codeRelay!.id),
     ).toMatchObject({
       activeConnectionCount: 2,
       attachments: [expect.objectContaining({ id: "share-2" })],
@@ -518,9 +518,9 @@ describe.sequential("tunnel control plane", () => {
         LOCAL_USER_ID,
         "share-2",
       ),
-    ).toMatchObject({ tunnelId: share!.id, tunnelRemoved: true });
+    ).toMatchObject({ tunnelId: codeRelay!.id, tunnelRemoved: true });
     expect(
-      await database.repository.getTunnel(LOCAL_USER_ID, share!.id),
+      await database.repository.getTunnel(LOCAL_USER_ID, codeRelay!.id),
     ).toBeNull();
   });
 

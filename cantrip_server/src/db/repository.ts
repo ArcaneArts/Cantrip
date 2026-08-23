@@ -471,7 +471,11 @@ export class McpServerWorkerBindingError extends Error {}
 export interface TunnelAttachmentAuthorization {
   attachmentId: string;
   clientId: string;
-  destination: Extract<TunnelPublicDestinationEndpoint, { kind: "worker-tcp" }>;
+  destination:
+    | Extract<TunnelPublicDestinationEndpoint, { kind: "worker-tcp" }>
+    | (Extract<TunnelPublicDestinationEndpoint, { kind: "worker-adapter" }> & {
+        adapter: "project-share";
+      });
   expiresAt: Date;
   ownerId: string;
   projectId: string | null;
@@ -997,8 +1001,8 @@ function tunnelCapabilities(
 ): TunnelWireSummary["capabilities"] {
   const userManaged = tunnel.management === "user-managed";
   if (!userManaged) {
-    const browserDesktopAttachment =
-      tunnel.origin === "browser" &&
+    const protectedDesktopAttachment =
+      (tunnel.origin === "browser" || tunnel.origin === "project-share") &&
       tunnel.management === "managed-ephemeral" &&
       tunnel.sourceKind === "desktop-loopback";
     return {
@@ -1006,7 +1010,7 @@ function tunnelCapabilities(
       canDelete: false,
       canStart: false,
       canStop: false,
-      canAttach: browserDesktopAttachment && tunnel.status !== "stopping",
+      canAttach: protectedDesktopAttachment && tunnel.status !== "stopping",
       canOpenOwner: tunnel.managedByKind !== null,
     };
   }
@@ -1028,10 +1032,10 @@ function tunnelPublicSource(tunnel: TunnelRow): TunnelPublicSourceEndpoint {
   if (tunnel.sourceKind === "desktop-loopback") {
     return { kind: "desktop-loopback" };
   }
-  if (tunnel.sourceKind === "server-http" && tunnel.sourceAdapter) {
+  if (tunnel.sourceKind === "server-http" && tunnel.sourceAdapter === "code") {
     return {
       kind: "server-http",
-      adapter: tunnel.sourceAdapter as "code" | "project-share",
+      adapter: "code",
     };
   }
   if (tunnel.sourceKind === "worker-listener" && tunnel.sourceWorkerId) {
@@ -7056,14 +7060,9 @@ export class ServerRepository {
 
   async registerManagedTunnel(
     ownerId: string,
-    input: Omit<
-      TunnelManagedRegistration,
-      "source" | "destination"
-    > & {
+    input: Omit<TunnelManagedRegistration, "source" | "destination"> & {
       source: TunnelSourceEndpoint | TunnelPublicSourceEndpoint;
-      destination:
-        | TunnelDestinationEndpoint
-        | TunnelPublicDestinationEndpoint;
+      destination: TunnelDestinationEndpoint | TunnelPublicDestinationEndpoint;
     },
     protectedInput?: {
       id?: string;
@@ -7147,10 +7146,8 @@ export class ServerRepository {
       destinationWorkerId: destinationWorkerId(destination),
       ...(protectedInput
         ? {
-            protectedContent:
-              protectedInput.protectedRecord.protectedContent,
-            protectedOperationId:
-              protectedInput.protectedRecord.operationId,
+            protectedContent: protectedInput.protectedRecord.protectedContent,
+            protectedOperationId: protectedInput.protectedRecord.operationId,
             protectedRevision: protectedInput.protectedRecord.revision,
           }
         : {}),
@@ -7248,7 +7245,8 @@ export class ServerRepository {
         !(
           tunnel.management === "user-managed" ||
           (tunnel.management === "managed-ephemeral" &&
-            tunnel.origin === "browser" &&
+            (tunnel.origin === "browser" ||
+              tunnel.origin === "project-share") &&
             tunnel.sourceKind === "desktop-loopback")
         ) ||
         tunnel.sourceKind !== "desktop-loopback"
@@ -7531,10 +7529,16 @@ export class ServerRepository {
       .limit(1);
     const row = rows[0];
     const protectedRecord = row ? tunnelProtectedRecord(row.tunnel) : null;
+    const destination = row ? tunnelPublicDestination(row.tunnel) : null;
     if (
       !row?.attachment.clientId ||
       row.tunnel.sourceKind !== "desktop-loopback" ||
-      row.tunnel.destinationKind !== "worker-tcp" ||
+      !destination ||
+      (destination.kind !== "worker-tcp" &&
+        !(
+          destination.kind === "worker-adapter" &&
+          destination.adapter === "project-share"
+        )) ||
       !protectedRecord
     ) {
       return null;
@@ -7542,10 +7546,10 @@ export class ServerRepository {
     return {
       attachmentId,
       clientId: row.attachment.clientId,
-      destination: {
-        kind: "worker-tcp",
-        workerId: row.tunnel.destinationWorkerId,
-      },
+      destination:
+        destination.kind === "worker-tcp"
+          ? destination
+          : { ...destination, adapter: "project-share" },
       expiresAt: row.attachment.expiresAt!,
       ownerId: row.tunnel.ownerId,
       projectId: row.tunnel.projectId,
@@ -7578,11 +7582,17 @@ export class ServerRepository {
       .limit(1);
     const row = rows[0];
     const protectedRecord = row ? tunnelProtectedRecord(row.tunnel) : null;
+    const destination = row ? tunnelPublicDestination(row.tunnel) : null;
     if (
       !row?.attachment.clientId ||
       !row.attachment.expiresAt ||
       row.tunnel.sourceKind !== "desktop-loopback" ||
-      row.tunnel.destinationKind !== "worker-tcp" ||
+      !destination ||
+      (destination.kind !== "worker-tcp" &&
+        !(
+          destination.kind === "worker-adapter" &&
+          destination.adapter === "project-share"
+        )) ||
       !protectedRecord
     ) {
       return null;
@@ -7590,10 +7600,10 @@ export class ServerRepository {
     return {
       attachmentId,
       clientId: row.attachment.clientId,
-      destination: {
-        kind: "worker-tcp",
-        workerId: row.tunnel.destinationWorkerId,
-      },
+      destination:
+        destination.kind === "worker-tcp"
+          ? destination
+          : { ...destination, adapter: "project-share" },
       expiresAt: row.attachment.expiresAt,
       ownerId: row.tunnel.ownerId,
       projectId: row.tunnel.projectId,

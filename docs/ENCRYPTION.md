@@ -2063,10 +2063,11 @@ partially protected user-payload rows in that original ledger.
 That result closes the named baseline, not the whole current product. A source
 review after Run, tunnel, skill-management, and customization features landed
 found content-bearing paths omitted from its classifications. The saved tunnel
-configuration gap is now closed and the user/Browser TCP data path now uses
-endpoint AEAD, while server-terminated Code/project-share tunnel adapters and
-durable job progress/error messages still reopen the whole-product claim. Until the
-remaining-work ledger below is complete, the broad guarantee
+configuration gap is now closed and the user/Browser/project-share data path
+now uses endpoint AEAD, while the server-terminated Code tunnel adapter and
+durable job progress/error
+messages still reopen the whole-product claim. Until the remaining-work ledger
+below is complete, the broad guarantee
 must be phrased narrowly: the implemented protected data classes cannot be
 decrypted from the database without the user's login password or an authorized
 client/worker private key. No recovery secret, local encryption password, or
@@ -2081,19 +2082,19 @@ inspect a value while forwarding it even if it is not durable. Both are worth
 closing for user-controlled payloads, but relay-only work does not by itself
 change the original database-dump guarantee.
 
-| Data class                                                                                         | Current exposure                                                                                                                                                                                       | Target protection                                                                                                                                                                           | Rollout status                                                | Priority | Complexity  |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------- | ----------- |
-| Encryption coverage inventory and closure audit                                                    | All durable tables and current application, worker, live, CLI, and external-transport contracts are explicitly classified; reviewed-set digests reject new unclassified boundaries                     | Keep the generated inventory current and preserve the open/closed distinction between the legacy baseline and remaining-work ledger                                                         | Coverage foundation complete; rollout open                    | P0       | Medium      |
-| Saved tunnel names, descriptions, private endpoint configuration, and detailed errors              | Revision-bound `tunnel-content` ciphertext; the server retains only routing kinds/IDs, protocol class, lifecycle/counters/timestamps, and stable error codes; attachment listeners remain client-local | Client-created semantic presentation and TCP configuration opened only by the assigned worker/client; fixed managed presentation is derived locally; no free-form tunnel error text         | E2EE/minimization complete                                    | P1       | Medium-High |
-| Generic tunnel data-plane payloads                                                                 | User-created and Browser desktop-to-worker TCP frames use endpoint AEAD across direct and relayed routes; legacy Code and project-share server adapters still terminate plaintext at the server        | Endpoint-authenticated AEAD frames bound to tunnel, attachment, endpoints, connection, direction, sequence, and key revision; retain only routing, flow-control, size, and counter metadata | TCP foundation complete; Code/project-share migration planned | P2       | High        |
-| Run configuration inspection, authoring documents, setup scripts, action commands, and diagnostics | Operation-bound `run-content` envelopes across app, MCP, CLI, server, and worker; the server sees only bounded readiness metadata, IDs, revisions, and lifecycle state                                 | Worker-side validation, selection, authoring, and execution semantics with opaque server routing                                                                                            | E2EE complete                                                 | P1       | Medium-High |
-| Run logs, worktree-setup output, and detailed setup failures                                       | Operation-bound `run-content` responses; durable setup rows retain stable codes and generic messages rather than worker diagnostics                                                                    | Stable public lifecycle/result codes with endpoint-opened output, signals, and detailed diagnostics                                                                                         | E2EE/minimization complete                                    | P1       | Medium      |
-| Durable project/chat job progress and detailed errors                                              | Several folder setup, GitHub conversion, replica, chat import, and chat relocation jobs persist free-form progress and error messages                                                                  | Stable public lifecycle/error codes plus protected details where endpoint presentation is required                                                                                          | Planned minimization                                          | P1       | Medium      |
-| Skill files, skill inventories, hooks, roots, external-import previews, and customization errors   | Operation-bound `customization-content` envelopes across app, server, and worker; the server sees only routing scope, operation class, coarse lifecycle/result, and ciphertext                         | Keep all names, paths, files, contents, commands, matchers, warnings, errors, previews, and import details client/worker-only                                                               | E2EE complete                                                 | P1       | Medium      |
-| MCP runtime inventory and resource contents                                                        | Operation-bound `customization-content` envelopes protect runtime inventory, resource reads, OAuth/reload operations, authorization URLs, resource bodies, and diagnostics                             | Keep tool/resource schemas and metadata, request parameters, returned content, URLs, server names, and detailed errors client/worker-only                                                   | E2EE complete                                                 | P1       | Medium      |
-| Discovered project and terminal script commands                                                    | Operation-bound `repository-content` responses opened only by the requesting client; discovery remains worker-local                                                                                    | Keep command, name, source, and description opaque to the relay server                                                                                                                      | E2EE complete                                                 | P1       | Low-Medium  |
-| Client-control notification title and message                                                      | Agent-provided notification content crosses the server and live hub as plaintext                                                                                                                       | Operation-bound endpoint ciphertext opened only by the selected authorized client                                                                                                           | Planned                                                       | P1       | Low-Medium  |
-| Session IP-address and user-agent hashes                                                           | Durable unsalted hashes permit enumeration/correlation and are not used by a current user-facing security feature                                                                                      | Stop collecting and remove the columns unless a defined abuse-control feature requires a deliberately designed representation                                                               | Planned minimization                                          | P2       | Low         |
+| Data class                                                                                         | Current exposure                                                                                                                                                                                       | Target protection                                                                                                                                                                           | Rollout status                                 | Priority | Complexity  |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | -------- | ----------- |
+| Encryption coverage inventory and closure audit                                                    | All durable tables and current application, worker, live, CLI, and external-transport contracts are explicitly classified; reviewed-set digests reject new unclassified boundaries                     | Keep the generated inventory current and preserve the open/closed distinction between the legacy baseline and remaining-work ledger                                                         | Coverage foundation complete; rollout open     | P0       | Medium      |
+| Saved tunnel names, descriptions, private endpoint configuration, and detailed errors              | Revision-bound `tunnel-content` ciphertext; the server retains only routing kinds/IDs, protocol class, lifecycle/counters/timestamps, and stable error codes; attachment listeners remain client-local | Client-created semantic presentation and TCP configuration opened only by the assigned worker/client; fixed managed presentation is derived locally; no free-form tunnel error text         | E2EE/minimization complete                     | P1       | Medium-High |
+| Generic tunnel data-plane payloads                                                                 | User-created, Browser, and project-share desktop-to-worker frames use endpoint AEAD across direct and relayed routes; the legacy Code server adapter still terminates plaintext at the server          | Endpoint-authenticated AEAD frames bound to tunnel, attachment, endpoints, connection, direction, sequence, and key revision; retain only routing, flow-control, size, and counter metadata | Project-share complete; Code migration planned | P2       | High        |
+| Run configuration inspection, authoring documents, setup scripts, action commands, and diagnostics | Operation-bound `run-content` envelopes across app, MCP, CLI, server, and worker; the server sees only bounded readiness metadata, IDs, revisions, and lifecycle state                                 | Worker-side validation, selection, authoring, and execution semantics with opaque server routing                                                                                            | E2EE complete                                  | P1       | Medium-High |
+| Run logs, worktree-setup output, and detailed setup failures                                       | Operation-bound `run-content` responses; durable setup rows retain stable codes and generic messages rather than worker diagnostics                                                                    | Stable public lifecycle/result codes with endpoint-opened output, signals, and detailed diagnostics                                                                                         | E2EE/minimization complete                     | P1       | Medium      |
+| Durable project/chat job progress and detailed errors                                              | Several folder setup, GitHub conversion, replica, chat import, and chat relocation jobs persist free-form progress and error messages                                                                  | Stable public lifecycle/error codes plus protected details where endpoint presentation is required                                                                                          | Planned minimization                           | P1       | Medium      |
+| Skill files, skill inventories, hooks, roots, external-import previews, and customization errors   | Operation-bound `customization-content` envelopes across app, server, and worker; the server sees only routing scope, operation class, coarse lifecycle/result, and ciphertext                         | Keep all names, paths, files, contents, commands, matchers, warnings, errors, previews, and import details client/worker-only                                                               | E2EE complete                                  | P1       | Medium      |
+| MCP runtime inventory and resource contents                                                        | Operation-bound `customization-content` envelopes protect runtime inventory, resource reads, OAuth/reload operations, authorization URLs, resource bodies, and diagnostics                             | Keep tool/resource schemas and metadata, request parameters, returned content, URLs, server names, and detailed errors client/worker-only                                                   | E2EE complete                                  | P1       | Medium      |
+| Discovered project and terminal script commands                                                    | Operation-bound `repository-content` responses opened only by the requesting client; discovery remains worker-local                                                                                    | Keep command, name, source, and description opaque to the relay server                                                                                                                      | E2EE complete                                  | P1       | Low-Medium  |
+| Client-control notification title and message                                                      | Agent-provided notification content crosses the server and live hub as plaintext                                                                                                                       | Operation-bound endpoint ciphertext opened only by the selected authorized client                                                                                                           | Planned                                        | P1       | Low-Medium  |
+| Session IP-address and user-agent hashes                                                           | Durable unsalted hashes permit enumeration/correlation and are not used by a current user-facing security feature                                                                                      | Stop collecting and remove the columns unless a defined abuse-control feature requires a deliberately designed representation                                                               | Planned minimization                           | P2       | Low         |
 
 The remaining encryption work uses the existing password-rooted Account Master
 Key hierarchy. `run-content`, `customization-content`, and `tunnel-content`
@@ -2211,8 +2212,10 @@ stable error codes, and the opaque protected record. It no longer stores tunnel
 names, descriptions, full endpoint JSON, TCP hosts or ports, attachment-local
 listener hosts or ports, or free-form tunnel/attachment errors. Cantrip Code and
 project-share presentation is fixed product text derived by the client rather
-than user-controlled data copied into the tunnel row. Local desktop listener
-coordinates remain in the desktop process that owns the socket.
+than user-controlled data copied into the tunnel row. Project-share roots,
+capability paths, Digest credentials, realms, and data-plane keys also exist
+only inside the protected record. Local desktop listener coordinates remain in
+the desktop process that owns the socket.
 
 When the server authorizes a direct or relayed TCP connection, it forwards the
 revision-bound protected record instead of a host and port. The assigned worker
@@ -2231,9 +2234,26 @@ columns; users recreate transient/user tunnels after update. The focused
 and [server control-plane test](../cantrip_server/test/tunnel-control-plane.test.ts)
 cover opaque wire shape, real encryption/decryption, row binding, revision
 fencing, and minimized persistence. Generic tunnel application bytes remain the
-separate data-plane row below. Its desktop-to-worker TCP path is protected by
-the next milestone, but Code and project-share adapters are not yet claimed
-complete.
+separate data-plane row below. Its desktop-to-worker TCP path and project-share
+WebDAV path are protected by the next milestone, while the Code adapter is not
+yet claimed complete.
+
+Project sharing now uses this same protected configuration path. The unlocked
+client creates a random WebDAV capability path, username, password, realm, and
+data-plane key, then seals those values together with the worker-local project
+root. The server validates only the project, assigned worker, public adapter
+binding, tunnel identity, and protected-record revision. It forwards the
+opaque record to the assigned worker, which opens it and starts a loopback-only
+WebDAV listener. The worker never returns the listener port or credentials
+through the server.
+
+The native desktop mounts only a `127.0.0.1` URL served by its tunnel
+forwarder. Each local HTTP connection is carried as protected raw TCP directly
+to the worker's loopback WebDAV listener. Direct transport and relay fallback
+therefore use the same endpoint AEAD frames and the same stable local mount;
+there is no server WebDAV endpoint, plaintext HTTP translation adapter, server
+URL fallback, or remount-on-fallback path. Legacy unprotected project-share
+adapter connection attempts are rejected by the worker.
 
 ### Tunnel data-plane protected frames
 
@@ -2265,10 +2285,11 @@ now explicitly revoke stale attachments after the protected record revision is
 accepted, without revealing the replacement host or port.
 
 This milestone covers desktop-loopback to assigned-worker TCP tunnels,
-including user-created and Browser tunnels. Cantrip Code and project-share
-currently use server-terminated HTTP/WebDAV adapters and remain the explicit
-adapter-migration gap. The generic tunnel row is not complete until those
-sources move to an authorized client or worker and use the same protected frame
+including user-created and Browser tunnels, plus project-share WebDAV carried
+as protected raw TCP between the native mount and worker. Cantrip Code still
+uses a server-terminated HTTP/WebSocket adapter and remains the explicit
+adapter-migration gap. The generic tunnel row is not complete until that source
+moves to an authorized client or worker and uses the same protected frame
 contract.
 
 The server should continue to see opaque IDs, worker assignments, lifecycle
@@ -2477,14 +2498,16 @@ counts, worker presence, model-route choices, and traffic patterns.
     metadata, ciphertext, counters, timestamps, and stable error codes; local
     attachment listener coordinates and free-form control errors are removed.
     Generic tunnel application payload protection remains a separate rollout.
-27. **User/Browser TCP tunnel data plane — complete:** a random key carried
-    inside `tunnel-content` protects every desktop-to-worker TCP data frame
-    with AES-256-GCM across both direct and relayed routes. Full route,
-    endpoint, direction, sequence, nonce, format, and key-revision binding
-    rejects replay and substitution before local delivery. The server broker
-    forwards ciphertext only and retains routing, flow-control, size, timing,
-    and counter metadata. Code and project-share adapter relocation remains
-    open in the generic tunnel ledger row.
+27. **User/Browser/project-share tunnel data plane — complete:** a random key
+    carried inside `tunnel-content` protects every desktop-to-worker data frame
+    with AES-256-GCM across both direct and relayed routes. Project-share roots,
+    capability paths, credentials, and WebDAV bytes remain client/worker-only;
+    the desktop mounts a stable localhost forward and never falls back to a
+    server URL. Full route, endpoint, direction, sequence, nonce, format, and
+    key-revision binding rejects replay and substitution before local delivery.
+    The server broker forwards ciphertext only and retains routing,
+    flow-control, size, timing, and counter metadata. Code adapter relocation
+    remains open in the generic tunnel ledger row.
 
 A usable first encrypted component is moderate in scope. A robust system with
 multi-device enrollment, unattended workers, device replacement, rotation,

@@ -1431,7 +1431,7 @@ export const tunnels = pgTable(
     ),
     check(
       "tunnels_source_endpoint_check",
-      sql`(${table.sourceKind} = 'server-http' AND ${table.sourceAdapter} IN ('code', 'project-share')) OR (${table.sourceKind} IN ('desktop-loopback', 'worker-listener') AND ${table.sourceAdapter} IS NULL)`,
+      sql`(${table.sourceKind} = 'server-http' AND ${table.sourceAdapter} = 'code') OR (${table.sourceKind} IN ('desktop-loopback', 'worker-listener') AND ${table.sourceAdapter} IS NULL)`,
     ),
     check(
       "tunnels_destination_endpoint_check",

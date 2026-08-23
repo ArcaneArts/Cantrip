@@ -19,7 +19,8 @@ afterEach(async () => {
 });
 
 describe("worker project share transport", () => {
-  it("carries project-share adapter traffic on the generic tunnel channel", async () => {
+  it("carries protected project-share traffic on the generic tunnel channel", async () => {
+    const tunnelId = "11111111-1111-4111-8111-111111111111";
     let authorization: string | undefined;
     const server = createServer();
     const webSockets = new WebSocketServer({ noServer: true });
@@ -73,7 +74,7 @@ describe("worker project share transport", () => {
 
     const inbound: TunnelDataPlaneFrameHeader = {
       protocolVersion: 1,
-      tunnelId: "tunnel-1",
+      tunnelId,
       attachmentId: "share-1",
       sourceEndpointId: "server:project-share:share-1",
       destinationEndpointId: "worker:share-1",
@@ -81,9 +82,25 @@ describe("worker project share transport", () => {
       sequence: 0,
       kind: "connect",
       target: {
-        kind: "adapter",
-        adapter: "project-share",
-        resourceId: "share-1",
+        kind: "protected-tunnel",
+        targetKind: "project-share",
+        recordId: tunnelId,
+        protectedRecord: {
+          operationId: tunnelId,
+          revision: 1,
+          protectedContent: {
+            formatVersion: 1,
+            domain: "tunnel-content",
+            keyRevision: 1,
+            envelope: {
+              version: 1,
+              algorithm: "AES-256-GCM",
+              keyRevision: 1,
+              nonce: "AAAAAAAAAAAAAAAA",
+              ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+            },
+          },
+        },
       },
       initialCreditBytes: 1024,
     };
