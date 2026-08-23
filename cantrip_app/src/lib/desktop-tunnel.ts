@@ -30,22 +30,36 @@ export interface DesktopTunnelForwardSummary {
   relayFallbackAvailable?: boolean;
   directCapabilityId: string | null;
   directFallbackReason: string | null;
+  lastDestinationRejectionCode?: DesktopTunnelDestinationRejectionCode | null;
   tunnelId: string;
   bytesFromLocal?: number;
   bytesToLocal?: number;
   connectionsClosed?: number;
   connectionsOpened?: number;
+  destinationRejectedCount?: number;
 }
 
 interface DesktopTunnelTerminalSnapshot {
   attachmentId: string;
   tunnelId: string;
   directCapabilityId: string | null;
+  lastDestinationRejectionCode?: DesktopTunnelDestinationRejectionCode | null;
   bytesFromLocal: number;
   bytesToLocal: number;
   connectionsClosed: number;
   connectionsOpened: number;
 }
+
+export type DesktopTunnelDestinationRejectionCode =
+  | "congested"
+  | "limit-exceeded"
+  | "protected-endpoint-unavailable"
+  | "protected-record-unavailable"
+  | "protected-target-invalid"
+  | "protocol-error"
+  | "target-rejected"
+  | "target-unavailable"
+  | "unauthorized";
 
 export interface StartDesktopTunnelOptions {
   diagnosticTraceId?: string;
@@ -304,6 +318,11 @@ async function retireDirectCapability(
       bytesToLocal: snapshot.bytesToLocal ?? 0,
       connectionsClosed: snapshot.connectionsClosed ?? 0,
       connectionsOpened: snapshot.connectionsOpened ?? 0,
+      ...(snapshot.lastDestinationRejectionCode
+        ? {
+            lastDestinationRejectionCode: snapshot.lastDestinationRejectionCode,
+          }
+        : {}),
     },
     { signal: retirementSignal },
   ).catch(() => undefined);
@@ -323,6 +342,11 @@ async function reportFinalDesktopTunnelTelemetry(
       bytesToLocal: snapshot.bytesToLocal,
       connectionsClosed: snapshot.connectionsClosed,
       connectionsOpened: snapshot.connectionsOpened,
+      ...(snapshot.lastDestinationRejectionCode
+        ? {
+            lastDestinationRejectionCode: snapshot.lastDestinationRejectionCode,
+          }
+        : {}),
     },
     {
       signal: AbortSignal.timeout(FINAL_TELEMETRY_TIMEOUT_MS),

@@ -254,6 +254,7 @@ describe("forceDesktopTunnelRelay", () => {
       bytesToLocal: 12,
       connectionsClosed: 1,
       connectionsOpened: 1,
+      lastDestinationRejectionCode: "protected-record-unavailable",
     });
 
     await expect(
@@ -285,6 +286,7 @@ describe("forceDesktopTunnelRelay", () => {
         bytesToLocal: 12,
         connectionsClosed: 1,
         connectionsOpened: 1,
+        lastDestinationRejectionCode: "protected-record-unavailable",
       },
       { signal: expect.any(AbortSignal) },
     );

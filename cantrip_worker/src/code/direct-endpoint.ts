@@ -525,6 +525,8 @@ export class CodeDirectEndpointManager {
         proxy.workspaceUri,
       );
       failureReason = "editor-request-start-failed";
+      let incomingResponse: IncomingMessage | null = null;
+      let downstreamClosed = false;
       const upstream = requestHttp(
         target,
         {
@@ -537,6 +539,13 @@ export class CodeDirectEndpointManager {
           ),
         },
         (incoming) => {
+          incomingResponse = incoming;
+          if (downstreamClosed) {
+            incoming.destroy();
+            upstream.destroy();
+            endStream();
+            return;
+          }
           if (this.#firstOutcome(endpoint, "http-success", context)) {
             workerLogger.event(
               "debug",
@@ -595,8 +604,15 @@ export class CodeDirectEndpointManager {
         if (!response.headersSent) response.writeHead(502);
         response.end("Cantrip Code is unavailable.");
       });
-      request.once("aborted", endStream);
-      response.once("close", endStream);
+      const closeUpstream = () => {
+        if (downstreamClosed) return;
+        downstreamClosed = true;
+        incomingResponse?.destroy();
+        upstream.destroy();
+        endStream();
+      };
+      request.once("aborted", closeUpstream);
+      response.once("close", closeUpstream);
       request.pipe(upstream);
     } catch (error) {
       releaseStream?.();

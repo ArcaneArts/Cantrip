@@ -181,6 +181,39 @@ afterEach(async () => {
 });
 
 describe("browser Code attachment terminal state", () => {
+  it("rejects an invalid workspace before allocating a relay attachment", async () => {
+    const invalid = wire();
+    invalid.runtime.workspaceUri = "https://example.com/not-a-workspace";
+
+    await expect(startBrowserCodeAttachment(invalid)).rejects.toThrow(
+      "invalid workspace URI",
+    );
+
+    expect(mocks.createTunnelAttachment).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(0);
+    expect(browserCodeAttachmentHealthy(TUNNEL_ID)).toBe(false);
+  });
+
+  it("releases the relay when session construction fails after startup", async () => {
+    class FailingBroadcastChannel {
+      constructor() {
+        throw new Error("BroadcastChannel construction failed.");
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", FailingBroadcastChannel);
+
+    await expect(startBrowserCodeAttachment(wire())).rejects.toThrow(
+      "BroadcastChannel construction failed.",
+    );
+
+    expect(mocks.createTunnelAttachment).toHaveBeenCalledOnce();
+    expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith(
+      "browser-attachment-1",
+    );
+    expect(sockets[0]?.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(browserCodeAttachmentHealthy(TUNNEL_ID)).toBe(false);
+  });
+
   it("evicts and reports the current session when the relay closes", async () => {
     const unavailable = vi.fn();
     const unsubscribe = subscribeBrowserCodeAttachmentUnavailable(unavailable);

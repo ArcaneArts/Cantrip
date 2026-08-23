@@ -11,6 +11,16 @@ export interface CodeWorkbenchFrameMount {
   url: string;
 }
 
+export class CodeWorkbenchFrameLoadTracker {
+  #lastLoadedNonce: string | null = null;
+
+  observe(nonce: string): boolean {
+    const repeated = this.#lastLoadedNonce === nonce;
+    this.#lastLoadedNonce = nonce;
+    return repeated;
+  }
+}
+
 export type CodeWorkbenchStage =
   "endpoint" | "file" | "frame" | "presentation" | "workbench";
 

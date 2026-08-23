@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { clientLogger } from "@/lib/client-log-relay";
 import {
   CODE_WORKBENCH_READY_TIMEOUT_MS,
+  CodeWorkbenchFrameLoadTracker,
   codeWorkbenchStageError,
   createCodeWorkbenchFrameMount,
   isCodeWorkbenchReadyEvent,
@@ -242,14 +243,16 @@ function EditorPane({
   preparedAtMs: number | null;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const [frameDocumentVersion, setFrameDocumentVersion] = useState(0);
   const mount = useMemo(
     () => (attachment ? createCodeWorkbenchFrameMount(attachment.url) : null),
-    [attachment?.attachmentId, attachment?.url],
+    [attachment?.attachmentId, attachment?.url, frameDocumentVersion],
   );
   const [frameFailureNonce, setFrameFailureNonce] = useState<string | null>(
     null,
   );
   const frameFailureNonceRef = useRef<string | null>(null);
+  const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
   const [workbenchNonce, setWorkbenchNonce] = useState<string | null>(null);
   useLayoutEffect(() => {
     setWorkbenchNonce(null);
@@ -338,6 +341,13 @@ function EditorPane({
             );
           }}
           onLoad={() => {
+            if (mount && frameLoadsRef.current.observe(mount.nonce)) {
+              setWorkbenchNonce(null);
+              setFrameFailureNonce(null);
+              frameFailureNonceRef.current = null;
+              setFrameDocumentVersion((version) => version + 1);
+              return;
+            }
             clientLogger.debug("Explorer editor workbench frame loaded", {
               durationMs: Date.now() - context.requestedAtMs,
               event: "surface.explorer.editor-window.frame-loaded",
@@ -441,7 +451,10 @@ export function DesktopExplorerFileWindow({
     [client],
   );
   const editorWorkbenchMounted = useCallback(
-    (nonce: string) => client.editorWorkbenchMounted(nonce),
+    (nonce: string) => {
+      setConfiguredAtMs(null);
+      client.editorWorkbenchMounted(nonce);
+    },
     [client],
   );
   const editorWorkbenchFailed = useCallback(

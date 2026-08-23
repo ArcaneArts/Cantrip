@@ -29,6 +29,7 @@ import {
 import { errorMessage } from "@/lib/error-message";
 import {
   CODE_WORKBENCH_READY_TIMEOUT_MS,
+  CodeWorkbenchFrameLoadTracker,
   codeWorkbenchStageError,
   createCodeWorkbenchFrameMount,
   isCodeWorkbenchReadyEvent,
@@ -160,6 +161,7 @@ export function CodeView({
     null,
   );
   const [frameReadyNonce, setFrameReadyNonce] = useState<string | null>(null);
+  const [frameDocumentVersion, setFrameDocumentVersion] = useState(0);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const [synchronizedThemeKey, setSynchronizedThemeKey] = useState<
@@ -180,6 +182,7 @@ export function CodeView({
   const cancelConnectionRef = useRef<() => void>(() => undefined);
   const connectionGeneration = useRef(0);
   const frameFailureNonceRef = useRef<string | null>(null);
+  const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
   const frameRef = useRef<HTMLIFrameElement>(null);
   const stopped = useRef(false);
   const onChangedRef = useRef(onChanged);
@@ -358,7 +361,7 @@ export function CodeView({
 
   const frameMount = useMemo(
     () => (attachment ? createCodeWorkbenchFrameMount(attachment.url) : null),
-    [attachment?.attachmentId, attachment?.url],
+    [attachment?.attachmentId, attachment?.url, frameDocumentVersion],
   );
 
   useLayoutEffect(() => {
@@ -782,14 +785,29 @@ export function CodeView({
                 url: codeAttachmentUrlForLog(attachment.url),
               });
             }}
-            onLoad={() =>
+            onLoad={() => {
+              if (
+                frameMount &&
+                frameLoadsRef.current.observe(frameMount.nonce)
+              ) {
+                setFrameReadyNonce(null);
+                setFrameFailureNonce(null);
+                frameFailureNonceRef.current = null;
+                setFrameError(null);
+                setFrameDocumentVersion((version) => version + 1);
+                logCodeEvent("warn", "workbench frame reloaded", {
+                  attachmentId: attachment.attachmentId,
+                  sessionId: attachment.sessionId,
+                });
+                return;
+              }
               logCodeEvent("info", "workbench frame load event", {
                 attachmentId: attachment.attachmentId,
                 bridgeConnected: attachment.runtime.bridgeConnected,
                 sessionId: attachment.sessionId,
                 url: codeAttachmentUrlForLog(attachment.url),
-              })
-            }
+              });
+            }}
           />
           {!workbenchReady ? (
             <div

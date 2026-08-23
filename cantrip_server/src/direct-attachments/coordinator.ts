@@ -611,12 +611,25 @@ export class DirectAttachmentCoordinator {
         previous.connectionsOpened,
         telemetry.connectionsOpened,
       ),
+      ...((telemetry.lastDestinationRejectionCode ??
+      previous.lastDestinationRejectionCode)
+        ? {
+            lastDestinationRejectionCode:
+              telemetry.lastDestinationRejectionCode ??
+              previous.lastDestinationRejectionCode,
+          }
+        : {}),
     };
     const delta = {
       bytesFromLocal: merged.bytesFromLocal - previous.bytesFromLocal,
       bytesToLocal: merged.bytesToLocal - previous.bytesToLocal,
       connectionsClosed: merged.connectionsClosed - previous.connectionsClosed,
       connectionsOpened: merged.connectionsOpened - previous.connectionsOpened,
+      ...(merged.lastDestinationRejectionCode
+        ? {
+            lastDestinationRejectionCode: merged.lastDestinationRejectionCode,
+          }
+        : {}),
       resourceId: grant.resourceId,
       resourceKind: grant.resourceKind,
     };
@@ -638,6 +651,11 @@ export class DirectAttachmentCoordinator {
       toLocalBytes: merged.bytesToLocal,
       openedConnectionCount: merged.connectionsOpened,
       closedConnectionCount: merged.connectionsClosed,
+      ...(merged.lastDestinationRejectionCode
+        ? {
+            lastDestinationRejectionCode: merged.lastDestinationRejectionCode,
+          }
+        : {}),
       telemetryReportCount: grant.telemetryReportCount,
     });
     return delta;
@@ -947,6 +965,12 @@ export class DirectAttachmentCoordinator {
       toLocalBytes: grant.telemetry.bytesToLocal,
       openedConnectionCount: grant.telemetry.connectionsOpened,
       closedConnectionCount: grant.telemetry.connectionsClosed,
+      ...(grant.telemetry.lastDestinationRejectionCode
+        ? {
+            lastDestinationRejectionCode:
+              grant.telemetry.lastDestinationRejectionCode,
+          }
+        : {}),
       ...(grant.activatedAtMs === null
         ? {}
         : { activationAgeMs: now - grant.activatedAtMs }),

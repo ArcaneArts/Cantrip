@@ -1,9 +1,61 @@
 # Cantrip Code Explorer Connection Problem
 
-Status: diagnosis only; no fix has been attempted in this investigation.
+Status: root cause identified on current source; remediation is in progress.
 
 Investigation baseline: `origin/main` at `169aee45` (`fix(explorer): reuse
 shared Code editor process (#913)`).
+
+## Current-source reproduction addendum (2026-08-23)
+
+A fresh local-only reproduction on current source closes the initiating boundary
+that the original logs left ambiguous. The correlated trace is
+`44d6ba16-bd09-434d-8183-b7fbdb3bb080` (Code session
+`edc13760-b666-4423-989f-ac3bdb2af231`, tunnel
+`307f9d17-94fe-4bed-b5a9-c61d8ffdeb59`, attachment
+`f7d63b2c-72c0-4813-99d7-b482726b65dc`). It proves this order:
+
+1. The worker prepares the workspace and starts Cantrip Code/OpenVSCode
+   successfully.
+2. The desktop listener accepts local HTTP connections, authenticates the
+   direct capability, and sends protected Open frames to the worker.
+3. The worker rejects the first protected target with
+   `protected-record-open-failed`; native/client telemetry reports
+   `protected-record-unavailable`.
+4. The health supervisor switches to relay automatically. Relay reaches the
+   same worker and rejects the same protected record, proving that transport
+   selection is not the initiating failure.
+5. Explorer directory operations in the same local run fail at worker protected
+   request opening and return HTTP 502, before filesystem access.
+
+The deterministic root cause is an authenticated-data identity mismatch. The
+client encrypts endpoint and surface content with the server's persistent UUID
+from `ClientSessionContext.serverId`. `WorkerEncryptionService`, however, uses
+the canonical server URL (with the loopback port optionally removed) as
+`serverIdentity()`. The server binding participates in AEAD associated data, so
+even a valid, freshly issued worker component-key grant cannot authenticate the
+client payload. Direct and relay necessarily fail in the same way because both
+carry the same protected record.
+
+Source chronology supports applying this conclusion to the supplied incident:
+worker URL-origin identity landed before endpoint-content encryption began using
+the client server UUID, and the reported build includes both changes. The old
+logs alone did not expose the rejection, so their exact first failure remains a
+historical inference; the combined chronology and current correlated
+reproduction identify the same deterministic defect.
+
+The reproduction also exposed two independent follow-up defects:
+
+- Health retries did not stop on a deterministic native destination rejection,
+  producing 508 rejected connections in roughly eight seconds before cleanup.
+- A previously ready iframe could navigate to an error document while retaining
+  stale workbench readiness. Inline Code, inline Explorer, and the Explorer
+  popout must clear readiness and remount with a fresh nonce on a second load.
+
+The required encryption fix is to return the authoritative logical server UUID
+in worker bootstrap, keep it distinct from the transport URL identity, persist
+and validate the two identities separately, and use the UUID for all protected
+content associated data. Completion still requires a fresh local desktop click
+that mounts the exact requested file in the editor-only workbench.
 
 ## Executive conclusion
 

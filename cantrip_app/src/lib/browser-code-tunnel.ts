@@ -968,7 +968,6 @@ class BrowserCodeSession {
     await navigator.serviceWorker.ready;
     if (!registration.active)
       throw new Error("Protected Code service worker is unavailable.");
-    const tunnel = await BrowserTunnelClient.open(wire.tunnelId);
     const adapterId = wire.tunnelId;
     const url = new URL(
       `/__cantrip_code/${adapterId}/code/`,
@@ -980,21 +979,27 @@ class BrowserCodeSession {
         throw new Error("Cantrip Code supplied an invalid workspace URI.");
       url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
     }
-    const session = new BrowserCodeSession(
-      adapterId,
-      {
-        attachmentId: wire.attachmentId,
-        sessionId: wire.sessionId,
-        url: url.toString(),
-        expiresAt: wire.expiresAt,
-        runtime: wire.runtime,
-      },
-      tunnel,
-    );
-    session.#removeTerminalListener = tunnel.onTerminal((error) => {
-      session.#terminal(error, onTerminal);
-    });
-    return session;
+    const tunnel = await BrowserTunnelClient.open(wire.tunnelId);
+    try {
+      const session = new BrowserCodeSession(
+        adapterId,
+        {
+          attachmentId: wire.attachmentId,
+          sessionId: wire.sessionId,
+          url: url.toString(),
+          expiresAt: wire.expiresAt,
+          runtime: wire.runtime,
+        },
+        tunnel,
+      );
+      session.#removeTerminalListener = tunnel.onTerminal((error) => {
+        session.#terminal(error, onTerminal);
+      });
+      return session;
+    } catch (error) {
+      await tunnel.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   get healthy(): boolean {

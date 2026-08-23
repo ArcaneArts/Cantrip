@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CodeWorkbenchFrameLoadTracker,
   codeWorkbenchStageError,
   createCodeWorkbenchFrameMount,
   isCodeWorkbenchReadyEvent,
@@ -8,6 +9,15 @@ import {
 } from "./code-workbench-frame";
 
 describe("Cantrip Code workbench frame readiness", () => {
+  it("distinguishes a same-frame document reload from a fresh mount", () => {
+    const loads = new CodeWorkbenchFrameLoadTracker();
+
+    expect(loads.observe("mount_nonce_1234567890")).toBe(false);
+    expect(loads.observe("mount_nonce_1234567890")).toBe(true);
+    expect(loads.observe("replacement_nonce_1234567890")).toBe(false);
+    expect(loads.observe("replacement_nonce_1234567890")).toBe(true);
+  });
+
   it("adds a per-mount nonce without changing the attachment binding", () => {
     const mount = createCodeWorkbenchFrameMount(
       "http://127.0.0.1:43123/code/capability/?existing=value",

@@ -60,6 +60,8 @@ beforeEach(() => {
     relayFallbackAvailable: true,
     directCapabilityId: null,
     directFallbackReason: "connected-route-unusable",
+    destinationRejectedCount: 1,
+    lastDestinationRejectionCode: "protected-record-unavailable",
     tunnelId: "11111111-1111-4111-8111-111111111111",
   });
 });
@@ -330,6 +332,118 @@ describe("preferProtectedCodeAttachment", () => {
     expect(mocks.stopDesktopTunnel).toHaveBeenCalledTimes(1);
   });
 
+  it("surfaces the native protected rejection code in the attachment error", async () => {
+    vi.useFakeTimers();
+    try {
+      const direct = {
+        attachmentId: "transport-1",
+        localHost: "127.0.0.1",
+        localPort: 52345,
+        routeState: "local-direct",
+        relayFallbackAvailable: false,
+        directCapabilityId: "capability-1",
+        tunnelId: "11111111-1111-4111-8111-111111111111",
+      } as const;
+      mocks.startDesktopTunnel.mockResolvedValue(direct);
+      mocks.invoke.mockResolvedValue([
+        {
+          ...direct,
+          destinationRejectedCount: 1,
+          lastDestinationRejectionCode: "protected-record-unavailable",
+        },
+      ]);
+      mocks.fetch.mockRejectedValue(new TypeError("Load failed"));
+
+      const pending = preferProtectedCodeAttachment({
+        attachmentId: "11111111-1111-4111-8111-111111111111",
+        tunnelId: "11111111-1111-4111-8111-111111111111",
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        expiresAt: "2026-08-13T12:00:00.000Z",
+        runtime: {},
+      } as never);
+      const rejected = expect(pending).rejects.toMatchObject({
+        destinationRejectionCode: "protected-record-unavailable",
+        message:
+          "Cantrip Code transport was rejected (protected-record-unavailable).",
+      });
+      await vi.advanceTimersByTimeAsync(100);
+      await rejected;
+      expect(mocks.fetch).toHaveBeenCalledTimes(1);
+      expect(mocks.clientLog).toHaveBeenCalledWith(
+        "warn",
+        "Cantrip Code destination rejected",
+        expect.objectContaining({
+          event: "code.attachment.destination.rejected",
+          reasonCode: "protected-record-unavailable",
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back immediately on a fresh direct rejection and stops immediately on the relay rejection", async () => {
+    const direct = {
+      attachmentId: "transport-1",
+      localHost: "127.0.0.1",
+      localPort: 52345,
+      routeState: "local-direct",
+      relayFallbackAvailable: true,
+      directCapabilityId: "capability-1",
+      tunnelId: "11111111-1111-4111-8111-111111111111",
+    } as const;
+    mocks.startDesktopTunnel.mockResolvedValue(direct);
+    mocks.fetch.mockRejectedValue(new TypeError("Load failed"));
+    mocks.invoke
+      .mockResolvedValueOnce([
+        {
+          ...direct,
+          destinationRejectedCount: 1,
+          lastDestinationRejectionCode: "protected-record-unavailable",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...direct,
+          routeState: "relayed",
+          destinationRejectedCount: 1,
+          lastDestinationRejectionCode: "protected-record-unavailable",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          ...direct,
+          routeState: "relayed",
+          destinationRejectedCount: 2,
+          lastDestinationRejectionCode: "protected-record-unavailable",
+        },
+      ])
+      .mockResolvedValue([
+        {
+          ...direct,
+          routeState: "relayed",
+          destinationRejectedCount: 2,
+          lastDestinationRejectionCode: "protected-record-unavailable",
+        },
+      ]);
+
+    await expect(
+      preferProtectedCodeAttachment({
+        attachmentId: "11111111-1111-4111-8111-111111111111",
+        tunnelId: "11111111-1111-4111-8111-111111111111",
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        expiresAt: "2026-08-13T12:00:00.000Z",
+        runtime: {},
+      } as never),
+    ).rejects.toMatchObject({
+      destinationRejectionCode: "protected-record-unavailable",
+    });
+
+    expect(mocks.forceDesktopTunnelRelay).toHaveBeenCalledTimes(1);
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(mocks.stopDesktopTunnel).toHaveBeenCalledTimes(1);
+  });
+
   it("retires direct state when native disconnected to relay during health retries", async () => {
     const direct = {
       attachmentId: "transport-1",
@@ -430,6 +544,7 @@ describe("preferProtectedCodeAttachment", () => {
 
     await cancelled;
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
     expect(mocks.stopDesktopTunnel).toHaveBeenCalledTimes(1);
     expect(mocks.clientLog).toHaveBeenCalledWith(
       "info",
@@ -439,6 +554,41 @@ describe("preferProtectedCodeAttachment", () => {
         reasonCode: "cancelled",
       }),
     );
+  });
+
+  it("preserves cancellation while native rejection state is still pending", async () => {
+    mocks.startDesktopTunnel.mockResolvedValue({
+      attachmentId: "transport-1",
+      localHost: "127.0.0.1",
+      localPort: 52345,
+      routeState: "local-direct",
+      relayFallbackAvailable: true,
+      directCapabilityId: "capability-1",
+      destinationRejectedCount: 0,
+      tunnelId: "11111111-1111-4111-8111-111111111111",
+    });
+    mocks.fetch.mockRejectedValue(new TypeError("Load failed"));
+    mocks.invoke.mockReturnValue(new Promise(() => undefined));
+    const controller = new AbortController();
+    const cancellation = new DOMException("superseded", "AbortError");
+    const pending = preferProtectedCodeAttachment(
+      {
+        attachmentId: "11111111-1111-4111-8111-111111111111",
+        tunnelId: "11111111-1111-4111-8111-111111111111",
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        expiresAt: "2026-08-13T12:00:00.000Z",
+        runtime: {},
+      } as never,
+      { signal: controller.signal },
+    );
+
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const cancelled = expect(pending).rejects.toBe(cancellation);
+    controller.abort(cancellation);
+
+    await cancelled;
+    expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
+    expect(mocks.stopDesktopTunnel).toHaveBeenCalledTimes(1);
   });
 });
 
