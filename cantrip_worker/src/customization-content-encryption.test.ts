@@ -8,11 +8,15 @@ import {
   wrapComponentKeyForWorker,
 } from "@cantrip/crypto";
 import {
+  codexMcpResourceReadRequestSchema,
+  codexMcpResourceReadSchema,
   customizationContentResultSchema,
   skillSettingsFileRequestSchema,
   skillSettingsMutationResultSchema,
   type EncryptionKeyGrant,
   type EncryptionPrincipal,
+  type CustomizationContentOperation,
+  type CustomizationContentScope,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -98,15 +102,22 @@ async function service() {
 
 function context(input: {
   operationId: string;
+  operation: CustomizationContentOperation;
+  scope: CustomizationContentScope;
   direction: "request" | "response";
 }) {
   return {
     domain: "customization-content" as const,
     serverId,
     workerId,
-    scopeId: JSON.stringify([workerId, "project-a", null, "provider-a"]),
+    scopeId: JSON.stringify([
+      input.scope.workerId,
+      input.scope.projectId,
+      input.scope.chatId,
+      input.scope.providerId,
+    ]),
     operationId: input.operationId,
-    operation: "skills.settings.write",
+    operation: input.operation,
     direction: input.direction,
     sequence: 0,
   };
@@ -130,7 +141,12 @@ describe("customization content encryption", () => {
       file: "secrets/PRIVATE.md",
     });
     const opaqueRequest = await protectWorkerEndpointContent({
-      context: context({ operationId, direction: "request" }),
+      context: context({
+        operationId,
+        operation: "skills.settings.write",
+        scope,
+        direction: "request",
+      }),
       content: request,
       schema: skillSettingsFileRequestSchema,
       service: worker,
@@ -166,12 +182,88 @@ describe("customization content encryption", () => {
     expect(JSON.stringify(response)).not.toContain("/private/recovery/skill");
     await expect(
       openWorkerEndpointContent({
-        context: context({ operationId, direction: "response" }),
+        context: context({
+          operationId,
+          operation: "skills.settings.write",
+          scope,
+          direction: "response",
+        }),
         opaque: response.protectedResponse,
         schema: customizationContentResultSchema,
         service: worker,
       }),
     ).resolves.toEqual({ status: "succeeded", value: changed });
+  });
+
+  it("keeps MCP resource targets and returned bodies inside the protected boundary", async () => {
+    const worker = await service();
+    const scope = {
+      workerId,
+      projectId: "project-a",
+      chatId: "chat-a",
+      providerId: "provider-a",
+    };
+    const operationId = crypto.randomUUID();
+    const operation = "customization.mcp.resource.read" as const;
+    const request = codexMcpResourceReadRequestSchema.parse({
+      server: "private-docs",
+      uri: "secret://documents/account-plan",
+    });
+    const opaqueRequest = await protectWorkerEndpointContent({
+      context: context({ operationId, operation, scope, direction: "request" }),
+      content: request,
+      schema: codexMcpResourceReadRequestSchema,
+      service: worker,
+    });
+    await expect(
+      openWorkerCustomizationRequest({
+        serverId,
+        workerId,
+        scope,
+        operationId,
+        operation,
+        opaque: opaqueRequest,
+        schema: codexMcpResourceReadRequestSchema,
+        service: worker,
+      }),
+    ).resolves.toEqual(request);
+    expect(JSON.stringify(opaqueRequest)).not.toContain("private-docs");
+    expect(JSON.stringify(opaqueRequest)).not.toContain("account-plan");
+
+    const resource = codexMcpResourceReadSchema.parse({
+      contents: [
+        {
+          type: "text",
+          uri: request.uri,
+          mimeType: "text/markdown",
+          text: "Private MCP resource body",
+        },
+      ],
+    });
+    const response = await protectWorkerCustomizationResponse({
+      serverId,
+      workerId,
+      scope,
+      operationId,
+      operation,
+      schema: codexMcpResourceReadSchema,
+      service: worker,
+      execute: () => resource,
+    });
+    expect(JSON.stringify(response)).not.toContain("Private MCP resource body");
+    await expect(
+      openWorkerEndpointContent({
+        context: context({
+          operationId,
+          operation,
+          scope,
+          direction: "response",
+        }),
+        opaque: response.protectedResponse,
+        schema: customizationContentResultSchema,
+        service: worker,
+      }),
+    ).resolves.toEqual({ status: "succeeded", value: resource });
   });
 
   it("rejects duplicate mutating operation identifiers", () => {

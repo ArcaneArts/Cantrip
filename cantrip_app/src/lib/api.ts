@@ -85,6 +85,7 @@ import {
   codexMcpOauthStartResultSchema,
   codexMcpOauthStartSchema,
   codexMcpOauthStatusSchema,
+  codexMcpReloadRequestSchema,
   codexMcpReloadResultSchema,
   codexMcpResourceReadRequestSchema,
   codexMcpResourceReadSchema,
@@ -6034,12 +6035,15 @@ export async function readChatMcpResource(
   chatId: string,
   input: CodexMcpResourceReadRequest,
 ) {
-  return codexMcpResourceReadSchema.parse(
-    await post(
-      `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-resource`,
-      codexMcpResourceReadRequestSchema.parse(input),
-    ),
-  );
+  return mutateProtectedChatCustomization({
+    chatId,
+    operation: "customization.mcp.resource.read",
+    path: `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-resource`,
+    method: "POST",
+    request: codexMcpResourceReadRequestSchema.parse(input),
+    requestSchema: codexMcpResourceReadRequestSchema,
+    responseSchema: codexMcpResourceReadSchema,
+  });
 }
 
 export async function configureChatSkill(
@@ -6076,29 +6080,39 @@ export async function startChatMcpOauth(
   chatId: string,
   input: CodexMcpOauthStart,
 ) {
-  return codexMcpOauthStartResultSchema.parse(
-    await post(
-      `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-oauth`,
-      codexMcpOauthStartSchema.parse(input),
-    ),
-  );
+  return mutateProtectedChatCustomization({
+    chatId,
+    operation: "customization.mcp.oauth.start",
+    path: `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-oauth`,
+    method: "POST",
+    request: codexMcpOauthStartSchema.parse(input),
+    requestSchema: codexMcpOauthStartSchema,
+    responseSchema: codexMcpOauthStartResultSchema,
+  });
 }
 
 export async function getChatMcpOauthStatus(chatId: string, server: string) {
-  return codexMcpOauthStatusSchema.parse(
-    await request(
-      `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-oauth/status?server=${encodeURIComponent(server)}`,
-    ),
-  );
+  return mutateProtectedChatCustomization({
+    chatId,
+    operation: "customization.mcp.oauth.status",
+    path: `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-oauth/status`,
+    method: "POST",
+    request: codexMcpOauthStartSchema.parse({ server }),
+    requestSchema: codexMcpOauthStartSchema,
+    responseSchema: codexMcpOauthStatusSchema,
+  });
 }
 
 export async function reloadChatMcpServers(chatId: string) {
-  return codexMcpReloadResultSchema.parse(
-    await post(
-      `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-reload`,
-      {},
-    ),
-  );
+  return mutateProtectedChatCustomization({
+    chatId,
+    operation: "customization.mcp.reload",
+    path: `/api/chats/${encodeURIComponent(chatId)}/customizations/mcp-reload`,
+    method: "POST",
+    request: codexMcpReloadRequestSchema.parse({}),
+    requestSchema: codexMcpReloadRequestSchema,
+    responseSchema: codexMcpReloadResultSchema,
+  });
 }
 
 export async function applyChatExternalImport(

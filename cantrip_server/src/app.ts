@@ -68,12 +68,6 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   providerAuthLiveStatusSchema,
-  codexMcpOauthStartResultSchema,
-  codexMcpOauthStartSchema,
-  codexMcpOauthStatusSchema,
-  codexMcpReloadResultSchema,
-  codexMcpResourceReadRequestSchema,
-  codexMcpResourceReadSchema,
   chatCompactAcceptedSchema,
   encryptedChatComposerDraftUpdateSchema,
   encryptedChatComposerDraftWireStateSchema,
@@ -494,8 +488,6 @@ import type {
   ChatTurnCreate,
   CodeGraphProjectStatus,
   CodeRuntimeStatus,
-  CodexExternalImportStatus,
-  CodexMcpOauthStatus,
   GitStatus,
   GitConflictList,
   GitManagedOperationContext,
@@ -910,10 +902,6 @@ const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
 const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
-const CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS = 1_000;
-const CUSTOMIZATION_STATUS_OBSERVE_RETRY_MAX_MS = 10_000;
-const CUSTOMIZATION_STATUS_OBSERVER_LIMIT = 128;
-const CUSTOMIZATION_STATUS_OBSERVE_TIMEOUT_MS = 15 * 60 * 1_000;
 const PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS = 10_000;
 const PROJECT_TOKEN_USAGE_LIVE_TIMER_LIMIT = 4_096;
 const TUNNEL_ATTACHMENT_SECRET_TTL_MS = 2 * 60_000;
@@ -1346,13 +1334,6 @@ export async function buildApp({
     "Server relay instance initialized",
   );
   let livePublishingEnabled = true;
-  const customizationStatusObservers = new Map<
-    string,
-    {
-      cancelled: boolean;
-      timer: ReturnType<typeof setTimeout> | null;
-    }
-  >();
   const publishLiveInvalidation = (
     resource: AppLiveResource,
     input: {
@@ -2348,181 +2329,6 @@ export async function buildApp({
         "Could not publish chat live invalidation",
       );
     }
-  };
-  const publishCustomizationStatus = (
-    chatId: string,
-    entityId: "external-import" | "mcp-oauth",
-    status: CodexExternalImportStatus | CodexMcpOauthStatus,
-  ): void => {
-    if (!livePublishingEnabled) return;
-    try {
-      liveHub.publish({
-        ownerId: applicationOwnerId(),
-        scope: { kind: "chat", chatId },
-        resource: "customization",
-        action: "updated",
-        entityId,
-        revision: null,
-        payload: appLiveEventPayloadSchema.parse(status),
-      });
-    } catch (error) {
-      app.log.error(
-        { chatId, entityId, err: error },
-        "Could not publish customization status",
-      );
-    }
-  };
-  const observeCustomizationStatus = <
-    Status extends CodexExternalImportStatus | CodexMcpOauthStatus,
-  >(input: {
-    chatId: string;
-    entityId: "external-import" | "mcp-oauth";
-    expired(status: Status): Status;
-    initial: Status;
-    key: string;
-    pending(status: Status): boolean;
-    read(): Promise<Status>;
-  }): void => {
-    const existing = customizationStatusObservers.get(input.key);
-    if (existing) {
-      existing.cancelled = true;
-      if (existing.timer) clearTimeout(existing.timer);
-      customizationStatusObservers.delete(input.key);
-    }
-    let current = input.initial;
-    let fingerprint = JSON.stringify(current);
-    publishCustomizationStatus(input.chatId, input.entityId, input.initial);
-    if (!input.pending(input.initial)) {
-      publishChatInvalidation(input.chatId, "customization");
-      return;
-    }
-    if (
-      customizationStatusObservers.size >= CUSTOMIZATION_STATUS_OBSERVER_LIMIT
-    ) {
-      const oldestKey = customizationStatusObservers.keys().next().value;
-      if (oldestKey !== undefined) {
-        const oldest = customizationStatusObservers.get(oldestKey);
-        if (oldest) {
-          oldest.cancelled = true;
-          if (oldest.timer) clearTimeout(oldest.timer);
-        }
-        customizationStatusObservers.delete(oldestKey);
-      }
-    }
-    const observer: {
-      cancelled: boolean;
-      timer: ReturnType<typeof setTimeout> | null;
-    } = { cancelled: false, timer: null };
-    customizationStatusObservers.set(input.key, observer);
-    const deadline = Date.now() + CUSTOMIZATION_STATUS_OBSERVE_TIMEOUT_MS;
-    let retryDelay = CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS;
-    const schedule = (
-      delay = CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS,
-    ): void => {
-      observer.timer = setTimeout(() => {
-        observer.timer = null;
-        if (
-          observer.cancelled ||
-          !livePublishingEnabled ||
-          customizationStatusObservers.get(input.key) !== observer
-        ) {
-          return;
-        }
-        void input
-          .read()
-          .then((status) => {
-            if (
-              observer.cancelled ||
-              !livePublishingEnabled ||
-              customizationStatusObservers.get(input.key) !== observer
-            ) {
-              return;
-            }
-            current = status;
-            const nextFingerprint = JSON.stringify(status);
-            retryDelay = CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS;
-            if (nextFingerprint !== fingerprint) {
-              fingerprint = nextFingerprint;
-              publishCustomizationStatus(input.chatId, input.entityId, status);
-            }
-            if (input.pending(status) && Date.now() < deadline) {
-              schedule();
-            } else {
-              customizationStatusObservers.delete(input.key);
-              if (input.pending(status)) {
-                publishCustomizationStatus(
-                  input.chatId,
-                  input.entityId,
-                  input.expired(status),
-                );
-              }
-              publishChatInvalidation(input.chatId, "customization");
-            }
-          })
-          .catch((error) => {
-            if (
-              observer.cancelled ||
-              !livePublishingEnabled ||
-              customizationStatusObservers.get(input.key) !== observer
-            ) {
-              return;
-            }
-            if (Date.now() < deadline) {
-              retryDelay = Math.min(
-                retryDelay * 2,
-                CUSTOMIZATION_STATUS_OBSERVE_RETRY_MAX_MS,
-              );
-              schedule(retryDelay);
-              return;
-            }
-            customizationStatusObservers.delete(input.key);
-            publishCustomizationStatus(
-              input.chatId,
-              input.entityId,
-              input.expired(current),
-            );
-            app.log.warn(
-              { chatId: input.chatId, err: error },
-              "Customization status observation expired",
-            );
-          });
-      }, delay);
-      observer.timer.unref();
-    };
-    schedule();
-  };
-  const readMcpOauthStatus = async (
-    context: ChatExecutionContext,
-    runtime: ModelRuntime,
-    server: string,
-  ): Promise<CodexMcpOauthStatus> =>
-    codexMcpOauthStatusSchema.parse(
-      await bridge.request(context.workerId, {
-        type: "customization.mcp.oauth.status",
-        cwd: context.cwd,
-        server,
-        model: runtime.model,
-        provider: runtime.provider,
-      }),
-    );
-  const observeMcpOauthStatus = (
-    context: ChatExecutionContext,
-    runtime: ModelRuntime,
-    initial: CodexMcpOauthStatus,
-  ): void => {
-    observeCustomizationStatus({
-      chatId: context.chatId,
-      entityId: "mcp-oauth",
-      expired: (status) => ({
-        ...status,
-        status: "unknown",
-        error: "Cantrip stopped observing this authorization after 15 minutes.",
-      }),
-      initial,
-      key: `${context.chatId}:mcp-oauth:${initial.server}`,
-      pending: (status) => status.status === "pending",
-      read: () => readMcpOauthStatus(context, runtime, initial.server),
-    });
   };
   const publishChatMessage = (message: ChatMessage): void => {
     if (!livePublishingEnabled) return;
@@ -26026,9 +25832,12 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/customizations/mcp-resource",
     async (request, reply) => {
-      const input = codexMcpResourceReadRequestSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
+      const input = protectedCustomizationRequestSchema.safeParse(request.body);
+      if (
+        !input.success ||
+        input.data.operation !== "customization.mcp.resource.read"
+      ) {
+        return reply.code(400).send({ error: "Invalid protected request." });
       }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -26045,14 +25854,28 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before reading MCP resources." });
         }
-        const resource = await bridge.request(context.workerId, {
-          type: "customization.mcp.resource.read",
-          cwd: context.cwd,
-          model: runtime.model,
-          provider: runtime.provider,
-          ...input.data,
+        const scope = chatCustomizationScope(context, runtime);
+        if (!customizationScopesMatch(input.data.scope, scope)) {
+          return reply
+            .code(409)
+            .send({ error: "Customization scope changed." });
+        }
+        const resource = checkedCustomizationResponse({
+          raw: await bridge.request(context.workerId, {
+            type: "customization.mcp.resource.read",
+            operationId: input.data.operationId,
+            serverId,
+            scope,
+            protectedRequest: input.data.protectedRequest,
+            cwd: context.cwd,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+          operationId: input.data.operationId,
+          operation: input.data.operation,
+          scope,
         });
-        return reply.send(codexMcpResourceReadSchema.parse(resource));
+        return reply.send(resource);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
@@ -26174,9 +25997,12 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/customizations/mcp-oauth",
     async (request, reply) => {
-      const input = codexMcpOauthStartSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
+      const input = protectedCustomizationRequestSchema.safeParse(request.body);
+      if (
+        !input.success ||
+        input.data.operation !== "customization.mcp.oauth.start"
+      ) {
+        return reply.code(400).send({ error: "Invalid protected request." });
       }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -26193,21 +26019,27 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before authorizing MCP servers." });
         }
-        const result = codexMcpOauthStartResultSchema.parse(
-          await bridge.request(context.workerId, {
+        const scope = chatCustomizationScope(context, runtime);
+        if (!customizationScopesMatch(input.data.scope, scope)) {
+          return reply
+            .code(409)
+            .send({ error: "Customization scope changed." });
+        }
+        const result = checkedCustomizationResponse({
+          raw: await bridge.request(context.workerId, {
             type: "customization.mcp.oauth.start",
+            operationId: input.data.operationId,
+            serverId,
+            scope,
+            protectedRequest: input.data.protectedRequest,
             cwd: context.cwd,
-            server: input.data.server,
             model: runtime.model,
             provider: runtime.provider,
           }),
-        );
-        const initial = codexMcpOauthStatusSchema.parse({
-          server: result.server,
-          status: result.status,
-          error: null,
+          operationId: input.data.operationId,
+          operation: input.data.operation,
+          scope,
         });
-        observeMcpOauthStatus(context, runtime, initial);
         return reply.send(result);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
@@ -26215,15 +26047,15 @@ export async function buildApp({
     },
   );
 
-  app.get<{
-    Params: { chatId: string };
-    Querystring: { server?: string };
-  }>(
+  app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/customizations/mcp-oauth/status",
     async (request, reply) => {
-      const input = codexMcpOauthStartSchema.safeParse(request.query);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
+      const input = protectedCustomizationRequestSchema.safeParse(request.body);
+      if (
+        !input.success ||
+        input.data.operation !== "customization.mcp.oauth.status"
+      ) {
+        return reply.code(400).send({ error: "Invalid protected request." });
       }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -26240,12 +26072,27 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before checking MCP OAuth." });
         }
-        const status = await readMcpOauthStatus(
-          context,
-          runtime,
-          input.data.server,
-        );
-        observeMcpOauthStatus(context, runtime, status);
+        const scope = chatCustomizationScope(context, runtime);
+        if (!customizationScopesMatch(input.data.scope, scope)) {
+          return reply
+            .code(409)
+            .send({ error: "Customization scope changed." });
+        }
+        const status = checkedCustomizationResponse({
+          raw: await bridge.request(context.workerId, {
+            type: "customization.mcp.oauth.status",
+            operationId: input.data.operationId,
+            serverId,
+            scope,
+            protectedRequest: input.data.protectedRequest,
+            cwd: context.cwd,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+          operationId: input.data.operationId,
+          operation: input.data.operation,
+          scope,
+        });
         return reply.send(status);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
@@ -26256,6 +26103,13 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/customizations/mcp-reload",
     async (request, reply) => {
+      const input = protectedCustomizationRequestSchema.safeParse(request.body);
+      if (
+        !input.success ||
+        input.data.operation !== "customization.mcp.reload"
+      ) {
+        return reply.code(400).send({ error: "Invalid protected request." });
+      }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,
@@ -26271,15 +26125,31 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before reloading MCP servers." });
         }
-        const result = await bridge.request(context.workerId, {
-          type: "customization.mcp.reload",
-          cwd: context.cwd,
-          model: runtime.model,
-          provider: runtime.provider,
+        const scope = chatCustomizationScope(context, runtime);
+        if (!customizationScopesMatch(input.data.scope, scope)) {
+          return reply
+            .code(409)
+            .send({ error: "Customization scope changed." });
+        }
+        const result = checkedCustomizationResponse({
+          raw: await bridge.request(context.workerId, {
+            type: "customization.mcp.reload",
+            operationId: input.data.operationId,
+            serverId,
+            scope,
+            protectedRequest: input.data.protectedRequest,
+            cwd: context.cwd,
+            model: runtime.model,
+            provider: runtime.provider,
+          }),
+          operationId: input.data.operationId,
+          operation: input.data.operation,
+          scope,
         });
-        const reloaded = codexMcpReloadResultSchema.parse(result);
-        publishChatInvalidation(context.chatId, "customization");
-        return reply.send(reloaded);
+        if (result.result === "succeeded") {
+          publishChatInvalidation(context.chatId, "customization");
+        }
+        return reply.send(result);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
@@ -28999,11 +28869,6 @@ export async function buildApp({
     for (const timer of quotaObservationTimers) clearTimeout(timer);
     quotaObservationTimers.clear();
     quotaResetObservationKeys.clear();
-    for (const observer of customizationStatusObservers.values()) {
-      observer.cancelled = true;
-      if (observer.timer) clearTimeout(observer.timer);
-    }
-    customizationStatusObservers.clear();
     projectTokenUsageLiveInvalidations.close();
     for (const timer of worktreeObservationTimers.values()) clearTimeout(timer);
     worktreeObservationTimers.clear();
