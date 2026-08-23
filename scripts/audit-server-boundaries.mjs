@@ -132,7 +132,7 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   systemState: "intentionally-public-control-plane",
   users: "intentionally-public-control-plane",
   accountLicenseWhitelist: "intentionally-public-control-plane",
-  userSessions: "tracked-rollout-gap",
+  userSessions: "hashed-validator",
   mobileSignInGrants: "hashed-validator",
   auditEvents: "minimized-operational-metadata",
   workerEnrollmentCodes: "hashed-validator",
@@ -167,7 +167,7 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   tabGroupMembers: "intentionally-public-control-plane",
   projectSources: "endpoint-protected",
   projectWorktrees: "endpoint-protected",
-  worktreeSetupJobs: "tracked-rollout-gap",
+  worktreeSetupJobs: "minimized-operational-metadata",
   projectFolderSetupJobs: "minimized-operational-metadata",
   projectGithubConversionJobs: "minimized-operational-metadata",
   projectReplicaJobs: "minimized-operational-metadata",
@@ -3500,6 +3500,66 @@ async function clientControlNotificationBoundaryAudit() {
   };
 }
 
+async function sessionMetadataMinimizationBoundaryAudit() {
+  const paths = {
+    schema: schemaPath,
+    repository: resolve(serverSourcePath, "db/repository.ts"),
+    authentication: resolve(serverSourcePath, "auth/service.ts"),
+    migration: resolve(
+      repositoryRoot,
+      "cantrip_server/drizzle/0149_nebulous_meggan.sql",
+    ),
+  };
+  const texts = Object.fromEntries(
+    await Promise.all(
+      Object.entries(paths).map(async ([name, path]) => [
+        name,
+        await readFile(path, "utf8"),
+      ]),
+    ),
+  );
+  const failures = [];
+  const sessionTable = tableInitializer(texts.schema, "userSessions");
+  for (const field of [
+    "ipAddressHash",
+    "userAgentHash",
+    "ip_address_hash",
+    "user_agent_hash",
+  ]) {
+    if (sessionTable.includes(field)) {
+      failures.push(`userSessions: retained request fingerprint ${field}`);
+    }
+  }
+  for (const marker of [
+    "requestMetadataHash",
+    "ipAddressHash",
+    "userAgentHash",
+  ]) {
+    if (`${texts.authentication}\n${texts.repository}`.includes(marker)) {
+      failures.push(`session creation: retained request fingerprint ${marker}`);
+    }
+  }
+  for (const column of ["ip_address_hash", "user_agent_hash"]) {
+    if (!texts.migration.includes(`DROP COLUMN \"${column}\"`)) {
+      failures.push(`session migration: missing DROP COLUMN ${column}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Session metadata minimization boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: ["user_sessions"],
+    guards: [
+      "request-ip-fingerprint:absent",
+      "user-agent-fingerprint:absent",
+      "session-and-csrf-token-hashes:retained-authentication-validators",
+      "legacy-fingerprint-columns:dropped",
+    ],
+  };
+}
+
 async function analyticsAuditLogPrivacyBoundaryAudit() {
   const paths = {
     schema: resolve(serverSourcePath, "db/schema.ts"),
@@ -4151,9 +4211,9 @@ function clientControlContentClassification(command) {
 function tunnelFrameContentClassification(kind) {
   if (kind === "data") {
     return {
-      classification: "tracked-rollout-gap",
+      classification: "endpoint-protected",
       rationale:
-        "desktop/worker TCP frames are endpoint-protected; Code and project-share adapter relocation remains",
+        "direct and relayed TCP payloads use endpoint-authenticated tunnel ciphertext",
     };
   }
   if (kind === "connect") {
@@ -4635,6 +4695,7 @@ async function buildInventory() {
     tunnelConfiguration,
     durableJobStatus,
     clientControlNotification,
+    sessionMetadataMinimization,
     analyticsAuditLogPrivacy,
     attachmentContentRepository,
     privateDisplayLabelDependencies,
@@ -4671,6 +4732,7 @@ async function buildInventory() {
     tunnelConfigurationBoundaryAudit(),
     durableJobStatusBoundaryAudit(),
     clientControlNotificationBoundaryAudit(),
+    sessionMetadataMinimizationBoundaryAudit(),
     analyticsAuditLogPrivacyBoundaryAudit(),
     attachmentContentRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
@@ -4807,9 +4869,133 @@ async function buildInventory() {
         .length,
     ]),
   );
+  const agentOperationContentBoundaries = agentOperations.map((operation) => ({
+    operation,
+    ...agentOperationContentClassification(operation),
+  }));
+  const workerCommandContentBoundaries = workerCommands.map((command) => ({
+    command,
+    ...workerCommandContentClassification(command),
+  }));
+  const liveResourceContentBoundaries = liveResources.map((resource) => ({
+    resource,
+    ...liveResourceContentClassification(resource),
+  }));
+  const clientControlContentBoundaries = clientControlCommands.map(
+    (command) => ({
+      command,
+      ...clientControlContentClassification(command),
+    }),
+  );
+  const cliCommandContentBoundaries = cliCommands.map((command) => ({
+    command,
+    ...cliCommandContentClassification(command),
+  }));
+  const tunnelFrameContentBoundaries = tunnelFrameKinds.map((kind) => ({
+    kind,
+    ...tunnelFrameContentClassification(kind),
+  }));
+  const externalTransports = [
+    {
+      boundary: "application-principal",
+      contentClassification: "endpoint-protected",
+      implementation: "cantrip_server/src/code/tunnel.ts",
+      name: "Protected Cantrip Code tunnel control plane",
+      ownerBinding:
+        "authenticated owner, project, assigned worker, opaque revision-bound tunnel record, and desktop attachment",
+    },
+    {
+      boundary: "application-principal",
+      contentClassification: "endpoint-protected",
+      implementation: "cantrip_server/src/project-shares/tunnel.ts",
+      name: "Protected project-share tunnel control plane",
+      ownerBinding:
+        "authenticated owner, project, assigned worker, opaque revision-bound tunnel record, and desktop attachment",
+    },
+    {
+      boundary: "application-principal",
+      contentClassification: "endpoint-protected",
+      implementation: "cantrip_server/src/remote-surfaces/relay.ts",
+      name: "Browser and Remote Desktop binary relay",
+      ownerBinding: "surface execution context, attachment, and worker",
+    },
+    {
+      boundary: "worker-control",
+      contentClassification: "endpoint-protected",
+      implementation: "cantrip_server/src/workers/bridge.ts",
+      name: "Worker command and protected binary tunnel multiplexing",
+      ownerBinding:
+        "owner and immutable worker ID from an independently revocable worker credential",
+    },
+    {
+      boundary: "application-principal",
+      contentClassification: "intentionally-public-control-plane",
+      implementation: "cantrip_server/src/live/hub.ts",
+      name: "Application invalidation and replay stream",
+      ownerBinding:
+        "request principal, active session, owner-private cursor, and authorized subscription scope",
+    },
+  ];
+  const trackedRolloutGaps = [
+    ...durableTables.map(({ exportName, classification }) => ({
+      boundary: `durable-table:${exportName}`,
+      classification,
+    })),
+    ...routes.map(({ method, path, contentBoundary }) => ({
+      boundary: `route:${method} ${path}`,
+      classification: contentBoundary.classification,
+    })),
+    ...agentOperationContentBoundaries.map(({ operation, classification }) => ({
+      boundary: `agent-operation:${operation}`,
+      classification,
+    })),
+    ...workerCommandContentBoundaries.map(({ command, classification }) => ({
+      boundary: `worker-command:${command}`,
+      classification,
+    })),
+    ...liveResourceContentBoundaries.map(({ resource, classification }) => ({
+      boundary: `live-resource:${resource}`,
+      classification,
+    })),
+    ...clientControlContentBoundaries.map(({ command, classification }) => ({
+      boundary: `client-control:${command}`,
+      classification,
+    })),
+    ...cliCommandContentBoundaries.map(({ command, classification }) => ({
+      boundary: `cli-command:${command}`,
+      classification,
+    })),
+    ...tunnelFrameContentBoundaries.map(({ kind, classification }) => ({
+      boundary: `tunnel-frame:${kind}`,
+      classification,
+    })),
+    ...externalTransports.map(({ name, contentClassification }) => ({
+      boundary: `external-transport:${name}`,
+      classification: contentClassification,
+    })),
+  ].filter(({ classification }) => classification === "tracked-rollout-gap");
+  if (
+    encryptionLedgerClosure.remainingWork.status === "closed" &&
+    trackedRolloutGaps.length > 0
+  ) {
+    throw new Error(
+      `Encryption ledger claims closure with tracked rollout gaps:\n${trackedRolloutGaps
+        .map(({ boundary }) => boundary)
+        .join("\n")}`,
+    );
+  }
+  const wholeProductEncryptionClosure = {
+    status:
+      encryptionLedgerClosure.remainingWork.status === "closed" &&
+      trackedRolloutGaps.length === 0
+        ? "closed"
+        : "open",
+    trackedRolloutGapCount: trackedRolloutGaps.length,
+    trackedRolloutGaps: trackedRolloutGaps.map(({ boundary }) => boundary),
+  };
 
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     sources: {
       agentOperations: "packages/protocol/src/index.ts",
       applicationRoutes: "cantrip_server/src/app.ts",
@@ -4850,32 +5036,14 @@ async function buildInventory() {
     contractSetDigests,
     durableTables,
     routes,
-    agentOperationContentBoundaries: agentOperations.map((operation) => ({
-      operation,
-      ...agentOperationContentClassification(operation),
-    })),
+    agentOperationContentBoundaries,
     workerCommands,
-    workerCommandContentBoundaries: workerCommands.map((command) => ({
-      command,
-      ...workerCommandContentClassification(command),
-    })),
+    workerCommandContentBoundaries,
     liveResources,
-    liveResourceContentBoundaries: liveResources.map((resource) => ({
-      resource,
-      ...liveResourceContentClassification(resource),
-    })),
-    clientControlContentBoundaries: clientControlCommands.map((command) => ({
-      command,
-      ...clientControlContentClassification(command),
-    })),
-    cliCommandContentBoundaries: cliCommands.map((command) => ({
-      command,
-      ...cliCommandContentClassification(command),
-    })),
-    tunnelFrameContentBoundaries: tunnelFrameKinds.map((kind) => ({
-      kind,
-      ...tunnelFrameContentClassification(kind),
-    })),
+    liveResourceContentBoundaries,
+    clientControlContentBoundaries,
+    cliCommandContentBoundaries,
+    tunnelFrameContentBoundaries,
     repositoryMethods,
     taskE2eeBoundary: {
       status: "enforced",
@@ -4916,6 +5084,10 @@ async function buildInventory() {
       status: "enforced",
       ...clientControlNotification,
     },
+    sessionMetadataPrivacyBoundary: {
+      status: "minimized",
+      ...sessionMetadataMinimization,
+    },
     analyticsAuditLogPrivacyBoundary: {
       status: "minimized",
       ...analyticsAuditLogPrivacy,
@@ -4953,47 +5125,8 @@ async function buildInventory() {
       ...remoteSurfaceStreamProtocol,
     },
     encryptionLedgerClosure,
-    externalTransports: [
-      {
-        boundary: "capability-token",
-        contentClassification: "tracked-rollout-gap",
-        implementation: "cantrip_server/src/code/tunnel.ts",
-        name: "Cantrip Code HTTP/WebSocket surface",
-        ownerBinding:
-          "attachment owner, authenticated user session, worker, Code tab, and editor session",
-      },
-      {
-        boundary: "application-principal",
-        contentClassification: "endpoint-protected",
-        implementation: "cantrip_server/src/project-shares/tunnel.ts",
-        name: "Protected project-share tunnel control plane",
-        ownerBinding:
-          "authenticated owner, project, assigned worker, opaque revision-bound tunnel record, and desktop attachment",
-      },
-      {
-        boundary: "application-principal",
-        contentClassification: "endpoint-protected",
-        implementation: "cantrip_server/src/remote-surfaces/relay.ts",
-        name: "Browser and Remote Desktop binary relay",
-        ownerBinding: "surface execution context, attachment, and worker",
-      },
-      {
-        boundary: "worker-control",
-        contentClassification: "tracked-rollout-gap",
-        implementation: "cantrip_server/src/workers/bridge.ts",
-        name: "Worker command and binary tunnel multiplexing",
-        ownerBinding:
-          "owner and immutable worker ID from an independently revocable worker credential",
-      },
-      {
-        boundary: "application-principal",
-        contentClassification: "intentionally-public-control-plane",
-        implementation: "cantrip_server/src/live/hub.ts",
-        name: "Application invalidation and replay stream",
-        ownerBinding:
-          "request principal, active session, owner-private cursor, and authorized subscription scope",
-      },
-    ],
+    wholeProductEncryptionClosure,
+    externalTransports,
   };
 }
 
