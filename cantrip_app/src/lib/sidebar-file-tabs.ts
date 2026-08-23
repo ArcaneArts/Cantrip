@@ -18,6 +18,12 @@ export function sidebarFileName(path: string): string {
   return path.split("/").at(-1) || path;
 }
 
+export function sidebarFilePreviewViewKey(
+  preview: Pick<SidebarFilePreviewState, "explorerId" | "path">,
+): string {
+  return `sidebar-file-preview:${preview.explorerId}`;
+}
+
 export function tabbedExplorerIds(
   layout: ProjectTabLayoutSummary | null | undefined,
 ): ReadonlySet<string> {

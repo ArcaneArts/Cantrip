@@ -306,13 +306,16 @@ export function ExplorerView({
   repositoryGraphAvailable: boolean;
   transientFile?: TransientExplorerFile;
 }) {
+  const transientFilePath = transientFile?.path;
+  const transientFileCloseRef = useRef(transientFile?.close);
+  transientFileCloseRef.current = transientFile?.close;
   const previousActiveRef = useRef(active);
   const [entryReplayKey, setEntryReplayKey] = useState(0);
   const [selectedPath, setSelectedPath] = useState(() =>
     explorerSurfaceSelectedPath({
       openFilesExternally: Boolean(onOpenFile),
       persistedPath: explorer.selectedPath,
-      transientPath: transientFile?.path,
+      transientPath: transientFilePath,
     }),
   );
 
@@ -333,8 +336,8 @@ export function ExplorerView({
     useState<GitRepositoryGraphStatus | null>(null);
   const [revealedPath, setRevealedPath] = useState<string | null>(null);
   const [fileMode, setFileModeState] = useState<ExplorerFileMode>(() =>
-    transientFile
-      ? defaultExplorerFileMode(transientFile.path)
+    transientFilePath
+      ? defaultExplorerFileMode(transientFilePath)
       : explorer.fileMode,
   );
   const [draft, setDraft] = useState("");
@@ -499,7 +502,7 @@ export function ExplorerView({
   const persistViewState = useCallback(
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
       applyViewState(next);
-      if (transientFile) return Promise.resolve(true);
+      if (transientFilePath) return Promise.resolve(true);
       if (mountedRef.current) setViewStatePending((count) => count + 1);
       const operation = viewStateQueueRef.current.then(async () => {
         try {
@@ -534,7 +537,7 @@ export function ExplorerView({
       viewStateQueueRef.current = operation;
       return operation;
     },
-    [applyViewState, explorer.id, onChanged, transientFile],
+    [applyViewState, explorer.id, onChanged, transientFilePath],
   );
 
   const loadFile = useCallback(
@@ -563,6 +566,29 @@ export function ExplorerView({
     },
     [explorer.id, queryClient, resetSaveFile],
   );
+
+  useEffect(() => {
+    if (
+      !transientFilePath ||
+      transientFilePath === selectedPathRef.current
+    ) {
+      return;
+    }
+    setGraphRootPath(undefined);
+    setGraphStatus(null);
+    setRevealedPath(null);
+    setDraft("");
+    setBaselineContent("");
+    setDraftVersion(null);
+    resetSaveFile();
+    applyViewState({
+      selectedPath: transientFilePath,
+      fileMode: defaultExplorerFileMode(transientFilePath),
+    });
+    if (explorerMediaTypeForPath(transientFilePath)) {
+      setMediaRevision((revision) => revision + 1);
+    }
+  }, [applyViewState, resetSaveFile, transientFilePath]);
 
   const saveDraft = useCallback(async (): Promise<boolean> => {
     const path = selectedPathRef.current;
@@ -645,11 +671,11 @@ export function ExplorerView({
       const nextSelectedPath = explorerSurfaceSelectedPath({
         openFilesExternally: Boolean(onOpenFile),
         persistedPath: persisted.selectedPath,
-        transientPath: transientFile?.path,
+        transientPath: transientFilePath,
       });
       applyViewState({
         selectedPath: nextSelectedPath,
-        fileMode: transientFile ? fileModeRef.current : persisted.fileMode,
+        fileMode: transientFilePath ? fileModeRef.current : persisted.fileMode,
       });
       onChanged?.(persisted);
       if (nextSelectedPath) {
@@ -667,14 +693,14 @@ export function ExplorerView({
       onChanged,
       onOpenFile,
       resetSaveFile,
-      transientFile,
+      transientFilePath,
     ],
   );
 
   useEffect(() => {
     // Desktop Explorer surfaces remain file browsers. Their editor windows are
     // transient and must not be pulled back inline by legacy saved view state.
-    if (transientFile || onOpenFile) return;
+    if (transientFilePath || onOpenFile) return;
     const worktreeChanged = worktreeIdRef.current !== explorer.worktreeId;
     const viewStateChanged =
       explorer.selectedPath !== selectedPathRef.current ||
@@ -693,7 +719,7 @@ export function ExplorerView({
     explorer.worktreeId,
     onOpenFile,
     reconcile,
-    transientFile,
+    transientFilePath,
     viewStatePending,
   ]);
 
@@ -741,8 +767,8 @@ export function ExplorerView({
     ) {
       return;
     }
-    if (transientFile) {
-      transientFile.close();
+    if (transientFilePath) {
+      transientFileCloseRef.current?.();
       return;
     }
     setDraft("");
@@ -750,7 +776,7 @@ export function ExplorerView({
     setDraftVersion(null);
     resetSaveFile();
     void persistViewState({ selectedPath: null, fileMode: "preview" });
-  }, [graphRootPath, persistViewState, resetSaveFile, transientFile]);
+  }, [graphRootPath, persistViewState, resetSaveFile, transientFilePath]);
 
   const changeFileMode = useCallback(
     (mode: ExplorerFileMode) => {
