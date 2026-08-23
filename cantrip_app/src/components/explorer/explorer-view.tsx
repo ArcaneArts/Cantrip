@@ -267,10 +267,17 @@ export interface TransientExplorerFile {
   close(): void;
 }
 
+export interface ExplorerGraphRequest {
+  explorerId: string;
+  requestId: string;
+  rootPath: string | null;
+}
+
 export function ExplorerView({
   active = true,
   appearance,
   explorer,
+  graphRequest,
   gitStatus,
   onChanged,
   onHeaderChange,
@@ -285,6 +292,7 @@ export function ExplorerView({
   active?: boolean;
   appearance: CodeAppearance;
   explorer: ExplorerSummary;
+  graphRequest?: ExplorerGraphRequest | null;
   gitStatus?: GitStatus;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
@@ -362,6 +370,13 @@ export function ExplorerView({
   const directoryFetches = useIsFetching({
     queryKey: ["explorer-directory", explorer.id],
   });
+
+  useEffect(() => {
+    if (!graphRequest || graphRequest.explorerId !== explorer.id) return;
+    setGraphStatus(null);
+    setRevealedPath(null);
+    setGraphRootPath(graphRequest.rootPath);
+  }, [explorer.id, graphRequest]);
   const commitFetches = useIsFetching({
     queryKey: ["explorer-directory-commits", explorer.id],
   });

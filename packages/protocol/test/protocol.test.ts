@@ -106,6 +106,7 @@ import {
   runStartRequestSchema,
   runStartResultSchema,
   explorerFileWriteSchema,
+  explorerEntryNameSchema,
   explorerOperationRequestContentSchema,
   explorerMediaTypeForPath,
   remoteBrowserClipboardMessageSchema,
@@ -3226,6 +3227,32 @@ describe("Cantrip protocol", () => {
         version: "stale",
       }),
     ).toThrow();
+  });
+
+  it("accepts basename-only Explorer entry mutations", () => {
+    expect(
+      explorerOperationRequestContentSchema.parse({
+        type: "explorer.entry.rename",
+        path: "src/old.ts",
+        name: "new.ts",
+      }),
+    ).toEqual({
+      type: "explorer.entry.rename",
+      path: "src/old.ts",
+      name: "new.ts",
+    });
+    expect(
+      explorerOperationRequestContentSchema.parse({
+        type: "explorer.entry.delete",
+        path: "src/generated",
+      }),
+    ).toMatchObject({ type: "explorer.entry.delete" });
+    expect(() => explorerEntryNameSchema.parse("../outside.ts")).toThrow(
+      /single file or folder name/u,
+    );
+    expect(() => explorerEntryNameSchema.parse("nested/name.ts")).toThrow(
+      /single file or folder name/u,
+    );
   });
 
   it("classifies browser-native Explorer media and bounds chunk reads", () => {

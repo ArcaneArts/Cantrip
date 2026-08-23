@@ -18,6 +18,20 @@ export function sidebarFileName(path: string): string {
   return path.split("/").at(-1) || path;
 }
 
+export function sidebarPathAtOrBelow(path: string, rootPath: string): boolean {
+  return path === rootPath || path.startsWith(`${rootPath}/`);
+}
+
+export function moveSidebarPath(
+  path: string,
+  previousRootPath: string,
+  nextRootPath: string,
+): string {
+  return sidebarPathAtOrBelow(path, previousRootPath)
+    ? `${nextRootPath}${path.slice(previousRootPath.length)}`
+    : path;
+}
+
 export function sidebarFilePreviewViewKey(
   preview: Pick<SidebarFilePreviewState, "explorerId" | "path">,
 ): string {

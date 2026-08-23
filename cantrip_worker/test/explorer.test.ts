@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import {
   mkdtemp,
   mkdir,
+  link,
   readFile,
   rm,
   symlink,
@@ -14,10 +15,12 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  deleteExplorerEntry,
   listExplorerDirectoryCommits,
   listExplorerDirectory,
   readExplorerFile,
   readExplorerMediaFile,
+  renameExplorerEntry,
   statExplorerMediaFile,
   writeExplorerFile,
 } from "../src/explorer.js";
@@ -166,6 +169,79 @@ describe("project explorer", () => {
       writeExplorerFile(root, "linked.txt", "updated\n", linked.version),
     ).resolves.toMatchObject({ content: "updated\n" });
     await expect(readFile(outside, "utf8")).resolves.toBe("updated\n");
+  });
+
+  it("renames files and folders without allowing path changes", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(root);
+    await mkdir(path.join(root, "src"));
+    await writeFile(path.join(root, "src", "old.ts"), "export {};\n");
+
+    await expect(
+      renameExplorerEntry(root, "src/old.ts", "new.ts"),
+    ).resolves.toEqual({ path: "src/old.ts", newPath: "src/new.ts" });
+    await expect(
+      readFile(path.join(root, "src", "new.ts"), "utf8"),
+    ).resolves.toBe("export {};\n");
+    await expect(renameExplorerEntry(root, "src", "source")).resolves.toEqual({
+      path: "src",
+      newPath: "source",
+    });
+    await expect(
+      renameExplorerEntry(root, "source/new.ts", "../escaped.ts"),
+    ).rejects.toThrow("single file or folder name");
+  });
+
+  it("refuses rename collisions and recursively deletes directories", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(root);
+    await mkdir(path.join(root, "nested", "deep"), { recursive: true });
+    await writeFile(path.join(root, "nested", "deep", "file.txt"), "data\n");
+    await writeFile(path.join(root, "existing.txt"), "existing\n");
+    await writeFile(path.join(root, "source.txt"), "source\n");
+    await link(
+      path.join(root, "source.txt"),
+      path.join(root, "source-hard-link.txt"),
+    );
+
+    await expect(
+      renameExplorerEntry(root, "source.txt", "existing.txt"),
+    ).rejects.toThrow("already exists");
+    await expect(
+      renameExplorerEntry(root, "source.txt", "source-hard-link.txt"),
+    ).rejects.toThrow("already exists");
+    await expect(deleteExplorerEntry(root, "nested")).resolves.toEqual({
+      path: "nested",
+      newPath: null,
+    });
+    await expect(listExplorerDirectory(root, "nested")).rejects.toThrow();
+    await expect(
+      readFile(path.join(root, "existing.txt"), "utf8"),
+    ).resolves.toBe("existing\n");
+  });
+
+  it("deletes links themselves but rejects mutations through external links", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
+    directories.push(parent);
+    const root = path.join(parent, "project");
+    const outside = path.join(parent, "outside");
+    await mkdir(root);
+    await mkdir(outside);
+    await writeFile(path.join(outside, "shared.txt"), "shared\n");
+    await symlink(outside, path.join(root, "linked-directory"));
+
+    await expect(
+      renameExplorerEntry(root, "linked-directory/shared.txt", "renamed.txt"),
+    ).rejects.toThrow("cannot follow links outside");
+    await expect(
+      deleteExplorerEntry(root, "linked-directory/shared.txt"),
+    ).rejects.toThrow("cannot follow links outside");
+    await expect(
+      deleteExplorerEntry(root, "linked-directory"),
+    ).resolves.toMatchObject({ newPath: null });
+    await expect(
+      readFile(path.join(outside, "shared.txt"), "utf8"),
+    ).resolves.toBe("shared\n");
   });
 
   it("hydrates immediate entries with one newest-first history scan", async () => {
