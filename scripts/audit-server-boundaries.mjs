@@ -111,7 +111,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "72fd89d9aeb145e6d1365d60a3f79f9b90a7190eb0928a10ff90981f58989abd",
+    "37a191f07cf71abedf3f2b8a284298850eafbb45666c934422e1bbad94080928",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:

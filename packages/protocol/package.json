@@ -48,6 +48,10 @@
       "types": "./src/repository-operation.ts",
       "import": "./dist/repository-operation.js"
     },
+    "./endpoint-content": {
+      "types": "./src/endpoint-content.ts",
+      "import": "./dist/endpoint-content.js"
+    },
     "./workflow-content": {
       "types": "./src/workflow-content.ts",
       "import": "./dist/workflow-content.js"
