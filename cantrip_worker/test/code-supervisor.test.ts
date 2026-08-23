@@ -324,7 +324,6 @@ describe("Cantrip Code supervisor", () => {
       "breadcrumbs.enabled": true,
       "cantrip.presentation": "editor",
       "window.commandCenter": false,
-      "window.menuBarVisibility": "hidden",
       "workbench.activityBar.location": "hidden",
       "workbench.editor.editorActionsLocation": "hidden",
       "workbench.editor.empty.hint": "hidden",
@@ -333,6 +332,7 @@ describe("Cantrip Code supervisor", () => {
       "workbench.startupEditor": "none",
       "workbench.statusBar.visible": true,
     });
+    expect(workspace.settings).not.toHaveProperty("window.menuBarVisibility");
 
     await expect(supervisor.openFile("editor", "example.ts")).resolves.toEqual({
       relativePath: "example.ts",
