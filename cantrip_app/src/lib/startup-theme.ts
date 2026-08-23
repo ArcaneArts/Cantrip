@@ -1,4 +1,5 @@
 export const STARTUP_THEME_STORAGE_KEY = "cantrip.theme.preference";
+export const STARTUP_HIGH_CONTRAST_STORAGE_KEY = "cantrip.theme.highContrast";
 
 export type StartupThemePreference = "dark" | "light" | "system";
 
@@ -24,6 +25,32 @@ export function rememberStartupThemePreference(
   try {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(STARTUP_THEME_STORAGE_KEY, preference);
+  } catch {
+    // The cache is only a first-paint hint, so storage failures are harmless.
+  }
+}
+
+export function readStartupHighContrast(): boolean | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const value = window.localStorage.getItem(
+      STARTUP_HIGH_CONTRAST_STORAGE_KEY,
+    );
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberStartupHighContrast(highContrast: boolean): void {
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      STARTUP_HIGH_CONTRAST_STORAGE_KEY,
+      String(highContrast),
+    );
   } catch {
     // The cache is only a first-paint hint, so storage failures are harmless.
   }

@@ -458,7 +458,9 @@ import {
   sidebarWidthFromPointer,
 } from "@/lib/sidebar-resize";
 import {
+  readStartupHighContrast,
   readStartupThemePreference,
+  rememberStartupHighContrast,
   rememberStartupThemePreference,
   startupThemeIsDark,
 } from "@/lib/startup-theme";
@@ -3814,7 +3816,11 @@ export function App() {
     null,
   );
   const [codeAppearance, setCodeAppearance] = useState<CodeAppearance>(() =>
-    document.documentElement.classList.contains("dark") ? "dark" : "light",
+    codeAppearanceFor(
+      document.documentElement.classList.contains("dark"),
+      document.documentElement.classList.contains("high-contrast"),
+      false,
+    ),
   );
   const [proModeActive, setProModeActive] = useState(false);
   const contentRootRef = useRef<HTMLElement>(null);
@@ -6083,27 +6089,24 @@ export function App() {
   };
   useEffect(() => {
     const configuredPreference = settings.data?.preferences.theme;
+    const configuredHighContrast = settings.data?.preferences.highContrast;
     const preference =
       configuredPreference ?? readStartupThemePreference() ?? "system";
+    const highContrast =
+      configuredHighContrast ?? readStartupHighContrast() ?? false;
     if (configuredPreference) {
       rememberStartupThemePreference(configuredPreference);
+    }
+    if (configuredHighContrast !== undefined) {
+      rememberStartupHighContrast(configuredHighContrast);
     }
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     let active = true;
     const apply = () => {
       const dark = startupThemeIsDark(preference, media.matches);
       document.documentElement.classList.toggle("dark", dark);
-      document.documentElement.classList.toggle(
-        "high-contrast",
-        settings.data?.preferences.highContrast ?? false,
-      );
-      setCodeAppearance(
-        codeAppearanceFor(
-          dark,
-          settings.data?.preferences.highContrast ?? false,
-          proModeActive,
-        ),
-      );
+      document.documentElement.classList.toggle("high-contrast", highContrast);
+      setCodeAppearance(codeAppearanceFor(dark, highContrast, proModeActive));
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
     };
     apply();
