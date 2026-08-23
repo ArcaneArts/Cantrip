@@ -50,6 +50,24 @@ describe("AgentInspectPanel", () => {
     expect(markup).toContain("group-focus-within/resizable-panel");
   });
 
+  it("can host a mutually exclusive subagent panel with its own title", () => {
+    const markup = renderToStaticMarkup(
+      <AgentInspectPanelShell
+        ariaLabel="Subagent transcript"
+        onOpenChange={vi.fn()}
+        open
+        overlay={false}
+        panelTitle="Subagent"
+      >
+        <p>Child stream</p>
+      </AgentInspectPanelShell>,
+    );
+    expect(markup).toContain('aria-label="Subagent transcript"');
+    expect(markup).toContain('aria-label="Close Subagent"');
+    expect(markup).toContain('aria-label="Resize Subagent sidebar"');
+    expect(markup).toContain("Child stream");
+  });
+
   it("can share the project tab row without extending into the titlebar", () => {
     const markup = renderToStaticMarkup(
       <AgentInspectPanelShell

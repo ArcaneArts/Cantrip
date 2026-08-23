@@ -115,6 +115,15 @@ import {
   readAgentInspectWidth,
   updateAgentInspectOpenChats,
 } from "@/components/chat/agent-inspect-panel";
+import {
+  buildAgentTurnProjection,
+  mergeAgentCardsIntoTimeline,
+} from "@/components/chat/agent-turn-projection";
+import {
+  DEFAULT_CHAT_SIDE_PANEL_VIEW,
+  subagentSidePanelView,
+  type ChatSidePanelView,
+} from "@/components/chat/chat-side-panel-state";
 import { randomAgentChatTitle } from "@/components/chat/agent-chat-name";
 import { projectFilePath } from "@/components/chat/markdown-file-link";
 import { useStickyChatScroll } from "@/components/chat/use-sticky-chat-scroll";
@@ -158,6 +167,8 @@ import {
 } from "@/components/chat/chat-relocation-dialog";
 import { PlanPanel } from "@/components/chat/plan-panel";
 import { Markdown } from "@/components/chat/markdown";
+import { SubagentLifecycleCard } from "@/components/chat/subagent-lifecycle-card";
+import { SubagentTranscriptPanel } from "@/components/chat/subagent-transcript-panel";
 import {
   filterCommandPalette,
   type CommandPaletteSuggestion,
@@ -1336,6 +1347,9 @@ function ChatTranscript({
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [inspectWidth, setInspectWidth] = useState(readAgentInspectWidth);
   const [inspectTab, setInspectTab] = useState<AgentInspectTab>("trajectory");
+  const [sidePanelView, setSidePanelView] = useState<ChatSidePanelView>(
+    DEFAULT_CHAT_SIDE_PANEL_VIEW,
+  );
   const [trajectoryTargetKey, setTrajectoryTargetKey] = useState<string | null>(
     null,
   );
@@ -1359,11 +1373,15 @@ function ChatTranscript({
   useEffect(() => {
     setInspectTab("trajectory");
     setTrajectoryTargetKey(null);
+    setSidePanelView(DEFAULT_CHAT_SIDE_PANEL_VIEW);
   }, [chat.id]);
 
   const handleInspectOpenChange = useCallback(
     (open: boolean) => {
-      if (!open) setTrajectoryTargetKey(null);
+      if (!open) {
+        setTrajectoryTargetKey(null);
+        setSidePanelView(DEFAULT_CHAT_SIDE_PANEL_VIEW);
+      }
       onInspectOpenChange(open);
     },
     [onInspectOpenChange],
@@ -1371,8 +1389,16 @@ function ChatTranscript({
 
   const viewTurnTrajectory = useCallback(
     (turnKey: string) => {
+      setSidePanelView(DEFAULT_CHAT_SIDE_PANEL_VIEW);
       setInspectTab("trajectory");
       setTrajectoryTargetKey(turnKey);
+      onInspectOpenChange(true);
+    },
+    [onInspectOpenChange],
+  );
+  const viewSubagent = useCallback(
+    (agentKey: string, focusItemKey: string | null = null) => {
+      setSidePanelView(subagentSidePanelView(agentKey, focusItemKey));
       onInspectOpenChange(true);
     },
     [onInspectOpenChange],
@@ -1421,6 +1447,24 @@ function ChatTranscript({
   const selectedModel = settings?.models.find(
     (model) => model.id === selectedModelId,
   );
+  const effectiveSubagentModelId = currentModelConfiguration.customSubagentModel
+    ? currentModelConfiguration.subagentModelId
+    : currentModelConfiguration.modelId;
+  const effectiveSubagentReasoningEffort =
+    currentModelConfiguration.customSubagentModel
+      ? currentModelConfiguration.subagentReasoningEffort
+      : currentModelConfiguration.reasoningEffort;
+  const selectedSubagentModel = settings?.models.find(
+    (model) => model.id === effectiveSubagentModelId,
+  );
+  const subagentModelSummary = [
+    selectedSubagentModel
+      ? modelDisplayName(selectedSubagentModel)
+      : (effectiveSubagentModelId ?? "Inherited model"),
+    effectiveSubagentReasoningEffort,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const hasImageAttachment = draftAttachments.some(
     ({ attachment }) => attachment.kind === "image",
   );
@@ -1717,9 +1761,17 @@ function ChatTranscript({
     retry: false,
     staleTime: 60_000,
   });
-  const timeline = useMemo(
-    () => buildChatTimeline(messages.data ?? []),
+  const agentProjection = useMemo(
+    () => buildAgentTurnProjection(messages.data ?? []),
     [messages.data],
+  );
+  const timeline = useMemo(
+    () => buildChatTimeline(agentProjection.rootMessages),
+    [agentProjection],
+  );
+  const transcriptEntries = useMemo(
+    () => mergeAgentCardsIntoTimeline(timeline, agentProjection.agents),
+    [agentProjection.agents, timeline],
   );
   const latestEditableMessage = useMemo(
     () =>
@@ -1797,12 +1849,12 @@ function ChatTranscript({
   );
   const latestAssistantText = useMemo(
     () =>
-      [...(messages.data ?? [])]
+      [...agentProjection.rootMessages]
         .reverse()
         .find((message) => message.role === "assistant")
         ?.content.flatMap((item) => (item.type === "text" ? [item.text] : []))
         .join("\n\n") ?? "",
-    [messages.data],
+    [agentProjection.rootMessages],
   );
   const clearDraftAttachments = () => {
     setDraftAttachments((current) => {
@@ -2720,7 +2772,17 @@ function ChatTranscript({
             </EmptyState>
           ) : null}
 
-          {timeline.map((entry) => {
+          {transcriptEntries.map((transcriptEntry) => {
+            if (transcriptEntry.type === "agent") {
+              return (
+                <SubagentLifecycleCard
+                  agent={transcriptEntry.agent}
+                  key={`agent:${transcriptEntry.agent.key}`}
+                  onOpen={viewSubagent}
+                />
+              );
+            }
+            const entry = transcriptEntry.entry;
             if (entry.type === "activityGroup") {
               return (
                 <ActivityGroup
@@ -3649,23 +3711,40 @@ function ChatTranscript({
         </div>
       ) : null}
       <AgentInspectPanelShell
+        ariaLabel={
+          sidePanelView.type === "subagent"
+            ? "Subagent transcript"
+            : "Agent activity inspector"
+        }
         className="absolute bottom-0 right-0 z-30"
         extendIntoProjectTabBar
         onOpenChange={handleInspectOpenChange}
         onWidthChange={setInspectWidth}
         open={inspectOpen}
         overlay={inspectOverlay}
+        panelTitle={sidePanelView.type === "subagent" ? "Subagent" : "Inspect"}
       >
-        <AgentInspectContent
-          active={inspectActive}
-          integratedPanelHeader
-          messages={messages.data ?? []}
-          onTabChange={setInspectTab}
-          tab={inspectTab}
-          trajectoryTargetKey={trajectoryTargetKey}
-          visible={inspectOpen}
-          onBackToCurrent={() => setTrajectoryTargetKey(null)}
-        />
+        {sidePanelView.type === "subagent" ? (
+          <SubagentTranscriptPanel
+            focusItemKey={sidePanelView.focusItemKey}
+            modelSummary={subagentModelSummary}
+            onOpenFile={onOpenFile}
+            onSelectAgent={viewSubagent}
+            projection={agentProjection}
+            selectedAgentKey={sidePanelView.agentKey}
+          />
+        ) : (
+          <AgentInspectContent
+            active={inspectActive}
+            integratedPanelHeader
+            messages={messages.data ?? []}
+            onTabChange={setInspectTab}
+            tab={inspectTab}
+            trajectoryTargetKey={trajectoryTargetKey}
+            visible={inspectOpen}
+            onBackToCurrent={() => setTrajectoryTargetKey(null)}
+          />
+        )}
       </AgentInspectPanelShell>
     </div>
   );
