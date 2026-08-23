@@ -43,6 +43,7 @@ import {
   chatMessageSchema,
   chatMessageWireListSchema,
   chatWireSummarySchema,
+  chatModelConfigurationUpdateSchema,
   encryptedChatComposerDraftUpdateSchema,
   encryptedChatComposerDraftWireStateSchema,
   chatCompactAcceptedSchema,
@@ -407,6 +408,7 @@ import type {
   GithubRepositoryCreate,
   EncryptedManagedFolderProjectCreate,
   ModelProfileCreate,
+  ModelConfiguration,
   ModelProfileSummary,
   ModelProfileUpdate,
   ModelProviderCreate,
@@ -6498,6 +6500,25 @@ export async function updateChatModel(chatId: string, modelId: string) {
   );
 }
 
+export async function updateChatModelConfiguration(
+  chatId: string,
+  configuration: ModelConfiguration,
+) {
+  return chatTitleEncryption.open(
+    chatWireSummarySchema.parse(
+      await request(
+        `/api/chats/${encodeURIComponent(chatId)}/model-configuration`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(
+            chatModelConfigurationUpdateSchema.parse(configuration),
+          ),
+        },
+      ),
+    ),
+  );
+}
+
 export async function getChatReasoning(chatId: string) {
   return chatReasoningStateSchema.parse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/reasoning`),
@@ -6521,11 +6542,11 @@ export async function updateChatReasoning(
 export async function startTurn(
   chatId: string,
   text: string,
-  modelId: string,
+  configuration: ModelConfiguration,
   attachments: ChatAttachmentSummary[] = [],
   mode: ChatTurnMode = "default",
-  reasoningEffort: ReasoningEffort | null = null,
 ) {
+  if (!configuration.modelId) throw new Error("Choose a model first.");
   await getPolicies();
   const idempotencyKey = crypto.randomUUID();
   const input = await createEncryptedChatTurn({
@@ -6533,9 +6554,12 @@ export async function startTurn(
     idempotencyKey,
     messageId: crypto.randomUUID(),
     mode,
-    modelId,
+    modelId: configuration.modelId,
     promptId: crypto.randomUUID(),
-    reasoningEffort,
+    reasoningEffort: configuration.reasoningEffort,
+    customSubagentModel: configuration.customSubagentModel,
+    subagentModelId: configuration.subagentModelId,
+    subagentReasoningEffort: configuration.subagentReasoningEffort,
     text,
   });
   const result = encryptedChatPromptSubmitResultSchema.parse(
@@ -6559,11 +6583,11 @@ export async function retryChatTurn(
   chatId: string,
   messageId: string,
   text: string,
-  modelId: string,
+  configuration: ModelConfiguration,
   attachments: ChatAttachmentSummary[] = [],
   mode: ChatTurnMode = "default",
-  reasoningEffort: ReasoningEffort | null = null,
 ) {
+  if (!configuration.modelId) throw new Error("Choose a model first.");
   await getPolicies();
   const idempotencyKey = crypto.randomUUID();
   const input = await createEncryptedChatTurn({
@@ -6571,9 +6595,12 @@ export async function retryChatTurn(
     idempotencyKey,
     messageId: crypto.randomUUID(),
     mode,
-    modelId,
+    modelId: configuration.modelId,
     promptId: crypto.randomUUID(),
-    reasoningEffort,
+    reasoningEffort: configuration.reasoningEffort,
+    customSubagentModel: configuration.customSubagentModel,
+    subagentModelId: configuration.subagentModelId,
+    subagentReasoningEffort: configuration.subagentReasoningEffort,
     text,
   });
   const result = encryptedChatPromptSubmitResultSchema.parse(

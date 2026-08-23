@@ -1,7 +1,7 @@
 import type {
   ChatAttachmentSummary,
   ChatSummary,
-  ReasoningEffort,
+  ModelConfiguration,
   SettingsBundle,
   TaskDetail,
   WorkerSummary,
@@ -43,7 +43,10 @@ import {
   shouldAttachPastedText,
 } from "@/components/chat/attachment-utils";
 import { AgentInspectContent } from "@/components/chat/agent-inspect-content";
-import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
+import {
+  chatModelConfiguration,
+  ModelReasoningPicker,
+} from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,9 +58,8 @@ import {
   getTaskAttachments,
   loadChatAttachmentContent,
   startTaskPlanning,
-  updateChatModel,
+  updateChatModelConfiguration,
   updateChatPermissionProfile,
-  updateChatReasoning,
   updateTaskDraft,
   uploadChatAttachment,
 } from "@/lib/api";
@@ -188,8 +190,6 @@ export function TaskSurface({
   const [conflict, setConflict] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [titleDraft, setTitleDraft] = useState(chat.title);
-  const [reasoningEffort, setReasoningEffort] =
-    useState<ReasoningEffort | null>(chat.reasoningEffort);
   const rowVersionRef = useRef(1);
   const pendingDeletionIdsRef = useRef(new Set<string>());
   const failedDraftSignatureRef = useRef<string | null>(null);
@@ -249,6 +249,10 @@ export function TaskSurface({
 
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
+  const currentModelConfiguration = chatModelConfiguration(
+    chat,
+    settings?.preferences.defaultModelId ?? null,
+  );
   const reasoningState = useQuery({
     enabled: Boolean(selectedModelId),
     queryFn: () => getChatReasoning(chat.id),
@@ -263,10 +267,10 @@ export function TaskSurface({
     retry: false,
     staleTime: 30_000,
   });
-  const selectModel = useMutation({
-    mutationFn: (modelId: string) => updateChatModel(chat.id, modelId),
-    onSuccess: async (updated) => {
-      setReasoningEffort(updated.reasoningEffort);
+  const selectModelConfiguration = useMutation({
+    mutationFn: (configuration: ModelConfiguration) =>
+      updateChatModelConfiguration(chat.id, configuration),
+    onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
         queryClient.invalidateQueries({
@@ -274,18 +278,6 @@ export function TaskSurface({
         }),
       ]);
     },
-  });
-  const selectReasoning = useMutation({
-    mutationFn: (effort: ReasoningEffort | null) =>
-      updateChatReasoning(chat.id, effort),
-    onMutate: setReasoningEffort,
-    onSuccess: async (state) => {
-      setReasoningEffort(state.reasoningEffort);
-      await queryClient.invalidateQueries({
-        queryKey: ["chats", chat.projectId],
-      });
-    },
-    onError: () => setReasoningEffort(chat.reasoningEffort),
   });
   const selectPermission = useMutation({
     mutationFn: (id: string | null) => updateChatPermissionProfile(chat.id, id),
@@ -840,15 +832,17 @@ export function TaskSurface({
             <Paperclip className="size-4" /> Attach
           </Button>
           <ModelReasoningPicker
-            disabled={planning.isPending}
+            configuration={currentModelConfiguration}
             models={settings?.models ?? []}
-            modelPending={selectModel.isPending}
-            onSelectModel={(modelId) => selectModel.mutate(modelId)}
-            onSelectReasoning={(effort) => selectReasoning.mutate(effort)}
-            reasoningEffort={reasoningEffort}
-            reasoningPending={selectReasoning.isPending}
+            pending={selectModelConfiguration.isPending}
+            readOnly={
+              chat.status === "running" ||
+              chat.status === "waiting-for-approval"
+            }
             reasoningState={reasoningState.data}
-            selectedModelId={selectedModelId}
+            onSave={(configuration) =>
+              selectModelConfiguration.mutateAsync(configuration)
+            }
           />
           <span className="ml-1 text-[11px] text-muted-foreground">
             Implementation access
@@ -874,15 +868,13 @@ export function TaskSurface({
         </p>
         {attachmentNotice ||
         planning.isError ||
-        selectModel.isError ||
-        selectReasoning.isError ||
+        selectModelConfiguration.isError ||
         selectPermission.isError ? (
           <p className="mt-2 text-xs text-destructive">
             {attachmentNotice ??
               errorMessage(
                 planning.error ??
-                  selectModel.error ??
-                  selectReasoning.error ??
+                  selectModelConfiguration.error ??
                   selectPermission.error,
               )}
           </p>

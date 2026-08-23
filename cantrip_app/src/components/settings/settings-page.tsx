@@ -53,6 +53,11 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  defaultModelConfiguration,
+  ModelReasoningPicker,
+  modelConfigurationSettingsUpdate,
+} from "@/components/chat/model-reasoning-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -1461,25 +1466,32 @@ export function SettingsPage({
                     </Button>
                   </div>
 
-                  <label className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2.5 text-xs">
-                    <span className="font-medium">Default for new agents</span>
-                    <NativeSelect
-                      value={settings.data?.preferences.defaultModelId ?? ""}
-                      onChange={(event) =>
-                        preferences.mutate({
-                          defaultModelId: event.target.value,
-                        })
-                      }
-                      className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2 sm:w-72"
-                      disabled={preferences.isPending}
-                    >
-                      {models.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </label>
+                  {settings.data ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">
+                          Default model configuration
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Root and subagent defaults for newly created chats.
+                        </p>
+                      </div>
+                      <ModelReasoningPicker
+                        configuration={defaultModelConfiguration(
+                          settings.data.preferences,
+                        )}
+                        disabled={preferences.isPending}
+                        mode="settings"
+                        models={models}
+                        pending={preferences.isPending}
+                        onSave={(configuration) =>
+                          preferences.mutateAsync(
+                            modelConfigurationSettingsUpdate(configuration),
+                          )
+                        }
+                      />
+                    </div>
+                  ) : null}
 
                   <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
                     <span>Model</span>
