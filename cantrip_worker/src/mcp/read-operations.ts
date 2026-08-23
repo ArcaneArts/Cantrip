@@ -17,6 +17,8 @@ import {
   cantripMcpRunConfigListResultSchema,
   cantripMcpRunConfigReadInputSchema,
   cantripMcpRunConfigReadResultSchema,
+  cantripMcpRunConfigSchemaInputSchema,
+  cantripMcpRunConfigSchemaResultSchema,
   cantripMcpRunReadInputSchema,
   cantripMcpRunReadResultSchema,
   cantripMcpRunSetupStatusInputSchema,
@@ -42,6 +44,7 @@ import {
   executionTargetWireCatalogSchema,
   projectWorktreeListSchema,
   runConfigurationInspectionSchema,
+  runConfigurationAuthoringHelpSchema,
   runConfigurationSelectionSchema,
   runInstanceResultSchema,
   runLogResultSchema,
@@ -346,6 +349,19 @@ export function assertBoundRunResult(
 
 async function executeRunReadOperation(options: CantripMcpOperationOptions) {
   switch (options.request.operation) {
+    case "run-config.schema": {
+      cantripMcpRunConfigSchemaInputSchema.parse(options.request.arguments);
+      const result = await options.execute(
+        options.binding,
+        { operation: "run-config.schema", arguments: {} },
+        options.requestId,
+      );
+      assertBoundRunResult(options, result);
+      return cantripMcpRunConfigSchemaResultSchema.parse({
+        ...result,
+        data: runConfigurationAuthoringHelpSchema.parse(result.data),
+      });
+    }
     case "run-config.list": {
       cantripMcpRunConfigListInputSchema.parse(options.request.arguments);
       const result = await options.execute(
@@ -623,6 +639,7 @@ export async function executeCantripMcpReadOperation(
       return executeTargetInspect(options);
     case "run-config.list":
     case "run-config.read":
+    case "run-config.schema":
     case "run.setup-status":
     case "run.status":
     case "run.read":

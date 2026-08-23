@@ -203,7 +203,10 @@ async function cli(
     | "run.open"
     | "run.setup-status"
     | "run.setup-retry"
+    | "run.config-schema"
+    | "run.config-example"
     | "run.config-init"
+    | "run.config-action-add"
     | "run.status"
     | "run.logs"
     | "run.stop",
@@ -413,6 +416,90 @@ describe("Run CLI execution", () => {
           action: "run.configuration.cli.updated",
           result: "succeeded",
           resource: { type: "cli-command", id: "run-config-init-overwrite" },
+        }),
+      ]),
+    );
+  });
+
+  it("exposes authoring help and appends a revision-checked action", async () => {
+    const schema = await cli("run.config-schema", {}, "run-config-schema");
+    expect(schema.statusCode, schema.body).toBe(200);
+    expect(cantripCliCommandResultSchema.parse(schema.json())).toMatchObject({
+      mutated: false,
+      data: {
+        schema: { $schema: expect.any(String) },
+        example: {
+          version: 1,
+          actions: [{ name: "Run app", command: "pnpm run dev" }],
+        },
+      },
+    });
+
+    const example = await cli("run.config-example", {}, "run-config-example");
+    expect(example.statusCode, example.body).toBe(200);
+    expect(example.json()).toMatchObject({
+      data: { exampleToml: expect.stringContaining("[[actions]]") },
+    });
+
+    const added = await cli(
+      "run.config-action-add",
+      {
+        name: "Run tests",
+        command: "pnpm test",
+        icon: "run",
+        platform: "linux",
+        environmentName: "Cantrip",
+      },
+      "run-config-action-add",
+    );
+    expect(added.statusCode, added.body).toBe(200);
+    expect(cantripCliCommandResultSchema.parse(added.json())).toMatchObject({
+      mutated: true,
+      worktreeId,
+      data: {
+        revision: "c".repeat(64),
+        document: {
+          name: "Cantrip",
+          actions: [
+            { name: "Run Spectral Lab" },
+            {
+              name: "Run tests",
+              command: "pnpm test",
+              icon: "run",
+              platform: "linux",
+            },
+          ],
+        },
+      },
+    });
+    expect(routedCommands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "project.run-configurations.write",
+          expectedRevision: configurationRevision,
+          sourcePath: projectPath,
+          document: expect.objectContaining({
+            name: "Cantrip",
+            actions: expect.arrayContaining([
+              expect.objectContaining({
+                name: "Run tests",
+                command: "pnpm test",
+                platform: "linux",
+              }),
+            ]),
+          }),
+        }),
+      ]),
+    );
+    const audits = await database.repository.listAuditEvents(
+      { limit: 20 },
+      LOCAL_USER_ID,
+    );
+    expect(audits.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "run.configuration.cli.updated",
+          resource: { type: "cli-command", id: "run-config-action-add" },
         }),
       ]),
     );

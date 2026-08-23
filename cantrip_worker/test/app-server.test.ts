@@ -999,6 +999,12 @@ describe("managed Cantrip MCP guidance", () => {
       "`.codex/environments/environment.toml`",
     );
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
+      "`run_config_action_add`",
+    );
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
+      "`run_config_schema`",
+    );
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
       "`cantrip run validate`",
     );
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`run_start`");

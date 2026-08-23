@@ -14,6 +14,8 @@ import {
   cantripMcpPolicyReadInputSchema,
   cantripMcpRunConfigListInputSchema,
   cantripMcpRunConfigReadInputSchema,
+  cantripMcpRunConfigSchemaInputSchema,
+  cantripMcpRunConfigActionAddInputSchema,
   cantripMcpRunOpenInputSchema,
   cantripMcpRunReadInputSchema,
   cantripMcpRunSetupRetryInputSchema,
@@ -51,6 +53,7 @@ const inputSchemas = {
   target_inspect: cantripMcpTargetInspectInputSchema,
   run_config_list: cantripMcpRunConfigListInputSchema,
   run_config_read: cantripMcpRunConfigReadInputSchema,
+  run_config_schema: cantripMcpRunConfigSchemaInputSchema,
   run_setup_status: cantripMcpRunSetupStatusInputSchema,
   run_status: cantripMcpRunStatusInputSchema,
   run_read: cantripMcpRunReadInputSchema,
@@ -60,6 +63,7 @@ const inputSchemas = {
   explorer_read: cantripMcpExplorerReadInputSchema,
   terminal_read: cantripMcpTerminalReadInputSchema,
   browser_services: cantripMcpBrowserServicesInputSchema,
+  run_config_action_add: cantripMcpRunConfigActionAddInputSchema,
   run_start: cantripMcpRunStartInputSchema,
   run_open: cantripMcpRunOpenInputSchema,
   run_setup_retry: cantripMcpRunSetupRetryInputSchema,
@@ -80,6 +84,15 @@ const inputSchemas = {
 
 const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
   tool_help: [{ tool: "worktree_create" }],
+  run_config_action_add: [
+    {
+      name: "Run app",
+      command: "pnpm run dev",
+      icon: "run",
+      platform: null,
+      environmentName: "Project environment",
+    },
+  ],
   worktree_create: [
     {
       intent: "newBranch",
@@ -113,6 +126,10 @@ const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
 };
 
 const notes: Partial<Record<ToolName, string[]>> = {
+  run_config_action_add: [
+    "Omit platform or send null to make the action available on every host.",
+    "The write is revision-checked and targets the MCP-bound worktree.",
+  ],
   worktree_create: [
     "baseRevision is the same concept as the CLI --base-revision option; --from remains a CLI compatibility alias.",
     "Use only fields shown by the selected intent variant. The legacy field name from is not an MCP argument.",

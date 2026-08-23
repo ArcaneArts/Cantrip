@@ -337,6 +337,29 @@ pub fn render(command: &str, result: &CommandResult, json: bool) {
             println!("{}", result.summary);
             return;
         }
+        "run.config-schema" => {
+            if let Some(schema) = result.data.as_ref().and_then(|data| data.get("schema")) {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(schema).expect("serialize Run config schema")
+                );
+                return;
+            }
+        }
+        "run.config-example" => {
+            if let Some(example) = result
+                .data
+                .as_ref()
+                .and_then(|data| data.get("exampleToml"))
+                .and_then(Value::as_str)
+            {
+                print!("{example}");
+                if !example.ends_with('\n') {
+                    println!();
+                }
+                return;
+            }
+        }
         "run.start" | "run.open" | "run.status" | "run.stop" => {
             println!("{}", result.summary);
             if let Some(run) = result.data.as_ref().and_then(|data| data.get("run")) {

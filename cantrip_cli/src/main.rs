@@ -141,6 +141,10 @@ enum RunCommand {
 enum RunConfigCommand {
     /// Show the canonical repository-relative configuration path and Git state.
     Path,
+    /// Print the exact Run configuration authoring JSON schema.
+    Schema,
+    /// Print a complete canonical environment.toml example.
+    Example,
     /// Create a minimal canonical environment configuration.
     Init {
         /// Replace an existing canonical configuration after revision checking.
@@ -149,6 +153,49 @@ enum RunConfigCommand {
         /// Environment name written to the generated configuration.
         #[arg(long)]
         name: Option<String>,
+    },
+    /// Add a complete action to the canonical environment configuration.
+    Action {
+        #[command(subcommand)]
+        command: RunConfigActionCommand,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, ValueEnum)]
+enum RunConfigPlatform {
+    Win32,
+    Darwin,
+    Linux,
+}
+
+impl RunConfigPlatform {
+    fn wire_name(&self) -> &'static str {
+        match self {
+            Self::Win32 => "win32",
+            Self::Darwin => "darwin",
+            Self::Linux => "linux",
+        }
+    }
+}
+
+#[derive(Debug, Subcommand)]
+enum RunConfigActionCommand {
+    /// Append one revision-checked action, creating environment.toml when absent.
+    Add {
+        /// User-facing action name.
+        name: String,
+        /// Shell command executed by the action.
+        #[arg(long)]
+        command: String,
+        /// Codex toolbar icon identifier.
+        #[arg(long, default_value = "run")]
+        icon: String,
+        /// Restrict the action to one host platform; omit for all platforms.
+        #[arg(long, value_enum)]
+        platform: Option<RunConfigPlatform>,
+        /// Set the environment display name while writing the action.
+        #[arg(long)]
+        environment_name: Option<String>,
     },
 }
 
@@ -546,9 +593,35 @@ fn invocation(command: Command) -> Result<Invocation, String> {
                     command: "run.config-path",
                     arguments: json!({}),
                 },
+                RunConfigCommand::Schema => Invocation {
+                    command: "run.config-schema",
+                    arguments: json!({}),
+                },
+                RunConfigCommand::Example => Invocation {
+                    command: "run.config-example",
+                    arguments: json!({}),
+                },
                 RunConfigCommand::Init { overwrite, name } => Invocation {
                     command: "run.config-init",
                     arguments: json!({ "overwrite": overwrite, "name": name }),
+                },
+                RunConfigCommand::Action { command } => match command {
+                    RunConfigActionCommand::Add {
+                        name,
+                        command,
+                        icon,
+                        platform,
+                        environment_name,
+                    } => Invocation {
+                        command: "run.config-action-add",
+                        arguments: json!({
+                            "name": name,
+                            "command": command,
+                            "icon": icon,
+                            "platform": platform.map(|value| value.wire_name()),
+                            "environmentName": environment_name,
+                        }),
+                    },
                 },
             },
         },
@@ -710,7 +783,19 @@ mod tests {
             ][..],
             &["cantrip", "run", "validate"][..],
             &["cantrip", "run", "config", "path"][..],
+            &["cantrip", "run", "config", "schema"][..],
+            &["cantrip", "run", "config", "example"][..],
             &["cantrip", "run", "config", "init"][..],
+            &[
+                "cantrip",
+                "run",
+                "config",
+                "action",
+                "add",
+                "Run app",
+                "--command",
+                "pnpm run dev",
+            ][..],
         ] {
             Cli::try_parse_from(arguments).unwrap_or_else(|error| {
                 panic!("failed to parse {arguments:?} without -v: {error}")
@@ -743,7 +828,28 @@ mod tests {
             ),
             (&["cantrip", "run", "setup", "retry"][..], "run.setup-retry"),
             (&["cantrip", "run", "config", "path"][..], "run.config-path"),
+            (
+                &["cantrip", "run", "config", "schema"][..],
+                "run.config-schema",
+            ),
+            (
+                &["cantrip", "run", "config", "example"][..],
+                "run.config-example",
+            ),
             (&["cantrip", "run", "config", "init"][..], "run.config-init"),
+            (
+                &[
+                    "cantrip",
+                    "run",
+                    "config",
+                    "action",
+                    "add",
+                    "Run app",
+                    "--command",
+                    "pnpm run dev",
+                ][..],
+                "run.config-action-add",
+            ),
             (
                 &["cantrip", "run", "start", "Run Spectral Lab"][..],
                 "run.start",
@@ -793,11 +899,37 @@ mod tests {
             "Spectral Lab",
         ])
         .expect("parse config init");
-        let invocation = invocation(initialized.command.expect("run config init"))
+        let initialized_invocation = invocation(initialized.command.expect("run config init"))
             .expect("build config init invocation");
-        assert_eq!(invocation.command, "run.config-init");
-        assert_eq!(invocation.arguments["overwrite"], true);
-        assert_eq!(invocation.arguments["name"], "Spectral Lab");
+        assert_eq!(initialized_invocation.command, "run.config-init");
+        assert_eq!(initialized_invocation.arguments["overwrite"], true);
+        assert_eq!(initialized_invocation.arguments["name"], "Spectral Lab");
+
+        let action = Cli::try_parse_from([
+            "cantrip",
+            "run",
+            "config",
+            "action",
+            "add",
+            "Run app",
+            "--command",
+            "pnpm run dev",
+            "--icon",
+            "play",
+            "--platform",
+            "darwin",
+            "--environment-name",
+            "Cantrip",
+        ])
+        .expect("parse config action add");
+        let invocation = invocation(action.command.expect("run config action add"))
+            .expect("build config action add invocation");
+        assert_eq!(invocation.command, "run.config-action-add");
+        assert_eq!(invocation.arguments["name"], "Run app");
+        assert_eq!(invocation.arguments["command"], "pnpm run dev");
+        assert_eq!(invocation.arguments["icon"], "play");
+        assert_eq!(invocation.arguments["platform"], "darwin");
+        assert_eq!(invocation.arguments["environmentName"], "Cantrip");
     }
 
     #[test]
