@@ -15,7 +15,6 @@ function stubHostedInfrastructure(): void {
   vi.stubEnv("DATABASE_URL", "postgres://cantrip:test@db/cantrip");
   vi.stubEnv("CANTRIP_APP_ORIGINS", "https://app.cantrip.test");
   vi.stubEnv("CANTRIP_PUBLIC_ORIGIN", "https://api.cantrip.test");
-  vi.stubEnv("CANTRIP_CODE_SURFACE_ORIGIN", "https://code.cantrip.test");
   vi.stubEnv("CANTRIP_TRUSTED_PROXIES", "loopback,10.0.0.0/8");
   vi.stubEnv(
     "CANTRIP_SECRET_ENCRYPTION_KEYS",
@@ -38,26 +37,8 @@ describe("server configuration safety", () => {
       deploymentMode: "local",
       host: "127.0.0.1",
       ollamaBaseUrl: "http://127.0.0.1:11434/v1",
-      codeSurfaceHost: "127.0.0.1",
-      codeSurfaceOrigin: "http://127.0.0.1:4311",
-      codeSurfacePort: 4311,
       licenseWhitelistEnabled: true,
     });
-  });
-
-  it("validates an independently addressable Code surface origin", () => {
-    vi.stubEnv("CANTRIP_CODE_SURFACE_PORT", "5311");
-    vi.stubEnv("CANTRIP_CODE_SURFACE_ORIGIN", "https://code.cantrip.example");
-    expect(readServerConfig()).toMatchObject({
-      codeSurfacePort: 5311,
-      codeSurfaceOrigin: "https://code.cantrip.example",
-    });
-
-    vi.stubEnv(
-      "CANTRIP_CODE_SURFACE_ORIGIN",
-      "https://code.cantrip.example/not-an-origin",
-    );
-    expect(() => readServerConfig()).toThrow(/without a path/i);
   });
 
   it("refuses to expose the no-auth foundation beyond loopback", () => {
@@ -93,7 +74,6 @@ describe("server configuration safety", () => {
     vi.stubEnv("DATABASE_URL", "postgres://cantrip:test@db/cantrip");
     vi.stubEnv("CANTRIP_APP_ORIGINS", "https://app.cantrip.test");
     vi.stubEnv("CANTRIP_PUBLIC_ORIGIN", "https://api.cantrip.test");
-    vi.stubEnv("CANTRIP_CODE_SURFACE_ORIGIN", "https://code.cantrip.test");
     vi.stubEnv("CANTRIP_TRUSTED_PROXIES", "loopback");
     expect(readServerConfig().secretEncryption).toMatchObject({
       activeKeyId: "current",
@@ -111,7 +91,6 @@ describe("server configuration safety", () => {
       appOrigins: ["https://app.cantrip.test"],
       databaseUrl: "postgres://cantrip:test@db/cantrip",
       publicOrigin: "https://api.cantrip.test",
-      codeSurfaceOrigin: "https://code.cantrip.test",
       requireHttps: true,
       redisUrl: "rediss://redis.cantrip.test:6380",
       serverInstanceId: "relay-us-central-1",

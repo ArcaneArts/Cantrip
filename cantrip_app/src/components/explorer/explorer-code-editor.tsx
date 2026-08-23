@@ -1,5 +1,4 @@
 import type { CodeAppearance } from "@cantrip/protocol";
-import { isTauri } from "@tauri-apps/api/core";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -10,75 +9,31 @@ import {
 } from "@/components/code/code-view";
 import { Button } from "@/components/ui/button";
 import {
-  CantripApiError,
-  createCodeAttachment,
-  createCodeTab,
-  createExplorerCodeAttachment,
   createProtectedExplorerCodeAttachment,
-  deleteCodeTab,
-  openCodeAttachmentFile,
   releaseCodeAttachment,
 } from "@/lib/api";
-import { clientLogger } from "@/lib/client-log-relay";
-import { INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE } from "@/lib/code-tab-visibility";
 import {
   openDirectCodeAttachmentFile,
-  preferDirectCodeAttachment,
   preferProtectedCodeAttachment,
   setDirectCodeAttachmentPresentation,
   stopDirectCodeAttachment,
   type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
-import {
-  registerActiveExplorerEditorCodeTab,
-  unregisterActiveExplorerEditorCodeTab,
-} from "@/lib/explorer-editor-session-registry";
-
-export function isUnregisteredEditorRouteError(error: unknown): boolean {
-  return (
-    error instanceof CantripApiError &&
-    error.status === 404 &&
-    error.message === "Not Found"
-  );
-}
-
-export async function createEditorAttachmentWithCompatibilityFallback<T>(
-  create: () => Promise<T>,
-  createCompatibilityAttachment: () => Promise<T>,
-): Promise<{ attachment: T; compatibilityFallback: boolean }> {
-  try {
-    return { attachment: await create(), compatibilityFallback: false };
-  } catch (error) {
-    if (!isUnregisteredEditorRouteError(error)) throw error;
-    return {
-      attachment: await createCompatibilityAttachment(),
-      compatibilityFallback: true,
-    };
-  }
-}
-
-interface ExplorerPreferredCodeAttachment extends PreferredCodeAttachment {
-  compatibilityFallback: boolean;
-}
 
 export function ExplorerCodeEditor({
   appearance,
   explorerId,
   path,
-  projectId,
   workerId,
-  worktreeId,
 }: {
   appearance: CodeAppearance;
   explorerId: string;
   path: string;
-  projectId: string;
   workerId: string;
-  worktreeId: string;
 }) {
   const [preferredAttachment, setPreferredAttachment] =
-    useState<ExplorerPreferredCodeAttachment | null>(null);
+    useState<PreferredCodeAttachment | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -91,7 +46,6 @@ export function ExplorerCodeEditor({
   useEffect(() => {
     let cancelled = false;
     let attachmentId: string | null = null;
-    let compatibilityCodeTabId: string | null = null;
     let directTunnelId: string | null = null;
     let startTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -101,88 +55,21 @@ export function ExplorerCodeEditor({
 
     const connect = async () => {
       try {
-        if (isTauri()) {
-          const wire = await createProtectedExplorerCodeAttachment(
-            explorerId,
-            path,
-            workerId,
-            appearance,
-          );
-          attachmentId = wire.attachmentId;
-          const preferred = await preferProtectedCodeAttachment(wire);
-          directTunnelId = preferred.directTunnelId;
-          if (cancelled) {
-            await stopDirectCodeAttachment(directTunnelId);
-            await releaseCodeAttachment(wire.attachmentId).catch(
-              () => undefined,
-            );
-            return;
-          }
-          setPreferredAttachment({
-            ...preferred,
-            compatibilityFallback: false,
-          });
-          return;
-        }
-        const result = await createEditorAttachmentWithCompatibilityFallback(
-          () => createExplorerCodeAttachment(explorerId, path, appearance),
-          async () => {
-            // Explorer-only attachments were added after ordinary Code
-            // attachments. Keep newer desktop clients usable while a selected
-            // hosted server is still rolling forward, then remove the
-            // compatibility tab with the popout.
-            const codeTab = await createCodeTab(
-              projectId,
-              INTERNAL_EXPLORER_EDITOR_CODE_TAB_TITLE,
-              worktreeId,
-            );
-            compatibilityCodeTabId = codeTab.id;
-            registerActiveExplorerEditorCodeTab(codeTab.id);
-            try {
-              return await createCodeAttachment(codeTab.id, appearance);
-            } catch (error) {
-              compatibilityCodeTabId = null;
-              unregisterActiveExplorerEditorCodeTab(codeTab.id);
-              await deleteCodeTab(codeTab.id).catch(() => undefined);
-              throw error;
-            }
-          },
+        const wire = await createProtectedExplorerCodeAttachment(
+          explorerId,
+          path,
+          workerId,
+          appearance,
         );
-        const relay = result.attachment;
-        if (result.compatibilityFallback) {
-          clientLogger.warn(
-            "Explorer editor used the legacy server compatibility path",
-            {
-              event: "surface.explorer.editor.compatibility-fallback",
-              operation: "create-code-attachment",
-              reasonCode: "server-version-skew",
-              status: "completed",
-              subsystem: "explorer",
-            },
-          );
-        }
-        attachmentId = relay.attachmentId;
-        const preferred = await preferDirectCodeAttachment(relay).catch(() => ({
-          attachment: relay,
-          directTunnelId: null,
-        }));
+        attachmentId = wire.attachmentId;
+        const preferred = await preferProtectedCodeAttachment(wire);
         directTunnelId = preferred.directTunnelId;
         if (cancelled) {
           await stopDirectCodeAttachment(directTunnelId);
-          if (compatibilityCodeTabId) {
-            unregisterActiveExplorerEditorCodeTab(compatibilityCodeTabId);
-            await deleteCodeTab(compatibilityCodeTabId).catch(() => undefined);
-          } else {
-            await releaseCodeAttachment(relay.attachmentId).catch(
-              () => undefined,
-            );
-          }
+          await releaseCodeAttachment(wire.attachmentId).catch(() => undefined);
           return;
         }
-        setPreferredAttachment({
-          ...preferred,
-          compatibilityFallback: result.compatibilityFallback,
-        });
+        setPreferredAttachment(preferred);
       } catch (connectError) {
         if (!cancelled) {
           setError(
@@ -200,46 +87,22 @@ export function ExplorerCodeEditor({
       cancelled = true;
       if (startTimer) clearTimeout(startTimer);
       void stopDirectCodeAttachment(directTunnelId);
-      if (compatibilityCodeTabId) {
-        unregisterActiveExplorerEditorCodeTab(compatibilityCodeTabId);
-        void deleteCodeTab(compatibilityCodeTabId).catch(() => undefined);
-      } else if (attachmentId) {
+      if (attachmentId) {
         void releaseCodeAttachment(attachmentId).catch(() => undefined);
       }
     };
-  }, [
-    appearance,
-    explorerId,
-    path,
-    projectId,
-    reloadVersion,
-    workerId,
-    worktreeId,
-  ]);
+  }, [appearance, explorerId, path, reloadVersion, workerId]);
 
   useEffect(() => {
     if (!preferredAttachment) return;
     let cancelled = false;
-    const preparePresentation = preferredAttachment.compatibilityFallback
-      ? preferredAttachment.directTunnelId
-        ? setDirectCodeAttachmentPresentation(
-            preferredAttachment.attachment,
-            "editor",
-          )
-        : Promise.reject(
-            new Error(
-              "This server is too old to open an Explorer editor without a desktop worker tunnel.",
-            ),
-          )
-      : Promise.resolve();
+    const preparePresentation = setDirectCodeAttachmentPresentation(
+      preferredAttachment.attachment,
+      "editor",
+    );
     void preparePresentation
       .then(() =>
-        preferredAttachment.directTunnelId
-          ? openDirectCodeAttachmentFile(preferredAttachment.attachment, path)
-          : openCodeAttachmentFile(
-              preferredAttachment.attachment.attachmentId,
-              path,
-            ),
+        openDirectCodeAttachmentFile(preferredAttachment.attachment, path),
       )
       .then((result) => {
         if (!cancelled && result.relativePath === path) {

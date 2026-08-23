@@ -223,7 +223,7 @@ describe("tunnel protocol", () => {
         origin: "code",
         management: "managed-durable",
         protocolHint: "http",
-        source: { kind: "server-http", adapter: "code" },
+        source: { kind: "desktop-loopback" },
         destination: {
           kind: "worker-adapter",
           workerId: "worker-b",
@@ -245,7 +245,7 @@ describe("tunnel protocol", () => {
       origin: "code",
       management: "managed-durable",
       protocolHint: "http-websocket",
-      source: { kind: "server-http", adapter: "code" },
+      source: { kind: "desktop-loopback" },
       destination: {
         kind: "worker-adapter",
         workerId: "worker-1",

@@ -71,13 +71,6 @@ export const tunnelDataPlaneTargetSchema = z.union([
   z
     .object({
       kind: z.literal("adapter"),
-      adapter: z.literal("code"),
-      resourceId: idSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("adapter"),
       adapter: z.literal("terminal"),
       resourceId: idSchema,
       serverId: z.string().trim().min(1).max(2_000),

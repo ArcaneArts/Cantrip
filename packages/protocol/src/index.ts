@@ -3562,12 +3562,6 @@ export const tunnelSourceEndpointSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("desktop-loopback") }).strict(),
   z
     .object({
-      kind: z.literal("server-http"),
-      adapter: z.literal("code"),
-    })
-    .strict(),
-  z
-    .object({
       kind: z.literal("worker-listener"),
       workerId: tunnelResourceIdSchema,
       host: tunnelWorkerHostSchema,
@@ -3686,21 +3680,6 @@ export const tunnelManagedRegistrationSchema = z
         path: ["managedBy", "kind"],
       });
     }
-    if (tunnel.source.kind === "server-http") {
-      if (
-        tunnel.origin !== tunnel.source.adapter ||
-        tunnel.destination.kind !== "worker-adapter" ||
-        tunnel.destination.adapter !== tunnel.source.adapter ||
-        tunnel.destination.resourceId !== tunnel.managedBy.id
-      ) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "Server HTTP tunnels require matching owner and worker adapters.",
-          path: ["source"],
-        });
-      }
-    }
     if (
       tunnel.destination.kind === "worker-adapter" &&
       (tunnel.origin !== tunnel.destination.adapter ||
@@ -3714,10 +3693,7 @@ export const tunnelManagedRegistrationSchema = z
     }
   });
 
-export const tunnelAttachmentKindSchema = z.enum([
-  "desktop-loopback",
-  "server-relay",
-]);
+export const tunnelAttachmentKindSchema = z.enum(["desktop-loopback"]);
 
 export const tunnelAttachmentSummarySchema = z
   .object({
@@ -5261,71 +5237,7 @@ export const codeThemeUpdateSchema = z.object({
   appearance: codeAppearanceSchema,
 });
 
-const codeAdapterHeaderListSchema = z
-  .array(z.tuple([z.string().min(1).max(256), z.string().max(16 * 1_024)]))
-  .max(256);
-
-const codeAdapterRequestBaseSchema = z.object({
-  protocolVersion: z.literal(1),
-  sessionId: z.string().min(1).max(200),
-  path: z
-    .string()
-    .min(1)
-    .max(32 * 1_024)
-    .refine((value) => value.startsWith("/") && !value.startsWith("//")),
-  basePath: z
-    .string()
-    .min(1)
-    .max(4_096)
-    .refine((value) => value.startsWith("/") && !value.startsWith("//")),
-  headers: codeAdapterHeaderListSchema,
-});
-
-export const codeAdapterRequestHeadSchema = z.discriminatedUnion("kind", [
-  codeAdapterRequestBaseSchema
-    .extend({
-      kind: z.literal("http"),
-      method: z
-        .string()
-        .regex(/^[A-Z]+$/u)
-        .max(32),
-    })
-    .strict(),
-  codeAdapterRequestBaseSchema
-    .extend({
-      kind: z.literal("websocket"),
-    })
-    .strict(),
-]);
-
-export const codeAdapterResponseHeadSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      protocolVersion: z.literal(1),
-      kind: z.literal("http"),
-      statusCode: z.number().int().min(100).max(599),
-      headers: codeAdapterHeaderListSchema,
-    })
-    .strict(),
-  z
-    .object({
-      protocolVersion: z.literal(1),
-      kind: z.literal("websocket"),
-      headers: codeAdapterHeaderListSchema,
-    })
-    .strict(),
-]);
-
-export const codeAdapterWebSocketCloseSchema = z
-  .object({
-    code: z.number().int().min(1_000).max(4_999),
-    reason: z.string().max(1_024),
-  })
-  .strict();
-
-export function isForwardableCodeAdapterWebSocketCloseCode(
-  code: number,
-): boolean {
+export function isForwardableCodeWebSocketCloseCode(code: number): boolean {
   return (
     (code >= 1_000 &&
       code <= 1_014 &&
@@ -5336,18 +5248,7 @@ export function isForwardableCodeAdapterWebSocketCloseCode(
   );
 }
 
-export const CODE_ADAPTER_MAX_HEAD_BYTES = 64 * 1_024;
-export const CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES = 4 * 1_024 * 1_024;
-export const CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES = 5;
-// WebSocket tunnel credit is returned after a complete record is consumed.
-// The initial window must therefore fit the largest legal payload plus its
-// record header or both peers can wait forever on the final header bytes.
-export const CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES =
-  CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES +
-  CODE_ADAPTER_WEBSOCKET_RECORD_HEADER_BYTES;
-export const CODE_ADAPTER_WEBSOCKET_TEXT_RECORD = 0;
-export const CODE_ADAPTER_WEBSOCKET_BINARY_RECORD = 1;
-export const CODE_ADAPTER_WEBSOCKET_CLOSE_RECORD = 2;
+export const CODE_MAX_WEBSOCKET_MESSAGE_BYTES = 4 * 1_024 * 1_024;
 const browserHttpUrlSchema = z
   .string()
   .url()
@@ -14664,15 +14565,6 @@ export type CodePresentationUpdate = z.infer<
   typeof codePresentationUpdateSchema
 >;
 export type CodeThemeUpdate = z.infer<typeof codeThemeUpdateSchema>;
-export type CodeAdapterRequestHead = z.infer<
-  typeof codeAdapterRequestHeadSchema
->;
-export type CodeAdapterResponseHead = z.infer<
-  typeof codeAdapterResponseHeadSchema
->;
-export type CodeAdapterWebSocketClose = z.infer<
-  typeof codeAdapterWebSocketCloseSchema
->;
 export type ProjectShareAttachment = z.infer<
   typeof projectShareAttachmentSchema
 >;

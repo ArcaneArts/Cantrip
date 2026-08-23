@@ -25,14 +25,12 @@ logical route with an explicit source endpoint, explicit destination endpoint,
 protocol hint, desired state, observed status, management policy, optional
 organizational project association, and aggregate counters. A tunnel may have
 zero or more short-lived **attachments**. An attachment represents one concrete
-consumer, such as a Tauri desktop loopback listener or a server relay used by a
-managed feature.
+consumer, such as a Tauri desktop loopback listener or a remote client using
+the generic encrypted server relay.
 
 The initial endpoint vocabulary is deliberately narrow:
 
 - `desktop-loopback` sources are listeners created by a trusted desktop app;
-- `server-http` sources are existing server HTTP/WebSocket adapters for Code or
-  project sharing;
 - `worker-tcp` destinations are loopback TCP ports on an explicitly named
   worker;
 - `worker-adapter` destinations are feature-owned worker endpoints; and
@@ -111,9 +109,8 @@ expose a general worker address or enable worker-to-worker dialing.
   client, expire, and can be revoked independently.
 - Tunnel counters and errors become inspectable without making the data plane a
   durable byte store.
-- Managed Code and project-share adapters share one buffered telemetry helper,
-  which serializes durable counter updates and flushes pending connection/byte
-  deltas before their server-relay attachment is removed.
+- Managed Code and project-share traffic uses protected generic attachments;
+  the relay records only bounded routing, connection, and byte counters.
 - Aggregate health and Prometheus diagnostics include directional bytes,
   connection lifecycle counts, rejections, and bounded termination reasons;
   they never use tenant, destination, payload, or credential labels.

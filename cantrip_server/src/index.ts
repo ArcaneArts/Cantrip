@@ -1,16 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { buildApp } from "./app.js";
-import {
-  readServerConfig,
-  resolveCodeSurfaceConfig,
-  resolveServerDataDirectory,
-} from "./config.js";
-import {
-  closeCodeSurfaceServer,
-  CodeTunnelBroker,
-  createCodeSurfaceServer,
-} from "./code/tunnel.js";
+import { readServerConfig, resolveServerDataDirectory } from "./config.js";
+import { CodeTunnelBroker } from "./code/tunnel.js";
 import { connectDatabase } from "./db/index.js";
 import { RedisRelayCoordinator } from "./coordination/relay-coordinator.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
@@ -22,26 +14,6 @@ import {
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import { WorkerBridge } from "./workers/bridge.js";
 import { CoordinatedWorkerBridge } from "./workers/coordinated-bridge.js";
-
-async function listenCodeSurface(
-  server: ReturnType<typeof createCodeSurfaceServer>,
-  host: string,
-  port: number,
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const onError = (error: Error) => {
-      server.off("listening", onListening);
-      reject(error);
-    };
-    const onListening = () => {
-      server.off("error", onError);
-      resolve();
-    };
-    server.once("error", onError);
-    server.once("listening", onListening);
-    server.listen(port, host);
-  });
-}
 
 async function start(): Promise<void> {
   const startedAtMs = Date.now();
@@ -92,16 +64,8 @@ async function start(): Promise<void> {
       })
     : new WorkerBridge();
   const relayQuotas = new RelayQuotaManager(config);
-  const surfaceConfig = resolveCodeSurfaceConfig(config);
-  const codeTunnel = new CodeTunnelBroker(workerBridge, {
-    allowedFrameAncestors: config.appOrigins,
-    consumeRelayBytes: (ownerId, workerId, bytes) =>
-      relayQuotas.consumeRelay(ownerId, workerId, bytes),
-    surfaceOrigin: surfaceConfig.origin,
-  });
-  const projectShareTunnel = new ProjectShareTunnelBroker(workerBridge, {
-    surfaceOrigin: surfaceConfig.origin,
-  });
+  const codeTunnel = new CodeTunnelBroker(workerBridge);
+  const projectShareTunnel = new ProjectShareTunnelBroker(workerBridge);
   const app = await buildApp({
     codeTunnel,
     config,
@@ -111,9 +75,7 @@ async function start(): Promise<void> {
     relayQuotas,
     workerBridge,
   });
-  const codeSurface = createCodeSurfaceServer(codeTunnel, surfaceConfig.origin);
   let closing = false;
-  let codeSurfaceListening = false;
 
   if (config.allowInsecureRemote) {
     app.log.warn(
@@ -135,45 +97,21 @@ async function start(): Promise<void> {
       reasonCode: signal.toLowerCase(),
       status: "stopping",
     });
-    try {
-      if (codeSurfaceListening) {
-        await closeCodeSurfaceServer(codeSurface);
-        codeSurfaceListening = false;
-      }
-    } finally {
-      await app.close();
-      serverLogger.event("info", "Cantrip Server shutdown completed", {
-        event: "server.shutdown.completed",
-        subsystem: "server-lifecycle",
-        operation: "shutdown",
-        status: "stopped",
-        durationMs: Date.now() - shutdownStartedAtMs,
-      });
-      await closeServerLogArchive();
-    }
+    await app.close();
+    serverLogger.event("info", "Cantrip Server shutdown completed", {
+      event: "server.shutdown.completed",
+      subsystem: "server-lifecycle",
+      operation: "shutdown",
+      status: "stopped",
+      durationMs: Date.now() - shutdownStartedAtMs,
+    });
+    await closeServerLogArchive();
   };
 
   process.once("SIGINT", () => void close("SIGINT"));
   process.once("SIGTERM", () => void close("SIGTERM"));
 
   await app.listen({ host: config.host, port: config.port });
-  try {
-    await listenCodeSurface(
-      codeSurface,
-      surfaceConfig.host,
-      surfaceConfig.port,
-    );
-    codeSurfaceListening = true;
-  } catch (error) {
-    await app.close();
-    throw error;
-  }
-  serverLogger.event("info", "Cantrip Code isolated surface is ready", {
-    event: "server.startup.code-surface-ready",
-    subsystem: "server-lifecycle",
-    operation: "listen-code-surface",
-    status: "ready",
-  });
   serverLogger.event("info", "Cantrip Server is ready", {
     event: "server.startup.completed",
     subsystem: "server-lifecycle",

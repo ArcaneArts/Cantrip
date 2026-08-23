@@ -8,13 +8,12 @@ import {
   type CodePresentationUpdate,
 } from "@cantrip/protocol";
 
-import { createDirectCodeAttachment, deleteDirectAttachment } from "@/lib/api";
 import {
-  desktopTunnelClientId,
-  startDesktopTunnel,
-  startDirectDesktopTunnel,
-  stopDesktopTunnel,
-} from "@/lib/desktop-tunnel";
+  browserCodeAttachmentHealthy,
+  startBrowserCodeAttachment,
+  stopBrowserCodeAttachment,
+} from "@/lib/browser-code-tunnel";
+import { startDesktopTunnel, stopDesktopTunnel } from "@/lib/desktop-tunnel";
 
 export interface PreferredCodeAttachment {
   attachment: CodeAttachment;
@@ -27,9 +26,10 @@ export async function preferProtectedCodeAttachment(
   wire: CodeProtectedAttachmentWire,
 ): Promise<PreferredCodeAttachment> {
   if (!isTauri()) {
-    throw new Error(
-      "Protected Code localhost attachments require the desktop app.",
-    );
+    return {
+      attachment: await startBrowserCodeAttachment(wire),
+      directTunnelId: wire.tunnelId,
+    };
   }
   const forward = await startDesktopTunnel(wire.tunnelId);
   try {
@@ -62,45 +62,10 @@ export async function preferProtectedCodeAttachment(
   }
 }
 
-export async function preferDirectCodeAttachment(
-  attachment: CodeAttachment,
-): Promise<PreferredCodeAttachment> {
-  if (!isTauri()) {
-    return { attachment, directTunnelId: null };
-  }
-  const ticket = await createDirectCodeAttachment(
-    attachment.attachmentId,
-    desktopTunnelClientId(window.localStorage),
-  );
-  try {
-    const forward = await startDirectDesktopTunnel(
-      ticket,
-      ticket.binding.leaseExpiresAt,
-    );
-    const url = new URL(
-      `http://${forward.localHost}:${forward.localPort}/code/`,
-    );
-    // OpenVSCode reads the workspace to open from the browser location. Keep
-    // the relay attachment query when replacing its origin with the local
-    // desktop forward; dropping it launches an empty workbench, so the
-    // workspace-owned Cantrip bridge and appearance settings never load.
-    url.search = new URL(attachment.url).search;
-    return {
-      attachment: { ...attachment, url: url.toString() },
-      directTunnelId: forward.tunnelId,
-    };
-  } catch (error) {
-    await deleteDirectAttachment(ticket.binding.capabilityId).catch(
-      () => undefined,
-    );
-    throw error;
-  }
-}
-
 export async function directCodeAttachmentHealthy(
   tunnelId: string,
 ): Promise<boolean> {
-  if (!isTauri()) return false;
+  if (!isTauri()) return browserCodeAttachmentHealthy(tunnelId);
   const forwards = await invoke<
     Array<{ routeState: string; tunnelId: string }>
   >("list_tunnel_forwards");
@@ -163,7 +128,11 @@ export async function setDirectCodeAttachmentPresentation(
 export async function stopDirectCodeAttachment(
   tunnelId: string | null,
 ): Promise<void> {
-  if (!tunnelId || !isTauri()) return;
+  if (!tunnelId) return;
+  if (!isTauri()) {
+    await stopBrowserCodeAttachment(tunnelId).catch(() => undefined);
+    return;
+  }
   const protectedAttachmentId = protectedAttachmentIds.get(tunnelId);
   if (protectedAttachmentId) {
     protectedAttachmentIds.delete(tunnelId);

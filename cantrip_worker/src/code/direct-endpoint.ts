@@ -9,11 +9,11 @@ import {
 import { randomUUID } from "node:crypto";
 
 import {
-  CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
+  CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
   codeOpenFileRequestSchema,
   codeOpenFileResultSchema,
   codePresentationUpdateSchema,
-  isForwardableCodeAdapterWebSocketCloseCode,
+  isForwardableCodeWebSocketCloseCode,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
@@ -25,7 +25,7 @@ import {
   codeEditorTargetUrl,
   editorAuthenticatedPayload,
   rawCodeWebSocketBytes,
-} from "./tunnel-proxy.js";
+} from "./proxy-utils.js";
 
 interface Endpoint {
   address: { kind: "tcp"; host: "127.0.0.1"; port: number };
@@ -43,12 +43,21 @@ const FRAME_ANCESTORS =
   "frame-ancestors 'self' http://127.0.0.1:1420 http://tauri.localhost https://tauri.localhost tauri://localhost";
 const ABNORMAL_CLOSE_CODE = 1011;
 const ABNORMAL_CLOSE_REASON = "Cantrip Code peer disconnected abnormally";
+const WEB_CODE_BASE_PATH =
+  /^\/__cantrip_code\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/code$/iu;
+
+function publicBasePath(request: IncomingMessage): string {
+  const value = request.headers["x-cantrip-code-base-path"];
+  return typeof value === "string" && WEB_CODE_BASE_PATH.test(value)
+    ? value
+    : BASE_PATH;
+}
 
 export function forwardableCodeWebSocketClose(
   code: number,
   reason: Buffer,
 ): { code: number; reason: Buffer | string } {
-  return isForwardableCodeAdapterWebSocketCloseCode(code)
+  return isForwardableCodeWebSocketCloseCode(code)
     ? { code, reason }
     : { code: ABNORMAL_CLOSE_CODE, reason: ABNORMAL_CLOSE_REASON };
 }
@@ -133,14 +142,6 @@ export class CodeDirectEndpointManager {
 
   constructor(private readonly supervisor: CodeSupervisor) {}
 
-  async prepare(
-    capabilityId: string,
-    sessionId: string,
-  ): Promise<{ kind: "tcp"; host: "127.0.0.1"; port: number }> {
-    this.revoke(capabilityId, "Direct Code capability rotated");
-    return this.#create(capabilityId, sessionId);
-  }
-
   async prepareProtected(
     tunnelId: string,
     sessionId: string,
@@ -164,7 +165,7 @@ export class CodeDirectEndpointManager {
     };
     const webSockets = new WebSocketServer({
       noServer: true,
-      maxPayload: CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
+      maxPayload: CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
     });
     endpoint.server.on("request", (request, response) =>
       this.#proxyHttp(sessionId, request, response),
@@ -234,6 +235,14 @@ export class CodeDirectEndpointManager {
     }
     endpoint.server.close();
     endpoint.server.closeAllConnections();
+  }
+
+  closeSession(sessionId: string): void {
+    for (const [endpointId, endpoint] of this.#endpoints) {
+      if (endpoint.sessionId === sessionId) {
+        this.revoke(endpointId, "Code session stopped");
+      }
+    }
   }
 
   close(): void {
@@ -313,7 +322,7 @@ export class CodeDirectEndpointManager {
           headers: codeEditorRequestHeaders(
             rawHeaders(request),
             target,
-            BASE_PATH,
+            publicBasePath(request),
             proxy.connectionToken,
           ),
         },
@@ -504,10 +513,10 @@ export class CodeDirectEndpointManager {
             ([name]) => name.toLowerCase() !== "sec-websocket-protocol",
           ),
           target,
-          BASE_PATH,
+          publicBasePath(request),
           proxy.connectionToken,
         ),
-        maxPayload: CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
+        maxPayload: CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
       });
       const queued: Array<{ data: Buffer; binary: boolean }> = [];
       let queuedBytes = 0;

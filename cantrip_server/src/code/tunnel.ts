@@ -1,49 +1,12 @@
-import { randomBytes, randomUUID } from "node:crypto";
 import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
-
-import {
-  CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
-  type CodeAttachment,
   type CodeProtectedAttachmentWire,
   type CodeRuntimeStatus,
   type ProtectedTunnelContentRecord,
 } from "@cantrip/protocol";
-import WebSocket, { WebSocketServer } from "ws";
 
 import type { ServerRepository } from "../db/repository.js";
 import { serverLogger } from "../logger.js";
-import {
-  TunnelStreamBroker,
-  type TunnelRouteHandle,
-} from "../tunnels/broker.js";
-import { ManagedServerRelayTelemetry } from "../tunnels/managed-relay-telemetry.js";
-import { WorkerTunnelEndpoint } from "../tunnels/worker-endpoint.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
-import { CodeHttpEndpoint } from "./http-endpoint.js";
-
-export interface CodeAttachmentBinding {
-  attachmentId: string;
-  authSessionId: string | null;
-  codeTabId: string;
-  createdAt: number;
-  endpoint: CodeHttpEndpoint;
-  expiresAt: number;
-  lastSeenAt: number;
-  ownerId: string;
-  projectId: string;
-  route: TunnelRouteHandle;
-  sessionId: string;
-  stopSessionOnRelease: boolean;
-  token: string;
-  telemetry: ManagedServerRelayTelemetry | null;
-  tunnelId: string;
-  workerId: string;
-}
 
 interface ProtectedCodeAttachmentBinding {
   attachmentId: string;
@@ -59,38 +22,23 @@ interface ProtectedCodeAttachmentBinding {
   workerId: string;
 }
 
-export interface CreateCodeAttachmentInput {
+export interface CreateProtectedCodeAttachmentInput {
   authSessionId?: string | null;
   codeTabId: string;
   ownerId: string;
   projectId: string;
+  protectedRecord: ProtectedTunnelContentRecord;
   runtime: CodeRuntimeStatus;
   sessionId: string;
   stopSessionOnRelease?: boolean;
-  workerId: string;
-}
-
-export interface CreateProtectedCodeAttachmentInput extends CreateCodeAttachmentInput {
-  protectedRecord: ProtectedTunnelContentRecord;
   tunnelId: string;
-}
-
-export interface CodeDirectAttachmentContext {
-  codeTabId: string;
-  expiresAt: Date;
-  ownerId: string;
-  projectId: string;
-  sessionId: string;
   workerId: string;
 }
 
 export interface CodeTunnelBrokerOptions {
-  allowedFrameAncestors: string[];
-  consumeRelayBytes?(ownerId: string, workerId: string, bytes: number): boolean;
   idleTtlMs?: number;
   maxAttachments?: number;
   maxLifetimeMs?: number;
-  surfaceOrigin: string;
 }
 
 type CodeTunnelChange = (input: {
@@ -100,38 +48,20 @@ type CodeTunnelChange = (input: {
   tunnelId: string;
 }) => void;
 
-const surfaceWebSockets = new WeakMap<Server, WebSocketServer>();
-
 export class CodeTunnelBroker {
-  readonly #allowedFrameAncestors: string;
-  readonly #attachments = new Map<string, CodeAttachmentBinding>();
-  readonly #protectedAttachments = new Map<
-    string,
-    ProtectedCodeAttachmentBinding
-  >();
+  readonly #attachments = new Map<string, ProtectedCodeAttachmentBinding>();
   readonly #idleTtlMs: number;
   readonly #maxAttachments: number;
   readonly #maxLifetimeMs: number;
-  readonly #surfaceOrigin: URL;
   readonly #sweepTimer: ReturnType<typeof setInterval>;
   readonly #workerDisconnectSubscriptions = new Map<string, () => void>();
   #changed: CodeTunnelChange | null = null;
-  #ownsStreamBroker = true;
   #repository: ServerRepository | null = null;
-  #streamBroker: TunnelStreamBroker;
 
   constructor(
     private readonly bridge: WorkerCommandBus,
-    options: CodeTunnelBrokerOptions,
+    options: CodeTunnelBrokerOptions = {},
   ) {
-    this.#streamBroker = new TunnelStreamBroker({
-      consumeRelayBytes: options.consumeRelayBytes,
-    });
-    this.#surfaceOrigin = new URL(options.surfaceOrigin);
-    this.#allowedFrameAncestors = [
-      "'self'",
-      ...options.allowedFrameAncestors,
-    ].join(" ");
     this.#idleTtlMs = options.idleTtlMs ?? 15 * 60_000;
     this.#maxLifetimeMs = options.maxLifetimeMs ?? 12 * 60 * 60_000;
     this.#maxAttachments = options.maxAttachments ?? 128;
@@ -144,192 +74,20 @@ export class CodeTunnelBroker {
 
   configureControlPlane(
     repository: ServerRepository,
-    streamBroker: TunnelStreamBroker,
     changed: CodeTunnelChange,
   ): void {
     if (this.#attachments.size > 0) {
       throw new Error("Code control plane must be configured before use.");
     }
-    if (this.#ownsStreamBroker) this.#streamBroker.close();
     this.#repository = repository;
-    this.#streamBroker = streamBroker;
-    this.#ownsStreamBroker = false;
     this.#changed = changed;
-  }
-
-  async createAttachment(
-    input: CreateCodeAttachmentInput,
-  ): Promise<CodeAttachment> {
-    this.#prune();
-    let workspacePath: string | null = null;
-    if (input.runtime.workspaceUri) {
-      const workspace = new URL(input.runtime.workspaceUri);
-      if (
-        workspace.protocol !== "file:" ||
-        workspace.host !== "" ||
-        workspace.search !== "" ||
-        workspace.hash !== ""
-      ) {
-        throw new Error("Cantrip Code supplied an invalid workspace URI.");
-      }
-      workspacePath = decodeURIComponent(workspace.pathname);
-    }
-    if (this.#attachments.size >= this.#maxAttachments) {
-      throw new Error(
-        "This server has reached its Cantrip Code attachment limit.",
-      );
-    }
-    if (!this.bridge.isConnected(input.workerId)) {
-      throw new Error("Cantrip Code worker is offline.");
-    }
-    const now = Date.now();
-    const token = randomBytes(32).toString("base64url");
-    const attachmentId = randomUUID();
-    const expiresAt = now + this.#idleTtlMs;
-    let tunnelId = `code:${input.codeTabId}`;
-    let registeredRelay = false;
-    if (this.#repository) {
-      const tunnel = await this.#repository.registerManagedTunnel(
-        input.ownerId,
-        {
-          name: "Cantrip Code",
-          description: "Isolated editor access for the owning Code tab.",
-          projectId: input.projectId,
-          origin: "code",
-          management: "managed-ephemeral",
-          protocolHint: "http-websocket",
-          source: { kind: "server-http", adapter: "code" },
-          destination: {
-            kind: "worker-adapter",
-            workerId: input.workerId,
-            adapter: "code",
-            resourceId: input.codeTabId,
-          },
-          managedBy: { kind: "code", id: input.codeTabId },
-          desiredState: "started",
-          status: "starting",
-        },
-      );
-      if (!tunnel) throw new Error("Could not register the Code tunnel.");
-      tunnelId = tunnel.id;
-      if (
-        !(await this.#repository.createManagedServerRelayAttachment(
-          input.ownerId,
-          tunnel.id,
-          attachmentId,
-          new Date(expiresAt),
-        ))
-      ) {
-        throw new Error("Could not activate the Code tunnel.");
-      }
-      registeredRelay = true;
-    }
-    let binding!: CodeAttachmentBinding;
-    try {
-      const destination = new WorkerTunnelEndpoint(
-        this.bridge,
-        input.workerId,
-        `worker:code:${attachmentId}`,
-      );
-      const endpoint = new CodeHttpEndpoint(
-        tunnelId,
-        attachmentId,
-        destination.endpointId,
-        input.sessionId,
-        this.basePath(token),
-        this.#surfaceOrigin,
-        this.#allowedFrameAncestors,
-        (metrics) => this.#recordMetrics(binding, metrics),
-      );
-      const route = this.#streamBroker.registerRoute({
-        attachmentId,
-        destination,
-        destinationTarget: {
-          kind: "adapter",
-          adapter: "code",
-          resourceId: input.codeTabId,
-        },
-        source: endpoint,
-        tunnelId,
-        ownerId: input.ownerId,
-        workerId: input.workerId,
-      });
-      binding = {
-        attachmentId,
-        authSessionId: input.authSessionId ?? null,
-        codeTabId: input.codeTabId,
-        createdAt: now,
-        endpoint,
-        expiresAt,
-        lastSeenAt: now,
-        ownerId: input.ownerId,
-        projectId: input.projectId,
-        route,
-        sessionId: input.sessionId,
-        stopSessionOnRelease: input.stopSessionOnRelease ?? false,
-        token,
-        telemetry: this.#repository
-          ? new ManagedServerRelayTelemetry(
-              this.#repository,
-              {
-                attachmentId,
-                ownerId: input.ownerId,
-                projectId: input.projectId,
-                tunnelId,
-              },
-              this.#changed,
-            )
-          : null,
-        tunnelId,
-        workerId: input.workerId,
-      };
-    } catch (error) {
-      if (registeredRelay && this.#repository) {
-        await this.#repository
-          .removeManagedServerRelayAttachment(input.ownerId, attachmentId)
-          .catch(() => null);
-      }
-      throw error;
-    }
-    this.#attachments.set(token, binding);
-    serverLogger.info("Cantrip Code relay attachment created", {
-      attachmentId,
-      codeTabId: input.codeTabId,
-      sessionId: input.sessionId,
-      surfaceOrigin: this.#surfaceOrigin.origin,
-      tunnelId,
-      workerId: input.workerId,
-    });
-    this.#trackWorkerDisconnect(input.workerId);
-    this.#changed?.({
-      attachmentId,
-      ownerId: input.ownerId,
-      projectId: input.projectId,
-      tunnelId,
-    });
-    const attachmentUrl = new URL(
-      `${this.basePath(token)}/`,
-      this.#surfaceOrigin,
-    );
-    if (workspacePath)
-      attachmentUrl.searchParams.set("workspace", workspacePath);
-    return {
-      attachmentId,
-      sessionId: input.sessionId,
-      url: attachmentUrl.toString(),
-      expiresAt: new Date(expiresAt).toISOString(),
-      runtime: input.runtime,
-    };
   }
 
   async createProtectedAttachment(
     input: CreateProtectedCodeAttachmentInput,
   ): Promise<CodeProtectedAttachmentWire> {
     this.#prune();
-    if (
-      this.#attachments.size + this.#protectedAttachments.size >=
-      this.#maxAttachments
-    ) {
+    if (this.#attachments.size >= this.#maxAttachments) {
       throw new Error(
         "This server has reached its Cantrip Code attachment limit.",
       );
@@ -379,7 +137,7 @@ export class CodeTunnelBroker {
       tunnelId: tunnel.id,
       workerId: input.workerId,
     };
-    this.#protectedAttachments.set(binding.attachmentId, binding);
+    this.#attachments.set(binding.attachmentId, binding);
     this.#trackWorkerDisconnect(binding.workerId);
     this.#changed?.({
       attachmentId: binding.attachmentId,
@@ -403,283 +161,56 @@ export class CodeTunnelBroker {
     };
   }
 
-  basePath(token: string): string {
-    return `/code/${token}`;
-  }
-
-  hasAttachment(token: string): boolean {
-    return this.#resolve(token) !== null;
-  }
-
-  prepareDirectAttachment(
-    attachmentId: string,
-    ownerId: string,
-  ): CodeDirectAttachmentContext | null {
-    return this.attachmentContext(attachmentId, ownerId);
-  }
-
-  attachmentContext(
-    attachmentId: string,
-    ownerId: string,
-  ): CodeDirectAttachmentContext | null {
-    const protectedBinding = this.#protectedAttachments.get(attachmentId);
-    if (protectedBinding?.ownerId === ownerId) {
-      this.#touchProtected(protectedBinding);
-      return {
-        codeTabId: protectedBinding.codeTabId,
-        expiresAt: new Date(protectedBinding.createdAt + this.#maxLifetimeMs),
-        ownerId: protectedBinding.ownerId,
-        projectId: protectedBinding.projectId,
-        sessionId: protectedBinding.sessionId,
-        workerId: protectedBinding.workerId,
-      };
-    }
-    const binding = [...this.#attachments.values()].find(
-      (candidate) =>
-        candidate.attachmentId === attachmentId &&
-        candidate.ownerId === ownerId,
-    );
-    if (!binding) return null;
-    const now = Date.now();
-    this.#touch(binding, now);
-    return {
-      codeTabId: binding.codeTabId,
-      expiresAt: new Date(binding.createdAt + this.#maxLifetimeMs),
-      ownerId: binding.ownerId,
-      projectId: binding.projectId,
-      sessionId: binding.sessionId,
-      workerId: binding.workerId,
-    };
-  }
-
   async revokeAttachment(
     attachmentId: string,
     ownerId: string,
   ): Promise<boolean> {
-    const protectedBinding = this.#protectedAttachments.get(attachmentId);
-    if (protectedBinding?.ownerId === ownerId) {
-      await this.#removeProtectedAttachment(protectedBinding);
-      return true;
-    }
-    for (const [token, binding] of this.#attachments) {
-      if (
-        binding.attachmentId === attachmentId &&
-        binding.ownerId === ownerId
-      ) {
-        await this.#removeAttachment(token, binding);
-        return true;
-      }
-    }
-    return false;
+    const binding = this.#attachments.get(attachmentId);
+    if (!binding || binding.ownerId !== ownerId) return false;
+    await this.#removeAttachment(binding);
+    return true;
   }
 
   async revokeSession(sessionId: string): Promise<void> {
     await this.#revokeWhere((binding) => binding.sessionId === sessionId);
-    await this.#revokeProtectedWhere(
-      (binding) => binding.sessionId === sessionId,
-    );
   }
 
   async revokeAuthSession(authSessionId: string): Promise<void> {
     await this.#revokeWhere(
       (binding) => binding.authSessionId === authSessionId,
     );
-    await this.#revokeProtectedWhere(
-      (binding) => binding.authSessionId === authSessionId,
-    );
   }
 
   async revokeOwner(ownerId: string): Promise<void> {
     await this.#revokeWhere((binding) => binding.ownerId === ownerId);
-    await this.#revokeProtectedWhere((binding) => binding.ownerId === ownerId);
   }
 
   async close(): Promise<void> {
     clearInterval(this.#sweepTimer);
     await this.#revokeWhere(() => true);
-    await this.#revokeProtectedWhere(() => true);
     for (const unsubscribe of this.#workerDisconnectSubscriptions.values()) {
       unsubscribe();
     }
     this.#workerDisconnectSubscriptions.clear();
-    if (this.#ownsStreamBroker) this.#streamBroker.close();
-  }
-
-  proxyHttp(
-    token: string,
-    request: IncomingMessage,
-    response: ServerResponse,
-  ): void {
-    const binding = this.#resolve(token);
-    if (!binding) {
-      serverLogger.warn("Cantrip Code relay HTTP request rejected", {
-        path: attachmentRequestPath(request, token),
-        reason: "attachment-unavailable",
-      });
-      this.#writeUnavailable(response);
-      return;
-    }
-    if (!this.bridge.isConnected(binding.workerId)) {
-      serverLogger.warn("Cantrip Code relay HTTP request rejected", {
-        attachmentId: binding.attachmentId,
-        path: attachmentRequestPath(request, token),
-        reason: "worker-offline",
-        sessionId: binding.sessionId,
-        workerId: binding.workerId,
-      });
-      response
-        .writeHead(503, { "cache-control": "no-store" })
-        .end("Worker offline");
-      return;
-    }
-    if (attachmentRequestPath(request, token) === "/") {
-      serverLogger.info("Cantrip Code relay root request received", {
-        attachmentId: binding.attachmentId,
-        method: request.method ?? "GET",
-        sessionId: binding.sessionId,
-        workerId: binding.workerId,
-      });
-    }
-    binding.endpoint.proxyHttp(request, response);
-  }
-
-  proxyWebSocket(
-    token: string,
-    socket: WebSocket,
-    request: IncomingMessage,
-  ): void {
-    const binding = this.#resolve(token);
-    if (!binding || !this.bridge.isConnected(binding.workerId)) {
-      serverLogger.warn("Cantrip Code relay WebSocket rejected", {
-        attachmentId: binding?.attachmentId ?? null,
-        path: attachmentRequestPath(request, token),
-        reason: binding ? "worker-offline" : "attachment-unavailable",
-        sessionId: binding?.sessionId ?? null,
-        workerId: binding?.workerId ?? null,
-      });
-      socket.close(1013, "Cantrip Code worker is unavailable");
-      return;
-    }
-    serverLogger.info("Cantrip Code relay WebSocket received", {
-      attachmentId: binding.attachmentId,
-      path: attachmentRequestPath(request, token),
-      sessionId: binding.sessionId,
-      workerId: binding.workerId,
-    });
-    binding.endpoint.proxyWebSocket(socket, request);
-  }
-
-  #resolve(token: string): CodeAttachmentBinding | null {
-    const binding = this.#attachments.get(token);
-    if (!binding) return null;
-    const now = Date.now();
-    if (
-      binding.expiresAt <= now ||
-      binding.createdAt + this.#maxLifetimeMs <= now
-    ) {
-      void this.#removeAttachment(token, binding);
-      return null;
-    }
-    this.#touch(binding, now);
-    return binding;
   }
 
   #prune(): void {
     const now = Date.now();
-    for (const [token, binding] of this.#attachments) {
+    for (const binding of this.#attachments.values()) {
       if (
         binding.expiresAt <= now ||
         binding.createdAt + this.#maxLifetimeMs <= now
       ) {
-        void this.#removeAttachment(token, binding);
+        void this.#removeAttachment(binding);
       }
     }
-    for (const binding of this.#protectedAttachments.values()) {
-      if (
-        binding.expiresAt <= now ||
-        binding.createdAt + this.#maxLifetimeMs <= now
-      ) {
-        void this.#removeProtectedAttachment(binding);
-      }
-    }
-  }
-
-  #touch(binding: CodeAttachmentBinding, now = Date.now()): void {
-    binding.lastSeenAt = now;
-    binding.expiresAt = Math.min(
-      binding.createdAt + this.#maxLifetimeMs,
-      now + this.#idleTtlMs,
-    );
-    binding.telemetry?.renew(new Date(binding.expiresAt));
-  }
-
-  #touchProtected(
-    binding: ProtectedCodeAttachmentBinding,
-    now = Date.now(),
-  ): void {
-    binding.expiresAt = Math.min(
-      binding.createdAt + this.#maxLifetimeMs,
-      now + this.#idleTtlMs,
-    );
   }
 
   async #removeAttachment(
-    token: string,
-    binding: CodeAttachmentBinding,
-  ): Promise<void> {
-    if (this.#attachments.get(token) !== binding) return;
-    this.#attachments.delete(token);
-    serverLogger.info("Cantrip Code relay attachment removed", {
-      attachmentId: binding.attachmentId,
-      codeTabId: binding.codeTabId,
-      sessionId: binding.sessionId,
-      tunnelId: binding.tunnelId,
-      workerId: binding.workerId,
-    });
-    binding.endpoint.close();
-    binding.route.close();
-    await binding.telemetry?.close(new Date(binding.expiresAt));
-    if (this.#repository) {
-      const removed = await this.#repository
-        .removeManagedServerRelayAttachment(
-          binding.ownerId,
-          binding.attachmentId,
-        )
-        .catch(() => null);
-      this.#changed?.({
-        attachmentId: binding.attachmentId,
-        ownerId: binding.ownerId,
-        projectId: binding.projectId,
-        tunnelId: removed?.tunnelId ?? binding.tunnelId,
-      });
-    }
-    if (binding.stopSessionOnRelease) {
-      await this.bridge
-        .request(binding.workerId, {
-          type: "code.stop",
-          sessionId: binding.sessionId,
-        })
-        .catch(() => undefined);
-    }
-    this.#stopTrackingWorkerIfUnused(binding.workerId);
-  }
-
-  async #revokeWhere(
-    predicate: (binding: CodeAttachmentBinding) => boolean,
-  ): Promise<void> {
-    await Promise.all(
-      [...this.#attachments.entries()]
-        .filter(([, binding]) => predicate(binding))
-        .map(([token, binding]) => this.#removeAttachment(token, binding)),
-    );
-  }
-
-  async #removeProtectedAttachment(
     binding: ProtectedCodeAttachmentBinding,
   ): Promise<void> {
-    if (this.#protectedAttachments.get(binding.attachmentId) !== binding)
-      return;
-    this.#protectedAttachments.delete(binding.attachmentId);
+    if (this.#attachments.get(binding.attachmentId) !== binding) return;
+    this.#attachments.delete(binding.attachmentId);
     await this.#repository
       ?.removeManagedTunnel(binding.ownerId, {
         kind: "code",
@@ -703,44 +234,22 @@ export class CodeTunnelBroker {
     this.#stopTrackingWorkerIfUnused(binding.workerId);
   }
 
-  async #revokeProtectedWhere(
+  async #revokeWhere(
     predicate: (binding: ProtectedCodeAttachmentBinding) => boolean,
   ): Promise<void> {
     await Promise.all(
-      [...this.#protectedAttachments.values()]
+      [...this.#attachments.values()]
         .filter(predicate)
-        .map((binding) => this.#removeProtectedAttachment(binding)),
+        .map((binding) => this.#removeAttachment(binding)),
     );
-  }
-
-  #recordMetrics(
-    binding: CodeAttachmentBinding,
-    input: {
-      bytesFromSource: number;
-      bytesToSource: number;
-      connectionDelta: number;
-    },
-  ): void {
-    if (!binding) return;
-    const now = Date.now();
-    binding.lastSeenAt = now;
-    binding.expiresAt = Math.min(
-      binding.createdAt + this.#maxLifetimeMs,
-      now + this.#idleTtlMs,
-    );
-    binding.telemetry?.record(input, new Date(binding.expiresAt));
   }
 
   #trackWorkerDisconnect(workerId: string): void {
     if (this.#workerDisconnectSubscriptions.has(workerId)) return;
     const unsubscribe = this.bridge.subscribeWorkerDisconnect(workerId, () => {
-      for (const [token, binding] of [...this.#attachments]) {
+      for (const binding of [...this.#attachments.values()]) {
         if (binding.workerId !== workerId) continue;
-        void this.#removeAttachment(token, binding);
-      }
-      for (const binding of [...this.#protectedAttachments.values()]) {
-        if (binding.workerId !== workerId) continue;
-        void this.#removeProtectedAttachment(binding);
+        void this.#removeAttachment(binding);
       }
       this.#stopTrackingWorkerIfUnused(workerId);
     });
@@ -751,125 +260,10 @@ export class CodeTunnelBroker {
     if (
       [...this.#attachments.values()].some(
         (binding) => binding.workerId === workerId,
-      ) ||
-      [...this.#protectedAttachments.values()].some(
-        (binding) => binding.workerId === workerId,
       )
     )
       return;
     this.#workerDisconnectSubscriptions.get(workerId)?.();
     this.#workerDisconnectSubscriptions.delete(workerId);
   }
-
-  #writeUnavailable(response: ServerResponse): void {
-    const message = JSON.stringify({
-      type: "cantrip-code-attachment-unavailable-v1",
-    });
-    response.writeHead(404, {
-      "cache-control": "no-store",
-      "content-security-policy": `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors ${this.#allowedFrameAncestors}`,
-      "content-type": "text/html; charset=utf-8",
-      "referrer-policy": "no-referrer",
-      "x-content-type-options": "nosniff",
-    });
-    response.end(`<!doctype html>
-<meta charset="utf-8">
-<meta name="color-scheme" content="light dark">
-<style>html,body{height:100%;margin:0}body{display:grid;place-items:center;background:Canvas;color:GrayText;font:14px system-ui,sans-serif}</style>
-<p>Reconnecting to Cantrip Code…</p>
-<script>window.parent.postMessage(${message}, "*");</script>`);
-  }
-}
-
-function tokenFromRequest(request: IncomingMessage): string | null {
-  const url = new URL(request.url ?? "/", "http://cantrip-surface.invalid");
-  return (
-    /^\/code\/([A-Za-z0-9_-]{43})(?:\/|$)/u.exec(url.pathname)?.[1] ?? null
-  );
-}
-
-function attachmentRequestPath(
-  request: IncomingMessage,
-  token: string,
-): string {
-  try {
-    const requestUrl = new URL(
-      request.url ?? "/",
-      "http://cantrip-surface.invalid",
-    );
-    const basePath = `/code/${token}`;
-    if (
-      requestUrl.pathname !== basePath &&
-      !requestUrl.pathname.startsWith(`${basePath}/`)
-    ) {
-      return "[outside attachment]";
-    }
-    return requestUrl.pathname.slice(basePath.length) || "/";
-  } catch {
-    return "[invalid path]";
-  }
-}
-
-export function createCodeSurfaceServer(
-  broker: CodeTunnelBroker,
-  surfaceOrigin: string,
-): Server {
-  const expectedOrigin = new URL(surfaceOrigin).origin;
-  const webSockets = new WebSocketServer({
-    noServer: true,
-    maxPayload: CODE_ADAPTER_MAX_WEBSOCKET_MESSAGE_BYTES,
-  });
-  const server = createServer((request, response) => {
-    if (request.url === "/health") {
-      response.writeHead(200, {
-        "cache-control": "no-store",
-        "content-type": "application/json",
-      });
-      response.end('{"status":"ok"}');
-      return;
-    }
-    const token = tokenFromRequest(request);
-    if (!token) {
-      response.writeHead(404, { "cache-control": "no-store" }).end("Not found");
-      return;
-    }
-    broker.proxyHttp(token, request, response);
-  });
-  server.on("upgrade", (request, socket, head) => {
-    const token = tokenFromRequest(request);
-    const origin = request.headers.origin;
-    const hasAttachment = token ? broker.hasAttachment(token) : false;
-    if (!token || !hasAttachment || (origin && origin !== expectedOrigin)) {
-      serverLogger.warn("Cantrip Code surface WebSocket upgrade rejected", {
-        hasAttachment,
-        hasToken: Boolean(token),
-        origin: origin ?? null,
-        originMatches: !origin || origin === expectedOrigin,
-        path: token
-          ? attachmentRequestPath(request, token)
-          : "[missing attachment]",
-      });
-      socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
-      socket.destroy();
-      return;
-    }
-    webSockets.handleUpgrade(request, socket, head, (webSocket) => {
-      broker.proxyWebSocket(token, webSocket, request);
-    });
-  });
-  surfaceWebSockets.set(server, webSockets);
-  return server;
-}
-
-export async function closeCodeSurfaceServer(server: Server): Promise<void> {
-  const webSockets = surfaceWebSockets.get(server);
-  for (const client of webSockets?.clients ?? []) client.terminate();
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
-    server.closeAllConnections();
-  });
-  await new Promise<void>(
-    (resolve) => webSockets?.close(() => resolve()) ?? resolve(),
-  );
-  surfaceWebSockets.delete(server);
 }

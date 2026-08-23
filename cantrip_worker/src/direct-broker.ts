@@ -159,12 +159,9 @@ export class DirectBroker {
     let tunnelRoute = command.tunnelRoute ?? null;
     const expiresAt = Date.parse(command.binding.expiresAt);
     const leaseExpiresAt = Date.parse(command.binding.leaseExpiresAt);
-    const tunnelResource = new Set([
-      "tunnel",
-      "project-share",
-      "terminal",
-      "code",
-    ]).has(command.binding.resourceKind);
+    const tunnelResource = new Set(["tunnel", "project-share", "terminal"]).has(
+      command.binding.resourceKind,
+    );
     if (
       command.binding.workerId.length === 0 ||
       !Number.isFinite(expiresAt) ||

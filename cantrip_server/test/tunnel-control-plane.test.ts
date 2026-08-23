@@ -352,6 +352,7 @@ describe.sequential("tunnel control plane", () => {
       }),
     ).rejects.toThrow(/protected content/u);
 
+    const protectedCodeTunnelId = randomUUID();
     const registration = {
       name: "Cantrip Code",
       description: null,
@@ -359,24 +360,32 @@ describe.sequential("tunnel control plane", () => {
       origin: "code" as const,
       management: "managed-durable" as const,
       protocolHint: "http-websocket" as const,
-      source: { kind: "server-http" as const, adapter: "code" as const },
+      source: { kind: "desktop-loopback" as const },
       destination: {
         kind: "worker-adapter" as const,
         workerId: "worker-b",
         adapter: "code" as const,
-        resourceId: "code-tab-1",
+        resourceId: protectedCodeTunnelId,
       },
-      managedBy: { kind: "code" as const, id: "code-tab-1" },
+      managedBy: { kind: "code" as const, id: protectedCodeTunnelId },
       desiredState: "started" as const,
       status: "active" as const,
     };
     const first = await database.repository.registerManagedTunnel(
       LOCAL_USER_ID,
       registration,
+      {
+        id: protectedCodeTunnelId,
+        protectedRecord: protectedRecord(protectedCodeTunnelId, 1),
+      },
     );
     const second = await database.repository.registerManagedTunnel(
       LOCAL_USER_ID,
       { ...registration, name: "Renamed by owner" },
+      {
+        id: protectedCodeTunnelId,
+        protectedRecord: protectedRecord(randomUUID(), 2),
+      },
     );
     expect(first).not.toBeNull();
     expect(second?.id).toBe(first?.id);
@@ -403,125 +412,6 @@ describe.sequential("tunnel control plane", () => {
     });
     expect(update.statusCode).toBe(409);
     expect(remove.statusCode).toBe(409);
-  });
-
-  it("persists and independently revokes managed server relays", async () => {
-    const codeRelay = await database.repository.registerManagedTunnel(
-      LOCAL_USER_ID,
-      {
-        name: "Cantrip Code",
-        description: "Server-terminated Code access.",
-        projectId,
-        origin: "code",
-        management: "managed-ephemeral",
-        protocolHint: "http-websocket",
-        source: { kind: "server-http", adapter: "code" },
-        destination: {
-          kind: "worker-adapter",
-          workerId: "worker-b",
-          adapter: "code",
-          resourceId: "code-relay-1",
-        },
-        managedBy: { kind: "code", id: "code-relay-1" },
-        desiredState: "started",
-        status: "starting",
-      },
-    );
-    expect(codeRelay).not.toBeNull();
-    expect(
-      await database.repository.createManagedServerRelayAttachment(
-        LOCAL_USER_ID,
-        codeRelay!.id,
-        "share-1",
-        new Date(Date.now() + 60_000),
-      ),
-    ).toBe(true);
-    await database.repository.touchManagedServerRelay(otherOwnerId, "share-1", {
-      activeConnectionDelta: 99,
-      bytesFromSource: 999,
-    });
-    await database.repository.touchManagedServerRelay(
-      LOCAL_USER_ID,
-      "share-1",
-      {
-        activeConnectionDelta: 1,
-        bytesFromSource: 123,
-        bytesToSource: 456,
-      },
-    );
-    const global = tunnelWireListSchema.parse(
-      (await app.inject({ method: "GET", url: "/api/tunnels" })).json(),
-    );
-    const project = tunnelWireListSchema.parse(
-      (
-        await app.inject({
-          method: "GET",
-          url: `/api/projects/${projectId}/tunnels`,
-        })
-      ).json(),
-    );
-    const persisted = global.find(({ id }) => id === codeRelay!.id);
-    expect(persisted).toMatchObject({
-      projectId,
-      origin: "code",
-      status: "active",
-      activeConnectionCount: 1,
-      bytesFromSource: 123,
-      bytesToSource: 456,
-      attachments: [
-        {
-          id: "share-1",
-          kind: "server-relay",
-          status: "active",
-          clientId: null,
-        },
-      ],
-    });
-    expect(project.some(({ id }) => id === codeRelay!.id)).toBe(true);
-    expect(
-      await database.repository.createManagedServerRelayAttachment(
-        LOCAL_USER_ID,
-        codeRelay!.id,
-        "share-2",
-        new Date(Date.now() + 60_000),
-      ),
-    ).toBe(true);
-    await database.repository.touchManagedServerRelay(
-      LOCAL_USER_ID,
-      "share-2",
-      { activeConnectionDelta: 2 },
-    );
-    expect(
-      (await database.repository.getTunnel(LOCAL_USER_ID, codeRelay!.id))
-        ?.activeConnectionCount,
-    ).toBe(3);
-    expect(
-      await database.repository.removeManagedServerRelayAttachment(
-        otherOwnerId,
-        "share-1",
-      ),
-    ).toBeNull();
-    expect(
-      await database.repository.removeManagedServerRelayAttachment(
-        LOCAL_USER_ID,
-        "share-1",
-      ),
-    ).toMatchObject({ tunnelId: codeRelay!.id, tunnelRemoved: false });
-    expect(
-      await database.repository.getTunnel(LOCAL_USER_ID, codeRelay!.id),
-    ).toMatchObject({
-      activeConnectionCount: 2,
-      attachments: [expect.objectContaining({ id: "share-2" })],
-    });
-    expect(
-      await database.repository.removeManagedServerRelayAttachment(
-        LOCAL_USER_ID,
-        "share-2",
-      ),
-    ).toMatchObject({ tunnelId: codeRelay!.id, tunnelRemoved: true });
-    expect(
-      await database.repository.getTunnel(LOCAL_USER_ID, codeRelay!.id),
-    ).toBeNull();
   });
 
   it("clears organizational project links without deleting tunnels", async () => {

@@ -31,12 +31,6 @@ export const tunnelContentSourceEndpointSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("desktop-loopback") }).strict(),
   z
     .object({
-      kind: z.literal("server-http"),
-      adapter: z.literal("code"),
-    })
-    .strict(),
-  z
-    .object({
       kind: z.literal("worker-listener"),
       workerId: tunnelContentIdSchema,
       host: tunnelContentHostSchema,
@@ -120,12 +114,6 @@ export const protectedTunnelContentRecordSchema = z
 
 export const tunnelPublicSourceEndpointSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("desktop-loopback") }).strict(),
-  z
-    .object({
-      kind: z.literal("server-http"),
-      adapter: z.literal("code"),
-    })
-    .strict(),
   z
     .object({
       kind: z.literal("worker-listener"),

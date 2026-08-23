@@ -974,9 +974,7 @@ export function ExplorerView({
                   appearance={appearance}
                   explorerId={explorer.id}
                   path={selectedPath}
-                  projectId={explorer.projectId}
                   workerId={explorer.activeWorkerId}
-                  worktreeId={explorer.worktreeId}
                 />
               </div>
             ) : file.isLoading ? (

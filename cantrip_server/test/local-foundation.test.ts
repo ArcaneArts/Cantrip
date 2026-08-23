@@ -22,7 +22,8 @@ import {
   chatPermissionProfileStateSchema,
   chatPlanStateSchema,
   chatSummarySchema,
-  codeAttachmentSchema,
+  codeProtectedAttachmentIntentSchema,
+  codeProtectedAttachmentWireSchema,
   codeRuntimeStatusSchema,
   codeSaveAllResultSchema,
   codeTabSummarySchema,
@@ -2701,69 +2702,59 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
-    const codeAttachmentResponse = await firstApp.inject({
-      method: "POST",
-      url: `/api/code-tabs/${codeTab.id}/attachments`,
-      payload: { appearance: "high-contrast-dark" },
-    });
-    expect(codeAttachmentResponse.statusCode).toBe(201);
-    const codeAttachment = codeAttachmentSchema.parse(
-      codeAttachmentResponse.json(),
-    );
-    expect(codeAttachment).toMatchObject({
-      sessionId: expect.any(String),
-      url: expect.stringMatching(/^http:\/\/127\.0\.0\.1:4311\/code\//u),
-      runtime: { status: "running", processInstanceId: "code-process-1" },
-    });
-    const secondCodeAttachment = codeAttachmentSchema.parse(
+    const codeIntent = codeProtectedAttachmentIntentSchema.parse(
       (
         await firstApp.inject({
           method: "POST",
-          url: `/api/code-tabs/${codeTab.id}/attachments`,
+          url: `/api/code-tabs/${codeTab.id}/protected-attachment-intents`,
           payload: { appearance: "high-contrast-dark" },
         })
       ).json(),
     );
-    expect(secondCodeAttachment).toMatchObject({
-      sessionId: codeAttachment.sessionId,
-      runtime: { processInstanceId: "code-process-1" },
-    });
-    expect(secondCodeAttachment.attachmentId).not.toBe(
-      codeAttachment.attachmentId,
-    );
-    const codeTunnels = tunnelListSchema.parse(
+    const codeTunnelId = randomUUID();
+    const codeAttachment = codeProtectedAttachmentWireSchema.parse(
       (
         await firstApp.inject({
-          method: "GET",
-          url: `/api/projects/${project.id}/tunnels`,
+          method: "POST",
+          url: `/api/code-tabs/${codeTab.id}/protected-attachments`,
+          payload: {
+            sessionId: codeIntent.sessionId,
+            tunnelId: codeTunnelId,
+            protectedRecord: projectShareRecord(codeTunnelId, 1),
+          },
         })
       ).json(),
     );
-    expect(codeTunnels).toEqual([
+    expect(codeAttachment).toMatchObject({
+      attachmentId: codeTunnelId,
+      sessionId: codeIntent.sessionId,
+      tunnelId: codeTunnelId,
+      runtime: { status: "running", processInstanceId: "code-process-1" },
+    });
+    expect(
+      tunnelWireListSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/projects/${project.id}/tunnels`,
+          })
+        ).json(),
+      ),
+    ).toEqual([
       expect.objectContaining({
         projectId: project.id,
         origin: "code",
         protocolHint: "http-websocket",
-        source: { kind: "server-http", adapter: "code" },
+        source: { kind: "desktop-loopback" },
         destination: expect.objectContaining({
           kind: "worker-adapter",
           workerId: "test-worker",
           adapter: "code",
-          resourceId: codeTab.id,
+          resourceId: codeTunnelId,
         }),
-        managedBy: { kind: "code", id: codeTab.id },
-        attachments: expect.arrayContaining([
-          expect.objectContaining({
-            id: codeAttachment.attachmentId,
-            kind: "server-relay",
-            status: "active",
-          }),
-          expect.objectContaining({
-            id: secondCodeAttachment.attachmentId,
-            kind: "server-relay",
-            status: "active",
-          }),
-        ]),
+        managedBy: { kind: "code", id: codeTunnelId },
+        attachments: [],
+        protectedRecord: expect.objectContaining({ revision: 1 }),
       }),
     ]);
     expect(
@@ -2771,12 +2762,12 @@ describe("local server foundation", () => {
         (
           await firstApp.inject({
             method: "GET",
-            url: `/api/code-tabs/${codeTab.id}/sessions/${codeAttachment.sessionId}/runtime`,
+            url: `/api/code-tabs/${codeTab.id}/sessions/${codeIntent.sessionId}/runtime`,
           })
         ).json(),
       ),
     ).toMatchObject({
-      sessionId: codeAttachment.sessionId,
+      sessionId: codeIntent.sessionId,
       bridgeConnected: true,
       status: "running",
     });
@@ -2794,10 +2785,8 @@ describe("local server foundation", () => {
             url: `/api/projects/${project.id}/tunnels`,
           })
         ).json(),
-      )[0]?.attachments,
-    ).toEqual([
-      expect.objectContaining({ id: secondCodeAttachment.attachmentId }),
-    ]);
+      ),
+    ).toEqual([]);
     expect(
       codeSaveAllResultSchema.parse(
         (

@@ -8,8 +8,3 @@
 	encode zstd gzip
 	reverse_proxy server:4310
 }
-
-{$CANTRIP_CODE_DOMAIN} {
-	encode zstd gzip
-	reverse_proxy server:4311
-}
