@@ -38,21 +38,47 @@ function shouldRetryFileOpen(error: unknown): boolean {
   );
 }
 
+export function explorerCodeEditorBindingKey(input: {
+  appearance: CodeAppearance;
+  explorerId: string;
+  reloadVersion: number;
+  workerId: string;
+  worktreeId: string;
+}): string {
+  return [
+    input.explorerId,
+    input.worktreeId,
+    input.workerId,
+    input.appearance,
+    input.reloadVersion,
+  ].join("\0");
+}
+
+export function explorerCodeEditorReadyKey(
+  attachmentId: string,
+  path: string,
+  bindingKey: string,
+): string {
+  return `${bindingKey}\0${attachmentId}\0${path}`;
+}
+
 export function ExplorerCodeEditor({
   appearance,
   explorerId,
   path,
+  worktreeId,
   workerId,
 }: {
   appearance: CodeAppearance;
   explorerId: string;
   path: string;
+  worktreeId: string;
   workerId: string;
 }) {
   const [preferredAttachment, setPreferredAttachment] =
     useState<PreferredCodeAttachment | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
+  const [readyKey, setReadyKey] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const automaticReconnectsRef = useRef(0);
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -70,6 +96,21 @@ export function ExplorerCodeEditor({
     );
   const pathRef = useRef(path);
   pathRef.current = path;
+  const bindingKey = explorerCodeEditorBindingKey({
+    appearance,
+    explorerId,
+    reloadVersion,
+    workerId,
+    worktreeId,
+  });
+  const requestedReadyKey = preferredAttachment
+    ? explorerCodeEditorReadyKey(
+        preferredAttachment.attachment.attachmentId,
+        path,
+        bindingKey,
+      )
+    : null;
+  const ready = readyKey !== null && readyKey === requestedReadyKey;
 
   const reload = useCallback(() => {
     setReloadVersion((version) => version + 1);
@@ -81,7 +122,7 @@ export function ExplorerCodeEditor({
 
     setPreferredAttachment(null);
     setError(null);
-    setReady(false);
+    setReadyKey(null);
 
     const connect = async () => {
       try {
@@ -91,6 +132,7 @@ export function ExplorerCodeEditor({
               explorerId,
               pathRef.current,
               workerId,
+              worktreeId,
               appearance,
             ),
           (wire, signal) =>
@@ -121,7 +163,7 @@ export function ExplorerCodeEditor({
         "Explorer Code connection superseded.",
       );
     };
-  }, [appearance, explorerId, reloadVersion, workerId]);
+  }, [appearance, bindingKey, explorerId, workerId, worktreeId]);
 
   useEffect(() => {
     automaticReconnectsRef.current = 0;
@@ -133,7 +175,11 @@ export function ExplorerCodeEditor({
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     setError(null);
-    setReady(false);
+    const navigationReadyKey = explorerCodeEditorReadyKey(
+      preferredAttachment.attachment.attachmentId,
+      path,
+      bindingKey,
+    );
     const openFile = async (attempt: number) => {
       try {
         await setDirectCodeAttachmentPresentation(
@@ -149,7 +195,7 @@ export function ExplorerCodeEditor({
         if (!cancelled && result.relativePath === path) {
           automaticReconnectsRef.current = 0;
           setError(null);
-          setReady(true);
+          setReadyKey(navigationReadyKey);
         }
       } catch (openError) {
         if (cancelled) return;
@@ -183,7 +229,7 @@ export function ExplorerCodeEditor({
       );
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [path, preferredAttachment]);
+  }, [bindingKey, path, preferredAttachment]);
 
   useEffect(() => {
     if (!preferredAttachment) return;

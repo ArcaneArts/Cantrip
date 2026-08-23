@@ -277,10 +277,14 @@ export class CodeTunnelBroker {
     });
     if (binding.stopSessionOnRelease) {
       await this.bridge
-        .request(binding.workerId, {
-          type: "code.stop",
-          sessionId: binding.sessionId,
-        })
+        .request(
+          binding.workerId,
+          {
+            type: "code.stop",
+            sessionId: binding.sessionId,
+          },
+          { timeoutMs: 5_000 },
+        )
         .catch(() => undefined);
     }
     this.#stopTrackingWorkerIfUnused(binding.workerId);

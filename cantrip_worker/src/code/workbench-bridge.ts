@@ -329,6 +329,7 @@ export class CodeWorkbenchBridge {
   async openFile(
     sessionId: string,
     relativePath: string,
+    expectedWorkspaceRootUri: string,
   ): Promise<CodeOpenFileResult> {
     const session = this.#sessions.get(sessionId);
     if (!session) throw new Error("Cantrip Code session is not registered.");
@@ -339,6 +340,7 @@ export class CodeWorkbenchBridge {
       throw new Error("Cantrip workbench bridge is not connected.");
     }
     const result = (await this.#request(session, "openFile", {
+      expectedWorkspaceRootUri,
       path: relativePath,
     })) as Partial<CodeOpenFileResult>;
     if (result.relativePath !== relativePath) {

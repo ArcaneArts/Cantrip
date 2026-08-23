@@ -9,6 +9,7 @@ const {
   themeNameForAppearance,
 } = require("./protocol.js");
 const { forceColorTheme } = require("./theme.js");
+const { WorkspaceFileNavigator } = require("./navigation.js");
 const {
   configureWorkbenchPresentation,
   setWorkbenchPresentation,
@@ -153,6 +154,7 @@ class WorkbenchCoordinator {
     this.gitDisposables = [];
     this.gitRepositoryDisposables = [];
     this.disposables = [];
+    this.fileNavigator = new WorkspaceFileNavigator(vscode);
 
     this.connectionStatus = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
@@ -506,19 +508,12 @@ class WorkbenchCoordinator {
   }
 
   async openFile(params) {
-    const [relativePath] = safeRelativePaths([params.path]);
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder || !relativePath) {
-      throw new Error("Cantrip Code requires a worktree-relative file path.");
-    }
-    const uri = vscode.Uri.joinPath(folder.uri, ...relativePath.split("/"));
-    const document = await vscode.workspace.openTextDocument(uri);
-    await vscode.window.showTextDocument(document, {
-      preserveFocus: false,
-      preview: true,
-    });
+    const result = await this.fileNavigator.open(
+      params.path,
+      params.expectedWorkspaceRootUri,
+    );
     this.scheduleState();
-    return { relativePath };
+    return result;
   }
 
   async setPresentation(params) {

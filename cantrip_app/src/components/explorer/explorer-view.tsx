@@ -568,10 +568,7 @@ export function ExplorerView({
   );
 
   useEffect(() => {
-    if (
-      !transientFilePath ||
-      transientFilePath === selectedPathRef.current
-    ) {
+    if (!transientFilePath || transientFilePath === selectedPathRef.current) {
       return;
     }
     setGraphRootPath(undefined);
@@ -1001,6 +998,7 @@ export function ExplorerView({
                   appearance={appearance}
                   explorerId={explorer.id}
                   path={selectedPath}
+                  worktreeId={explorer.worktreeId}
                   workerId={explorer.activeWorkerId}
                 />
               </div>

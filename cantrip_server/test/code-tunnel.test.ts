@@ -73,6 +73,7 @@ describe("protected Cantrip Code attachments", () => {
         protectedRecord,
         runtime,
         sessionId: runtime.sessionId,
+        stopSessionOnRelease: true,
         tunnelId,
         workerId: "worker-1",
       });
@@ -112,6 +113,11 @@ describe("protected Cantrip Code attachments", () => {
       expect(worker.request).toHaveBeenCalledWith(
         "worker-1",
         { type: "code.endpoint.revoke", tunnelId },
+        { timeoutMs: 5_000 },
+      );
+      expect(worker.request).toHaveBeenCalledWith(
+        "worker-1",
+        { type: "code.stop", sessionId: runtime.sessionId },
         { timeoutMs: 5_000 },
       );
     } finally {

@@ -2707,7 +2707,11 @@ describe("local server foundation", () => {
         await firstApp.inject({
           method: "POST",
           url: `/api/code-tabs/${codeTab.id}/protected-attachment-intents`,
-          payload: { appearance: "high-contrast-dark" },
+          payload: {
+            appearance: "high-contrast-dark",
+            expectedWorkerId: codeTab.activeWorkerId,
+            expectedWorktreeId: codeTab.worktreeId,
+          },
         })
       ).json(),
     );
@@ -2718,6 +2722,8 @@ describe("local server foundation", () => {
           method: "POST",
           url: `/api/code-tabs/${codeTab.id}/protected-attachments`,
           payload: {
+            expectedWorkerId: codeTab.activeWorkerId,
+            expectedWorktreeId: codeTab.worktreeId,
             sessionId: codeIntent.sessionId,
             tunnelId: codeTunnelId,
             protectedRecord: projectShareRecord(codeTunnelId, 1),

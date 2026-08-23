@@ -467,6 +467,7 @@ export class WorkerEnrollmentError extends Error {}
 export class TunnelManagementError extends Error {}
 export class ManagedMcpServerInvariantError extends Error {}
 export class McpServerWorkerBindingError extends Error {}
+class StaleCodeSessionRuntimeError extends Error {}
 
 export interface TunnelAttachmentAuthorization {
   attachmentId: string;
@@ -12637,7 +12638,15 @@ export class ServerRepository {
         lastError: null,
         updatedAt: new Date(),
       })
-      .where(eq(schema.codeTabs.id, codeTabId))
+      .where(
+        and(
+          eq(schema.codeTabs.id, codeTabId),
+          eq(schema.codeTabs.activeWorkerId, context.workerId),
+          eq(schema.codeTabs.worktreeId, context.worktreeId),
+          eq(schema.codeTabs.profileId, context.codeTab.profileId),
+          notInArray(schema.codeTabs.status, ["starting", "running"]),
+        ),
+      )
       .returning();
     return result[0] ? toCodeTabWireSummary(result[0]) : null;
   }
@@ -12753,44 +12762,60 @@ export class ServerRepository {
             : runtime.status === "failed"
               ? "failed"
               : "stopped";
-    return this.database.transaction(async (transaction) => {
-      const rows = await transaction
-        .update(schema.codeSessions)
-        .set({
-          status: runtime.status,
-          processInstanceId: runtime.processInstanceId,
-          ...(attached ? { lastAttachmentAt: new Date() } : {}),
-          ...(runtime.startedAt
-            ? { lastStartedAt: new Date(runtime.startedAt) }
-            : {}),
-          stoppedAt: runtime.status === "stopped" ? new Date() : null,
-          lastError: runtime.lastError,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(schema.codeSessions.id, sessionId),
-            eq(schema.codeSessions.codeTabId, codeTabId),
-            eq(schema.codeSessions.workerId, context.workerId),
-            eq(
-              schema.codeSessions.editorFingerprint,
-              runtime.editorBuild.fingerprint,
+    try {
+      return await this.database.transaction(async (transaction) => {
+        const rows = await transaction
+          .update(schema.codeSessions)
+          .set({
+            status: runtime.status,
+            processInstanceId: runtime.processInstanceId,
+            ...(attached ? { lastAttachmentAt: new Date() } : {}),
+            ...(runtime.startedAt
+              ? { lastStartedAt: new Date(runtime.startedAt) }
+              : {}),
+            stoppedAt: runtime.status === "stopped" ? new Date() : null,
+            lastError: runtime.lastError,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.codeSessions.id, sessionId),
+              eq(schema.codeSessions.codeTabId, codeTabId),
+              eq(schema.codeSessions.workerId, context.workerId),
+              eq(schema.codeSessions.worktreeId, context.worktreeId),
+              eq(schema.codeSessions.profileId, context.codeTab.profileId),
+              eq(
+                schema.codeSessions.editorFingerprint,
+                runtime.editorBuild.fingerprint,
+              ),
             ),
-          ),
-        )
-        .returning();
-      const session = rows[0];
-      if (!session) return null;
-      await transaction
-        .update(schema.codeTabs)
-        .set({
-          status: tabStatus,
-          lastError: runtime.lastError,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.codeTabs.id, codeTabId));
-      return toCodeSessionSummary(session);
-    });
+          )
+          .returning();
+        const session = rows[0];
+        if (!session) return null;
+        const tabs = await transaction
+          .update(schema.codeTabs)
+          .set({
+            status: tabStatus,
+            lastError: runtime.lastError,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.codeTabs.id, codeTabId),
+              eq(schema.codeTabs.activeWorkerId, context.workerId),
+              eq(schema.codeTabs.worktreeId, context.worktreeId),
+              eq(schema.codeTabs.profileId, context.codeTab.profileId),
+            ),
+          )
+          .returning({ id: schema.codeTabs.id });
+        if (!tabs[0]) throw new StaleCodeSessionRuntimeError();
+        return toCodeSessionSummary(session);
+      });
+    } catch (error) {
+      if (error instanceof StaleCodeSessionRuntimeError) return null;
+      throw error;
+    }
   }
 
   async listBrowsers(

@@ -84,6 +84,14 @@ describe("CodeDirectEndpointManager", () => {
     expect(response.headers.get("content-security-policy")).toContain(
       "tauri://localhost",
     );
+
+    const hostile = await fetch(
+      `http://${target.host}:${target.port}/code/?folder=${encodeURIComponent("/worker/other")}&workspace=${encodeURIComponent("/worker/hostile.code-workspace")}&preserved=yes`,
+    );
+    expect(await hostile.text()).toBe("editor-ready");
+    expect(observed?.url).toBe(
+      "/?preserved=yes&workspace=%2Fworker%2Fproject.code-workspace",
+    );
     expect(records).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

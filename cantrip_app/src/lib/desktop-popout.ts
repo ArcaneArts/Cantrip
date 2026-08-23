@@ -34,6 +34,10 @@ const syntheticBuildProgressParameter = "cantrip-synthetic-build";
 const noDesktopListener = () => undefined;
 const explorerWindowBrokers = new Map<string, DesktopExplorerWindowBroker>();
 const explorerFileWindowLabels = new Map<string, string>();
+const explorerFileOpenOperations = new Map<
+  string,
+  Promise<"created" | "focused">
+>();
 const explorerEditorPrewarmPath = ".cantrip-editor-prewarm";
 let explorerWindowUnloadCleanupInstalled = false;
 let desiredExplorerEditorWarmKey: string | null = null;
@@ -152,18 +156,29 @@ function stableLabelHash(value: string): string {
 export function desktopExplorerFileWindowLabel(
   explorerId: string,
   path: string,
+  worktreeId?: string,
+  workerId?: string,
 ): string {
   const safeExplorerId = explorerId
     .replace(/[^A-Za-z0-9-/:_]/g, "_")
     .slice(0, 64);
-  return `cantrip-editor-${safeExplorerId}-${stableLabelHash(path)}`;
+  const binding =
+    worktreeId || workerId
+      ? `${path}\0${worktreeId ?? ""}\0${workerId ?? ""}`
+      : path;
+  return `cantrip-editor-${safeExplorerId}-${stableLabelHash(binding)}`;
 }
 
 function desktopExplorerFileTargetKey(
-  explorerId: string,
-  path: string,
+  target: DesktopExplorerFileTarget,
+  context: DesktopExplorerFileLaunchContext,
 ): string {
-  return `${explorerId}\0${path}`;
+  return [
+    target.explorerId,
+    target.path,
+    context.explorer.worktreeId,
+    context.explorer.activeWorkerId,
+  ].join("\0");
 }
 
 function desktopExplorerEditorWarmKey(
@@ -173,6 +188,7 @@ function desktopExplorerEditorWarmKey(
     context.explorer.id,
     context.explorer.projectId,
     context.explorer.worktreeId,
+    context.explorer.activeWorkerId,
     context.appearance,
   ].join("\0");
 }
@@ -537,28 +553,50 @@ async function takeExplorerEditorWarmSlot(
   return state.promise.catch(() => null);
 }
 
-export async function openDesktopExplorerFile(
+export function openDesktopExplorerFile(
   target: DesktopExplorerFileTarget,
   title: string,
   context: DesktopExplorerFileLaunchContext,
 ): Promise<"created" | "focused"> {
+  const targetKey = desktopExplorerFileTargetKey(target, context);
+  const current = explorerFileOpenOperations.get(targetKey);
+  if (current) return current;
+  const operation = openDesktopExplorerFileOperation(
+    target,
+    title,
+    context,
+    targetKey,
+  ).finally(() => {
+    if (explorerFileOpenOperations.get(targetKey) === operation) {
+      explorerFileOpenOperations.delete(targetKey);
+    }
+  });
+  explorerFileOpenOperations.set(targetKey, operation);
+  return operation;
+}
+
+async function openDesktopExplorerFileOperation(
+  target: DesktopExplorerFileTarget,
+  title: string,
+  context: DesktopExplorerFileLaunchContext,
+  targetKey: string,
+): Promise<"created" | "focused"> {
   installExplorerWindowUnloadCleanup();
-  const targetKey = desktopExplorerFileTargetKey(
-    target.explorerId,
-    target.path,
-  );
   const legacyLabel = desktopExplorerFileWindowLabel(
     target.explorerId,
     target.path,
+    context.explorer.worktreeId,
+    context.explorer.activeWorkerId,
   );
   const activeLabel = explorerFileWindowLabels.get(targetKey) ?? legacyLabel;
   const activeBroker = explorerWindowBrokers.get(activeLabel);
-  if (
-    activeBroker &&
-    !activeBroker.failed &&
-    (await focusWindow(activeLabel))
-  ) {
-    return "focused";
+  if (activeBroker && !activeBroker.failed) {
+    try {
+      await activeBroker.openFile(target.path);
+      if (await focusWindow(activeLabel)) return "focused";
+    } catch {
+      // Replace an editor that can no longer confirm the requested file.
+    }
   }
   if (activeBroker) {
     await closeWindow(activeLabel).catch(() => undefined);

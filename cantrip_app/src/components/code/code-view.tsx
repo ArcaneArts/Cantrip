@@ -226,6 +226,7 @@ export function CodeView({
             const wire = await createProtectedCodeAttachment(
               codeTab.id,
               codeTab.activeWorkerId,
+              codeTab.worktreeId,
               appearanceRef.current,
             );
             ownedAttachmentId = wire.attachmentId;

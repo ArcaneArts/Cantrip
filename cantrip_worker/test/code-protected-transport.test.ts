@@ -400,10 +400,16 @@ describe("protected Code direct transport", () => {
     healthConnectionIds.push(
       await request("/code/_cantrip/health", '{"status":"ok"}'),
     );
+    proxyConnectionIds.push(
+      await request(
+        "/code/?folder=%2Fworker%2Fother&workspace=%2Fworker%2Fhostile.code-workspace&preserved=yes",
+        "editor-ready",
+      ),
+    );
     expect(socket.readyState).toBe(WebSocket.OPEN);
 
     expect(observed?.url).toBe(
-      "/?workspace=%2Fworker%2Fprivate%2Fproject.code-workspace",
+      "/?preserved=yes&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace",
     );
     expect(records).toEqual(
       expect.arrayContaining([

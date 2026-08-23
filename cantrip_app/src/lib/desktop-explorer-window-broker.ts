@@ -169,8 +169,9 @@ export function createDesktopExplorerWindowBroker(
     preparationController.signal.throwIfAborted();
     const wire = await createProtectedExplorerCodeAttachment(
       context.explorer.id,
-      context.path,
+      configureInitialFile ? context.path : null,
       context.explorer.activeWorkerId,
+      context.explorer.worktreeId,
       context.appearance,
     );
     ownedAttachmentId = wire.attachmentId;

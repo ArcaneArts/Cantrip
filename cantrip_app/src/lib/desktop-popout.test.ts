@@ -57,6 +57,7 @@ import {
   isMacosDesktopRuntime,
   observeDesktopPopoutClosure,
   observeDesktopWindowFocus,
+  openDesktopExplorerFile,
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
   prewarmDesktopExplorerFile,
@@ -268,6 +269,87 @@ describe("desktop Explorer file windows", () => {
     expect(
       desktopExplorerFileWindowLabel("x".repeat(1_000), "file.ts").length,
     ).toBeLessThan(100);
+    expect(
+      desktopExplorerFileWindowLabel(
+        "explorer with spaces",
+        "src/components/file.tsx",
+        "worktree-two",
+        "worker-one",
+      ),
+    ).not.toBe(
+      desktopExplorerFileWindowLabel(
+        "explorer with spaces",
+        "src/components/file.tsx",
+        "worktree-one",
+        "worker-one",
+      ),
+    );
+    expect(
+      desktopExplorerFileWindowLabel(
+        "explorer with spaces",
+        "src/components/file.tsx",
+        "worktree-one",
+        "worker-two",
+      ),
+    ).not.toBe(
+      desktopExplorerFileWindowLabel(
+        "explorer with spaces",
+        "src/components/file.tsx",
+        "worktree-one",
+        "worker-one",
+      ),
+    );
+  });
+
+  it("reasserts the requested file before focusing an existing bound editor", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    brokerModule.createDesktopExplorerWindowBroker.mockReset();
+    const broker = {
+      dispose: vi.fn(async () => undefined),
+      failed: false,
+      launchId: "bound-editor",
+      openFile: vi.fn(async () => undefined),
+      ready: Promise.resolve(),
+    };
+    brokerModule.createDesktopExplorerWindowBroker.mockReturnValue(broker);
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn(),
+      location: { pathname: "/" },
+    });
+    const boundTarget = {
+      explorerId: "explorer-bound",
+      path: "src/bound.ts",
+      projectId: "project-one",
+    };
+    const boundContext = {
+      appearance: "dark" as const,
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: boundTarget.explorerId,
+        projectId: boundTarget.projectId,
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+    };
+
+    try {
+      await expect(
+        openDesktopExplorerFile(boundTarget, "bound.ts", boundContext),
+      ).resolves.toBe("created");
+      await expect(
+        openDesktopExplorerFile(boundTarget, "bound.ts", boundContext),
+      ).resolves.toBe("focused");
+
+      expect(broker.openFile).toHaveBeenCalledOnce();
+      expect(broker.openFile).toHaveBeenCalledWith(boundTarget.path);
+      expect(
+        brokerModule.createDesktopExplorerWindowBroker,
+      ).toHaveBeenCalledOnce();
+    } finally {
+      for (const window of webviews.windows.values()) await window.close();
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
   });
 });
 
@@ -306,6 +388,71 @@ describe("desktop window theme", () => {
 });
 
 describe("desktop Explorer editor prewarm", () => {
+  it("coalesces concurrent opens of the same prewarmed target", async () => {
+    const opened = deferred();
+    tauri.isTauri.mockReturnValue(true);
+    brokerModule.createDesktopExplorerWindowBroker.mockReset();
+    const broker = {
+      dispose: vi.fn(async () => undefined),
+      failed: false,
+      launchId: "warm-coalesced",
+      openFile: vi.fn(() => opened.promise),
+      ready: Promise.resolve(),
+    };
+    brokerModule.createDesktopExplorerWindowBroker.mockReturnValue(broker);
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn(),
+      location: { pathname: "/" },
+    });
+    const warmContext = {
+      appearance: "dark" as const,
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-coalesced",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+    };
+    const warmTarget = {
+      explorerId: warmContext.explorer.id,
+      path: "src/coalesced.ts",
+      projectId: warmContext.explorer.projectId,
+    };
+
+    try {
+      await prewarmDesktopExplorerFile(warmContext);
+      const first = openDesktopExplorerFile(
+        warmTarget,
+        "coalesced.ts",
+        warmContext,
+      );
+      await vi.waitFor(() => expect(broker.openFile).toHaveBeenCalledOnce());
+      const second = openDesktopExplorerFile(
+        warmTarget,
+        "coalesced.ts",
+        warmContext,
+      );
+      clearDesktopExplorerFilePrewarm();
+
+      expect(second).toBe(first);
+      opened.resolve();
+      await expect(Promise.all([first, second])).resolves.toEqual([
+        "created",
+        "created",
+      ]);
+      expect(broker.openFile).toHaveBeenCalledOnce();
+      expect(
+        brokerModule.createDesktopExplorerWindowBroker,
+      ).toHaveBeenCalledOnce();
+    } finally {
+      clearDesktopExplorerFilePrewarm();
+      for (const window of webviews.windows.values()) await window.close();
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("aborts and retires a delayed warm broker before its replacement mounts", async () => {
     const firstReady = deferred();
     const secondReady = deferred();
@@ -332,10 +479,10 @@ describe("desktop Explorer editor prewarm", () => {
       addEventListener: vi.fn(),
       location: { pathname: "/" },
     });
-    const context = (id: string) => ({
+    const context = (id: string, workerId = "worker-one") => ({
       appearance: "dark" as const,
       explorer: {
-        activeWorkerId: "worker-one",
+        activeWorkerId: workerId,
         id,
         projectId: "project-one",
         worktreeId: "worktree-one",
@@ -343,7 +490,9 @@ describe("desktop Explorer editor prewarm", () => {
     });
 
     try {
-      const firstPrewarm = prewarmDesktopExplorerFile(context("explorer-one"));
+      const firstPrewarm = prewarmDesktopExplorerFile(
+        context("explorer-one", "worker-one"),
+      );
       await vi.waitFor(() =>
         expect(
           brokerModule.createDesktopExplorerWindowBroker,
@@ -352,7 +501,9 @@ describe("desktop Explorer editor prewarm", () => {
       const firstSignal = brokerModule.createDesktopExplorerWindowBroker.mock
         .calls[0]?.[1]?.signal as AbortSignal;
 
-      const secondPrewarm = prewarmDesktopExplorerFile(context("explorer-two"));
+      const secondPrewarm = prewarmDesktopExplorerFile(
+        context("explorer-one", "worker-two"),
+      );
       await vi.waitFor(() =>
         expect(
           brokerModule.createDesktopExplorerWindowBroker,

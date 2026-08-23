@@ -5383,6 +5383,7 @@ export async function deleteCodeTab(codeTabId: string) {
 
 async function protectedCodeAttachmentInput(input: {
   appearance: CodeAppearance;
+  expectedWorktreeId: string;
   sessionId: string;
   tunnelId: string;
   workerId: string;
@@ -5408,6 +5409,8 @@ async function protectedCodeAttachmentInput(input: {
   });
   return {
     appearance: input.appearance,
+    expectedWorkerId: input.workerId,
+    expectedWorktreeId: input.expectedWorktreeId,
     protectedRecord,
     sessionId: input.sessionId,
     tunnelId: input.tunnelId,
@@ -5417,18 +5420,24 @@ async function protectedCodeAttachmentInput(input: {
 export async function createProtectedCodeAttachment(
   codeTabId: string,
   workerId: string,
+  worktreeId: string,
   appearance: CodeAppearance,
 ) {
   const tunnelId = crypto.randomUUID();
   const intent = codeProtectedAttachmentIntentSchema.parse(
     await post(
       `/api/code-tabs/${encodeURIComponent(codeTabId)}/protected-attachment-intents`,
-      { appearance },
+      {
+        appearance,
+        expectedWorkerId: workerId,
+        expectedWorktreeId: worktreeId,
+      },
     ),
   );
   const sessionId = intent.sessionId;
   const input = await protectedCodeAttachmentInput({
     appearance,
+    expectedWorktreeId: worktreeId,
     sessionId,
     tunnelId,
     workerId,
@@ -5447,14 +5456,16 @@ export async function createProtectedCodeAttachment(
 
 export async function createProtectedExplorerCodeAttachment(
   explorerId: string,
-  relativePath: string,
+  relativePath: string | null,
   workerId: string,
+  worktreeId: string,
   appearance: CodeAppearance,
 ) {
   const tunnelId = crypto.randomUUID();
   const sessionId = crypto.randomUUID();
   const input = await protectedCodeAttachmentInput({
     appearance,
+    expectedWorktreeId: worktreeId,
     sessionId,
     tunnelId,
     workerId,
@@ -5464,7 +5475,7 @@ export async function createProtectedExplorerCodeAttachment(
       `/api/explorers/${encodeURIComponent(explorerId)}/protected-code-attachments`,
       explorerCodeProtectedAttachmentCreateSchema.parse({
         ...input,
-        path: relativePath,
+        ...(relativePath ? { path: relativePath } : {}),
       }),
     ),
   );

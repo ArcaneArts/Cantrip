@@ -148,11 +148,14 @@ export function codeEditorTargetUrl(
   const target = new URL(editorOrigin);
   target.pathname = publicUrl.pathname.slice(basePath.length) || "/";
   target.search = publicUrl.search;
+  // The attachment's workspace is selected by the server and worker. Never
+  // allow a renderer-controlled URL to replace that binding, including on
+  // secondary HTTP or WebSocket requests that OpenVSCode may interpret.
+  target.searchParams.delete("folder");
+  target.searchParams.delete("workspace");
   if (
-    (publicUrl.pathname === basePath ||
-      publicUrl.pathname === `${basePath}/`) &&
-    !target.searchParams.has("workspace") &&
-    !target.searchParams.has("folder")
+    publicUrl.pathname === basePath ||
+    publicUrl.pathname === `${basePath}/`
   ) {
     const workspace = new URL(workspaceUri);
     if (
