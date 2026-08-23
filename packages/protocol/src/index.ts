@@ -6534,6 +6534,8 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
     query: z.string().max(4_000).nullable().optional(),
     resultText: z.string().max(20_000).nullable().optional(),
     error: z.string().nullable(),
+    errorCode: z.string().min(1).max(200).nullable().optional(),
+    retryable: z.boolean().nullable().optional(),
     durationMs: z.number().int().nonnegative().nullable(),
   }),
   z.object({

@@ -26,6 +26,10 @@ function redactString(value: string): string {
     .replace(providerTokenPattern, "[REDACTED]");
 }
 
+export function redactAgentActivityText(value: string): string {
+  return redactString(value);
+}
+
 function redactValue(
   value: unknown,
   seen: WeakSet<object>,

@@ -268,6 +268,44 @@ describe("trajectory projection", () => {
     expect(turn?.nextTransitionAtMs).toBeNull();
   });
 
+  it("labels completion-only MCP timing as derived", () => {
+    const turn = projectTrajectory({
+      active: false,
+      messages: [
+        message("user", 1, "user", 1_000, [
+          { type: "text", text: "Create a worktree" },
+        ]),
+        activityMessage("mcp-failed", 2, 1_300, {
+          type: "mcpToolCall",
+          id: "mcp-1",
+          status: "failed",
+          server: "cantrip",
+          tool: "worktree_create",
+          error: "Unrecognized key: from",
+          errorCode: "-32602",
+          retryable: null,
+          resultText: null,
+          durationMs: null,
+          updatedAtMs: 1_300,
+          completedAtMs: 1_300,
+          correlation: correlation("turn-1", "mcp-1"),
+        }),
+        message("answer", 3, "assistant", 1_400, [
+          { type: "text", text: "The call failed.", phase: "final_answer" },
+        ]),
+      ],
+      nowMs: 1_400,
+    });
+    const event = turn?.events.find(
+      (candidate) => candidate.kind === "mcpToolCall",
+    );
+    expect(event).toMatchObject({
+      preview: "Unrecognized key: from",
+      status: "failed",
+      timingQuality: "derived",
+    });
+  });
+
   it("merges file paths and labels honest timing fallbacks", () => {
     const messages = [
       message("user", 1, "user", 1_000, [

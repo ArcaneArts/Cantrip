@@ -35,6 +35,7 @@ import {
   commandTelemetryFromCompletion,
   commandTelemetryFromDelta,
   commandTelemetryFromStart,
+  completedActivityTimestamps,
   completedCodexThreadTurnFromRead,
   failClosedAgentInteractionReply,
   findActiveChatTurn,
@@ -350,6 +351,173 @@ describe("Codex rich event normalization", () => {
         itemId: item.id,
       }),
     ).not.toHaveProperty("raw");
+  });
+
+  it("extracts bounded failures from every MCP server result shape", () => {
+    const validation = normalizeCodexThreadItem(
+      {
+        type: "mcpToolCall",
+        id: "mcp-validation",
+        server: "cantrip",
+        tool: "worktree_create",
+        status: "failed",
+        arguments: { from: "main" },
+        result: {
+          content: [
+            {
+              type: "text",
+              text: "MCP error -32602: Input validation error: Unrecognized key: from",
+            },
+          ],
+          structuredContent: null,
+        },
+        error: { message: "MCP tool call failed." },
+        durationMs: null,
+      },
+      "/workspace",
+      "completed",
+      { ...correlation, itemId: "mcp-validation" },
+    );
+    expect(validation).toMatchObject({
+      type: "mcpToolCall",
+      status: "failed",
+      server: "cantrip",
+      tool: "worktree_create",
+      error: "MCP error -32602: Input validation error: Unrecognized key: from",
+      errorCode: "-32602",
+      retryable: null,
+      resultText: null,
+    });
+
+    const stale = normalizeCodexThreadItem(
+      {
+        type: "mcpToolCall",
+        id: "mcp-stale",
+        server: "another-server",
+        tool: "mutate",
+        status: "failed",
+        arguments: {},
+        result: {
+          content: [],
+          structuredContent: {
+            error: {
+              code: "stale-binding",
+              message: "Refresh the binding before another mutation.",
+              retryable: false,
+            },
+          },
+        },
+        error: null,
+        durationMs: 3,
+      },
+      "/workspace",
+      "completed",
+      { ...correlation, itemId: "mcp-stale" },
+    );
+    expect(stale).toMatchObject({
+      error: "Refresh the binding before another mutation.",
+      errorCode: "stale-binding",
+      retryable: false,
+    });
+
+    const wrapped = normalizeCodexThreadItem(
+      {
+        type: "mcpToolCall",
+        id: "mcp-wrapped",
+        server: "cantrip",
+        tool: "worktree_create",
+        status: "failed",
+        arguments: {},
+        result: {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                error: null,
+                result: {
+                  content: [
+                    {
+                      type: "text",
+                      text: "The MCP binding no longer matches the active lane.",
+                    },
+                  ],
+                },
+                status: "failed",
+              }),
+            },
+          ],
+        },
+        error: null,
+        durationMs: null,
+      },
+      "/workspace",
+      "completed",
+      { ...correlation, itemId: "mcp-wrapped" },
+    );
+    expect(wrapped).toMatchObject({
+      error: "The MCP binding no longer matches the active lane.",
+    });
+
+    const bounded = normalizeCodexThreadItem(
+      {
+        type: "mcpToolCall",
+        id: "mcp-bounded",
+        server: "cantrip",
+        tool: "failure",
+        status: "failed",
+        arguments: {},
+        result: {
+          content: [
+            {
+              type: "text",
+              text: `token=private-value ${"x".repeat(8_000)}`,
+            },
+          ],
+        },
+        error: null,
+        durationMs: null,
+      },
+      "/workspace",
+      "completed",
+      { ...correlation, itemId: "mcp-bounded" },
+    );
+    expect(bounded?.type).toBe("mcpToolCall");
+    if (bounded?.type !== "mcpToolCall") throw new Error("Expected MCP call.");
+    expect(bounded.error).toContain("token=[REDACTED]");
+    expect(bounded.error).not.toContain("private-value");
+    expect(bounded.error!.length).toBeLessThan(4_100);
+
+    const successful = normalizeCodexThreadItem(
+      {
+        type: "mcpToolCall",
+        id: "mcp-success",
+        server: "cantrip",
+        tool: "context_get",
+        status: "completed",
+        arguments: {},
+        result: {
+          content: [{ type: "text", text: "private success payload" }],
+        },
+        error: null,
+        durationMs: 1,
+      },
+      "/workspace",
+      "completed",
+      { ...correlation, itemId: "mcp-success" },
+    );
+    expect(successful).toMatchObject({ error: null, resultText: null });
+  });
+
+  it("does not invent an exact item start from a completion observation", () => {
+    expect(completedActivityTimestamps(null, 2_000)).toEqual({
+      updatedAtMs: 2_000,
+      completedAtMs: 2_000,
+    });
+    expect(completedActivityTimestamps(1_750, 2_000)).toEqual({
+      startedAtMs: 1_750,
+      updatedAtMs: 2_000,
+      completedAtMs: 2_000,
+    });
   });
 
   it("normalizes tools, subagents, web, images, review, and compaction", () => {

@@ -88,7 +88,10 @@ import {
   codexProviderConfiguration,
   isZaiRuntimeProvider,
 } from "./provider-config.js";
-import { createAgentActivityRawEnvelope } from "./raw-capture.js";
+import {
+  createAgentActivityRawEnvelope,
+  redactAgentActivityText,
+} from "./raw-capture.js";
 import {
   runtimeModelSupportsImages,
   writeManagedCodexModelCatalog,
@@ -971,10 +974,16 @@ interface ReasoningItem {
 interface McpToolCallItem {
   arguments?: unknown;
   durationMs: number | null;
-  error: { message: string } | null;
+  error: {
+    code?: number | string | null;
+    message: string;
+    retryable?: boolean | null;
+  } | null;
   id: string;
   result?: {
     content?: unknown[];
+    isError?: boolean;
+    status?: string;
     structuredContent?: unknown;
   } | null;
   server: string;
@@ -1922,6 +1931,170 @@ function objectStringField(value: unknown, field: string) {
   return typeof candidate === "string" ? candidate : null;
 }
 
+interface NormalizedMcpFailure {
+  code: string | null;
+  message: string;
+  retryable: boolean | null;
+}
+
+interface McpFailureCandidate {
+  code?: unknown;
+  message: string;
+  retryable?: unknown;
+}
+
+function primitiveMcpErrorCode(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value !== "string") return null;
+  const code = redactAgentActivityText(value).trim();
+  return code && code.length <= 200 ? code : null;
+}
+
+function explicitMcpRetryability(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function genericMcpFailureMessage(message: string): boolean {
+  return /^(?:(?:mcp|tool)\s+)?(?:tool\s+)?call failed[.!]?$/iu.test(
+    message.trim(),
+  );
+}
+
+function parsedMcpJson(text: string): unknown {
+  const trimmed = text.trim();
+  if (!(
+    (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+    (trimmed.startsWith("[") && trimmed.endsWith("]"))
+  )) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function mcpFailureCandidate(
+  value: unknown,
+  depth = 0,
+): McpFailureCandidate | null {
+  if (depth > 8 || value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    const parsed = parsedMcpJson(value);
+    return parsed === null
+      ? value.trim()
+        ? { message: value }
+        : null
+      : mcpFailureCandidate(parsed, depth + 1);
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const candidate = mcpFailureCandidate(entry, depth + 1);
+      if (candidate) return candidate;
+    }
+    return null;
+  }
+  if (typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const code = record.code ?? record.errorCode;
+  const retryable =
+    record.retryable ?? record.willRetry ?? record.canRetry ?? undefined;
+  const directMessage =
+    typeof record.message === "string"
+      ? record.message
+      : typeof record.error === "string"
+        ? record.error
+        : null;
+  if (directMessage?.trim()) {
+    return { code, message: directMessage, retryable };
+  }
+  for (const field of [
+    "error",
+    "result",
+    "structuredContent",
+    "data",
+    "cause",
+  ]) {
+    const nested = mcpFailureCandidate(record[field], depth + 1);
+    if (nested) {
+      return {
+        code: nested.code ?? code,
+        message: nested.message,
+        retryable: nested.retryable ?? retryable,
+      };
+    }
+  }
+  if (Array.isArray(record.content)) {
+    for (const content of record.content) {
+      if (
+        typeof content === "object" &&
+        content !== null &&
+        "text" in content &&
+        typeof content.text === "string"
+      ) {
+        const nested = mcpFailureCandidate(content.text, depth + 1);
+        if (nested) {
+          return {
+            code: nested.code ?? code,
+            message: nested.message,
+            retryable: nested.retryable ?? retryable,
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function normalizedMcpFailure(
+  item: Pick<McpToolCallItem, "error" | "result" | "status">,
+): NormalizedMcpFailure | null {
+  if (
+    item.status !== "failed" &&
+    !item.error &&
+    item.result?.isError !== true &&
+    item.result?.status !== "failed"
+  ) {
+    return null;
+  }
+  const resultCandidate = mcpFailureCandidate(item.result);
+  const explicitCandidate = item.error
+    ? {
+        code: item.error.code,
+        message: item.error.message,
+        retryable: item.error.retryable,
+      }
+    : null;
+  const candidate =
+    resultCandidate &&
+    (!explicitCandidate || genericMcpFailureMessage(explicitCandidate.message))
+      ? resultCandidate
+      : (explicitCandidate ?? resultCandidate);
+  if (!candidate) return null;
+  const message =
+    boundedText(redactAgentActivityText(candidate.message).trim(), 4_000) ?? "";
+  if (!message) return null;
+  const embeddedCode =
+    /\bMCP error\s+(-?\d+)\b/iu.exec(message)?.[1] ??
+    /\bHTTP\s+(\d{3})\b/iu.exec(message)?.[1] ??
+    null;
+  return {
+    code:
+      primitiveMcpErrorCode(candidate.code) ??
+      primitiveMcpErrorCode(explicitCandidate?.code) ??
+      primitiveMcpErrorCode(resultCandidate?.code) ??
+      embeddedCode,
+    message,
+    retryable:
+      explicitMcpRetryability(candidate.retryable) ??
+      explicitMcpRetryability(explicitCandidate?.retryable) ??
+      explicitMcpRetryability(resultCandidate?.retryable),
+  };
+}
+
 function mcpResultText(result: McpToolCallItem["result"]) {
   if (!result) return null;
   const text = (result.content ?? [])
@@ -1938,14 +2111,30 @@ function mcpResultText(result: McpToolCallItem["result"]) {
     })
     .join("\n\n")
     .trim();
-  if (text) return boundedText(text);
+  if (text) return boundedText(redactAgentActivityText(text));
   if (
     result.structuredContent !== null &&
     result.structuredContent !== undefined
   ) {
-    return boundedJson(result.structuredContent);
+    const serialized = boundedJson(result.structuredContent);
+    return serialized ? redactAgentActivityText(serialized) : null;
   }
-  return (result.content?.length ?? 0) > 0 ? boundedJson(result.content) : null;
+  const serialized =
+    (result.content?.length ?? 0) > 0 ? boundedJson(result.content) : null;
+  return serialized ? redactAgentActivityText(serialized) : null;
+}
+
+export function completedActivityTimestamps(
+  startedAtMs: number | null | undefined,
+  completedAtMs: number,
+) {
+  return {
+    ...(startedAtMs === null || startedAtMs === undefined
+      ? {}
+      : { startedAtMs }),
+    updatedAtMs: completedAtMs,
+    completedAtMs,
+  };
 }
 
 function stableActivityId(prefix: string, ...parts: Array<string | null>) {
@@ -2510,17 +2699,20 @@ export function normalizeCodexThreadItem(
   }
   if (item.type === "mcpToolCall") {
     const isCodeGraph = item.server.toLowerCase() === "codegraph";
+    const failure = normalizedMcpFailure(item);
     return agentActivitySchema.parse({
       type: "mcpToolCall",
       id: item.id,
-      status: activityStatus(item.status),
+      status: failure ? "failed" : activityStatus(item.status),
       server: item.server,
       tool: item.tool,
       query: isCodeGraph
         ? boundedText(objectStringField(item.arguments, "query"), 4_000)
         : null,
-      resultText: isCodeGraph ? mcpResultText(item.result) : null,
-      error: boundedText(item.error?.message),
+      resultText: isCodeGraph && !failure ? mcpResultText(item.result) : null,
+      error: failure?.message ?? null,
+      errorCode: failure?.code ?? null,
+      retryable: failure?.retryable ?? null,
       durationMs: item.durationMs,
       ...raw,
       ...timestamps,
@@ -6112,9 +6304,7 @@ export class CodexAppServer implements CodexRuntime {
       } else if (active && params.item.type === "fileChange") {
         flushActiveAgentMessage(active, false);
         const startedAtMs =
-          itemStartedAtMs ??
-          active.fileStartedAtMs.get(params.item.id) ??
-          observedAtMs;
+          itemStartedAtMs ?? active.fileStartedAtMs.get(params.item.id) ?? null;
         active.fileStartedAtMs.delete(params.item.id);
         const activity = normalizeCodexThreadItem(
           params.item,
@@ -6129,9 +6319,7 @@ export class CodexAppServer implements CodexRuntime {
           ),
           {
             captureRaw: active.captureProtectedDiagnostics,
-            startedAtMs,
-            updatedAtMs: observedAtMs,
-            completedAtMs: observedAtMs,
+            ...completedActivityTimestamps(startedAtMs, observedAtMs),
           },
         );
         if (activity) active.onActivity?.(activity);
@@ -6150,9 +6338,7 @@ export class CodexAppServer implements CodexRuntime {
           ),
           {
             captureRaw: active.captureProtectedDiagnostics,
-            startedAtMs: itemStartedAtMs ?? observedAtMs,
-            updatedAtMs: observedAtMs,
-            completedAtMs: observedAtMs,
+            ...completedActivityTimestamps(itemStartedAtMs, observedAtMs),
           },
         );
         if (activity) active.onActivity?.(activity);
