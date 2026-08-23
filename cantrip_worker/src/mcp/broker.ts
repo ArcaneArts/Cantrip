@@ -31,13 +31,19 @@ import { CantripServerRequestError } from "../cli-client.js";
 import type { WorkerConfig } from "../config.js";
 import { workerLogError, workerLogger } from "../logger.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
-import { invokeCantripMcpOperation } from "./client.js";
+import {
+  fetchCantripMcpServerCompatibility,
+  invokeCantripMcpOperation,
+  legacyCantripMcpServerCompatibility,
+  type CantripMcpServerCompatibility,
+} from "./client.js";
 import { CANTRIP_MCP_MAX_RESPONSE_BYTES } from "./http.js";
 import { executeCantripMcpOperation } from "./operations.js";
 
 export const CANTRIP_MCP_BINDING_DIRECTORY = "agent-mcp-bindings";
 export const CANTRIP_MCP_BINDING_TTL_MS = 6 * 60 * 60 * 1_000;
 const CANTRIP_MCP_BINDING_RENEWAL_WINDOW_MS = 60_000;
+const CANTRIP_MCP_CAPABILITY_CACHE_MS = 60_000;
 export const CANTRIP_MCP_CONNECTION_FILE = "connection.json";
 export const CANTRIP_MCP_MAX_CONCURRENT_OPERATIONS = 4;
 
@@ -47,10 +53,15 @@ type McpOperationExecutor = (
   requestId: string,
 ) => Promise<CantripAgentOperationResult>;
 
-type BindingInput = Omit<
+type BindingClaims = Omit<
   CantripMcpBinding,
   "bindingId" | "expiresAt" | "issuedAt"
 >;
+
+type BindingInput = BindingClaims & {
+  legacyCanonicalRoot?: string | null;
+  serverCompatibility?: CantripMcpServerCompatibility;
+};
 
 interface StoredBinding {
   activeRequests: number;
@@ -58,6 +69,8 @@ interface StoredBinding {
   connection: CantripMcpConnectionDocument;
   connectionPath: string;
   credential: string;
+  legacyCanonicalRoot: string | null;
+  serverCompatibility: CantripMcpServerCompatibility;
   staleContextRejected: boolean;
   staleRejection: string | null;
 }
@@ -80,7 +93,7 @@ function authorized(requestValue: string | undefined, expected: string) {
 
 function bindingIdentityMatchesInput(
   binding: CantripMcpBinding,
-  input: BindingInput,
+  input: BindingClaims,
 ): boolean {
   return (
     binding.ownerId === input.ownerId &&
@@ -146,6 +159,10 @@ export class CantripMcpBroker {
   readonly #execute: McpOperationExecutor;
   readonly #now: () => number;
   readonly #ttlMs: number;
+  #capabilityCache: {
+    expiresAt: number;
+    value: CantripMcpServerCompatibility;
+  } | null = null;
   #encryptionService: WorkerEncryptionService | null = null;
   #endpoint: string | null = null;
   #server: Server | null = null;
@@ -169,14 +186,18 @@ export class CantripMcpBroker {
     );
     this.#execute =
       options.execute ??
-      ((binding, request, requestId) =>
-        invokeCantripMcpOperation({
+      ((binding, request, requestId) => {
+        const stored = this.#bindings.get(binding.bindingId);
+        return invokeCantripMcpOperation({
           binding,
+          compatibility: stored?.serverCompatibility,
+          legacyCanonicalRoot: stored?.legacyCanonicalRoot,
           request,
           requestId,
           serverUrl: this.#config.serverUrl,
           token: this.#config.token,
-        }));
+        });
+      });
     this.#now = options.now ?? Date.now;
     this.#ttlMs = options.ttlMs ?? CANTRIP_MCP_BINDING_TTL_MS;
     if (this.#ttlMs < 1 || this.#ttlMs > 24 * 60 * 60 * 1_000) {
@@ -192,15 +213,58 @@ export class CantripMcpBroker {
     this.#encryptionService = service;
   }
 
+  async serverCompatibility(): Promise<CantripMcpServerCompatibility> {
+    const now = this.#now();
+    if (this.#capabilityCache && this.#capabilityCache.expiresAt > now) {
+      return this.#capabilityCache.value;
+    }
+    let value: CantripMcpServerCompatibility;
+    try {
+      value = await fetchCantripMcpServerCompatibility({
+        serverUrl: this.#config.serverUrl,
+        token: this.#config.token,
+        workerId: this.#config.workerId,
+      });
+    } catch (error) {
+      value = legacyCantripMcpServerCompatibility();
+      workerLogger.event(
+        "warn",
+        "Cantrip MCP capability negotiation fell back to the legacy protocol",
+        {
+          event: "mcp.capabilities.fallback",
+          subsystem: "mcp-broker",
+          operation: "negotiate-capabilities",
+          reasonCode: "negotiation-failed",
+          status: "degraded",
+          workerId: this.#config.workerId,
+          error: workerLogError(error),
+        },
+      );
+    }
+    this.#capabilityCache = {
+      expiresAt: now + CANTRIP_MCP_CAPABILITY_CACHE_MS,
+      value,
+    };
+    return value;
+  }
+
   createBinding(input: BindingInput): CantripMcpAttachment {
     if (!this.#server || !this.#endpoint) {
       throw new Error("Cantrip MCP broker is not running.");
     }
+    const {
+      legacyCanonicalRoot = null,
+      serverCompatibility = {
+        bindingProtocolVersion: 2,
+        operations: [...input.allowedOperations],
+      },
+      ...bindingClaims
+    } = input;
     const now = this.#now();
     for (const stored of this.#bindings.values()) {
       if (stored.binding.chatId === input.chatId) {
         if (
-          bindingIdentityMatchesInput(stored.binding, input) &&
+          bindingIdentityMatchesInput(stored.binding, bindingClaims) &&
           existsSync(stored.connectionPath) &&
           Date.parse(stored.binding.expiresAt) - now >
             CANTRIP_MCP_BINDING_RENEWAL_WINDOW_MS
@@ -210,11 +274,13 @@ export class CantripMcpBroker {
           // linked Codex console does not retain a revoked MCP host while those
           // trusted claims are refreshed and revalidated server-side.
           stored.binding = cantripMcpBindingSchema.parse({
-            ...input,
+            ...bindingClaims,
             bindingId: stored.binding.bindingId,
             issuedAt: stored.binding.issuedAt,
             expiresAt: stored.binding.expiresAt,
           });
+          stored.legacyCanonicalRoot = legacyCanonicalRoot;
+          stored.serverCompatibility = serverCompatibility;
           stored.staleContextRejected = false;
           stored.staleRejection = null;
           workerLogger.event("debug", "Cantrip MCP binding refreshed", {
@@ -243,7 +309,7 @@ export class CantripMcpBroker {
     }
     const issuedAtMs = now;
     const binding = cantripMcpBindingSchema.parse({
-      ...input,
+      ...bindingClaims,
       bindingId: randomUUID(),
       issuedAt: new Date(issuedAtMs).toISOString(),
       expiresAt: new Date(issuedAtMs + this.#ttlMs).toISOString(),
@@ -271,6 +337,8 @@ export class CantripMcpBroker {
       connection,
       connectionPath,
       credential,
+      legacyCanonicalRoot,
+      serverCompatibility,
       staleContextRejected: false,
       staleRejection: null,
     });

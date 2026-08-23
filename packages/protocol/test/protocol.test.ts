@@ -22,6 +22,7 @@ import {
   browserServiceFleetDiscoverySchema,
   cantripAgentOperationRequestSchema,
   cantripAgentOperationResultSchema,
+  compatibleWorkerCantripMcpOperationCallSchema,
   cantripMcpBindingSchema,
   cantripMcpBrowserNavigateInputSchema,
   cantripMcpClientFocusProjectInputSchema,
@@ -705,6 +706,33 @@ describe("Cantrip protocol", () => {
         expiresAt: "2026-08-23T12:00:00.000Z",
       }).success,
     ).toBe(false);
+  });
+
+  it("normalizes legacy MCP relay bindings without trusting legacy claims", () => {
+    const call = compatibleWorkerCantripMcpOperationCallSchema.parse({
+      requestId: "request-one",
+      binding: {
+        bindingId: "00000000-0000-4000-8000-000000000001",
+        ownerId: "owner-one",
+        projectId: "project-one",
+        chatId: "chat-one",
+        executionLaneId: "lane-one",
+        workerId: "worker-one",
+        worktreeId: "worktree-one",
+        canonicalRoot: `ctrr_${"A".repeat(43)}`,
+        rootKind: "git-worktree",
+        permissionProfileId: ":workspace-write",
+        allowedOperations: ["context.get", "future.operation"],
+        issuedAt: "2026-08-21T12:00:00.000Z",
+        expiresAt: "2026-08-21T18:00:00.000Z",
+        futureClaim: "must-not-survive",
+      },
+      request: { operation: "context.get", arguments: {} },
+    });
+
+    expect(call.binding.allowedOperations).toEqual(["context.get"]);
+    expect(call.binding).not.toHaveProperty("canonicalRoot");
+    expect(call.binding).not.toHaveProperty("futureClaim");
   });
 
   it("bounds the read-only MCP catalog with operation-specific schemas", () => {

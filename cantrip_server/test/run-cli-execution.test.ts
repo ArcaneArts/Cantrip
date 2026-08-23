@@ -252,6 +252,68 @@ afterAll(async () => {
 });
 
 describe("Run protected server boundary", () => {
+  it("advertises MCP relay compatibility to authenticated workers", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/internal/agent-operations/capabilities?workerId=run-worker",
+      headers: { authorization: `Bearer ${config.workerToken}` },
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json()).toMatchObject({
+      bindingProtocolVersions: [1, 2],
+      operations: expect.arrayContaining(["context.get", "policy.read"]),
+    });
+  });
+
+  it("identifies malformed MCP relay envelopes as protocol failures", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/internal/agent-operations",
+      headers: { authorization: `Bearer ${config.workerToken}` },
+      payload: {},
+    });
+
+    expect(response.statusCode, response.body).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "incompatible-worker-protocol",
+      error: expect.stringContaining("MCP relay protocol"),
+    });
+    expect(response.json().error).not.toBe("Invalid request body");
+  });
+
+  it("accepts a legacy MCP envelope before authoritative binding checks", async () => {
+    const issuedAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1_000).toISOString();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/internal/agent-operations",
+      headers: { authorization: `Bearer ${config.workerToken}` },
+      payload: {
+        requestId: "legacy-request",
+        binding: {
+          bindingId: "00000000-0000-4000-8000-000000000001",
+          ownerId: LOCAL_USER_ID,
+          projectId,
+          chatId: "missing-chat",
+          executionLaneId: "legacy-lane",
+          workerId: "run-worker",
+          worktreeId,
+          canonicalRoot: `ctrr_${"A".repeat(43)}`,
+          rootKind: "folder-root",
+          permissionProfileId: ":workspace-write",
+          allowedOperations: ["context.get"],
+          issuedAt,
+          expiresAt,
+        },
+        request: { operation: "context.get", arguments: {} },
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(409);
+    expect(response.json()).toMatchObject({ code: "stale-binding" });
+  });
+
   it("routes opaque configuration reads and writes without semantic fields", async () => {
     const read = await app.inject({
       method: "GET",

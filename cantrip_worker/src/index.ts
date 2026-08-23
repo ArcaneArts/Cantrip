@@ -976,9 +976,28 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
     }
+    const serverCompatibility = attachment
+      ? await mcpBroker.serverCompatibility()
+      : null;
+    const serverOperations = new Set(serverCompatibility?.operations ?? []);
     const cantripAllowedOperations = attachment
-      ? cantripMcpOperationsForPermissionProfile(attachment.permissionProfileId)
+      ? cantripMcpOperationsForPermissionProfile(
+          attachment.permissionProfileId,
+        ).filter(
+          (operation) =>
+            operation === "tool.help" || serverOperations.has(operation),
+        )
       : [];
+    let protectedLegacyRoot: string | null = null;
+    if (attachment && serverCompatibility?.bindingProtocolVersion === 1) {
+      const protectedPath = (
+        await routingRegistry.protectMetadata({ path: cwd })
+      ).path;
+      if (typeof protectedPath !== "string") {
+        throw new Error("Cantrip could not protect the legacy MCP root claim.");
+      }
+      protectedLegacyRoot = protectedPath;
+    }
     const cantripAttachment = attachment
       ? mcpBroker.createBinding({
           ownerId: workerEncryption.ownerId(),
@@ -990,6 +1009,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           rootKind: attachment.rootKind,
           permissionProfileId: attachment.permissionProfileId,
           allowedOperations: [...cantripAllowedOperations],
+          legacyCanonicalRoot: protectedLegacyRoot,
+          serverCompatibility: serverCompatibility!,
         })
       : null;
     const managedCantrip = cantripAttachment

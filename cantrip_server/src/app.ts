@@ -430,7 +430,9 @@ import {
   workerAttachmentUploadResultSchema,
   workerListSchema,
   workerManagementListSchema,
-  workerCantripMcpOperationCallSchema,
+  compatibleWorkerCantripMcpOperationCallSchema,
+  workerCantripMcpCapabilitiesQuerySchema,
+  CANTRIP_MCP_BINDING_PROTOCOL_VERSIONS,
   CANTRIP_MCP_OPERATIONS,
   isCantripMcpMutationOperation,
   workerCliCommandCallSchema,
@@ -27598,15 +27600,59 @@ export async function buildApp({
   const mcpOperations: ReadonlySet<CantripAgentOperationName> = new Set(
     CANTRIP_MCP_OPERATIONS,
   );
-  app.post(
-    "/api/internal/agent-operations",
+  app.get(
+    "/api/internal/agent-operations/capabilities",
     { logLevel: "warn" },
     async (request, reply) => {
-      const input = workerCantripMcpOperationCallSchema.safeParse(request.body);
+      const input = workerCantripMcpCapabilitiesQuerySchema.safeParse(
+        request.query,
+      );
       if (!input.success) {
         return reply.code(400).send({
           code: "invalid",
           ...invalidBody(input.error.issues),
+        });
+      }
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.data.workerId,
+        "worker:agent-tools",
+      );
+      if (!workerAuth) {
+        return reply.code(401).send({
+          code: "invalid",
+          error: "Unauthorized",
+        });
+      }
+      if (
+        !(await repository.getWorker(workerAuth.ownerId, input.data.workerId))
+      ) {
+        return reply.code(404).send({
+          code: "not-found",
+          error: "Worker not found.",
+        });
+      }
+      return reply.send({
+        bindingProtocolVersions: [...CANTRIP_MCP_BINDING_PROTOCOL_VERSIONS],
+        operations: [...CANTRIP_MCP_OPERATIONS],
+      });
+    },
+  );
+  app.post(
+    "/api/internal/agent-operations",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = compatibleWorkerCantripMcpOperationCallSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send({
+          code: "incompatible-worker-protocol",
+          error:
+            "Cantrip worker/server MCP relay protocol mismatch. This is not a tool argument error. Do not retry this MCP call or change its arguments; use the Cantrip CLI fallback for this turn and report that the worker/server deployment needs updating.",
+          issues: input.error.issues,
         });
       }
       const workerAuth = await authenticateWorkerRequest(
