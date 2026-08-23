@@ -78,4 +78,33 @@ describe("Markdown", () => {
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(openLink).toHaveBeenCalledWith("https://example.com/changelog");
   });
+
+  it("preserves and delegates agent file links without a browser target", () => {
+    const openFile = vi.fn();
+    const markup = renderToStaticMarkup(
+      <Markdown onOpenFile={openFile}>
+        {"[Fabric JAR](E:\\workspace\\Fabric\\fabric.jar)"}
+      </Markdown>,
+    );
+
+    expect(markup).toContain('href="#cantrip-file=');
+    expect(markup).not.toContain('target="_blank"');
+    expect(openFile).not.toHaveBeenCalled();
+  });
+
+  it("always prevents native navigation for an internal file link", () => {
+    const preventDefault = vi.fn();
+    const openFile = vi.fn();
+
+    expect(
+      handleMarkdownLinkClick(
+        { preventDefault },
+        `#cantrip-file=${encodeURIComponent("E:\\workspace\\app.jar")}`,
+        undefined,
+        openFile,
+      ),
+    ).toBe(true);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(openFile).toHaveBeenCalledWith("E:\\workspace\\app.jar");
+  });
 });

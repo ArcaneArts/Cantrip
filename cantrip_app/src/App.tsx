@@ -115,6 +115,7 @@ import {
   updateAgentInspectOpenChats,
 } from "@/components/chat/agent-inspect-panel";
 import { randomAgentChatTitle } from "@/components/chat/agent-chat-name";
+import { projectFilePath } from "@/components/chat/markdown-file-link";
 import { useStickyChatScroll } from "@/components/chat/use-sticky-chat-scroll";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
@@ -590,7 +591,13 @@ interface ComposerAttachmentState {
   uploading: boolean;
 }
 
-function MessageContent({ message }: { message: ChatMessage }) {
+function MessageContent({
+  message,
+  onOpenFile,
+}: {
+  message: ChatMessage;
+  onOpenFile(path: string): void;
+}) {
   const [viewingAttachment, setViewingAttachment] =
     useState<ChatAttachmentSummary | null>(null);
   return (
@@ -603,10 +610,12 @@ function MessageContent({ message }: { message: ChatMessage }) {
           item.type === "text" ? (
             item.phase === "commentary" ? (
               <div key={`text:${index}`} className="text-muted-foreground">
-                <Markdown>{item.text}</Markdown>
+                <Markdown onOpenFile={onOpenFile}>{item.text}</Markdown>
               </div>
             ) : (
-              <Markdown key={`text:${index}`}>{item.text}</Markdown>
+              <Markdown key={`text:${index}`} onOpenFile={onOpenFile}>
+                {item.text}
+              </Markdown>
             )
           ) : item.type === "attachment" ? (
             <AttachmentPreview
@@ -1192,6 +1201,7 @@ function ChatTranscript({
   onDelete,
   onForked,
   onInspectOpenChange,
+  onOpenFile,
   onOpenWorkflow,
   onRename,
   onOpenRelocation,
@@ -1210,6 +1220,7 @@ function ChatTranscript({
   onDelete(): void;
   onForked(chat: ChatSummary): void;
   onInspectOpenChange(open: boolean): void;
+  onOpenFile(path: string): void;
   onOpenWorkflow(workflowId: string): void;
   onRename(title: string): void;
   onOpenRelocation(): void;
@@ -2706,7 +2717,11 @@ function ChatTranscript({
                   turnKey={entry.turnKey}
                 >
                   {entry.messages.map((message) => (
-                    <MessageContent key={message.id} message={message} />
+                    <MessageContent
+                      key={message.id}
+                      message={message}
+                      onOpenFile={onOpenFile}
+                    />
                   ))}
                 </ActivityGroup>
               );
@@ -2811,6 +2826,7 @@ function ChatTranscript({
                               attachment,
                             })),
                           }}
+                          onOpenFile={onOpenFile}
                         />
                       ) : null}
                       {editingSentMessage.error ? (
@@ -2845,7 +2861,7 @@ function ChatTranscript({
                       </div>
                     </form>
                   ) : (
-                    <MessageContent message={message} />
+                    <MessageContent message={message} onOpenFile={onOpenFile} />
                   )}
                   {user && message.providerName ? (
                     <p className="mt-1.5 truncate text-[10px] text-muted-foreground">
@@ -4724,7 +4740,7 @@ export function App() {
     },
     onError: (error) => setPopoutError(errorText(error)),
   });
-  const openRepositoryGraphFile = (
+  const openProjectExplorerFile = (
     projectId: string,
     worktreeId: string,
     path: string,
@@ -4776,6 +4792,28 @@ export function App() {
       );
       openCreatedTab(updated.projectId, "explorer", updated.id);
     })().catch((error: unknown) => setPopoutError(errorText(error)));
+  };
+  const openChatFileLink = (chat: ChatSummary, reference: string) => {
+    const worktree = (worktrees.data ?? []).find(
+      (candidate) => candidate.id === chat.activeWorktreeId,
+    );
+    const projectRoot =
+      worktree?.path ??
+      (selectedProject?.id === chat.projectId
+        ? selectedProject.source?.path
+        : null);
+    const path = projectRoot ? projectFilePath(reference, projectRoot) : null;
+    if (!projectRoot || !path) {
+      showAppToast({
+        message: projectRoot
+          ? "The link points outside the active project folder."
+          : "The active worktree is not available.",
+        title: "Could not open file link",
+        tone: "error",
+      });
+      return;
+    }
+    openProjectExplorerFile(chat.projectId, chat.activeWorktreeId, path);
   };
   const newBrowser = useMutation({
     mutationFn: ({
@@ -8605,7 +8643,7 @@ export function App() {
               openCreatedTab(gitHistoryProject.id, "chat", chatId)
             }
             onOpenGraphFile={(worktreeId, path) =>
-              openRepositoryGraphFile(gitHistoryProject.id, worktreeId, path)
+              openProjectExplorerFile(gitHistoryProject.id, worktreeId, path)
             }
             onHeaderChange={setGitHistoryHeader}
           />
@@ -8744,6 +8782,9 @@ export function App() {
             }
             onInspectOpenChange={(open) =>
               setAgentInspectOpen(selectedChat.id, open)
+            }
+            onOpenFile={(reference) =>
+              openChatFileLink(selectedChat, reference)
             }
             onOpenWorkflow={(workflowId) =>
               openProjectSettings(selectedChat.projectId, workflowId)
