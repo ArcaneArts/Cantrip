@@ -72,6 +72,8 @@ export function ExplorerFilePopout({
           appearance={appearance}
           explorerId={explorer.id}
           path={path}
+          projectId={explorer.projectId}
+          worktreeId={explorer.worktreeId}
         />
       ) : null}
     </main>
