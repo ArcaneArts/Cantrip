@@ -18,6 +18,7 @@ import type {
   ExplorerSummary,
   GithubRepository,
   ModelProfileSummary,
+  ModelConfiguration,
   ProjectFolderSetupJobSummary,
   ProjectReplicaJobSummary,
   ProjectSummary,
@@ -143,7 +144,10 @@ import {
   imageInputCapabilityMessage,
   resolveImageInputCapability,
 } from "@/components/chat/image-input-capability";
-import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
+import {
+  chatModelConfiguration,
+  ModelReasoningPicker,
+} from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import {
   activeChatRelocationJob,
@@ -405,10 +409,9 @@ import {
   steerQueuedPrompt,
   syncChat,
   stopRun,
-  updateChatModel,
+  updateChatModelConfiguration,
   updateChatPermissionProfile,
   updateChatGoal,
-  updateChatReasoning,
   updateChatWorktree,
   updateBrowser,
   updateCodeTab,
@@ -1408,6 +1411,10 @@ function ChatTranscript({
   }, [chat.id, refocusOnWindowActivation]);
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
+  const currentModelConfiguration = chatModelConfiguration(
+    chat,
+    settings?.preferences.defaultModelId ?? null,
+  );
   const selectedModel = settings?.models.find(
     (model) => model.id === selectedModelId,
   );
@@ -1966,10 +1973,13 @@ function ChatTranscript({
       return startTurn(
         chat.id,
         text,
-        selectedModelId,
+        {
+          ...currentModelConfiguration,
+          modelId: selectedModelId,
+          reasoningEffort,
+        },
         attachments,
         mode,
-        reasoningEffort,
       ).then(
         (result) => {
           clientLogger.info("Chat turn submission accepted", {
@@ -2035,10 +2045,13 @@ function ChatTranscript({
         chat.id,
         message.id,
         text,
-        modelId,
+        {
+          ...currentModelConfiguration,
+          modelId,
+          reasoningEffort: message.reasoningEffort,
+        },
         editableMessageAttachments(message),
         message.mode,
-        message.reasoningEffort,
       );
     },
     onSuccess: async () => {
@@ -2118,8 +2131,9 @@ function ChatTranscript({
     onError: () =>
       queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
   });
-  const selectModel = useMutation({
-    mutationFn: (modelId: string) => updateChatModel(chat.id, modelId),
+  const selectModelConfiguration = useMutation({
+    mutationFn: (configuration: ModelConfiguration) =>
+      updateChatModelConfiguration(chat.id, configuration),
     onSuccess: async (updated) => {
       setComposerReasoningEffort(updated.reasoningEffort);
       await Promise.all([
@@ -2130,24 +2144,6 @@ function ChatTranscript({
           queryKey: ["chat-reasoning", chat.id],
         }),
       ]);
-    },
-  });
-  const selectReasoning = useMutation({
-    mutationFn: (reasoningEffort: ReasoningEffort | null) =>
-      updateChatReasoning(chat.id, reasoningEffort),
-    onMutate: (reasoningEffort) => {
-      setComposerReasoningEffort(reasoningEffort);
-    },
-    onSuccess: async (state) => {
-      setComposerReasoningEffort(state.reasoningEffort);
-      await queryClient.invalidateQueries({
-        queryKey: ["chats", chat.projectId],
-      });
-    },
-    onError: () => {
-      setComposerReasoningEffort(
-        reasoningState.data?.reasoningEffort ?? chat.reasoningEffort,
-      );
     },
   });
   const selectPermissionProfile = useMutation({
@@ -2380,8 +2376,7 @@ function ChatTranscript({
       (!text && readyAttachments.length === 0) ||
       !selectedModelId ||
       send.isPending ||
-      selectModel.isPending ||
-      selectReasoning.isPending ||
+      selectModelConfiguration.isPending ||
       selectPermissionProfile.isPending ||
       updatePrompt.isPending ||
       draftAttachments.some(({ error, uploading }) => error || uploading)
@@ -2569,8 +2564,7 @@ function ChatTranscript({
 
   const chatActionError =
     send.error ??
-    selectModel.error ??
-    selectReasoning.error ??
+    selectModelConfiguration.error ??
     selectPermissionProfile.error ??
     compact.error ??
     updatePrompt.error ??
@@ -3559,26 +3553,18 @@ function ChatTranscript({
                   <span className="sr-only">Attach files</span>
                 </Button>
                 <ModelReasoningPicker
+                  configuration={currentModelConfiguration}
                   disabled={relocationActive}
                   models={settings?.models ?? []}
-                  selectedModelId={selectedModelId}
-                  modelSelectionDisabled={
+                  pending={selectModelConfiguration.isPending}
+                  readOnly={
                     chat.status === "running" ||
                     chat.status === "waiting-for-approval"
                   }
-                  modelPending={selectModel.isPending}
-                  reasoningEffort={composerReasoningEffort}
-                  reasoningPending={
-                    reasoningState.isLoading || selectReasoning.isPending
-                  }
                   reasoningState={reasoningState.data}
-                  onSelectModel={(modelId) => selectModel.mutate(modelId)}
-                  onSelectReasoning={(reasoningEffort) => {
-                    setComposerReasoningEffort(reasoningEffort);
-                    if (!editingPrompt) {
-                      selectReasoning.mutate(reasoningEffort);
-                    }
-                  }}
+                  onSave={(configuration) =>
+                    selectModelConfiguration.mutateAsync(configuration)
+                  }
                 />
                 <PermissionProfileControl
                   pending={
@@ -3626,8 +3612,7 @@ function ChatTranscript({
                 ) ||
                 !selectedModelId ||
                 send.isPending ||
-                selectModel.isPending ||
-                selectReasoning.isPending ||
+                selectModelConfiguration.isPending ||
                 selectPermissionProfile.isPending ||
                 updatePrompt.isPending
               }

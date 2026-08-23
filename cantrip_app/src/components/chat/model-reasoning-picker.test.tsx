@@ -1,16 +1,20 @@
 import {
   chatReasoningStateSchema,
   modelProfileSummarySchema,
+  type ModelConfiguration,
   type ModelProfileSummary,
 } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  chatModelConfiguration,
+  defaultModelConfiguration,
   filterConfiguredModels,
   ModelReasoningPicker,
+  modelConfigurationSettingsUpdate,
   modelReasoningChoices,
-  nextReasoningTriggerState,
+  modelsShareProvider,
 } from "./model-reasoning-picker";
 
 const now = "2026-08-15T12:00:00.000Z";
@@ -20,6 +24,7 @@ function model(
   name: string,
   providerName: string,
   providerModelName: string,
+  providerId = `${id}-provider`,
 ): ModelProfileSummary {
   return modelProfileSummarySchema.parse({
     id,
@@ -27,7 +32,7 @@ function model(
     routes: [
       {
         id: `${id}-route`,
-        providerId: `${id}-provider`,
+        providerId,
         providerName,
         providerModelId: null,
         modelName: providerModelName,
@@ -46,70 +51,91 @@ const models = [
   model("sol", "GPT 5.6 Sol", "OpenRouter", "openai/gpt-5.6-sol"),
 ];
 
+const inheritedConfiguration: ModelConfiguration = {
+  modelId: "sol",
+  reasoningEffort: "high",
+  customSubagentModel: false,
+  subagentModelId: "gemma",
+  subagentReasoningEffort: "low",
+};
+
 describe("model reasoning picker", () => {
-  it("renders the current model as a shrink-wrapped text trigger", () => {
+  it("uses one trigger for the complete root and subagent configuration", () => {
     const markup = renderToStaticMarkup(
       <ModelReasoningPicker
+        configuration={inheritedConfiguration}
         models={models}
-        selectedModelId="sol"
-        reasoningEffort={null}
-        onSelectModel={() => {}}
-        onSelectReasoning={() => {}}
+        onSave={() => {}}
       />,
     );
 
-    expect(markup).toContain(">GPT 5.6 Sol<");
-    expect(markup).toContain('aria-label="Select agent model"');
-    expect(markup).not.toContain('aria-label="Configure reasoning effort"');
+    expect(markup).toContain("GPT 5.6 Sol");
+    expect(markup).toContain("Subagents inherit root");
+    expect(markup).toContain('aria-label="Configure agent models"');
+    expect(markup).not.toContain("lucide-brain");
     expect(markup).not.toContain("<select");
   });
 
-  it("places the reasoning trigger immediately after the model selector", () => {
-    const reasoningState = chatReasoningStateSchema.parse({
-      modelId: "sol",
-      reasoningEffort: "high",
-      options: [
-        { effort: "low", description: null },
-        { effort: "high", description: null },
-      ],
-      reasoningMandatory: false,
-      incompleteMetadata: false,
-    });
+  it("summarizes a custom subagent without a second composer control", () => {
     const markup = renderToStaticMarkup(
       <ModelReasoningPicker
+        configuration={{
+          ...inheritedConfiguration,
+          customSubagentModel: true,
+        }}
         models={models}
-        selectedModelId="sol"
-        reasoningEffort="high"
-        reasoningState={reasoningState}
-        onSelectModel={() => {}}
-        onSelectReasoning={() => {}}
+        onSave={() => {}}
       />,
     );
 
-    const modelTrigger = markup.indexOf('aria-label="Select agent model"');
-    const reasoningTrigger = markup.indexOf(
-      'aria-label="Configure reasoning effort"',
-    );
-    expect(modelTrigger).toBeGreaterThanOrEqual(0);
-    expect(reasoningTrigger).toBeGreaterThan(modelTrigger);
-    expect(markup.slice(modelTrigger, reasoningTrigger)).toContain(
-      "GPT 5.6 Sol",
-    );
-    expect(markup.slice(reasoningTrigger)).toContain("lucide-brain");
+    expect(markup).toContain("Gemma 4");
+    expect(markup).toContain("lucide-check");
+    expect(markup).not.toContain("lucide-brain");
   });
 
-  it("toggles the reasoning panel closed when its trigger is clicked again", () => {
-    expect(nextReasoningTriggerState(false, "models")).toEqual({
-      open: true,
-      panel: "reasoning",
+  it("maps legacy chats to inherited subagent defaults", () => {
+    expect(
+      chatModelConfiguration(
+        {
+          modelId: null,
+          reasoningEffort: "medium",
+        },
+        "sol",
+      ),
+    ).toEqual({
+      modelId: "sol",
+      reasoningEffort: "medium",
+      customSubagentModel: false,
+      subagentModelId: null,
+      subagentReasoningEffort: null,
     });
-    expect(nextReasoningTriggerState(true, "models")).toEqual({
-      open: true,
-      panel: "reasoning",
+  });
+
+  it("round-trips all default model configuration fields through settings", () => {
+    const configuration = defaultModelConfiguration({
+      defaultModelId: "sol",
+      defaultReasoningEffort: "high",
+      defaultCustomSubagentModel: true,
+      defaultSubagentModelId: "gemma",
+      defaultSubagentReasoningEffort: "low",
     });
-    expect(nextReasoningTriggerState(true, "reasoning")).toEqual({
-      open: false,
-      panel: "reasoning",
+
+    expect(modelConfigurationSettingsUpdate(configuration)).toEqual({
+      defaultModelId: "sol",
+      defaultReasoningEffort: "high",
+      defaultCustomSubagentModel: true,
+      defaultSubagentModelId: "gemma",
+      defaultSubagentReasoningEffort: "low",
+    });
+  });
+
+  it("retains saved custom values while inheritance is active", () => {
+    expect(
+      modelConfigurationSettingsUpdate(inheritedConfiguration),
+    ).toMatchObject({
+      defaultCustomSubagentModel: false,
+      defaultSubagentModelId: "gemma",
+      defaultSubagentReasoningEffort: "low",
     });
   });
 
@@ -119,77 +145,31 @@ describe("model reasoning picker", () => {
     expect(filterConfiguredModels(models, "sol")).toEqual([models[1]]);
   });
 
-  it("offers provider default only when reasoning is optional", () => {
-    const optional = chatReasoningStateSchema.parse({
-      modelId: "sol",
-      reasoningEffort: "high",
-      options: [
-        { effort: "low", description: null },
-        { effort: "high", description: null },
-      ],
-      reasoningMandatory: false,
-      incompleteMetadata: false,
-    });
-    const mandatory = { ...optional, reasoningMandatory: true };
-
-    expect(modelReasoningChoices(optional).map(({ effort }) => effort)).toEqual(
-      [null, "low", "high"],
-    );
-    expect(
-      modelReasoningChoices(mandatory).map(({ effort }) => effort),
-    ).toEqual(["low", "high"]);
+  it("marks subagent models compatible only when an enabled provider is shared", () => {
+    const root = model("root", "Root", "OpenAI", "root", "shared");
+    const child = model("child", "Child", "OpenAI", "child", "shared");
+    expect(modelsShareProvider(root, child)).toBe(true);
+    expect(modelsShareProvider(root, models[0]!)).toBe(false);
   });
 
-  it("orders the slider from least to most reasoning", () => {
+  it("orders optional reasoning choices from provider default to highest", () => {
     const state = chatReasoningStateSchema.parse({
       modelId: "sol",
       reasoningEffort: "medium",
       options: [
         { effort: "xhigh", description: null },
-        { effort: "high", description: null },
         { effort: "low", description: null },
         { effort: "medium", description: null },
       ],
-      reasoningMandatory: true,
+      reasoningMandatory: false,
       incompleteMetadata: false,
     });
 
     expect(modelReasoningChoices(state).map(({ effort }) => effort)).toEqual([
+      null,
       "low",
       "medium",
-      "high",
       "xhigh",
-    ]);
-  });
-
-  it("offers the documented GLM reasoning choices per message", () => {
-    const glm53 = chatReasoningStateSchema.parse({
-      modelId: "glm-5.3",
-      reasoningEffort: null,
-      options: [
-        { effort: "low", description: "Low reasoning effort" },
-        { effort: "high", description: "High reasoning effort" },
-        { effort: "max", description: "Maximum reasoning effort" },
-      ],
-      reasoningMandatory: false,
-      incompleteMetadata: false,
-    });
-    const glm5Turbo = chatReasoningStateSchema.parse({
-      modelId: "glm-5-turbo",
-      reasoningEffort: null,
-      options: [],
-      reasoningMandatory: false,
-      incompleteMetadata: false,
-    });
-
-    expect(modelReasoningChoices(glm53)).toEqual([
-      { effort: null, label: "Default" },
-      { effort: "low", label: "low" },
-      { effort: "high", label: "high" },
-      { effort: "max", label: "max" },
-    ]);
-    expect(modelReasoningChoices(glm5Turbo)).toEqual([
-      { effort: null, label: "Default" },
     ]);
   });
 });

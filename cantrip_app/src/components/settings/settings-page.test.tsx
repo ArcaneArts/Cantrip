@@ -156,6 +156,13 @@ describe("account settings", () => {
     expect(markup).toContain('role="button"');
     expect(markup).toContain('aria-label="Edit Ollama"');
     expect(markup).toContain('aria-label="Edit gemma4:26b"');
+    expect(markup).toContain("Default model configuration");
+    expect(markup).toContain(
+      "Root and subagent defaults for newly created chats.",
+    );
+    expect(markup).toContain('aria-label="Configure default models"');
+    expect(markup).toContain("Subagents inherit root");
+    expect(markup).not.toContain("Default for new agents");
     expect(markup).toContain("py-1.5");
     expect(markup).not.toContain("lucide-pencil");
   });
