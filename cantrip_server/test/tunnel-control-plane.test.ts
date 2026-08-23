@@ -1,12 +1,13 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 import {
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentReadySchema,
-  tunnelListSchema,
-  tunnelSummarySchema,
+  tunnelWireListSchema,
+  tunnelWireSummarySchema,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -63,6 +64,25 @@ let userTunnelId: string;
 let managedTunnelId: string;
 let otherOwnerId: string;
 
+function protectedRecord(operationId: string, revision: number) {
+  return {
+    operationId,
+    revision,
+    protectedContent: {
+      formatVersion: 1,
+      domain: "tunnel-content" as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
+  };
+}
+
 async function recordWorker(ownerId: string, workerId: string): Promise<void> {
   await database.repository.recordWorker(ownerId, {
     workerId,
@@ -88,6 +108,7 @@ beforeAll(async () => {
     workerId: "worker-a",
     ...protectedProjectFields(),
     repositoryId: "tunnel-control-plane",
+    repositoryBlindIndex: "a".repeat(64),
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
   });
@@ -103,28 +124,28 @@ afterAll(async () => {
 
 describe.sequential("tunnel control plane", () => {
   it("creates a user tunnel with routing independent of its project", async () => {
+    userTunnelId = randomUUID();
     const response = await app.inject({
       method: "POST",
       url: "/api/tunnels",
       payload: {
-        name: "Vite on worker B",
+        id: userTunnelId,
         projectId,
         protocolHint: "http-websocket",
         destination: {
           kind: "worker-tcp",
           workerId: "worker-b",
-          port: 5173,
         },
+        protectedRecord: protectedRecord(userTunnelId, 1),
       },
     });
 
     expect(response.statusCode).toBe(201);
-    const tunnel = tunnelSummarySchema.parse(response.json());
-    userTunnelId = tunnel.id;
+    const tunnel = tunnelWireSummarySchema.parse(response.json());
     expect(tunnel).toMatchObject({
       projectId,
       source: { kind: "desktop-loopback" },
-      destination: { kind: "worker-tcp", workerId: "worker-b", port: 5173 },
+      destination: { kind: "worker-tcp", workerId: "worker-b" },
       management: "user-managed",
       capabilities: { canEdit: true, canDelete: true, canOpenOwner: false },
     });
@@ -134,8 +155,8 @@ describe.sequential("tunnel control plane", () => {
       method: "GET",
       url: `/api/projects/${projectId}/tunnels`,
     });
-    expect(tunnelListSchema.parse(global.json())).toHaveLength(1);
-    expect(tunnelListSchema.parse(project.json())).toHaveLength(1);
+    expect(tunnelWireListSchema.parse(global.json())).toHaveLength(1);
+    expect(tunnelWireListSchema.parse(project.json())).toHaveLength(1);
   });
 
   it("validates project and worker ownership without leaking either", async () => {
@@ -148,36 +169,36 @@ describe.sequential("tunnel control plane", () => {
     });
     otherOwnerId = account.id;
     await recordWorker(account.id, "other-worker");
+    const crossOwnerTunnelId = randomUUID();
 
     expect(
       await database.repository.getTunnel(account.id, userTunnelId),
     ).toBeNull();
     expect(
       await database.repository.createUserTunnel(account.id, {
-        name: "Cross-owner attempt",
-        description: null,
+        id: crossOwnerTunnelId,
         projectId: null,
         protocolHint: "tcp",
         destination: {
           kind: "worker-tcp",
           workerId: "worker-b",
-          host: "127.0.0.1",
-          port: 5173,
         },
+        protectedRecord: protectedRecord(crossOwnerTunnelId, 1),
       }),
     ).toBeNull();
 
+    const missingTunnelId = randomUUID();
     const missing = await app.inject({
       method: "POST",
       url: "/api/tunnels",
       payload: {
-        name: "Missing destination",
+        id: missingTunnelId,
         protocolHint: "tcp",
         destination: {
           kind: "worker-tcp",
           workerId: "missing-worker",
-          port: 3000,
         },
+        protectedRecord: protectedRecord(missingTunnelId, 1),
       },
     });
     expect(missing.statusCode).toBe(404);
@@ -236,8 +257,6 @@ describe.sequential("tunnel control plane", () => {
       JSON.stringify({
         type: "initialize",
         clientId: "desktop-test",
-        localHost: "127.0.0.1",
-        localPort: 45_123,
       }),
     );
     await expect.poll(() => readyMessages.length).toBe(1);
@@ -249,15 +268,13 @@ describe.sequential("tunnel control plane", () => {
       (await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId))
         ?.attachments[0],
     ).toMatchObject({
-      localHost: "127.0.0.1",
-      localPort: 45_123,
       status: "active",
     });
 
     const editWhileActive = await app.inject({
       method: "PATCH",
       url: `/api/tunnels/${userTunnelId}`,
-      payload: { name: "Must remain locked" },
+      payload: { protectedRecord: protectedRecord(randomUUID(), 2) },
     });
     expect(editWhileActive.statusCode).toBe(409);
 
@@ -316,6 +333,25 @@ describe.sequential("tunnel control plane", () => {
   });
 
   it("registers managed tunnels idempotently and protects owner lifecycle", async () => {
+    await expect(
+      database.repository.registerManagedTunnel(LOCAL_USER_ID, {
+        name: "Private relay",
+        description: null,
+        projectId,
+        origin: "system",
+        management: "managed-durable",
+        protocolHint: "tcp",
+        source: { kind: "desktop-loopback" },
+        destination: {
+          kind: "worker-tcp",
+          workerId: "worker-b",
+        },
+        managedBy: { kind: "system", id: "private-relay-1" },
+        desiredState: "started",
+        status: "starting",
+      }),
+    ).rejects.toThrow(/protected content/u);
+
     const registration = {
       name: "Cantrip Code",
       description: null,
@@ -345,7 +381,6 @@ describe.sequential("tunnel control plane", () => {
     expect(first).not.toBeNull();
     expect(second?.id).toBe(first?.id);
     expect(second).toMatchObject({
-      name: "Renamed by owner",
       capabilities: {
         canEdit: false,
         canDelete: false,
@@ -360,7 +395,7 @@ describe.sequential("tunnel control plane", () => {
     const update = await app.inject({
       method: "PATCH",
       url: `/api/tunnels/${managedTunnelId}`,
-      payload: { name: "User override" },
+      payload: { protectedRecord: protectedRecord(randomUUID(), 1) },
     });
     const remove = await app.inject({
       method: "DELETE",
@@ -414,10 +449,10 @@ describe.sequential("tunnel control plane", () => {
         bytesToSource: 456,
       },
     );
-    const global = tunnelListSchema.parse(
+    const global = tunnelWireListSchema.parse(
       (await app.inject({ method: "GET", url: "/api/tunnels" })).json(),
     );
-    const project = tunnelListSchema.parse(
+    const project = tunnelWireListSchema.parse(
       (
         await app.inject({
           method: "GET",
@@ -439,8 +474,6 @@ describe.sequential("tunnel control plane", () => {
           kind: "server-relay",
           status: "active",
           clientId: null,
-          localHost: null,
-          localPort: null,
         },
       ],
     });
@@ -509,12 +542,15 @@ describe.sequential("tunnel control plane", () => {
     const update = await app.inject({
       method: "PATCH",
       url: `/api/tunnels/${userTunnelId}`,
-      payload: { name: "Updated tunnel", projectId: null },
+      payload: {
+        projectId: null,
+        protectedRecord: protectedRecord(randomUUID(), 2),
+      },
     });
     expect(update.statusCode).toBe(200);
-    expect(tunnelSummarySchema.parse(update.json()).name).toBe(
-      "Updated tunnel",
-    );
+    expect(
+      tunnelWireSummarySchema.parse(update.json()).protectedRecord?.revision,
+    ).toBe(2);
 
     const remove = await app.inject({
       method: "DELETE",

@@ -17,12 +17,19 @@ export * from "./endpoint-content.js";
 export * from "./workflow-content.js";
 export * from "./run-configurations.js";
 export * from "./customization-content.js";
+export * from "./tunnel-content.js";
 
 import { endpointContentOpaqueSchema } from "./endpoint-content.js";
 import {
   customizationContentScopeSchema,
   protectedCustomizationRequestSchema,
 } from "./customization-content.js";
+import {
+  protectedTunnelContentRecordSchema,
+  tunnelContentErrorCodeSchema,
+  tunnelPublicDestinationEndpointSchema,
+  tunnelPublicSourceEndpointSchema,
+} from "./tunnel-content.js";
 
 import {
   chatPlanOpaqueStateSchema,
@@ -3625,6 +3632,37 @@ export const tunnelUserUpdateSchema = z
     message: "At least one tunnel field is required.",
   });
 
+export const tunnelUserWireCreateSchema = z
+  .object({
+    id: z.string().uuid(),
+    projectId: tunnelResourceIdSchema.nullable().default(null),
+    protocolHint: tunnelProtocolHintSchema,
+    destination: tunnelPublicDestinationEndpointSchema.and(
+      z.object({ kind: z.literal("worker-tcp") }).strict(),
+    ),
+    protectedRecord: protectedTunnelContentRecordSchema,
+  })
+  .strict()
+  .refine(({ id, protectedRecord }) => id === protectedRecord.operationId, {
+    message: "A new tunnel record must use its tunnel id as operation id.",
+    path: ["protectedRecord", "operationId"],
+  })
+  .refine(({ protectedRecord }) => protectedRecord.revision === 1, {
+    message: "A new tunnel record must begin at revision one.",
+    path: ["protectedRecord", "revision"],
+  });
+
+export const tunnelUserWireUpdateSchema = z
+  .object({
+    projectId: tunnelResourceIdSchema.nullable().optional(),
+    protocolHint: tunnelProtocolHintSchema.optional(),
+    destination: tunnelPublicDestinationEndpointSchema
+      .and(z.object({ kind: z.literal("worker-tcp") }).strict())
+      .optional(),
+    protectedRecord: protectedTunnelContentRecordSchema,
+  })
+  .strict();
+
 export const tunnelManagedRegistrationSchema = z
   .object({
     name: tunnelNameSchema,
@@ -3732,6 +3770,24 @@ export const tunnelAttachmentSummarySchema = z
     }
   });
 
+export const tunnelAttachmentWireSummarySchema = z
+  .object({
+    id: tunnelResourceIdSchema,
+    tunnelId: tunnelResourceIdSchema,
+    kind: tunnelAttachmentKindSchema,
+    clientId: tunnelResourceIdSchema.nullable(),
+    status: tunnelStatusSchema,
+    errorCode: tunnelContentErrorCodeSchema.nullable(),
+    activeConnectionCount: z.number().int().nonnegative(),
+    bytesFromSource: z.number().int().nonnegative().safe(),
+    bytesToSource: z.number().int().nonnegative().safe(),
+    expiresAt: z.string().datetime().nullable(),
+    lastSeenAt: z.string().datetime().nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
 export const tunnelAttachmentCreateSchema = z
   .object({
     clientId: tunnelResourceIdSchema,
@@ -3752,7 +3808,6 @@ export const tunnelAttachmentCreateResultSchema = z
 export const tunnelDirectActivationSchema = z
   .object({
     capabilityId: z.string().uuid(),
-    localPort: z.number().int().min(1).max(65_535),
   })
   .strict();
 
@@ -3760,8 +3815,6 @@ export const tunnelAttachmentInitializeSchema = z
   .object({
     type: z.literal("initialize"),
     clientId: tunnelResourceIdSchema,
-    localHost: z.literal("127.0.0.1"),
-    localPort: z.number().int().min(1).max(65_535),
   })
   .strict();
 
@@ -3831,6 +3884,33 @@ export const tunnelSummarySchema = z
   });
 
 export const tunnelListSchema = z.array(tunnelSummarySchema).max(10_000);
+
+export const tunnelWireSummarySchema = z
+  .object({
+    id: tunnelResourceIdSchema,
+    projectId: tunnelResourceIdSchema.nullable(),
+    position: z.number().int().nonnegative(),
+    origin: tunnelOriginSchema,
+    management: tunnelManagementSchema,
+    protocolHint: tunnelProtocolHintSchema,
+    source: tunnelPublicSourceEndpointSchema,
+    destination: tunnelPublicDestinationEndpointSchema,
+    managedBy: tunnelManagedResourceSchema.nullable(),
+    desiredState: tunnelDesiredStateSchema,
+    status: tunnelStatusSchema,
+    errorCode: tunnelContentErrorCodeSchema.nullable(),
+    activeConnectionCount: z.number().int().nonnegative(),
+    bytesFromSource: z.number().int().nonnegative().safe(),
+    bytesToSource: z.number().int().nonnegative().safe(),
+    attachments: z.array(tunnelAttachmentWireSummarySchema).max(128),
+    capabilities: tunnelActionCapabilitiesSchema,
+    protectedRecord: protectedTunnelContentRecordSchema.nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export const tunnelWireListSchema = z.array(tunnelWireSummarySchema).max(10_000);
 
 export const projectGitRepositoryStatsSchema = z.object({
   kind: z.literal("git").default("git"),
@@ -5391,6 +5471,15 @@ export const browserTunnelRequestSchema = z
     host: z.enum(["127.0.0.1", "localhost", "::1"]),
     port: z.number().int().min(1).max(65_535),
     workerId: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+
+export const browserTunnelWireRequestSchema = z
+  .object({
+    tunnelId: z.string().uuid(),
+    protocolHint: z.enum(["http-websocket", "https-websocket"]),
+    workerId: z.string().min(1).max(200),
+    protectedRecord: protectedTunnelContentRecordSchema,
   })
   .strict();
 
@@ -13876,6 +13965,8 @@ export type TunnelDestinationEndpoint = z.infer<
 export type TunnelManagedResource = z.infer<typeof tunnelManagedResourceSchema>;
 export type TunnelUserCreate = z.infer<typeof tunnelUserCreateSchema>;
 export type TunnelUserUpdate = z.infer<typeof tunnelUserUpdateSchema>;
+export type TunnelUserWireCreate = z.infer<typeof tunnelUserWireCreateSchema>;
+export type TunnelUserWireUpdate = z.infer<typeof tunnelUserWireUpdateSchema>;
 export type TunnelAttachmentCreate = z.infer<
   typeof tunnelAttachmentCreateSchema
 >;
@@ -13893,10 +13984,14 @@ export type TunnelAttachmentKind = z.infer<typeof tunnelAttachmentKindSchema>;
 export type TunnelAttachmentSummary = z.infer<
   typeof tunnelAttachmentSummarySchema
 >;
+export type TunnelAttachmentWireSummary = z.infer<
+  typeof tunnelAttachmentWireSummarySchema
+>;
 export type TunnelActionCapabilities = z.infer<
   typeof tunnelActionCapabilitiesSchema
 >;
 export type TunnelSummary = z.infer<typeof tunnelSummarySchema>;
+export type TunnelWireSummary = z.infer<typeof tunnelWireSummarySchema>;
 export type WorktreePolicy = z.infer<typeof worktreePolicySchema>;
 export type WorktreeOrigin = z.infer<typeof worktreeOriginSchema>;
 export type WorktreeLifecycleState = z.infer<
@@ -14480,6 +14575,9 @@ export type BrowserServiceFleetDiscovery = z.infer<
   typeof browserServiceFleetDiscoverySchema
 >;
 export type BrowserTunnelRequest = z.infer<typeof browserTunnelRequestSchema>;
+export type BrowserTunnelWireRequest = z.infer<
+  typeof browserTunnelWireRequestSchema
+>;
 export type RemoteDesktopCreate = z.infer<typeof remoteDesktopCreateSchema>;
 export type EncryptedRemoteDesktopCreate = z.infer<
   typeof encryptedRemoteDesktopCreateSchema

@@ -152,8 +152,8 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   encryptionPrincipals: "endpoint-protected",
   encryptionKeyGrants: "endpoint-protected",
   projects: "endpoint-protected",
-  tunnels: "tracked-rollout-gap",
-  tunnelAttachments: "tracked-rollout-gap",
+  tunnels: "endpoint-protected",
+  tunnelAttachments: "minimized-operational-metadata",
   mcpServers: "endpoint-protected",
   projectWorkspaces: "endpoint-protected",
   projectWorkspaceMemberships: "intentionally-public-control-plane",
@@ -1418,8 +1418,8 @@ function surfacePrivateStateRouteBoundaryAudit(routes) {
     [
       "POST",
       "/api/browsers/:browserId/tunnel",
-      "browserTunnelRequestSchema",
-      "routing-metadata-only",
+      "browserTunnelWireRequestSchema",
+      "opaque-tunnel-configuration",
     ],
     [
       "GET",
@@ -2965,6 +2965,167 @@ async function workspaceNameRepositoryBoundaryAudit() {
   };
 }
 
+async function tunnelConfigurationBoundaryAudit() {
+  const paths = {
+    schema: resolve(serverSourcePath, "db/schema.ts"),
+    repository: resolve(serverSourcePath, "db/repository.ts"),
+    application: appPath,
+    protocol: protocolPath,
+    tunnelProtocol: tunnelDataPlaneProtocolPath,
+    client: resolve(
+      repositoryRoot,
+      "cantrip_app/src/lib/tunnel-content-encryption.ts",
+    ),
+    worker: resolve(
+      repositoryRoot,
+      "cantrip_worker/src/tunnel-content-encryption.ts",
+    ),
+    router: resolve(
+      repositoryRoot,
+      "cantrip_worker/src/tunnel-destination-router.ts",
+    ),
+    migration: resolve(
+      repositoryRoot,
+      "cantrip_server/drizzle/0145_closed_quasimodo.sql",
+    ),
+  };
+  const texts = Object.fromEntries(
+    await Promise.all(
+      Object.entries(paths).map(async ([name, path]) => [
+        name,
+        await readFile(path, "utf8"),
+      ]),
+    ),
+  );
+  const failures = [];
+  const tunnelTable = tableInitializer(texts.schema, "tunnels");
+  const attachmentTable = tableInitializer(texts.schema, "tunnelAttachments");
+
+  for (const marker of [
+    "protectedContent",
+    "protectedOperationId",
+    "protectedRevision",
+    "destinationWorkerId",
+    "errorCode",
+    "tunnels_protected_content_check",
+    "tunnels_private_endpoint_content_check",
+  ]) {
+    if (!tunnelTable.includes(marker)) {
+      failures.push(`tunnels: missing protected/minimized field ${marker}`);
+    }
+  }
+  for (const legacy of [
+    "name",
+    "description",
+    "sourceEndpoint",
+    "destinationEndpoint",
+    "lastError",
+  ]) {
+    if (new RegExp(`\\b${legacy}\\s*:`, "u").test(tunnelTable)) {
+      failures.push(`tunnels: legacy plaintext ${legacy} returned`);
+    }
+  }
+  for (const legacy of ["localHost", "localPort", "lastError"]) {
+    if (new RegExp(`\\b${legacy}\\s*:`, "u").test(attachmentTable)) {
+      failures.push(`tunnelAttachments: legacy plaintext ${legacy} returned`);
+    }
+  }
+  for (const marker of ["errorCode", "secretHash"]) {
+    if (!attachmentTable.includes(marker)) {
+      failures.push(`tunnelAttachments: missing minimized field ${marker}`);
+    }
+  }
+  for (const marker of [
+    "tunnelUserWireCreateSchema",
+    "tunnelUserWireUpdateSchema",
+    "tunnelWireSummarySchema",
+    "browserTunnelWireRequestSchema",
+  ]) {
+    if (!texts.protocol.includes(marker) || !texts.application.includes(marker)) {
+      failures.push(`tunnel routes: missing opaque contract ${marker}`);
+    }
+  }
+  for (const marker of [
+    'kind: z.literal("protected-tunnel")',
+    "protectedTunnelContentRecordSchema",
+  ]) {
+    if (!texts.tunnelProtocol.includes(marker)) {
+      failures.push(`tunnel data plane: missing protected target ${marker}`);
+    }
+  }
+  const frameHeaders = declarationInitializer(
+    texts.tunnelProtocol,
+    "tunnelDataPlaneFrameHeaderSchema",
+    "[",
+  );
+  if (/\bmessage\s*:/u.test(frameHeaders)) {
+    failures.push("tunnel control frames: free-form message returned");
+  }
+  for (const marker of [
+    "tunnelProtectedRecord",
+    "toTunnelSummary",
+    "protectedRecord,",
+  ]) {
+    if (!texts.repository.includes(marker)) {
+      failures.push(`tunnel repository: missing opaque serializer ${marker}`);
+    }
+  }
+  for (const marker of [
+    'domain: "tunnel-content"',
+    "protectEndpointContent",
+    "openEndpointContent",
+  ]) {
+    if (!texts.client.includes(marker)) {
+      failures.push(`tunnel client: missing E2EE operation ${marker}`);
+    }
+  }
+  for (const marker of [
+    'domain: "tunnel-content"',
+    "openWorkerEndpointContent",
+  ]) {
+    if (!texts.worker.includes(marker)) {
+      failures.push(`tunnel worker: missing E2EE operation ${marker}`);
+    }
+  }
+  for (const marker of [
+    'target.kind === "protected-tunnel"',
+    "openWorkerTunnelContentRecord",
+  ]) {
+    if (!texts.router.includes(marker)) {
+      failures.push(`tunnel router: missing protected target handling ${marker}`);
+    }
+  }
+  for (const marker of [
+    'TRUNCATE TABLE "tunnels" CASCADE',
+    'DROP COLUMN "name"',
+    'DROP COLUMN "description"',
+    'DROP COLUMN "source_endpoint"',
+    'DROP COLUMN "destination_endpoint"',
+    'DROP COLUMN "local_host"',
+    'DROP COLUMN "local_port"',
+  ]) {
+    if (!texts.migration.includes(marker)) {
+      failures.push(`tunnel migration: missing plaintext cutover ${marker}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Tunnel configuration E2EE boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: ["tunnels", "tunnel_attachments"],
+    guards: [
+      "presentation-and-tcp-config:opaque",
+      "routing-and-counters:minimized",
+      "attachment-local-listener:client-only",
+      "control-errors:stable-codes-only",
+      "destination-worker:opens-protected-target",
+      "legacy-tunnel-plaintext:absent",
+    ],
+  };
+}
+
 async function encryptionLedgerClosureAudit() {
   const document = await readFile(encryptionPlanPath, "utf8");
   const section = document
@@ -3535,8 +3696,8 @@ function applicationRouteContentClassification(route) {
   }
   if (/\/tunnels(?:\/|$)/u.test(route.path)) {
     return {
-      classification: "tracked-rollout-gap",
-      rationale: "post-closure remaining-work ledger",
+      classification: "endpoint-protected",
+      rationale: "opaque tunnel configuration and minimized routing metadata",
     };
   }
   if (/^\/api\/auth\//u.test(route.path)) {
@@ -3620,8 +3781,8 @@ function workerCommandContentClassification(command) {
 function liveResourceContentClassification(resource) {
   if (resource === "tunnel") {
     return {
-      classification: "tracked-rollout-gap",
-      rationale: "post-closure remaining-work ledger",
+      classification: "endpoint-protected",
+      rationale: "invalidation-only tunnel identifier",
     };
   }
   if (resource === "run") {
@@ -3727,16 +3888,28 @@ function clientControlContentClassification(command) {
 }
 
 function tunnelFrameContentClassification(kind) {
-  return ["close", "connect", "data", "error", "rejected"].includes(kind)
-    ? {
-        classification: "tracked-rollout-gap",
-        rationale:
-          "payload, destination target, or detailed error is plaintext",
-      }
-    : {
-        classification: "intentionally-public-control-plane",
-        rationale: "routing, lifecycle, or flow-control frame",
-      };
+  if (kind === "data") {
+    return {
+      classification: "tracked-rollout-gap",
+      rationale: "tunnel application payload protection is the next rollout",
+    };
+  }
+  if (kind === "connect") {
+    return {
+      classification: "endpoint-protected",
+      rationale: "destination TCP configuration is an opaque tunnel record",
+    };
+  }
+  if (["close", "error", "rejected"].includes(kind)) {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale: "stable lifecycle/error code without free-form content",
+    };
+  }
+  return {
+    classification: "intentionally-public-control-plane",
+    rationale: "routing, lifecycle, or flow-control frame",
+  };
 }
 
 function declarationInitializer(sourceText, declarationName, opener) {
@@ -4197,6 +4370,7 @@ async function buildInventory() {
     policyRepository,
     providerSecretRepository,
     workspaceNameRepository,
+    tunnelConfiguration,
     analyticsAuditLogPrivacy,
     attachmentContentRepository,
     privateDisplayLabelDependencies,
@@ -4230,6 +4404,7 @@ async function buildInventory() {
     policyRepositoryBoundaryAudit(),
     providerSecretRepositoryBoundaryAudit(),
     workspaceNameRepositoryBoundaryAudit(),
+    tunnelConfigurationBoundaryAudit(),
     analyticsAuditLogPrivacyBoundaryAudit(),
     attachmentContentRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
@@ -4462,6 +4637,10 @@ async function buildInventory() {
     workspaceNameE2eeBoundary: {
       status: "enforced",
       ...workspaceNameRepository,
+    },
+    tunnelConfigurationE2eeBoundary: {
+      status: "configuration-enforced",
+      ...tunnelConfiguration,
     },
     analyticsAuditLogPrivacyBoundary: {
       status: "minimized",

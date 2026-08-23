@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { protectedTunnelContentRecordSchema } from "./tunnel-content.js";
+
 export const TUNNEL_DATA_PLANE_PROTOCOL_VERSION = 1;
 export const TUNNEL_DATA_PLANE_MAX_HEADER_BYTES = 8 * 1_024;
 export const TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES = 64 * 1_024;
@@ -36,6 +38,14 @@ export const tunnelDataPlaneCloseCodeSchema = z.enum([
 ]);
 
 export const tunnelDataPlaneTargetSchema = z.union([
+  z
+    .object({
+      kind: z.literal("protected-tunnel"),
+      targetKind: z.literal("tcp"),
+      recordId: idSchema,
+      protectedRecord: protectedTunnelContentRecordSchema,
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("tcp"),
@@ -106,7 +116,6 @@ export const tunnelDataPlaneFrameHeaderSchema = z.discriminatedUnion("kind", [
       "protocol-error",
       "congested",
     ]),
-    message: z.string().trim().min(1).max(1_024),
   }),
   frameBaseSchema.extend({
     kind: z.literal("data"),
@@ -124,12 +133,10 @@ export const tunnelDataPlaneFrameHeaderSchema = z.discriminatedUnion("kind", [
   frameBaseSchema.extend({
     kind: z.literal("close"),
     code: tunnelDataPlaneCloseCodeSchema,
-    message: z.string().trim().min(1).max(1_024).nullable(),
   }),
   frameBaseSchema.extend({
     kind: z.literal("error"),
     code: z.enum(["connection-failed", "io-error", "protocol-error"]),
-    message: z.string().trim().min(1).max(1_024),
   }),
 ]);
 

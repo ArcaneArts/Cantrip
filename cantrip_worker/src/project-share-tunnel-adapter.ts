@@ -357,22 +357,18 @@ export class ProjectShareTunnelDestinationAdapter {
     }
     if (this.#streams.has(key(header))) {
       this.#logRejected(header, "protocol-error");
-      this.#reject(header, "protocol-error", "Tunnel stream already exists.");
+      this.#reject(header, "protocol-error");
       return;
     }
     if (this.#streams.size >= MAX_STREAMS) {
       this.#logRejected(header, "limit-exceeded");
-      this.#reject(
-        header,
-        "limit-exceeded",
-        "Project share stream limit reached.",
-      );
+      this.#reject(header, "limit-exceeded");
       return;
     }
     const share = this.shares.get(header.target.resourceId);
     if (!share) {
       this.#logRejected(header, "target-unavailable");
-      this.#reject(header, "target-unavailable", "Project share is not open.");
+      this.#reject(header, "target-unavailable");
       return;
     }
     const stream: ProjectShareStream = {
@@ -637,7 +633,6 @@ export class ProjectShareTunnelDestinationAdapter {
   #reject(
     header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
     code: Extract<TunnelDataPlaneFrameHeader, { kind: "rejected" }>["code"],
-    message: string,
   ): void {
     this.#emit(
       {
@@ -650,7 +645,6 @@ export class ProjectShareTunnelDestinationAdapter {
         sequence: 0,
         kind: "rejected",
         code,
-        message,
       },
       EMPTY_PAYLOAD,
     );
@@ -679,7 +673,7 @@ export class ProjectShareTunnelDestinationAdapter {
       },
     );
     this.#emit(
-      { ...responseBase(stream), kind: "close", code, message: null },
+      { ...responseBase(stream), kind: "close", code },
       EMPTY_PAYLOAD,
     );
     stream.response?.destroy();

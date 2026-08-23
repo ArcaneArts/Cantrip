@@ -109,7 +109,7 @@ describe("startDesktopTunnel", () => {
     });
     expect(mocks.activateDirectTunnelAttachment).toHaveBeenCalledWith(
       "attachment-1",
-      { capabilityId, localPort: 41_234 },
+      { capabilityId },
     );
   });
 

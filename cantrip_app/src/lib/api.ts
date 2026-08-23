@@ -26,6 +26,7 @@ import {
   browserServiceListSchema,
   browserWireSummarySchema,
   browserTunnelRequestSchema,
+  browserTunnelWireRequestSchema,
   agentThreadSyncSchema,
   chatWireListSchema,
   chatGoalClearSchema,
@@ -286,8 +287,10 @@ import {
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
   tunnelDirectActivationSchema,
-  tunnelListSchema,
-  tunnelSummarySchema,
+  tunnelUserWireCreateSchema,
+  tunnelUserWireUpdateSchema,
+  tunnelWireListSchema,
+  tunnelWireSummarySchema,
   tunnelUserCreateSchema,
   tunnelUserUpdateSchema,
   worktreeStatusResultSchema,
@@ -555,6 +558,10 @@ import {
   protectCustomizationRequest,
 } from "@/lib/customization-content-encryption";
 import { ShortLivedRequestCache } from "@/lib/short-lived-request-cache";
+import {
+  openTunnelSummary,
+  protectTunnelContentRecord,
+} from "@/lib/tunnel-content-encryption";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -741,26 +748,100 @@ export async function recordDirectAttachmentTelemetry(
 }
 
 export async function getTunnels(projectId?: string) {
-  return tunnelListSchema.parse(
+  const tunnels = tunnelWireListSchema.parse(
     await request(
       projectId
         ? `/api/projects/${encodeURIComponent(projectId)}/tunnels`
         : "/api/tunnels",
     ),
   );
+  return Promise.all(tunnels.map((tunnel) => openTunnelSummary(tunnel)));
 }
 
 export async function createTunnel(input: TunnelUserCreate) {
-  return tunnelSummarySchema.parse(
-    await post("/api/tunnels", tunnelUserCreateSchema.parse(input)),
+  const parsed = tunnelUserCreateSchema.parse(input);
+  await ensureTunnelWorker(parsed.destination.workerId);
+  const id = crypto.randomUUID();
+  const protectedRecord = await protectTunnelContentRecord({
+    content: {
+      name: parsed.name,
+      description: parsed.description,
+      source: { kind: "desktop-loopback" },
+      destination: parsed.destination,
+    },
+    operationId: id,
+    revision: 1,
+    tunnelId: id,
+    workerId: parsed.destination.workerId,
+  });
+  return openTunnelSummary(
+    await post(
+      "/api/tunnels",
+      tunnelUserWireCreateSchema.parse({
+        id,
+        projectId: parsed.projectId,
+        protocolHint: parsed.protocolHint,
+        destination: {
+          kind: parsed.destination.kind,
+          workerId: parsed.destination.workerId,
+        },
+        protectedRecord,
+      }),
+    ),
   );
 }
 
 export async function updateTunnel(tunnelId: string, input: TunnelUserUpdate) {
-  return tunnelSummarySchema.parse(
+  const parsed = tunnelUserUpdateSchema.parse(input);
+  const currentWire = tunnelWireSummarySchema.parse(
+    await request(`/api/tunnels/${encodeURIComponent(tunnelId)}`),
+  );
+  const current = await openTunnelSummary(currentWire);
+  if (!currentWire.protectedRecord || current.management !== "user-managed") {
+    throw new Error("This tunnel does not have editable protected content.");
+  }
+  const destination = parsed.destination ?? current.destination;
+  if (destination.kind !== "worker-tcp") {
+    throw new Error("User tunnels require a worker TCP destination.");
+  }
+  await ensureTunnelWorker(destination.workerId);
+  const protectedRecord = await protectTunnelContentRecord({
+    content: {
+      name: parsed.name ?? current.name,
+      description:
+        parsed.description === undefined
+          ? current.description
+          : parsed.description,
+      source: current.source,
+      destination,
+    },
+    operationId: crypto.randomUUID(),
+    revision: currentWire.protectedRecord.revision + 1,
+    tunnelId,
+    workerId: destination.workerId,
+  });
+  return openTunnelSummary(
     await request(`/api/tunnels/${encodeURIComponent(tunnelId)}`, {
       method: "PATCH",
-      body: JSON.stringify(tunnelUserUpdateSchema.parse(input)),
+      body: JSON.stringify(
+        tunnelUserWireUpdateSchema.parse({
+          ...(parsed.projectId === undefined
+            ? {}
+            : { projectId: parsed.projectId }),
+          ...(parsed.protocolHint === undefined
+            ? {}
+            : { protocolHint: parsed.protocolHint }),
+          ...(parsed.destination === undefined
+            ? {}
+            : {
+                destination: {
+                  kind: destination.kind,
+                  workerId: destination.workerId,
+                },
+              }),
+          protectedRecord,
+        }),
+      ),
     }),
   );
 }
@@ -802,7 +883,7 @@ export async function createDirectTunnelAttachment(attachmentId: string) {
 
 export async function activateDirectTunnelAttachment(
   attachmentId: string,
-  input: { capabilityId: string; localPort: number },
+  input: { capabilityId: string },
 ): Promise<void> {
   await post(
     `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct-activate`,
@@ -1646,6 +1727,8 @@ const runWorkerReadinessCache =
   new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
 const customizationWorkerReadinessCache =
   new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
+const tunnelWorkerReadinessCache =
+  new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
 const chatCustomizationTargetCache =
   new ShortLivedRequestCache<CustomizationContentScope>(2_000);
 const repositoryWorktreeStatusCache =
@@ -1737,6 +1820,24 @@ async function ensureCustomizationWorker(workerId: string) {
   await customizationWorkerReadinessCache.get(key, () =>
     ensureEndpointContentWorkerEncryption({
       domains: ["customization-content"],
+      worker,
+    }),
+  );
+}
+
+async function ensureTunnelWorker(workerId: string) {
+  const worker = (await getWorkers()).find(
+    (candidate) => candidate.workerId === workerId,
+  );
+  const snapshot = clientEncryption.getSnapshot();
+  const grants = worker?.encryption.grants
+    .filter(({ component }) => component === "tunnel-content")
+    .map(({ keyRevision }) => keyRevision)
+    .join(",");
+  const key = `${repositoryOperationCacheNamespace()}\0${workerId}\0${grants ?? "none"}\0${snapshot.masterKeyRevision ?? "locked"}`;
+  await tunnelWorkerReadinessCache.get(key, () =>
+    ensureEndpointContentWorkerEncryption({
+      domains: ["tunnel-content"],
       worker,
     }),
   );
@@ -4792,10 +4893,46 @@ export async function ensureBrowserTunnel(
     port: url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80,
     ...(input.workerId ? { workerId: input.workerId } : {}),
   };
-  return tunnelSummarySchema.parse(
+  const parsed = browserTunnelRequestSchema.parse(route);
+  const existing = tunnelWireListSchema
+    .parse(await request("/api/tunnels"))
+    .find(
+      ({ managedBy }) =>
+        managedBy?.kind === "browser" && managedBy.id === browserId,
+    );
+  const workerId = parsed.workerId ?? existing?.destination.workerId;
+  if (!workerId) {
+    throw new Error("A destination worker is required for this Browser tunnel.");
+  }
+  await ensureTunnelWorker(workerId);
+  const tunnelId = existing?.id ?? crypto.randomUUID();
+  const protectedRecord = await protectTunnelContentRecord({
+    content: {
+      name: `Browser tunnel · ${url.host}`.slice(0, 120),
+      description: "Temporary local access created by the owning Browser tab.",
+      source: { kind: "desktop-loopback" },
+      destination: {
+        kind: "worker-tcp",
+        workerId,
+        host: parsed.host,
+        port: parsed.port,
+      },
+    },
+    operationId: crypto.randomUUID(),
+    revision: (existing?.protectedRecord?.revision ?? 0) + 1,
+    tunnelId,
+    workerId,
+  });
+  return openTunnelSummary(
     await post(
       `/api/browsers/${encodeURIComponent(browserId)}/tunnel`,
-      browserTunnelRequestSchema.parse(route),
+      browserTunnelWireRequestSchema.parse({
+        tunnelId,
+        protocolHint:
+          parsed.protocol === "https" ? "https-websocket" : "http-websocket",
+        workerId,
+        protectedRecord,
+      }),
     ),
   );
 }

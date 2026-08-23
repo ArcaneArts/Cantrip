@@ -171,17 +171,17 @@ export class TunnelTcpDestinationAdapter {
     const streamKey = key(header);
     if (this.#streams.has(streamKey)) {
       this.#logRejected(header, "protocol-error");
-      this.#reject(header, "protocol-error", "Tunnel stream already exists.");
+      this.#reject(header, "protocol-error");
       return;
     }
     if (this.#streams.size >= MAX_STREAMS) {
       this.#logRejected(header, "limit-exceeded");
-      this.#reject(header, "limit-exceeded", "Worker stream limit reached.");
+      this.#reject(header, "limit-exceeded");
       return;
     }
     if (header.target.kind !== "tcp") {
       this.#logRejected(header, "target-rejected");
-      this.#reject(header, "target-rejected", "Unsupported tunnel target.");
+      this.#reject(header, "target-rejected");
       return;
     }
     const socket = connect({
@@ -250,7 +250,6 @@ export class TunnelTcpDestinationAdapter {
           ...responseBase(stream),
           kind: "rejected",
           code: "target-unavailable",
-          message: "Worker tunnel destination timed out.",
         },
         EMPTY_PAYLOAD,
       );
@@ -283,7 +282,6 @@ export class TunnelTcpDestinationAdapter {
           ...responseBase(stream),
           kind: "error",
           code: "connection-failed",
-          message: "Worker could not connect to the tunnel destination.",
         },
         EMPTY_PAYLOAD,
       );
@@ -306,7 +304,6 @@ export class TunnelTcpDestinationAdapter {
           ...responseBase(stream),
           kind: "close",
           code: "normal",
-          message: null,
         },
         EMPTY_PAYLOAD,
       );
@@ -368,7 +365,6 @@ export class TunnelTcpDestinationAdapter {
   #reject(
     header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
     code: Extract<TunnelDataPlaneFrameHeader, { kind: "rejected" }>["code"],
-    message: string,
   ): void {
     this.#emit(
       {
@@ -381,7 +377,6 @@ export class TunnelTcpDestinationAdapter {
         sequence: 0,
         kind: "rejected",
         code,
-        message,
       },
       EMPTY_PAYLOAD,
     );
@@ -397,7 +392,6 @@ export class TunnelTcpDestinationAdapter {
         ...responseBase(stream),
         kind: "close",
         code,
-        message: null,
       },
       EMPTY_PAYLOAD,
     );

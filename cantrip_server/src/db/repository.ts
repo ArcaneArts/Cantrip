@@ -154,13 +154,13 @@ import type {
   EncryptedQueuedPrompt,
   QueuedPromptOpaqueContent,
   ThemePreference,
-  TunnelAttachmentSummary,
+  TunnelAttachmentWireSummary,
   TunnelDestinationEndpoint,
   TunnelManagedRegistration,
   TunnelSourceEndpoint,
-  TunnelSummary,
-  TunnelUserCreate,
-  TunnelUserUpdate,
+  TunnelWireSummary,
+  TunnelUserWireCreate,
+  TunnelUserWireUpdate,
   TokenUsageTotals,
   UserSettings,
   UserSettingsUpdate,
@@ -179,6 +179,12 @@ import type {
   WorktreeSelection,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
+import {
+  type ProtectedTunnelContentRecord,
+  type TunnelContentErrorCode,
+  type TunnelPublicDestinationEndpoint,
+  type TunnelPublicSourceEndpoint,
+} from "@cantrip/protocol/tunnel-content";
 import {
   chatAttachmentOpaqueSummarySchema,
   type AttachmentProtectedMetadata,
@@ -465,10 +471,11 @@ export class McpServerWorkerBindingError extends Error {}
 export interface TunnelAttachmentAuthorization {
   attachmentId: string;
   clientId: string;
-  destination: Extract<TunnelDestinationEndpoint, { kind: "worker-tcp" }>;
+  destination: Extract<TunnelPublicDestinationEndpoint, { kind: "worker-tcp" }>;
   expiresAt: Date;
   ownerId: string;
   projectId: string | null;
+  protectedRecord: ProtectedTunnelContentRecord;
   tunnelId: string;
 }
 
@@ -966,19 +973,17 @@ function toProjectWireSummary(
 
 function toTunnelAttachmentSummary(
   attachment: TunnelAttachmentRow,
-): TunnelAttachmentSummary {
+): TunnelAttachmentWireSummary {
   return {
     id: attachment.id,
     tunnelId: attachment.tunnelId,
-    kind: attachment.kind as TunnelAttachmentSummary["kind"],
+    kind: attachment.kind as TunnelAttachmentWireSummary["kind"],
     clientId: attachment.clientId,
-    localHost: attachment.localHost as TunnelAttachmentSummary["localHost"],
-    localPort: attachment.localPort,
-    status: attachment.status as TunnelAttachmentSummary["status"],
+    status: attachment.status as TunnelAttachmentWireSummary["status"],
     activeConnectionCount: attachment.activeConnectionCount,
     bytesFromSource: attachment.bytesFromSource,
     bytesToSource: attachment.bytesToSource,
-    lastError: attachment.lastError,
+    errorCode: attachment.errorCode as TunnelAttachmentWireSummary["errorCode"],
     expiresAt: attachment.expiresAt?.toISOString() ?? null,
     lastSeenAt: attachment.lastSeenAt?.toISOString() ?? null,
     createdAt: attachment.createdAt.toISOString(),
@@ -988,14 +993,14 @@ function toTunnelAttachmentSummary(
 
 function tunnelCapabilities(
   tunnel: TunnelRow,
-  attachments: TunnelAttachmentSummary[],
-): TunnelSummary["capabilities"] {
+  attachments: TunnelAttachmentWireSummary[],
+): TunnelWireSummary["capabilities"] {
   const userManaged = tunnel.management === "user-managed";
   if (!userManaged) {
     const browserDesktopAttachment =
       tunnel.origin === "browser" &&
       tunnel.management === "managed-ephemeral" &&
-      tunnel.sourceEndpoint.kind === "desktop-loopback";
+      tunnel.sourceKind === "desktop-loopback";
     return {
       canEdit: false,
       canDelete: false,
@@ -1019,49 +1024,106 @@ function tunnelCapabilities(
   };
 }
 
+function tunnelPublicSource(tunnel: TunnelRow): TunnelPublicSourceEndpoint {
+  if (tunnel.sourceKind === "desktop-loopback") {
+    return { kind: "desktop-loopback" };
+  }
+  if (tunnel.sourceKind === "server-http" && tunnel.sourceAdapter) {
+    return {
+      kind: "server-http",
+      adapter: tunnel.sourceAdapter as "code" | "project-share",
+    };
+  }
+  if (tunnel.sourceKind === "worker-listener" && tunnel.sourceWorkerId) {
+    return { kind: "worker-listener", workerId: tunnel.sourceWorkerId };
+  }
+  throw new Error("Tunnel source routing metadata is invalid.");
+}
+
+function tunnelPublicDestination(
+  tunnel: TunnelRow,
+): TunnelPublicDestinationEndpoint {
+  if (tunnel.destinationKind === "worker-tcp") {
+    return { kind: "worker-tcp", workerId: tunnel.destinationWorkerId };
+  }
+  if (
+    tunnel.destinationKind === "worker-adapter" &&
+    tunnel.destinationAdapter &&
+    tunnel.destinationResourceId
+  ) {
+    return {
+      kind: "worker-adapter",
+      workerId: tunnel.destinationWorkerId,
+      adapter: tunnel.destinationAdapter as "code" | "project-share",
+      resourceId: tunnel.destinationResourceId,
+    };
+  }
+  throw new Error("Tunnel destination routing metadata is invalid.");
+}
+
+function tunnelProtectedRecord(
+  tunnel: TunnelRow,
+): ProtectedTunnelContentRecord | null {
+  if (
+    !tunnel.protectedContent ||
+    !tunnel.protectedOperationId ||
+    tunnel.protectedRevision < 1
+  ) {
+    return null;
+  }
+  return {
+    operationId: tunnel.protectedOperationId,
+    revision: tunnel.protectedRevision,
+    protectedContent: tunnel.protectedContent,
+  };
+}
+
 function toTunnelSummary(
   tunnel: TunnelRow,
   attachmentRows: TunnelAttachmentRow[] = [],
-): TunnelSummary {
+): TunnelWireSummary {
   const attachments = attachmentRows.map(toTunnelAttachmentSummary);
   return {
     id: tunnel.id,
-    name: tunnel.name,
-    description: tunnel.description,
     projectId: tunnel.projectId,
     position: tunnel.position,
-    origin: tunnel.origin as TunnelSummary["origin"],
-    management: tunnel.management as TunnelSummary["management"],
-    protocolHint: tunnel.protocolHint as TunnelSummary["protocolHint"],
-    source: tunnel.sourceEndpoint,
-    destination: tunnel.destinationEndpoint,
+    origin: tunnel.origin as TunnelWireSummary["origin"],
+    management: tunnel.management as TunnelWireSummary["management"],
+    protocolHint: tunnel.protocolHint as TunnelWireSummary["protocolHint"],
+    source: tunnelPublicSource(tunnel),
+    destination: tunnelPublicDestination(tunnel),
     managedBy:
       tunnel.managedByKind && tunnel.managedById
         ? {
             kind: tunnel.managedByKind as NonNullable<
-              TunnelSummary["managedBy"]
+              TunnelWireSummary["managedBy"]
             >["kind"],
             id: tunnel.managedById,
           }
         : null,
-    desiredState: tunnel.desiredState as TunnelSummary["desiredState"],
-    status: tunnel.status as TunnelSummary["status"],
-    lastError: tunnel.lastError,
+    desiredState: tunnel.desiredState as TunnelWireSummary["desiredState"],
+    status: tunnel.status as TunnelWireSummary["status"],
+    errorCode: tunnel.errorCode as TunnelWireSummary["errorCode"],
     activeConnectionCount: tunnel.activeConnectionCount,
     bytesFromSource: tunnel.bytesFromSource,
     bytesToSource: tunnel.bytesToSource,
     attachments,
     capabilities: tunnelCapabilities(tunnel, attachments),
+    protectedRecord: tunnelProtectedRecord(tunnel),
     createdAt: tunnel.createdAt.toISOString(),
     updatedAt: tunnel.updatedAt.toISOString(),
   };
 }
 
-function sourceWorkerId(source: TunnelSourceEndpoint): string | null {
+function sourceWorkerId(
+  source: TunnelSourceEndpoint | TunnelPublicSourceEndpoint,
+): string | null {
   return source.kind === "worker-listener" ? source.workerId : null;
 }
 
-function destinationWorkerId(destination: TunnelDestinationEndpoint): string {
+function destinationWorkerId(
+  destination: TunnelDestinationEndpoint | TunnelPublicDestinationEndpoint,
+): string {
   return destination.workerId;
 }
 
@@ -6679,8 +6741,8 @@ export class ServerRepository {
   private async tunnelReferencesAreOwned(
     ownerId: string,
     projectId: string | null,
-    source: TunnelSourceEndpoint,
-    destination: TunnelDestinationEndpoint,
+    source: TunnelSourceEndpoint | TunnelPublicSourceEndpoint,
+    destination: TunnelDestinationEndpoint | TunnelPublicDestinationEndpoint,
   ): Promise<boolean> {
     const workerIds = [
       ...new Set(
@@ -6743,7 +6805,7 @@ export class ServerRepository {
   async listTunnels(
     ownerId: string,
     projectId?: string,
-  ): Promise<TunnelSummary[]> {
+  ): Promise<TunnelWireSummary[]> {
     const tunnelRows = await this.database
       .select()
       .from(schema.tunnels)
@@ -6782,7 +6844,7 @@ export class ServerRepository {
   async getTunnel(
     ownerId: string,
     tunnelId: string,
-  ): Promise<TunnelSummary | null> {
+  ): Promise<TunnelWireSummary | null> {
     const tunnelRows = await this.database
       .select()
       .from(schema.tunnels)
@@ -6808,8 +6870,8 @@ export class ServerRepository {
 
   async createUserTunnel(
     ownerId: string,
-    input: TunnelUserCreate,
-  ): Promise<TunnelSummary | null> {
+    input: TunnelUserWireCreate,
+  ): Promise<TunnelWireSummary | null> {
     const source = { kind: "desktop-loopback" as const };
     if (
       !(await this.tunnelReferencesAreOwned(
@@ -6824,19 +6886,23 @@ export class ServerRepository {
     const rows = await this.database
       .insert(schema.tunnels)
       .values({
-        id: randomUUID(),
+        id: input.id,
         ownerId,
         projectId: input.projectId,
-        name: input.name,
-        description: input.description,
         position: await this.nextTunnelPosition(ownerId),
         origin: "user",
         management: "user-managed",
         protocolHint: input.protocolHint,
-        sourceEndpoint: source,
+        sourceKind: source.kind,
+        sourceAdapter: null,
         sourceWorkerId: null,
-        destinationEndpoint: input.destination,
+        destinationKind: input.destination.kind,
+        destinationAdapter: null,
+        destinationResourceId: null,
         destinationWorkerId: input.destination.workerId,
+        protectedContent: input.protectedRecord.protectedContent,
+        protectedOperationId: input.protectedRecord.operationId,
+        protectedRevision: input.protectedRecord.revision,
         managedByKind: null,
         managedById: null,
         desiredState: "stopped",
@@ -6849,8 +6915,8 @@ export class ServerRepository {
   async updateUserTunnel(
     ownerId: string,
     tunnelId: string,
-    input: TunnelUserUpdate,
-  ): Promise<TunnelSummary | null> {
+    input: TunnelUserWireUpdate,
+  ): Promise<TunnelWireSummary | null> {
     const existingRows = await this.database
       .select()
       .from(schema.tunnels)
@@ -6883,14 +6949,23 @@ export class ServerRepository {
         "Stop every tunnel attachment before editing this tunnel.",
       );
     }
+    if (
+      input.protectedRecord.revision !== existing.protectedRevision + 1 ||
+      input.protectedRecord.operationId === existing.protectedOperationId
+    ) {
+      throw new TunnelManagementError(
+        "Tunnel protected content has a stale revision.",
+      );
+    }
     const projectId =
       input.projectId === undefined ? existing.projectId : input.projectId;
-    const destination = input.destination ?? existing.destinationEndpoint;
+    const source = tunnelPublicSource(existing);
+    const destination = input.destination ?? tunnelPublicDestination(existing);
     if (
       !(await this.tunnelReferencesAreOwned(
         ownerId,
         projectId,
-        existing.sourceEndpoint,
+        source,
         destination,
       ))
     ) {
@@ -6899,10 +6974,6 @@ export class ServerRepository {
     const rows = await this.database
       .update(schema.tunnels)
       .set({
-        ...(input.name === undefined ? {} : { name: input.name }),
-        ...(input.description === undefined
-          ? {}
-          : { description: input.description }),
         ...(input.projectId === undefined ? {} : { projectId }),
         ...(input.protocolHint === undefined
           ? {}
@@ -6910,9 +6981,20 @@ export class ServerRepository {
         ...(input.destination === undefined
           ? {}
           : {
-              destinationEndpoint: destination,
+              destinationKind: destination.kind,
+              destinationAdapter:
+                destination.kind === "worker-adapter"
+                  ? destination.adapter
+                  : null,
+              destinationResourceId:
+                destination.kind === "worker-adapter"
+                  ? destination.resourceId
+                  : null,
               destinationWorkerId: destination.workerId,
             }),
+        protectedContent: input.protectedRecord.protectedContent,
+        protectedOperationId: input.protectedRecord.operationId,
+        protectedRevision: input.protectedRecord.revision,
         updatedAt: new Date(),
       })
       .where(
@@ -6974,8 +7056,29 @@ export class ServerRepository {
 
   async registerManagedTunnel(
     ownerId: string,
-    input: TunnelManagedRegistration,
-  ): Promise<TunnelSummary | null> {
+    input: Omit<
+      TunnelManagedRegistration,
+      "source" | "destination"
+    > & {
+      source: TunnelSourceEndpoint | TunnelPublicSourceEndpoint;
+      destination:
+        | TunnelDestinationEndpoint
+        | TunnelPublicDestinationEndpoint;
+    },
+    protectedInput?: {
+      id?: string;
+      protectedRecord: ProtectedTunnelContentRecord;
+    },
+  ): Promise<TunnelWireSummary | null> {
+    if (
+      (input.source.kind === "worker-listener" ||
+        input.destination.kind === "worker-tcp") &&
+      !protectedInput
+    ) {
+      throw new TunnelManagementError(
+        "Private tunnel endpoints require protected content.",
+      );
+    }
     if (
       !(await this.tunnelReferencesAreOwned(
         ownerId,
@@ -6987,7 +7090,11 @@ export class ServerRepository {
       return null;
     }
     const existingRows = await this.database
-      .select({ id: schema.tunnels.id })
+      .select({
+        id: schema.tunnels.id,
+        protectedOperationId: schema.tunnels.protectedOperationId,
+        protectedRevision: schema.tunnels.protectedRevision,
+      })
       .from(schema.tunnels)
       .where(
         and(
@@ -6997,32 +7104,71 @@ export class ServerRepository {
         ),
       )
       .limit(1);
+    const existing = existingRows[0];
+    if (existing && protectedInput?.id && protectedInput.id !== existing.id) {
+      throw new TunnelManagementError("Managed tunnel identity is stale.");
+    }
+    if (protectedInput) {
+      const expectedRevision = existing ? existing.protectedRevision + 1 : 1;
+      if (
+        protectedInput.protectedRecord.revision !== expectedRevision ||
+        protectedInput.protectedRecord.operationId ===
+          existing?.protectedOperationId
+      ) {
+        throw new TunnelManagementError(
+          "Tunnel protected content has a stale revision.",
+        );
+      }
+    }
+    const source: TunnelPublicSourceEndpoint =
+      input.source.kind === "worker-listener"
+        ? { kind: input.source.kind, workerId: input.source.workerId }
+        : input.source;
+    const destination: TunnelPublicDestinationEndpoint =
+      input.destination.kind === "worker-tcp"
+        ? {
+            kind: input.destination.kind,
+            workerId: input.destination.workerId,
+          }
+        : input.destination;
     const values = {
       projectId: input.projectId,
-      name: input.name,
-      description: input.description,
       origin: input.origin,
       management: input.management,
       protocolHint: input.protocolHint,
-      sourceEndpoint: input.source,
-      sourceWorkerId: sourceWorkerId(input.source),
-      destinationEndpoint: input.destination,
-      destinationWorkerId: destinationWorkerId(input.destination),
+      sourceKind: source.kind,
+      sourceAdapter: source.kind === "server-http" ? source.adapter : null,
+      sourceWorkerId: sourceWorkerId(source),
+      destinationKind: destination.kind,
+      destinationAdapter:
+        destination.kind === "worker-adapter" ? destination.adapter : null,
+      destinationResourceId:
+        destination.kind === "worker-adapter" ? destination.resourceId : null,
+      destinationWorkerId: destinationWorkerId(destination),
+      ...(protectedInput
+        ? {
+            protectedContent:
+              protectedInput.protectedRecord.protectedContent,
+            protectedOperationId:
+              protectedInput.protectedRecord.operationId,
+            protectedRevision: protectedInput.protectedRecord.revision,
+          }
+        : {}),
       managedByKind: input.managedBy.kind,
       managedById: input.managedBy.id,
       desiredState: input.desiredState,
       status: input.status,
-      lastError: null,
+      errorCode: null,
       updatedAt: new Date(),
     };
-    if (existingRows[0]) {
+    if (existing) {
       await this.database
         .update(schema.tunnels)
         .set(values)
-        .where(eq(schema.tunnels.id, existingRows[0].id));
-      return this.getTunnel(ownerId, existingRows[0].id);
+        .where(eq(schema.tunnels.id, existing.id));
+      return this.getTunnel(ownerId, existing.id);
     }
-    const id = randomUUID();
+    const id = protectedInput?.id ?? randomUUID();
     await this.database.insert(schema.tunnels).values({
       id,
       ownerId,
@@ -7034,8 +7180,8 @@ export class ServerRepository {
 
   async getManagedTunnel(
     ownerId: string,
-    managedBy: NonNullable<TunnelSummary["managedBy"]>,
-  ): Promise<TunnelSummary | null> {
+    managedBy: NonNullable<TunnelWireSummary["managedBy"]>,
+  ): Promise<TunnelWireSummary | null> {
     const rows = await this.database
       .select({ id: schema.tunnels.id })
       .from(schema.tunnels)
@@ -7053,7 +7199,7 @@ export class ServerRepository {
 
   async removeManagedTunnel(
     ownerId: string,
-    managedBy: NonNullable<TunnelSummary["managedBy"]>,
+    managedBy: NonNullable<TunnelWireSummary["managedBy"]>,
   ): Promise<boolean> {
     const rows = await this.database
       .delete(schema.tunnels)
@@ -7086,7 +7232,7 @@ export class ServerRepository {
           management: schema.tunnels.management,
           origin: schema.tunnels.origin,
           projectId: schema.tunnels.projectId,
-          sourceEndpoint: schema.tunnels.sourceEndpoint,
+          sourceKind: schema.tunnels.sourceKind,
         })
         .from(schema.tunnels)
         .where(
@@ -7103,9 +7249,9 @@ export class ServerRepository {
           tunnel.management === "user-managed" ||
           (tunnel.management === "managed-ephemeral" &&
             tunnel.origin === "browser" &&
-            tunnel.sourceEndpoint.kind === "desktop-loopback")
+            tunnel.sourceKind === "desktop-loopback")
         ) ||
-        tunnel.sourceEndpoint.kind !== "desktop-loopback"
+        tunnel.sourceKind !== "desktop-loopback"
       ) {
         return null;
       }
@@ -7124,10 +7270,8 @@ export class ServerRepository {
       const values = {
         activeConnectionCount: 0,
         expiresAt: input.expiresAt,
-        lastError: null,
+        errorCode: null,
         lastSeenAt: null,
-        localHost: null,
-        localPort: null,
         secretExpiresAt: input.secretExpiresAt,
         secretHash: input.secretHash,
         status: "starting",
@@ -7151,7 +7295,7 @@ export class ServerRepository {
         .update(schema.tunnels)
         .set({
           desiredState: "started",
-          lastError: null,
+          errorCode: null,
           status: "starting",
           updatedAt: now,
         })
@@ -7170,7 +7314,7 @@ export class ServerRepository {
       const tunnels = await transaction
         .select({
           id: schema.tunnels.id,
-          sourceEndpoint: schema.tunnels.sourceEndpoint,
+          sourceKind: schema.tunnels.sourceKind,
         })
         .from(schema.tunnels)
         .where(
@@ -7181,7 +7325,7 @@ export class ServerRepository {
           ),
         )
         .limit(1);
-      if (!tunnels[0] || tunnels[0].sourceEndpoint.kind !== "server-http") {
+      if (!tunnels[0] || tunnels[0].sourceKind !== "server-http") {
         return false;
       }
       const now = new Date();
@@ -7192,8 +7336,6 @@ export class ServerRepository {
           tunnelId,
           kind: "server-relay",
           clientId: null,
-          localHost: null,
-          localPort: null,
           status: "active",
           expiresAt,
           lastSeenAt: now,
@@ -7205,7 +7347,7 @@ export class ServerRepository {
             bytesFromSource: 0,
             bytesToSource: 0,
             expiresAt,
-            lastError: null,
+            errorCode: null,
             lastSeenAt: now,
             status: "active",
             updatedAt: now,
@@ -7215,7 +7357,7 @@ export class ServerRepository {
         .update(schema.tunnels)
         .set({
           desiredState: "started",
-          lastError: null,
+          errorCode: null,
           status: "active",
           updatedAt: now,
         })
@@ -7388,20 +7530,26 @@ export class ServerRepository {
       )
       .limit(1);
     const row = rows[0];
+    const protectedRecord = row ? tunnelProtectedRecord(row.tunnel) : null;
     if (
       !row?.attachment.clientId ||
-      row.tunnel.sourceEndpoint.kind !== "desktop-loopback" ||
-      row.tunnel.destinationEndpoint.kind !== "worker-tcp"
+      row.tunnel.sourceKind !== "desktop-loopback" ||
+      row.tunnel.destinationKind !== "worker-tcp" ||
+      !protectedRecord
     ) {
       return null;
     }
     return {
       attachmentId,
       clientId: row.attachment.clientId,
-      destination: row.tunnel.destinationEndpoint,
+      destination: {
+        kind: "worker-tcp",
+        workerId: row.tunnel.destinationWorkerId,
+      },
       expiresAt: row.attachment.expiresAt!,
       ownerId: row.tunnel.ownerId,
       projectId: row.tunnel.projectId,
+      protectedRecord,
       tunnelId: row.tunnel.id,
     };
   }
@@ -7429,21 +7577,27 @@ export class ServerRepository {
       )
       .limit(1);
     const row = rows[0];
+    const protectedRecord = row ? tunnelProtectedRecord(row.tunnel) : null;
     if (
       !row?.attachment.clientId ||
       !row.attachment.expiresAt ||
-      row.tunnel.sourceEndpoint.kind !== "desktop-loopback" ||
-      row.tunnel.destinationEndpoint.kind !== "worker-tcp"
+      row.tunnel.sourceKind !== "desktop-loopback" ||
+      row.tunnel.destinationKind !== "worker-tcp" ||
+      !protectedRecord
     ) {
       return null;
     }
     return {
       attachmentId,
       clientId: row.attachment.clientId,
-      destination: row.tunnel.destinationEndpoint,
+      destination: {
+        kind: "worker-tcp",
+        workerId: row.tunnel.destinationWorkerId,
+      },
       expiresAt: row.attachment.expiresAt,
       ownerId: row.tunnel.ownerId,
       projectId: row.tunnel.projectId,
+      protectedRecord,
       tunnelId: row.tunnel.id,
     };
   }
@@ -7451,17 +7605,14 @@ export class ServerRepository {
   async activateDesktopTunnelAttachment(
     attachmentId: string,
     clientId: string,
-    localPort: number,
   ): Promise<boolean> {
     return this.database.transaction(async (transaction) => {
       const now = new Date();
       const attachments = await transaction
         .update(schema.tunnelAttachments)
         .set({
-          lastError: null,
+          errorCode: null,
           lastSeenAt: now,
-          localHost: "127.0.0.1",
-          localPort,
           status: "active",
           updatedAt: now,
         })
@@ -7479,7 +7630,7 @@ export class ServerRepository {
         .update(schema.tunnels)
         .set({
           desiredState: "started",
-          lastError: null,
+          errorCode: null,
           status: "active",
           updatedAt: now,
         })
@@ -7508,7 +7659,7 @@ export class ServerRepository {
       .update(schema.tunnelAttachments)
       .set({
         activeConnectionCount: 0,
-        lastError: "Desktop client disconnected.",
+        errorCode: "attachment-disconnected",
         status: "offline",
         updatedAt: now,
       })
@@ -7525,7 +7676,7 @@ export class ServerRepository {
       .update(schema.tunnels)
       .set({
         activeConnectionCount: 0,
-        lastError: "Desktop client disconnected.",
+        errorCode: "attachment-disconnected",
         status: "offline",
         updatedAt: now,
       })
@@ -7535,7 +7686,8 @@ export class ServerRepository {
   async stopDesktopTunnelAttachment(
     ownerId: string,
     attachmentId: string,
-    error: string | null = null,
+    errorCode: TunnelContentErrorCode | null = null,
+    preserveTunnelState = false,
   ): Promise<{ projectId: string | null; tunnelId: string } | null> {
     return this.database.transaction(async (transaction) => {
       const rows = await transaction
@@ -7562,10 +7714,10 @@ export class ServerRepository {
         .update(schema.tunnelAttachments)
         .set({
           activeConnectionCount: 0,
-          lastError: error,
+          errorCode,
           secretExpiresAt: null,
           secretHash: null,
-          status: error ? "failed" : "stopped",
+          status: errorCode ? "failed" : "stopped",
           updatedAt: now,
         })
         .where(eq(schema.tunnelAttachments.id, attachmentId));
@@ -7580,14 +7732,14 @@ export class ServerRepository {
           ),
         )
         .limit(1);
-      if (remaining.length === 0) {
+      if (remaining.length === 0 && !preserveTunnelState) {
         await transaction
           .update(schema.tunnels)
           .set({
             activeConnectionCount: 0,
             desiredState: "stopped",
-            lastError: error,
-            status: error ? "failed" : "stopped",
+            errorCode,
+            status: errorCode ? "failed" : "stopped",
             updatedAt: now,
           })
           .where(eq(schema.tunnels.id, row.tunnelId));
@@ -7602,7 +7754,7 @@ export class ServerRepository {
       .update(schema.tunnelAttachments)
       .set({
         activeConnectionCount: 0,
-        lastError: "The server restarted.",
+        errorCode: "server-restarted",
         secretExpiresAt: null,
         secretHash: null,
         status: "offline",
@@ -7620,7 +7772,7 @@ export class ServerRepository {
       .update(schema.tunnels)
       .set({
         activeConnectionCount: 0,
-        lastError: "The server restarted.",
+        errorCode: "server-restarted",
         status: "offline",
         updatedAt: now,
       })
@@ -7674,7 +7826,7 @@ export class ServerRepository {
         await this.stopDesktopTunnelAttachment(
           attachment.ownerId,
           attachment.attachmentId,
-          "Tunnel attachment expired.",
+          "attachment-expired",
         )
       ) {
         stopped.push(attachment);

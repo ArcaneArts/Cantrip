@@ -252,7 +252,7 @@ export class TunnelStreamBroker {
     if (!connection) {
       if (sender !== "source" || header.kind !== "open") return;
       if (header.sequence !== 0 || !payloadValid) {
-        this.#rejectOpen(route, header, "protocol-error", "Invalid sequence.");
+        this.#rejectOpen(route, header, "protocol-error");
         return;
       }
       const tunnelConnections = [...this.#connections.values()].filter(
@@ -262,12 +262,7 @@ export class TunnelStreamBroker {
         this.#connections.size >= this.#maxConnections ||
         tunnelConnections >= this.#maxConnectionsPerTunnel
       ) {
-        this.#rejectOpen(
-          route,
-          header,
-          "limit-exceeded",
-          "Tunnel connection limit reached.",
-        );
+        this.#rejectOpen(route, header, "limit-exceeded");
         return;
       }
       const now = this.#now();
@@ -488,7 +483,6 @@ export class TunnelStreamBroker {
     route: Route,
     header: Extract<TunnelDataPlaneFrameHeader, { kind: "open" }>,
     code: Extract<TunnelDataPlaneFrameHeader, { kind: "rejected" }>["code"],
-    message: string,
   ): void {
     this.#rejectedConnections += 1;
     route.source.send(
@@ -496,7 +490,6 @@ export class TunnelStreamBroker {
         ...identities(route, header.connectionId, 0),
         kind: "rejected",
         code,
-        message,
       },
       EMPTY_PAYLOAD,
     );
@@ -515,7 +508,6 @@ export class TunnelStreamBroker {
         ...identities(route, connection.id, connection.destinationSequence),
         kind: "close",
         code,
-        message: null,
       },
       EMPTY_PAYLOAD,
     );
@@ -524,7 +516,6 @@ export class TunnelStreamBroker {
         ...identities(route, connection.id, connection.sourceSequence),
         kind: "close",
         code,
-        message: null,
       },
       EMPTY_PAYLOAD,
     );

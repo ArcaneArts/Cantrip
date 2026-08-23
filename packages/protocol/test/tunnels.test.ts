@@ -6,14 +6,62 @@ import {
   tunnelAttachmentInitializeSchema,
   tunnelAttachmentReadySchema,
   tunnelAttachmentSummarySchema,
+  tunnelDataPlaneTargetSchema,
   tunnelManagedRegistrationSchema,
   tunnelSummarySchema,
   tunnelUserCreateSchema,
+  tunnelUserWireCreateSchema,
 } from "../src/index.js";
 
 const now = "2026-08-11T12:00:00.000Z";
 
 describe("tunnel protocol", () => {
+  it("keeps tunnel presentation and TCP configuration out of the server wire contract", () => {
+    const tunnelId = "11111111-1111-4111-8111-111111111111";
+    const protectedRecord = {
+      operationId: tunnelId,
+      revision: 1,
+      protectedContent: {
+        formatVersion: 1,
+        domain: "tunnel-content" as const,
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM" as const,
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+    };
+    const wire = tunnelUserWireCreateSchema.parse({
+      id: tunnelId,
+      protocolHint: "http-websocket",
+      destination: { kind: "worker-tcp", workerId: "worker-b" },
+      protectedRecord,
+    });
+
+    expect(wire.destination).toEqual({
+      kind: "worker-tcp",
+      workerId: "worker-b",
+    });
+    expect(JSON.stringify(wire)).not.toMatch(/Private tunnel|127\.0\.0\.1|5173/u);
+    expect(() =>
+      tunnelUserWireCreateSchema.parse({
+        ...wire,
+        destination: { ...wire.destination, port: 5173 },
+      }),
+    ).toThrow();
+    expect(
+      tunnelDataPlaneTargetSchema.parse({
+        kind: "protected-tunnel",
+        targetKind: "tcp",
+        recordId: tunnelId,
+        protectedRecord,
+      }),
+    ).toMatchObject({ kind: "protected-tunnel", recordId: tunnelId });
+  });
+
   it("carries an explicit discovered-service worker into Browser tunneling", () => {
     expect(
       browserTunnelRequestSchema.parse({
@@ -223,10 +271,16 @@ describe("tunnel protocol", () => {
       tunnelAttachmentInitializeSchema.parse({
         type: "initialize",
         clientId: "desktop-1",
+      }),
+    ).toEqual({ type: "initialize", clientId: "desktop-1" });
+    expect(() =>
+      tunnelAttachmentInitializeSchema.parse({
+        type: "initialize",
+        clientId: "desktop-1",
         localHost: "127.0.0.1",
         localPort: 43_123,
       }),
-    ).toMatchObject({ localPort: 43_123 });
+    ).toThrow();
     expect(
       tunnelAttachmentReadySchema.parse({
         type: "ready",

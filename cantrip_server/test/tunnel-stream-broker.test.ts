@@ -164,7 +164,6 @@ describe("generic tunnel stream broker", () => {
       sequence: 4,
       kind: "close",
       code: "normal",
-      message: null,
     });
     expect(broker.stats()).toMatchObject({
       activeConnections: 0,

@@ -42,6 +42,7 @@ class FakeDesktopSocket extends EventEmitter {
 class EchoWorkerBridge implements WorkerCommandBus {
   readonly disconnectListeners = new Set<() => void>();
   readonly listeners = new Set<WorkerTunnelDataPlaneFrameListener>();
+  readonly received: TunnelDataPlaneFrameHeader[] = [];
 
   attach() {}
   close() {}
@@ -70,6 +71,7 @@ class EchoWorkerBridge implements WorkerCommandBus {
     header: TunnelDataPlaneFrameHeader,
     payload: Uint8Array,
   ) {
+    this.received.push(header);
     const base = {
       protocolVersion: header.protocolVersion,
       tunnelId: header.tunnelId,
@@ -113,12 +115,26 @@ const authorization: TunnelAttachmentAuthorization = {
   destination: {
     kind: "worker-tcp",
     workerId: "worker-b",
-    host: "127.0.0.1",
-    port: 9_001,
   },
   expiresAt: new Date(Date.now() + 60_000),
   ownerId: "owner-1",
   projectId: "project-1",
+  protectedRecord: {
+    operationId: "11111111-1111-4111-8111-111111111111",
+    revision: 1,
+    protectedContent: {
+      formatVersion: 1,
+      domain: "tunnel-content",
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
+  },
   tunnelId: "tunnel-1",
 };
 
@@ -167,14 +183,11 @@ describe("desktop tunnel runtime", () => {
     const ready = await runtime.attach(socket, authorization, {
       type: "initialize",
       clientId: authorization.clientId,
-      localHost: "127.0.0.1",
-      localPort: 45_001,
     });
     expect(ready).toMatchObject({
       sourceEndpointId: "desktop:desktop-1:attachment-1",
       destinationEndpointId: "worker:worker-b",
     });
-
     for (const connectionId of ["connection-a", "connection-b"]) {
       socket.emitFrame(
         sourceFrame(connectionId, 0, {
@@ -196,6 +209,15 @@ describe("desktop tunnel runtime", () => {
         }),
       );
     }
+
+    expect(bridge.received[0]).toMatchObject({
+      kind: "connect",
+      target: {
+        kind: "protected-tunnel",
+        recordId: authorization.tunnelId,
+        protectedRecord: authorization.protectedRecord,
+      },
+    });
 
     expect(
       socket.sent.filter(({ header }) => header.kind === "accepted"),
@@ -238,8 +260,6 @@ describe("desktop tunnel runtime", () => {
     await runtime.attach(socket, authorization, {
       type: "initialize",
       clientId: authorization.clientId,
-      localHost: "127.0.0.1",
-      localPort: 45_001,
     });
 
     expect(await runtime.revoke("owner-2", authorization.attachmentId)).toBe(
@@ -266,8 +286,6 @@ describe("desktop tunnel runtime", () => {
     await runtime.attach(socket, authorization, {
       type: "initialize",
       clientId: authorization.clientId,
-      localHost: "127.0.0.1",
-      localPort: 45_001,
     });
     expect(bridge.disconnectListeners).toHaveLength(2);
 
@@ -292,8 +310,6 @@ describe("desktop tunnel runtime", () => {
       runtime.attach(socket, authorization, {
         type: "initialize",
         clientId: authorization.clientId,
-        localHost: "127.0.0.1",
-        localPort: 45_001,
       }),
     ).rejects.toThrow("database unavailable");
     expect(bridge.disconnectListeners).toHaveLength(0);

@@ -105,7 +105,6 @@ export async function startDesktopTunnel(
       }
       await activateDirectTunnelAttachment(attachment.attachmentId, {
         capabilityId: started.directCapabilityId,
-        localPort: started.localPort,
       });
     } else if (direct) {
       await deleteDirectAttachment(direct.binding.capabilityId).catch(() => {

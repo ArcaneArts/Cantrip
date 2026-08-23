@@ -78,7 +78,7 @@ describe("generic tunnel data plane protocol", () => {
         kind: "half-close",
         direction: "source-to-destination",
       },
-      { ...base, kind: "close", code: "normal", message: null },
+      { ...base, kind: "close", code: "normal" },
     ];
     for (const header of frames) {
       expect(

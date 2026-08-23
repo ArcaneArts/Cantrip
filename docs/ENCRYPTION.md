@@ -2062,10 +2062,10 @@ partially protected user-payload rows in that original ledger.
 
 That result closes the named baseline, not the whole current product. A source
 review after Run, tunnel, skill-management, and customization features landed
-found content-bearing paths omitted from its classifications. Some are
-transient relay gaps; saved tunnel presentation/configuration and durable job
-progress/error messages also reopen the whole-product database-compromise
-claim. Until the remaining-work ledger below is complete, the broad guarantee
+found content-bearing paths omitted from its classifications. The saved tunnel
+configuration gap is now closed, while generic tunnel payload relay and durable
+job progress/error messages still reopen the whole-product claim. Until the
+remaining-work ledger below is complete, the broad guarantee
 must be phrased narrowly: the implemented protected data classes cannot be
 decrypted from the database without the user's login password or an authorized
 client/worker private key. No recovery secret, local encryption password, or
@@ -2083,7 +2083,7 @@ change the original database-dump guarantee.
 | Data class                                                                                         | Current exposure                                                                                                                                                                   | Target protection                                                                                                                                                  | Rollout status                                         | Priority | Complexity  |
 | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ | -------- | ----------- |
 | Encryption coverage inventory and closure audit                                                    | All durable tables and current application, worker, live, CLI, and external-transport contracts are explicitly classified; reviewed-set digests reject new unclassified boundaries | Keep the generated inventory current and preserve the open/closed distinction between the legacy baseline and remaining-work ledger                                | Coverage foundation complete; rollout open             | P0       | Medium      |
-| Saved tunnel names, descriptions, private endpoint configuration, and detailed errors              | Database and relay plaintext in tunnel and attachment records                                                                                                                      | New `tunnel-content` envelopes for semantic presentation and worker-open endpoint configuration; stable public error codes with protected details                  | Component foundation complete; payload rollout planned | P1       | Medium-High |
+| Saved tunnel names, descriptions, private endpoint configuration, and detailed errors              | Revision-bound `tunnel-content` ciphertext; the server retains only routing kinds/IDs, protocol class, lifecycle/counters/timestamps, and stable error codes; attachment listeners remain client-local | Client-created semantic presentation and TCP configuration opened only by the assigned worker/client; fixed managed presentation is derived locally; no free-form tunnel error text | E2EE/minimization complete                              | P1       | Medium-High |
 | Generic tunnel data-plane payloads                                                                 | Raw payload bytes are visible to the relay server; an inner protocol may or may not provide TLS                                                                                    | Endpoint-authenticated AEAD frames bound to tunnel, attachment, connection, direction, and sequence; retain only routing, flow-control, size, and counter metadata | Planned                                                | P2       | High        |
 | Run configuration inspection, authoring documents, setup scripts, action commands, and diagnostics | Operation-bound `run-content` envelopes across app, MCP, CLI, server, and worker; the server sees only bounded readiness metadata, IDs, revisions, and lifecycle state             | Worker-side validation, selection, authoring, and execution semantics with opaque server routing                                                                   | E2EE complete                                          | P1       | Medium-High |
 | Run logs, worktree-setup output, and detailed setup failures                                       | Operation-bound `run-content` responses; durable setup rows retain stable codes and generic messages rather than worker diagnostics                                                | Stable public lifecycle/result codes with endpoint-opened output, signals, and detailed diagnostics                                                                | E2EE/minimization complete                             | P1       | Medium      |
@@ -2191,6 +2191,46 @@ only. Request and response ciphertext remains bound to the server, worker,
 chat/project/provider scope, operation ID and class, direction, sequence, and
 key revision. Replayed OAuth-start and reload mutations are rejected by the
 worker's customization replay guard.
+
+### Tunnel configuration protected content
+
+User-created and Browser tunnels now store their semantic configuration as a
+revision-bound `tunnel-content` record. The unlocked client encrypts the name,
+description, complete source endpoint, and complete destination endpoint before
+create or update. Associated data binds the envelope to the server identity,
+assigned destination worker, tunnel ID, operation ID, stored direction, key
+revision, and monotonically increasing tunnel revision. An update must advance
+the revision exactly once and use a fresh operation ID; a stale or replayed
+record fails without revoking the currently active Browser attachment.
+
+The server persists only the owner/project IDs, ordering, origin and management
+class, protocol class, endpoint routing kinds, adapters and resource IDs,
+assigned worker IDs, desired/current lifecycle state, counters, timestamps,
+stable error codes, and the opaque protected record. It no longer stores tunnel
+names, descriptions, full endpoint JSON, TCP hosts or ports, attachment-local
+listener hosts or ports, or free-form tunnel/attachment errors. Cantrip Code and
+project-share presentation is fixed product text derived by the client rather
+than user-controlled data copied into the tunnel row. Local desktop listener
+coordinates remain in the desktop process that owns the socket.
+
+When the server authorizes a direct or relayed TCP connection, it forwards the
+revision-bound protected record instead of a host and port. The assigned worker
+opens the record with its scoped `tunnel-content` grant, verifies the tunnel and
+worker bindings, and only then connects to loopback. A record from another
+tunnel, worker, revision context, or server fails closed with a stable rejection
+code. Tunnel control frames likewise carry only stable codes; endpoint-specific
+diagnostic prose remains local and client presentation maps codes to fixed text.
+
+[Migration 0145](../cantrip_server/drizzle/0145_closed_quasimodo.sql) is an
+explicit pre-release destructive cutover. It removes existing tunnel rows
+before dropping all former plaintext configuration and attachment-listener
+columns; users recreate transient/user tunnels after update. The focused
+[protocol tests](../packages/protocol/test/tunnels.test.ts),
+[worker encryption test](../cantrip_worker/src/tunnel-content-encryption.test.ts),
+and [server control-plane test](../cantrip_server/test/tunnel-control-plane.test.ts)
+cover opaque wire shape, real encryption/decryption, row binding, revision
+fencing, and minimized persistence. Generic tunnel application bytes remain the
+separate data-plane row below and are not claimed complete by this milestone.
 
 The server should continue to see opaque IDs, worker assignments, lifecycle
 states, ordering, timestamps, sizes, flow-control values, counters, and stable
@@ -2390,6 +2430,14 @@ counts, worker presence, model-route choices, and traffic patterns.
     and status details, reload results, and runtime errors. The client polls
     protected status while pending; the server emits only payload-free
     customization invalidations and retains coarse lifecycle metadata.
+26. **Tunnel configuration content — complete:** client-created
+    `tunnel-content` records protect user/Browser names, descriptions, and full
+    endpoint configuration at rest and across the relay. The assigned worker
+    opens a record only after validating its server, worker, tunnel, operation,
+    and revision binding. The server retains only required routing/lifecycle
+    metadata, ciphertext, counters, timestamps, and stable error codes; local
+    attachment listener coordinates and free-form control errors are removed.
+    Generic tunnel application payload protection remains a separate rollout.
 
 A usable first encrypted component is moderate in scope. A robust system with
 multi-device enrollment, unattended workers, device replacement, rotation,

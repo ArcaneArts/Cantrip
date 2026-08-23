@@ -82,9 +82,10 @@ export class TunnelRuntimeManager {
       attachmentId: authorization.attachmentId,
       destination,
       destinationTarget: {
-        kind: "tcp",
-        host: authorization.destination.host,
-        port: authorization.destination.port,
+        kind: "protected-tunnel",
+        targetKind: "tcp",
+        recordId: authorization.tunnelId,
+        protectedRecord: authorization.protectedRecord,
       },
       source,
       tunnelId: authorization.tunnelId,
@@ -101,7 +102,7 @@ export class TunnelRuntimeManager {
         .stopDesktopTunnelAttachment(
           authorization.ownerId,
           authorization.attachmentId,
-          "Tunnel attachment expired.",
+          "attachment-expired",
         )
         .then(() => this.changed(this.#change(authorization)))
         .catch(() => undefined);
@@ -146,7 +147,6 @@ export class TunnelRuntimeManager {
       activated = await this.repository.activateDesktopTunnelAttachment(
         authorization.attachmentId,
         authorization.clientId,
-        initialize.localPort,
       );
     } catch (error) {
       this.closeActive(
@@ -203,10 +203,16 @@ export class TunnelRuntimeManager {
     });
   }
 
-  async revoke(ownerId: string, attachmentId: string): Promise<boolean> {
+  async revoke(
+    ownerId: string,
+    attachmentId: string,
+    options: { preserveTunnelState?: boolean } = {},
+  ): Promise<boolean> {
     const stopped = await this.repository.stopDesktopTunnelAttachment(
       ownerId,
       attachmentId,
+      null,
+      options.preserveTunnelState ?? false,
     );
     if (!stopped) return false;
     this.closeActive(attachmentId, "Attachment revoked", 1008);

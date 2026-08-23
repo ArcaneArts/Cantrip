@@ -321,7 +321,12 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
       return true;
     }
     if (header.kind === "rejected" || header.kind === "error") {
-      this.#fail(stream, header.message);
+      this.#fail(
+        stream,
+        header.kind === "rejected"
+          ? `Cantrip Code tunnel rejected (${header.code}).`
+          : `Cantrip Code tunnel failed (${header.code}).`,
+      );
       return true;
     }
     if (header.kind === "close") {
@@ -671,7 +676,6 @@ export class CodeHttpEndpoint implements TunnelDataPlaneEndpoint {
         ...this.#identity(stream, stream.localSequence++),
         kind: "close",
         code: message ? "revoked" : "normal",
-        message,
       },
       EMPTY_PAYLOAD,
     );
