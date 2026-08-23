@@ -97,6 +97,9 @@ export function structuredFileFormatForPath(
 }
 
 export function defaultExplorerFileMode(path: string): ExplorerFileMode {
+  const language = monacoLanguageForPath(path);
+  if (language === "markdown" || language === "mdx") return "preview";
+  if (language) return "edit";
   return structuredFileFormatForPath(path) ? "visual" : "preview";
 }
 import type { ExplorerFileMode } from "@cantrip/protocol";

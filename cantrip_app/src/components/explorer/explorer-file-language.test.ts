@@ -16,15 +16,17 @@ describe("explorer file editing", () => {
     expect(monacoLanguageForPath("assets/logo.svg")).toBeNull();
   });
 
-  it("opens structured files visually and other files in preview mode", () => {
-    expect(defaultExplorerFileMode("package.json")).toBe("visual");
-    expect(defaultExplorerFileMode("Cargo.toml")).toBe("visual");
-    expect(defaultExplorerFileMode("compose.yaml")).toBe("visual");
-    expect(defaultExplorerFileMode("workflow.YML")).toBe("visual");
-    expect(defaultExplorerFileMode("data.csv")).toBe("visual");
-    expect(defaultExplorerFileMode("gradle.properties")).toBe("visual");
-    expect(defaultExplorerFileMode(".env")).toBe("visual");
+  it("opens editable files in the editor and falls back to preview", () => {
+    expect(defaultExplorerFileMode("package.json")).toBe("edit");
+    expect(defaultExplorerFileMode("Cargo.toml")).toBe("edit");
+    expect(defaultExplorerFileMode("compose.yaml")).toBe("edit");
+    expect(defaultExplorerFileMode("workflow.YML")).toBe("edit");
+    expect(defaultExplorerFileMode("data.csv")).toBe("edit");
+    expect(defaultExplorerFileMode("gradle.properties")).toBe("edit");
+    expect(defaultExplorerFileMode(".env")).toBe("edit");
     expect(defaultExplorerFileMode("README.md")).toBe("preview");
+    expect(defaultExplorerFileMode("docs/guide.mdx")).toBe("preview");
+    expect(defaultExplorerFileMode("ChangeLog.txt")).toBe("edit");
     expect(defaultExplorerFileMode("assets/photo.png")).toBe("preview");
     expect(defaultExplorerFileMode("recording.mp4")).toBe("preview");
   });
