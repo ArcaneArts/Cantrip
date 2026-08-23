@@ -189,6 +189,8 @@ describe("project overview", () => {
         worktrees={[worktree]}
         onCreateSurface={vi.fn()}
         onOpenSurface={vi.fn()}
+        onRevealProject={vi.fn()}
+        revealLabel="Finder"
       />,
     );
 
@@ -203,6 +205,11 @@ describe("project overview", () => {
     expect(markup).toContain('tabindex="0"');
     expect(markup).toContain("Running");
     expect(markup).toContain("Worker online");
+    expect(markup).toContain("Open in Finder");
+    expect(markup).not.toContain("Reveal in Finder");
+    expect(markup.indexOf("Open in Finder")).toBeLessThan(
+      markup.indexOf('href="https://github.com/ArcaneArts/Cantrip"'),
+    );
     expect(markup).not.toContain("bounded line scan");
     expect(markup.match(/data-elite-global=/g)).toHaveLength(10);
     expect(markup).toContain(

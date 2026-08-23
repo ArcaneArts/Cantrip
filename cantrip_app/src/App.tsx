@@ -432,6 +432,7 @@ import {
 } from "@/lib/desktop-popout";
 import {
   desktopFolderRevealLabel,
+  desktopProjectRevealButtonLabel,
   desktopProjectRevealLabel,
   revealProjectInNativeFileManager,
 } from "@/lib/desktop-project-share";
@@ -3625,6 +3626,10 @@ export function App() {
   const desktopRuntime = useMemo(() => isDesktopRuntime(), []);
   const projectRevealLabel = useMemo(
     () => desktopProjectRevealLabel(desktopRuntime, navigator.userAgent),
+    [desktopRuntime],
+  );
+  const projectRevealButtonLabel = useMemo(
+    () => desktopProjectRevealButtonLabel(desktopRuntime, navigator.userAgent),
     [desktopRuntime],
   );
   const folderRevealLabel = useMemo(
@@ -7534,7 +7539,7 @@ export function App() {
                   selectedProject?.name ??
                   "Project preferences")
                 ) : projectOverviewSelected && selectedProject ? (
-                  `Project overview · ${selectedProject.source?.displayPath ?? selectedProject.github?.nameWithOwner ?? selectedProject.name}`
+                  "Project overview"
                 ) : gitHistoryProject ? (
                   <>
                     {gitHistoryProject.github?.nameWithOwner ??
@@ -8356,6 +8361,13 @@ export function App() {
               placement={selectedPlacementContext}
               onOpenSurface={selectTopTab}
               onOpenTabs={() => setMobileTabGridOpen(true)}
+              onRevealProject={(preferLocalFolder) =>
+                revealProjectInNativeFileManager(
+                  selectedProject,
+                  preferLocalFolder,
+                )
+              }
+              revealLabel={projectRevealButtonLabel ?? undefined}
             />
           ) : (
             <EmptyState>

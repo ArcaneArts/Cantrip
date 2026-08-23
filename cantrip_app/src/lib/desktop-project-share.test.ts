@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   coordinateDesktopProjectReveal,
+  coordinateDesktopProjectRevealPreference,
   directProjectShareUrl,
   desktopFolderRevealLabel,
+  desktopProjectRevealButtonLabel,
   desktopProjectRevealLabel,
   nativeLocalProjectFolderRequest,
   nativeProjectShareRequest,
@@ -44,12 +46,60 @@ describe("desktop project reveal", () => {
     expect(desktopProjectRevealLabel(true, "Windows NT 10.0")).toBe(
       "Reveal in File Explorer",
     );
+    expect(
+      desktopProjectRevealButtonLabel(false, "Macintosh; Mac OS X 15_5"),
+    ).toBeNull();
+    expect(
+      desktopProjectRevealButtonLabel(true, "Macintosh; Mac OS X 15_5"),
+    ).toBe("Finder");
+    expect(desktopProjectRevealButtonLabel(true, "Windows NT 10.0")).toBe(
+      "Explorer",
+    );
     expect(desktopFolderRevealLabel(true, "Macintosh; Mac OS X 15_5")).toBe(
       "Show in Finder",
     );
     expect(desktopFolderRevealLabel(true, "Windows NT 10.0")).toBe(
       "Show in File Explorer",
     );
+  });
+
+  it("falls back to the network share when the preferred local folder is unavailable", async () => {
+    const revealLocalFolder = vi.fn().mockResolvedValue(false);
+    const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
+
+    await coordinateDesktopProjectRevealPreference(true, {
+      revealLocalFolder,
+      revealNetworkShare,
+    });
+
+    expect(revealLocalFolder).toHaveBeenCalledOnce();
+    expect(revealNetworkShare).toHaveBeenCalledOnce();
+  });
+
+  it("uses the real folder only when Shift preference resolves locally", async () => {
+    const revealLocalFolder = vi.fn().mockResolvedValue(true);
+    const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
+
+    await coordinateDesktopProjectRevealPreference(true, {
+      revealLocalFolder,
+      revealNetworkShare,
+    });
+
+    expect(revealLocalFolder).toHaveBeenCalledOnce();
+    expect(revealNetworkShare).not.toHaveBeenCalled();
+  });
+
+  it("opens the network share directly without a local-folder preference", async () => {
+    const revealLocalFolder = vi.fn().mockResolvedValue(true);
+    const revealNetworkShare = vi.fn().mockResolvedValue(undefined);
+
+    await coordinateDesktopProjectRevealPreference(false, {
+      revealLocalFolder,
+      revealNetworkShare,
+    });
+
+    expect(revealLocalFolder).not.toHaveBeenCalled();
+    expect(revealNetworkShare).toHaveBeenCalledOnce();
   });
 
   it("mounts the server-issued attachment without revoking a live mount", async () => {
