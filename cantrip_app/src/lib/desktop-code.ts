@@ -1,5 +1,9 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { CodeAttachment } from "@cantrip/protocol";
+import {
+  codeOpenFileResultSchema,
+  type CodeAttachment,
+  type CodeOpenFileResult,
+} from "@cantrip/protocol";
 
 import { createDirectCodeAttachment, deleteDirectAttachment } from "@/lib/api";
 import {
@@ -58,6 +62,31 @@ export async function directCodeAttachmentHealthy(
     (forward) =>
       forward.tunnelId === tunnelId && forward.routeState === "local-direct",
   );
+}
+
+export async function openDirectCodeAttachmentFile(
+  attachment: CodeAttachment,
+  relativePath: string,
+): Promise<CodeOpenFileResult> {
+  const endpoint = new URL("_cantrip/open-file", attachment.url);
+  const response = await fetch(endpoint, {
+    body: JSON.stringify({ relativePath }),
+    credentials: "omit",
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+  const body = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const message =
+      body &&
+      typeof body === "object" &&
+      "error" in body &&
+      typeof body.error === "string"
+        ? body.error
+        : "Cantrip Code could not open this file.";
+    throw new Error(message);
+  }
+  return codeOpenFileResultSchema.parse(body);
 }
 
 export async function stopDirectCodeAttachment(
