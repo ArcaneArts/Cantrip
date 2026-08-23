@@ -610,17 +610,13 @@ const workerBridge = {
       case "worktree.list":
       case "worktree.reconcile":
         return inventory();
-      case "project.run-configurations.inspect":
+      case "project.run-configurations.metadata":
         return {
           platform: "darwin",
-          canonical: {
-            relativePath: ".codex/environments/environment.toml",
-            sourceControlState: "absent",
-          },
           configured: false,
           valid: true,
-          configurations: [],
-          diagnostics: [],
+          hasSetup: false,
+          configurationRevision: null,
         };
       case "project.run-configurations.read-authoring":
         runConfigurationAuthoringCommands.push(command);

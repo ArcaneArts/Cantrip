@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
+
 import {
-  workerRunSetupLookupSchema,
-  workerRunSetupStatusSchema,
+  protectedWorkerRunSetupLookupSchema,
+  protectedWorkerRunSetupStatusSchema,
   type WorktreeSetupJobSummary,
-  type WorkerRunSetupStatus,
+  type WorkerRunSetupPublicStatus,
 } from "@cantrip/protocol";
 
 import {
@@ -50,6 +52,7 @@ export class WorktreeSetupJobExecutor {
     private readonly onChanged: (
       change: WorktreeSetupLiveChange,
     ) => void = () => undefined,
+    private readonly serverId: () => string = () => "server-internal",
   ) {}
 
   recoverAfterRestart(force = true): Promise<number> {
@@ -143,11 +146,13 @@ export class WorktreeSetupJobExecutor {
         await this.#blockOffline(claimed);
         return;
       }
-      let status = workerRunSetupStatusSchema.parse(
+      let status = protectedWorkerRunSetupStatusSchema.parse(
         await this.bridge.request(
           job.workerId,
           {
             type: "project.run-setup.start",
+            operationId: randomUUID(),
+            serverId: this.serverId(),
             jobId: job.id,
             attempt: job.attempt,
             projectId: job.projectId,
@@ -158,7 +163,7 @@ export class WorktreeSetupJobExecutor {
           },
           { timeoutMs: SETUP_CONTROL_TIMEOUT_MS },
         ),
-      );
+      ).status;
       while (!this.#stopping) {
         if (status.state !== "running") {
           await this.#settle(claimed, status);
@@ -176,11 +181,13 @@ export class WorktreeSetupJobExecutor {
           await this.#blockOffline(claimed);
           return;
         }
-        const lookup = workerRunSetupLookupSchema.parse(
+        const lookup = protectedWorkerRunSetupLookupSchema.parse(
           await this.bridge.request(
             job.workerId,
             {
               type: "project.run-setup.status",
+              operationId: randomUUID(),
+              serverId: this.serverId(),
               jobId: job.id,
               projectId: job.projectId,
               worktreeId: job.worktreeId,
@@ -234,7 +241,7 @@ export class WorktreeSetupJobExecutor {
 
   async #settle(
     claimed: ClaimedWorktreeSetupJob,
-    status: WorkerRunSetupStatus,
+    status: WorkerRunSetupPublicStatus,
   ): Promise<void> {
     const completed =
       status.state === "succeeded"
@@ -247,11 +254,17 @@ export class WorktreeSetupJobExecutor {
             claimed.job.id,
             claimed.commandId,
             status,
-            status.error ?? {
-              code: "setup-failed",
-              message: "The setup script failed.",
-              retryable: true,
-            },
+            status.error
+              ? {
+                  ...status.error,
+                  message:
+                    "The setup script failed. Detailed diagnostics remain protected on the worker.",
+                }
+              : {
+                  code: "setup-failed",
+                  message: "The setup script failed.",
+                  retryable: true,
+                },
           );
     this.onChanged({ ownerId: claimed.ownerId, job: completed });
   }

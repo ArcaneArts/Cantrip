@@ -15,7 +15,21 @@ import {
   gitManagedOperationWorkerStateSchema,
   gitStashMutationResultSchema,
   providerQuotaSnapshotSchema,
+  RUN_CONFIGURATION_CANONICAL_PATH,
   mentionedSkillNames,
+  protectedRunConfigurationAuthoringSnapshotSchema,
+  protectedRunConfigurationInspectionSchema,
+  protectedWorkerRunLogSnapshotSchema,
+  protectedWorkerRunSetupLookupSchema,
+  protectedWorkerRunSetupStatusSchema,
+  runConfigurationInspectionMetadataSchema,
+  runConfigurationInspectionSchema,
+  runConfigurationAuthoringSnapshotSchema,
+  runConfigurationWriteRequestSchema,
+  runLogContentSchema,
+  runSetupDetailContentSchema,
+  workerRunConfigurationWriteResultSchema,
+  scriptCommandListSchema,
   workerCommandSchema,
   workerEncryptionRefreshResultSchema,
   workerProviderConnectionTestResultSchema,
@@ -261,6 +275,10 @@ import {
   readRunConfigurationAuthoring,
   writeRunConfiguration,
 } from "./run-configuration-discovery.js";
+import {
+  openWorkerRunContent,
+  protectWorkerRunContent,
+} from "./run-content-encryption.js";
 import { ManagedRunSupervisor } from "./managed-run-supervisor.js";
 import { RunSetupManager } from "./run-setup-manager.js";
 import {
@@ -673,6 +691,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     });
   cliBroker.setSurfacePrivateStateService(workerEncryption);
   cliBroker.setPolicyEncryptionService(workerEncryption);
+  cliBroker.setRunEncryptionService(workerEncryption);
   mcpBroker.setEncryptionService(workerEncryption);
   browserAdapter.setSurfacePrivateStateService(workerEncryption);
   desktopAdapter.setSurfacePrivateStateService(
@@ -1675,7 +1694,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return github.deleteRepository(command.path);
       case "project.script-commands":
         try {
-          return await discoverScriptCommands(
+          const commands = await discoverScriptCommands(
             (
               await openTerminalPrivateState({
                 serverId: command.serverId,
@@ -1686,39 +1705,242 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               })
             ).cwd,
           );
+          return protectWorkerRepositoryOperationContent({
+            context: {
+              serverId: command.serverId,
+              projectId: command.terminalId,
+              worktreeId: command.terminalId,
+              operationId: command.operationId,
+              direction: "response",
+            },
+            content: commands,
+            schema: scriptCommandListSchema,
+            service: workerEncryption,
+          });
         } catch {
           throw new Error("Could not discover terminal script commands.");
         }
       case "project.script-commands.inspect":
         try {
-          return await discoverScriptCommands(command.sourcePath);
+          return protectWorkerRepositoryOperationContent({
+            context: {
+              serverId: command.serverId,
+              projectId: command.projectId,
+              worktreeId: command.worktreeId,
+              operationId: command.operationId,
+              direction: "response",
+            },
+            content: await discoverScriptCommands(command.sourcePath),
+            schema: scriptCommandListSchema,
+            service: workerEncryption,
+          });
         } catch {
           throw new Error("Could not discover project script commands.");
         }
-      case "project.run-configurations.inspect":
-        return inspectRunConfigurations(command.sourcePath);
-      case "project.run-configurations.read-authoring":
-        return readRunConfigurationAuthoring(command.sourcePath);
-      case "project.run-configurations.write":
-        return writeRunConfiguration(
-          command.sourcePath,
-          command.expectedRevision,
-          command.document,
+      case "project.run-configurations.metadata": {
+        const inspection = runConfigurationInspectionSchema.parse(
+          await inspectRunConfigurations(command.sourcePath),
         );
-      case "project.run-setup.start":
-        return runSetups!.start(command);
-      case "project.run-setup.status":
-        return runSetups!.status(
+        return runConfigurationInspectionMetadataSchema.parse({
+          platform: inspection.platform,
+          configured: inspection.configured,
+          valid: inspection.valid,
+          hasSetup: Boolean(
+            inspection.configurations.find(
+              ({ relativePath }) =>
+                relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
+            )?.setup,
+          ),
+          configurationRevision:
+            inspection.configurations.find(
+              ({ relativePath }) =>
+                relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
+            )?.revision ?? null,
+        });
+      }
+      case "project.run-configurations.inspect": {
+        const inspection = runConfigurationInspectionSchema.parse(
+          await inspectRunConfigurations(command.sourcePath),
+        );
+        return protectedRunConfigurationInspectionSchema.parse({
+          operationId: command.operationId,
+          projectId: command.projectId,
+          worktreeId: command.worktreeId,
+          metadata: runConfigurationInspectionMetadataSchema.parse({
+            platform: inspection.platform,
+            configured: inspection.configured,
+            valid: inspection.valid,
+            hasSetup: Boolean(
+              inspection.configurations.find(
+                ({ relativePath }) =>
+                  relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
+              )?.setup,
+            ),
+            configurationRevision:
+              inspection.configurations.find(
+                ({ relativePath }) =>
+                  relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
+              )?.revision ?? null,
+          }),
+          protectedInspection: await protectWorkerRunContent({
+            serverId: command.serverId,
+            projectId: command.projectId,
+            worktreeId: command.worktreeId,
+            operationId: command.operationId,
+            operation: "run.configuration.inspect",
+            content: inspection,
+            schema: runConfigurationInspectionSchema,
+            service: workerEncryption,
+          }),
+        });
+      }
+      case "project.run-configurations.read-authoring": {
+        const snapshot = runConfigurationAuthoringSnapshotSchema.parse(
+          await readRunConfigurationAuthoring(command.sourcePath),
+        );
+        return protectedRunConfigurationAuthoringSnapshotSchema.parse({
+          operationId: command.operationId,
+          projectId: command.projectId,
+          worktreeId: command.worktreeId,
+          protectedSnapshot: await protectWorkerRunContent({
+            serverId: command.serverId,
+            projectId: command.projectId,
+            worktreeId: command.worktreeId,
+            operationId: command.operationId,
+            operation: "run.configuration.authoring",
+            content: snapshot,
+            schema: runConfigurationAuthoringSnapshotSchema,
+            service: workerEncryption,
+          }),
+        });
+      }
+      case "project.run-configurations.write": {
+        const input = await openWorkerRunContent({
+          serverId: command.serverId,
+          projectId: command.projectId,
+          worktreeId: command.worktreeId,
+          operationId: command.operationId,
+          operation: "run.configuration.write",
+          opaque: command.protectedRequest,
+          schema: runConfigurationWriteRequestSchema,
+          service: workerEncryption,
+        });
+        const result = workerRunConfigurationWriteResultSchema.parse(
+          await writeRunConfiguration(
+            command.sourcePath,
+            input.expectedRevision,
+            input.document,
+          ),
+        );
+        return protectWorkerRunContent({
+          serverId: command.serverId,
+          projectId: command.projectId,
+          worktreeId: command.worktreeId,
+          operationId: command.operationId,
+          operation: "run.configuration.write",
+          content: result,
+          schema: workerRunConfigurationWriteResultSchema,
+          service: workerEncryption,
+        });
+      }
+      case "project.run-setup.start": {
+        const status = runSetups!.start(command);
+        const { output, outputTruncated, signal, error, ...publicStatus } =
+          status;
+        return protectedWorkerRunSetupStatusSchema.parse({
+          operationId: command.operationId,
+          status: {
+            ...publicStatus,
+            error: error
+              ? { code: error.code, retryable: error.retryable }
+              : null,
+          },
+          protectedDetails: await protectWorkerRunContent({
+            serverId: command.serverId,
+            projectId: command.projectId,
+            worktreeId: command.worktreeId,
+            operationId: command.operationId,
+            operation: "run.setup.status",
+            content: {
+              output,
+              outputTruncated,
+              signal,
+              errorMessage: error?.message ?? null,
+            },
+            schema: runSetupDetailContentSchema,
+            service: workerEncryption,
+          }),
+        });
+      }
+      case "project.run-setup.status": {
+        const lookup = runSetups!.status(
           command.jobId,
           command.projectId,
           command.worktreeId,
         );
+        if (!lookup.found) {
+          return protectedWorkerRunSetupLookupSchema.parse({
+            ...lookup,
+            operationId: command.operationId,
+          });
+        }
+        const { output, outputTruncated, signal, error, ...publicStatus } =
+          lookup.status;
+        return protectedWorkerRunSetupLookupSchema.parse({
+          found: true,
+          operationId: command.operationId,
+          status: {
+            ...publicStatus,
+            error: error
+              ? { code: error.code, retryable: error.retryable }
+              : null,
+          },
+          protectedDetails: await protectWorkerRunContent({
+            serverId: command.serverId,
+            projectId: command.projectId,
+            worktreeId: command.worktreeId,
+            operationId: command.operationId,
+            operation: "run.setup.status",
+            content: {
+              output,
+              outputTruncated,
+              signal,
+              errorMessage: error?.message ?? null,
+            },
+            schema: runSetupDetailContentSchema,
+            service: workerEncryption,
+          }),
+        });
+      }
       case "project.run.start":
         return managedRuns.start(command);
       case "project.run.status":
         return managedRuns.status(command.runId);
-      case "project.run.logs":
-        return managedRuns.logs(command.runId, command.maxChars);
+      case "project.run.logs": {
+        const snapshot = await managedRuns.logs(
+          command.runId,
+          command.maxChars,
+        );
+        return protectedWorkerRunLogSnapshotSchema.parse({
+          operationId: command.operationId,
+          projectId: command.projectId,
+          worktreeId: command.worktreeId,
+          run: snapshot.run,
+          protectedLog: await protectWorkerRunContent({
+            serverId: command.serverId,
+            projectId: command.projectId,
+            worktreeId: command.worktreeId,
+            operationId: command.operationId,
+            operation: "run.logs.read",
+            content: {
+              data: snapshot.data,
+              truncated: snapshot.truncated,
+            },
+            schema: runLogContentSchema,
+            service: workerEncryption,
+          }),
+        });
+      }
       case "project.run.stop":
         return managedRuns.stop(command.runId);
       case "project.run.reconcile":

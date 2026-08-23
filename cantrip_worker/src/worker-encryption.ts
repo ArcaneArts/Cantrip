@@ -371,6 +371,10 @@ export class WorkerEncryptionService {
     return this.#ownerId;
   }
 
+  serverIdentity(): string {
+    return this.serverId;
+  }
+
   componentKey(component: WorkerEncryptionComponentScope): {
     key: Uint8Array;
     keyRevision: number;

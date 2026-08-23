@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
-  RUN_CONFIGURATION_CANONICAL_PATH,
   githubPullRequestCheckoutPreparedSchema,
   githubPullRequestCheckoutResultSchema,
   worktreeCreateMutationFailureSchema,
@@ -9,7 +8,7 @@ import {
   worktreeInventorySchema,
   worktreeRemoveResultSchema,
   worktreeStatusResultSchema,
-  runConfigurationInspectionSchema,
+  runConfigurationInspectionMetadataSchema,
   type ProjectWorktreeSummary,
   type GithubPullRequestCheckoutResult,
   type WorktreeCreateMutationFailure,
@@ -751,17 +750,14 @@ export class ProjectWorktreeCoordinator {
       retryable: true;
     } | null = null;
     try {
-      const inspection = runConfigurationInspectionSchema.parse(
+      const metadata = runConfigurationInspectionMetadataSchema.parse(
         await this.bridge.request(source.workerId, {
-          type: "project.run-configurations.inspect",
+          type: "project.run-configurations.metadata",
           sourcePath: source.cwd,
         }),
       );
-      const configuration = inspection.configurations.find(
-        ({ relativePath }) => relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
-      );
-      configurationRevision = configuration?.revision ?? null;
-      configurationError = inspection.valid
+      configurationRevision = metadata.configurationRevision;
+      configurationError = metadata.valid
         ? null
         : {
             code: "configuration-invalid",
@@ -769,7 +765,7 @@ export class ProjectWorktreeCoordinator {
               "The project environment is invalid. Validate it before retrying worktree setup.",
             retryable: true,
           };
-      setupQueued = !configurationError && Boolean(configuration?.setup);
+      setupQueued = !configurationError && metadata.hasSetup;
     } catch {
       configurationError = {
         code: "setup-start-failed",

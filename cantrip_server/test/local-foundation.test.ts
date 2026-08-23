@@ -80,7 +80,7 @@ import {
   remoteSurfaceSummarySchema,
   serverBootstrapSchema,
   settingsBundleSchema,
-  scriptCommandListSchema,
+  protectedScriptCommandListSchema,
   skillListSchema,
   terminalListSchema,
   terminalSummarySchema,
@@ -126,6 +126,18 @@ const config: ServerConfig = {
   ollamaBaseUrl: "http://127.0.0.1:11434/v1",
   port: 4310,
   workerToken: "test-worker-token",
+};
+
+const protectedScriptCommands = {
+  formatVersion: 1 as const,
+  keyRevision: 1,
+  envelope: {
+    version: 1 as const,
+    algorithm: "AES-256-GCM" as const,
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
 };
 
 function workspaceNameProtection(fill: number) {
@@ -725,16 +737,7 @@ const workerBridge = {
         deletedProjectPaths.push(command.path);
         return { deleted: true };
       case "project.script-commands":
-        return [
-          {
-            id: "package:package.json:dev",
-            kind: "package",
-            name: "dev",
-            command: "pnpm run dev",
-            description: "vite",
-            source: "package.json",
-          },
-        ];
+        return protectedScriptCommands;
       case "project.share.open":
         openedProjectShares.push(command);
         return {
@@ -4634,21 +4637,22 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    const scriptOperationId = crypto.randomUUID();
     expect(
-      scriptCommandListSchema.parse(
+      protectedScriptCommandListSchema.parse(
         (
           await firstApp.inject({
             method: "GET",
-            url: `/api/terminals/${reorderedTerminal.id}/script-commands`,
+            url: `/api/terminals/${reorderedTerminal.id}/script-commands?operationId=${scriptOperationId}`,
           })
         ).json(),
       ),
-    ).toEqual([
-      expect.objectContaining({
-        name: "dev",
-        command: "pnpm run dev",
-      }),
-    ]);
+    ).toMatchObject({
+      operationId: scriptOperationId,
+      projectId: reorderedTerminal.id,
+      worktreeId: reorderedTerminal.id,
+      protectedCommands: protectedScriptCommands,
+    });
     const explorer = explorerSummarySchema.parse(
       (
         await firstApp.inject({

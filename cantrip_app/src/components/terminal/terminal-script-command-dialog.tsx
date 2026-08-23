@@ -29,11 +29,13 @@ export function TerminalScriptCommandDialog({
   onRun,
   open,
   terminalId,
+  workerId,
 }: {
   onOpenChange(open: boolean): void;
   onRun(command: ScriptCommand): string | null;
   open: boolean;
   terminalId: string;
+  workerId: string;
 }) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -41,8 +43,8 @@ export function TerminalScriptCommandDialog({
   const listRef = useRef<HTMLDivElement>(null);
   const selectionSourceRef = useRef<TerminalCommandSelectionSource>("reset");
   const commands = useQuery({
-    queryKey: ["terminal-script-commands", terminalId],
-    queryFn: () => getTerminalScriptCommands(terminalId),
+    queryKey: ["terminal-script-commands", terminalId, workerId],
+    queryFn: () => getTerminalScriptCommands(terminalId, workerId),
     enabled: open,
     refetchOnWindowFocus: false,
   });

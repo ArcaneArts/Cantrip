@@ -363,27 +363,26 @@ import {
   remoteSurfaceViewportSchema,
   serverBootstrapSchema,
   settingsBundleWireSchema,
-  scriptCommandListSchema,
-  RUN_CONFIGURATION_CANONICAL_PATH,
+  protectedScriptCommandListSchema,
   RUN_CONFIGURATION_AUTHORING_EXAMPLE,
   RUN_CONFIGURATION_AUTHORING_EXAMPLE_TOML,
-  runConfigurationActionAddInputSchema,
   runConfigurationAuthoringDocumentSchema,
   runConfigurationAuthoringHelpSchema,
-  runConfigurationAuthoringSnapshotSchema,
-  runConfigurationInspectionSchema,
-  runConfigurationSelectionSchema,
-  runConfigurationWriteRequestSchema,
-  runEnvironmentSummarySchema,
+  protectedRunConfigurationAuthoringSnapshotSchema,
+  protectedRunConfigurationInspectionSchema,
+  protectedRunConfigurationWriteRequestSchema,
+  protectedRunConfigurationWriteResultSchema,
+  protectedRunLogResultSchema,
+  protectedRunSetupStatusResultSchema,
+  protectedWorkerRunLogSnapshotSchema,
+  protectedRunEnvironmentSummarySchema,
   runEnvironmentRequestSchema,
   runInstanceResultSchema,
   runInstanceSchema,
-  runLogResultSchema,
-  runSetupStatusResultSchema,
   runStartResultSchema,
   runStartRequestSchema,
   runOpenRequestSchema,
-  workerRunSetupLookupSchema,
+  protectedWorkerRunSetupLookupSchema,
   skillListSchema,
   skillSettingsContextSchema,
   skillSettingsDeleteRequestSchema,
@@ -437,7 +436,6 @@ import {
   workerCliCommandCallSchema,
   workerRestartAcknowledgementSchema,
   workerRestartResultSchema,
-  workerRunLogSnapshotSchema,
   workerRunLookupSchema,
   workerRunReconciliationSchema,
   workerRunSnapshotSchema,
@@ -459,10 +457,15 @@ import {
   surfaceStreamWireResponseSchema,
 } from "@cantrip/protocol/surface-stream";
 import {
+  repositoryOperationOpaqueSchema,
   repositoryOperationWireRequestSchema,
   repositoryOperationWireResponseSchema,
   repositoryWorkerOperationWireRequestSchema,
 } from "@cantrip/protocol/repository-operation";
+import {
+  endpointContentContextSchema,
+  endpointContentOpaqueSchema,
+} from "@cantrip/protocol/endpoint-content";
 import {
   accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
@@ -509,7 +512,7 @@ import type {
   ProviderQuotaSnapshot,
   ProviderAuthLiveStatus,
   ReasoningEffort,
-  RunConfigurationInspection,
+  ProtectedRunConfigurationInspection,
   RunInstance,
   WorkerNotification,
   WorkerCommand,
@@ -3211,6 +3214,7 @@ export async function buildApp({
     bridge,
     app.log,
     publishWorktreeSetupChange,
+    () => serverId,
   );
   worktreeSetupExecutor = worktreeSetupJobExecutor;
   const publishProjectGithubConversionChange = (
@@ -5026,9 +5030,14 @@ export async function buildApp({
           "The run configuration placement changed before inspection.",
         );
       }
-      return runConfigurationInspectionSchema.parse(
+      const operationId = randomUUID();
+      return protectedRunConfigurationInspectionSchema.parse(
         await bridge.request(target.workerId, {
           type: "project.run-configurations.inspect",
+          operationId,
+          projectId: context.projectId,
+          worktreeId: context.worktreeId,
+          serverId,
           sourcePath: target.worktree.path,
         }),
       );
@@ -5040,19 +5049,21 @@ export async function buildApp({
           "The run configuration placement changed before authoring.",
         );
       }
-      return runConfigurationAuthoringSnapshotSchema.parse(
+      const operationId = randomUUID();
+      return protectedRunConfigurationAuthoringSnapshotSchema.parse(
         await bridge.request(target.workerId, {
           type: "project.run-configurations.read-authoring",
+          operationId,
+          projectId: context.projectId,
+          worktreeId: context.worktreeId,
+          serverId,
           sourcePath: target.worktree.path,
         }),
       );
     };
     const canonicalRunConfigurationRevision = (
-      inspection: RunConfigurationInspection,
-    ) =>
-      inspection.configurations.find(
-        ({ relativePath }) => relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
-      )?.revision ?? null;
+      inspection: ProtectedRunConfigurationInspection,
+    ) => inspection.metadata.configurationRevision;
     const readRunSetupStatus = async () => {
       const target = await worktreeContext(context.worktreeId, true);
       const inspection = await runConfigurationInspection();
@@ -5089,10 +5100,9 @@ export async function buildApp({
           );
         }
       }
-      let output: string | null = null;
-      let outputTruncated = false;
-      let exitCode: number | null = null;
-      let signal: string | null = null;
+      const operationId = randomUUID();
+      let publicWorkerStatus = null;
+      let protectedDetails = null;
       let workerStatusAvailable = false;
       if (
         setup &&
@@ -5101,9 +5111,11 @@ export async function buildApp({
         bridge.isConnected(target.workerId)
       ) {
         try {
-          const lookup = workerRunSetupLookupSchema.parse(
+          const lookup = protectedWorkerRunSetupLookupSchema.parse(
             await bridge.request(target.workerId, {
               type: "project.run-setup.status",
+              operationId,
+              serverId,
               jobId: setup.id,
               projectId: setup.projectId,
               worktreeId: setup.worktreeId,
@@ -5115,23 +5127,21 @@ export async function buildApp({
             lookup.status.configurationRevision === setup.configurationRevision
           ) {
             workerStatusAvailable = true;
-            output = lookup.status.output;
-            outputTruncated = lookup.status.outputTruncated;
-            exitCode = lookup.status.exitCode;
-            signal = lookup.status.signal;
+            publicWorkerStatus = lookup.status;
+            protectedDetails = lookup.protectedDetails;
           }
         } catch (error) {
           if (!(error instanceof WorkerUnavailableError)) throw error;
         }
       }
-      return runSetupStatusResultSchema.parse({
+      return protectedRunSetupStatusResultSchema.parse({
+        operationId,
+        projectId: context.projectId,
         worktreeId: context.worktreeId,
         setup,
         currentConfigurationRevision,
-        output,
-        outputTruncated,
-        exitCode,
-        signal,
+        publicWorkerStatus,
+        protectedDetails,
         workerStatusAvailable,
       });
     };
@@ -5350,52 +5360,20 @@ export async function buildApp({
       }
       case "run-config.list": {
         const inspection = await runConfigurationInspection();
-        const actionCount = inspection.configurations.reduce(
-          (total, configuration) => total + configuration.actions.length,
-          0,
-        );
         return cantripCliCommandResultSchema.parse({
-          summary: inspection.configured
-            ? `Found ${actionCount} run action${actionCount === 1 ? "" : "s"} for ${inspection.platform}.`
+          summary: inspection.metadata.configured
+            ? "Returned protected Run configuration metadata."
             : "No Codex-compatible run configuration is present for this project source.",
           worktreeId: context.worktreeId,
           data: inspection,
         });
       }
       case "run-config.read": {
-        const actionId = requiredToolString(call.arguments, "actionId");
-        const expectedRevision = optionalToolString(
-          call.arguments,
-          "configRevision",
-        );
         const inspection = await runConfigurationInspection();
-        const matches = inspection.configurations.flatMap((configuration) =>
-          configuration.actions
-            .filter((action) => action.id === actionId)
-            .map((action) => ({ action, configuration })),
-        );
-        if (matches.length !== 1) {
-          throw new CliCommandRequestError(
-            "not-found",
-            404,
-            "That run action is not available on the current worker platform.",
-          );
-        }
-        const selected = matches[0]!;
-        if (
-          expectedRevision &&
-          selected.configuration.revision !== expectedRevision
-        ) {
-          throw new CliCommandRequestError(
-            "conflict",
-            409,
-            "The run configuration changed. List its actions again before continuing.",
-          );
-        }
         return cantripCliCommandResultSchema.parse({
-          summary: `Read run action ${selected.action.name}.`,
+          summary: "Returned protected Run configuration metadata.",
           worktreeId: context.worktreeId,
-          data: runConfigurationSelectionSchema.parse(selected),
+          data: inspection,
         });
       }
       case "run-config.schema":
@@ -5409,89 +5387,18 @@ export async function buildApp({
             exampleToml: RUN_CONFIGURATION_AUTHORING_EXAMPLE_TOML,
           }),
         });
-      case "run-config.action-add": {
-        requireRunMutation();
-        const input = runConfigurationActionAddInputSchema.safeParse(
-          call.arguments,
-        );
-        if (!input.success) {
-          throw new CliCommandRequestError(
-            "invalid",
-            400,
-            "A Run action needs a name and command; icon defaults to run and platform must be win32, darwin, linux, or omitted.",
-          );
-        }
-        const current = runConfigurationAuthoringSnapshotSchema.parse(
-          (
-            await agentOperationExecutor.execute(context, {
-              operation: "run-config.authoring",
-              arguments: {},
-            })
-          ).data,
-        );
-        if (!current.document && current.editingError) {
-          throw new CliCommandRequestError(
-            "conflict",
-            409,
-            current.editingError,
-          );
-        }
-        if (
-          current.document?.actions.some(
-            (action) =>
-              action.name === input.data.name &&
-              action.platform === input.data.platform,
-          )
-        ) {
-          throw new CliCommandRequestError(
-            "conflict",
-            409,
-            `A Run action named ${input.data.name} already exists for ${input.data.platform ?? "all platforms"}.`,
-          );
-        }
-        const document = runConfigurationAuthoringDocumentSchema.parse({
-          ...(current.document ?? {
-            version: 1,
-            name: input.data.environmentName ?? "Project environment",
-            setup: { default: null, win32: null, darwin: null, linux: null },
-            actions: [],
-          }),
-          ...(current.document && input.data.environmentName
-            ? { name: input.data.environmentName }
-            : {}),
-          actions: [
-            ...(current.document?.actions ?? []),
-            {
-              name: input.data.name,
-              command: input.data.command,
-              icon: input.data.icon,
-              platform: input.data.platform,
-            },
-          ],
-        });
-        return agentOperationExecutor.execute(context, {
-          operation: "run-config.write",
-          arguments: {
-            expectedRevision: current.revision,
-            document,
-          },
-        });
-      }
       case "run-config.authoring": {
         const snapshot = await runConfigurationAuthoring();
         return cantripCliCommandResultSchema.parse({
-          summary: snapshot.document
-            ? `Read ${snapshot.relativePath} for revision-checked editing.`
-            : snapshot.editingError
-              ? snapshot.editingError
-              : `${snapshot.relativePath} does not exist.`,
+          summary: "Returned protected Run configuration authoring content.",
           worktreeId: context.worktreeId,
           data: snapshot,
         });
       }
+      case "run-config.action-add":
       case "run-config.write": {
         requireRunMutation();
-        const input = runConfigurationWriteRequestSchema.safeParse(
+        const input = protectedRunConfigurationWriteRequestSchema.safeParse(
           call.arguments,
         );
         if (!input.success) {
@@ -5501,31 +5408,41 @@ export async function buildApp({
             "The Environment authoring request is invalid.",
           );
         }
+        if (
+          input.data.projectId !== context.projectId ||
+          input.data.worktreeId !== context.worktreeId
+        ) {
+          throw new ExecutionLaneConflictError(
+            "The protected Run configuration targets another worktree.",
+          );
+        }
         const target = await worktreeContext(context.worktreeId, true);
         if (target.workerId !== context.workerId) {
           throw new ExecutionLaneConflictError(
             "The run configuration placement changed before writing.",
           );
         }
-        const result = workerRunConfigurationWriteResultSchema.parse(
+        const result = endpointContentOpaqueSchema.parse(
           await bridge.request(target.workerId, {
             type: "project.run-configurations.write",
+            operationId: input.data.operationId,
+            projectId: context.projectId,
+            worktreeId: context.worktreeId,
+            serverId,
             sourcePath: target.worktree.path,
-            ...input.data,
+            protectedRequest: input.data.protectedRequest,
           }),
         );
-        if (!result.written) {
-          throw new CliCommandRequestError(
-            "conflict",
-            409,
-            "The Run configuration changed before it could be saved. Reload Environment settings and try again.",
-          );
-        }
         return cantripCliCommandResultSchema.parse({
-          summary: `Saved ${result.snapshot.relativePath} at revision ${result.snapshot.revision?.slice(0, 12)}.`,
+          summary: "Processed a protected Run configuration update.",
           worktreeId: context.worktreeId,
           mutated: true,
-          data: result.snapshot,
+          data: {
+            operationId: input.data.operationId,
+            projectId: context.projectId,
+            worktreeId: context.worktreeId,
+            protectedResponse: result,
+          },
         });
       }
       case "run.setup-status": {
@@ -5551,7 +5468,7 @@ export async function buildApp({
         const inspection = await runConfigurationInspection();
         const configurationRevision =
           canonicalRunConfigurationRevision(inspection);
-        const configurationError = inspection.valid
+        const configurationError = inspection.metadata.valid
           ? null
           : {
               code: "configuration-invalid" as const,
@@ -5779,9 +5696,14 @@ export async function buildApp({
             "The Run was lost and its in-memory logs are no longer available.",
           );
         }
-        const snapshot = workerRunLogSnapshotSchema.parse(
+        const operationId = randomUUID();
+        const snapshot = protectedWorkerRunLogSnapshotSchema.parse(
           await bridge.request(run.workerId, {
             type: "project.run.logs",
+            operationId,
+            projectId: run.projectId,
+            worktreeId: run.worktreeId,
+            serverId,
             runId: run.id,
             maxChars: maximum,
           }),
@@ -5794,12 +5716,14 @@ export async function buildApp({
           )) ?? run,
         );
         return cantripCliCommandResultSchema.parse({
-          summary: `Read the last ${snapshot.data.length} characters from Run ${run.id}.`,
+          summary: `Returned protected output from Run ${run.id}.`,
           worktreeId: context.worktreeId,
-          data: runLogResultSchema.parse({
+          data: protectedRunLogResultSchema.parse({
+            operationId,
+            projectId: run.projectId,
+            worktreeId: run.worktreeId,
             run: observed,
-            data: snapshot.data,
-            truncated: snapshot.truncated,
+            protectedLog: snapshot.protectedLog,
           }),
         });
       }
@@ -6998,51 +6922,6 @@ export async function buildApp({
     }
   };
 
-  const inspectCliRunConfigurations = async (
-    context: ExecutionOperationContext,
-  ) => {
-    const result = await agentOperationExecutor.execute(context, {
-      operation: "run-config.list",
-      arguments: {},
-    });
-    return {
-      result,
-      inspection: runConfigurationInspectionSchema.parse(result.data),
-    };
-  };
-
-  const selectCliRunAction = async (
-    context: ExecutionOperationContext,
-    selector: string,
-  ) => {
-    const { inspection } = await inspectCliRunConfigurations(context);
-    const candidates = inspection.configurations.flatMap((configuration) =>
-      configuration.actions.map((action) => ({ action, configuration })),
-    );
-    const matches = candidates.filter(
-      ({ action }) => action.id === selector || action.name === selector,
-    );
-    if (matches.length === 1) return matches[0]!;
-    if (matches.length > 1) {
-      throw new CliCommandRequestError(
-        "ambiguous",
-        409,
-        `Multiple Run configurations contain an action named ${JSON.stringify(selector)}: ${matches
-          .slice(0, 8)
-          .map(
-            ({ action, configuration }) =>
-              `${configuration.relativePath} action ${action.sourceIndex + 1} (${action.id})`,
-          )
-          .join(", ")}. Retry with the full action ID.`,
-      );
-    }
-    throw new CliCommandRequestError(
-      "not-found",
-      404,
-      `Run action ${selector} was not found for ${inspection.platform}. Run \`cantrip run list\` to see available actions.`,
-    );
-  };
-
   const selectWorktree = async (
     context: ExecutionOperationContext,
     selector: string | null,
@@ -7323,55 +7202,13 @@ export async function buildApp({
           },
         });
       case "run.list":
+      case "run.show":
+      case "run.validate":
+      case "run.config-path":
         return agentOperationExecutor.execute(context, {
           operation: "run-config.list",
           arguments: {},
         });
-      case "run.show": {
-        const selected = await selectCliRunAction(
-          context,
-          requiredToolString(call.arguments, "action"),
-        );
-        return agentOperationExecutor.execute(context, {
-          operation: "run-config.read",
-          arguments: {
-            actionId: selected.action.id,
-            configRevision: selected.configuration.revision,
-          },
-        });
-      }
-      case "run.validate": {
-        const { inspection, result } =
-          await inspectCliRunConfigurations(context);
-        const errorCount = [
-          ...inspection.diagnostics,
-          ...inspection.configurations.flatMap(
-            (configuration) => configuration.diagnostics,
-          ),
-        ].filter(({ severity }) => severity === "error").length;
-        return cantripCliCommandResultSchema.parse({
-          ...result,
-          summary: inspection.valid
-            ? inspection.configured
-              ? "Run configuration is valid for this worker."
-              : "No Run configuration is present; the project is valid but unconfigured."
-            : `Run configuration has ${errorCount} validation error${errorCount === 1 ? "" : "s"}.`,
-        });
-      }
-      case "run.config-path": {
-        const { inspection, result } =
-          await inspectCliRunConfigurations(context);
-        return cantripCliCommandResultSchema.parse({
-          ...result,
-          summary: `${inspection.canonical.relativePath} is ${inspection.canonical.sourceControlState}.`,
-          data: {
-            platform: inspection.platform,
-            canonical: inspection.canonical,
-            configured: inspection.configured,
-            valid: inspection.valid,
-          },
-        });
-      }
       case "run.config-schema":
         return agentOperationExecutor.execute(context, {
           operation: "run-config.schema",
@@ -7390,59 +7227,34 @@ export async function buildApp({
         });
       }
       case "run.config-init": {
-        const overwrite = call.arguments.overwrite === true;
-        const requestedName = optionalToolString(call.arguments, "name");
-        const currentResult = await agentOperationExecutor.execute(context, {
-          operation: "run-config.authoring",
-          arguments: {},
-        });
-        const current = runConfigurationAuthoringSnapshotSchema.parse(
-          currentResult.data,
-        );
-        if (current.revision && !overwrite) {
-          throw new CliCommandRequestError(
-            "conflict",
-            409,
-            `${current.relativePath} already exists. Retry with --overwrite only if replacing it is intentional.`,
-          );
-        }
-        if (!current.revision && current.editingError) {
-          throw new CliCommandRequestError(
-            "conflict",
-            409,
-            current.editingError,
-          );
-        }
-        const document = runConfigurationAuthoringDocumentSchema.safeParse({
-          version: 1,
-          name: requestedName ?? "Project environment",
-          setup: { default: null, win32: null, darwin: null, linux: null },
-          actions: [],
-        });
-        if (!document.success) {
-          throw new CliCommandRequestError(
-            "invalid",
-            400,
-            "The environment name must be non-empty display text no longer than 200 characters.",
-          );
-        }
-        return mutationResult(
-          agentOperationExecutor.execute(context, {
-            operation: "run-config.write",
-            arguments: {
-              expectedRevision: current.revision,
-              document: document.data,
-            },
-          }),
-        );
+        return protectedRunConfigurationWriteRequestSchema.safeParse(
+          call.arguments,
+        ).success
+          ? mutationResult(
+              agentOperationExecutor.execute(context, {
+                operation: "run-config.write",
+                arguments: call.arguments,
+              }),
+            )
+          : agentOperationExecutor.execute(context, {
+              operation: "run-config.authoring",
+              arguments: {},
+            });
       }
       case "run.config-action-add":
-        return mutationResult(
-          agentOperationExecutor.execute(context, {
-            operation: "run-config.action-add",
-            arguments: call.arguments,
-          }),
-        );
+        return protectedRunConfigurationWriteRequestSchema.safeParse(
+          call.arguments,
+        ).success
+          ? mutationResult(
+              agentOperationExecutor.execute(context, {
+                operation: "run-config.action-add",
+                arguments: call.arguments,
+              }),
+            )
+          : agentOperationExecutor.execute(context, {
+              operation: "run-config.authoring",
+              arguments: {},
+            });
       case "run.setup-status":
         return agentOperationExecutor.execute(context, {
           operation: "run.setup-status",
@@ -7456,17 +7268,16 @@ export async function buildApp({
           }),
         );
       case "run.start": {
-        const selected = await selectCliRunAction(
-          context,
-          requiredToolString(call.arguments, "action"),
-        );
         return mutationResult(
           agentOperationExecutor.execute(context, {
             operation: "run.start",
             arguments: {
               requestId: call.requestId,
-              actionId: selected.action.id,
-              configRevision: selected.configuration.revision,
+              actionId: requiredToolString(call.arguments, "actionId"),
+              configRevision: requiredToolString(
+                call.arguments,
+                "configRevision",
+              ),
               focus: call.arguments.focus !== false,
             },
           }),
@@ -21471,7 +21282,9 @@ export async function buildApp({
     Params: { projectId: string };
     Querystring: { worktreeId?: string };
   }>("/api/projects/:projectId/run-environment", async (request, reply) => {
-    const input = runEnvironmentRequestSchema.safeParse(request.query);
+    const input = runEnvironmentRequestSchema.safeParse({
+      worktreeId: request.query.worktreeId,
+    });
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -21504,12 +21317,13 @@ export async function buildApp({
         }
       }
       return reply.send(
-        runEnvironmentSummarySchema.parse({
+        protectedRunEnvironmentSummarySchema.parse({
           worktreeId: context.worktreeId,
-          inspection: runConfigurationInspectionSchema.parse(
+          inspection: protectedRunConfigurationInspectionSchema.parse(
             configuration.data,
           ),
-          setup: runSetupStatusResultSchema.parse(setupStatus.data).setup,
+          setup: protectedRunSetupStatusResultSchema.parse(setupStatus.data)
+            .setup,
           run,
         }),
       );
@@ -21528,7 +21342,7 @@ export async function buildApp({
           arguments: {},
         });
         return reply.send(
-          runConfigurationAuthoringSnapshotSchema.parse(result.data),
+          protectedRunConfigurationAuthoringSnapshotSchema.parse(result.data),
         );
       } catch (error) {
         return sendRunApiFailure(reply, error);
@@ -21539,17 +21353,22 @@ export async function buildApp({
   app.put<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/run-environment/configuration",
     async (request, reply) => {
-      const input = runConfigurationWriteRequestSchema.safeParse(request.body);
+      const input = protectedRunConfigurationWriteRequestSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const context = await resolveAppRunContext(request.params.projectId);
+        const context = await resolveAppRunContext(
+          request.params.projectId,
+          input.data.worktreeId,
+        );
         const result = await agentOperationExecutor.execute(context, {
           operation: "run-config.write",
           arguments: input.data,
         });
-        const snapshot = runConfigurationAuthoringSnapshotSchema.parse(
+        const wire = protectedRunConfigurationWriteResultSchema.parse(
           result.data,
         );
         publishLiveInvalidation("run", {
@@ -21561,7 +21380,7 @@ export async function buildApp({
           resourceType: "run-configuration",
           result: "succeeded",
         });
-        return reply.send(snapshot);
+        return reply.send(wire);
       } catch (error) {
         return sendRunApiFailure(reply, error);
       }
@@ -21745,45 +21564,72 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { terminalId: string } }>(
-    "/api/terminals/:terminalId/script-commands",
-    async (request, reply) => {
-      const context = await repository.getTerminalExecutionContext(
-        applicationOwnerId(),
-        request.params.terminalId,
+  app.get<{
+    Params: { terminalId: string };
+    Querystring: { operationId?: string };
+  }>("/api/terminals/:terminalId/script-commands", async (request, reply) => {
+    const operationId =
+      endpointContentContextSchema.shape.operationId.safeParse(
+        request.query.operationId,
       );
-      if (!context) {
-        return reply.code(404).send({ error: "Terminal not found." });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-      try {
-        const commands = await bridge.request(
+    if (!operationId.success) {
+      return reply
+        .code(400)
+        .send({ error: "A valid operationId is required." });
+    }
+    const context = await repository.getTerminalExecutionContext(
+      applicationOwnerId(),
+      request.params.terminalId,
+    );
+    if (!context) {
+      return reply.code(404).send({ error: "Terminal not found." });
+    }
+    if (!bridge.isConnected(context.workerId)) {
+      return reply.code(503).send({ error: "Project worker is offline." });
+    }
+    try {
+      const protectedCommands = repositoryOperationOpaqueSchema.parse(
+        await bridge.request(
           context.workerId,
           {
             type: "project.script-commands",
+            operationId: operationId.data,
             terminalId: context.terminalId,
             serverId,
             worktreePath: context.worktreePath,
             stateProtection: context.stateProtection,
           },
           { timeoutMs: 30_000 },
-        );
-        return reply.send(scriptCommandListSchema.parse(commands));
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
+        ),
+      );
+      return reply.send(
+        protectedScriptCommandListSchema.parse({
+          operationId: operationId.data,
+          projectId: context.terminalId,
+          worktreeId: context.terminalId,
+          protectedCommands,
+        }),
+      );
+    } catch (error) {
+      return sendWorkerRequestFailure(reply, error);
+    }
+  });
 
   app.get<{
     Params: { projectId: string };
-    Querystring: { worktreeId?: string };
+    Querystring: { operationId?: string; worktreeId?: string };
   }>("/api/projects/:projectId/script-commands", async (request, reply) => {
-    const input = runEnvironmentRequestSchema.safeParse(request.query);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
+    const input = runEnvironmentRequestSchema.safeParse({
+      worktreeId: request.query.worktreeId,
+    });
+    const operationId =
+      endpointContentContextSchema.shape.operationId.safeParse(
+        request.query.operationId,
+      );
+    if (!input.success || !operationId.success) {
+      return reply
+        .code(400)
+        .send({ error: "A valid operationId is required." });
     }
     try {
       const context = await resolveAppRunContext(
@@ -21800,15 +21646,28 @@ export async function buildApp({
           "The script command worktree placement changed before discovery.",
         );
       }
-      const commands = await bridge.request(
-        context.workerId,
-        {
-          type: "project.script-commands.inspect",
-          sourcePath: worktree.worktree.path,
-        },
-        { timeoutMs: 30_000 },
+      const protectedCommands = repositoryOperationOpaqueSchema.parse(
+        await bridge.request(
+          context.workerId,
+          {
+            type: "project.script-commands.inspect",
+            operationId: operationId.data,
+            projectId: request.params.projectId,
+            worktreeId: context.worktreeId,
+            serverId,
+            sourcePath: worktree.worktree.path,
+          },
+          { timeoutMs: 30_000 },
+        ),
       );
-      return reply.send(scriptCommandListSchema.parse(commands));
+      return reply.send(
+        protectedScriptCommandListSchema.parse({
+          operationId: operationId.data,
+          projectId: request.params.projectId,
+          worktreeId: context.worktreeId,
+          protectedCommands,
+        }),
+      );
     } catch (error) {
       return sendRunApiFailure(reply, error);
     }

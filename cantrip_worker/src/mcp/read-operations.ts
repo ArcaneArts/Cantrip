@@ -43,10 +43,15 @@ import {
   executionTargetSchema,
   executionTargetWireCatalogSchema,
   projectWorktreeListSchema,
+  protectedRunConfigurationInspectionSchema,
+  protectedRunLogResultSchema,
+  protectedRunSetupStatusResultSchema,
   runConfigurationInspectionSchema,
   runConfigurationAuthoringHelpSchema,
   runConfigurationSelectionSchema,
   runInstanceResultSchema,
+  runLogContentSchema,
+  runSetupDetailContentSchema,
   runLogResultSchema,
   runSetupStatusResultSchema,
   worktreeStatusResultSchema,
@@ -75,6 +80,7 @@ import {
   openWorkerSurfaceStreamContent,
   protectWorkerSurfaceStreamContent,
 } from "../surface-stream-encryption.js";
+import { openWorkerRunContent } from "../run-content-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { cantripMcpToolHelp } from "./tool-catalog.js";
 
@@ -347,6 +353,73 @@ export function assertBoundRunResult(
   }
 }
 
+export async function openBoundRunConfigurationInspection(
+  options: CantripMcpOperationOptions,
+  value: unknown,
+) {
+  const wire = protectedRunConfigurationInspectionSchema.parse(value);
+  if (
+    wire.projectId !== options.binding.projectId ||
+    wire.worktreeId !== options.binding.worktreeId
+  ) {
+    throw new Error("Cantrip returned Run configuration for another worktree.");
+  }
+  return openWorkerRunContent({
+    serverId: options.service.serverIdentity(),
+    projectId: wire.projectId,
+    worktreeId: wire.worktreeId,
+    operationId: wire.operationId,
+    operation: "run.configuration.inspect",
+    opaque: wire.protectedInspection,
+    schema: runConfigurationInspectionSchema,
+    service: options.service,
+    direction: "response",
+  });
+}
+
+export async function openBoundRunSetupStatus(
+  options: CantripMcpOperationOptions,
+  value: unknown,
+) {
+  const wire = protectedRunSetupStatusResultSchema.parse(value);
+  if (
+    wire.projectId !== options.binding.projectId ||
+    wire.worktreeId !== options.binding.worktreeId
+  ) {
+    throw new Error("Cantrip returned setup status for another worktree.");
+  }
+  const details =
+    wire.publicWorkerStatus && wire.protectedDetails
+      ? await openWorkerRunContent({
+          serverId: options.service.serverIdentity(),
+          projectId: wire.projectId,
+          worktreeId: wire.worktreeId,
+          operationId: wire.operationId,
+          operation: "run.setup.status",
+          opaque: wire.protectedDetails,
+          schema: runSetupDetailContentSchema,
+          service: options.service,
+          direction: "response",
+        })
+      : null;
+  return runSetupStatusResultSchema.parse({
+    worktreeId: wire.worktreeId,
+    setup:
+      wire.setup?.error && details?.errorMessage
+        ? {
+            ...wire.setup,
+            error: { ...wire.setup.error, message: details.errorMessage },
+          }
+        : wire.setup,
+    currentConfigurationRevision: wire.currentConfigurationRevision,
+    output: details?.output ?? null,
+    outputTruncated: details?.outputTruncated ?? false,
+    exitCode: wire.publicWorkerStatus?.exitCode ?? null,
+    signal: details?.signal ?? null,
+    workerStatusAvailable: wire.workerStatusAvailable,
+  });
+}
+
 async function executeRunReadOperation(options: CantripMcpOperationOptions) {
   switch (options.request.operation) {
     case "run-config.schema": {
@@ -370,9 +443,16 @@ async function executeRunReadOperation(options: CantripMcpOperationOptions) {
         options.requestId,
       );
       assertBoundRunResult(options, result);
+      const inspection = await openBoundRunConfigurationInspection(
+        options,
+        result.data,
+      );
       return cantripMcpRunConfigListResultSchema.parse({
         ...result,
-        data: runConfigurationInspectionSchema.parse(result.data),
+        summary: inspection.configured
+          ? "Returned Run configuration for this project source."
+          : "No Codex-compatible Run configuration is present for this project source.",
+        data: inspection,
       });
     }
     case "run-config.read": {
@@ -385,9 +465,28 @@ async function executeRunReadOperation(options: CantripMcpOperationOptions) {
         options.requestId,
       );
       assertBoundRunResult(options, result);
+      const inspection = await openBoundRunConfigurationInspection(
+        options,
+        result.data,
+      );
+      const selection = inspection.configurations
+        .flatMap((configuration) =>
+          configuration.actions.map((action) => ({ action, configuration })),
+        )
+        .find(
+          ({ action, configuration }) =>
+            action.id === arguments_.actionId &&
+            configuration.revision === arguments_.configRevision,
+        );
+      if (!selection) {
+        throw new Error(
+          "The requested Run action or configuration revision is no longer available.",
+        );
+      }
       return cantripMcpRunConfigReadResultSchema.parse({
         ...result,
-        data: runConfigurationSelectionSchema.parse(result.data),
+        summary: `Returned Run action ${selection.action.name}.`,
+        data: runConfigurationSelectionSchema.parse(selection),
       });
     }
     case "run.status": {
@@ -412,9 +511,10 @@ async function executeRunReadOperation(options: CantripMcpOperationOptions) {
         options.requestId,
       );
       assertBoundRunResult(options, result);
+      const data = await openBoundRunSetupStatus(options, result.data);
       return cantripMcpRunSetupStatusResultSchema.parse({
         ...result,
-        data: runSetupStatusResultSchema.parse(result.data),
+        data,
       });
     }
     case "run.read": {
@@ -427,17 +527,34 @@ async function executeRunReadOperation(options: CantripMcpOperationOptions) {
         options.requestId,
       );
       assertBoundRunResult(options, result);
-      const data = runLogResultSchema.parse(result.data);
-      assertBoundRun(options, data.run);
-      const locallyTruncated = data.data.length > arguments_.maxChars;
+      const wire = protectedRunLogResultSchema.parse(result.data);
+      assertBoundRun(options, wire.run);
+      if (
+        wire.projectId !== options.binding.projectId ||
+        wire.worktreeId !== options.binding.worktreeId
+      ) {
+        throw new Error("Cantrip returned Run output for another worktree.");
+      }
+      const log = await openWorkerRunContent({
+        serverId: options.service.serverIdentity(),
+        projectId: wire.projectId,
+        worktreeId: wire.worktreeId,
+        operationId: wire.operationId,
+        operation: "run.logs.read",
+        opaque: wire.protectedLog,
+        schema: runLogContentSchema,
+        service: options.service,
+        direction: "response",
+      });
+      const locallyTruncated = log.data.length > arguments_.maxChars;
       return cantripMcpRunReadResultSchema.parse({
         ...result,
         data: {
-          ...data,
+          run: wire.run,
           data: locallyTruncated
-            ? data.data.slice(-arguments_.maxChars)
-            : data.data,
-          truncated: data.truncated || locallyTruncated,
+            ? log.data.slice(-arguments_.maxChars)
+            : log.data,
+          truncated: log.truncated || locallyTruncated,
         },
       });
     }

@@ -11,7 +11,8 @@ import {
   executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
   projectTabLayoutWireSummarySchema,
-  scriptCommandListSchema,
+  protectedRunConfigurationInspectionSchema,
+  protectedScriptCommandListSchema,
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
@@ -77,6 +78,17 @@ const protectedSurfacePayload = surfaceStreamOpaqueSchema.parse({
     ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
   },
 });
+const protectedRunPayload = {
+  formatVersion: 1 as const,
+  domain: "run-content" as const,
+  keyRevision: 1,
+  envelope: protectedSurfacePayload.envelope,
+};
+const protectedRepositoryPayload = {
+  formatVersion: 1 as const,
+  keyRevision: 1,
+  envelope: protectedSurfacePayload.envelope,
+};
 function protectedSurfaceArguments(target: string) {
   return {
     target,
@@ -160,48 +172,29 @@ const workerBridge: WorkerCommandBus = {
       case "project.run-configurations.inspect": {
         const platform = workerId === "worker-alpha" ? "darwin" : "linux";
         return {
-          platform,
-          canonical: {
-            relativePath: ".codex/environments/environment.toml",
-            sourceControlState: "ignored",
+          operationId: command.operationId,
+          projectId: command.projectId,
+          worktreeId: command.worktreeId,
+          metadata: {
+            platform,
+            configured: true,
+            valid: true,
+            hasSetup: false,
+            configurationRevision: "a".repeat(64),
           },
-          configured: true,
-          valid: true,
-          configurations: [
-            {
-              relativePath: ".codex/environments/environment.toml",
-              revision: "a".repeat(64),
-              version: 1,
-              name: "Spectral Lab",
-              sourceControlState: "ignored",
-              setup: null,
-              actions: [
-                {
-                  id: "b".repeat(64),
-                  name: "Run Spectral Lab",
-                  icon: "run",
-                  platform,
-                  configurationPath: ".codex/environments/environment.toml",
-                  sourceIndex: 1,
-                },
-              ],
-              diagnostics: [],
-            },
-          ],
-          diagnostics: [],
+          protectedInspection: protectedRunPayload,
         };
       }
+      case "project.run-configurations.metadata":
+        return {
+          platform: workerId === "worker-alpha" ? "darwin" : "linux",
+          configured: true,
+          valid: true,
+          hasSetup: false,
+          configurationRevision: "a".repeat(64),
+        };
       case "project.script-commands.inspect":
-        return [
-          {
-            id: "package:package.json:dev",
-            kind: "package",
-            name: "dev",
-            command: "pnpm run dev",
-            description: "vite",
-            source: "package.json",
-          },
-        ];
+        return protectedRepositoryPayload;
       default:
         throw new Error(`Unexpected placement command ${command.type}.`);
     }
@@ -536,7 +529,7 @@ describe.sequential("project execution placement API", () => {
     expect(created.statusCode, JSON.stringify(created.json())).toBe(200);
     const result = cantripCliCommandResultSchema.parse(created.json());
     expect(result).toMatchObject({
-      summary: "Opened a new Browser tab.",
+      summary: expect.stringContaining("Opened a new Browser tab."),
       target: {
         kind: "surface",
         projectId,
@@ -594,15 +587,16 @@ describe.sequential("project execution placement API", () => {
   });
 
   it("discovers project scripts on the selected worktree worker", async () => {
+    const operationId = randomUUID();
     const response = await app.inject({
       method: "GET",
-      url: `/api/projects/${projectId}/script-commands?worktreeId=${betaWorktreeId}`,
+      url: `/api/projects/${projectId}/script-commands?worktreeId=${betaWorktreeId}&operationId=${operationId}`,
     });
 
     expect(response.statusCode, response.body).toBe(200);
-    expect(scriptCommandListSchema.parse(response.json())).toEqual([
-      expect.objectContaining({ name: "dev", command: "pnpm run dev" }),
-    ]);
+    expect(
+      protectedScriptCommandListSchema.parse(response.json()),
+    ).toMatchObject({ operationId, projectId, worktreeId: betaWorktreeId });
     expect(routedCommands.at(-1)).toMatchObject({
       workerId: "worker-beta",
       command: {
@@ -1066,51 +1060,50 @@ describe.sequential("project execution placement API", () => {
     const cliRunList = await cli("run.list");
     expect(cliRunList.statusCode).toBe(200);
     expect(
-      cantripCliCommandResultSchema.parse(cliRunList.json()).data,
+      protectedRunConfigurationInspectionSchema.parse(
+        cantripCliCommandResultSchema.parse(cliRunList.json()).data,
+      ),
     ).toMatchObject({
-      platform: "darwin",
-      configured: true,
-      configurations: [
-        {
-          name: "Spectral Lab",
-          sourceControlState: "ignored",
-          actions: [{ id: "b".repeat(64), name: "Run Spectral Lab" }],
-        },
-      ],
+      metadata: { platform: "darwin", configured: true },
+      protectedInspection: protectedRunPayload,
     });
-    expect(routedCommands).toContainEqual({
-      workerId: "worker-alpha",
-      command: {
-        type: "project.run-configurations.inspect",
-        sourcePath: path.join(dataDirectory, "worker-alpha"),
-      },
-    });
+    expect(routedCommands).toContainEqual(
+      expect.objectContaining({
+        workerId: "worker-alpha",
+        command: expect.objectContaining({
+          type: "project.run-configurations.inspect",
+          sourcePath: path.join(dataDirectory, "worker-alpha"),
+        }),
+      }),
+    );
     const betaRunList = await cli("run.list", {}, false, "worker-beta");
     expect(betaRunList.statusCode).toBe(200);
     expect(
-      cantripCliCommandResultSchema.parse(betaRunList.json()).data,
+      protectedRunConfigurationInspectionSchema.parse(
+        cantripCliCommandResultSchema.parse(betaRunList.json()).data,
+      ).metadata,
     ).toMatchObject({
       platform: "linux",
-      configurations: [
-        { actions: [{ id: "b".repeat(64), platform: "linux" }] },
-      ],
     });
-    expect(routedCommands).toContainEqual({
-      workerId: "worker-beta",
-      command: {
-        type: "project.run-configurations.inspect",
-        sourcePath: path.join(dataDirectory, "worker-beta"),
-      },
-    });
+    expect(routedCommands).toContainEqual(
+      expect.objectContaining({
+        workerId: "worker-beta",
+        command: expect.objectContaining({
+          type: "project.run-configurations.inspect",
+          sourcePath: path.join(dataDirectory, "worker-beta"),
+        }),
+      }),
+    );
     const cliRunAction = await cli("run.show", {
       action: "Run Spectral Lab",
     });
     expect(cliRunAction.statusCode).toBe(200);
     expect(
-      cantripCliCommandResultSchema.parse(cliRunAction.json()).data,
+      protectedRunConfigurationInspectionSchema.parse(
+        cantripCliCommandResultSchema.parse(cliRunAction.json()).data,
+      ).metadata,
     ).toMatchObject({
-      configuration: { revision: "a".repeat(64) },
-      action: { id: "b".repeat(64), platform: "darwin" },
+      platform: "darwin",
     });
     const hiddenPolicyRead = await cli("policy.read", {
       policyId: hiddenPolicy.id,

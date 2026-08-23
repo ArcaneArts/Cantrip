@@ -119,7 +119,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "794d634c9d77ded0dab79d3b92edae59c63272c203a224ab75cf5fbb472484e6",
   workerCommands:
-    "11176fe9fd0ef7dd4a89b9ba5cbedb09d0bc4036e2da440410323c09b282fa26",
+    "65c2969eea8e60fd5b22a78777ef1175f14caa94962144d4bdc96f8cbc47e7a2",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3511,7 +3511,15 @@ function durableTableContentInventory(schemaText) {
 function applicationRouteContentClassification(route) {
   const key = `${route.method} ${route.path}`;
   if (
-    /(?:\/run-environment|\/runs(?:\/|$)|\/script-commands|\/customizations(?:\/|$)|\/skills(?:\/|$)|\/tunnels(?:\/|$))/u.test(
+    /(?:\/run-environment(?:\/|$)|\/script-commands(?:\/|$))/u.test(route.path)
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "operation-bound Run or discovered-command content",
+    };
+  }
+  if (
+    /(?:\/customizations(?:\/|$)|\/skills(?:\/|$)|\/tunnels(?:\/|$))/u.test(
       route.path,
     )
   ) {
@@ -3555,10 +3563,22 @@ function applicationRouteContentClassification(route) {
 
 function workerCommandContentClassification(command) {
   if (
-    /^(?:project\.run(?:-|\.)|project\.script-commands|skills\.|customization\.)/u.test(
+    /^(?:project\.run-configurations\.(?:inspect|read-authoring|write)|project\.run-setup\.(?:start|status)|project\.run\.logs|project\.script-commands(?:\.inspect)?)$/u.test(
       command,
     )
   ) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "operation-bound Run or discovered-command content",
+    };
+  }
+  if (command === "project.run-configurations.metadata") {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale: "bounded worktree-readiness metadata without Run semantics",
+    };
+  }
+  if (/^(?:skills\.|customization\.)/u.test(command)) {
     return {
       classification: "tracked-rollout-gap",
       rationale: "post-closure remaining-work ledger",
@@ -3587,10 +3607,16 @@ function workerCommandContentClassification(command) {
 }
 
 function liveResourceContentClassification(resource) {
-  if (["customization", "run", "tunnel"].includes(resource)) {
+  if (["customization", "tunnel"].includes(resource)) {
     return {
       classification: "tracked-rollout-gap",
       rationale: "post-closure remaining-work ledger",
+    };
+  }
+  if (resource === "run") {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale: "Run lifecycle invalidation without semantic content",
     };
   }
   if (
@@ -3618,8 +3644,8 @@ function liveResourceContentClassification(resource) {
 function cliCommandContentClassification(command) {
   if (/^run\./u.test(command)) {
     return {
-      classification: "tracked-rollout-gap",
-      rationale: "Run content still crosses the server in plaintext",
+      classification: "endpoint-protected",
+      rationale: "worker-opened Run content or bounded lifecycle control",
     };
   }
   if (/^(?:browser|explorer|policy|terminal)\./u.test(command)) {
@@ -3641,10 +3667,16 @@ function cliCommandContentClassification(command) {
 }
 
 function agentOperationContentClassification(operation) {
-  if (/^(?:run(?:-|\.)|client\.notify$)/u.test(operation)) {
+  if (/^run(?:-|\.)/u.test(operation)) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "worker-opened Run content or bounded lifecycle control",
+    };
+  }
+  if (operation === "client.notify") {
     return {
       classification: "tracked-rollout-gap",
-      rationale: "Run or client-notification semantic content is plaintext",
+      rationale: "client-notification semantic content is plaintext",
     };
   }
   if (/^(?:browser|explorer|policy|terminal)\./u.test(operation)) {

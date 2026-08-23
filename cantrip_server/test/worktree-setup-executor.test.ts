@@ -1,5 +1,6 @@
 import type {
-  WorkerRunSetupStatus,
+  EndpointContentOpaque,
+  WorkerRunSetupPublicStatus,
   WorktreeSetupJobSummary,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
@@ -28,10 +29,23 @@ function job(): WorktreeSetupJobSummary {
   };
 }
 
+const protectedDetails: EndpointContentOpaque = {
+  formatVersion: 1,
+  domain: "run-content",
+  keyRevision: 1,
+  envelope: {
+    version: 1,
+    algorithm: "AES-256-GCM",
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+};
+
 function status(
   active: WorktreeSetupJobSummary,
   state: "running" | "succeeded",
-): WorkerRunSetupStatus {
+): WorkerRunSetupPublicStatus {
   return {
     jobId: active.id,
     projectId: active.projectId,
@@ -39,10 +53,7 @@ function status(
     configurationRevision: active.configurationRevision,
     attempt: active.attempt,
     state,
-    output: state === "running" ? "restoring" : "restored\r\n",
-    outputTruncated: false,
     exitCode: state === "succeeded" ? 0 : null,
-    signal: null,
     error: null,
     startedAt: now,
     completedAt: state === "succeeded" ? now : null,
@@ -77,8 +88,17 @@ describe("worktree setup executor", () => {
     } as unknown as ServerRepository;
     const request = vi
       .fn()
-      .mockResolvedValueOnce(running)
-      .mockResolvedValueOnce({ found: true, status: succeededStatus });
+      .mockResolvedValueOnce({
+        operationId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb330",
+        status: running,
+        protectedDetails,
+      })
+      .mockResolvedValueOnce({
+        found: true,
+        operationId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb331",
+        status: succeededStatus,
+        protectedDetails,
+      });
     const bridge = {
       isConnected: vi.fn().mockReturnValue(true),
       request,
@@ -93,31 +113,34 @@ describe("worktree setup executor", () => {
 
     executor.queueAvailable();
     await executor.drain();
-    expect(request.mock.calls).toEqual([
-      [
-        active.workerId,
-        {
-          type: "project.run-setup.start",
-          jobId: active.id,
-          attempt: 1,
-          projectId: active.projectId,
-          worktreeId: active.worktreeId,
-          sourcePath: "/workspace/project",
-          worktreePath: "/workspace/project-worktrees/feature",
-          configurationRevision: active.configurationRevision,
-        },
-        { timeoutMs: 15_000 },
-      ],
-      [
-        active.workerId,
-        {
-          type: "project.run-setup.status",
-          jobId: active.id,
-          projectId: active.projectId,
-          worktreeId: active.worktreeId,
-        },
-        { timeoutMs: 15_000 },
-      ],
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls[0]).toMatchObject([
+      active.workerId,
+      {
+        type: "project.run-setup.start",
+        jobId: active.id,
+        attempt: 1,
+        projectId: active.projectId,
+        worktreeId: active.worktreeId,
+        sourcePath: "/workspace/project",
+        worktreePath: "/workspace/project-worktrees/feature",
+        configurationRevision: active.configurationRevision,
+        operationId: expect.any(String),
+        serverId: "server-internal",
+      },
+      { timeoutMs: 15_000 },
+    ]);
+    expect(request.mock.calls[1]).toMatchObject([
+      active.workerId,
+      {
+        type: "project.run-setup.status",
+        jobId: active.id,
+        projectId: active.projectId,
+        worktreeId: active.worktreeId,
+        operationId: expect.any(String),
+        serverId: "server-internal",
+      },
+      { timeoutMs: 15_000 },
     ]);
     expect(renewLease).toHaveBeenCalledWith(active.id, "command-one", 1);
     expect(complete).toHaveBeenCalledWith(

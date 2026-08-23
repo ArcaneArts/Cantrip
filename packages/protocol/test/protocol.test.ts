@@ -3110,6 +3110,7 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.parse({
         type: "project.script-commands",
+        operationId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb330",
         terminalId: "terminal-1",
         serverId: "server-1",
         worktreePath: "/worker/projects/cantrip",
@@ -3119,6 +3120,10 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.parse({
         type: "project.script-commands.inspect",
+        operationId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb331",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+        serverId: "server-1",
         sourcePath: "/worker/projects/cantrip",
       }).type,
     ).toBe("project.script-commands.inspect");

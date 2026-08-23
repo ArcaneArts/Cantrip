@@ -687,6 +687,7 @@ export function TerminalView({
       {onCommandPaletteOpenChange ? (
         <TerminalScriptCommandDialog
           terminalId={terminal.id}
+          workerId={terminal.activeWorkerId}
           open={commandPaletteOpen}
           onOpenChange={setCommandPaletteOpen}
           onRun={(command) =>
