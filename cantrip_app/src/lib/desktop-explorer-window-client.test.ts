@@ -59,4 +59,42 @@ describe("DesktopExplorerWindowClient", () => {
     client.dispose();
     broker.close();
   });
+
+  it("retries the launch handoff until the owning window listener is ready", async () => {
+    const launchId = crypto.randomUUID();
+    const context: DesktopExplorerWindowContext = {
+      appearance: "dark",
+      explorer: { id: "explorer-two" } as ExplorerSummary,
+      path: "src/retry.ts",
+      requestedAtMs: Date.now(),
+    };
+    let resolveContext!: (value: DesktopExplorerWindowContext) => void;
+    const receivedContext = new Promise<DesktopExplorerWindowContext>(
+      (resolve) => {
+        resolveContext = resolve;
+      },
+    );
+    const client = new DesktopExplorerWindowClient(launchId, {
+      onContext: resolveContext,
+      onEditor: vi.fn(),
+      onEditorError: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const broker = new BroadcastChannel(
+      desktopExplorerWindowChannelName(launchId),
+    );
+    broker.addEventListener("message", (event) => {
+      const request = event.data as DesktopExplorerWindowRequest;
+      if (request.type === "launch.request") {
+        broker.postMessage({ context, launchId, type: "launch.ready" });
+      }
+    });
+
+    await expect(receivedContext).resolves.toEqual(context);
+    client.dispose();
+    broker.close();
+  });
 });

@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { CodeAppearance, ExplorerSummary } from "@cantrip/protocol";
 import type { BackgroundThrottlingPolicy } from "@tauri-apps/api/window";
 
+import type { DesktopExplorerWindowBroker } from "@/lib/desktop-explorer-window-broker";
 import { desktopExplorerWindowLaunchParameter } from "@/lib/desktop-explorer-window-protocol";
 
 export type DesktopPopoutGroupTarget = {
@@ -30,6 +31,8 @@ const groupParameter = "cantrip-popout-group";
 const explorerFileParameter = "cantrip-explorer-file";
 const syntheticBuildProgressParameter = "cantrip-synthetic-build";
 const noDesktopListener = () => undefined;
+const explorerWindowBrokers = new Map<string, DesktopExplorerWindowBroker>();
+let explorerWindowUnloadCleanupInstalled = false;
 
 export type DesktopPopoutWindowLifecycle = {
   listenDestroyed(listener: () => void): Promise<() => void>;
@@ -195,6 +198,32 @@ async function focusWindow(label: string): Promise<boolean> {
   return true;
 }
 
+async function closeWindow(label: string): Promise<void> {
+  const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  const existing = await WebviewWindow.getByLabel(label);
+  if (!existing) return;
+  await existing.close();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (!(await WebviewWindow.getByLabel(label))) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("The previous Explorer editor window did not close.");
+}
+
+function installExplorerWindowUnloadCleanup(): void {
+  if (explorerWindowUnloadCleanupInstalled) return;
+  explorerWindowUnloadCleanupInstalled = true;
+  window.addEventListener(
+    "pagehide",
+    () => {
+      const brokers = [...explorerWindowBrokers.values()];
+      explorerWindowBrokers.clear();
+      for (const broker of brokers) void broker.dispose();
+    },
+    { once: true },
+  );
+}
+
 export async function focusDesktopPopoutGroup(
   groupId: string,
 ): Promise<boolean> {
@@ -306,13 +335,31 @@ export async function openDesktopExplorerFile(
   context: DesktopExplorerFileLaunchContext,
 ): Promise<"created" | "focused"> {
   const label = desktopExplorerFileWindowLabel(target.explorerId, target.path);
-  if (await focusWindow(label)) return "focused";
+  installExplorerWindowUnloadCleanup();
+  const activeBroker = explorerWindowBrokers.get(label);
+  if (activeBroker && (await focusWindow(label))) return "focused";
+  if (activeBroker) {
+    explorerWindowBrokers.delete(label);
+    await activeBroker.dispose();
+  } else {
+    // A child can outlive a reloaded main WebView. Its launch channel no
+    // longer has an owner, so replace it instead of focusing a permanently
+    // disconnected editor window.
+    await closeWindow(label);
+  }
   const { createDesktopExplorerWindowBroker } =
     await import("@/lib/desktop-explorer-window-broker");
   const broker = createDesktopExplorerWindowBroker({
     ...context,
     path: target.path,
   });
+  explorerWindowBrokers.set(label, broker);
+  const disposeBroker = async () => {
+    if (explorerWindowBrokers.get(label) === broker) {
+      explorerWindowBrokers.delete(label);
+    }
+    await broker.dispose();
+  };
   try {
     const result = await openDesktopWindow(
       label,
@@ -320,19 +367,19 @@ export async function openDesktopExplorerFile(
       title,
     );
     if (result === "focused") {
-      await broker.dispose();
+      await disposeBroker();
       return result;
     }
     const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
     const popout = await WebviewWindow.getByLabel(label);
     if (!popout) {
-      await broker.dispose();
+      await disposeBroker();
       throw new Error("The Explorer editor window closed while opening.");
     }
-    await popout.once("tauri://destroyed", () => void broker.dispose());
+    await popout.once("tauri://destroyed", () => void disposeBroker());
     return result;
   } catch (error) {
-    await broker.dispose();
+    await disposeBroker();
     throw error;
   }
 }
