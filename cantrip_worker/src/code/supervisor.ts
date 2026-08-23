@@ -10,7 +10,8 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { createConnection, createServer } from "node:net";
+import { request as requestHttp } from "node:http";
+import { createServer } from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -42,6 +43,7 @@ type CodeOpenCommand = Extract<WorkerCommand, { type: "code.open" }>;
 
 interface CodeSession {
   activeTunnelStreams: Set<string>;
+  activityRevision: number;
   appearance: CodeAppearance;
   bridgeToken: string;
   bridgeUrl: string;
@@ -102,6 +104,7 @@ export interface CodeSupervisorOptions {
   idleSweepIntervalMs?: number;
   idleTimeoutMs?: number;
   profileIdleTimeoutMs?: number;
+  profileLogWriter?: (logPath: string, entry: string) => Promise<void>;
   readinessTimeoutMs?: number;
   workerId?: string;
   workerName?: string;
@@ -110,6 +113,7 @@ export interface CodeSupervisorOptions {
 const MAX_CRASHES_PER_WINDOW = 5;
 const CRASH_WINDOW_MS = 5 * 60_000;
 const PROCESS_STOP_TIMEOUT_MS = 2_000;
+const PROCESS_KILL_TIMEOUT_MS = 2_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_EDITOR_IDLE_TIMEOUT_MS = 30_000;
 const DEFAULT_PROFILE_IDLE_TIMEOUT_MS = 30 * 60_000;
@@ -127,6 +131,37 @@ const THEME_NAMES: Record<CodeAppearance, string> = {
   "pro-high-contrast-light": "Cantrip Pro High Contrast Light",
   "pro-high-contrast-dark": "Cantrip Pro High Contrast Dark",
 };
+
+export async function terminateCodeProcess(
+  child: Pick<ChildProcess, "exitCode" | "signalCode" | "once">,
+  signal: (signal: NodeJS.Signals) => void,
+  gracefulTimeoutMs = PROCESS_STOP_TIMEOUT_MS,
+  killTimeoutMs = PROCESS_KILL_TIMEOUT_MS,
+): Promise<void> {
+  const exited = new Promise<void>((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) resolve();
+    else child.once("exit", () => resolve());
+  });
+  const waitForExit = async (timeoutMs: number): Promise<boolean> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const observed = await Promise.race([
+      exited.then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
+    return observed;
+  };
+
+  signal("SIGTERM");
+  if (await waitForExit(gracefulTimeoutMs)) return;
+  signal("SIGKILL");
+  if (await waitForExit(killTimeoutMs)) return;
+  throw new Error(
+    `Cantrip Code did not exit within ${killTimeoutMs}ms after SIGKILL.`,
+  );
+}
 
 function stableKey(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -155,33 +190,58 @@ async function reserveLoopbackPort(): Promise<number> {
   return port;
 }
 
-async function waitForPort(
-  child: ChildProcess,
+export async function waitForAuthenticatedCodeHttp(
+  child: Pick<ChildProcess, "exitCode" | "signalCode">,
   port: number,
+  connectionToken: string,
   timeoutMs: number,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  let lastStatusCode: number | null = null;
   while (Date.now() < deadline) {
     if (child.exitCode !== null || child.signalCode !== null) {
       throw new Error(
         "Cantrip Code exited before its loopback server was ready.",
       );
     }
-    const connected = await new Promise<boolean>((resolve) => {
-      const socket = createConnection({ host: "127.0.0.1", port });
-      const finish = (value: boolean) => {
-        socket.removeAllListeners();
-        socket.destroy();
-        resolve(value);
+    const response = await new Promise<number | null>((resolve) => {
+      let settled = false;
+      const finish = (statusCode: number | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(statusCode);
       };
-      socket.setTimeout(250, () => finish(false));
-      socket.once("connect", () => finish(true));
-      socket.once("error", () => finish(false));
+      const request = requestHttp(
+        {
+          host: "127.0.0.1",
+          method: "GET",
+          path: `/?tkn=${encodeURIComponent(connectionToken)}`,
+          port,
+        },
+        (incoming) => {
+          incoming.resume();
+          finish(incoming.statusCode ?? null);
+        },
+      );
+      request.setTimeout(
+        Math.min(500, Math.max(1, deadline - Date.now())),
+        () => {
+          request.destroy();
+          finish(null);
+        },
+      );
+      request.once("error", () => finish(null));
+      request.end();
     });
-    if (connected) return;
+    if (response !== null) {
+      lastStatusCode = response;
+      if (response >= 200 && response < 400) return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`Cantrip Code did not become ready within ${timeoutMs}ms.`);
+  throw new Error(
+    `Cantrip Code did not return an authenticated HTTP response within ${timeoutMs}ms${lastStatusCode === null ? "." : ` (last status ${lastStatusCode}).`}`,
+  );
 }
 
 function sameBinding(
@@ -208,16 +268,21 @@ export class CodeSupervisor {
   readonly #installation: CantripCodeInstallation | null;
   readonly #idleSweepIntervalMs: number;
   readonly #idleTimeoutMs: number;
-  readonly #openOperations = new Map<string, Promise<CodeRuntimeStatus>>();
+  readonly #profileLifecycleOperations = new Map<string, Promise<void>>();
   readonly #profileOperations = new Map<string, Promise<ProfileProcess>>();
   readonly #profiles = new Map<string, ProfileProcess>();
   readonly #profileIdleTimeoutMs: number;
+  readonly #profileLogWriter: (logPath: string, entry: string) => Promise<void>;
   readonly #readinessTimeoutMs: number;
   readonly #sessions = new Map<string, CodeSession>();
+  readonly #sessionGenerations = new Map<string, number>();
+  readonly #sessionOperations = new Map<string, Promise<void>>();
   readonly #workerId: string;
   readonly #workerName: string;
   #closed = false;
+  #closeOperation: Promise<void> | null = null;
   #idleSweepTimer: ReturnType<typeof setInterval> | null = null;
+  #stateOperation: Promise<void> = Promise.resolve();
 
   constructor(options: CodeSupervisorOptions) {
     this.#bridge = options.bridge ?? new CodeWorkbenchBridge();
@@ -236,6 +301,9 @@ export class CodeSupervisor {
       1_000,
       options.profileIdleTimeoutMs ?? DEFAULT_PROFILE_IDLE_TIMEOUT_MS,
     );
+    this.#profileLogWriter =
+      options.profileLogWriter ??
+      ((logPath, entry) => appendFile(logPath, entry, "utf8"));
     this.#idleSweepIntervalMs = Math.max(
       1_000,
       options.idleSweepIntervalMs ??
@@ -278,24 +346,19 @@ export class CodeSupervisor {
   }
 
   async open(command: CodeOpenCommand): Promise<CodeRuntimeStatus> {
-    const previous = this.#openOperations.get(command.sessionId);
-    const operation = (previous ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(() => this.#open(command));
-    this.#openOperations.set(command.sessionId, operation);
-    try {
-      return await operation;
-    } finally {
-      if (this.#openOperations.get(command.sessionId) === operation) {
-        this.#openOperations.delete(command.sessionId);
-      }
-    }
+    const generation = this.#sessionGeneration(command.sessionId);
+    return this.#enqueueSessionOperation(command.sessionId, () =>
+      this.#open(command, generation),
+    );
   }
 
-  async #open(command: CodeOpenCommand): Promise<CodeRuntimeStatus> {
+  async #open(
+    command: CodeOpenCommand,
+    generation: number,
+  ): Promise<CodeRuntimeStatus> {
     const startedAtMs = Date.now();
     this.#assertAvailable();
-    if (this.#closed) throw new Error("Cantrip Code supervisor is stopped.");
+    this.#assertCurrentOperation(command.sessionId, generation);
     const cwd = path.resolve(command.cwd);
     workerLogger.event("info", "Cantrip Code session open requested", {
       event: "code.session.opening",
@@ -309,6 +372,7 @@ export class CodeSupervisor {
       worktreeId: command.worktreeId,
     });
     const cwdStat = await stat(cwd).catch(() => null);
+    this.#assertCurrentOperation(command.sessionId, generation);
     if (!cwdStat?.isDirectory()) {
       throw new Error(`Cantrip Code worktree does not exist: ${cwd}`);
     }
@@ -320,96 +384,113 @@ export class CodeSupervisor {
           command.initialFile,
         )
       : null;
+    this.#assertCurrentOperation(command.sessionId, generation);
 
     const current = this.#sessions.get(command.sessionId);
     if (current && !sameBinding(current, command, workspaceRootPath)) {
-      await this.stop(command.sessionId);
+      await this.#retireSession(current);
     }
-    if (!this.#sessions.has(command.sessionId)) {
-      const profileKey = stableKey(command.profileId);
-      const sessionKey = stableKey(command.sessionId);
-      const workspaceDirectory = path.join(
-        this.#codeRoot,
-        "workspaces",
-        stableKey(command.projectId),
-      );
-      await Promise.all([
-        mkdir(workspaceDirectory, { recursive: true }),
-        mkdir(path.join(this.#codeRoot, "sessions", sessionKey), {
-          recursive: true,
-        }),
-      ]);
-      const bridgeToken = randomBytes(32).toString("hex");
-      const bridgeUrl = this.#bridge.register(
-        command.sessionId,
-        bridgeToken,
-        command.appearance,
-      );
-      const workspaceIncarnation = randomUUID();
-      const workspacePath = path.join(
-        workspaceDirectory,
-        `${stableKey(command.worktreeId)}-${sessionKey}-${workspaceIncarnation}.code-workspace`,
-      );
-      const session: CodeSession = {
-        activeTunnelStreams: new Set(),
-        appearance: command.appearance,
-        bridgeToken,
-        bridgeUrl,
-        codeTabId: command.codeTabId,
-        cwd,
-        initialFile,
-        lastActivityAt: isoNow(),
-        lastError: null,
-        profileId: command.profileId,
-        profileKey,
-        presentation: command.presentation,
-        projectId: command.projectId,
-        projectName: path.basename(cwd),
-        sessionId: command.sessionId,
-        startedAt: null,
-        status: "starting",
-        themeMode: "follow-cantrip",
-        workspaceIncarnation,
-        workspacePath,
-        workspaceRootPath,
-        workspaceRootUri,
-        workspaceUri: pathToFileURL(workspacePath).href,
-        worktreeId: command.worktreeId,
-        worktreeName: command.worktreeName ?? command.worktreeId,
-      };
-      this.#sessions.set(command.sessionId, session);
-      const profile = await this.#profile(command.profileId, profileKey);
-      profile.sessions.add(command.sessionId);
-      profile.idleSinceMs = null;
-      await this.#writeWorkspace(session);
-      workerLogger.event("debug", "Cantrip Code workspace prepared", {
-        event: "code.workspace.prepared",
-        subsystem: "code",
-        operation: "prepare-workspace",
-        status: "completed",
-        appearance: session.appearance,
-        sessionId: session.sessionId,
-        projectId: session.projectId,
-        worktreeId: session.worktreeId,
-      });
-    }
-
-    const session = this.#sessions.get(command.sessionId)!;
-    session.appearance = command.appearance;
-    if (initialFile) session.initialFile = initialFile;
-    session.themeMode = "follow-cantrip";
-    session.profileId = command.profileId;
-    session.presentation = command.presentation;
-    session.worktreeName = command.worktreeName ?? session.worktreeName;
-    session.lastActivityAt = isoNow();
-    session.lastError = null;
-    session.status = "starting";
-    await this.#writeWorkspace(session);
+    let session = this.#sessions.get(command.sessionId);
+    let bridgeRegistered = false;
+    let createdSession: CodeSession | null = null;
+    let createdSessionDirectory: string | null = null;
     try {
-      const profile = this.#profiles.get(session.profileKey)!;
-      await this.#ensureProfile(profile);
+      if (!session) {
+        const profileKey = stableKey(command.profileId);
+        const sessionKey = stableKey(command.sessionId);
+        const workspaceDirectory = path.join(
+          this.#codeRoot,
+          "workspaces",
+          stableKey(command.projectId),
+        );
+        const sessionDirectory = path.join(
+          this.#codeRoot,
+          "sessions",
+          sessionKey,
+        );
+        const sessionDirectoryExists = await stat(sessionDirectory)
+          .then((entry) => entry.isDirectory())
+          .catch(() => false);
+        await Promise.all([
+          mkdir(workspaceDirectory, { recursive: true }),
+          mkdir(sessionDirectory, { recursive: true }),
+        ]);
+        if (!sessionDirectoryExists) createdSessionDirectory = sessionDirectory;
+        this.#assertCurrentOperation(command.sessionId, generation);
+        const bridgeToken = randomBytes(32).toString("hex");
+        bridgeRegistered = true;
+        const bridgeUrl = this.#bridge.register(
+          command.sessionId,
+          bridgeToken,
+          command.appearance,
+        );
+        const workspaceIncarnation = randomUUID();
+        const workspacePath = path.join(
+          workspaceDirectory,
+          `${stableKey(command.worktreeId)}-${sessionKey}-${workspaceIncarnation}.code-workspace`,
+        );
+        session = {
+          activeTunnelStreams: new Set(),
+          activityRevision: 0,
+          appearance: command.appearance,
+          bridgeToken,
+          bridgeUrl,
+          codeTabId: command.codeTabId,
+          cwd,
+          initialFile,
+          lastActivityAt: isoNow(),
+          lastError: null,
+          profileId: command.profileId,
+          profileKey,
+          presentation: command.presentation,
+          projectId: command.projectId,
+          projectName: path.basename(cwd),
+          sessionId: command.sessionId,
+          startedAt: null,
+          status: "starting",
+          themeMode: "follow-cantrip",
+          workspaceIncarnation,
+          workspacePath,
+          workspaceRootPath,
+          workspaceRootUri,
+          workspaceUri: pathToFileURL(workspacePath).href,
+          worktreeId: command.worktreeId,
+          worktreeName: command.worktreeName ?? command.worktreeId,
+        };
+        this.#sessions.set(command.sessionId, session);
+        createdSession = session;
+        await this.#attachProfile(session, generation);
+        await this.#writeWorkspace(session);
+        this.#assertCurrentOperation(command.sessionId, generation, session);
+        workerLogger.event("debug", "Cantrip Code workspace prepared", {
+          event: "code.workspace.prepared",
+          subsystem: "code",
+          operation: "prepare-workspace",
+          status: "completed",
+          appearance: session.appearance,
+          sessionId: session.sessionId,
+          projectId: session.projectId,
+          worktreeId: session.worktreeId,
+        });
+      }
+
+      session.appearance = command.appearance;
+      if (initialFile) session.initialFile = initialFile;
+      session.themeMode = "follow-cantrip";
+      session.profileId = command.profileId;
+      session.presentation = command.presentation;
+      session.worktreeName = command.worktreeName ?? session.worktreeName;
+      this.#touch(session);
+      session.lastError = null;
+      session.status = "starting";
+      await this.#writeWorkspace(session);
+      this.#assertCurrentOperation(command.sessionId, generation, session);
+      await this.#ensureAttachedProfile(session, generation);
+      this.#assertCurrentOperation(command.sessionId, generation, session);
+      const startupAppearance = session.appearance;
+      const startupSessionId = session.sessionId;
       void this.#bridge
-        .setTheme(session.sessionId, session.appearance)
+        .setTheme(startupSessionId, startupAppearance)
         .catch((error) =>
           workerLogger.event(
             "warn",
@@ -420,16 +501,17 @@ export class CodeSupervisor {
               operation: "set-theme",
               reasonCode: "bridge-delivery-failed",
               status: "degraded",
-              appearance: session.appearance,
+              appearance: startupAppearance,
               error: workerLogError(error),
-              sessionId: session.sessionId,
+              sessionId: startupSessionId,
             },
           ),
         );
       session.status = "running";
       session.startedAt ??= isoNow();
-      session.lastActivityAt = isoNow();
+      this.#touch(session);
       await this.#persistState();
+      this.#assertCurrentOperation(command.sessionId, generation, session);
       const status = this.#status(session);
       workerLogger.event("info", "Cantrip Code session is running", {
         event: "code.session.running",
@@ -445,23 +527,45 @@ export class CodeSupervisor {
       });
       return status;
     } catch (error) {
-      session.status = "failed";
-      session.lastError =
-        error instanceof Error ? error.message : String(error);
-      session.lastActivityAt = isoNow();
-      await this.#persistState();
+      let reportedError = error;
+      if (createdSession || bridgeRegistered || createdSessionDirectory) {
+        const rollbackFailures = await this.#rollbackOpen({
+          bridgeRegistered,
+          createdSession,
+          createdSessionDirectory,
+          sessionId: command.sessionId,
+        });
+        if (rollbackFailures.length > 0) {
+          reportedError = new AggregateError(
+            [error, ...rollbackFailures],
+            "Cantrip Code session open failed and rollback was incomplete.",
+            { cause: error },
+          );
+        }
+      } else if (
+        session &&
+        this.#sessions.get(command.sessionId) === session &&
+        this.#isCurrentOperation(command.sessionId, generation) &&
+        !this.#closed
+      ) {
+        session.status = "failed";
+        session.lastError =
+          error instanceof Error ? error.message : String(error);
+        this.#touch(session);
+        await this.#persistState();
+      }
       workerLogger.event("error", "Cantrip Code session failed to open", {
         event: "code.session.open-failed",
         subsystem: "code",
         operation: "open",
         reasonCode: "session-start-failed",
         status: "failed",
-        codeTabId: session.codeTabId,
+        codeTabId: command.codeTabId,
         durationMs: Date.now() - startedAtMs,
-        error: workerLogError(error),
-        sessionId: session.sessionId,
+        error: workerLogError(reportedError),
+        sessionId: command.sessionId,
       });
-      throw error;
+      throw reportedError;
     }
   }
 
@@ -470,17 +574,17 @@ export class CodeSupervisor {
     const profile = this.#profiles.get(session.profileKey);
     if (!profile?.child && session.status === "running")
       session.status = "offline";
-    session.lastActivityAt = isoNow();
+    this.#touch(session);
     return this.#status(session);
   }
 
   dirtyEditors(sessionId: string) {
-    this.#requireSession(sessionId).lastActivityAt = isoNow();
+    this.#touch(this.#requireSession(sessionId));
     return this.#bridge.dirtyEditors(sessionId);
   }
 
   async saveAll(sessionId: string): Promise<CodeSaveAllResult> {
-    this.#requireSession(sessionId).lastActivityAt = isoNow();
+    this.#touch(this.#requireSession(sessionId));
     return this.#bridge.saveAll(sessionId);
   }
 
@@ -488,32 +592,49 @@ export class CodeSupervisor {
     sessionId: string,
     requestedPath: string,
   ): Promise<CodeOpenFileResult> {
-    const session = this.#requireSession(sessionId);
-    const relativePath = await this.#authorizedRelativeFile(
-      session.workspaceRootPath,
-      requestedPath,
-    );
-    session.initialFile = relativePath;
-    await this.#writeWorkspace(session);
-    session.lastActivityAt = isoNow();
-    return this.#bridge.openFile(
-      sessionId,
-      relativePath,
-      session.workspaceRootUri,
-    );
+    const generation = this.#sessionGeneration(sessionId);
+    return this.#enqueueSessionOperation(sessionId, async () => {
+      this.#assertCurrentOperation(sessionId, generation);
+      const session = this.#requireSession(sessionId);
+      const relativePath = await this.#authorizedRelativeFile(
+        session.workspaceRootPath,
+        requestedPath,
+      );
+      this.#assertCurrentOperation(sessionId, generation, session);
+      session.initialFile = relativePath;
+      this.#touch(session);
+      await this.#writeWorkspace(session);
+      this.#assertCurrentOperation(sessionId, generation, session);
+      await this.#persistState();
+      this.#assertCurrentOperation(sessionId, generation, session);
+      const result = await this.#bridge.openFile(
+        sessionId,
+        relativePath,
+        session.workspaceRootUri,
+      );
+      this.#assertCurrentOperation(sessionId, generation, session);
+      return result;
+    });
   }
 
   async setPresentation(
     sessionId: string,
     presentation: CodePresentation,
   ): Promise<CodeRuntimeStatus> {
-    const session = this.#requireSession(sessionId);
-    session.presentation = presentation;
-    session.lastActivityAt = isoNow();
-    await this.#writeWorkspace(session);
-    await this.#persistState();
-    await this.#bridge.setPresentation(sessionId, presentation);
-    return this.#status(session);
+    const generation = this.#sessionGeneration(sessionId);
+    return this.#enqueueSessionOperation(sessionId, async () => {
+      this.#assertCurrentOperation(sessionId, generation);
+      const session = this.#requireSession(sessionId);
+      session.presentation = presentation;
+      this.#touch(session);
+      await this.#writeWorkspace(session);
+      this.#assertCurrentOperation(sessionId, generation, session);
+      await this.#persistState();
+      this.#assertCurrentOperation(sessionId, generation, session);
+      await this.#bridge.setPresentation(sessionId, presentation);
+      this.#assertCurrentOperation(sessionId, generation, session);
+      return this.#status(session);
+    });
   }
 
   async setTheme(
@@ -521,38 +642,45 @@ export class CodeSupervisor {
     _themeMode: CodeThemeMode,
     appearance: CodeAppearance,
   ): Promise<CodeRuntimeStatus> {
-    const session = this.#requireSession(sessionId);
-    session.themeMode = "follow-cantrip";
-    session.appearance = appearance;
-    session.lastActivityAt = isoNow();
-    workerLogger.event("debug", "Cantrip Code theme update requested", {
-      event: "code.theme.updating",
-      subsystem: "code",
-      operation: "set-theme",
-      status: "started",
-      appearance,
-      sessionId,
+    const generation = this.#sessionGeneration(sessionId);
+    return this.#enqueueSessionOperation(sessionId, async () => {
+      this.#assertCurrentOperation(sessionId, generation);
+      const session = this.#requireSession(sessionId);
+      session.themeMode = "follow-cantrip";
+      session.appearance = appearance;
+      this.#touch(session);
+      workerLogger.event("debug", "Cantrip Code theme update requested", {
+        event: "code.theme.updating",
+        subsystem: "code",
+        operation: "set-theme",
+        status: "started",
+        appearance,
+        sessionId,
+      });
+      await this.#writeWorkspace(session);
+      this.#assertCurrentOperation(sessionId, generation, session);
+      await this.#bridge.setTheme(sessionId, appearance);
+      this.#assertCurrentOperation(sessionId, generation, session);
+      await this.#persistState();
+      this.#assertCurrentOperation(sessionId, generation, session);
+      const status = this.#status(session);
+      workerLogger.event("debug", "Cantrip Code theme update persisted", {
+        event: "code.theme.updated",
+        subsystem: "code",
+        operation: "set-theme",
+        status: "completed",
+        appearance,
+        bridgeConnected: status.bridgeConnected,
+        processInstanceId: status.processInstanceId,
+        sessionId,
+      });
+      return status;
     });
-    await this.#writeWorkspace(session);
-    await this.#bridge.setTheme(sessionId, appearance);
-    await this.#persistState();
-    const status = this.#status(session);
-    workerLogger.event("debug", "Cantrip Code theme update persisted", {
-      event: "code.theme.updated",
-      subsystem: "code",
-      operation: "set-theme",
-      status: "completed",
-      appearance,
-      bridgeConnected: status.bridgeConnected,
-      processInstanceId: status.processInstanceId,
-      sessionId,
-    });
-    return status;
   }
 
   async prepareAgentTurn(cwd: string): Promise<CodeAgentTurnPreparationResult> {
     const sessions = this.#sessionsForCwd(cwd);
-    for (const session of sessions) session.lastActivityAt = isoNow();
+    for (const session of sessions) this.#touch(session);
     const prepared = await Promise.all(
       sessions.map((session) =>
         this.#bridge.prepareAgentTurn(session.sessionId),
@@ -571,7 +699,7 @@ export class CodeSupervisor {
   ): Promise<CodeAgentTurnNotificationResult> {
     const normalizedPaths = this.#safeRelativePaths(cwd, paths);
     const sessions = this.#sessionsForCwd(cwd);
-    for (const session of sessions) session.lastActivityAt = isoNow();
+    for (const session of sessions) this.#touch(session);
     const results = await Promise.all(
       sessions.map((session) =>
         this.#bridge.notifyAgentTurn(session.sessionId, phase, normalizedPaths),
@@ -589,26 +717,35 @@ export class CodeSupervisor {
 
   async stop(sessionId: string): Promise<CodeRuntimeStatus> {
     this.#assertAvailable();
-    const session = this.#sessions.get(sessionId);
-    if (!session) return this.#stoppedStatus(sessionId);
+    if (this.#closed) return this.#stoppedStatus(sessionId);
+    this.#invalidateSession(sessionId);
+    return this.#enqueueSessionOperation(sessionId, async () => {
+      if (this.#closed) return this.#stoppedStatus(sessionId);
+      const session = this.#sessions.get(sessionId);
+      if (!session) return this.#stoppedStatus(sessionId);
+      await this.#retireSession(session);
+      return this.#stoppedStatus(sessionId);
+    });
+  }
+
+  async #retireSession(session: CodeSession): Promise<void> {
+    const sessionId = session.sessionId;
+    if (this.#sessions.get(sessionId) !== session) return;
     session.status = "stopping";
-    session.lastActivityAt = isoNow();
-    const profile = this.#profiles.get(session.profileKey);
-    profile?.sessions.delete(sessionId);
-    if (profile?.sessions.size === 0) profile.idleSinceMs = Date.now();
+    this.#touch(session);
     this.#bridge.unregister(sessionId);
     session.status = "stopped";
     this.#sessions.delete(sessionId);
     await Promise.all([
+      this.#detachProfile(session),
       this.#persistState(),
       rm(session.workspacePath, { force: true }),
     ]);
-    return this.#stoppedStatus(sessionId);
   }
 
   proxyTarget(sessionId: string): CodeProxyTarget {
     const session = this.#requireSession(sessionId);
-    session.lastActivityAt = isoNow();
+    this.#touch(session);
     const profile = this.#profiles.get(session.profileKey);
     if (
       !profile?.child ||
@@ -632,28 +769,43 @@ export class CodeSupervisor {
     const session = this.#sessions.get(sessionId);
     if (!session) return;
     session.activeTunnelStreams.add(streamId);
-    session.lastActivityAt = isoNow();
+    this.#touch(session);
   }
 
   endTunnelStream(sessionId: string, streamId: string): void {
     const session = this.#sessions.get(sessionId);
     if (!session) return;
     session.activeTunnelStreams.delete(streamId);
-    session.lastActivityAt = isoNow();
+    this.#touch(session);
   }
 
   async evictIdleSessions(now = Date.now()): Promise<string[]> {
     if (this.#closed) return [];
     const candidates = [...this.#sessions.values()]
       .filter((session) => this.#isIdle(session, now))
-      .map((session) => session.sessionId);
-    const evicted: string[] = [];
-    for (const sessionId of candidates) {
-      const session = this.#sessions.get(sessionId);
-      if (!session || !this.#isIdle(session, now)) continue;
-      await this.stop(sessionId);
-      evicted.push(sessionId);
-    }
+      .map((session) => ({
+        activityRevision: session.activityRevision,
+        session,
+      }));
+    const evictionResults = await Promise.all(
+      candidates.map(({ activityRevision, session }) =>
+        this.#enqueueSessionOperation(session.sessionId, async () => {
+          if (
+            this.#closed ||
+            this.#sessions.get(session.sessionId) !== session ||
+            session.activityRevision !== activityRevision ||
+            !this.#isIdle(session, now)
+          ) {
+            return false;
+          }
+          await this.#retireSession(session);
+          return true;
+        }),
+      ),
+    );
+    const evicted = candidates.flatMap(({ session }, index) =>
+      evictionResults[index] ? [session.sessionId] : [],
+    );
     const idleProfiles = [...this.#profiles.values()].filter(
       (profile) =>
         profile.sessions.size === 0 &&
@@ -661,17 +813,20 @@ export class CodeSupervisor {
         now - profile.idleSinceMs >= this.#profileIdleTimeoutMs,
     );
     for (const profile of idleProfiles) {
-      if (
-        profile.sessions.size !== 0 ||
-        profile.idleSinceMs === null ||
-        now - profile.idleSinceMs < this.#profileIdleTimeoutMs
-      ) {
-        continue;
-      }
-      await this.#terminateProfile(profile);
-      if (profile.sessions.size === 0) {
-        this.#profiles.delete(profile.profileKey);
-      }
+      await this.#enqueueProfileLifecycle(profile.profileKey, async () => {
+        if (
+          this.#profiles.get(profile.profileKey) !== profile ||
+          profile.sessions.size !== 0 ||
+          profile.idleSinceMs === null ||
+          now - profile.idleSinceMs < this.#profileIdleTimeoutMs
+        ) {
+          return;
+        }
+        await this.#terminateProfile(profile);
+        if (profile.sessions.size === 0) {
+          this.#profiles.delete(profile.profileKey);
+        }
+      });
     }
     return evicted;
   }
@@ -690,45 +845,238 @@ export class CodeSupervisor {
   }
 
   async close(): Promise<void> {
-    if (this.#closed) return;
+    if (this.#closeOperation) return this.#closeOperation;
     this.#closed = true;
+    for (const sessionId of this.#sessionGenerations.keys()) {
+      this.#invalidateSession(sessionId);
+    }
+    for (const sessionId of this.#sessions.keys()) {
+      this.#invalidateSession(sessionId);
+    }
     if (this.#idleSweepTimer) {
       clearInterval(this.#idleSweepTimer);
       this.#idleSweepTimer = null;
     }
-    await Promise.allSettled(this.#openOperations.values());
-    this.#openOperations.clear();
-    const now = isoNow();
-    for (const session of this.#sessions.values()) {
-      this.#bridge.unregister(session.sessionId);
-      session.activeTunnelStreams.clear();
-      session.status = "offline";
-      session.lastActivityAt = now;
-      session.lastError = null;
+    this.#closeOperation = (async () => {
+      await Promise.allSettled(this.#sessionOperations.values());
+      this.#sessionOperations.clear();
+      await Promise.allSettled(this.#profileLifecycleOperations.values());
+      this.#profileLifecycleOperations.clear();
+      await this.#stateOperation.catch(() => undefined);
+      const now = isoNow();
+      for (const session of this.#sessions.values()) {
+        this.#bridge.unregister(session.sessionId);
+        session.activeTunnelStreams.clear();
+        session.status = "offline";
+        session.lastActivityAt = now;
+        session.activityRevision += 1;
+        session.lastError = null;
+      }
+      await Promise.all(
+        [...this.#profiles.values()].map((profile) =>
+          this.#terminateProfile(profile),
+        ),
+      );
+      const cleanupResults = await Promise.allSettled([
+        this.#persistState(),
+        ...[...this.#sessions.values()].map((session) =>
+          rm(session.workspacePath, { force: true }),
+        ),
+      ]);
+      this.#sessions.clear();
+      this.#profiles.clear();
+      this.#sessionGenerations.clear();
+      await this.#bridge.close();
+      const cleanupFailures = cleanupResults.flatMap((result) =>
+        result.status === "rejected" ? [result.reason] : [],
+      );
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError(
+          cleanupFailures,
+          "Cantrip Code supervisor cleanup failed.",
+        );
+      }
+    })();
+    return this.#closeOperation;
+  }
+
+  async #enqueueSessionOperation<T>(
+    sessionId: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.#sessionOperations.get(sessionId);
+    const operation = (previous ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(callback);
+    const tail = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#sessionOperations.set(sessionId, tail);
+    try {
+      return await operation;
+    } finally {
+      if (this.#sessionOperations.get(sessionId) === tail) {
+        this.#sessionOperations.delete(sessionId);
+        if (!this.#sessions.has(sessionId)) {
+          this.#sessionGenerations.delete(sessionId);
+        }
+      }
     }
-    await Promise.all(
-      [...this.#profiles.values()].map((profile) =>
-        this.#terminateProfile(profile),
-      ),
+  }
+
+  async #enqueueProfileLifecycle<T>(
+    profileKey: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.#profileLifecycleOperations.get(profileKey);
+    const operation = (previous ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(callback);
+    const tail = operation.then(
+      () => undefined,
+      () => undefined,
     );
-    const cleanupResults = await Promise.allSettled([
-      this.#persistState(),
-      ...[...this.#sessions.values()].map((session) =>
-        rm(session.workspacePath, { force: true }),
-      ),
-    ]);
-    this.#sessions.clear();
-    this.#profiles.clear();
-    await this.#bridge.close();
-    const cleanupFailures = cleanupResults.flatMap((result) =>
-      result.status === "rejected" ? [result.reason] : [],
+    this.#profileLifecycleOperations.set(profileKey, tail);
+    try {
+      return await operation;
+    } finally {
+      if (this.#profileLifecycleOperations.get(profileKey) === tail) {
+        this.#profileLifecycleOperations.delete(profileKey);
+      }
+    }
+  }
+
+  #sessionGeneration(sessionId: string): number {
+    const generation = this.#sessionGenerations.get(sessionId) ?? 0;
+    if (!this.#sessionGenerations.has(sessionId)) {
+      this.#sessionGenerations.set(sessionId, generation);
+    }
+    return generation;
+  }
+
+  #invalidateSession(sessionId: string): void {
+    this.#sessionGenerations.set(
+      sessionId,
+      this.#sessionGeneration(sessionId) + 1,
     );
-    if (cleanupFailures.length > 0) {
-      throw new AggregateError(
-        cleanupFailures,
-        "Cantrip Code supervisor cleanup failed.",
+  }
+
+  #isCurrentOperation(sessionId: string, generation: number): boolean {
+    return this.#sessionGeneration(sessionId) === generation;
+  }
+
+  #assertCurrentOperation(
+    sessionId: string,
+    generation: number,
+    session?: CodeSession,
+  ): void {
+    if (this.#closed) {
+      throw new Error("Cantrip Code supervisor is stopped.");
+    }
+    if (!this.#isCurrentOperation(sessionId, generation)) {
+      throw new Error(
+        `Cantrip Code session ${sessionId} was superseded by a newer lifecycle request.`,
       );
     }
+    if (session && this.#sessions.get(sessionId) !== session) {
+      throw new Error(
+        `Cantrip Code session ${sessionId} was rebound during the operation.`,
+      );
+    }
+  }
+
+  #touch(session: CodeSession): void {
+    session.lastActivityAt = isoNow();
+    session.activityRevision += 1;
+  }
+
+  async #attachProfile(
+    session: CodeSession,
+    generation: number,
+  ): Promise<ProfileProcess> {
+    return this.#enqueueProfileLifecycle(session.profileKey, async () => {
+      this.#assertCurrentOperation(session.sessionId, generation, session);
+      const profile = await this.#profile(
+        session.profileId,
+        session.profileKey,
+      );
+      this.#assertCurrentOperation(session.sessionId, generation, session);
+      profile.sessions.add(session.sessionId);
+      profile.idleSinceMs = null;
+      return profile;
+    });
+  }
+
+  async #ensureAttachedProfile(
+    session: CodeSession,
+    generation: number,
+  ): Promise<ProfileProcess> {
+    return this.#enqueueProfileLifecycle(session.profileKey, async () => {
+      this.#assertCurrentOperation(session.sessionId, generation, session);
+      const profile = await this.#profile(
+        session.profileId,
+        session.profileKey,
+      );
+      this.#assertCurrentOperation(session.sessionId, generation, session);
+      profile.sessions.add(session.sessionId);
+      profile.idleSinceMs = null;
+      await this.#ensureProfile(profile);
+      this.#assertCurrentOperation(session.sessionId, generation, session);
+      return profile;
+    });
+  }
+
+  async #detachProfile(session: CodeSession): Promise<void> {
+    await this.#enqueueProfileLifecycle(session.profileKey, async () => {
+      const profile = this.#profiles.get(session.profileKey);
+      profile?.sessions.delete(session.sessionId);
+      if (profile?.sessions.size === 0) {
+        profile.idleSinceMs = Date.now();
+        if (profile.restartTimer) {
+          clearTimeout(profile.restartTimer);
+          profile.restartTimer = null;
+        }
+      }
+    });
+  }
+
+  async #rollbackOpen(input: {
+    bridgeRegistered: boolean;
+    createdSession: CodeSession | null;
+    createdSessionDirectory: string | null;
+    sessionId: string;
+  }): Promise<unknown[]> {
+    const {
+      bridgeRegistered,
+      createdSession,
+      createdSessionDirectory,
+      sessionId,
+    } = input;
+    if (
+      createdSession &&
+      this.#sessions.get(createdSession.sessionId) === createdSession
+    ) {
+      this.#sessions.delete(createdSession.sessionId);
+    }
+    if (bridgeRegistered) {
+      this.#bridge.unregister(sessionId);
+    }
+    const cleanup = await Promise.allSettled([
+      ...(createdSession
+        ? [
+            this.#detachProfile(createdSession),
+            rm(createdSession.workspacePath, { force: true }),
+          ]
+        : []),
+      ...(createdSessionDirectory
+        ? [rm(createdSessionDirectory, { recursive: true, force: true })]
+        : []),
+      this.#persistState(),
+    ]);
+    return cleanup.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
   }
 
   async #profile(
@@ -781,9 +1129,49 @@ export class CodeSupervisor {
   }
 
   async #ensureProfile(profile: ProfileProcess): Promise<void> {
-    if (profile.child && profile.port !== null && profile.ready) return;
     if (profile.launchPromise) return profile.launchPromise;
-    profile.launchPromise = this.#launchProfile(profile).finally(() => {
+    profile.launchPromise = (async () => {
+      const child = profile.child;
+      const port = profile.port;
+      const connectionToken = profile.connectionToken;
+      if (child && port !== null && connectionToken && profile.ready) {
+        try {
+          await waitForAuthenticatedCodeHttp(
+            child,
+            port,
+            connectionToken,
+            this.#readinessTimeoutMs,
+          );
+          if (
+            profile.child === child &&
+            profile.port === port &&
+            profile.connectionToken === connectionToken &&
+            profile.ready &&
+            !profile.stopping
+          ) {
+            return;
+          }
+          throw new Error("Cantrip Code process changed during health check.");
+        } catch (error) {
+          workerLogger.event(
+            "warn",
+            "Cantrip Code cached profile failed its functional health check",
+            {
+              event: "code.profile.health-failed",
+              subsystem: "code",
+              operation: "reuse-profile",
+              reasonCode: "http-health-failed",
+              status: "degraded",
+              error: workerLogError(error),
+              instanceId: profile.instanceId,
+              profileKey: profile.profileKey,
+            },
+          );
+          await this.#terminateProfile(profile);
+        }
+      }
+      await this.#launchProfile(profile);
+    })().finally(() => {
       profile.launchPromise = null;
     });
     return profile.launchPromise;
@@ -807,7 +1195,7 @@ export class CodeSupervisor {
             if (!session) continue;
             session.status = "offline";
             session.lastError = message;
-            session.lastActivityAt = isoNow();
+            this.#touch(session);
           }
         }
       }),
@@ -887,9 +1275,27 @@ export class CodeSupervisor {
       void this.#onProcessExit(profile, child, code, signal);
     });
     try {
-      await waitForPort(child, port, this.#readinessTimeoutMs);
+      await waitForAuthenticatedCodeHttp(
+        child,
+        port,
+        connectionToken,
+        this.#readinessTimeoutMs,
+      );
     } catch (error) {
-      if (profile.child === child) this.#signalProcessTree(child, "SIGTERM");
+      if (profile.child === child) {
+        profile.stopping = true;
+        try {
+          await terminateCodeProcess(child, (signal) =>
+            this.#signalProcessTree(child, signal),
+          );
+        } catch (terminationError) {
+          throw new AggregateError(
+            [error, terminationError],
+            "Cantrip Code startup failed and its process could not be terminated.",
+            { cause: error },
+          );
+        }
+      }
       throw error;
     }
     if (profile.child !== child) {
@@ -903,12 +1309,22 @@ export class CodeSupervisor {
       session.status = "running";
       session.startedAt ??= now;
       session.lastActivityAt = now;
+      session.activityRevision += 1;
       session.lastError = null;
     }
     await this.#log(
       profile.logPath,
       `process ${instanceId} ready on loopback port ${port}`,
     );
+    if (
+      profile.child !== child ||
+      !profile.ready ||
+      profile.stopping ||
+      child.exitCode !== null ||
+      child.signalCode !== null
+    ) {
+      throw new Error("Cantrip Code exited while completing startup.");
+    }
     workerLogger.event("info", "Cantrip Code profile process is ready", {
       event: "code.profile.ready",
       subsystem: "code",
@@ -1001,7 +1417,7 @@ export class CodeSupervisor {
       if (!session) continue;
       session.status = "offline";
       session.lastError = message;
-      session.lastActivityAt = isoNow();
+      this.#touch(session);
     }
     if (profile.crashTimes.length >= MAX_CRASHES_PER_WINDOW) {
       for (const sessionId of profile.sessions) {
@@ -1017,17 +1433,28 @@ export class CodeSupervisor {
     const delay = Math.min(10_000, 250 * 2 ** (profile.crashTimes.length - 1));
     profile.restartTimer = setTimeout(() => {
       profile.restartTimer = null;
-      void this.#ensureProfile(profile).catch(async (error) => {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        for (const sessionId of profile.sessions) {
-          const session = this.#sessions.get(sessionId);
-          if (!session) continue;
-          session.status = "failed";
-          session.lastError = errorMessage;
+      void this.#enqueueProfileLifecycle(profile.profileKey, async () => {
+        if (
+          this.#closed ||
+          this.#profiles.get(profile.profileKey) !== profile ||
+          profile.sessions.size === 0
+        ) {
+          return;
         }
-        await this.#persistState();
-      });
+        try {
+          await this.#ensureProfile(profile);
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          for (const sessionId of profile.sessions) {
+            const session = this.#sessions.get(sessionId);
+            if (!session) continue;
+            session.status = "failed";
+            session.lastError = errorMessage;
+          }
+          await this.#persistState();
+        }
+      }).catch(() => undefined);
     }, delay);
     await this.#persistState();
   }
@@ -1040,23 +1467,9 @@ export class CodeSupervisor {
     }
     const child = profile.child;
     if (!child) return;
-    const exited = new Promise<void>((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) resolve();
-      else child.once("exit", () => resolve());
-    });
-    this.#signalProcessTree(child, "SIGTERM");
-    let forceTimer: ReturnType<typeof setTimeout> | null = null;
-    await Promise.race([
-      exited,
-      new Promise<void>(
-        (resolve) =>
-          (forceTimer = setTimeout(() => {
-            this.#signalProcessTree(child, "SIGKILL");
-            resolve();
-          }, PROCESS_STOP_TIMEOUT_MS)),
-      ),
-    ]);
-    if (forceTimer) clearTimeout(forceTimer);
+    await terminateCodeProcess(child, (signal) =>
+      this.#signalProcessTree(child, signal),
+    );
   }
 
   #signalProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
@@ -1324,6 +1737,7 @@ export class CodeSupervisor {
       const bridgeToken = randomBytes(32).toString("hex");
       const session: CodeSession = {
         activeTunnelStreams: new Set(),
+        activityRevision: 0,
         appearance: appearance.data,
         bridgeToken,
         bridgeUrl: this.#bridge.register(
@@ -1410,12 +1824,23 @@ export class CodeSupervisor {
   }
 
   async #log(logPath: string, message: string): Promise<void> {
-    await appendFile(logPath, `${isoNow()} ${message}\n`, "utf8").catch(
+    await this.#profileLogWriter(logPath, `${isoNow()} ${message}\n`).catch(
       () => undefined,
     );
   }
 
   async #persistState(): Promise<void> {
+    const operation = this.#stateOperation
+      .catch(() => undefined)
+      .then(() => this.#writeState());
+    this.#stateOperation = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return operation;
+  }
+
+  async #writeState(): Promise<void> {
     const file = path.join(this.#codeRoot, "state", "runtime.json");
     const temporary = `${file}.${randomUUID()}.tmp`;
     const sessions = [...this.#sessions.values()]

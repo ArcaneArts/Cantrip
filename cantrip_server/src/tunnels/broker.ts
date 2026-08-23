@@ -52,6 +52,7 @@ export interface TunnelStreamBrokerOptions {
   maxLifetimeMs?: number;
   maxRoutes?: number;
   now?: () => number;
+  onActivity?(tunnelId: string): boolean;
   sweepIntervalMs?: number;
 }
 
@@ -135,6 +136,7 @@ export class TunnelStreamBroker {
   readonly #maxLifetimeMs: number;
   readonly #maxRoutes: number;
   readonly #now: () => number;
+  readonly #onActivity: NonNullable<TunnelStreamBrokerOptions["onActivity"]>;
   readonly #routes = new Map<string, Route>();
   readonly #sweepTimer: ReturnType<typeof setInterval>;
   #bytesFromSource = 0;
@@ -155,6 +157,7 @@ export class TunnelStreamBroker {
     this.#maxConnectionsPerTunnel = options.maxConnectionsPerTunnel ?? 64;
     this.#maxRoutes = options.maxRoutes ?? 2_048;
     this.#now = options.now ?? Date.now;
+    this.#onActivity = options.onActivity ?? (() => true);
     this.#sweepTimer = setInterval(
       () => this.sweep(),
       options.sweepIntervalMs ??
@@ -279,6 +282,8 @@ export class TunnelStreamBroker {
         this.#rejectOpen(route, header, "limit-exceeded");
         return;
       }
+      if (!this.#onActivity(route.tunnelId)) return;
+      if (this.#routes.get(route.key) !== route) return;
       const now = this.#now();
       connection = {
         bandwidthBytes: 0,
@@ -329,6 +334,16 @@ export class TunnelStreamBroker {
 
     if (!this.#frameAllowed(sender, connection, header)) {
       this.#terminate(connection, "protocol-error");
+      return;
+    }
+    if (!this.#onActivity(route.tunnelId)) {
+      this.#terminate(connection, "endpoint-disconnected");
+      return;
+    }
+    if (
+      this.#routes.get(route.key) !== route ||
+      this.#connections.get(key) !== connection
+    ) {
       return;
     }
     if (header.kind === "accepted") {

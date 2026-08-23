@@ -80,6 +80,99 @@ function setup(
 }
 
 describe("generic tunnel stream broker", () => {
+  it("reports activity only for the exact tunnel carrying a valid frame", () => {
+    const activity: string[] = [];
+    const { broker, destination, source } = setup({
+      onActivity: (tunnelId) => {
+        activity.push(tunnelId);
+        return true;
+      },
+    });
+    source.emit({
+      ...identity,
+      tunnelId: "unrelated-tunnel",
+      connectionId: "ignored-connection",
+      sequence: 0,
+      kind: "open",
+      initialCreditBytes: 8,
+    });
+    source.emit({
+      ...identity,
+      connectionId: "connection-1",
+      sequence: 0,
+      kind: "open",
+      initialCreditBytes: 8,
+    });
+    destination.emit({
+      ...identity,
+      connectionId: "connection-1",
+      sequence: 0,
+      kind: "accepted",
+      initialCreditBytes: 8,
+    });
+
+    expect(activity).toEqual([identity.tunnelId, identity.tunnelId]);
+    broker.close();
+  });
+
+  it("does not forward an open frame after its activity lease expires", () => {
+    const { broker, destination, source } = setup({
+      onActivity: () => false,
+    });
+
+    source.emit({
+      ...identity,
+      connectionId: "expired-open",
+      sequence: 0,
+      kind: "open",
+      initialCreditBytes: 8,
+    });
+
+    expect(destination.sent).toHaveLength(0);
+    expect(broker.stats().activeConnections).toBe(0);
+    broker.close();
+  });
+
+  it("does not forward data after an established route activity lease expires", () => {
+    let active = true;
+    const { broker, destination, source } = setup({
+      onActivity: () => active,
+    });
+    source.emit({
+      ...identity,
+      connectionId: "expired-data",
+      sequence: 0,
+      kind: "open",
+      initialCreditBytes: 8,
+    });
+    destination.emit({
+      ...identity,
+      connectionId: "expired-data",
+      sequence: 0,
+      kind: "accepted",
+      initialCreditBytes: 8,
+    });
+    active = false;
+
+    source.emit(
+      {
+        ...identity,
+        connectionId: "expired-data",
+        sequence: 1,
+        kind: "data",
+        direction: "source-to-destination",
+        protection: null,
+      },
+      new Uint8Array([1]),
+    );
+
+    expect(destination.sent.some(({ header }) => header.kind === "data")).toBe(
+      false,
+    );
+    expect(broker.stats().activeConnections).toBe(0);
+    broker.close();
+  });
+
   it("forwards protected payloads opaquely while charging plaintext flow credit", () => {
     const { broker, destination, source } = setup();
     source.emit({

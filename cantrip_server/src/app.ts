@@ -649,7 +649,10 @@ import {
   ChatRelocationJobExecutor,
   type ChatRelocationLiveChange,
 } from "./chat-relocations/executor.js";
-import { CodeTunnelBroker } from "./code/tunnel.js";
+import {
+  CodeTunnelBroker,
+  ExplorerCodeAttachmentLeaseError,
+} from "./code/tunnel.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import {
   ProjectFolderSetupJobExecutor,
@@ -1410,6 +1413,7 @@ export async function buildApp({
   const tunnelStreamBroker = new TunnelStreamBroker({
     consumeRelayBytes: (ownerId, workerId, bytes) =>
       relayQuotas.consumeRelay(ownerId, workerId, bytes),
+    onActivity: (tunnelId) => codeTunnel.allowTunnelActivity(tunnelId),
   });
   const tunnelRuntime = new TunnelRuntimeManager(
     repository,
@@ -11958,32 +11962,53 @@ export async function buildApp({
     { logLevel: "warn" },
     async (request, reply) => {
       const principal = authenticatedPrincipal(request);
-      const worker = await repository.getWorker(
-        principal.user.id,
-        request.params.workerId,
-      );
-      if (!worker) {
-        return reply.code(404).send({ error: "Worker not found." });
+      const authSessionId = principal.sessionId ?? `local:${principal.user.id}`;
+      const preparationLease = directAttachments.acquirePreparationLease({
+        authSessionId,
+        ownerId: principal.user.id,
+        resourceId: request.params.workerId,
+        resourceKind: "probe",
+      });
+      if (!preparationLease) {
+        return reply.code(409).send({
+          error: "The owning resource is being revoked.",
+        });
       }
       try {
-        return reply.code(201).send(
-          directAttachmentTicketSchema.parse(
-            await directAttachments.prepare({
-              authSessionId:
-                principal.sessionId ?? `local:${principal.user.id}`,
-              channels: ["probe"],
-              ownerId: principal.user.id,
-              resourceId: request.params.workerId,
-              resourceKind: "probe",
-              worker,
-            }),
-          ),
+        const worker = await repository.getWorker(
+          principal.user.id,
+          request.params.workerId,
         );
+        if (!worker) {
+          return reply.code(404).send({ error: "Worker not found." });
+        }
+        const ticket = await directAttachments.prepare({
+          authSessionId,
+          channels: ["probe"],
+          ownerId: principal.user.id,
+          preparationLease,
+          resourceId: request.params.workerId,
+          resourceKind: "probe",
+          worker,
+        });
+        if (!directAttachments.preparationLeaseIsActive(preparationLease)) {
+          await directAttachments.revoke(
+            ticket.binding.capabilityId,
+            "Owning resource was revoked",
+          );
+          return reply.code(409).send({
+            error:
+              "The owning resource changed while direct access was opening.",
+          });
+        }
+        return reply.code(201).send(directAttachmentTicketSchema.parse(ticket));
       } catch (error) {
         if (error instanceof DirectAttachmentUnavailableError) {
           return reply.code(409).send({ error: error.message });
         }
         throw error;
+      } finally {
+        directAttachments.releasePreparationLease(preparationLease);
       }
     },
   );
@@ -12022,6 +12047,15 @@ export async function buildApp({
       );
       if (!delta) {
         return reply.code(404).send({ error: "Direct attachment not found." });
+      }
+      if (
+        delta.resourceKind === "tunnel" &&
+        (delta.bytesFromLocal > 0 ||
+          delta.bytesToLocal > 0 ||
+          delta.connectionsOpened > 0 ||
+          delta.connectionsClosed > 0)
+      ) {
+        codeTunnel.recordTunnelActivity(delta.resourceId);
       }
       operationalMetrics.recordDirectTransport(delta.resourceKind, delta);
       return reply.code(204).send();
@@ -12164,36 +12198,80 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const principal = authenticatedPrincipal(request);
-      const authorization = await repository.getDesktopTunnelAttachment(
-        principal.user.id,
-        request.params.attachmentId,
-      );
-      if (!authorization) {
-        return reply.code(404).send({ error: "Tunnel attachment not found." });
+      const authSessionId = principal.sessionId ?? `local:${principal.user.id}`;
+      const preparationLease = directAttachments.acquirePreparationLease({
+        attachmentId: request.params.attachmentId,
+        authSessionId,
+        ownerId: principal.user.id,
+        resourceId: null,
+        resourceKind: "tunnel",
+      });
+      if (!preparationLease) {
+        return reply.code(409).send({
+          error: "The owning resource is being revoked.",
+        });
       }
-      const worker = await repository.getWorker(
-        principal.user.id,
-        authorization.destination.workerId,
-      );
-      if (!worker) {
-        return reply
-          .code(409)
-          .send({ error: "Destination worker is offline." });
-      }
-      const route = {
-        tunnelId: authorization.tunnelId,
-        attachmentId: authorization.attachmentId,
-        sourceEndpointId: `desktop:${authorization.clientId}:${authorization.attachmentId}`,
-        destinationEndpointId: `worker:${authorization.destination.workerId}`,
-      };
       try {
+        const authorization = await repository.getDesktopTunnelAttachment(
+          principal.user.id,
+          request.params.attachmentId,
+        );
+        if (!authorization) {
+          return reply
+            .code(404)
+            .send({ error: "Tunnel attachment not found." });
+        }
+        if (
+          !directAttachments.bindPreparationLease(
+            preparationLease,
+            "tunnel",
+            authorization.tunnelId,
+          )
+        ) {
+          return reply.code(409).send({
+            error:
+              "The owning resource changed while direct access was opening.",
+          });
+        }
+        const codeActivityLease = codeTunnel.recordTunnelActivityLease(
+          authorization.tunnelId,
+        );
+        if (codeActivityLease.managed && !codeActivityLease.expiresAt) {
+          directAttachments.releasePreparationLease(preparationLease);
+          return reply.code(409).send({
+            error: "The protected Code attachment has expired.",
+          });
+        }
+        const worker = await repository.getWorker(
+          principal.user.id,
+          authorization.destination.workerId,
+        );
+        if (!worker) {
+          return reply
+            .code(409)
+            .send({ error: "Destination worker is offline." });
+        }
+        const route = {
+          tunnelId: authorization.tunnelId,
+          attachmentId: authorization.attachmentId,
+          sourceEndpointId: `desktop:${authorization.clientId}:${authorization.attachmentId}`,
+          destinationEndpointId: `worker:${authorization.destination.workerId}`,
+        };
         const ticket = await directAttachments.prepare({
           attachmentId: authorization.attachmentId,
-          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          authSessionId,
           channels: ["tunnel-data"],
           diagnosticTraceId: input.data.diagnosticTraceId,
-          leaseExpiresAt: authorization.expiresAt,
+          leaseExpiresAt: codeActivityLease.expiresAt
+            ? new Date(
+                Math.min(
+                  authorization.expiresAt.getTime(),
+                  new Date(codeActivityLease.expiresAt).getTime(),
+                ),
+              )
+            : authorization.expiresAt,
           ownerId: principal.user.id,
+          preparationLease,
           resourceId: authorization.tunnelId,
           resourceKind: "tunnel",
           tunnelRoute: {
@@ -12212,6 +12290,28 @@ export async function buildApp({
           },
           worker,
         });
+        const current = await repository.getDesktopTunnelAttachment(
+          principal.user.id,
+          request.params.attachmentId,
+        );
+        if (
+          !current ||
+          current.attachmentId !== authorization.attachmentId ||
+          current.tunnelId !== authorization.tunnelId ||
+          current.clientId !== authorization.clientId ||
+          current.destination.workerId !== authorization.destination.workerId ||
+          !directAttachments.preparationLeaseIsActive(preparationLease)
+        ) {
+          await directAttachments.revoke(
+            ticket.binding.capabilityId,
+            "Owning resource changed while direct access was opening",
+          );
+          return reply.code(current ? 409 : 404).send({
+            error: current
+              ? "The owning resource changed while direct access was opening."
+              : "Tunnel attachment not found.",
+          });
+        }
         return reply
           .code(201)
           .send(directTunnelTicketSchema.parse({ ...ticket, route }));
@@ -12220,6 +12320,8 @@ export async function buildApp({
           return reply.code(409).send({ error: error.message });
         }
         throw error;
+      } finally {
+        directAttachments.releasePreparationLease(preparationLease);
       }
     },
   );
@@ -12267,6 +12369,27 @@ export async function buildApp({
           "attachment_missing",
         );
         return reply.code(404).send({ error: "Tunnel attachment not found." });
+      }
+      const codeActivityLease = codeTunnel.recordTunnelActivityLease(
+        authorization.tunnelId,
+      );
+      if (codeActivityLease.managed && !codeActivityLease.expiresAt) {
+        directAttachments.recordActivationOutcome(
+          input.data.capabilityId,
+          {
+            attachmentId: authorization.attachmentId,
+            authSessionId,
+            ownerId: principal.user.id,
+          },
+          "attachment_stale",
+        );
+        await directAttachments.revoke(
+          input.data.capabilityId,
+          "Protected Code attachment expired",
+        );
+        return reply
+          .code(409)
+          .send({ error: "The protected Code attachment has expired." });
       }
       if (
         !(await repository.activateDesktopTunnelAttachment(
@@ -17096,35 +17219,42 @@ export async function buildApp({
         });
       }
       try {
-        const existing = await repository.getManagedTunnel(ownerId, {
-          kind: "project-share",
-          id: request.params.projectId,
-        });
-        if (existing && existing.id !== input.data.tunnelId) {
-          return reply.code(409).send({
-            code: "stale-tunnel",
-            error: "The project share tunnel identity is stale.",
-          });
-        }
-        if (existing) {
-          await Promise.all(
-            existing.attachments.map(({ id }) =>
-              tunnelRuntime.revoke(ownerId, id, {
-                preserveTunnelState: true,
-              }),
-            ),
-          );
-        }
-        const attachment = await projectShareTunnel.open({
+        return await directAttachments.mutateResource(
           ownerId,
-          projectId: request.params.projectId,
-          protectedRecord: input.data.protectedRecord,
-          tunnelId: input.data.tunnelId,
-          workerId: input.data.workerId,
-        });
-        return reply
-          .code(201)
-          .send(projectShareAttachmentWireSchema.parse(attachment));
+          "tunnel",
+          input.data.tunnelId,
+          async () => {
+            const existing = await repository.getManagedTunnel(ownerId, {
+              kind: "project-share",
+              id: request.params.projectId,
+            });
+            if (existing && existing.id !== input.data.tunnelId) {
+              return reply.code(409).send({
+                code: "stale-tunnel",
+                error: "The project share tunnel identity is stale.",
+              });
+            }
+            if (existing) {
+              await Promise.all(
+                existing.attachments.map(({ id }) =>
+                  tunnelRuntime.revoke(ownerId, id, {
+                    preserveTunnelState: true,
+                  }),
+                ),
+              );
+            }
+            const attachment = await projectShareTunnel.open({
+              ownerId,
+              projectId: request.params.projectId,
+              protectedRecord: input.data.protectedRecord,
+              tunnelId: input.data.tunnelId,
+              workerId: input.data.workerId,
+            });
+            return reply
+              .code(201)
+              .send(projectShareAttachmentWireSchema.parse(attachment));
+          },
+        );
       } catch (error) {
         const message = errorMessage(error);
         return reply
@@ -17143,31 +17273,38 @@ export async function buildApp({
     "/api/project-shares/:attachmentId",
     async (request, reply) => {
       const ownerId = applicationOwnerId();
-      const tunnel = await repository.getTunnel(
+      return directAttachments.mutateResource(
         ownerId,
+        "tunnel",
         request.params.attachmentId,
+        async () => {
+          const tunnel = await repository.getTunnel(
+            ownerId,
+            request.params.attachmentId,
+          );
+          if (
+            !tunnel ||
+            tunnel.origin !== "project-share" ||
+            tunnel.managedBy?.kind !== "project-share"
+          ) {
+            return reply.code(404).send({ error: "Project share not found." });
+          }
+          await Promise.all(
+            tunnel.attachments.map(({ id }) =>
+              tunnelRuntime.revoke(ownerId, id, {
+                preserveTunnelState: true,
+              }),
+            ),
+          );
+          const revoked = await projectShareTunnel.revokeAttachment(
+            request.params.attachmentId,
+            ownerId,
+          );
+          return revoked
+            ? reply.code(204).send()
+            : reply.code(404).send({ error: "Project share not found." });
+        },
       );
-      if (
-        !tunnel ||
-        tunnel.origin !== "project-share" ||
-        tunnel.managedBy?.kind !== "project-share"
-      ) {
-        return reply.code(404).send({ error: "Project share not found." });
-      }
-      await Promise.all(
-        tunnel.attachments.map(({ id }) =>
-          tunnelRuntime.revoke(ownerId, id, { preserveTunnelState: true }),
-        ),
-      );
-      const revoked = await projectShareTunnel.revokeAttachment(
-        request.params.attachmentId,
-        ownerId,
-      );
-      if (!revoked) {
-        return reply.code(404).send({ error: "Project share not found." });
-      }
-      await directAttachments.revokeAttachment(request.params.attachmentId);
-      return reply.code(204).send();
     },
   );
 
@@ -21912,38 +22049,41 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const context = await repository.getTerminalExecutionContext(
-        applicationOwnerId(),
-        request.params.terminalId,
-      );
-      if (
-        context &&
-        (await repository.getRunInstanceByTerminal(
-          applicationOwnerId(),
-          request.params.terminalId,
-        ))
-      ) {
-        return reply
-          .code(409)
-          .send({ error: "Run terminals cannot change worktrees." });
-      }
-      if (context) await requireProjectWorktrees(context.projectId);
+      const ownerId = applicationOwnerId();
       try {
-        const terminal = await repository.updateTerminalWorktree(
-          applicationOwnerId(),
+        return await directAttachments.mutateResource(
+          ownerId,
+          "terminal",
           request.params.terminalId,
-          input.data,
+          async () => {
+            const context = await repository.getTerminalExecutionContext(
+              ownerId,
+              request.params.terminalId,
+            );
+            if (
+              context &&
+              (await repository.getRunInstanceByTerminal(
+                ownerId,
+                request.params.terminalId,
+              ))
+            ) {
+              return reply
+                .code(409)
+                .send({ error: "Run terminals cannot change worktrees." });
+            }
+            if (context) await requireProjectWorktrees(context.projectId);
+            const terminal = await repository.updateTerminalWorktree(
+              ownerId,
+              request.params.terminalId,
+              input.data,
+            );
+            return terminal
+              ? reply.send(terminalWireSummarySchema.parse(terminal))
+              : reply
+                  .code(404)
+                  .send({ error: "Terminal or worktree not found." });
+          },
         );
-        if (terminal) {
-          await directAttachments.revokeResource(
-            applicationOwnerId(),
-            "terminal",
-            terminal.id,
-          );
-        }
-        return terminal
-          ? reply.send(terminalWireSummarySchema.parse(terminal))
-          : reply.code(404).send({ error: "Terminal or worktree not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
@@ -21954,32 +22094,38 @@ export async function buildApp({
     "/api/terminals/:terminalId",
     async (request, reply) => {
       const ownerId = applicationOwnerId();
-      const context = await repository.deleteTerminal(
-        ownerId,
-        request.params.terminalId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Terminal not found." });
-      }
-      if (bridge.isConnected(context.workerId)) {
-        void bridge
-          .request(context.workerId, {
-            type: "terminal.close",
-            terminalId: context.terminalId,
-          })
-          .catch((error: unknown) =>
-            app.log.warn(
-              { err: error, terminalId: context.terminalId },
-              "Could not close deleted terminal",
-            ),
-          );
-      }
-      await directAttachments.revokeResource(
+      return directAttachments.mutateResource(
         ownerId,
         "terminal",
-        context.terminalId,
+        request.params.terminalId,
+        async () => {
+          const context = await repository.deleteTerminal(
+            ownerId,
+            request.params.terminalId,
+          );
+          if (!context) {
+            return reply.code(404).send({ error: "Terminal not found." });
+          }
+          if (bridge.isConnected(context.workerId)) {
+            await bridge
+              .request(
+                context.workerId,
+                {
+                  type: "terminal.close",
+                  terminalId: context.terminalId,
+                },
+                { ownerId, timeoutMs: 5_000 },
+              )
+              .catch((error: unknown) =>
+                app.log.warn(
+                  { err: error, terminalId: context.terminalId },
+                  "Could not close deleted terminal",
+                ),
+              );
+          }
+          return reply.code(204).send();
+        },
       );
-      return reply.code(204).send();
     },
   );
 
@@ -22358,68 +22504,83 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const ownerId = applicationOwnerId();
-      const context = await repository.getCodeTabExecutionContext(
+      const authSessionId = authenticatedPrincipal(request).sessionId;
+      const registrationLease = codeTunnel.acquireRegistrationLease({
+        authSessionId,
         ownerId,
-        request.params.codeTabId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Code tab not found." });
-      }
-      if (
-        input.data.expectedWorkerId !== context.workerId ||
-        input.data.expectedWorktreeId !== context.worktreeId
-      ) {
+        sessionId: input.data.sessionId,
+        tunnelId: input.data.tunnelId,
+      });
+      if (!registrationLease) {
         return reply.code(409).send({
-          error: "The Code tab changed while its editor was attaching.",
+          error: "The Code attachment lifecycle changed while attaching.",
         });
       }
-      const session = (
-        (await repository.listCodeSessions(ownerId, context.codeTab.id)) ?? []
-      ).find((candidate) => candidate.id === input.data.sessionId);
-      if (
-        !session ||
-        input.data.expectedWorkerId !== session.workerId ||
-        input.data.expectedWorktreeId !== session.worktreeId ||
-        session.workerId !== context.workerId ||
-        session.worktreeId !== context.worktreeId ||
-        session.profileId !== context.codeTab.profileId
-      ) {
-        return reply.code(409).send({ error: "Code session is unavailable." });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      let runtime: CodeRuntimeStatus;
       try {
-        runtime = codeRuntimeStatusSchema.parse(
-          await bridge.request(context.workerId, {
-            type: "code.status",
-            sessionId: session.id,
-          }),
+        const context = await repository.getCodeTabExecutionContext(
+          ownerId,
+          request.params.codeTabId,
         );
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-      const freshContext = await repository.getCodeTabExecutionContext(
-        ownerId,
-        request.params.codeTabId,
-      );
-      if (
-        runtime.sessionId !== session.id ||
-        !freshContext ||
-        freshContext.workerId !== context.workerId ||
-        freshContext.worktreeId !== context.worktreeId ||
-        freshContext.cwd !== context.cwd ||
-        freshContext.codeTab.profileId !== context.codeTab.profileId
-      ) {
-        return reply.code(409).send({
-          error: "The Code tab changed while its editor was attaching.",
-        });
-      }
-      try {
+        if (!context) {
+          return reply.code(404).send({ error: "Code tab not found." });
+        }
+        if (
+          input.data.expectedWorkerId !== context.workerId ||
+          input.data.expectedWorktreeId !== context.worktreeId
+        ) {
+          return reply.code(409).send({
+            error: "The Code tab changed while its editor was attaching.",
+          });
+        }
+        const session = (
+          (await repository.listCodeSessions(ownerId, context.codeTab.id)) ?? []
+        ).find((candidate) => candidate.id === input.data.sessionId);
+        if (
+          !session ||
+          input.data.expectedWorkerId !== session.workerId ||
+          input.data.expectedWorktreeId !== session.worktreeId ||
+          session.workerId !== context.workerId ||
+          session.worktreeId !== context.worktreeId ||
+          session.profileId !== context.codeTab.profileId
+        ) {
+          return reply
+            .code(409)
+            .send({ error: "Code session is unavailable." });
+        }
+        if (!bridge.isConnected(context.workerId)) {
+          return reply.code(503).send({ error: "Worker is offline." });
+        }
+        let runtime: CodeRuntimeStatus;
+        try {
+          runtime = codeRuntimeStatusSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "code.status",
+              sessionId: session.id,
+            }),
+          );
+        } catch (error) {
+          return sendWorkerRequestFailure(reply, error);
+        }
+        const freshContext = await repository.getCodeTabExecutionContext(
+          ownerId,
+          request.params.codeTabId,
+        );
+        if (
+          runtime.sessionId !== session.id ||
+          !freshContext ||
+          freshContext.workerId !== context.workerId ||
+          freshContext.worktreeId !== context.worktreeId ||
+          freshContext.cwd !== context.cwd ||
+          freshContext.codeTab.profileId !== context.codeTab.profileId ||
+          !codeTunnel.registrationLeaseIsActive(registrationLease)
+        ) {
+          return reply.code(409).send({
+            error: "The Code tab changed while its editor was attaching.",
+          });
+        }
         const attachment = codeProtectedAttachmentWireSchema.parse(
           await codeTunnel.createProtectedAttachment({
-            authSessionId: authenticatedPrincipal(request).sessionId,
+            authSessionId,
             codeTabId: context.codeTab.id,
             ownerId,
             projectId: context.codeTab.projectId,
@@ -22428,6 +22589,7 @@ export async function buildApp({
             sessionId: session.id,
             tunnelId: input.data.tunnelId,
             workerId: context.workerId,
+            registrationLease,
           }),
         );
         const attachedContext = await repository.getCodeTabExecutionContext(
@@ -22439,8 +22601,10 @@ export async function buildApp({
           attachedContext.workerId !== context.workerId ||
           attachedContext.worktreeId !== context.worktreeId ||
           attachedContext.cwd !== context.cwd ||
-          attachedContext.codeTab.profileId !== context.codeTab.profileId
+          attachedContext.codeTab.profileId !== context.codeTab.profileId ||
+          !codeTunnel.registrationLeaseIsActive(registrationLease)
         ) {
+          codeTunnel.releaseRegistrationLease(registrationLease);
           await codeTunnel.revokeAttachment(attachment.attachmentId, ownerId);
           return reply.code(409).send({
             error: "The Code tab changed while its editor was attaching.",
@@ -22448,7 +22612,13 @@ export async function buildApp({
         }
         return reply.code(201).send(attachment);
       } catch (error) {
-        return reply.code(503).send({ error: errorMessage(error) });
+        return reply
+          .code(
+            codeTunnel.registrationLeaseIsActive(registrationLease) ? 503 : 409,
+          )
+          .send({ error: errorMessage(error) });
+      } finally {
+        codeTunnel.releaseRegistrationLease(registrationLease);
       }
     },
   );
@@ -24084,15 +24254,22 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const ownerId = applicationOwnerId();
       const context = await repository.getExplorerExecutionContext(
-        applicationOwnerId(),
+        ownerId,
         request.params.explorerId,
       );
       if (context) await requireProjectWorktrees(context.projectId);
-      const explorer = await repository.updateExplorerWorktree(
-        applicationOwnerId(),
+      const explorer = await codeTunnel.mutateExplorer(
+        ownerId,
         request.params.explorerId,
-        input.data,
+        () =>
+          repository.updateExplorerWorktree(
+            ownerId,
+            request.params.explorerId,
+            input.data,
+          ),
+        (result) => result !== null,
       );
       return explorer
         ? reply.send(explorerWireSummarySchema.parse(explorer))
@@ -24122,13 +24299,17 @@ export async function buildApp({
 
   app.delete<{ Params: { explorerId: string } }>(
     "/api/explorers/:explorerId",
-    async (request, reply) =>
-      (await repository.deleteExplorer(
-        applicationOwnerId(),
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      return (await codeTunnel.mutateExplorer(
+        ownerId,
         request.params.explorerId,
+        () => repository.deleteExplorer(ownerId, request.params.explorerId),
+        () => true,
       ))
         ? reply.code(204).send()
-        : reply.code(404).send({ error: "Explorer not found." }),
+        : reply.code(404).send({ error: "Explorer not found." });
+    },
   );
 
   app.post<{ Params: { explorerId: string } }>(
@@ -24141,125 +24322,146 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const ownerId = applicationOwnerId();
-      const context = await repository.getExplorerExecutionContext(
+      const registrationLease = codeTunnel.acquireRegistrationLease({
+        authSessionId: authenticatedPrincipal(request).sessionId,
+        explorerId: request.params.explorerId,
         ownerId,
-        request.params.explorerId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Explorer not found." });
-      }
-      if (
-        input.data.expectedWorkerId !== context.workerId ||
-        input.data.expectedWorktreeId !== context.worktreeId
-      ) {
-        return reply.code(409).send({
-          error: "The Explorer changed while its editor was opening.",
-        });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Worker is offline." });
-      }
-      let probe;
-      try {
-        probe = codeProbeResultSchema.parse(
-          await bridge.request(context.workerId, { type: "code.probe" }),
-        );
-      } catch (error) {
-        return reply.code(503).send({ error: errorMessage(error) });
-      }
-      if (!probe.capabilities.available || !probe.editorBuild) {
-        return reply.code(409).send({
-          error:
-            probe.capabilities.reason ??
-            "This worker has no compatible Cantrip Code build.",
-        });
-      }
-      const sessionId = input.data.sessionId;
-      const surfaceId = `explorer:${context.explorerId}:${sessionId}`;
-      let runtime: CodeRuntimeStatus;
-      try {
-        runtime = codeRuntimeStatusSchema.parse(
-          await bridge.request(context.workerId, {
-            type: "code.open",
-            sessionId,
-            codeTabId: surfaceId,
-            projectId: context.projectId,
-            worktreeId: context.worktreeId,
-            cwd: context.root,
-            profileId: scopedCodeProfileId(ownerId, "default"),
-            ...(input.data.path ? { initialFile: input.data.path } : {}),
-            themeMode: "follow-cantrip",
-            appearance: input.data.appearance,
-            presentation: "editor",
-          }),
-        );
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-      const freshContext = await repository.getExplorerExecutionContext(
-        ownerId,
-        request.params.explorerId,
-      );
-      if (
-        runtime.sessionId !== sessionId ||
-        !freshContext ||
-        freshContext.projectId !== context.projectId ||
-        freshContext.workerId !== context.workerId ||
-        freshContext.worktreeId !== context.worktreeId ||
-        freshContext.root !== context.root
-      ) {
-        await bridge
-          .request(
-            context.workerId,
-            { type: "code.stop", sessionId },
-            { timeoutMs: 5_000 },
-          )
-          .catch(() => undefined);
+        sessionId: input.data.sessionId,
+        tunnelId: input.data.tunnelId,
+      });
+      if (!registrationLease) {
         return reply.code(409).send({
           error: "The Explorer changed while its editor was opening.",
         });
       }
       try {
-        const attachment = codeProtectedAttachmentWireSchema.parse(
-          await codeTunnel.createProtectedAttachment({
-            authSessionId: authenticatedPrincipal(request).sessionId,
-            codeTabId: surfaceId,
-            ownerId,
-            projectId: context.projectId,
-            protectedRecord: input.data.protectedRecord,
-            runtime,
-            sessionId,
-            stopSessionOnRelease: true,
-            tunnelId: input.data.tunnelId,
-            workerId: context.workerId,
-          }),
-        );
-        const attachedContext = await repository.getExplorerExecutionContext(
+        const context = await repository.getExplorerExecutionContext(
           ownerId,
           request.params.explorerId,
         );
+        if (!context) {
+          return reply.code(404).send({ error: "Explorer not found." });
+        }
         if (
-          !attachedContext ||
-          attachedContext.projectId !== context.projectId ||
-          attachedContext.workerId !== context.workerId ||
-          attachedContext.worktreeId !== context.worktreeId ||
-          attachedContext.root !== context.root
+          input.data.expectedWorkerId !== context.workerId ||
+          input.data.expectedWorktreeId !== context.worktreeId
         ) {
-          await codeTunnel.revokeAttachment(attachment.attachmentId, ownerId);
           return reply.code(409).send({
             error: "The Explorer changed while its editor was opening.",
           });
         }
-        return reply.code(201).send(attachment);
-      } catch (error) {
-        await bridge
-          .request(
-            context.workerId,
-            { type: "code.stop", sessionId },
-            { timeoutMs: 5_000 },
-          )
-          .catch(() => undefined);
-        return reply.code(503).send({ error: errorMessage(error) });
+        if (!bridge.isConnected(context.workerId)) {
+          return reply.code(503).send({ error: "Worker is offline." });
+        }
+        let probe;
+        try {
+          probe = codeProbeResultSchema.parse(
+            await bridge.request(context.workerId, { type: "code.probe" }),
+          );
+        } catch (error) {
+          return reply.code(503).send({ error: errorMessage(error) });
+        }
+        if (!probe.capabilities.available || !probe.editorBuild) {
+          return reply.code(409).send({
+            error:
+              probe.capabilities.reason ??
+              "This worker has no compatible Cantrip Code build.",
+          });
+        }
+        const sessionId = input.data.sessionId;
+        const surfaceId = `explorer:${context.explorerId}:${sessionId}`;
+        let runtime: CodeRuntimeStatus;
+        try {
+          runtime = codeRuntimeStatusSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "code.open",
+              sessionId,
+              codeTabId: surfaceId,
+              projectId: context.projectId,
+              worktreeId: context.worktreeId,
+              cwd: context.root,
+              profileId: scopedCodeProfileId(ownerId, "default"),
+              ...(input.data.path ? { initialFile: input.data.path } : {}),
+              themeMode: "follow-cantrip",
+              appearance: input.data.appearance,
+              presentation: "editor",
+            }),
+          );
+        } catch (error) {
+          return sendWorkerRequestFailure(reply, error);
+        }
+        const freshContext = await repository.getExplorerExecutionContext(
+          ownerId,
+          request.params.explorerId,
+        );
+        if (
+          runtime.sessionId !== sessionId ||
+          !freshContext ||
+          freshContext.projectId !== context.projectId ||
+          freshContext.workerId !== context.workerId ||
+          freshContext.worktreeId !== context.worktreeId ||
+          freshContext.root !== context.root
+        ) {
+          await bridge
+            .request(
+              context.workerId,
+              { type: "code.stop", sessionId },
+              { timeoutMs: 5_000 },
+            )
+            .catch(() => undefined);
+          return reply.code(409).send({
+            error: "The Explorer changed while its editor was opening.",
+          });
+        }
+        try {
+          const attachment = codeProtectedAttachmentWireSchema.parse(
+            await codeTunnel.createProtectedAttachment({
+              authSessionId: authenticatedPrincipal(request).sessionId,
+              codeTabId: surfaceId,
+              ownerId,
+              projectId: context.projectId,
+              protectedRecord: input.data.protectedRecord,
+              runtime,
+              sessionId,
+              stopSessionOnRelease: true,
+              tunnelId: input.data.tunnelId,
+              workerId: context.workerId,
+              registrationLease,
+            }),
+          );
+          const attachedContext = await repository.getExplorerExecutionContext(
+            ownerId,
+            request.params.explorerId,
+          );
+          if (
+            !attachedContext ||
+            attachedContext.projectId !== context.projectId ||
+            attachedContext.workerId !== context.workerId ||
+            attachedContext.worktreeId !== context.worktreeId ||
+            attachedContext.root !== context.root ||
+            !codeTunnel.registrationLeaseIsActive(registrationLease)
+          ) {
+            codeTunnel.releaseRegistrationLease(registrationLease);
+            await codeTunnel.revokeAttachment(attachment.attachmentId, ownerId);
+            return reply.code(409).send({
+              error: "The Explorer changed while its editor was opening.",
+            });
+          }
+          return reply.code(201).send(attachment);
+        } catch (error) {
+          await bridge
+            .request(
+              context.workerId,
+              { type: "code.stop", sessionId },
+              { timeoutMs: 5_000 },
+            )
+            .catch(() => undefined);
+          return reply
+            .code(error instanceof ExplorerCodeAttachmentLeaseError ? 409 : 503)
+            .send({ error: errorMessage(error) });
+        }
+      } finally {
+        codeTunnel.releaseRegistrationLease(registrationLease);
       }
     },
   );
@@ -24303,157 +24505,223 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const principal = authenticatedPrincipal(request);
-      const context = await repository.getTerminalExecutionContext(
-        principal.user.id,
-        request.params.terminalId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Terminal not found." });
+      const authSessionId = principal.sessionId ?? `local:${principal.user.id}`;
+      const preparationLease = directAttachments.acquirePreparationLease({
+        authSessionId,
+        ownerId: principal.user.id,
+        resourceId: request.params.terminalId,
+        resourceKind: "terminal",
+      });
+      if (!preparationLease) {
+        return reply.code(409).send({
+          error: "The owning resource is being revoked.",
+        });
       }
-      const worker = await repository.getWorker(
-        principal.user.id,
-        context.workerId,
-      );
-      if (!worker || !bridge.isConnected(context.workerId)) {
-        return reply.code(409).send({ error: "Project worker is offline." });
-      }
-      const bootstrapAttachmentId = `direct-bootstrap:${randomUUID()}`;
       try {
-        const managedRun = await repository.getRunInstanceByTerminal(
+        const context = await repository.getTerminalExecutionContext(
           principal.user.id,
-          context.terminalId,
+          request.params.terminalId,
         );
-        let launch: Extract<
-          WorkerCommand,
-          { type: "terminal.open" }
-        >["launch"] = { type: "shell" };
-        if (context.linkedChatId) {
-          const chat = await repository.getChatExecutionContext(
-            principal.user.id,
-            context.linkedChatId,
-          );
-          const runtime = chat ? await runtimeForContext(chat) : null;
-          if (!chat || !runtime) {
-            return reply.code(409).send({
-              error:
-                "Choose a model for this chat before opening its Codex console.",
-            });
-          }
-          launch = {
-            type: "codex",
-            threadId: chat.threadId,
-            model: runtime.model,
-            provider: runtime.provider,
-            permissionProfileId: effectivePermissionProfile(chat).effectiveId,
-            mcpServers: await repository.listEffectiveMcpServers(
-              principal.user.id,
-              chat.projectId,
-              context.workerId,
-            ),
-          };
+        if (!context) {
+          return reply.code(404).send({ error: "Terminal not found." });
         }
-        let markReady: (() => void) | null = null;
-        let markFailed: ((error: Error) => void) | null = null;
-        let startupTimer: ReturnType<typeof setTimeout> | null = null;
-        const ready = new Promise<void>((resolve, reject) => {
-          markReady = resolve;
-          markFailed = reject;
-          startupTimer = setTimeout(
-            () => reject(new Error("Terminal process startup timed out.")),
-            15_000,
-          );
-          startupTimer.unref();
-        });
-        const opened = bridge.request(
-          context.workerId,
-          {
-            type: "terminal.open",
-            terminalId: context.terminalId,
-            managedRunId: managedRun?.id ?? null,
-            attachmentId: bootstrapAttachmentId,
-            operationId: randomUUID(),
-            serverId,
-            worktreePath: context.worktreePath,
-            stateProtection: context.stateProtection,
-            cols: 80,
-            rows: 24,
-            launch,
-          },
-          {
-            timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
-            onEvent: (event) => {
-              if (event.type === "terminal.ready") markReady?.();
-            },
-          },
-        );
-        void opened
-          .then((result) => {
-            const parsed = terminalOpenResultSchema.parse(result);
-            if (parsed.status === "exited") {
-              markFailed?.(
-                new Error("Terminal process exited during startup."),
-              );
-            }
-          })
-          .catch((error: unknown) =>
-            markFailed?.(
-              error instanceof Error
-                ? error
-                : new Error("Terminal process could not start."),
-            ),
-          );
-        await ready.finally(() => {
-          if (startupTimer) clearTimeout(startupTimer);
-        });
-        await bridge.request(context.workerId, {
-          type: "terminal.detach",
-          terminalId: context.terminalId,
-          attachmentId: bootstrapAttachmentId,
-        });
-        await updateTerminalStatus(context.terminalId, "running");
-
-        const attachmentId = randomUUID();
-        const route = {
-          tunnelId: `terminal:${context.terminalId}`,
-          attachmentId,
-          sourceEndpointId: `desktop:${input.data.clientId}:${attachmentId}`,
-          destinationEndpointId: `worker:${context.workerId}`,
+        const assertPreparationActive = () => {
+          if (!directAttachments.preparationLeaseIsActive(preparationLease)) {
+            throw new DirectAttachmentUnavailableError(
+              "The owning resource changed while direct access was opening.",
+            );
+          }
         };
-        const ticket = await directAttachments.prepare({
-          attachmentId,
-          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
-          channels: ["tunnel-data"],
-          leaseExpiresAt: new Date(Date.now() + 12 * 60 * 60_000),
-          ownerId: principal.user.id,
-          resourceId: context.terminalId,
-          resourceKind: "terminal",
-          tunnelRoute: {
-            ...route,
-            target: {
-              kind: "adapter",
-              adapter: "terminal",
-              resourceId: context.terminalId,
-              serverId,
+        assertPreparationActive();
+        const worker = await repository.getWorker(
+          principal.user.id,
+          context.workerId,
+        );
+        assertPreparationActive();
+        if (!worker || !bridge.isConnected(context.workerId)) {
+          return reply.code(409).send({ error: "Project worker is offline." });
+        }
+        const bootstrapAttachmentId = `direct-bootstrap:${randomUUID()}`;
+        let startedTerminal = false;
+        try {
+          const managedRun = await repository.getRunInstanceByTerminal(
+            principal.user.id,
+            context.terminalId,
+          );
+          assertPreparationActive();
+          let launch: Extract<
+            WorkerCommand,
+            { type: "terminal.open" }
+          >["launch"] = { type: "shell" };
+          if (context.linkedChatId) {
+            const chat = await repository.getChatExecutionContext(
+              principal.user.id,
+              context.linkedChatId,
+            );
+            const runtime = chat ? await runtimeForContext(chat) : null;
+            if (!chat || !runtime) {
+              return reply.code(409).send({
+                error:
+                  "Choose a model for this chat before opening its Codex console.",
+              });
+            }
+            launch = {
+              type: "codex",
+              threadId: chat.threadId,
+              model: runtime.model,
+              provider: runtime.provider,
+              permissionProfileId: effectivePermissionProfile(chat).effectiveId,
+              mcpServers: await repository.listEffectiveMcpServers(
+                principal.user.id,
+                chat.projectId,
+                context.workerId,
+              ),
+            };
+            assertPreparationActive();
+          }
+          let markReady: (() => void) | null = null;
+          let markFailed: ((error: Error) => void) | null = null;
+          let startupTimer: ReturnType<typeof setTimeout> | null = null;
+          const ready = new Promise<void>((resolve, reject) => {
+            markReady = resolve;
+            markFailed = reject;
+            startupTimer = setTimeout(
+              () => reject(new Error("Terminal process startup timed out.")),
+              15_000,
+            );
+            startupTimer.unref();
+          });
+          assertPreparationActive();
+          startedTerminal = true;
+          const opened = bridge.request(
+            context.workerId,
+            {
+              type: "terminal.open",
+              terminalId: context.terminalId,
               managedRunId: managedRun?.id ?? null,
+              attachmentId: bootstrapAttachmentId,
+              operationId: randomUUID(),
+              serverId,
+              worktreePath: context.worktreePath,
+              stateProtection: context.stateProtection,
+              cols: 80,
+              rows: 24,
+              launch,
             },
-          },
-          worker,
-        });
-        return reply
-          .code(201)
-          .send(directTunnelTicketSchema.parse({ ...ticket, route }));
-      } catch (error) {
-        await bridge
-          .request(context.workerId, {
+            {
+              timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
+              onEvent: (event) => {
+                if (event.type === "terminal.ready") markReady?.();
+              },
+            },
+          );
+          void opened
+            .then((result) => {
+              const parsed = terminalOpenResultSchema.parse(result);
+              if (parsed.status === "exited") {
+                markFailed?.(
+                  new Error("Terminal process exited during startup."),
+                );
+              }
+            })
+            .catch((error: unknown) =>
+              markFailed?.(
+                error instanceof Error
+                  ? error
+                  : new Error("Terminal process could not start."),
+              ),
+            );
+          await ready.finally(() => {
+            if (startupTimer) clearTimeout(startupTimer);
+          });
+          assertPreparationActive();
+          await bridge.request(context.workerId, {
             type: "terminal.detach",
             terminalId: context.terminalId,
             attachmentId: bootstrapAttachmentId,
-          })
-          .catch(() => undefined);
+          });
+          assertPreparationActive();
+          await updateTerminalStatus(context.terminalId, "running");
+          assertPreparationActive();
+
+          const attachmentId = randomUUID();
+          const route = {
+            tunnelId: `terminal:${context.terminalId}`,
+            attachmentId,
+            sourceEndpointId: `desktop:${input.data.clientId}:${attachmentId}`,
+            destinationEndpointId: `worker:${context.workerId}`,
+          };
+          const ticket = await directAttachments.prepare({
+            attachmentId,
+            authSessionId,
+            channels: ["tunnel-data"],
+            leaseExpiresAt: new Date(Date.now() + 12 * 60 * 60_000),
+            ownerId: principal.user.id,
+            preparationLease,
+            resourceId: context.terminalId,
+            resourceKind: "terminal",
+            tunnelRoute: {
+              ...route,
+              target: {
+                kind: "adapter",
+                adapter: "terminal",
+                resourceId: context.terminalId,
+                serverId,
+                managedRunId: managedRun?.id ?? null,
+              },
+            },
+            worker,
+          });
+          if (!directAttachments.preparationLeaseIsActive(preparationLease)) {
+            await directAttachments.revoke(
+              ticket.binding.capabilityId,
+              "Owning resource was revoked",
+            );
+            throw new DirectAttachmentUnavailableError(
+              "The owning resource changed while direct access was opening.",
+            );
+          }
+          return reply
+            .code(201)
+            .send(directTunnelTicketSchema.parse({ ...ticket, route }));
+        } catch (error) {
+          const revoked =
+            !directAttachments.preparationLeaseIsActive(preparationLease);
+          if (revoked && startedTerminal) {
+            await bridge
+              .request(
+                context.workerId,
+                {
+                  type: "terminal.close",
+                  terminalId: context.terminalId,
+                },
+                { ownerId: principal.user.id, timeoutMs: 5_000 },
+              )
+              .catch(() => undefined);
+            await updateTerminalStatus(context.terminalId, "idle").catch(
+              () => undefined,
+            );
+          } else {
+            await bridge
+              .request(context.workerId, {
+                type: "terminal.detach",
+                terminalId: context.terminalId,
+                attachmentId: bootstrapAttachmentId,
+              })
+              .catch(() => undefined);
+          }
+          if (error instanceof DirectAttachmentUnavailableError) {
+            return reply.code(409).send({ error: error.message });
+          }
+          return sendWorkerRequestFailure(reply, error);
+        }
+      } catch (error) {
         if (error instanceof DirectAttachmentUnavailableError) {
           return reply.code(409).send({ error: error.message });
         }
-        return sendWorkerRequestFailure(reply, error);
+        throw error;
+      } finally {
+        directAttachments.releasePreparationLease(preparationLease);
       }
     },
   );
@@ -29213,7 +29481,16 @@ export async function buildApp({
       "Application live transport stopped",
     );
     liveHub.close();
-    await codeTunnel.close();
+    let codeTunnelCloseError: unknown;
+    try {
+      await codeTunnel.close();
+    } catch (error) {
+      codeTunnelCloseError = error;
+      app.log.error(
+        { err: error },
+        "Cantrip Code attachment cleanup failed during shutdown",
+      );
+    }
     await projectShareTunnel.close();
     tunnelRuntime.close();
     await directAttachments.close();
@@ -29228,6 +29505,7 @@ export async function buildApp({
     await chatImportJobExecutor.drain();
     await workflowExecutor.drain();
     await database.close();
+    if (codeTunnelCloseError) throw codeTunnelCloseError;
   });
 
   return app;

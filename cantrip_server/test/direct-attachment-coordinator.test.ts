@@ -6,7 +6,11 @@ import {
 } from "@cantrip/logging";
 import { describe, expect, it, vi } from "vitest";
 
-import { DirectAttachmentCoordinator } from "../src/direct-attachments/coordinator.js";
+import {
+  DirectAttachmentCoordinator,
+  DirectAttachmentUnavailableError,
+  type DirectAttachmentPrepareInput,
+} from "../src/direct-attachments/coordinator.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 function worker(): WorkerSummary {
@@ -89,7 +93,423 @@ function eventContext(
   return record!.context as Record<string, unknown>;
 }
 
+async function prepareDirect(
+  coordinator: DirectAttachmentCoordinator,
+  input: Omit<DirectAttachmentPrepareInput, "preparationLease">,
+  fencedMessage = "The owning resource is being revoked.",
+) {
+  const preparationLease = coordinator.acquirePreparationLease({
+    attachmentId: input.attachmentId,
+    authSessionId: input.authSessionId,
+    ownerId: input.ownerId,
+    resourceId: input.resourceId,
+    resourceKind: input.resourceKind,
+  });
+  if (!preparationLease) {
+    throw new DirectAttachmentUnavailableError(fencedMessage);
+  }
+  try {
+    return await coordinator.prepare({ ...input, preparationLease });
+  } finally {
+    coordinator.releasePreparationLease(preparationLease);
+  }
+}
+
 describe("DirectAttachmentCoordinator", () => {
+  it("fences an unbound tunnel route lease across resource revocation", async () => {
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async () => ({ revoked: true })),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const unbound = coordinator.acquirePreparationLease({
+      attachmentId: "attachment-1",
+      authSessionId: "session-1",
+      ownerId: "owner-1",
+      resourceId: null,
+      resourceKind: "tunnel",
+    })!;
+    const unrelatedBound = coordinator.acquirePreparationLease({
+      attachmentId: "attachment-2",
+      authSessionId: "session-1",
+      ownerId: "owner-1",
+      resourceId: "tunnel-2",
+      resourceKind: "tunnel",
+    })!;
+    let cleanupFinished = false;
+    const cleanup = coordinator
+      .revokeResource("owner-1", "tunnel", "tunnel-1")
+      .then(() => {
+        cleanupFinished = true;
+      });
+
+    await Promise.resolve();
+    expect(cleanupFinished).toBe(false);
+    expect(
+      coordinator.bindPreparationLease(unbound, "tunnel", "tunnel-1"),
+    ).toBe(false);
+    expect(coordinator.preparationLeaseIsActive(unbound)).toBe(false);
+    expect(coordinator.preparationLeaseIsActive(unrelatedBound)).toBe(true);
+    expect(
+      coordinator.acquirePreparationLease({
+        attachmentId: "attachment-3",
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+        resourceId: null,
+        resourceKind: "tunnel",
+      }),
+    ).toBeNull();
+
+    coordinator.releasePreparationLease(unbound);
+    await expect(cleanup).resolves.toBeUndefined();
+    expect(cleanupFinished).toBe(true);
+    expect(coordinator.preparationLeaseIsActive(unrelatedBound)).toBe(true);
+    coordinator.releasePreparationLease(unrelatedBound);
+    await coordinator.close();
+  });
+
+  it.each(["session", "owner", "attachment"] as const)(
+    "waits for a route-entry lease across %s revocation",
+    async (scope) => {
+      const bus = {
+        isConnected: () => true,
+        request: vi.fn(async () => ({ revoked: true })),
+        subscribeWorkerDisconnect: () => () => undefined,
+      } as unknown as WorkerCommandBus;
+      const coordinator = new DirectAttachmentCoordinator(bus);
+      const lease = coordinator.acquirePreparationLease({
+        attachmentId: "attachment-1",
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+        resourceId: "tunnel-1",
+        resourceKind: "tunnel",
+      })!;
+      let cleanupFinished = false;
+      const cleanup = (
+        scope === "session"
+          ? coordinator.revokeSession("session-1")
+          : scope === "owner"
+            ? coordinator.revokeOwner("owner-1")
+            : coordinator.revokeAttachment("attachment-1")
+      ).then(() => {
+        cleanupFinished = true;
+      });
+
+      await Promise.resolve();
+      expect(cleanupFinished).toBe(false);
+      expect(coordinator.preparationLeaseIsActive(lease)).toBe(false);
+      coordinator.releasePreparationLease(lease);
+      await expect(cleanup).resolves.toBeUndefined();
+      expect(cleanupFinished).toBe(true);
+      await coordinator.close();
+    },
+  );
+
+  it("waits for a route-entry lease during shutdown", async () => {
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async () => ({ revoked: true })),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const lease = coordinator.acquirePreparationLease({
+      authSessionId: "session-1",
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+    })!;
+    let shutdownFinished = false;
+    const shutdown = coordinator.close().then(() => {
+      shutdownFinished = true;
+    });
+
+    await Promise.resolve();
+    expect(shutdownFinished).toBe(false);
+    expect(coordinator.preparationLeaseIsActive(lease)).toBe(false);
+    expect(
+      coordinator.acquirePreparationLease({
+        authSessionId: "session-2",
+        ownerId: "owner-2",
+        resourceId: "worker-2",
+        resourceKind: "probe",
+      }),
+    ).toBeNull();
+    coordinator.releasePreparationLease(lease);
+    await expect(shutdown).resolves.toBeUndefined();
+  });
+
+  it("does not leave a direct grant registered across resource revocation", async () => {
+    let releasePrepare!: () => void;
+    let signalPrepareStarted!: () => void;
+    const prepareStarted = new Promise<void>((resolve) => {
+      signalPrepareStarted = resolve;
+    });
+    const prepareRelease = new Promise<void>((resolve) => {
+      releasePrepare = resolve;
+    });
+    const commands: WorkerCommand[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        commands.push(command);
+        if (command.type === "direct.capability.prepare") {
+          signalPrepareStarted();
+          await prepareRelease;
+          return { accepted: true, capabilityId: command.binding.capabilityId };
+        }
+        return { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const input = {
+      attachmentId: "attachment-1",
+      authSessionId: "session-1",
+      channels: ["tunnel-data"],
+      ownerId: "owner-1",
+      resourceId: "tunnel-1",
+      resourceKind: "tunnel" as const,
+      worker: worker(),
+    };
+
+    try {
+      const preparation = prepareDirect(coordinator, input);
+      await prepareStarted;
+      const capabilityId = (
+        commands[0]?.type === "direct.capability.prepare"
+          ? commands[0].binding.capabilityId
+          : null
+      )!;
+      let cleanupFinished = false;
+      const cleanup = coordinator
+        .revokeResource("owner-1", "tunnel", "tunnel-1")
+        .then(() => {
+          cleanupFinished = true;
+        });
+      await expect(prepareDirect(coordinator, input)).rejects.toThrow(
+        "The owning resource is being revoked.",
+      );
+      expect(cleanupFinished).toBe(false);
+
+      releasePrepare();
+      await expect(preparation).rejects.toThrow(
+        "The owning resource changed while direct access was being prepared.",
+      );
+      await cleanup;
+      expect(cleanupFinished).toBe(true);
+      expect(commands).toContainEqual({
+        type: "direct.capability.revoke",
+        capabilityId,
+        reason: "Owning resource was revoked",
+      });
+      expect(
+        coordinator.recordTelemetry(
+          capabilityId,
+          { ownerId: "owner-1", authSessionId: "session-1" },
+          {
+            bytesFromLocal: 1,
+            bytesToLocal: 0,
+            connectionsClosed: 0,
+            connectionsOpened: 1,
+          },
+        ),
+      ).toBeNull();
+    } finally {
+      releasePrepare();
+      await coordinator.close();
+    }
+  });
+
+  it.each(["session", "owner"] as const)(
+    "fences a delayed preparation across %s revocation",
+    async (scope) => {
+      let releasePrepare!: () => void;
+      let signalPrepareStarted!: () => void;
+      const prepareStarted = new Promise<void>((resolve) => {
+        signalPrepareStarted = resolve;
+      });
+      const prepareRelease = new Promise<void>((resolve) => {
+        releasePrepare = resolve;
+      });
+      const commands: WorkerCommand[] = [];
+      const bus = {
+        isConnected: () => true,
+        request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+          commands.push(command);
+          if (command.type === "direct.capability.prepare") {
+            signalPrepareStarted();
+            await prepareRelease;
+            return {
+              accepted: true,
+              capabilityId: command.binding.capabilityId,
+            };
+          }
+          return { revoked: true };
+        }),
+        subscribeWorkerDisconnect: () => () => undefined,
+      } as unknown as WorkerCommandBus;
+      const coordinator = new DirectAttachmentCoordinator(bus);
+      const input = {
+        attachmentId: "attachment-1",
+        authSessionId: "session-1",
+        channels: ["tunnel-data"],
+        ownerId: "owner-1",
+        resourceId: "tunnel-1",
+        resourceKind: "tunnel" as const,
+        worker: worker(),
+      };
+
+      try {
+        const preparation = prepareDirect(coordinator, input);
+        await prepareStarted;
+        const capabilityId = (
+          commands[0]?.type === "direct.capability.prepare"
+            ? commands[0].binding.capabilityId
+            : null
+        )!;
+        let cleanupFinished = false;
+        const cleanup = (
+          scope === "session"
+            ? coordinator.revokeSession(input.authSessionId)
+            : coordinator.revokeOwner(input.ownerId)
+        ).then(() => {
+          cleanupFinished = true;
+        });
+
+        await expect(prepareDirect(coordinator, input)).rejects.toThrow(
+          "The owning resource is being revoked.",
+        );
+        expect(cleanupFinished).toBe(false);
+        expect(
+          commands.filter(
+            (command) => command.type === "direct.capability.prepare",
+          ),
+        ).toHaveLength(1);
+
+        releasePrepare();
+        await expect(preparation).rejects.toThrow(
+          "The owning resource changed while direct access was being prepared.",
+        );
+        await expect(cleanup).resolves.toBeUndefined();
+        expect(commands).toContainEqual({
+          type: "direct.capability.revoke",
+          capabilityId,
+          reason: "Owning resource was revoked",
+        });
+        expect(
+          coordinator.recordTelemetry(
+            capabilityId,
+            { ownerId: input.ownerId, authSessionId: input.authSessionId },
+            {
+              bytesFromLocal: 1,
+              bytesToLocal: 0,
+              connectionsClosed: 0,
+              connectionsOpened: 1,
+            },
+          ),
+        ).toBeNull();
+      } finally {
+        releasePrepare();
+        await coordinator.close();
+      }
+    },
+  );
+
+  it("waits for and revokes a late direct preparation during shutdown", async () => {
+    let releasePrepare!: () => void;
+    let signalPrepareStarted!: () => void;
+    const prepareStarted = new Promise<void>((resolve) => {
+      signalPrepareStarted = resolve;
+    });
+    const prepareRelease = new Promise<void>((resolve) => {
+      releasePrepare = resolve;
+    });
+    const commands: WorkerCommand[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        commands.push(command);
+        if (command.type === "direct.capability.prepare") {
+          signalPrepareStarted();
+          await prepareRelease;
+          return { accepted: true, capabilityId: command.binding.capabilityId };
+        }
+        return { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const input = {
+      attachmentId: "attachment-1",
+      authSessionId: "session-1",
+      channels: ["tunnel-data"],
+      ownerId: "owner-1",
+      resourceId: "tunnel-1",
+      resourceKind: "tunnel" as const,
+      worker: worker(),
+    };
+    const preparation = prepareDirect(coordinator, input);
+    await prepareStarted;
+    const capabilityId = (
+      commands[0]?.type === "direct.capability.prepare"
+        ? commands[0].binding.capabilityId
+        : null
+    )!;
+    let shutdownFinished = false;
+    const shutdown = coordinator.close().then(() => {
+      shutdownFinished = true;
+    });
+
+    try {
+      await expect(
+        prepareDirect(
+          coordinator,
+          input,
+          "The direct attachment coordinator is shutting down.",
+        ),
+      ).rejects.toThrow("The direct attachment coordinator is shutting down.");
+      expect(shutdownFinished).toBe(false);
+      expect(
+        commands.filter(
+          (command) => command.type === "direct.capability.prepare",
+        ),
+      ).toHaveLength(1);
+
+      releasePrepare();
+      await expect(preparation).rejects.toThrow(
+        "The owning resource changed while direct access was being prepared.",
+      );
+      await expect(shutdown).resolves.toBeUndefined();
+      expect(commands).toContainEqual({
+        type: "direct.capability.revoke",
+        capabilityId,
+        reason: "Owning resource was revoked",
+      });
+      expect(
+        coordinator.recordTelemetry(
+          capabilityId,
+          { ownerId: input.ownerId, authSessionId: input.authSessionId },
+          {
+            bytesFromLocal: 1,
+            bytesToLocal: 0,
+            connectionsClosed: 0,
+            connectionsOpened: 1,
+          },
+        ),
+      ).toBeNull();
+      await expect(coordinator.close()).resolves.toBeUndefined();
+      expect(
+        commands.filter(
+          (command) => command.type === "direct.capability.revoke",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      releasePrepare();
+      await coordinator.close();
+    }
+  });
+
   it("correlates activation, telemetry, and final state without logging capability material", async () => {
     const diagnosticTraceId = crypto.randomUUID();
     const commands: WorkerCommand[] = [];
@@ -105,7 +525,7 @@ describe("DirectAttachmentCoordinator", () => {
     } as unknown as WorkerCommandBus;
     const captured = capturedLogger();
     const coordinator = new DirectAttachmentCoordinator(bus, captured.logger);
-    const ticket = await coordinator.prepare({
+    const ticket = await prepareDirect(coordinator, {
       attachmentId: "attachment-1",
       authSessionId: "session-1",
       channels: ["tunnel-data"],
@@ -145,7 +565,12 @@ describe("DirectAttachmentCoordinator", () => {
           connectionsOpened: 2,
         },
       ),
-    ).toMatchObject({ bytesFromLocal: 120, bytesToLocal: 80 });
+    ).toMatchObject({
+      bytesFromLocal: 120,
+      bytesToLocal: 80,
+      resourceId: "tunnel-1",
+      resourceKind: "tunnel",
+    });
     expect(
       coordinator.recordTelemetry(
         ticket.binding.capabilityId,
@@ -250,7 +675,7 @@ describe("DirectAttachmentCoordinator", () => {
     } as unknown as WorkerCommandBus;
     const captured = capturedLogger();
     const coordinator = new DirectAttachmentCoordinator(bus, captured.logger);
-    const ticket = await coordinator.prepare({
+    const ticket = await prepareDirect(coordinator, {
       authSessionId: "session-1",
       channels: ["probe"],
       ownerId: "owner-1",
@@ -300,7 +725,7 @@ describe("DirectAttachmentCoordinator", () => {
     } as unknown as WorkerCommandBus;
     const captured = capturedLogger();
     const coordinator = new DirectAttachmentCoordinator(bus, captured.logger);
-    const ticket = await coordinator.prepare({
+    const ticket = await prepareDirect(coordinator, {
       authSessionId: "session-1",
       channels: ["probe"],
       ownerId: "owner-1",
@@ -356,7 +781,7 @@ describe("DirectAttachmentCoordinator", () => {
     const coordinator = new DirectAttachmentCoordinator(bus, captured.logger);
 
     await expect(
-      coordinator.prepare({
+      prepareDirect(coordinator, {
         attachmentId: "attachment-1",
         authSessionId: "session-1",
         channels: ["tunnel-data"],
@@ -412,7 +837,7 @@ describe("DirectAttachmentCoordinator", () => {
     const coordinator = new DirectAttachmentCoordinator(bus, captured.logger);
 
     await expect(
-      coordinator.prepare({
+      prepareDirect(coordinator, {
         attachmentId: "attachment-1",
         authSessionId: "session-1",
         channels: ["tunnel-data"],
@@ -448,7 +873,7 @@ describe("DirectAttachmentCoordinator", () => {
       subscribeWorkerDisconnect: () => () => undefined,
     } as unknown as WorkerCommandBus;
     const coordinator = new DirectAttachmentCoordinator(bus);
-    const ticket = await coordinator.prepare({
+    const ticket = await prepareDirect(coordinator, {
       authSessionId: "session-1",
       channels: ["probe"],
       ownerId: "owner-1",
@@ -482,6 +907,7 @@ describe("DirectAttachmentCoordinator", () => {
       bytesToLocal: 80,
       connectionsClosed: 1,
       connectionsOpened: 2,
+      resourceId: "worker-1",
       resourceKind: "probe",
     });
     expect(
@@ -557,7 +983,7 @@ describe("DirectAttachmentCoordinator", () => {
       subscribeWorkerDisconnect: () => () => undefined,
     } as unknown as WorkerCommandBus;
     const coordinator = new DirectAttachmentCoordinator(bus);
-    const ended = await coordinator.prepare({
+    const ended = await prepareDirect(coordinator, {
       authSessionId: "session-ended",
       channels: ["probe"],
       ownerId: "owner-1",
@@ -565,7 +991,7 @@ describe("DirectAttachmentCoordinator", () => {
       resourceKind: "probe",
       worker: worker(),
     });
-    const active = await coordinator.prepare({
+    const active = await prepareDirect(coordinator, {
       authSessionId: "session-active",
       channels: ["probe"],
       ownerId: "owner-1",

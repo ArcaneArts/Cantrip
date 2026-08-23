@@ -34,7 +34,31 @@ interface DirectGrant {
   telemetry: DirectTransportTelemetry;
 }
 
+interface DirectResourceLifecycle {
+  generation: symbol;
+  pending: Set<Promise<void>>;
+  revocationCount: number;
+  tail: Promise<void>;
+}
+
+export interface DirectAttachmentPreparationLeaseInput {
+  readonly attachmentId?: string;
+  readonly authSessionId: string;
+  readonly ownerId: string;
+  readonly resourceId: string | null;
+  readonly resourceKind: DirectResourceKind;
+}
+
+export interface DirectAttachmentPreparationLease extends DirectAttachmentPreparationLeaseInput {}
+
+interface DirectAttachmentPreparationLeaseState {
+  resourceId: string | null;
+  readonly release: () => void;
+  readonly released: Promise<void>;
+}
+
 export interface DirectTransportTelemetryDelta extends DirectTransportTelemetry {
+  resourceId: string;
   resourceKind: DirectResourceKind;
 }
 
@@ -50,6 +74,7 @@ export interface DirectAttachmentPrepareInput {
   channels: string[];
   diagnosticTraceId?: string;
   ownerId: string;
+  preparationLease: DirectAttachmentPreparationLease;
   resourceId: string;
   resourceKind: DirectResourceKind;
   leaseExpiresAt?: Date;
@@ -87,14 +112,146 @@ const SAFE_ERROR_CODES = new Set([
 export class DirectAttachmentUnavailableError extends Error {}
 
 export class DirectAttachmentCoordinator {
+  readonly #attachmentRevocations = new Map<string, number>();
   readonly #grants = new Map<string, DirectGrant>();
+  readonly #ownerRevocations = new Map<string, number>();
+  readonly #preparationLeases = new Map<
+    DirectAttachmentPreparationLease,
+    DirectAttachmentPreparationLeaseState
+  >();
+  readonly #preparationLeaseStates = new WeakMap<
+    DirectAttachmentPreparationLease,
+    DirectAttachmentPreparationLeaseState
+  >();
+  readonly #pendingPreparations = new Map<
+    Promise<void>,
+    DirectAttachmentPrepareInput
+  >();
+  readonly #resourceLifecycles = new Map<string, DirectResourceLifecycle>();
+  readonly #resourceKindRevocations = new Map<string, number>();
+  readonly #sessionRevocations = new Map<string, number>();
+  #closed = false;
+  #closePromise: Promise<void> | null = null;
 
   constructor(
     private readonly workers: WorkerCommandBus,
     private readonly logger: ServiceLogger = serverLogger,
   ) {}
 
+  acquirePreparationLease(
+    input: DirectAttachmentPreparationLeaseInput,
+  ): DirectAttachmentPreparationLease | null {
+    if (this.#preparationIdentityIsFenced(input)) return null;
+    const lease: DirectAttachmentPreparationLease = { ...input };
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const state = { release, released, resourceId: input.resourceId };
+    this.#preparationLeases.set(lease, state);
+    this.#preparationLeaseStates.set(lease, state);
+    return lease;
+  }
+
+  bindPreparationLease(
+    lease: DirectAttachmentPreparationLease,
+    resourceKind: DirectResourceKind,
+    resourceId: string,
+  ): boolean {
+    const state = this.#preparationLeaseStates.get(lease);
+    if (
+      !state ||
+      this.#preparationLeases.get(lease) !== state ||
+      lease.resourceKind !== resourceKind ||
+      (state.resourceId !== null && state.resourceId !== resourceId) ||
+      this.#resourceKindRevocations.has(
+        this.#resourceKindKey(lease.ownerId, resourceKind),
+      ) ||
+      this.#preparationIdentityIsFenced({
+        ...lease,
+        resourceId,
+      })
+    ) {
+      return false;
+    }
+    state.resourceId = resourceId;
+    return true;
+  }
+
+  releasePreparationLease(lease: DirectAttachmentPreparationLease): void {
+    const state = this.#preparationLeaseStates.get(lease);
+    if (!state || this.#preparationLeases.get(lease) !== state) return;
+    this.#preparationLeaseStates.delete(lease);
+    this.#preparationLeases.delete(lease);
+    state.release();
+  }
+
+  preparationLeaseIsActive(lease: DirectAttachmentPreparationLease): boolean {
+    const state = this.#preparationLeaseStates.get(lease);
+    return Boolean(
+      state &&
+      this.#preparationLeases.get(lease) === state &&
+      !this.#preparationIdentityIsFenced({
+        ...lease,
+        resourceId: state.resourceId,
+      }),
+    );
+  }
+
   async prepare(
+    input: DirectAttachmentPrepareInput,
+  ): Promise<DirectAttachmentTicket> {
+    if (!this.#preparationLeaseMatches(input)) {
+      throw new DirectAttachmentUnavailableError(
+        this.#closed
+          ? "The direct attachment coordinator is shutting down."
+          : "The owning resource is being revoked.",
+      );
+    }
+    const key = this.#resourceKey(
+      input.ownerId,
+      input.resourceKind,
+      input.resourceId,
+    );
+    const lifecycle = this.#resourceLifecycle(key);
+    if (lifecycle.revocationCount > 0) {
+      throw new DirectAttachmentUnavailableError(
+        "The owning resource is being revoked.",
+      );
+    }
+    const generation = lifecycle.generation;
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    lifecycle.pending.add(pending);
+    this.#pendingPreparations.set(pending, input);
+    try {
+      const ticket = await this.#prepare(input);
+      if (
+        !this.#preparationLeaseMatches(input) ||
+        lifecycle.generation !== generation ||
+        lifecycle.revocationCount > 0 ||
+        this.#resourceLifecycles.get(key) !== lifecycle
+      ) {
+        await this.revoke(
+          ticket.binding.capabilityId,
+          "Owning resource was revoked",
+        );
+        throw new DirectAttachmentUnavailableError(
+          "The owning resource changed while direct access was being prepared.",
+        );
+      }
+      return ticket;
+    } finally {
+      lifecycle.pending.delete(pending);
+      this.#pendingPreparations.delete(pending);
+      finish();
+      this.#removeResourceLifecycleIfUnused(key, lifecycle);
+    }
+  }
+
+  async #prepare(
     input: DirectAttachmentPrepareInput,
   ): Promise<DirectAttachmentTicket> {
     const startedAtMs = Date.now();
@@ -311,13 +468,26 @@ export class DirectAttachmentCoordinator {
   }
 
   async revokeSession(authSessionId: string): Promise<void> {
-    await Promise.all(
-      [...this.#grants]
-        .filter(([, grant]) => grant.authSessionId === authSessionId)
-        .map(([capabilityId]) =>
-          this.revoke(capabilityId, "Authorization session was revoked"),
+    this.#beginFence(this.#sessionRevocations, authSessionId);
+    try {
+      await Promise.all([
+        this.#waitForPreparationLeases(
+          (lease) => lease.authSessionId === authSessionId,
         ),
-    );
+        this.#waitForPreparations(
+          (input) => input.authSessionId === authSessionId,
+        ),
+      ]);
+      await Promise.all(
+        [...this.#grants]
+          .filter(([, grant]) => grant.authSessionId === authSessionId)
+          .map(([capabilityId]) =>
+            this.revoke(capabilityId, "Authorization session was revoked"),
+          ),
+      );
+    } finally {
+      this.#endFence(this.#sessionRevocations, authSessionId);
+    }
   }
 
   matches(
@@ -447,6 +617,7 @@ export class DirectAttachmentCoordinator {
       bytesToLocal: merged.bytesToLocal - previous.bytesToLocal,
       connectionsClosed: merged.connectionsClosed - previous.connectionsClosed,
       connectionsOpened: merged.connectionsOpened - previous.connectionsOpened,
+      resourceId: grant.resourceId,
       resourceKind: grant.resourceKind,
     };
     grant.telemetry = merged;
@@ -473,13 +644,26 @@ export class DirectAttachmentCoordinator {
   }
 
   async revokeAttachment(attachmentId: string): Promise<void> {
-    await Promise.all(
-      [...this.#grants]
-        .filter(([, grant]) => grant.attachmentId === attachmentId)
-        .map(([capabilityId]) =>
-          this.revoke(capabilityId, "Owning attachment was revoked"),
+    this.#beginFence(this.#attachmentRevocations, attachmentId);
+    try {
+      await Promise.all([
+        this.#waitForPreparationLeases(
+          (lease) => lease.attachmentId === attachmentId,
         ),
-    );
+        this.#waitForPreparations(
+          (input) => input.attachmentId === attachmentId,
+        ),
+      ]);
+      await Promise.all(
+        [...this.#grants]
+          .filter(([, grant]) => grant.attachmentId === attachmentId)
+          .map(([capabilityId]) =>
+            this.revoke(capabilityId, "Owning attachment was revoked"),
+          ),
+      );
+    } finally {
+      this.#endFence(this.#attachmentRevocations, attachmentId);
+    }
   }
 
   async revokeResource(
@@ -487,44 +671,244 @@ export class DirectAttachmentCoordinator {
     resourceKind: DirectResourceKind,
     resourceId: string,
   ): Promise<void> {
-    await Promise.all(
-      [...this.#grants]
-        .filter(
-          ([, grant]) =>
-            grant.ownerId === ownerId &&
-            grant.resourceKind === resourceKind &&
-            grant.resourceId === resourceId,
-        )
-        .map(([capabilityId]) =>
-          this.revoke(capabilityId, "Owning resource was revoked"),
-        ),
+    await this.mutateResource(
+      ownerId,
+      resourceKind,
+      resourceId,
+      async () => undefined,
     );
+  }
+
+  async mutateResource<T>(
+    ownerId: string,
+    resourceKind: DirectResourceKind,
+    resourceId: string,
+    mutation: () => Promise<T>,
+  ): Promise<T> {
+    const key = this.#resourceKey(ownerId, resourceKind, resourceId);
+    const kindKey = this.#resourceKindKey(ownerId, resourceKind);
+    const lifecycle = this.#resourceLifecycle(key);
+    lifecycle.generation = Symbol(key);
+    lifecycle.revocationCount += 1;
+    this.#beginFence(this.#resourceKindRevocations, kindKey);
+    const queued = this.#enqueueResourceLifecycle(lifecycle);
+    await queued.previous;
+    try {
+      await Promise.all([
+        this.#waitForPreparationLeases((lease, state) => {
+          return (
+            lease.ownerId === ownerId &&
+            lease.resourceKind === resourceKind &&
+            (state.resourceId === null || state.resourceId === resourceId)
+          );
+        }),
+        this.#waitForPreparations(
+          (input) =>
+            input.ownerId === ownerId &&
+            input.resourceKind === resourceKind &&
+            input.resourceId === resourceId,
+        ),
+      ]);
+      await Promise.all(
+        [...this.#grants]
+          .filter(
+            ([, grant]) =>
+              grant.ownerId === ownerId &&
+              grant.resourceKind === resourceKind &&
+              grant.resourceId === resourceId,
+          )
+          .map(([capabilityId]) =>
+            this.revoke(capabilityId, "Owning resource was revoked"),
+          ),
+      );
+      return await mutation();
+    } finally {
+      queued.release();
+      this.#endFence(this.#resourceKindRevocations, kindKey);
+      lifecycle.revocationCount -= 1;
+      this.#removeResourceLifecycleIfUnused(key, lifecycle);
+    }
   }
 
   async revokeOwner(ownerId: string): Promise<void> {
-    await Promise.all(
-      [...this.#grants]
-        .filter(([, grant]) => grant.ownerId === ownerId)
-        .map(([capabilityId]) =>
-          this.revoke(capabilityId, "Account sessions were revoked"),
-        ),
-    );
+    this.#beginFence(this.#ownerRevocations, ownerId);
+    try {
+      await Promise.all([
+        this.#waitForPreparationLeases((lease) => lease.ownerId === ownerId),
+        this.#waitForPreparations((input) => input.ownerId === ownerId),
+      ]);
+      await Promise.all(
+        [...this.#grants]
+          .filter(([, grant]) => grant.ownerId === ownerId)
+          .map(([capabilityId]) =>
+            this.revoke(capabilityId, "Account sessions were revoked"),
+          ),
+      );
+    } finally {
+      this.#endFence(this.#ownerRevocations, ownerId);
+    }
   }
 
   async close(): Promise<void> {
-    const activeCount = this.#grants.size;
-    await Promise.all(
-      [...this.#grants.keys()].map((capabilityId) =>
-        this.revoke(capabilityId, "Cantrip Server is stopping"),
-      ),
+    if (this.#closePromise) return this.#closePromise;
+    this.#closed = true;
+    this.#closePromise = (async () => {
+      await Promise.all([
+        this.#waitForPreparationLeases(() => true),
+        Promise.allSettled([...this.#pendingPreparations.keys()]),
+      ]);
+      const activeCount = this.#grants.size;
+      await Promise.all(
+        [...this.#grants.keys()].map((capabilityId) =>
+          this.revoke(capabilityId, "Cantrip Server is stopping"),
+        ),
+      );
+      this.logger.info("Direct attachment coordinator stopped", {
+        event: "direct_attachment.runtime.stopped",
+        subsystem: "direct-attachment",
+        operation: "shutdown",
+        status: "completed",
+        activeCapabilityCount: activeCount,
+      });
+    })();
+    return this.#closePromise;
+  }
+
+  #preparationIdentityIsFenced(
+    input: DirectAttachmentPreparationLeaseInput,
+  ): boolean {
+    return Boolean(
+      this.#closed ||
+      this.#ownerRevocations.has(input.ownerId) ||
+      this.#sessionRevocations.has(input.authSessionId) ||
+      (input.attachmentId &&
+        this.#attachmentRevocations.has(input.attachmentId)) ||
+      (input.resourceId === null &&
+        this.#resourceKindRevocations.has(
+          this.#resourceKindKey(input.ownerId, input.resourceKind),
+        )) ||
+      (input.resourceId !== null &&
+        (this.#resourceLifecycles.get(
+          this.#resourceKey(
+            input.ownerId,
+            input.resourceKind,
+            input.resourceId,
+          ),
+        )?.revocationCount ?? 0) > 0),
     );
-    this.logger.info("Direct attachment coordinator stopped", {
-      event: "direct_attachment.runtime.stopped",
-      subsystem: "direct-attachment",
-      operation: "shutdown",
-      status: "completed",
-      activeCapabilityCount: activeCount,
+  }
+
+  #preparationLeaseMatches(input: DirectAttachmentPrepareInput): boolean {
+    const lease = input.preparationLease;
+    const state = this.#preparationLeaseStates.get(lease);
+    return Boolean(
+      state &&
+      this.#preparationLeases.get(lease) === state &&
+      lease.ownerId === input.ownerId &&
+      lease.authSessionId === input.authSessionId &&
+      (lease.attachmentId === undefined ||
+        lease.attachmentId === input.attachmentId) &&
+      lease.resourceKind === input.resourceKind &&
+      state.resourceId === input.resourceId &&
+      !this.#preparationIdentityIsFenced({
+        ...lease,
+        resourceId: state.resourceId,
+      }),
+    );
+  }
+
+  async #waitForPreparationLeases(
+    predicate: (
+      lease: DirectAttachmentPreparationLease,
+      state: DirectAttachmentPreparationLeaseState,
+    ) => boolean,
+  ): Promise<void> {
+    await Promise.allSettled(
+      [...this.#preparationLeases]
+        .filter(([lease, state]) => predicate(lease, state))
+        .map(([, state]) => state.released),
+    );
+  }
+
+  async #waitForPreparations(
+    predicate: (input: DirectAttachmentPrepareInput) => boolean,
+  ): Promise<void> {
+    await Promise.allSettled(
+      [...this.#pendingPreparations]
+        .filter(([, input]) => predicate(input))
+        .map(([pending]) => pending),
+    );
+  }
+
+  #beginFence(fences: Map<string, number>, key: string): void {
+    fences.set(key, (fences.get(key) ?? 0) + 1);
+  }
+
+  #endFence(fences: Map<string, number>, key: string): void {
+    const remaining = (fences.get(key) ?? 1) - 1;
+    if (remaining > 0) fences.set(key, remaining);
+    else fences.delete(key);
+  }
+
+  #resourceLifecycle(key: string): DirectResourceLifecycle {
+    let lifecycle = this.#resourceLifecycles.get(key);
+    if (!lifecycle) {
+      lifecycle = {
+        generation: Symbol(key),
+        pending: new Set(),
+        revocationCount: 0,
+        tail: Promise.resolve(),
+      };
+      this.#resourceLifecycles.set(key, lifecycle);
+    }
+    return lifecycle;
+  }
+
+  #enqueueResourceLifecycle(lifecycle: DirectResourceLifecycle): {
+    previous: Promise<void>;
+    release: () => void;
+  } {
+    const previous = lifecycle.tail.catch(() => undefined);
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
     });
+    lifecycle.tail = previous.then(() => current);
+    return { previous, release };
+  }
+
+  #resourceKey(
+    ownerId: string,
+    resourceKind: DirectResourceKind,
+    resourceId: string,
+  ): string {
+    return `${ownerId.length}:${ownerId}${resourceKind.length}:${resourceKind}${resourceId}`;
+  }
+
+  #resourceKindKey(ownerId: string, resourceKind: DirectResourceKind): string {
+    return `${ownerId.length}:${ownerId}${resourceKind}`;
+  }
+
+  #removeResourceLifecycleIfUnused(
+    key: string,
+    lifecycle: DirectResourceLifecycle,
+  ): void {
+    if (
+      this.#resourceLifecycles.get(key) !== lifecycle ||
+      lifecycle.pending.size > 0 ||
+      lifecycle.revocationCount > 0 ||
+      [...this.#grants.values()].some(
+        (grant) =>
+          this.#resourceKey(
+            grant.ownerId,
+            grant.resourceKind,
+            grant.resourceId,
+          ) === key,
+      )
+    ) {
+      return;
+    }
+    this.#resourceLifecycles.delete(key);
   }
 
   #finalize(capabilityId: string, reasonCode: string): DirectGrant | null {
@@ -533,6 +917,15 @@ export class DirectAttachmentCoordinator {
     clearTimeout(grant.timer);
     grant.unsubscribeDisconnect();
     this.#grants.delete(capabilityId);
+    const resourceKey = this.#resourceKey(
+      grant.ownerId,
+      grant.resourceKind,
+      grant.resourceId,
+    );
+    const lifecycle = this.#resourceLifecycles.get(resourceKey);
+    if (lifecycle) {
+      this.#removeResourceLifecycleIfUnused(resourceKey, lifecycle);
+    }
     const now = Date.now();
     this.logger.info("Direct attachment final state captured", {
       event: "direct_attachment.finalized",
