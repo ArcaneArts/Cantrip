@@ -9,6 +9,7 @@ import {
 } from "@/components/code/code-view";
 import { Button } from "@/components/ui/button";
 import {
+  CantripApiError,
   createExplorerCodeAttachment,
   openCodeAttachmentFile,
   releaseCodeAttachment,
@@ -18,6 +19,38 @@ import {
   stopDirectCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
+
+const EDITOR_ROUTE_RETRY_DELAYS_MS = [150, 350, 750, 1_500] as const;
+
+export function isUnregisteredEditorRouteError(error: unknown): boolean {
+  return (
+    error instanceof CantripApiError &&
+    error.status === 404 &&
+    error.message === "Not Found"
+  );
+}
+
+export async function createEditorAttachmentWithRouteRetry<T>(
+  create: () => Promise<T>,
+  wait: (delayMs: number) => Promise<void> = (delayMs) =>
+    new Promise((resolve) => setTimeout(resolve, delayMs)),
+): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await create();
+    } catch (error) {
+      if (!isUnregisteredEditorRouteError(error)) throw error;
+      const delayMs = EDITOR_ROUTE_RETRY_DELAYS_MS[attempt];
+      if (delayMs === undefined) {
+        throw new CantripApiError(
+          "The connected Cantrip Server has not loaded Explorer editor support. Restart Cantrip, then retry.",
+          503,
+        );
+      }
+      await wait(delayMs);
+    }
+  }
+}
 
 export function ExplorerCodeEditor({
   appearance,
@@ -50,10 +83,8 @@ export function ExplorerCodeEditor({
 
     const connect = async () => {
       try {
-        const relay = await createExplorerCodeAttachment(
-          explorerId,
-          path,
-          appearance,
+        const relay = await createEditorAttachmentWithRouteRetry(() =>
+          createExplorerCodeAttachment(explorerId, path, appearance),
         );
         attachmentId = relay.attachmentId;
         const preferred = await preferDirectCodeAttachment(relay).catch(() => ({
