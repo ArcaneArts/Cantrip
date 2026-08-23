@@ -102,4 +102,11 @@ export function defaultExplorerFileMode(path: string): ExplorerFileMode {
   if (language) return "edit";
   return structuredFileFormatForPath(path) ? "visual" : "preview";
 }
+
+export function usesCantripCodeEditor(
+  path: string,
+  mode: ExplorerFileMode,
+): boolean {
+  return mode === "edit" && monacoLanguageForPath(path) !== null;
+}
 import type { ExplorerFileMode } from "@cantrip/protocol";

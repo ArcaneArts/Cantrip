@@ -1,5 +1,6 @@
 import {
   explorerMediaTypeForPath,
+  type CodeAppearance,
   type ExplorerMediaKind,
   type ExplorerEntry,
   type ExplorerFileMode,
@@ -25,6 +26,7 @@ import {
 } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
+import { ExplorerCodeEditor } from "@/components/explorer/explorer-code-editor";
 import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser";
 import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file-routing";
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
@@ -32,8 +34,8 @@ import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifec
 import {
   defaultExplorerFileMode,
   monacoLanguageForPath,
-  monacoModelPath,
   structuredFileFormatForPath,
+  usesCantripCodeEditor,
 } from "@/components/explorer/explorer-file-language";
 import {
   GitRepositoryGraphView,
@@ -50,11 +52,6 @@ import {
 import { clientLogger } from "@/lib/client-log-relay";
 import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import { cn } from "@/lib/utils";
-
-const MonacoFileEditor = lazy(async () => {
-  const module = await import("@/components/explorer/monaco-file-editor");
-  return { default: module.MonacoFileEditor };
-});
 
 const StructuredFileVisual = lazy(async () => {
   const module = await import("@/components/explorer/structured-file-visual");
@@ -271,6 +268,7 @@ export interface TransientExplorerFile {
 
 export function ExplorerView({
   active = true,
+  appearance,
   explorer,
   gitStatus,
   onChanged,
@@ -284,6 +282,7 @@ export function ExplorerView({
   transientFile,
 }: {
   active?: boolean;
+  appearance: CodeAppearance;
   explorer: ExplorerSummary;
   gitStatus?: GitStatus;
   onChanged?(explorer: ExplorerSummary): void;
@@ -366,6 +365,7 @@ export function ExplorerView({
     enabled: Boolean(
       streamEncryptionReady &&
       selectedPath &&
+      !usesCantripCodeEditor(selectedPath, fileMode) &&
       explorerMediaTypeForPath(selectedPath) === null,
     ),
     queryFn: () => getExplorerFile(explorer.id, selectedPath!),
@@ -401,6 +401,9 @@ export function ExplorerView({
   const mediaType = selectedPath
     ? explorerMediaTypeForPath(selectedPath)
     : null;
+  const codeEditorVisible = selectedPath
+    ? usesCantripCodeEditor(selectedPath, fileMode)
+    : false;
   const graphVisible = graphRootPath !== undefined;
   const dirty = draftVersion !== null && draft !== baselineContent;
   dirtyRef.current = dirty;
@@ -758,9 +761,19 @@ export function ExplorerView({
       ) {
         return;
       }
-      void persistViewState({ selectedPath: path, fileMode: mode });
+      void (async () => {
+        if (mode === "edit" && !(await saveDraft())) return;
+        if (selectedPathRef.current !== path) return;
+        if (mode === "edit") {
+          setDraft("");
+          setBaselineContent("");
+          setDraftVersion(null);
+          resetSaveFile();
+        }
+        await persistViewState({ selectedPath: path, fileMode: mode });
+      })();
     },
-    [persistViewState],
+    [persistViewState, resetSaveFile, saveDraft],
   );
 
   useEffect(() => {
@@ -955,6 +968,17 @@ export function ExplorerView({
                 path={selectedPath}
                 revision={mediaRevision}
               />
+            ) : codeEditorVisible ? (
+              <div className="flex h-full min-h-0">
+                <ExplorerCodeEditor
+                  appearance={appearance}
+                  explorerId={explorer.id}
+                  path={selectedPath}
+                  projectId={explorer.projectId}
+                  workerId={explorer.activeWorkerId}
+                  worktreeId={explorer.worktreeId}
+                />
+              </div>
             ) : file.isLoading ? (
               <div className="grid h-full place-items-center text-muted-foreground">
                 <Loader2 className="size-5 animate-spin" />
@@ -994,22 +1018,6 @@ export function ExplorerView({
                   <SourceView code={draft} path={file.data.path} />
                 )}
               </div>
-            ) : file.data && editableLanguage ? (
-              <Suspense
-                fallback={
-                  <div className="grid h-full place-items-center text-muted-foreground">
-                    <Loader2 className="size-5 animate-spin" />
-                  </div>
-                }
-              >
-                <MonacoFileEditor
-                  language={editableLanguage}
-                  modelPath={monacoModelPath(explorer.id, file.data.path)}
-                  onChange={setDraft}
-                  onSave={() => void saveDraft()}
-                  value={draft}
-                />
-              </Suspense>
             ) : null}
           </div>
         </div>

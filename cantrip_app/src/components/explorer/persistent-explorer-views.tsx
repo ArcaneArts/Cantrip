@@ -1,4 +1,5 @@
 import type {
+  CodeAppearance,
   ExplorerEntry,
   ExplorerSummary,
   GitStatus,
@@ -36,6 +37,7 @@ export function retainExplorerSurfaceTabs(
 
 export function PersistentExplorerViews({
   activeExplorer,
+  appearance,
   gitStatuses,
   onChanged,
   onHeaderChange,
@@ -47,6 +49,7 @@ export function PersistentExplorerViews({
   repositoryGraphAvailable,
 }: {
   activeExplorer: ExplorerSummary | null;
+  appearance: CodeAppearance;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
@@ -109,6 +112,7 @@ export function PersistentExplorerViews({
     return (
       <ExplorerView
         active={active}
+        appearance={appearance}
         explorer={explorer}
         gitStatus={gitStatuses[explorer.worktreeId]}
         key={explorer.id}
