@@ -18,6 +18,7 @@ export interface DesktopExplorerWindowContext {
 
 export type DesktopExplorerWindowRequest =
   | { launchId: string; type: "launch.request" }
+  | { launchId: string; type: "editor.frame-loaded" }
   | { launchId: string; requestId: string; type: "file.read" }
   | { launchId: string; requestId: string; type: "media.read" }
   | {
@@ -94,7 +95,12 @@ export function isDesktopExplorerWindowRequest(
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
   if (typeof message.launchId !== "string") return false;
-  if (message.type === "launch.request") return true;
+  if (
+    message.type === "launch.request" ||
+    message.type === "editor.frame-loaded"
+  ) {
+    return true;
+  }
   if (
     (message.type === "file.read" || message.type === "media.read") &&
     typeof message.requestId === "string"

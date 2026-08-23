@@ -71,6 +71,35 @@ describe("DesktopExplorerWindowClient", () => {
     broker.close();
   });
 
+  it("reports when the embedded workbench frame is loaded", async () => {
+    const launchId = crypto.randomUUID();
+    const broker = new BroadcastChannel(
+      desktopExplorerWindowChannelName(launchId),
+    );
+    let resolveLoaded!: () => void;
+    const loaded = new Promise<void>((resolve) => {
+      resolveLoaded = resolve;
+    });
+    broker.addEventListener("message", (event) => {
+      const request = event.data as DesktopExplorerWindowRequest;
+      if (request.type === "editor.frame-loaded") resolveLoaded();
+    });
+    const client = new DesktopExplorerWindowClient(launchId, {
+      onContext: vi.fn(),
+      onEditor: vi.fn(),
+      onEditorConfigured: vi.fn(),
+      onEditorError: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+
+    client.editorFrameLoaded();
+    await expect(loaded).resolves.toBeUndefined();
+
+    client.dispose();
+    broker.close();
+  });
+
   it("retries the launch handoff until the owning window listener is ready", async () => {
     const launchId = crypto.randomUUID();
     const context: DesktopExplorerWindowContext = {

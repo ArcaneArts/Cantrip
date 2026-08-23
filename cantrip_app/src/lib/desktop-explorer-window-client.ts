@@ -62,6 +62,14 @@ export class DesktopExplorerWindowClient {
     return this.#request<ExplorerFile>({ type: "file.read" });
   }
 
+  editorFrameLoaded(): void {
+    if (this.#disposed) return;
+    this.#channel.postMessage({
+      launchId: this.#launchId,
+      type: "editor.frame-loaded",
+    } satisfies DesktopExplorerWindowRequest);
+  }
+
   readMedia(): Promise<Blob> {
     return this.#request<Blob>({ type: "media.read" });
   }

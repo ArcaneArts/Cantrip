@@ -208,12 +208,14 @@ function EditorPane({
   configuredAtMs,
   context,
   error,
+  onFrameLoaded,
   preparedAtMs,
 }: {
   attachment: CodeAttachment | null;
   configuredAtMs: number | null;
   context: DesktopExplorerWindowContext;
   error: string | null;
+  onFrameLoaded(): void;
   preparedAtMs: number | null;
 }) {
   const [loaded, setLoaded] = useState(false);
@@ -243,6 +245,7 @@ function EditorPane({
           )}
           onLoad={() => {
             setLoaded(true);
+            onFrameLoaded();
             clientLogger.debug("Explorer editor workbench frame loaded", {
               durationMs: Date.now() - context.requestedAtMs,
               event: "surface.explorer.editor-window.frame-loaded",
@@ -486,6 +489,7 @@ export function DesktopExplorerFileWindow({
             configuredAtMs={configuredAtMs}
             context={context}
             error={editorError}
+            onFrameLoaded={() => client.editorFrameLoaded()}
             preparedAtMs={preparedAtMs}
           />
         </div>
