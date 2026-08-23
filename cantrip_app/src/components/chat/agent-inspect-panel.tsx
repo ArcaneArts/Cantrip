@@ -162,6 +162,7 @@ function AgentInspectMobilePanel({
 export function AgentInspectPanelShell({
   children,
   className,
+  extendIntoProjectTabBar = false,
   onOpenChange,
   onWidthChange,
   open,
@@ -169,6 +170,7 @@ export function AgentInspectPanelShell({
 }: {
   children?: ReactNode;
   className?: string;
+  extendIntoProjectTabBar?: boolean;
   onOpenChange(open: boolean): void;
   onWidthChange?(width: number): void;
   open: boolean;
@@ -185,7 +187,10 @@ export function AgentInspectPanelShell({
   return (
     <ResizablePanel
       ariaLabel="Resize Inspect sidebar"
-      className={className}
+      className={cn(
+        className,
+        extendIntoProjectTabBar && "top-[-2.5rem] h-auto",
+      )}
       defaultWidth={DEFAULT_AGENT_INSPECT_WIDTH}
       handleDataSlot="agent-inspect-resize-handle"
       maxWidth={MAX_AGENT_INSPECT_WIDTH}
@@ -194,6 +199,11 @@ export function AgentInspectPanelShell({
       open={open}
       shellDataSlot="agent-inspect-panel-shell"
       storageKey={AGENT_INSPECT_WIDTH_STORAGE_KEY}
+      surfaceData={{
+        "data-extends-into-project-tab-bar": extendIntoProjectTabBar
+          ? "true"
+          : undefined,
+      }}
       surfaceClassName="bg-background"
       surfaceDataSlot="agent-inspect-panel-surface"
       title="Drag to resize Inspect sidebar"

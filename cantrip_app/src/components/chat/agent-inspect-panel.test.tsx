@@ -49,6 +49,22 @@ describe("AgentInspectPanel", () => {
     expect(markup).toContain("motion-reduce:transition-none");
     expect(markup).toContain("group-focus-within/resizable-panel");
   });
+
+  it("can share the project tab row without extending into the titlebar", () => {
+    const markup = renderToStaticMarkup(
+      <AgentInspectPanelShell
+        className="absolute bottom-0 right-0"
+        extendIntoProjectTabBar
+        onOpenChange={vi.fn()}
+        open
+        overlay={false}
+      />,
+    );
+    expect(markup).toContain("top-[-2.5rem]");
+    expect(markup).toContain("h-auto");
+    expect(markup).toContain('data-extends-into-project-tab-bar="true"');
+    expect(markup).toContain("bottom-0");
+  });
 });
 
 describe("agent inspector shell state", () => {

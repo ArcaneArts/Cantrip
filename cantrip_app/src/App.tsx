@@ -2582,7 +2582,7 @@ function ChatTranscript({
 
   return (
     <div
-      className="relative flex min-h-0 flex-1 flex-col overflow-hidden transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
+      className="relative flex min-h-0 flex-1 flex-col overflow-visible transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
       style={{
         paddingRight: inspectOpen && !inspectOverlay ? inspectWidth : 0,
       }}
@@ -3599,7 +3599,8 @@ function ChatTranscript({
         </div>
       ) : null}
       <AgentInspectPanelShell
-        className="absolute inset-y-0 right-0 z-30"
+        className="absolute bottom-0 right-0 z-30"
+        extendIntoProjectTabBar
         onOpenChange={handleInspectOpenChange}
         onWidthChange={setInspectWidth}
         open={inspectOpen}
