@@ -101,6 +101,7 @@ import { CodeGraphRuntimeManager } from "./codegraph/runtime.js";
 import { CodeGraphProjectSupervisor } from "./codegraph/supervisor.js";
 import { codeGraphWorkerStatus } from "./codegraph/status.js";
 import { managedCodeGraphMcpServer } from "./codegraph/mcp.js";
+import { CodeGraphObservationCoordinator } from "./codegraph/observations.js";
 import { CantripMcpBroker } from "./mcp/broker.js";
 import {
   cantripMcpHostInvocation,
@@ -802,8 +803,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   const codegraphInvocation = codegraphRuntime?.launcherInvocation() ?? null;
   let codegraphProjects: CodeGraphProjectSupervisor | null = null;
-  let codegraphObservationTargets: CodeGraphObservationTarget[] = [];
-  const activateCodeGraphProjects = async (): Promise<void> => {
+  const activateCodeGraphProjects = async (
+    targets: CodeGraphObservationTarget[],
+  ): Promise<void> => {
     if (
       !codegraphRuntime ||
       !codegraphInvocation ||
@@ -851,15 +853,36 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }),
       });
     }
-    await codegraphProjects.configure(codegraphObservationTargets);
+    await codegraphProjects.configure(targets);
   };
-  await activateCodeGraphProjects();
+  const codegraphObservations = new CodeGraphObservationCoordinator(
+    activateCodeGraphProjects,
+  );
+  const ensureCodeGraphCommandTarget = async (command: {
+    projectId: string;
+    worktreeId: string;
+    rootKind?: "folder-root" | "git-worktree";
+    sourcePath?: string;
+    worktreePath?: string;
+  }): Promise<void> => {
+    if (!command.rootKind || !command.sourcePath || !command.worktreePath) {
+      return;
+    }
+    await codegraphObservations.ensure({
+      projectId: command.projectId,
+      worktreeId: command.worktreeId,
+      rootKind: command.rootKind,
+      sourcePath: command.sourcePath,
+      worktreePath: command.worktreePath,
+    });
+  };
+  await codegraphObservations.refresh();
   if (codegraphRuntime) {
     void codegraphRuntime
       .waitForUpdate()
       .then(async (status) => {
         codegraphStatus = status;
-        await activateCodeGraphProjects();
+        await codegraphObservations.refresh();
       })
       .catch((error) => {
         workerLogger.event("warn", "CodeGraph background installation failed", {
@@ -888,7 +911,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     let managedCodeGraph: McpServerConfiguration | null = null;
     if (codegraphProjects && codegraphInvocation) {
       try {
-        const canonicalRoot = await codegraphProjects.prepareForAgent(cwd);
+        let canonicalRoot = await codegraphProjects.prepareForAgent(cwd);
+        if (!canonicalRoot && attachment) {
+          await codegraphObservations.ensure({
+            projectId: attachment.projectId,
+            worktreeId: attachment.worktreeId,
+            rootKind: attachment.rootKind,
+            sourcePath: cwd,
+            worktreePath: cwd,
+          });
+          canonicalRoot = await codegraphProjects.prepareForAgent(cwd);
+        }
         if (canonicalRoot) {
           managedCodeGraph = managedCodeGraphMcpServer(
             codegraphInvocation.command,
@@ -2300,6 +2333,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             },
           },
         );
+        codegraphObservations.forgetPath(command.worktreePath);
         codegraphProjects?.detach(command.worktreePath);
         return result;
       }
@@ -2328,31 +2362,34 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return worktrees.status(command.sourcePath, command.worktreePath);
       case "worktree.observation.configure":
         worktrees.configureObservation(command.targets);
-        codegraphObservationTargets =
-          command.codegraphTargets ??
-          command.targets.map((target) => ({
-            projectId: target.projectId!,
-            worktreeId: target.worktreeId!,
-            rootKind: "git-worktree" as const,
-            sourcePath: target.sourcePath,
-            worktreePath: target.worktreePath,
-          }));
-        void activateCodeGraphProjects().catch((error) => {
-          workerLogger.event(
-            "warn",
-            "CodeGraph worktree reconciliation failed",
-            {
-              event: "codegraph.project.configure-failed",
-              subsystem: "codegraph",
-              operation: "configure-worktrees",
-              reasonCode: "configuration-failed",
-              status: "degraded",
-              error: workerLogError(error),
-            },
-          );
-        });
+        await codegraphObservations
+          .configure(
+            command.codegraphTargets ??
+              command.targets.map((target) => ({
+                projectId: target.projectId!,
+                worktreeId: target.worktreeId!,
+                rootKind: "git-worktree" as const,
+                sourcePath: target.sourcePath,
+                worktreePath: target.worktreePath,
+              })),
+          )
+          .catch((error) => {
+            workerLogger.event(
+              "warn",
+              "CodeGraph worktree reconciliation failed",
+              {
+                event: "codegraph.project.configure-failed",
+                subsystem: "codegraph",
+                operation: "configure-worktrees",
+                reasonCode: "configuration-failed",
+                status: "degraded",
+                error: workerLogError(error),
+              },
+            );
+          });
         return { accepted: true };
       case "codegraph.status": {
+        await ensureCodeGraphCommandTarget(command);
         const status = codegraphProjects?.publicStatus(
           command.projectId,
           command.worktreeId,
@@ -2363,6 +2400,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return status;
       }
       case "codegraph.sync":
+        await ensureCodeGraphCommandTarget(command);
         if (!codegraphProjects) throw new Error("CodeGraph is unavailable.");
         return codegraphProjects.requestAction(
           command.projectId,
@@ -2370,6 +2408,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           "sync",
         );
       case "codegraph.rebuild":
+        await ensureCodeGraphCommandTarget(command);
         if (!codegraphProjects) throw new Error("CodeGraph is unavailable.");
         return codegraphProjects.requestAction(
           command.projectId,
@@ -2384,7 +2423,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           .updateNow()
           .then(async (status) => {
             codegraphStatus = status;
-            await activateCodeGraphProjects();
+            await codegraphObservations.refresh();
           })
           .catch((error) => {
             workerLogger.event("warn", "CodeGraph update check failed", {

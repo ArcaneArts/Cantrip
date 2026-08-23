@@ -3228,6 +3228,23 @@ describe("Cantrip protocol", () => {
       targets: [{ operation: { id: operationId } }],
       codegraphTargets: [{ rootKind: "folder-root" }],
     });
+    expect(
+      workerCommandSchema.parse({
+        type: "codegraph.status",
+        projectId,
+        worktreeId,
+        rootKind: "git-worktree",
+        sourcePath: "/repo",
+        worktreePath: "/repo",
+      }),
+    ).toMatchObject({
+      type: "codegraph.status",
+      projectId,
+      worktreeId,
+      rootKind: "git-worktree",
+      sourcePath: "/repo",
+      worktreePath: "/repo",
+    });
     expect(() =>
       workerCommandSchema.parse({
         type: "worktree.observation.configure",
