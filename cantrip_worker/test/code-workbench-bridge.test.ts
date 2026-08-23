@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CodeWorkbenchBridge } from "../src/code/workbench-bridge.js";
 
@@ -61,6 +61,44 @@ function respond(socket: WebSocket, request: WorkbenchRequest, result = {}) {
       id: request.id,
       ok: true,
       result,
+    }),
+  );
+}
+
+function publishState(
+  socket: WebSocket,
+  options: {
+    activePath?: string;
+    dirtyPaths?: string[];
+    policy?: "always" | "ask" | "never";
+  } = {},
+) {
+  const dirtyPaths = options.dirtyPaths ?? [];
+  socket.send(
+    JSON.stringify({
+      type: "state",
+      dirtyEditors: dirtyPaths.map((relativePath) => ({
+        uri: `file:///repo/${relativePath}`,
+        relativePath,
+        untitled: false,
+        dirty: true,
+      })),
+      activeEditor: options.activePath
+        ? {
+            uri: `file:///repo/${options.activePath}`,
+            relativePath: options.activePath,
+            selection: {
+              startLine: 0,
+              startCharacter: 0,
+              endLine: 0,
+              endCharacter: 0,
+            },
+          }
+        : null,
+      git: null,
+      conflicts: [],
+      savePolicy: options.policy ?? "always",
+      agentStatus: "idle",
     }),
   );
 }
@@ -292,6 +330,261 @@ describe("Cantrip workbench bridge", () => {
     });
     respond(first, finalRequest);
     await finalUpdate;
+    first.close();
+  });
+
+  it("uses the latest socket for RPC and ignores superseded responses", async () => {
+    const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 250 });
+    bridges.push(bridge);
+    await bridge.start();
+    const url = bridge.register("owned-session", "owned-secret");
+    const first = await openSocket(url);
+    respond(first, await nextRequest(first));
+    const second = await openSocket(url);
+    respond(second, await nextRequest(second));
+
+    const pendingOpen = bridge.openFile(
+      "owned-session",
+      "second.ts",
+      "file:///repo",
+    );
+    const superseded = expect(pendingOpen).rejects.toThrow("superseded");
+    const secondRequest = await nextRequest(second);
+    expect(secondRequest.method).toBe("openFile");
+
+    const third = await openSocket(url);
+    respond(third, await nextRequest(third));
+    respond(second, secondRequest, { relativePath: "second.ts" });
+    await superseded;
+
+    const currentOpen = bridge.openFile(
+      "owned-session",
+      "current.ts",
+      "file:///repo",
+    );
+    const thirdRequest = await nextRequest(third);
+    expect(thirdRequest).toMatchObject({
+      method: "openFile",
+      params: { path: "current.ts" },
+    });
+    respond(third, thirdRequest, { relativePath: "current.ts" });
+    await expect(currentOpen).resolves.toEqual({ relativePath: "current.ts" });
+
+    first.close();
+    second.close();
+    third.close();
+  });
+
+  it("unions per-socket dirty state while only the authority owns workbench state", async () => {
+    const bridge = new CodeWorkbenchBridge();
+    bridges.push(bridge);
+    await bridge.start();
+    const url = bridge.register("state-session", "state-secret");
+    const first = await openSocket(url);
+    respond(first, await nextRequest(first));
+    publishState(first, { activePath: "first.ts", dirtyPaths: ["first.ts"] });
+    await vi.waitFor(() =>
+      expect(bridge.state("state-session").activeEditor?.relativePath).toBe(
+        "first.ts",
+      ),
+    );
+
+    const second = await openSocket(url);
+    respond(second, await nextRequest(second));
+    expect(bridge.state("state-session")).toEqual({
+      activeEditor: null,
+      git: null,
+      conflicts: [],
+      savePolicy: "always",
+      agentStatus: "idle",
+    });
+    publishState(second, {
+      activePath: "second.ts",
+      dirtyPaths: ["second.ts", "shared.ts"],
+      policy: "ask",
+    });
+    publishState(first, {
+      activePath: "stale.ts",
+      dirtyPaths: ["first.ts", "shared.ts"],
+      policy: "never",
+    });
+    await vi.waitFor(() =>
+      expect(
+        bridge
+          .dirtyEditors("state-session")
+          .map((editor) => editor.relativePath),
+      ).toEqual(["first.ts", "second.ts", "shared.ts"]),
+    );
+    expect(bridge.state("state-session")).toMatchObject({
+      activeEditor: { relativePath: "second.ts" },
+      savePolicy: "ask",
+    });
+
+    const promoted = new Promise<void>((resolve) =>
+      second.once("close", () => resolve()),
+    );
+    second.close();
+    await promoted;
+    await vi.waitFor(() =>
+      expect(bridge.state("state-session")).toMatchObject({
+        activeEditor: { relativePath: "stale.ts" },
+        savePolicy: "never",
+      }),
+    );
+    expect(
+      bridge.dirtyEditors("state-session").map((editor) => editor.relativePath),
+    ).toEqual(["first.ts", "second.ts", "shared.ts"]);
+    first.close();
+  });
+
+  it("coordinates every dirty surface and fails safely when one stops responding", async () => {
+    const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 25 });
+    bridges.push(bridge);
+    await bridge.start();
+    const url = bridge.register("dirty-session", "dirty-secret");
+    const first = await openSocket(url);
+    respond(first, await nextRequest(first));
+    const second = await openSocket(url);
+    respond(second, await nextRequest(second));
+    publishState(first, { dirtyPaths: ["first.ts"] });
+    publishState(second, { dirtyPaths: ["second.ts"] });
+    await vi.waitFor(() =>
+      expect(
+        bridge
+          .dirtyEditors("dirty-session")
+          .map((editor) => editor.relativePath),
+      ).toEqual(["first.ts", "second.ts"]),
+    );
+
+    const firstPrepareRequest = nextRequest(first);
+    const secondPrepareRequest = nextRequest(second);
+    const prepare = bridge.prepareAgentTurn("dirty-session");
+    const [firstPrepare, secondPrepare] = await Promise.all([
+      firstPrepareRequest,
+      secondPrepareRequest,
+    ]);
+    expect(firstPrepare.method).toBe("prepareAgentTurn");
+    expect(secondPrepare.method).toBe("prepareAgentTurn");
+    respond(first, firstPrepare, {
+      allowed: true,
+      policy: "always",
+      dirtyEditors: [],
+      saved: ["file:///repo/first.ts"],
+      failed: [],
+      reason: null,
+    });
+    respond(second, secondPrepare, {
+      allowed: false,
+      policy: "ask",
+      dirtyEditors: [
+        {
+          uri: "file:///repo/second.ts",
+          relativePath: "second.ts",
+          untitled: false,
+          dirty: true,
+        },
+      ],
+      saved: [],
+      failed: [],
+      reason: "Save second.ts before continuing.",
+    });
+    await expect(prepare).resolves.toMatchObject({
+      allowed: false,
+      policy: "ask",
+      dirtyEditors: [expect.objectContaining({ relativePath: "second.ts" })],
+      saved: ["file:///repo/first.ts"],
+      reason: "Save second.ts before continuing.",
+    });
+
+    const firstSaveRequest = nextRequest(first);
+    const secondSaveRequest = nextRequest(second);
+    const save = bridge.saveAll("dirty-session");
+    const [firstSave, secondSave] = await Promise.all([
+      firstSaveRequest,
+      secondSaveRequest,
+    ]);
+    expect(firstSave.method).toBe("saveAll");
+    expect(secondSave.method).toBe("saveAll");
+    respond(first, firstSave, {
+      saved: ["file:///repo/first.ts"],
+      failed: [],
+    });
+    await expect(save).resolves.toEqual({
+      saved: ["file:///repo/first.ts"],
+      failed: [
+        {
+          uri: "file:///repo/second.ts",
+          message: "Cantrip workbench saveAll request timed out.",
+        },
+      ],
+    });
+    expect(secondSave.method).toBe("saveAll");
+    expect(bridge.connected("dirty-session")).toBe(true);
+
+    const unresolvedRequest = nextRequest(first);
+    const unresolvedPrepare = bridge.prepareAgentTurn("dirty-session");
+    const firstUnresolved = await unresolvedRequest;
+    respond(first, firstUnresolved, {
+      allowed: true,
+      policy: "always",
+      dirtyEditors: [],
+      saved: ["file:///repo/first.ts"],
+      failed: [],
+      reason: null,
+    });
+    await expect(unresolvedPrepare).resolves.toMatchObject({
+      allowed: false,
+      dirtyEditors: [expect.objectContaining({ relativePath: "second.ts" })],
+      failed: [
+        {
+          uri: "file:///repo/second.ts",
+          message:
+            "Cantrip workbench bridge disconnected before this unsaved editor was resolved.",
+        },
+      ],
+      reason:
+        "A disconnected Cantrip workbench still has unresolved unsaved editors.",
+    });
+
+    const third = await openSocket(url);
+    respond(third, await nextRequest(third));
+    publishState(third, { dirtyPaths: ["third.ts"] });
+    await vi.waitFor(() =>
+      expect(
+        bridge
+          .dirtyEditors("dirty-session")
+          .map((editor) => editor.relativePath),
+      ).toEqual(["first.ts", "third.ts"]),
+    );
+    const firstRetryRequest = nextRequest(first);
+    const thirdPrepareRequest = nextRequest(third);
+    const blockedPrepare = bridge.prepareAgentTurn("dirty-session");
+    const [firstRetry, thirdPrepare] = await Promise.all([
+      firstRetryRequest,
+      thirdPrepareRequest,
+    ]);
+    respond(first, firstRetry, {
+      allowed: true,
+      policy: "always",
+      dirtyEditors: [],
+      saved: ["file:///repo/first.ts"],
+      failed: [],
+      reason: null,
+    });
+    expect(thirdPrepare.method).toBe("prepareAgentTurn");
+    await expect(blockedPrepare).resolves.toMatchObject({
+      allowed: false,
+      dirtyEditors: [expect.objectContaining({ relativePath: "third.ts" })],
+      failed: [
+        {
+          uri: "file:///repo/third.ts",
+          message: "Cantrip workbench prepareAgentTurn request timed out.",
+        },
+      ],
+      reason: expect.stringContaining(
+        "A Cantrip workbench with unsaved editors did not respond.",
+      ),
+    });
     first.close();
   });
 });

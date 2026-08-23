@@ -22,19 +22,32 @@ import { workerLogError, workerLogger } from "../logger.js";
 
 interface BridgeSession {
   appearance: CodeAppearance;
+  authoritativeGeneration: number | null;
   dirtyEditors: CodeDirtyEditor[];
+  nextGeneration: number;
   pending: Map<
     string,
     {
+      authorityBound: boolean;
       reject(error: Error): void;
       resolve(value: unknown): void;
       socket: WebSocket;
+      socketGeneration: number;
       timer: ReturnType<typeof setTimeout>;
     }
   >;
-  sockets: Set<WebSocket>;
+  sockets: Map<WebSocket, BridgeSocket>;
   token: string;
+  unresolvedDirtyEditors: CodeDirtyEditor[];
+  unresolvedDirtyGeneration: number | null;
   workbench: CodeWorkbenchState;
+}
+
+interface BridgeSocket {
+  dirtyEditors: CodeDirtyEditor[];
+  generation: number;
+  socket: WebSocket;
+  workbench: CodeWorkbenchState | null;
 }
 
 interface BridgeRequest {
@@ -95,6 +108,36 @@ function parseDirtyEditors(value: unknown): CodeDirtyEditor[] {
         typeof (item as CodeDirtyEditor).untitled === "boolean" &&
         (item as CodeDirtyEditor).dirty === true,
     )
+    .slice(0, 1_000);
+}
+
+function mergeDirtyEditors(
+  editorSets: Iterable<readonly CodeDirtyEditor[]>,
+): CodeDirtyEditor[] {
+  const editors = new Map<string, CodeDirtyEditor>();
+  for (const editorSet of editorSets) {
+    for (const editor of editorSet) editors.set(editor.uri, editor);
+  }
+  return [...editors.values()]
+    .sort((left, right) => left.uri.localeCompare(right.uri))
+    .slice(0, 1_000);
+}
+
+function mergeStrings(values: Iterable<readonly string[]>): string[] {
+  return [...new Set([...values].flat())].sort().slice(0, 1_000);
+}
+
+function mergeFailures(
+  values: Iterable<readonly { uri: string; message: string }[]>,
+): Array<{ uri: string; message: string }> {
+  const failures = new Map<string, { uri: string; message: string }>();
+  for (const items of values) {
+    for (const item of items) {
+      if (!failures.has(item.uri)) failures.set(item.uri, item);
+    }
+  }
+  return [...failures.values()]
+    .sort((left, right) => left.uri.localeCompare(right.uri))
     .slice(0, 1_000);
 }
 
@@ -211,10 +254,14 @@ export class CodeWorkbenchBridge {
     } else {
       this.#sessions.set(sessionId, {
         appearance,
+        authoritativeGeneration: null,
         dirtyEditors: [],
+        nextGeneration: 1,
         pending: new Map(),
-        sockets: new Set(),
+        sockets: new Map(),
         token,
+        unresolvedDirtyEditors: [],
+        unresolvedDirtyGeneration: null,
         workbench: { ...DEFAULT_WORKBENCH_STATE },
       });
     }
@@ -239,7 +286,7 @@ export class CodeWorkbenchBridge {
     const session = this.#sessions.get(sessionId);
     if (!session) return;
     this.#rejectPending(session, "Cantrip Code session stopped.");
-    for (const socket of session.sockets) {
+    for (const socket of session.sockets.keys()) {
       socket.close(1000, "Code session stopped");
     }
     session.sockets.clear();
@@ -254,9 +301,8 @@ export class CodeWorkbenchBridge {
   }
 
   connected(sessionId: string): boolean {
-    return [...(this.#sessions.get(sessionId)?.sockets ?? [])].some(
-      (socket) => socket.readyState === WebSocket.OPEN,
-    );
+    const session = this.#sessions.get(sessionId);
+    return Boolean(session && this.#authoritativeSocket(session));
   }
 
   dirtyEditors(sessionId: string): CodeDirtyEditor[] {
@@ -297,32 +343,68 @@ export class CodeWorkbenchBridge {
     const session = this.#sessions.get(sessionId);
     if (!session) throw new Error("Cantrip Code session is not registered.");
     if (session.dirtyEditors.length === 0) return { saved: [], failed: [] };
-    if (!this.connected(sessionId)) {
+    const contributors = this.#dirtyContributors(session);
+    if (contributors.length === 0) {
       return {
         saved: [],
         failed: session.dirtyEditors.map(({ uri }) => ({
           uri,
-          message: "Cantrip workbench bridge is not connected.",
+          message:
+            "Cantrip workbench bridge cannot resolve this unsaved editor.",
         })),
       };
     }
-    const result = (await this.#request(
-      session,
-      "saveAll",
-      {},
-    )) as Partial<CodeSaveAllResult>;
+    const results = await Promise.allSettled(
+      contributors.map(async (contributor) => {
+        const result = (await this.#requestOnSocket(
+          session,
+          contributor,
+          "saveAll",
+          {},
+          false,
+        )) as Partial<CodeSaveAllResult>;
+        return {
+          saved: Array.isArray(result.saved)
+            ? result.saved.filter(
+                (item): item is string => typeof item === "string",
+              )
+            : [],
+          failed: Array.isArray(result.failed)
+            ? result.failed.filter(
+                (item): item is { uri: string; message: string } =>
+                  typeof item?.uri === "string" &&
+                  typeof item.message === "string",
+              )
+            : [],
+        };
+      }),
+    );
     return {
-      saved: Array.isArray(result.saved)
-        ? result.saved.filter(
-            (item): item is string => typeof item === "string",
-          )
-        : [],
-      failed: Array.isArray(result.failed)
-        ? result.failed.filter(
-            (item): item is { uri: string; message: string } =>
-              typeof item?.uri === "string" && typeof item.message === "string",
-          )
-        : [],
+      saved: mergeStrings(
+        results.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value.saved] : [],
+        ),
+      ),
+      failed: mergeFailures([
+        ...results.flatMap((result, index) => {
+          if (result.status === "fulfilled") return [result.value.failed];
+          const message =
+            result.reason instanceof Error
+              ? result.reason.message
+              : "Cantrip workbench bridge did not save this editor.";
+          return [
+            contributors[index]!.dirtyEditors.map(({ uri }) => ({
+              uri,
+              message,
+            })),
+          ];
+        }),
+        session.unresolvedDirtyEditors.map(({ uri }) => ({
+          uri,
+          message:
+            "Cantrip workbench bridge disconnected before this unsaved editor was resolved.",
+        })),
+      ]),
     };
   }
 
@@ -381,35 +463,104 @@ export class CodeWorkbenchBridge {
         reason: null,
       });
     }
-    const connected =
-      this.connected(sessionId) || (await this.waitUntilConnected(sessionId));
-    if (!connected) {
+    if (!this.connected(sessionId)) {
+      await this.waitUntilConnected(sessionId);
+    }
+    const contributors = this.#dirtyContributors(session);
+    if (contributors.length === 0) {
       return codeAgentTurnPreparationSessionSchema.parse({
         sessionId,
-        bridgeConnected: false,
-        allowed: false,
+        bridgeConnected: this.connected(sessionId),
+        allowed: session.dirtyEditors.length === 0,
         policy: null,
         dirtyEditors: session.dirtyEditors,
         saved: [],
         failed: [],
         reason:
-          "Cantrip Code has unsaved editors, but its workbench bridge is not connected.",
+          session.dirtyEditors.length === 0
+            ? null
+            : "Cantrip Code has unsaved editors, but its workbench bridge is not connected.",
       });
     }
-    const result = (await this.#request(
-      session,
-      "prepareAgentTurn",
-      {},
-    )) as Record<string, unknown>;
+    const results = await Promise.allSettled(
+      contributors.map(async (contributor) => {
+        const result = (await this.#requestOnSocket(
+          session,
+          contributor,
+          "prepareAgentTurn",
+          {},
+          false,
+        )) as Record<string, unknown>;
+        return codeAgentTurnPreparationSessionSchema.parse({
+          sessionId,
+          bridgeConnected: true,
+          allowed: result.allowed,
+          policy: result.policy,
+          dirtyEditors: result.dirtyEditors,
+          saved: result.saved,
+          failed: result.failed,
+          reason: result.reason,
+        });
+      }),
+    );
+    const failures = results.flatMap((result, index) => {
+      if (result.status === "fulfilled") return [];
+      const message =
+        result.reason instanceof Error
+          ? result.reason.message
+          : "Cantrip workbench bridge did not prepare this editor.";
+      return contributors[index]!.dirtyEditors.map(({ uri }) => ({
+        uri,
+        message,
+      }));
+    });
+    const unresolvedDirtyEditors = results.flatMap((result, index) =>
+      result.status === "rejected" ? contributors[index]!.dirtyEditors : [],
+    );
+    const completed = results.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    );
+    const reasons = [
+      ...new Set(
+        [
+          ...completed.flatMap((result) =>
+            result.reason ? [result.reason] : [],
+          ),
+          ...(failures.length > 0
+            ? ["A Cantrip workbench with unsaved editors did not respond."]
+            : []),
+          ...(session.unresolvedDirtyEditors.length > 0
+            ? [
+                "A disconnected Cantrip workbench still has unresolved unsaved editors.",
+              ]
+            : []),
+        ].filter(Boolean),
+      ),
+    ];
     return codeAgentTurnPreparationSessionSchema.parse({
       sessionId,
-      bridgeConnected: true,
-      allowed: result.allowed,
-      policy: result.policy,
-      dirtyEditors: result.dirtyEditors,
-      saved: result.saved,
-      failed: result.failed,
-      reason: result.reason,
+      bridgeConnected: this.connected(sessionId),
+      allowed:
+        failures.length === 0 &&
+        session.unresolvedDirtyEditors.length === 0 &&
+        completed.every((result) => result.allowed),
+      policy: this.#strictestPolicy(completed.map((result) => result.policy)),
+      dirtyEditors: mergeDirtyEditors([
+        ...completed.map((result) => result.dirtyEditors),
+        unresolvedDirtyEditors,
+        session.unresolvedDirtyEditors,
+      ]),
+      saved: mergeStrings(completed.map((result) => result.saved)),
+      failed: mergeFailures([
+        ...completed.map((result) => result.failed),
+        failures,
+        session.unresolvedDirtyEditors.map(({ uri }) => ({
+          uri,
+          message:
+            "Cantrip workbench bridge disconnected before this unsaved editor was resolved.",
+        })),
+      ]),
+      reason: reasons.length > 0 ? reasons.join(" ").slice(0, 4_000) : null,
     });
   }
 
@@ -417,10 +568,16 @@ export class CodeWorkbenchBridge {
     const session = this.#sessions.get(sessionId);
     if (!session) return;
     session.appearance = appearance;
-    const requests = [...session.sockets]
-      .filter((socket) => socket.readyState === WebSocket.OPEN)
-      .map((socket) =>
-        this.#requestOnSocket(session, socket, "setTheme", { appearance }),
+    const requests = [...session.sockets.values()]
+      .filter(({ socket }) => socket.readyState === WebSocket.OPEN)
+      .map((connection) =>
+        this.#requestOnSocket(
+          session,
+          connection,
+          "setTheme",
+          { appearance },
+          false,
+        ),
       );
     if (requests.length === 0) {
       workerLogger.event(
@@ -523,7 +680,19 @@ export class CodeWorkbenchBridge {
       socket.close(1008, "Unknown Code session");
       return;
     }
-    session.sockets.add(socket);
+    const connection: BridgeSocket = {
+      dirtyEditors: [],
+      generation: session.nextGeneration++,
+      socket,
+      workbench: null,
+    };
+    const previousAuthority = session.authoritativeGeneration;
+    session.sockets.set(socket, connection);
+    session.authoritativeGeneration = connection.generation;
+    session.workbench = { ...DEFAULT_WORKBENCH_STATE };
+    if (previousAuthority !== null) {
+      this.#rejectSupersededAuthority(session, connection.generation);
+    }
     workerLogger.event("info", "Cantrip Code workbench bridge connected", {
       event: "code.bridge.connected",
       subsystem: "code",
@@ -533,10 +702,16 @@ export class CodeWorkbenchBridge {
       counts: { sockets: session.sockets.size },
     });
     socket.on("message", (data, isBinary) => {
-      if (!isBinary) this.#onMessage(session, socket, data.toString());
+      if (!isBinary) this.#onMessage(session, connection, data.toString());
     });
     socket.once("close", (code, reason) => {
+      if (session.sockets.get(socket) !== connection) return;
+      this.#retainUnresolvedDirtyEditors(session, connection);
       session.sockets.delete(socket);
+      if (session.authoritativeGeneration === connection.generation) {
+        this.#promoteAuthority(session);
+      }
+      this.#refreshDirtyEditors(session);
       workerLogger.event("warn", "Cantrip Code workbench bridge disconnected", {
         event: "code.bridge.disconnected",
         subsystem: "code",
@@ -553,9 +728,13 @@ export class CodeWorkbenchBridge {
         socket,
       );
     });
-    void this.#requestOnSocket(session, socket, "setTheme", {
-      appearance: session.appearance,
-    }).catch((error) => {
+    void this.#requestOnSocket(
+      session,
+      connection,
+      "setTheme",
+      { appearance: session.appearance },
+      false,
+    ).catch((error) => {
       workerLogger.event(
         "warn",
         "Cantrip Code initial bridge theme request failed",
@@ -573,7 +752,11 @@ export class CodeWorkbenchBridge {
     });
   }
 
-  #onMessage(session: BridgeSession, socket: WebSocket, raw: string): void {
+  #onMessage(
+    session: BridgeSession,
+    connection: BridgeSocket,
+    raw: string,
+  ): void {
     let message: BridgeResponse | BridgeState;
     try {
       message = JSON.parse(raw) as BridgeResponse | BridgeState;
@@ -594,7 +777,9 @@ export class CodeWorkbenchBridge {
       return;
     }
     if (message.type === "state") {
-      session.dirtyEditors = parseDirtyEditors(message.dirtyEditors);
+      if (session.sockets.get(connection.socket) !== connection) return;
+      connection.dirtyEditors = parseDirtyEditors(message.dirtyEditors);
+      this.#refreshDirtyEditors(session);
       const workbench = codeWorkbenchStateSchema.safeParse({
         activeEditor: message.activeEditor ?? null,
         git: message.git ?? null,
@@ -602,12 +787,37 @@ export class CodeWorkbenchBridge {
         savePolicy: message.savePolicy ?? "always",
         agentStatus: message.agentStatus ?? "idle",
       });
-      if (workbench.success) session.workbench = workbench.data;
+      if (workbench.success) {
+        if (
+          session.authoritativeGeneration === connection.generation &&
+          session.unresolvedDirtyGeneration !== null &&
+          connection.generation > session.unresolvedDirtyGeneration
+        ) {
+          // A fresh state publication from a newer authoritative socket is
+          // the only evidence that it replaced the disconnected workbench.
+          session.unresolvedDirtyEditors = [];
+          session.unresolvedDirtyGeneration = null;
+          this.#refreshDirtyEditors(session);
+        }
+        connection.workbench = workbench.data;
+        if (session.authoritativeGeneration === connection.generation) {
+          session.workbench = workbench.data;
+        }
+      }
       return;
     }
     if (message.type !== "response" || typeof message.id !== "string") return;
     const pending = session.pending.get(message.id);
-    if (!pending || pending.socket !== socket) return;
+    if (
+      !pending ||
+      pending.socket !== connection.socket ||
+      pending.socketGeneration !== connection.generation ||
+      session.sockets.get(connection.socket) !== connection ||
+      (pending.authorityBound &&
+        session.authoritativeGeneration !== connection.generation)
+    ) {
+      return;
+    }
     clearTimeout(pending.timer);
     session.pending.delete(message.id);
     if (message.ok) pending.resolve(message.result);
@@ -620,23 +830,23 @@ export class CodeWorkbenchBridge {
     method: string,
     params: unknown,
   ): Promise<unknown> {
-    const socket = [...session.sockets]
-      .reverse()
-      .find((candidate) => candidate.readyState === WebSocket.OPEN);
-    if (!socket) {
+    const connection = this.#authoritativeSocket(session);
+    if (!connection) {
       return Promise.reject(
         new Error("Cantrip workbench bridge is not connected."),
       );
     }
-    return this.#requestOnSocket(session, socket, method, params);
+    return this.#requestOnSocket(session, connection, method, params, true);
   }
 
   #requestOnSocket(
     session: BridgeSession,
-    socket: WebSocket,
+    connection: BridgeSocket,
     method: string,
     params: unknown,
+    authorityBound: boolean,
   ): Promise<unknown> {
+    const { socket } = connection;
     if (socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(
         new Error("Cantrip workbench bridge is not connected."),
@@ -662,7 +872,14 @@ export class CodeWorkbenchBridge {
         reject(error);
         this.#retireSocket(session, socket, error.message);
       }, this.#requestTimeoutMs);
-      session.pending.set(id, { resolve, reject, socket, timer });
+      session.pending.set(id, {
+        authorityBound,
+        resolve,
+        reject,
+        socket,
+        socketGeneration: connection.generation,
+        timer,
+      });
       socket.send(JSON.stringify(request), (error) => {
         if (!error) return;
         clearTimeout(timer);
@@ -692,7 +909,16 @@ export class CodeWorkbenchBridge {
     socket: WebSocket,
     message: string,
   ): void {
+    const connection = session.sockets.get(socket);
+    if (connection) this.#retainUnresolvedDirtyEditors(session, connection);
     session.sockets.delete(socket);
+    if (
+      connection &&
+      session.authoritativeGeneration === connection.generation
+    ) {
+      this.#promoteAuthority(session);
+    }
+    this.#refreshDirtyEditors(session);
     this.#rejectPending(session, message, socket);
     if (socket.readyState !== WebSocket.CLOSED) socket.terminate();
   }
@@ -714,6 +940,89 @@ export class CodeWorkbenchBridge {
     for (const [sessionId, session] of this.#sessions) {
       if (session === target) return sessionId;
     }
+    return null;
+  }
+
+  #authoritativeSocket(session: BridgeSession): BridgeSocket | null {
+    const generation = session.authoritativeGeneration;
+    if (generation === null) return this.#promoteAuthority(session);
+    const connection = [...session.sockets.values()].find(
+      (candidate) =>
+        candidate.generation === generation &&
+        candidate.socket.readyState === WebSocket.OPEN,
+    );
+    return connection ?? this.#promoteAuthority(session);
+  }
+
+  #dirtyContributors(session: BridgeSession): BridgeSocket[] {
+    return [...session.sockets.values()]
+      .filter(
+        ({ dirtyEditors, socket }) =>
+          dirtyEditors.length > 0 && socket.readyState === WebSocket.OPEN,
+      )
+      .sort((left, right) => left.generation - right.generation);
+  }
+
+  #promoteAuthority(session: BridgeSession): BridgeSocket | null {
+    const connection = [...session.sockets.values()]
+      .filter(({ socket }) => socket.readyState === WebSocket.OPEN)
+      .sort((left, right) => right.generation - left.generation)[0];
+    session.authoritativeGeneration = connection?.generation ?? null;
+    session.workbench = connection?.workbench ?? {
+      ...DEFAULT_WORKBENCH_STATE,
+    };
+    return connection ?? null;
+  }
+
+  #refreshDirtyEditors(session: BridgeSession): void {
+    session.dirtyEditors = mergeDirtyEditors([
+      session.unresolvedDirtyEditors,
+      ...[...session.sockets.values()]
+        .filter(({ socket }) => socket.readyState === WebSocket.OPEN)
+        .map((connection) => connection.dirtyEditors),
+    ]);
+  }
+
+  #retainUnresolvedDirtyEditors(
+    session: BridgeSession,
+    connection: BridgeSocket,
+  ): void {
+    if (connection.dirtyEditors.length === 0) return;
+    session.unresolvedDirtyEditors = mergeDirtyEditors([
+      session.unresolvedDirtyEditors,
+      connection.dirtyEditors,
+    ]);
+    session.unresolvedDirtyGeneration = Math.max(
+      session.unresolvedDirtyGeneration ?? 0,
+      connection.generation,
+    );
+  }
+
+  #rejectSupersededAuthority(
+    session: BridgeSession,
+    authoritativeGeneration: number,
+  ): void {
+    for (const [id, pending] of session.pending) {
+      if (
+        !pending.authorityBound ||
+        pending.socketGeneration === authoritativeGeneration
+      ) {
+        continue;
+      }
+      clearTimeout(pending.timer);
+      pending.reject(
+        new Error("Cantrip workbench bridge request was superseded."),
+      );
+      session.pending.delete(id);
+    }
+  }
+
+  #strictestPolicy(
+    policies: Array<"always" | "ask" | "never" | null>,
+  ): "always" | "ask" | "never" | null {
+    if (policies.includes("ask")) return "ask";
+    if (policies.includes("always")) return "always";
+    if (policies.includes("never")) return "never";
     return null;
   }
 }

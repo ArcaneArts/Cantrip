@@ -13,6 +13,7 @@ interface ProtectedCodeAttachmentBinding {
   authSessionId: string | null;
   codeTabId: string;
   createdAt: number;
+  explorerId: string | null;
   expiresAt: number;
   ownerId: string;
   projectId: string;
@@ -33,12 +34,46 @@ export interface CreateProtectedCodeAttachmentInput {
   stopSessionOnRelease?: boolean;
   tunnelId: string;
   workerId: string;
+  registrationLease?: CodeAttachmentRegistrationLease;
 }
 
 export interface CodeTunnelBrokerOptions {
   idleTtlMs?: number;
   maxAttachments?: number;
   maxLifetimeMs?: number;
+  now?: () => number;
+}
+
+export interface CodeAttachmentRegistrationLeaseInput {
+  readonly authSessionId: string | null;
+  readonly explorerId?: string | null;
+  readonly ownerId: string;
+  readonly sessionId: string;
+  readonly tunnelId: string;
+}
+
+export interface CodeAttachmentRegistrationLease extends CodeAttachmentRegistrationLeaseInput {
+  readonly explorerGeneration: symbol | null;
+}
+
+interface ExplorerCodeLifecycle {
+  generation: symbol;
+  leaseCount: number;
+  mutationCount: number;
+  tail: Promise<void>;
+}
+
+interface CodeAttachmentRegistrationLeaseState {
+  readonly explorerLifecycle: ExplorerCodeLifecycle | null;
+  readonly release: () => void;
+  readonly released: Promise<void>;
+}
+
+export class ExplorerCodeAttachmentLeaseError extends Error {}
+
+export interface CodeTunnelActivityLease {
+  readonly expiresAt: string | null;
+  readonly managed: boolean;
 }
 
 type CleanupTunnelResources = (
@@ -56,14 +91,34 @@ type CodeTunnelChange = (input: {
 }) => void;
 
 export class CodeTunnelBroker {
+  readonly #attachmentRevocations = new Map<string, number>();
   readonly #attachments = new Map<string, ProtectedCodeAttachmentBinding>();
+  readonly #authSessionRevocations = new Map<string, number>();
   readonly #idleTtlMs: number;
   readonly #maxAttachments: number;
   readonly #maxLifetimeMs: number;
+  readonly #now: () => number;
+  readonly #ownerRevocations = new Map<string, number>();
+  readonly #pendingRegistrations = new Map<
+    Promise<void>,
+    CreateProtectedCodeAttachmentInput
+  >();
   readonly #removals = new Map<string, Promise<boolean>>();
+  readonly #registrationLeases = new Map<
+    CodeAttachmentRegistrationLease,
+    CodeAttachmentRegistrationLeaseState
+  >();
+  readonly #registrationLeaseStates = new WeakMap<
+    CodeAttachmentRegistrationLease,
+    CodeAttachmentRegistrationLeaseState
+  >();
+  readonly #sessionRevocations = new Map<string, number>();
+  readonly #explorerLifecycles = new Map<string, ExplorerCodeLifecycle>();
   readonly #sweepTimer: ReturnType<typeof setInterval>;
   readonly #workerDisconnectSubscriptions = new Map<string, () => void>();
   #changed: CodeTunnelChange | null = null;
+  #closed = false;
+  #closePromise: Promise<void> | null = null;
   #cleanupTunnelResources: CleanupTunnelResources | null = null;
   #repository: ServerRepository | null = null;
 
@@ -74,6 +129,7 @@ export class CodeTunnelBroker {
     this.#idleTtlMs = options.idleTtlMs ?? 15 * 60_000;
     this.#maxLifetimeMs = options.maxLifetimeMs ?? 12 * 60 * 60_000;
     this.#maxAttachments = options.maxAttachments ?? 128;
+    this.#now = options.now ?? Date.now;
     this.#sweepTimer = setInterval(
       () => this.#prune(),
       Math.max(1_000, Math.min(60_000, this.#idleTtlMs)),
@@ -97,8 +153,192 @@ export class CodeTunnelBroker {
   async createProtectedAttachment(
     input: CreateProtectedCodeAttachmentInput,
   ): Promise<CodeProtectedAttachmentWire> {
+    this.#assertRegistrationAllowed(input);
+    if (
+      this.#attachments.has(input.tunnelId) ||
+      [...this.#pendingRegistrations.values()].some(
+        (pending) => pending.tunnelId === input.tunnelId,
+      )
+    ) {
+      throw new Error("This protected Cantrip Code attachment already exists.");
+    }
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.#pendingRegistrations.set(pending, input);
+    try {
+      const attachment = input.registrationLease?.explorerId
+        ? await this.#withExplorerRegistration(input.registrationLease, () =>
+            this.#createProtectedAttachment(input),
+          )
+        : await this.#createProtectedAttachment(input);
+      if (
+        this.#registrationIsFenced(input) ||
+        (input.registrationLease &&
+          !this.registrationLeaseIsActive(input.registrationLease))
+      ) {
+        await this.#removeCreatedAttachment(
+          attachment.attachmentId,
+          input.ownerId,
+        );
+        this.#assertRegistrationAllowed(input);
+      }
+      return attachment;
+    } finally {
+      this.#pendingRegistrations.delete(pending);
+      finish();
+    }
+  }
+
+  acquireRegistrationLease(
+    input: CodeAttachmentRegistrationLeaseInput,
+  ): CodeAttachmentRegistrationLease | null {
+    if (
+      this.#registrationIdentityIsFenced(input) ||
+      this.#attachments.size + this.#registrationLeases.size >=
+        this.#maxAttachments
+    ) {
+      return null;
+    }
+    const explorerId = input.explorerId ?? null;
+    let explorerLifecycle: ExplorerCodeLifecycle | null = null;
+    if (explorerId) {
+      const key = this.#explorerKey(input.ownerId, explorerId);
+      explorerLifecycle = this.#explorerLifecycles.get(key) ?? null;
+      if (!explorerLifecycle) {
+        explorerLifecycle = {
+          generation: Symbol(key),
+          leaseCount: 0,
+          mutationCount: 0,
+          tail: Promise.resolve(),
+        };
+        this.#explorerLifecycles.set(key, explorerLifecycle);
+      }
+      if (explorerLifecycle.mutationCount > 0) return null;
+      explorerLifecycle.leaseCount += 1;
+    }
+    const lease: CodeAttachmentRegistrationLease = {
+      ...input,
+      explorerId,
+      explorerGeneration: explorerLifecycle?.generation ?? null,
+    };
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const state = { explorerLifecycle, release, released };
+    this.#registrationLeases.set(lease, state);
+    this.#registrationLeaseStates.set(lease, state);
+    return lease;
+  }
+
+  releaseRegistrationLease(lease: CodeAttachmentRegistrationLease): void {
+    const state = this.#registrationLeaseStates.get(lease);
+    if (!state) return;
+    this.#registrationLeaseStates.delete(lease);
+    this.#registrationLeases.delete(lease);
+    state.release();
+    if (lease.explorerId && state.explorerLifecycle) {
+      state.explorerLifecycle.leaseCount -= 1;
+      this.#removeExplorerLifecycleIfUnused(
+        lease.ownerId,
+        lease.explorerId,
+        state.explorerLifecycle,
+      );
+    }
+  }
+
+  registrationLeaseIsActive(lease: CodeAttachmentRegistrationLease): boolean {
+    const state = this.#registrationLeaseStates.get(lease);
+    if (!state || this.#registrationLeases.get(lease) !== state) return false;
+    if (this.#registrationIdentityIsFenced(lease)) return false;
+    if (!lease.explorerId) return true;
+    return this.#explorerLeaseIsActive(
+      state.explorerLifecycle ?? undefined,
+      lease,
+    );
+  }
+
+  async mutateExplorer<T>(
+    ownerId: string,
+    explorerId: string,
+    mutation: () => Promise<T>,
+    didMutate: (result: T) => boolean,
+  ): Promise<T> {
+    const key = this.#explorerKey(ownerId, explorerId);
+    let lifecycle = this.#explorerLifecycles.get(key);
+    if (!lifecycle) {
+      lifecycle = {
+        generation: Symbol(key),
+        leaseCount: 0,
+        mutationCount: 0,
+        tail: Promise.resolve(),
+      };
+      this.#explorerLifecycles.set(key, lifecycle);
+    }
+    lifecycle.generation = Symbol(key);
+    lifecycle.mutationCount += 1;
+    const queued = this.#enqueueExplorerLifecycle(lifecycle);
+    await queued.previous;
+    try {
+      await this.#waitForRegistrationLeases(
+        (lease) => lease.ownerId === ownerId && lease.explorerId === explorerId,
+      );
+      const result = await mutation();
+      if (didMutate(result)) {
+        await this.#revokeWhere(
+          (binding) =>
+            binding.ownerId === ownerId && binding.explorerId === explorerId,
+        );
+      }
+      return result;
+    } finally {
+      lifecycle.mutationCount -= 1;
+      queued.release();
+      this.#removeExplorerLifecycleIfUnused(ownerId, explorerId, lifecycle);
+    }
+  }
+
+  recordTunnelActivity(tunnelId: string): string | null {
+    const binding = this.#attachments.get(tunnelId);
+    if (!binding) return null;
+    const now = this.#now();
+    const maximumExpiration = binding.createdAt + this.#maxLifetimeMs;
+    if (binding.expiresAt <= now || maximumExpiration <= now) {
+      void this.#removeAttachment(binding).catch((error) =>
+        this.#reportCleanupFailure(binding, error),
+      );
+      return null;
+    }
+    binding.expiresAt = Math.min(maximumExpiration, now + this.#idleTtlMs);
+    return new Date(binding.expiresAt).toISOString();
+  }
+
+  allowTunnelActivity(tunnelId: string): boolean {
+    const lease = this.recordTunnelActivityLease(tunnelId);
+    return !lease.managed || lease.expiresAt !== null;
+  }
+
+  recordTunnelActivityLease(tunnelId: string): CodeTunnelActivityLease {
+    if (!this.#attachments.has(tunnelId)) {
+      return { expiresAt: null, managed: false };
+    }
+    return {
+      expiresAt: this.recordTunnelActivity(tunnelId),
+      managed: true,
+    };
+  }
+
+  async #createProtectedAttachment(
+    input: CreateProtectedCodeAttachmentInput,
+  ): Promise<CodeProtectedAttachmentWire> {
+    this.#assertRegistrationAllowed(input);
     this.#prune();
-    if (this.#attachments.size >= this.#maxAttachments) {
+    if (
+      this.#attachments.size + this.#pendingRegistrations.size >
+      this.#maxAttachments
+    ) {
       throw new Error(
         "This server has reached its Cantrip Code attachment limit.",
       );
@@ -134,13 +374,14 @@ export class CodeTunnelBroker {
     if (!tunnel || tunnel.id !== input.tunnelId) {
       throw new Error("Could not register the protected Code tunnel.");
     }
-    const now = Date.now();
+    const now = this.#now();
     const binding: ProtectedCodeAttachmentBinding = {
       attachmentId: tunnel.id,
       authSessionId: input.authSessionId ?? null,
       codeTabId: input.codeTabId,
       createdAt: now,
-      expiresAt: now + this.#idleTtlMs,
+      explorerId: input.registrationLease?.explorerId ?? null,
+      expiresAt: Math.min(now + this.#idleTtlMs, now + this.#maxLifetimeMs),
       ownerId: input.ownerId,
       projectId: input.projectId,
       sessionId: input.sessionId,
@@ -176,44 +417,107 @@ export class CodeTunnelBroker {
     attachmentId: string,
     ownerId: string,
   ): Promise<boolean> {
-    const binding = this.#attachments.get(attachmentId);
-    if (!binding || binding.ownerId !== ownerId) return false;
-    return this.#removeAttachment(binding);
+    const key = this.#attachmentKey(ownerId, attachmentId);
+    this.#beginFence(this.#attachmentRevocations, key);
+    try {
+      await Promise.all([
+        this.#waitForRegistrationLeases(
+          (lease) =>
+            lease.ownerId === ownerId && lease.tunnelId === attachmentId,
+        ),
+        this.#waitForRegistrations(
+          (input) =>
+            input.ownerId === ownerId && input.tunnelId === attachmentId,
+        ),
+      ]);
+      return this.#removeCreatedAttachment(attachmentId, ownerId);
+    } finally {
+      this.#endFence(this.#attachmentRevocations, key);
+    }
   }
 
   async revokeSession(sessionId: string): Promise<void> {
-    await this.#revokeWhere((binding) => binding.sessionId === sessionId);
+    this.#beginFence(this.#sessionRevocations, sessionId);
+    try {
+      await Promise.all([
+        this.#waitForRegistrationLeases(
+          (lease) => lease.sessionId === sessionId,
+        ),
+        this.#waitForRegistrations((input) => input.sessionId === sessionId),
+      ]);
+      await this.#revokeWhere((binding) => binding.sessionId === sessionId);
+    } finally {
+      this.#endFence(this.#sessionRevocations, sessionId);
+    }
   }
 
   async revokeAuthSession(authSessionId: string): Promise<void> {
-    await this.#revokeWhere(
-      (binding) => binding.authSessionId === authSessionId,
-    );
+    this.#beginFence(this.#authSessionRevocations, authSessionId);
+    try {
+      await Promise.all([
+        this.#waitForRegistrationLeases(
+          (lease) => lease.authSessionId === authSessionId,
+        ),
+        this.#waitForRegistrations(
+          (input) => input.authSessionId === authSessionId,
+        ),
+      ]);
+      await this.#revokeWhere(
+        (binding) => binding.authSessionId === authSessionId,
+      );
+    } finally {
+      this.#endFence(this.#authSessionRevocations, authSessionId);
+    }
   }
 
   async revokeOwner(ownerId: string): Promise<void> {
-    await this.#revokeWhere((binding) => binding.ownerId === ownerId);
+    this.#beginFence(this.#ownerRevocations, ownerId);
+    try {
+      await Promise.all([
+        this.#waitForRegistrationLeases((lease) => lease.ownerId === ownerId),
+        this.#waitForRegistrations((input) => input.ownerId === ownerId),
+      ]);
+      await this.#revokeWhere((binding) => binding.ownerId === ownerId);
+    } finally {
+      this.#endFence(this.#ownerRevocations, ownerId);
+    }
   }
 
   async close(): Promise<void> {
+    if (this.#closePromise) return this.#closePromise;
+    this.#closed = true;
     clearInterval(this.#sweepTimer);
-    const bindings = [...this.#attachments.values()];
-    const removals = await Promise.allSettled(
-      bindings.map((binding) => this.#removeAttachment(binding)),
-    );
-    removals.forEach((result, index) => {
-      if (result.status === "rejected") {
-        this.#reportCleanupFailure(bindings[index]!, result.reason);
+    this.#closePromise = (async () => {
+      await this.#waitForRegistrationLeases(() => true);
+      await Promise.allSettled([...this.#pendingRegistrations.keys()]);
+      const bindings = [...this.#attachments.values()];
+      const removals = await Promise.allSettled(
+        bindings.map((binding) => this.#removeAttachment(binding)),
+      );
+      removals.forEach((result, index) => {
+        if (result.status === "rejected") {
+          this.#reportCleanupFailure(bindings[index]!, result.reason);
+        }
+      });
+      for (const unsubscribe of this.#workerDisconnectSubscriptions.values()) {
+        unsubscribe();
       }
-    });
-    for (const unsubscribe of this.#workerDisconnectSubscriptions.values()) {
-      unsubscribe();
-    }
-    this.#workerDisconnectSubscriptions.clear();
+      this.#workerDisconnectSubscriptions.clear();
+      const failures = removals
+        .filter((result) => result.status === "rejected")
+        .map((result) => result.reason);
+      if (failures.length > 0) {
+        throw new AggregateError(
+          failures,
+          "Could not revoke every protected Cantrip Code attachment during shutdown.",
+        );
+      }
+    })();
+    return this.#closePromise;
   }
 
   #prune(): void {
-    const now = Date.now();
+    const now = this.#now();
     for (const binding of this.#attachments.values()) {
       if (
         binding.expiresAt <= now ||
@@ -247,7 +551,13 @@ export class CodeTunnelBroker {
     if (!this.#repository) {
       throw new Error("Cantrip Code protected control plane is unavailable.");
     }
-    await Promise.all([
+    const tunnelRemoval = await Promise.allSettled([
+      this.#repository.removeManagedTunnel(binding.ownerId, {
+        kind: "code",
+        id: binding.tunnelId,
+      }),
+    ]);
+    const resourceCleanup = await Promise.allSettled([
       this.#cleanupTunnelResources?.(
         binding.ownerId,
         binding.tunnelId,
@@ -263,11 +573,28 @@ export class CodeTunnelBroker {
             )
             .catch(() => undefined)
         : Promise.resolve(),
+      binding.stopSessionOnRelease
+        ? this.bridge
+            .request(
+              binding.workerId,
+              {
+                type: "code.stop",
+                sessionId: binding.sessionId,
+              },
+              { timeoutMs: 5_000 },
+            )
+            .catch(() => undefined)
+        : Promise.resolve(),
     ]);
-    await this.#repository.removeManagedTunnel(binding.ownerId, {
-      kind: "code",
-      id: binding.tunnelId,
-    });
+    const resourceFailures = [...tunnelRemoval, ...resourceCleanup]
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason);
+    if (resourceFailures.length > 0) {
+      throw new AggregateError(
+        resourceFailures,
+        "Could not clean up every protected Cantrip Code resource.",
+      );
+    }
     this.#attachments.delete(binding.attachmentId);
     this.#changed?.({
       attachmentId: binding.attachmentId,
@@ -275,30 +602,240 @@ export class CodeTunnelBroker {
       projectId: binding.projectId,
       tunnelId: binding.tunnelId,
     });
-    if (binding.stopSessionOnRelease) {
-      await this.bridge
-        .request(
-          binding.workerId,
-          {
-            type: "code.stop",
-            sessionId: binding.sessionId,
-          },
-          { timeoutMs: 5_000 },
-        )
-        .catch(() => undefined);
-    }
     this.#stopTrackingWorkerIfUnused(binding.workerId);
+    if (binding.explorerId) {
+      const key = this.#explorerKey(binding.ownerId, binding.explorerId);
+      const lifecycle = this.#explorerLifecycles.get(key);
+      if (lifecycle) {
+        this.#removeExplorerLifecycleIfUnused(
+          binding.ownerId,
+          binding.explorerId,
+          lifecycle,
+        );
+      }
+    }
     return true;
   }
 
   async #revokeWhere(
     predicate: (binding: ProtectedCodeAttachmentBinding) => boolean,
   ): Promise<void> {
-    await Promise.all(
+    const removals = await Promise.allSettled(
       [...this.#attachments.values()]
         .filter(predicate)
         .map((binding) => this.#removeAttachment(binding)),
     );
+    const failures = removals
+      .filter((result) => result.status === "rejected")
+      .map((result) => result.reason);
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        "Could not revoke every protected Cantrip Code attachment.",
+      );
+    }
+  }
+
+  async #withExplorerRegistration<T>(
+    lease: CodeAttachmentRegistrationLease,
+    registration: () => Promise<T>,
+  ): Promise<T> {
+    if (!lease.explorerId) {
+      throw new ExplorerCodeAttachmentLeaseError(
+        "The Explorer changed while its editor was opening.",
+      );
+    }
+    const key = this.#explorerKey(lease.ownerId, lease.explorerId);
+    const lifecycle = this.#explorerLifecycles.get(key);
+    if (!this.#explorerLeaseIsActive(lifecycle, lease)) {
+      throw new ExplorerCodeAttachmentLeaseError(
+        "The Explorer changed while its editor was opening.",
+      );
+    }
+    const queued = this.#enqueueExplorerLifecycle(lifecycle);
+    await queued.previous;
+    try {
+      if (!this.#explorerLeaseIsActive(lifecycle, lease)) {
+        throw new ExplorerCodeAttachmentLeaseError(
+          "The Explorer changed while its editor was opening.",
+        );
+      }
+      const result = await registration();
+      if (!this.#explorerLeaseIsActive(lifecycle, lease)) {
+        if (
+          typeof result === "object" &&
+          result !== null &&
+          "attachmentId" in result &&
+          typeof result.attachmentId === "string"
+        ) {
+          await this.#removeCreatedAttachment(
+            result.attachmentId,
+            lease.ownerId,
+          );
+        }
+        throw new ExplorerCodeAttachmentLeaseError(
+          "The Explorer changed while its editor was opening.",
+        );
+      }
+      return result;
+    } finally {
+      queued.release();
+    }
+  }
+
+  #enqueueExplorerLifecycle(lifecycle: ExplorerCodeLifecycle): {
+    previous: Promise<void>;
+    release: () => void;
+  } {
+    const previous = lifecycle.tail.catch(() => undefined);
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    lifecycle.tail = previous.then(() => current);
+    return { previous, release };
+  }
+
+  #explorerLeaseIsActive(
+    lifecycle: ExplorerCodeLifecycle | undefined,
+    lease: CodeAttachmentRegistrationLease,
+  ): lifecycle is ExplorerCodeLifecycle {
+    const state = this.#registrationLeaseStates.get(lease);
+    return Boolean(
+      lifecycle &&
+      lease.explorerId &&
+      state &&
+      state.explorerLifecycle === lifecycle &&
+      this.#registrationLeases.get(lease) === state &&
+      lifecycle.mutationCount === 0 &&
+      lifecycle.generation === lease.explorerGeneration &&
+      this.#explorerLifecycles.get(
+        this.#explorerKey(lease.ownerId, lease.explorerId),
+      ) === lifecycle,
+    );
+  }
+
+  #explorerKey(ownerId: string, explorerId: string): string {
+    return `${ownerId.length}:${ownerId}${explorerId}`;
+  }
+
+  #attachmentKey(ownerId: string, attachmentId: string): string {
+    return `${ownerId.length}:${ownerId}${attachmentId}`;
+  }
+
+  #assertRegistrationAllowed(input: CreateProtectedCodeAttachmentInput): void {
+    const lease = input.registrationLease;
+    if (
+      lease &&
+      (lease.ownerId !== input.ownerId ||
+        lease.authSessionId !== (input.authSessionId ?? null) ||
+        lease.sessionId !== input.sessionId ||
+        lease.tunnelId !== input.tunnelId)
+    ) {
+      throw new Error(
+        "The protected Cantrip Code registration lease does not match this attachment.",
+      );
+    }
+    if (
+      !this.#registrationIsFenced(input) &&
+      (!lease || this.registrationLeaseIsActive(lease))
+    ) {
+      return;
+    }
+    if (lease?.explorerId && !this.#closed) {
+      throw new ExplorerCodeAttachmentLeaseError(
+        "The Explorer changed while its editor was opening.",
+      );
+    }
+    throw new Error(
+      this.#closed
+        ? "The Cantrip Code tunnel broker is shutting down."
+        : "The protected Cantrip Code attachment is being revoked.",
+    );
+  }
+
+  #registrationIsFenced(input: CreateProtectedCodeAttachmentInput): boolean {
+    return this.#registrationIdentityIsFenced({
+      authSessionId: input.authSessionId ?? null,
+      explorerId: input.registrationLease?.explorerId,
+      ownerId: input.ownerId,
+      sessionId: input.sessionId,
+      tunnelId: input.tunnelId,
+    });
+  }
+
+  #registrationIdentityIsFenced(
+    input: CodeAttachmentRegistrationLeaseInput,
+  ): boolean {
+    return Boolean(
+      this.#closed ||
+      this.#ownerRevocations.has(input.ownerId) ||
+      this.#sessionRevocations.has(input.sessionId) ||
+      (input.authSessionId &&
+        this.#authSessionRevocations.has(input.authSessionId)) ||
+      this.#attachmentRevocations.has(
+        this.#attachmentKey(input.ownerId, input.tunnelId),
+      ),
+    );
+  }
+
+  async #waitForRegistrations(
+    predicate: (input: CreateProtectedCodeAttachmentInput) => boolean,
+  ): Promise<void> {
+    await Promise.allSettled(
+      [...this.#pendingRegistrations]
+        .filter(([, input]) => predicate(input))
+        .map(([pending]) => pending),
+    );
+  }
+
+  async #waitForRegistrationLeases(
+    predicate: (lease: CodeAttachmentRegistrationLease) => boolean,
+  ): Promise<void> {
+    await Promise.allSettled(
+      [...this.#registrationLeases]
+        .filter(([lease]) => predicate(lease))
+        .map(([, state]) => state.released),
+    );
+  }
+
+  async #removeCreatedAttachment(
+    attachmentId: string,
+    ownerId: string,
+  ): Promise<boolean> {
+    const binding = this.#attachments.get(attachmentId);
+    if (!binding || binding.ownerId !== ownerId) return false;
+    return this.#removeAttachment(binding);
+  }
+
+  #beginFence(fences: Map<string, number>, key: string): void {
+    fences.set(key, (fences.get(key) ?? 0) + 1);
+  }
+
+  #endFence(fences: Map<string, number>, key: string): void {
+    const remaining = (fences.get(key) ?? 1) - 1;
+    if (remaining > 0) fences.set(key, remaining);
+    else fences.delete(key);
+  }
+
+  #removeExplorerLifecycleIfUnused(
+    ownerId: string,
+    explorerId: string,
+    lifecycle: ExplorerCodeLifecycle,
+  ): void {
+    const key = this.#explorerKey(ownerId, explorerId);
+    if (
+      this.#explorerLifecycles.get(key) !== lifecycle ||
+      lifecycle.leaseCount > 0 ||
+      lifecycle.mutationCount > 0 ||
+      [...this.#attachments.values()].some(
+        (binding) =>
+          binding.ownerId === ownerId && binding.explorerId === explorerId,
+      )
+    ) {
+      return;
+    }
+    this.#explorerLifecycles.delete(key);
   }
 
   #trackWorkerDisconnect(workerId: string): void {

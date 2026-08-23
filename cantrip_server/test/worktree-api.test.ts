@@ -62,6 +62,7 @@ import {
   projectWorktreeSummarySchema,
   queuedPromptSchema,
   terminalSummarySchema,
+  terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
   worktreeStatusResultSchema,
   type WorkerWorktreeSummary,
@@ -87,6 +88,7 @@ import {
   protectedDisplayLabelFields,
   protectedExplorerFields,
   protectedProjectFields,
+  protectedTerminalFields,
 } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
@@ -316,7 +318,16 @@ const codeOpenCommands: Array<Extract<WorkerCommand, { type: "code.open" }>> =
 const codeStopSessionIds: string[] = [];
 const codeStatusSessionIds: string[] = [];
 const codeEndpointRevokedTunnelIds: string[] = [];
+const directPrepareCapabilityIds: string[] = [];
+const directRevokeCapabilityIds: string[] = [];
+const projectShareOpenIds: string[] = [];
+const projectShareCloseIds: string[] = [];
+const terminalOpenCommands: Array<
+  Extract<WorkerCommand, { type: "terminal.open" }>
+> = [];
+const terminalCloseIds: string[] = [];
 let heldCodeOpen: { release: Promise<void>; started(): void } | undefined;
+let heldTerminalOpen: { release: Promise<void>; started(): void } | undefined;
 
 function holdNextProtectedAttachmentCreation(): {
   release(): void;
@@ -1677,6 +1688,32 @@ const workerBridge = {
       case "code.endpoint.revoke":
         codeEndpointRevokedTunnelIds.push(command.tunnelId);
         return { revoked: true };
+      case "direct.capability.prepare":
+        directPrepareCapabilityIds.push(command.binding.capabilityId);
+        return { accepted: true, capabilityId: command.binding.capabilityId };
+      case "direct.capability.revoke":
+        directRevokeCapabilityIds.push(command.capabilityId);
+        return { revoked: true };
+      case "project.share.open":
+        projectShareOpenIds.push(command.shareId);
+        return { accepted: true, shareId: command.shareId };
+      case "project.share.close":
+        projectShareCloseIds.push(command.shareId);
+        return { accepted: true };
+      case "terminal.open":
+        terminalOpenCommands.push(command);
+        if (heldTerminalOpen) {
+          const held = heldTerminalOpen;
+          held.started();
+          await held.release;
+        }
+        options?.onEvent?.({ type: "terminal.ready" });
+        return { status: "detached" };
+      case "terminal.detach":
+        return { accepted: true };
+      case "terminal.close":
+        terminalCloseIds.push(command.terminalId);
+        return { accepted: true };
       case "code.prepareAgentTurn":
         return { prepared: true, sessions: [] };
       case "code.agentTurnState":
@@ -1827,6 +1864,15 @@ beforeAll(async () => {
       browser: false,
       transports: ["websocket"],
       maxSessions: 1,
+    },
+    directBroker: {
+      available: true,
+      protocol: "ws-v1",
+      loopbackHost: "127.0.0.1",
+      loopbackPort: 43123,
+      instanceId: randomUUID(),
+      publicKey: "a".repeat(43),
+      fingerprint: "b".repeat(64),
     },
     startedAt: new Date().toISOString(),
   });
@@ -3129,6 +3175,767 @@ describe.sequential("server worktree control plane", () => {
     ).toMatchObject({ statusCode: 204 });
   });
 
+  it("revokes exact project-share direct grants on replace and delete", async () => {
+    const tunnelId = randomUUID();
+    const opensBefore = projectShareOpenIds.length;
+    const closesBefore = projectShareCloseIds.length;
+    const createShare = (revision: number) =>
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/network-shares`,
+        payload: {
+          tunnelId,
+          workerId: "test-worker",
+          protectedRecord: {
+            ...protectedTunnelRecord(revision === 1 ? tunnelId : randomUUID()),
+            revision,
+          },
+        },
+      });
+    const prepareDirect = async () => {
+      const desktopResponse = await app.inject({
+        method: "POST",
+        url: `/api/tunnels/${tunnelId}/attachments`,
+        payload: { clientId: randomUUID() },
+      });
+      expect(desktopResponse.statusCode, desktopResponse.body).toBe(201);
+      const attachmentId = desktopResponse.json().attachmentId as string;
+      const directResponse = await app.inject({
+        method: "POST",
+        url: `/api/tunnel-attachments/${attachmentId}/direct`,
+        payload: { diagnosticTraceId: randomUUID() },
+      });
+      expect(directResponse.statusCode, directResponse.body).toBe(201);
+      return {
+        attachmentId,
+        capabilityId: directResponse.json().binding.capabilityId as string,
+      };
+    };
+    const activate = (attachmentId: string, capabilityId: string) =>
+      app.inject({
+        method: "POST",
+        url: `/api/tunnel-attachments/${attachmentId}/direct-activate`,
+        payload: { capabilityId },
+      });
+
+    try {
+      const created = await createShare(1);
+      expect(created.statusCode, created.body).toBe(201);
+      const replacedGrant = await prepareDirect();
+
+      const replaced = await createShare(2);
+      expect(replaced.statusCode, replaced.body).toBe(201);
+      expect(directRevokeCapabilityIds).toContain(replacedGrant.capabilityId);
+      expect(
+        await activate(replacedGrant.attachmentId, replacedGrant.capabilityId),
+      ).toMatchObject({ statusCode: 404 });
+      expect(projectShareOpenIds.slice(opensBefore)).toEqual([
+        tunnelId,
+        tunnelId,
+      ]);
+
+      const deletedGrant = await prepareDirect();
+      const deleted = await app.inject({
+        method: "DELETE",
+        url: `/api/project-shares/${tunnelId}`,
+      });
+      expect(deleted.statusCode, deleted.body).toBe(204);
+      expect(directRevokeCapabilityIds).toContain(deletedGrant.capabilityId);
+      expect(
+        await activate(deletedGrant.attachmentId, deletedGrant.capabilityId),
+      ).toMatchObject({ statusCode: 404 });
+      expect(projectShareOpenIds.slice(opensBefore)).toEqual([
+        tunnelId,
+        tunnelId,
+      ]);
+      expect(projectShareCloseIds.slice(closesBefore)).toEqual([
+        tunnelId,
+        tunnelId,
+      ]);
+      expect(
+        await app.inject({ method: "GET", url: `/api/tunnels/${tunnelId}` }),
+      ).toMatchObject({ statusCode: 404 });
+    } finally {
+      await app.inject({
+        method: "DELETE",
+        url: `/api/project-shares/${tunnelId}`,
+      });
+    }
+  });
+
+  it.each(["attachment", "resource"] as const)(
+    "rejects a stale direct route when its %s is revoked before authorization binds",
+    async (scope) => {
+      const explorerResponse = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/explorers`,
+        payload: {
+          ...protectedExplorerFields(),
+          worktreeId: primaryId,
+        },
+      });
+      expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
+      const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
+      const sessionId = randomUUID();
+      const tunnelId = randomUUID();
+      const attachmentResponse = await app.inject({
+        method: "POST",
+        url: `/api/explorers/${explorer.id}/protected-code-attachments`,
+        payload: {
+          appearance: "dark",
+          expectedWorkerId: explorer.activeWorkerId,
+          expectedWorktreeId: explorer.worktreeId,
+          path: "src/direct-revoke-race.ts",
+          protectedRecord: protectedTunnelRecord(tunnelId),
+          sessionId,
+          tunnelId,
+        },
+      });
+      expect(attachmentResponse.statusCode, attachmentResponse.body).toBe(201);
+      const desktopAttachmentResponse = await app.inject({
+        method: "POST",
+        url: `/api/tunnels/${tunnelId}/attachments`,
+        payload: { clientId: `desktop-${sessionId}` },
+      });
+      expect(
+        desktopAttachmentResponse.statusCode,
+        desktopAttachmentResponse.body,
+      ).toBe(201);
+      const desktopAttachment = desktopAttachmentResponse.json();
+      const originalGet = database.repository.getDesktopTunnelAttachment.bind(
+        database.repository,
+      );
+      let signalReadStarted!: () => void;
+      let releaseRead!: () => void;
+      const readStarted = new Promise<void>((resolve) => {
+        signalReadStarted = resolve;
+      });
+      const readRelease = new Promise<void>((resolve) => {
+        releaseRead = resolve;
+      });
+      let holdRead = true;
+      const getSpy = vi
+        .spyOn(database.repository, "getDesktopTunnelAttachment")
+        .mockImplementation(async (...args) => {
+          const result = await originalGet(...args);
+          if (holdRead && args[1] === desktopAttachment.attachmentId) {
+            holdRead = false;
+            signalReadStarted();
+            await readRelease;
+          }
+          return result;
+        });
+      let signalRevokeStarted!: () => void;
+      const revokeStarted = new Promise<void>((resolve) => {
+        signalRevokeStarted = resolve;
+      });
+      const originalRevoke =
+        scope === "attachment"
+          ? DirectAttachmentCoordinator.prototype.revokeAttachment
+          : DirectAttachmentCoordinator.prototype.revokeResource;
+      const revokeSpy =
+        scope === "attachment"
+          ? vi
+              .spyOn(DirectAttachmentCoordinator.prototype, "revokeAttachment")
+              .mockImplementation(async function (
+                this: DirectAttachmentCoordinator,
+                attachmentId,
+              ) {
+                if (attachmentId === desktopAttachment.attachmentId) {
+                  signalRevokeStarted();
+                }
+                return originalRevoke.call(this, attachmentId);
+              })
+          : vi
+              .spyOn(DirectAttachmentCoordinator.prototype, "revokeResource")
+              .mockImplementation(async function (
+                this: DirectAttachmentCoordinator,
+                ownerId,
+                resourceKind,
+                resourceId,
+              ) {
+                if (resourceKind === "tunnel" && resourceId === tunnelId) {
+                  signalRevokeStarted();
+                }
+                return originalRevoke.call(
+                  this,
+                  ownerId,
+                  resourceKind,
+                  resourceId,
+                );
+              });
+      const preparationsBefore = directPrepareCapabilityIds.length;
+      try {
+        const directResponsePromise = app.inject({
+          method: "POST",
+          url: `/api/tunnel-attachments/${desktopAttachment.attachmentId}/direct`,
+          payload: { diagnosticTraceId: randomUUID() },
+        });
+        await readStarted;
+        let deletionFinished = false;
+        const deletionResponsePromise = app
+          .inject({
+            method: "DELETE",
+            url:
+              scope === "attachment"
+                ? `/api/tunnel-attachments/${desktopAttachment.attachmentId}`
+                : `/api/explorers/${explorer.id}`,
+          })
+          .then((response) => {
+            deletionFinished = true;
+            return response;
+          });
+        await revokeStarted;
+        expect(deletionFinished).toBe(false);
+
+        releaseRead();
+        const directResponse = await directResponsePromise;
+        expect(directResponse.statusCode, directResponse.body).toBe(409);
+        const deletionResponse = await deletionResponsePromise;
+        expect(deletionResponse.statusCode, deletionResponse.body).toBe(204);
+        expect(directPrepareCapabilityIds).toHaveLength(preparationsBefore);
+      } finally {
+        releaseRead();
+        getSpy.mockRestore();
+        revokeSpy.mockRestore();
+        await app.inject({
+          method: "DELETE",
+          url: `/api/explorers/${explorer.id}`,
+        });
+      }
+    },
+  );
+
+  it("rejects direct preparation when the protected Code lease has expired", async () => {
+    const explorerResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...protectedExplorerFields(),
+        worktreeId: primaryId,
+      },
+    });
+    expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
+    const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
+    const sessionId = randomUUID();
+    const tunnelId = randomUUID();
+    const attachmentResponse = await app.inject({
+      method: "POST",
+      url: `/api/explorers/${explorer.id}/protected-code-attachments`,
+      payload: {
+        appearance: "dark",
+        expectedWorkerId: explorer.activeWorkerId,
+        expectedWorktreeId: explorer.worktreeId,
+        path: "src/expired-direct.ts",
+        protectedRecord: protectedTunnelRecord(tunnelId),
+        sessionId,
+        tunnelId,
+      },
+    });
+    expect(attachmentResponse.statusCode, attachmentResponse.body).toBe(201);
+    const desktopResponse = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${tunnelId}/attachments`,
+      payload: { clientId: randomUUID() },
+    });
+    expect(desktopResponse.statusCode, desktopResponse.body).toBe(201);
+    const attachmentId = desktopResponse.json().attachmentId as string;
+    const originalActivityLease =
+      CodeTunnelBroker.prototype.recordTunnelActivityLease;
+    const activitySpy = vi
+      .spyOn(CodeTunnelBroker.prototype, "recordTunnelActivityLease")
+      .mockImplementation(function (this: CodeTunnelBroker, candidate) {
+        if (candidate !== tunnelId) {
+          return originalActivityLease.call(this, candidate);
+        }
+        void this.revokeAttachment(tunnelId, LOCAL_USER_ID);
+        return { expiresAt: null, managed: true };
+      });
+    const preparationsBefore = directPrepareCapabilityIds.length;
+    try {
+      const directResponse = await app.inject({
+        method: "POST",
+        url: `/api/tunnel-attachments/${attachmentId}/direct`,
+        payload: { diagnosticTraceId: randomUUID() },
+      });
+      expect(directResponse.statusCode, directResponse.body).toBe(409);
+      expect(directResponse.json()).toMatchObject({
+        error: "The protected Code attachment has expired.",
+      });
+      expect(directPrepareCapabilityIds).toHaveLength(preparationsBefore);
+      await vi.waitFor(async () => {
+        expect(
+          await app.inject({ method: "GET", url: `/api/tunnels/${tunnelId}` }),
+        ).toMatchObject({ statusCode: 404 });
+      });
+    } finally {
+      activitySpy.mockRestore();
+      await app.inject({
+        method: "DELETE",
+        url: `/api/explorers/${explorer.id}`,
+      });
+    }
+  });
+
+  it.each(["retarget", "delete"] as const)(
+    "fences terminal direct startup before terminal %s mutation",
+    async (scope) => {
+      const targetResponse = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees`,
+        payload: {
+          name: `terminal-direct-${scope}`,
+          mode: {
+            type: "newBranch",
+            branch: `terminal-direct-${scope}`,
+            startPoint: "main",
+          },
+        },
+      });
+      expect(targetResponse.statusCode, targetResponse.body).toBe(201);
+      const target = projectWorktreeSummarySchema.parse(targetResponse.json());
+      const terminalResponse = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/terminals`,
+        payload: {
+          ...protectedTerminalFields(),
+          worktreeId: primaryId,
+        },
+      });
+      expect(terminalResponse.statusCode, terminalResponse.body).toBe(201);
+      const terminal = terminalWireSummarySchema.parse(terminalResponse.json());
+      const originalGetWorker = database.repository.getWorker.bind(
+        database.repository,
+      );
+      let signalWorkerRead!: () => void;
+      let releaseWorkerRead!: () => void;
+      const workerRead = new Promise<void>((resolve) => {
+        signalWorkerRead = resolve;
+      });
+      const workerReadRelease = new Promise<void>((resolve) => {
+        releaseWorkerRead = resolve;
+      });
+      let holdWorkerRead = true;
+      const workerSpy = vi
+        .spyOn(database.repository, "getWorker")
+        .mockImplementation(async (...args) => {
+          const result = await originalGetWorker(...args);
+          if (holdWorkerRead && args[1] === terminal.activeWorkerId) {
+            holdWorkerRead = false;
+            signalWorkerRead();
+            await workerReadRelease;
+          }
+          return result;
+        });
+      const originalMutateResource =
+        DirectAttachmentCoordinator.prototype.mutateResource;
+      let signalMutationStarted!: () => void;
+      const mutationStarted = new Promise<void>((resolve) => {
+        signalMutationStarted = resolve;
+      });
+      const mutationSpy = vi
+        .spyOn(DirectAttachmentCoordinator.prototype, "mutateResource")
+        .mockImplementation(function (
+          this: DirectAttachmentCoordinator,
+          ownerId,
+          resourceKind,
+          resourceId,
+          mutation,
+        ) {
+          const result = originalMutateResource.call(
+            this,
+            ownerId,
+            resourceKind,
+            resourceId,
+            mutation,
+          );
+          if (resourceKind === "terminal" && resourceId === terminal.id) {
+            signalMutationStarted();
+          }
+          return result;
+        });
+      const opensBefore = terminalOpenCommands.length;
+      const closesBefore = terminalCloseIds.length;
+      try {
+        const directResponsePromise = app.inject({
+          method: "POST",
+          url: `/api/terminals/${terminal.id}/direct`,
+          payload: { clientId: randomUUID() },
+        });
+        await workerRead;
+        let mutationFinished = false;
+        const mutationResponsePromise = app
+          .inject({
+            method: scope === "retarget" ? "PATCH" : "DELETE",
+            url:
+              scope === "retarget"
+                ? `/api/terminals/${terminal.id}/worktree`
+                : `/api/terminals/${terminal.id}`,
+            ...(scope === "retarget"
+              ? { payload: { worktreeId: target.id } }
+              : {}),
+          })
+          .then((response) => {
+            mutationFinished = true;
+            return response;
+          });
+        await mutationStarted;
+        expect(mutationFinished).toBe(false);
+
+        releaseWorkerRead();
+        const directResponse = await directResponsePromise;
+        expect(directResponse.statusCode, directResponse.body).toBe(409);
+        const mutationResponse = await mutationResponsePromise;
+        expect(mutationResponse.statusCode, mutationResponse.body).toBe(
+          scope === "retarget" ? 200 : 204,
+        );
+        expect(terminalOpenCommands).toHaveLength(opensBefore);
+        if (scope === "retarget") {
+          expect(
+            await database.repository.getTerminalExecutionContext(
+              LOCAL_USER_ID,
+              terminal.id,
+            ),
+          ).toMatchObject({ worktreeId: target.id });
+        } else {
+          expect(
+            await database.repository.getTerminalExecutionContext(
+              LOCAL_USER_ID,
+              terminal.id,
+            ),
+          ).toBeNull();
+          expect(terminalCloseIds.slice(closesBefore)).toContain(terminal.id);
+        }
+      } finally {
+        releaseWorkerRead();
+        workerSpy.mockRestore();
+        mutationSpy.mockRestore();
+        await app.inject({
+          method: "DELETE",
+          url: `/api/terminals/${terminal.id}`,
+        });
+      }
+    },
+  );
+
+  it("finishes stale terminal cleanup before retarget permits a new direct open", async () => {
+    const targetResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees`,
+      payload: {
+        name: "terminal-post-open-retarget",
+        mode: {
+          type: "newBranch",
+          branch: "terminal-post-open-retarget",
+          startPoint: "main",
+        },
+      },
+    });
+    expect(targetResponse.statusCode, targetResponse.body).toBe(201);
+    const target = projectWorktreeSummarySchema.parse(targetResponse.json());
+    const terminalResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/terminals`,
+      payload: {
+        ...protectedTerminalFields(),
+        worktreeId: primaryId,
+      },
+    });
+    expect(terminalResponse.statusCode, terminalResponse.body).toBe(201);
+    const terminal = terminalWireSummarySchema.parse(terminalResponse.json());
+    const originalContext =
+      await database.repository.getTerminalExecutionContext(
+        LOCAL_USER_ID,
+        terminal.id,
+      );
+    let signalOpenStarted!: () => void;
+    let releaseOpen!: () => void;
+    const openStarted = new Promise<void>((resolve) => {
+      signalOpenStarted = resolve;
+    });
+    const openRelease = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    heldTerminalOpen = { release: openRelease, started: signalOpenStarted };
+    const originalMutateResource =
+      DirectAttachmentCoordinator.prototype.mutateResource;
+    let signalMutationStarted!: () => void;
+    const mutationStarted = new Promise<void>((resolve) => {
+      signalMutationStarted = resolve;
+    });
+    const mutationSpy = vi
+      .spyOn(DirectAttachmentCoordinator.prototype, "mutateResource")
+      .mockImplementation(function (
+        this: DirectAttachmentCoordinator,
+        ownerId,
+        resourceKind,
+        resourceId,
+        mutation,
+      ) {
+        const result = originalMutateResource.call(
+          this,
+          ownerId,
+          resourceKind,
+          resourceId,
+          mutation,
+        );
+        if (resourceKind === "terminal" && resourceId === terminal.id) {
+          signalMutationStarted();
+        }
+        return result;
+      });
+    const opensBefore = terminalOpenCommands.length;
+    const closesBefore = terminalCloseIds.length;
+    try {
+      const staleDirectPromise = app.inject({
+        method: "POST",
+        url: `/api/terminals/${terminal.id}/direct`,
+        payload: { clientId: randomUUID() },
+      });
+      await openStarted;
+      let retargetFinished = false;
+      const retargetPromise = app
+        .inject({
+          method: "PATCH",
+          url: `/api/terminals/${terminal.id}/worktree`,
+          payload: { worktreeId: target.id },
+        })
+        .then((response) => {
+          retargetFinished = true;
+          return response;
+        });
+      await mutationStarted;
+      expect(retargetFinished).toBe(false);
+
+      heldTerminalOpen = undefined;
+      releaseOpen();
+      const staleDirect = await staleDirectPromise;
+      expect(staleDirect.statusCode, staleDirect.body).toBe(409);
+      const retarget = await retargetPromise;
+      expect(retarget.statusCode, retarget.body).toBe(200);
+      expect(terminalCloseIds.slice(closesBefore)).toContain(terminal.id);
+      expect(terminalOpenCommands.slice(opensBefore)).toEqual([
+        expect.objectContaining({
+          terminalId: terminal.id,
+          worktreePath: originalContext!.worktreePath,
+        }),
+      ]);
+
+      const currentContext =
+        await database.repository.getTerminalExecutionContext(
+          LOCAL_USER_ID,
+          terminal.id,
+        );
+      const currentDirect = await app.inject({
+        method: "POST",
+        url: `/api/terminals/${terminal.id}/direct`,
+        payload: { clientId: randomUUID() },
+      });
+      expect(currentDirect.statusCode, currentDirect.body).toBe(201);
+      expect(terminalOpenCommands.slice(opensBefore)).toEqual([
+        expect.objectContaining({
+          worktreePath: originalContext!.worktreePath,
+        }),
+        expect.objectContaining({ worktreePath: currentContext!.worktreePath }),
+      ]);
+    } finally {
+      heldTerminalOpen = undefined;
+      releaseOpen();
+      mutationSpy.mockRestore();
+      await app.inject({
+        method: "DELETE",
+        url: `/api/terminals/${terminal.id}`,
+      });
+    }
+  });
+
+  it("synchronously revokes an existing Explorer Code attachment on delete", async () => {
+    const explorerResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...protectedExplorerFields(),
+        worktreeId: primaryId,
+      },
+    });
+    expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
+    const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
+    const sessionId = randomUUID();
+    const tunnelId = randomUUID();
+    const attachmentResponse = await app.inject({
+      method: "POST",
+      url: `/api/explorers/${explorer.id}/protected-code-attachments`,
+      payload: {
+        appearance: "dark",
+        expectedWorkerId: explorer.activeWorkerId,
+        expectedWorktreeId: explorer.worktreeId,
+        path: "src/delete-me.ts",
+        protectedRecord: protectedTunnelRecord(tunnelId),
+        sessionId,
+        tunnelId,
+      },
+    });
+    expect(attachmentResponse.statusCode, attachmentResponse.body).toBe(201);
+    expect(attachmentResponse.json()).toMatchObject({
+      attachmentId: tunnelId,
+      sessionId,
+      tunnelId,
+    });
+
+    const desktopAttachmentResponse = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${tunnelId}/attachments`,
+      payload: { clientId: `desktop-${sessionId}` },
+    });
+    expect(
+      desktopAttachmentResponse.statusCode,
+      desktopAttachmentResponse.body,
+    ).toBe(201);
+    const desktopAttachment = desktopAttachmentResponse.json();
+    const directResponse = await app.inject({
+      method: "POST",
+      url: `/api/tunnel-attachments/${desktopAttachment.attachmentId}/direct`,
+      payload: { diagnosticTraceId: randomUUID() },
+    });
+    expect(directResponse.statusCode, directResponse.body).toBe(201);
+    const capabilityId = directResponse.json().binding.capabilityId as string;
+    const activitySpy = vi.spyOn(
+      CodeTunnelBroker.prototype,
+      "recordTunnelActivity",
+    );
+    try {
+      const activationResponse = await app.inject({
+        method: "POST",
+        url: `/api/tunnel-attachments/${desktopAttachment.attachmentId}/direct-activate`,
+        payload: { capabilityId },
+      });
+      expect(activationResponse.statusCode, activationResponse.body).toBe(204);
+      const telemetryResponse = await app.inject({
+        method: "POST",
+        url: `/api/direct-attachments/${capabilityId}/telemetry`,
+        payload: {
+          bytesFromLocal: 1,
+          bytesToLocal: 0,
+          connectionsClosed: 0,
+          connectionsOpened: 1,
+        },
+      });
+      expect(telemetryResponse.statusCode, telemetryResponse.body).toBe(204);
+      expect(activitySpy.mock.calls).toEqual([[tunnelId], [tunnelId]]);
+    } finally {
+      activitySpy.mockRestore();
+    }
+    const endpointRevocationsBefore = codeEndpointRevokedTunnelIds.length;
+    const sessionStopsBefore = codeStopSessionIds.length;
+
+    const deletionResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/explorers/${explorer.id}`,
+    });
+    expect(deletionResponse.statusCode, deletionResponse.body).toBe(204);
+    expect(
+      codeEndpointRevokedTunnelIds.slice(endpointRevocationsBefore),
+    ).toEqual([tunnelId]);
+    expect(codeStopSessionIds.slice(sessionStopsBefore)).toEqual([sessionId]);
+    expect(
+      await app.inject({ method: "GET", url: `/api/tunnels/${tunnelId}` }),
+    ).toMatchObject({ statusCode: 404 });
+    expect(
+      await app.inject({
+        method: "POST",
+        url: `/api/direct-attachments/${capabilityId}/telemetry`,
+        payload: {
+          bytesFromLocal: 1,
+          bytesToLocal: 0,
+          connectionsClosed: 0,
+          connectionsOpened: 1,
+        },
+      }),
+    ).toMatchObject({ statusCode: 404 });
+
+    expect(
+      await app.inject({
+        method: "DELETE",
+        url: `/api/explorers/${explorer.id}`,
+      }),
+    ).toMatchObject({ statusCode: 404 });
+    expect(
+      codeEndpointRevokedTunnelIds.slice(endpointRevocationsBefore),
+    ).toEqual([tunnelId]);
+    expect(codeStopSessionIds.slice(sessionStopsBefore)).toEqual([sessionId]);
+  });
+
+  it("synchronously revokes an existing Explorer Code attachment on retarget", async () => {
+    const targetResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees`,
+      payload: {
+        name: "explorer-code-retarget",
+        mode: {
+          type: "newBranch",
+          branch: "explorer-code-retarget",
+          startPoint: "main",
+        },
+      },
+    });
+    expect(targetResponse.statusCode, targetResponse.body).toBe(201);
+    const target = projectWorktreeSummarySchema.parse(targetResponse.json());
+    const explorerResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...protectedExplorerFields(),
+        worktreeId: primaryId,
+      },
+    });
+    expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
+    const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
+    const sessionId = randomUUID();
+    const tunnelId = randomUUID();
+    const attachmentResponse = await app.inject({
+      method: "POST",
+      url: `/api/explorers/${explorer.id}/protected-code-attachments`,
+      payload: {
+        appearance: "dark",
+        expectedWorkerId: explorer.activeWorkerId,
+        expectedWorktreeId: explorer.worktreeId,
+        path: "src/retarget-me.ts",
+        protectedRecord: protectedTunnelRecord(tunnelId),
+        sessionId,
+        tunnelId,
+      },
+    });
+    expect(attachmentResponse.statusCode, attachmentResponse.body).toBe(201);
+    const endpointRevocationsBefore = codeEndpointRevokedTunnelIds.length;
+    const sessionStopsBefore = codeStopSessionIds.length;
+
+    const retargetResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/explorers/${explorer.id}/worktree`,
+      payload: {
+        worktreeId: target.id,
+        stateProtection: protectedExplorerFields().stateProtection,
+      },
+    });
+    expect(retargetResponse.statusCode, retargetResponse.body).toBe(200);
+    expect(
+      explorerWireSummarySchema.parse(retargetResponse.json()).worktreeId,
+    ).toBe(target.id);
+    expect(
+      codeEndpointRevokedTunnelIds.slice(endpointRevocationsBefore),
+    ).toEqual([tunnelId]);
+    expect(codeStopSessionIds.slice(sessionStopsBefore)).toEqual([sessionId]);
+    expect(
+      await app.inject({ method: "GET", url: `/api/tunnels/${tunnelId}` }),
+    ).toMatchObject({ statusCode: 404 });
+    expect(
+      await app.inject({
+        method: "DELETE",
+        url: `/api/explorers/${explorer.id}`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
+  });
+
   it("rejects an attachment created while its Code tab is deleted", async () => {
     const codeTabResponse = await app.inject({
       method: "POST",
@@ -3185,6 +3992,10 @@ describe.sequential("server worktree control plane", () => {
     ).length;
     const heldCreation = holdNextProtectedAttachmentCreation();
     const revokeSpy = vi.spyOn(CodeTunnelBroker.prototype, "revokeAttachment");
+    const revokeSessionSpy = vi.spyOn(
+      CodeTunnelBroker.prototype,
+      "revokeSession",
+    );
     try {
       const attachmentResponsePromise = app.inject({
         method: "POST",
@@ -3199,14 +4010,16 @@ describe.sequential("server worktree control plane", () => {
         },
       });
       await heldCreation.started;
-      const deletionResponse = await app.inject({
+      const deletionResponsePromise = app.inject({
         method: "DELETE",
         url: `/api/code-tabs/${codeTab.id}`,
       });
-      expect(deletionResponse.statusCode, deletionResponse.body).toBe(204);
+      await vi.waitFor(() => expect(revokeSessionSpy).toHaveBeenCalled());
       heldCreation.release();
       const attachmentResponse = await attachmentResponsePromise;
+      const deletionResponse = await deletionResponsePromise;
 
+      expect(deletionResponse.statusCode, deletionResponse.body).toBe(204);
       expect(attachmentResponse.statusCode, attachmentResponse.body).toBe(409);
       expect(attachmentResponse.json()).toMatchObject({
         error: "The Code tab changed while its editor was attaching.",
@@ -3227,6 +4040,109 @@ describe.sequential("server worktree control plane", () => {
       heldCreation.release();
       heldCreation.restore();
       revokeSpy.mockRestore();
+      revokeSessionSpy.mockRestore();
+    }
+  });
+
+  it("rejects a Code attachment whose pre-registration context read races session stop", async () => {
+    const codeTabResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/code-tabs`,
+      payload: {
+        ...protectedDisplayLabelFields("code-tab"),
+        worktreeId: primaryId,
+        profileId: "pre-registration-race-profile",
+      },
+    });
+    expect(codeTabResponse.statusCode, codeTabResponse.body).toBe(201);
+    const codeTab = codeTabWireSummarySchema.parse(codeTabResponse.json());
+    const intentResponse = await app.inject({
+      method: "POST",
+      url: `/api/code-tabs/${codeTab.id}/protected-attachment-intents`,
+      payload: {
+        appearance: "dark",
+        expectedWorkerId: codeTab.activeWorkerId,
+        expectedWorktreeId: codeTab.worktreeId,
+      },
+    });
+    expect(intentResponse.statusCode, intentResponse.body).toBe(201);
+    const intent = codeProtectedAttachmentIntentSchema.parse(
+      intentResponse.json(),
+    );
+    const tunnelId = randomUUID();
+    const originalContext = database.repository.getCodeTabExecutionContext.bind(
+      database.repository,
+    );
+    let signalContextStarted!: () => void;
+    let releaseContext!: () => void;
+    const contextStarted = new Promise<void>((resolve) => {
+      signalContextStarted = resolve;
+    });
+    const contextRelease = new Promise<void>((resolve) => {
+      releaseContext = resolve;
+    });
+    const contextSpy = vi
+      .spyOn(database.repository, "getCodeTabExecutionContext")
+      .mockImplementationOnce(async (...args) => {
+        signalContextStarted();
+        await contextRelease;
+        return originalContext(...args);
+      });
+    const revokeSessionSpy = vi.spyOn(
+      CodeTunnelBroker.prototype,
+      "revokeSession",
+    );
+
+    try {
+      const attachmentResponsePromise = app.inject({
+        method: "POST",
+        url: `/api/code-tabs/${codeTab.id}/protected-attachments`,
+        payload: {
+          appearance: "dark",
+          expectedWorkerId: codeTab.activeWorkerId,
+          expectedWorktreeId: codeTab.worktreeId,
+          protectedRecord: protectedTunnelRecord(tunnelId),
+          sessionId: intent.sessionId,
+          tunnelId,
+        },
+      });
+      await contextStarted;
+      let stopFinished = false;
+      const stopResponsePromise = app
+        .inject({
+          method: "POST",
+          url: `/api/code-tabs/${codeTab.id}/stop`,
+        })
+        .then((response) => {
+          stopFinished = true;
+          return response;
+        });
+      await vi.waitFor(() =>
+        expect(revokeSessionSpy).toHaveBeenCalledWith(intent.sessionId),
+      );
+      expect(stopFinished).toBe(false);
+
+      releaseContext();
+      const attachmentResponse = await attachmentResponsePromise;
+      const stopResponse = await stopResponsePromise;
+
+      expect(attachmentResponse.statusCode, attachmentResponse.body).toBe(409);
+      expect(stopResponse.statusCode, stopResponse.body).toBe(200);
+      expect(
+        await app.inject({
+          method: "GET",
+          url: `/api/tunnels/${tunnelId}`,
+        }),
+      ).toMatchObject({ statusCode: 404 });
+      expect(codeEndpointRevokedTunnelIds).not.toContain(tunnelId);
+    } finally {
+      releaseContext();
+      contextSpy.mockRestore();
+      revokeSessionSpy.mockRestore();
+      await app.inject({
+        method: "DELETE",
+        url: `/api/code-tabs/${codeTab.id}`,
+      });
     }
   });
 
@@ -3273,15 +4189,19 @@ describe.sequential("server worktree control plane", () => {
     });
     await codeOpenStarted;
 
-    const deletionResponse = await app.inject({
+    const mutationSpy = vi.spyOn(CodeTunnelBroker.prototype, "mutateExplorer");
+    const deletionResponsePromise = app.inject({
       method: "DELETE",
       url: `/api/explorers/${explorer.id}`,
     });
-    expect(deletionResponse.statusCode, deletionResponse.body).toBe(204);
+    await vi.waitFor(() => expect(mutationSpy).toHaveBeenCalled());
     releaseCodeOpen();
     const attachmentResponse = await attachmentResponsePromise;
+    const deletionResponse = await deletionResponsePromise;
     heldCodeOpen = undefined;
+    mutationSpy.mockRestore();
 
+    expect(deletionResponse.statusCode, deletionResponse.body).toBe(204);
     expect(attachmentResponse.statusCode, attachmentResponse.body).toBe(409);
     expect(attachmentResponse.json()).toMatchObject({
       error: "The Explorer changed while its editor was opening.",
@@ -3347,6 +4267,7 @@ describe.sequential("server worktree control plane", () => {
     ).length;
     const heldCreation = holdNextProtectedAttachmentCreation();
     const revokeSpy = vi.spyOn(CodeTunnelBroker.prototype, "revokeAttachment");
+    const mutationSpy = vi.spyOn(CodeTunnelBroker.prototype, "mutateExplorer");
     try {
       const attachmentResponsePromise = app.inject({
         method: "POST",
@@ -3362,14 +4283,16 @@ describe.sequential("server worktree control plane", () => {
         },
       });
       await heldCreation.started;
-      const deletionResponse = await app.inject({
+      const deletionResponsePromise = app.inject({
         method: "DELETE",
         url: `/api/explorers/${explorer.id}`,
       });
-      expect(deletionResponse.statusCode, deletionResponse.body).toBe(204);
+      await vi.waitFor(() => expect(mutationSpy).toHaveBeenCalled());
       heldCreation.release();
       const attachmentResponse = await attachmentResponsePromise;
+      const deletionResponse = await deletionResponsePromise;
 
+      expect(deletionResponse.statusCode, deletionResponse.body).toBe(204);
       expect(attachmentResponse.statusCode, attachmentResponse.body).toBe(409);
       expect(attachmentResponse.json()).toMatchObject({
         error: "The Explorer changed while its editor was opening.",
@@ -3388,6 +4311,7 @@ describe.sequential("server worktree control plane", () => {
       heldCreation.release();
       heldCreation.restore();
       revokeSpy.mockRestore();
+      mutationSpy.mockRestore();
     }
   });
 
