@@ -11,7 +11,18 @@ export const MOBILE_BOTTOM_TAB_LONG_PRESS_MS = 500;
 export interface MobileBottomNavigationItem {
   id: string;
   label?: string;
+  removable?: boolean;
   surface?: ProjectSurface;
+}
+
+export function mobileBottomNavigationLongPressAction({
+  removable,
+  selectorVisible,
+}: {
+  removable: boolean;
+  selectorVisible: boolean;
+}): "remove" | "reset" {
+  return removable && selectorVisible ? "remove" : "reset";
 }
 
 export function MobileBottomNavigation({
@@ -20,6 +31,7 @@ export function MobileBottomNavigation({
   items,
   onAdd,
   onOverview,
+  onRemove,
   onReset,
   onSelect,
   overviewSelected,
@@ -29,6 +41,7 @@ export function MobileBottomNavigation({
   items: readonly MobileBottomNavigationItem[];
   onAdd(): void;
   onOverview(): void;
+  onRemove(itemId: string): void;
   onReset(itemId: string): void;
   onSelect(itemId: string): void;
   overviewSelected: boolean;
@@ -43,20 +56,24 @@ export function MobileBottomNavigation({
       longPressTimerRef.current = null;
     }
   };
-  const resetBottomTab = (itemId: string) => {
+  const completeBottomTabLongPress = (
+    itemId: string,
+    action: "remove" | "reset",
+  ) => {
     cancelLongPress();
     if (longPressTriggeredRef.current) return;
     longPressTriggeredRef.current = true;
     void performMobileNavigationHaptic("reset");
-    onReset(itemId);
+    if (action === "remove") onRemove(itemId);
+    else onReset(itemId);
   };
-  const beginLongPress = (itemId: string) => {
+  const beginLongPress = (itemId: string, action: "remove" | "reset") => {
     cancelLongPress();
     longPressTriggeredRef.current = false;
     void performMobileNavigationHaptic("press");
     longPressTimerRef.current = setTimeout(() => {
       longPressTimerRef.current = null;
-      resetBottomTab(itemId);
+      completeBottomTabLongPress(itemId, action);
     }, MOBILE_BOTTOM_TAB_LONG_PRESS_MS);
   };
   useEffect(
@@ -101,6 +118,10 @@ export function MobileBottomNavigation({
           {items.map((item) => {
             const active = !overviewSelected && item.id === activeItemId;
             const showSwitcher = gridOpen && item.id === activeItemId;
+            const longPressAction = mobileBottomNavigationLongPressAction({
+              removable: Boolean(item.removable),
+              selectorVisible: showSwitcher || !item.surface,
+            });
             return (
               <button
                 aria-current={active ? "page" : undefined}
@@ -126,13 +147,17 @@ export function MobileBottomNavigation({
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  resetBottomTab(item.id);
+                  completeBottomTabLongPress(item.id, longPressAction);
                 }}
                 onPointerCancel={cancelLongPress}
-                onPointerDown={() => beginLongPress(item.id)}
+                onPointerDown={() => beginLongPress(item.id, longPressAction)}
                 onPointerLeave={cancelLongPress}
                 onPointerUp={cancelLongPress}
-                title="Hold to choose another project tab group"
+                title={
+                  longPressAction === "remove"
+                    ? "Hold to remove bottom tab"
+                    : "Hold to choose another project tab group"
+                }
                 type="button"
               >
                 {showSwitcher || !item.surface ? (

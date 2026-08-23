@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectSurface } from "@/lib/project-surface";
 
-import { MobileBottomNavigation } from "./mobile-bottom-navigation";
+import {
+  MobileBottomNavigation,
+  mobileBottomNavigationLongPressAction,
+} from "./mobile-bottom-navigation";
 import { MobileProjectTabGrid } from "./mobile-project-tab-grid";
 
 const now = "2026-08-11T12:00:00.000Z";
@@ -157,6 +160,7 @@ describe("mobile project shell", () => {
         ]}
         onAdd={vi.fn()}
         onOverview={vi.fn()}
+        onRemove={vi.fn()}
         onReset={vi.fn()}
         onSelect={vi.fn()}
         overviewSelected={false}
@@ -189,6 +193,7 @@ describe("mobile project shell", () => {
         ]}
         onAdd={vi.fn()}
         onOverview={vi.fn()}
+        onRemove={vi.fn()}
         onReset={vi.fn()}
         onSelect={vi.fn()}
         overviewSelected={false}
@@ -211,6 +216,7 @@ describe("mobile project shell", () => {
         ]}
         onAdd={vi.fn()}
         onOverview={vi.fn()}
+        onRemove={vi.fn()}
         onReset={vi.fn()}
         onSelect={vi.fn()}
         overviewSelected={false}
@@ -220,5 +226,47 @@ describe("mobile project shell", () => {
     expect(markup).toContain("Tabs");
     expect(markup).not.toContain("Chat One");
     expect(markup).toContain("Terminal One");
+  });
+
+  it("removes only removable bottom tabs that already show the selector", () => {
+    expect(
+      mobileBottomNavigationLongPressAction({
+        removable: true,
+        selectorVisible: true,
+      }),
+    ).toBe("remove");
+    expect(
+      mobileBottomNavigationLongPressAction({
+        removable: true,
+        selectorVisible: false,
+      }),
+    ).toBe("reset");
+    expect(
+      mobileBottomNavigationLongPressAction({
+        removable: false,
+        selectorVisible: true,
+      }),
+    ).toBe("reset");
+  });
+
+  it("labels a removable slot in the open selector with the hold action", () => {
+    const markup = renderToStaticMarkup(
+      <MobileBottomNavigation
+        activeItemId="mobile-1"
+        gridOpen
+        items={[
+          { id: "primary", surface: surfaces[1] },
+          { id: "mobile-1", removable: true, surface: surfaces[2] },
+        ]}
+        onAdd={vi.fn()}
+        onOverview={vi.fn()}
+        onRemove={vi.fn()}
+        onReset={vi.fn()}
+        onSelect={vi.fn()}
+        overviewSelected={false}
+      />,
+    );
+
+    expect(markup).toContain('title="Hold to remove bottom tab"');
   });
 });
