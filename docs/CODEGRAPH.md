@@ -417,6 +417,12 @@ Project-less machine tasks omit the managed server because no authorized graph
 root exists. Agent runs on an unavailable CodeGraph runtime continue without
 the server and receive an explicit bounded diagnostic.
 
+The worker treats project-wide observation as a cache, not as the only source
+of authority. If a worker restart or missed observation replay leaves that
+in-memory cache empty, an exact bound agent worktree is reauthorized on demand
+before MCP injection. This recovery is serialized with normal observation
+refreshes and remains bounded to the same 128 supervised roots.
+
 For a user who manually launches `codex` in a Cantrip terminal, the Cantrip
 terminal launcher may provide an ephemeral Codex configuration override for
 that terminal's current authorized worktree. It must not edit
@@ -482,11 +488,13 @@ The worker exposes commands for:
 - `codegraph.rebuild` for a destructive derived-index rebuild; and
 - `codegraph.update.check` for an explicit retry in addition to startup checks.
 
-Commands carry canonical project/worktree identities. The worker resolves the
-path; the server and app never send a filesystem path as authority. Index jobs
-must not hold the worker's primary command channel open for their full
-duration. Return a durable/bounded job identity and publish progress through
-normal worker observations.
+Commands carry canonical project/worktree identities plus protected source and
+worktree routing handles. The worker resolves and reauthorizes those handles;
+the server and app never receive or dereference the raw filesystem path. This
+lets status, sync, and rebuild recover a missing in-memory observation after a
+worker restart. Index jobs must not hold the worker's primary command channel
+open for their full duration. Return a durable/bounded job identity and publish
+progress through normal worker observations.
 
 ## 13. Failure and recovery behavior
 
@@ -498,6 +506,7 @@ normal worker observations.
 | Extraction failure                     | Retain current runtime and remove the partial directory.                                          |
 | Telemetry suppression failure          | Do not promote the new version; mark the current integration degraded.                            |
 | New runtime fails health/MCP handshake | Roll back atomically to the prior verified version.                                               |
+| Worker restarts before target replay   | Reauthorize the exact requested worktree and restore MCP/status without blocking unrelated tools. |
 | Initial index fails                    | Preserve logs, report degraded state, allow retry/rebuild, and let agents fall back.              |
 | Watcher/daemon exits                   | Restart with bounded exponential backoff and run catch-up sync.                                   |
 | SQLite lock/corruption                 | Mark the graph degraded; an explicit Rebuild removes only the derived index and creates it again. |
@@ -589,6 +598,8 @@ request rather than one broad implementation branch.
 - `codegraph-mcp.test.ts` verifies the absolute launcher invocation, exact
   canonical `--path`, privacy environment, and case-insensitive replacement of
   any user shadow with the authoritative managed entry.
+- `codegraph-observations.test.ts` verifies serialized refresh, exact-target
+  restart recovery, and active-target priority at the 128-root bound.
 - protocol tests verify old heartbeat payloads default to unavailable
   CodeGraph capability, preserving rolling compatibility.
 - server repository tests reject the reserved name case-insensitively for
