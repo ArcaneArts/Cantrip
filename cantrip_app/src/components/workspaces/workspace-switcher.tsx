@@ -1,29 +1,14 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type { ProjectWorkspaceSummary } from "@cantrip/protocol";
-import {
-  Check,
-  ChevronDown,
-  Layers3,
-  Loader2,
-  Plus,
-  Settings,
-} from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { Check, ChevronDown, Layers3, Plus, Settings } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
   ProjectCreateMenu,
   type ProjectCreateSource,
 } from "@/components/projects/project-create-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { WorkspaceCreateDialog } from "@/components/workspaces/workspace-create-dialog";
 
 const itemClass =
   "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-2 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground";
@@ -48,30 +33,6 @@ export function WorkspaceSwitcher({
     workspaces.find(({ isDefault }) => isDefault) ??
     null;
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const nextName = name.trim();
-    if (!nextName || submitting) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await onCreate(nextName);
-      setName("");
-      setDialogOpen(false);
-    } catch (createError) {
-      setError(
-        createError instanceof Error
-          ? createError.message
-          : "Could not create the workspace.",
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <>
@@ -118,7 +79,6 @@ export function WorkspaceSwitcher({
               <DropdownMenuPrimitive.Item
                 className={itemClass}
                 onSelect={() => {
-                  setError(null);
                   setDialogOpen(true);
                 }}
               >
@@ -149,38 +109,11 @@ export function WorkspaceSwitcher({
         </ProjectCreateMenu>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <form className="grid gap-5" onSubmit={submit}>
-            <DialogHeader>
-              <DialogTitle>New workspace</DialogTitle>
-              <DialogDescription>
-                Workspaces filter the projects shown in the sidebar. Projects
-                can belong to more than one workspace.
-              </DialogDescription>
-            </DialogHeader>
-            <label className="grid gap-2 text-sm">
-              Name
-              <Input
-                autoFocus
-                maxLength={80}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Personal Projects"
-              />
-            </label>
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <DialogFooter>
-              <Button disabled={!name.trim() || submitting} type="submit">
-                {submitting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : null}
-                Create and switch
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <WorkspaceCreateDialog
+        onCreate={onCreate}
+        onOpenChange={setDialogOpen}
+        open={dialogOpen}
+      />
     </>
   );
 }
