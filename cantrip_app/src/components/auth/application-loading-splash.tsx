@@ -10,8 +10,8 @@ import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
 
 import "./application-loading-splash.css";
 
-export const APPLICATION_SPLASH_BOLT_GLITCH_INTERVAL_MS = 48;
-export const APPLICATION_SPLASH_WORDMARK_GLITCH_INTERVAL_MS = 42;
+export const APPLICATION_SPLASH_GLITCH_DELAY_MIN_MS = 1_000;
+export const APPLICATION_SPLASH_GLITCH_DELAY_MAX_MS = 3_000;
 
 export const APPLICATION_SPLASH_BOLT_GLITCH_CONFIG: EliteRevealConfig = {
   ...DEFAULT_ELITE_REVEAL_CONFIG,
@@ -42,28 +42,48 @@ export const APPLICATION_SPLASH_WORDMARK_GLITCH_CONFIG: EliteRevealConfig = {
   },
 };
 
-function useSplashGlitchReplay(intervalMs: number): number {
+export function applicationSplashGlitchDelayMs(
+  random: () => number = Math.random,
+): number {
+  const value = random();
+  const unit = Number.isFinite(value)
+    ? Math.min(0.999_999, Math.max(0, value))
+    : 0;
+  return (
+    APPLICATION_SPLASH_GLITCH_DELAY_MIN_MS +
+    Math.floor(
+      unit *
+        (APPLICATION_SPLASH_GLITCH_DELAY_MAX_MS -
+          APPLICATION_SPLASH_GLITCH_DELAY_MIN_MS +
+          1),
+    )
+  );
+}
+
+function useSplashGlitchReplay(): number {
   const [replayKey, setReplayKey] = useState(0);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const interval = window.setInterval(
-      () => setReplayKey((current) => current + 1),
-      intervalMs,
-    );
-    return () => window.clearInterval(interval);
-  }, [intervalMs]);
+    let timeout: number | undefined;
+    const scheduleNext = () => {
+      timeout = window.setTimeout(() => {
+        setReplayKey((current) => current + 1);
+        scheduleNext();
+      }, applicationSplashGlitchDelayMs());
+    };
+    scheduleNext();
+    return () => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, []);
 
   return replayKey;
 }
 
 export function ApplicationLoadingSplash() {
-  const boltReplayKey = useSplashGlitchReplay(
-    APPLICATION_SPLASH_BOLT_GLITCH_INTERVAL_MS,
-  );
-  const wordmarkReplayKey = useSplashGlitchReplay(
-    APPLICATION_SPLASH_WORDMARK_GLITCH_INTERVAL_MS,
-  );
+  const boltReplayKey = useSplashGlitchReplay();
+  const wordmarkReplayKey = useSplashGlitchReplay();
 
   return (
     <>
