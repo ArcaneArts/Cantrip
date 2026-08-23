@@ -59,7 +59,10 @@ import {
   openSidebarActionsMenu,
   SortableSidebarSurfaceRow,
 } from "@/components/sidebar/sortable-sidebar-surface-row";
-import { ProjectSidebarFileTree } from "@/components/sidebar/project-sidebar-file-tree";
+import {
+  ProjectSidebarFileTree,
+  type ExplorerFileMutationAuthorization,
+} from "@/components/sidebar/project-sidebar-file-tree";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import { SurfaceActionsMenu } from "@/components/workspace/surface-tab-controls";
 import {
@@ -558,7 +561,11 @@ export function ProjectChatList({
   overviewSelected: boolean;
   projectViews: ProjectViewSummary[];
   onFilePin(explorer: ExplorerSummary, entry: ExplorerEntry): void;
-  onFileDelete(explorer: ExplorerSummary, entry: ExplorerEntry): Promise<void>;
+  onFileDelete(
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+    authorization: ExplorerFileMutationAuthorization,
+  ): Promise<void>;
   onFileOpenGraph(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   onFileOpenNative(
     explorer: ExplorerSummary,
@@ -571,6 +578,7 @@ export function ProjectChatList({
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
     name: string,
+    authorization: ExplorerFileMutationAuthorization,
   ): Promise<void>;
   onFileTreeRetry?(): void;
   onDeleteChat(chatId: string): void;
@@ -1282,7 +1290,7 @@ export function ProjectChatList({
                       error={fileTreeError}
                       explorer={fileExplorer}
                       loading={fileTreeLoading}
-                      onDelete={(entry) => {
+                      onDelete={(entry, authorization) => {
                         if (!fileExplorer) {
                           return Promise.reject(
                             new Error(
@@ -1290,7 +1298,7 @@ export function ProjectChatList({
                             ),
                           );
                         }
-                        return onFileDelete(fileExplorer, entry);
+                        return onFileDelete(fileExplorer, entry, authorization);
                       }}
                       onOpenGraph={
                         fileGraphAvailable && fileExplorer
@@ -1314,7 +1322,7 @@ export function ProjectChatList({
                       onPreview={(entry) => {
                         if (fileExplorer) onFilePreview(fileExplorer, entry);
                       }}
-                      onRename={(entry, name) => {
+                      onRename={(entry, name, authorization) => {
                         if (!fileExplorer) {
                           return Promise.reject(
                             new Error(
@@ -1322,7 +1330,12 @@ export function ProjectChatList({
                             ),
                           );
                         }
-                        return onFileRename(fileExplorer, entry, name);
+                        return onFileRename(
+                          fileExplorer,
+                          entry,
+                          name,
+                          authorization,
+                        );
                       }}
                       onRetry={onFileTreeRetry}
                       pinningPath={fileTreePinningPath}

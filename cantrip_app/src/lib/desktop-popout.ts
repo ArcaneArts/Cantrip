@@ -5,10 +5,14 @@ import type { BackgroundThrottlingPolicy } from "@tauri-apps/api/window";
 import type { DesktopExplorerWindowBroker } from "@/lib/desktop-explorer-window-broker";
 import { desktopExplorerWindowLaunchParameter } from "@/lib/desktop-explorer-window-protocol";
 import { clientLogger } from "@/lib/client-log-relay";
+import { clientEncryption } from "@/lib/client-encryption";
+import { getWorkers } from "@/lib/api";
+import { getClientSession } from "@/lib/client-session";
 import {
   isProjectOverviewSection,
   type ProjectOverviewSection,
 } from "@/lib/project-overview-section";
+import { waitForSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 
 export type DesktopPopoutGroupTarget = {
   activeTabKey: string;
@@ -43,7 +47,16 @@ const projectOverviewParameter = "cantrip-project-overview";
 const explorerFileParameter = "cantrip-explorer-file";
 const syntheticBuildProgressParameter = "cantrip-synthetic-build";
 const noDesktopListener = () => undefined;
-const explorerWindowBrokers = new Map<string, DesktopExplorerWindowBroker>();
+type ExplorerWindowBrokerRegistration = {
+  broker: DesktopExplorerWindowBroker;
+  disposePromise?: Promise<void>;
+  identityEpoch: string;
+};
+
+const explorerWindowBrokers = new Map<
+  string,
+  ExplorerWindowBrokerRegistration
+>();
 const explorerFileWindowLabels = new Map<string, string>();
 const explorerFileOpenOperations = new Map<
   string,
@@ -51,16 +64,21 @@ const explorerFileOpenOperations = new Map<
 >();
 const explorerEditorPrewarmPath = ".cantrip-editor-prewarm";
 let explorerWindowUnloadCleanupInstalled = false;
+let explorerWindowIdentitySubscriptionInstalled = false;
+let currentExplorerEditorIdentityEpoch: string | null = null;
 let desiredExplorerEditorWarmKey: string | null = null;
 
 type ExplorerEditorWarmSlot = {
   broker: DesktopExplorerWindowBroker;
+  identityEpoch: string;
   key: string;
   label: string;
+  registration: ExplorerWindowBrokerRegistration;
 };
 
 type ExplorerEditorWarmState = {
   controller: AbortController;
+  identityEpoch: string;
   key: string;
   promise: Promise<ExplorerEditorWarmSlot>;
   retired: boolean;
@@ -204,28 +222,36 @@ export function desktopExplorerFileWindowLabel(
   path: string,
   worktreeId?: string,
   workerId?: string,
+  identityEpoch?: string,
 ): string {
   const safeExplorerId = explorerId
     .replace(/[^A-Za-z0-9-/:_]/g, "_")
     .slice(0, 64);
   const binding =
-    worktreeId || workerId ? `${worktreeId ?? ""}\0${workerId ?? ""}` : path;
+    identityEpoch !== undefined
+      ? `${worktreeId ?? ""}\0${workerId ?? ""}\0${identityEpoch ?? ""}`
+      : worktreeId || workerId
+        ? `${worktreeId ?? ""}\0${workerId ?? ""}`
+        : path;
   return `cantrip-editor-${safeExplorerId}-${stableLabelHash(binding)}`;
 }
 
 function desktopExplorerFileTargetKey(
   target: DesktopExplorerFileTarget,
   context: DesktopExplorerFileLaunchContext,
+  identityEpoch: string,
 ): string {
   return [
     target.explorerId,
     context.explorer.worktreeId,
     context.explorer.activeWorkerId,
+    identityEpoch,
   ].join("\0");
 }
 
 function desktopExplorerEditorWarmKey(
   context: DesktopExplorerFileLaunchContext,
+  identityEpoch: string,
 ): string {
   return [
     context.explorer.id,
@@ -233,16 +259,15 @@ function desktopExplorerEditorWarmKey(
     context.explorer.worktreeId,
     context.explorer.activeWorkerId,
     context.appearance,
+    identityEpoch,
   ].join("\0");
 }
 
 function desktopExplorerEditorWarmWindowLabel(
-  context: DesktopExplorerFileLaunchContext,
+  warmKey: string,
   launchId: string,
 ): string {
-  return `cantrip-editor-warm-${stableLabelHash(
-    `${desktopExplorerEditorWarmKey(context)}\0${launchId}`,
-  )}`;
+  return `cantrip-editor-warm-${stableLabelHash(`${warmKey}\0${launchId}`)}`;
 }
 
 export function isDesktopRuntime(): boolean {
@@ -322,22 +347,23 @@ async function closeWindow(label: string): Promise<void> {
 
 async function disposeExplorerWindowBroker(
   label: string,
-  broker: DesktopExplorerWindowBroker,
+  registration: ExplorerWindowBrokerRegistration,
 ): Promise<void> {
-  if (explorerWindowBrokers.get(label) === broker) {
+  if (explorerWindowBrokers.get(label) === registration) {
     explorerWindowBrokers.delete(label);
   }
   for (const [targetKey, targetLabel] of explorerFileWindowLabels) {
     if (targetLabel === label) explorerFileWindowLabels.delete(targetKey);
   }
-  await broker.dispose();
+  registration.disposePromise ??= registration.broker.dispose();
+  await registration.disposePromise;
 }
 
 async function closeExplorerEditorWarmSlot(
   slot: ExplorerEditorWarmSlot,
 ): Promise<void> {
   await closeWindow(slot.label).catch(() => undefined);
-  await disposeExplorerWindowBroker(slot.label, slot.broker);
+  await disposeExplorerWindowBroker(slot.label, slot.registration);
 }
 
 function retireExplorerEditorWarmState(state: ExplorerEditorWarmState): void {
@@ -351,6 +377,90 @@ function retireExplorerEditorWarmState(state: ExplorerEditorWarmState): void {
     .catch(() => undefined);
 }
 
+function explorerEditorIdentityEpoch(): {
+  key: string;
+  ready: boolean;
+} {
+  const session = getClientSession();
+  const snapshot = clientEncryption.getSnapshot();
+  const ready = Boolean(
+    session &&
+    snapshot.status === "ready" &&
+    snapshot.identity?.serverId === session.serverId &&
+    snapshot.identity.ownerId === session.user.id &&
+    snapshot.masterKeyRevision,
+  );
+  return {
+    key: JSON.stringify([
+      1,
+      session?.serverId ?? null,
+      session?.user.id ?? null,
+      snapshot.status,
+      snapshot.identity?.serverId ?? null,
+      snapshot.identity?.ownerId ?? null,
+      snapshot.clientId,
+      snapshot.masterKeyRevision,
+    ]),
+    ready,
+  };
+}
+
+function disposeExplorerEditorIdentityEpoch(): void {
+  desiredExplorerEditorWarmKey = null;
+  if (explorerEditorWarmState) {
+    retireExplorerEditorWarmState(explorerEditorWarmState);
+    explorerEditorWarmState = null;
+  }
+  explorerFileOpenOperations.clear();
+  explorerFileWindowLabels.clear();
+  const registrations = [...explorerWindowBrokers.entries()];
+  explorerWindowBrokers.clear();
+  for (const [label, registration] of registrations) {
+    void closeWindow(label)
+      .catch(() => undefined)
+      .then(() => disposeExplorerWindowBroker(label, registration));
+  }
+}
+
+function reconcileExplorerEditorIdentityEpoch(): {
+  key: string;
+  ready: boolean;
+} {
+  const epoch = explorerEditorIdentityEpoch();
+  if (currentExplorerEditorIdentityEpoch === null) {
+    currentExplorerEditorIdentityEpoch = epoch.key;
+  } else if (currentExplorerEditorIdentityEpoch !== epoch.key) {
+    currentExplorerEditorIdentityEpoch = epoch.key;
+    disposeExplorerEditorIdentityEpoch();
+  }
+  return epoch;
+}
+
+function explorerEditorIdentityEpochIsCurrent(identityEpoch: string): boolean {
+  const current = reconcileExplorerEditorIdentityEpoch();
+  return current.ready && current.key === identityEpoch;
+}
+
+async function waitForExplorerEditorSurfaceReadiness(
+  workerId: string,
+  identityEpoch: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await waitForSurfacePrivateStateWorkerEncryption({
+    isCancelled: () =>
+      signal.aborted || !explorerEditorIdentityEpochIsCurrent(identityEpoch),
+    loadWorker: async () =>
+      (await getWorkers()).find((worker) => worker.workerId === workerId),
+  });
+  signal.throwIfAborted();
+  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+    throw new DOMException(
+      "Explorer editor identity changed during prewarm.",
+      "AbortError",
+    );
+  }
+}
+
 function installExplorerWindowUnloadCleanup(): void {
   if (explorerWindowUnloadCleanupInstalled) return;
   explorerWindowUnloadCleanupInstalled = true;
@@ -362,13 +472,22 @@ function installExplorerWindowUnloadCleanup(): void {
         retireExplorerEditorWarmState(explorerEditorWarmState);
         explorerEditorWarmState = null;
       }
-      const brokers = [...explorerWindowBrokers.values()];
+      const registrations = [...explorerWindowBrokers.values()];
       explorerWindowBrokers.clear();
       explorerFileWindowLabels.clear();
-      for (const broker of brokers) void broker.dispose();
+      for (const registration of registrations) {
+        void registration.broker.dispose();
+      }
     },
     { once: true },
   );
+  if (!explorerWindowIdentitySubscriptionInstalled) {
+    explorerWindowIdentitySubscriptionInstalled = true;
+    currentExplorerEditorIdentityEpoch = explorerEditorIdentityEpoch().key;
+    clientEncryption.subscribe(() => {
+      reconcileExplorerEditorIdentityEpoch();
+    });
+  }
 }
 
 export async function focusDesktopPopoutGroup(
@@ -491,13 +610,28 @@ export async function openDesktopProjectOverviewPopout(
 
 async function createExplorerEditorWarmSlot(
   context: DesktopExplorerFileLaunchContext,
+  identityEpoch: string,
   key: string,
   signal: AbortSignal,
 ): Promise<ExplorerEditorWarmSlot> {
   const startedAt = Date.now();
+  // The protected-attachment API establishes tunnel-content readiness before
+  // posting the attachment. Establish the Explorer's surface grants first so
+  // automatic prewarm cannot allocate against stale server/account state.
+  await waitForExplorerEditorSurfaceReadiness(
+    context.explorer.activeWorkerId,
+    identityEpoch,
+    signal,
+  );
   const { createDesktopExplorerWindowBroker } =
     await import("@/lib/desktop-explorer-window-broker");
   signal.throwIfAborted();
+  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+    throw new DOMException(
+      "Explorer editor identity changed during prewarm.",
+      "AbortError",
+    );
+  }
   const broker = createDesktopExplorerWindowBroker(
     {
       ...context,
@@ -505,9 +639,10 @@ async function createExplorerEditorWarmSlot(
     },
     { configureInitialFile: false, signal },
   );
-  const label = desktopExplorerEditorWarmWindowLabel(context, broker.launchId);
-  const slot = { broker, key, label };
-  explorerWindowBrokers.set(label, broker);
+  const label = desktopExplorerEditorWarmWindowLabel(key, broker.launchId);
+  const registration = { broker, identityEpoch };
+  const slot = { broker, identityEpoch, key, label, registration };
+  explorerWindowBrokers.set(label, registration);
   try {
     signal.throwIfAborted();
     await openDesktopWindow(
@@ -533,10 +668,16 @@ async function createExplorerEditorWarmSlot(
       throw new Error("The prewarmed Explorer editor window closed.");
     }
     await popout.once("tauri://destroyed", () => {
-      void disposeExplorerWindowBroker(label, broker);
+      void disposeExplorerWindowBroker(label, registration);
     });
     await broker.ready;
     signal.throwIfAborted();
+    if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+      throw new DOMException(
+        "Explorer editor identity changed during prewarm.",
+        "AbortError",
+      );
+    }
     clientLogger.info("Explorer editor bridge prewarmed", {
       durationMs: Date.now() - startedAt,
       event: "surface.explorer.editor-window.prewarmed",
@@ -557,7 +698,12 @@ export async function prewarmDesktopExplorerFile(
 ): Promise<void> {
   if (!isDesktopRuntime()) return;
   installExplorerWindowUnloadCleanup();
-  const key = desktopExplorerEditorWarmKey(context);
+  const identity = reconcileExplorerEditorIdentityEpoch();
+  if (!identity.ready) {
+    clearDesktopExplorerFilePrewarm();
+    return;
+  }
+  const key = desktopExplorerEditorWarmKey(context, identity.key);
   desiredExplorerEditorWarmKey = key;
   if (explorerEditorWarmState?.key === key) {
     await explorerEditorWarmState.promise.catch(() => undefined);
@@ -568,12 +714,14 @@ export async function prewarmDesktopExplorerFile(
   }
   const state: ExplorerEditorWarmState = {
     controller: new AbortController(),
+    identityEpoch: identity.key,
     key,
     promise: Promise.resolve(null as never),
     retired: false,
   };
   state.promise = createExplorerEditorWarmSlot(
     context,
+    identity.key,
     key,
     state.controller.signal,
   );
@@ -601,12 +749,29 @@ export function clearDesktopExplorerFilePrewarm(): void {
 
 async function takeExplorerEditorWarmSlot(
   context: DesktopExplorerFileLaunchContext,
+  identityEpoch: string,
 ): Promise<ExplorerEditorWarmSlot | null> {
-  const key = desktopExplorerEditorWarmKey(context);
+  const key = desktopExplorerEditorWarmKey(context, identityEpoch);
   const state = explorerEditorWarmState;
-  if (!state || state.key !== key || state.retired) return null;
+  if (
+    !state ||
+    state.identityEpoch !== identityEpoch ||
+    state.key !== key ||
+    state.retired
+  ) {
+    return null;
+  }
   explorerEditorWarmState = null;
-  return state.promise.catch(() => null);
+  const slot = await state.promise.catch(() => null);
+  if (
+    !slot ||
+    slot.identityEpoch !== identityEpoch ||
+    !explorerEditorIdentityEpochIsCurrent(identityEpoch)
+  ) {
+    if (slot) await closeExplorerEditorWarmSlot(slot);
+    return null;
+  }
+  return slot;
 }
 
 export function openDesktopExplorerFile(
@@ -614,13 +779,26 @@ export function openDesktopExplorerFile(
   title: string,
   context: DesktopExplorerFileLaunchContext,
 ): Promise<"created" | "focused"> {
-  const targetKey = desktopExplorerFileTargetKey(target, context);
+  installExplorerWindowUnloadCleanup();
+  const identity = reconcileExplorerEditorIdentityEpoch();
+  if (!identity.ready) {
+    return Promise.reject(
+      new Error("Encryption must be unlocked for this account."),
+    );
+  }
+  const targetKey = desktopExplorerFileTargetKey(target, context, identity.key);
   const current = explorerFileOpenOperations.get(targetKey);
   if (current?.path === target.path) return current.promise;
   const operation = (current?.promise ?? Promise.resolve("focused" as const))
     .catch(() => "focused" as const)
     .then(() =>
-      openDesktopExplorerFileOperation(target, title, context, targetKey),
+      openDesktopExplorerFileOperation(
+        target,
+        title,
+        context,
+        targetKey,
+        identity.key,
+      ),
     )
     .finally(() => {
       if (explorerFileOpenOperations.get(targetKey)?.promise === operation) {
@@ -639,27 +817,47 @@ async function openDesktopExplorerFileOperation(
   title: string,
   context: DesktopExplorerFileLaunchContext,
   targetKey: string,
+  identityEpoch: string,
 ): Promise<"created" | "focused"> {
   installExplorerWindowUnloadCleanup();
+  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+    throw new Error("Explorer editor identity changed before opening.");
+  }
   const legacyLabel = desktopExplorerFileWindowLabel(
     target.explorerId,
     target.path,
     context.explorer.worktreeId,
     context.explorer.activeWorkerId,
+    identityEpoch,
   );
   const activeLabel = explorerFileWindowLabels.get(targetKey) ?? legacyLabel;
-  const activeBroker = explorerWindowBrokers.get(activeLabel);
+  const activeRegistration = explorerWindowBrokers.get(activeLabel);
+  const activeBroker =
+    activeRegistration?.identityEpoch === identityEpoch
+      ? activeRegistration.broker
+      : undefined;
   if (activeBroker && !activeBroker.failed) {
     try {
       await activeBroker.openFile(target.path);
-      if (await focusWindow(activeLabel)) return "focused";
+      if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+        throw new Error("Explorer editor identity changed while opening.");
+      }
+      if (await focusWindow(activeLabel)) {
+        if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+          throw new Error("Explorer editor identity changed while focusing.");
+        }
+        return "focused";
+      }
     } catch {
       // Replace an editor that can no longer confirm the requested file.
     }
   }
   if (activeBroker) {
     await closeWindow(activeLabel).catch(() => undefined);
-    await disposeExplorerWindowBroker(activeLabel, activeBroker);
+    await disposeExplorerWindowBroker(activeLabel, activeRegistration!);
+  } else if (activeRegistration) {
+    await closeWindow(activeLabel).catch(() => undefined);
+    await disposeExplorerWindowBroker(activeLabel, activeRegistration);
   } else if (activeLabel === legacyLabel) {
     // A child can outlive a reloaded main WebView. Its launch channel no
     // longer has an owner, so replace it instead of focusing a permanently
@@ -669,11 +867,21 @@ async function openDesktopExplorerFileOperation(
   explorerFileWindowLabels.delete(targetKey);
 
   const requestedAtMs = Date.now();
-  const warmSlot = await takeExplorerEditorWarmSlot(context);
+  const warmSlot = await takeExplorerEditorWarmSlot(context, identityEpoch);
   if (warmSlot) {
     try {
+      if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+        throw new Error("Explorer editor identity changed before opening.");
+      }
       await warmSlot.broker.openFile(target.path, requestedAtMs);
-      if (!(await focusWindow(warmSlot.label))) {
+      if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+        throw new Error("Explorer editor identity changed while opening.");
+      }
+      const focused = await focusWindow(warmSlot.label);
+      if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+        throw new Error("Explorer editor identity changed while focusing.");
+      }
+      if (!focused) {
         throw new Error("The prewarmed Explorer editor window closed.");
       }
       explorerFileWindowLabels.set(targetKey, warmSlot.label);
@@ -686,7 +894,8 @@ async function openDesktopExplorerFileOperation(
         surfaceId: target.explorerId,
       });
       if (
-        desiredExplorerEditorWarmKey === desktopExplorerEditorWarmKey(context)
+        desiredExplorerEditorWarmKey ===
+        desktopExplorerEditorWarmKey(context, identityEpoch)
       ) {
         void prewarmDesktopExplorerFile(context);
       }
@@ -696,17 +905,24 @@ async function openDesktopExplorerFileOperation(
     }
   }
 
+  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+    throw new Error("Explorer editor identity changed before opening.");
+  }
   const label = legacyLabel;
   const { createDesktopExplorerWindowBroker } =
     await import("@/lib/desktop-explorer-window-broker");
+  if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+    throw new Error("Explorer editor identity changed before opening.");
+  }
   const broker = createDesktopExplorerWindowBroker({
     ...context,
     path: target.path,
   });
-  explorerWindowBrokers.set(label, broker);
+  const registration = { broker, identityEpoch };
+  explorerWindowBrokers.set(label, registration);
   explorerFileWindowLabels.set(targetKey, label);
   const disposeBroker = async () => {
-    await disposeExplorerWindowBroker(label, broker);
+    await disposeExplorerWindowBroker(label, registration);
   };
   try {
     const result = await openDesktopWindow(
@@ -725,8 +941,14 @@ async function openDesktopExplorerFileOperation(
       throw new Error("The Explorer editor window closed while opening.");
     }
     await popout.once("tauri://destroyed", () => void disposeBroker());
+    if (!explorerEditorIdentityEpochIsCurrent(identityEpoch)) {
+      await closeWindow(label).catch(() => undefined);
+      await disposeBroker();
+      throw new Error("Explorer editor identity changed while opening.");
+    }
     if (
-      desiredExplorerEditorWarmKey === desktopExplorerEditorWarmKey(context)
+      desiredExplorerEditorWarmKey ===
+      desktopExplorerEditorWarmKey(context, identityEpoch)
     ) {
       void prewarmDesktopExplorerFile(context);
     }

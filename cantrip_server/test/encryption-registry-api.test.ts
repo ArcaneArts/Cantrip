@@ -270,7 +270,11 @@ describe("opaque encryption registry", () => {
       const initialBootstrap = workerEncryptionBootstrapResultSchema.parse(
         response.json(),
       );
+      const clientBootstrap = (
+        await app.inject({ method: "GET", url: "/api/bootstrap" })
+      ).json() as { server: { id: string } };
       expect(initialBootstrap).toMatchObject({
+        serverId: clientBootstrap.server.id,
         principal: {
           id: principalId,
           state: "pending",
@@ -278,6 +282,9 @@ describe("opaque encryption registry", () => {
         },
         grants: [],
       });
+      expect(initialBootstrap.serverId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
+      );
 
       expect(
         (

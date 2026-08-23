@@ -36,9 +36,21 @@ import {
 
 const KEY_FILENAME = "worker-encryption-key.json";
 
-interface StoredWorkerEncryptionKey {
+interface StoredWorkerEncryptionKeyV1 {
   version: 1;
   serverId: string;
+  ownerId: string | null;
+  workerId: string;
+  principalId: string;
+  publicKey: EncryptionPublicKey;
+  privateKey: string;
+  acceptedRevisions: Partial<Record<WorkerEncryptionComponentScope, number>>;
+}
+
+interface StoredWorkerEncryptionKey {
+  version: 2;
+  serverUrl: string;
+  serverId: string | null;
   ownerId: string | null;
   workerId: string;
   principalId: string;
@@ -67,7 +79,7 @@ export class WorkerEncryptionError extends Error {
   }
 }
 
-function canonicalServerId(
+function canonicalServerUrl(
   serverUrl: string,
   allowLoopbackServerPortChange = false,
 ): string {
@@ -94,6 +106,25 @@ function canonicalServerId(
   return parsed.origin;
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  return ["127.0.0.1", "localhost", "[::1]", "::1"].includes(hostname);
+}
+
+function isPortlessLoopbackPolicyTransition(
+  storedServerUrl: string,
+  expectedServerUrl: string,
+): boolean {
+  const stored = new URL(storedServerUrl);
+  const expected = new URL(expectedServerUrl);
+  return (
+    isLoopbackHostname(stored.hostname) &&
+    stored.protocol === expected.protocol &&
+    stored.hostname === expected.hostname &&
+    stored.port === "" &&
+    expected.port !== ""
+  );
+}
+
 function readRecord(pathname: string): unknown {
   try {
     return JSON.parse(readFileSync(pathname, "utf8"));
@@ -106,7 +137,7 @@ function parseRecord(
   value: unknown,
   expected: {
     allowLoopbackServerPortChange: boolean;
-    serverId: string;
+    serverUrl: string;
     workerId: string;
   },
 ): StoredWorkerEncryptionKey {
@@ -116,7 +147,9 @@ function parseRecord(
       "The stored worker encryption key is invalid.",
     );
   }
-  const record = value as Partial<StoredWorkerEncryptionKey>;
+  const record = value as Partial<
+    StoredWorkerEncryptionKey | StoredWorkerEncryptionKeyV1
+  >;
   let publicKey: EncryptionPublicKey;
   try {
     publicKey = encryptionPublicKeySchema.parse(record.publicKey);
@@ -127,8 +160,7 @@ function parseRecord(
     );
   }
   if (
-    record.version !== 1 ||
-    typeof record.serverId !== "string" ||
+    ![1, 2].includes(record.version ?? 0) ||
     typeof record.principalId !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
       record.principalId,
@@ -143,10 +175,20 @@ function parseRecord(
       "The stored worker encryption key is invalid.",
     );
   }
-  let storedServerId: string;
+  const storedTransportUrl =
+    record.version === 1
+      ? (record as Partial<StoredWorkerEncryptionKeyV1>).serverId
+      : (record as Partial<StoredWorkerEncryptionKey>).serverUrl;
+  if (typeof storedTransportUrl !== "string") {
+    throw new WorkerEncryptionError(
+      "corrupt-key-record",
+      "The stored worker encryption server transport is invalid.",
+    );
+  }
+  let canonicalStoredServerUrl: string;
   try {
-    storedServerId = canonicalServerId(
-      record.serverId,
+    canonicalStoredServerUrl = canonicalServerUrl(
+      storedTransportUrl,
       expected.allowLoopbackServerPortChange,
     );
   } catch {
@@ -155,8 +197,18 @@ function parseRecord(
       "The stored worker encryption server identity is invalid.",
     );
   }
+  // A portless loopback binding can only have been written by the explicit
+  // development policy. Permit it to reopen under the exact-port policy; the
+  // exact current port is persisted only after bootstrap verifies the server.
+  const loopbackPolicyTransition =
+    !expected.allowLoopbackServerPortChange &&
+    isPortlessLoopbackPolicyTransition(
+      canonicalStoredServerUrl,
+      expected.serverUrl,
+    );
   if (
-    storedServerId !== expected.serverId ||
+    (!loopbackPolicyTransition &&
+      canonicalStoredServerUrl !== expected.serverUrl) ||
     record.workerId !== expected.workerId
   ) {
     throw new WorkerEncryptionError(
@@ -164,7 +216,32 @@ function parseRecord(
       "The stored worker encryption key belongs to another server or worker identity.",
     );
   }
-  return { ...record, publicKey } as StoredWorkerEncryptionKey;
+  const serverId =
+    record.version === 2
+      ? (record as Partial<StoredWorkerEncryptionKey>).serverId
+      : null;
+  if (
+    serverId !== null &&
+    (typeof serverId !== "string" ||
+      !workerEncryptionBootstrapResultSchema.shape.serverId.safeParse(serverId)
+        .success)
+  ) {
+    throw new WorkerEncryptionError(
+      "corrupt-key-record",
+      "The stored worker encryption logical server identity is invalid.",
+    );
+  }
+  return {
+    version: 2,
+    serverUrl: expected.serverUrl,
+    serverId,
+    ownerId: record.ownerId,
+    workerId: record.workerId,
+    principalId: record.principalId,
+    publicKey,
+    privateKey: record.privateKey,
+    acceptedRevisions: record.acceptedRevisions,
+  };
 }
 
 function writeRecord(pathname: string, record: StoredWorkerEncryptionKey) {
@@ -204,20 +281,25 @@ export class WorkerEncryptionService {
     number
   >();
   #ownerId: string | null;
+  #boundServerId: string | null;
+  #bootstrapGeneration = 0;
+  #serverId: string | null = null;
   #status: WorkerEncryptionStatus;
 
   private constructor(
     private readonly pathname: string,
     private readonly serverUrl: string,
-    private readonly serverId: string,
+    private readonly transportServerUrl: string,
     private readonly workerId: string,
     private readonly principalId: string,
     private readonly publicKey: EncryptionPublicKey,
     private readonly keyPair: CryptoKeyPair,
     ownerId: string | null,
+    boundServerId: string | null,
     acceptedRevisions: StoredWorkerEncryptionKey["acceptedRevisions"],
   ) {
     this.#ownerId = ownerId;
+    this.#boundServerId = boundServerId;
     for (const [component, revision] of Object.entries(acceptedRevisions)) {
       const parsedComponent =
         workerEncryptionComponentScopeSchema.parse(component);
@@ -245,10 +327,10 @@ export class WorkerEncryptionService {
     serverUrl: string;
     workerId: string;
   }): Promise<WorkerEncryptionService> {
-    const serverUrl = canonicalServerId(input.serverUrl);
+    const serverUrl = canonicalServerUrl(input.serverUrl);
     const allowLoopbackServerPortChange =
       input.allowLoopbackServerPortChange ?? false;
-    const serverId = canonicalServerId(
+    const transportServerUrl = canonicalServerUrl(
       serverUrl,
       allowLoopbackServerPortChange,
     );
@@ -256,7 +338,7 @@ export class WorkerEncryptionService {
     if (existsSync(pathname)) {
       const record = parseRecord(readRecord(pathname), {
         allowLoopbackServerPortChange,
-        serverId,
+        serverUrl: transportServerUrl,
         workerId: input.workerId,
       });
       chmodSync(pathname, 0o600);
@@ -299,18 +381,16 @@ export class WorkerEncryptionService {
             "The stored worker encryption keypair does not match.",
           );
         }
-        if (record.serverId !== serverId) {
-          writeRecord(pathname, { ...record, serverId });
-        }
         return new WorkerEncryptionService(
           pathname,
           serverUrl,
-          serverId,
+          transportServerUrl,
           input.workerId,
           record.principalId,
           record.publicKey,
           keyPair,
           record.ownerId,
+          record.serverId,
           record.acceptedRevisions,
         );
       } finally {
@@ -325,8 +405,9 @@ export class WorkerEncryptionService {
     const principalId = randomUUID();
     try {
       writeRecord(pathname, {
-        version: 1,
-        serverId,
+        version: 2,
+        serverUrl: transportServerUrl,
+        serverId: null,
         ownerId: null,
         workerId: input.workerId,
         principalId,
@@ -340,11 +421,12 @@ export class WorkerEncryptionService {
     return new WorkerEncryptionService(
       pathname,
       serverUrl,
-      serverId,
+      transportServerUrl,
       input.workerId,
       principalId,
       publicKey,
       keyPair,
+      null,
       null,
       {},
     );
@@ -372,7 +454,13 @@ export class WorkerEncryptionService {
   }
 
   serverIdentity(): string {
-    return this.serverId;
+    if (!this.#serverId) {
+      throw new WorkerEncryptionError(
+        "principal-unavailable",
+        "Worker encryption has not verified the logical server identity.",
+      );
+    }
+    return this.#serverId;
   }
 
   componentKey(component: WorkerEncryptionComponentScope): {
@@ -394,6 +482,7 @@ export class WorkerEncryptionService {
     credential: string;
     fetch?: typeof fetch;
   }): Promise<WorkerEncryptionStatus> {
+    const generation = ++this.#bootstrapGeneration;
     const fetcher = input.fetch ?? fetch;
     let response: Response;
     try {
@@ -411,7 +500,9 @@ export class WorkerEncryptionService {
         },
       );
     } catch (error) {
-      this.recordRefreshError(error);
+      if (generation === this.#bootstrapGeneration) {
+        this.recordRefreshError(error);
+      }
       throw new WorkerEncryptionError(
         "server-unavailable",
         "Could not refresh worker encryption grants.",
@@ -425,25 +516,33 @@ export class WorkerEncryptionService {
         typeof payload?.error === "string"
           ? payload.error
           : `Cantrip Server rejected worker encryption bootstrap with HTTP ${response.status}.`;
-      if (response.status >= 400 && response.status < 500) {
-        this.clearComponentKeys();
+      if (generation === this.#bootstrapGeneration) {
+        if (response.status >= 400 && response.status < 500) {
+          this.#serverId = null;
+          this.clearComponentKeys();
+        }
+        this.recordRefreshError(message);
       }
-      this.recordRefreshError(message);
       throw new WorkerEncryptionError("server-unavailable", message);
     }
-    try {
-      return await this.acceptBootstrap(await response.json());
-    } catch (error) {
-      this.clearComponentKeys();
-      this.recordRefreshError(error);
-      throw error;
-    }
+    const payload = await response.json().catch(() => null);
+    return this.acceptBootstrapGeneration(payload, generation);
   }
 
   async acceptBootstrap(input: unknown): Promise<WorkerEncryptionStatus> {
+    const generation = ++this.#bootstrapGeneration;
+    return this.acceptBootstrapGeneration(input, generation);
+  }
+
+  private async acceptBootstrapGeneration(
+    input: unknown,
+    generation: number,
+  ): Promise<WorkerEncryptionStatus> {
     try {
-      return await this.applyBootstrap(input);
+      return await this.applyBootstrap(input, generation);
     } catch (error) {
+      if (generation !== this.#bootstrapGeneration) return this.status();
+      this.#serverId = null;
       this.clearComponentKeys();
       this.recordRefreshError(error);
       throw error;
@@ -452,7 +551,9 @@ export class WorkerEncryptionService {
 
   private async applyBootstrap(
     input: unknown,
+    generation: number,
   ): Promise<WorkerEncryptionStatus> {
+    if (generation !== this.#bootstrapGeneration) return this.status();
     let result: WorkerEncryptionBootstrapResult;
     try {
       result = workerEncryptionBootstrapResultSchema.parse(input);
@@ -463,6 +564,12 @@ export class WorkerEncryptionService {
       );
     }
     const principal = result.principal;
+    if (this.#boundServerId && this.#boundServerId !== result.serverId) {
+      throw new WorkerEncryptionError(
+        "identity-mismatch",
+        "The worker encryption key belongs to another logical server.",
+      );
+    }
     if (
       principal.id !== this.principalId ||
       principal.workerId !== this.workerId ||
@@ -479,11 +586,21 @@ export class WorkerEncryptionService {
         "The worker encryption key belongs to another account.",
       );
     }
-    if (!this.#ownerId) {
-      this.#ownerId = result.ownerId;
-      await this.persistIdentity();
-    }
     if (principal.state !== "approved") {
+      if (
+        !(await this.persistIdentity(
+          {
+            ownerId: result.ownerId,
+            serverId: result.serverId,
+          },
+          generation,
+        ))
+      ) {
+        return this.status();
+      }
+      this.#ownerId = result.ownerId;
+      this.#boundServerId = result.serverId;
+      this.#serverId = result.serverId;
       this.clearComponentKeys();
       this.#status = workerEncryptionStatusSchema.parse({
         supported: true,
@@ -555,12 +672,41 @@ export class WorkerEncryptionService {
         "A worker encryption grant could not be opened.",
       );
     }
+    const acceptedRevisions = new Map(this.#acceptedRevisions);
+    for (const [component, entry] of replacement) {
+      acceptedRevisions.set(component, entry.keyRevision);
+    }
+    try {
+      if (
+        !(await this.persistIdentity(
+          {
+            acceptedRevisions,
+            ownerId: result.ownerId,
+            serverId: result.serverId,
+          },
+          generation,
+        ))
+      ) {
+        for (const entry of replacement.values()) {
+          clearSensitiveBytes(entry.key);
+        }
+        return this.status();
+      }
+    } catch (error) {
+      for (const entry of replacement.values()) clearSensitiveBytes(entry.key);
+      throw error;
+    }
     this.clearComponentKeys();
+    this.#acceptedRevisions.clear();
+    for (const [component, revision] of acceptedRevisions) {
+      this.#acceptedRevisions.set(component, revision);
+    }
     for (const [component, entry] of replacement) {
       this.#componentKeys.set(component, entry);
-      this.#acceptedRevisions.set(component, entry.keyRevision);
     }
-    await this.persistIdentity();
+    this.#ownerId = result.ownerId;
+    this.#boundServerId = result.serverId;
+    this.#serverId = result.serverId;
     this.#status = workerEncryptionStatusSchema.parse({
       supported: true,
       state: "ready",
@@ -576,6 +722,7 @@ export class WorkerEncryptionService {
   }
 
   lock(): void {
+    this.#bootstrapGeneration += 1;
     this.clearComponentKeys();
     this.#status = workerEncryptionStatusSchema.parse({
       supported: true,
@@ -587,19 +734,33 @@ export class WorkerEncryptionService {
     });
   }
 
-  private async persistIdentity(): Promise<void> {
+  private async persistIdentity(
+    input: {
+      acceptedRevisions?: Map<WorkerEncryptionComponentScope, number>;
+      ownerId?: string | null;
+      serverId?: string | null;
+    },
+    generation: number,
+  ): Promise<boolean> {
     const privateKey = await exportHpkePrivateKey(this.keyPair.privateKey);
     try {
+      // Do not let an older async unwrap/export finish after a newer bootstrap
+      // and overwrite its persisted or in-memory identity.
+      if (generation !== this.#bootstrapGeneration) return false;
       writeRecord(this.pathname, {
-        version: 1,
-        serverId: this.serverId,
-        ownerId: this.#ownerId,
+        version: 2,
+        serverUrl: this.transportServerUrl,
+        serverId: input?.serverId ?? this.#boundServerId,
+        ownerId: input?.ownerId ?? this.#ownerId,
         workerId: this.workerId,
         principalId: this.principalId,
         publicKey: this.publicKey,
         privateKey: encodeBase64Url(privateKey),
-        acceptedRevisions: Object.fromEntries(this.#acceptedRevisions),
+        acceptedRevisions: Object.fromEntries(
+          input?.acceptedRevisions ?? this.#acceptedRevisions,
+        ),
       });
+      return true;
     } finally {
       clearSensitiveBytes(privateKey);
     }

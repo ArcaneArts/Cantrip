@@ -206,4 +206,43 @@ describe("surface private-state worker readiness", () => {
     expect(loadWorker).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(250);
   });
+
+  it("retries when the same worker has not activated the current grants yet", async () => {
+    const ready = status("ready", [
+      { component: "surface-private-state", keyRevision: 3 },
+      { component: "private-surface-metadata", keyRevision: 3 },
+    ]);
+    const stale = status("ready", [
+      { component: "surface-private-state", keyRevision: 2 },
+      { component: "private-surface-metadata", keyRevision: 2 },
+    ]);
+    const loadWorker = vi.fn(async () => worker(ready));
+    const sleep = vi.fn(async () => undefined);
+    const refresh = vi
+      .fn()
+      .mockResolvedValueOnce({
+        component: "surface-private-state" as const,
+        keyRevision: 3,
+        status: stale,
+      })
+      .mockResolvedValue({
+        component: "surface-private-state" as const,
+        keyRevision: 3,
+        status: ready,
+      });
+
+    await expect(
+      waitForSurfacePrivateStateWorkerEncryption({
+        loadWorker,
+        refresh,
+        service: service(),
+        session: () =>
+          ({ serverId, user: { id: ownerId } }) as ClientSessionContext,
+        sleep,
+      }),
+    ).resolves.toEqual(ready);
+    expect(loadWorker).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(250);
+  });
 });

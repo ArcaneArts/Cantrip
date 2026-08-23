@@ -47,7 +47,8 @@ async function eventually(
 }
 
 const ownerId = "browser-adapter-owner";
-const serverId = "https://browser-adapter.test";
+const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const serverUrl = "https://browser-adapter.test";
 const workerId = "browser-adapter-worker";
 const timestamp = "2026-08-20T12:00:00.000Z";
 
@@ -56,7 +57,7 @@ async function encryptionService(
 ): Promise<WorkerEncryptionService> {
   const service = await WorkerEncryptionService.open({
     dataDirectory,
-    serverUrl: serverId,
+    serverUrl,
     workerId,
   });
   const registration = service.registration();
@@ -103,7 +104,12 @@ async function encryptionService(
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  await service.acceptBootstrap({ ownerId, principal, grants: [grant] });
+  await service.acceptBootstrap({
+    serverId,
+    ownerId,
+    principal,
+    grants: [grant],
+  });
   return service;
 }
 

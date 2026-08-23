@@ -580,6 +580,7 @@ import {
   protectCustomizationRequest,
 } from "@/lib/customization-content-encryption";
 import { ShortLivedRequestCache } from "@/lib/short-lived-request-cache";
+import { TunnelWorkerReadinessRequestCache } from "@/lib/tunnel-worker-readiness-cache";
 import {
   createTunnelDataProtection,
   openTunnelContentRecord,
@@ -1879,8 +1880,7 @@ const runWorkerReadinessCache =
   new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
 const customizationWorkerReadinessCache =
   new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
-const tunnelWorkerReadinessCache =
-  new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
+const tunnelWorkerReadinessCache = new TunnelWorkerReadinessRequestCache(5_000);
 const chatCustomizationTargetCache =
   new ShortLivedRequestCache<CustomizationContentScope>(2_000);
 const repositoryWorktreeStatusCache =
@@ -1981,17 +1981,21 @@ async function ensureTunnelWorker(workerId: string) {
   const worker = (await getWorkers()).find(
     (candidate) => candidate.workerId === workerId,
   );
+  const session = getClientSession();
   const snapshot = clientEncryption.getSnapshot();
-  const grants = worker?.encryption.grants
-    .filter(({ component }) => component === "tunnel-content")
-    .map(({ keyRevision }) => keyRevision)
-    .join(",");
-  const key = `${repositoryOperationCacheNamespace()}\0${workerId}\0${grants ?? "none"}\0${snapshot.masterKeyRevision ?? "locked"}`;
-  await tunnelWorkerReadinessCache.get(key, () =>
-    ensureEndpointContentWorkerEncryption({
-      domains: ["tunnel-content"],
-      worker,
-    }),
+  await tunnelWorkerReadinessCache.get(
+    {
+      activeServerUrl: getActiveServerUrl(),
+      session,
+      snapshot,
+      workerEncryption: worker?.encryption,
+      workerId,
+    },
+    () =>
+      ensureEndpointContentWorkerEncryption({
+        domains: ["tunnel-content"],
+        worker,
+      }),
   );
 }
 

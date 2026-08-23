@@ -148,6 +148,27 @@ function codeContent() {
 }
 
 describe("TunnelDestinationRouter protected target diagnostics", () => {
+  it("uses relay correlation carried by the destination connect frame", async () => {
+    tunnelContent.open.mockRejectedValue(new Error("record unavailable"));
+    const { emitted, records, router } = fixture();
+    const diagnosticTraceId = "99999999-9999-4999-8999-999999999999";
+    const header = { ...protectedConnect(), diagnosticTraceId };
+
+    router.handleFrame(header, new Uint8Array());
+
+    await vi.waitFor(() => expect(emitted).toHaveBeenCalledOnce());
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          context: expect.objectContaining({
+            event: "tunnel.protected-target.rejected",
+            diagnosticTraceId,
+          }),
+        }),
+      ]),
+    );
+  });
+
   it("correlates a validated Code target through endpoint preparation", async () => {
     tunnelContent.open.mockResolvedValue(codeContent());
     const { codeEndpoints, records, router, tcp } = fixture();
@@ -157,6 +178,7 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
       port: 43_210,
     });
     const header = protectedConnect();
+    header.diagnosticTraceId = "11111111-1111-4111-8111-111111111111";
     const diagnosticTraceId = "22222222-2222-4222-8222-222222222222";
 
     router.handleFrame(header, new Uint8Array(), { diagnosticTraceId });

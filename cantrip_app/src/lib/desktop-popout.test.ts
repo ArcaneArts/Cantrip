@@ -1,5 +1,5 @@
 import type { ExplorerSummary } from "@cantrip/protocol";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const tauri = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -9,6 +9,58 @@ const brokerModule = vi.hoisted(() => ({
   createDesktopExplorerWindowBroker: vi.fn(),
 }));
 const logs = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn() }));
+const api = vi.hoisted(() => ({
+  getWorkers: vi.fn(async () => []),
+}));
+const surfaceReadiness = vi.hoisted(() => ({
+  waitForSurfacePrivateStateWorkerEncryption: vi.fn(
+    async (): Promise<void> => undefined,
+  ),
+}));
+const identityRuntime = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  let session = {
+    serverId: "11111111-1111-4111-8111-111111111111",
+    user: { id: "account-one" },
+  };
+  let snapshot = {
+    clientId: "client-one",
+    identity: { ownerId: session.user.id, serverId: session.serverId },
+    masterKeyRevision: 1,
+    status: "ready" as const,
+  };
+  return {
+    getSession: () => session,
+    getSnapshot: () => snapshot,
+    reset() {
+      session = {
+        serverId: "11111111-1111-4111-8111-111111111111",
+        user: { id: "account-one" },
+      };
+      snapshot = {
+        clientId: "client-one",
+        identity: { ownerId: session.user.id, serverId: session.serverId },
+        masterKeyRevision: 1,
+        status: "ready",
+      };
+      for (const listener of listeners) listener();
+    },
+    setIdentity(serverId: string, ownerId: string, revision = 1) {
+      session = { serverId, user: { id: ownerId } };
+      snapshot = {
+        clientId: `client-${serverId}`,
+        identity: { ownerId, serverId },
+        masterKeyRevision: revision,
+        status: "ready",
+      };
+      for (const listener of listeners) listener();
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+});
 const webviews = vi.hoisted(() => {
   const windows = new Map<string, MockWebviewWindow>();
   class MockWebviewWindow {
@@ -42,8 +94,22 @@ vi.mock("@tauri-apps/api/core", () => tauri);
 vi.mock("@tauri-apps/api/webviewWindow", () => ({
   WebviewWindow: webviews.MockWebviewWindow,
 }));
+vi.mock("@/lib/api", () => api);
+vi.mock("@/lib/client-encryption", () => ({
+  clientEncryption: {
+    getSnapshot: identityRuntime.getSnapshot,
+    subscribe: identityRuntime.subscribe,
+  },
+}));
+vi.mock("@/lib/client-session", () => ({
+  getClientSession: identityRuntime.getSession,
+}));
 vi.mock("@/lib/client-log-relay", () => ({ clientLogger: logs }));
 vi.mock("@/lib/desktop-explorer-window-broker", () => brokerModule);
+vi.mock(
+  "@/lib/surface-private-state-worker-encryption",
+  () => surfaceReadiness,
+);
 
 import {
   clearDesktopExplorerFilePrewarm,
@@ -79,6 +145,15 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
     resolve,
   };
 }
+
+beforeEach(() => {
+  identityRuntime.reset();
+  api.getWorkers.mockClear();
+  surfaceReadiness.waitForSurfacePrivateStateWorkerEncryption.mockReset();
+  surfaceReadiness.waitForSurfacePrivateStateWorkerEncryption.mockResolvedValue(
+    undefined,
+  );
+});
 
 describe("desktop pop-out groups", () => {
   const target: DesktopPopoutGroupTarget = {
@@ -343,6 +418,23 @@ describe("desktop Explorer file windows", () => {
         "worker-one",
       ),
     );
+    expect(
+      desktopExplorerFileWindowLabel(
+        "explorer with spaces",
+        "src/components/file.tsx",
+        "worktree-one",
+        "worker-one",
+        "server-a/account/revision-1",
+      ),
+    ).not.toBe(
+      desktopExplorerFileWindowLabel(
+        "explorer with spaces",
+        "src/components/file.tsx",
+        "worktree-one",
+        "worker-one",
+        "server-b/account/revision-1",
+      ),
+    );
   });
 
   it("switches a bound editor to another file before focusing the same window", async () => {
@@ -433,6 +525,154 @@ describe("desktop window theme", () => {
 });
 
 describe("desktop Explorer editor prewarm", () => {
+  it("waits for current surface encryption readiness before creating a protected editor broker", async () => {
+    const readiness = deferred();
+    tauri.isTauri.mockReturnValue(true);
+    brokerModule.createDesktopExplorerWindowBroker.mockReset();
+    surfaceReadiness.waitForSurfacePrivateStateWorkerEncryption.mockReturnValue(
+      readiness.promise,
+    );
+    const broker = {
+      dispose: vi.fn(async () => undefined),
+      failed: false,
+      launchId: "warm-after-readiness",
+      openFile: vi.fn(async () => undefined),
+      ready: Promise.resolve(),
+    };
+    brokerModule.createDesktopExplorerWindowBroker.mockReturnValue(broker);
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn(),
+      location: { pathname: "/" },
+    });
+    const context = {
+      appearance: "dark" as const,
+      explorer: {
+        activeWorkerId: "worker-readiness",
+        id: "explorer-readiness",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+    };
+
+    try {
+      const prewarm = prewarmDesktopExplorerFile(context);
+      await vi.waitFor(() =>
+        expect(
+          surfaceReadiness.waitForSurfacePrivateStateWorkerEncryption,
+        ).toHaveBeenCalledOnce(),
+      );
+      expect(
+        brokerModule.createDesktopExplorerWindowBroker,
+      ).not.toHaveBeenCalled();
+
+      readiness.resolve();
+      await prewarm;
+      expect(
+        brokerModule.createDesktopExplorerWindowBroker,
+      ).toHaveBeenCalledOnce();
+    } finally {
+      clearDesktopExplorerFilePrewarm();
+      for (const window of webviews.windows.values()) await window.close();
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("disposes a server A warm slot before same-ID server B opens a fresh editor", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    brokerModule.createDesktopExplorerWindowBroker.mockReset();
+    const serverABroker = {
+      dispose: vi.fn(async () => undefined),
+      failed: false,
+      launchId: "warm-server-a",
+      openFile: vi.fn(async () => undefined),
+      ready: Promise.resolve(),
+    };
+    const serverBBroker = {
+      dispose: vi.fn(async () => undefined),
+      failed: false,
+      launchId: "fresh-server-b",
+      openFile: vi.fn(async () => undefined),
+      ready: Promise.resolve(),
+    };
+    brokerModule.createDesktopExplorerWindowBroker
+      .mockReturnValueOnce(serverABroker)
+      .mockReturnValueOnce(serverBBroker);
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn(),
+      location: { pathname: "/" },
+    });
+    const context = {
+      appearance: "dark" as const,
+      explorer: {
+        activeWorkerId: "same-worker",
+        id: "same-explorer",
+        projectId: "same-project",
+        worktreeId: "same-worktree",
+      } as ExplorerSummary,
+    };
+    const target = {
+      explorerId: context.explorer.id,
+      path: "src/server-b.ts",
+      projectId: context.explorer.projectId,
+    };
+
+    try {
+      identityRuntime.setIdentity(
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "same-account",
+      );
+      await prewarmDesktopExplorerFile(context);
+      expect(webviews.windows.size).toBe(1);
+      const serverALabel = [...webviews.windows.keys()][0];
+
+      identityRuntime.setIdentity(
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "same-account",
+      );
+      await vi.waitFor(() =>
+        expect(serverABroker.dispose).toHaveBeenCalledOnce(),
+      );
+      await vi.waitFor(() => expect(webviews.windows.size).toBe(0));
+
+      await expect(
+        openDesktopExplorerFile(target, "server-b.ts", context),
+      ).resolves.toBe("created");
+      await expect(serverBBroker.ready).resolves.toBeUndefined();
+
+      expect(serverABroker.openFile).not.toHaveBeenCalled();
+      expect(
+        brokerModule.createDesktopExplorerWindowBroker,
+      ).toHaveBeenCalledTimes(2);
+      expect(
+        brokerModule.createDesktopExplorerWindowBroker.mock.calls[1]?.[0],
+      ).toMatchObject({ path: target.path });
+      expect(webviews.windows.size).toBe(1);
+      expect([...webviews.windows.keys()][0]).not.toBe(serverALabel);
+
+      identityRuntime.setIdentity(
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "same-account",
+        2,
+      );
+      await vi.waitFor(() =>
+        expect(serverBBroker.dispose).toHaveBeenCalledOnce(),
+      );
+      await vi.waitFor(() => expect(webviews.windows.size).toBe(0));
+    } finally {
+      clearDesktopExplorerFilePrewarm();
+      for (const window of [...webviews.windows.values()]) await window.close();
+      await vi.waitFor(() =>
+        expect(serverBBroker.dispose).toHaveBeenCalledOnce(),
+      );
+      expect(webviews.windows.size).toBe(0);
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("coalesces concurrent opens of the same prewarmed target", async () => {
     const opened = deferred();
     tauri.isTauri.mockReturnValue(true);

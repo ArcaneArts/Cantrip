@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -25,6 +25,8 @@ import {
 } from "./worker-encryption.js";
 
 const ownerId = "owner-worker-encryption";
+const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const otherServerId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const timestamp = "2026-08-19T12:00:00.000Z";
 const directories: string[] = [];
 
@@ -80,6 +82,26 @@ function grant(
   };
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+function fetchSequence(...responses: Array<Promise<Response>>): typeof fetch {
+  let index = 0;
+  return (async () => {
+    const response = responses[index++];
+    if (!response) throw new Error("Unexpected bootstrap request.");
+    return response;
+  }) as typeof fetch;
+}
+
 afterEach(async () => {
   await Promise.all(
     directories.splice(0).map((entry) => rm(entry, { recursive: true })),
@@ -87,7 +109,7 @@ afterEach(async () => {
 });
 
 describe("persistent worker encryption", () => {
-  it("binds a protected private-key record to one server and worker", async () => {
+  it("binds a protected private-key record to one transport and worker", async () => {
     const dataDirectory = await directory();
     const service = await WorkerEncryptionService.open({
       dataDirectory,
@@ -99,10 +121,22 @@ describe("persistent worker encryption", () => {
     const record = JSON.parse(await readFile(pathname, "utf8")) as {
       ownerId: string | null;
       privateKey: string;
+      serverId: string | null;
+      serverUrl: string;
+      version: number;
       workerId: string;
     };
-    expect(record).toMatchObject({ ownerId: null, workerId: "worker-a" });
+    expect(record).toMatchObject({
+      ownerId: null,
+      serverId: null,
+      serverUrl: "https://cantrip.test",
+      version: 2,
+      workerId: "worker-a",
+    });
     expect(record.privateKey).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(() => service.serverIdentity()).toThrowError(
+      /has not verified the logical server identity/u,
+    );
     await expect(
       WorkerEncryptionService.open({
         dataDirectory,
@@ -125,7 +159,36 @@ describe("persistent worker encryption", () => {
     expect(service.status().state).toBe("pending-approval");
   });
 
-  it("reuses a bundled local identity when the server port changes", async () => {
+  it("fetches bootstrap over the transport URL but exposes the client server UUID", async () => {
+    const workerId = "worker-a";
+    const service = await WorkerEncryptionService.open({
+      dataDirectory: await directory(),
+      serverUrl: "http://127.0.0.1:4310",
+      workerId,
+    });
+    const workerPrincipal = principal(service, workerId, "pending");
+    let requestedUrl: string | null = null;
+
+    await service.refresh({
+      credential: "worker-credential",
+      fetch: async (input) => {
+        requestedUrl = String(input);
+        return Response.json({
+          serverId,
+          ownerId,
+          principal: workerPrincipal,
+          grants: [],
+        });
+      },
+    });
+
+    expect(requestedUrl).toBe(
+      "http://127.0.0.1:4310/api/internal/workers/encryption/bootstrap",
+    );
+    expect(service.serverIdentity()).toBe(serverId);
+  });
+
+  it("uses the bootstrapped server UUID across loopback port changes and restarts", async () => {
     const dataDirectory = await directory();
     const original = await WorkerEncryptionService.open({
       dataDirectory,
@@ -133,6 +196,14 @@ describe("persistent worker encryption", () => {
       workerId: "desktop-local",
     });
     const originalRegistration = original.registration();
+    const workerPrincipal = principal(original, "desktop-local", "pending");
+    await original.acceptBootstrap({
+      serverId,
+      ownerId,
+      principal: workerPrincipal,
+      grants: [],
+    });
+    expect(original.serverIdentity()).toBe(serverId);
 
     const reopened = await WorkerEncryptionService.open({
       allowLoopbackServerPortChange: true,
@@ -142,10 +213,315 @@ describe("persistent worker encryption", () => {
     });
 
     expect(reopened.registration()).toEqual(originalRegistration);
+    expect(() => reopened.serverIdentity()).toThrowError(
+      /has not verified the logical server identity/u,
+    );
+    await reopened.acceptBootstrap({
+      serverId,
+      ownerId,
+      principal: workerPrincipal,
+      grants: [],
+    });
+    expect(reopened.serverIdentity()).toBe(serverId);
     const record = JSON.parse(
       await readFile(workerEncryptionKeyPath(dataDirectory), "utf8"),
-    ) as { serverId: string };
-    expect(record.serverId).toBe("http://127.0.0.1");
+    ) as { serverId: string; serverUrl: string; version: number };
+    expect(record).toMatchObject({
+      version: 2,
+      serverUrl: "http://127.0.0.1",
+      serverId,
+    });
+  });
+
+  it("rebinds a development portless loopback transport only after verified bootstrap", async () => {
+    const dataDirectory = await directory();
+    const pathname = workerEncryptionKeyPath(dataDirectory);
+    const workerId = "desktop-local";
+    const original = await WorkerEncryptionService.open({
+      allowLoopbackServerPortChange: true,
+      dataDirectory,
+      serverUrl: "http://127.0.0.1:62586",
+      workerId,
+    });
+    const workerPrincipal = principal(original, workerId, "pending");
+    await original.acceptBootstrap({
+      serverId,
+      ownerId,
+      principal: workerPrincipal,
+      grants: [],
+    });
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      serverUrl: "http://127.0.0.1",
+      serverId,
+    });
+
+    const transitioned = await WorkerEncryptionService.open({
+      allowLoopbackServerPortChange: false,
+      dataDirectory,
+      serverUrl: "http://127.0.0.1:63891",
+      workerId,
+    });
+    expect(transitioned.registration()).toEqual(original.registration());
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      serverUrl: "http://127.0.0.1",
+      serverId,
+    });
+
+    await expect(
+      transitioned.refresh({
+        credential: "unavailable-worker-credential",
+        fetch: async () => {
+          throw new Error("server unavailable");
+        },
+      }),
+    ).rejects.toMatchObject({ code: "server-unavailable" });
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      serverUrl: "http://127.0.0.1",
+      serverId,
+    });
+
+    await transitioned.acceptBootstrap({
+      serverId,
+      ownerId,
+      principal: workerPrincipal,
+      grants: [],
+    });
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      serverUrl: "http://127.0.0.1:63891",
+      serverId,
+    });
+    await expect(
+      WorkerEncryptionService.open({
+        allowLoopbackServerPortChange: false,
+        dataDirectory,
+        serverUrl: "http://127.0.0.1:64000",
+        workerId,
+      }),
+    ).rejects.toMatchObject({
+      code: "identity-mismatch",
+    } satisfies Partial<WorkerEncryptionError>);
+    await expect(
+      WorkerEncryptionService.open({
+        allowLoopbackServerPortChange: false,
+        dataDirectory,
+        serverUrl: "http://localhost:63891",
+        workerId,
+      }),
+    ).rejects.toMatchObject({
+      code: "identity-mismatch",
+    } satisfies Partial<WorkerEncryptionError>);
+  });
+
+  it("defers legacy migration until an authoritative bootstrap succeeds", async () => {
+    const dataDirectory = await directory();
+    const pathname = workerEncryptionKeyPath(dataDirectory);
+    const original = await WorkerEncryptionService.open({
+      allowLoopbackServerPortChange: true,
+      dataDirectory,
+      serverUrl: "http://127.0.0.1:62586",
+      workerId: "desktop-local",
+    });
+    const current = JSON.parse(await readFile(pathname, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    const { serverUrl, ...legacy } = current;
+    await writeFile(
+      pathname,
+      `${JSON.stringify({
+        ...legacy,
+        version: 1,
+        serverId: serverUrl,
+      })}\n`,
+      { mode: 0o600 },
+    );
+
+    const migrated = await WorkerEncryptionService.open({
+      allowLoopbackServerPortChange: true,
+      dataDirectory,
+      serverUrl: "http://127.0.0.1:63891",
+      workerId: "desktop-local",
+    });
+
+    expect(migrated.registration()).toEqual(original.registration());
+    expect(() => migrated.serverIdentity()).toThrowError(
+      /has not verified the logical server identity/u,
+    );
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      version: 1,
+      serverId: "http://127.0.0.1",
+    });
+    await expect(
+      migrated.refresh({
+        credential: "unavailable-worker-credential",
+        fetch: async () => {
+          throw new Error("server unavailable");
+        },
+      }),
+    ).rejects.toMatchObject({ code: "server-unavailable" });
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      version: 1,
+      serverId: "http://127.0.0.1",
+    });
+
+    await migrated.acceptBootstrap({
+      serverId,
+      ownerId,
+      principal: principal(migrated, "desktop-local", "pending"),
+      grants: [],
+    });
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      version: 2,
+      serverUrl: "http://127.0.0.1",
+      serverId,
+    });
+  });
+
+  it("ignores older pending and failing refreshes after a newer ready bootstrap", async () => {
+    const dataDirectory = await directory();
+    const workerId = "worker-a";
+    const service = await WorkerEncryptionService.open({
+      dataDirectory,
+      serverUrl: "https://cantrip.test",
+      workerId,
+    });
+    const approvedPrincipal = principal(service, workerId);
+    const componentKey = deriveComponentKey({
+      accountMasterKey: generateAccountMasterKey(),
+      ownerId,
+      component: "task-content",
+      keyRevision: 1,
+    });
+    const readyGrant = grant(
+      approvedPrincipal.id,
+      await wrapComponentKeyForWorker({
+        ownerId,
+        workerId,
+        component: "task-content",
+        componentKey,
+        keyRevision: 1,
+        workerPublicKey: approvedPrincipal.publicKey,
+      }),
+      "44444444-4444-4444-8444-444444444444",
+    );
+    const olderPending = deferred<Response>();
+    const newerReady = deferred<Response>();
+    const firstFetch = fetchSequence(olderPending.promise, newerReady.promise);
+    const olderRefresh = service.refresh({
+      credential: "worker-credential",
+      fetch: firstFetch,
+    });
+    const newerRefresh = service.refresh({
+      credential: "worker-credential",
+      fetch: firstFetch,
+    });
+
+    newerReady.resolve(
+      Response.json({
+        serverId,
+        ownerId,
+        principal: approvedPrincipal,
+        grants: [readyGrant],
+      }),
+    );
+    await expect(newerRefresh).resolves.toMatchObject({ state: "ready" });
+    olderPending.resolve(
+      Response.json({
+        serverId: otherServerId,
+        ownerId,
+        principal: principal(service, workerId, "pending"),
+        grants: [],
+      }),
+    );
+    await expect(olderRefresh).resolves.toMatchObject({ state: "ready" });
+    expect(service.status().state).toBe("ready");
+    expect(service.serverIdentity()).toBe(serverId);
+    expect(
+      bytesEqual(service.componentKey("task-content").key, componentKey),
+    ).toBe(true);
+
+    const olderFailure = deferred<Response>();
+    const latestReady = deferred<Response>();
+    const secondFetch = fetchSequence(
+      olderFailure.promise,
+      latestReady.promise,
+    );
+    const failingRefresh = service.refresh({
+      credential: "worker-credential",
+      fetch: secondFetch,
+    });
+    const readyRefresh = service.refresh({
+      credential: "worker-credential",
+      fetch: secondFetch,
+    });
+    latestReady.resolve(
+      Response.json({
+        serverId,
+        ownerId,
+        principal: approvedPrincipal,
+        grants: [readyGrant],
+      }),
+    );
+    await expect(readyRefresh).resolves.toMatchObject({ state: "ready" });
+    olderFailure.resolve(
+      Response.json({ error: "stale bootstrap rejected" }, { status: 409 }),
+    );
+    await expect(failingRefresh).rejects.toMatchObject({
+      code: "server-unavailable",
+    });
+    expect(service.status().state).toBe("ready");
+    expect(service.serverIdentity()).toBe(serverId);
+    expect(
+      bytesEqual(service.componentKey("task-content").key, componentKey),
+    ).toBe(true);
+    expect(
+      JSON.parse(
+        await readFile(workerEncryptionKeyPath(dataDirectory), "utf8"),
+      ),
+    ).toMatchObject({
+      serverId,
+    });
+  });
+
+  it("rejects a different logical server at the same transport origin", async () => {
+    const dataDirectory = await directory();
+    const workerId = "worker-a";
+    const original = await WorkerEncryptionService.open({
+      dataDirectory,
+      serverUrl: "https://cantrip.test",
+      workerId,
+    });
+    const workerPrincipal = principal(original, workerId, "pending");
+    await original.acceptBootstrap({
+      serverId,
+      ownerId,
+      principal: workerPrincipal,
+      grants: [],
+    });
+    const restarted = await WorkerEncryptionService.open({
+      dataDirectory,
+      serverUrl: "https://cantrip.test",
+      workerId,
+    });
+
+    await expect(
+      restarted.acceptBootstrap({
+        serverId: otherServerId,
+        ownerId,
+        principal: workerPrincipal,
+        grants: [],
+      }),
+    ).rejects.toMatchObject({
+      code: "identity-mismatch",
+    } satisfies Partial<WorkerEncryptionError>);
+    expect(() => restarted.serverIdentity()).toThrowError(
+      /has not verified the logical server identity/u,
+    );
+    expect(
+      JSON.parse(
+        await readFile(workerEncryptionKeyPath(dataDirectory), "utf8"),
+      ),
+    ).toMatchObject({ serverId });
   });
 
   it("opens client-created scoped grants, restores after restart, and fails closed", async () => {
@@ -178,6 +554,7 @@ describe("persistent worker encryption", () => {
       "11111111-1111-4111-8111-111111111111",
     );
     await service.acceptBootstrap({
+      serverId,
       ownerId,
       principal: workerPrincipal,
       grants: [grantV1],
@@ -196,6 +573,7 @@ describe("persistent worker encryption", () => {
       workerId,
     });
     await restarted.acceptBootstrap({
+      serverId,
       ownerId,
       principal: workerPrincipal,
       grants: [grantV1],
@@ -223,6 +601,7 @@ describe("persistent worker encryption", () => {
       "22222222-2222-4222-8222-222222222222",
     );
     await restarted.acceptBootstrap({
+      serverId,
       ownerId,
       principal: workerPrincipal,
       grants: [grantV1, grantV2],
@@ -233,6 +612,7 @@ describe("persistent worker encryption", () => {
     ).toBe(true);
     await expect(
       restarted.acceptBootstrap({
+        serverId,
         ownerId,
         principal: workerPrincipal,
         grants: [grantV1],
@@ -243,6 +623,7 @@ describe("persistent worker encryption", () => {
     );
 
     await restarted.acceptBootstrap({
+      serverId,
       ownerId,
       principal: principal(restarted, workerId, "revoked"),
       grants: [],
@@ -281,6 +662,7 @@ describe("persistent worker encryption", () => {
     const workerBPrincipal = principal(workerB, "worker-b");
     await expect(
       workerB.acceptBootstrap({
+        serverId,
         ownerId,
         principal: workerBPrincipal,
         grants: [

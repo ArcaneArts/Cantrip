@@ -28,6 +28,7 @@ export function ExplorerFileBrowser({
   revealLabel,
   onShowInGraph,
   onOpenTerminal,
+  queryScope,
   replayKey,
   revealedPath,
 }: {
@@ -38,6 +39,7 @@ export function ExplorerFileBrowser({
   revealLabel?: string;
   onShowInGraph?(rootPath: string | null): void;
   onOpenTerminal(entry: ExplorerEntry): void;
+  queryScope: string;
   replayKey: number;
   revealedPath?: string | null;
 }) {
@@ -53,6 +55,7 @@ export function ExplorerFileBrowser({
     explorerId: explorer.id,
     gitStatus,
     path: "",
+    queryScope,
   });
 
   useEffect(() => {
@@ -137,6 +140,7 @@ export function ExplorerFileBrowser({
                 onShowInGraph={onShowInGraph}
                 onOpenTerminal={onOpenTerminal}
                 onToggle={toggle}
+                queryScope={queryScope}
                 revealedPath={revealedPath}
               />
             ) : (

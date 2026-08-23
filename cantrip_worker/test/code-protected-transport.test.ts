@@ -40,7 +40,8 @@ import { TunnelTcpDestinationAdapter } from "../src/tunnel-tcp-adapter.js";
 import { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 const ownerId = "owner-code-transport";
-const serverId = "https://cantrip.test";
+const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const serverUrl = "https://cantrip.test";
 const workerId = "worker-code-1";
 const cleanup: Array<() => Promise<void> | void> = [];
 
@@ -55,7 +56,7 @@ async function encryptionService(): Promise<WorkerEncryptionService> {
   cleanup.push(() => rm(dataDirectory, { recursive: true }));
   const worker = await WorkerEncryptionService.open({
     dataDirectory,
-    serverUrl: serverId,
+    serverUrl,
     workerId,
   });
   const registration = worker.registration();
@@ -102,7 +103,12 @@ async function encryptionService(): Promise<WorkerEncryptionService> {
     createdAt: now,
     updatedAt: now,
   };
-  await worker.acceptBootstrap({ ownerId, principal, grants: [grant] });
+  await worker.acceptBootstrap({
+    serverId,
+    ownerId,
+    principal,
+    grants: [grant],
+  });
   return worker;
 }
 

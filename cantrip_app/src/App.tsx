@@ -221,6 +221,7 @@ import {
   prepareExplorerRebind as prepareExplorerRebindLifecycle,
 } from "@/components/explorer/explorer-lifecycle";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
+import type { ExplorerFileMutationAuthorization } from "@/components/sidebar/project-sidebar-file-tree";
 import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
 import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
 import type { ProjectSurfacePlacementContext } from "@/components/workspace/project-surface-create-menu";
@@ -7355,16 +7356,23 @@ export function App() {
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
     name: string,
+    authorization: ExplorerFileMutationAuthorization,
   ) => {
     const displayedExplorers = explorersDisplayingSidebarEntry(
       explorer,
       entry.path,
     );
     for (const displayedExplorer of displayedExplorers) {
+      if (!authorization.isCurrent()) {
+        throw new Error("Explorer authorization changed. Try renaming again.");
+      }
       const lifecycle = explorerLifecycleRef.current.get(displayedExplorer.id);
       if (lifecycle?.dirty && !(await lifecycle.save())) {
         throw new Error("Save the open file before renaming it.");
       }
+    }
+    if (!authorization.isCurrent()) {
+      throw new Error("Explorer authorization changed. Try renaming again.");
     }
     if (
       sidebarFilePreview?.explorerId === explorer.id &&
@@ -7374,10 +7382,14 @@ export function App() {
     ) {
       throw new Error("Save the open file before renaming it.");
     }
+    if (!authorization.isCurrent()) {
+      throw new Error("Explorer authorization changed. Try renaming again.");
+    }
     const result = await renameExplorerEntry(explorer.id, {
       name,
       path: entry.path,
     });
+    if (!authorization.isCurrent()) return;
     if (result.newPath) {
       await persistSidebarEntryPathChanges(
         displayedExplorers,
@@ -7404,12 +7416,17 @@ export function App() {
   const deleteSidebarFileEntry = async (
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
+    authorization: ExplorerFileMutationAuthorization,
   ) => {
     const displayedExplorers = explorersDisplayingSidebarEntry(
       explorer,
       entry.path,
     );
+    if (!authorization.isCurrent()) {
+      throw new Error("Explorer authorization changed. Try deleting again.");
+    }
     await deleteExplorerEntry(explorer.id, { path: entry.path });
+    if (!authorization.isCurrent()) return;
     await persistSidebarEntryPathChanges(
       displayedExplorers,
       entry.path,

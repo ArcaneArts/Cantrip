@@ -4,6 +4,7 @@ import {
   encryptedPayloadEnvelopeSchema,
   passwordKdfParametersSchema,
   workerComponentKeyGrantSchema,
+  workerEncryptionBootstrapResultSchema,
   workerEncryptionRefreshRequestSchema,
   workerEncryptionRefreshResultSchema,
 } from "../src/encryption.js";
@@ -97,6 +98,19 @@ describe("encryption protocol", () => {
         component: "account-master-key",
         keyRevision: 3,
       }).success,
+    ).toBe(false);
+  });
+
+  it("requires a logical server UUID in worker bootstrap results", () => {
+    expect(
+      workerEncryptionBootstrapResultSchema.shape.serverId.parse(
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      ),
+    ).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(
+      workerEncryptionBootstrapResultSchema.shape.serverId.safeParse(
+        "https://cantrip.test",
+      ).success,
     ).toBe(false);
   });
 });

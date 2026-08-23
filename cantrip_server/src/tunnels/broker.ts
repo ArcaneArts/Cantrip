@@ -31,6 +31,7 @@ export interface TunnelDataPlaneEndpoint {
 
 export interface TunnelRouteRegistration {
   attachmentId: string;
+  diagnosticTraceId?: string;
   destination: TunnelDataPlaneEndpoint;
   destinationTarget: TunnelDataPlaneTarget;
   source: TunnelDataPlaneEndpoint;
@@ -69,6 +70,7 @@ export interface TunnelStreamBrokerStats {
 
 interface Route {
   attachmentId: string;
+  diagnosticTraceId?: string;
   destination: TunnelDataPlaneEndpoint;
   destinationTarget: TunnelDataPlaneTarget;
   key: string;
@@ -308,6 +310,9 @@ export class TunnelStreamBroker {
           kind: "connect",
           target: route.destinationTarget,
           initialCreditBytes: header.initialCreditBytes,
+          ...(route.diagnosticTraceId
+            ? { diagnosticTraceId: route.diagnosticTraceId }
+            : {}),
         },
         EMPTY_PAYLOAD,
       );

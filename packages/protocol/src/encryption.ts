@@ -601,6 +601,7 @@ export const workerEncryptionBootstrapRequestSchema = z
 
 export const workerEncryptionBootstrapResultSchema = z
   .object({
+    serverId: z.uuid(),
     ownerId: z.string().min(1).max(255),
     principal: encryptionPrincipalSchema,
     grants: encryptionKeyGrantListSchema,

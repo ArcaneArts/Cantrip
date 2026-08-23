@@ -6083,26 +6083,21 @@ export class ServerRepository {
   }
 
   async getOrCreateServerId(): Promise<string> {
-    const existing = await this.database
-      .select()
+    await this.database
+      .insert(schema.systemState)
+      .values({ key: SERVER_ID_STATE_KEY, value: { id: randomUUID() } })
+      .onConflictDoNothing({ target: schema.systemState.key });
+    const authoritative = await this.database
+      .select({ value: schema.systemState.value })
       .from(schema.systemState)
       .where(eq(schema.systemState.key, SERVER_ID_STATE_KEY))
       .limit(1);
-    const existingId = (existing[0]?.value as { id?: unknown } | undefined)?.id;
-
-    if (typeof existingId === "string" && existingId.length > 0) {
-      return existingId;
+    const serverId = (authoritative[0]?.value as { id?: unknown } | undefined)
+      ?.id;
+    if (typeof serverId !== "string" || serverId.length === 0) {
+      throw new Error("The authoritative server identity is unavailable.");
     }
-
-    const id = randomUUID();
-    await this.database
-      .insert(schema.systemState)
-      .values({ key: SERVER_ID_STATE_KEY, value: { id } })
-      .onConflictDoUpdate({
-        target: schema.systemState.key,
-        set: { value: { id }, updatedAt: new Date() },
-      });
-    return id;
+    return serverId;
   }
 
   async createWorkerEnrollmentCode(input: {

@@ -21,7 +21,8 @@ import {
 import { WorkerEncryptionService } from "./worker-encryption.js";
 
 const ownerId = "owner-run-content";
-const serverId = "https://cantrip.test";
+const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const serverUrl = "https://cantrip.test";
 const directories: string[] = [];
 
 afterEach(async () => {
@@ -37,7 +38,7 @@ async function service() {
   directories.push(dataDirectory);
   const worker = await WorkerEncryptionService.open({
     dataDirectory,
-    serverUrl: serverId,
+    serverUrl,
     workerId: "worker-a",
   });
   const registration = worker.registration();
@@ -84,7 +85,12 @@ async function service() {
     createdAt: now,
     updatedAt: now,
   };
-  await worker.acceptBootstrap({ ownerId, principal, grants: [grant] });
+  await worker.acceptBootstrap({
+    serverId,
+    ownerId,
+    principal,
+    grants: [grant],
+  });
   return worker;
 }
 

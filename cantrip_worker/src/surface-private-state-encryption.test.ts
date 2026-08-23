@@ -22,10 +22,12 @@ import {
 import { WorkerEncryptionService } from "./worker-encryption.js";
 
 const ownerId = "owner-surface-worker";
+const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const serverUrl = "https://cantrip.test";
 const timestamp = "2026-08-19T12:00:00.000Z";
 const directories: string[] = [];
 const context = {
-  serverId: "https://cantrip.test",
+  serverId,
   resource: "terminal-operation" as const,
   resourceId: "terminal-1",
   operationId: "open-1",
@@ -99,7 +101,7 @@ describe("worker surface private-state adapter", () => {
     const workerId = "worker-a";
     const first = await WorkerEncryptionService.open({
       dataDirectory,
-      serverUrl: context.serverId,
+      serverUrl,
       workerId,
     });
     const workerPrincipal = principal(first, workerId);
@@ -121,6 +123,7 @@ describe("worker surface private-state adapter", () => {
       }),
     );
     await first.acceptBootstrap({
+      serverId,
       ownerId,
       principal: workerPrincipal,
       grants: [workerGrant],
@@ -129,10 +132,11 @@ describe("worker surface private-state adapter", () => {
 
     const restarted = await WorkerEncryptionService.open({
       dataDirectory,
-      serverUrl: context.serverId,
+      serverUrl,
       workerId,
     });
     await restarted.acceptBootstrap({
+      serverId,
       ownerId,
       principal: workerPrincipal,
       grants: [workerGrant],
@@ -165,7 +169,7 @@ describe("worker surface private-state adapter", () => {
   it("rejects missing, revoked, and another worker's grant", async () => {
     const workerA = await WorkerEncryptionService.open({
       dataDirectory: await directory(),
-      serverUrl: context.serverId,
+      serverUrl,
       workerId: "worker-a",
     });
     await expect(
@@ -178,6 +182,7 @@ describe("worker surface private-state adapter", () => {
     ).rejects.toMatchObject({ state: "missing-grant" });
 
     await workerA.acceptBootstrap({
+      serverId,
       ownerId,
       principal: principal(workerA, "worker-a", "revoked"),
       grants: [],
@@ -193,7 +198,7 @@ describe("worker surface private-state adapter", () => {
 
     const workerB = await WorkerEncryptionService.open({
       dataDirectory: await directory(),
-      serverUrl: context.serverId,
+      serverUrl,
       workerId: "worker-b",
     });
     const principalB = principal(workerB, "worker-b");
@@ -213,6 +218,7 @@ describe("worker surface private-state adapter", () => {
     });
     await expect(
       workerB.acceptBootstrap({
+        serverId,
         ownerId,
         principal: principalB,
         grants: [grant(principalB.id, wrappedForA)],

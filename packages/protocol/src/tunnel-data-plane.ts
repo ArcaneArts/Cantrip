@@ -121,6 +121,7 @@ export const tunnelDataPlaneFrameHeaderSchema = z.discriminatedUnion("kind", [
     kind: z.literal("connect"),
     target: tunnelDataPlaneTargetSchema,
     initialCreditBytes: creditSchema,
+    diagnosticTraceId: z.string().uuid().optional(),
   }),
   frameBaseSchema.extend({
     kind: z.literal("accepted"),

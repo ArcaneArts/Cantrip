@@ -3861,6 +3861,7 @@ export const tunnelAttachmentInitializeSchema = z
   .object({
     type: z.literal("initialize"),
     clientId: tunnelResourceIdSchema,
+    diagnosticTraceId: z.string().uuid().optional(),
   })
   .strict();
 
