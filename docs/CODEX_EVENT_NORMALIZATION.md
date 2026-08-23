@@ -60,6 +60,19 @@ Normalized event-card free text and lists are bounded before transport.
 Agent-message text remains the durable answer itself. Existing command output
 uses its separate tail-truncation policy.
 
+Failed MCP calls are normalized independently of server name. The worker
+prefers the runtime error, then inspects MCP `isError` text and structured
+error envelopes, including nested JSON wrappers. It retains at most 4,000
+characters of redacted error text plus a bounded code and explicit
+retryability when the MCP result supplies them. Failed cards open with that
+reason visible. Successful non-CodeGraph payloads remain omitted from compact
+activity, while displayed CodeGraph result text stays bounded and redacted.
+
+An item observed only at completion does not receive an invented start
+timestamp. Trajectory labels that span as `derived` (or `instant` when no
+span exists); only a runtime start notification or timestamp can make item
+timing `exact`.
+
 ## Durability and recovery
 
 The server stores normalized events as typed chat-message content with stable

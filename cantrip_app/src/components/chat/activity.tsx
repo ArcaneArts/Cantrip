@@ -96,6 +96,31 @@ function CorrelationDetails({ activity }: { activity: AgentActivity }) {
   );
 }
 
+function McpFailureDetails({ activity }: { activity: AgentActivity }) {
+  if (activity.type !== "mcpToolCall") return null;
+  return (
+    <>
+      {activity.error ? (
+        <p className="whitespace-pre-wrap break-words text-destructive">
+          {activity.error}
+        </p>
+      ) : null}
+      {activity.errorCode ? (
+        <p>
+          Error code <code className="font-mono">{activity.errorCode}</code>
+        </p>
+      ) : null}
+      {activity.retryable !== null && activity.retryable !== undefined ? (
+        <p>
+          {activity.retryable
+            ? "The operation reports that it can be retried."
+            : "The operation reports that it should not be retried unchanged."}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 function RichActivityIcon({ activity }: { activity: AgentActivity }) {
   const className = "size-4 shrink-0 text-muted-foreground";
   switch (activity.type) {
@@ -246,9 +271,7 @@ function RichActivityDetails({ activity }: { activity: AgentActivity }) {
       if (isCodeGraphActivity(activity)) {
         return (
           <div className="space-y-2">
-            {activity.error ? (
-              <p className="text-destructive">{activity.error}</p>
-            ) : null}
+            <McpFailureDetails activity={activity} />
             {activity.resultText ? (
               <div className="max-h-96 overflow-auto rounded-lg bg-muted/40 p-3 text-foreground">
                 <Markdown>{activity.resultText}</Markdown>
@@ -266,9 +289,7 @@ function RichActivityDetails({ activity }: { activity: AgentActivity }) {
       }
       return (
         <div className="space-y-1">
-          {activity.error ? (
-            <p className="text-destructive">{activity.error}</p>
-          ) : null}
+          <McpFailureDetails activity={activity} />
           {formatDuration(activity.durationMs) ? (
             <p>Duration {formatDuration(activity.durationMs)}</p>
           ) : null}
@@ -473,6 +494,9 @@ export function Activity({ activity }: { activity: AgentActivity }) {
         : activity.type === "mcpToolCall"
           ? Boolean(
               activity.error ||
+              activity.errorCode ||
+              (activity.retryable !== null &&
+                activity.retryable !== undefined) ||
               activity.resultText ||
               activity.durationMs !== null,
             )
@@ -496,7 +520,10 @@ export function Activity({ activity }: { activity: AgentActivity }) {
     return (
       <details
         className="group min-w-0 py-1 text-sm"
-        open={activity.type === "notice" && activity.level === "error"}
+        open={
+          (activity.type === "notice" && activity.level === "error") ||
+          (activity.type === "mcpToolCall" && activity.status === "failed")
+        }
       >
         <summary
           className={cn(

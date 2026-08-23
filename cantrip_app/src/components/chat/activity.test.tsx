@@ -128,6 +128,29 @@ describe("rich Codex activity", () => {
     expect(markup).not.toContain("session-1:403");
   });
 
+  it("opens failed MCP cards with their normalized reason and retryability", () => {
+    const activity: AgentActivity = {
+      type: "mcpToolCall",
+      id: "cantrip-failure",
+      status: "failed",
+      server: "cantrip",
+      tool: "worktree_create",
+      query: null,
+      resultText: null,
+      error: "Unrecognized key: from. Use baseRevision.",
+      errorCode: "-32602",
+      retryable: false,
+      durationMs: null,
+    };
+    const markup = renderToStaticMarkup(<Activity activity={activity} />);
+    expect(markup).toContain("<details");
+    expect(markup).toContain("open");
+    expect(markup).toContain("Unrecognized key: from. Use baseRevision.");
+    expect(markup).toContain("Error code");
+    expect(markup).toContain("-32602");
+    expect(markup).toContain("should not be retried unchanged");
+  });
+
   it("hides completed turn work behind the elapsed-time disclosure", () => {
     const completed = renderToStaticMarkup(
       <ActivityGroup
