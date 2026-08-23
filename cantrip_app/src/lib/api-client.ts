@@ -205,8 +205,8 @@ export async function requestResponse(
         event: "api.request.failed",
         method,
         operation: "request",
+        path: route,
         reasonCode: "network-error",
-        route,
         status: "failed",
         subsystem: "api",
       },
@@ -230,8 +230,8 @@ export async function requestResponse(
         event: "api.request.retry",
         method,
         operation: "request",
+        path: route,
         reasonCode: "csrf-recovered",
-        route,
         subsystem: "api",
       });
       response = await sendRequest(url, method, init);
@@ -254,10 +254,10 @@ export async function requestResponse(
         event: "api.request.failed",
         method,
         operation: "request",
+        path: route,
         reasonCode: `http-${response.status}`,
         requestId: responseRequestId(response),
-        route,
-        status: response.status,
+        statusCode: response.status,
         subsystem: "api",
       },
     );
@@ -273,9 +273,9 @@ export async function requestResponse(
       event: "api.request.slow",
       method,
       operation: "request",
+      path: route,
       requestId: responseRequestId(response),
-      route,
-      status: response.status,
+      statusCode: response.status,
       subsystem: "api",
     });
   }

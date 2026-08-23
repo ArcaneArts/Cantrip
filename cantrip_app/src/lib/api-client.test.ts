@@ -8,6 +8,7 @@ import {
   scopedClientStorageKey,
   setClientSession,
 } from "./client-session";
+import { clearClientLogs, readClientLogs } from "./client-log-relay";
 
 const user = {
   id: "account-one",
@@ -19,6 +20,7 @@ const user = {
 
 afterEach(() => {
   clearClientSession();
+  clearClientLogs();
   vi.unstubAllGlobals();
 });
 
@@ -89,6 +91,39 @@ describe("authenticated API client", () => {
     });
     expect(listener).toHaveBeenCalledWith("Authentication is required.");
     unsubscribe();
+  });
+
+  it("retains a sanitized route and status in failed-request diagnostics", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: "Not Found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(
+      request(
+        "/api/explorers/11a148ef-be4b-4d61-a23e-53682c891f45/code-attachments",
+        { method: "POST", body: "{}" },
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+
+    const failure = readClientLogs().records.find(
+      (record) =>
+        typeof record.context === "object" &&
+        record.context !== null &&
+        "event" in record.context &&
+        record.context.event === "api.request.failed",
+    );
+    expect(failure?.context).toMatchObject({
+      method: "POST",
+      path: "/api/explorers/:id/code-attachments",
+      reasonCode: "http-404",
+      statusCode: 404,
+    });
   });
 
   it("can return an explicitly allowed conflict response for compare-and-set APIs", async () => {
