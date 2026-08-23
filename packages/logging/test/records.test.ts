@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  minimizeServiceLogRecordInput,
   normalizeLogError,
   sanitizeLogContext,
   sanitizeLogText,
@@ -193,5 +194,40 @@ describe("structured service logs", () => {
       },
     });
     expect(filesystemRecord.context).not.toHaveProperty("path");
+  });
+
+  it("persists only stable destination rejection codes", () => {
+    const persisted = minimizeServiceLogRecordInput({
+      ...baseRecord,
+      context: {
+        event: "direct_attachment.telemetry.recorded",
+        lastDestinationRejectionCode: "protected-record-unavailable",
+      },
+    });
+    expect(persisted.context).toMatchObject({
+      lastDestinationRejectionCode: "protected-record-unavailable",
+    });
+
+    const nonProtected = minimizeServiceLogRecordInput({
+      ...baseRecord,
+      context: {
+        event: "direct_attachment.telemetry.recorded",
+        lastDestinationRejectionCode: "target-rejected",
+      },
+    });
+    expect(nonProtected.context).toMatchObject({
+      lastDestinationRejectionCode: "target-rejected",
+    });
+
+    const untrusted = minimizeServiceLogRecordInput({
+      ...baseRecord,
+      context: {
+        event: "direct_attachment.telemetry.recorded",
+        lastDestinationRejectionCode: "secret-bearing-arbitrary-value",
+      },
+    });
+    expect(untrusted.context).not.toHaveProperty(
+      "lastDestinationRejectionCode",
+    );
   });
 });

@@ -563,11 +563,13 @@ describe("DirectAttachmentCoordinator", () => {
           bytesToLocal: 80,
           connectionsClosed: 1,
           connectionsOpened: 2,
+          lastDestinationRejectionCode: "protected-record-unavailable",
         },
       ),
     ).toMatchObject({
       bytesFromLocal: 120,
       bytesToLocal: 80,
+      lastDestinationRejectionCode: "protected-record-unavailable",
       resourceId: "tunnel-1",
       resourceKind: "tunnel",
     });
@@ -609,6 +611,9 @@ describe("DirectAttachmentCoordinator", () => {
     expect(prepared.diagnosticTraceId).toBe(diagnosticTraceId);
     expect(activation.diagnosticTraceId).toBe(diagnosticTraceId);
     expect(telemetry.diagnosticTraceId).toBe(diagnosticTraceId);
+    expect(telemetry.lastDestinationRejectionCode).toBe(
+      "protected-record-unavailable",
+    );
     expect(finalState).toMatchObject({
       diagnosticTraceId,
       mode: "direct-tunnel",
@@ -619,9 +624,15 @@ describe("DirectAttachmentCoordinator", () => {
       toLocalBytes: 80,
       openedConnectionCount: 2,
       closedConnectionCount: 1,
+      lastDestinationRejectionCode: "protected-record-unavailable",
     });
 
     const persisted = captured.records.map(minimizeServiceLogRecordInput);
+    expect(
+      eventContext(persisted, "direct_attachment.telemetry.recorded"),
+    ).toMatchObject({
+      lastDestinationRejectionCode: "protected-record-unavailable",
+    });
     expect(
       eventContext(persisted, "direct_attachment.finalized"),
     ).toMatchObject({
@@ -634,6 +645,7 @@ describe("DirectAttachmentCoordinator", () => {
       toLocalBytes: 80,
       openedConnectionCount: 2,
       closedConnectionCount: 1,
+      lastDestinationRejectionCode: "protected-record-unavailable",
     });
     const serialized = JSON.stringify(captured.records);
     const persistedSerialized = JSON.stringify(persisted);

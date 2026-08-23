@@ -396,6 +396,7 @@ export class DirectBroker {
   async close(): Promise<void> {
     this.revokeAll("Worker stopping");
     this.#advertisement = { available: false };
+    for (const socket of this.#webSockets?.clients ?? []) socket.terminate();
     this.#webSockets?.close();
     this.#webSockets = null;
     const server = this.#server;

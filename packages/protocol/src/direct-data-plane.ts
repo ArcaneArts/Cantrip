@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { tunnelDataPlaneTargetSchema } from "./tunnel-data-plane.js";
+import {
+  tunnelDataPlaneRejectionCodeSchema,
+  tunnelDataPlaneTargetSchema,
+} from "./tunnel-data-plane.js";
 
 export const directRouteStateSchema = z.enum([
   "probing",
@@ -118,6 +121,7 @@ export const directTransportTelemetrySchema = z
     bytesToLocal: directTransportCounterSchema,
     connectionsClosed: directTransportCounterSchema,
     connectionsOpened: directTransportCounterSchema,
+    lastDestinationRejectionCode: tunnelDataPlaneRejectionCodeSchema.optional(),
   })
   .strict();
 

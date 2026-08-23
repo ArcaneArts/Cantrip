@@ -261,6 +261,17 @@ const PERSISTED_STRING_CONTEXT_KEYS = new Set([
   "subsystem",
   "windowKind",
 ]);
+const PERSISTED_DESTINATION_REJECTION_CODES = new Set([
+  "target-unavailable",
+  "target-rejected",
+  "limit-exceeded",
+  "unauthorized",
+  "protocol-error",
+  "congested",
+  "protected-target-invalid",
+  "protected-record-unavailable",
+  "protected-endpoint-unavailable",
+]);
 const PERSISTED_NUMBER_CONTEXT_KEY =
   /(?:^attempt$|^durationMs$|^errorStatus$|^statusCode$|Count$|Bytes$|Ms$|Percent$|BasisPoints$)/u;
 const PERSISTED_ID_CONTEXT_KEY = /Ids?$/u;
@@ -276,6 +287,15 @@ function minimizeLogContext(
   const source = sanitized as Record<string, unknown>;
   const output: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(source)) {
+    if (key === "lastDestinationRejectionCode") {
+      if (
+        typeof nested === "string" &&
+        PERSISTED_DESTINATION_REJECTION_CODES.has(nested)
+      ) {
+        output.lastDestinationRejectionCode = nested;
+      }
+      continue;
+    }
     if (key === "path") {
       if (typeof nested === "string" && nested.startsWith("/api/")) {
         output.path = truncateText(nested, 512);

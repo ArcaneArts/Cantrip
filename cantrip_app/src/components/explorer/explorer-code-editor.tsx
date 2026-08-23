@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { subscribeBrowserCodeAttachmentUnavailable } from "@/lib/browser-code-tunnel";
 import {
   CODE_WORKBENCH_READY_TIMEOUT_MS,
+  CodeWorkbenchFrameLoadTracker,
   codeWorkbenchStageError,
   createCodeWorkbenchFrameMount,
   isCodeWorkbenchReadyEvent,
@@ -97,10 +98,12 @@ export function ExplorerCodeEditor({
     null,
   );
   const [frameReadyNonce, setFrameReadyNonce] = useState<string | null>(null);
+  const [frameDocumentVersion, setFrameDocumentVersion] = useState(0);
   const [readyKey, setReadyKey] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const automaticReconnectsRef = useRef(0);
   const frameFailureNonceRef = useRef<string | null>(null);
+  const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
   const frameRef = useRef<HTMLIFrameElement>(null);
   const navigationQueueRef = useRef(new SerialTaskQueue());
   const attachmentLifecycleRef =
@@ -138,6 +141,7 @@ export function ExplorerCodeEditor({
     [
       preferredAttachment?.attachment.attachmentId,
       preferredAttachment?.attachment.url,
+      frameDocumentVersion,
     ],
   );
   const frameReady =
@@ -376,6 +380,20 @@ export function ExplorerCodeEditor({
                 "The embedded editor document could not load.",
               ).message,
             );
+          }}
+          onLoad={() => {
+            if (
+              !frameMount ||
+              !frameLoadsRef.current.observe(frameMount.nonce)
+            ) {
+              return;
+            }
+            setFrameReadyNonce(null);
+            setFrameFailureNonce(null);
+            frameFailureNonceRef.current = null;
+            setReadyKey(null);
+            setError(null);
+            setFrameDocumentVersion((version) => version + 1);
           }}
           ref={frameRef}
           referrerPolicy="no-referrer"

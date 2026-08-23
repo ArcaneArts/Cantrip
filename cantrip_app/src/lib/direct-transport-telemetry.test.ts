@@ -66,6 +66,7 @@ describe("reportDesktopDirectTransportTelemetry", () => {
       bytesToLocal: 20,
       connectionsClosed: 1,
       connectionsOpened: 1,
+      lastDestinationRejectionCode: "protected-endpoint-unavailable",
     } as const;
     mocks.listDesktopTunnels.mockResolvedValue([forward]);
 
@@ -73,7 +74,11 @@ describe("reportDesktopDirectTransportTelemetry", () => {
 
     expect(mocks.recordDirectAttachmentTelemetry).toHaveBeenCalledWith(
       "capability-1",
-      expect.objectContaining({ bytesFromLocal: 10, bytesToLocal: 20 }),
+      expect.objectContaining({
+        bytesFromLocal: 10,
+        bytesToLocal: 20,
+        lastDestinationRejectionCode: "protected-endpoint-unavailable",
+      }),
     );
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
   });

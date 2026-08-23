@@ -26,6 +26,12 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
           bytesToLocal: forward.bytesToLocal ?? 0,
           connectionsClosed: forward.connectionsClosed ?? 0,
           connectionsOpened: forward.connectionsOpened ?? 0,
+          ...(forward.lastDestinationRejectionCode
+            ? {
+                lastDestinationRejectionCode:
+                  forward.lastDestinationRejectionCode,
+              }
+            : {}),
         }).catch(() => undefined),
       ),
   );

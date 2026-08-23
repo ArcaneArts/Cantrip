@@ -19,6 +19,7 @@ import {
   startDesktopTunnel,
   stopDesktopTunnel,
   stopDesktopTunnelForward,
+  type DesktopTunnelDestinationRejectionCode,
 } from "@/lib/desktop-tunnel";
 
 export interface PreferredCodeAttachment {
@@ -102,25 +103,30 @@ export type CodeAttachmentHealthFailureKind =
 
 export class CodeAttachmentHealthError extends Error {
   readonly attemptCount: number;
+  readonly destinationRejectionCode?: DesktopTunnelDestinationRejectionCode;
   readonly failureKind: CodeAttachmentHealthFailureKind;
   readonly statusCode?: number;
 
   constructor(options: {
     attemptCount: number;
     cause?: unknown;
+    destinationRejectionCode?: DesktopTunnelDestinationRejectionCode;
     failureKind: CodeAttachmentHealthFailureKind;
     statusCode?: number;
   }) {
     super(
-      options.failureKind === "http-response"
-        ? `Cantrip Code returned HTTP ${options.statusCode ?? 500}.`
-        : options.failureKind === "network-error"
-          ? "Cantrip Code could not be reached."
-          : "Cantrip Code did not respond before the readiness deadline.",
+      options.destinationRejectionCode
+        ? `Cantrip Code transport was rejected (${options.destinationRejectionCode}).`
+        : options.failureKind === "http-response"
+          ? `Cantrip Code returned HTTP ${options.statusCode ?? 500}.`
+          : options.failureKind === "network-error"
+            ? "Cantrip Code could not be reached."
+            : "Cantrip Code did not respond before the readiness deadline.",
       { cause: options.cause },
     );
     this.name = "CodeAttachmentHealthError";
     this.attemptCount = options.attemptCount;
+    this.destinationRejectionCode = options.destinationRejectionCode;
     this.failureKind = options.failureKind;
     this.statusCode = options.statusCode;
   }
@@ -128,6 +134,89 @@ export class CodeAttachmentHealthError extends Error {
   get relayFallbackEligible(): boolean {
     return this.failureKind !== "http-response";
   }
+}
+
+function withDestinationRejection(
+  error: unknown,
+  destinationRejectionCode:
+    DesktopTunnelDestinationRejectionCode | null | undefined,
+): unknown {
+  if (
+    !destinationRejectionCode ||
+    !(error instanceof CodeAttachmentHealthError)
+  ) {
+    return error;
+  }
+  if (error.destinationRejectionCode === destinationRejectionCode) return error;
+  return new CodeAttachmentHealthError({
+    attemptCount: error.attemptCount,
+    cause: error,
+    destinationRejectionCode,
+    failureKind: error.failureKind,
+    statusCode: error.statusCode,
+  });
+}
+
+interface DesktopTunnelRejectionSnapshot {
+  count: number;
+  code: DesktopTunnelDestinationRejectionCode | null;
+}
+
+async function awaitWithAbort<T>(
+  operation: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  signal?.throwIfAborted();
+  if (!signal) return operation;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void operation.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function currentDestinationRejectionSnapshot(
+  tunnelId: string,
+  signal?: AbortSignal,
+): Promise<DesktopTunnelRejectionSnapshot> {
+  const current = (
+    await awaitWithAbort(
+      invoke<
+        Array<{
+          destinationRejectedCount?: number;
+          lastDestinationRejectionCode?: DesktopTunnelDestinationRejectionCode | null;
+          tunnelId: string;
+        }>
+      >("list_tunnel_forwards").catch(() => []),
+      signal,
+    )
+  ).find((candidate) => candidate.tunnelId === tunnelId);
+  return {
+    code: current?.lastDestinationRejectionCode ?? null,
+    count: current?.destinationRejectedCount ?? 0,
+  };
+}
+
+async function currentDestinationRejection(
+  tunnelId: string,
+  fallback: DesktopTunnelDestinationRejectionCode | null | undefined,
+  signal?: AbortSignal,
+): Promise<DesktopTunnelDestinationRejectionCode | null> {
+  return (
+    (await currentDestinationRejectionSnapshot(tunnelId, signal)).code ??
+    fallback ??
+    null
+  );
 }
 
 class CodeAttachmentAttemptTimeout extends Error {}
@@ -217,6 +306,7 @@ export async function waitForDirectCodeAttachmentReady(
     attemptTimeoutMs?: number;
     attempts?: number;
     diagnosticTraceId?: string;
+    destinationRejectionBaseline?: number;
     healthPhase?: "direct" | "initial" | "relay";
     retryDelayMs?: number;
     signal?: AbortSignal;
@@ -257,6 +347,12 @@ export async function waitForDirectCodeAttachmentReady(
   let lastAttemptKind: CodeAttachmentHealthFailureKind = "network-error";
   let lastStatusCode: number | undefined;
   let attempted = 0;
+  const initialRejectionCount =
+    typeof options.destinationRejectionBaseline === "number" &&
+    Number.isSafeInteger(options.destinationRejectionBaseline) &&
+    options.destinationRejectionBaseline >= 0
+      ? options.destinationRejectionBaseline
+      : 0;
   clientLogger.event("info", "Cantrip Code health check started", {
     attachmentId: options.attachmentId,
     attemptLimit: attempts,
@@ -342,6 +438,22 @@ export async function waitForDirectCodeAttachmentReady(
           : "network-error";
       lastStatusCode = undefined;
       lastError = error;
+      if (options.tunnelId) {
+        const rejection = await currentDestinationRejectionSnapshot(
+          options.tunnelId,
+          options.signal,
+        );
+        throwIfCancelled();
+        if (rejection.code && rejection.count > initialRejectionCount) {
+          lastError = new CodeAttachmentHealthError({
+            attemptCount: attempted,
+            cause: error,
+            destinationRejectionCode: rejection.code,
+            failureKind: lastAttemptKind,
+          });
+          break;
+        }
+      }
     }
     if (attempt + 1 < attempts && monotonicNow() < deadlineMs) {
       try {
@@ -424,6 +536,7 @@ export async function preferProtectedCodeAttachment(
       await waitForDirectCodeAttachmentReady(attachment, {
         attachmentId: wire.attachmentId,
         diagnosticTraceId,
+        destinationRejectionBaseline: forward.destinationRejectedCount ?? 0,
         healthPhase: forward.routeState === "local-direct" ? "direct" : "relay",
         sessionId: wire.sessionId,
         signal: options.signal,
@@ -465,6 +578,7 @@ export async function preferProtectedCodeAttachment(
           await waitForDirectCodeAttachmentReady(attachment, {
             attachmentId: wire.attachmentId,
             diagnosticTraceId,
+            destinationRejectionBaseline: forward.destinationRejectedCount ?? 0,
             healthPhase: "relay",
             sessionId: wire.sessionId,
             signal: options.signal,
@@ -478,13 +592,34 @@ export async function preferProtectedCodeAttachment(
         }
       }
     } catch (error) {
+      if (!(error instanceof CodeAttachmentHealthError)) {
+        throw error;
+      }
+      const destinationRejectionCode = await currentDestinationRejection(
+        wire.tunnelId,
+        forward.lastDestinationRejectionCode,
+        options.signal,
+      );
+      options.signal?.throwIfAborted();
+      if (destinationRejectionCode) {
+        clientLogger.event("warn", "Cantrip Code destination rejected", {
+          attachmentId: wire.attachmentId,
+          diagnosticTraceId,
+          event: "code.attachment.destination.rejected",
+          operation: "check-health",
+          reasonCode: destinationRejectionCode,
+          sessionId: wire.sessionId,
+          status: "rejected",
+          subsystem: "code",
+          tunnelId: wire.tunnelId,
+        });
+      }
       if (
-        !(error instanceof CodeAttachmentHealthError) ||
         !error.relayFallbackEligible ||
         forward.routeState !== "local-direct" ||
         !forward.relayFallbackAvailable
       ) {
-        throw error;
+        throw withDestinationRejection(error, destinationRejectionCode);
       }
       forward = await forceDesktopTunnelRelay(forward, {
         signal: options.signal,
@@ -501,15 +636,29 @@ export async function preferProtectedCodeAttachment(
           failureKind: "total-timeout",
         });
       }
-      await waitForDirectCodeAttachmentReady(attachment, {
-        attachmentId: wire.attachmentId,
-        diagnosticTraceId,
-        healthPhase: "relay",
-        sessionId: wire.sessionId,
-        signal: options.signal,
-        totalTimeoutMs: remainingHealthMs,
-        tunnelId: wire.tunnelId,
-      });
+      try {
+        await waitForDirectCodeAttachmentReady(attachment, {
+          attachmentId: wire.attachmentId,
+          diagnosticTraceId,
+          destinationRejectionBaseline: forward.destinationRejectedCount ?? 0,
+          healthPhase: "relay",
+          sessionId: wire.sessionId,
+          signal: options.signal,
+          totalTimeoutMs: remainingHealthMs,
+          tunnelId: wire.tunnelId,
+        });
+      } catch (relayError) {
+        if (!(relayError instanceof CodeAttachmentHealthError)) {
+          throw relayError;
+        }
+        const relayDestinationRejection = await currentDestinationRejection(
+          wire.tunnelId,
+          forward.lastDestinationRejectionCode ?? destinationRejectionCode,
+          options.signal,
+        );
+        options.signal?.throwIfAborted();
+        throw withDestinationRejection(relayError, relayDestinationRejection);
+      }
     }
     protectedAttachmentIds.set(wire.tunnelId, forward.attachmentId);
     return {

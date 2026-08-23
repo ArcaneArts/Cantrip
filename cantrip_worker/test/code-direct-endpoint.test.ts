@@ -1,4 +1,8 @@
-import { createServer, type IncomingMessage } from "node:http";
+import {
+  createServer,
+  request as requestHttp,
+  type IncomingMessage,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -196,6 +200,58 @@ describe("CodeDirectEndpointManager", () => {
           "code.direct.http-upstream-failed",
       ),
     ).toHaveLength(1);
+  });
+
+  it("destroys the OpenVSCode request when the downstream client disconnects", async () => {
+    let upstreamReached!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      upstreamReached = resolve;
+    });
+    let upstreamClosed!: () => void;
+    const closed = new Promise<void>((resolve) => {
+      upstreamClosed = resolve;
+    });
+    const editor = createServer((request) => {
+      upstreamReached();
+      request.once("close", upstreamClosed);
+    });
+    await new Promise<void>((resolve) =>
+      editor.listen(0, "127.0.0.1", resolve),
+    );
+    closers.push(
+      () => new Promise<void>((resolve) => editor.close(() => resolve())),
+    );
+    const port = (editor.address() as AddressInfo).port;
+    const supervisor = {
+      beginTunnelStream: vi.fn(),
+      endTunnelStream: vi.fn(),
+      proxyTarget: vi.fn(() => ({
+        codeTabId: "code-abort",
+        connectionToken: "abort-token-must-stay-private",
+        editorOrigin: `http://127.0.0.1:${port}`,
+        processInstanceId: "process-abort",
+        workspaceUri: "file:///worker/project.code-workspace",
+      })),
+    } as unknown as CodeSupervisor;
+    const endpoints = new CodeDirectEndpointManager(supervisor);
+    closers.push(() => endpoints.close());
+    const target = await endpoints.prepareProtected(
+      crypto.randomUUID(),
+      "session-abort",
+    );
+
+    const downstream = requestHttp(
+      `http://${target.host}:${target.port}/code/hang`,
+    );
+    downstream.on("error", () => undefined);
+    downstream.end();
+    await reached;
+    downstream.destroy();
+
+    await closed;
+    await vi.waitFor(() =>
+      expect(supervisor.endTunnelStream).toHaveBeenCalledOnce(),
+    );
   });
 
   it("bounds WebSocket success while retaining its first connection correlation", async () => {

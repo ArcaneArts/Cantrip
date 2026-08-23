@@ -67,11 +67,13 @@ pub struct TunnelForwardSummary {
     pub relay_fallback_available: bool,
     pub direct_capability_id: Option<String>,
     pub direct_fallback_reason: Option<String>,
+    pub last_destination_rejection_code: Option<String>,
     pub tunnel_id: String,
     pub bytes_from_local: u64,
     pub bytes_to_local: u64,
     pub connections_closed: u64,
     pub connections_opened: u64,
+    pub destination_rejected_count: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -86,6 +88,7 @@ pub struct TunnelForwardTerminalSnapshot {
     pub connections_opened: u64,
     pub destination_accepted_count: u64,
     pub destination_rejected_count: u64,
+    pub last_destination_rejection_code: Option<String>,
     pub open_queued_count: u64,
     pub open_sent_count: u64,
     pub route_disconnect_count: u64,
@@ -278,6 +281,7 @@ mod desktop {
         connections_opened: AtomicU64,
         destination_accepted: AtomicU64,
         destination_rejected: AtomicU64,
+        last_destination_rejection_code: Mutex<Option<String>>,
         opens_queued: AtomicU64,
         opens_sent: AtomicU64,
         route_disconnects: AtomicU64,
@@ -309,7 +313,10 @@ mod desktop {
             true
         }
 
-        fn record_destination_rejection(&self) -> bool {
+        fn record_destination_rejection(&self, code: &str) -> bool {
+            if let Ok(mut last) = self.last_destination_rejection_code.lock() {
+                *last = Some(safe_reason_code(code));
+            }
             Self::add(&self.destination_rejected, 1) == 0
         }
 
@@ -373,12 +380,18 @@ mod desktop {
             summary.bytes_to_local = self.bytes_to_local.load(Ordering::Relaxed);
             summary.connections_closed = self.connections_closed.load(Ordering::Relaxed);
             summary.connections_opened = self.connections_opened.load(Ordering::Relaxed);
+            summary.destination_rejected_count = self.destination_rejected.load(Ordering::Relaxed);
             summary.route_state = match self.route_state.load(Ordering::Relaxed) {
                 1 => "local-direct",
                 2 => "relayed",
                 3 => "degraded",
                 _ => summary.route_state,
             };
+            summary.last_destination_rejection_code = self
+                .last_destination_rejection_code
+                .lock()
+                .ok()
+                .and_then(|code| code.clone());
         }
 
         async fn wait_for_connections_drained(&self) {
@@ -407,6 +420,11 @@ mod desktop {
                 connections_opened: self.connections_opened.load(Ordering::Acquire),
                 destination_accepted_count: self.destination_accepted.load(Ordering::Acquire),
                 destination_rejected_count: self.destination_rejected.load(Ordering::Acquire),
+                last_destination_rejection_code: self
+                    .last_destination_rejection_code
+                    .lock()
+                    .ok()
+                    .and_then(|code| code.clone()),
                 open_queued_count: self.opens_queued.load(Ordering::Acquire),
                 open_sent_count: self.opens_sent.load(Ordering::Acquire),
                 route_disconnect_count: self.route_disconnects.load(Ordering::Acquire),
@@ -818,11 +836,13 @@ mod desktop {
             relay_fallback_available,
             direct_capability_id: startup.direct_capability_id,
             direct_fallback_reason: startup.direct_fallback_reason,
+            last_destination_rejection_code: None,
             tunnel_id: summary_identity.3,
             bytes_from_local: 0,
             bytes_to_local: 0,
             connections_closed: 0,
             connections_opened: 0,
+            destination_rejected_count: 0,
         };
         let mut forwards = state
             .forwards
@@ -1073,6 +1093,7 @@ mod desktop {
                 "attachmentId": forward.summary.attachment_id,
                 "diagnosticTraceId": forward.summary.diagnostic_trace_id,
                 "event": "desktop.tunnel.forward.snapshot",
+                "lastDestinationRejectionCode": snapshot.last_destination_rejection_code,
                 "operation": "stop-forward",
                 "reasonCode": reason,
                 "routeState": match forward.counters.route_state.load(Ordering::Relaxed) {
@@ -2051,7 +2072,7 @@ mod desktop {
                         }
                         FrameHeader::Rejected { code, .. } => {
                             let wire_reason_code = safe_reason_code(&code);
-                            if counters.record_destination_rejection() {
+                            if counters.record_destination_rejection(&code) {
                                 diagnostic_event(
                                     open_connection.app.as_ref(),
                                     "warn",
@@ -2161,6 +2182,10 @@ mod desktop {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use serde_json::Value;
+        use std::io::{BufRead, BufReader, Write};
+        use std::path::PathBuf;
+        use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
         use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -2171,6 +2196,492 @@ mod desktop {
                 key_revision: 3,
                 key: Zeroizing::new(vec![7; 32]),
             })
+        }
+
+        struct CodeTransportHarness {
+            child: Child,
+            input: ChildStdin,
+            output: BufReader<ChildStdout>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct CodeTransportHarnessReady {
+            broker: Value,
+            relay_path: String,
+            relay_port: u16,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct CodeTransportHarnessSnapshot {
+            active_streams: usize,
+            hanging_request_closed: bool,
+            hanging_request_reached: bool,
+            observed_requests: Vec<CodeTransportObservedRequest>,
+            relay_stats: CodeTransportRelayStats,
+            worker_contexts: Vec<Value>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct CodeTransportObservedRequest {
+            authenticated: bool,
+            forwarded_prefix: Option<String>,
+            url: String,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct CodeTransportRelayStats {
+            active_connections: u64,
+            closed_connections: u64,
+            opened_connections: u64,
+            rejected_connections: u64,
+        }
+
+        impl CodeTransportHarness {
+            fn start(configuration: &Value) -> (Self, CodeTransportHarnessReady) {
+                let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .and_then(|path| path.parent())
+                    .expect("repository root")
+                    .to_path_buf();
+                let executable = repository.join("node_modules/.bin/tsx");
+                let fixture =
+                    repository.join("cantrip_worker/test/fixtures/code-transport-e2e-harness.ts");
+                let mut child = Command::new(executable)
+                    .arg(fixture)
+                    .current_dir(repository)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::inherit())
+                    .spawn()
+                    .expect("start the real worker transport harness");
+                let input = child.stdin.take().expect("harness stdin");
+                let output = BufReader::new(child.stdout.take().expect("harness stdout"));
+                let mut harness = Self {
+                    child,
+                    input,
+                    output,
+                };
+                harness.send(configuration);
+                let ready = harness.read("CANTRIP_CODE_E2E_READY ");
+                (harness, ready)
+            }
+
+            fn send(&mut self, value: &Value) {
+                writeln!(self.input, "{value}").expect("write harness command");
+                self.input.flush().expect("flush harness command");
+            }
+
+            fn read<T: serde::de::DeserializeOwned>(&mut self, prefix: &str) -> T {
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    let bytes = self
+                        .output
+                        .read_line(&mut line)
+                        .expect("read harness output");
+                    assert!(bytes > 0, "transport harness stopped before {prefix}");
+                    if let Some(value) = line.strip_prefix(prefix) {
+                        return serde_json::from_str(value).expect("valid harness response");
+                    }
+                    if let Some(value) = line.strip_prefix("CANTRIP_CODE_E2E_FATAL ") {
+                        panic!("transport harness failed: {value}");
+                    }
+                }
+            }
+
+            fn snapshot(&mut self) -> CodeTransportHarnessSnapshot {
+                self.send(&json!({ "type": "snapshot" }));
+                self.read("CANTRIP_CODE_E2E_SNAPSHOT ")
+            }
+
+            fn shutdown(mut self) -> CodeTransportHarnessSnapshot {
+                self.send(&json!({ "type": "shutdown" }));
+                let snapshot = self.read("CANTRIP_CODE_E2E_DONE ");
+                let status = self.child.wait().expect("wait for harness shutdown");
+                assert!(status.success(), "transport harness shutdown failed");
+                snapshot
+            }
+        }
+
+        impl Drop for CodeTransportHarness {
+            fn drop(&mut self) {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+            }
+        }
+
+        fn direct_binding(
+            configuration: &Value,
+            capability_id: &str,
+        ) -> crate::direct_probe::DirectCapabilityBinding {
+            serde_json::from_value(json!({
+                "capabilityId": capability_id,
+                "ownerId": configuration["ownerId"],
+                "authSessionId": "auth-session-e2e",
+                "workerId": configuration["workerId"],
+                "resourceKind": "tunnel",
+                "resourceId": configuration["tunnelId"],
+                "attachmentId": configuration["attachmentId"],
+                "channels": ["tunnel-data"],
+                "expiresAt": configuration["expiresAt"],
+                "leaseExpiresAt": configuration["leaseExpiresAt"],
+            }))
+            .expect("direct capability binding")
+        }
+
+        fn direct_identity(configuration: &Value) -> RouteIdentity {
+            let client_id = configuration["clientId"].as_str().unwrap();
+            let attachment_id = configuration["attachmentId"].as_str().unwrap();
+            let worker_id = configuration["workerId"].as_str().unwrap();
+            RouteIdentity {
+                attachment_id: attachment_id.into(),
+                destination_endpoint_id: format!("worker:{worker_id}"),
+                source_endpoint_id: format!("desktop:{client_id}:{attachment_id}"),
+                tunnel_id: configuration["tunnelId"].as_str().unwrap().into(),
+            }
+        }
+
+        async fn local_http(local_port: u16, path: &str) -> Vec<u8> {
+            let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, local_port))
+                .await
+                .expect("connect native loopback listener");
+            stream
+                .write_all(
+                    format!(
+                        "GET {path} HTTP/1.1\r\nHost: cantrip-code.local\r\nConnection: close\r\n\r\n"
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .expect("write loopback HTTP request");
+            let mut response = Vec::new();
+            let read = timeout(Duration::from_secs(10), stream.read_to_end(&mut response))
+                .await
+                .expect("loopback HTTP response deadline");
+            if let Err(error) = read {
+                assert_eq!(
+                    error.kind(),
+                    std::io::ErrorKind::ConnectionReset,
+                    "read loopback HTTP response"
+                );
+            }
+            response
+        }
+
+        #[tokio::test]
+        async fn native_loopback_reaches_real_protected_code_route_and_falls_back_to_relay() {
+            let tunnel_id = Uuid::new_v4().to_string();
+            let attachment_id = Uuid::new_v4().to_string();
+            let worker_id = format!("worker-{}", Uuid::new_v4());
+            let client_id = format!("client-{}", Uuid::new_v4());
+            let owner_id = format!("owner-{}", Uuid::new_v4());
+            let session_id = Uuid::new_v4().to_string();
+            let good_capability_id = Uuid::new_v4().to_string();
+            let bad_capability_id = Uuid::new_v4().to_string();
+            let good_diagnostic_trace_id = Uuid::new_v4().to_string();
+            let bad_diagnostic_trace_id = Uuid::new_v4().to_string();
+            let good_secret = URL_SAFE_NO_PAD.encode([11_u8; 48]);
+            let bad_secret = URL_SAFE_NO_PAD.encode([12_u8; 48]);
+            let relay_secret = URL_SAFE_NO_PAD.encode([13_u8; 48]);
+            let data_key = URL_SAFE_NO_PAD.encode([14_u8; 32]);
+            let expires_at = (chrono::Utc::now() + chrono::Duration::seconds(30))
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let lease_expires_at = (chrono::Utc::now() + chrono::Duration::seconds(60))
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let configuration = json!({
+                "attachmentId": attachment_id,
+                "badCapabilityId": bad_capability_id,
+                "badDiagnosticTraceId": bad_diagnostic_trace_id,
+                "badSecret": bad_secret,
+                "clientId": client_id,
+                "dataProtection": {
+                    "formatVersion": 1,
+                    "algorithm": "AES-256-GCM",
+                    "keyRevision": 1,
+                    "key": data_key,
+                },
+                "expiresAt": expires_at,
+                "goodCapabilityId": good_capability_id,
+                "goodDiagnosticTraceId": good_diagnostic_trace_id,
+                "goodSecret": good_secret,
+                "leaseExpiresAt": lease_expires_at,
+                "ownerId": owner_id,
+                "relaySecret": relay_secret,
+                "serverId": "https://cantrip-native-e2e.test",
+                "sessionId": session_id,
+                "tunnelId": tunnel_id,
+                "workerId": worker_id,
+            });
+            let (mut harness, ready) = CodeTransportHarness::start(&configuration);
+            let protection = Arc::new(DataProtection {
+                key_revision: 1,
+                key: Zeroizing::new(vec![14_u8; 32]),
+            });
+
+            // The successful direct pass starts at a real native loopback TCP
+            // listener and ends at the worker's OpenVSCode-compatible upstream.
+            let broker = serde_json::from_value(ready.broker.clone()).unwrap();
+            let good_connection = connect_verified(DirectProbeRequest {
+                broker,
+                binding: direct_binding(&configuration, &good_capability_id),
+                secret: good_secret.clone(),
+            })
+            .await
+            .expect("authenticate the production direct broker");
+            let direct_listener = Arc::new(bind_listener(None).await.unwrap());
+            let direct_port = direct_listener.local_addr().unwrap().port();
+            let direct_counters = Arc::new(ForwardCounters::default());
+            let (direct_stop, mut direct_stop_receiver) = oneshot::channel();
+            let (_direct_control, mut direct_control_receiver) = mpsc::channel(1);
+            let direct_task = {
+                let listener = direct_listener.clone();
+                let counters = direct_counters.clone();
+                let protection = protection.clone();
+                let identity = direct_identity(&configuration);
+                let trace = good_diagnostic_trace_id.clone();
+                tokio::spawn(async move {
+                    run_session(
+                        None,
+                        Some(&trace),
+                        listener.as_ref(),
+                        good_connection.socket,
+                        identity,
+                        Some(protection),
+                        counters,
+                        &mut direct_stop_receiver,
+                        &mut direct_control_receiver,
+                    )
+                    .await
+                })
+            };
+            let direct_response = local_http(
+                direct_port,
+                "/code/?folder=%2Fworker%2Fescape&preserved=direct",
+            )
+            .await;
+            let direct_text = String::from_utf8(direct_response).unwrap();
+            assert!(direct_text.starts_with("HTTP/1.1 200"));
+            assert!(direct_text.contains("openvscode-compatible-workbench"));
+
+            // A second in-flight upstream is cancelled by shutting down the
+            // native route. This must close both proxy legs and stream state.
+            let mut hanging = TcpStream::connect((Ipv4Addr::LOCALHOST, direct_port))
+                .await
+                .unwrap();
+            hanging
+                .write_all(
+                    b"GET /code/hang HTTP/1.1\r\nHost: cantrip-code.local\r\nConnection: keep-alive\r\n\r\n",
+                )
+                .await
+                .unwrap();
+            sleep(Duration::from_millis(200)).await;
+            direct_stop.send(()).unwrap();
+            assert!(matches!(
+                direct_task.await.unwrap().unwrap(),
+                SessionOutcome::Stopped
+            ));
+            let mut cancelled_response = Vec::new();
+            timeout(
+                Duration::from_secs(5),
+                hanging.read_to_end(&mut cancelled_response),
+            )
+            .await
+            .expect("cancelled local connection deadline")
+            .expect("cancelled local connection closed");
+            direct_counters.wait_for_connections_drained().await;
+            assert_eq!(
+                direct_counters.connections_opened.load(Ordering::Acquire),
+                2
+            );
+            assert_eq!(
+                direct_counters.connections_closed.load(Ordering::Acquire),
+                2
+            );
+
+            // The second direct capability authenticates successfully but its
+            // protected record is deliberately corrupt. The route stays
+            // connected, returns the exact safe rejection code, and is then
+            // explicitly switched to the production server relay broker.
+            let broker = serde_json::from_value(ready.broker.clone()).unwrap();
+            let bad_connection = connect_verified(DirectProbeRequest {
+                broker,
+                binding: direct_binding(&configuration, &bad_capability_id),
+                secret: bad_secret.clone(),
+            })
+            .await
+            .expect("authenticate the connected-but-broken direct route");
+            let fallback_listener = Arc::new(bind_listener(None).await.unwrap());
+            let fallback_port = fallback_listener.local_addr().unwrap().port();
+            let fallback_counters = Arc::new(ForwardCounters::default());
+            let (_bad_stop, mut bad_stop_receiver) = oneshot::channel();
+            let (bad_control, mut bad_control_receiver) = mpsc::channel(1);
+            let bad_task = {
+                let listener = fallback_listener.clone();
+                let counters = fallback_counters.clone();
+                let identity = direct_identity(&configuration);
+                let protection = protection.clone();
+                let trace = bad_diagnostic_trace_id.clone();
+                tokio::spawn(async move {
+                    run_session(
+                        None,
+                        Some(&trace),
+                        listener.as_ref(),
+                        bad_connection.socket,
+                        identity,
+                        Some(protection),
+                        counters,
+                        &mut bad_stop_receiver,
+                        &mut bad_control_receiver,
+                    )
+                    .await
+                })
+            };
+            let rejected = local_http(fallback_port, "/code/_cantrip/health").await;
+            assert!(rejected.is_empty());
+            assert_eq!(
+                fallback_counters
+                    .destination_rejected
+                    .load(Ordering::Acquire),
+                1
+            );
+            assert_eq!(
+                fallback_counters
+                    .last_destination_rejection_code
+                    .lock()
+                    .unwrap()
+                    .as_deref(),
+                Some("protected-record-unavailable")
+            );
+            assert!(fallback_counters.record_route_fallback());
+            let (fallback_completed, fallback_completion) = oneshot::channel();
+            bad_control
+                .send(RouteControl::ForceRelay {
+                    completed: fallback_completed,
+                })
+                .await
+                .unwrap();
+            let SessionOutcome::ForceRelay(fallback_completed) = bad_task.await.unwrap().unwrap()
+            else {
+                panic!("connected broken direct route did not yield to relay")
+            };
+
+            let relay_request = StartTunnelForwardRequest {
+                attachment_id: attachment_id.clone(),
+                client_id: client_id.clone(),
+                data_protection: Some(TunnelDataProtectionRequest {
+                    format_version: 1,
+                    algorithm: "AES-256-GCM".into(),
+                    key_revision: 1,
+                    key: data_key.clone(),
+                }),
+                diagnostic_trace_id: Some(bad_diagnostic_trace_id.clone()),
+                direct: None,
+                expires_at: expires_at.clone(),
+                preferred_local_port: None,
+                relay: Some(RelayTunnelRequest {
+                    connect_path: ready.relay_path.clone(),
+                    secret: relay_secret.clone(),
+                    secret_expires_at_epoch_ms: u64::MAX,
+                    server_url: format!("http://127.0.0.1:{}", ready.relay_port),
+                }),
+                tunnel_id: tunnel_id.clone(),
+            };
+            let relay = relay_request.relay.as_ref().unwrap();
+            let relay_url = web_socket_url(&relay.server_url, &relay.connect_path).unwrap();
+            let (relay_socket, relay_identity) =
+                connect_attachment(&relay_url, &relay_secret, &relay_request)
+                    .await
+                    .expect("connect the production relay broker");
+            fallback_completed.send(Ok(())).unwrap();
+            assert!(fallback_completion.await.unwrap().is_ok());
+            let (relay_stop, mut relay_stop_receiver) = oneshot::channel();
+            let (_relay_control, mut relay_control_receiver) = mpsc::channel(1);
+            let relay_task = {
+                let listener = fallback_listener.clone();
+                let counters = fallback_counters.clone();
+                let protection = protection.clone();
+                let trace = bad_diagnostic_trace_id.clone();
+                tokio::spawn(async move {
+                    run_session(
+                        None,
+                        Some(&trace),
+                        listener.as_ref(),
+                        relay_socket,
+                        relay_identity,
+                        Some(protection),
+                        counters,
+                        &mut relay_stop_receiver,
+                        &mut relay_control_receiver,
+                    )
+                    .await
+                })
+            };
+            let relay_response = local_http(
+                fallback_port,
+                "/code/?workspace=%2Fworker%2Fescape.code-workspace&preserved=relay",
+            )
+            .await;
+            let relay_text = String::from_utf8(relay_response).unwrap();
+            assert!(relay_text.starts_with("HTTP/1.1 200"));
+            assert!(relay_text.contains("openvscode-compatible-workbench"));
+            relay_stop.send(()).unwrap();
+            assert!(matches!(
+                relay_task.await.unwrap().unwrap(),
+                SessionOutcome::Stopped
+            ));
+            fallback_counters.wait_for_connections_drained().await;
+            assert_eq!(
+                fallback_counters.connections_opened.load(Ordering::Acquire),
+                2
+            );
+            assert_eq!(
+                fallback_counters.connections_closed.load(Ordering::Acquire),
+                2
+            );
+            assert_eq!(fallback_counters.route_fallbacks.load(Ordering::Acquire), 1);
+
+            let snapshot = harness.snapshot();
+            assert_eq!(snapshot.active_streams, 0);
+            assert!(snapshot.hanging_request_reached);
+            assert!(snapshot.hanging_request_closed);
+            assert!(snapshot.observed_requests.iter().all(|request| {
+                request.authenticated && request.forwarded_prefix.as_deref() == Some("/code")
+            }));
+            assert!(snapshot.observed_requests.iter().any(|request| {
+                request.url
+                    == "/?preserved=direct&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
+            }));
+            assert!(snapshot.observed_requests.iter().any(|request| {
+                request.url
+                    == "/?preserved=relay&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
+            }));
+            assert_eq!(snapshot.relay_stats.opened_connections, 1);
+            assert_eq!(snapshot.relay_stats.closed_connections, 1);
+            assert_eq!(snapshot.relay_stats.active_connections, 0);
+            assert_eq!(snapshot.relay_stats.rejected_connections, 0);
+            assert!(snapshot.worker_contexts.iter().any(|context| {
+                context["event"] == "tunnel.protected-target.rejected"
+                    && context["reasonCode"] == "protected-record-open-failed"
+                    && context["diagnosticTraceId"] == bad_diagnostic_trace_id
+                    && context["tunnelId"] == tunnel_id
+            }));
+            assert!(snapshot.worker_contexts.iter().any(|context| {
+                context["event"] == "code.direct.http-upstream-responded"
+                    && context["diagnosticTraceId"] == good_diagnostic_trace_id
+                    && context["tunnelId"] == tunnel_id
+            }));
+            let diagnostics = serde_json::to_string(&snapshot.worker_contexts).unwrap();
+            for secret in [&good_secret, &bad_secret, &relay_secret, &data_key] {
+                assert!(!diagnostics.contains(secret));
+            }
+            assert!(!diagnostics.contains("openvscode-e2e-token-must-stay-private"));
+            assert!(!diagnostics.contains("/worker/private/project.code-workspace"));
+            let final_snapshot = harness.shutdown();
+            assert_eq!(final_snapshot.active_streams, 0);
         }
 
         #[test]
@@ -2883,8 +3394,16 @@ mod desktop {
             assert!(!counters.register_connection("connection-2"));
             assert!(counters.is_first_diagnostic_connection("connection-1"));
             assert!(!counters.is_first_diagnostic_connection("connection-2"));
-            assert!(counters.record_destination_rejection());
-            assert!(!counters.record_destination_rejection());
+            assert!(counters.record_destination_rejection("protected-record-unavailable"));
+            assert!(!counters.record_destination_rejection("protected-endpoint-unavailable"));
+            assert_eq!(
+                counters
+                    .last_destination_rejection_code
+                    .lock()
+                    .unwrap()
+                    .as_deref(),
+                Some("protected-endpoint-unavailable")
+            );
             assert!(counters.record_route_disconnect());
             assert!(!counters.record_route_disconnect());
             assert!(counters.record_route_selection());
@@ -2910,11 +3429,13 @@ mod desktop {
                 relay_fallback_available: true,
                 direct_capability_id: Some("replacement-capability".into()),
                 direct_fallback_reason: Some("connected-route-unusable".into()),
+                last_destination_rejection_code: Some("protected-record-unavailable".into()),
                 tunnel_id: "tunnel".into(),
                 bytes_from_local: 0,
                 bytes_to_local: 0,
                 connections_closed: 0,
                 connections_opened: 0,
+                destination_rejected_count: 1,
             };
 
             assert!(!confirm_direct_retired_summary(
