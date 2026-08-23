@@ -1,13 +1,15 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type {
+  GitBranchAction,
   GitManagedBranch,
   GitStatus,
   ProjectWorktreeCreate,
   ProjectWorktreeSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowRightLeft,
   Check,
   ChevronsUpDown,
   CircleAlert,
@@ -52,8 +54,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { getProjectWorktreeBranches } from "@/lib/api";
+import {
+  applyProjectWorktreeBranchAction,
+  getProjectWorktreeBranches,
+  previewProjectWorktreeBranchAction,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+import {
+  ReviewedOperationDialog,
+  useReviewedOperation,
+} from "../git/reviewed-operation";
 
 export type WorktreeStatusMap = Record<string, GitStatus | undefined>;
 
@@ -191,8 +202,11 @@ function DetailRows({ details }: { details: WorktreeDetails }) {
                     : details.worktree.lifecycleState}
         </dd>
         <dt>Path</dt>
-        <dd className="truncate font-mono text-[10px] text-foreground">
-          {details.worktree.displayPath}
+        <dd
+          className="min-w-0 break-all font-mono text-[9px] leading-4 text-muted-foreground"
+          title={details.worktree.displayPath}
+        >
+          {compactWorktreePath(details.worktree.displayPath)}
         </dd>
         {details.leaseOwner ? (
           <>
@@ -280,6 +294,25 @@ export interface WorktreeControlActions {
   onOpenTerminal?(): void;
   onSelect(worktreeId: string): void;
   onSetChatMode?(mode: "agent-managed" | "pinned"): void;
+}
+
+export function compactWorktreePath(path: string, segmentCount = 3): string {
+  const normalized = path.trim();
+  if (!normalized || segmentCount < 1) return normalized;
+  const separator = normalized.includes("\\") ? "\\" : "/";
+  const segments = normalized.split(/[\\/]+/).filter(Boolean);
+  if (segments.length <= segmentCount) return normalized;
+  return `…${separator}${segments.slice(-segmentCount).join(separator)}`;
+}
+
+export function worktreeSwitchBranchOptions(
+  branches: readonly GitManagedBranch[],
+): GitManagedBranch[] {
+  return [...branches].sort((left, right) => {
+    if (left.current !== right.current) return left.current ? -1 : 1;
+    if (left.kind !== right.kind) return left.kind === "local" ? -1 : 1;
+    return left.name.localeCompare(right.name);
+  });
 }
 
 export function worktreeExistingBranchOptions(
@@ -384,6 +417,7 @@ export function WorktreeControl({
   actions,
   currentWorktreeId,
   leaseOwner,
+  projectId,
   statuses,
   workers,
   worktrees,
@@ -391,10 +425,59 @@ export function WorktreeControl({
   actions: WorktreeControlActions;
   currentWorktreeId: string;
   leaseOwner?: string | null;
+  projectId: string;
   statuses: WorktreeStatusMap;
   workers: WorkerSummary[];
   worktrees: ProjectWorktreeSummary[];
 }) {
+  const queryClient = useQueryClient();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const branchInventory = useQuery({
+    enabled: menuOpen || branchPickerOpen,
+    queryFn: () => getProjectWorktreeBranches(projectId, currentWorktreeId),
+    queryKey: ["worktree-branches", projectId, currentWorktreeId],
+    retry: false,
+    staleTime: 15_000,
+  });
+  const branchOperation = useReviewedOperation({
+    preview: (action: GitBranchAction) =>
+      previewProjectWorktreeBranchAction(projectId, currentWorktreeId, action),
+    apply: ({ preview, request }) =>
+      applyProjectWorktreeBranchAction(
+        projectId,
+        currentWorktreeId,
+        request,
+        preview.token,
+      ),
+    missingReviewMessage: "Review a branch switch first.",
+    onSuccess: (result) => {
+      queryClient.setQueryData(
+        ["worktree-branches", projectId, currentWorktreeId],
+        result.branches,
+      );
+      queryClient.setQueryData(
+        ["worktree-status", projectId, currentWorktreeId],
+        result.status,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["worktrees", projectId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-status", projectId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["worktree-history", projectId, currentWorktreeId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: [
+          "worktree-revision-candidates",
+          projectId,
+          currentWorktreeId,
+        ],
+      });
+    },
+  });
   const current = worktrees.find(({ id }) => id === currentWorktreeId);
   if (!current) return null;
   const worker = workerFor(current, workers);
@@ -404,112 +487,257 @@ export function WorktreeControl({
     status: statuses[current.id],
     worktree: current,
   };
+  const branchOptions = worktreeSwitchBranchOptions(
+    branchInventory.data?.branches ?? [],
+  );
+  const controlDisabled = actions.disabled || branchOperation.busy;
   return (
-    <DropdownMenuPrimitive.Root>
-      <DropdownMenuPrimitive.Trigger asChild>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 max-w-48 gap-1.5 px-2 text-xs text-muted-foreground"
-          title={worktreeTooltip(details)}
-        >
-          {actions.pending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <GitFork
-              className={cn(
-                "size-3.5",
-                !current.isPrimary && "text-violet-500",
-              )}
-            />
-          )}
-          <span className="truncate">{current.name}</span>
-          {actions.chatMode === "pinned" ? <Pin className="size-3" /> : null}
-        </Button>
-      </DropdownMenuPrimitive.Trigger>
-      <DropdownMenuPrimitive.Portal>
-        <StyledDropdownMenuContent
-          align="end"
-          sideOffset={4}
-          className="min-w-64"
-        >
-          <DetailRows details={details} />
-          <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-          <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Worktrees
-          </DropdownMenuPrimitive.Label>
-          {worktrees.map((worktree) => (
-            <StyledDropdownMenuItem
-              key={worktree.id}
-              disabled={actions.disabled || worktree.lifecycleState !== "ready"}
-              onSelect={() => actions.onSelect(worktree.id)}
-            >
-              {worktree.isPrimary ? (
-                <GitBranch className="size-4" />
-              ) : (
-                <GitFork className="size-4 text-violet-500" />
-              )}
-              <span className="min-w-0 flex-1 truncate">{worktree.name}</span>
-              {worktree.id === currentWorktreeId ? (
-                <Check className="size-3.5" />
-              ) : null}
-            </StyledDropdownMenuItem>
-          ))}
-          <StyledDropdownMenuItem
-            disabled={actions.disabled}
-            onSelect={actions.onCreate}
+    <>
+      <DropdownMenuPrimitive.Root open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenuPrimitive.Trigger asChild>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 max-w-48 gap-1.5 px-2 text-xs text-muted-foreground"
+            title={worktreeTooltip(details)}
           >
-            <Plus className="size-4" /> Create worktree…
-          </StyledDropdownMenuItem>
-          {actions.onSetChatMode ? (
-            <>
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <StyledDropdownMenuItem
-                disabled={actions.disabled}
-                onSelect={() =>
-                  actions.onSetChatMode!(
-                    actions.chatMode === "pinned" ? "agent-managed" : "pinned",
-                  )
-                }
-              >
-                {actions.chatMode === "pinned" ? (
-                  <PinOff className="size-4" />
-                ) : (
-                  <Pin className="size-4" />
+            {actions.pending || branchOperation.busy ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <GitFork
+                className={cn(
+                  "size-3.5",
+                  !current.isPrimary && "text-violet-500",
                 )}
-                {actions.chatMode === "pinned"
-                  ? "Return to Agent managed"
-                  : "Pin to this worktree"}
+              />
+            )}
+            <span className="truncate">{current.name}</span>
+            {actions.chatMode === "pinned" ? <Pin className="size-3" /> : null}
+          </Button>
+        </DropdownMenuPrimitive.Trigger>
+        <DropdownMenuPrimitive.Portal>
+          <StyledDropdownMenuContent
+            align="end"
+            sideOffset={4}
+            className="w-[min(24rem,calc(100vw-1rem))]"
+          >
+            <DetailRows details={details} />
+            <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+            <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Git checkout
+            </DropdownMenuPrimitive.Label>
+            <StyledDropdownMenuItem
+              disabled={
+                controlDisabled ||
+                !worker.online ||
+                current.lifecycleState !== "ready"
+              }
+              onSelect={() => setBranchPickerOpen(true)}
+            >
+              <ArrowRightLeft className="size-4" />
+              <span className="shrink-0">Switch branch…</span>
+              <span className="min-w-0 flex-1 truncate text-right font-mono text-[10px] text-muted-foreground">
+                {current.branch ?? "detached HEAD"}
+              </span>
+            </StyledDropdownMenuItem>
+            <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+            <DropdownMenuPrimitive.Label className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Worktrees
+            </DropdownMenuPrimitive.Label>
+            {worktrees.map((worktree) => (
+              <StyledDropdownMenuItem
+                key={worktree.id}
+                disabled={
+                  controlDisabled || worktree.lifecycleState !== "ready"
+                }
+                onSelect={() => actions.onSelect(worktree.id)}
+              >
+                {worktree.isPrimary ? (
+                  <GitBranch className="size-4" />
+                ) : (
+                  <GitFork className="size-4 text-violet-500" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{worktree.name}</span>
+                {worktree.id === currentWorktreeId ? (
+                  <Check className="size-3.5" />
+                ) : null}
               </StyledDropdownMenuItem>
-              {actions.onOpenTerminal ? (
-                <StyledDropdownMenuItem onSelect={actions.onOpenTerminal}>
-                  <SquareTerminal className="size-4" /> Open Terminal here
+            ))}
+            <StyledDropdownMenuItem
+              disabled={controlDisabled}
+              onSelect={actions.onCreate}
+            >
+              <Plus className="size-4" /> Create worktree…
+            </StyledDropdownMenuItem>
+            {actions.onSetChatMode ? (
+              <>
+                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+                <StyledDropdownMenuItem
+                  disabled={actions.disabled}
+                  onSelect={() =>
+                    actions.onSetChatMode!(
+                      actions.chatMode === "pinned"
+                        ? "agent-managed"
+                        : "pinned",
+                    )
+                  }
+                >
+                  {actions.chatMode === "pinned" ? (
+                    <PinOff className="size-4" />
+                  ) : (
+                    <Pin className="size-4" />
+                  )}
+                  {actions.chatMode === "pinned"
+                    ? "Return to Agent managed"
+                    : "Pin to this worktree"}
                 </StyledDropdownMenuItem>
+                {actions.onOpenTerminal ? (
+                  <StyledDropdownMenuItem onSelect={actions.onOpenTerminal}>
+                    <SquareTerminal className="size-4" /> Open Terminal here
+                  </StyledDropdownMenuItem>
+                ) : null}
+                {actions.onOpenExplorer ? (
+                  <StyledDropdownMenuItem onSelect={actions.onOpenExplorer}>
+                    <FolderTree className="size-4" /> Open Explorer here
+                  </StyledDropdownMenuItem>
+                ) : null}
+                {actions.onOpenHistory ? (
+                  <StyledDropdownMenuItem onSelect={actions.onOpenHistory}>
+                    <History className="size-4" /> Open in Git
+                  </StyledDropdownMenuItem>
+                ) : null}
+              </>
+            ) : null}
+            {actions.error ? (
+              <>
+                <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+                <div className="flex max-w-72 gap-2 px-2 py-1.5 text-xs text-destructive">
+                  <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                  <span>{actions.error}</span>
+                </div>
+              </>
+            ) : null}
+          </StyledDropdownMenuContent>
+        </DropdownMenuPrimitive.Portal>
+      </DropdownMenuPrimitive.Root>
+
+      <Dialog
+        open={branchPickerOpen}
+        onOpenChange={(open) => {
+          if (!branchOperation.busy) setBranchPickerOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Switch branch</DialogTitle>
+            <DialogDescription>
+              Choose the branch to check out in {current.name}. Branches owned
+              by another worktree stay with that worktree.
+            </DialogDescription>
+          </DialogHeader>
+          <Command className="rounded-lg border">
+            <CommandInput autoFocus placeholder="Search branches…" />
+            <CommandList>
+              {branchInventory.isLoading ? (
+                <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> Loading branches…
+                </div>
               ) : null}
-              {actions.onOpenExplorer ? (
-                <StyledDropdownMenuItem onSelect={actions.onOpenExplorer}>
-                  <FolderTree className="size-4" /> Open Explorer here
-                </StyledDropdownMenuItem>
+              {branchInventory.isError ? (
+                <div className="px-4 py-8 text-center text-sm text-destructive">
+                  {branchInventory.error instanceof Error
+                    ? branchInventory.error.message
+                    : "Could not load branches."}
+                </div>
               ) : null}
-              {actions.onOpenHistory ? (
-                <StyledDropdownMenuItem onSelect={actions.onOpenHistory}>
-                  <History className="size-4" /> Open in Git
-                </StyledDropdownMenuItem>
+              {!branchInventory.isLoading && !branchInventory.isError ? (
+                <>
+                  <CommandEmpty>No branches found.</CommandEmpty>
+                  <CommandGroup heading="Branches">
+                    {branchOptions.map((branch) => {
+                      const ownedByAnotherWorktree = Boolean(
+                        branch.worktree && !branch.worktree.current,
+                      );
+                      return (
+                        <CommandItem
+                          key={branch.fullRef}
+                          value={`${branch.kind} ${branch.name} ${branch.upstream ?? ""}`}
+                          disabled={branch.current || ownedByAnotherWorktree}
+                          onSelect={() => {
+                            setBranchPickerOpen(false);
+                            branchOperation.review({
+                              type: "switch",
+                              name: branch.name,
+                              kind: branch.kind,
+                            });
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "size-3.5 shrink-0",
+                              branch.current ? "opacity-100" : "opacity-0",
+                            )}
+                          />
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                            {branch.name}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                            {ownedByAnotherWorktree
+                              ? `In ${branch.worktree!.label}`
+                              : branch.current
+                                ? "Current"
+                                : branch.kind === "remote"
+                                  ? "Remote"
+                                  : "Local"}
+                          </span>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                </>
               ) : null}
-            </>
-          ) : null}
-          {actions.error ? (
-            <>
-              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
-              <div className="flex max-w-72 gap-2 px-2 py-1.5 text-xs text-destructive">
-                <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
-                <span>{actions.error}</span>
-              </div>
-            </>
-          ) : null}
-        </StyledDropdownMenuContent>
-      </DropdownMenuPrimitive.Portal>
-    </DropdownMenuPrimitive.Root>
+            </CommandList>
+          </Command>
+        </DialogContent>
+      </Dialog>
+
+      <ReviewedOperationDialog
+        operation={branchOperation}
+        title="Confirm branch switch"
+        description={
+          branchOperation.request
+            ? `Switch ${current.name} to ${
+                branchOperation.request.type === "switch"
+                  ? branchOperation.request.name
+                  : "the selected branch"
+              }.`
+            : "Review this branch switch."
+        }
+        loadingLabel="Inspecting branch state…"
+        loadingClassName="h-32"
+        previewErrorFallback="Branch preview failed."
+        applyErrorFallback="Branch switch failed."
+        applyLabel="Switch branch"
+        contentClassName="max-w-xl"
+        bodyClassName="grid gap-3"
+      >
+        {(preview) => (
+          <div className="space-y-2 rounded-lg bg-muted/30 p-3 text-xs">
+            <p className="font-medium">{preview.summary}</p>
+            {preview.branch ? (
+              <p className="break-all font-mono text-muted-foreground">
+                {preview.branch.fullRef} @ {preview.branch.hash}
+              </p>
+            ) : null}
+            {preview.warnings.map((warning) => (
+              <p key={warning} className="text-amber-700 dark:text-amber-300">
+                {warning}
+              </p>
+            ))}
+          </div>
+        )}
+      </ReviewedOperationDialog>
+    </>
   );
 }
 

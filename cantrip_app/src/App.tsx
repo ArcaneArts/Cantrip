@@ -7527,6 +7527,7 @@ export function App() {
                   gitHistoryHeader?.section === "graph") ? (
                   <WorktreeControl
                     currentWorktreeId={activeWorktreeId}
+                    projectId={selectedProject.id}
                     worktrees={worktrees.data ?? []}
                     statuses={worktreeStatuses}
                     workers={workers.data ?? []}
