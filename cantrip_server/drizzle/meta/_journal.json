@@ -1009,6 +1009,13 @@
       "when": 1787443829546,
       "tag": "0143_first_random",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1787444604427,
+      "tag": "0144_goofy_shaman",
+      "breakpoints": true
     }
   ]
 }

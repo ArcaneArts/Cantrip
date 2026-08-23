@@ -307,6 +307,7 @@ import {
 import {
   createBrowser,
   createCodeTab,
+  acknowledgeChatCompletion,
   chatAttachmentContentUrl,
   answerChatPlan,
   createChat,
@@ -4950,6 +4951,19 @@ export function App() {
           current.map((chat) => (chat.id === renamed.id ? renamed : chat)),
       ),
   });
+  const { mutate: acknowledgeSelectedChatCompletion } = useMutation({
+    mutationFn: ({ chatId }: { chatId: string; projectId: string }) =>
+      acknowledgeChatCompletion(chatId),
+    onSuccess: (acknowledged) =>
+      queryClient.setQueryData<ChatSummary[]>(
+        ["chats", acknowledged.projectId],
+        (current = []) =>
+          current.map((chat) =>
+            chat.id === acknowledged.id ? acknowledged : chat,
+          ),
+      ),
+    retry: 2,
+  });
   const forkChatMutation = useMutation({
     mutationFn: (chatId: string) => {
       const source = queryClient
@@ -5426,6 +5440,42 @@ export function App() {
       : undefined;
   const selectedChat =
     selectedSurface?.kind === "chat" ? selectedSurface.entity : undefined;
+  const completionAcknowledgementAttemptRef = useRef<string | null>(null);
+  useEffect(() => {
+    completionAcknowledgementAttemptRef.current = null;
+  }, [selectedChat?.id]);
+  useEffect(() => {
+    if (!selectedChat?.hasUnreadCompletion) {
+      completionAcknowledgementAttemptRef.current = null;
+      return;
+    }
+    const acknowledgeIfActive = () => {
+      if (
+        document.visibilityState !== "visible" ||
+        !document.hasFocus() ||
+        completionAcknowledgementAttemptRef.current === selectedChat.id
+      ) {
+        return;
+      }
+      completionAcknowledgementAttemptRef.current = selectedChat.id;
+      acknowledgeSelectedChatCompletion({
+        chatId: selectedChat.id,
+        projectId: selectedChat.projectId,
+      });
+    };
+    acknowledgeIfActive();
+    window.addEventListener("focus", acknowledgeIfActive);
+    document.addEventListener("visibilitychange", acknowledgeIfActive);
+    return () => {
+      window.removeEventListener("focus", acknowledgeIfActive);
+      document.removeEventListener("visibilitychange", acknowledgeIfActive);
+    };
+  }, [
+    acknowledgeSelectedChatCompletion,
+    selectedChat?.hasUnreadCompletion,
+    selectedChat?.id,
+    selectedChat?.projectId,
+  ]);
   const selectedTaskView = Boolean(
     selectedChat?.experience === "task" &&
     !taskChatViewIds.has(selectedChat.id),

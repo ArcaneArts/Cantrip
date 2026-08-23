@@ -92,6 +92,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "archive-worker",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "archive-repository",
     repositoryId: "archive-repository",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
@@ -230,6 +231,39 @@ describe.sequential("chat archive API", () => {
     expect(blocked.statusCode).toBe(409);
     expect(blocked.json()).toEqual({ error: "Stop the running chat first." });
     await database.repository.setChatStatus(running.id, "idle");
+  });
+
+  it("persists completed turns until one client acknowledges them", async () => {
+    const chat = await createChat("Unread completion");
+    expect(chat.hasUnreadCompletion).toBe(false);
+
+    await database.repository.setChatStatus(chat.id, "running");
+    await database.repository.setChatStatus(chat.id, "idle");
+    const completed = chatWireListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/chats`,
+        })
+      ).json(),
+    );
+    expect(completed.find(({ id }) => id === chat.id)).toMatchObject({
+      hasUnreadCompletion: true,
+      status: "idle",
+    });
+
+    const acknowledgedResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/completion/read`,
+      payload: {},
+    });
+    expect(acknowledgedResponse.statusCode).toBe(200);
+    expect(
+      chatWireSummarySchema.parse(acknowledgedResponse.json()),
+    ).toMatchObject({
+      hasUnreadCompletion: false,
+      id: chat.id,
+    });
   });
 
   it("permanently removes archived chats after explicit deletion or expiry", async () => {

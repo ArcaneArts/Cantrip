@@ -24732,6 +24732,21 @@ export async function buildApp({
     },
   );
 
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/completion/read",
+    async (request, reply) => {
+      const chat = await repository.acknowledgeChatCompletion(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!chat) {
+        return reply.code(404).send({ error: "Chat not found." });
+      }
+      publishChatSummary(chat.id, chat.projectId);
+      return reply.send(chatWireSummarySchema.parse(chat));
+    },
+  );
+
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/composer-draft",
     async (request, reply) => {

@@ -97,6 +97,29 @@ const browserId = (id: string) => `browser:${id}`;
 const codeId = (id: string) => `code:${id}`;
 const viewId = (id: string) => `view:${id}`;
 
+export function ChatActivityStatus({ chat }: { chat: ChatSummary }) {
+  return chat.hasPendingPlanQuestion ? (
+    <CircleHelp
+      className="ml-auto size-3.5 text-amber-500"
+      aria-label="Codex is waiting for a Plan Mode answer"
+    />
+  ) : chat.automationPaused ? (
+    <CirclePause
+      className="ml-auto size-3.5 text-amber-500"
+      aria-label="Agent automation is paused"
+    />
+  ) : chat.status === "running" ? (
+    <Loader2 className="ml-auto size-3 animate-spin" />
+  ) : chat.hasUnreadCompletion ? (
+    <span
+      aria-label="Agent turn finished; open to dismiss"
+      className="ml-auto size-1.5 shrink-0 rounded-full bg-sky-400"
+      role="status"
+      title="Agent turn finished"
+    />
+  ) : null;
+}
+
 function SortableChat({
   active,
   chat,
@@ -149,21 +172,7 @@ function SortableChat({
         />
       }
       sortId={chatId(chat.id)}
-      status={
-        chat.hasPendingPlanQuestion ? (
-          <CircleHelp
-            className="ml-auto size-3.5 text-amber-500"
-            aria-label="Codex is waiting for a Plan Mode answer"
-          />
-        ) : chat.automationPaused ? (
-          <CirclePause
-            className="ml-auto size-3.5 text-amber-500"
-            aria-label="Agent automation is paused"
-          />
-        ) : chat.status === "running" ? (
-          <Loader2 className="ml-auto size-3 animate-spin" />
-        ) : null
-      }
+      status={<ChatActivityStatus chat={chat} />}
       title={chat.title}
       renameValue={renameValue}
       onCancelRename={onRename}
@@ -261,6 +270,7 @@ function GroupedSidebarTab({
   renameValue,
   setRenameValue,
   sortId,
+  status,
   submitRename,
   title,
   visualKind,
@@ -277,6 +287,7 @@ function GroupedSidebarTab({
   renameValue: string;
   setRenameValue(value: string): void;
   sortId: string;
+  status?: ReactNode;
   submitRename(): void;
   title: string;
   visualKind: ProjectTabGroupVisualKind;
@@ -289,6 +300,7 @@ function GroupedSidebarTab({
         <ProjectSurfaceIcon kind={visualKind} className="size-3.5 shrink-0" />
       }
       sortId={sortId}
+      status={status}
       title={title}
       renameValue={renameValue}
       onCancelRename={onRename}
@@ -987,6 +999,23 @@ export function ProjectChatList({
                           const visualKinds = new Set(
                             group.members.map(tabVisualKind),
                           );
+                          const groupedChats = group.members.flatMap(
+                            (member) =>
+                              member.kind === "chat" ? [member.chat] : [],
+                          );
+                          const statusChat =
+                            groupedChats.find(
+                              (chat) => chat.hasPendingPlanQuestion,
+                            ) ??
+                            groupedChats.find(
+                              (chat) => chat.automationPaused,
+                            ) ??
+                            groupedChats.find(
+                              (chat) => chat.status === "running",
+                            ) ??
+                            groupedChats.find(
+                              (chat) => chat.hasUnreadCompletion,
+                            );
                           return (
                             <GroupedSidebarTab
                               key={group.id}
@@ -1012,6 +1041,11 @@ export function ProjectChatList({
                               renameValue={renameValue}
                               setRenameValue={setRenameValue}
                               sortId={group.sortId}
+                              status={
+                                statusChat ? (
+                                  <ChatActivityStatus chat={statusChat} />
+                                ) : undefined
+                              }
                               submitRename={() =>
                                 finishGroupRename(group.id, group.title)
                               }

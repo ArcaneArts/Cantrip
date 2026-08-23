@@ -25,6 +25,7 @@ function task(id: string): ActiveTaskView {
       permissionProfileId: null,
       planMode: "default",
       hasPendingPlanQuestion: false,
+      hasUnreadCompletion: false,
       automationPaused: false,
       createdAt: "2026-08-17T00:00:00.000Z",
       updatedAt: "2026-08-17T00:00:00.000Z",

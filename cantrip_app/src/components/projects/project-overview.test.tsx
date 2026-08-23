@@ -148,6 +148,7 @@ function chatSurface(status: ChatSummary["status"]): ProjectSurface {
     permissionProfileId: null,
     planMode: "default",
     hasPendingPlanQuestion: false,
+    hasUnreadCompletion: false,
     automationPaused: false,
     createdAt: now,
     updatedAt: now,
