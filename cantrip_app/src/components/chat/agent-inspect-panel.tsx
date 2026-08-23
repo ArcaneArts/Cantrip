@@ -95,15 +95,19 @@ export function updateAgentInspectOpenChats(
 }
 
 export function AgentInspectPanel({
+  ariaLabel = "Agent activity inspector",
   children,
   onClose,
+  title = "Inspect",
 }: {
+  ariaLabel?: string;
   children?: ReactNode;
   onClose(): void;
+  title?: string;
 }) {
   return (
     <aside
-      aria-label="Agent activity inspector"
+      aria-label={ariaLabel}
       className="relative flex h-full min-h-0 w-full flex-col bg-background"
       data-slot="agent-inspect-panel"
     >
@@ -112,13 +116,13 @@ export function AgentInspectPanel({
         data-slot="agent-inspect-header"
       >
         <Info className="size-4 text-muted-foreground" />
-        <h2 className="text-sm font-medium">Inspect</h2>
+        <h2 className="truncate text-sm font-medium">{title}</h2>
         <Button
-          aria-label="Close Inspect"
+          aria-label={`Close ${title}`}
           className="pointer-events-auto ml-auto size-7"
           onClick={onClose}
           size="icon"
-          title="Close Inspect"
+          title={`Close ${title}`}
           variant="ghost"
         >
           <X className="size-3.5" />
@@ -130,13 +134,17 @@ export function AgentInspectPanel({
 }
 
 function AgentInspectMobilePanel({
+  ariaLabel,
   children,
   onOpenChange,
   open,
+  panelTitle,
 }: {
+  ariaLabel: string;
   children?: ReactNode;
   onOpenChange(open: boolean): void;
   open: boolean;
+  panelTitle: string;
 }) {
   return (
     <DialogPrimitive.Root onOpenChange={onOpenChange} open={open}>
@@ -148,9 +156,13 @@ function AgentInspectMobilePanel({
           data-slot="agent-inspect-mobile-overlay"
         >
           <DialogPrimitive.Title className="sr-only">
-            Agent activity inspector
+            {ariaLabel}
           </DialogPrimitive.Title>
-          <AgentInspectPanel onClose={() => onOpenChange(false)}>
+          <AgentInspectPanel
+            ariaLabel={ariaLabel}
+            onClose={() => onOpenChange(false)}
+            title={panelTitle}
+          >
             {children}
           </AgentInspectPanel>
         </DialogPrimitive.Content>
@@ -160,6 +172,7 @@ function AgentInspectMobilePanel({
 }
 
 export function AgentInspectPanelShell({
+  ariaLabel = "Agent activity inspector",
   children,
   className,
   extendIntoProjectTabBar = false,
@@ -167,7 +180,9 @@ export function AgentInspectPanelShell({
   onWidthChange,
   open,
   overlay,
+  panelTitle = "Inspect",
 }: {
+  ariaLabel?: string;
   children?: ReactNode;
   className?: string;
   extendIntoProjectTabBar?: boolean;
@@ -175,10 +190,16 @@ export function AgentInspectPanelShell({
   onWidthChange?(width: number): void;
   open: boolean;
   overlay: boolean;
+  panelTitle?: string;
 }) {
   if (overlay) {
     return (
-      <AgentInspectMobilePanel onOpenChange={onOpenChange} open={open}>
+      <AgentInspectMobilePanel
+        ariaLabel={ariaLabel}
+        onOpenChange={onOpenChange}
+        open={open}
+        panelTitle={panelTitle}
+      >
         {children}
       </AgentInspectMobilePanel>
     );
@@ -186,7 +207,7 @@ export function AgentInspectPanelShell({
 
   return (
     <ResizablePanel
-      ariaLabel="Resize Inspect sidebar"
+      ariaLabel={`Resize ${panelTitle} sidebar`}
       className={cn(
         className,
         extendIntoProjectTabBar && "top-[-2.5rem] h-auto",
@@ -206,9 +227,13 @@ export function AgentInspectPanelShell({
       }}
       surfaceClassName="bg-background"
       surfaceDataSlot="agent-inspect-panel-surface"
-      title="Drag to resize Inspect sidebar"
+      title={`Drag to resize ${panelTitle} sidebar`}
     >
-      <AgentInspectPanel onClose={() => onOpenChange(false)}>
+      <AgentInspectPanel
+        ariaLabel={ariaLabel}
+        onClose={() => onOpenChange(false)}
+        title={panelTitle}
+      >
         {children}
       </AgentInspectPanel>
     </ResizablePanel>
