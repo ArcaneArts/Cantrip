@@ -1041,7 +1041,10 @@ export function ExplorerView({
                     {draft}
                   </pre>
                 ) : file.data.markdown ? (
-                  <article className="mx-auto max-w-4xl p-6 sm:p-10">
+                  <article
+                    className="mx-auto max-w-4xl p-6 sm:p-10"
+                    data-elite-ignore=""
+                  >
                     <Markdown>{draft}</Markdown>
                   </article>
                 ) : (

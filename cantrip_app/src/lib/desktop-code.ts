@@ -21,6 +21,40 @@ export interface PreferredCodeAttachment {
 }
 
 const protectedAttachmentIds = new Map<string, string>();
+const CODE_ATTACHMENT_HEALTH_ATTEMPTS = 100;
+const CODE_ATTACHMENT_HEALTH_RETRY_MS = 50;
+
+export async function waitForDirectCodeAttachmentReady(
+  attachment: Pick<CodeAttachment, "url">,
+  options: { attempts?: number; retryDelayMs?: number } = {},
+): Promise<void> {
+  const attempts = Math.max(
+    1,
+    options.attempts ?? CODE_ATTACHMENT_HEALTH_ATTEMPTS,
+  );
+  const retryDelayMs = Math.max(
+    0,
+    options.retryDelayMs ?? CODE_ATTACHMENT_HEALTH_RETRY_MS,
+  );
+  const endpoint = new URL("_cantrip/health", attachment.url);
+  let lastError: unknown = new Error("Cantrip Code is unavailable.");
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(endpoint, {
+        cache: "no-store",
+        credentials: "omit",
+      });
+      if (response.ok) return;
+      lastError = new Error(`Cantrip Code returned HTTP ${response.status}.`);
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt + 1 < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+  throw lastError;
+}
 
 export async function preferProtectedCodeAttachment(
   wire: CodeProtectedAttachmentWire,
@@ -43,15 +77,17 @@ export async function preferProtectedCodeAttachment(
       }
       url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
     }
+    const attachment = {
+      attachmentId: wire.attachmentId,
+      sessionId: wire.sessionId,
+      url: url.toString(),
+      expiresAt: wire.expiresAt,
+      runtime: wire.runtime,
+    } satisfies CodeAttachment;
+    await waitForDirectCodeAttachmentReady(attachment);
     protectedAttachmentIds.set(wire.tunnelId, forward.attachmentId);
     return {
-      attachment: {
-        attachmentId: wire.attachmentId,
-        sessionId: wire.sessionId,
-        url: url.toString(),
-        expiresAt: wire.expiresAt,
-        runtime: wire.runtime,
-      },
+      attachment,
       directTunnelId: wire.tunnelId,
     };
   } catch (error) {
