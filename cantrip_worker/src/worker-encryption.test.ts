@@ -710,6 +710,9 @@ describe("persistent worker encryption", () => {
     expect(
       bytesEqual(restarted.componentKey("task-content").key, taskKeyV2),
     ).toBe(true);
+    expect(
+      bytesEqual(restarted.componentKey("task-content", 1).key, taskKeyV1),
+    ).toBe(true);
     await expect(
       restarted.acceptBootstrap({
         serverId,

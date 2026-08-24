@@ -74,11 +74,13 @@ async function listenHealthServer(server: NetServer): Promise<number> {
 type FixtureOptions = Pick<
   CodeSupervisorOptions,
   | "bridge"
+  | "deferRestoredProfilePrewarm"
   | "editorIdleTimeoutMs"
   | "idleSweepIntervalMs"
   | "idleTimeoutMs"
   | "profileIdleTimeoutMs"
   | "profileLogWriter"
+  | "prepareProfile"
   | "readinessTimeoutMs"
 > & {
   failStartup?: boolean;
@@ -953,6 +955,27 @@ describe("Cantrip Code supervisor", () => {
     expect(
       await readFile(path.join(profileDirectory, "process.pid"), "utf8"),
     ).toBe(prewarmedPid);
+  });
+
+  it("owns the profile settings path and prepares settings before launch", async () => {
+    const prepared: string[] = [];
+    const { dataDirectory, supervisor } = await fixture({
+      prepareProfile: async (profileId) => {
+        prepared.push(profileId);
+      },
+    });
+    const expected = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+      "User",
+      "settings.json",
+    );
+    expect(supervisor.profileSettingsPath("default")).toBe(expected);
+    await supervisor.prewarmProfile("default");
+    expect(prepared).toEqual(["default"]);
   });
 
   it("serializes the first session behind an in-flight profile prewarm", async () => {

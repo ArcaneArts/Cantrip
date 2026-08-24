@@ -5,6 +5,10 @@ import {
   encodeJsonMessage,
   type JsonMessageDecodeResult,
 } from "./json-message.js";
+import {
+  codeSettingsProfileIdSchema,
+  codeSettingsResolutionSchema,
+} from "./code-settings.js";
 
 export * from "./json-message.js";
 
@@ -11774,6 +11778,26 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   workerEncryptionRefreshRequestSchema.extend({
     type: z.literal("worker.encryption.refresh"),
   }),
+  z
+    .object({
+      type: z.literal("code.settings.synchronize"),
+      initializeIfMissing: z.boolean().default(false),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("code.settings.invalidate"),
+      profileId: codeSettingsProfileIdSchema,
+      revision: z.number().int().positive().safe(),
+    })
+    .strict(),
+  z.object({ type: z.literal("code.settings.status") }).strict(),
+  z
+    .object({
+      type: z.literal("code.settings.resolve"),
+      resolution: codeSettingsResolutionSchema,
+    })
+    .strict(),
   z.object({
     type: z.literal("diagnostics.logs.read"),
     afterCursor: z.number().int().nonnegative().default(0),

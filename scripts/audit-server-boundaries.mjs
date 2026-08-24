@@ -123,7 +123,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "794d634c9d77ded0dab79d3b92edae59c63272c203a224ab75cf5fbb472484e6",
   workerCommands:
-    "acdf3adab5cdd68c3e6e2be06ba838839c1c568b4da8ad85fc5da1229b57db2c",
+    "6716ab3a1581e8658fdf782c99708e8b8b4af886832d7c371ecab5fd59d38ba2",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -4056,6 +4056,12 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (/^code\.settings\./u.test(command)) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "worker-owned encrypted global Code settings lifecycle",
+    };
+  }
   if (
     /^(?:project\.run-configurations\.(?:inspect|read-authoring|write)|project\.run-setup\.(?:start|status)|project\.run\.logs|project\.script-commands(?:\.inspect)?)$/u.test(
       command,

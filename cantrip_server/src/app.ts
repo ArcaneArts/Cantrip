@@ -10563,13 +10563,9 @@ export async function buildApp({
         workerAuth.ownerId,
         profileId.data,
       );
-      const requiredKeyRevision = stored?.record.protectedContent.keyRevision;
       if (
         !worker.encryption.grants.some(
-          ({ component, keyRevision }) =>
-            component === "customization-content" &&
-            (requiredKeyRevision === undefined ||
-              keyRevision === requiredKeyRevision),
+          ({ component }) => component === "customization-content",
         )
       ) {
         return reply.code(403).send({
@@ -10638,6 +10634,47 @@ export async function buildApp({
             entityId: `code:${profileId.data}`,
           }),
         );
+        void repository
+          .listWorkers(workerAuth.ownerId)
+          .then((workers) =>
+            Promise.allSettled(
+              workers
+                .filter(
+                  (worker) =>
+                    worker.workerId !== request.params.workerId &&
+                    bridge.isConnected(worker.workerId) &&
+                    worker.encryption.grants.some(
+                      ({ component }) => component === "customization-content",
+                    ),
+                )
+                .map((worker) =>
+                  bridge.request(
+                    worker.workerId,
+                    {
+                      type: "code.settings.invalidate",
+                      profileId: profileId.data,
+                      revision: stored.profile.record.revision,
+                    },
+                    { ownerId: workerAuth.ownerId, timeoutMs: 20_000 },
+                  ),
+                ),
+            ),
+          )
+          .catch((error) => {
+            serverLogger.rateLimited(
+              `code-settings-invalidation:${workerAuth.ownerId}`,
+              "warn",
+              "Code settings worker invalidation was not delivered",
+              {
+                event: "code.settings.invalidation-failed",
+                subsystem: "code-settings",
+                operation: "invalidate-workers",
+                reasonCode: "delivery-failed",
+                status: "degraded",
+                error,
+              },
+            );
+          });
         reply.header("cache-control", "no-store");
         return reply
           .code(stored.created ? 201 : 200)
