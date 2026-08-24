@@ -488,6 +488,7 @@ import {
   primaryWorktreeId,
   moveSidebarPath,
   sidebarFileName,
+  sidebarFilePreviewIsVisible,
   sidebarFilePreviewViewKey,
   sidebarPathAtOrBelow,
   surfaceWorktreeId,
@@ -5881,9 +5882,14 @@ export function App() {
     () => [...projectSurfaceIndex.byTabKey.values()],
     [projectSurfaceIndex],
   );
-  const sidebarFilePreviewVisible = Boolean(
-    sidebarFilePreview?.active && sidebarPreviewExplorer,
-  );
+  const sidebarFilePreviewVisible = sidebarFilePreviewIsVisible({
+    previewActive: sidebarFilePreview?.active ?? false,
+    previewExplorerAvailable: Boolean(sidebarPreviewExplorer),
+    showImporter,
+    showProjectSettings,
+    showServerAdmin,
+    showSettings,
+  });
   const selectedTabGroup = tabLayout.data?.groups.find(
     (group) => group.id === workspaceSelection.selectedGroupId,
   );
