@@ -8,6 +8,51 @@ is the authoritative final state.
 Investigation baseline: `origin/main` at `169aee45` (`fix(explorer): reuse
 shared Code editor process (#913)`).
 
+## Warm continuity hardening follow-up (started 2026-08-24)
+
+The root incident documented below remains remediated. A separate longevity
+audit against `origin/main` at `39faacf66` found that a mounted editor can still
+lose its warm route after quiet periods because the Code attachment, direct
+capability, relay credential, worker command connection, bridge socket, native
+forward, and iframe are governed by independent lifetimes. This follow-up must
+preserve the security and exact-identity guarantees established by the original
+remediation; it does not reopen the fixed server-identity, workspace-binding,
+TCP backpressure, initial-readiness, or editor-chrome defects.
+
+The confirmed current gaps are:
+
+1. Code activity renews the protected Code binding, but the direct capability
+   retains its original expiry and the server never sends the worker's existing
+   `direct.capability.renew` command.
+2. The 15-second worker command reconnect grace preserves pending commands, but
+   disconnect subscribers immediately revoke Code attachments, relay routes,
+   direct capabilities, and worker Code endpoints.
+3. Relay credentials live for two minutes and are refreshed only after a
+   10-second renderer poll observes a degraded native route. A direct expiry can
+   therefore meet an already-expired relay credential and native reconnect
+   backoff.
+4. Bridge and transport health largely means "socket is OPEN." There is no
+   acknowledgement deadline for idle liveness, so the first operation can spend
+   five seconds discovering a stale bridge. Some post-mount control requests
+   also lack their own deadline.
+5. A sidebar file click clears the desktop prewarm slot and mounts a separate
+   inline owner. The prewarmed workbench is therefore not eligible to satisfy
+   the first sidebar open.
+6. Browser relay open/readiness has no bounded reconnect loop, and one congested
+   native logical stream can currently fail the shared route session.
+7. Retained profile crash recovery has one-shot/circuit-open retry holes, while
+   editor file navigation performs persistence writes that do not affect the
+   persisted editor-only state.
+
+Cycle 1 is intentionally behavior-neutral. It adds correlated, secret-safe
+timing evidence before any lease or reconnect policy changes: direct-capability
+prepare/telemetry events expose only bounded lease duration/remaining time;
+native reconnect failures receive a finite reason code and retry phase; and
+browser relay is classified explicitly rather than being mislabeled as direct.
+Focused tests exercise those fields and the production reconnect seam without
+logging capability IDs, credentials, protected URLs, authorization headers, or
+payloads.
+
 ## Final remediation and acceptance addendum (2026-08-23)
 
 The incident was a stack of independent defects. Fixing only OpenVSCode process

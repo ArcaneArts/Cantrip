@@ -609,8 +609,14 @@ describe("DirectAttachmentCoordinator", () => {
       "direct_attachment.finalized",
     );
     expect(prepared.diagnosticTraceId).toBe(diagnosticTraceId);
+    expect(prepared.leaseDurationMs).toBeGreaterThan(0);
+    expect(prepared.leaseDurationMs).toBeLessThanOrEqual(60_000);
     expect(activation.diagnosticTraceId).toBe(diagnosticTraceId);
     expect(telemetry.diagnosticTraceId).toBe(diagnosticTraceId);
+    expect(telemetry.leaseRemainingMs).toBeGreaterThan(0);
+    expect(telemetry.leaseRemainingMs).toBeLessThanOrEqual(
+      prepared.leaseDurationMs as number,
+    );
     expect(telemetry.lastDestinationRejectionCode).toBe(
       "protected-record-unavailable",
     );
@@ -632,6 +638,16 @@ describe("DirectAttachmentCoordinator", () => {
       eventContext(persisted, "direct_attachment.telemetry.recorded"),
     ).toMatchObject({
       lastDestinationRejectionCode: "protected-record-unavailable",
+    });
+    expect(
+      eventContext(persisted, "direct_attachment.prepare.completed"),
+    ).toMatchObject({
+      leaseDurationMs: prepared.leaseDurationMs,
+    });
+    expect(
+      eventContext(persisted, "direct_attachment.telemetry.recorded"),
+    ).toMatchObject({
+      leaseRemainingMs: telemetry.leaseRemainingMs,
     });
     expect(
       eventContext(persisted, "direct_attachment.finalized"),
