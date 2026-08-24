@@ -46,16 +46,86 @@ export type GitWorkbenchToolStates = Record<
   GitWorkbenchToolState
 >;
 
+export const gitWorkbenchNavigationTools: readonly GitWorkbenchToolDefinition[] =
+  [
+    { id: "operations", label: "Operations", icon: GitPullRequestArrow },
+    { id: "repository", label: "Repository", icon: Server },
+    { id: "branches", label: "Branches", icon: GitBranch },
+    { id: "stashes", label: "Stashes", icon: Archive },
+    { id: "compare", label: "Compare", icon: GitCompareArrows },
+  ];
+
+export const gitWorkbenchDialogActions: readonly GitWorkbenchToolDefinition[] =
+  [
+    { id: "file", label: "File", icon: FileClock },
+    { id: "search", label: "Search", icon: Search },
+    { id: "recovery", label: "Recovery", icon: RotateCcw },
+  ];
+
 export const gitWorkbenchTools: readonly GitWorkbenchToolDefinition[] = [
-  { id: "operations", label: "Operations", icon: GitPullRequestArrow },
-  { id: "repository", label: "Repository", icon: Server },
-  { id: "branches", label: "Branches", icon: GitBranch },
-  { id: "stashes", label: "Stashes", icon: Archive },
-  { id: "compare", label: "Compare", icon: GitCompareArrows },
-  { id: "file", label: "File", icon: FileClock },
-  { id: "search", label: "Search", icon: Search },
-  { id: "recovery", label: "Recovery", icon: RotateCcw },
+  ...gitWorkbenchNavigationTools,
+  ...gitWorkbenchDialogActions,
 ];
+
+function GitWorkbenchOverflowMenu({
+  ariaLabel,
+  disabled,
+  tools,
+  toolDefinitions,
+}: {
+  ariaLabel: string;
+  disabled: boolean;
+  tools: GitWorkbenchToolStates;
+  toolDefinitions: readonly GitWorkbenchToolDefinition[];
+}) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button
+          aria-label={ariaLabel}
+          className="size-6"
+          disabled={disabled}
+          size="icon"
+          variant="ghost"
+        >
+          <MoreHorizontal className="size-3.5" />
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <StyledDropdownMenuContent align="end" className="min-w-48">
+          {toolDefinitions.map(({ icon: Icon, id, label }) => {
+            const tool = tools[id];
+            return (
+              <StyledDropdownMenuItem
+                aria-current={tool.active ? "page" : undefined}
+                className="justify-between"
+                key={id}
+                onSelect={tool.onSelect}
+              >
+                <span className="flex items-center gap-2">
+                  <Icon className="size-3.5" />
+                  {label}
+                </span>
+                {tool.active || tool.attention ? (
+                  <span
+                    aria-label={
+                      tool.attention ? `${label} active` : `${label} open`
+                    }
+                    className={
+                      tool.attention
+                        ? "size-1.5 rounded-full bg-amber-500"
+                        : "size-1.5 rounded-full bg-primary"
+                    }
+                  />
+                ) : null}
+              </StyledDropdownMenuItem>
+            );
+          })}
+        </StyledDropdownMenuContent>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
 
 export function GitWorkbenchToolbar({
   compact = false,
@@ -68,66 +138,37 @@ export function GitWorkbenchToolbar({
 }) {
   if (compact) {
     return (
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <Button
-            aria-label="Open Git tools"
-            className="size-6"
-            disabled={disabled}
-            size="icon"
-            variant="ghost"
-          >
-            <MoreHorizontal className="size-3.5" />
-          </Button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <StyledDropdownMenuContent align="end" className="min-w-48">
-            {gitWorkbenchTools.map(({ icon: Icon, id, label }) => {
-              const tool = tools[id];
-              return (
-                <StyledDropdownMenuItem
-                  aria-current={tool.active ? "page" : undefined}
-                  className="justify-between"
-                  key={id}
-                  onSelect={tool.onSelect}
-                >
-                  <span className="flex items-center gap-2">
-                    <Icon className="size-3.5" />
-                    {label}
-                  </span>
-                  {tool.active || tool.attention ? (
-                    <span
-                      aria-label={
-                        tool.attention ? `${label} active` : `${label} open`
-                      }
-                      className={
-                        tool.attention
-                          ? "size-1.5 rounded-full bg-amber-500"
-                          : "size-1.5 rounded-full bg-primary"
-                      }
-                    />
-                  ) : null}
-                </StyledDropdownMenuItem>
-              );
-            })}
-          </StyledDropdownMenuContent>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+      <GitWorkbenchOverflowMenu
+        ariaLabel="Open Git tools"
+        disabled={disabled}
+        toolDefinitions={gitWorkbenchTools}
+        tools={tools}
+      />
     );
   }
 
-  const activeTool = gitWorkbenchTools.find(({ id }) => tools[id].active);
+  const activeTool = gitWorkbenchNavigationTools.find(
+    ({ id }) => tools[id].active,
+  );
   return (
-    <NavigationTabBar<GitWorkbenchTool>
-      activeTab={activeTool?.id ?? null}
-      ariaLabel="Git tools"
-      className="w-fit max-w-full"
-      disabled={disabled}
-      tabs={gitWorkbenchTools.map((tool) => ({
-        ...tool,
-        attention: tools[tool.id].attention,
-      }))}
-      onTabChange={(id) => tools[id].onSelect()}
-    />
+    <>
+      <NavigationTabBar<GitWorkbenchTool>
+        activeTab={activeTool?.id ?? null}
+        ariaLabel="Git tools"
+        className="w-fit max-w-full"
+        disabled={disabled}
+        tabs={gitWorkbenchNavigationTools.map((tool) => ({
+          ...tool,
+          attention: tools[tool.id].attention,
+        }))}
+        onTabChange={(id) => tools[id].onSelect()}
+      />
+      <GitWorkbenchOverflowMenu
+        ariaLabel="Open Git history actions"
+        disabled={disabled}
+        toolDefinitions={gitWorkbenchDialogActions}
+        tools={tools}
+      />
+    </>
   );
 }

@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   GitWorkbenchToolbar,
-  gitWorkbenchTools,
+  gitWorkbenchDialogActions,
+  gitWorkbenchNavigationTools,
   type GitWorkbenchToolStates,
 } from "./git-workbench-toolbar";
 
@@ -22,18 +23,24 @@ function toolStates(): GitWorkbenchToolStates {
 }
 
 describe("GitWorkbenchToolbar", () => {
-  it("renders every tool in the configured order", () => {
+  it("keeps dialog launchers out of the desktop navigation tabs", () => {
     const markup = renderToStaticMarkup(
       <GitWorkbenchToolbar disabled={false} tools={toolStates()} />,
     );
 
     let previousIndex = -1;
-    for (const { label } of gitWorkbenchTools) {
+    for (const { label } of gitWorkbenchNavigationTools) {
       const index = markup.indexOf(label);
       expect(index).toBeGreaterThan(previousIndex);
       previousIndex = index;
     }
-    expect(markup.match(/<button/g)).toHaveLength(gitWorkbenchTools.length);
+    for (const { label } of gitWorkbenchDialogActions) {
+      expect(markup).not.toContain(label);
+    }
+    expect(markup.match(/<button/g)).toHaveLength(
+      gitWorkbenchNavigationTools.length + 1,
+    );
+    expect(markup).toContain('aria-label="Open Git history actions"');
   });
 
   it("surfaces active, attention, and disabled state", () => {
@@ -46,7 +53,9 @@ describe("GitWorkbenchToolbar", () => {
     expect(markup).toContain('aria-selected="true"');
     expect(markup).toContain('aria-label="Git tools"');
     expect(markup).toContain('aria-label="Operations active"');
-    expect(markup.match(/disabled=""/g)).toHaveLength(gitWorkbenchTools.length);
+    expect(markup.match(/disabled=""/g)).toHaveLength(
+      gitWorkbenchNavigationTools.length + 1,
+    );
   });
 
   it("collapses compact tools into one overflow trigger", () => {
