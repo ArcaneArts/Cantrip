@@ -334,6 +334,7 @@ describe.sequential("Run configuration definition API", () => {
     ).toMatchObject({
       operationId: listOperationId,
       inventory: { entries: [] },
+      validations: [],
     });
 
     const capabilities = await app.inject({
@@ -811,6 +812,23 @@ describe.sequential("Run configuration definition API", () => {
       },
     });
     const revision = createdResult.result.entry.revision!;
+
+    const listed = runConfigurationListResponseSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/run-configurations?operationId=${randomUUID()}`,
+        })
+      ).json(),
+    );
+    expect(listed.validations).toEqual([
+      expect.objectContaining({
+        configurationId,
+        provider: "shell",
+        valid: true,
+        diagnostics: [],
+      }),
+    ]);
 
     const read = await app.inject({
       method: "GET",

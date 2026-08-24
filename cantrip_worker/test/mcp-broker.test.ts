@@ -622,6 +622,19 @@ describe("Cantrip MCP worker broker", () => {
               }),
               diagnostics: [],
             },
+            validations: Array.from({ length: 128 }, (_, index) => {
+              const id = `00000000-0000-4000-8000-${index
+                .toString()
+                .padStart(12, "0")}`;
+              return {
+                configurationId: id,
+                provider: "shell",
+                platform: "linux",
+                effectiveCommand: "run large configuration",
+                valid: true,
+                diagnostics: [],
+              };
+            }),
             runtimes: [],
           },
         }),

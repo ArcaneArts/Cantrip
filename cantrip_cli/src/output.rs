@@ -80,6 +80,9 @@ fn run_definition_rows(data: Option<&Value>) -> Vec<Value> {
     let runtimes = data
         .and_then(|value| value.get("runtimes"))
         .and_then(Value::as_array);
+    let validations = data
+        .and_then(|value| value.get("validations"))
+        .and_then(Value::as_array);
     data.and_then(|value| value.get("inventory"))
         .and_then(|value| value.get("entries"))
         .and_then(Value::as_array)
@@ -127,6 +130,22 @@ fn run_definition_rows(data: Option<&Value>) -> Vec<Value> {
                     .cloned()
                     .unwrap_or_else(|| Value::String("idle".to_string()));
                 object.insert("runtimeState".to_string(), runtime_state);
+                let validation_state = entry
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .and_then(|id| {
+                        validations.into_iter().flatten().find(|validation| {
+                            validation.get("configurationId").and_then(Value::as_str) == Some(id)
+                        })
+                    })
+                    .and_then(|validation| validation.get("valid"))
+                    .and_then(Value::as_bool)
+                    .map(|valid| if valid { "valid" } else { "invalid" })
+                    .unwrap_or("-");
+                object.insert(
+                    "validationState".to_string(),
+                    Value::String(validation_state.to_string()),
+                );
             }
             row
         })
@@ -285,6 +304,7 @@ pub fn render(command: &str, result: &CommandResult, json: bool) {
                         ("NAME", "name"),
                         ("PROVIDER", "provider"),
                         ("RUNTIME", "runtimeState"),
+                        ("VALIDATION", "validationState"),
                         ("DEFINITION", "status"),
                         ("REVISION", "revisionShort"),
                         ("ID", "id"),
@@ -404,11 +424,16 @@ mod tests {
                 "status": "ready",
                 "revision": "0123456789abcdef",
                 "document": { "name": "Spectral Lab", "provider": "rust" }
-            }] }
+            }] },
+            "validations": [{
+                "configurationId": "spectral-lab",
+                "valid": false
+            }]
         });
         let rows = run_definition_rows(Some(&data));
         assert_eq!(rows[0]["name"], "Spectral Lab");
         assert_eq!(rows[0]["provider"], "rust");
         assert_eq!(rows[0]["revisionShort"], "0123456789ab");
+        assert_eq!(rows[0]["validationState"], "invalid");
     }
 }

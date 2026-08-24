@@ -107,6 +107,7 @@ describe("Run configuration app API", () => {
             entries: [],
             diagnostics: [],
           },
+          validations: [],
         }),
       )
       .mockResolvedValueOnce(
@@ -170,7 +171,7 @@ describe("Run configuration app API", () => {
 
     await expect(
       listRunConfigurations(projectId, operationId),
-    ).resolves.toMatchObject({ entries: [] });
+    ).resolves.toMatchObject({ entries: [], validations: [] });
     await expect(
       getRunConfigurationCapabilities(projectId, operationId),
     ).resolves.toMatchObject([{ provider: "shell" }]);
@@ -456,6 +457,7 @@ describe("Run configuration app API", () => {
             entries: [],
             diagnostics: [],
           },
+          validations: [],
         }),
       ),
     );
