@@ -30,8 +30,6 @@ const protectedResultTypes = new Set([
   "worktree.unlock",
   "worktree.prune",
   "worktree.status",
-  "project.run-setup.start",
-  "project.run-setup.status",
 ]);
 
 const privateResultFields = new Set<string>(REPOSITORY_METADATA_FIELDS);

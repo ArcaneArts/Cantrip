@@ -77,12 +77,6 @@ const protectedSurfacePayload = surfaceStreamOpaqueSchema.parse({
     ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
   },
 });
-const protectedRunPayload = {
-  formatVersion: 1 as const,
-  domain: "run-content" as const,
-  keyRevision: 1,
-  envelope: protectedSurfacePayload.envelope,
-};
 const protectedRepositoryPayload = {
   formatVersion: 1 as const,
   keyRevision: 1,
@@ -168,22 +162,6 @@ const workerBridge: WorkerCommandBus = {
             statusCode: 200,
           },
         ];
-      case "project.run-configurations.inspect": {
-        const platform = workerId === "worker-alpha" ? "darwin" : "linux";
-        return {
-          operationId: command.operationId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          metadata: {
-            platform,
-            configured: true,
-            valid: true,
-            hasSetup: false,
-            configurationRevision: "a".repeat(64),
-          },
-          protectedInspection: protectedRunPayload,
-        };
-      }
       case "project.run-configuration-definitions.list":
         return {
           operation: "list",
@@ -194,14 +172,6 @@ const workerBridge: WorkerCommandBus = {
             entries: [],
             diagnostics: [],
           },
-        };
-      case "project.run-configurations.metadata":
-        return {
-          platform: workerId === "worker-alpha" ? "darwin" : "linux",
-          configured: true,
-          valid: true,
-          hasSetup: false,
-          configurationRevision: "a".repeat(64),
         };
       case "project.script-commands.inspect":
         return protectedRepositoryPayload;

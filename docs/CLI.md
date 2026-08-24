@@ -64,23 +64,19 @@ cantrip terminal restart --target "Dev server"
 cantrip browser services --target Preview
 cantrip browser open --target Preview http://127.0.0.1:5173
 
-# Inspect Codex-compatible project Run configurations.
+# Manage shared stable-ID Run configurations.
 cantrip run list
-cantrip run show "Run Spectral Lab"
-cantrip run validate
-cantrip run config path
-cantrip run config schema --json
-cantrip run config example
-cantrip run config init --name "Spectral Lab"
-cantrip run config action add "Run app" --command "pnpm run dev" --icon run
-cantrip run config action add "Run Windows app" --command "pnpm run dev" --platform win32
-cantrip run start "Run Spectral Lab" --no-focus
+cantrip run show 11111111-1111-4111-8111-111111111111
+cantrip run detect
+cantrip run create ./run-configuration.json
+cantrip run update 11111111-1111-4111-8111-111111111111 ./run-configuration.json --revision <revision>
+cantrip run delete 11111111-1111-4111-8111-111111111111 --revision <revision>
+cantrip run start 11111111-1111-4111-8111-111111111111
+cantrip run restart 11111111-1111-4111-8111-111111111111
+cantrip run stop 11111111-1111-4111-8111-111111111111
 cantrip run status
 cantrip run logs 11111111-1111-4111-8111-111111111111 --tail 20000
-cantrip run open 11111111-1111-4111-8111-111111111111
-cantrip run stop 11111111-1111-4111-8111-111111111111
-cantrip run setup status
-cantrip run setup retry
+printf '%s' "$TOKEN" | cantrip run secret set API_TOKEN
 ```
 
 Worktree creation defaults to a new `cantrip/<name>` branch based on the
@@ -93,85 +89,28 @@ worktrees cannot be removed through this command.
 
 ## Run configurations
 
-Cantrip discovers declarative Codex local environments from
-`.codex/environments/*.toml` beneath the registered project source root. It
-uses the target worker platform when selecting actions, so repeated macOS,
-Windows, and Linux variants with the same display name resolve correctly. An
-ignored local environment remains local to that worker and still applies when
-the active chat uses a secondary worktree; a tracked file follows normal Git
-replication.
+Run definitions are project-shared JSON documents under
+`.cantrip/run-configurations/<configuration-id>.json`. The document ID is the
+stable identity used by the app, CLI, and MCP; names are presentation only.
+Writes are revision-checked, and definitions are always read from Primary even
+when a command is issued from a secondary worktree.
 
-This intentionally follows OpenAI's
-[local environments](https://learn.chatgpt.com/docs/environments/local-environment)
-contract: setup prepares newly created worktrees, while actions are ordinary
-integrated-terminal commands. Cantrip adds distributed routing and supervision
-without inventing a second project configuration format.
+`run detect` proposes definitions for supported project types. `run create`,
+`run update`, and `run delete` mutate exact documents. Lifecycle commands take
+the stable configuration ID and run on Primary unless `--worktree <id>` is
+provided. Starting an already-active configuration is idempotent; restart
+stops its process tree and launches the next generation in the same managed
+terminal. `run logs` reads bounded protected output, while Run terminals remain
+read-only in the app.
 
-`cantrip run list` returns actions compatible with the current worker.
-`cantrip run show` accepts an exact action name or the opaque ID returned by
-the list. Duplicate compatible names are rejected as ambiguous instead of
-being selected arbitrarily. `cantrip run validate` reports bounded parsing,
-schema, path-safety, and ambiguity diagnostics and exits nonzero when errors
-are present. `cantrip run config path` reports the canonical
-`.codex/environments/environment.toml` location and whether it is tracked,
-ignored, untracked, or absent.
+Definitions may reference encrypted project secrets. `run secret set` reads
+the value from standard input, encrypts it on the worker, and never returns the
+plaintext. By default each launch also materializes the current Codex local
+environment from `.codex/environments/environment.toml`; that file supplies
+environment variables only and does not define actions, setup jobs, or Runs.
 
-`cantrip run config init [--name <name>]` creates a minimal canonical v1 file
-only when it is absent. `--overwrite` is required to replace an existing file,
-and the worker still rejects a stale revision. The command never edits
-`.gitignore` or stages, commits, or pushes the result. Project settings →
-Environment provides the same revision-checked authoring path for setup and
-action platform variants.
-
-`cantrip run config schema --json` returns the exact authoring JSON Schema,
-complete document example, and equivalent TOML. `cantrip run config example`
-prints the TOML example directly. For the common case, `cantrip run config
-action add <name> --command <shell-command>` creates the canonical file when
-absent or appends one complete revision-checked action. `--icon` defaults to
-`run`; omit `--platform` for every host or select `win32`, `darwin`, or
-`linux`. `--environment-name` sets the displayed environment name. All
-three commands honor the global `--context auto|cwd|lane` selection.
-
-`cantrip run start <action>` resolves an unambiguous action name or opaque ID,
-then sends its exact ID and configuration revision to the owning worker. The
-worker rereads the source-root configuration, rechecks its platform and
-revision, and starts the command once in a worker-owned PTY. The action CWD is
-the active worktree. Its environment preserves the worker environment and
-sets `CODEX_WORKTREE_PATH`, `CANTRIP_WORKTREE_PATH`, `CANTRIP_PROJECT_ROOT`,
-`CANTRIP_RUN_ID`, and `CANTRIP_ACTION_ID`. A desktop client is not required;
-the Run succeeds headlessly when no compatible client is connected. When a
-client is available, Cantrip asks it to encrypt and idempotently materialize a
-terminal whose UUID is the Run UUID. `cantrip run open <run-id>` retries that
-best-effort materialization after a client reconnects and focuses it when
-applied. The terminal attaches to the existing worker-owned Run PTY; it never
-starts a second shell or gives the action terminal-service restart semantics.
-
-`cantrip run status [run-id]` refreshes one Run or, when no ID is supplied, the
-most recently created Run in the current worktree. `cantrip run logs <run-id>`
-reads a bounded character tail from volatile worker memory; `--tail` accepts 1
-through 100000 characters. Scrollback is not persisted by the server and is
-unavailable when its worker is offline or has restarted. `cantrip run stop
-<run-id>` terminates the PTY's complete process tree. Exited actions are never
-automatically restarted, and retries reuse the same Run identity instead of
-starting the action twice. Cantrip also stops affected Runs before removing a
-worktree, managed project folder, or worker-owned repository copy.
-
-Run instances persist only routing and lifecycle metadata: project, worktree,
-worker, action ID, configuration revision, state, timestamps, exit result, and
-an optional terminal association. Commands, environment values, and terminal
-output are never stored in the server database. The action-add command is the
-preferred simple authoring path; ordinary repository tools remain available
-for complete TOML editing. Setup is separate and does not execute when a Run
-starts.
-
-`cantrip run setup status` reports the durable setup job plus bounded output
-when its worker is available. `cantrip run setup retry` is an explicit
-secondary-worktree mutation; it is unavailable for Primary. A changed
-configuration makes completed setup stale until retry, and removing the
-worktree deletes its worker-private setup state.
-
-See [Codex-compatible Run environments](RUN_CONFIGURATIONS.md) for the full
-schema, platform shell matrix, lifecycle, limits, and threat model.
+See [Run Configurations](RUN_CONFIGURATIONS.md) for the full schema, provider
+capabilities, target model, lifecycle, limits, and threat model.
 
 ## Policies
 

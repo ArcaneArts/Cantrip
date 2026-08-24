@@ -103,8 +103,6 @@ import {
   settingsBundleSchema,
   providerModelCatalogEntrySchema,
   reasoningEffortSchema,
-  runStartRequestSchema,
-  runStartResultSchema,
   explorerFileWriteSchema,
   explorerEntryNameSchema,
   explorerOperationRequestContentSchema,
@@ -1094,62 +1092,6 @@ describe("Cantrip protocol", () => {
         mutated: true,
       }).success,
     ).toBe(false);
-
-    const runId = "00000000-0000-4000-8000-000000000020";
-    expect(
-      runStartRequestSchema.parse({
-        requestId: "00000000-0000-4000-8000-000000000022",
-        actionId: "a".repeat(64),
-        configRevision: "b".repeat(64),
-      }),
-    ).toMatchObject({ focus: true });
-    expect(
-      runStartRequestSchema.safeParse({
-        actionId: "a".repeat(64),
-        configRevision: "b".repeat(64),
-      }).success,
-    ).toBe(false);
-    expect(
-      clientControlCommandSchema.parse({
-        kind: "materialize-run-terminal",
-        projectId: "project-one",
-        worktreeId: "worktree-one",
-        runId,
-        terminalId: runId,
-        focus: true,
-      }),
-    ).toMatchObject({ runId, terminalId: runId, focus: true });
-    expect(
-      clientControlCommandSchema.safeParse({
-        kind: "materialize-run-terminal",
-        projectId: "project-one",
-        worktreeId: "worktree-one",
-        runId,
-        terminalId: "00000000-0000-4000-8000-000000000021",
-        focus: true,
-      }).success,
-    ).toBe(false);
-    expect(
-      runStartResultSchema.parse({
-        run: {
-          id: runId,
-          projectId: "project-one",
-          worktreeId: "worktree-one",
-          workerId: "worker-one",
-          actionId: "a".repeat(64),
-          configurationRevision: "b".repeat(64),
-          state: "running",
-          createdAt: "2026-08-21T12:00:00.000Z",
-          updatedAt: "2026-08-21T12:00:00.000Z",
-          startedAt: "2026-08-21T12:00:00.000Z",
-          endedAt: null,
-          exitCode: null,
-          signal: null,
-          terminalId: null,
-        },
-        surface: { status: "unavailable", terminalId: null },
-      }),
-    ).toMatchObject({ surface: { status: "unavailable" } });
   });
 
   it("validates CLI commands across the local broker and server boundary", () => {

@@ -137,8 +137,6 @@ import type {
   EncryptedRemoteSurfaceCreate,
   RemoteSurfaceStatus,
   RemoteSurfaceWireSummary,
-  RunInstance,
-  RunInstanceState,
   SurfacePrivateStateOpaque,
   EncryptedRemoteSurfaceUpdate,
   ProjectCloneResult,
@@ -160,7 +158,6 @@ import type {
   EncryptedProjectViewUpdate,
   SettingsBundleWire,
   EncryptedTerminalCreate,
-  EncryptedRunTerminalMaterialization,
   EncryptedTerminalServiceConfiguration,
   TerminalServiceRuntimeConfiguration,
   TerminalWireSummary,
@@ -195,8 +192,6 @@ import type {
   WorkerManagementSource,
   WorkerSummary,
   WorkerWorktreeSummary,
-  WorkerRunIdentity,
-  WorkerRunSnapshot,
   WorktreeInventory,
   WorktreePolicy,
   WorktreeSelection,
@@ -282,7 +277,6 @@ import {
 } from "./logical-branch-leases.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
 import { ProjectFolderSetupJobRepository } from "./project-folder-setup-jobs.js";
-import { WorktreeSetupJobRepository } from "./worktree-setup-jobs.js";
 import { ProjectGithubConversionJobRepository } from "./project-github-conversion-jobs.js";
 import { EncryptionRegistryRepository } from "./encryption-registry.js";
 import { PolicyRepository } from "./policies.js";
@@ -369,7 +363,6 @@ type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
 type WorkerRow = typeof schema.workers.$inferSelect;
 type McpServerRow = typeof schema.mcpServers.$inferSelect;
 type GitOperationRow = typeof schema.gitOperations.$inferSelect;
-type RunInstanceRow = typeof schema.runInstances.$inferSelect;
 type RunConfigurationRuntimeRow =
   typeof schema.runConfigurationRuntimes.$inferSelect;
 type RunConfigurationRuntimeOperationRow =
@@ -1340,16 +1333,12 @@ function toProjectWorktreeSummary(
 }
 
 function observedWorktreeLifecycle(
-  current: ProjectWorktreeSummary["lifecycleState"] | null,
+  _current: ProjectWorktreeSummary["lifecycleState"] | null,
   observed: { missing: boolean; prunable: boolean },
 ): ProjectWorktreeSummary["lifecycleState"] {
   if (observed.missing) return "missing";
   if (observed.prunable) return "prunable";
-  return current === "preparing" ||
-    current === "setup-failed" ||
-    current === "setup-stale"
-    ? current
-    : "ready";
+  return "ready";
 }
 
 function toGitManagedOperationRecord(
@@ -1381,25 +1370,6 @@ function toGitManagedOperationRecord(
     completedAt: operation.completedAt
       ? toISOString(operation.completedAt)
       : null,
-  };
-}
-
-function toRunInstance(run: RunInstanceRow): RunInstance {
-  return {
-    id: run.id,
-    projectId: run.projectId,
-    worktreeId: run.worktreeId,
-    workerId: run.workerId,
-    actionId: run.actionId,
-    configurationRevision: run.configurationRevision,
-    state: run.state,
-    terminalId: run.terminalId,
-    exitCode: run.exitCode,
-    signal: run.signal,
-    createdAt: toISOString(run.createdAt),
-    startedAt: run.startedAt ? toISOString(run.startedAt) : null,
-    endedAt: run.endedAt ? toISOString(run.endedAt) : null,
-    updatedAt: toISOString(run.updatedAt),
   };
 }
 
@@ -2316,7 +2286,6 @@ export class ServerRepository {
   readonly tasks: TaskRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
-  readonly worktreeSetupJobs: WorktreeSetupJobRepository;
   readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
@@ -2341,7 +2310,6 @@ export class ServerRepository {
     this.tasks = new TaskRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);
-    this.worktreeSetupJobs = new WorktreeSetupJobRepository(database);
     this.projectGithubConversionJobs = new ProjectGithubConversionJobRepository(
       database,
     );
@@ -2415,7 +2383,7 @@ export class ServerRepository {
       chatImportJobs,
       projectAutomationRuns,
       gitOperations,
-      runInstances,
+      runConfigurationRuntimes,
     ] = await Promise.all([
       this.database
         .select({ count })
@@ -2549,12 +2517,11 @@ export class ServerRepository {
         ),
       this.database
         .select({ count })
-        .from(schema.runInstances)
+        .from(schema.runConfigurationRuntimes)
         .where(
           and(
-            eq(schema.runInstances.ownerId, ownerId),
-            inArray(schema.runInstances.state, [
-              "queued",
+            eq(schema.runConfigurationRuntimes.ownerId, ownerId),
+            inArray(schema.runConfigurationRuntimes.state, [
               "starting",
               "running",
               "stopping",
@@ -2573,7 +2540,7 @@ export class ServerRepository {
       value(chatImportJobs) +
       value(projectAutomationRuns) +
       value(gitOperations) +
-      value(runInstances);
+      value(runConfigurationRuntimes);
     return {
       activeChats: value(activeChats),
       queuedPrompts: value(queuedPrompts),
@@ -8575,7 +8542,6 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
     worktreeId: string,
-    options: { allowSetupStates?: boolean } = {},
   ): Promise<ProjectWorktreeExecutionContext | null> {
     const rows = await this.database
       .select({
@@ -8600,14 +8566,7 @@ export class ServerRepository {
           eq(schema.projects.id, projectId),
           eq(schema.projectWorktrees.id, worktreeId),
           isNull(schema.projectSources.removedAt),
-          options.allowSetupStates
-            ? inArray(schema.projectWorktrees.lifecycleState, [
-                "ready",
-                "preparing",
-                "setup-failed",
-                "setup-stale",
-              ])
-            : eq(schema.projectWorktrees.lifecycleState, "ready"),
+          eq(schema.projectWorktrees.lifecycleState, "ready"),
         ),
       )
       .limit(1);
@@ -9416,7 +9375,6 @@ export class ServerRepository {
     ownerId: string,
     workerId: string,
     limit = 128,
-    includeSetupStates = false,
   ): Promise<ProjectWorktreeObservationContext[]> {
     return this.database
       .select({
@@ -9442,14 +9400,7 @@ export class ServerRepository {
       .where(
         and(
           eq(schema.projectWorktrees.workerId, workerId),
-          includeSetupStates
-            ? inArray(schema.projectWorktrees.lifecycleState, [
-                "ready",
-                "preparing",
-                "setup-failed",
-                "setup-stale",
-              ])
-            : eq(schema.projectWorktrees.lifecycleState, "ready"),
+          eq(schema.projectWorktrees.lifecycleState, "ready"),
           isNull(schema.projectSources.removedAt),
         ),
       )
@@ -9823,414 +9774,6 @@ export class ServerRepository {
       .where(eq(schema.gitOperations.id, operationId))
       .returning();
     return rows[0] ? toGitManagedOperationRecord(rows[0]) : null;
-  }
-
-  async createOrGetRunInstance(
-    ownerId: string,
-    input: {
-      projectId: string;
-      worktreeId: string;
-      workerId: string;
-      idempotencyKey: string;
-      actionId: string;
-      configurationRevision: string;
-    },
-  ): Promise<{ created: boolean; run: RunInstance }> {
-    const existingRows = await this.database
-      .select()
-      .from(schema.runInstances)
-      .where(
-        and(
-          eq(schema.runInstances.ownerId, ownerId),
-          eq(schema.runInstances.idempotencyKey, input.idempotencyKey),
-        ),
-      )
-      .limit(1);
-    const validateIdentity = (row: RunInstanceRow) => {
-      if (
-        row.projectId !== input.projectId ||
-        row.worktreeId !== input.worktreeId ||
-        row.workerId !== input.workerId ||
-        row.actionId !== input.actionId ||
-        row.configurationRevision !== input.configurationRevision
-      ) {
-        throw new Error(
-          "The Run request identity is already associated with another action.",
-        );
-      }
-      return toRunInstance(row);
-    };
-    if (existingRows[0]) {
-      return { created: false, run: validateIdentity(existingRows[0]) };
-    }
-
-    const inserted = await this.database
-      .insert(schema.runInstances)
-      .values({
-        id: randomUUID(),
-        ownerId,
-        projectId: input.projectId,
-        worktreeId: input.worktreeId,
-        workerId: input.workerId,
-        idempotencyKey: input.idempotencyKey,
-        actionId: input.actionId,
-        configurationRevision: input.configurationRevision,
-        state: "queued",
-      })
-      .onConflictDoNothing({
-        target: [
-          schema.runInstances.ownerId,
-          schema.runInstances.idempotencyKey,
-        ],
-      })
-      .returning();
-    if (inserted[0]) {
-      return { created: true, run: toRunInstance(inserted[0]) };
-    }
-    const raced = await this.database
-      .select()
-      .from(schema.runInstances)
-      .where(
-        and(
-          eq(schema.runInstances.ownerId, ownerId),
-          eq(schema.runInstances.idempotencyKey, input.idempotencyKey),
-        ),
-      )
-      .limit(1);
-    if (!raced[0]) throw new Error("Could not recover the Run request.");
-    return { created: false, run: validateIdentity(raced[0]) };
-  }
-
-  async getRunInstance(
-    ownerId: string,
-    projectId: string,
-    worktreeId: string,
-    runId: string,
-  ): Promise<RunInstance | null> {
-    const rows = await this.database
-      .select({ run: schema.runInstances })
-      .from(schema.runInstances)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.runInstances.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.runInstances.id, runId),
-          eq(schema.runInstances.projectId, projectId),
-          eq(schema.runInstances.worktreeId, worktreeId),
-        ),
-      )
-      .limit(1);
-    return rows[0] ? toRunInstance(rows[0].run) : null;
-  }
-
-  async getLatestRunInstance(
-    ownerId: string,
-    projectId: string,
-    worktreeId: string,
-  ): Promise<RunInstance | null> {
-    const rows = await this.database
-      .select({ run: schema.runInstances })
-      .from(schema.runInstances)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.runInstances.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
-      .where(
-        and(
-          eq(schema.runInstances.projectId, projectId),
-          eq(schema.runInstances.worktreeId, worktreeId),
-        ),
-      )
-      .orderBy(
-        desc(schema.runInstances.createdAt),
-        desc(schema.runInstances.id),
-      )
-      .limit(1);
-    return rows[0] ? toRunInstance(rows[0].run) : null;
-  }
-
-  async getRunInstanceByTerminal(
-    ownerId: string,
-    terminalId: string,
-  ): Promise<RunInstance | null> {
-    const rows = await this.database
-      .select()
-      .from(schema.runInstances)
-      .where(
-        and(
-          eq(schema.runInstances.ownerId, ownerId),
-          eq(schema.runInstances.terminalId, terminalId),
-        ),
-      )
-      .limit(1);
-    return rows[0] ? toRunInstance(rows[0]) : null;
-  }
-
-  async materializeRunTerminal(
-    ownerId: string,
-    runId: string,
-    input: EncryptedRunTerminalMaterialization,
-  ): Promise<{
-    created: boolean;
-    run: RunInstance;
-    terminal: TerminalWireSummary;
-  } | null> {
-    const run = await this.getRunInstance(
-      ownerId,
-      input.projectId,
-      input.worktreeId,
-      runId,
-    );
-    if (!run) return null;
-    if (input.terminalId !== run.id) {
-      throw new Error("A Run terminal must reuse the Run UUID.");
-    }
-    if (run.terminalId && run.terminalId !== input.terminalId) {
-      throw new Error("The Run is already attached to another terminal.");
-    }
-
-    const position = await this.nextProjectTabPosition(input.projectId);
-    const terminalStatus: TerminalWireSummary["status"] = [
-      "queued",
-      "starting",
-      "running",
-      "stopping",
-    ].includes(run.state)
-      ? "running"
-      : run.state === "failed"
-        ? "failed"
-        : "exited";
-    return this.database.transaction(async (transaction) => {
-      const inserted = await transaction
-        .insert(schema.terminals)
-        .values({
-          id: input.terminalId,
-          projectId: input.projectId,
-          protectedLabel: input.titleProtection,
-          protectedState: input.stateProtection,
-          position,
-          status: terminalStatus,
-          activeWorkerId: run.workerId,
-          worktreeId: run.worktreeId,
-        })
-        .onConflictDoNothing({ target: schema.terminals.id })
-        .returning();
-      const terminalRows = inserted[0]
-        ? inserted
-        : await transaction
-            .select()
-            .from(schema.terminals)
-            .where(eq(schema.terminals.id, input.terminalId))
-            .limit(1);
-      const terminal = terminalRows[0];
-      if (
-        !terminal ||
-        (!inserted[0] && run.terminalId !== input.terminalId) ||
-        terminal.projectId !== run.projectId ||
-        terminal.worktreeId !== run.worktreeId ||
-        terminal.activeWorkerId !== run.workerId ||
-        terminal.linkedChatId !== null
-      ) {
-        throw new Error(
-          "The Run terminal identity belongs to another surface.",
-        );
-      }
-      await transaction
-        .update(schema.runInstances)
-        .set({ terminalId: input.terminalId, updatedAt: new Date() })
-        .where(
-          and(
-            eq(schema.runInstances.id, run.id),
-            eq(schema.runInstances.ownerId, ownerId),
-            or(
-              isNull(schema.runInstances.terminalId),
-              eq(schema.runInstances.terminalId, input.terminalId),
-            ),
-          ),
-        );
-      if (inserted[0]) {
-        await attachProjectTab(transaction, {
-          projectId: run.projectId,
-          tabId: terminal.id,
-          tabKind: "terminal",
-        });
-      }
-      const updatedRun = await transaction
-        .select()
-        .from(schema.runInstances)
-        .where(
-          and(
-            eq(schema.runInstances.id, run.id),
-            eq(schema.runInstances.ownerId, ownerId),
-          ),
-        )
-        .limit(1);
-      return {
-        created: Boolean(inserted[0]),
-        run: toRunInstance(
-          firstOrThrow(updatedRun, "attaching a terminal to a Run"),
-        ),
-        terminal: toTerminalWireSummary(terminal),
-      };
-    });
-  }
-
-  async listActiveRunIdentitiesForWorker(
-    ownerId: string,
-    workerId: string,
-  ): Promise<WorkerRunIdentity[]> {
-    const rows = await this.database
-      .select({ run: schema.runInstances })
-      .from(schema.runInstances)
-      .where(
-        and(
-          eq(schema.runInstances.ownerId, ownerId),
-          eq(schema.runInstances.workerId, workerId),
-          inArray(schema.runInstances.state, [
-            "queued",
-            "starting",
-            "running",
-            "stopping",
-          ]),
-        ),
-      )
-      .orderBy(asc(schema.runInstances.createdAt))
-      .limit(256);
-    return rows.map(({ run }) => ({
-      runId: run.id,
-      projectId: run.projectId,
-      worktreeId: run.worktreeId,
-      actionId: run.actionId,
-      configurationRevision: run.configurationRevision,
-    }));
-  }
-
-  async transitionRunInstance(
-    ownerId: string,
-    projectId: string,
-    worktreeId: string,
-    runId: string,
-    state: Extract<
-      RunInstanceState,
-      "starting" | "stopping" | "failed" | "lost"
-    >,
-  ): Promise<RunInstance | null> {
-    const current = await this.getRunInstance(
-      ownerId,
-      projectId,
-      worktreeId,
-      runId,
-    );
-    if (!current) return null;
-    if (["exited", "failed", "stopped", "lost"].includes(current.state)) {
-      return current;
-    }
-    if (state === "starting" && current.state !== "queued") return current;
-    if (
-      state === "stopping" &&
-      !["queued", "starting", "running"].includes(current.state)
-    ) {
-      return current;
-    }
-    const ended = state === "failed" || state === "lost";
-    const rows = await this.database
-      .update(schema.runInstances)
-      .set({
-        state,
-        endedAt: ended ? new Date() : null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.runInstances.id, runId),
-          eq(schema.runInstances.ownerId, ownerId),
-          eq(schema.runInstances.state, current.state),
-        ),
-      )
-      .returning();
-    return rows[0]
-      ? toRunInstance(rows[0])
-      : this.getRunInstance(ownerId, projectId, worktreeId, runId);
-  }
-
-  async applyRunInstanceObservation(
-    ownerId: string,
-    workerId: string,
-    observation: WorkerRunSnapshot,
-  ): Promise<RunInstance | null> {
-    const current = await this.getRunInstance(
-      ownerId,
-      observation.projectId,
-      observation.worktreeId,
-      observation.runId,
-    );
-    if (!current || current.workerId !== workerId) return null;
-    if (
-      current.actionId !== observation.actionId ||
-      current.configurationRevision !== observation.configurationRevision
-    ) {
-      throw new Error("Worker Run state does not match its durable record.");
-    }
-    const terminal = ["exited", "failed", "stopped", "lost"];
-    if (terminal.includes(current.state)) return current;
-    const allowed: Record<RunInstanceState, RunInstanceState[]> = {
-      queued: [
-        "starting",
-        "running",
-        "exited",
-        "failed",
-        "stopping",
-        "stopped",
-        "lost",
-      ],
-      starting: ["running", "exited", "failed", "stopping", "stopped", "lost"],
-      running: ["exited", "failed", "stopping", "stopped", "lost"],
-      stopping: ["exited", "failed", "stopped", "lost"],
-      exited: [],
-      failed: [],
-      stopped: [],
-      lost: [],
-    };
-    if (!allowed[current.state].includes(observation.state)) return current;
-    const rows = await this.database
-      .update(schema.runInstances)
-      .set({
-        state: observation.state,
-        startedAt: observation.startedAt
-          ? new Date(observation.startedAt)
-          : current.startedAt
-            ? new Date(current.startedAt)
-            : null,
-        endedAt: observation.endedAt ? new Date(observation.endedAt) : null,
-        exitCode: observation.exitCode,
-        signal: observation.signal,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.runInstances.id, observation.runId),
-          eq(schema.runInstances.ownerId, ownerId),
-          eq(schema.runInstances.workerId, workerId),
-          eq(schema.runInstances.state, current.state),
-        ),
-      )
-      .returning();
-    return rows[0]
-      ? toRunInstance(rows[0])
-      : this.getRunInstance(
-          ownerId,
-          observation.projectId,
-          observation.worktreeId,
-          observation.runId,
-        );
   }
 
   async listRunConfigurationSecretSummaries(
@@ -11247,9 +10790,6 @@ export class ServerRepository {
       for (const missing of existing) {
         if (!observedIds.has(missing.id) && !missing.isPrimary) {
           await transaction
-            .delete(schema.worktreeSetupJobs)
-            .where(eq(schema.worktreeSetupJobs.worktreeId, missing.id));
-          await transaction
             .update(schema.projectWorktrees)
             .set({
               lifecycleState: "missing",
@@ -11314,9 +10854,6 @@ export class ServerRepository {
       ) {
         return false;
       }
-      await transaction
-        .delete(schema.worktreeSetupJobs)
-        .where(eq(schema.worktreeSetupJobs.worktreeId, created.id));
       const deleted = await transaction
         .delete(schema.projectWorktrees)
         .where(
@@ -13341,11 +12878,6 @@ export class ServerRepository {
     if (owned.linkedChatId) {
       throw new Error("Linked Codex consoles cannot run terminal services.");
     }
-    if (await this.getRunInstanceByTerminal(ownerId, terminalId)) {
-      throw new Error(
-        "Run terminals are controlled by their managed Run session.",
-      );
-    }
     const result = await this.database
       .update(schema.terminals)
       .set({
@@ -13417,9 +12949,6 @@ export class ServerRepository {
       throw new Error(
         "Linked Codex consoles inherit their parent chat worktree.",
       );
-    }
-    if (await this.getRunInstanceByTerminal(ownerId, terminalId)) {
-      throw new Error("Run terminals cannot change worktrees.");
     }
     if (terminal.status === "running") {
       throw new Error("Stop the terminal before changing its worktree.");
@@ -14817,15 +14346,6 @@ export class ServerRepository {
       }
     }
     await this.database.transaction(async (transaction) => {
-      await transaction
-        .update(schema.runInstances)
-        .set({ terminalId: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(schema.runInstances.ownerId, ownerId),
-            eq(schema.runInstances.terminalId, terminalId),
-          ),
-        );
       await transaction
         .update(schema.runConfigurationRuntimes)
         .set({ terminalId: null, updatedAt: new Date() })

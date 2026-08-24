@@ -30,20 +30,7 @@ import {
   gitManagedOperationWorkerStateSchema,
   gitStashMutationResultSchema,
   providerQuotaSnapshotSchema,
-  RUN_CONFIGURATION_CANONICAL_PATH,
   mentionedSkillNames,
-  protectedRunConfigurationAuthoringSnapshotSchema,
-  protectedRunConfigurationInspectionSchema,
-  protectedWorkerRunLogSnapshotSchema,
-  protectedWorkerRunSetupLookupSchema,
-  protectedWorkerRunSetupStatusSchema,
-  runConfigurationInspectionMetadataSchema,
-  runConfigurationInspectionSchema,
-  runConfigurationAuthoringSnapshotSchema,
-  runConfigurationWriteRequestSchema,
-  runLogContentSchema,
-  runSetupDetailContentSchema,
-  workerRunConfigurationWriteResultSchema,
   scriptCommandListSchema,
   skillListSchema,
   skillSettingsDeleteRequestSchema,
@@ -319,17 +306,7 @@ import { openWorkerTunnelContentRecord } from "./tunnel-content-encryption.js";
 import { readProjectFolderStats } from "./project-folder-stats.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
-import {
-  inspectRunConfigurations,
-  readRunConfigurationAuthoring,
-  writeRunConfiguration,
-} from "./run-configuration-discovery.js";
-import {
-  openWorkerRunContent,
-  protectWorkerRunContent,
-} from "./run-content-encryption.js";
-import { ManagedRunSupervisor } from "./managed-run-supervisor.js";
-import { RunSetupManager } from "./run-setup-manager.js";
+import { protectWorkerRunContent } from "./run-content-encryption.js";
 import {
   TerminalManager,
   type TerminalRuntimeEvent,
@@ -626,10 +603,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const cliBroker = new CantripCliBroker(config);
   const mcpBroker = new CantripMcpBroker(config);
   const mcpHost = cantripMcpHostInvocation();
-  let runSetups: RunSetupManager | null = null;
   const terminals = new TerminalManager({
     environment: cliBroker.childEnvironment(),
-    environmentForCwd: (cwd) => runSetups?.environmentForPath(cwd) ?? {},
   });
   const terminalDirectEndpoints = new TerminalDirectEndpointManager(terminals);
   const directBroker = new DirectBroker();
@@ -648,7 +623,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       binding.capabilityId,
       target.resourceId,
       target.serverId,
-      target.managedRunId ?? null,
     );
   });
   directBroker.setCapabilityRevoker((capabilityId, reason) => {
@@ -861,74 +835,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   remoteSurfaces.setEncryptionService(workerEncryption);
   const worktrees = new WorktreeManager(config.dataDirectory);
-  runSetups = new RunSetupManager({
-    authorize: async (input) => {
-      const [authorized] = await worktrees.authorizeTargets(input.sourcePath, [
-        input.worktreePath,
-      ]);
-      if (!authorized) {
-        throw new Error("The requested setup worktree is unavailable.");
-      }
-      return {
-        sourceRoot: authorized.inventory.sourcePath,
-        worktreeRoot: authorized.worktree.path,
-      };
-    },
-    dataDirectory: config.dataDirectory,
-    environment: cliBroker.childEnvironment(),
-  });
-  await workerStartupPhase(
-    "initialize-run-setup",
-    () => runSetups!.initialize(),
-    { workerId: config.workerId },
-  );
   let codegraphNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
   let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
   const runConfigurationDefinitions = new RunConfigurationDefinitionService({
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
-  });
-  const managedRuns = new ManagedRunSupervisor({
-    authorize: async (input) => {
-      if (input.rootKind === "folder-root") {
-        const sourceRoot = await realpath(input.sourcePath);
-        const worktreeRoot = await realpath(input.worktreePath);
-        const sourceEntry = await lstat(sourceRoot);
-        const worktreeEntry = await lstat(worktreeRoot);
-        if (
-          !sourceEntry.isDirectory() ||
-          !worktreeEntry.isDirectory() ||
-          sourceRoot !== worktreeRoot
-        ) {
-          throw new Error(
-            "The requested folder Run root does not match its registered project source.",
-          );
-        }
-        return { sourceRoot, worktreeRoot };
-      }
-      const [authorized] = await worktrees.authorizeTargets(input.sourcePath, [
-        input.worktreePath,
-      ]);
-      if (!authorized)
-        throw new Error("The requested Run worktree is unavailable.");
-      return {
-        sourceRoot: authorized.inventory.sourcePath,
-        worktreeRoot: authorized.worktree.path,
-      };
-    },
-    environment: cliBroker.childEnvironment(),
-    environmentForRun: (input) =>
-      runSetups!.environmentFor(
-        input.projectId,
-        input.worktreeId,
-        input.configurationRevision,
-      ),
-    notify: (run) =>
-      workerNotificationEmitter?.({
-        type: "project.run.state.observed",
-        run,
-      }),
   });
   const runConfigurationRuntimes = new RunConfigurationRuntimeSupervisor({
     authorize: async (input) => {
@@ -987,7 +899,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         observation,
       }),
   });
-  terminalDirectEndpoints.setManagedRunSupervisor(managedRuns);
   const providerAuthObserver = new ProviderAuthObserver({
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
   });
@@ -1876,10 +1787,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "project.folder.materialize":
         return managedFolders.materialize(command);
       case "project.folder.delete": {
-        await Promise.all([
-          managedRuns.stopProject(command.projectId),
-          runConfigurationRuntimes.stopProject(command.projectId),
-        ]);
+        await runConfigurationRuntimes.stopProject(command.projectId);
         return managedFolders.delete(command.projectId);
       }
       case "project.folder-conversion.preflight":
@@ -1954,10 +1862,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           repositoryFingerprint: command.repositoryFingerprint,
         });
       case "project.files.delete":
-        await Promise.all([
-          managedRuns.stopForPath(command.path),
-          runConfigurationRuntimes.stopForPath(command.path),
-        ]);
+        await runConfigurationRuntimes.stopForPath(command.path);
         return github.deleteRepository(command.path);
       case "project.script-commands":
         try {
@@ -2041,214 +1946,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "project.run-configuration-runtime.reconcile":
         return runConfigurationRuntimes.reconcile(command.identities);
-      case "project.run-configurations.metadata": {
-        const inspection = runConfigurationInspectionSchema.parse(
-          await inspectRunConfigurations(command.sourcePath),
-        );
-        return runConfigurationInspectionMetadataSchema.parse({
-          platform: inspection.platform,
-          configured: inspection.configured,
-          valid: inspection.valid,
-          hasSetup: Boolean(
-            inspection.configurations.find(
-              ({ relativePath }) =>
-                relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
-            )?.setup,
-          ),
-          configurationRevision:
-            inspection.configurations.find(
-              ({ relativePath }) =>
-                relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
-            )?.revision ?? null,
-        });
-      }
-      case "project.run-configurations.inspect": {
-        const inspection = runConfigurationInspectionSchema.parse(
-          await inspectRunConfigurations(command.sourcePath),
-        );
-        return protectedRunConfigurationInspectionSchema.parse({
-          operationId: command.operationId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          metadata: runConfigurationInspectionMetadataSchema.parse({
-            platform: inspection.platform,
-            configured: inspection.configured,
-            valid: inspection.valid,
-            hasSetup: Boolean(
-              inspection.configurations.find(
-                ({ relativePath }) =>
-                  relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
-              )?.setup,
-            ),
-            configurationRevision:
-              inspection.configurations.find(
-                ({ relativePath }) =>
-                  relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
-              )?.revision ?? null,
-          }),
-          protectedInspection: await protectWorkerRunContent({
-            serverId: command.serverId,
-            projectId: command.projectId,
-            worktreeId: command.worktreeId,
-            operationId: command.operationId,
-            operation: "run.configuration.inspect",
-            content: inspection,
-            schema: runConfigurationInspectionSchema,
-            service: workerEncryption,
-          }),
-        });
-      }
-      case "project.run-configurations.read-authoring": {
-        const snapshot = runConfigurationAuthoringSnapshotSchema.parse(
-          await readRunConfigurationAuthoring(command.sourcePath),
-        );
-        return protectedRunConfigurationAuthoringSnapshotSchema.parse({
-          operationId: command.operationId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          protectedSnapshot: await protectWorkerRunContent({
-            serverId: command.serverId,
-            projectId: command.projectId,
-            worktreeId: command.worktreeId,
-            operationId: command.operationId,
-            operation: "run.configuration.authoring",
-            content: snapshot,
-            schema: runConfigurationAuthoringSnapshotSchema,
-            service: workerEncryption,
-          }),
-        });
-      }
-      case "project.run-configurations.write": {
-        const input = await openWorkerRunContent({
-          serverId: command.serverId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          operationId: command.operationId,
-          operation: "run.configuration.write",
-          opaque: command.protectedRequest,
-          schema: runConfigurationWriteRequestSchema,
-          service: workerEncryption,
-        });
-        const result = workerRunConfigurationWriteResultSchema.parse(
-          await writeRunConfiguration(
-            command.sourcePath,
-            input.expectedRevision,
-            input.document,
-          ),
-        );
-        return protectWorkerRunContent({
-          serverId: command.serverId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          operationId: command.operationId,
-          operation: "run.configuration.write",
-          content: result,
-          schema: workerRunConfigurationWriteResultSchema,
-          service: workerEncryption,
-        });
-      }
-      case "project.run-setup.start": {
-        const status = runSetups!.start(command);
-        const { output, outputTruncated, signal, error, ...publicStatus } =
-          status;
-        return protectedWorkerRunSetupStatusSchema.parse({
-          operationId: command.operationId,
-          status: {
-            ...publicStatus,
-            error: error
-              ? { code: error.code, retryable: error.retryable }
-              : null,
-          },
-          protectedDetails: await protectWorkerRunContent({
-            serverId: command.serverId,
-            projectId: command.projectId,
-            worktreeId: command.worktreeId,
-            operationId: command.operationId,
-            operation: "run.setup.status",
-            content: {
-              output,
-              outputTruncated,
-              signal,
-              errorMessage: error?.message ?? null,
-            },
-            schema: runSetupDetailContentSchema,
-            service: workerEncryption,
-          }),
-        });
-      }
-      case "project.run-setup.status": {
-        const lookup = runSetups!.status(
-          command.jobId,
-          command.projectId,
-          command.worktreeId,
-        );
-        if (!lookup.found) {
-          return protectedWorkerRunSetupLookupSchema.parse({
-            ...lookup,
-            operationId: command.operationId,
-          });
-        }
-        const { output, outputTruncated, signal, error, ...publicStatus } =
-          lookup.status;
-        return protectedWorkerRunSetupLookupSchema.parse({
-          found: true,
-          operationId: command.operationId,
-          status: {
-            ...publicStatus,
-            error: error
-              ? { code: error.code, retryable: error.retryable }
-              : null,
-          },
-          protectedDetails: await protectWorkerRunContent({
-            serverId: command.serverId,
-            projectId: command.projectId,
-            worktreeId: command.worktreeId,
-            operationId: command.operationId,
-            operation: "run.setup.status",
-            content: {
-              output,
-              outputTruncated,
-              signal,
-              errorMessage: error?.message ?? null,
-            },
-            schema: runSetupDetailContentSchema,
-            service: workerEncryption,
-          }),
-        });
-      }
-      case "project.run.start":
-        return managedRuns.start(command);
-      case "project.run.status":
-        return managedRuns.status(command.runId);
-      case "project.run.logs": {
-        const snapshot = await managedRuns.logs(
-          command.runId,
-          command.maxChars,
-        );
-        return protectedWorkerRunLogSnapshotSchema.parse({
-          operationId: command.operationId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          run: snapshot.run,
-          protectedLog: await protectWorkerRunContent({
-            serverId: command.serverId,
-            projectId: command.projectId,
-            worktreeId: command.worktreeId,
-            operationId: command.operationId,
-            operation: "run.logs.read",
-            content: {
-              data: snapshot.data,
-              truncated: snapshot.truncated,
-            },
-            schema: runLogContentSchema,
-            service: workerEncryption,
-          }),
-        });
-      }
-      case "project.run.stop":
-        return managedRuns.stop(command.runId);
-      case "project.run.reconcile":
-        return managedRuns.reconcile(command.runs);
       case "project.repository-stats":
         return readProjectRepositoryStats(command.cwd);
       case "project.folder-stats":
@@ -2856,16 +2553,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return applyGitForcePush(command.cwd, command.token);
       case "worktree.list":
         return worktrees.list(command.sourcePath);
-      case "worktree.reconcile": {
-        const inventory = await worktrees.reconcile(command.sourcePath);
-        await runSetups!.reconcile(
-          inventory.sourcePath,
-          inventory.worktrees
-            .filter(({ missing }) => !missing)
-            .map(({ path: worktreePath }) => worktreePath),
-        );
-        return inventory;
-      }
+      case "worktree.reconcile":
+        return worktrees.reconcile(command.sourcePath);
       case "worktree.create":
         return worktrees.create(
           command.sourcePath,
@@ -2881,11 +2570,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             allowExternal: command.allowExternal,
             force: command.force,
             beforeRemove: async (worktreePath) => {
-              await Promise.all([
-                managedRuns.stopForPath(worktreePath),
-                runConfigurationRuntimes.stopForPath(worktreePath),
-              ]);
-              await runSetups!.removeForPath(worktreePath);
+              await runConfigurationRuntimes.stopForPath(worktreePath);
             },
           },
         );
@@ -2902,17 +2587,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "worktree.unlock":
         return worktrees.unlock(command.sourcePath, command.worktreePath);
       case "worktree.prune": {
-        const result = await worktrees.prune(
-          command.sourcePath,
-          command.allowExternal,
-        );
-        await runSetups!.reconcile(
-          result.inventory.sourcePath,
-          result.inventory.worktrees
-            .filter(({ missing }) => !missing)
-            .map(({ path: worktreePath }) => worktreePath),
-        );
-        return result;
+        return worktrees.prune(command.sourcePath, command.allowExternal);
       }
       case "worktree.status":
         return worktrees.status(command.sourcePath, command.worktreePath);
@@ -3736,23 +3411,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             stateProtection: command.stateProtection,
             service: workerEncryption,
           });
-          if (command.managedRunId) {
-            if (
-              command.managedRunId !== command.terminalId ||
-              !managedRuns.has(command.managedRunId)
-            ) {
-              throw new Error("The managed Run is unavailable on this worker.");
-            }
-            const result = await managedRuns.attach(
-              command.managedRunId,
-              command.attachmentId,
-              command.cols,
-              command.rows,
-              protectedEmit,
-            );
-            await outputQueue;
-            return result;
-          }
           if (command.launch.type === "codex") {
             const runtime = runtimeFor({
               model: command.launch.model,
@@ -3819,9 +3477,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
       }
       case "terminal.detach": {
-        const result = managedRuns.has(command.terminalId)
-          ? managedRuns.detach(command.terminalId, command.attachmentId)
-          : terminals.detach(command.terminalId, command.attachmentId);
+        const result = terminals.detach(
+          command.terminalId,
+          command.attachmentId,
+        );
         const context = terminalStreamContexts.get(command.attachmentId);
         if (context) {
           surfaceStreamReplay.release(context);
@@ -3845,11 +3504,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           schema: terminalInputContentSchema,
           service: workerEncryption,
         });
-        if (managedRuns.has(command.terminalId)) {
-          managedRuns.input(command.terminalId, content.data);
-        } else {
-          terminals.input(command.terminalId, content.data);
-        }
+        terminals.input(command.terminalId, content.data);
         const protectedResponse = await protectWorkerSurfaceStreamContent({
           context: { ...streamContext, direction: "response" },
           content: {
@@ -3867,16 +3522,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
       case "terminal.resize":
-        if (managedRuns.has(command.terminalId)) {
-          managedRuns.resize(command.terminalId, command.cols, command.rows);
-        } else {
-          terminals.resize(command.terminalId, command.cols, command.rows);
-        }
+        terminals.resize(command.terminalId, command.cols, command.rows);
         return { accepted: true };
       case "terminal.close":
-        if (!managedRuns.has(command.terminalId)) {
-          terminals.close(command.terminalId);
-        }
+        terminals.close(command.terminalId);
         return { accepted: true };
       case "terminal.snapshot": {
         const streamContext = {
@@ -3900,9 +3549,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ok: true as const,
             result: {
               type: "terminal.snapshot" as const,
-              ...(managedRuns.has(command.terminalId)
-                ? managedRuns.snapshot(command.terminalId, request.maxChars)
-                : terminals.snapshot(command.terminalId, request.maxChars)),
+              ...terminals.snapshot(command.terminalId, request.maxChars),
             },
           };
         } catch (error) {
@@ -5096,11 +4743,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     worktrees.close();
     providerAuthObserver.close();
     runConfigurationDefinitions.close();
-    await runSetups!.closeAll();
-    await Promise.all([
-      managedRuns.closeAll(),
-      runConfigurationRuntimes.closeAll(),
-    ]);
+    await runConfigurationRuntimes.closeAll();
     commandConnection.close();
     await directBroker.close();
     terminalDirectEndpoints.close();

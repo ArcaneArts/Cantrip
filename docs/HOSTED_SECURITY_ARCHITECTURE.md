@@ -59,21 +59,22 @@ exchange addresses or credentials directly.
 
 Codex's enabled managed-tool list is narrowed to the binding permission
 profile. Read-only profiles receive Run configuration/status/output tools but
-not Run start/open/stop tools; the broker and server still enforce that
-distinction if a caller attempts to bypass Codex discovery. Run start requires
-an opaque action ID plus configuration revision and uses the broker request
-identity for idempotency. The server audits the mutation but never stores the
-action command or terminal output.
+not Run create/update/delete/start/restart/stop or secret-write tools; the
+broker and server still enforce that distinction if a caller attempts to bypass
+Codex discovery. Run lifecycle mutations require the stable configuration ID,
+the expected shared-definition revision, and generation-aware runtime state.
+The server audits mutations while keeping terminal output bounded and
+encrypted.
 
-The five optional client controls travel from the authorized operation through
+The four optional client controls travel from the authorized operation through
 the server's authenticated application live WebSocket. The server selects only
 same-owner, project-active clients that declared the exact capability. Requests
 expire within ten seconds, are acknowledged, and are neither persisted nor
-placed in the replay ring. Only `materialize-run-terminal` may create a durable
-surface, and only for an exact authorized Run with matching Run/terminal UUID,
-project, worktree, and worker placement; other controls cannot create surfaces
-or answer an interaction. See [`MCP.md`](MCP.md) for the full catalog and
-lifecycle.
+placed in the replay ring. Client controls cannot create durable surfaces or
+answer an interaction. Run configuration terminals instead materialize from
+authorized server runtime state and are bound to the exact project, worktree,
+configuration revision, and runtime generation. See [`MCP.md`](MCP.md) for the
+full catalog and lifecycle.
 
 ## 2. Authentication modes
 

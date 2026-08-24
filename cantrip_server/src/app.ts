@@ -376,25 +376,6 @@ import {
   serverBootstrapSchema,
   settingsBundleWireSchema,
   protectedScriptCommandListSchema,
-  RUN_CONFIGURATION_AUTHORING_EXAMPLE,
-  RUN_CONFIGURATION_AUTHORING_EXAMPLE_TOML,
-  runConfigurationAuthoringDocumentSchema,
-  runConfigurationAuthoringHelpSchema,
-  protectedRunConfigurationAuthoringSnapshotSchema,
-  protectedRunConfigurationInspectionSchema,
-  protectedRunConfigurationWriteRequestSchema,
-  protectedRunConfigurationWriteResultSchema,
-  protectedRunLogResultSchema,
-  protectedRunSetupStatusResultSchema,
-  protectedWorkerRunLogSnapshotSchema,
-  protectedRunEnvironmentSummarySchema,
-  runEnvironmentRequestSchema,
-  runInstanceResultSchema,
-  runInstanceSchema,
-  runStartResultSchema,
-  runStartRequestSchema,
-  runOpenRequestSchema,
-  protectedWorkerRunSetupLookupSchema,
   skillSettingsContextSchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
@@ -403,7 +384,6 @@ import {
   systemHealthSchema,
   terminalClientMessageSchema,
   encryptedTerminalCreateSchema,
-  encryptedRunTerminalMaterializationSchema,
   encryptedLinkedConsoleCreateSchema,
   terminalWireListSchema,
   terminalOpenResultSchema,
@@ -443,10 +423,6 @@ import {
   workerCliCommandCallSchema,
   workerRestartAcknowledgementSchema,
   workerRestartResultSchema,
-  workerRunLookupSchema,
-  workerRunReconciliationSchema,
-  workerRunSnapshotSchema,
-  workerRunConfigurationWriteResultSchema,
   workerUpdateSchema,
   worktreeMutationResultSchema,
   worktreePruneResultSchema,
@@ -574,8 +550,6 @@ import type {
   ProviderAuthLiveStatus,
   ModelConfiguration,
   ReasoningEffort,
-  ProtectedRunConfigurationInspection,
-  RunInstance,
   WorkerNotification,
   WorkerCommand,
   WorkerSummary,
@@ -846,10 +820,6 @@ import {
   ProjectWorktreeCoordinator,
   WorktreeCreateMutationError,
 } from "./worktrees/coordinator.js";
-import {
-  WorktreeSetupJobExecutor,
-  type WorktreeSetupLiveChange,
-} from "./worktrees/setup-executor.js";
 import {
   errorMessage,
   invalidBody,
@@ -1966,46 +1936,6 @@ export async function buildApp({
     timer.unref();
     worktreeObservationTimers.set(workerId, timer);
   };
-  const reconcileRunInstancesForWorker = async (
-    ownerId: string,
-    workerId: string,
-  ): Promise<void> => {
-    if (!bridge.isConnected(workerId)) return;
-    const active = await repository.listActiveRunIdentitiesForWorker(
-      ownerId,
-      workerId,
-    );
-    if (active.length === 0) return;
-    const observations = workerRunReconciliationSchema.parse(
-      await bridge.request(workerId, {
-        type: "project.run.reconcile",
-        runs: active,
-      }),
-    );
-    await Promise.all(
-      observations.map(async (observation) => {
-        if (observation.found) {
-          await repository.applyRunInstanceObservation(
-            ownerId,
-            workerId,
-            observation.run,
-          );
-          return;
-        }
-        const identity = active.find(
-          ({ runId }) => runId === observation.runId,
-        );
-        if (!identity) return;
-        await repository.transitionRunInstance(
-          ownerId,
-          identity.projectId,
-          identity.worktreeId,
-          identity.runId,
-          "lost",
-        );
-      }),
-    );
-  };
   const reconcileRunConfigurationRuntimesForWorker = async (
     ownerId: string,
     workerId: string,
@@ -2434,30 +2364,6 @@ export async function buildApp({
     }
     if (notification.type === "git.operation.observed") {
       scheduleGitOperationObservation(ownerId, workerId, notification);
-      return;
-    }
-    if (notification.type === "project.run.state.observed") {
-      const run = await repository.applyRunInstanceObservation(
-        ownerId,
-        workerId,
-        notification.run,
-      );
-      if (run) {
-        publishLiveInvalidation("run", {
-          projectId: run.projectId,
-          entityId: run.id,
-        });
-        if (run.terminalId) {
-          await updateTerminalStatus(
-            run.terminalId,
-            ["queued", "starting", "running", "stopping"].includes(run.state)
-              ? "running"
-              : run.state === "failed"
-                ? "failed"
-                : "exited",
-          );
-        }
-      }
       return;
     }
     if (notification.type === "project.run-configuration-runtime.observed") {
@@ -3102,7 +3008,6 @@ export async function buildApp({
     if (reordered) publishChatInvalidation(input[1], "chat-queue");
     return reordered;
   };
-  let worktreeSetupExecutor: WorktreeSetupJobExecutor | null = null;
   const worktreeCoordinator = new ProjectWorktreeCoordinator(
     repository,
     bridge,
@@ -3110,7 +3015,6 @@ export async function buildApp({
       publishLiveInvalidation("worktree", { projectId });
       void scheduleProjectWorktreeObservation(projectId);
     },
-    () => worktreeSetupExecutor?.queueAvailable(),
   );
   const publishWorkflowRunChange = (
     change: Omit<WorkflowRunLiveChange, "ownerId"> & { ownerId?: string },
@@ -3302,43 +3206,6 @@ export async function buildApp({
     app.log,
     publishProjectFolderSetupChange,
   );
-  const publishWorktreeSetupChange = (
-    change: WorktreeSetupLiveChange,
-  ): void => {
-    if (change.job.state === "failed") {
-      app.log.error(
-        {
-          event: "run.setup.transitioned",
-          subsystem: "run-setup",
-          operation: "setup",
-          status: change.job.state,
-          runId: change.job.id,
-          projectId: change.job.projectId,
-          worktreeId: change.job.worktreeId,
-          workerId: change.job.workerId,
-          attempt: change.job.attempt,
-        },
-        "Worktree setup failed",
-      );
-    }
-    if (!livePublishingEnabled) return;
-    publishLiveInvalidation("worktree", {
-      projectId: change.job.projectId,
-      entityId: change.job.worktreeId,
-    });
-    publishLiveInvalidation("run", {
-      projectId: change.job.projectId,
-      entityId: change.job.worktreeId,
-    });
-  };
-  const worktreeSetupJobExecutor = new WorktreeSetupJobExecutor(
-    repository,
-    bridge,
-    app.log,
-    publishWorktreeSetupChange,
-    () => serverId,
-  );
-  worktreeSetupExecutor = worktreeSetupJobExecutor;
   const publishProjectGithubConversionChange = (
     change: ProjectGithubConversionLiveChange,
   ): void => {
@@ -3607,9 +3474,6 @@ export async function buildApp({
   await projectFolderSetupJobExecutor.recoverAfterRestart(!coordinator);
   projectFolderSetupJobExecutor.queueAvailable();
   projectFolderSetupJobExecutor.startRecoverySweep();
-  await worktreeSetupJobExecutor.recoverAfterRestart(!coordinator);
-  worktreeSetupJobExecutor.queueAvailable();
-  worktreeSetupJobExecutor.startRecoverySweep();
   await projectGithubConversionJobExecutor.recoverAfterRestart(!coordinator);
   projectGithubConversionJobExecutor.queueAvailable();
   projectGithubConversionJobExecutor.startRecoverySweep();
@@ -5198,140 +5062,14 @@ export async function buildApp({
     }
     const worktrees = () =>
       repository.listProjectWorktrees(applicationOwnerId(), context.projectId);
-    const worktreeContext = async (
-      worktreeId: string,
-      allowSetupStates = false,
-    ) => {
+    const worktreeContext = async (worktreeId: string) => {
       const target = await repository.getProjectWorktreeContext(
         applicationOwnerId(),
         context.projectId,
         worktreeId,
-        { allowSetupStates },
       );
       if (!target) throw new Error("Worktree not found.");
       return target;
-    };
-    const runConfigurationInspection = async () => {
-      const target = await worktreeContext(context.worktreeId, true);
-      if (target.workerId !== context.workerId) {
-        throw new ExecutionLaneConflictError(
-          "The run configuration placement changed before inspection.",
-        );
-      }
-      const operationId = randomUUID();
-      return protectedRunConfigurationInspectionSchema.parse(
-        await bridge.request(target.workerId, {
-          type: "project.run-configurations.inspect",
-          operationId,
-          projectId: context.projectId,
-          worktreeId: context.worktreeId,
-          serverId,
-          sourcePath: target.worktree.path,
-        }),
-      );
-    };
-    const runConfigurationAuthoring = async () => {
-      const target = await worktreeContext(context.worktreeId, true);
-      if (target.workerId !== context.workerId) {
-        throw new ExecutionLaneConflictError(
-          "The run configuration placement changed before authoring.",
-        );
-      }
-      const operationId = randomUUID();
-      return protectedRunConfigurationAuthoringSnapshotSchema.parse(
-        await bridge.request(target.workerId, {
-          type: "project.run-configurations.read-authoring",
-          operationId,
-          projectId: context.projectId,
-          worktreeId: context.worktreeId,
-          serverId,
-          sourcePath: target.worktree.path,
-        }),
-      );
-    };
-    const canonicalRunConfigurationRevision = (
-      inspection: ProtectedRunConfigurationInspection,
-    ) => inspection.metadata.configurationRevision;
-    const readRunSetupStatus = async () => {
-      const target = await worktreeContext(context.worktreeId, true);
-      const inspection = await runConfigurationInspection();
-      const currentConfigurationRevision =
-        canonicalRunConfigurationRevision(inspection);
-      let setup = await repository.worktreeSetupJobs.get(
-        applicationOwnerId(),
-        context.projectId,
-        context.worktreeId,
-      );
-      if (
-        setup &&
-        setup.configurationRevision !== currentConfigurationRevision &&
-        setup.state !== "queued" &&
-        setup.state !== "running"
-      ) {
-        const stale = await repository.worktreeSetupJobs.markStale(
-          applicationOwnerId(),
-          context.projectId,
-          context.worktreeId,
-          setup.stateRevision,
-        );
-        if (stale) {
-          setup = stale;
-          publishWorktreeSetupChange({
-            ownerId: applicationOwnerId(),
-            job: setup,
-          });
-        } else {
-          setup = await repository.worktreeSetupJobs.get(
-            applicationOwnerId(),
-            context.projectId,
-            context.worktreeId,
-          );
-        }
-      }
-      const operationId = randomUUID();
-      let publicWorkerStatus = null;
-      let protectedDetails = null;
-      let workerStatusAvailable = false;
-      if (
-        setup &&
-        setup.attempt > 0 &&
-        setup.state !== "queued" &&
-        bridge.isConnected(target.workerId)
-      ) {
-        try {
-          const lookup = protectedWorkerRunSetupLookupSchema.parse(
-            await bridge.request(target.workerId, {
-              type: "project.run-setup.status",
-              operationId,
-              serverId,
-              jobId: setup.id,
-              projectId: setup.projectId,
-              worktreeId: setup.worktreeId,
-            }),
-          );
-          if (
-            lookup.found &&
-            lookup.status.attempt === setup.attempt &&
-            lookup.status.configurationRevision === setup.configurationRevision
-          ) {
-            workerStatusAvailable = true;
-            publicWorkerStatus = lookup.status;
-            protectedDetails = lookup.protectedDetails;
-          }
-        } catch (error) {
-          if (!(error instanceof WorkerUnavailableError)) throw error;
-        }
-      }
-      return protectedRunSetupStatusResultSchema.parse({
-        operationId,
-        projectId: context.projectId,
-        worktreeId: context.worktreeId,
-        setup,
-        currentConfigurationRevision,
-        publicWorkerStatus,
-        protectedDetails,
-        workerStatusAvailable,
-      });
     };
     const requireRunMutation = () => {
       if (context.permissionProfileId === ":read-only") {
@@ -5341,103 +5079,6 @@ export async function buildApp({
           "Run mutations are unavailable in a read-only execution context.",
         );
       }
-    };
-    const runInstance = async (runId: string | null) => {
-      const run = runId
-        ? await repository.getRunInstance(
-            applicationOwnerId(),
-            context.projectId,
-            context.worktreeId,
-            runId,
-          )
-        : await repository.getLatestRunInstance(
-            applicationOwnerId(),
-            context.projectId,
-            context.worktreeId,
-          );
-      if (!run) {
-        throw new CliCommandRequestError(
-          "not-found",
-          404,
-          runId
-            ? "That Run does not exist in the current worktree."
-            : "The current worktree has no Runs yet.",
-        );
-      }
-      return run;
-    };
-    const refreshRunInstance = async (runId: string | null) => {
-      const current = await runInstance(runId);
-      if (
-        ["exited", "failed", "stopped", "lost"].includes(current.state) ||
-        !bridge.isConnected(current.workerId)
-      ) {
-        return current;
-      }
-      const observed = workerRunLookupSchema.parse(
-        await bridge.request(current.workerId, {
-          type: "project.run.status",
-          runId: current.id,
-        }),
-      );
-      if (!observed.found) {
-        return (
-          (await repository.transitionRunInstance(
-            applicationOwnerId(),
-            current.projectId,
-            current.worktreeId,
-            current.id,
-            "lost",
-          )) ?? current
-        );
-      }
-      return (
-        (await repository.applyRunInstanceObservation(
-          applicationOwnerId(),
-          current.workerId,
-          observed.run,
-        )) ?? current
-      );
-    };
-    const synchronizeRunTerminalStatus = async (run: RunInstance) => {
-      if (run.terminalId) {
-        await updateTerminalStatus(
-          run.terminalId,
-          ["queued", "starting", "running", "stopping"].includes(run.state)
-            ? "running"
-            : run.state === "failed"
-              ? "failed"
-              : "exited",
-        );
-      }
-      return run;
-    };
-    const materializeRunTerminal = async (run: RunInstance, focus: boolean) => {
-      const result = await liveHub
-        .requestClientControl(applicationOwnerId(), {
-          kind: "materialize-run-terminal",
-          projectId: run.projectId,
-          worktreeId: run.worktreeId,
-          runId: run.id,
-          terminalId: run.id,
-          focus,
-        })
-        .catch(() => ({ status: "unavailable" as const }));
-      const refreshed = await synchronizeRunTerminalStatus(
-        (await repository.getRunInstance(
-          applicationOwnerId(),
-          run.projectId,
-          run.worktreeId,
-          run.id,
-        )) ?? run,
-      );
-      return runStartResultSchema.parse({
-        run: refreshed,
-        surface: {
-          status: result.status,
-          terminalId: refreshed.terminalId,
-        },
-      });
     };
     const resolveTarget = (
       target: Parameters<typeof repository.resolveExecutionTarget>[2],
@@ -5841,441 +5482,6 @@ export async function buildApp({
           mutated: !result.replayed,
           data: result,
         });
-      }
-      case "run-config.list": {
-        const inspection = await runConfigurationInspection();
-        return cantripCliCommandResultSchema.parse({
-          summary: inspection.metadata.configured
-            ? "Returned protected Run configuration metadata."
-            : "No Codex-compatible run configuration is present for this project source.",
-          worktreeId: context.worktreeId,
-          data: inspection,
-        });
-      }
-      case "run-config.read": {
-        const inspection = await runConfigurationInspection();
-        return cantripCliCommandResultSchema.parse({
-          summary: "Returned protected Run configuration metadata.",
-          worktreeId: context.worktreeId,
-          data: inspection,
-        });
-      }
-      case "run-config.schema":
-        return cantripCliCommandResultSchema.parse({
-          summary:
-            "Returned the exact Run configuration authoring schema and a complete example.",
-          worktreeId: context.worktreeId,
-          data: runConfigurationAuthoringHelpSchema.parse({
-            schema: runConfigurationAuthoringDocumentSchema.toJSONSchema(),
-            example: RUN_CONFIGURATION_AUTHORING_EXAMPLE,
-            exampleToml: RUN_CONFIGURATION_AUTHORING_EXAMPLE_TOML,
-          }),
-        });
-      case "run-config.authoring": {
-        const snapshot = await runConfigurationAuthoring();
-        return cantripCliCommandResultSchema.parse({
-          summary: "Returned protected Run configuration authoring content.",
-          worktreeId: context.worktreeId,
-          data: snapshot,
-        });
-      }
-      case "run-config.action-add":
-      case "run-config.write": {
-        requireRunMutation();
-        const input = protectedRunConfigurationWriteRequestSchema.safeParse(
-          call.arguments,
-        );
-        if (!input.success) {
-          throw new CliCommandRequestError(
-            "invalid",
-            400,
-            "The Environment authoring request is invalid.",
-          );
-        }
-        if (
-          input.data.projectId !== context.projectId ||
-          input.data.worktreeId !== context.worktreeId
-        ) {
-          throw new ExecutionLaneConflictError(
-            "The protected Run configuration targets another worktree.",
-          );
-        }
-        const target = await worktreeContext(context.worktreeId, true);
-        if (target.workerId !== context.workerId) {
-          throw new ExecutionLaneConflictError(
-            "The run configuration placement changed before writing.",
-          );
-        }
-        const result = endpointContentOpaqueSchema.parse(
-          await bridge.request(target.workerId, {
-            type: "project.run-configurations.write",
-            operationId: input.data.operationId,
-            projectId: context.projectId,
-            worktreeId: context.worktreeId,
-            serverId,
-            sourcePath: target.worktree.path,
-            protectedRequest: input.data.protectedRequest,
-          }),
-        );
-        return cantripCliCommandResultSchema.parse({
-          summary: "Processed a protected Run configuration update.",
-          worktreeId: context.worktreeId,
-          mutated: true,
-          data: {
-            operationId: input.data.operationId,
-            projectId: context.projectId,
-            worktreeId: context.worktreeId,
-            protectedResponse: result,
-          },
-        });
-      }
-      case "run.setup-status": {
-        const data = await readRunSetupStatus();
-        return cantripCliCommandResultSchema.parse({
-          summary: data.setup
-            ? `Worktree setup is ${data.setup.state}.`
-            : "This worktree has no Cantrip setup job.",
-          worktreeId: context.worktreeId,
-          data,
-        });
-      }
-      case "run.setup-retry": {
-        requireRunMutation();
-        const target = await worktreeContext(context.worktreeId, true);
-        if (target.worktree.isPrimary) {
-          throw new CliCommandRequestError(
-            "conflict",
-            409,
-            "Primary is not prepared by the secondary-worktree setup lifecycle.",
-          );
-        }
-        const inspection = await runConfigurationInspection();
-        const configurationRevision =
-          canonicalRunConfigurationRevision(inspection);
-        const configurationError = inspection.metadata.valid
-          ? null
-          : {
-              code: "configuration-invalid" as const,
-              message:
-                "The project environment is invalid. Validate it before retrying setup.",
-              retryable: true,
-            };
-        let setup = await repository.worktreeSetupJobs.get(
-          applicationOwnerId(),
-          context.projectId,
-          context.worktreeId,
-        );
-        if (!setup) {
-          setup = (
-            await repository.worktreeSetupJobs.initialize({
-              configurationRevision,
-              ...(configurationError ? { error: configurationError } : {}),
-              ownerId: applicationOwnerId(),
-              projectId: context.projectId,
-              queued: !configurationError,
-              workerId: target.workerId,
-              worktreeId: context.worktreeId,
-            })
-          ).job;
-        } else {
-          const retried = await repository.worktreeSetupJobs.retry(
-            applicationOwnerId(),
-            context.projectId,
-            context.worktreeId,
-            setup.stateRevision,
-            configurationRevision,
-            configurationError,
-          );
-          if (!retried) {
-            throw new CliCommandRequestError(
-              "conflict",
-              409,
-              "Worktree setup changed or is already in progress.",
-            );
-          }
-          setup = retried;
-        }
-        publishWorktreeSetupChange({
-          ownerId: applicationOwnerId(),
-          job: setup,
-        });
-        if (setup.state === "queued") {
-          worktreeSetupJobExecutor.queueAvailable();
-        }
-        const data = await readRunSetupStatus();
-        return cantripCliCommandResultSchema.parse({
-          summary:
-            setup.state === "queued"
-              ? "Queued worktree setup retry."
-              : "Worktree setup retry was rejected by configuration validation.",
-          worktreeId: context.worktreeId,
-          mutated: true,
-          data,
-        });
-      }
-      case "run.start": {
-        requireRunMutation();
-        const target = await worktreeContext(context.worktreeId, true);
-        if (target.workerId !== context.workerId) {
-          throw new ExecutionLaneConflictError(
-            "The Run placement changed before it could start.",
-          );
-        }
-        const setupStatus = await readRunSetupStatus();
-        if (
-          setupStatus.setup &&
-          (setupStatus.setup.state !== "succeeded" ||
-            setupStatus.setup.configurationRevision !==
-              setupStatus.currentConfigurationRevision)
-        ) {
-          throw new CliCommandRequestError(
-            "conflict",
-            409,
-            `Worktree setup is ${setupStatus.setup.state}. Run \`cantrip run setup status\` and retry setup before starting an action.`,
-          );
-        }
-        const requestId = requiredToolString(call.arguments, "requestId");
-        const actionId = requiredToolString(call.arguments, "actionId");
-        const configurationRevision = requiredToolString(
-          call.arguments,
-          "configRevision",
-        );
-        const durable = await repository.createOrGetRunInstance(
-          applicationOwnerId(),
-          {
-            projectId: context.projectId,
-            worktreeId: context.worktreeId,
-            workerId: target.workerId,
-            idempotencyKey: requestId,
-            actionId,
-            configurationRevision,
-          },
-        );
-        if (
-          ["exited", "failed", "stopped", "lost"].includes(durable.run.state)
-        ) {
-          const data = await materializeRunTerminal(
-            durable.run,
-            call.arguments.focus !== false,
-          );
-          return cantripCliCommandResultSchema.parse({
-            summary: `Run ${durable.run.id} is already ${durable.run.state}.`,
-            worktreeId: context.worktreeId,
-            mutated: data.surface.status === "applied",
-            data,
-          });
-        }
-        await repository.transitionRunInstance(
-          applicationOwnerId(),
-          context.projectId,
-          context.worktreeId,
-          durable.run.id,
-          "starting",
-        );
-        try {
-          const observation = workerRunSnapshotSchema.parse(
-            await bridge.request(target.workerId, {
-              type: "project.run.start",
-              requestId,
-              runId: durable.run.id,
-              projectId: context.projectId,
-              worktreeId: context.worktreeId,
-              rootKind: target.worktree.rootKind,
-              sourcePath: target.sourcePath,
-              worktreePath: target.worktree.path,
-              actionId,
-              configurationRevision,
-            }),
-          );
-          const run =
-            (await repository.applyRunInstanceObservation(
-              applicationOwnerId(),
-              target.workerId,
-              observation,
-            )) ?? durable.run;
-          const data = await materializeRunTerminal(
-            run,
-            call.arguments.focus !== false,
-          );
-          return cantripCliCommandResultSchema.parse({
-            summary:
-              run.state === "failed"
-                ? `Run ${run.id} failed to start.`
-                : `Started Run ${run.id}.`,
-            worktreeId: context.worktreeId,
-            mutated:
-              durable.created ||
-              durable.run.state !== run.state ||
-              data.surface.status === "applied",
-            data,
-          });
-        } catch (error) {
-          await repository.transitionRunInstance(
-            applicationOwnerId(),
-            context.projectId,
-            context.worktreeId,
-            durable.run.id,
-            error instanceof WorkerUnavailableError ? "lost" : "failed",
-          );
-          throw error;
-        }
-      }
-      case "run.open": {
-        requireRunMutation();
-        const run = await refreshRunInstance(
-          requiredToolString(call.arguments, "runId"),
-        );
-        const data = await materializeRunTerminal(
-          run,
-          call.arguments.focus !== false,
-        );
-        return cantripCliCommandResultSchema.parse({
-          summary:
-            data.surface.status === "applied"
-              ? `Opened Run ${run.id} in a terminal.`
-              : `Run ${run.id} terminal materialization is ${data.surface.status}.`,
-          worktreeId: context.worktreeId,
-          mutated: data.surface.status === "applied",
-          data,
-        });
-      }
-      case "run.status": {
-        const run = await synchronizeRunTerminalStatus(
-          await refreshRunInstance(optionalToolString(call.arguments, "runId")),
-        );
-        return cantripCliCommandResultSchema.parse({
-          summary: `Run ${run.id} is ${run.state}.`,
-          worktreeId: context.worktreeId,
-          data: runInstanceResultSchema.parse({ run }),
-        });
-      }
-      case "run.read": {
-        const run = await refreshRunInstance(
-          requiredToolString(call.arguments, "runId"),
-        );
-        const maximum = call.arguments.maxChars;
-        if (
-          typeof maximum !== "number" ||
-          !Number.isInteger(maximum) ||
-          maximum < 1 ||
-          maximum > 100_000
-        ) {
-          throw new CliCommandRequestError(
-            "invalid",
-            400,
-            "maxChars must be an integer from 1 to 100000.",
-          );
-        }
-        if (!bridge.isConnected(run.workerId)) {
-          throw new CliCommandRequestError(
-            "unavailable",
-            503,
-            "The Run worker is offline, so its in-memory logs are unavailable.",
-          );
-        }
-        if (run.state === "lost") {
-          throw new CliCommandRequestError(
-            "conflict",
-            409,
-            "The Run was lost and its in-memory logs are no longer available.",
-          );
-        }
-        const operationId = randomUUID();
-        const snapshot = protectedWorkerRunLogSnapshotSchema.parse(
-          await bridge.request(run.workerId, {
-            type: "project.run.logs",
-            operationId,
-            projectId: run.projectId,
-            worktreeId: run.worktreeId,
-            serverId,
-            runId: run.id,
-            maxChars: maximum,
-          }),
-        );
-        const observed = await synchronizeRunTerminalStatus(
-          (await repository.applyRunInstanceObservation(
-            applicationOwnerId(),
-            run.workerId,
-            snapshot.run,
-          )) ?? run,
-        );
-        return cantripCliCommandResultSchema.parse({
-          summary: `Returned protected output from Run ${run.id}.`,
-          worktreeId: context.worktreeId,
-          data: protectedRunLogResultSchema.parse({
-            operationId,
-            projectId: run.projectId,
-            worktreeId: run.worktreeId,
-            run: observed,
-            protectedLog: snapshot.protectedLog,
-          }),
-        });
-      }
-      case "run.stop": {
-        requireRunMutation();
-        const current = await runInstance(
-          requiredToolString(call.arguments, "runId"),
-        );
-        if (["exited", "failed", "stopped", "lost"].includes(current.state)) {
-          return cantripCliCommandResultSchema.parse({
-            summary: `Run ${current.id} is already ${current.state}.`,
-            worktreeId: context.worktreeId,
-            data: runInstanceResultSchema.parse({ run: current }),
-          });
-        }
-        if (!bridge.isConnected(current.workerId)) {
-          throw new CliCommandRequestError(
-            "unavailable",
-            503,
-            "The Run worker is offline and cannot be stopped safely.",
-          );
-        }
-        await repository.transitionRunInstance(
-          applicationOwnerId(),
-          current.projectId,
-          current.worktreeId,
-          current.id,
-          "stopping",
-        );
-        try {
-          const stopped = workerRunLookupSchema.parse(
-            await bridge.request(current.workerId, {
-              type: "project.run.stop",
-              runId: current.id,
-            }),
-          );
-          const run = stopped.found
-            ? ((await repository.applyRunInstanceObservation(
-                applicationOwnerId(),
-                current.workerId,
-                stopped.run,
-              )) ?? current)
-            : ((await repository.transitionRunInstance(
-                applicationOwnerId(),
-                current.projectId,
-                current.worktreeId,
-                current.id,
-                "lost",
-              )) ?? current);
-          await synchronizeRunTerminalStatus(run);
-          return cantripCliCommandResultSchema.parse({
-            summary: stopped.found
-              ? `Stopped Run ${run.id}.`
-              : `Run ${run.id} was no longer available on its worker and is lost.`,
-            worktreeId: context.worktreeId,
-            mutated: stopped.found,
-            data: runInstanceResultSchema.parse({ run }),
-          });
-        } catch (error) {
-          await repository.transitionRunInstance(
-            applicationOwnerId(),
-            current.projectId,
-            current.worktreeId,
-            current.id,
-            "lost",
-          );
-          throw error;
-        }
       }
       case "target.list": {
         const catalog = await repository.listProjectExecutionTargets(
@@ -7051,7 +6257,6 @@ export async function buildApp({
         applicationOwnerId(),
         projectId,
         requestedWorktreeId,
-        { allowSetupStates: true },
       );
       if (!selected) {
         throw new ExecutionPlacementUnavailableError(
@@ -8096,7 +7301,6 @@ export async function buildApp({
           applicationOwnerId(),
           call.workerId,
           128,
-          false,
         )
       )
         .filter(({ worktreePath }) =>
@@ -24423,264 +23627,6 @@ export async function buildApp({
     },
   );
 
-  app.get<{
-    Params: { projectId: string };
-    Querystring: { worktreeId?: string };
-  }>("/api/projects/:projectId/run-environment", async (request, reply) => {
-    const input = runEnvironmentRequestSchema.safeParse({
-      worktreeId: request.query.worktreeId,
-    });
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      const context = await resolveAppRunContext(
-        request.params.projectId,
-        input.data.worktreeId,
-      );
-      const configuration = await agentOperationExecutor.execute(context, {
-        operation: "run-config.list",
-        arguments: {},
-      });
-      const setupStatus = await agentOperationExecutor.execute(context, {
-        operation: "run.setup-status",
-        arguments: {},
-      });
-      let run: RunInstance | null = null;
-      try {
-        const status = await agentOperationExecutor.execute(context, {
-          operation: "run.status",
-          arguments: {},
-        });
-        run = runInstanceResultSchema.parse(status.data).run;
-      } catch (error) {
-        if (
-          !(error instanceof CliCommandRequestError) ||
-          error.code !== "not-found"
-        ) {
-          throw error;
-        }
-      }
-      return reply.send(
-        protectedRunEnvironmentSummarySchema.parse({
-          worktreeId: context.worktreeId,
-          inspection: protectedRunConfigurationInspectionSchema.parse(
-            configuration.data,
-          ),
-          setup: protectedRunSetupStatusResultSchema.parse(setupStatus.data)
-            .setup,
-          run,
-        }),
-      );
-    } catch (error) {
-      return sendRunApiFailure(reply, error);
-    }
-  });
-
-  app.get<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/run-environment/configuration",
-    async (request, reply) => {
-      try {
-        const context = await resolveAppRunContext(request.params.projectId);
-        const result = await agentOperationExecutor.execute(context, {
-          operation: "run-config.authoring",
-          arguments: {},
-        });
-        return reply.send(
-          protectedRunConfigurationAuthoringSnapshotSchema.parse(result.data),
-        );
-      } catch (error) {
-        return sendRunApiFailure(reply, error);
-      }
-    },
-  );
-
-  app.put<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/run-environment/configuration",
-    async (request, reply) => {
-      const input = protectedRunConfigurationWriteRequestSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const context = await resolveAppRunContext(
-          request.params.projectId,
-          input.data.worktreeId,
-        );
-        const result = await agentOperationExecutor.execute(context, {
-          operation: "run-config.write",
-          arguments: input.data,
-        });
-        const wire = protectedRunConfigurationWriteResultSchema.parse(
-          result.data,
-        );
-        publishLiveInvalidation("run", {
-          projectId: request.params.projectId,
-        });
-        await appendAudit(request, {
-          action: "run.configuration.app.updated",
-          resourceId: request.params.projectId,
-          resourceType: "run-configuration",
-          result: "succeeded",
-        });
-        return reply.send(wire);
-      } catch (error) {
-        return sendRunApiFailure(reply, error);
-      }
-    },
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/runs",
-    async (request, reply) => {
-      const input = runStartRequestSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const context = await resolveAppRunContext(
-          request.params.projectId,
-          input.data.worktreeId,
-        );
-        const result = await agentOperationExecutor.execute(context, {
-          operation: "run.start",
-          arguments: {
-            requestId: input.data.requestId,
-            actionId: input.data.actionId,
-            configRevision: input.data.configRevision,
-            focus: input.data.focus,
-          },
-        });
-        const data = runStartResultSchema.parse(result.data);
-        publishLiveInvalidation("run", {
-          projectId: context.projectId,
-          entityId: data.run.id,
-        });
-        await appendAudit(request, {
-          action: "run.app.started",
-          resourceId: data.run.id,
-          resourceType: "run-instance",
-          result: "succeeded",
-        });
-        return reply.code(201).send(data);
-      } catch (error) {
-        return sendRunApiFailure(reply, error);
-      }
-    },
-  );
-
-  app.post<{
-    Params: { projectId: string; runId: string };
-  }>("/api/projects/:projectId/runs/:runId/open", async (request, reply) => {
-    const input = runOpenRequestSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      const context = await resolveAppRunContext(
-        request.params.projectId,
-        input.data.worktreeId,
-      );
-      const result = await agentOperationExecutor.execute(context, {
-        operation: "run.open",
-        arguments: { runId: request.params.runId, focus: input.data.focus },
-      });
-      const data = runStartResultSchema.parse(result.data);
-      publishLiveInvalidation("run", {
-        projectId: context.projectId,
-        entityId: data.run.id,
-      });
-      await appendAudit(request, {
-        action: "run.app.opened",
-        resourceId: data.run.id,
-        resourceType: "run-instance",
-        result: "succeeded",
-      });
-      return reply.send(data);
-    } catch (error) {
-      return sendRunApiFailure(reply, error);
-    }
-  });
-
-  app.post<{
-    Params: { projectId: string; runId: string };
-  }>("/api/projects/:projectId/runs/:runId/stop", async (request, reply) => {
-    const input = runEnvironmentRequestSchema.safeParse(request.body);
-    if (!input.success) {
-      return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    try {
-      const context = await resolveAppRunContext(
-        request.params.projectId,
-        input.data.worktreeId,
-      );
-      const result = await agentOperationExecutor.execute(context, {
-        operation: "run.stop",
-        arguments: { runId: request.params.runId },
-      });
-      const data = runInstanceResultSchema.parse(result.data);
-      publishLiveInvalidation("run", {
-        projectId: context.projectId,
-        entityId: data.run.id,
-      });
-      await appendAudit(request, {
-        action: "run.app.stopped",
-        resourceId: data.run.id,
-        resourceType: "run-instance",
-        result: "succeeded",
-      });
-      return reply.send(data);
-    } catch (error) {
-      return sendRunApiFailure(reply, error);
-    }
-  });
-
-  app.put<{ Params: { runId: string } }>(
-    "/api/runs/:runId/terminal",
-    async (request, reply) => {
-      const input = encryptedRunTerminalMaterializationSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const materialized = await repository.materializeRunTerminal(
-          applicationOwnerId(),
-          request.params.runId,
-          input.data,
-        );
-        if (!materialized) {
-          return reply.code(404).send({ error: "Run not found." });
-        }
-        publishLiveInvalidation("terminal", {
-          projectId: materialized.run.projectId,
-          entityId: materialized.terminal.id,
-        });
-        publishLiveInvalidation("project-tab-layout", {
-          projectId: materialized.run.projectId,
-        });
-        publishLiveInvalidation("run", {
-          projectId: materialized.run.projectId,
-          entityId: materialized.run.id,
-        });
-        await appendAudit(request, {
-          action: "run.terminal.materialized",
-          resourceId: materialized.run.id,
-          resourceType: "run-instance",
-          result: "succeeded",
-        });
-        return reply
-          .code(materialized.created ? 201 : 200)
-          .send(terminalWireSummarySchema.parse(materialized.terminal));
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/terminals",
     async (request, reply) => {
@@ -24770,14 +23716,11 @@ export async function buildApp({
     Params: { projectId: string };
     Querystring: { operationId?: string; worktreeId?: string };
   }>("/api/projects/:projectId/script-commands", async (request, reply) => {
-    const input = runEnvironmentRequestSchema.safeParse({
-      worktreeId: request.query.worktreeId,
-    });
     const operationId =
       endpointContentContextSchema.shape.operationId.safeParse(
         request.query.operationId,
       );
-    if (!input.success || !operationId.success) {
+    if (!operationId.success) {
       return reply
         .code(400)
         .send({ error: "A valid operationId is required." });
@@ -24785,7 +23728,7 @@ export async function buildApp({
     try {
       const context = await resolveAppRunContext(
         request.params.projectId,
-        input.data.worktreeId,
+        request.query.worktreeId,
       );
       const worktree = await repository.getProjectWorktreeContext(
         applicationOwnerId(),
@@ -24914,14 +23857,9 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Terminal not found." });
       }
-      if (
-        await repository.getRunInstanceByTerminal(
-          applicationOwnerId(),
-          request.params.terminalId,
-        )
-      ) {
+      if (context.kind === "run-configuration") {
         return reply.code(409).send({
-          error: "Run terminals are controlled by their managed Run session.",
+          error: "Run configuration terminals are controlled by their runtime.",
         });
       }
       if (!context.serviceEnabled) {
@@ -24966,16 +23904,10 @@ export async function buildApp({
               ownerId,
               request.params.terminalId,
             );
-            if (
-              context &&
-              (await repository.getRunInstanceByTerminal(
-                ownerId,
-                request.params.terminalId,
-              ))
-            ) {
-              return reply
-                .code(409)
-                .send({ error: "Run terminals cannot change worktrees." });
+            if (context?.kind === "run-configuration") {
+              return reply.code(409).send({
+                error: "Run configuration terminals cannot change worktrees.",
+              });
             }
             if (context) await requireProjectWorktrees(context.projectId);
             const terminal = await repository.updateTerminalWorktree(
@@ -27466,10 +26398,6 @@ export async function buildApp({
         const bootstrapAttachmentId = `direct-bootstrap:${randomUUID()}`;
         let startedTerminal = false;
         try {
-          const managedRun = await repository.getRunInstanceByTerminal(
-            principal.user.id,
-            context.terminalId,
-          );
           assertPreparationActive();
           let launch: Extract<
             WorkerCommand,
@@ -27520,7 +26448,6 @@ export async function buildApp({
             {
               type: "terminal.open",
               terminalId: context.terminalId,
-              managedRunId: managedRun?.id ?? null,
               attachmentId: bootstrapAttachmentId,
               operationId: randomUUID(),
               serverId,
@@ -27589,7 +26516,6 @@ export async function buildApp({
                 adapter: "terminal",
                 resourceId: context.terminalId,
                 serverId,
-                managedRunId: managedRun?.id ?? null,
               },
             },
             worker,
@@ -27796,10 +26722,6 @@ export async function buildApp({
           return;
         }
         try {
-          const managedRun = await repository.getRunInstanceByTerminal(
-            ownerId,
-            terminalId,
-          );
           let launch: Extract<
             WorkerCommand,
             { type: "terminal.open" }
@@ -27834,7 +26756,6 @@ export async function buildApp({
               {
                 type: "terminal.open",
                 terminalId,
-                managedRunId: managedRun?.id ?? null,
                 attachmentId,
                 operationId,
                 serverId,
@@ -31417,13 +30338,6 @@ export async function buildApp({
               data: { ...data, binding: readiness },
             });
           }
-          const runResult =
-            input.data.request.operation === "run.start" ||
-            input.data.request.operation === "run.open"
-              ? runStartResultSchema.safeParse(result.data)
-              : input.data.request.operation === "run.stop"
-                ? runInstanceResultSchema.safeParse(result.data)
-                : null;
           const runConfigurationResult = [
             "run-configuration.start",
             "run-configuration.restart",
@@ -31444,30 +30358,20 @@ export async function buildApp({
                     : input.data.request.operation ===
                         "run-configuration.delete"
                       ? "run-configuration.mcp.deleted"
-                      : input.data.request.operation === "run.start"
-                        ? "run.mcp.started"
-                        : input.data.request.operation === "run.open"
-                          ? "run.mcp.opened"
-                          : input.data.request.operation === "run.stop"
-                            ? "run.mcp.stopped"
-                            : isCantripMcpMutationOperation(
-                                  input.data.request.operation,
-                                )
-                              ? "mcp.operation.mutated"
-                              : "mcp.operation.executed",
+                      : isCantripMcpMutationOperation(
+                            input.data.request.operation,
+                          )
+                        ? "mcp.operation.mutated"
+                        : "mcp.operation.executed",
             actorSessionId: null,
             actorUserId: null,
             ownerId: workerAuth.ownerId,
             resourceId: runConfigurationResult?.success
               ? runConfigurationResult.data.operation.configurationId
-              : runResult?.success
-                ? runResult.data.run.id
-                : input.data.binding.bindingId,
+              : input.data.binding.bindingId,
             resourceType: runConfigurationResult?.success
               ? "run-configuration"
-              : runResult?.success
-                ? "run-instance"
-                : "mcp-binding",
+              : "mcp-binding",
             result: "succeeded",
           });
           return reply.send(cantripAgentOperationResultSchema.parse(result));
@@ -32011,12 +30915,6 @@ export async function buildApp({
             "Could not resume project folder setup jobs",
           );
         });
-      void worktreeSetupJobExecutor.workerConnected(workerId).catch((error) => {
-        app.log.error(
-          { err: error, workerId },
-          "Could not resume worktree setup jobs",
-        );
-      });
       void projectGithubConversionJobExecutor
         .workerConnected(workerId)
         .catch((error) => {
@@ -32042,14 +30940,6 @@ export async function buildApp({
       void synchronizeTerminalServicesForWorker(workerId).catch(() => {
         app.log.error({ workerId }, "Could not reconcile terminal services");
       });
-      void reconcileRunInstancesForWorker(workerAuth.ownerId, workerId).catch(
-        (error) => {
-          app.log.error(
-            { err: error, workerId },
-            "Could not reconcile managed Runs",
-          );
-        },
-      );
       void reconcileRunConfigurationRuntimesForWorker(
         workerAuth.ownerId,
         workerId,
@@ -32498,7 +31388,6 @@ export async function buildApp({
     workerOfflineTimers.clear();
     projectReplicaJobExecutor.stop();
     projectFolderSetupJobExecutor.stop();
-    worktreeSetupJobExecutor.stop();
     projectGithubConversionJobExecutor.stop();
     chatRelocationJobExecutor.stop();
     chatImportJobExecutor.stop();
@@ -32530,7 +31419,6 @@ export async function buildApp({
     await activeScheduleTick;
     await projectReplicaJobExecutor.drain();
     await projectFolderSetupJobExecutor.drain();
-    await worktreeSetupJobExecutor.drain();
     await projectGithubConversionJobExecutor.drain();
     await chatRelocationJobExecutor.drain();
     await chatImportJobExecutor.drain();

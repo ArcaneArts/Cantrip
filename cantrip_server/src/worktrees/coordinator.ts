@@ -8,7 +8,6 @@ import {
   worktreeInventorySchema,
   worktreeRemoveResultSchema,
   worktreeStatusResultSchema,
-  runConfigurationInspectionMetadataSchema,
   type ProjectWorktreeSummary,
   type GithubPullRequestCheckoutResult,
   type WorktreeCreateMutationFailure,
@@ -38,7 +37,6 @@ type WorktreeRepository = Pick<
   | "reconcileProjectWorktrees"
   | "rollbackProjectWorktreeCreation"
   | "workflowRuns"
-  | "worktreeSetupJobs"
 >;
 
 export interface ProjectWorktreeCreateRequest {
@@ -47,8 +45,6 @@ export interface ProjectWorktreeCreateRequest {
   origin: ProjectWorktreeSummary["origin"];
   worktreeId?: string;
 }
-
-class WorktreeSetupPendingError extends Error {}
 
 export class WorktreeCreateMutationError extends Error {
   readonly failure: WorktreeCreateMutationFailure;
@@ -145,7 +141,6 @@ export class ProjectWorktreeCoordinator {
     private readonly repository: WorktreeRepository,
     private readonly bridge: WorkerCommandBus,
     private readonly onProjectChanged?: (projectId: string) => void,
-    private readonly onSetupQueued?: () => void,
   ) {}
 
   async serialize<T>(
@@ -370,7 +365,6 @@ export class ProjectWorktreeCoordinator {
           ownerId,
           projectId,
           lease.requestedWorktreeId,
-          { allowSetupStates: true },
         );
         if (
           existing &&
@@ -396,15 +390,8 @@ export class ProjectWorktreeCoordinator {
             },
           }));
         if (!created) return null;
-        if (created.lifecycleState === "preparing") {
-          throw new WorktreeSetupPendingError(
-            "The workflow worktree is still running its project setup.",
-          );
-        }
         if (created.lifecycleState !== "ready") {
-          throw new Error(
-            `The workflow worktree cannot activate while setup is ${created.lifecycleState}.`,
-          );
+          throw new Error("The workflow worktree is not ready.");
         }
         const context = await this.repository.getProjectWorktreeContext(
           ownerId,
@@ -467,9 +454,7 @@ export class ProjectWorktreeCoordinator {
                 ? "worker-unavailable"
                 : "worktree-allocation-failed",
             message: error instanceof Error ? error.message : String(error),
-            recoverable:
-              error instanceof WorkerUnavailableError ||
-              error instanceof WorktreeSetupPendingError,
+            recoverable: error instanceof WorkerUnavailableError,
           },
         );
         throw error;
@@ -718,7 +703,7 @@ export class ProjectWorktreeCoordinator {
         result.inventory,
         {
           id: worktreeId,
-          lifecycleState: "preparing",
+          lifecycleState: "ready",
           name: input.name,
           origin: input.origin,
           path: result.worktree.path,
@@ -742,69 +727,7 @@ export class ProjectWorktreeCoordinator {
         worktreePath: result.worktree.path,
       });
     }
-    let configurationRevision: string | null = null;
-    let setupQueued = false;
-    let configurationError: {
-      code: "configuration-invalid" | "setup-start-failed";
-      message: string;
-      retryable: true;
-    } | null = null;
-    try {
-      const metadata = runConfigurationInspectionMetadataSchema.parse(
-        await this.bridge.request(source.workerId, {
-          type: "project.run-configurations.metadata",
-          sourcePath: source.cwd,
-        }),
-      );
-      configurationRevision = metadata.configurationRevision;
-      configurationError = metadata.valid
-        ? null
-        : {
-            code: "configuration-invalid",
-            message:
-              "The project environment is invalid. Validate it before retrying worktree setup.",
-            retryable: true,
-          };
-      setupQueued = !configurationError && metadata.hasSetup;
-    } catch {
-      configurationError = {
-        code: "setup-start-failed",
-        message:
-          "Cantrip could not inspect the project environment after creating the worktree. Retry setup when the worker is available.",
-        retryable: true,
-      };
-    }
-    try {
-      const initialized = await this.repository.worktreeSetupJobs.initialize({
-        configurationRevision,
-        ...(configurationError ? { error: configurationError } : {}),
-        ownerId,
-        projectId,
-        queued: setupQueued,
-        workerId: source.workerId,
-        worktreeId,
-      });
-      if (initialized.job.state === "queued") this.onSetupQueued?.();
-      return {
-        ...created,
-        lifecycleState:
-          initialized.job.state === "queued"
-            ? "preparing"
-            : initialized.job.state === "failed"
-              ? "setup-failed"
-              : "ready",
-        updatedAt: initialized.job.updatedAt,
-      };
-    } catch (error) {
-      throw new WorktreeCreateMutationError(
-        "committed",
-        projectId,
-        worktreeId,
-        "Worktree creation committed, but setup bookkeeping did not finish. Reconcile the exact target instead of creating another worktree.",
-        true,
-        { cause: error },
-      );
-    }
+    return created;
   }
 
   private async rollbackUncommittedCreate(input: {

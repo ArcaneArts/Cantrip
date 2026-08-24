@@ -73,7 +73,6 @@ describe("project settings", () => {
     expect(tabs.map(({ id }) => id)).not.toContain("replicas");
     expect(tabs.map(({ id }) => id)).toEqual([
       "general",
-      "environment",
       "archive",
       "automations",
       "workflows",
@@ -258,7 +257,6 @@ describe("project settings", () => {
     const renderSection = (
       initialSection:
         | "general"
-        | "environment"
         | "workflows"
         | "replicas"
         | "policies"
@@ -335,7 +333,7 @@ describe("project settings", () => {
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).toContain("~/repos/cantrip");
     expect(markup).toContain("Workflows");
-    expect(markup).toContain("Environment");
+    expect(markup).not.toContain("Environment");
     expect(markup).toContain("Archive");
     expect(markup).toContain("Worktrees");
     expect(markup).toContain("Replicas");
@@ -352,10 +350,6 @@ describe("project settings", () => {
     const workflowsMarkup = renderSection("workflows");
     expect(workflowsMarkup).toContain("New workflow");
     expect(workflowsMarkup).not.toContain("Agent managed");
-
-    const environmentMarkup = renderSection("environment");
-    expect(environmentMarkup).toContain("Environment configuration");
-    expect(environmentMarkup).toContain(".codex/environments/environment.toml");
 
     const worktreesMarkup = renderSection("worktrees");
     expect(worktreesMarkup).toContain("Agent managed");

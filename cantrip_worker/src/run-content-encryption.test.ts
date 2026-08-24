@@ -7,11 +7,11 @@ import {
   generateAccountMasterKey,
   wrapComponentKeyForWorker,
 } from "@cantrip/crypto";
-import {
-  runConfigurationWriteRequestSchema,
-  type EncryptionKeyGrant,
-  type EncryptionPrincipal,
+import type {
+  EncryptionKeyGrant,
+  EncryptionPrincipal,
 } from "@cantrip/protocol";
+import { runConfigurationRuntimeOutputContentSchema } from "@cantrip/protocol/run-configuration-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -97,35 +97,18 @@ async function service() {
 describe("Run content encryption", () => {
   it("round-trips request and response directions and rejects a direction swap", async () => {
     const worker = await service();
-    const input = runConfigurationWriteRequestSchema.parse({
-      expectedRevision: null,
-      document: {
-        version: 1,
-        name: "Private environment",
-        setup: {
-          default: "pnpm install",
-          win32: null,
-          darwin: null,
-          linux: null,
-        },
-        actions: [
-          {
-            name: "Private action",
-            icon: "run",
-            command: "pnpm dev --filter private",
-            platform: null,
-          },
-        ],
-      },
+    const input = runConfigurationRuntimeOutputContentSchema.parse({
+      data: "private output",
+      truncated: false,
     });
     const common = {
       serverId,
       projectId: "project-a",
       worktreeId: "worktree-a",
       operationId: crypto.randomUUID(),
-      operation: "run.configuration.write",
+      operation: "run.configuration.output",
       content: input,
-      schema: runConfigurationWriteRequestSchema,
+      schema: runConfigurationRuntimeOutputContentSchema,
       service: worker,
     };
     const request = await protectWorkerRunContent({

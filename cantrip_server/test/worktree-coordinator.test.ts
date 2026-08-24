@@ -2,7 +2,6 @@ import type {
   ProjectWorktreeSummary,
   WorkerCommand,
   WorkerWorktreeSummary,
-  WorktreeSetupJobSummary,
 } from "@cantrip/protocol";
 import type { WorkflowWorktreeLease } from "@cantrip/protocol/workflows";
 import { describe, expect, it, vi } from "vitest";
@@ -50,40 +49,6 @@ const primaryProjectWorktree: ProjectWorktreeSummary = {
   createdAt: timestamp,
   updatedAt: timestamp,
 };
-
-const absentEnvironmentInspection = {
-  platform: "linux" as const,
-  canonical: {
-    relativePath: ".codex/environments/environment.toml" as const,
-    sourceControlState: "absent" as const,
-  },
-  configured: false,
-  valid: true,
-  configurations: [],
-  diagnostics: [],
-};
-
-function setupJob(
-  worktreeId: string,
-  state: "queued" | "succeeded",
-  configurationRevision: string | null,
-): WorktreeSetupJobSummary {
-  return {
-    id: "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
-    projectId: "project-1",
-    worktreeId,
-    workerId: "worker-1",
-    configurationRevision,
-    state,
-    stateRevision: 1,
-    attempt: 0,
-    error: null,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    startedAt: null,
-    completedAt: state === "succeeded" ? timestamp : null,
-  };
-}
 
 function statusResult(worktree: WorkerWorktreeSummary) {
   return {
@@ -158,11 +123,6 @@ describe("project worktree coordinator", () => {
       origin: ProjectWorktreeSummary["origin"];
       path: string;
     }> = [];
-    const configurationRevision = "c".repeat(64);
-    const initializeSetup = vi.fn().mockResolvedValue({
-      created: true,
-      job: setupJob("workflow-worktree-1", "queued", configurationRevision),
-    });
     const created: WorkerWorktreeSummary = {
       ...primary,
       path: "/worker-owned/worktrees/workflow-abc123",
@@ -194,20 +154,10 @@ describe("project worktree coordinator", () => {
         reconciliations.push(hint);
         return [projectWorktree(hint.id, created, hint.origin)];
       },
-      worktreeSetupJobs: { initialize: initializeSetup },
     } as unknown as ServerRepository;
     const bridge = {
       async request(_workerId: string, command: WorkerCommand) {
         commands.push(command);
-        if (command.type === "project.run-configurations.metadata") {
-          return {
-            platform: "linux",
-            configured: true,
-            valid: true,
-            hasSetup: true,
-            configurationRevision,
-          };
-        }
         return {
           created: true,
           worktree: created,
@@ -223,12 +173,10 @@ describe("project worktree coordinator", () => {
       },
     } as unknown as WorkerCommandBus;
     const changedProjects: string[] = [];
-    const setupQueued = vi.fn();
     const coordinator = new ProjectWorktreeCoordinator(
       repository,
       bridge,
       (projectId) => changedProjects.push(projectId),
-      setupQueued,
     );
 
     await expect(
@@ -245,7 +193,7 @@ describe("project worktree coordinator", () => {
     ).resolves.toMatchObject({
       id: "workflow-worktree-1",
       path: "/worker-owned/worktrees/workflow-abc123",
-      lifecycleState: "preparing",
+      lifecycleState: "ready",
     });
     expect(commands).toEqual([
       expect.objectContaining({
@@ -253,29 +201,16 @@ describe("project worktree coordinator", () => {
         sourcePath: primary.path,
         worktreeId: "workflow-worktree-1",
       }),
-      expect.objectContaining({
-        type: "project.run-configurations.metadata",
-        sourcePath: primary.path,
-      }),
     ]);
     expect(reconciliations).toEqual([
       {
         id: "workflow-worktree-1",
-        lifecycleState: "preparing",
+        lifecycleState: "ready",
         name: "Workflow lane",
         origin: "cantrip",
         path: "/worker-owned/worktrees/workflow-abc123",
       },
     ]);
-    expect(initializeSetup).toHaveBeenCalledWith({
-      configurationRevision,
-      ownerId: "owner-1",
-      projectId: "project-1",
-      queued: true,
-      workerId: "worker-1",
-      worktreeId: "workflow-worktree-1",
-    });
-    expect(setupQueued).toHaveBeenCalledOnce();
     expect(changedProjects).toEqual(["project-1"]);
   });
 
@@ -458,11 +393,7 @@ describe("project worktree coordinator", () => {
       createdWorkerWorktree,
       "cantrip",
     );
-    let setupReady = false;
-    const currentCreatedWorktree = () => ({
-      ...createdProjectWorktree,
-      lifecycleState: setupReady ? ("ready" as const) : ("preparing" as const),
-    });
+    const currentCreatedWorktree = () => createdProjectWorktree;
     let currentLease: WorkflowWorktreeLease | null = null;
     let reservations = 0;
     let activations = 0;
@@ -585,27 +516,10 @@ describe("project worktree coordinator", () => {
           ? [primaryProjectWorktree, currentCreatedWorktree()]
           : [primaryProjectWorktree];
       },
-      worktreeSetupJobs: {
-        async initialize(input: { worktreeId: string }) {
-          return {
-            created: true,
-            job: setupJob(input.worktreeId, "queued", "c".repeat(64)),
-          };
-        },
-      },
     } as unknown as ServerRepository;
     const bridge = {
       async request(_workerId: string, command: WorkerCommand) {
         commands.push(command);
-        if (command.type === "project.run-configurations.metadata") {
-          return {
-            platform: "linux",
-            configured: true,
-            valid: true,
-            hasSetup: true,
-            configurationRevision: "c".repeat(64),
-          };
-        }
         if (command.type === "worktree.create") {
           createdExists = true;
           return {
@@ -635,10 +549,6 @@ describe("project worktree coordinator", () => {
 
     await expect(
       coordinator.allocateWorkflowLane("owner-1", "project-1", request),
-    ).rejects.toThrow("still running its project setup");
-    setupReady = true;
-    await expect(
-      coordinator.allocateWorkflowLane("owner-1", "project-1", request),
     ).resolves.toMatchObject({
       lease: { id: "lease-1", state: "active" },
       worktree: { id: "workflow-worktree-1", isPrimary: false },
@@ -652,7 +562,6 @@ describe("project worktree coordinator", () => {
     expect(commands.map(({ type }) => type)).toEqual([
       "worktree.status",
       "worktree.create",
-      "project.run-configurations.metadata",
       "worktree.status",
       "worktree.status",
     ]);
@@ -668,12 +577,7 @@ describe("project worktree coordinator", () => {
     });
     expect({ activations, failures, reservations }).toEqual({
       activations: 1,
-      failures: [
-        expect.objectContaining({
-          code: "worktree-allocation-failed",
-          recoverable: true,
-        }),
-      ],
+      failures: [],
       reservations: 1,
     });
   });

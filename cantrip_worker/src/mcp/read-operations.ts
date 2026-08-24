@@ -13,18 +13,6 @@ import {
   cantripMcpPolicyListResultSchema,
   cantripMcpPolicyReadInputSchema,
   cantripMcpPolicyReadResultSchema,
-  cantripMcpRunConfigListInputSchema,
-  cantripMcpRunConfigListResultSchema,
-  cantripMcpRunConfigReadInputSchema,
-  cantripMcpRunConfigReadResultSchema,
-  cantripMcpRunConfigSchemaInputSchema,
-  cantripMcpRunConfigSchemaResultSchema,
-  cantripMcpRunReadInputSchema,
-  cantripMcpRunReadResultSchema,
-  cantripMcpRunSetupStatusInputSchema,
-  cantripMcpRunSetupStatusResultSchema,
-  cantripMcpRunStatusInputSchema,
-  cantripMcpRunStatusResultSchema,
   cantripMcpTargetInspectInputSchema,
   cantripMcpTargetInspectResultSchema,
   cantripMcpTargetListInputSchema,
@@ -43,17 +31,6 @@ import {
   executionTargetSchema,
   executionTargetWireCatalogSchema,
   projectWorktreeListSchema,
-  protectedRunConfigurationInspectionSchema,
-  protectedRunLogResultSchema,
-  protectedRunSetupStatusResultSchema,
-  runConfigurationInspectionSchema,
-  runConfigurationAuthoringHelpSchema,
-  runConfigurationSelectionSchema,
-  runInstanceResultSchema,
-  runLogContentSchema,
-  runSetupDetailContentSchema,
-  runLogResultSchema,
-  runSetupStatusResultSchema,
   worktreeStatusResultSchema,
   type CantripAgentOperationRequest,
   type CantripAgentOperationResult,
@@ -80,7 +57,6 @@ import {
   openWorkerSurfaceStreamContent,
   protectWorkerSurfaceStreamContent,
 } from "../surface-stream-encryption.js";
-import { openWorkerRunContent } from "../run-content-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { cantripMcpToolHelp } from "./tool-catalog.js";
 
@@ -332,237 +308,6 @@ async function executeWorktreeStatus(options: CantripMcpOperationOptions) {
   });
 }
 
-export function assertBoundRun(
-  options: CantripMcpOperationOptions,
-  run: { projectId: string; worktreeId: string },
-) {
-  if (
-    run.projectId !== options.binding.projectId ||
-    run.worktreeId !== options.binding.worktreeId
-  ) {
-    throw new Error("Cantrip returned a Run outside the MCP binding.");
-  }
-}
-
-export function assertBoundRunResult(
-  options: CantripMcpOperationOptions,
-  result: CantripAgentOperationResult,
-) {
-  if (result.worktreeId !== options.binding.worktreeId) {
-    throw new Error("Cantrip returned a Run result for another worktree.");
-  }
-}
-
-export async function openBoundRunConfigurationInspection(
-  options: CantripMcpOperationOptions,
-  value: unknown,
-) {
-  const wire = protectedRunConfigurationInspectionSchema.parse(value);
-  if (
-    wire.projectId !== options.binding.projectId ||
-    wire.worktreeId !== options.binding.worktreeId
-  ) {
-    throw new Error("Cantrip returned Run configuration for another worktree.");
-  }
-  return openWorkerRunContent({
-    serverId: options.service.serverIdentity(),
-    projectId: wire.projectId,
-    worktreeId: wire.worktreeId,
-    operationId: wire.operationId,
-    operation: "run.configuration.inspect",
-    opaque: wire.protectedInspection,
-    schema: runConfigurationInspectionSchema,
-    service: options.service,
-    direction: "response",
-  });
-}
-
-export async function openBoundRunSetupStatus(
-  options: CantripMcpOperationOptions,
-  value: unknown,
-) {
-  const wire = protectedRunSetupStatusResultSchema.parse(value);
-  if (
-    wire.projectId !== options.binding.projectId ||
-    wire.worktreeId !== options.binding.worktreeId
-  ) {
-    throw new Error("Cantrip returned setup status for another worktree.");
-  }
-  const details =
-    wire.publicWorkerStatus && wire.protectedDetails
-      ? await openWorkerRunContent({
-          serverId: options.service.serverIdentity(),
-          projectId: wire.projectId,
-          worktreeId: wire.worktreeId,
-          operationId: wire.operationId,
-          operation: "run.setup.status",
-          opaque: wire.protectedDetails,
-          schema: runSetupDetailContentSchema,
-          service: options.service,
-          direction: "response",
-        })
-      : null;
-  return runSetupStatusResultSchema.parse({
-    worktreeId: wire.worktreeId,
-    setup:
-      wire.setup?.error && details?.errorMessage
-        ? {
-            ...wire.setup,
-            error: { ...wire.setup.error, message: details.errorMessage },
-          }
-        : wire.setup,
-    currentConfigurationRevision: wire.currentConfigurationRevision,
-    output: details?.output ?? null,
-    outputTruncated: details?.outputTruncated ?? false,
-    exitCode: wire.publicWorkerStatus?.exitCode ?? null,
-    signal: details?.signal ?? null,
-    workerStatusAvailable: wire.workerStatusAvailable,
-  });
-}
-
-async function executeRunReadOperation(options: CantripMcpOperationOptions) {
-  switch (options.request.operation) {
-    case "run-config.schema": {
-      cantripMcpRunConfigSchemaInputSchema.parse(options.request.arguments);
-      const result = await options.execute(
-        options.binding,
-        { operation: "run-config.schema", arguments: {} },
-        options.requestId,
-      );
-      assertBoundRunResult(options, result);
-      return cantripMcpRunConfigSchemaResultSchema.parse({
-        ...result,
-        data: runConfigurationAuthoringHelpSchema.parse(result.data),
-      });
-    }
-    case "run-config.list": {
-      cantripMcpRunConfigListInputSchema.parse(options.request.arguments);
-      const result = await options.execute(
-        options.binding,
-        { operation: "run-config.list", arguments: {} },
-        options.requestId,
-      );
-      assertBoundRunResult(options, result);
-      const inspection = await openBoundRunConfigurationInspection(
-        options,
-        result.data,
-      );
-      return cantripMcpRunConfigListResultSchema.parse({
-        ...result,
-        summary: inspection.configured
-          ? "Returned Run configuration for this project source."
-          : "No Codex-compatible Run configuration is present for this project source.",
-        data: inspection,
-      });
-    }
-    case "run-config.read": {
-      const arguments_ = cantripMcpRunConfigReadInputSchema.parse(
-        options.request.arguments,
-      );
-      const result = await options.execute(
-        options.binding,
-        { operation: "run-config.read", arguments: arguments_ },
-        options.requestId,
-      );
-      assertBoundRunResult(options, result);
-      const inspection = await openBoundRunConfigurationInspection(
-        options,
-        result.data,
-      );
-      const selection = inspection.configurations
-        .flatMap((configuration) =>
-          configuration.actions.map((action) => ({ action, configuration })),
-        )
-        .find(
-          ({ action, configuration }) =>
-            action.id === arguments_.actionId &&
-            configuration.revision === arguments_.configRevision,
-        );
-      if (!selection) {
-        throw new Error(
-          "The requested Run action or configuration revision is no longer available.",
-        );
-      }
-      return cantripMcpRunConfigReadResultSchema.parse({
-        ...result,
-        summary: `Returned Run action ${selection.action.name}.`,
-        data: runConfigurationSelectionSchema.parse(selection),
-      });
-    }
-    case "run.status": {
-      const arguments_ = cantripMcpRunStatusInputSchema.parse(
-        options.request.arguments,
-      );
-      const result = await options.execute(
-        options.binding,
-        { operation: "run.status", arguments: arguments_ },
-        options.requestId,
-      );
-      assertBoundRunResult(options, result);
-      const data = runInstanceResultSchema.parse(result.data);
-      assertBoundRun(options, data.run);
-      return cantripMcpRunStatusResultSchema.parse({ ...result, data });
-    }
-    case "run.setup-status": {
-      cantripMcpRunSetupStatusInputSchema.parse(options.request.arguments);
-      const result = await options.execute(
-        options.binding,
-        { operation: "run.setup-status", arguments: {} },
-        options.requestId,
-      );
-      assertBoundRunResult(options, result);
-      const data = await openBoundRunSetupStatus(options, result.data);
-      return cantripMcpRunSetupStatusResultSchema.parse({
-        ...result,
-        data,
-      });
-    }
-    case "run.read": {
-      const arguments_ = cantripMcpRunReadInputSchema.parse(
-        options.request.arguments,
-      );
-      const result = await options.execute(
-        options.binding,
-        { operation: "run.read", arguments: arguments_ },
-        options.requestId,
-      );
-      assertBoundRunResult(options, result);
-      const wire = protectedRunLogResultSchema.parse(result.data);
-      assertBoundRun(options, wire.run);
-      if (
-        wire.projectId !== options.binding.projectId ||
-        wire.worktreeId !== options.binding.worktreeId
-      ) {
-        throw new Error("Cantrip returned Run output for another worktree.");
-      }
-      const log = await openWorkerRunContent({
-        serverId: options.service.serverIdentity(),
-        projectId: wire.projectId,
-        worktreeId: wire.worktreeId,
-        operationId: wire.operationId,
-        operation: "run.logs.read",
-        opaque: wire.protectedLog,
-        schema: runLogContentSchema,
-        service: options.service,
-        direction: "response",
-      });
-      const locallyTruncated = log.data.length > arguments_.maxChars;
-      return cantripMcpRunReadResultSchema.parse({
-        ...result,
-        data: {
-          run: wire.run,
-          data: locallyTruncated
-            ? log.data.slice(-arguments_.maxChars)
-            : log.data,
-          truncated: log.truncated || locallyTruncated,
-        },
-      });
-    }
-    default:
-      throw new Error("The requested operation is not a Run read.");
-  }
-}
-
 async function executeExplorerOperation(options: CantripMcpOperationOptions) {
   const list = options.request.operation === "explorer.list";
   const arguments_ = list
@@ -754,13 +499,6 @@ export async function executeCantripMcpReadOperation(
       return executeTargetList(options);
     case "target.inspect":
       return executeTargetInspect(options);
-    case "run-config.list":
-    case "run-config.read":
-    case "run-config.schema":
-    case "run.setup-status":
-    case "run.status":
-    case "run.read":
-      return executeRunReadOperation(options);
     case "worktree.list":
       return executeWorktreeList(options);
     case "worktree.status":

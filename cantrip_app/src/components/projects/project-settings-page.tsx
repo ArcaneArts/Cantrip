@@ -31,7 +31,6 @@ import {
   Bot,
   MoreHorizontal,
   Plus,
-  Play,
   RefreshCw,
   Route,
   ScanLine,
@@ -89,7 +88,6 @@ import { ProjectGithubConversion } from "./project-github-conversion";
 import { SkillsSettings } from "@/components/settings/skills-settings";
 import { TunnelSettings } from "@/components/settings/tunnel-settings";
 import { PolicyAssignmentControls } from "@/components/settings/policy-assignment-controls";
-import { RunEnvironmentSettings } from "@/components/run/run-environment-settings";
 import {
   SettingsSearchField,
   SettingsTabBar,
@@ -100,7 +98,6 @@ const createdDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 export type ProjectSettingsSection =
   | "general"
-  | "environment"
   | "archive"
   | "automations"
   | "workflows"
@@ -113,7 +110,6 @@ export type ProjectSettingsSection =
 
 const projectSettingsTabs: readonly SettingsTab<ProjectSettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "environment", label: "Environment", icon: Play },
   { id: "archive", label: "Archive", icon: Archive },
   { id: "automations", label: "Automations", icon: CalendarClock },
   { id: "workflows", label: "Workflows", icon: Workflow },
@@ -570,12 +566,6 @@ export function ProjectSettingsPage({
       ) : null}
       {section === "replicas" ? (
         <ProjectReplicaSettings project={project} workers={workers} />
-      ) : null}
-      {section === "environment" ? (
-        <RunEnvironmentSettings
-          projectId={project.id}
-          workerOnline={projectWorker?.online ?? false}
-        />
       ) : null}
       {section === "policies" ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">

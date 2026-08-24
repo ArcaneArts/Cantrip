@@ -277,16 +277,6 @@ import {
   settingsBundleSchema,
   scriptCommandListSchema,
   protectedScriptCommandListSchema,
-  protectedRunConfigurationAuthoringSnapshotSchema,
-  protectedRunConfigurationWriteResultSchema,
-  protectedRunEnvironmentSummarySchema,
-  runConfigurationInspectionSchema,
-  runConfigurationAuthoringSnapshotSchema,
-  runConfigurationWriteRequestSchema,
-  runEnvironmentSummarySchema,
-  runInstanceResultSchema,
-  runStartResultSchema,
-  workerRunConfigurationWriteResultSchema,
   skillListSchema,
   skillSettingsContextSchema,
   skillSettingsDeleteRequestSchema,
@@ -456,7 +446,6 @@ import type {
   RemoteDesktopSummary,
   RemoteDesktopTarget,
   ReasoningEffort,
-  RunConfigurationWriteRequest,
   SkillSettingsContext,
   SkillSettingsDeleteRequest,
   SkillSettingsFileRequest,
@@ -581,10 +570,6 @@ import {
   type CustomizationContentOperation,
   type CustomizationContentScope,
 } from "@cantrip/protocol/customization-content";
-import {
-  openRunContent,
-  protectRunContent,
-} from "@/lib/run-content-encryption";
 import {
   openCustomizationResponse,
   protectCustomizationRequest,
@@ -4519,171 +4504,6 @@ export async function getTerminals(projectId: string) {
   );
   return Promise.all(
     terminals.map((terminal) => surfaceTitleEncryption.openTerminal(terminal)),
-  );
-}
-
-function runEnvironmentQuery(worktreeId?: string): string {
-  const query = new URLSearchParams();
-  if (worktreeId) query.set("worktreeId", worktreeId);
-  const encoded = query.toString();
-  return encoded ? `?${encoded}` : "";
-}
-
-export async function getRunEnvironment(
-  projectId: string,
-  worktreeId?: string,
-) {
-  await ensureRunOperationWorker({ projectId, worktreeId });
-  const wire = protectedRunEnvironmentSummarySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/run-environment${runEnvironmentQuery(worktreeId)}`,
-    ),
-  );
-  return runEnvironmentSummarySchema.parse({
-    worktreeId: wire.worktreeId,
-    inspection: await openRunContent({
-      projectId: wire.inspection.projectId,
-      worktreeId: wire.inspection.worktreeId,
-      operationId: wire.inspection.operationId,
-      operation: "run.configuration.inspect",
-      opaque: wire.inspection.protectedInspection,
-      schema: runConfigurationInspectionSchema,
-    }),
-    setup: wire.setup,
-    run: wire.run,
-  });
-}
-
-async function getProtectedRunConfigurationAuthoring(projectId: string) {
-  await ensureRunOperationWorker({ projectId });
-  return protectedRunConfigurationAuthoringSnapshotSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/run-environment/configuration`,
-    ),
-  );
-}
-
-export async function getRunConfigurationAuthoring(projectId: string) {
-  const wire = await getProtectedRunConfigurationAuthoring(projectId);
-  return openRunContent({
-    projectId: wire.projectId,
-    worktreeId: wire.worktreeId,
-    operationId: wire.operationId,
-    operation: "run.configuration.authoring",
-    opaque: wire.protectedSnapshot,
-    schema: runConfigurationAuthoringSnapshotSchema,
-  });
-}
-
-export async function updateRunConfiguration(
-  projectId: string,
-  input: RunConfigurationWriteRequest,
-) {
-  const current = await getProtectedRunConfigurationAuthoring(projectId);
-  const operationId = crypto.randomUUID();
-  const protectedRequest = await protectRunContent({
-    projectId,
-    worktreeId: current.worktreeId,
-    operationId,
-    operation: "run.configuration.write",
-    content: input,
-    schema: runConfigurationWriteRequestSchema,
-  });
-  const wire = protectedRunConfigurationWriteResultSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/run-environment/configuration`,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          operationId,
-          projectId,
-          worktreeId: current.worktreeId,
-          protectedRequest,
-        }),
-      },
-    ),
-  );
-  const result = await openRunContent({
-    projectId: wire.projectId,
-    worktreeId: wire.worktreeId,
-    operationId,
-    operation: "run.configuration.write",
-    opaque: wire.protectedResponse,
-    schema: workerRunConfigurationWriteResultSchema,
-  });
-  if (!result.written) {
-    throw new Error(
-      "The Run configuration changed before it could be saved. Reload Environment settings and try again.",
-    );
-  }
-  return result.snapshot;
-}
-
-export async function startRun(
-  projectId: string,
-  input: {
-    requestId: string;
-    actionId: string;
-    configRevision: string;
-    focus?: boolean;
-    worktreeId?: string;
-  },
-) {
-  return runStartResultSchema.parse(
-    await post(`/api/projects/${encodeURIComponent(projectId)}/runs`, input),
-  );
-}
-
-export async function openRun(
-  projectId: string,
-  runId: string,
-  input: { focus?: boolean; worktreeId?: string } = {},
-) {
-  return runStartResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}/open`,
-      input,
-    ),
-  );
-}
-
-export async function stopRun(
-  projectId: string,
-  runId: string,
-  worktreeId?: string,
-) {
-  return runInstanceResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}/stop`,
-      worktreeId ? { worktreeId } : {},
-    ),
-  );
-}
-
-export async function materializeRunTerminal(
-  projectId: string,
-  worktreeId: string,
-  runId: string,
-) {
-  const terminalId = runId;
-  const title = `Run ${runId.slice(0, 8)}`;
-  const [titleProtection, stateProtection] = await Promise.all([
-    surfaceTitleEncryption.protect(terminalId, title, "terminal"),
-    surfaceTitleEncryption.protectTerminalState(terminalId, undefined, ""),
-  ]);
-  return surfaceTitleEncryption.openTerminal(
-    terminalWireSummarySchema.parse(
-      await request(`/api/runs/${encodeURIComponent(runId)}/terminal`, {
-        method: "PUT",
-        body: JSON.stringify({
-          projectId,
-          worktreeId,
-          terminalId,
-          titleProtection,
-          stateProtection,
-        }),
-      }),
-    ),
   );
 }
 

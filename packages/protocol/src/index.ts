@@ -21,7 +21,6 @@ export * from "./surface-stream.js";
 export * from "./repository-operation.js";
 export * from "./endpoint-content.js";
 export * from "./workflow-content.js";
-export * from "./run-configurations.js";
 export * from "./customization-content.js";
 export * from "./tunnel-content.js";
 export * from "./client-control-content.js";
@@ -86,33 +85,6 @@ import {
   repositoryOperationWireRequestSchema,
   repositoryRoutingHandleSchema,
 } from "./repository-operation.js";
-import {
-  runConfigurationActionSchema,
-  runConfigurationActionAddInputSchema,
-  runConfigurationAuthoringDocumentSchema,
-  runConfigurationAuthoringHelpSchema,
-  runConfigurationAuthoringSnapshotSchema,
-  protectedRunConfigurationAuthoringSnapshotSchema,
-  protectedRunConfigurationInspectionSchema,
-  protectedRunConfigurationWriteRequestSchema,
-  runConfigurationDefinitionSchema,
-  runConfigurationInspectionSchema,
-  runConfigurationSelectionSchema,
-  runConfigurationWriteRequestSchema,
-  protectedRunEnvironmentSummarySchema,
-  runInstanceResultSchema,
-  runInstanceSchema,
-  protectedWorkerRunLogSnapshotSchema,
-  runLogResultSchema,
-  runSetupStatusResultSchema,
-  runStartResultSchema,
-  workerRunSetupLookupSchema,
-  protectedWorkerRunSetupLookupSchema,
-  protectedWorkerRunSetupStatusSchema,
-  worktreeSetupJobSummarySchema,
-  workerRunIdentitySchema,
-  workerRunSnapshotSchema,
-} from "./run-configurations.js";
 import {
   runConfigurationCapabilitiesWorkerCommandSchema,
   runConfigurationDefinitionChangeNotificationSchema,
@@ -3563,10 +3535,7 @@ export const worktreeOriginSchema = z.enum([
 ]);
 export const worktreeLifecycleStateSchema = z.enum([
   "creating",
-  "preparing",
   "ready",
-  "setup-failed",
-  "setup-stale",
   "missing",
   "prunable",
   "removing",
@@ -4756,23 +4725,6 @@ export const encryptedTerminalCreateSchema = terminalPlacementSchema
     (input) => input.titleProtection.classification.recordKind === "terminal",
     {
       message: "Terminal title classification must be terminal.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
-
-export const encryptedRunTerminalMaterializationSchema = z
-  .object({
-    projectId: z.string().min(1).max(200),
-    worktreeId: z.string().min(1).max(200),
-    terminalId: runInstanceSchema.shape.id,
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: terminalPrivateStateOpaqueSchema,
-  })
-  .strict()
-  .refine(
-    (input) => input.titleProtection.classification.recordKind === "terminal",
-    {
-      message: "Run terminal title classification must be terminal.",
       path: ["titleProtection", "classification", "recordKind"],
     },
   );
@@ -7683,12 +7635,6 @@ export const cantripAgentOperationNameSchema = z.enum([
   "policy.read",
   "target.list",
   "target.inspect",
-  "run-config.list",
-  "run-config.read",
-  "run-config.schema",
-  "run-config.action-add",
-  "run-config.authoring",
-  "run-config.write",
   "run-configuration.list",
   "run-configuration.get",
   "run-configuration.detect",
@@ -7701,13 +7647,6 @@ export const cantripAgentOperationNameSchema = z.enum([
   "run-configuration.status",
   "run-configuration.read-output",
   "run-configuration.secret-set",
-  "run.start",
-  "run.open",
-  "run.setup-status",
-  "run.setup-retry",
-  "run.status",
-  "run.read",
-  "run.stop",
   "worktree.list",
   "worktree.status",
   "worktree.create",
@@ -8059,26 +7998,6 @@ export const cantripMcpTargetListInputSchema = z
 export const cantripMcpTargetInspectInputSchema = z
   .object({ target: executionTargetSchema })
   .strict();
-export const cantripMcpRunConfigListInputSchema = z.object({}).strict();
-export const cantripMcpRunConfigSchemaInputSchema = z.object({}).strict();
-export const cantripMcpRunConfigReadInputSchema = z
-  .object({
-    actionId: runConfigurationActionSchema.shape.id,
-    configRevision: runConfigurationDefinitionSchema.shape.revision,
-  })
-  .strict();
-export const cantripMcpRunConfigActionAddInputSchema =
-  runConfigurationActionAddInputSchema;
-export const cantripMcpRunSetupStatusInputSchema = z.object({}).strict();
-export const cantripMcpRunStatusInputSchema = z
-  .object({ runId: runInstanceSchema.shape.id.optional() })
-  .strict();
-export const cantripMcpRunReadInputSchema = z
-  .object({
-    runId: runInstanceSchema.shape.id,
-    maxChars: z.number().int().min(1).max(100_000).default(20_000),
-  })
-  .strict();
 export const cantripMcpRunConfigurationListInputSchema = z.object({}).strict();
 export const cantripMcpRunConfigurationGetInputSchema = z
   .object({ configurationId: runConfigurationIdSchema })
@@ -8273,23 +8192,6 @@ export const cantripMcpWorktreeReleaseInputSchema = z
 export const cantripMcpWorktreeRemoveInputSchema = z
   .object({ target: cantripMcpWorktreeTargetSchema })
   .strict();
-export const cantripMcpRunStartInputSchema = z
-  .object({
-    actionId: runConfigurationActionSchema.shape.id,
-    configRevision: runConfigurationDefinitionSchema.shape.revision,
-    focus: z.boolean().default(true),
-  })
-  .strict();
-export const cantripMcpRunOpenInputSchema = z
-  .object({
-    runId: runInstanceSchema.shape.id,
-    focus: z.boolean().default(true),
-  })
-  .strict();
-export const cantripMcpRunStopInputSchema = z
-  .object({ runId: runInstanceSchema.shape.id })
-  .strict();
-export const cantripMcpRunSetupRetryInputSchema = z.object({}).strict();
 export const cantripMcpExplorerWriteInputSchema = z
   .object({
     target: cantripMcpSurfaceTargetSchema("explorer"),
@@ -8448,43 +8350,6 @@ export const cantripMcpTargetInspectResultSchema =
       })
       .strict(),
   });
-export const cantripMcpRunConfigListResultSchema =
-  cantripMcpReadResultBaseSchema.extend({
-    target: z.null().default(null),
-    worktreeId: z.string().min(1).max(200),
-    data: runConfigurationInspectionSchema,
-  });
-export const cantripMcpRunConfigReadResultSchema =
-  cantripMcpReadResultBaseSchema.extend({
-    target: z.null().default(null),
-    worktreeId: z.string().min(1).max(200),
-    data: runConfigurationSelectionSchema,
-  });
-export const cantripMcpRunConfigSchemaResultSchema =
-  cantripMcpReadResultBaseSchema.extend({
-    target: z.null().default(null),
-    worktreeId: z.string().min(1).max(200),
-    data: runConfigurationAuthoringHelpSchema,
-  });
-export const cantripMcpRunSetupStatusResultSchema =
-  cantripMcpReadResultBaseSchema.extend({
-    target: z.null().default(null),
-    worktreeId: z.string().min(1).max(200),
-    data: runSetupStatusResultSchema,
-  });
-export const cantripMcpRunStatusResultSchema =
-  cantripMcpReadResultBaseSchema.extend({
-    target: z.null().default(null),
-    worktreeId: z.string().min(1).max(200),
-    data: runInstanceResultSchema,
-  });
-export const cantripMcpRunReadResultSchema =
-  cantripMcpReadResultBaseSchema.extend({
-    target: z.null().default(null),
-    worktreeId: z.string().min(1).max(200),
-    data: runLogResultSchema,
-  });
-
 const cantripMcpRunConfigurationProjectTargetSchema = z
   .object({
     kind: z.literal("project"),
@@ -8654,12 +8519,6 @@ export const cantripMcpWorktreeCreateResultSchema =
     worktreeId: z.string().min(1).max(200),
     data: z.object({ worktree: cantripMcpWorktreeSummarySchema }).strict(),
   });
-export const cantripMcpRunConfigActionAddResultSchema =
-  cantripMcpMutationResultBaseSchema.extend({
-    target: cantripMcpWorktreeTargetSchema,
-    worktreeId: z.string().min(1).max(200),
-    data: runConfigurationAuthoringSnapshotSchema,
-  });
 export const cantripMcpWorktreeSwitchResultSchema =
   cantripMcpContinuationResultBaseSchema.extend({
     target: cantripMcpWorktreeTargetSchema,
@@ -8682,31 +8541,6 @@ export const cantripMcpWorktreeRemoveResultSchema =
         branchRetained: z.literal(true),
       })
       .strict(),
-  });
-const cantripMcpRunMutationResultBaseSchema = z
-  .object({
-    summary: z.string().min(1).max(2_000),
-    target: cantripMcpWorktreeTargetSchema,
-    worktreeId: z.string().min(1).max(200),
-    continuationScheduled: z.literal(false).default(false),
-    mutated: z.boolean(),
-  })
-  .strict();
-export const cantripMcpRunStartResultSchema =
-  cantripMcpRunMutationResultBaseSchema.extend({
-    data: runStartResultSchema,
-  });
-export const cantripMcpRunOpenResultSchema =
-  cantripMcpRunMutationResultBaseSchema.extend({
-    data: runStartResultSchema,
-  });
-export const cantripMcpRunStopResultSchema =
-  cantripMcpRunMutationResultBaseSchema.extend({
-    data: runInstanceResultSchema,
-  });
-export const cantripMcpRunSetupRetryResultSchema =
-  cantripMcpRunMutationResultBaseSchema.extend({
-    data: runSetupStatusResultSchema,
   });
 export const cantripMcpExplorerWriteResultSchema =
   cantripMcpMutationResultBaseSchema.extend({
@@ -12542,107 +12376,6 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   runConfigurationRuntimeReconcileWorkerCommandSchema.extend({
     type: z.literal("project.run-configuration-runtime.reconcile"),
   }),
-  z
-    .object({
-      type: z.literal("project.run-configurations.metadata"),
-      sourcePath: z.string().min(1).max(8_192),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run-configurations.inspect"),
-      operationId: z.string().uuid(),
-      projectId: z.string().min(1).max(200),
-      worktreeId: z.string().min(1).max(200),
-      serverId: z.string().min(1).max(2_000),
-      sourcePath: z.string().min(1).max(8_192),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run-configurations.read-authoring"),
-      operationId: z.string().uuid(),
-      projectId: z.string().min(1).max(200),
-      worktreeId: z.string().min(1).max(200),
-      serverId: z.string().min(1).max(2_000),
-      sourcePath: z.string().min(1).max(8_192),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run-configurations.write"),
-      operationId: z.string().uuid(),
-      projectId: z.string().min(1).max(200),
-      worktreeId: z.string().min(1).max(200),
-      serverId: z.string().min(1).max(2_000),
-      sourcePath: z.string().min(1).max(8_192),
-      protectedRequest: endpointContentOpaqueSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run-setup.start"),
-      operationId: z.string().uuid(),
-      serverId: z.string().min(1).max(2_000),
-      jobId: worktreeSetupJobSummarySchema.shape.id,
-      attempt: z.number().int().positive().safe(),
-      projectId: runInstanceSchema.shape.projectId,
-      worktreeId: runInstanceSchema.shape.worktreeId,
-      sourcePath: z.string().min(1).max(8_192),
-      worktreePath: z.string().min(1).max(8_192),
-      configurationRevision:
-        runConfigurationDefinitionSchema.shape.revision.nullable(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run-setup.status"),
-      operationId: z.string().uuid(),
-      serverId: z.string().min(1).max(2_000),
-      jobId: worktreeSetupJobSummarySchema.shape.id,
-      projectId: runInstanceSchema.shape.projectId,
-      worktreeId: runInstanceSchema.shape.worktreeId,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run.start"),
-      requestId: z.string().min(1).max(200),
-      rootKind: projectRootKindSchema,
-      sourcePath: z.string().min(1).max(8_192),
-      worktreePath: z.string().min(1).max(8_192),
-    })
-    .extend(workerRunIdentitySchema.shape)
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run.status"),
-      runId: runInstanceSchema.shape.id,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run.logs"),
-      operationId: z.string().uuid(),
-      projectId: runInstanceSchema.shape.projectId,
-      worktreeId: runInstanceSchema.shape.worktreeId,
-      serverId: z.string().min(1).max(2_000),
-      runId: runInstanceSchema.shape.id,
-      maxChars: z.number().int().min(1).max(100_000),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run.stop"),
-      runId: runInstanceSchema.shape.id,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run.reconcile"),
-      runs: z.array(workerRunIdentitySchema).max(256),
-    })
-    .strict(),
   z.object({
     type: z.literal("project.repository-stats"),
     cwd: z.string().min(1).max(8_192),
@@ -13341,7 +13074,6 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("terminal.open"),
       terminalId: z.string().min(1),
-      managedRunId: z.string().uuid().nullable().optional(),
       attachmentId: z.string().min(1),
       operationId: surfaceStreamWireRequestSchema.shape.operationId,
       serverId: z.string().min(1).max(255),
@@ -14149,12 +13881,6 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("codegraph.status.observed"),
       status: codeGraphProjectStatusSchema,
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("project.run.state.observed"),
-      run: workerRunSnapshotSchema,
     })
     .strict(),
   runConfigurationRuntimeWorkerNotificationSchema,
@@ -15106,9 +14832,6 @@ export type ChatPermissionProfileUpdate = z.infer<
 export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
 export type EncryptedTerminalCreate = z.infer<
   typeof encryptedTerminalCreateSchema
->;
-export type EncryptedRunTerminalMaterialization = z.infer<
-  typeof encryptedRunTerminalMaterializationSchema
 >;
 export type TerminalUpdate = z.infer<typeof terminalUpdateSchema>;
 export type EncryptedTerminalUpdate = z.infer<

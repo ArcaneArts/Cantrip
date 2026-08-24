@@ -483,7 +483,7 @@ whole-product result explicitly open until its planned rows land.
 | Workflow control reasons and content-bearing events                                                                         | Client-sealed pause/cancel/retry/resume reasons; opaque event payload slot; explicit allowlist for server-readable scheduling/routing metadata                                                        | E2EE/minimization complete                       | Implemented          | Very high   | Server sees event type/order/actors, opaque IDs, lifecycle classifications, aggregate usage, and bounded operational codes, but no user reason or worker event content                 |
 | Workflow triggers and deliveries                                                                                            | Row/operation-bound `workflow-content`; client-only authoring/presentation; worker-only private routing validation, input merge, and run-input sealing; minimized public schedule/rate/event metadata | E2EE/minimization complete                       | Implemented          | Very high   | Server sees trigger type, cadence, enabled/status/timestamps, Git event class, coarse errors, and hashed webhook credential, but no name, branch pattern, command, or input            |
 | Server-bound repository identities and names, remotes, paths, branch names, and Git output                                  | `repository-content` operations; keyed identity blind indexes; worker-local opaque routing for identity, setup, lifecycle, paths, branches, status, operation state, and Git-agent drafts             | E2EE complete                                    | Implemented          | High        | Sensitive repository metadata and operation payloads that cross or persist on the server; worker-local source and checkouts are not encrypted by this system; equality leakage remains |
-| Token usage, agent/wall-clock time, concurrency, quotas, and model-behavior analytics                                      | Minimized operational ledger: counters, execution intervals, timestamps, versions, coarse outcomes, routing IDs, and opaque dimensions only; labels are resolved on the unlocked client                  | Selective minimization complete                  | Intentional metadata | Medium      | Server retains aggregate analysis and routing dimensions but loses raw payloads, historical labels, copied names, and exact diagnostic context                                         |
+| Token usage, agent/wall-clock time, concurrency, quotas, and model-behavior analytics                                       | Minimized operational ledger: counters, execution intervals, timestamps, versions, coarse outcomes, routing IDs, and opaque dimensions only; labels are resolved on the unlocked client               | Selective minimization complete                  | Intentional metadata | Medium      | Server retains aggregate analysis and routing dimensions but loses raw payloads, historical labels, copied names, and exact diagnostic context                                         |
 | Diagnostic logs and audit metadata                                                                                          | Persistent/remote logs use event codes plus an operational allowlist; audits use fixed columns without arbitrary metadata, IP/user-agent hashes, raw errors, paths, prompts, or provider bodies       | Minimization complete                            | Intentional metadata | Medium      | Server retains coarse operational/security events but loses free-form forensic payloads and exact diagnostics                                                                          |
 | Worker platform, capabilities, online state, and tunnel routing state                                                       | Plaintext                                                                                                                                                                                             | Intentionally plaintext                          | Poor                 | High        | Routing requires this state; semantic tunnel configuration is tracked separately below                                                                                                 |
 | Workflow status, leases, retries, dependencies, and deadlines                                                               | Plaintext                                                                                                                                                                                             | Intentionally plaintext                          | Poor                 | Very high   | The server cannot schedule or recover jobs                                                                                                                                             |
@@ -963,17 +963,13 @@ failure, exact reset preservation, opaque worker commands, and a full public
 table scan containing neither the sentinel working directory nor service
 command.
 
-Run terminal materialization uses the same terminal label and private-state
-envelopes, but only after the server has authorized an exact durable Run. The
-live client-control frame contains public Run/project/worktree identity and a
-terminal UUID fixed to the Run UUID; the client authors both ciphertexts and
-the Run-specific server route attaches them idempotently. The server can route
-the opaque state but cannot decrypt the terminal title or working-directory
-selection. Relay and direct transports attach the surface to the existing
-worker-managed Run PTY and retain the protected terminal-stream protocol. An
-explicit managed-Run marker prevents a missing or lost Run from being opened as
-a new ordinary shell, and Run terminals cannot be converted to auto-restarting
-services or rebound to another worktree.
+Run configuration terminals use the same protected title and state envelopes,
+but the server materializes them directly from an authorized durable runtime.
+Their public linkage contains the stable configuration, runtime, worktree, and
+worker identities; output remains protected with the Run content component.
+These terminals are read-only, cannot become terminal services, and cannot be
+rebound to another worktree. Ordinary terminal relay and direct transports do
+not attach to Run configuration runtimes.
 
 ### Explorer selected state
 

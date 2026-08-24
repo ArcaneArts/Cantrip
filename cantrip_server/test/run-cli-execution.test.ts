@@ -5,13 +5,10 @@ import path from "node:path";
 import {
   CANTRIP_MCP_OPERATIONS,
   cantripCliCommandResultSchema,
-  protectedRunConfigurationAuthoringSnapshotSchema,
-  protectedRunConfigurationWriteResultSchema,
   unprobedCodexRuntimeReport,
   type EndpointContentOpaque,
   type CantripMcpBinding,
   type WorkerCommand,
-  type WorkerRunSnapshot,
 } from "@cantrip/protocol";
 import {
   protectedRunConfigurationRuntimeOutputResultSchema,
@@ -50,7 +47,6 @@ const config: ServerConfig = {
 };
 
 const actionId = "a".repeat(64);
-const configurationRevision = "b".repeat(64);
 const configurationId = "0f82c573-704d-4a06-984e-5ce0b8d688ca";
 const opaque: EndpointContentOpaque = {
   formatVersion: 1,
@@ -77,7 +73,6 @@ const protectedSecretValue = {
 };
 
 const routedCommands: WorkerCommand[] = [];
-const runs = new Map<string, WorkerRunSnapshot>();
 const definitionService = new RunConfigurationDefinitionService({
   emit: () => undefined,
 });
@@ -141,83 +136,6 @@ const workerBridge: WorkerCommandBus = {
         };
       case "project.run-configuration-runtime.reconcile":
         return { runtimes: [], orphanedRuntimeIds: [] };
-      case "project.run-configurations.inspect":
-        return {
-          operationId: command.operationId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          metadata: {
-            platform: "linux",
-            configured: true,
-            valid: true,
-            hasSetup: false,
-            configurationRevision,
-          },
-          protectedInspection: opaque,
-        };
-      case "project.run-configurations.read-authoring":
-        return {
-          operationId: command.operationId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          protectedSnapshot: opaque,
-        };
-      case "project.run-configurations.write":
-        return opaque;
-      case "project.run.start": {
-        const existing = runs.get(command.runId);
-        if (existing) return existing;
-        const started: WorkerRunSnapshot = {
-          runId: command.runId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          actionId: command.actionId,
-          configurationRevision: command.configurationRevision,
-          state: "running",
-          startedAt: "2026-08-21T12:00:00.000Z",
-          endedAt: null,
-          exitCode: null,
-          signal: null,
-        };
-        runs.set(command.runId, started);
-        return started;
-      }
-      case "project.run.status": {
-        const run = runs.get(command.runId);
-        return run
-          ? { found: true, run }
-          : { found: false, runId: command.runId };
-      }
-      case "project.run.logs": {
-        const run = runs.get(command.runId);
-        if (!run) throw new Error("Run missing from test worker.");
-        return {
-          operationId: command.operationId,
-          projectId: command.projectId,
-          worktreeId: command.worktreeId,
-          run,
-          protectedLog: opaque,
-        };
-      }
-      case "project.run.stop": {
-        const current = runs.get(command.runId);
-        if (!current) return { found: false, runId: command.runId };
-        const stopped: WorkerRunSnapshot = {
-          ...current,
-          state: "stopped",
-          endedAt: "2026-08-21T12:00:02.000Z",
-          signal: "SIGTERM",
-        };
-        runs.set(command.runId, stopped);
-        return { found: true, run: stopped };
-      }
-      case "project.run.reconcile":
-        return command.runs.map((identity) => {
-          const run = runs.get(identity.runId);
-          return run
-            ? { found: true as const, run }
-            : { found: false as const, runId: identity.runId };
-        });
       default:
         throw new Error(`Unexpected Run worker command ${command.type}.`);
     }
@@ -464,44 +382,6 @@ describe("Run protected server boundary", () => {
 
     expect(response.statusCode, response.body).toBe(409);
     expect(response.json()).toMatchObject({ code: "stale-binding" });
-  });
-
-  it("routes opaque configuration reads and writes without semantic fields", async () => {
-    const read = await app.inject({
-      method: "GET",
-      url: `/api/projects/${projectId}/run-environment/configuration`,
-    });
-    expect(read.statusCode, read.body).toBe(200);
-    expect(
-      protectedRunConfigurationAuthoringSnapshotSchema.parse(read.json()),
-    ).toMatchObject({ projectId, worktreeId, protectedSnapshot: opaque });
-
-    const operationId = crypto.randomUUID();
-    const saved = await app.inject({
-      method: "PUT",
-      url: `/api/projects/${projectId}/run-environment/configuration`,
-      payload: {
-        operationId,
-        projectId,
-        worktreeId,
-        protectedRequest: opaque,
-      },
-    });
-    expect(saved.statusCode, saved.body).toBe(200);
-    expect(
-      protectedRunConfigurationWriteResultSchema.parse(saved.json()),
-    ).toMatchObject({
-      operationId,
-      projectId,
-      worktreeId,
-      protectedResponse: opaque,
-    });
-    const write = routedCommands.find(
-      (command) => command.type === "project.run-configurations.write",
-    );
-    expect(write).toMatchObject({ protectedRequest: opaque });
-    expect(write).not.toHaveProperty("document");
-    expect(write).not.toHaveProperty("expectedRevision");
   });
 
   it("reads project-shared definitions by stable ID", async () => {

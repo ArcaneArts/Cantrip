@@ -321,7 +321,6 @@ describe("application live query bridge", () => {
         }),
       ),
     ).toEqual([
-      ["run-environment", "project-one"],
       ["run-configuration-runtimes", "project-one"],
       ["terminals", "project-one"],
     ]);
