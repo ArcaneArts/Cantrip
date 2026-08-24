@@ -52,6 +52,10 @@
       "types": "./src/repository-operation.ts",
       "import": "./dist/repository-operation.js"
     },
+    "./run-configuration-definitions": {
+      "types": "./src/run-configuration-definitions.ts",
+      "import": "./dist/run-configuration-definitions.js"
+    },
     "./endpoint-content": {
       "types": "./src/endpoint-content.ts",
       "import": "./dist/endpoint-content.js"
