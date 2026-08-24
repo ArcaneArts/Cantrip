@@ -892,6 +892,42 @@ async function canonicalJdkHome(
   return canonical;
 }
 
+function launchEnvironmentValue(
+  context: RunConfigurationProviderContext,
+  name: string,
+): string | undefined {
+  if (!context.environment) return undefined;
+  if (context.platform !== "win32") return context.environment[name];
+  const normalizedName = name.toUpperCase();
+  return Object.entries(context.environment).find(
+    ([key]) => key.toUpperCase() === normalizedName,
+  )?.[1];
+}
+
+async function defaultJavaRuntimeDiagnostic(
+  context: RunConfigurationProviderContext,
+): Promise<RunConfigurationDiagnostic | null> {
+  if (!context.environment) return null;
+  const javaHome = launchEnvironmentValue(context, "JAVA_HOME");
+  if (javaHome?.trim()) {
+    try {
+      await canonicalJdkHome(javaHome, context.platform);
+      return null;
+    } catch (error) {
+      return runConfigurationProviderDiagnostic(
+        "java-home-invalid",
+        `JAVA_HOME does not identify a usable Java runtime. ${error instanceof Error ? error.message : String(error)} Correct the launch environment or select a JDK home.`,
+        "options.jdkHome",
+      );
+    }
+  }
+  return runConfigurationExecutableDiagnostic(
+    "java",
+    context,
+    "options.jdkHome",
+  );
+}
+
 function findBuild(
   scan: ProjectScan,
   system: "gradle" | "maven",
@@ -1266,6 +1302,8 @@ export const javaRunConfigurationProvider: RunConfigurationProvider<RunConfigura
       const hasProviderTask = parsed.beforeLaunch.some(
         ({ kind }) => kind === "providerTask",
       );
+      const needsBuildTool =
+        resolved.commandOverride === null || hasProviderTask;
       try {
         await resolveRealDirectory(
           context.targetRoot,
@@ -1301,7 +1339,11 @@ export const javaRunConfigurationProvider: RunConfigurationProvider<RunConfigura
             ...(await validateJavaTarget(parsed, resolved, context)),
           );
         }
-        if (resolved.commandOverride === null || hasProviderTask) {
+        if (needsBuildTool) {
+          if (!resolved.options.jdkHome) {
+            const javaDiagnostic = await defaultJavaRuntimeDiagnostic(context);
+            if (javaDiagnostic) diagnostics.push(javaDiagnostic);
+          }
           const system = targetBuildSystem(parsed);
           const executable = resolved.options.useWrapper
             ? null
@@ -1315,10 +1357,7 @@ export const javaRunConfigurationProvider: RunConfigurationProvider<RunConfigura
             if (diagnostic) diagnostics.push(diagnostic);
           }
         }
-        if (
-          (resolved.commandOverride === null || hasProviderTask) &&
-          resolved.options.useWrapper
-        ) {
+        if (needsBuildTool && resolved.options.useWrapper) {
           try {
             await wrapperRelativePath(
               context,

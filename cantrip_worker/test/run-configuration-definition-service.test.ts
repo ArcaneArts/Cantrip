@@ -54,12 +54,13 @@ describe("RunConfigurationDefinitionService", () => {
       ? [
           "npm.CMD",
           "gradle.bat",
+          "java.exe",
           "dart.exe",
           "flutter.bat",
           "cargo.exe",
           "cmd.exe",
         ]
-      : ["npm", "gradle", "dart", "flutter", "cargo", "sh"];
+      : ["npm", "gradle", "java", "dart", "flutter", "cargo", "sh"];
     await Promise.all(
       toolNames.map((name) =>
         writeFile(path.join(toolRoot, name), "#!/bin/sh\nexit 0\n", {
@@ -365,6 +366,35 @@ describe("RunConfigurationDefinitionService", () => {
       });
       await writeFile(toolPath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     }
+    const javaCandidate = detected.candidates.find(
+      ({ provider }) => provider === "java",
+    );
+    if (!javaCandidate) {
+      throw new Error("Expected a detected Java Run configuration.");
+    }
+    const javaPath = path.join(toolRoot, windows ? "java.exe" : "java");
+    await unlink(javaPath);
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.validate",
+        operationId: randomUUID(),
+        ...context,
+        document: javaCandidate.document,
+      }),
+    ).resolves.toMatchObject({
+      operation: "validate",
+      validation: {
+        valid: false,
+        diagnostics: [
+          expect.objectContaining({
+            severity: "error",
+            code: "executable-unavailable",
+            field: "options.jdkHome",
+          }),
+        ],
+      },
+    });
+    await writeFile(javaPath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     await expect(
       service.execute({
         type: "project.run-configuration-definitions.validate",

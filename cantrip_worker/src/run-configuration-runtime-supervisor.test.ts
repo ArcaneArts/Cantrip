@@ -869,8 +869,20 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
 
     it("launches a structured Java build target without a handwritten command", async () => {
       const input = await javaFixture();
+      const fixtureRoot = path.dirname(input.sourceRoot);
+      const emptyPath = path.join(fixtureRoot, "empty-java-path");
+      const jdkHome = path.join(fixtureRoot, "resolved-jdk");
+      await Promise.all([
+        mkdir(emptyPath),
+        mkdir(path.join(jdkHome, "bin"), { recursive: true }),
+      ]);
+      await writeFile(path.join(jdkHome, "bin", "java"), "#!/bin/sh\nexit 0\n");
+      await chmod(path.join(jdkHome, "bin", "java"), 0o755);
       const runtimeIdentity = identity(input);
-      const runs = supervisor();
+      const runs = supervisor([], {
+        environment: { PATH: emptyPath, JAVA_HOME: "" },
+        resolveEnvironment: async () => ({ files: { JAVA_HOME: jdkHome } }),
+      });
       await expect(
         runs.start(startCommand(input, runtimeIdentity)),
       ).resolves.toMatchObject({
@@ -887,6 +899,33 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
       expect(output).toContain("java-provider|--no-transfer-progress");
       expect(output).toContain("spring-boot:run");
       expect(output).toContain("--server.port=4400");
+      await runs.closeAll();
+    });
+
+    it("fails Java provider validation before spawning a build wrapper when no runtime is available", async () => {
+      const input = await javaFixture();
+      const emptyPath = path.join(path.dirname(input.sourceRoot), "empty-bin");
+      await mkdir(emptyPath);
+      const runtimeIdentity = identity(input);
+      const runs = supervisor([], {
+        environment: { PATH: emptyPath, JAVA_HOME: "" },
+      });
+
+      await runs.start(startCommand(input, runtimeIdentity));
+      const failed = await waitForState(runs, runtimeIdentity, "failed");
+      expect(failed.failure).toMatchObject({
+        phase: "provider",
+        code: "executable-unavailable",
+        message: expect.stringContaining("java"),
+      });
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).not.toContain("java-provider");
       await runs.closeAll();
     });
 
