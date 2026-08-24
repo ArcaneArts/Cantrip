@@ -42,9 +42,9 @@ describe("account settings", () => {
 
     expect(general).toBeGreaterThanOrEqual(0);
     expect(markup).not.toContain(">Elite<");
-    expect(usage).toBeGreaterThan(general);
-    expect(code).toBeGreaterThan(usage);
-    expect(models).toBeGreaterThan(code);
+    expect(code).toBeGreaterThan(general);
+    expect(usage).toBeGreaterThan(code);
+    expect(models).toBeGreaterThan(usage);
     expect(workers).toBeGreaterThan(models);
     expect(logs).toBeGreaterThan(workers);
   });

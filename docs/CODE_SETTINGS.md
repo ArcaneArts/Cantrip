@@ -49,14 +49,22 @@ current normalized user settings. Before a different worker receives its first
 server-driven overwrite, it writes `settings.pre-cantrip-sync.json` beside the
 active settings file as a recovery copy.
 
+Concurrent initialization attempts use the same top-level merge rules as later
+updates. Compatible settings are combined through CAS; divergent same-key
+values enter conflict state instead of overwriting the losing worker.
+
+Choosing the canonical side of an explicit conflict also preserves the current
+local edit as `settings.pre-cantrip-conflict.json` before publishing the
+resolution revision and applying the canonical settings.
+
 Workers retain a base/local/remote model and merge by top-level VS Code setting
 key. Independent key changes and identical same-key changes merge
 automatically. Divergent same-key edits, including deletion versus
 modification, enter an explicit conflict state. The Code tab then offers two
 deliberate resolutions:
 
-- **Use synced settings** applies the canonical version while preserving the
-  local recovery path.
+- **Use synced settings** preserves the current local edit, applies the
+  canonical version, and publishes the decision as a new canonical revision.
 - **Keep this worker's settings** publishes the local version as a new
   canonical revision.
 
