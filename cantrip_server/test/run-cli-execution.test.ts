@@ -1,18 +1,22 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   cantripCliCommandResultSchema,
   protectedRunConfigurationAuthoringSnapshotSchema,
-  protectedRunConfigurationInspectionSchema,
   protectedRunConfigurationWriteResultSchema,
-  protectedRunLogResultSchema,
   unprobedCodexRuntimeReport,
   type EndpointContentOpaque,
   type WorkerCommand,
   type WorkerRunSnapshot,
 } from "@cantrip/protocol";
+import {
+  protectedRunConfigurationRuntimeOutputResultSchema,
+  runConfigurationRuntimeOperationResultSchema,
+  runConfigurationRuntimeStatusResultSchema,
+  runConfigurationRuntimeWorkerOperationResultSchema,
+} from "@cantrip/protocol/run-configuration-runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -20,6 +24,7 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import { RunConfigurationDefinitionService } from "../../cantrip_worker/src/run-configuration-definition-service.js";
 
 import { protectedProjectFields } from "./private-label-fixture.js";
 
@@ -41,6 +46,7 @@ const config: ServerConfig = {
 
 const actionId = "a".repeat(64);
 const configurationRevision = "b".repeat(64);
+const configurationId = "0f82c573-704d-4a06-984e-5ce0b8d688ca";
 const opaque: EndpointContentOpaque = {
   formatVersion: 1,
   domain: "run-content",
@@ -56,6 +62,9 @@ const opaque: EndpointContentOpaque = {
 
 const routedCommands: WorkerCommand[] = [];
 const runs = new Map<string, WorkerRunSnapshot>();
+const definitionService = new RunConfigurationDefinitionService({
+  emit: () => undefined,
+});
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -74,6 +83,48 @@ const workerBridge: WorkerCommandBus = {
   async request(_workerId, command) {
     routedCommands.push(command);
     switch (command.type) {
+      case "project.run-configuration-definitions.list":
+      case "project.run-configuration-definitions.get":
+      case "project.run-configuration-definitions.capabilities":
+      case "project.run-configuration-definitions.detect":
+      case "project.run-configuration-definitions.write":
+      case "project.run-configuration-definitions.delete":
+        return definitionService.execute(command);
+      case "project.run-configuration-runtime.start":
+      case "project.run-configuration-runtime.restart":
+        return runConfigurationRuntimeWorkerOperationResultSchema.parse({
+          outcome: "accepted",
+          observation: {
+            ...command.identity,
+            state: "running",
+            startedAt: "2026-08-21T12:00:00.000Z",
+            endedAt: null,
+            exitCode: null,
+            signal: null,
+            failure: null,
+          },
+        });
+      case "project.run-configuration-runtime.stop":
+        return runConfigurationRuntimeWorkerOperationResultSchema.parse({
+          outcome: "accepted",
+          observation: {
+            ...command.identity,
+            state: "idle",
+            startedAt: "2026-08-21T12:00:00.000Z",
+            endedAt: "2026-08-21T12:00:02.000Z",
+            exitCode: null,
+            signal: "SIGTERM",
+            failure: null,
+          },
+        });
+      case "project.run-configuration-runtime.output":
+        return {
+          requestOperationId: command.requestOperationId,
+          identity: command.identity,
+          protectedOutput: opaque,
+        };
+      case "project.run-configuration-runtime.reconcile":
+        return { runtimes: [], orphanedRuntimeIds: [] };
       case "project.run-configurations.inspect":
         return {
           operationId: command.operationId,
@@ -166,10 +217,16 @@ async function cli(
   command:
     | "run.list"
     | "run.show"
+    | "run.detect"
+    | "run.create"
+    | "run.update"
+    | "run.delete"
     | "run.start"
+    | "run.restart"
     | "run.status"
     | "run.logs"
-    | "run.stop",
+    | "run.stop"
+    | "run.secret-set",
   arguments_: Record<string, unknown>,
   requestId: string,
 ) {
@@ -194,6 +251,25 @@ async function cli(
 
 beforeAll(async () => {
   await mkdir(projectPath, { recursive: true });
+  await mkdir(path.join(projectPath, ".cantrip", "run-configurations"), {
+    recursive: true,
+  });
+  await writeFile(
+    path.join(
+      projectPath,
+      ".cantrip",
+      "run-configurations",
+      `${configurationId}.json`,
+    ),
+    `${JSON.stringify({
+      schema: "cantrip.run-configuration",
+      version: 1,
+      id: configurationId,
+      name: "Run app",
+      provider: "shell",
+      target: { kind: "command", command: "pnpm dev" },
+    })}\n`,
+  );
   database = await connectDatabase(config);
   await database.repository.ensureDefaultModelConfiguration(
     LOCAL_USER_ID,
@@ -352,70 +428,156 @@ describe("Run protected server boundary", () => {
     expect(write).not.toHaveProperty("expectedRevision");
   });
 
-  it("returns protected configuration to raw CLI adapters", async () => {
-    const listed = await cli("run.list", {}, "run-list-protected");
+  it("reads project-shared definitions by stable ID", async () => {
+    const listed = await cli("run.list", {}, crypto.randomUUID());
     expect(listed.statusCode, listed.body).toBe(200);
     const result = cantripCliCommandResultSchema.parse(listed.json());
-    expect(
-      protectedRunConfigurationInspectionSchema.parse(result.data),
-    ).toMatchObject({
+    expect(result.data).toMatchObject({
+      operation: "list",
       projectId,
-      worktreeId,
-      protectedInspection: opaque,
+      inventory: {
+        entries: [
+          {
+            id: configurationId,
+            status: "ready",
+            document: { id: configurationId, name: "Run app" },
+          },
+        ],
+      },
     });
 
     const shown = await cli(
       "run.show",
-      { action: "server-must-not-select-this" },
-      "run-show-protected",
+      { configurationId },
+      crypto.randomUUID(),
     );
     expect(shown.statusCode, shown.body).toBe(200);
     expect(
-      protectedRunConfigurationInspectionSchema.parse(
-        cantripCliCommandResultSchema.parse(shown.json()).data,
-      ),
-    ).toMatchObject({ projectId, worktreeId });
+      cantripCliCommandResultSchema.parse(shown.json()).data,
+    ).toMatchObject({
+      operation: "get",
+      projectId,
+      result: { found: true, entry: { id: configurationId } },
+    });
   });
 
-  it("keeps Run lifecycle public while relaying log content opaquely", async () => {
+  it("creates, revision-checks, updates, and deletes definitions", async () => {
+    const id = "1f82c573-704d-4a06-984e-5ce0b8d688ca";
+    const document = {
+      schema: "cantrip.run-configuration",
+      version: 1,
+      id,
+      name: "CLI server",
+      provider: "shell",
+      target: { kind: "command", command: "pnpm server" },
+    };
+    const created = await cli("run.create", { document }, crypto.randomUUID());
+    expect(created.statusCode, created.body).toBe(200);
+    const createdData = cantripCliCommandResultSchema.parse(created.json())
+      .data as {
+      result: { entry: { revision: string }; outcome: string };
+    };
+    expect(createdData.result.outcome).toBe("created");
+
+    const stale = await cli(
+      "run.update",
+      {
+        configurationId: id,
+        revision: "c".repeat(64),
+        document: { ...document, name: "CLI server updated" },
+      },
+      crypto.randomUUID(),
+    );
+    expect(stale.statusCode, stale.body).toBe(409);
+
+    const updated = await cli(
+      "run.update",
+      {
+        configurationId: id,
+        revision: createdData.result.entry.revision,
+        document: { ...document, name: "CLI server updated" },
+      },
+      crypto.randomUUID(),
+    );
+    expect(updated.statusCode, updated.body).toBe(200);
+    const updatedData = cantripCliCommandResultSchema.parse(updated.json())
+      .data as {
+      result: { entry: { revision: string }; outcome: string };
+    };
+    expect(updatedData.result.outcome).toBe("updated");
+
+    const deleted = await cli(
+      "run.delete",
+      {
+        configurationId: id,
+        revision: updatedData.result.entry.revision,
+      },
+      crypto.randomUUID(),
+    );
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(deleted.json()).data,
+    ).toMatchObject({ result: { outcome: "deleted", id } });
+  });
+
+  it("uses durable lifecycle state and relays terminal output opaquely", async () => {
     const requestId = crypto.randomUUID();
     const started = await cli(
       "run.start",
-      { actionId, configRevision: configurationRevision, focus: false },
+      { configurationId, worktreeId: null },
       requestId,
     );
     expect(started.statusCode, started.body).toBe(200);
-    const run = (
-      cantripCliCommandResultSchema.parse(started.json()).data as {
-        run: { id: string };
-      }
-    ).run;
+    const runtime = runConfigurationRuntimeOperationResultSchema.parse(
+      cantripCliCommandResultSchema.parse(started.json()).data,
+    ).runtime!;
+    expect(runtime).toMatchObject({
+      configurationId,
+      worktreeId,
+      state: "running",
+      generation: 1,
+    });
+
+    const status = await cli(
+      "run.status",
+      { configurationId, worktreeId },
+      crypto.randomUUID(),
+    );
+    expect(status.statusCode, status.body).toBe(200);
+    expect(
+      runConfigurationRuntimeStatusResultSchema.parse(
+        cantripCliCommandResultSchema.parse(status.json()).data,
+      ).runtimes,
+    ).toEqual([expect.objectContaining({ id: runtime.id, state: "running" })]);
 
     const logs = await cli(
       "run.logs",
-      { runId: run.id, tail: 20_000 },
-      "run-logs-protected",
+      { configurationId, worktreeId, tail: 20_000 },
+      crypto.randomUUID(),
     );
     expect(logs.statusCode, logs.body).toBe(200);
     expect(
-      protectedRunLogResultSchema.parse(
+      protectedRunConfigurationRuntimeOutputResultSchema.parse(
         cantripCliCommandResultSchema.parse(logs.json()).data,
       ),
     ).toMatchObject({
       projectId,
       worktreeId,
-      protectedLog: opaque,
-      run: { id: run.id, state: "running" },
+      configurationId,
+      generation: 1,
+      protectedOutput: opaque,
     });
 
     const stopped = await cli(
       "run.stop",
-      { runId: run.id },
-      "run-stop-protected",
+      { configurationId, worktreeId },
+      crypto.randomUUID(),
     );
     expect(stopped.statusCode, stopped.body).toBe(200);
     expect(
-      cantripCliCommandResultSchema.parse(stopped.json()).data,
-    ).toMatchObject({ run: { id: run.id, state: "stopped" } });
+      runConfigurationRuntimeOperationResultSchema.parse(
+        cantripCliCommandResultSchema.parse(stopped.json()).data,
+      ).runtime,
+    ).toMatchObject({ id: runtime.id, state: "idle" });
   });
 });

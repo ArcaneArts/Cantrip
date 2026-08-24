@@ -11,7 +11,6 @@ import {
   executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
   projectTabLayoutWireSummarySchema,
-  protectedRunConfigurationInspectionSchema,
   protectedScriptCommandListSchema,
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
@@ -185,6 +184,17 @@ const workerBridge: WorkerCommandBus = {
           protectedInspection: protectedRunPayload,
         };
       }
+      case "project.run-configuration-definitions.list":
+        return {
+          operation: "list",
+          operationId: command.operationId,
+          projectId: command.projectId,
+          inventory: {
+            directory: ".cantrip/run-configurations",
+            entries: [],
+            diagnostics: [],
+          },
+        };
       case "project.run-configurations.metadata":
         return {
           platform: workerId === "worker-alpha" ? "darwin" : "linux",
@@ -935,9 +945,6 @@ describe.sequential("project execution placement API", () => {
         | "policy.list"
         | "policy.read"
         | "run.list"
-        | "run.show"
-        | "run.validate"
-        | "run.config-path"
         | "target.list"
         | "target.show"
         | "explorer.list"
@@ -973,8 +980,9 @@ describe.sequential("project execution placement API", () => {
             cwd: path.join(dataDirectory, invokingWorkerId),
           },
           arguments: arguments_,
-          requestId:
-            invokingWorkerId === "worker-alpha"
+          requestId: command.startsWith("run.")
+            ? randomUUID()
+            : invokingWorkerId === "worker-alpha"
               ? `cli-${command}`
               : `cli-worker-beta-${command}`,
           workerId: invokingWorkerId,
@@ -1060,18 +1068,17 @@ describe.sequential("project execution placement API", () => {
     const cliRunList = await cli("run.list");
     expect(cliRunList.statusCode).toBe(200);
     expect(
-      protectedRunConfigurationInspectionSchema.parse(
-        cantripCliCommandResultSchema.parse(cliRunList.json()).data,
-      ),
+      cantripCliCommandResultSchema.parse(cliRunList.json()).data,
     ).toMatchObject({
-      metadata: { platform: "darwin", configured: true },
-      protectedInspection: protectedRunPayload,
+      operation: "list",
+      projectId,
+      inventory: { entries: [] },
     });
     expect(routedCommands).toContainEqual(
       expect.objectContaining({
         workerId: "worker-alpha",
         command: expect.objectContaining({
-          type: "project.run-configurations.inspect",
+          type: "project.run-configuration-definitions.list",
           sourcePath: path.join(dataDirectory, "worker-alpha"),
         }),
       }),
@@ -1079,32 +1086,17 @@ describe.sequential("project execution placement API", () => {
     const betaRunList = await cli("run.list", {}, false, "worker-beta");
     expect(betaRunList.statusCode).toBe(200);
     expect(
-      protectedRunConfigurationInspectionSchema.parse(
-        cantripCliCommandResultSchema.parse(betaRunList.json()).data,
-      ).metadata,
-    ).toMatchObject({
-      platform: "linux",
-    });
+      cantripCliCommandResultSchema.parse(betaRunList.json()).data,
+    ).toMatchObject({ projectId, inventory: { entries: [] } });
     expect(routedCommands).toContainEqual(
       expect.objectContaining({
-        workerId: "worker-beta",
+        workerId: "worker-alpha",
         command: expect.objectContaining({
-          type: "project.run-configurations.inspect",
-          sourcePath: path.join(dataDirectory, "worker-beta"),
+          type: "project.run-configuration-definitions.list",
+          sourcePath: path.join(dataDirectory, "worker-alpha"),
         }),
       }),
     );
-    const cliRunAction = await cli("run.show", {
-      action: "Run Spectral Lab",
-    });
-    expect(cliRunAction.statusCode).toBe(200);
-    expect(
-      protectedRunConfigurationInspectionSchema.parse(
-        cantripCliCommandResultSchema.parse(cliRunAction.json()).data,
-      ).metadata,
-    ).toMatchObject({
-      platform: "darwin",
-    });
     const hiddenPolicyRead = await cli("policy.read", {
       policyId: hiddenPolicy.id,
     });

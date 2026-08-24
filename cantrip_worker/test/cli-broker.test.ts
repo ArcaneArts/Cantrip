@@ -12,6 +12,7 @@ import path from "node:path";
 
 import {
   clearSensitiveBytes,
+  decryptProtectedSecret,
   decryptPrivateDisplayLabel,
   decryptSurfacePrivateState,
   deriveComponentKey,
@@ -29,6 +30,12 @@ import {
   surfaceOperationOutcomeContentSchema,
   surfaceStreamWireResponseSchema,
 } from "@cantrip/protocol/surface-stream";
+import {
+  RUN_CONFIGURATION_SECRET_PROTECTED_CONTENT_BYTES_LIMIT,
+  runConfigurationSecretProtectionRowId,
+  runConfigurationSecretValueContentSchema,
+} from "@cantrip/protocol/run-configuration-secrets";
+import { runConfigurationRuntimeOutputContentSchema } from "@cantrip/protocol/run-configuration-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -42,6 +49,7 @@ import {
   openWorkerSurfaceStreamContent,
   protectWorkerSurfaceStreamContent,
 } from "../src/surface-stream-encryption.js";
+import { protectWorkerRunContent } from "../src/run-content-encryption.js";
 
 const directories: string[] = [];
 const originalConnection = process.env[CANTRIP_CLI_CONNECTION_ENV];
@@ -74,6 +82,214 @@ afterEach(async () => {
 });
 
 describe("Cantrip CLI worker broker", () => {
+  it("opens protected Run configuration output for local CLI callers", async () => {
+    const directory = await temporaryDirectory();
+    const binary = path.join(directory, "cantrip");
+    await writeFile(binary, "stub");
+    if (process.platform !== "win32") await chmod(binary, 0o755);
+    const serverId = "cantrip-test-server";
+    const ownerId = "run-output-owner";
+    const projectId = "f288701f-e4a6-4d08-bd54-eddb41aadbe5";
+    const configurationId = "0f82c573-704d-4a06-984e-5ce0b8d688ca";
+    const worktreeId = "3f82c573-704d-4a06-984e-5ce0b8d688ca";
+    const output = "private runtime output\n";
+    const componentKey = randomBytes(32);
+    const service = {
+      ownerId: () => ownerId,
+      serverIdentity: () => serverId,
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision: 1,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const broker = new CantripCliBroker(
+      {
+        dataDirectory: path.join(directory, "worker-data"),
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-example",
+      },
+      {
+        binary,
+        execute: async (request, requestId) => {
+          expect(request).toMatchObject({
+            command: "run.logs",
+            arguments: { configurationId, worktreeId, tail: 2_000 },
+          });
+          return {
+            summary: "Protected output read.",
+            target: { kind: "project", projectId },
+            worktreeId,
+            mutated: false,
+            data: {
+              operationId: requestId,
+              projectId,
+              configurationId,
+              worktreeId,
+              generation: 2,
+              protectedOutput: await protectWorkerRunContent({
+                serverId,
+                projectId,
+                worktreeId,
+                operationId: requestId,
+                operation: "run.configuration.output",
+                direction: "response",
+                content: { data: output, truncated: false },
+                schema: runConfigurationRuntimeOutputContentSchema,
+                service,
+              }),
+            },
+          };
+        },
+      },
+    );
+    broker.setRunEncryptionService(service);
+    const connection = await broker.start();
+    try {
+      const response = await fetch(`${connection.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${connection.sessionToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          command: "run.logs",
+          context: {
+            codexThreadId: null,
+            terminalId: null,
+            cwd: "/workspace/project",
+          },
+          arguments: { configurationId, worktreeId, tail: 2_000 },
+        }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        data: {
+          projectId,
+          configurationId,
+          worktreeId,
+          generation: 2,
+          data: output,
+          truncated: false,
+        },
+      });
+    } finally {
+      await broker.close();
+      clearSensitiveBytes(componentKey);
+    }
+  });
+
+  it("encrypts Run configuration secrets before server relay", async () => {
+    const directory = await temporaryDirectory();
+    const binary = path.join(directory, "cantrip");
+    await writeFile(binary, "stub");
+    if (process.platform !== "win32") await chmod(binary, 0o755);
+    const ownerId = "run-secret-owner";
+    const projectId = "f288701f-e4a6-4d08-bd54-eddb41aadbe5";
+    const secretValue = "server-must-never-see-this-secret";
+    const componentKey = randomBytes(32);
+    const calls: Array<{
+      arguments: Record<string, unknown>;
+      command: string;
+    }> = [];
+    const service = {
+      ownerId: () => ownerId,
+      serverIdentity: () => "cantrip-test-server",
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision: 1,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const broker = new CantripCliBroker(
+      {
+        dataDirectory: path.join(directory, "worker-data"),
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-example",
+      },
+      {
+        binary,
+        execute: async (request, requestId) => {
+          calls.push(request);
+          if (request.command === "status") {
+            return {
+              summary: "Project context resolved.",
+              target: { kind: "project", projectId },
+              worktreeId: null,
+              mutated: false,
+            };
+          }
+          if (request.command !== "run.secret-set") {
+            throw new Error(`Unexpected command ${request.command}.`);
+          }
+          return {
+            summary: "Secret stored.",
+            target: { kind: "project", projectId },
+            worktreeId: null,
+            mutated: true,
+            data: {
+              operationId: requestId,
+              projectId,
+              replayed: false,
+              secret: {
+                reference: "DATABASE_URL",
+                available: true,
+                revision: 1,
+                updatedAt: "2026-08-24T12:00:00.000Z",
+              },
+            },
+          };
+        },
+      },
+    );
+    broker.setRunEncryptionService(service);
+    const connection = await broker.start();
+    try {
+      const response = await fetch(`${connection.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${connection.sessionToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          command: "run.secret-set",
+          context: {
+            codexThreadId: null,
+            terminalId: null,
+            cwd: "/workspace/project",
+          },
+          arguments: { reference: "DATABASE_URL", value: secretValue },
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(calls).toHaveLength(2);
+      const relayed = calls[1]!;
+      expect(relayed.command).toBe("run.secret-set");
+      expect(relayed.arguments).not.toHaveProperty("value");
+      const protectedValue = relayed.arguments.protectedValue;
+      const opened = await decryptProtectedSecret({
+        ownerId,
+        component: "run-content",
+        table: "run_configuration_secrets",
+        rowId: runConfigurationSecretProtectionRowId({
+          projectId,
+          reference: "DATABASE_URL",
+        }),
+        field: "protected_value",
+        keyRevision: 1,
+        componentKey,
+        encrypted: protectedValue,
+        contentSchema: runConfigurationSecretValueContentSchema,
+        maximumBytes: RUN_CONFIGURATION_SECRET_PROTECTED_CONTENT_BYTES_LIMIT,
+      });
+      expect(opened.value).toBe(secretValue);
+      expect(JSON.stringify(calls)).not.toContain(secretValue);
+    } finally {
+      await broker.close();
+      clearSensitiveBytes(componentKey);
+    }
+  });
+
   it.skipIf(process.platform === "win32")(
     "makes the authenticated CLI available in terminal tabs",
     async () => {

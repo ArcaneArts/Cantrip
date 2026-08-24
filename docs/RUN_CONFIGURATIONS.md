@@ -518,6 +518,9 @@ cantrip run logs <configuration-id> [--worktree <worktree-id>] [--tail <chars>]
 cantrip run secret set <reference>
 ```
 
+`run secret set` reads the value exactly from non-interactive standard input;
+the worker-local CLI broker encrypts it before any server request.
+
 All commands support stable `--json` output. Human-friendly interactive
 creation and editing may be added, but structured file input is the canonical
 automation surface. CLI and MCP validation results must match the app because

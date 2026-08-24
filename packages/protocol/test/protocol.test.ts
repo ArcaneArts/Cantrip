@@ -1164,9 +1164,9 @@ describe("Cantrip protocol", () => {
     });
     expect(
       cantripCliCommandRequestSchema.parse({
-        command: "run.config-init",
+        command: "run.create",
         context: { ...request.context, selection: "cwd" },
-        arguments: { overwrite: false },
+        arguments: { document: { id: "opaque-to-the-envelope" } },
       }).context.selection,
     ).toBe("cwd");
     expect(

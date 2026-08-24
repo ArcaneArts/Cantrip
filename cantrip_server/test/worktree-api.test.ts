@@ -133,6 +133,12 @@ const runConfigurationAuthoringCommands: Array<
     }
   >
 > = [];
+const runConfigurationDefinitionCommands: Array<
+  Extract<
+    WorkerCommand,
+    { type: "project.run-configuration-definitions.write" }
+  >
+> = [];
 const gitPatchPreviewCommands: Array<
   Extract<WorkerCommand, { type: "git.patch.preview" }>
 > = [];
@@ -735,6 +741,24 @@ const workerBridge = {
               configured: true,
               valid: true,
               configurations: [],
+              diagnostics: [],
+            },
+          },
+        };
+      case "project.run-configuration-definitions.write":
+        runConfigurationDefinitionCommands.push(command);
+        return {
+          operation: "write",
+          operationId: command.operationId,
+          projectId: command.projectId,
+          result: {
+            outcome: "created",
+            entry: {
+              relativePath: `.cantrip/run-configurations/${command.request.document.id}.json`,
+              revision: "c".repeat(64),
+              id: command.request.document.id,
+              status: "ready",
+              document: command.request.document,
               diagnostics: [],
             },
           },
@@ -2129,7 +2153,7 @@ describe.sequential("server worktree control plane", () => {
     expect(maximumConcurrentCreates).toBe(1);
   });
 
-  it("refuses Run config writes when the bound lane and cwd select different worktrees", async () => {
+  it("keeps project-shared Run definition writes on Primary", async () => {
     const secondary = (
       await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
     ).find(({ id }) => id === managedIds[0])!;
@@ -2150,14 +2174,24 @@ describe.sequential("server worktree control plane", () => {
       "Verify CLI context safety",
     );
     expect(execution?.executionLaneId).toBeTruthy();
-    const commandCount = runConfigurationAuthoringCommands.length;
+    const commandCount = runConfigurationDefinitionCommands.length;
+    const configurationId = "0f82c573-704d-4a06-984e-5ce0b8d688ca";
     const payload = {
-      arguments: { overwrite: false, name: "Secondary environment" },
+      arguments: {
+        document: {
+          schema: "cantrip.run-configuration",
+          version: 1,
+          id: configurationId,
+          name: "Secondary environment",
+          provider: "shell",
+          target: { kind: "command", command: "pnpm dev" },
+        },
+      },
       chatContext: {
         chatId: chat!.id,
         executionLaneId: execution!.executionLaneId,
       },
-      command: "run.config-init",
+      command: "run.create",
       context: {
         codexThreadId: null,
         cwd: secondary.path,
@@ -2178,7 +2212,7 @@ describe.sequential("server worktree control plane", () => {
       code: "conflict",
       error: expect.stringContaining("--context lane or --context cwd"),
     });
-    expect(runConfigurationAuthoringCommands).toHaveLength(commandCount);
+    expect(runConfigurationDefinitionCommands).toHaveLength(commandCount);
 
     const explicitCwd = await app.inject({
       method: "POST",
@@ -2187,7 +2221,7 @@ describe.sequential("server worktree control plane", () => {
       payload: {
         ...payload,
         context: { ...payload.context, selection: "cwd" },
-        requestId: "run-config-explicit-cwd",
+        requestId: crypto.randomUUID(),
       },
     });
     expect(explicitCwd.statusCode, explicitCwd.body).toBe(200);
@@ -2195,19 +2229,13 @@ describe.sequential("server worktree control plane", () => {
       cantripCliCommandResultSchema.parse(explicitCwd.json()),
     ).toMatchObject({
       mutated: true,
-      summary: expect.stringContaining(
-        `CLI context: project ${projectId}, worktree ${secondary.id}`,
-      ),
-      worktreeId: secondary.id,
+      summary: expect.stringContaining(`Created Run configuration`),
+      worktreeId: primaryId,
     });
-    expect(runConfigurationAuthoringCommands.slice(commandCount)).toEqual([
+    expect(runConfigurationDefinitionCommands.slice(commandCount)).toEqual([
       expect.objectContaining({
-        type: "project.run-configurations.read-authoring",
-        sourcePath: secondary.path,
-      }),
-      expect.objectContaining({
-        type: "project.run-configurations.write",
-        sourcePath: secondary.path,
+        type: "project.run-configuration-definitions.write",
+        sourcePath: primaryPath,
       }),
     ]);
     await database.repository.finishChatExecutionLane(
@@ -2231,9 +2259,10 @@ describe.sequential("server worktree control plane", () => {
       createPrimaryChat("Primary chat one"),
       createPrimaryChat("Primary chat two"),
     ]);
-    expect([firstResponse.statusCode, secondResponse.statusCode]).toEqual([
-      201, 201,
-    ]);
+    expect(
+      [firstResponse.statusCode, secondResponse.statusCode],
+      JSON.stringify([firstResponse.body, secondResponse.body]),
+    ).toEqual([201, 201]);
     const first = chatSummarySchema.parse(firstResponse.json());
     const second = chatSummarySchema.parse(secondResponse.json());
     const [firstLanes, secondLanes] = await Promise.all([

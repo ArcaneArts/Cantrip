@@ -91,7 +91,7 @@ enum Command {
         #[command(subcommand)]
         command: BrowserCommand,
     },
-    /// Inspect Codex-compatible project Run configurations.
+    /// Manage project-shared Cantrip Run configurations.
     Run {
         #[command(subcommand)]
         command: RunCommand,
@@ -100,111 +100,102 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum RunCommand {
-    /// List actions available on the current project worker.
+    /// List project-shared Run configurations from Primary.
     List,
-    /// Show one action selected by its exact name or ID.
-    Show { action: String },
-    /// Start an action as a worker-managed Run.
-    Start {
-        action: String,
-        /// Do not ask a connected desktop client to focus the Run terminal.
-        #[arg(long)]
-        no_focus: bool,
+    /// Show one Run configuration by its stable ID.
+    Show { configuration_id: String },
+    /// Detect candidate Run configurations from the project.
+    Detect {
+        /// Limit detection to one project provider.
+        #[arg(long, value_enum)]
+        provider: Option<RunConfigurationProvider>,
     },
-    /// Show the latest Run or one exact Run ID.
-    Status { run_id: Option<String> },
-    /// Read the bounded in-memory tail of a Run terminal.
+    /// Create a Run configuration from a JSON definition file.
+    Create {
+        #[arg(long, value_name = "DEFINITION.json")]
+        file: PathBuf,
+    },
+    /// Update a Run configuration from a JSON definition file.
+    Update {
+        configuration_id: String,
+        #[arg(long, value_name = "DEFINITION.json")]
+        file: PathBuf,
+        /// Current definition revision used for optimistic concurrency.
+        #[arg(long)]
+        revision: String,
+    },
+    /// Delete a Run configuration using its current revision.
+    Delete {
+        configuration_id: String,
+        #[arg(long)]
+        revision: String,
+    },
+    /// Start a Run configuration on Primary or an exact worktree ID.
+    Start {
+        configuration_id: String,
+        #[arg(long)]
+        worktree: Option<String>,
+    },
+    /// Restart a Run configuration on Primary or an exact worktree ID.
+    Restart {
+        configuration_id: String,
+        #[arg(long)]
+        worktree: Option<String>,
+    },
+    /// Stop a Run configuration on Primary or an exact worktree ID.
+    Stop {
+        configuration_id: String,
+        #[arg(long)]
+        worktree: Option<String>,
+    },
+    /// Show Run configuration runtime state.
+    Status {
+        configuration_id: Option<String>,
+        #[arg(long)]
+        worktree: Option<String>,
+    },
+    /// Read the bounded terminal tail for a Run configuration runtime.
     Logs {
-        run_id: String,
+        configuration_id: String,
+        #[arg(long)]
+        worktree: Option<String>,
         #[arg(long, default_value_t = 10_000)]
         tail: usize,
     },
-    /// Stop a worker-managed Run and its process tree.
-    Stop { run_id: String },
-    /// Materialize or reopen a Run in a connected Cantrip client.
-    Open { run_id: String },
-    /// Validate project Run configuration files for the current worker.
-    Validate,
-    /// Inspect or explicitly retry secondary-worktree setup.
-    Setup {
+    /// Manage write-only project Run configuration secrets.
+    Secret {
         #[command(subcommand)]
-        command: RunSetupCommand,
-    },
-    /// Inspect the canonical Run configuration location.
-    Config {
-        #[command(subcommand)]
-        command: RunConfigCommand,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum RunConfigCommand {
-    /// Show the canonical repository-relative configuration path and Git state.
-    Path,
-    /// Print the exact Run configuration authoring JSON schema.
-    Schema,
-    /// Print a complete canonical environment.toml example.
-    Example,
-    /// Create a minimal canonical environment configuration.
-    Init {
-        /// Replace an existing canonical configuration after revision checking.
-        #[arg(long)]
-        overwrite: bool,
-        /// Environment name written to the generated configuration.
-        #[arg(long)]
-        name: Option<String>,
-    },
-    /// Add a complete action to the canonical environment configuration.
-    Action {
-        #[command(subcommand)]
-        command: RunConfigActionCommand,
+        command: RunSecretCommand,
     },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, ValueEnum)]
-enum RunConfigPlatform {
-    Win32,
-    Darwin,
-    Linux,
+enum RunConfigurationProvider {
+    Shell,
+    Node,
+    Java,
+    Dart,
+    Flutter,
+    Rust,
 }
 
-impl RunConfigPlatform {
+impl RunConfigurationProvider {
     fn wire_name(&self) -> &'static str {
         match self {
-            Self::Win32 => "win32",
-            Self::Darwin => "darwin",
-            Self::Linux => "linux",
+            Self::Shell => "shell",
+            Self::Node => "node",
+            Self::Java => "java",
+            Self::Dart => "dart",
+            Self::Flutter => "flutter",
+            Self::Rust => "rust",
         }
     }
 }
 
 #[derive(Debug, Subcommand)]
-enum RunConfigActionCommand {
-    /// Append one revision-checked action, creating environment.toml when absent.
-    Add {
-        /// User-facing action name.
-        name: String,
-        /// Shell command executed by the action.
-        #[arg(long)]
-        command: String,
-        /// Codex toolbar icon identifier.
-        #[arg(long, default_value = "run")]
-        icon: String,
-        /// Restrict the action to one host platform; omit for all platforms.
-        #[arg(long, value_enum)]
-        platform: Option<RunConfigPlatform>,
-        /// Set the environment display name while writing the action.
-        #[arg(long)]
-        environment_name: Option<String>,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum RunSetupCommand {
-    /// Show durable setup state and bounded worker-owned output.
-    Status,
-    /// Explicitly queue setup for the current secondary worktree.
-    Retry,
+enum RunSecretCommand {
+    /// Encrypt and store a secret value read exactly from stdin.
+    Set { reference: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -396,6 +387,13 @@ fn read_stdin(label: &str) -> Result<String, String> {
     Ok(content)
 }
 
+fn read_json_file(path: &PathBuf) -> Result<Value, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+    serde_json::from_str(&content)
+        .map_err(|error| format!("{} is not valid JSON: {error}", path.display()))
+}
+
 fn invocation(command: Command) -> Result<Invocation, String> {
     Ok(match command {
         Command::Status => Invocation {
@@ -545,83 +543,106 @@ fn invocation(command: Command) -> Result<Invocation, String> {
                 command: "run.list",
                 arguments: json!({}),
             },
-            RunCommand::Show { action } => Invocation {
+            RunCommand::Show { configuration_id } => Invocation {
                 command: "run.show",
-                arguments: json!({ "action": action }),
+                arguments: json!({ "configurationId": configuration_id }),
             },
-            RunCommand::Start { action, no_focus } => Invocation {
+            RunCommand::Detect { provider } => Invocation {
+                command: "run.detect",
+                arguments: json!({
+                    "provider": provider.map(|value| value.wire_name()),
+                }),
+            },
+            RunCommand::Create { file } => Invocation {
+                command: "run.create",
+                arguments: json!({ "document": read_json_file(&file)? }),
+            },
+            RunCommand::Update {
+                configuration_id,
+                file,
+                revision,
+            } => Invocation {
+                command: "run.update",
+                arguments: json!({
+                    "configurationId": configuration_id,
+                    "document": read_json_file(&file)?,
+                    "revision": revision,
+                }),
+            },
+            RunCommand::Delete {
+                configuration_id,
+                revision,
+            } => Invocation {
+                command: "run.delete",
+                arguments: json!({
+                    "configurationId": configuration_id,
+                    "revision": revision,
+                }),
+            },
+            RunCommand::Start {
+                configuration_id,
+                worktree,
+            } => Invocation {
                 command: "run.start",
-                arguments: json!({ "action": action, "focus": !no_focus }),
+                arguments: json!({
+                    "configurationId": configuration_id,
+                    "worktreeId": worktree,
+                }),
             },
-            RunCommand::Status { run_id } => Invocation {
+            RunCommand::Restart {
+                configuration_id,
+                worktree,
+            } => Invocation {
+                command: "run.restart",
+                arguments: json!({
+                    "configurationId": configuration_id,
+                    "worktreeId": worktree,
+                }),
+            },
+            RunCommand::Stop {
+                configuration_id,
+                worktree,
+            } => Invocation {
+                command: "run.stop",
+                arguments: json!({
+                    "configurationId": configuration_id,
+                    "worktreeId": worktree,
+                }),
+            },
+            RunCommand::Status {
+                configuration_id,
+                worktree,
+            } => Invocation {
                 command: "run.status",
-                arguments: json!({ "runId": run_id }),
+                arguments: json!({
+                    "configurationId": configuration_id,
+                    "worktreeId": worktree,
+                }),
             },
-            RunCommand::Logs { run_id, tail } => {
+            RunCommand::Logs {
+                configuration_id,
+                worktree,
+                tail,
+            } => {
                 if !(1..=100_000).contains(&tail) {
                     return Err("--tail must be from 1 to 100000 characters.".to_string());
                 }
                 Invocation {
                     command: "run.logs",
-                    arguments: json!({ "runId": run_id, "tail": tail }),
+                    arguments: json!({
+                        "configurationId": configuration_id,
+                        "worktreeId": worktree,
+                        "tail": tail,
+                    }),
                 }
             }
-            RunCommand::Stop { run_id } => Invocation {
-                command: "run.stop",
-                arguments: json!({ "runId": run_id }),
-            },
-            RunCommand::Open { run_id } => Invocation {
-                command: "run.open",
-                arguments: json!({ "runId": run_id, "focus": true }),
-            },
-            RunCommand::Validate => Invocation {
-                command: "run.validate",
-                arguments: json!({}),
-            },
-            RunCommand::Setup { command } => match command {
-                RunSetupCommand::Status => Invocation {
-                    command: "run.setup-status",
-                    arguments: json!({}),
-                },
-                RunSetupCommand::Retry => Invocation {
-                    command: "run.setup-retry",
-                    arguments: json!({}),
-                },
-            },
-            RunCommand::Config { command } => match command {
-                RunConfigCommand::Path => Invocation {
-                    command: "run.config-path",
-                    arguments: json!({}),
-                },
-                RunConfigCommand::Schema => Invocation {
-                    command: "run.config-schema",
-                    arguments: json!({}),
-                },
-                RunConfigCommand::Example => Invocation {
-                    command: "run.config-example",
-                    arguments: json!({}),
-                },
-                RunConfigCommand::Init { overwrite, name } => Invocation {
-                    command: "run.config-init",
-                    arguments: json!({ "overwrite": overwrite, "name": name }),
-                },
-                RunConfigCommand::Action { command } => match command {
-                    RunConfigActionCommand::Add {
-                        name,
-                        command,
-                        icon,
-                        platform,
-                        environment_name,
-                    } => Invocation {
-                        command: "run.config-action-add",
-                        arguments: json!({
-                            "name": name,
-                            "command": command,
-                            "icon": icon,
-                            "platform": platform.map(|value| value.wire_name()),
-                            "environmentName": environment_name,
-                        }),
-                    },
+            RunCommand::Secret { command } => match command {
+                RunSecretCommand::Set { reference } => Invocation {
+                    command: "run.secret-set",
+                    arguments: json!({
+                        "reference": reference,
+                        "value": read_stdin("run secret set")?,
+                    }),
                 },
             },
         },
@@ -648,19 +669,8 @@ fn main() -> ExitCode {
         cli.context.wire_name(),
     ) {
         Ok(result) => {
-            let validation_failed = invocation.command == "run.validate"
-                && result
-                    .data
-                    .as_ref()
-                    .and_then(|value| value.get("valid"))
-                    .and_then(Value::as_bool)
-                    == Some(false);
             output::render(invocation.command, &result, cli.json);
-            if validation_failed {
-                ExitCode::from(2)
-            } else {
-                ExitCode::SUCCESS
-            }
+            ExitCode::SUCCESS
         }
         Err(error) => {
             eprintln!("cantrip: {error}");
@@ -760,42 +770,14 @@ mod tests {
             &["cantrip", "terminal", "read"][..],
             &["cantrip", "browser", "services"][..],
             &["cantrip", "run", "list"][..],
-            &["cantrip", "run", "show", "Run app"][..],
-            &["cantrip", "run", "start", "Run app", "--no-focus"][..],
+            &["cantrip", "run", "show", "run-app"][..],
+            &["cantrip", "run", "detect", "--provider", "rust"][..],
+            &["cantrip", "run", "start", "run-app"][..],
+            &["cantrip", "run", "restart", "run-app"][..],
             &["cantrip", "run", "status"][..],
-            &[
-                "cantrip",
-                "run",
-                "logs",
-                "00000000-0000-0000-0000-000000000001",
-            ][..],
-            &[
-                "cantrip",
-                "run",
-                "stop",
-                "00000000-0000-0000-0000-000000000001",
-            ][..],
-            &[
-                "cantrip",
-                "run",
-                "open",
-                "00000000-0000-0000-0000-000000000001",
-            ][..],
-            &["cantrip", "run", "validate"][..],
-            &["cantrip", "run", "config", "path"][..],
-            &["cantrip", "run", "config", "schema"][..],
-            &["cantrip", "run", "config", "example"][..],
-            &["cantrip", "run", "config", "init"][..],
-            &[
-                "cantrip",
-                "run",
-                "config",
-                "action",
-                "add",
-                "Run app",
-                "--command",
-                "pnpm run dev",
-            ][..],
+            &["cantrip", "run", "logs", "run-app"][..],
+            &["cantrip", "run", "stop", "run-app"][..],
+            &["cantrip", "run", "secret", "set", "DATABASE_URL"][..],
         ] {
             Cli::try_parse_from(arguments).unwrap_or_else(|error| {
                 panic!("failed to parse {arguments:?} without -v: {error}")
@@ -805,9 +787,9 @@ mod tests {
 
     #[test]
     fn context_selection_is_global_and_explicit() {
-        let before = Cli::try_parse_from(["cantrip", "--context", "cwd", "run", "config", "init"])
+        let before = Cli::try_parse_from(["cantrip", "--context", "cwd", "run", "list"])
             .expect("parse context before command");
-        let after = Cli::try_parse_from(["cantrip", "run", "config", "init", "--context", "lane"])
+        let after = Cli::try_parse_from(["cantrip", "run", "status", "--context", "lane"])
             .expect("parse context after command");
         assert_eq!(before.context, ContextSelection::Cwd);
         assert_eq!(after.context, ContextSelection::Lane);
@@ -817,71 +799,13 @@ mod tests {
     fn run_commands_use_stable_wire_names() {
         for (arguments, expected) in [
             (&["cantrip", "run", "list"][..], "run.list"),
-            (
-                &["cantrip", "run", "show", "Run Spectral Lab"][..],
-                "run.show",
-            ),
-            (&["cantrip", "run", "validate"][..], "run.validate"),
-            (
-                &["cantrip", "run", "setup", "status"][..],
-                "run.setup-status",
-            ),
-            (&["cantrip", "run", "setup", "retry"][..], "run.setup-retry"),
-            (&["cantrip", "run", "config", "path"][..], "run.config-path"),
-            (
-                &["cantrip", "run", "config", "schema"][..],
-                "run.config-schema",
-            ),
-            (
-                &["cantrip", "run", "config", "example"][..],
-                "run.config-example",
-            ),
-            (&["cantrip", "run", "config", "init"][..], "run.config-init"),
-            (
-                &[
-                    "cantrip",
-                    "run",
-                    "config",
-                    "action",
-                    "add",
-                    "Run app",
-                    "--command",
-                    "pnpm run dev",
-                ][..],
-                "run.config-action-add",
-            ),
-            (
-                &["cantrip", "run", "start", "Run Spectral Lab"][..],
-                "run.start",
-            ),
+            (&["cantrip", "run", "show", "run-app"][..], "run.show"),
+            (&["cantrip", "run", "detect"][..], "run.detect"),
+            (&["cantrip", "run", "start", "run-app"][..], "run.start"),
+            (&["cantrip", "run", "restart", "run-app"][..], "run.restart"),
             (&["cantrip", "run", "status"][..], "run.status"),
-            (
-                &[
-                    "cantrip",
-                    "run",
-                    "logs",
-                    "00000000-0000-0000-0000-000000000001",
-                ][..],
-                "run.logs",
-            ),
-            (
-                &[
-                    "cantrip",
-                    "run",
-                    "stop",
-                    "00000000-0000-0000-0000-000000000001",
-                ][..],
-                "run.stop",
-            ),
-            (
-                &[
-                    "cantrip",
-                    "run",
-                    "open",
-                    "00000000-0000-0000-0000-000000000001",
-                ][..],
-                "run.open",
-            ),
+            (&["cantrip", "run", "logs", "run-app"][..], "run.logs"),
+            (&["cantrip", "run", "stop", "run-app"][..], "run.stop"),
         ] {
             let cli = Cli::try_parse_from(arguments).expect("parse run command");
             let invocation =
@@ -889,47 +813,22 @@ mod tests {
             assert_eq!(invocation.command, expected);
         }
 
-        let initialized = Cli::try_parse_from([
+        let targeted = Cli::try_parse_from([
             "cantrip",
             "run",
-            "config",
-            "init",
-            "--overwrite",
-            "--name",
-            "Spectral Lab",
+            "restart",
+            "run-app",
+            "--worktree",
+            "00000000-0000-0000-0000-000000000001",
         ])
-        .expect("parse config init");
-        let initialized_invocation = invocation(initialized.command.expect("run config init"))
-            .expect("build config init invocation");
-        assert_eq!(initialized_invocation.command, "run.config-init");
-        assert_eq!(initialized_invocation.arguments["overwrite"], true);
-        assert_eq!(initialized_invocation.arguments["name"], "Spectral Lab");
-
-        let action = Cli::try_parse_from([
-            "cantrip",
-            "run",
-            "config",
-            "action",
-            "add",
-            "Run app",
-            "--command",
-            "pnpm run dev",
-            "--icon",
-            "play",
-            "--platform",
-            "darwin",
-            "--environment-name",
-            "Cantrip",
-        ])
-        .expect("parse config action add");
-        let invocation = invocation(action.command.expect("run config action add"))
-            .expect("build config action add invocation");
-        assert_eq!(invocation.command, "run.config-action-add");
-        assert_eq!(invocation.arguments["name"], "Run app");
-        assert_eq!(invocation.arguments["command"], "pnpm run dev");
-        assert_eq!(invocation.arguments["icon"], "play");
-        assert_eq!(invocation.arguments["platform"], "darwin");
-        assert_eq!(invocation.arguments["environmentName"], "Cantrip");
+        .expect("parse targeted restart");
+        let invocation = invocation(targeted.command.expect("run restart"))
+            .expect("build targeted restart invocation");
+        assert_eq!(invocation.arguments["configurationId"], "run-app");
+        assert_eq!(
+            invocation.arguments["worktreeId"],
+            "00000000-0000-0000-0000-000000000001"
+        );
     }
 
     #[test]
