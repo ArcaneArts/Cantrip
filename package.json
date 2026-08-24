@@ -34,6 +34,7 @@
     "site": "pnpm --filter @cantrip/site dev",
     "qa:remote-surfaces": "node scripts/remote-surface-fixture.mjs",
     "audit:run-configurations": "node scripts/audit-run-configuration-cutover.mjs",
+    "verify:run-configurations": "node scripts/verify-run-configurations.mjs",
     "audit:server-boundaries": "node scripts/audit-server-boundaries.mjs --check",
     "audit:server-boundaries:write": "node scripts/audit-server-boundaries.mjs --write",
     "dev:server": "pnpm --filter @cantrip/version build && pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && concurrently --kill-others --names database,server --prefix-colors yellow,blue \"docker compose -f compose.dev-server.yml up\" \"cross-env FORCE_COLOR=1 node scripts/dev-account-server.mjs\"",
