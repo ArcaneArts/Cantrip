@@ -1686,6 +1686,14 @@ export async function createModelProfile(input: ModelProfileCreate) {
   );
 }
 
+export async function getModelReasoningOptions(modelId: string) {
+  return chatReasoningStateSchema.parse(
+    await request(
+      `/api/settings/models/${encodeURIComponent(modelId)}/reasoning`,
+    ),
+  );
+}
+
 export async function deleteModelProfile(modelId: string) {
   await request(`/api/settings/models/${encodeURIComponent(modelId)}`, {
     method: "DELETE",
@@ -6544,9 +6552,13 @@ export async function updateChatModelConfiguration(
   );
 }
 
-export async function getChatReasoning(chatId: string) {
+export async function getChatReasoning(chatId: string, modelId?: string) {
   return chatReasoningStateSchema.parse(
-    await request(`/api/chats/${encodeURIComponent(chatId)}/reasoning`),
+    await request(
+      withQuery(`/api/chats/${encodeURIComponent(chatId)}/reasoning`, {
+        modelId,
+      }),
+    ),
   );
 }
 

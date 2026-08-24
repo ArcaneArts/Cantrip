@@ -12,9 +12,11 @@ import {
   defaultModelConfiguration,
   filterConfiguredModels,
   ModelReasoningPicker,
+  modelConfigurationReasoningChoices,
   modelConfigurationSettingsUpdate,
   modelReasoningChoices,
   modelsShareProvider,
+  normalizeReasoningSelection,
 } from "./model-reasoning-picker";
 
 const now = "2026-08-15T12:00:00.000Z";
@@ -188,5 +190,37 @@ describe("model reasoning picker", () => {
       "medium",
       "xhigh",
     ]);
+  });
+
+  it("limits model configuration to advertised reasoning efforts", () => {
+    const state = chatReasoningStateSchema.parse({
+      modelId: "gemma",
+      reasoningEffort: null,
+      options: [
+        { effort: "low", description: null },
+        { effort: "medium", description: null },
+      ],
+      reasoningMandatory: false,
+      incompleteMetadata: false,
+    });
+    const choices = modelConfigurationReasoningChoices(
+      "gemma",
+      "xhigh",
+      state,
+      true,
+    );
+
+    expect(choices.map(({ effort }) => effort)).toEqual([
+      null,
+      "low",
+      "medium",
+    ]);
+    expect(normalizeReasoningSelection("xhigh", choices)).toBeNull();
+  });
+
+  it("does not speculate while authoritative options are loading", () => {
+    expect(
+      modelConfigurationReasoningChoices("gemma", "xhigh", undefined, true),
+    ).toEqual([{ effort: null, label: "Default" }]);
   });
 });

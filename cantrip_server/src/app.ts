@@ -790,6 +790,7 @@ import {
   PolicyScopeNotFoundError,
 } from "./db/policies.js";
 import {
+  configurationReasoningStateForRuntimes,
   prepareRuntimesForReasoning,
   reasoningStateForRuntimes,
 } from "./models/reasoning.js";
@@ -17133,6 +17134,34 @@ export async function buildApp({
     }
   });
 
+  app.get<{ Params: { modelId: string } }>(
+    "/api/settings/models/:modelId/reasoning",
+    async (request, reply) => {
+      const modelId = request.params.modelId.trim();
+      const runtimes = await repository.getModelRuntimes(
+        applicationOwnerId(),
+        modelId,
+      );
+      if (!runtimes.length) {
+        return reply.code(404).send({ error: "Model not found." });
+      }
+      const reasoningEffort =
+        (await repository.getModelReasoningDefault(
+          applicationOwnerId(),
+          modelId,
+        )) ?? null;
+      return reply.send(
+        chatReasoningStateSchema.parse(
+          configurationReasoningStateForRuntimes(
+            modelId,
+            reasoningEffort,
+            runtimes,
+          ),
+        ),
+      );
+    },
+  );
+
   app.get("/api/settings/task-workers", async (_request, reply) => {
     const taskWorkers =
       await repository.taskScheduling.listTaskWorkers(applicationOwnerId());
@@ -30764,38 +30793,58 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { chatId: string } }>(
-    "/api/chats/:chatId/reasoning",
-    async (request, reply) => {
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
+  app.get<{
+    Params: { chatId: string };
+    Querystring: { modelId?: string };
+  }>("/api/chats/:chatId/reasoning", async (request, reply) => {
+    const context = await repository.getChatExecutionContext(
+      applicationOwnerId(),
+      request.params.chatId,
+    );
+    if (!context) {
+      return reply.code(404).send({ error: "Chat source not found." });
+    }
+    try {
+      const requestedModelId = request.query.modelId?.trim() || null;
+      const resolvedModelId = await resolveModelId(
+        context,
+        requestedModelId ?? undefined,
       );
-      if (!context) {
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-      try {
-        const resolvedModelId = await resolveModelId(context);
-        const initialReasoningEffort = context.modelId
-          ? context.reasoningEffort
-          : ((await repository.getModelReasoningDefault(
+      const initialReasoningEffort = context.modelId
+        ? requestedModelId
+          ? ((await repository.getModelReasoningDefault(
               applicationOwnerId(),
               resolvedModelId,
-            )) ?? null);
+            )) ?? null)
+          : context.reasoningEffort
+        : ((await repository.getModelReasoningDefault(
+            applicationOwnerId(),
+            resolvedModelId,
+          )) ?? null);
+      if (requestedModelId) {
         return reply.send(
           chatReasoningStateSchema.parse(
-            await reasoningStateForContext(
-              context,
+            configurationReasoningStateForRuntimes(
               resolvedModelId,
               initialReasoningEffort,
+              await availableModelRuntimes(context, resolvedModelId),
             ),
           ),
         );
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
       }
-    },
-  );
+      return reply.send(
+        chatReasoningStateSchema.parse(
+          await reasoningStateForContext(
+            context,
+            resolvedModelId,
+            initialReasoningEffort,
+          ),
+        ),
+      );
+    } catch (error) {
+      return reply.code(409).send({ error: errorMessage(error) });
+    }
+  });
 
   app.patch<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/reasoning",
