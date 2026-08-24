@@ -115,7 +115,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "ddd618e1e9ed88914c1c68b3859d24bb04e33dd4e5f91cb5d4d0dcf73d424ecc",
+    "63c730f1b2ab438de288c86edd01567421bc034a34844edbf865c261a34d84fc",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:
@@ -180,6 +180,7 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   explorers: "endpoint-protected",
   codeTabs: "endpoint-protected",
   codeSessions: "intentionally-public-control-plane",
+  codeSettingsProfiles: "endpoint-protected",
   browsers: "endpoint-protected",
   remoteSurfaces: "endpoint-protected",
   projectViews: "endpoint-protected",
@@ -4038,7 +4039,7 @@ function applicationRouteContentClassification(route) {
     };
   }
   if (
-    /(?:\/encryption(?:\/|$)|\/attachments(?:\/|$)|\/chats(?:\/|$)|\/tasks(?:\/|$)|\/workflows(?:\/|$)|\/policies(?:\/|$)|\/mcp-servers(?:\/|$)|\/repository-operation(?:\/|$))/u.test(
+    /(?:\/encryption(?:\/|$)|\/code-settings(?:\/|$)|\/attachments(?:\/|$)|\/chats(?:\/|$)|\/tasks(?:\/|$)|\/workflows(?:\/|$)|\/policies(?:\/|$)|\/mcp-servers(?:\/|$)|\/repository-operation(?:\/|$))/u.test(
       route.path,
     ) ||
     /\b(?:encrypted|protected|opaque|Protection)\b/u.test(route.source)

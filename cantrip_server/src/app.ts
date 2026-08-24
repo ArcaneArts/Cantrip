@@ -466,6 +466,13 @@ import {
   type CustomizationContentScope,
 } from "@cantrip/protocol/customization-content";
 import {
+  codeSettingsProfileIdSchema,
+  codeSettingsPublicStatusSchema,
+  codeSettingsRevisionConflictSchema,
+  codeSettingsStoredProfileSchema,
+  codeSettingsUploadSchema,
+} from "@cantrip/protocol/code-settings";
+import {
   accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
   accountEncryptionProfileInitializeSchema,
@@ -732,6 +739,7 @@ import {
   ChatRelocationJobConflictError,
   ChatRelocationJobNotFoundError,
 } from "./db/chat-relocation-jobs.js";
+import { CodeSettingsRevisionConflictError } from "./db/code-settings.js";
 import {
   ProjectReplicaJobConflictError,
   ProjectReplicaJobNotFoundError,
@@ -10527,6 +10535,130 @@ export async function buildApp({
   };
 
   app.get<{
+    Params: { profileId: string; workerId: string };
+  }>(
+    "/api/internal/workers/:workerId/code-settings/profiles/:profileId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const profileId = codeSettingsProfileIdSchema.safeParse(
+        request.params.profileId,
+      );
+      if (!profileId.success) {
+        return reply.code(400).send(invalidBody(profileId.error.issues));
+      }
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        request.params.workerId,
+        "worker:connect",
+      );
+      if (!workerAuth) return reply.code(401).send({ error: "Unauthorized" });
+      const worker = await repository.getWorker(
+        workerAuth.ownerId,
+        request.params.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      const stored = await repository.codeSettings.get(
+        workerAuth.ownerId,
+        profileId.data,
+      );
+      const requiredKeyRevision = stored?.record.protectedContent.keyRevision;
+      if (
+        !worker.encryption.grants.some(
+          ({ component, keyRevision }) =>
+            component === "customization-content" &&
+            (requiredKeyRevision === undefined ||
+              keyRevision === requiredKeyRevision),
+        )
+      ) {
+        return reply.code(403).send({
+          error: "Worker lacks Code settings encryption authorization.",
+        });
+      }
+      reply.header("cache-control", "no-store");
+      return stored
+        ? reply.send(codeSettingsStoredProfileSchema.parse(stored))
+        : reply
+            .code(404)
+            .send({ error: "Global Code settings are not initialized." });
+    },
+  );
+
+  app.put<{
+    Body: unknown;
+    Params: { profileId: string; workerId: string };
+  }>(
+    "/api/internal/workers/:workerId/code-settings/profiles/:profileId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const profileId = codeSettingsProfileIdSchema.safeParse(
+        request.params.profileId,
+      );
+      if (!profileId.success) {
+        return reply.code(400).send(invalidBody(profileId.error.issues));
+      }
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        request.params.workerId,
+        "worker:connect",
+      );
+      if (!workerAuth) return reply.code(401).send({ error: "Unauthorized" });
+      const worker = await repository.getWorker(
+        workerAuth.ownerId,
+        request.params.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      const input = codeSettingsUploadSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      if (
+        !worker.encryption.grants.some(
+          ({ component, keyRevision }) =>
+            component === "customization-content" &&
+            keyRevision === input.data.record.protectedContent.keyRevision,
+        )
+      ) {
+        return reply.code(403).send({
+          error: "Worker lacks this Code settings encryption key revision.",
+        });
+      }
+      try {
+        const stored = await repository.codeSettings.compareAndSwap(
+          workerAuth.ownerId,
+          request.params.workerId,
+          profileId.data,
+          input.data,
+        );
+        runAsOwner(workerAuth.ownerId, () =>
+          publishLiveInvalidation("settings", {
+            entityId: `code:${profileId.data}`,
+          }),
+        );
+        reply.header("cache-control", "no-store");
+        return reply
+          .code(stored.created ? 201 : 200)
+          .send(codeSettingsStoredProfileSchema.parse(stored.profile));
+      } catch (error) {
+        if (error instanceof CodeSettingsRevisionConflictError) {
+          return reply.code(409).send(
+            codeSettingsRevisionConflictSchema.parse({
+              code: "revision-conflict",
+              profileId: profileId.data,
+              currentRevision: error.currentRevision,
+              error: error.message,
+            }),
+          );
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.get<{
     Params: { accountId: string; providerId: string };
     Querystring: { workerId?: string };
   }>(
@@ -14041,6 +14173,27 @@ export async function buildApp({
     }
     return reply.send(settingsBundleWireSchema.parse(settings));
   });
+
+  app.get<{ Params: { profileId: string } }>(
+    "/api/settings/code/:profileId",
+    async (request, reply) => {
+      const profileId = codeSettingsProfileIdSchema.safeParse(
+        request.params.profileId,
+      );
+      if (!profileId.success) {
+        return reply.code(400).send(invalidBody(profileId.error.issues));
+      }
+      reply.header("cache-control", "no-store");
+      return reply.send(
+        codeSettingsPublicStatusSchema.parse(
+          await repository.codeSettings.publicStatus(
+            applicationOwnerId(),
+            profileId.data,
+          ),
+        ),
+      );
+    },
+  );
 
   app.get("/api/desktop-update/active-work", async (_request, reply) => {
     const summary =

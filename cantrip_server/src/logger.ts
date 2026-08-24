@@ -35,6 +35,9 @@ export const SERVER_LOG_REDACTION_PATHS = [
   "req.body.questions",
   "req.body.answers",
   "req.body.additionalDirection",
+  "req.body.protectedContent",
+  "req.body.record.protectedContent",
+  "req.body.settings",
   "res.headers.set-cookie",
 ] as const;
 

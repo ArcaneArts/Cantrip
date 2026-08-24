@@ -229,6 +229,7 @@ import {
   CHAT_MESSAGE_PAGE_BOUNDARY_MAX,
   selectChatMessagePageWindow,
 } from "./chat-message-pagination.js";
+import { CodeSettingsRepository } from "./code-settings.js";
 import {
   deriveQuotaTokenAnalytics,
   quotaValueStatistics,
@@ -2162,6 +2163,7 @@ export class ServerRepository {
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
   readonly encryptionRegistry: EncryptionRegistryRepository;
+  readonly codeSettings: CodeSettingsRepository;
   readonly projectAutomations: ProjectAutomationRepository;
   readonly policies: PolicyRepository;
   readonly tasks: TaskRepository;
@@ -2185,6 +2187,7 @@ export class ServerRepository {
     this.chatImportJobs = new ChatImportJobRepository(database);
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
     this.encryptionRegistry = new EncryptionRegistryRepository(database);
+    this.codeSettings = new CodeSettingsRepository(database);
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.policies = new PolicyRepository(database);
     this.tasks = new TaskRepository(database);
