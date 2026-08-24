@@ -2,9 +2,22 @@ import type { ChatMessage } from "@cantrip/protocol";
 import { useEffect, useMemo, useState, type RefObject } from "react";
 
 import { editableMessageText } from "@/components/chat/latest-message-edit";
-import { cn } from "@/lib/utils";
+import {
+  DEFAULT_ELITE_REVEAL_CONFIG,
+  EliteReveal,
+  type EliteRevealConfig,
+} from "@/components/elite/elite-reveal";
 
 const CHAT_TURN_PROMPT_MAX_LENGTH = 280;
+
+export const CHAT_TURN_PROMPT_GLITCH_CONFIG: EliteRevealConfig = {
+  ...DEFAULT_ELITE_REVEAL_CONFIG,
+  glitchCountMax: 5,
+  glitchCountMin: 3,
+  glitchShowMs: 16,
+  staggerSpreadMs: 0,
+  variants: ["outline", "chromatic", "spatial-shift", "scanline"],
+};
 
 export interface ChatTurnPromptAnchor {
   height: number;
@@ -172,7 +185,7 @@ export function ChatTurnPromptOverlay({
   message: ChatMessage | null;
   visible: boolean;
 }) {
-  if (!message) return null;
+  if (!message || !visible) return null;
   const summary = chatTurnPromptSummary(message);
 
   return (
@@ -181,19 +194,22 @@ export function ChatTurnPromptOverlay({
       className="pointer-events-none absolute inset-x-0 top-0 z-30 px-4 pt-2 sm:px-8 md:px-10"
       data-chat-turn-prompt-overlay=""
     >
-      <div
-        className={cn(
-          "mx-auto max-w-5xl rounded-xl border border-border/70 bg-background/92 px-4 py-2 shadow-lg backdrop-blur-xl transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
-          visible ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0",
-        )}
+      <EliteReveal
+        className="mx-auto max-w-5xl"
+        config={CHAT_TURN_PROMPT_GLITCH_CONFIG}
+        contentKind="box"
+        key={`${message.id}:${summary}`}
+        replayKey={0}
       >
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          Current prompt
-        </p>
-        <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-foreground/90">
-          {summary}
-        </p>
-      </div>
+        <div className="w-full rounded-xl border border-primary/35 bg-background/75 px-4 py-2 shadow-xl ring-1 ring-primary/10 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Current prompt
+          </p>
+          <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-foreground/90">
+            {summary}
+          </p>
+        </div>
+      </EliteReveal>
     </div>
   );
 }
