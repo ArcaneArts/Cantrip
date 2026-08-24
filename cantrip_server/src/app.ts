@@ -10823,6 +10823,7 @@ export async function buildApp({
         !(await workerHasActiveCodeSettingsGrant(
           workerAuth.ownerId,
           request.params.workerId,
+          stored?.record.protectedContent.keyRevision,
         ))
       ) {
         return reply.code(403).send({
@@ -10905,6 +10906,7 @@ export async function buildApp({
                   (await workerHasActiveCodeSettingsGrant(
                     workerAuth.ownerId,
                     worker.workerId,
+                    stored.profile.record.protectedContent.keyRevision,
                   ))
                     ? worker
                     : null,
