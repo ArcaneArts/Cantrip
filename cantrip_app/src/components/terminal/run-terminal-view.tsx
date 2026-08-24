@@ -147,6 +147,7 @@ export function RunTerminalView({
   const queryClient = useQueryClient();
   const active = runConfigurationRuntimeIsActive(runtime);
   const configurationId = terminal.runConfigurationId;
+  const canReadOutput = Boolean(configurationId && runtime);
   const lifecycle = useMutation({
     mutationFn: (operation: "start" | "restart" | "stop") => {
       if (!configurationId) {
@@ -180,7 +181,7 @@ export function RunTerminalView({
     },
   });
   const output = useQuery({
-    enabled: Boolean(active && configurationId),
+    enabled: canReadOutput,
     queryFn: () =>
       readRunConfigurationRuntimeOutput({
         projectId: terminal.projectId,
@@ -197,12 +198,19 @@ export function RunTerminalView({
     refetchInterval: active ? 500 : false,
     retry: false,
   });
+  const wasActiveRef = useRef(active);
+  useEffect(() => {
+    const justStopped = wasActiveRef.current && !active;
+    wasActiveRef.current = active;
+    if (justStopped && canReadOutput) void output.refetch();
+  }, [active, canReadOutput, output.refetch]);
   const definitionMissing = definitionAvailable === false;
   const status = runtime?.state ?? "idle";
+  const hasOutput = Boolean(output.data?.data.length);
   const sharedTargetProblem =
     launchProblem && launchProblem === stopProblem ? launchProblem : null;
 
-  if (!active) {
+  if (!active && !hasOutput) {
     return (
       <div className="grid min-h-0 flex-1 place-items-center overflow-auto p-6">
         <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
@@ -243,6 +251,11 @@ export function RunTerminalView({
           {lifecycle.error ? (
             <InlineAlert tone="error">{lifecycle.error.message}</InlineAlert>
           ) : null}
+          {canReadOutput && output.error ? (
+            <InlineAlert tone="info">
+              Previous output is no longer available.
+            </InlineAlert>
+          ) : null}
           <div className="flex items-center gap-2">
             {onEdit ? (
               <Button onClick={onEdit} variant="outline">
@@ -272,70 +285,93 @@ export function RunTerminalView({
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{terminal.title}</div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
-            <span className="capitalize">{status}</span>
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                active ? "bg-emerald-500" : "bg-muted-foreground/50",
+              )}
+            />
+            <span className={cn(active && "capitalize")}>
+              {active ? status : runRuntimeLastResult(runtime)}
+            </span>
             <span aria-hidden="true">·</span>
             <span className="truncate">{targetLabel}</span>
           </div>
         </div>
-        <Button
-          disabled={
-            definitionAvailable !== true ||
-            launchAvailable !== true ||
-            status === "stopping" ||
-            lifecycle.isPending
-          }
-          onClick={() => lifecycle.mutate("restart")}
-          size="sm"
-          title={
-            launchProblem ??
-            (launchAvailable === null
-              ? "Checking target availability…"
-              : undefined)
-          }
-          variant="outline"
-        >
-          <RotateCw
-            className={cn("size-3.5", lifecycle.isPending && "animate-spin")}
-          />
-          Restart
-        </Button>
+        {active ? (
+          <Button
+            disabled={
+              definitionAvailable !== true ||
+              launchAvailable !== true ||
+              status === "stopping" ||
+              lifecycle.isPending
+            }
+            onClick={() => lifecycle.mutate("restart")}
+            size="sm"
+            title={
+              launchProblem ??
+              (launchAvailable === null
+                ? "Checking target availability…"
+                : undefined)
+            }
+            variant="outline"
+          >
+            <RotateCw
+              className={cn("size-3.5", lifecycle.isPending && "animate-spin")}
+            />
+            Restart
+          </Button>
+        ) : (
+          <Button
+            disabled={definitionAvailable !== true || launchAvailable !== true}
+            onClick={() => lifecycle.mutate("start")}
+            pending={lifecycle.isPending}
+            pendingLabel="Starting…"
+            size="sm"
+            title={launchProblem ?? undefined}
+          >
+            <Play className="size-3.5 fill-current" /> Start
+          </Button>
+        )}
         {onEdit ? (
           <Button onClick={onEdit} size="sm" variant="ghost">
             <Pencil className="size-3.5" /> Edit
           </Button>
         ) : null}
-        <Button
-          disabled={
-            stopAvailable !== true ||
-            status === "stopping" ||
-            lifecycle.isPending
-          }
-          onClick={() => lifecycle.mutate("stop")}
-          size="sm"
-          title={
-            stopProblem ??
-            (stopAvailable === null
-              ? "Checking target availability…"
-              : undefined)
-          }
-          variant="destructive"
-        >
-          {status === "stopping" ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Square className="size-3.5 fill-current" />
-          )}
-          Stop
-        </Button>
+        {active ? (
+          <Button
+            disabled={
+              stopAvailable !== true ||
+              status === "stopping" ||
+              lifecycle.isPending
+            }
+            onClick={() => lifecycle.mutate("stop")}
+            size="sm"
+            title={
+              stopProblem ??
+              (stopAvailable === null
+                ? "Checking target availability…"
+                : undefined)
+            }
+            variant="destructive"
+          >
+            {status === "stopping" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Square className="size-3.5 fill-current" />
+            )}
+            Stop
+          </Button>
+        ) : null}
       </div>
       {definitionMissing ? (
         <InlineAlert className="m-3 mb-0" tone="error">
-          The shared definition is unavailable. Restart is disabled, but this
-          captured generation can finish or be stopped.
+          {active
+            ? "The shared definition is unavailable. Restart is disabled, but this captured generation can finish or be stopped."
+            : "The shared definition is unavailable. Start is disabled, but the retained output remains available."}
         </InlineAlert>
       ) : null}
-      {sharedTargetProblem ? (
+      {active && sharedTargetProblem ? (
         <InlineAlert className="m-3 mb-0" tone="error">
           Restart and Stop are disabled: {sharedTargetProblem}
         </InlineAlert>
@@ -343,10 +379,10 @@ export function RunTerminalView({
         <>
           {definitionAvailable === true && launchProblem ? (
             <InlineAlert className="m-3 mb-0" tone="error">
-              Restart is disabled: {launchProblem}
+              {active ? "Restart" : "Start"} is disabled: {launchProblem}
             </InlineAlert>
           ) : null}
-          {stopProblem ? (
+          {active && stopProblem ? (
             <InlineAlert className="m-3 mb-0" tone="error">
               Stop is disabled: {stopProblem}
             </InlineAlert>
@@ -360,7 +396,10 @@ export function RunTerminalView({
       ) : null}
       {output.error ? (
         <InlineAlert className="m-3 mb-0" tone="error">
-          Live output is temporarily unavailable: {output.error.message}
+          {active
+            ? "Live output is temporarily unavailable"
+            : "Latest output refresh failed; showing retained output"}
+          : {output.error.message}
         </InlineAlert>
       ) : null}
       {output.data ? (

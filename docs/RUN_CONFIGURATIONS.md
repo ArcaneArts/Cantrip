@@ -52,6 +52,9 @@ The compact control contains:
 3. a green Restart button when its Primary instance is running; and
 4. a red Stop button while its Primary instance is running or stopping.
 
+The configuration dropdown trigger uses ghost styling without a persistent
+outline so it reads as a lightweight window-level control.
+
 Worker health remains available in worker management, project placement, and
 actionable offline error states. Removing the header label must not remove
 worker diagnostics.
@@ -412,10 +415,14 @@ Read-only behavior is enforced by both client and worker. The process still
 receives a PTY for color and output compatibility, but no terminal-input
 capability is issued for a Run terminal.
 
-While idle, exited, failed, or lost, the content does not mount or show the
-terminal emulator. It shows a centered launcher with configuration name,
-target worktree, last result when useful, a primary Start button, and an Edit
-link. The tab remains bound so the next start reuses it.
+After a Run exits, fails, is stopped, or is lost, its bounded volatile output
+remains visible for as long as the target worker still retains that buffer. A
+compact header replaces the active controls with Start and Edit while keeping
+the configuration name, target worktree, and last result visible. If the Run
+has never produced output, or the temporary worker-side buffer is no longer
+available, the terminal emulator is not mounted and the content instead shows
+the centered launcher with the same status and actions. The tab remains bound
+so the next start reuses it.
 
 Deleting an idle tab removes only the surface binding; the configuration
 remains. Closing a running Run terminal asks to Stop and Close. Deleting a
@@ -619,8 +626,8 @@ termination.
 ### Milestone 3: Run terminal subtype
 
 - Add durable configuration/worktree bindings to terminal records.
-- Add Play icons, status dots, idle launcher view, output view, Restart, and
-  Stop.
+- Add Play icons, status dots, retained stopped-output and empty launcher
+  views, Restart, and Stop.
 - Reject input at app and worker boundaries.
 - Reuse a bound terminal after exit and distinguish alternate-worktree labels.
 
