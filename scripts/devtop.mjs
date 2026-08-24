@@ -10,6 +10,7 @@ import {
   forceKillLegacyDevtop,
   forceKillRecordedDevtop,
   forceKillSpawnedProcessGroup,
+  resolveRepositoryCommonDirectory,
   setDevtopStateChild,
   writeDevtopState,
 } from "./devtop-processes.mjs";
@@ -20,7 +21,16 @@ const repositoryRoot = path.resolve(
   "..",
 );
 const stateDirectory = path.join(repositoryRoot, ".cantrip", "dev");
-const stateFile = path.join(stateDirectory, "devtop-process.json");
+const repositoryCommonDirectory =
+  resolveRepositoryCommonDirectory(repositoryRoot);
+// All Cantrip worktrees contend for the same development ports and local
+// worker identity. Keep the owner record in shared Git metadata so a launch
+// from one worktree can stop the complete process tree started by another.
+const stateFile = path.join(
+  repositoryCommonDirectory,
+  "cantrip",
+  "devtop-process.json",
+);
 
 let activeChild = null;
 let shuttingDown = false;
@@ -81,15 +91,18 @@ function runPnpm(args) {
   return runStage(invocation.command, invocation.arguments);
 }
 
-await mkdir(stateDirectory, { recursive: true });
+await Promise.all([
+  mkdir(stateDirectory, { recursive: true }),
+  mkdir(path.dirname(stateFile), { recursive: true }),
+]);
 
 // A new devtop owns the fixed development ports. Remove the previous tree
 // immediately instead of requesting graceful shutdown and waiting for it.
-await forceKillRecordedDevtop(stateFile, repositoryRoot);
-forceKillLegacyDevtop();
-forceKillDevelopmentPortListeners();
+await forceKillRecordedDevtop(stateFile, repositoryCommonDirectory);
+forceKillLegacyDevtop(repositoryRoot);
+forceKillDevelopmentPortListeners(undefined, undefined, repositoryRoot);
 
-state = createDevtopState(repositoryRoot);
+state = createDevtopState(repositoryRoot, repositoryCommonDirectory);
 await writeDevtopState(stateFile, state);
 
 try {
@@ -105,7 +118,7 @@ try {
     } else {
       // Preparation can take a while, so clear anything that claimed a devtop
       // port during the build before starting the actual services.
-      forceKillDevelopmentPortListeners();
+      forceKillDevelopmentPortListeners(undefined, undefined, repositoryRoot);
       process.exitCode = await runPnpm([
         "exec",
         "concurrently",

@@ -11,6 +11,7 @@ import {
   forceKillUnixProcessTree,
   parsePidList,
   parseUnixProcessTable,
+  resolveRepositoryCommonDirectory,
 } from "./devtop-processes.mjs";
 
 const repositoryRoot = path.resolve(
@@ -29,8 +30,27 @@ test("devtop is launched through the hard-stop lifecycle wrapper", async () => {
     "utf8",
   );
   assert.match(launcher, /"--kill-signal",\s*\n\s*"SIGKILL"/u);
-  assert.match(launcher, /forceKillDevelopmentPortListeners\(\)/u);
+  assert.match(launcher, /resolveRepositoryCommonDirectory\(repositoryRoot\)/u);
+  assert.match(
+    launcher,
+    /forceKillDevelopmentPortListeners\(undefined, undefined, repositoryRoot\)/u,
+  );
   assert.match(launcher, /forceKillSpawnedProcessGroup\(activeChild\.pid\)/u);
+  const processLifecycle = await readFile(
+    path.join(repositoryRoot, "scripts", "devtop-processes.mjs"),
+    "utf8",
+  );
+  assert.match(
+    processLifecycle,
+    /if \(wrapper\) forceKillProcessTree\(wrapper\.pid\);\s*if \(child\) forceKillSpawnedProcessGroup\(child\.pid\);/u,
+  );
+  assert.match(
+    processLifecycle,
+    /await waitForIdentitiesToExit\(identities\)/u,
+  );
+  const commonDirectory = resolveRepositoryCommonDirectory(repositoryRoot);
+  assert.equal(path.basename(commonDirectory), ".git");
+  assert.equal(path.isAbsolute(commonDirectory), true);
 });
 
 test("process table parsing and tree collection include all descendants", () => {
@@ -80,6 +100,62 @@ test("legacy cleanup recognizes an orphaned Tauri development binary", () => {
     },
   ];
   assert.deepEqual(findLegacyDevtopRootPids(processes), [10]);
+});
+
+test("legacy cleanup recognizes orphaned service watchers in Cantrip worktrees", () => {
+  const roots = ["/workspace/Cantrip", "/private/tmp/cantrip-cycle"];
+  const processes = [
+    {
+      pid: 10,
+      ppid: 1,
+      command: "node tsx watch src/index.ts",
+      cwd: "/workspace/Cantrip/cantrip_worker",
+    },
+    {
+      pid: 11,
+      ppid: 10,
+      command: "node --import tsx src/index.ts",
+      cwd: "/workspace/Cantrip/cantrip_worker",
+    },
+    {
+      pid: 20,
+      ppid: 1,
+      command: "node node_modules/tsx/dist/cli.mjs watch src/index.ts",
+      cwd: "/private/tmp/cantrip-cycle/cantrip_server",
+    },
+    {
+      pid: 30,
+      ppid: 1,
+      command: "node tsx watch src/index.ts",
+      cwd: "/workspace/AnotherProject/cantrip_worker",
+    },
+  ];
+  assert.deepEqual(findLegacyDevtopRootPids(processes, roots), [10, 20]);
+});
+
+test("legacy cleanup collapses nested Cantrip launchers to the owning root", () => {
+  const processes = [
+    {
+      pid: 10,
+      ppid: 1,
+      command: "node concurrently --names protocol,server,worker,desktop",
+    },
+    {
+      pid: 11,
+      ppid: 10,
+      command: "pnpm --filter @cantrip/worker dev",
+    },
+    {
+      pid: 12,
+      ppid: 11,
+      command: "node tsx watch src/index.ts",
+      cwd: "/workspace/Cantrip/cantrip_worker",
+    },
+  ];
+  assert.deepEqual(
+    findLegacyDevtopRootPids(processes, ["/workspace/Cantrip"]),
+    [10],
+  );
 });
 
 test("hard process-tree cleanup sends SIGKILL without a graceful signal", () => {

@@ -91,6 +91,21 @@ describe("WorkerRoutingRegistry", () => {
     await expect(
       restarted.protectMetadata({ unsupported: "must not pass through" }),
     ).rejects.toThrow("Unsupported repository metadata field.");
+    await expect(
+      restarted.resolveCommand({
+        type: "git.status",
+        cwd: `ctrr_${"z".repeat(43)}`,
+      }),
+    ).rejects.toThrow(
+      "Repository routing metadata is unavailable on this worker.",
+    );
+    await expect(
+      restarted.resolveMetadata({
+        branch: `refs/heads/ctrr_${"z".repeat(43)}`,
+      }),
+    ).rejects.toThrow(
+      "Repository routing metadata is unavailable on this worker.",
+    );
     expect(
       registry.protectError(
         "worktree.create",

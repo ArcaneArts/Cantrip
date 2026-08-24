@@ -169,6 +169,15 @@ export class WorkerRoutingRegistry {
       const resolved = this.#records.get(value.slice(headPrefix.length));
       if (resolved) return `${headPrefix}${resolved.value}`;
     }
+    if (
+      routingTokenPattern.test(value) ||
+      (value.startsWith(headPrefix) &&
+        routingTokenPattern.test(value.slice(headPrefix.length)))
+    ) {
+      throw new Error(
+        "Repository routing metadata is unavailable on this worker.",
+      );
+    }
     return value;
   }
 
