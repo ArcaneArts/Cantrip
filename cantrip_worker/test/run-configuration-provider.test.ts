@@ -1938,22 +1938,33 @@ describe("rustRunConfigurationProvider", () => {
     ).toBe(false);
   });
 
-  it("validates explicit Rustup toolchains from the launch environment without executing them", async () => {
+  it("validates explicit Rustup toolchains and targets without executing them", async () => {
     const root = await createRoot();
     const cargoHome = path.join(root, "cargo-bin");
     const rustupHome = path.join(root, "rustup");
     const installedToolchain = "nightly-2026-08-01-x86_64-unknown-linux-gnu";
+    const installedTarget = "wasm32-wasip1";
     const toolchainBin = path.join(
       rustupHome,
       "toolchains",
       installedToolchain,
       "bin",
     );
+    const targetLibrary = path.join(
+      rustupHome,
+      "toolchains",
+      installedToolchain,
+      "lib",
+      "rustlib",
+      installedTarget,
+      "lib",
+    );
     const marker = path.join(root, "executed.txt");
     await Promise.all([
       mkdir(path.join(root, "src"), { recursive: true }),
       mkdir(cargoHome, { recursive: true }),
       mkdir(toolchainBin, { recursive: true }),
+      mkdir(targetLibrary, { recursive: true }),
     ]);
     await writeFile(
       path.join(root, "Cargo.toml"),
@@ -1978,6 +1989,7 @@ describe("rustRunConfigurationProvider", () => {
       options: {
         ...definition.options,
         toolchain: "nightly-2026-08-01",
+        targetTriple: installedTarget,
       },
     };
     const context = {
@@ -2017,6 +2029,24 @@ describe("rustRunConfigurationProvider", () => {
       expect.objectContaining({
         code: "rust-toolchain-unavailable",
         field: "options.toolchain",
+        severity: "error",
+      }),
+    ]);
+    await expect(
+      rustRunConfigurationProvider.validate(
+        {
+          ...document,
+          options: {
+            ...document.options,
+            targetTriple: "wasm32-unknown-unknown",
+          },
+        },
+        context,
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        code: "rust-target-unavailable",
+        field: "options.targetTriple",
         severity: "error",
       }),
     ]);
