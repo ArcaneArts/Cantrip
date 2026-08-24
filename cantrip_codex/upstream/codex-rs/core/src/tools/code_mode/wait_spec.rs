@@ -11,13 +11,13 @@ pub(crate) fn create_wait_tool() -> ToolSpec {
         ),
         (
             "yield_time_ms".to_string(),
-            JsonSchema::integer(Some(
+            JsonSchema::number(Some(
                 "Wait before yielding more output. Defaults to 10000 ms.".to_string(),
             )),
         ),
         (
             "max_tokens".to_string(),
-            JsonSchema::integer(Some(
+            JsonSchema::number(Some(
                 "Output token budget for this wait call. Defaults to 10000 tokens.".to_string(),
             )),
         ),
@@ -75,7 +75,7 @@ mod tests {
                         ),
                         (
                             "max_tokens".to_string(),
-                            JsonSchema::integer(Some(
+                            JsonSchema::number(Some(
                                 "Output token budget for this wait call. Defaults to 10000 tokens."
                                     .to_string(),
                             )),
@@ -89,7 +89,7 @@ mod tests {
                         ),
                         (
                             "yield_time_ms".to_string(),
-                            JsonSchema::integer(Some(
+                            JsonSchema::number(Some(
                                 "Wait before yielding more output. Defaults to 10000 ms."
                                     .to_string(),
                             )),

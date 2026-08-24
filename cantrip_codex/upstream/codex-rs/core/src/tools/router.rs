@@ -176,13 +176,11 @@ impl ToolRouter {
                 ..
             } if execution == "client" => {
                 let arguments: SearchToolCallParams =
-                    crate::tools::handlers::deserialize_tool_arguments(arguments).map_err(
-                        |err| {
-                            FunctionCallError::RespondToModel(format!(
-                                "failed to parse tool_search arguments: {err}"
-                            ))
-                        },
-                    )?;
+                    serde_json::from_value(arguments).map_err(|err| {
+                        FunctionCallError::RespondToModel(format!(
+                            "failed to parse tool_search arguments: {err}"
+                        ))
+                    })?;
                 Ok(Some(ToolCall {
                     tool_name: ToolName::plain("tool_search"),
                     call_id,

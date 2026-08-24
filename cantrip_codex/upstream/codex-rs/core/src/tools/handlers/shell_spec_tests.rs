@@ -62,11 +62,11 @@ fn exec_command_tool_matches_expected_spec() {
         ),
         (
             "yield_time_ms".to_string(),
-            JsonSchema::integer(Some(yield_time_ms_description.to_string())),
+            JsonSchema::number(Some(yield_time_ms_description.to_string())),
         ),
         (
             "max_output_tokens".to_string(),
-            JsonSchema::integer(Some(
+            JsonSchema::number(Some(
                     "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.".to_string(),
                 )),
         ),
@@ -120,7 +120,7 @@ fn write_stdin_tool_matches_expected_spec() {
     let properties = BTreeMap::from([
         (
             "session_id".to_string(),
-            JsonSchema::integer(Some(
+            JsonSchema::number(Some(
                 "Identifier of the running unified exec session.".to_string(),
             )),
         ),
@@ -132,13 +132,13 @@ fn write_stdin_tool_matches_expected_spec() {
         ),
         (
             "yield_time_ms".to_string(),
-            JsonSchema::integer(Some(
+            JsonSchema::number(Some(
                 "Wait before yielding output. Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.".to_string(),
             )),
         ),
         (
             "max_output_tokens".to_string(),
-            JsonSchema::integer(Some(
+            JsonSchema::number(Some(
                 "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.".to_string(),
             )),
         ),
@@ -243,7 +243,7 @@ Examples of valid command strings:
         ),
         (
             "timeout_ms".to_string(),
-            JsonSchema::integer(Some(
+            JsonSchema::number(Some(
                 "Maximum command runtime. Defaults to 10000 ms.".to_string(),
             )),
         ),
