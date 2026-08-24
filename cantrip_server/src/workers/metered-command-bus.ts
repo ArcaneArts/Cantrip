@@ -31,9 +31,11 @@ function meteredWorkerSocket(
   recorder: AccountUsageRecorder,
 ): WorkerSocket {
   return {
+    ...(socket.activate ? { activate: () => socket.activate!() } : {}),
     get bufferedAmount() {
       return socket.bufferedAmount;
     },
+    ...(socket.canActivate ? { canActivate: () => socket.canActivate!() } : {}),
     get readyState() {
       return socket.readyState;
     },
@@ -64,6 +66,12 @@ function meteredWorkerSocket(
         );
       });
     },
+    ...(socket.publishReady
+      ? { publishReady: () => socket.publishReady!() }
+      : {}),
+    get protocol() {
+      return socket.protocol;
+    },
     send(data, options) {
       socket.send(data, options);
       if (typeof data === "string") {
@@ -85,11 +93,17 @@ export class MeteredWorkerCommandBus implements WorkerCommandBus {
     readonly recorder: AccountUsageRecorder,
   ) {}
 
-  attach(workerId: string, socket: WorkerSocket, ownerId?: string) {
+  attach(
+    workerId: string,
+    socket: WorkerSocket,
+    ownerId?: string,
+    continuityIdentity?: Parameters<WorkerCommandBus["attach"]>[3],
+  ) {
     return this.delegate.attach(
       workerId,
       ownerId ? meteredWorkerSocket(socket, ownerId, this.recorder) : socket,
       ownerId,
+      continuityIdentity,
     );
   }
 
@@ -139,6 +153,13 @@ export class MeteredWorkerCommandBus implements WorkerCommandBus {
 
   subscribeWorkerDisconnect(workerId: string, listener: () => void) {
     return this.delegate.subscribeWorkerDisconnect(workerId, listener);
+  }
+
+  subscribeWorkerOffline(workerId: string, listener: () => void) {
+    return (
+      this.delegate.subscribeWorkerOffline?.(workerId, listener) ??
+      this.delegate.subscribeWorkerDisconnect(workerId, listener)
+    );
   }
 
   subscribeSurfaceFrames(

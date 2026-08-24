@@ -1290,6 +1290,53 @@ describe("DirectAttachmentCoordinator", () => {
     await coordinator.close();
   });
 
+  it("retains a direct grant while the worker is reconnecting", async () => {
+    let reconnecting: (() => void) | null = null;
+    let offline: (() => void) | null = null;
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) =>
+        command.type === "direct.capability.prepare"
+          ? { accepted: true, capabilityId: command.binding.capabilityId }
+          : { revoked: true },
+      ),
+      subscribeWorkerDisconnect: (_workerId: string, listener: () => void) => {
+        reconnecting = listener;
+        return () => undefined;
+      },
+      subscribeWorkerOffline: (_workerId: string, listener: () => void) => {
+        offline = listener;
+        return () => undefined;
+      },
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const ticket = await prepareDirect(coordinator, {
+      authSessionId: "session-1",
+      channels: ["probe"],
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+      worker: worker(),
+    });
+    const identity = {
+      attachmentId: ticket.binding.attachmentId,
+      authSessionId: "session-1",
+      ownerId: "owner-1",
+    };
+
+    expect(reconnecting).toBeNull();
+    expect(offline).not.toBeNull();
+    expect(coordinator.matches(ticket.binding.capabilityId, identity)).toBe(
+      true,
+    );
+
+    offline!();
+    expect(coordinator.matches(ticket.binding.capabilityId, identity)).toBe(
+      false,
+    );
+    await coordinator.close();
+  });
+
   it("preserves final state when worker revoke delivery fails", async () => {
     const bus = {
       isConnected: () => true,

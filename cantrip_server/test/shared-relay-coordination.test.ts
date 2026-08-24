@@ -16,6 +16,7 @@ import {
 } from "../src/coordination/relay-coordinator.js";
 import { AppLiveHub, type AppLiveSocket } from "../src/live/hub.js";
 import { CoordinatedWorkerBridge } from "../src/workers/coordinated-bridge.js";
+import type { WorkerConnectionContinuityIdentity } from "../src/workers/bridge.js";
 
 class TestWorkerSocket {
   bufferedAmount = 0;
@@ -86,6 +87,12 @@ class TestLiveSocket implements AppLiveSocket {
 
 const settle = async () => {
   await new Promise<void>((resolve) => setImmediate(resolve));
+};
+
+const continuityIdentity: WorkerConnectionContinuityIdentity = {
+  credentialId: "credential-1",
+  ownerId: "owner-1",
+  workerProcessGeneration: "process-1",
 };
 
 describe("shared relay coordination", () => {
@@ -195,7 +202,7 @@ describe("shared relay coordination", () => {
     await Promise.all([coordinatorA.close(), coordinatorB.close()]);
   });
 
-  it("preserves a relayed command while the same worker reconnects", async () => {
+  it("preserves a legacy relayed command when neither socket asserts continuity", async () => {
     const backend = createInMemoryRelayCoordinatorBackend();
     const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
     const coordinatorB = new InMemoryRelayCoordinator("instance-b", backend);
@@ -239,6 +246,331 @@ describe("shared relay coordination", () => {
     await bridgeA.close();
     await bridgeB.close();
     await Promise.all([coordinatorA.close(), coordinatorB.close()]);
+  });
+
+  it("reuses one fenced claim and one subscription set across repeated same-generation flaps", async () => {
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinator = new InMemoryRelayCoordinator("instance-a", backend);
+    await coordinator.start();
+    const bridge = new CoordinatedWorkerBridge({
+      coordinator,
+      reconnectGraceMs: 10,
+      resolveOwnerId: async () => "owner-1",
+    });
+    const reconnecting = vi.fn();
+    const offline = vi.fn();
+    bridge.subscribeWorkerDisconnect("worker-1", reconnecting);
+    bridge.subscribeWorkerOffline("worker-1", offline);
+    const firstSocket = new TestWorkerSocket();
+    await bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
+    const firstClaim = await coordinator.findWorker("worker-1");
+
+    firstSocket.close(1006, "first flap");
+    expect(reconnecting).toHaveBeenCalledOnce();
+    expect(offline).not.toHaveBeenCalled();
+    const replacementSocket = new TestWorkerSocket();
+    await bridge.attach(
+      "worker-1",
+      replacementSocket,
+      "owner-1",
+      continuityIdentity,
+    );
+    expect((await coordinator.findWorker("worker-1"))?.connectionId).toBe(
+      firstClaim?.connectionId,
+    );
+
+    replacementSocket.close(1006, "second flap");
+    expect(reconnecting).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(offline).toHaveBeenCalledOnce());
+    expect(await coordinator.findWorker("worker-1")).toBeNull();
+
+    await bridge.close();
+    await coordinator.close();
+  });
+
+  it("does not reset grace when a same-generation socket dies during refresh", async () => {
+    vi.useFakeTimers();
+    try {
+      const backend = createInMemoryRelayCoordinatorBackend();
+      const coordinator = new InMemoryRelayCoordinator("instance-a", backend);
+      await coordinator.start();
+      const bridge = new CoordinatedWorkerBridge({
+        coordinator,
+        reconnectGraceMs: 100,
+        resolveOwnerId: async () => "owner-1",
+      });
+      const offline = vi.fn();
+      bridge.subscribeWorkerOffline("worker-1", offline);
+      const firstSocket = new TestWorkerSocket();
+      await bridge.attach(
+        "worker-1",
+        firstSocket,
+        "owner-1",
+        continuityIdentity,
+      );
+      firstSocket.close(1006, "network loss");
+      await vi.advanceTimersByTimeAsync(60);
+
+      let refreshStarted: (() => void) | undefined;
+      let finishRefresh: (() => void) | undefined;
+      const started = new Promise<void>((resolve) => {
+        refreshStarted = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        finishRefresh = resolve;
+      });
+      const refreshWorker = coordinator.refreshWorker.bind(coordinator);
+      vi.spyOn(coordinator, "refreshWorker").mockImplementationOnce(
+        async (workerId, connectionId) => {
+          refreshStarted?.();
+          await gate;
+          return refreshWorker(workerId, connectionId);
+        },
+      );
+      const deadSocket = new TestWorkerSocket();
+      const attachment = bridge.attach(
+        "worker-1",
+        deadSocket,
+        "owner-1",
+        continuityIdentity,
+      );
+      await started;
+      deadSocket.close(1006, "closed during relay refresh");
+      finishRefresh?.();
+
+      await expect(attachment).resolves.toBe(false);
+      await vi.advanceTimersByTimeAsync(39);
+      expect(offline).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(offline).toHaveBeenCalledOnce();
+      expect(await coordinator.findWorker("worker-1")).toBeNull();
+
+      await bridge.close();
+      await coordinator.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rolls back only the exact new claim when its socket dies", async () => {
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinator = new InMemoryRelayCoordinator("instance-a", backend);
+    await coordinator.start();
+    const bridge = new CoordinatedWorkerBridge({
+      coordinator,
+      resolveOwnerId: async () => "owner-1",
+    });
+    let claimInstalled: (() => void) | undefined;
+    let finishClaim: (() => void) | undefined;
+    const installed = new Promise<void>((resolve) => {
+      claimInstalled = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      finishClaim = resolve;
+    });
+    const claimWorker = coordinator.claimWorker.bind(coordinator);
+    vi.spyOn(coordinator, "claimWorker").mockImplementationOnce(
+      async (input) => {
+        const previous = await claimWorker(input);
+        claimInstalled?.();
+        await gate;
+        return previous;
+      },
+    );
+    const deadSocket = new TestWorkerSocket();
+    const received = vi.fn();
+    bridge.subscribeNotifications("worker-1", received);
+    const attachment = bridge.attach(
+      "worker-1",
+      deadSocket,
+      "owner-1",
+      continuityIdentity,
+    );
+    await installed;
+    deadSocket.close(1006, "closed during relay claim");
+    finishClaim?.();
+
+    await expect(attachment).resolves.toBe(false);
+    expect(await coordinator.findWorker("worker-1")).toBeNull();
+    expect(bridge.isConnected("worker-1")).toBe(false);
+    deadSocket.emit(
+      "message",
+      JSON.stringify({
+        kind: "notification",
+        notification: {
+          type: "worktree.filesystem.changed",
+          sourcePath: "/repo",
+          worktreePath: "/repo",
+        },
+      }),
+      false,
+    );
+    expect(received).not.toHaveBeenCalled();
+
+    await bridge.close();
+    await coordinator.close();
+  });
+
+  it("does not let a stale refresh completion replace the newest socket", async () => {
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinator = new InMemoryRelayCoordinator("instance-a", backend);
+    await coordinator.start();
+    const bridge = new CoordinatedWorkerBridge({
+      coordinator,
+      resolveOwnerId: async () => "owner-1",
+    });
+    const firstSocket = new TestWorkerSocket();
+    await bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
+
+    let refreshStarted: (() => void) | undefined;
+    let finishRefresh: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      refreshStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      finishRefresh = resolve;
+    });
+    const refreshWorker = coordinator.refreshWorker.bind(coordinator);
+    vi.spyOn(coordinator, "refreshWorker").mockImplementationOnce(
+      async (workerId, connectionId) => {
+        refreshStarted?.();
+        await gate;
+        return refreshWorker(workerId, connectionId);
+      },
+    );
+
+    const staleSocket = new TestWorkerSocket();
+    const staleAttach = bridge.attach(
+      "worker-1",
+      staleSocket,
+      "owner-1",
+      continuityIdentity,
+    );
+    await started;
+    const currentSocket = new TestWorkerSocket();
+    await bridge.attach(
+      "worker-1",
+      currentSocket,
+      "owner-1",
+      continuityIdentity,
+    );
+    finishRefresh?.();
+    await staleAttach;
+
+    expect(staleSocket.closes).toContainEqual({
+      code: 1012,
+      reason: "Worker connection was superseded",
+    });
+    expect(currentSocket.readyState).toBe(1);
+    const response = bridge.request("worker-1", { type: "code.probe" });
+    const workerRequest = workerRequestEnvelopeSchema.parse(
+      JSON.parse(String(currentSocket.sent.at(-1))),
+    );
+    currentSocket.emit(
+      "message",
+      JSON.stringify({
+        kind: "response",
+        requestId: workerRequest.requestId,
+        ok: true,
+        result: { current: true },
+      }),
+      false,
+    );
+    await expect(response).resolves.toEqual({ current: true });
+
+    await bridge.close();
+    await coordinator.close();
+  });
+
+  it("terminates a mismatched local continuity identity with a non-recoverable close", async () => {
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinator = new InMemoryRelayCoordinator("instance-a", backend);
+    await coordinator.start();
+    const bridge = new CoordinatedWorkerBridge({
+      coordinator,
+      resolveOwnerId: async () => "owner-1",
+    });
+    const reconnecting = vi.fn();
+    const offline = vi.fn();
+    bridge.subscribeWorkerDisconnect("worker-1", reconnecting);
+    bridge.subscribeWorkerOffline("worker-1", offline);
+    const oldSocket = new TestWorkerSocket();
+    await bridge.attach("worker-1", oldSocket, "owner-1", continuityIdentity);
+
+    const replacementSocket = new TestWorkerSocket();
+    await bridge.attach("worker-1", replacementSocket, "owner-1", {
+      ...continuityIdentity,
+      credentialId: "credential-2",
+    });
+
+    expect(oldSocket.closes).toContainEqual({
+      code: 1008,
+      reason: "Worker continuity identity changed",
+    });
+    expect(reconnecting).toHaveBeenCalledOnce();
+    expect(offline).toHaveBeenCalledOnce();
+    expect(bridge.isConnected("worker-1")).toBe(true);
+
+    await bridge.close();
+    await coordinator.close();
+  });
+
+  it("ignores a stale offline publication after a newer relay generation is active", async () => {
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
+    const coordinatorB = new InMemoryRelayCoordinator("instance-b", backend);
+    const coordinatorC = new InMemoryRelayCoordinator("instance-c", backend);
+    await Promise.all([
+      coordinatorA.start(),
+      coordinatorB.start(),
+      coordinatorC.start(),
+    ]);
+    const resolveOwnerId = async () => "owner-1";
+    const observer = new CoordinatedWorkerBridge({
+      coordinator: coordinatorA,
+      resolveOwnerId,
+    });
+    const oldOwner = new CoordinatedWorkerBridge({
+      coordinator: coordinatorB,
+      resolveOwnerId,
+    });
+    const newOwner = new CoordinatedWorkerBridge({
+      coordinator: coordinatorC,
+      resolveOwnerId,
+    });
+    const offline = vi.fn();
+    observer.subscribeWorkerOffline("worker-1", offline);
+    await oldOwner.attach(
+      "worker-1",
+      new TestWorkerSocket(),
+      "owner-1",
+      continuityIdentity,
+    );
+    const stalePresence = await coordinatorB.findWorker("worker-1");
+    expect(stalePresence).not.toBeNull();
+
+    await newOwner.attach("worker-1", new TestWorkerSocket(), "owner-1", {
+      ...continuityIdentity,
+      workerProcessGeneration: "process-2",
+    });
+    await coordinatorB.publish({
+      kind: "worker-presence",
+      action: "offline",
+      presence: stalePresence!,
+    });
+
+    expect(offline).not.toHaveBeenCalled();
+    expect(observer.isConnected("worker-1")).toBe(true);
+    expect((await coordinatorA.findWorker("worker-1"))?.instanceId).toBe(
+      "instance-c",
+    );
+
+    await Promise.all([observer.close(), oldOwner.close(), newOwner.close()]);
+    await Promise.all([
+      coordinatorA.close(),
+      coordinatorB.close(),
+      coordinatorC.close(),
+    ]);
   });
 
   it("rejects a relayed streaming command when its event consumer fails", async () => {

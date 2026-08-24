@@ -53,6 +53,60 @@ function protectedRecord(tunnelId: string) {
 }
 
 describe("protected Cantrip Code attachments", () => {
+  it("keeps an attachment through reconnecting and removes it only when the worker is offline", async () => {
+    const tunnelId = "11111111-1111-4111-8111-111111111111";
+    let reconnecting: (() => void) | null = null;
+    let offline: (() => void) | null = null;
+    const removeManagedTunnel = vi.fn(async () => true);
+    const repository = {
+      registerManagedTunnel: vi.fn(async () => ({ id: tunnelId })),
+      removeManagedTunnel,
+    } as unknown as ServerRepository;
+    const worker = {
+      isConnected: () => true,
+      request: vi.fn(async () => null),
+      subscribeWorkerDisconnect: (_workerId: string, listener: () => void) => {
+        reconnecting = listener;
+        return () => undefined;
+      },
+      subscribeWorkerOffline: (_workerId: string, listener: () => void) => {
+        offline = listener;
+        return () => undefined;
+      },
+    } as unknown as WorkerCommandBus;
+    const broker = new CodeTunnelBroker(worker);
+    broker.configureControlPlane(repository, vi.fn(), vi.fn());
+
+    try {
+      await broker.createProtectedAttachment({
+        authSessionId: "auth-session-1",
+        codeTabId: "code-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord: protectedRecord(tunnelId),
+        runtime,
+        sessionId: runtime.sessionId,
+        stopSessionOnRelease: true,
+        tunnelId,
+        workerId: "worker-1",
+      });
+
+      expect(reconnecting).toBeNull();
+      expect(offline).not.toBeNull();
+      await Promise.resolve();
+      expect(removeManagedTunnel).not.toHaveBeenCalled();
+      expect(broker.recordTunnelActivity(tunnelId)).not.toBeNull();
+
+      offline!();
+      await vi.waitFor(() =>
+        expect(removeManagedTunnel).toHaveBeenCalledOnce(),
+      );
+      expect(broker.recordTunnelActivity(tunnelId)).toBeNull();
+    } finally {
+      await broker.close();
+    }
+  });
+
   it("registers and revokes only an opaque generic tunnel", async () => {
     const tunnelId = "11111111-1111-4111-8111-111111111111";
     const protectedRecord = {

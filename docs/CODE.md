@@ -551,6 +551,53 @@ bounded owner-instance operations are implemented, Code availability still
 requires request affinity even though the general hosted control plane does
 not. This is a documented continuity gap, not permission to relax root checks.
 
+### Worker command reconnect continuity
+
+The command channel has two distinct loss states. A raw WebSocket close first
+enters a 15-second `reconnecting` grace. Existing Code roots, relay routes,
+direct grants, tunnel endpoints, and their worker-side authorized destinations
+remain allocated, but new commands fail while no socket is connected. A
+terminal `offline` event is emitted only when that grace expires or the
+lifecycle is explicitly revoked. Resource owners subscribe to terminal offline
+state; diagnostics and connection indicators may still observe the immediate
+raw interruption.
+
+Reconnect reuse requires the exact authenticated owner, credential identifier,
+and worker-process connection generation. The worker creates the opaque random
+generation once per process and reuses it for every socket attempt. A matching
+reconnect cancels only the cleanup timer for that generation. Owner, credential,
+or process-generation mismatch first retires the old lifecycle completely;
+authentication rejection and explicit shutdown also bypass grace. Legacy
+workers that omit the generation can still connect, but the server treats each
+socket as an unverifiable lifecycle and does not promise resource continuity.
+
+All socket input is fenced by the currently attached socket, and all deferred
+cleanup and coordinated relay presence work is fenced by its connection/claim
+generation. Repeated failed retries cannot extend the original grace deadline.
+Generation-aware workers offer explicit legacy and authenticated-ready
+WebSocket subprotocols. Older servers keep their default first-protocol
+selection and therefore preserve their original raw-open behavior; the current
+server selects `cantrip-worker-auth-ready-v1` only for the worker command route.
+Other WebSocket routes retain first-offered selection so tunnel-secret
+subprotocols are unchanged. Under the authenticated-ready protocol, raw
+WebSocket open begins only protocol negotiation. The server advertises
+`pending` before asynchronous authentication, then queues `ready` before the
+socket becomes command-visible after owner validation and atomic local/shared
+bridge attachment. WebSocket ordering therefore prevents a command from
+overtaking readiness. Until it receives matching, ordered `pending` and `ready`
+messages, the worker keeps command outcomes queued, does not start keepalive or
+data-plane traffic, and does not cancel its original grace deadline. Older
+workers omit the generation and receive no new handshake messages.
+
+Legacy workers may still flush on raw open, so the server retains a bounded
+compatibility buffer until bridge subscriptions exist. Each socket is limited
+to 1,024 events or 8 MiB, with a 64 MiB process-wide byte budget, at most 32
+pending handshakes, and a 10-second socket deadline. A dead, timed-out, or
+overflowing socket is rejected before it can activate, reset grace, or commit a
+relay claim. Exact claim rollback and socket/attachment-generation fences make
+late async completions harmless. No credential, token, payload, or protected
+path is added to lifecycle telemetry.
+
 Concurrent views share the editor process, persistent profile, generated
 workspace, and filesystem state without transferring control between windows.
 Expired or revoked surface attachments render a bounded recovery document that

@@ -20,7 +20,9 @@ import type { ServiceLogger } from "@cantrip/logging";
 import { serverLogger } from "../logger.js";
 
 export interface WorkerSocket {
+  activate?(): boolean;
   bufferedAmount: number;
+  canActivate?(): boolean;
   close(code?: number, reason?: string): void;
   on(event: "close", listener: () => void): void;
   on(event: "error", listener: (error: Error) => void): void;
@@ -28,6 +30,8 @@ export interface WorkerSocket {
     event: "message",
     listener: (data: unknown, isBinary?: boolean) => void,
   ): void;
+  publishReady?(): boolean;
+  readonly protocol?: string;
   readyState: number;
   send(data: string | Uint8Array, options?: { binary?: boolean }): void;
 }
@@ -46,12 +50,19 @@ export type WorkerNotificationListener = (
   notification: WorkerNotification,
 ) => Promise<void> | void;
 
+export interface WorkerConnectionContinuityIdentity {
+  credentialId: string;
+  ownerId: string;
+  workerProcessGeneration: string;
+}
+
 export interface WorkerCommandBus {
   attach(
     workerId: string,
     socket: WorkerSocket,
     ownerId?: string,
-  ): Promise<void> | void;
+    continuityIdentity?: WorkerConnectionContinuityIdentity,
+  ): Promise<boolean | void> | boolean | void;
   close(): Promise<void> | void;
   disconnect?(workerId: string, reason?: string, code?: number): void;
   isConnected(workerId: string): boolean;
@@ -66,6 +77,7 @@ export interface WorkerCommandBus {
     payload: Uint8Array,
   ): boolean;
   subscribeWorkerDisconnect(workerId: string, listener: () => void): () => void;
+  subscribeWorkerOffline?(workerId: string, listener: () => void): () => void;
   subscribeSurfaceFrames(
     workerId: string,
     listener: WorkerSurfaceFrameListener,
@@ -149,9 +161,34 @@ function subscribeKeyedListener<T>(
   };
 }
 
+export function sameWorkerConnectionContinuityIdentity(
+  left: WorkerConnectionContinuityIdentity | undefined,
+  right: WorkerConnectionContinuityIdentity | undefined,
+): boolean {
+  if (!left || !right) return left === right;
+  return (
+    left.ownerId === right.ownerId &&
+    left.credentialId === right.credentialId &&
+    left.workerProcessGeneration === right.workerProcessGeneration
+  );
+}
+
+export function workerSocketIsAttachable(socket: WorkerSocket): boolean {
+  try {
+    return socket.readyState === 1 && (socket.canActivate?.() ?? true);
+  } catch {
+    return false;
+  }
+}
+
 export class WorkerBridge implements WorkerCommandBus {
+  readonly #continuityIdentities = new Map<
+    string,
+    WorkerConnectionContinuityIdentity
+  >();
   readonly #disconnectedAt = new Map<string, number>();
   readonly #disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  readonly #interruptionGenerations = new Map<string, symbol>();
   readonly #pending = new Map<string, PendingRequest>();
   readonly #sockets = new Map<string, WorkerSocket>();
   readonly #surfaceListeners = new Map<
@@ -167,6 +204,7 @@ export class WorkerBridge implements WorkerCommandBus {
     Set<WorkerNotificationListener>
   >();
   readonly #workerDisconnectListeners = new Map<string, Set<() => void>>();
+  readonly #workerOfflineListeners = new Map<string, Set<() => void>>();
   #failedRequests = 0;
   #routedRequests = 0;
   #succeededRequests = 0;
@@ -176,21 +214,107 @@ export class WorkerBridge implements WorkerCommandBus {
     private readonly logger: ServiceLogger = serverLogger,
   ) {}
 
-  attach(workerId: string, socket: WorkerSocket): void {
+  attach(
+    workerId: string,
+    socket: WorkerSocket,
+    ownerId?: string,
+    continuityIdentity?: WorkerConnectionContinuityIdentity,
+  ): boolean {
+    if (!workerSocketIsAttachable(socket)) return false;
+    if (
+      continuityIdentity &&
+      ownerId &&
+      continuityIdentity.ownerId !== ownerId
+    ) {
+      socket.close(1008, "Worker continuity identity does not match owner");
+      return false;
+    }
     const existing = this.#sockets.get(workerId);
-    if (existing && existing !== socket) {
+    const hadLifecycle =
+      existing !== undefined || this.#disconnectedAt.has(workerId);
+    const previousIdentity = this.#continuityIdentities.get(workerId);
+    let closeReplacedSocket = false;
+    if (
+      hadLifecycle &&
+      !sameWorkerConnectionContinuityIdentity(
+        previousIdentity,
+        continuityIdentity,
+      )
+    ) {
+      this.logger.event("warn", "Worker continuity identity changed", {
+        event: "worker.connection.identity-changed",
+        subsystem: "worker-connection",
+        status: "replaced",
+        reasonCode: "continuity-identity-changed",
+        workerId,
+      });
+      this.terminateWorkerLifecycle(
+        workerId,
+        new WorkerUnavailableError(
+          `Worker ${workerId} continuity identity changed.`,
+        ),
+        1008,
+        "Worker continuity identity changed",
+      );
+    } else if (existing && existing !== socket) {
+      closeReplacedSocket = true;
+    }
+    if (!workerSocketIsAttachable(socket)) return false;
+    const restorableSocket = this.#sockets.get(workerId);
+    const disconnectedAt = this.#disconnectedAt.get(workerId);
+
+    socket.on("message", (data, isBinary) =>
+      this.handleSocketMessage(workerId, socket, data, Boolean(isBinary)),
+    );
+
+    const disconnect = () => this.handleSocketDisconnect(workerId, socket);
+    socket.on("close", disconnect);
+    socket.on("error", disconnect);
+
+    // Publish readiness before the socket becomes command-visible. WebSocket
+    // ordering then guarantees every command sent through this socket follows
+    // the ready envelope on the wire.
+    let readyPublished = true;
+    try {
+      readyPublished = socket.publishReady?.() ?? true;
+    } catch {
+      readyPublished = false;
+    }
+    if (!readyPublished || !workerSocketIsAttachable(socket)) return false;
+
+    // Make buffered reconnect outcomes visible only after readiness is queued,
+    // but retain the previous lifecycle until activation also succeeds.
+    this.#sockets.set(workerId, socket);
+    let activated = true;
+    try {
+      activated = socket.activate?.() ?? true;
+    } catch {
+      activated = false;
+    }
+    if (!activated) {
+      if (this.#sockets.get(workerId) === socket) {
+        if (restorableSocket) this.#sockets.set(workerId, restorableSocket);
+        else this.#sockets.delete(workerId);
+      }
+      return false;
+    }
+    this.clearDisconnectTimer(workerId);
+    this.#interruptionGenerations.delete(workerId);
+    this.#disconnectedAt.delete(workerId);
+    if (continuityIdentity) {
+      this.#continuityIdentities.set(workerId, continuityIdentity);
+    } else {
+      this.#continuityIdentities.delete(workerId);
+    }
+    if (closeReplacedSocket) {
       this.logger.event("warn", "Worker connection replaced", {
         event: "worker.connection.replaced",
         subsystem: "worker-connection",
         status: "replaced",
         workerId,
       });
-      existing.close(1012, "Worker reconnected");
+      existing?.close(1012, "Worker reconnected");
     }
-    const disconnectedAt = this.#disconnectedAt.get(workerId);
-    this.#sockets.set(workerId, socket);
-    this.clearDisconnectTimer(workerId);
-    this.#disconnectedAt.delete(workerId);
     this.logger.event(
       "info",
       disconnectedAt ? "Worker reconnected" : "Worker connected",
@@ -207,20 +331,16 @@ export class WorkerBridge implements WorkerCommandBus {
       },
     );
 
-    socket.on("message", (data, isBinary) =>
-      this.handleSocketMessage(workerId, data, Boolean(isBinary)),
-    );
-
-    const disconnect = () => this.handleSocketDisconnect(workerId, socket);
-    socket.on("close", disconnect);
-    socket.on("error", disconnect);
+    return true;
   }
 
   private handleSocketMessage(
     workerId: string,
+    socket: WorkerSocket,
     data: unknown,
     isBinary: boolean,
   ): void {
+    if (this.#sockets.get(workerId) !== socket) return;
     if (isBinary) {
       this.handleBinaryFrame(workerId, data);
       return;
@@ -394,6 +514,8 @@ export class WorkerBridge implements WorkerCommandBus {
     if (this.#sockets.get(workerId) !== socket) return;
     this.#sockets.delete(workerId);
     this.#disconnectedAt.set(workerId, Date.now());
+    const interruptionGeneration = Symbol(workerId);
+    this.#interruptionGenerations.set(workerId, interruptionGeneration);
     this.logger.event("warn", "Worker connection interrupted", {
       event: "worker.connection.interrupted",
       subsystem: "worker-connection",
@@ -401,11 +523,11 @@ export class WorkerBridge implements WorkerCommandBus {
       reasonCode: "socket-disconnected",
       workerId,
     });
+    this.scheduleDisconnectedRequestRejection(workerId, interruptionGeneration);
     for (const listener of this.#workerDisconnectListeners.get(workerId) ??
       []) {
       listener();
     }
-    this.scheduleDisconnectedRequestRejection(workerId);
   }
 
   disconnect(
@@ -420,13 +542,12 @@ export class WorkerBridge implements WorkerCommandBus {
       reasonCode: code === 1008 ? "credential-revoked" : "server-disconnect",
       workerId,
     });
-    this.clearDisconnectTimer(workerId);
-    this.rejectWorkerRequests(
+    this.terminateWorkerLifecycle(
       workerId,
       new WorkerUnavailableError(`Worker ${workerId} disconnected.`),
+      code,
+      reason,
     );
-    this.#sockets.get(workerId)?.close(code, reason);
-    this.clearDisconnectTimer(workerId);
   }
 
   isConnected(workerId: string): boolean {
@@ -519,6 +640,14 @@ export class WorkerBridge implements WorkerCommandBus {
   ): () => void {
     return subscribeKeyedListener(
       this.#workerDisconnectListeners,
+      workerId,
+      listener,
+    );
+  }
+
+  subscribeWorkerOffline(workerId: string, listener: () => void): () => void {
+    return subscribeKeyedListener(
+      this.#workerOfflineListeners,
       workerId,
       listener,
     );
@@ -630,20 +759,30 @@ export class WorkerBridge implements WorkerCommandBus {
         pendingRequests: this.#pending.size,
       },
     });
-    for (const socket of this.#sockets.values()) {
-      socket.close(1001, "Server shutting down");
+    const workers = new Set([
+      ...this.#sockets.keys(),
+      ...this.#disconnectedAt.keys(),
+      ...this.#continuityIdentities.keys(),
+    ]);
+    for (const workerId of workers) {
+      this.terminateWorkerLifecycle(
+        workerId,
+        new WorkerUnavailableError("Server is shutting down."),
+        1001,
+        "Server shutting down",
+      );
     }
     this.#sockets.clear();
     for (const timer of this.#disconnectTimers.values()) clearTimeout(timer);
     this.#disconnectTimers.clear();
     this.#disconnectedAt.clear();
+    this.#interruptionGenerations.clear();
+    this.#continuityIdentities.clear();
     this.#surfaceListeners.clear();
     this.#tunnelDataPlaneListeners.clear();
     this.#notificationListeners.clear();
-    for (const listeners of this.#workerDisconnectListeners.values()) {
-      for (const listener of listeners) listener();
-    }
     this.#workerDisconnectListeners.clear();
+    this.#workerOfflineListeners.clear();
     for (const pending of this.#pending.values()) {
       if (pending.timeout) clearTimeout(pending.timeout);
       pending.reject(new WorkerUnavailableError("Server is shutting down."));
@@ -680,10 +819,13 @@ export class WorkerBridge implements WorkerCommandBus {
     }
   }
 
-  private scheduleDisconnectedRequestRejection(workerId: string): void {
+  private scheduleDisconnectedRequestRejection(
+    workerId: string,
+    interruptionGeneration: symbol,
+  ): void {
     this.clearDisconnectTimer(workerId);
     if (this.reconnectGraceMs <= 0) {
-      this.rejectWorkerRequests(
+      this.terminateWorkerLifecycle(
         workerId,
         new WorkerUnavailableError(`Worker ${workerId} disconnected.`),
       );
@@ -691,7 +833,12 @@ export class WorkerBridge implements WorkerCommandBus {
     }
     const timer = setTimeout(() => {
       this.#disconnectTimers.delete(workerId);
-      if (this.#sockets.has(workerId)) return;
+      if (
+        this.#sockets.has(workerId) ||
+        this.#interruptionGenerations.get(workerId) !== interruptionGeneration
+      ) {
+        return;
+      }
       this.logger.event("warn", "Worker reconnect grace expired", {
         event: "worker.connection.offline",
         subsystem: "worker-connection",
@@ -700,7 +847,7 @@ export class WorkerBridge implements WorkerCommandBus {
         durationMs: this.reconnectGraceMs,
         workerId,
       });
-      this.rejectWorkerRequests(
+      this.terminateWorkerLifecycle(
         workerId,
         new WorkerUnavailableError(`Worker ${workerId} disconnected.`),
       );
@@ -714,5 +861,41 @@ export class WorkerBridge implements WorkerCommandBus {
     if (!timer) return;
     clearTimeout(timer);
     this.#disconnectTimers.delete(workerId);
+  }
+
+  private terminateWorkerLifecycle(
+    workerId: string,
+    error: Error,
+    closeCode?: number,
+    closeReason?: string,
+  ): boolean {
+    const socket = this.#sockets.get(workerId);
+    const hadLifecycle = Boolean(
+      socket ||
+      this.#disconnectedAt.has(workerId) ||
+      this.#continuityIdentities.has(workerId) ||
+      this.#interruptionGenerations.has(workerId),
+    );
+    this.#sockets.delete(workerId);
+    this.clearDisconnectTimer(workerId);
+    this.#disconnectedAt.delete(workerId);
+    this.#interruptionGenerations.delete(workerId);
+    this.#continuityIdentities.delete(workerId);
+    this.rejectWorkerRequests(workerId, error);
+    if (socket) {
+      for (const listener of this.#workerDisconnectListeners.get(workerId) ??
+        []) {
+        listener();
+      }
+    }
+    if (socket && closeCode !== undefined) {
+      socket.close(closeCode, closeReason);
+    }
+    if (hadLifecycle) {
+      for (const listener of this.#workerOfflineListeners.get(workerId) ?? []) {
+        listener();
+      }
+    }
+    return hadLifecycle;
   }
 }

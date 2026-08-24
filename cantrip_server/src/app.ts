@@ -419,6 +419,8 @@ import {
   workerCredentialListSchema,
   workerCredentialRotateResultSchema,
   workerCredentialRotateSchema,
+  encodeWorkerConnectionEnvelope,
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
   workerEnrollmentCodeCreateSchema,
   workerLogReadQuerySchema,
   workerEnrollmentCodeResultSchema,
@@ -833,6 +835,7 @@ import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "./workers/bridge.js";
+import { BufferedWorkerSocket } from "./workers/buffered-socket.js";
 import { workerLogStreamConsumerIsSlow } from "./workers/log-stream.js";
 import {
   authenticateWorkerRequest,
@@ -908,6 +911,7 @@ import {
 } from "./security/abuse-limits.js";
 import { LimitedWorkerCommandBus } from "./workers/limited-command-bus.js";
 import { MeteredWorkerCommandBus } from "./workers/metered-command-bus.js";
+import { selectCantripWebSocketSubprotocol } from "./workers/websocket-subprotocol.js";
 import {
   DirectAttachmentCoordinator,
   DirectAttachmentUnavailableError,
@@ -1292,6 +1296,10 @@ const CONFIGURABLE_PERMISSION_PROFILES = [
     allowed: true,
   },
 ] as const;
+
+const MAX_PENDING_WORKER_HANDSHAKES = 32;
+const WORKER_HANDSHAKE_TIMEOUT_MS = 10_000;
+const WORKER_HANDSHAKE_LIMIT_KEY = "worker-command-handshake";
 
 export async function buildApp({
   config,
@@ -3781,7 +3789,10 @@ export async function buildApp({
     origin: config.appOrigins,
   });
   await app.register(websocket, {
-    options: { maxPayload: websocketMaxPayloadBytes },
+    options: {
+      handleProtocols: selectCantripWebSocketSubprotocol,
+      maxPayload: websocketMaxPayloadBytes,
+    },
   });
 
   const sessionService = new UserSessionService(repository, config);
@@ -3800,6 +3811,9 @@ export async function buildApp({
   );
   const accountWebsockets = new ActiveLimit(config.accountWebsocketLimit ?? 32);
   const accountUploads = new ActiveLimit(config.accountUploadConcurrency ?? 4);
+  const pendingWorkerHandshakes = new ActiveLimit(
+    MAX_PENDING_WORKER_HANDSHAKES,
+  );
   const uploadReleases = new WeakMap<FastifyRequest, () => void>();
   const sessionSockets = new Map<
     string,
@@ -32583,206 +32597,294 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Querystring: { workerId?: string } }>(
+  app.get<{
+    Querystring: { connectionGeneration?: string; workerId?: string };
+  }>(
     "/api/internal/workers/connect",
     { websocket: true },
     async (socket, request) => {
-      const workerId = request.query.workerId;
-      if (!workerId) {
-        serverLogger.rateLimited(
-          "worker-connect-missing-id",
-          "warn",
-          "Worker connection rejected",
-          {
-            event: "worker.authentication.rejected",
-            subsystem: "worker-connection",
-            operation: "connect",
-            reasonCode: "worker-id-missing",
-            requestId: request.id,
-            status: "rejected",
-          },
-        );
-        socket.close(1008, "Unauthorized");
+      const releasePendingHandshake = pendingWorkerHandshakes.acquire(
+        WORKER_HANDSHAKE_LIMIT_KEY,
+      );
+      if (!releasePendingHandshake) {
+        socket.close(1013, "Worker authentication capacity is unavailable");
         return;
       }
-      const workerAuth = await authenticateWorkerRequest(
-        repository,
-        config,
-        request,
-        workerId,
-        "worker:connect",
-      );
-      if (!workerAuth) {
-        serverLogger.rateLimited(
-          `worker-connect-unauthorized:${workerId}`,
-          "warn",
-          "Worker connection authentication failed",
-          {
+      const workerSocket = new BufferedWorkerSocket(socket);
+      const authenticationTimeout = setTimeout(() => {
+        workerSocket.close(1013, "Worker authentication timed out");
+      }, WORKER_HANDSHAKE_TIMEOUT_MS);
+      authenticationTimeout.unref();
+      try {
+        const workerId = request.query.workerId;
+        if (!workerId) {
+          serverLogger.rateLimited(
+            "worker-connect-missing-id",
+            "warn",
+            "Worker connection rejected",
+            {
+              event: "worker.authentication.rejected",
+              subsystem: "worker-connection",
+              operation: "connect",
+              reasonCode: "worker-id-missing",
+              requestId: request.id,
+              status: "rejected",
+            },
+          );
+          workerSocket.close(1008, "Unauthorized");
+          return;
+        }
+        const workerProcessGeneration = request.query.connectionGeneration;
+        if (
+          workerProcessGeneration !== undefined &&
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+            workerProcessGeneration,
+          )
+        ) {
+          serverLogger.rateLimited(
+            `worker-connect-invalid-generation:${workerId}`,
+            "warn",
+            "Worker connection rejected",
+            {
+              event: "worker.authentication.rejected",
+              subsystem: "worker-connection",
+              operation: "connect",
+              reasonCode: "connection-generation-invalid",
+              requestId: request.id,
+              status: "rejected",
+              workerId,
+            },
+          );
+          workerSocket.close(1008, "Unauthorized");
+          return;
+        }
+        const authenticatedReadyNegotiated =
+          workerSocket.protocol === WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL;
+        if (authenticatedReadyNegotiated && !workerProcessGeneration) {
+          workerSocket.close(1002, "Worker connection generation is required");
+          return;
+        }
+        if (authenticatedReadyNegotiated && workerProcessGeneration) {
+          workerSocket.send(
+            encodeWorkerConnectionEnvelope({
+              kind: "connection",
+              state: "pending",
+              protocolVersion: 1,
+              connectionGeneration: workerProcessGeneration,
+            }),
+          );
+          workerSocket.prepareReady(
+            encodeWorkerConnectionEnvelope({
+              kind: "connection",
+              state: "ready",
+              protocolVersion: 1,
+              connectionGeneration: workerProcessGeneration,
+            }),
+          );
+        }
+        const workerAuth = await authenticateWorkerRequest(
+          repository,
+          config,
+          request,
+          workerId,
+          "worker:connect",
+        );
+        if (!workerAuth) {
+          serverLogger.rateLimited(
+            `worker-connect-unauthorized:${workerId}`,
+            "warn",
+            "Worker connection authentication failed",
+            {
+              event: "worker.authentication.rejected",
+              subsystem: "worker-connection",
+              operation: "connect",
+              reasonCode: "invalid-credential",
+              requestId: request.id,
+              status: "rejected",
+              workerId,
+            },
+          );
+          workerSocket.close(1008, "Unauthorized");
+          return;
+        }
+        if (
+          !workerAuth.development &&
+          revokedWorkerCredentialIds.has(workerAuth.id)
+        ) {
+          serverLogger.event("warn", "Revoked worker credential rejected", {
             event: "worker.authentication.rejected",
             subsystem: "worker-connection",
             operation: "connect",
-            reasonCode: "invalid-credential",
+            reasonCode: "credential-revoked",
             requestId: request.id,
             status: "rejected",
             workerId,
-          },
-        );
-        socket.close(1008, "Unauthorized");
-        return;
-      }
-      if (
-        !workerAuth.development &&
-        revokedWorkerCredentialIds.has(workerAuth.id)
-      ) {
-        serverLogger.event("warn", "Revoked worker credential rejected", {
-          event: "worker.authentication.rejected",
-          subsystem: "worker-connection",
-          operation: "connect",
-          reasonCode: "credential-revoked",
-          requestId: request.id,
-          status: "rejected",
-          workerId,
-        });
-        socket.close(1008, "Worker credential was revoked");
-        return;
-      }
-      const ownerId = await repository.getWorkerOwnerId(workerId);
-      if (ownerId !== workerAuth.ownerId) {
-        serverLogger.event("warn", "Worker identity mismatch rejected", {
-          event: "worker.authentication.rejected",
-          subsystem: "worker-connection",
-          operation: "connect",
-          reasonCode: "owner-mismatch",
-          requestId: request.id,
-          status: "rejected",
-          workerId,
-        });
-        socket.close(1008, "Worker identity mismatch");
-        return;
-      }
-      // Subscribe before attaching the socket. A reconnecting worker flushes
-      // buffered command outcomes as soon as the WebSocket opens, so attaching
-      // first leaves a race where the bridge receives a valid outcome before
-      // the application has registered its persistence listener.
-      ensureWorkerNotificationSubscription(workerAuth.ownerId, workerId);
-      try {
-        await bridge.attach(workerId, socket, workerAuth.ownerId);
-      } catch (error) {
-        serverLogger.event("error", "Could not claim worker connection", {
-          event: "worker.connection.claim-failed",
-          subsystem: "worker-connection",
-          operation: "connect",
-          reasonCode: "coordination-unavailable",
-          requestId: request.id,
-          status: "failed",
-          workerId,
-          error: error instanceof Error ? error : new Error(String(error)),
-        });
-        socket.close(1013, "Worker relay coordination is unavailable");
-        return;
-      }
-      runAsOwner(workerAuth.ownerId, () =>
-        publishLiveInvalidation("worker", { entityId: workerId }),
-      );
-      serverLogger.event("info", "Worker command channel authenticated", {
-        event: "worker.authentication.completed",
-        subsystem: "worker-connection",
-        operation: "connect",
-        requestId: request.id,
-        status: "authenticated",
-        workerId,
-      });
-      catalogWorkers.set(workerId, workerAuth.ownerId);
-      void providerCredentialMigrations
-        .migrateWorker(workerAuth.ownerId, workerId)
-        .then((summary) => {
+          });
+          workerSocket.close(1008, "Worker credential was revoked");
+          return;
+        }
+        const ownerId = await repository.getWorkerOwnerId(workerId);
+        if (ownerId !== workerAuth.ownerId) {
+          serverLogger.event("warn", "Worker identity mismatch rejected", {
+            event: "worker.authentication.rejected",
+            subsystem: "worker-connection",
+            operation: "connect",
+            reasonCode: "owner-mismatch",
+            requestId: request.id,
+            status: "rejected",
+            workerId,
+          });
+          workerSocket.close(1008, "Worker identity mismatch");
+          return;
+        }
+        // Subscribe before activating the bounded authentication buffer.
+        // Legacy workers may flush outcomes as soon as the WebSocket opens;
+        // protocol-aware workers wait for the authenticated ready envelope.
+        // Neither persistence nor command correlation may miss either flush.
+        ensureWorkerNotificationSubscription(workerAuth.ownerId, workerId);
+        const resolvedWorkerProcessGeneration =
+          workerProcessGeneration ?? randomUUID();
+        try {
+          const accepted = await bridge.attach(
+            workerId,
+            workerSocket,
+            workerAuth.ownerId,
+            {
+              credentialId: workerAuth.id,
+              ownerId: workerAuth.ownerId,
+              workerProcessGeneration: resolvedWorkerProcessGeneration,
+            },
+          );
           if (
-            summary.captured > 0 ||
-            summary.conflicts > 0 ||
-            summary.failed > 0 ||
-            summary.malformed > 0
+            accepted === false ||
+            !workerSocket.publishReady() ||
+            !workerSocket.activate()
           ) {
-            app.log.info(
-              { migration: summary, workerId },
-              "Provider credential migration pass completed",
-            );
+            workerSocket.close(1012, "Worker connection was not accepted");
+            return;
           }
-        })
-        .catch(() => {
-          app.log.warn(
-            { workerId },
-            "Provider credential migration pass could not start",
-          );
-        });
-      void refreshWorkerScopedCatalogs(
-        workerAuth.ownerId,
-        workerId,
-        "worker-reconnected",
-      ).catch(() => undefined);
-      void projectReplicaJobExecutor
-        .workerConnected(workerId)
-        .catch((error) => {
-          app.log.error(
-            { err: error, workerId },
-            "Could not resume project replica jobs",
-          );
-        });
-      void projectFolderSetupJobExecutor
-        .workerConnected(workerId)
-        .catch((error) => {
-          app.log.error(
-            { err: error, workerId },
-            "Could not resume project folder setup jobs",
-          );
-        });
-      void projectGithubConversionJobExecutor
-        .workerConnected(workerId)
-        .catch((error) => {
-          app.log.error(
-            { err: error, workerId },
-            "Could not resume project GitHub conversion jobs",
-          );
-        });
-      void chatRelocationJobExecutor
-        .workerConnected(workerId)
-        .catch((error) => {
-          app.log.error(
-            { err: error, workerId },
-            "Could not resume chat relocation jobs",
-          );
-        });
-      void chatImportJobExecutor.workerConnected(workerId).catch((error) => {
-        app.log.error(
-          { err: error, workerId },
-          "Could not resume chat import jobs",
+        } catch (error) {
+          serverLogger.event("error", "Could not claim worker connection", {
+            event: "worker.connection.claim-failed",
+            subsystem: "worker-connection",
+            operation: "connect",
+            reasonCode: "coordination-unavailable",
+            requestId: request.id,
+            status: "failed",
+            workerId,
+            error: error instanceof Error ? error : new Error(String(error)),
+          });
+          workerSocket.close(1013, "Worker relay coordination is unavailable");
+          return;
+        }
+        runAsOwner(workerAuth.ownerId, () =>
+          publishLiveInvalidation("worker", { entityId: workerId }),
         );
-      });
-      void synchronizeTerminalServicesForWorker(workerId).catch(() => {
-        app.log.error({ workerId }, "Could not reconcile terminal services");
-      });
-      void reconcileRunConfigurationRuntimesForWorker(
-        workerAuth.ownerId,
-        workerId,
-      ).catch((error) => {
-        app.log.error(
-          { err: error, workerId },
-          "Could not reconcile Run configuration runtimes",
+        serverLogger.event("info", "Worker command channel authenticated", {
+          event: "worker.authentication.completed",
+          subsystem: "worker-connection",
+          operation: "connect",
+          requestId: request.id,
+          status: "authenticated",
+          workerId,
+          workerProcessGeneration: resolvedWorkerProcessGeneration,
+        });
+        catalogWorkers.set(workerId, workerAuth.ownerId);
+        void providerCredentialMigrations
+          .migrateWorker(workerAuth.ownerId, workerId)
+          .then((summary) => {
+            if (
+              summary.captured > 0 ||
+              summary.conflicts > 0 ||
+              summary.failed > 0 ||
+              summary.malformed > 0
+            ) {
+              app.log.info(
+                { migration: summary, workerId },
+                "Provider credential migration pass completed",
+              );
+            }
+          })
+          .catch(() => {
+            app.log.warn(
+              { workerId },
+              "Provider credential migration pass could not start",
+            );
+          });
+        void refreshWorkerScopedCatalogs(
+          workerAuth.ownerId,
+          workerId,
+          "worker-reconnected",
+        ).catch(() => undefined);
+        void projectReplicaJobExecutor
+          .workerConnected(workerId)
+          .catch((error) => {
+            app.log.error(
+              { err: error, workerId },
+              "Could not resume project replica jobs",
+            );
+          });
+        void projectFolderSetupJobExecutor
+          .workerConnected(workerId)
+          .catch((error) => {
+            app.log.error(
+              { err: error, workerId },
+              "Could not resume project folder setup jobs",
+            );
+          });
+        void projectGithubConversionJobExecutor
+          .workerConnected(workerId)
+          .catch((error) => {
+            app.log.error(
+              { err: error, workerId },
+              "Could not resume project GitHub conversion jobs",
+            );
+          });
+        void chatRelocationJobExecutor
+          .workerConnected(workerId)
+          .catch((error) => {
+            app.log.error(
+              { err: error, workerId },
+              "Could not resume chat relocation jobs",
+            );
+          });
+        void chatImportJobExecutor.workerConnected(workerId).catch((error) => {
+          app.log.error(
+            { err: error, workerId },
+            "Could not resume chat import jobs",
+          );
+        });
+        void synchronizeTerminalServicesForWorker(workerId).catch(() => {
+          app.log.error({ workerId }, "Could not reconcile terminal services");
+        });
+        void reconcileRunConfigurationRuntimesForWorker(
+          workerAuth.ownerId,
+          workerId,
+        ).catch((error) => {
+          app.log.error(
+            { err: error, workerId },
+            "Could not reconcile Run configuration runtimes",
+          );
+        });
+        scheduleWorkerWorktreeObservation(workerId);
+        void resumePendingWorktreeTransitionsForWorker(
+          workerAuth.ownerId,
+          workerId,
         );
-      });
-      scheduleWorkerWorktreeObservation(workerId);
-      void resumePendingWorktreeTransitionsForWorker(
-        workerAuth.ownerId,
-        workerId,
-      );
-      void workflowExecutor.recoverWorktreeLeases(workerId).catch((error) => {
-        app.log.error(
-          { err: error, workerId },
-          "Could not recover workflow worktree leases",
-        );
-      });
-      void workflowExecutor.queueAvailableRuns().catch((error) => {
-        app.log.error({ err: error }, "Could not dispatch queued workflows");
-      });
+        void workflowExecutor.recoverWorktreeLeases(workerId).catch((error) => {
+          app.log.error(
+            { err: error, workerId },
+            "Could not recover workflow worktree leases",
+          );
+        });
+        void workflowExecutor.queueAvailableRuns().catch((error) => {
+          app.log.error({ err: error }, "Could not dispatch queued workflows");
+        });
+      } finally {
+        clearTimeout(authenticationTimeout);
+        workerSocket.disposePending();
+        releasePendingHandshake();
+      }
     },
   );
 

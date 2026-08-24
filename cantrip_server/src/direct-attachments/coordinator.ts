@@ -48,6 +48,23 @@ interface DirectGrant {
   telemetry: DirectTransportTelemetry;
 }
 
+type WorkerOfflineSubscription = {
+  subscribeWorkerOffline?: WorkerCommandBus["subscribeWorkerDisconnect"];
+};
+
+function subscribeWorkerTerminalOffline(
+  workers: WorkerCommandBus,
+  workerId: string,
+  listener: () => void,
+): () => void {
+  const subscribeOffline = (
+    workers as WorkerCommandBus & WorkerOfflineSubscription
+  ).subscribeWorkerOffline;
+  return subscribeOffline
+    ? subscribeOffline.call(workers, workerId, listener)
+    : workers.subscribeWorkerDisconnect(workerId, listener);
+}
+
 interface DirectResourceLifecycle {
   generation: symbol;
   pending: Set<Promise<void>>;
@@ -499,7 +516,8 @@ export class DirectAttachmentCoordinator {
       );
     }
     const timer = this.#scheduleExpiry(capabilityId, leaseExpiresAt);
-    const unsubscribeDisconnect = this.workers.subscribeWorkerDisconnect(
+    const unsubscribeDisconnect = subscribeWorkerTerminalOffline(
+      this.workers,
       input.worker.workerId,
       () => this.#finalize(capabilityId, "worker_disconnected"),
     );

@@ -57,6 +57,9 @@ import {
   CANTRIP_MCP_MUTATION_TOOL_NAMES,
   CANTRIP_MCP_OPERATIONS,
   CANTRIP_MCP_TOOL_NAMES,
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_SUBPROTOCOLS,
   cantripMcpOperationsForPermissionProfile,
   cantripMcpToolNamesForOperations,
   isCantripMcpMutationOperation,
@@ -77,11 +80,13 @@ import {
   codeAttachmentCreateSchema,
   codeRuntimeStatusSchema,
   codeTabSummarySchema,
+  decodeWorkerConnectionEnvelope,
   decodeWorkerRequestEnvelope,
   decodeWorkerServerEnvelope,
   decodeRemoteSurfaceFrame,
   desktopStreamSettingsSchema,
   encodeRemoteSurfaceFrame,
+  encodeWorkerConnectionEnvelope,
   encodeWorkerRequestEnvelope,
   encodeWorkerServerEnvelope,
   executionPlacementSchema,
@@ -388,6 +393,17 @@ describe("worker channel JSON codec", () => {
     ).not.toHaveProperty("path");
   });
 
+  it("exports stable worker WebSocket subprotocols in compatibility order", () => {
+    expect(WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL).toBe("cantrip-worker-legacy");
+    expect(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL).toBe(
+      "cantrip-worker-auth-ready-v1",
+    );
+    expect(WORKER_WEBSOCKET_SUBPROTOCOLS).toEqual([
+      "cantrip-worker-legacy",
+      "cantrip-worker-auth-ready-v1",
+    ]);
+  });
+
   it("round-trips request and server envelopes", () => {
     const request = {
       kind: "request" as const,
@@ -407,6 +423,31 @@ describe("worker channel JSON codec", () => {
     expect(
       decodeWorkerServerEnvelope(encodeWorkerServerEnvelope(response)),
     ).toEqual({ data: response, success: true });
+  });
+
+  it("round-trips strict worker connection readiness envelopes", () => {
+    const connection = {
+      kind: "connection" as const,
+      state: "ready" as const,
+      protocolVersion: 1 as const,
+      connectionGeneration: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+    };
+
+    expect(
+      decodeWorkerConnectionEnvelope(
+        encodeWorkerConnectionEnvelope(connection),
+      ),
+    ).toEqual({ data: connection, success: true });
+    expect(
+      decodeWorkerConnectionEnvelope(
+        JSON.stringify({ ...connection, authenticated: true }),
+      ),
+    ).toMatchObject({ reason: "invalid-message", success: false });
+    expect(
+      decodeWorkerConnectionEnvelope(
+        JSON.stringify({ ...connection, protocolVersion: 2 }),
+      ),
+    ).toMatchObject({ reason: "invalid-message", success: false });
   });
 
   it("round-trips durable agent turn outcomes", () => {

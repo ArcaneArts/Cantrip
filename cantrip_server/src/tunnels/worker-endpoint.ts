@@ -12,6 +12,23 @@ import type {
   TunnelEndpointFrameListener,
 } from "./broker.js";
 
+type WorkerOfflineSubscription = {
+  subscribeWorkerOffline?: WorkerCommandBus["subscribeWorkerDisconnect"];
+};
+
+export function subscribeWorkerTerminalOffline(
+  bridge: WorkerCommandBus,
+  workerId: string,
+  listener: () => void,
+): () => void {
+  const subscribeOffline = (
+    bridge as WorkerCommandBus & WorkerOfflineSubscription
+  ).subscribeWorkerOffline;
+  return subscribeOffline
+    ? subscribeOffline.call(bridge, workerId, listener)
+    : bridge.subscribeWorkerDisconnect(workerId, listener);
+}
+
 export class WorkerTunnelEndpoint implements TunnelDataPlaneEndpoint {
   readonly endpointId: string;
   readonly placement: { kind: "worker"; workerId: string };
@@ -67,6 +84,6 @@ export class WorkerTunnelEndpoint implements TunnelDataPlaneEndpoint {
   }
 
   subscribeDisconnect(listener: () => void): () => void {
-    return this.bridge.subscribeWorkerDisconnect(this.workerId, listener);
+    return subscribeWorkerTerminalOffline(this.bridge, this.workerId, listener);
   }
 }
