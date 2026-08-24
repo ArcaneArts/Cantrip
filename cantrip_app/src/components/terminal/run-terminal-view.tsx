@@ -3,7 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import type { TerminalSummary } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Play, RotateCw, Square } from "lucide-react";
+import { Loader2, Pencil, Play, RotateCw, Square } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -127,12 +127,14 @@ export function RunTerminalView({
   runtime,
   targetLabel,
   terminal,
+  onEdit,
 }: {
   definitionAvailable: boolean | null;
   definitionProblem?: string | null;
   runtime: RunConfigurationRuntime | null;
   targetLabel: string;
   terminal: TerminalSummary;
+  onEdit?(): void;
 }) {
   const queryClient = useQueryClient();
   const active = runConfigurationRuntimeIsActive(runtime);
@@ -222,14 +224,21 @@ export function RunTerminalView({
           {lifecycle.error ? (
             <InlineAlert tone="error">{lifecycle.error.message}</InlineAlert>
           ) : null}
-          <Button
-            disabled={definitionAvailable !== true}
-            onClick={() => lifecycle.mutate("start")}
-            pending={lifecycle.isPending}
-            pendingLabel="Starting…"
-          >
-            <Play className="size-4 fill-current" /> Start
-          </Button>
+          <div className="flex items-center gap-2">
+            {onEdit ? (
+              <Button onClick={onEdit} variant="outline">
+                <Pencil className="size-4" /> Edit configuration
+              </Button>
+            ) : null}
+            <Button
+              disabled={definitionAvailable !== true}
+              onClick={() => lifecycle.mutate("start")}
+              pending={lifecycle.isPending}
+              pendingLabel="Starting…"
+            >
+              <Play className="size-4 fill-current" /> Start
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -262,6 +271,11 @@ export function RunTerminalView({
           />
           Restart
         </Button>
+        {onEdit ? (
+          <Button onClick={onEdit} size="sm" variant="ghost">
+            <Pencil className="size-3.5" /> Edit
+          </Button>
+        ) : null}
         <Button
           disabled={status === "stopping" || lifecycle.isPending}
           onClick={() => lifecycle.mutate("stop")}
