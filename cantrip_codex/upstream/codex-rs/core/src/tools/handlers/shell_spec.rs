@@ -49,11 +49,11 @@ pub(crate) fn create_exec_command_tool_with_environment_id(
         ),
         (
             "yield_time_ms".to_string(),
-            JsonSchema::number(Some(yield_time_ms_description.to_string())),
+            JsonSchema::integer(Some(yield_time_ms_description.to_string())),
         ),
         (
             "max_output_tokens".to_string(),
-            JsonSchema::number(Some(
+            JsonSchema::integer(Some(
                 "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.".to_string(),
             )),
         ),
@@ -114,7 +114,7 @@ pub fn create_write_stdin_tool() -> ToolSpec {
     let properties = BTreeMap::from([
         (
             "session_id".to_string(),
-            JsonSchema::number(Some(
+            JsonSchema::integer(Some(
                 "Identifier of the running unified exec session.".to_string(),
             )),
         ),
@@ -126,13 +126,13 @@ pub fn create_write_stdin_tool() -> ToolSpec {
         ),
         (
             "yield_time_ms".to_string(),
-            JsonSchema::number(Some(
+            JsonSchema::integer(Some(
                 "Wait before yielding output. Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.".to_string(),
             )),
         ),
         (
             "max_output_tokens".to_string(),
-            JsonSchema::number(Some(
+            JsonSchema::integer(Some(
                 "Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.".to_string(),
             )),
         ),
@@ -170,7 +170,7 @@ pub fn create_shell_command_tool(options: CommandToolOptions) -> ToolSpec {
         ),
         (
             "timeout_ms".to_string(),
-            JsonSchema::number(Some(
+            JsonSchema::integer(Some(
                 "Maximum command runtime. Defaults to 10000 ms.".to_string(),
             )),
         ),
