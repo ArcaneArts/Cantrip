@@ -4,11 +4,14 @@ import { taskWorkerCreateSchema } from "@cantrip/protocol/task-scheduling";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { TaskSchedulingConflictError } from "../src/db/task-scheduling.js";
 import {
   DEFAULT_MODEL_ID,
+  DEFAULT_MODEL_ROUTE_ID,
+  DEFAULT_OLLAMA_PROVIDER_ID,
   LOCAL_USER_ID,
   ServerRepository,
 } from "../src/db/repository.js";
@@ -177,6 +180,73 @@ describe("Task scheduling persistence", () => {
         ),
       ).rejects.toMatchObject<Partial<TaskSchedulingConflictError>>({
         code: "stale-version",
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("infers trusted continuity families and rejects incompatible subagents", async () => {
+    const { client, database, repository } = await fixture();
+    try {
+      const catalogModelId = crypto.randomUUID();
+      await database.insert(schema.providerModels).values({
+        id: catalogModelId,
+        providerId: DEFAULT_OLLAMA_PROVIDER_ID,
+        nativeModelId: "grok-4.6",
+        displayName: "Grok 4.6",
+        family: "Grok",
+        metadataSource: "grok",
+      });
+      await database
+        .update(schema.modelRoutes)
+        .set({ providerModelId: catalogModelId })
+        .where(eq(schema.modelRoutes.id, DEFAULT_MODEL_ROUTE_ID));
+
+      const inferred = await repository.taskScheduling.createTaskWorker(
+        LOCAL_USER_ID,
+        workerInput("Inferred family"),
+      );
+      expect(inferred).toMatchObject({
+        continuityFamily: "grok",
+        continuityFamilyOverride: null,
+      });
+
+      const otherProviderId = crypto.randomUUID();
+      const otherModelId = crypto.randomUUID();
+      await database.insert(schema.modelProviders).values({
+        id: otherProviderId,
+        ownerId: LOCAL_USER_ID,
+        name: "Other provider",
+        kind: "ollama",
+        baseUrl: "http://127.0.0.1:22468",
+      });
+      await database.insert(schema.modelProfiles).values({
+        id: otherModelId,
+        ownerId: LOCAL_USER_ID,
+        name: "Other model",
+      });
+      await database.insert(schema.modelRoutes).values({
+        id: crypto.randomUUID(),
+        modelId: otherModelId,
+        providerId: otherProviderId,
+        modelName: "other-model",
+      });
+
+      await expect(
+        repository.taskScheduling.createTaskWorker(
+          LOCAL_USER_ID,
+          taskWorkerCreateSchema.parse({
+            name: "Incompatible subagent",
+            modelConfiguration: {
+              modelId: DEFAULT_MODEL_ID,
+              customSubagentModel: true,
+              subagentModelId: otherModelId,
+            },
+          }),
+        ),
+      ).rejects.toMatchObject<Partial<TaskSchedulingConflictError>>({
+        code: "model-incompatible",
       });
     } finally {
       await client.close();

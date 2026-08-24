@@ -37,6 +37,7 @@ describe("account settings", () => {
     const usage = markup.indexOf(">Usage<");
     const code = markup.indexOf(">Code<");
     const models = markup.indexOf(">Models<");
+    const tasks = markup.indexOf(">Tasks<");
     const workers = markup.indexOf(">Workers<");
     const logs = markup.indexOf(">Logs<");
 
@@ -45,7 +46,8 @@ describe("account settings", () => {
     expect(code).toBeGreaterThan(general);
     expect(usage).toBeGreaterThan(code);
     expect(models).toBeGreaterThan(usage);
-    expect(workers).toBeGreaterThan(models);
+    expect(tasks).toBeGreaterThan(models);
+    expect(workers).toBeGreaterThan(tasks);
     expect(logs).toBeGreaterThan(workers);
   });
 
