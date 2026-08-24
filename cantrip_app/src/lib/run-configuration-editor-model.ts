@@ -4,6 +4,7 @@ import {
   runConfigurationFileSchema,
   type RunConfigurationDartDocument,
   type RunConfigurationFile,
+  type RunConfigurationFlutterDocument,
   type RunConfigurationJavaDocument,
   type RunConfigurationNodeDocument,
   type RunConfigurationProviderKind,
@@ -86,16 +87,36 @@ export function createDartRunConfigurationDocument(
   };
 }
 
+export function createFlutterRunConfigurationDocument(
+  id = crypto.randomUUID(),
+): RunConfigurationFlutterDocument {
+  return {
+    ...commonDocument(id),
+    provider: "flutter",
+    target: { kind: "entrypoint", path: "lib/main.dart" },
+    options: {
+      sdkHome: null,
+      deviceId: null,
+      flavor: null,
+      mode: "debug",
+      dartDefines: [],
+      dartDefineFiles: [],
+      usePub: true,
+    },
+  };
+}
+
 export function createRunConfigurationDocument(
   provider: Extract<
     RunConfigurationProviderKind,
-    "dart" | "java" | "node" | "shell"
+    "dart" | "flutter" | "java" | "node" | "shell"
   >,
   id = crypto.randomUUID(),
 ): RunConfigurationFile {
   if (provider === "node") return createNodeRunConfigurationDocument(id);
   if (provider === "java") return createJavaRunConfigurationDocument(id);
   if (provider === "dart") return createDartRunConfigurationDocument(id);
+  if (provider === "flutter") return createFlutterRunConfigurationDocument(id);
   return createShellRunConfigurationDocument(id);
 }
 
@@ -308,6 +329,48 @@ export function dartRunConfigurationEffectiveCommand(
   };
 }
 
+export function flutterRunConfigurationEffectiveCommand(
+  document: RunConfigurationFlutterDocument,
+): { command: string; overridden: boolean } {
+  if (document.commandOverride !== null) {
+    return {
+      command: [
+        document.commandOverride,
+        ...document.arguments.map(quoteArgument),
+      ].join(" "),
+      overridden: true,
+    };
+  }
+  const executable = document.options.sdkHome
+    ? `${document.options.sdkHome.replace(/[\\/]+$/u, "")}/bin/flutter`
+    : "flutter";
+  return {
+    command: [
+      quoteArgument(executable),
+      "run",
+      `--${document.options.mode}`,
+      quoteArgument(`--target=${document.target.path}`),
+      ...(document.options.deviceId
+        ? [quoteArgument(`--device-id=${document.options.deviceId}`)]
+        : []),
+      ...(document.options.flavor
+        ? [quoteArgument(`--flavor=${document.options.flavor}`)]
+        : []),
+      ...document.options.dartDefines.map(({ name, value }) =>
+        quoteArgument(`--dart-define=${name}=${value}`),
+      ),
+      ...document.options.dartDefineFiles.map((file) =>
+        quoteArgument(`--dart-define-from-file=${file}`),
+      ),
+      document.options.usePub ? "--pub" : "--no-pub",
+      ...document.arguments.map((argument) =>
+        quoteArgument(`--dart-entrypoint-args=${argument}`),
+      ),
+    ].join(" "),
+    overridden: false,
+  };
+}
+
 export function runConfigurationEffectiveCommand(
   document: RunConfigurationFile,
 ): { command: string; overridden: boolean } {
@@ -319,6 +382,9 @@ export function runConfigurationEffectiveCommand(
   }
   if (document.provider === "dart") {
     return dartRunConfigurationEffectiveCommand(document);
+  }
+  if (document.provider === "flutter") {
+    return flutterRunConfigurationEffectiveCommand(document);
   }
   return shellRunConfigurationEffectiveCommand(document);
 }

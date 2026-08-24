@@ -214,6 +214,77 @@ async function dartFixture(): Promise<Fixture> {
   };
 }
 
+async function flutterFixture(): Promise<Fixture> {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-flutter-run-configuration-runtime-"),
+  );
+  temporaryDirectories.push(root);
+  const sourceRoot = path.join(root, "primary");
+  const targetRoot = path.join(root, "target");
+  const sdkHome = path.join(root, "flutter-sdk");
+  await Promise.all([
+    mkdir(sourceRoot, { recursive: true }),
+    mkdir(path.join(targetRoot, "lib"), { recursive: true }),
+    mkdir(path.join(sdkHome, "bin"), { recursive: true }),
+  ]);
+  await writeFile(
+    path.join(targetRoot, "pubspec.yaml"),
+    "name: mobile\ndependencies:\n  flutter:\n    sdk: flutter\n",
+  );
+  await writeFile(
+    path.join(targetRoot, "lib", "main.dart"),
+    "void main(List<String> arguments) {}\n",
+  );
+  await writeFile(
+    path.join(sdkHome, "bin", "flutter"),
+    "#!/bin/sh\nprintf 'flutter-provider|%s' \"$*\"\n",
+  );
+  await chmod(path.join(sdkHome, "bin", "flutter"), 0o755);
+  const configurationId = randomUUID();
+  const repository = await RunConfigurationRepository.open(sourceRoot);
+  const written = await repository.write({
+    expectedRevision: null,
+    document: {
+      schema: "cantrip.run-configuration",
+      version: 1,
+      id: configurationId,
+      name: "Flutter runtime fixture",
+      provider: "flutter",
+      workingDirectory: ".",
+      target: { kind: "entrypoint", path: "lib/main.dart" },
+      commandOverride: null,
+      arguments: ["two words"],
+      environment: {
+        includeCodexEnvironment: false,
+        files: [],
+        variables: [],
+        secrets: [],
+      },
+      beforeLaunch: [],
+      platformOverrides: {},
+      options: {
+        sdkHome,
+        deviceId: "linux",
+        flavor: "staging",
+        mode: "profile",
+        dartDefines: [{ name: "API_URL", value: "https://example.test" }],
+        dartDefineFiles: [],
+        usePub: false,
+      },
+      stop: { gracePeriodMs: 50 },
+    },
+  });
+  if (!("entry" in written) || !written.entry.revision) {
+    throw new Error("Expected a ready Flutter Run configuration fixture.");
+  }
+  return {
+    configurationId,
+    definitionRevision: written.entry.revision,
+    sourceRoot,
+    targetRoot,
+  };
+}
+
 async function fixture(
   command: string,
   options: {
@@ -496,6 +567,29 @@ describe.skipIf(process.platform === "win32")(
       }).data;
       expect(output).toContain(
         "dart-provider|run --enable-asserts bin/server.dart --port 4400",
+      );
+      await runs.closeAll();
+    });
+
+    it("launches a structured Flutter target without a handwritten command", async () => {
+      const input = await flutterFixture();
+      const runtimeIdentity = identity(input);
+      const runs = supervisor();
+      await expect(
+        runs.start(startCommand(input, runtimeIdentity)),
+      ).resolves.toMatchObject({
+        outcome: "accepted",
+        observation: { state: "starting" },
+      });
+      await waitForState(runs, runtimeIdentity, "exited");
+      const output = runs.output({
+        type: "project.run-configuration-runtime.output",
+        requestOperationId: randomUUID(),
+        identity: runtimeIdentity,
+        tail: 100_000,
+      }).data;
+      expect(output).toContain(
+        "flutter-provider|run --profile --target=lib/main.dart --device-id=linux --flavor=staging --dart-define=API_URL=https://example.test --no-pub --dart-entrypoint-args=two words",
       );
       await runs.closeAll();
     });

@@ -80,6 +80,15 @@ export function runConfigurationTargetLabel(
       : "dart";
     return `${executable} run ${document.target.path}`;
   }
+  if (document.provider === "flutter") {
+    const executable = document.options.sdkHome
+      ? `${document.options.sdkHome.replace(/[\\/]+$/u, "")}/bin/flutter`
+      : "flutter";
+    const device = document.options.deviceId
+      ? ` -d ${document.options.deviceId}`
+      : "";
+    return `${executable} run --${document.options.mode} --target=${document.target.path}${device}`;
+  }
   return document.target.kind === "command"
     ? document.target.command
     : `${document.target.interpreter ? `${document.target.interpreter} ` : ""}${document.target.path}`;

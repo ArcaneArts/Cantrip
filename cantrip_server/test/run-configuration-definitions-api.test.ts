@@ -337,6 +337,11 @@ describe.sequential("Run configuration definition API", () => {
           available: true,
           supportsDiscovery: true,
         }),
+        expect.objectContaining({
+          provider: "flutter",
+          available: true,
+          supportsDiscovery: true,
+        }),
       ]),
     });
 
@@ -500,6 +505,77 @@ describe.sequential("Run configuration definition API", () => {
       },
     });
     expect(dartDeletedResponse.statusCode).toBe(200);
+
+    await mkdir(path.join(primaryRoot, "flutter", "lib"), { recursive: true });
+    await writeFile(
+      path.join(primaryRoot, "flutter", "pubspec.yaml"),
+      [
+        "name: mobile",
+        "dependencies:",
+        "  flutter:",
+        "    sdk: flutter",
+        "flutter:",
+        "  default-flavor: staging",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(primaryRoot, "flutter", "lib", "main.dart"),
+      "void main() {}\n",
+    );
+    const flutterDetectedResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configurations/detect?operationId=${randomUUID()}&provider=flutter`,
+    });
+    expect(flutterDetectedResponse.statusCode).toBe(200);
+    const flutterDetected = runConfigurationDetectResponseSchema.parse(
+      flutterDetectedResponse.json(),
+    );
+    const flutterCandidate = flutterDetected.candidates.find(
+      ({ document }) => document.provider === "flutter",
+    );
+    if (!flutterCandidate) {
+      throw new Error("Expected a detected Flutter entrypoint.");
+    }
+    expect(flutterCandidate).toMatchObject({
+      confidence: "high",
+      effectiveCommand:
+        "flutter run --debug --target=lib/main.dart --flavor=staging --pub",
+      document: {
+        provider: "flutter",
+        workingDirectory: "flutter",
+        target: { kind: "entrypoint", path: "lib/main.dart" },
+        options: expect.objectContaining({ flavor: "staging" }),
+      },
+    });
+    const flutterCreatedResponse = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-configurations/${flutterCandidate.document.id}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: null,
+        document: flutterCandidate.document,
+      },
+    });
+    expect(flutterCreatedResponse.statusCode).toBe(201);
+    const flutterCreated = runConfigurationWriteResponseSchema.parse(
+      flutterCreatedResponse.json(),
+    );
+    if (
+      !("entry" in flutterCreated.result) ||
+      !flutterCreated.result.entry.revision
+    ) {
+      throw new Error("Expected a saved Flutter definition.");
+    }
+    const flutterDeletedResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/run-configurations/${flutterCandidate.document.id}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: flutterCreated.result.entry.revision,
+      },
+    });
+    expect(flutterDeletedResponse.statusCode).toBe(200);
 
     const createOperationId = randomUUID();
     const created = await app.inject({

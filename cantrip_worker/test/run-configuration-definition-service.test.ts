@@ -77,6 +77,11 @@ describe("RunConfigurationDefinitionService", () => {
           available: true,
           supportsDiscovery: true,
         }),
+        expect.objectContaining({
+          provider: "flutter",
+          available: true,
+          supportsDiscovery: true,
+        }),
       ]),
     });
 
@@ -108,6 +113,15 @@ describe("RunConfigurationDefinitionService", () => {
     await writeFile(
       path.join(root, "dart", "bin", "dart_api.dart"),
       "void main(List<String> arguments) {}\n",
+    );
+    await mkdir(path.join(root, "flutter", "lib"), { recursive: true });
+    await writeFile(
+      path.join(root, "flutter", "pubspec.yaml"),
+      "name: mobile\ndependencies:\n  flutter:\n    sdk: flutter\n",
+    );
+    await writeFile(
+      path.join(root, "flutter", "lib", "main.dart"),
+      "void main() {}\n",
     );
     const detected = await service.execute({
       type: "project.run-configuration-definitions.detect",
@@ -142,6 +156,17 @@ describe("RunConfigurationDefinitionService", () => {
             target: {
               kind: "entrypoint",
               path: "bin/dart_api.dart",
+            },
+          }),
+        }),
+        expect.objectContaining({
+          provider: "flutter",
+          confidence: "high",
+          document: expect.objectContaining({
+            workingDirectory: "flutter",
+            target: {
+              kind: "entrypoint",
+              path: "lib/main.dart",
             },
           }),
         }),
