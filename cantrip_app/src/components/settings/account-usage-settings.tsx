@@ -443,7 +443,7 @@ export function AccountUsageSettings() {
     storageHistory.isPending || bandwidthHistory.isPending;
 
   return (
-    <div className="mx-auto grid w-full max-w-7xl gap-4 pb-6">
+    <div className="grid w-full gap-4 pb-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-base font-semibold">Account usage</h1>
