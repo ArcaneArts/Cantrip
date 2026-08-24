@@ -19,7 +19,7 @@ import {
 } from "./trajectory-timing";
 import { settleRunningActivity } from "./timeline";
 
-export type TrajectoryLane = "input" | "model" | "tools";
+export type TrajectoryLane = "input" | "model" | "tools" | "changes";
 
 export interface TrajectoryAgent {
   active: boolean;
@@ -203,11 +203,16 @@ function activityLane(activity: AgentActivity): TrajectoryLane {
     if (
       activity.kind === "spawned" ||
       activity.kind === "messageSent" ||
-      activity.kind === "followupSent"
+      activity.kind === "followupSent" ||
+      activity.kind === "returned"
     ) {
       return "input";
     }
-    if (activity.kind === "returned") return "model";
+  }
+  // Codex patch activity and Cantrip's worktree-diff fallback both arrive as
+  // fileChange events, so this lane only represents confirmed filesystem writes.
+  if (activity.type === "fileChange" && activity.changes.length > 0) {
+    return "changes";
   }
   switch (activity.type) {
     case "reasoning":
@@ -858,7 +863,7 @@ export function projectTrajectory(input: {
       left.id.localeCompare(right.id),
   );
   const endMs = completedAtMs ?? input.nowMs;
-  const laneCounts = { input: 0, model: 0, tools: 0 };
+  const laneCounts = { input: 0, model: 0, tools: 0, changes: 0 };
   const statusCounts = { running: 0, completed: 0, failed: 0, declined: 0 };
   const kindCounts: Record<string, number> = {};
   for (const event of events) {
@@ -927,4 +932,9 @@ export function trajectoryKindLabel(kind: string): string {
   return kind
     .replace(/([a-z])([A-Z])/gu, "$1 $2")
     .replace(/^./u, (character) => character.toLocaleUpperCase());
+}
+
+export function trajectoryLaneLabel(lane: TrajectoryLane): string {
+  if (lane === "changes") return "Made changes";
+  return lane.replace(/^./u, (character) => character.toLocaleUpperCase());
 }
