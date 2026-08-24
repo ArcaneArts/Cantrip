@@ -25,7 +25,7 @@ pub(crate) fn create_tool_search_tool(
         ),
         (
             "limit".to_string(),
-            JsonSchema::integer(Some(format!(
+            JsonSchema::number(Some(format!(
                 "Maximum number of tools to return. Defaults to {default_limit}."
             ))),
         ),
@@ -142,7 +142,7 @@ mod tests {
                 parameters: JsonSchema::object(BTreeMap::from([
                         (
                             "limit".to_string(),
-                            JsonSchema::integer(Some(
+                            JsonSchema::number(Some(
                                     "Maximum number of tools to return. Defaults to 8."
                                         .to_string(),
                                 ),),

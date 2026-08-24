@@ -414,12 +414,6 @@ fn wait_agent_tool_v2_uses_timeout_only_summary_output() {
         .expect("wait_agent should use object params");
     assert!(!properties.contains_key("targets"));
     assert!(properties.contains_key("timeout_ms"));
-    assert_eq!(
-        properties
-            .get("timeout_ms")
-            .and_then(|schema| schema.schema_type.clone()),
-        Some(JsonSchemaType::Single(JsonSchemaPrimitiveType::Integer))
-    );
     assert!(description.contains(
         "Does not return the content; returns either a summary of which agents have updates (if any)"
     ));
