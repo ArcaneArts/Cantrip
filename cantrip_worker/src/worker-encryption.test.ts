@@ -522,6 +522,106 @@ describe("persistent worker encryption", () => {
         await readFile(workerEncryptionKeyPath(dataDirectory), "utf8"),
       ),
     ).toMatchObject({ serverId });
+
+    const nonLoopback = await WorkerEncryptionService.open({
+      allowLoopbackServerIdentityChange: true,
+      dataDirectory,
+      serverUrl: "https://cantrip.test",
+      workerId,
+    });
+    await expect(
+      nonLoopback.acceptBootstrap({
+        serverId: otherServerId,
+        ownerId,
+        principal: workerPrincipal,
+        grants: [],
+      }),
+    ).rejects.toMatchObject({
+      code: "identity-mismatch",
+    } satisfies Partial<WorkerEncryptionError>);
+  });
+
+  it("rebinds an explicit development worker after its loopback server is replaced", async () => {
+    const dataDirectory = await directory();
+    const pathname = workerEncryptionKeyPath(dataDirectory);
+    const workerId = "desktop-local";
+    const original = await WorkerEncryptionService.open({
+      allowLoopbackServerIdentityChange: true,
+      dataDirectory,
+      serverUrl: "http://127.0.0.1:4310",
+      workerId,
+    });
+    const workerPrincipal = principal(original, workerId);
+    const accountMasterKey = generateAccountMasterKey();
+    const oldKey = deriveComponentKey({
+      accountMasterKey,
+      ownerId,
+      component: "repository-content",
+      keyRevision: 2,
+    });
+    const oldGrant = grant(
+      workerPrincipal.id,
+      await wrapComponentKeyForWorker({
+        ownerId,
+        workerId,
+        component: "repository-content",
+        componentKey: oldKey,
+        keyRevision: 2,
+        workerPublicKey: workerPrincipal.publicKey,
+      }),
+      "55555555-5555-4555-8555-555555555555",
+    );
+    await original.acceptBootstrap({
+      serverId,
+      ownerId,
+      principal: workerPrincipal,
+      grants: [oldGrant],
+    });
+
+    const restarted = await WorkerEncryptionService.open({
+      allowLoopbackServerIdentityChange: true,
+      dataDirectory,
+      serverUrl: "http://127.0.0.1:4310",
+      workerId,
+    });
+    const replacementKey = deriveComponentKey({
+      accountMasterKey,
+      ownerId,
+      component: "repository-content",
+      keyRevision: 1,
+    });
+    const replacementGrant = grant(
+      workerPrincipal.id,
+      await wrapComponentKeyForWorker({
+        ownerId,
+        workerId,
+        component: "repository-content",
+        componentKey: replacementKey,
+        keyRevision: 1,
+        workerPublicKey: workerPrincipal.publicKey,
+      }),
+      "66666666-6666-4666-8666-666666666666",
+    );
+
+    await expect(
+      restarted.acceptBootstrap({
+        serverId: otherServerId,
+        ownerId,
+        principal: workerPrincipal,
+        grants: [replacementGrant],
+      }),
+    ).resolves.toMatchObject({ state: "ready" });
+    expect(restarted.serverIdentity()).toBe(otherServerId);
+    expect(
+      bytesEqual(
+        restarted.componentKey("repository-content").key,
+        replacementKey,
+      ),
+    ).toBe(true);
+    expect(JSON.parse(await readFile(pathname, "utf8"))).toMatchObject({
+      serverId: otherServerId,
+      acceptedRevisions: { "repository-content": 1 },
+    });
   });
 
   it("opens client-created scoped grants, restores after restart, and fails closed", async () => {
