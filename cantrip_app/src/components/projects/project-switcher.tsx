@@ -1,4 +1,5 @@
 import type {
+  ExecutionTarget,
   ProjectSummary,
   ProjectWorkspaceSummary,
 } from "@cantrip/protocol";
@@ -30,6 +31,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { WorkspaceCreateDialog } from "@/components/workspaces/workspace-create-dialog";
+import {
+  ProjectSurfaceCreateMenu,
+  type ProjectSurfaceCreateKind,
+  type ProjectSurfacePlacementContext,
+} from "@/components/workspace/project-surface-create-menu";
 import { searchProjects } from "@/lib/project-workspaces";
 import { cn } from "@/lib/utils";
 
@@ -51,23 +57,29 @@ function projectContext(
 
 export function ProjectSwitcher({
   activeWorkspaceId,
+  creatingTabKinds,
   onAddProject,
+  onCreateTab,
   onCreateWorkspace,
   onManageWorkspaces,
   onSelectProject,
   onSelectWorkspace,
   projects,
   selectedProjectId,
+  tabPlacement,
   workspaces,
 }: {
   activeWorkspaceId: string | null;
+  creatingTabKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onAddProject(source: ProjectCreateSource): void;
+  onCreateTab(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onCreateWorkspace(name: string): Promise<void>;
   onManageWorkspaces(): void;
   onSelectProject(projectId: string): void;
   onSelectWorkspace(workspaceId: string): void;
   projects: ProjectSummary[];
   selectedProjectId: string | null;
+  tabPlacement?: ProjectSurfacePlacementContext;
   workspaces: ProjectWorkspaceSummary[];
 }) {
   const activeWorkspace =
@@ -195,49 +207,74 @@ export function ProjectSwitcher({
                   </div>
                 )}
               </CommandList>
-              <div className="flex items-center gap-1 border-t p-1">
-                <Button
-                  className="h-8 flex-1 justify-start px-2 text-xs"
-                  onClick={() => {
+              <div className="border-t p-1">
+                <ProjectCreateMenu
+                  onSelect={(source) => {
                     setOpen(false);
-                    setWorkspaceDialogOpen(true);
+                    onAddProject(source);
                   }}
-                  type="button"
-                  variant="ghost"
                 >
-                  <Layers3 className="size-3.5" />
-                  New workspace
-                </Button>
-                <Button
-                  className="h-8 flex-1 justify-start px-2 text-xs"
-                  onClick={() => {
-                    setOpen(false);
-                    onManageWorkspaces();
-                  }}
-                  type="button"
-                  variant="ghost"
-                >
-                  <Settings className="size-3.5" />
-                  Manage
-                </Button>
+                  <Button
+                    className="h-8 w-full justify-start px-2 text-xs"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Plus className="size-3.5" />
+                    New project
+                  </Button>
+                </ProjectCreateMenu>
+                <div className="grid grid-cols-2 gap-1">
+                  <Button
+                    className="h-8 justify-start px-2 text-xs"
+                    onClick={() => {
+                      setOpen(false);
+                      setWorkspaceDialogOpen(true);
+                    }}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Layers3 className="size-3.5" />
+                    New workspace
+                  </Button>
+                  <Button
+                    className="h-8 justify-start px-2 text-xs"
+                    onClick={() => {
+                      setOpen(false);
+                      onManageWorkspaces();
+                    }}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Settings className="size-3.5" />
+                    Manage
+                  </Button>
+                </div>
               </div>
             </Command>
           </PopoverContent>
         </Popover>
-        <ProjectCreateMenu onSelect={onAddProject}>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="size-7 shrink-0"
-            aria-label={`Add project to ${activeWorkspace?.name ?? "current workspace"}`}
-          >
-            <Plus className="size-4" />
-            <span className="sr-only">
-              Add project to {activeWorkspace?.name ?? "current workspace"}
-            </span>
-          </Button>
-        </ProjectCreateMenu>
+        <ProjectSurfaceCreateMenu
+          align="end"
+          creatingKinds={creatingTabKinds}
+          onCreate={onCreateTab}
+          placement={tabPlacement}
+          trigger={
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="size-7 shrink-0"
+              aria-label={
+                selectedProject
+                  ? `Add tab to ${selectedProject.name}`
+                  : "Select a project before adding a tab"
+              }
+              disabled={!selectedProject}
+            >
+              <Plus className="size-4" />
+            </Button>
+          }
+        />
       </div>
 
       <WorkspaceCreateDialog

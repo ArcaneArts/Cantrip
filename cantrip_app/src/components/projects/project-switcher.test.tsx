@@ -35,6 +35,7 @@ describe("project switcher", () => {
         selectedProjectId="project-2"
         workspaces={workspaces}
         onAddProject={vi.fn()}
+        onCreateTab={vi.fn()}
         onCreateWorkspace={vi.fn()}
         onManageWorkspaces={vi.fn()}
         onSelectProject={vi.fn()}
@@ -45,7 +46,7 @@ describe("project switcher", () => {
     expect(markup).toContain('aria-label="Switch project"');
     expect(markup).toContain("Client work");
     expect(markup).toContain("CareMap");
-    expect(markup).toContain('aria-label="Add project to Client work"');
-    expect(markup).not.toContain('title="Add project to Client work"');
+    expect(markup).toContain('aria-label="Add tab to CareMap"');
+    expect(markup).not.toContain('aria-label="Add project to Client work"');
   });
 });
