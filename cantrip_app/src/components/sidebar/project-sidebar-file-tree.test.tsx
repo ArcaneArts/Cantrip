@@ -15,9 +15,21 @@ const runtime = vi.hoisted(() => {
     symbolicLink: false,
     viewable: true,
   } satisfies ExplorerEntry;
+  const directoryEntry = {
+    kind: "directory",
+    markdown: false,
+    modifiedAt: "2026-08-23T12:00:00.000Z",
+    name: "src",
+    path: "src",
+    size: null,
+    symbolicLink: false,
+    viewable: false,
+  } satisfies ExplorerEntry;
   return {
     directory: vi.fn(),
+    directoryEntry,
     entry,
+    entriesByPath: new Map<string, ExplorerEntry[]>(),
     gate: {
       bindingKey: "binding-a" as string | null,
       error: null as string | null,
@@ -88,17 +100,20 @@ vi.mock("@/components/ui/confirm-dialog", async () => {
   };
 });
 vi.mock("@/components/explorer/use-explorer-directory", () => ({
-  useExplorerDirectory: (input: { enabled: boolean }) => {
+  useExplorerDirectory: (input: { enabled: boolean; path: string }) => {
     runtime.directory(input);
+    const entries = input.enabled
+      ? (runtime.entriesByPath.get(input.path) ?? [])
+      : [];
     return {
       commitByPath: new Map(),
       commits: { data: undefined, isError: false, isLoading: false },
       directory: {
-        data: input.enabled ? { entries: [runtime.entry] } : undefined,
+        data: input.enabled ? { entries } : undefined,
         isError: false,
         isLoading: false,
       },
-      entries: input.enabled ? [runtime.entry] : [],
+      entries,
     };
   },
 }));
@@ -179,6 +194,8 @@ function buttonNamed(
 describe("project sidebar file tree encryption gate", () => {
   beforeEach(() => {
     runtime.directory.mockClear();
+    runtime.entriesByPath.clear();
+    runtime.entriesByPath.set("", [runtime.entry]);
     runtime.workerEncryption.mockClear();
     runtime.gate.bindingKey = "binding-a";
     runtime.gate.error = null;
@@ -214,6 +231,41 @@ describe("project sidebar file tree encryption gate", () => {
     expect(
       renderer.root.findAllByProps({ "aria-label": "Project files" }),
     ).toHaveLength(0);
+    await act(async () => renderer.unmount());
+  });
+
+  it("marks entries revealed by folder and Files expansion for global glitch effects", async () => {
+    runtime.entriesByPath.set("", [runtime.directoryEntry]);
+    runtime.entriesByPath.set("src", [runtime.entry]);
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree());
+    });
+
+    const rootEntry = renderer.root.findByProps({ role: "treeitem" });
+    expect(rootEntry.props["data-elite-global"]).toBe(true);
+    const clickTarget = {};
+    await act(async () =>
+      rootEntry.props.onClick({
+        currentTarget: clickTarget,
+        target: clickTarget,
+      }),
+    );
+
+    const expandedEntries = renderer.root.findAllByProps({ role: "treeitem" });
+    expect(expandedEntries).toHaveLength(2);
+    expect(
+      expandedEntries.every((entry) => entry.props["data-elite-global"]),
+    ).toBe(true);
+
+    await act(async () => buttonNamed(renderer, "Files").props.onClick());
+    expect(renderer.root.findAllByProps({ role: "treeitem" })).toHaveLength(0);
+    await act(async () => buttonNamed(renderer, "Files").props.onClick());
+    const reopenedEntries = renderer.root.findAllByProps({ role: "treeitem" });
+    expect(reopenedEntries.length).toBeGreaterThan(0);
+    expect(
+      reopenedEntries.every((entry) => entry.props["data-elite-global"]),
+    ).toBe(true);
     await act(async () => renderer.unmount());
   });
 
