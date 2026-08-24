@@ -9,6 +9,7 @@ import {
   preferredSidebarExplorer,
   moveSidebarPath,
   sidebarFileName,
+  sidebarFilePreviewIsVisible,
   sidebarFilePreviewViewKey,
   sidebarPathAtOrBelow,
   tabbedExplorerIds,
@@ -36,6 +37,41 @@ function layout(...explorerIds: string[]): ProjectTabLayoutSummary {
 }
 
 describe("sidebar file tabs", () => {
+  it("hides an active file preview while a managed screen owns the content area", () => {
+    const visible = {
+      previewActive: true,
+      previewExplorerAvailable: true,
+      showImporter: false,
+      showProjectSettings: false,
+      showServerAdmin: false,
+      showSettings: false,
+    };
+
+    expect(sidebarFilePreviewIsVisible(visible)).toBe(true);
+    for (const managedScreen of [
+      "showImporter",
+      "showProjectSettings",
+      "showServerAdmin",
+      "showSettings",
+    ] as const) {
+      expect(
+        sidebarFilePreviewIsVisible({
+          ...visible,
+          [managedScreen]: true,
+        }),
+      ).toBe(false);
+    }
+    expect(
+      sidebarFilePreviewIsVisible({
+        ...visible,
+        previewExplorerAvailable: false,
+      }),
+    ).toBe(false);
+    expect(
+      sidebarFilePreviewIsVisible({ ...visible, previewActive: false }),
+    ).toBe(false);
+  });
+
   it("prefers the hidden Explorer for the active worktree", () => {
     const hidden = explorer("hidden", "worktree-1");
     const visible = explorer("visible", "worktree-1");

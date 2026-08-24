@@ -38,6 +38,31 @@ export function sidebarFilePreviewViewKey(
   return `sidebar-file-preview:${preview.explorerId}`;
 }
 
+export function sidebarFilePreviewIsVisible({
+  previewActive,
+  previewExplorerAvailable,
+  showImporter,
+  showProjectSettings,
+  showServerAdmin,
+  showSettings,
+}: {
+  previewActive: boolean;
+  previewExplorerAvailable: boolean;
+  showImporter: boolean;
+  showProjectSettings: boolean;
+  showServerAdmin: boolean;
+  showSettings: boolean;
+}): boolean {
+  return Boolean(
+    previewActive &&
+    previewExplorerAvailable &&
+    !showImporter &&
+    !showProjectSettings &&
+    !showServerAdmin &&
+    !showSettings,
+  );
+}
+
 export function tabbedExplorerIds(
   layout: ProjectTabLayoutSummary | null | undefined,
 ): ReadonlySet<string> {
