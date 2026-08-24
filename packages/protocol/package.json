@@ -60,6 +60,10 @@
       "types": "./src/run-configuration-operations.ts",
       "import": "./dist/run-configuration-operations.js"
     },
+    "./run-configuration-runtime": {
+      "types": "./src/run-configuration-runtime.ts",
+      "import": "./dist/run-configuration-runtime.js"
+    },
     "./endpoint-content": {
       "types": "./src/endpoint-content.ts",
       "import": "./dist/endpoint-content.js"

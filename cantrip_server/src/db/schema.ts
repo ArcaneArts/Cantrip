@@ -53,6 +53,12 @@ import type {
 } from "@cantrip/protocol";
 import type { EndpointContentOpaque } from "@cantrip/protocol/endpoint-content";
 import type {
+  RunConfigurationRuntimeFailure,
+  RunConfigurationRuntimeOperation,
+  RunConfigurationRuntimeOperationOutcome,
+  RunConfigurationRuntimeState,
+} from "@cantrip/protocol/run-configuration-runtime";
+import type {
   AttachmentProtectedMetadata,
   ChatAttachmentOpaqueSummary,
 } from "@cantrip/protocol/attachment-content";
@@ -2363,6 +2369,178 @@ export const runInstances = pgTable(
     check(
       "run_instances_configuration_revision_check",
       sql`${table.configurationRevision} ~ '^[0-9a-f]{64}$'`,
+    ),
+  ],
+);
+
+export const runConfigurationRuntimes = pgTable(
+  "run_configuration_runtimes",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    configurationId: text("configuration_id").notNull(),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    terminalId: text("terminal_id"),
+    definitionRevision: text("definition_revision").notNull(),
+    codexEnvironmentRevision: text("codex_environment_revision"),
+    generation: integer("generation").notNull().default(0),
+    requestedOperationId: text("requested_operation_id").notNull(),
+    state: text("state")
+      .$type<RunConfigurationRuntimeState>()
+      .notNull()
+      .default("idle"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    exitCode: integer("exit_code"),
+    signal: text("signal"),
+    failure: jsonb("failure").$type<RunConfigurationRuntimeFailure>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("run_configuration_runtimes_identity_unique").on(
+      table.projectId,
+      table.configurationId,
+      table.worktreeId,
+    ),
+    uniqueIndex("run_configuration_runtimes_terminal_unique")
+      .on(table.terminalId)
+      .where(sql`${table.terminalId} IS NOT NULL`),
+    index("run_configuration_runtimes_project_state_index").on(
+      table.projectId,
+      table.state,
+      table.updatedAt,
+    ),
+    index("run_configuration_runtimes_worker_state_index").on(
+      table.workerId,
+      table.state,
+      table.updatedAt,
+    ),
+    check(
+      "run_configuration_runtimes_id_check",
+      sql`${table.id} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "run_configuration_runtimes_configuration_id_check",
+      sql`${table.configurationId} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "run_configuration_runtimes_operation_id_check",
+      sql`${table.requestedOperationId} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "run_configuration_runtimes_definition_revision_check",
+      sql`${table.definitionRevision} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "run_configuration_runtimes_codex_revision_check",
+      sql`${table.codexEnvironmentRevision} IS NULL OR ${table.codexEnvironmentRevision} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "run_configuration_runtimes_generation_check",
+      sql`${table.generation} >= 0`,
+    ),
+    check(
+      "run_configuration_runtimes_state_check",
+      sql`${table.state} IN ('idle', 'starting', 'running', 'restarting', 'stopping', 'exited', 'failed', 'lost')`,
+    ),
+    check(
+      "run_configuration_runtimes_signal_check",
+      sql`${table.signal} IS NULL OR char_length(${table.signal}) <= 100`,
+    ),
+    check(
+      "run_configuration_runtimes_failure_check",
+      sql`${table.failure} IS NULL OR octet_length(${table.failure}::text) <= 4096`,
+    ),
+  ],
+);
+
+export const runConfigurationRuntimeOperations = pgTable(
+  "run_configuration_runtime_operations",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    configurationId: text("configuration_id").notNull(),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "cascade" }),
+    runtimeId: text("runtime_id").references(
+      () => runConfigurationRuntimes.id,
+      { onDelete: "set null" },
+    ),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    operation: text("operation")
+      .$type<RunConfigurationRuntimeOperation>()
+      .notNull(),
+    outcome: text("outcome")
+      .$type<RunConfigurationRuntimeOperationOutcome>()
+      .notNull(),
+    generation: integer("generation").notNull(),
+    definitionRevision: text("definition_revision"),
+    codexEnvironmentRevision: text("codex_environment_revision"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("run_configuration_runtime_operations_runtime_index").on(
+      table.runtimeId,
+      table.createdAt,
+    ),
+    index("run_configuration_runtime_operations_identity_index").on(
+      table.projectId,
+      table.configurationId,
+      table.worktreeId,
+      table.createdAt,
+    ),
+    check(
+      "run_configuration_runtime_operations_id_check",
+      sql`${table.id} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "run_configuration_runtime_operations_configuration_id_check",
+      sql`${table.configurationId} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "run_configuration_runtime_operations_operation_check",
+      sql`${table.operation} IN ('start', 'restart', 'stop')`,
+    ),
+    check(
+      "run_configuration_runtime_operations_outcome_check",
+      sql`${table.outcome} IN ('accepted', 'already-active', 'already-stopping', 'not-active')`,
+    ),
+    check(
+      "run_configuration_runtime_operations_generation_check",
+      sql`${table.generation} >= 0`,
+    ),
+    check(
+      "run_configuration_runtime_operations_revision_check",
+      sql`${table.definitionRevision} IS NULL OR ${table.definitionRevision} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "run_configuration_runtime_operations_codex_revision_check",
+      sql`${table.codexEnvironmentRevision} IS NULL OR ${table.codexEnvironmentRevision} ~ '^[0-9a-f]{64}$'`,
     ),
   ],
 );
