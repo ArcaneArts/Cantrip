@@ -65,6 +65,28 @@ function respond(socket: WebSocket, request: WorkbenchRequest, result = {}) {
   );
 }
 
+function rejectRequest(
+  socket: WebSocket,
+  request: WorkbenchRequest,
+  error: string,
+) {
+  socket.send(
+    JSON.stringify({
+      type: "response",
+      id: request.id,
+      ok: false,
+      error,
+    }),
+  );
+}
+
+function waitForClose(socket: WebSocket): Promise<void> {
+  return new Promise((resolve) => {
+    if (socket.readyState === WebSocket.CLOSED) resolve();
+    else socket.once("close", () => resolve());
+  });
+}
+
 function publishState(
   socket: WebSocket,
   options: {
@@ -104,6 +126,84 @@ function publishState(
 }
 
 describe("Cantrip workbench bridge", () => {
+  it("proactively retires only a silent authority and preserves its authenticated session", async () => {
+    let sweep: (() => Promise<void>) | null = null;
+    const disposeScheduler = vi.fn();
+    const bridge = new CodeWorkbenchBridge({
+      livenessIntervalMs: 1_000,
+      livenessTimeoutMs: 25,
+      scheduleLiveness(run, intervalMs) {
+        expect(intervalMs).toBe(1_000);
+        sweep = run;
+        return disposeScheduler;
+      },
+    });
+    bridges.push(bridge);
+    await bridge.start();
+    const url = bridge.register("live-session", "live-secret");
+
+    const healthy = await openSocket(url);
+    respond(healthy, await nextRequest(healthy));
+    publishState(healthy, { activePath: "healthy.ts" });
+    await vi.waitFor(() =>
+      expect(bridge.state("live-session").activeEditor?.relativePath).toBe(
+        "healthy.ts",
+      ),
+    );
+
+    const staleAuthority = await openSocket(url);
+    respond(staleAuthority, await nextRequest(staleAuthority));
+    expect(bridge.connected("live-session")).toBe(true);
+    expect(sweep).not.toBeNull();
+
+    const staleClosed = waitForClose(staleAuthority);
+    const firstSweep = sweep!();
+    const [healthyPing, stalePing] = await Promise.all([
+      nextRequest(healthy),
+      nextRequest(staleAuthority),
+    ]);
+    expect(healthyPing.method).toBe("ping");
+    expect(stalePing.method).toBe("ping");
+
+    await sweep!();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(requestQueues.get(healthy)).toEqual([]);
+    expect(requestQueues.get(staleAuthority)).toEqual([]);
+
+    rejectRequest(healthy, healthyPing, "Unsupported Cantrip workbench method");
+    await firstSweep;
+    await staleClosed;
+
+    expect(staleAuthority.readyState).toBe(WebSocket.CLOSED);
+    expect(healthy.readyState).toBe(WebSocket.OPEN);
+    expect(bridge.connected("live-session")).toBe(true);
+    expect(bridge.state("live-session").activeEditor?.relativePath).toBe(
+      "healthy.ts",
+    );
+
+    const opening = bridge.openFile(
+      "live-session",
+      "healthy.ts",
+      "file:///repo",
+    );
+    const openRequest = await nextRequest(healthy);
+    expect(openRequest).toMatchObject({
+      method: "openFile",
+      params: { path: "healthy.ts" },
+    });
+    respond(healthy, openRequest, { relativePath: "healthy.ts" });
+    await expect(opening).resolves.toEqual({ relativePath: "healthy.ts" });
+
+    const reconnected = await openSocket(url);
+    expect((await nextRequest(reconnected)).method).toBe("setTheme");
+    expect(bridge.connected("live-session")).toBe(true);
+
+    await bridge.close();
+    expect(disposeScheduler).toHaveBeenCalledOnce();
+    healthy.terminate();
+    reconnected.terminate();
+  });
+
   it("does not block agent turns for a disconnected clean editor", async () => {
     const bridge = new CodeWorkbenchBridge();
     bridges.push(bridge);

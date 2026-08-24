@@ -48,6 +48,7 @@ interface BridgeSession {
 interface BridgeSocket {
   dirtyEditors: CodeDirtyEditor[];
   generation: number;
+  livenessPending: boolean;
   socket: WebSocket;
   workbench: CodeWorkbenchState | null;
 }
@@ -86,10 +87,55 @@ const DEFAULT_WORKBENCH_STATE: CodeWorkbenchState = {
 };
 const MAX_BRIDGE_PAYLOAD_BYTES = 1024 * 1024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
+const DEFAULT_LIVENESS_INTERVAL_MS = 10_000;
+const DEFAULT_LIVENESS_TIMEOUT_MS = 3_000;
+const MAX_LIVENESS_INTERVAL_MS = 60_000;
+const MAX_LIVENESS_TIMEOUT_MS = 5_000;
 const OPEN_SETTINGS_REQUEST_TIMEOUT_MS = 15_000;
 
 export interface CodeWorkbenchBridgeOptions {
+  livenessIntervalMs?: number;
+  livenessTimeoutMs?: number;
   requestTimeoutMs?: number;
+  scheduleLiveness?: (
+    sweep: () => Promise<void>,
+    intervalMs: number,
+  ) => () => void;
+}
+
+function scheduleLiveness(
+  sweep: () => Promise<void>,
+  intervalMs: number,
+): () => void {
+  const timer = setInterval(() => {
+    void sweep().catch((error) =>
+      workerLogger.rateLimited(
+        "code-bridge-liveness-sweep-failed",
+        "warn",
+        "Cantrip Code bridge liveness sweep failed",
+        {
+          event: "code.bridge.liveness-sweep-failed",
+          subsystem: "code",
+          operation: "probe-liveness",
+          reasonCode: "sweep-failed",
+          status: "degraded",
+          error: workerLogError(error),
+        },
+      ),
+    );
+  }, intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
+function boundedDuration(
+  value: number | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const duration = Number.isFinite(value) ? value! : fallback;
+  return Math.min(maximum, Math.max(minimum, Math.floor(duration)));
 }
 
 function secureTokenEqual(left: string, right: string): boolean {
@@ -145,17 +191,36 @@ function mergeFailures(
 }
 
 export class CodeWorkbenchBridge {
+  #disposeLiveness: (() => void) | null = null;
   #http: Server | null = null;
+  readonly #livenessIntervalMs: number;
+  readonly #livenessTimeoutMs: number;
   #origin: string | null = null;
   readonly #requestTimeoutMs: number;
+  readonly #scheduleLiveness: NonNullable<
+    CodeWorkbenchBridgeOptions["scheduleLiveness"]
+  >;
   #sessions = new Map<string, BridgeSession>();
   #webSockets: WebSocketServer | null = null;
 
   constructor(options: CodeWorkbenchBridgeOptions = {}) {
+    this.#livenessIntervalMs = boundedDuration(
+      options.livenessIntervalMs,
+      DEFAULT_LIVENESS_INTERVAL_MS,
+      1_000,
+      MAX_LIVENESS_INTERVAL_MS,
+    );
+    this.#livenessTimeoutMs = boundedDuration(
+      options.livenessTimeoutMs,
+      DEFAULT_LIVENESS_TIMEOUT_MS,
+      10,
+      MAX_LIVENESS_TIMEOUT_MS,
+    );
     this.#requestTimeoutMs = Math.max(
       10,
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
     );
+    this.#scheduleLiveness = options.scheduleLiveness ?? scheduleLiveness;
   }
 
   async start(): Promise<void> {
@@ -235,6 +300,10 @@ export class CodeWorkbenchBridge {
     this.#http = server;
     this.#webSockets = webSockets;
     this.#origin = `ws://127.0.0.1:${address.port}`;
+    this.#disposeLiveness = this.#scheduleLiveness(
+      () => this.#sweepLiveness(),
+      this.#livenessIntervalMs,
+    );
     workerLogger.event("info", "Cantrip Code workbench bridge is listening", {
       event: "code.bridge.listening",
       subsystem: "code",
@@ -684,6 +753,8 @@ export class CodeWorkbenchBridge {
   }
 
   async close(): Promise<void> {
+    this.#disposeLiveness?.();
+    this.#disposeLiveness = null;
     for (const sessionId of [...this.#sessions.keys()])
       this.unregister(sessionId);
     this.#webSockets?.close();
@@ -705,6 +776,7 @@ export class CodeWorkbenchBridge {
     const connection: BridgeSocket = {
       dirtyEditors: [],
       generation: session.nextGeneration++,
+      livenessPending: false,
       socket,
       workbench: null,
     };
@@ -772,6 +844,45 @@ export class CodeWorkbenchBridge {
         },
       );
     });
+  }
+
+  async #sweepLiveness(): Promise<void> {
+    const probes: Promise<void>[] = [];
+    for (const session of this.#sessions.values()) {
+      for (const connection of session.sockets.values()) {
+        if (
+          connection.livenessPending ||
+          connection.socket.readyState !== WebSocket.OPEN ||
+          session.sockets.get(connection.socket) !== connection
+        ) {
+          continue;
+        }
+        connection.livenessPending = true;
+        probes.push(
+          this.#requestOnSocket(
+            session,
+            connection,
+            "ping",
+            {},
+            false,
+            this.#livenessTimeoutMs,
+          )
+            .then(
+              () => undefined,
+              // A matching error response is still proof that the extension
+              // event loop is responsive. Silence and send failures already
+              // retire this exact socket inside #requestOnSocket.
+              () => undefined,
+            )
+            .finally(() => {
+              if (session.sockets.get(connection.socket) === connection) {
+                connection.livenessPending = false;
+              }
+            }),
+        );
+      }
+    }
+    await Promise.all(probes);
   }
 
   #onMessage(
