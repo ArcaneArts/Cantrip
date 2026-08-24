@@ -1340,6 +1340,46 @@ export const serverOperationalStatsSchema = z.object({
     scanFailures: operationalCounterSchema,
     scans: operationalCounterSchema,
   }),
+  accountUsage: z
+    .object({
+      bandwidthMeter: z.object({
+        bufferedBytes: z.string().regex(/^\d+$/u),
+        bufferedEntries: operationalCounterSchema,
+        droppedBytes: z.string().regex(/^\d+$/u),
+        droppedMeasurements: z.string().regex(/^\d+$/u),
+        flushCount: operationalCounterSchema,
+        flushFailureCount: operationalCounterSchema,
+        lastFlushDurationMs: z.number().nonnegative().nullable(),
+        lastFlushedAt: z.string().datetime().nullable(),
+      }),
+      historyMaintenance: z.object({
+        completionCount: operationalCounterSchema,
+        failureCount: operationalCounterSchema,
+        lastCompletedAt: z.string().datetime().nullable(),
+        lastDurationMs: z.number().nonnegative().nullable(),
+        lastErrorAt: z.string().datetime().nullable(),
+        lastSuccessfulAt: z.string().datetime().nullable(),
+        leaseContentionCount: operationalCounterSchema,
+        running: z.boolean(),
+        totals: z.object({
+          accountCount: operationalCounterSchema,
+          logicalServerBytes: z.string().regex(/^\d+$/u),
+          logicalWorkerManagedBytes: z.string().regex(/^\d+$/u),
+          physicalDatabaseBytes: z.string().regex(/^\d+$/u).nullable(),
+        }),
+      }),
+      storageReconciliation: z.object({
+        completionCount: operationalCounterSchema,
+        failureCount: operationalCounterSchema,
+        lastCompletedAt: z.string().datetime().nullable(),
+        lastDurationMs: z.number().nonnegative().nullable(),
+        lastErrorAt: z.string().datetime().nullable(),
+        lastSuccessfulAt: z.string().datetime().nullable(),
+        leaseContentionCount: operationalCounterSchema,
+        running: z.boolean(),
+      }),
+    })
+    .optional(),
 });
 
 export const systemHealthSchema = z.object({

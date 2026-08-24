@@ -171,6 +171,11 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS", "3000");
     vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_FLUSH_THRESHOLD_BYTES", "65536");
     vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_MAX_BUFFERED_ENTRIES", "2048");
+    vi.stubEnv("CANTRIP_ACCOUNT_USAGE_HOURLY_RETENTION_DAYS", "14");
+    vi.stubEnv("CANTRIP_ACCOUNT_USAGE_DAILY_RETENTION_DAYS", "365");
+    vi.stubEnv("CANTRIP_ACCOUNT_USAGE_FLUSH_RETENTION_DAYS", "5");
+    vi.stubEnv("CANTRIP_ACCOUNT_USAGE_MAINTENANCE_INTERVAL_MS", "1800000");
+    vi.stubEnv("CANTRIP_STORAGE_RECONCILIATION_INTERVAL_MS", "1200000");
     vi.stubEnv("CANTRIP_METRICS_TOKEN", "m".repeat(32));
     expect(readServerConfig()).toMatchObject({
       apiBodyLimitBytes: 65_536,
@@ -185,8 +190,13 @@ describe("server configuration safety", () => {
       bandwidthUsageFlushIntervalMs: 3_000,
       bandwidthUsageFlushThresholdBytes: 65_536,
       bandwidthUsageMaxBufferedEntries: 2_048,
+      accountUsageDailyRetentionDays: 365,
+      accountUsageFlushRetentionDays: 5,
+      accountUsageHourlyRetentionDays: 14,
+      accountUsageMaintenanceIntervalMs: 1_800_000,
       pairingRateLimitPerMinute: 9,
       metricsToken: "m".repeat(32),
+      storageReconciliationIntervalMs: 1_200_000,
       uploadLimitBytes: 1_048_576,
       uploadRateLimitPerMinute: 12,
       websocketHandshakeRatePerMinute: 90,
@@ -204,6 +214,9 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS", "100");
     expect(() => readServerConfig()).toThrow(/BANDWIDTH_USAGE_FLUSH_INTERVAL/i);
     vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS", "3000");
+    vi.stubEnv("CANTRIP_ACCOUNT_USAGE_MAINTENANCE_INTERVAL_MS", "100");
+    expect(() => readServerConfig()).toThrow(/USAGE_MAINTENANCE_INTERVAL/i);
+    vi.stubEnv("CANTRIP_ACCOUNT_USAGE_MAINTENANCE_INTERVAL_MS", "1800000");
     vi.stubEnv("CANTRIP_METRICS_TOKEN", "too-short");
     expect(() => readServerConfig()).toThrow(/METRICS_TOKEN/i);
   });

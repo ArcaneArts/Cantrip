@@ -4,6 +4,9 @@ import type {
 } from "@cantrip/protocol";
 
 import type { RelayCoordinatorStats } from "../coordination/relay-coordinator.js";
+import type { AccountUsageMeterStats } from "../account-usage/bandwidth-meter.js";
+import type { AccountUsageHistoryMaintenanceStats } from "../account-usage/history-maintenance.js";
+import type { StorageReconciliationStats } from "../account-usage/storage-reconciler.js";
 import type { AppLiveHubStats } from "../live/hub.js";
 import type { TunnelStreamBrokerStats } from "../tunnels/broker.js";
 import type { WorkerCommandBusStats } from "../workers/bridge.js";
@@ -45,7 +48,7 @@ export interface OperationalSnapshot {
 
 function metricLine(
   name: string,
-  value: number,
+  value: bigint | number,
   labels: Record<string, string> = {},
 ): string {
   const entries = Object.entries(labels);
@@ -58,7 +61,18 @@ function metricLine(
               `${key}="${item.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`,
           )
           .join(",")}}`;
-  return `${name}${suffix} ${Number.isFinite(value) ? value : 0}`;
+  const rendered =
+    typeof value === "bigint"
+      ? value.toString()
+      : Number.isFinite(value)
+        ? value
+        : 0;
+  return `${name}${suffix} ${rendered}`;
+}
+
+function secondsSince(value: string | null): number {
+  if (!value) return 0;
+  return Math.max(0, Date.now() - new Date(value).getTime()) / 1_000;
 }
 
 export class OperationalMetrics {
@@ -180,6 +194,11 @@ export class OperationalMetrics {
   }
 
   renderPrometheus(input: {
+    accountUsage?: {
+      bandwidthMeter: AccountUsageMeterStats;
+      historyMaintenance: AccountUsageHistoryMaintenanceStats;
+      storageReconciliation: StorageReconciliationStats;
+    };
     coordination: RelayCoordinatorStats;
     live: AppLiveHubStats;
     quotas: RelayQuotaStats;
@@ -270,6 +289,175 @@ export class OperationalMetrics {
           transport: "local-direct",
         }),
       );
+    }
+    const usage = input.accountUsage;
+    if (usage) {
+      const storage = usage.storageReconciliation;
+      const maintenance = usage.historyMaintenance;
+      const meter = usage.bandwidthMeter;
+      const storageResult = storage.lastResult;
+      const maintenanceResult = maintenance.lastResult;
+      const physical = maintenance.totals.physicalDatabaseBytes;
+      lines.push(
+        "# HELP cantrip_account_usage_storage_reconciliations_total Storage projection reconciliation outcomes.",
+        "# TYPE cantrip_account_usage_storage_reconciliations_total counter",
+        metricLine(
+          "cantrip_account_usage_storage_reconciliations_total",
+          storage.completionCount,
+          { outcome: "completed" },
+        ),
+        metricLine(
+          "cantrip_account_usage_storage_reconciliations_total",
+          storage.failureCount,
+          { outcome: "failed" },
+        ),
+        metricLine(
+          "cantrip_account_usage_storage_reconciliations_total",
+          storage.leaseContentionCount,
+          { outcome: "lease_unavailable" },
+        ),
+        metricLine(
+          "cantrip_account_usage_storage_reconciliation_duration_seconds",
+          (storage.lastDurationMs ?? 0) / 1_000,
+        ),
+        metricLine(
+          "cantrip_account_usage_storage_reconciliation_seconds_since_success",
+          secondsSince(storage.lastSuccessfulAt),
+        ),
+        metricLine(
+          "cantrip_account_usage_storage_reconciliation_accounts",
+          storageResult?.accountCount ?? 0,
+        ),
+        metricLine(
+          "cantrip_account_usage_storage_reconciliation_categories",
+          storageResult?.categoryCount ?? 0,
+        ),
+        metricLine(
+          "cantrip_account_usage_storage_reconciliation_logical_bytes",
+          storageResult?.logicalBytes ?? 0n,
+        ),
+        metricLine(
+          "cantrip_account_usage_storage_reconciliation_rows",
+          storageResult?.rowCount ?? 0n,
+        ),
+        "# HELP cantrip_account_usage_bandwidth_buffered_bytes Bandwidth bytes waiting for a durable flush.",
+        "# TYPE cantrip_account_usage_bandwidth_buffered_bytes gauge",
+        metricLine(
+          "cantrip_account_usage_bandwidth_buffered_bytes",
+          meter.bufferedBytes,
+        ),
+        metricLine(
+          "cantrip_account_usage_bandwidth_buffered_entries",
+          meter.bufferedEntries,
+        ),
+        metricLine(
+          "cantrip_account_usage_bandwidth_flushes_total",
+          meter.flushCount,
+          {
+            outcome: "completed",
+          },
+        ),
+        metricLine(
+          "cantrip_account_usage_bandwidth_flushes_total",
+          meter.flushFailureCount,
+          { outcome: "failed" },
+        ),
+        metricLine(
+          "cantrip_account_usage_bandwidth_flush_duration_seconds",
+          (meter.lastFlushDurationMs ?? 0) / 1_000,
+        ),
+        metricLine(
+          "cantrip_account_usage_bandwidth_dropped_bytes_total",
+          meter.droppedBytes,
+        ),
+        metricLine(
+          "cantrip_account_usage_bandwidth_dropped_measurements_total",
+          meter.droppedMeasurements,
+        ),
+        "# HELP cantrip_account_usage_history_maintenance_total Usage rollup and retention outcomes.",
+        "# TYPE cantrip_account_usage_history_maintenance_total counter",
+        metricLine(
+          "cantrip_account_usage_history_maintenance_total",
+          maintenance.completionCount,
+          {
+            outcome: "completed",
+          },
+        ),
+        metricLine(
+          "cantrip_account_usage_history_maintenance_total",
+          maintenance.failureCount,
+          {
+            outcome: "failed",
+          },
+        ),
+        metricLine(
+          "cantrip_account_usage_history_maintenance_total",
+          maintenance.leaseContentionCount,
+          { outcome: "lease_unavailable" },
+        ),
+        metricLine(
+          "cantrip_account_usage_history_maintenance_duration_seconds",
+          (maintenance.lastDurationMs ?? 0) / 1_000,
+        ),
+        metricLine(
+          "cantrip_account_usage_history_maintenance_seconds_since_success",
+          secondsSince(maintenance.lastSuccessfulAt),
+        ),
+        metricLine(
+          "cantrip_account_usage_history_rollup_rows",
+          maintenanceResult?.bandwidthDaysRolled ?? 0,
+          { resource: "bandwidth" },
+        ),
+        metricLine(
+          "cantrip_account_usage_history_rollup_rows",
+          maintenanceResult?.storageDaysRolled ?? 0,
+          { resource: "storage" },
+        ),
+        metricLine(
+          "cantrip_account_usage_history_retained_rows_deleted",
+          (maintenanceResult?.bandwidthHourlyRowsDeleted ?? 0) +
+            (maintenanceResult?.bandwidthDailyRowsDeleted ?? 0),
+          { resource: "bandwidth" },
+        ),
+        metricLine(
+          "cantrip_account_usage_history_retained_rows_deleted",
+          (maintenanceResult?.storageHourlyRowsDeleted ?? 0) +
+            (maintenanceResult?.storageDailyRowsDeleted ?? 0),
+          { resource: "storage" },
+        ),
+        metricLine(
+          "cantrip_account_usage_history_retained_rows_deleted",
+          maintenanceResult?.flushRowsDeleted ?? 0,
+          { resource: "flush_ledger" },
+        ),
+        metricLine(
+          "cantrip_account_usage_accounts",
+          maintenance.totals.accountCount,
+        ),
+        metricLine(
+          "cantrip_account_usage_logical_bytes",
+          maintenance.totals.logicalServerBytes,
+          { storage_class: "server" },
+        ),
+        metricLine(
+          "cantrip_account_usage_logical_bytes",
+          maintenance.totals.logicalWorkerManagedBytes,
+          { storage_class: "worker_managed" },
+        ),
+        metricLine(
+          "cantrip_database_physical_size_available",
+          physical === null ? 0 : 1,
+        ),
+      );
+      if (physical !== null) {
+        lines.push(
+          metricLine("cantrip_database_physical_bytes", physical),
+          metricLine(
+            "cantrip_account_usage_physical_logical_drift_bytes",
+            physical - maintenance.totals.logicalServerBytes,
+          ),
+        );
+      }
     }
     lines.push(
       metricLine("cantrip_database_ready", this.#database.ready ? 1 : 0),
