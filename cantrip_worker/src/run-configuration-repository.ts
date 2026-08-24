@@ -277,7 +277,8 @@ function inspectUnsupportedDocument(
     record.provider !== "shell" &&
     record.provider !== "node" &&
     record.provider !== "java" &&
-    record.provider !== "dart"
+    record.provider !== "dart" &&
+    record.provider !== "flutter"
   ) {
     return runConfigurationRepositoryEntrySchema.parse({
       relativePath,

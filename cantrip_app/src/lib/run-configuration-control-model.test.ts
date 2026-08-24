@@ -246,4 +246,47 @@ describe("Run configuration control model", () => {
     });
     expect(model.configurations[0]?.searchValue).toContain("bin/server.dart");
   });
+
+  it("indexes structured Flutter targets and devices", () => {
+    const id = "00000000-0000-4000-8000-000000000007";
+    const shell = entry(id, "Flutter mobile", "unused");
+    const inventory = {
+      directory: ".cantrip/run-configurations",
+      diagnostics: [],
+      entries: [
+        {
+          ...shell,
+          document: {
+            ...shell.document,
+            provider: "flutter" as const,
+            target: {
+              kind: "entrypoint" as const,
+              path: "lib/main_staging.dart",
+            },
+            options: {
+              sdkHome: null,
+              deviceId: "chrome",
+              flavor: "staging",
+              mode: "profile" as const,
+              dartDefines: [],
+              dartDefineFiles: [],
+              usePub: true,
+            },
+          },
+        },
+      ],
+    } satisfies RunConfigurationRepositoryInventory;
+    const model = buildRunConfigurationControlModel({
+      inventory,
+      runtimes: [],
+      workers: [worker],
+      worktrees: [primary],
+    });
+    expect(model.configurations[0]).toMatchObject({
+      provider: "flutter",
+      targetLabel:
+        "flutter run --profile --target=lib/main_staging.dart -d chrome",
+    });
+    expect(model.configurations[0]?.searchValue).toContain("chrome");
+  });
 });

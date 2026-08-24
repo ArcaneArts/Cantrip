@@ -17,6 +17,7 @@ import {
   Play,
   Plus,
   RotateCw,
+  Smartphone,
   Square,
   SquareTerminal,
   Trash2,
@@ -79,6 +80,9 @@ type LifecycleInput = {
 function ProviderIcon({ provider }: { provider?: string | null }) {
   if (provider === "dart") {
     return <FileCode2 className="size-4 shrink-0 text-muted-foreground" />;
+  }
+  if (provider === "flutter") {
+    return <Smartphone className="size-4 shrink-0 text-muted-foreground" />;
   }
   if (provider === "java") {
     return <Coffee className="size-4 shrink-0 text-muted-foreground" />;

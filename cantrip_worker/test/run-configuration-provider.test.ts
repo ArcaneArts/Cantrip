@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { nodeRunConfigurationProvider } from "../src/run-configuration-node-provider.js";
 import { javaRunConfigurationProvider } from "../src/run-configuration-java-provider.js";
 import { dartRunConfigurationProvider } from "../src/run-configuration-dart-provider.js";
+import { flutterRunConfigurationProvider } from "../src/run-configuration-flutter-provider.js";
 import { shellRunConfigurationProvider } from "../src/run-configuration-provider.js";
 
 const roots: string[] = [];
@@ -1245,6 +1246,325 @@ describe("dartRunConfigurationProvider", () => {
           ...definition,
           commandOverride: "echo overridden",
           options: { sdkHome: "relative/sdk", vmArguments: [] },
+        },
+        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+      ),
+    ).resolves.toEqual([]);
+  });
+});
+
+describe("flutterRunConfigurationProvider", () => {
+  it("discovers likely Flutter entrypoints and default flavors without crossing package or symlink boundaries", async () => {
+    const root = await createRoot();
+    const outside = await createRoot();
+    await mkdir(path.join(root, "apps", "mobile", "lib"), { recursive: true });
+    await mkdir(path.join(root, "apps", "mobile", "test"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "packages", "models", "lib"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "apps", "mobile", "pubspec.yaml"),
+      [
+        "name: mobile",
+        "dependencies:",
+        "  flutter:",
+        "    sdk: flutter",
+        "flutter:",
+        "  default-flavor: staging",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(root, "apps", "mobile", "lib", "main.dart"),
+      "void main() {}\n",
+    );
+    await writeFile(
+      path.join(root, "apps", "mobile", "lib", "main_staging.dart"),
+      "Future<void> main() async {}\n",
+    );
+    await writeFile(
+      path.join(root, "apps", "mobile", "lib", "helper.dart"),
+      "void main() {}\n",
+    );
+    await writeFile(
+      path.join(root, "apps", "mobile", "lib", "not_entrypoint.dart"),
+      "const sample = '''void main() {}''';\nclass Helper {\n  void main() {}\n}\n",
+    );
+    await writeFile(
+      path.join(root, "apps", "mobile", "test", "main_test.dart"),
+      "void main() {}\n",
+    );
+    await writeFile(
+      path.join(root, "packages", "models", "pubspec.yaml"),
+      "name: models\n",
+    );
+    await writeFile(
+      path.join(root, "packages", "models", "lib", "main.dart"),
+      "void main() {}\n",
+    );
+    await mkdir(path.join(outside, "lib"));
+    await writeFile(
+      path.join(outside, "pubspec.yaml"),
+      "name: escaped\ndependencies:\n  flutter:\n    sdk: flutter\n",
+    );
+    await writeFile(path.join(outside, "lib", "main.dart"), "void main() {}\n");
+    await symlink(outside, path.join(root, "linked-flutter-app"));
+
+    const candidates = await flutterRunConfigurationProvider.discover({
+      platform: "linux",
+      targetRoot: root,
+      defaultShell: "/bin/sh",
+    });
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          confidence: "high",
+          document: expect.objectContaining({
+            provider: "flutter",
+            workingDirectory: "apps/mobile",
+            target: { kind: "entrypoint", path: "lib/main.dart" },
+            options: expect.objectContaining({ flavor: "staging" }),
+            environment: expect.objectContaining({
+              includeCodexEnvironment: true,
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          confidence: "medium",
+          document: expect.objectContaining({
+            target: { kind: "entrypoint", path: "lib/main_staging.dart" },
+          }),
+        }),
+      ]),
+    );
+    expect(candidates).toHaveLength(2);
+    expect(new Set(candidates.map(({ document }) => document.id)).size).toBe(
+      candidates.length,
+    );
+    expect(
+      candidates.some(
+        ({ document, reason }) =>
+          document.workingDirectory.includes("models") ||
+          document.target.path.includes("test/") ||
+          reason.includes("linked"),
+      ),
+    ).toBe(false);
+  });
+
+  it("materializes SDK, device, flavor, mode, Dart defines, program arguments, and before-launch tasks", async () => {
+    const root = await createRoot();
+    const canonicalRoot = await realpath(root);
+    const sdkHome = path.join(root, "flutter-sdk");
+    await mkdir(path.join(root, "mobile", "lib"), { recursive: true });
+    await mkdir(path.join(root, "mobile", "config"), { recursive: true });
+    await mkdir(path.join(sdkHome, "bin"), { recursive: true });
+    await writeFile(
+      path.join(root, "mobile", "pubspec.yaml"),
+      "name: mobile\ndependencies:\n  flutter:\n    sdk: flutter\n",
+    );
+    await writeFile(
+      path.join(root, "mobile", "lib", "main.dart"),
+      "void main(List<String> arguments) {}\n",
+    );
+    await writeFile(
+      path.join(root, "mobile", "config", "staging.env"),
+      "API_TOKEN=public-fixture\n",
+    );
+    await writeFile(
+      path.join(sdkHome, "bin", "flutter"),
+      "#!/bin/sh\nexit 0\n",
+    );
+    await chmod(path.join(sdkHome, "bin", "flutter"), 0o755);
+    const definition = flutterRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Flutter mobile",
+    });
+    const materialized = await flutterRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        workingDirectory: "mobile",
+        arguments: ["--route", "two words"],
+        beforeLaunch: [
+          { kind: "providerTask", task: "pub get" },
+          { kind: "command", command: "echo prepared", workingDirectory: "." },
+        ],
+        options: {
+          sdkHome,
+          deviceId: "chrome",
+          flavor: "staging",
+          mode: "profile",
+          dartDefines: [
+            { name: "API_URL", value: "https://example.test" },
+            { name: "TITLE", value: "two words" },
+          ],
+          dartDefineFiles: ["config/staging.env"],
+          usePub: false,
+        },
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/bash" },
+    );
+    const flutterExecutable = await realpath(
+      path.join(sdkHome, "bin", "flutter"),
+    );
+    expect(materialized).toMatchObject({
+      executable: flutterExecutable,
+      arguments: [
+        "run",
+        "--profile",
+        "--target=lib/main.dart",
+        "--device-id=chrome",
+        "--flavor=staging",
+        "--dart-define=API_URL=https://example.test",
+        "--dart-define=TITLE=two words",
+        "--dart-define-from-file=config/staging.env",
+        "--no-pub",
+        "--dart-entrypoint-args=--route",
+        "--dart-entrypoint-args=two words",
+      ],
+      workingDirectory: path.join(canonicalRoot, "mobile"),
+      beforeLaunch: [
+        {
+          executable: flutterExecutable,
+          arguments: ["pub", "get"],
+          workingDirectory: path.join(canonicalRoot, "mobile"),
+        },
+        {
+          executable: "/bin/bash",
+          arguments: ["-lc", "echo prepared"],
+          workingDirectory: canonicalRoot,
+        },
+      ],
+      environment: definition.environment,
+    });
+    expect(materialized.effectiveCommand).toContain(
+      "flutter run --profile --target=lib/main.dart --device-id=chrome --flavor=staging",
+    );
+    expect(materialized.effectiveCommand).toContain(
+      "'--dart-entrypoint-args=two words'",
+    );
+  });
+
+  it("applies typed Windows launch and environment overrides through Command Prompt", async () => {
+    const root = await createRoot();
+    await mkdir(path.join(root, "windows", "lib"), { recursive: true });
+    await writeFile(
+      path.join(root, "windows", "pubspec.yaml"),
+      "name: windows_app\ndependencies:\n  flutter:\n    sdk: flutter\n",
+    );
+    await writeFile(
+      path.join(root, "windows", "lib", "main.dart"),
+      "void main() {}\n",
+    );
+    const definition = flutterRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Windows Flutter",
+    });
+    const materialized = await flutterRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        environment: {
+          includeCodexEnvironment: true,
+          files: [".env"],
+          variables: [],
+          secrets: [],
+        },
+        platformOverrides: {
+          win32: {
+            workingDirectory: "windows",
+            arguments: ["two words"],
+            environment: {
+              includeCodexEnvironment: false,
+              files: [".env.windows"],
+            },
+            options: {
+              deviceId: "windows",
+              flavor: null,
+              mode: "release",
+              dartDefines: [],
+              dartDefineFiles: [],
+              usePub: true,
+            },
+          },
+        },
+      },
+      { platform: "win32", targetRoot: root, defaultShell: null },
+    );
+    expect(materialized.executable).toBe("cmd.exe");
+    expect(materialized.arguments.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
+    expect(materialized.arguments[3]).toContain(
+      'flutter.bat run --release --target=lib/main.dart --device-id=windows --pub "--dart-entrypoint-args=two words"',
+    );
+    expect(materialized.environment).toMatchObject({
+      includeCodexEnvironment: false,
+      files: [".env.windows"],
+    });
+    expect(
+      flutterRunConfigurationProvider.renderEffectiveCommand(
+        {
+          ...definition,
+          options: {
+            ...definition.options,
+            sdkHome: "C:\\Program Files\\Flutter",
+          },
+        },
+        "win32",
+      ),
+    ).toContain('"C:\\Program Files\\Flutter\\bin\\flutter.bat" run');
+  });
+
+  it("fails closed for invalid projects, targets, define files, SDKs, and provider tasks", async () => {
+    const root = await createRoot();
+    await mkdir(path.join(root, "lib"));
+    await writeFile(path.join(root, "lib", "main.dart"), "void main() {}\n");
+    const definition = flutterRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Invalid Flutter",
+    });
+    await expect(
+      flutterRunConfigurationProvider.validate(definition, {
+        platform: "linux",
+        targetRoot: root,
+        defaultShell: "/bin/sh",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "flutter-package-invalid" }),
+    ]);
+    await writeFile(
+      path.join(root, "pubspec.yaml"),
+      "name: mobile\ndependencies:\n  flutter:\n    sdk: flutter\n",
+    );
+    const diagnostics = await flutterRunConfigurationProvider.validate(
+      {
+        ...definition,
+        target: { kind: "entrypoint", path: "lib/missing.dart" },
+        beforeLaunch: [{ kind: "providerTask", task: "build" }],
+        options: {
+          ...definition.options,
+          sdkHome: "relative/sdk",
+          dartDefineFiles: ["config/missing.env"],
+        },
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+    );
+    expect(diagnostics.map(({ code }) => code).sort()).toEqual([
+      "flutter-dart-define-file-invalid",
+      "flutter-entrypoint-invalid",
+      "flutter-provider-task-invalid",
+      "flutter-sdk-invalid",
+    ]);
+    await expect(
+      flutterRunConfigurationProvider.validate(
+        {
+          ...definition,
+          commandOverride: "echo overridden",
+          target: { kind: "entrypoint", path: "lib/missing.dart" },
+          options: {
+            ...definition.options,
+            sdkHome: "relative/sdk",
+            dartDefineFiles: ["config/missing.env"],
+          },
         },
         { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
       ),

@@ -2,6 +2,7 @@ import type {
   RunConfigurationDetectionCandidate,
   RunConfigurationDartDocument,
   RunConfigurationFile,
+  RunConfigurationFlutterDocument,
   RunConfigurationJavaDocument,
   RunConfigurationNodeDocument,
   RunConfigurationProviderCapability,
@@ -17,6 +18,7 @@ import {
   Loader2,
   Package,
   Plus,
+  Smartphone,
   Terminal,
   Trash2,
 } from "lucide-react";
@@ -202,6 +204,71 @@ function EnvironmentRows({
   );
 }
 
+function DartDefineRows({
+  rows,
+  onChange,
+}: {
+  rows: Array<{ name: string; value: string }>;
+  onChange(rows: Array<{ name: string; value: string }>): void;
+}) {
+  return (
+    <div className="grid gap-2">
+      {rows.map((row, index) => (
+        <div className="grid grid-cols-[1fr_1fr_auto] gap-2" key={index}>
+          <Input
+            aria-label={`Dart define name ${index + 1}`}
+            placeholder="NAME"
+            value={row.name}
+            onChange={(event) =>
+              onChange(
+                rows.map((item, itemIndex) =>
+                  itemIndex === index
+                    ? { ...item, name: event.target.value }
+                    : item,
+                ),
+              )
+            }
+          />
+          <Input
+            aria-label={`Dart define value ${index + 1}`}
+            placeholder="Value"
+            value={row.value}
+            onChange={(event) =>
+              onChange(
+                rows.map((item, itemIndex) =>
+                  itemIndex === index
+                    ? { ...item, value: event.target.value }
+                    : item,
+                ),
+              )
+            }
+          />
+          <Button
+            aria-label={`Remove Dart define ${index + 1}`}
+            onClick={() =>
+              onChange(rows.filter((_, itemIndex) => itemIndex !== index))
+            }
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        className="w-fit"
+        onClick={() => onChange([...rows, { name: "", value: "" }])}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        <Plus className="size-3.5" /> Add Dart define
+      </Button>
+    </div>
+  );
+}
+
 function initialDocument(entry: RunConfigurationRepositoryEntry | null) {
   return entry?.status === "ready" && entry.document
     ? entry.document
@@ -216,6 +283,7 @@ function ProviderGlyph({
   if (provider === "node") return <Package className="size-5" />;
   if (provider === "java") return <Coffee className="size-5" />;
   if (provider === "dart") return <FileCode2 className="size-5" />;
+  if (provider === "flutter") return <Smartphone className="size-5" />;
   return <Terminal className="size-5" />;
 }
 
@@ -236,7 +304,9 @@ function RunConfigurationCreationChooser({
   loading: boolean;
   onCancel(): void;
   onChooseCandidate(candidate: RunConfigurationDetectionCandidate): void;
-  onChooseProvider(provider: "dart" | "java" | "node" | "shell"): void;
+  onChooseProvider(
+    provider: "dart" | "flutter" | "java" | "node" | "shell",
+  ): void;
 }) {
   const highConfidence = candidates.filter(
     ({ confidence }) => confidence === "high",
@@ -247,10 +317,11 @@ function RunConfigurationCreationChooser({
     (
       capability,
     ): capability is RunConfigurationProviderCapability & {
-      provider: "dart" | "java" | "node" | "shell";
+      provider: "dart" | "flutter" | "java" | "node" | "shell";
     } =>
       capability.available &&
       (capability.provider === "dart" ||
+        capability.provider === "flutter" ||
         capability.provider === "java" ||
         capability.provider === "node" ||
         capability.provider === "shell"),
@@ -320,7 +391,7 @@ function RunConfigurationCreationChooser({
             ) : (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                 No typed project targets were detected. You can still create a
-                blank Dart, Java, Node, or Shell configuration.
+                blank Dart, Flutter, Java, Node, or Shell configuration.
               </div>
             )}
           </section>
@@ -346,7 +417,9 @@ function RunConfigurationCreationChooser({
                           ? "Package script or Node entrypoint"
                           : capability.provider === "java"
                             ? "Gradle or Maven application"
-                            : "Dart package entrypoint"}
+                            : capability.provider === "dart"
+                              ? "Dart package entrypoint"
+                              : "Flutter app entrypoint and device"}
                     </span>
                   </span>
                 </button>
@@ -466,6 +539,31 @@ function DartTargetEditor({
   );
 }
 
+function FlutterTargetEditor({
+  document,
+  onChange,
+}: {
+  document: RunConfigurationFlutterDocument;
+  onChange(document: RunConfigurationFlutterDocument): void;
+}) {
+  return (
+    <label className={fieldClassName}>
+      <span className={labelClassName}>Flutter entrypoint</span>
+      <Input
+        className="font-mono"
+        placeholder="lib/main.dart"
+        value={document.target.path}
+        onChange={(event) =>
+          onChange({
+            ...document,
+            target: { kind: "entrypoint", path: event.target.value },
+          })
+        }
+      />
+    </label>
+  );
+}
+
 export function RunConfigurationEditor({
   creating,
   entry,
@@ -532,7 +630,9 @@ export function RunConfigurationEditor({
     expectedRevision !== null &&
     editingRevision !== expectedRevision;
   const supportsProviderTask =
-    document.provider === "node" || document.provider === "java";
+    document.provider === "node" ||
+    document.provider === "java" ||
+    document.provider === "flutter";
   const effective = useMemo(
     () => runConfigurationEffectiveCommand(document),
     [document],
@@ -688,6 +788,7 @@ export function RunConfigurationEditor({
                   <option value="node">Node / package</option>
                   <option value="java">Java</option>
                   <option value="dart">Dart</option>
+                  <option value="flutter">Flutter</option>
                 </NativeSelect>
               </label>
               <label className={fieldClassName}>
@@ -716,8 +817,15 @@ export function RunConfigurationEditor({
                             ? kind === "entry"
                               ? { kind: "entry", path: "" }
                               : { kind: "packageScript", script: "start" }
-                            : document.provider === "dart"
-                              ? { kind: "entrypoint", path: "bin/main.dart" }
+                            : document.provider === "dart" ||
+                                document.provider === "flutter"
+                              ? {
+                                  kind: "entrypoint",
+                                  path:
+                                    document.provider === "dart"
+                                      ? "bin/main.dart"
+                                      : "lib/main.dart",
+                                }
                               : kind === "gradleMainClass"
                                 ? {
                                     kind: "gradleMainClass",
@@ -756,6 +864,8 @@ export function RunConfigurationEditor({
                     </>
                   ) : document.provider === "dart" ? (
                     <option value="entrypoint">Dart entrypoint</option>
+                  ) : document.provider === "flutter" ? (
+                    <option value="entrypoint">Flutter entrypoint</option>
                   ) : (
                     <>
                       <option value="gradleTask">Gradle task</option>
@@ -885,8 +995,10 @@ export function RunConfigurationEditor({
               )
             ) : document.provider === "java" ? (
               <JavaTargetEditor document={document} onChange={setDocument} />
-            ) : (
+            ) : document.provider === "dart" ? (
               <DartTargetEditor document={document} onChange={setDocument} />
+            ) : (
+              <FlutterTargetEditor document={document} onChange={setDocument} />
             )}
             <label className={fieldClassName}>
               <span className={labelClassName}>
@@ -1018,7 +1130,13 @@ export function RunConfigurationEditor({
                           itemIndex === index
                             ? event.target.value === "providerTask" &&
                               supportsProviderTask
-                              ? { kind: "providerTask", task: "build" }
+                              ? {
+                                  kind: "providerTask",
+                                  task:
+                                    document.provider === "flutter"
+                                      ? "pub get"
+                                      : "build",
+                                }
                               : {
                                   kind: "command",
                                   command: "",
@@ -1089,7 +1207,9 @@ export function RunConfigurationEditor({
                       ? "Runs a package script in the start directory."
                       : document.provider === "java"
                         ? "Runs a Gradle task or Maven goal in the selected module."
-                        : "Change this step to Command or remove it."}
+                        : document.provider === "flutter"
+                          ? "Use clean, gen-l10n, or pub get in the Flutter package."
+                          : "Change this step to Command or remove it."}
                   </span>
                 )}
                 <Button
@@ -1287,7 +1407,7 @@ export function RunConfigurationEditor({
                     Use project wrapper
                   </label>
                 </>
-              ) : (
+              ) : document.provider === "dart" ? (
                 <label className={fieldClassName}>
                   <span className={labelClassName}>
                     Dart SDK home (optional)
@@ -1311,6 +1431,120 @@ export function RunConfigurationEditor({
                     }
                   />
                 </label>
+              ) : (
+                <>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>
+                      Flutter SDK home (optional)
+                    </span>
+                    <Input
+                      className="font-mono"
+                      placeholder="Use flutter from the worker PATH"
+                      value={document.options.sdkHome ?? ""}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "flutter"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  sdkHome: event.target.value || null,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>
+                      Target device (optional)
+                    </span>
+                    <Input
+                      className="font-mono"
+                      placeholder="Device ID or name, such as chrome"
+                      value={document.options.deviceId ?? ""}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "flutter"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  deviceId: event.target.value || null,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>Flavor (optional)</span>
+                    <Input
+                      className="font-mono"
+                      placeholder="staging"
+                      value={document.options.flavor ?? ""}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "flutter"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  flavor: event.target.value || null,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>Build mode</span>
+                    <NativeSelect
+                      value={document.options.mode}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "flutter"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  mode: event.target
+                                    .value as RunConfigurationFlutterDocument["options"]["mode"],
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    >
+                      <option value="debug">Debug</option>
+                      <option value="profile">Profile</option>
+                      <option value="release">Release</option>
+                    </NativeSelect>
+                  </label>
+                  <label className="flex items-end gap-2 pb-2 text-sm">
+                    <input
+                      checked={document.options.usePub}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "flutter"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  usePub: event.target.checked,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                      type="checkbox"
+                    />{" "}
+                    Resolve packages before launch
+                  </label>
+                </>
               )}
               <label className={fieldClassName}>
                 <span className={labelClassName}>
@@ -1406,6 +1640,46 @@ export function RunConfigurationEditor({
                     )
                   }
                 />
+              </div>
+            ) : null}
+            {document.provider === "flutter" ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <span className={labelClassName}>Dart defines</span>
+                  <DartDefineRows
+                    rows={document.options.dartDefines}
+                    onChange={(dartDefines) =>
+                      setDocument((current) =>
+                        current.provider === "flutter"
+                          ? {
+                              ...current,
+                              options: { ...current.options, dartDefines },
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <span className={labelClassName}>Dart define files</span>
+                  <StringListEditor
+                    addLabel="Add define file"
+                    values={document.options.dartDefineFiles}
+                    onChange={(dartDefineFiles) =>
+                      setDocument((current) =>
+                        current.provider === "flutter"
+                          ? {
+                              ...current,
+                              options: {
+                                ...current.options,
+                                dartDefineFiles,
+                              },
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </div>
               </div>
             ) : null}
             <label className={fieldClassName}>

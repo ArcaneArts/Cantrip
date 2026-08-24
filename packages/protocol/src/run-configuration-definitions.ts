@@ -676,11 +676,179 @@ export const runConfigurationDartDocumentSchema = z
     }
   });
 
+export const runConfigurationFlutterEntrypointSchema =
+  runConfigurationRepositoryPathSchema.refine(
+    (value) => value.endsWith(".dart"),
+    "Expected a repository-relative Flutter entrypoint path.",
+  );
+
+export const runConfigurationFlutterTargetSchema = z
+  .object({
+    kind: z.literal("entrypoint"),
+    path: runConfigurationFlutterEntrypointSchema,
+  })
+  .strict();
+
+export const runConfigurationFlutterModeSchema = z.enum([
+  "debug",
+  "profile",
+  "release",
+]);
+
+const runConfigurationFlutterSdkHomeSchema = noNulString(1_024)
+  .trim()
+  .min(1)
+  .nullable();
+
+const runConfigurationFlutterDeviceIdSchema = noNulString(512)
+  .trim()
+  .min(1)
+  .nullable();
+
+const runConfigurationFlutterFlavorSchema = noNulString(256)
+  .trim()
+  .min(1)
+  .nullable();
+
+export const runConfigurationFlutterDartDefineSchema = z
+  .object({
+    name: noNulString(256)
+      .trim()
+      .min(1)
+      .refine((value) => !value.includes("="), {
+        message: "Dart define names cannot contain equals signs.",
+      }),
+    value: noNulString(MAX_ENVIRONMENT_VALUE_CHARACTERS),
+  })
+  .strict();
+
+function addDuplicateFlutterDartDefineIssues(
+  options: { dartDefines?: Array<{ name: string }> },
+  context: z.RefinementCtx,
+): void {
+  const names = new Set<string>();
+  for (const [index, define] of (options.dartDefines ?? []).entries()) {
+    if (names.has(define.name)) {
+      context.addIssue({
+        code: "custom",
+        message: "Dart define " + define.name + " is already declared.",
+        path: ["dartDefines", index, "name"],
+      });
+    }
+    names.add(define.name);
+  }
+}
+
+export const runConfigurationFlutterOptionsSchema = z
+  .object({
+    sdkHome: runConfigurationFlutterSdkHomeSchema.default(null),
+    deviceId: runConfigurationFlutterDeviceIdSchema.default(null),
+    flavor: runConfigurationFlutterFlavorSchema.default(null),
+    mode: runConfigurationFlutterModeSchema.default("debug"),
+    dartDefines: z
+      .array(runConfigurationFlutterDartDefineSchema)
+      .max(128)
+      .default([]),
+    dartDefineFiles: z
+      .array(runConfigurationRepositoryPathSchema)
+      .max(32)
+      .default([]),
+    usePub: z.boolean().default(true),
+  })
+  .strict()
+  .superRefine(addDuplicateFlutterDartDefineIssues);
+
+const runConfigurationFlutterPlatformOverrideSchema = z
+  .object({
+    workingDirectory: runConfigurationWorkingDirectorySchema.optional(),
+    commandOverride: runConfigurationCommandSchema.nullable().optional(),
+    arguments: runConfigurationArgumentsSchema.optional(),
+    environment: runConfigurationEnvironmentOverrideSchema.optional(),
+    options: z
+      .object({
+        sdkHome: runConfigurationFlutterSdkHomeSchema.optional(),
+        deviceId: runConfigurationFlutterDeviceIdSchema.optional(),
+        flavor: runConfigurationFlutterFlavorSchema.optional(),
+        mode: runConfigurationFlutterModeSchema.optional(),
+        dartDefines: z
+          .array(runConfigurationFlutterDartDefineSchema)
+          .max(128)
+          .optional(),
+        dartDefineFiles: z
+          .array(runConfigurationRepositoryPathSchema)
+          .max(32)
+          .optional(),
+        usePub: z.boolean().optional(),
+      })
+      .strict()
+      .superRefine(addDuplicateFlutterDartDefineIssues)
+      .optional(),
+  })
+  .strict();
+
+const runConfigurationFlutterPlatformOverridesSchema = z
+  .object({
+    win32: runConfigurationFlutterPlatformOverrideSchema.optional(),
+    darwin: runConfigurationFlutterPlatformOverrideSchema.optional(),
+    linux: runConfigurationFlutterPlatformOverrideSchema.optional(),
+  })
+  .strict();
+
+export const runConfigurationFlutterDocumentSchema = z
+  .object({
+    schema: z.literal(RUN_CONFIGURATION_FILE_SCHEMA),
+    version: z.literal(RUN_CONFIGURATION_FILE_VERSION),
+    id: runConfigurationIdSchema,
+    name: z.string().trim().min(1).max(200),
+    provider: z.literal("flutter"),
+    workingDirectory: runConfigurationWorkingDirectorySchema.default("."),
+    target: runConfigurationFlutterTargetSchema,
+    commandOverride: runConfigurationCommandSchema.nullable().default(null),
+    arguments: runConfigurationArgumentsSchema.default([]),
+    environment: runConfigurationEnvironmentSchema.default({
+      includeCodexEnvironment: true,
+      files: [],
+      variables: [],
+      secrets: [],
+    }),
+    beforeLaunch: z
+      .array(runConfigurationBeforeLaunchStepSchema)
+      .max(32)
+      .default([]),
+    platformOverrides: runConfigurationFlutterPlatformOverridesSchema.default(
+      {},
+    ),
+    options: runConfigurationFlutterOptionsSchema.default({
+      sdkHome: null,
+      deviceId: null,
+      flavor: null,
+      mode: "debug",
+      dartDefines: [],
+      dartDefineFiles: [],
+      usePub: true,
+    }),
+    stop: runConfigurationStopSchema.default({ gracePeriodMs: 3_000 }),
+  })
+  .strict()
+  .superRefine((document, context) => {
+    const bytes = new TextEncoder().encode(JSON.stringify(document)).byteLength;
+    if (bytes > RUN_CONFIGURATION_MAX_FILE_BYTES) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Run configuration documents cannot exceed " +
+          RUN_CONFIGURATION_MAX_FILE_BYTES +
+          " encoded bytes.",
+      });
+    }
+  });
+
 export const runConfigurationFileSchema = z.discriminatedUnion("provider", [
   runConfigurationShellDocumentSchema,
   runConfigurationNodeDocumentSchema,
   runConfigurationJavaDocumentSchema,
   runConfigurationDartDocumentSchema,
+  runConfigurationFlutterDocumentSchema,
 ]);
 
 export const runConfigurationDiagnosticSchema = z
@@ -892,6 +1060,9 @@ export type RunConfigurationJavaDocument = z.infer<
 >;
 export type RunConfigurationDartDocument = z.infer<
   typeof runConfigurationDartDocumentSchema
+>;
+export type RunConfigurationFlutterDocument = z.infer<
+  typeof runConfigurationFlutterDocumentSchema
 >;
 export type RunConfigurationFile = z.infer<typeof runConfigurationFileSchema>;
 export type RunConfigurationDiagnostic = z.infer<

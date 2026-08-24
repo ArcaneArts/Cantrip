@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   createDartRunConfigurationDocument,
+  createFlutterRunConfigurationDocument,
   createJavaRunConfigurationDocument,
   createNodeRunConfigurationDocument,
   createShellRunConfigurationDocument,
   dartRunConfigurationEffectiveCommand,
+  flutterRunConfigurationEffectiveCommand,
   javaRunConfigurationEffectiveCommand,
   nodeRunConfigurationEffectiveCommand,
   parseRunConfigurationEditorDocument,
@@ -145,5 +147,36 @@ describe("Shell Run configuration editor model", () => {
     const parsed = parseRunConfigurationEditorDocument(document, "{}");
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.document.provider).toBe("dart");
+  });
+
+  it("builds structured Flutter commands with device, flavor, mode, and Dart inputs", () => {
+    const document = createFlutterRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000003",
+    );
+    document.name = "Run Flutter mobile";
+    document.options.sdkHome = "/opt/flutter sdk";
+    document.options.deviceId = "chrome";
+    document.options.flavor = "staging";
+    document.options.mode = "profile";
+    document.options.usePub = false;
+    document.options.dartDefines = [
+      { name: "API_URL", value: "https://example.test" },
+      { name: "TITLE", value: "two words" },
+    ];
+    document.options.dartDefineFiles = ["config/staging.env"];
+    document.arguments = ["--route", "two words"];
+    expect(flutterRunConfigurationEffectiveCommand(document)).toEqual({
+      command:
+        '"/opt/flutter sdk/bin/flutter" run --profile --target=lib/main.dart --device-id=chrome --flavor=staging --dart-define=API_URL=https://example.test "--dart-define=TITLE=two words" --dart-define-from-file=config/staging.env --no-pub --dart-entrypoint-args=--route "--dart-entrypoint-args=two words"',
+      overridden: false,
+    });
+    document.commandOverride = "flutter custom";
+    expect(flutterRunConfigurationEffectiveCommand(document)).toEqual({
+      command: 'flutter custom --route "two words"',
+      overridden: true,
+    });
+    const parsed = parseRunConfigurationEditorDocument(document, "{}");
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.document.provider).toBe("flutter");
   });
 });

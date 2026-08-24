@@ -6,6 +6,7 @@ import {
   runConfigurationDartEntrypointSchema,
   runConfigurationDetectionCandidateSchema,
   runConfigurationFileSchema,
+  runConfigurationFlutterEntrypointSchema,
   runConfigurationGradleProjectPathSchema,
   runConfigurationJavaClassNameSchema,
   runConfigurationMavenModuleSchema,
@@ -71,6 +72,18 @@ function dartConfiguration() {
     provider: "dart" as const,
     workingDirectory: "services/api",
     target: { kind: "entrypoint" as const, path: "bin/server.dart" },
+  };
+}
+
+function flutterConfiguration() {
+  return {
+    schema: RUN_CONFIGURATION_FILE_SCHEMA,
+    version: 1 as const,
+    id: configurationId,
+    name: "Run Flutter app",
+    provider: "flutter" as const,
+    workingDirectory: "apps/mobile",
+    target: { kind: "entrypoint" as const, path: "lib/main.dart" },
   };
 }
 
@@ -153,6 +166,22 @@ describe("run configuration definition protocol", () => {
         environment: { includeCodexEnvironment: true },
       },
     );
+    expect(
+      runConfigurationFileSchema.parse(flutterConfiguration()),
+    ).toMatchObject({
+      provider: "flutter",
+      target: { kind: "entrypoint", path: "lib/main.dart" },
+      options: {
+        sdkHome: null,
+        deviceId: null,
+        flavor: null,
+        mode: "debug",
+        dartDefines: [],
+        dartDefineFiles: [],
+        usePub: true,
+      },
+      environment: { includeCodexEnvironment: true },
+    });
     expect(
       runConfigurationProviderCapabilitySchema.parse({
         provider: "rust",
@@ -300,6 +329,58 @@ describe("run configuration definition protocol", () => {
         document,
       }).document.provider,
     ).toBe("dart");
+  });
+
+  it("keeps Flutter targets and launch controls strict and provider-correlated", () => {
+    expect(
+      runConfigurationFlutterEntrypointSchema.parse("lib/main_staging.dart"),
+    ).toBe("lib/main_staging.dart");
+    for (const path of ["../outside.dart", "lib/main.js", "/tmp/main.dart"]) {
+      expect(
+        runConfigurationFileSchema.safeParse({
+          ...flutterConfiguration(),
+          target: { kind: "entrypoint", path },
+        }).success,
+        path,
+      ).toBe(false);
+    }
+    expect(
+      runConfigurationFileSchema.safeParse({
+        ...flutterConfiguration(),
+        options: {
+          sdkHome: null,
+          deviceId: "chrome",
+          flavor: "staging",
+          mode: "debug",
+          dartDefines: [
+            { name: "API_URL", value: "one" },
+            { name: "API_URL", value: "two" },
+          ],
+          dartDefineFiles: ["config/staging.env"],
+          usePub: true,
+        },
+      }).success,
+    ).toBe(false);
+    const document = runConfigurationFileSchema.parse({
+      ...flutterConfiguration(),
+      options: {
+        deviceId: "chrome",
+        flavor: "staging",
+        mode: "profile",
+        dartDefines: [{ name: "API_URL", value: "https://example.test" }],
+        dartDefineFiles: ["config/staging.env"],
+      },
+    });
+    expect(
+      runConfigurationDetectionCandidateSchema.parse({
+        provider: "flutter",
+        confidence: "high",
+        reason: "The Flutter package has a conventional entrypoint.",
+        effectiveCommand:
+          "flutter run --profile --target=lib/main.dart --device-id=chrome --flavor=staging",
+        document,
+      }).document.provider,
+    ).toBe("flutter");
   });
 
   it("rejects traversal, absolute paths, Windows paths, and NULs", () => {
