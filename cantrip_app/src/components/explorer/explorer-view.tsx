@@ -26,11 +26,11 @@ import {
 } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
-import { ExplorerCodeEditor } from "@/components/explorer/explorer-code-editor";
 import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser";
 import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file-routing";
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
 import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
+import { RetainedExplorerCodeEditor } from "@/components/explorer/retained-explorer-code-editor";
 import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
 import { useRetainedInlineWorkbench } from "@/components/explorer/use-retained-inline-workbench";
 import {
@@ -437,6 +437,8 @@ export function ExplorerView({
     ? usesCantripCodeEditor(selectedPath, fileMode)
     : false;
   const graphVisible = graphRootPath !== undefined;
+  const activeCodeEditorPath =
+    active && !graphVisible && codeEditorVisible ? selectedPath : null;
   const dirty = draftVersion !== null && draft !== baselineContent;
   dirtyRef.current = dirty;
   draftRef.current = draft;
@@ -977,24 +979,11 @@ export function ExplorerView({
             <Loader2 className="size-5 animate-spin" />
           )}
         </div>
-      ) : graphVisible ? (
-        <GitRepositoryGraphView
-          projectId={explorer.projectId}
-          refreshEpoch={graphRefreshEpoch}
-          rootPath={graphRootPath}
-          worktreeId={explorer.worktreeId}
-          onActivateFile={openGraphFile}
-          onBack={back}
-          onRevealNode={(node) => {
-            setRevealedPath(node.path || null);
-            setGraphRootPath(undefined);
-            setGraphStatus(null);
-          }}
-          onStatusChange={setGraphStatus}
-        />
-      ) : selectedPath ? (
+      ) : (
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-          {saveFileError || viewStateError ? (
+          {!graphVisible &&
+          selectedPath &&
+          (saveFileError || viewStateError) ? (
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive">
               <span className="min-w-0 truncate">
                 {saveFileError instanceof Error
@@ -1012,95 +1001,110 @@ export function ExplorerView({
               </Button>
             </div>
           ) : null}
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {mediaType ? (
-              <ExplorerMediaView
-                explorerId={explorer.id}
-                key={`${selectedPath}:${mediaRevision}`}
-                kind={mediaType.kind}
-                mimeType={mediaType.mimeType}
-                path={selectedPath}
-                revision={mediaRevision}
-              />
-            ) : codeEditorVisible ? (
-              <div className="flex h-full min-h-0">
-                <ExplorerCodeEditor
-                  appearance={appearance}
+          <RetainedExplorerCodeEditor
+            activePath={activeCodeEditorPath}
+            appearance={appearance}
+            explorerId={explorer.id}
+            retained={retainInlineWorkbench}
+            worktreeId={explorer.worktreeId}
+            workerId={explorer.activeWorkerId}
+          />
+          {graphVisible ? (
+            <GitRepositoryGraphView
+              projectId={explorer.projectId}
+              refreshEpoch={graphRefreshEpoch}
+              rootPath={graphRootPath}
+              worktreeId={explorer.worktreeId}
+              onActivateFile={openGraphFile}
+              onBack={back}
+              onRevealNode={(node) => {
+                setRevealedPath(node.path || null);
+                setGraphRootPath(undefined);
+                setGraphStatus(null);
+              }}
+              onStatusChange={setGraphStatus}
+            />
+          ) : selectedPath && !codeEditorVisible ? (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {mediaType ? (
+                <ExplorerMediaView
                   explorerId={explorer.id}
+                  key={`${selectedPath}:${mediaRevision}`}
+                  kind={mediaType.kind}
+                  mimeType={mediaType.mimeType}
                   path={selectedPath}
-                  worktreeId={explorer.worktreeId}
-                  workerId={explorer.activeWorkerId}
+                  revision={mediaRevision}
                 />
-              </div>
-            ) : file.isLoading ? (
-              <div className="grid h-full place-items-center text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" />
-              </div>
-            ) : file.isError ? (
-              <p className="m-4 border-y border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-                {file.error instanceof Error
-                  ? file.error.message
-                  : "File could not be loaded."}
-              </p>
-            ) : file.data && fileMode === "visual" && structuredFormat ? (
-              <Suspense
-                fallback={
-                  <div className="grid h-full place-items-center text-muted-foreground">
-                    <Loader2 className="size-5 animate-spin" />
-                  </div>
-                }
-              >
-                <StructuredFileVisual
-                  content={draftVersion === null ? file.data.content : draft}
-                  format={structuredFormat}
-                  onChange={setDraft}
-                  onSave={() => void saveDraft()}
-                  path={file.data.path}
-                />
-              </Suspense>
-            ) : file.data &&
-              (fileMode === "preview" ||
-                editableLanguage === null ||
-                fileMode === "visual") ? (
-              <div className="h-full overflow-auto">
-                {file.data.markdown &&
-                markdownPreviewUsesPlainText(file.data.path) ? (
-                  <pre className="min-h-full whitespace-pre-wrap break-words p-6 font-mono text-xs leading-5 sm:p-10">
-                    {draft}
-                  </pre>
-                ) : file.data.markdown ? (
-                  <article
-                    className="mx-auto max-w-4xl p-6 sm:p-10"
-                    data-elite-ignore=""
-                  >
-                    <Markdown>{draft}</Markdown>
-                  </article>
-                ) : (
-                  <SourceView code={draft} path={file.data.path} />
-                )}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {viewStateError ? (
-            <div className="shrink-0 border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive">
-              {viewStateError}
+              ) : file.isLoading ? (
+                <div className="grid h-full place-items-center text-muted-foreground">
+                  <Loader2 className="size-5 animate-spin" />
+                </div>
+              ) : file.isError ? (
+                <p className="m-4 border-y border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                  {file.error instanceof Error
+                    ? file.error.message
+                    : "File could not be loaded."}
+                </p>
+              ) : file.data && fileMode === "visual" && structuredFormat ? (
+                <Suspense
+                  fallback={
+                    <div className="grid h-full place-items-center text-muted-foreground">
+                      <Loader2 className="size-5 animate-spin" />
+                    </div>
+                  }
+                >
+                  <StructuredFileVisual
+                    content={draftVersion === null ? file.data.content : draft}
+                    format={structuredFormat}
+                    onChange={setDraft}
+                    onSave={() => void saveDraft()}
+                    path={file.data.path}
+                  />
+                </Suspense>
+              ) : file.data &&
+                (fileMode === "preview" ||
+                  editableLanguage === null ||
+                  fileMode === "visual") ? (
+                <div className="h-full overflow-auto">
+                  {file.data.markdown &&
+                  markdownPreviewUsesPlainText(file.data.path) ? (
+                    <pre className="min-h-full whitespace-pre-wrap break-words p-6 font-mono text-xs leading-5 sm:p-10">
+                      {draft}
+                    </pre>
+                  ) : file.data.markdown ? (
+                    <article
+                      className="mx-auto max-w-4xl p-6 sm:p-10"
+                      data-elite-ignore=""
+                    >
+                      <Markdown>{draft}</Markdown>
+                    </article>
+                  ) : (
+                    <SourceView code={draft} path={file.data.path} />
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ) : !selectedPath ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              {viewStateError ? (
+                <div className="shrink-0 border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive">
+                  {viewStateError}
+                </div>
+              ) : null}
+              <ExplorerFileBrowser
+                explorer={explorer}
+                gitStatus={gitStatus}
+                onOpenFile={openEntry}
+                onRevealFolder={onRevealFolder ? revealEntry : undefined}
+                revealLabel={revealLabel}
+                onShowInGraph={repositoryGraphAvailable ? openGraph : undefined}
+                onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}
+                queryScope={streamEncryption.bindingKey!}
+                replayKey={entryReplayKey}
+                revealedPath={revealedPath}
+              />
             </div>
           ) : null}
-          <ExplorerFileBrowser
-            explorer={explorer}
-            gitStatus={gitStatus}
-            onOpenFile={openEntry}
-            onRevealFolder={onRevealFolder ? revealEntry : undefined}
-            revealLabel={revealLabel}
-            onShowInGraph={repositoryGraphAvailable ? openGraph : undefined}
-            onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}
-            queryScope={streamEncryption.bindingKey!}
-            replayKey={entryReplayKey}
-            revealedPath={revealedPath}
-          />
         </div>
       )}
     </div>
