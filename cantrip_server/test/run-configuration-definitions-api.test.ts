@@ -37,6 +37,10 @@ import {
   type RunConfigurationRuntime,
   type RunConfigurationRuntimeWorkerIdentity,
 } from "@cantrip/protocol/run-configuration-runtime";
+import {
+  runConfigurationSecretListResultSchema,
+  runConfigurationSecretSetResultSchema,
+} from "@cantrip/protocol/run-configuration-secrets";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
@@ -93,6 +97,17 @@ const protectedRunOutput = {
     version: 1 as const,
     algorithm: "AES-256-GCM" as const,
     keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+};
+const protectedRunSecret = {
+  formatVersion: 1 as const,
+  keyRevision: 3,
+  envelope: {
+    version: 1 as const,
+    algorithm: "AES-256-GCM" as const,
+    keyRevision: 3,
     nonce: "AAAAAAAAAAAAAAAA",
     ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
   },
@@ -827,6 +842,175 @@ describe.sequential("Run configuration definition API", () => {
     socket.terminate();
   }, 15_000);
 
+  it("stores write-only project secrets idempotently and exposes only availability metadata", async () => {
+    const read = runConfigurationGetResponseSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/run-configurations/${configurationId}?operationId=${randomUUID()}`,
+        })
+      ).json(),
+    );
+    if (
+      !read.result.found ||
+      read.result.entry.status !== "ready" ||
+      !read.result.entry.document ||
+      !read.result.entry.revision
+    ) {
+      throw new Error("Expected a ready Run configuration.");
+    }
+    const updated = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-configurations/${configurationId}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: read.result.entry.revision,
+        document: {
+          ...read.result.entry.document,
+          environment: {
+            ...read.result.entry.document.environment,
+            secrets: [
+              {
+                name: "DATABASE_URL",
+                secret: "project/database-url",
+                enabled: true,
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+
+    const missingRead = runConfigurationGetResponseSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/run-configurations/${configurationId}?operationId=${randomUUID()}`,
+        })
+      ).json(),
+    );
+    expect(missingRead.secretReferences).toEqual([
+      {
+        reference: "project/database-url",
+        available: false,
+        revision: null,
+        updatedAt: null,
+      },
+    ]);
+
+    const operationId = randomUUID();
+    const created = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-configuration-secrets`,
+      payload: {
+        operationId,
+        reference: "project/database-url",
+        protectedValue: protectedRunSecret,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(
+      runConfigurationSecretSetResultSchema.parse(created.json()),
+    ).toMatchObject({
+      replayed: false,
+      secret: { available: true, revision: 1 },
+    });
+
+    const replayed = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-configuration-secrets`,
+      payload: {
+        operationId,
+        reference: "project/database-url",
+        protectedValue: protectedRunSecret,
+      },
+    });
+    expect(replayed.statusCode).toBe(200);
+    expect(
+      runConfigurationSecretSetResultSchema.parse(replayed.json()),
+    ).toMatchObject({ replayed: true, secret: { revision: 1 } });
+
+    const rotatedProtectedValue = {
+      ...protectedRunSecret,
+      envelope: {
+        ...protectedRunSecret.envelope,
+        ciphertext: "BBBBBBBBBBBBBBBBBBBBBA",
+      },
+    };
+    const rotated = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-configuration-secrets`,
+      payload: {
+        operationId: randomUUID(),
+        reference: "project/database-url",
+        protectedValue: rotatedProtectedValue,
+      },
+    });
+    expect(rotated.statusCode).toBe(200);
+    expect(
+      runConfigurationSecretSetResultSchema.parse(rotated.json()),
+    ).toMatchObject({ replayed: false, secret: { revision: 2 } });
+
+    const listedResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configuration-secrets`,
+    });
+    const listed = runConfigurationSecretListResultSchema.parse(
+      listedResponse.json(),
+    );
+    expect(listed.secrets).toMatchObject([
+      { reference: "project/database-url", available: true, revision: 2 },
+    ]);
+    expect(JSON.stringify(listed)).not.toContain("protectedValue");
+    expect(JSON.stringify(listed)).not.toContain("ciphertext");
+
+    const definitionResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configurations/${configurationId}?operationId=${randomUUID()}`,
+    });
+    expect(definitionResponse.json()).toMatchObject({
+      secretReferences: [
+        {
+          reference: "project/database-url",
+          available: true,
+          revision: 2,
+        },
+      ],
+    });
+    expect(JSON.stringify(definitionResponse.json())).not.toContain(
+      "protectedValue",
+    );
+
+    const internal =
+      await database.repository.listRunConfigurationProtectedSecrets(
+        LOCAL_USER_ID,
+        projectId,
+        ["project/database-url"],
+      );
+    expect(internal).toMatchObject([
+      { revision: 2, protectedValue: rotatedProtectedValue },
+    ]);
+    expect(JSON.stringify(internal)).not.toContain("secret-plaintext-sentinel");
+    const audits = await database.repository.listAuditEvents(
+      { limit: 100 },
+      LOCAL_USER_ID,
+    );
+    expect(audits.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "run.configuration.secret.app.set",
+          resource: {
+            type: "run-configuration-secret",
+            id: "project/database-url",
+          },
+        }),
+      ]),
+    );
+    expect(JSON.stringify(audits)).not.toContain("protectedValue");
+    expect(JSON.stringify(audits)).not.toContain("ciphertext");
+  });
+
   it("runs, restarts, stops, reports, and reuses a Primary-bound Run terminal", async () => {
     const codexEnvironmentDirectory = path.join(
       primaryRoot,
@@ -879,6 +1063,15 @@ script = "export SERVER_PREFLIGHT=first"
       sourcePath: primaryRoot,
       targetPath: primaryRoot,
       identity: { terminalId, generation: 1 },
+      protectedSecrets: [
+        {
+          reference: "project/database-url",
+          revision: 2,
+          protectedValue: {
+            envelope: { ciphertext: "BBBBBBBBBBBBBBBBBBBBBA" },
+          },
+        },
+      ],
     });
 
     const terminals = terminalWireListSchema.parse(

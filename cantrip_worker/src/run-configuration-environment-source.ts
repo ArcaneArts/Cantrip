@@ -20,6 +20,7 @@ import {
   type RunConfigurationPlatform,
   type RunConfigurationRevision,
 } from "@cantrip/protocol/run-configuration-definitions";
+import type { RunConfigurationProtectedSecret } from "@cantrip/protocol/run-configuration-secrets";
 import { parse as parseDotenv } from "dotenv";
 import { parse as parseToml } from "smol-toml";
 
@@ -59,8 +60,10 @@ export interface RunConfigurationEnvironmentResolutionInput {
   environment: RunConfigurationEnvironment;
   expectedCodexEnvironmentRevision: RunConfigurationRevision | null;
   platform: RunConfigurationPlatform;
+  protectedSecrets: RunConfigurationProtectedSecret[];
   sourceRoot: string;
   targetRoot: string;
+  openSecret(secret: RunConfigurationProtectedSecret): Promise<string>;
   execute(
     command: MaterializedRunCommand,
     environment: Record<string, string>,
@@ -645,20 +648,40 @@ async function materializeCodexEnvironment(
 export async function resolveRunConfigurationEnvironmentSources(
   input: RunConfigurationEnvironmentResolutionInput,
 ): Promise<RunConfigurationEnvironmentResolution> {
-  const missingSecret = input.environment.secrets.find(
-    ({ enabled }) => enabled,
-  );
-  if (missingSecret) {
-    throw new RunConfigurationEnvironmentResolutionError(
-      "secret-reference-unavailable",
-      `Secret reference ${missingSecret.secret} is unavailable.`,
-      true,
-    );
-  }
   const files = await resolveEnvironmentFiles(
     input.targetRoot,
     input.environment.files,
   );
+  const protectedSecrets = new Map(
+    input.protectedSecrets.map((secret) => [secret.reference, secret]),
+  );
+  const openedSecrets = new Map<string, string>();
+  const secrets: Record<string, string> = {};
+  for (const reference of input.environment.secrets) {
+    if (!reference.enabled) continue;
+    const protectedSecret = protectedSecrets.get(reference.secret);
+    if (!protectedSecret) {
+      throw new RunConfigurationEnvironmentResolutionError(
+        "secret-reference-missing",
+        `Secret reference ${reference.secret} has no stored value.`,
+        true,
+      );
+    }
+    let value = openedSecrets.get(reference.secret);
+    if (value === undefined) {
+      try {
+        value = await input.openSecret(protectedSecret);
+      } catch {
+        throw new RunConfigurationEnvironmentResolutionError(
+          "secret-reference-unavailable",
+          `Secret reference ${reference.secret} could not be opened on this worker.`,
+          true,
+        );
+      }
+      openedSecrets.set(reference.secret, value);
+    }
+    secrets[reference.name] = value;
+  }
   if (!input.environment.includeCodexEnvironment) {
     if (input.expectedCodexEnvironmentRevision !== null) {
       throw new RunConfigurationEnvironmentResolutionError(
@@ -671,7 +694,7 @@ export async function resolveRunConfigurationEnvironmentSources(
       codex: {},
       codexEnvironmentRevision: null,
       files,
-      secrets: {},
+      secrets,
     };
   }
   const inspected = await inspectCodexEnvironment(
@@ -712,6 +735,6 @@ export async function resolveRunConfigurationEnvironmentSources(
     codex,
     codexEnvironmentRevision: inspected.status.revision,
     files,
-    secrets: {},
+    secrets,
   };
 }

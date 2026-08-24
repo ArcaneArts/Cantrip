@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 
 import type { RunConfigurationShellDocument } from "@cantrip/protocol/run-configuration-definitions";
+import type { RunConfigurationProtectedSecret } from "@cantrip/protocol/run-configuration-secrets";
 import type {
   RunConfigurationRuntimeLaunchIdentity,
   RunConfigurationRuntimeWorkerObservation,
@@ -439,6 +440,7 @@ function identity(
 function startCommand(
   input: Fixture,
   runtimeIdentity: RunConfigurationRuntimeLaunchIdentity,
+  protectedSecrets: RunConfigurationProtectedSecret[] = [],
 ) {
   return {
     type: "project.run-configuration-runtime.start" as const,
@@ -446,16 +448,39 @@ function startCommand(
     rootKind: "git-root" as const,
     sourcePath: input.sourceRoot,
     targetPath: input.targetRoot,
+    protectedSecrets,
   };
 }
 
 function restartCommand(
   input: Fixture,
   runtimeIdentity: RunConfigurationRuntimeLaunchIdentity,
+  protectedSecrets: RunConfigurationProtectedSecret[] = [],
 ) {
   return {
-    ...startCommand(input, runtimeIdentity),
+    ...startCommand(input, runtimeIdentity, protectedSecrets),
     type: "project.run-configuration-runtime.restart" as const,
+  };
+}
+
+function protectedSecret(
+  reference: string,
+  revision: number,
+): RunConfigurationProtectedSecret {
+  return {
+    reference,
+    revision,
+    protectedValue: {
+      formatVersion: 1,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
   };
 }
 
@@ -488,8 +513,10 @@ function resolveLiveEnvironment(
       resolution.identity.codexEnvironmentRevision,
     execute: resolution.execute,
     platform: resolution.platform,
+    protectedSecrets: resolution.protectedSecrets,
     sourceRoot: resolution.sourceRoot,
     targetRoot: resolution.targetRoot,
+    openSecret: async (secret) => `opened-secret-revision-${secret.revision}`,
   });
 }
 
@@ -695,6 +722,60 @@ script = "printf 'materializing-second\\n'; export CODEX_VALUE=second; export LA
       expect(secondOutput).toContain("second|plain|first|protected-baseline");
       expect(secondOutput).toContain(
         "[Starting next generation · generation 2]",
+      );
+      await runs.closeAll();
+    });
+
+    it("uses the current project-secret revision on each generation without exposing it in observations", async () => {
+      const input = await fixture(
+        `printf '%s|%s' "$TOKEN" "$CANTRIP_WORKER_CREDENTIAL" > secret-result.txt`,
+        {
+          environment: {
+            includeCodexEnvironment: false,
+            files: [],
+            variables: [],
+            secrets: [
+              { name: "TOKEN", secret: "project/token", enabled: true },
+              {
+                name: "CANTRIP_WORKER_CREDENTIAL",
+                secret: "project/token",
+                enabled: true,
+              },
+            ],
+          },
+        },
+      );
+      const notifications: RunConfigurationRuntimeWorkerObservation[] = [];
+      const runs = supervisor(notifications, {
+        environment: {
+          ...process.env,
+          CANTRIP_WORKER_CREDENTIAL: "protected-baseline",
+        },
+        resolveEnvironment: resolveLiveEnvironment,
+      });
+      const first = identity(input);
+      await runs.start(
+        startCommand(input, first, [protectedSecret("project/token", 1)]),
+      );
+      await waitForState(runs, first, "exited");
+      await expect(
+        readFile(path.join(input.targetRoot, "secret-result.txt"), "utf8"),
+      ).resolves.toBe("opened-secret-revision-1|protected-baseline");
+
+      const second = {
+        ...first,
+        generation: 2,
+        operationId: randomUUID(),
+      };
+      await runs.start(
+        startCommand(input, second, [protectedSecret("project/token", 2)]),
+      );
+      await waitForState(runs, second, "exited");
+      await expect(
+        readFile(path.join(input.targetRoot, "secret-result.txt"), "utf8"),
+      ).resolves.toBe("opened-secret-revision-2|protected-baseline");
+      expect(JSON.stringify(notifications)).not.toContain(
+        "opened-secret-revision",
       );
       await runs.closeAll();
     });

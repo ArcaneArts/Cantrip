@@ -1,22 +1,25 @@
-import type {
-  RunConfigurationDetectionCandidate,
-  RunConfigurationDartDocument,
-  RunConfigurationFile,
-  RunConfigurationFlutterDocument,
-  RunConfigurationJavaDocument,
-  RunConfigurationNodeDocument,
-  RunConfigurationProviderCapability,
-  RunConfigurationProviderKind,
-  RunConfigurationRepositoryEntry,
-  RunConfigurationRustDocument,
-  RunConfigurationShellDocument,
+import {
+  runConfigurationSecretReferenceSchema,
+  type RunConfigurationDetectionCandidate,
+  type RunConfigurationDartDocument,
+  type RunConfigurationFile,
+  type RunConfigurationFlutterDocument,
+  type RunConfigurationJavaDocument,
+  type RunConfigurationNodeDocument,
+  type RunConfigurationProviderCapability,
+  type RunConfigurationProviderKind,
+  type RunConfigurationRepositoryEntry,
+  type RunConfigurationRustDocument,
+  type RunConfigurationShellDocument,
 } from "@cantrip/protocol/run-configuration-definitions";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import type { RunConfigurationSecretSummary } from "@cantrip/protocol/run-configuration-secrets";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Boxes,
   Coffee,
   FileCode2,
+  KeyRound,
   Loader2,
   Package,
   Plus,
@@ -49,7 +52,9 @@ import { NativeSelect } from "@/components/ui/native-select";
 import {
   detectRunConfigurations,
   getRunConfigurationCapabilities,
+  listRunConfigurationSecrets,
   saveRunConfiguration,
+  setRunConfigurationSecret,
 } from "@/lib/run-configuration-api";
 import {
   createRunConfigurationDocument,
@@ -67,6 +72,39 @@ const textareaClassName =
 type RunConfigurationEditorPatch = {
   [Field in keyof RunConfigurationFile]?: RunConfigurationFile[Field];
 };
+
+function unknownRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function documentSecretReferences(
+  document: RunConfigurationFile,
+  platformOverrides: string,
+): string[] {
+  const references = new Set<string>();
+  const add = (candidate: string) => {
+    const parsed = runConfigurationSecretReferenceSchema.safeParse(candidate);
+    if (parsed.success) references.add(parsed.data);
+  };
+  document.environment.secrets.forEach(({ secret }) => add(secret));
+  try {
+    const overrides = unknownRecord(JSON.parse(platformOverrides));
+    Object.values(overrides ?? {}).forEach((override) => {
+      const environment = unknownRecord(unknownRecord(override)?.environment);
+      const secrets = environment?.secrets;
+      if (!Array.isArray(secrets)) return;
+      secrets.forEach((secret) => {
+        const reference = unknownRecord(secret)?.secret;
+        if (typeof reference === "string") add(reference);
+      });
+    });
+  } catch {
+    // Invalid override JSON is reported by the normal editor validation.
+  }
+  return [...references].sort((left, right) => left.localeCompare(right));
+}
 
 function StringListEditor({
   addLabel,
@@ -121,10 +159,12 @@ function StringListEditor({
 function EnvironmentRows({
   kind,
   rows,
+  secretReferences = [],
   onChange,
 }: {
   kind: "variable" | "secret";
   rows: Array<{ name: string; value: string; enabled: boolean }>;
+  secretReferences?: string[];
   onChange(
     rows: Array<{ name: string; value: string; enabled: boolean }>,
   ): void;
@@ -166,6 +206,11 @@ function EnvironmentRows({
           />
           <Input
             aria-label={`${kind} value ${index + 1}`}
+            list={
+              kind === "secret"
+                ? "run-configuration-secret-references"
+                : undefined
+            }
             placeholder={kind === "secret" ? "vault/reference" : "Value"}
             value={row.value}
             onChange={(event) =>
@@ -191,6 +236,13 @@ function EnvironmentRows({
           </Button>
         </div>
       ))}
+      {kind === "secret" ? (
+        <datalist id="run-configuration-secret-references">
+          {secretReferences.map((reference) => (
+            <option key={reference} value={reference} />
+          ))}
+        </datalist>
+      ) : null}
       <Button
         className="w-fit"
         onClick={() =>
@@ -202,6 +254,76 @@ function EnvironmentRows({
       >
         <Plus className="size-3.5" /> Add {kind}
       </Button>
+    </div>
+  );
+}
+
+function SecretValueEditor({
+  reference,
+  summary,
+  projectId,
+  onSaved,
+}: {
+  reference: string;
+  summary: RunConfigurationSecretSummary | null;
+  projectId: string;
+  onSaved(summary: RunConfigurationSecretSummary): void;
+}) {
+  const [value, setValue] = useState("");
+  const mutation = useMutation({
+    mutationFn: () => setRunConfigurationSecret(projectId, reference, value),
+    onSuccess: (result) => {
+      setValue("");
+      onSaved(result.secret);
+    },
+  });
+
+  return (
+    <div className="grid gap-2 rounded-md border bg-muted/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <KeyRound className="size-3.5 shrink-0" />
+            <code className="truncate">{reference}</code>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {summary?.available
+              ? `Configured · revision ${summary.revision}`
+              : "Missing · set a value before running"}
+          </p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Input
+          aria-label={`Write-only value for ${reference}`}
+          autoComplete="new-password"
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="Write-only secret value"
+          type="password"
+          value={value}
+        />
+        <Button
+          disabled={value.length === 0 || mutation.isPending}
+          onClick={() => mutation.mutate()}
+          type="button"
+          variant="outline"
+        >
+          {mutation.isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : null}
+          {summary?.available ? "Rotate value" : "Set value"}
+        </Button>
+      </div>
+      {mutation.error ? (
+        <p className="text-xs text-destructive" role="alert">
+          {mutation.error instanceof Error
+            ? mutation.error.message
+            : "The secret value could not be stored."}
+        </p>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        Values are encrypted locally and cannot be revealed from this editor.
+      </p>
     </div>
   );
 }
@@ -644,6 +766,7 @@ export function RunConfigurationEditor({
   );
   const [errors, setErrors] = useState<string[]>([]);
   const [conflictRevision, setConflictRevision] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const editingRevision = entry?.revision ?? null;
   const detection = useQuery({
     enabled: open && creating && stage === "choose",
@@ -657,6 +780,45 @@ export function RunConfigurationEditor({
     queryFn: () => getRunConfigurationCapabilities(projectId),
     staleTime: 30_000,
   });
+  const secretQueryKey = ["run-configuration-secrets", projectId] as const;
+  const storedSecrets = useQuery({
+    enabled: open && stage === "edit",
+    queryKey: secretQueryKey,
+    queryFn: () => listRunConfigurationSecrets(projectId),
+    staleTime: 5_000,
+  });
+  const referencedSecrets = useMemo(
+    () => documentSecretReferences(document, platformOverrides),
+    [document, platformOverrides],
+  );
+  const suggestedSecretReferences = useMemo(
+    () =>
+      [
+        ...new Set([
+          ...referencedSecrets,
+          ...(storedSecrets.data?.map(({ reference }) => reference) ?? []),
+        ]),
+      ].sort((left, right) => left.localeCompare(right)),
+    [referencedSecrets, storedSecrets.data],
+  );
+  const secretSummaries = useMemo(
+    () =>
+      new Map(
+        storedSecrets.data?.map((summary) => [summary.reference, summary]) ??
+          [],
+      ),
+    [storedSecrets.data],
+  );
+  const updateSecretSummary = (summary: RunConfigurationSecretSummary) => {
+    queryClient.setQueryData<RunConfigurationSecretSummary[]>(
+      secretQueryKey,
+      (current = []) =>
+        [
+          ...current.filter(({ reference }) => reference !== summary.reference),
+          summary,
+        ].sort((left, right) => left.reference.localeCompare(right.reference)),
+    );
+  };
 
   const reload = () => {
     const next = initialDocument(entry);
@@ -1166,6 +1328,7 @@ export function RunConfigurationEditor({
                     enabled,
                   }),
                 )}
+                secretReferences={suggestedSecretReferences}
                 onChange={(rows) =>
                   patchDocument({
                     environment: {
@@ -1179,6 +1342,25 @@ export function RunConfigurationEditor({
                   })
                 }
               />
+              {storedSecrets.error ? (
+                <p className="text-xs text-destructive" role="alert">
+                  Stored secret availability could not be loaded.
+                </p>
+              ) : null}
+              {referencedSecrets.length > 0 ? (
+                <div className="grid gap-2 pt-1">
+                  <span className={labelClassName}>Write-only values</span>
+                  {referencedSecrets.map((reference) => (
+                    <SecretValueEditor
+                      key={reference}
+                      onSaved={updateSecretSummary}
+                      projectId={projectId}
+                      reference={reference}
+                      summary={secretSummaries.get(reference) ?? null}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           </section>
 

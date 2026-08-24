@@ -34,6 +34,15 @@ import type {
   RunConfigurationRuntimeWorkerIdentity,
   RunConfigurationRuntimeWorkerObservation,
 } from "@cantrip/protocol/run-configuration-runtime";
+import {
+  runConfigurationProtectedSecretListSchema,
+  runConfigurationSecretSetRequestSchema,
+  runConfigurationSecretSetResultSchema,
+  runConfigurationSecretSummaryListSchema,
+  type RunConfigurationProtectedSecret,
+  type RunConfigurationSecretSetResult,
+  type RunConfigurationSecretSummary,
+} from "@cantrip/protocol/run-configuration-secrets";
 import type {
   AgentInteractionRequest,
   AgentInteractionRequestCreate,
@@ -365,6 +374,10 @@ type RunConfigurationRuntimeRow =
   typeof schema.runConfigurationRuntimes.$inferSelect;
 type RunConfigurationRuntimeOperationRow =
   typeof schema.runConfigurationRuntimeOperations.$inferSelect;
+type RunConfigurationSecretRow =
+  typeof schema.runConfigurationSecrets.$inferSelect;
+type RunConfigurationSecretOperationRow =
+  typeof schema.runConfigurationSecretOperations.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
 type UserRow = typeof schema.users.$inferSelect;
 type UserSessionRow = typeof schema.userSessions.$inferSelect;
@@ -1432,6 +1445,54 @@ function toRunConfigurationRuntimeOperation(
     codexEnvironmentRevision: operation.codexEnvironmentRevision,
     createdAt: toISOString(operation.createdAt),
   };
+}
+
+function toRunConfigurationSecretSummary(
+  secret: RunConfigurationSecretRow,
+): RunConfigurationSecretSummary {
+  return {
+    reference: secret.reference,
+    available: true,
+    revision: secret.revision,
+    updatedAt: toISOString(secret.updatedAt),
+  };
+}
+
+function toRunConfigurationProtectedSecret(
+  secret: RunConfigurationSecretRow,
+): RunConfigurationProtectedSecret {
+  return {
+    reference: secret.reference,
+    revision: secret.revision,
+    protectedValue: secret.protectedValue,
+  };
+}
+
+function runConfigurationSecretValueDigest(
+  protectedValue: ProtectedSecretEnvelope,
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify(protectedValue))
+    .digest("hex");
+}
+
+function replayedRunConfigurationSecretSetResult(
+  operation: RunConfigurationSecretOperationRow,
+): RunConfigurationSecretSetResult {
+  if (operation.revision === null) {
+    throw new Error("The Run configuration secret operation is incomplete.");
+  }
+  return runConfigurationSecretSetResultSchema.parse({
+    operationId: operation.id,
+    projectId: operation.projectId,
+    replayed: true,
+    secret: {
+      reference: operation.reference,
+      available: true,
+      revision: operation.revision,
+      updatedAt: toISOString(operation.createdAt),
+    },
+  });
 }
 
 function toChatExecutionLaneSummary(
@@ -10170,6 +10231,234 @@ export class ServerRepository {
           observation.worktreeId,
           observation.runId,
         );
+  }
+
+  async listRunConfigurationSecretSummaries(
+    ownerId: string,
+    projectId: string,
+  ): Promise<RunConfigurationSecretSummary[]> {
+    const rows = await this.database
+      .select({ secret: schema.runConfigurationSecrets })
+      .from(schema.runConfigurationSecrets)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.runConfigurationSecrets.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.runConfigurationSecrets.projectId, projectId))
+      .orderBy(asc(schema.runConfigurationSecrets.reference))
+      .limit(256);
+    return runConfigurationSecretSummaryListSchema.parse(
+      rows.map(({ secret }) => toRunConfigurationSecretSummary(secret)),
+    );
+  }
+
+  async getRunConfigurationSecretStatuses(
+    ownerId: string,
+    projectId: string,
+    references: string[],
+  ): Promise<RunConfigurationSecretSummary[]> {
+    const ordered = [...new Set(references)].slice(0, 256);
+    if (ordered.length === 0) return [];
+    const records = await this.listRunConfigurationProtectedSecrets(
+      ownerId,
+      projectId,
+      ordered,
+    );
+    const byReference = new Map(
+      records.map((record) => [record.reference, record]),
+    );
+    return runConfigurationSecretSummaryListSchema.parse(
+      ordered.map((reference) => {
+        const record = byReference.get(reference);
+        return record
+          ? {
+              reference,
+              available: true,
+              revision: record.revision,
+              updatedAt: record.updatedAt,
+            }
+          : {
+              reference,
+              available: false,
+              revision: null,
+              updatedAt: null,
+            };
+      }),
+    );
+  }
+
+  async listRunConfigurationProtectedSecrets(
+    ownerId: string,
+    projectId: string,
+    references: string[],
+  ): Promise<Array<RunConfigurationProtectedSecret & { updatedAt: string }>> {
+    const unique = [...new Set(references)].slice(0, 256);
+    if (unique.length === 0) return [];
+    const rows = await this.database
+      .select({ secret: schema.runConfigurationSecrets })
+      .from(schema.runConfigurationSecrets)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.runConfigurationSecrets.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.runConfigurationSecrets.projectId, projectId),
+          inArray(schema.runConfigurationSecrets.reference, unique),
+        ),
+      )
+      .orderBy(asc(schema.runConfigurationSecrets.reference));
+    const protectedSecrets = runConfigurationProtectedSecretListSchema.parse(
+      rows.map(({ secret }) => toRunConfigurationProtectedSecret(secret)),
+    );
+    const updatedAt = new Map(
+      rows.map(({ secret }) => [
+        secret.reference,
+        toISOString(secret.updatedAt),
+      ]),
+    );
+    return protectedSecrets.map((secret) => ({
+      ...secret,
+      updatedAt: updatedAt.get(secret.reference)!,
+    }));
+  }
+
+  async setRunConfigurationSecret(
+    ownerId: string,
+    projectId: string,
+    raw: unknown,
+  ): Promise<RunConfigurationSecretSetResult> {
+    const request = runConfigurationSecretSetRequestSchema.parse(raw);
+    const digest = runConfigurationSecretValueDigest(request.protectedValue);
+    return this.database.transaction(async (transaction) => {
+      const replay = (
+        operation: RunConfigurationSecretOperationRow,
+      ): RunConfigurationSecretSetResult => {
+        if (
+          operation.ownerId !== ownerId ||
+          operation.projectId !== projectId ||
+          operation.reference !== request.reference ||
+          operation.protectedValueDigest !== digest
+        ) {
+          throw new Error(
+            "The Run configuration secret operation identity is already in use.",
+          );
+        }
+        return replayedRunConfigurationSecretSetResult(operation);
+      };
+
+      const existingOperations = await transaction
+        .select()
+        .from(schema.runConfigurationSecretOperations)
+        .where(
+          eq(schema.runConfigurationSecretOperations.id, request.operationId),
+        )
+        .limit(1);
+      if (existingOperations[0]) return replay(existingOperations[0]);
+
+      const now = new Date();
+      const claimed = await transaction
+        .insert(schema.runConfigurationSecretOperations)
+        .values({
+          id: request.operationId,
+          ownerId,
+          projectId,
+          reference: request.reference,
+          revision: null,
+          protectedValueDigest: digest,
+          createdAt: now,
+        })
+        .onConflictDoNothing({
+          target: schema.runConfigurationSecretOperations.id,
+        })
+        .returning();
+      if (!claimed[0]) {
+        const raced = await transaction
+          .select()
+          .from(schema.runConfigurationSecretOperations)
+          .where(
+            eq(schema.runConfigurationSecretOperations.id, request.operationId),
+          )
+          .limit(1);
+        if (!raced[0]) {
+          throw new Error(
+            "Could not recover the Run configuration secret operation.",
+          );
+        }
+        return replay(raced[0]);
+      }
+
+      const projects = await transaction
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.id, projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!projects[0]) {
+        throw new Error("The Run configuration secret project was not found.");
+      }
+
+      const secrets = await transaction
+        .insert(schema.runConfigurationSecrets)
+        .values({
+          id: randomUUID(),
+          ownerId,
+          projectId,
+          reference: request.reference,
+          protectedValue: request.protectedValue,
+          revision: 1,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            schema.runConfigurationSecrets.projectId,
+            schema.runConfigurationSecrets.reference,
+          ],
+          set: {
+            ownerId,
+            protectedValue: request.protectedValue,
+            revision: sql`${schema.runConfigurationSecrets.revision} + 1`,
+            updatedAt: now,
+          },
+        })
+        .returning();
+      const secret = secrets[0];
+      if (!secret) {
+        throw new Error("Could not store the Run configuration secret.");
+      }
+      const completed = await transaction
+        .update(schema.runConfigurationSecretOperations)
+        .set({ revision: secret.revision })
+        .where(
+          and(
+            eq(schema.runConfigurationSecretOperations.id, request.operationId),
+            isNull(schema.runConfigurationSecretOperations.revision),
+          ),
+        )
+        .returning();
+      if (!completed[0]) {
+        throw new Error(
+          "Could not complete the Run configuration secret operation.",
+        );
+      }
+      return runConfigurationSecretSetResultSchema.parse({
+        operationId: request.operationId,
+        projectId,
+        replayed: false,
+        secret: toRunConfigurationSecretSummary(secret),
+      });
+    });
   }
 
   async getRunConfigurationRuntimeOperationResult(

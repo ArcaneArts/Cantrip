@@ -20,6 +20,11 @@ describe("live mutation invalidation", () => {
         "/api/projects/:projectId/run-configurations/:configurationId",
       ),
     ).toEqual(["run-configuration"]);
+    expect(
+      mutationLiveResources(
+        "/api/projects/:projectId/run-configuration-secrets",
+      ),
+    ).toEqual(["run-configuration"]);
   });
 
   it("does not fan out chat-list invalidations for composer autosaves", () => {

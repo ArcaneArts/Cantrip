@@ -298,6 +298,9 @@ describe("application live query bridge", () => {
     ).toContainEqual(["run-configurations", "project-one"]);
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["run-configuration-secrets", "project-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["project-replica-jobs", "project-one"]);
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
@@ -333,6 +336,7 @@ describe("application live query bridge", () => {
       ),
     ).toEqual([
       ["run-configurations", "project-one"],
+      ["run-configuration-secrets", "project-one"],
       ["run-configuration", "project-one", "configuration-one"],
     ]);
     expect(

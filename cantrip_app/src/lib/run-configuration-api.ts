@@ -28,10 +28,17 @@ import {
   runConfigurationListResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
+import {
+  runConfigurationSecretListResultSchema,
+  runConfigurationSecretSetResultSchema,
+  type RunConfigurationSecretSetResult,
+  type RunConfigurationSecretSummary,
+} from "@cantrip/protocol/run-configuration-secrets";
 
 import { request, requestResponse } from "@/lib/api-client";
 import { ensureRunOperationWorker } from "@/lib/api";
 import { openRunContent } from "@/lib/run-content-encryption";
+import { protectRunConfigurationSecretValue } from "@/lib/run-configuration-secret-encryption";
 
 function configurationCollectionPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/run-configurations`;
@@ -39,6 +46,10 @@ function configurationCollectionPath(projectId: string): string {
 
 function configurationPath(projectId: string, configurationId: string): string {
   return `${configurationCollectionPath(projectId)}/${encodeURIComponent(configurationId)}`;
+}
+
+function secretCollectionPath(projectId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/run-configuration-secrets`;
 }
 
 function operationQuery(operationId: string): string {
@@ -158,6 +169,42 @@ export async function deleteRunConfiguration(
   );
   assertCorrelated(wire, projectId, operationId);
   return wire.result;
+}
+
+export async function listRunConfigurationSecrets(
+  projectId: string,
+): Promise<RunConfigurationSecretSummary[]> {
+  const result = runConfigurationSecretListResultSchema.parse(
+    await request(secretCollectionPath(projectId)),
+  );
+  if (result.projectId !== projectId) {
+    throw new Error("The Run configuration secret response was misrouted.");
+  }
+  return result.secrets;
+}
+
+export async function setRunConfigurationSecret(
+  projectId: string,
+  reference: string,
+  value: string,
+  operationId = crypto.randomUUID(),
+): Promise<RunConfigurationSecretSetResult> {
+  const protectedValue = await protectRunConfigurationSecretValue({
+    projectId,
+    reference,
+    value,
+  });
+  const result = runConfigurationSecretSetResultSchema.parse(
+    await request(secretCollectionPath(projectId), {
+      method: "PUT",
+      body: JSON.stringify({ operationId, reference, protectedValue }),
+    }),
+  );
+  assertCorrelated(result, projectId, operationId);
+  if (result.secret.reference !== reference) {
+    throw new Error("The Run configuration secret response was misrouted.");
+  }
+  return result;
 }
 
 export async function operateRunConfigurationRuntime(

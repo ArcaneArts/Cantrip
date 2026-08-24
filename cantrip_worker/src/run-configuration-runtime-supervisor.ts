@@ -23,6 +23,7 @@ import {
   type RunConfigurationRuntimeWorkerOutput,
   type RunConfigurationRuntimeWorkerReconciliation,
 } from "@cantrip/protocol/run-configuration-runtime";
+import type { RunConfigurationProtectedSecret } from "@cantrip/protocol/run-configuration-secrets";
 import * as pty from "node-pty";
 
 import { workerLogger } from "./logger.js";
@@ -89,6 +90,7 @@ export interface RunConfigurationRuntimeEnvironmentInput {
   environment: RunConfigurationEnvironment;
   identity: RunConfigurationRuntimeLaunchIdentity;
   platform: RunConfigurationPlatform;
+  protectedSecrets: RunConfigurationProtectedSecret[];
   sourceRoot: string;
   targetRoot: string;
   execute(
@@ -785,6 +787,7 @@ export class RunConfigurationRuntimeSupervisor {
           environment: materialized.environment,
           identity: command.identity,
           platform: providerContext.platform,
+          protectedSecrets: command.protectedSecrets,
           sourceRoot: roots.sourceRoot,
           targetRoot: roots.targetRoot,
           execute: (environmentCommand, environment, timeoutMs) =>

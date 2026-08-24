@@ -2546,6 +2546,99 @@ export const runConfigurationRuntimeOperations = pgTable(
   ],
 );
 
+export const runConfigurationSecrets = pgTable(
+  "run_configuration_secrets",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    reference: text("reference").notNull(),
+    protectedValue: jsonb("protected_value")
+      .$type<ProtectedSecretEnvelope>()
+      .notNull(),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("run_configuration_secrets_project_reference_unique").on(
+      table.projectId,
+      table.reference,
+    ),
+    index("run_configuration_secrets_owner_project_index").on(
+      table.ownerId,
+      table.projectId,
+      table.updatedAt,
+    ),
+    check(
+      "run_configuration_secrets_id_check",
+      sql`${table.id} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "run_configuration_secrets_reference_check",
+      sql`char_length(${table.reference}) BETWEEN 1 AND 256 AND ${table.reference} ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*$' AND ${table.reference} !~ '/$' AND ${table.reference} !~ '(^|/)(\\.|\\.\\.)(/|$)' AND ${table.reference} !~ '//'`,
+    ),
+    check(
+      "run_configuration_secrets_revision_check",
+      sql`${table.revision} > 0`,
+    ),
+    check(
+      "run_configuration_secrets_value_check",
+      sql`octet_length(${table.protectedValue}::text) <= 100000`,
+    ),
+  ],
+);
+
+export const runConfigurationSecretOperations = pgTable(
+  "run_configuration_secret_operations",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    reference: text("reference").notNull(),
+    revision: integer("revision"),
+    protectedValueDigest: text("protected_value_digest").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("run_configuration_secret_operations_project_reference_index").on(
+      table.projectId,
+      table.reference,
+      table.createdAt,
+    ),
+    check(
+      "run_configuration_secret_operations_id_check",
+      sql`${table.id} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "run_configuration_secret_operations_reference_check",
+      sql`char_length(${table.reference}) BETWEEN 1 AND 256 AND ${table.reference} ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*$' AND ${table.reference} !~ '/$' AND ${table.reference} !~ '(^|/)(\\.|\\.\\.)(/|$)' AND ${table.reference} !~ '//'`,
+    ),
+    check(
+      "run_configuration_secret_operations_revision_check",
+      sql`${table.revision} IS NULL OR ${table.revision} > 0`,
+    ),
+    check(
+      "run_configuration_secret_operations_digest_check",
+      sql`${table.protectedValueDigest} ~ '^[0-9a-f]{64}$'`,
+    ),
+  ],
+);
+
 export const chats = pgTable(
   "chats",
   {

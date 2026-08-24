@@ -265,12 +265,13 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return projectId
         ? [
             ["run-configurations", projectId],
+            ["run-configuration-secrets", projectId],
             ...(event.entityId
               ? [["run-configuration", projectId, event.entityId]]
               : []),
           ]
         : event.scope.kind === "current-user"
-          ? [["run-configurations"]]
+          ? [["run-configurations"], ["run-configuration-secrets"]]
           : [];
     case "explorer":
       return projectId
@@ -403,6 +404,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["terminals", scope.projectId],
         ["run-configuration-runtimes", scope.projectId],
         ["run-configurations", scope.projectId],
+        ["run-configuration-secrets", scope.projectId],
         ["explorers", scope.projectId],
         ["explorer-directory", scope.projectId],
         ["explorer-directory-commits", scope.projectId],
