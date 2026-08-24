@@ -1,9 +1,10 @@
-import type { ChatSummary } from "@cantrip/protocol";
+import type { ChatSummary, InferenceProgressSnapshot } from "@cantrip/protocol";
 import { Bot, Pause } from "lucide-react";
 
 interface ChatRunStatusProps {
   automationPaused: boolean;
   hasLiveActivity: boolean;
+  inferenceProgress: InferenceProgressSnapshot | null;
   syncingCodeGraph: boolean;
   status: ChatSummary["status"];
   waitingForPlanAnswer: boolean;
@@ -12,6 +13,7 @@ interface ChatRunStatusProps {
 export function ChatRunStatus({
   automationPaused,
   hasLiveActivity,
+  inferenceProgress,
   syncingCodeGraph,
   status,
   waitingForPlanAnswer,
@@ -19,7 +21,27 @@ export function ChatRunStatus({
   if (status !== "running" && status !== "waiting-for-approval") return null;
 
   if (status === "running" && !automationPaused && !waitingForPlanAnswer) {
-    if (hasLiveActivity) return null;
+    if (hasLiveActivity && !inferenceProgress) return null;
+    const label = inferenceProgress
+      ? (() => {
+          if (inferenceProgress.phase === "queued") return "Queued...";
+          if (inferenceProgress.phase === "loading") return "Loading model...";
+          if (inferenceProgress.phase === "generating") return "Generating...";
+          if (
+            inferenceProgress.precision !== "indeterminate" &&
+            inferenceProgress.fractionComplete !== null
+          ) {
+            const percent = Math.min(
+              100,
+              Math.floor(inferenceProgress.fractionComplete * 100),
+            );
+            return `Prefilling ${percent}%...`;
+          }
+          return "Prefilling...";
+        })()
+      : syncingCodeGraph
+        ? "Syncing CodeGraph..."
+        : "Working...";
     return (
       <div
         aria-live="polite"
@@ -27,9 +49,7 @@ export function ChatRunStatus({
         data-elite-ignore=""
         role="status"
       >
-        <span className="chat-working-shimmer">
-          {syncingCodeGraph ? "Syncing CodeGraph..." : "Working..."}
-        </span>
+        <span className="chat-working-shimmer">{label}</span>
       </div>
     );
   }

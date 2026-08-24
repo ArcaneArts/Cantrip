@@ -17,6 +17,7 @@ import type {
   ExplorerEntry,
   ExplorerSummary,
   GithubRepository,
+  InferenceProgressSnapshot,
   ModelProfileSummary,
   ModelConfiguration,
   ProjectFolderSetupJobSummary,
@@ -1559,6 +1560,13 @@ function ChatTranscript({
     codeGraphStatus.data?.state === "indexing" ||
     codeGraphStatus.data?.state === "queued" ||
     codeGraphStatus.data?.state === "syncing";
+  const inferenceProgress = useQuery<InferenceProgressSnapshot | null>({
+    enabled: false,
+    initialData: null,
+    queryFn: async () => null,
+    queryKey: ["inference-progress", chat.id],
+    staleTime: Number.POSITIVE_INFINITY,
+  });
   const taskState = useQuery({
     enabled: inspectOnly && chat.experience === "task",
     queryFn: () => getTask(chat.id),
@@ -3107,6 +3115,7 @@ function ChatTranscript({
           <ChatRunStatus
             automationPaused={chat.automationPaused}
             hasLiveActivity={latestLiveActivityGroupKey !== null}
+            inferenceProgress={inferenceProgress.data}
             syncingCodeGraph={syncingCodeGraph}
             status={chat.status}
             waitingForPlanAnswer={Boolean(planState.data?.question)}

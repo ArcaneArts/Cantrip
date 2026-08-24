@@ -9,6 +9,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
+        inferenceProgress={null}
         syncingCodeGraph={false}
         status="running"
         waitingForPlanAnswer={false}
@@ -28,6 +29,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
+        inferenceProgress={null}
         syncingCodeGraph
         status="running"
         waitingForPlanAnswer={false}
@@ -44,6 +46,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
+        inferenceProgress={null}
         syncingCodeGraph={false}
         status="waiting-for-approval"
         waitingForPlanAnswer={false}
@@ -53,6 +56,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused
         hasLiveActivity={false}
+        inferenceProgress={null}
         syncingCodeGraph={false}
         status="running"
         waitingForPlanAnswer={false}
@@ -71,6 +75,7 @@ describe("ChatRunStatus", () => {
         <ChatRunStatus
           automationPaused={false}
           hasLiveActivity={false}
+          inferenceProgress={null}
           syncingCodeGraph={false}
           status="idle"
           waitingForPlanAnswer={false}
@@ -85,11 +90,66 @@ describe("ChatRunStatus", () => {
         <ChatRunStatus
           automationPaused={false}
           hasLiveActivity
+          inferenceProgress={null}
           syncingCodeGraph={false}
           status="running"
           waitingForPlanAnswer={false}
         />,
       ),
     ).toBe("");
+  });
+
+  it("shows determinate Ollama prefill progress over generic activity", () => {
+    const markup = renderToStaticMarkup(
+      <ChatRunStatus
+        automationPaused={false}
+        hasLiveActivity
+        inferenceProgress={{
+          kind: "progress",
+          requestId: "message-one",
+          sequence: 2,
+          phase: "prefill",
+          fractionComplete: 10_240 / 46_492,
+          completedTokens: 10_240,
+          totalTokens: 46_492,
+          precision: "estimated",
+          source: "provider-observer",
+          observedAt: "2026-08-24T12:00:00.000Z",
+        }}
+        syncingCodeGraph={false}
+        status="running"
+        waitingForPlanAnswer={false}
+      />,
+    );
+
+    expect(markup).toContain("Prefilling 22%...");
+    expect(markup).toContain("chat-working-shimmer");
+  });
+
+  it("does not invent a percentage for indeterminate prefill", () => {
+    const markup = renderToStaticMarkup(
+      <ChatRunStatus
+        automationPaused={false}
+        hasLiveActivity={false}
+        inferenceProgress={{
+          kind: "progress",
+          requestId: "message-one",
+          sequence: 0,
+          phase: "prefill",
+          fractionComplete: null,
+          completedTokens: null,
+          totalTokens: null,
+          precision: "indeterminate",
+          source: "provider-observer",
+          observedAt: "2026-08-24T12:00:00.000Z",
+        }}
+        syncingCodeGraph={false}
+        status="running"
+        waitingForPlanAnswer={false}
+      />,
+    );
+
+    expect(markup).toContain("Prefilling...");
+    expect(markup).not.toContain("%");
   });
 });

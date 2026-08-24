@@ -227,6 +227,11 @@ import {
 } from "./task-operation.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
+  InferenceProgressObserver,
+  type InferenceProgressObservation,
+} from "./inference-progress.js";
+import { OllamaLogInferenceProgressAdapter } from "./ollama-inference-progress.js";
+import {
   ProviderAccessTokenClient,
   ProviderAccessTokenRequestError,
 } from "./provider-access-tokens.js";
@@ -500,6 +505,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     version: cantripVersion.version,
   });
   const routingRegistry = new WorkerRoutingRegistry(config.dataDirectory);
+  const inferenceProgress = new InferenceProgressObserver([
+    new OllamaLogInferenceProgressAdapter(),
+  ]);
   const serverOrigin = new URL(config.serverUrl).origin;
   workerLogger.event("info", "Worker configuration loaded", {
     event: "worker.configuration.loaded",
@@ -3851,147 +3859,260 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.attachments,
           workerEncryption,
         );
-        const runTurn = (prompt: string, resultMode: AgentTurnResultMode) =>
-          runtime.runTurn({
-            automationPaused: pausedChats.has(command.chatId),
-            attachments: openedAttachments.map((attachment) => ({
-              ...attachment,
-              path: attachments.resolve(
-                command.chatId,
-                attachment.id,
-                attachment.fileName,
-              ),
-            })),
-            chatId: command.chatId,
-            captureProtectedDiagnostics: encryptedChat || encryptedTask,
-            clientMessageId: command.clientMessageId,
-            cwd: command.cwd,
-            isPrimary: command.isPrimary,
-            mcpServers: resolvedMcpServers,
-            model: command.model,
-            permissionProfileId: command.permissionProfileId,
-            provider: provider(),
-            planMode: command.planMode,
-            policyContext,
-            resultMode,
-            prompt,
-            rootKind: command.rootKind,
-            skillNames: encryptedTaskOperation
-              ? directTaskOperation
-                ? mentionedSkillNames(prompt)
-                : []
-              : encryptedChat
-                ? mentionedSkillNames(prompt)
-                : command.skillNames,
-            subagentDefaults,
-            subagentProtocolVersion: command.subagentProtocolVersion,
-            threadId: command.threadId,
-            worktreeMode: command.worktreeMode,
-            worktreePolicy: command.worktreePolicy,
-            ...(encryptedTaskOperation && !directTaskOperation
-              ? encryptedTaskSealer
-                ? {
-                    onActivity: (activity) =>
-                      emitProtected(() =>
-                        encryptedTaskSealer.activity(activity),
-                      ),
-                  }
-                : {}
-              : {
-                  onInteractionRequest: (request) =>
-                    encryptedChat || encryptedTask
-                      ? emitProtected(async () => {
-                          try {
-                            return {
-                              type: "agent.interaction.requested.protected",
-                              request: await protectAgentInteractionRequest({
-                                request,
-                                service: workerEncryption,
-                              }),
-                            };
-                          } catch (error) {
-                            await runtime.cancelAgentInteraction(
-                              request.requestKey,
-                              "Cantrip could not encrypt the interaction safely.",
-                            );
-                            throw error;
-                          }
-                        })
-                      : emit({ type: "agent.interaction.requested", request }),
-                  onInteractionCleared: (requestKey) =>
-                    emit({ type: "agent.interaction.cleared", requestKey }),
-                  onInteractionExpired: (requestKey) =>
-                    emit({ type: "agent.interaction.expired", requestKey }),
-                  ...(encryptedTaskSealer
-                    ? {
-                        onActivity: (activity) =>
-                          emitProtected(() =>
-                            encryptedTaskSealer.activity(activity),
-                          ),
-                      }
-                    : encryptedChatSealer
+        let inferenceProgressSequence = 0;
+        let inferenceProgressVisible = false;
+        const clearInferenceProgress = (): void => {
+          if (!inferenceProgressVisible) return;
+          inferenceProgressVisible = false;
+          emit({
+            type: "agent.inference-progress",
+            progress: {
+              kind: "clear",
+              requestId: command.clientMessageId,
+              sequence: inferenceProgressSequence++,
+              observedAt: new Date().toISOString(),
+            },
+          });
+        };
+        const emitAgentEvent = (event: WorkerEvent): void => {
+          clearInferenceProgress();
+          emit(event);
+        };
+        const emitProtectedAgentEvent = (
+          create: () => Promise<WorkerEvent>,
+        ): void => {
+          clearInferenceProgress();
+          emitProtected(create);
+        };
+        const runTurn = async (
+          prompt: string,
+          resultMode: AgentTurnResultMode,
+        ) => {
+          let observation: InferenceProgressObservation | null = null;
+          try {
+            observation = await inferenceProgress.observe({
+              modelName:
+                command.model.catalog?.nativeModelId ?? command.model.name,
+              provider: provider(),
+              onProgress: (progress) => {
+                inferenceProgressVisible = true;
+                emit({
+                  type: "agent.inference-progress",
+                  progress: {
+                    kind: "progress",
+                    requestId: command.clientMessageId,
+                    sequence: inferenceProgressSequence++,
+                    ...progress,
+                    observedAt: new Date().toISOString(),
+                  },
+                });
+              },
+            });
+          } catch (error) {
+            workerLogger.event(
+              "warn",
+              "Inference progress observation was unavailable",
+              {
+                event: "provider.inference-progress.observe-failed",
+                subsystem: "provider",
+                operation: "observe-inference-progress",
+                reasonCode: "observer-failed",
+                status: "degraded",
+                providerId: provider().id,
+                providerKind: provider().kind,
+                error: workerLogError(error),
+              },
+            );
+          }
+          try {
+            return await runtime.runTurn({
+              automationPaused: pausedChats.has(command.chatId),
+              attachments: openedAttachments.map((attachment) => ({
+                ...attachment,
+                path: attachments.resolve(
+                  command.chatId,
+                  attachment.id,
+                  attachment.fileName,
+                ),
+              })),
+              chatId: command.chatId,
+              captureProtectedDiagnostics: encryptedChat || encryptedTask,
+              clientMessageId: command.clientMessageId,
+              cwd: command.cwd,
+              isPrimary: command.isPrimary,
+              mcpServers: resolvedMcpServers,
+              model: command.model,
+              permissionProfileId: command.permissionProfileId,
+              provider: provider(),
+              planMode: command.planMode,
+              policyContext,
+              resultMode,
+              prompt,
+              rootKind: command.rootKind,
+              skillNames: encryptedTaskOperation
+                ? directTaskOperation
+                  ? mentionedSkillNames(prompt)
+                  : []
+                : encryptedChat
+                  ? mentionedSkillNames(prompt)
+                  : command.skillNames,
+              subagentDefaults,
+              subagentProtocolVersion: command.subagentProtocolVersion,
+              threadId: command.threadId,
+              worktreeMode: command.worktreeMode,
+              worktreePolicy: command.worktreePolicy,
+              ...(encryptedTaskOperation && !directTaskOperation
+                ? encryptedTaskSealer
+                  ? {
+                      onActivity: (activity) =>
+                        emitProtectedAgentEvent(() =>
+                          encryptedTaskSealer.activity(activity),
+                        ),
+                    }
+                  : {}
+                : {
+                    onInteractionRequest: (request) =>
+                      encryptedChat || encryptedTask
+                        ? emitProtectedAgentEvent(async () => {
+                            try {
+                              return {
+                                type: "agent.interaction.requested.protected",
+                                request: await protectAgentInteractionRequest({
+                                  request,
+                                  service: workerEncryption,
+                                }),
+                              };
+                            } catch (error) {
+                              await runtime.cancelAgentInteraction(
+                                request.requestKey,
+                                "Cantrip could not encrypt the interaction safely.",
+                              );
+                              throw error;
+                            }
+                          })
+                        : emitAgentEvent({
+                            type: "agent.interaction.requested",
+                            request,
+                          }),
+                    onInteractionCleared: (requestKey) =>
+                      emitAgentEvent({
+                        type: "agent.interaction.cleared",
+                        requestKey,
+                      }),
+                    onInteractionExpired: (requestKey) =>
+                      emitAgentEvent({
+                        type: "agent.interaction.expired",
+                        requestKey,
+                      }),
+                    ...(encryptedTaskSealer
                       ? {
                           onActivity: (activity) =>
-                            emitProtected(() =>
-                              encryptedChatSealer.activity(activity),
+                            emitProtectedAgentEvent(() =>
+                              encryptedTaskSealer.activity(activity),
                             ),
-                          onMessage: (message) =>
-                            emitProtected(() =>
-                              encryptedChatSealer.message(message),
-                            ),
-                          onCheckpoint: ({ text, turnId }) =>
-                            emitProtected(() =>
-                              encryptedChatSealer.checkpoint({ text, turnId }),
-                            ),
-                          onPlan: ({ explanation, steps, turnId }) =>
-                            emitProtected(() =>
-                              encryptedChatSealer.plan({
+                        }
+                      : encryptedChatSealer
+                        ? {
+                            onActivity: (activity) =>
+                              emitProtectedAgentEvent(() =>
+                                encryptedChatSealer.activity(activity),
+                              ),
+                            onMessage: (message) =>
+                              emitProtectedAgentEvent(() =>
+                                encryptedChatSealer.message(message),
+                              ),
+                            onCheckpoint: ({ text, turnId }) =>
+                              emitProtectedAgentEvent(() =>
+                                encryptedChatSealer.checkpoint({
+                                  text,
+                                  turnId,
+                                }),
+                              ),
+                            onPlan: ({ explanation, steps, turnId }) =>
+                              emitProtectedAgentEvent(() =>
+                                encryptedChatSealer.plan({
+                                  explanation,
+                                  steps,
+                                  turnId,
+                                }),
+                              ),
+                            onPlanQuestion: (question) =>
+                              emitProtectedAgentEvent(() =>
+                                encryptedChatSealer.planQuestion(question),
+                              ),
+                            onPlanQuestionResolved: (questionId) =>
+                              emitProtectedAgentEvent(() =>
+                                encryptedChatSealer.planQuestionResolved(
+                                  questionId,
+                                ),
+                              ),
+                          }
+                        : {
+                            onActivity: (activity) =>
+                              emitAgentEvent({
+                                type: "agent.activity",
+                                activity,
+                              }),
+                            onMessage: (message) =>
+                              emitAgentEvent({
+                                type: "agent.message",
+                                message,
+                              }),
+                            onCheckpoint: ({ text, turnId }) =>
+                              emitAgentEvent({
+                                type: "agent.checkpoint",
+                                text,
+                                turnId,
+                              }),
+                            onPlan: ({ explanation, steps, turnId }) =>
+                              emitAgentEvent({
+                                type: "agent.plan.updated",
                                 explanation,
                                 steps,
                                 turnId,
                               }),
-                            ),
-                          onPlanQuestion: (question) =>
-                            emitProtected(() =>
-                              encryptedChatSealer.planQuestion(question),
-                            ),
-                          onPlanQuestionResolved: (questionId) =>
-                            emitProtected(() =>
-                              encryptedChatSealer.planQuestionResolved(
+                            onPlanQuestion: (question) =>
+                              emitAgentEvent({
+                                type: "agent.plan.question",
+                                question,
+                              }),
+                            onPlanQuestionResolved: (questionId) =>
+                              emitAgentEvent({
+                                type: "agent.plan.question-resolved",
                                 questionId,
-                              ),
-                            ),
-                        }
-                      : {
-                          onActivity: (activity) =>
-                            emit({ type: "agent.activity", activity }),
-                          onMessage: (message) =>
-                            emit({ type: "agent.message", message }),
-                          onCheckpoint: ({ text, turnId }) =>
-                            emit({ type: "agent.checkpoint", text, turnId }),
-                          onPlan: ({ explanation, steps, turnId }) =>
-                            emit({
-                              type: "agent.plan.updated",
-                              explanation,
-                              steps,
-                              turnId,
-                            }),
-                          onPlanQuestion: (question) =>
-                            emit({ type: "agent.plan.question", question }),
-                          onPlanQuestionResolved: (questionId) =>
-                            emit({
-                              type: "agent.plan.question-resolved",
-                              questionId,
-                            }),
-                        }),
-                }),
-            onThreadLoaded: (threadId) => {
-              cliBroker.bindCodexThread(threadId, {
-                chatId: command.chatId,
-                executionLaneId: command.executionLaneId,
-              });
-            },
-          });
+                              }),
+                          }),
+                  }),
+              onThreadLoaded: (threadId) => {
+                cliBroker.bindCodexThread(threadId, {
+                  chatId: command.chatId,
+                  executionLaneId: command.executionLaneId,
+                });
+              },
+            });
+          } finally {
+            try {
+              await observation?.close();
+            } catch (error) {
+              workerLogger.event(
+                "warn",
+                "Inference progress observer did not close cleanly",
+                {
+                  event: "provider.inference-progress.close-failed",
+                  subsystem: "provider",
+                  operation: "close-inference-progress-observer",
+                  reasonCode: "observer-close-failed",
+                  status: "degraded",
+                  providerId: provider().id,
+                  providerKind: provider().kind,
+                  error: workerLogError(error),
+                },
+              );
+            } finally {
+              clearInferenceProgress();
+            }
+          }
+        };
         if (command.resultMode.kind === "task-encrypted") {
           const result = await executeEncryptedTaskOperation({
             getComponentKey: () =>

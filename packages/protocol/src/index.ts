@@ -13781,6 +13781,93 @@ const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+export const inferenceProgressPhaseSchema = z.enum([
+  "queued",
+  "loading",
+  "prefill",
+  "generating",
+]);
+
+export const inferenceProgressPrecisionSchema = z.enum([
+  "exact",
+  "estimated",
+  "indeterminate",
+]);
+
+export const inferenceProgressSourceSchema = z.enum([
+  "provider-stream",
+  "provider-observer",
+  "provider-metrics",
+  "worker-estimate",
+]);
+
+export const inferenceProgressSnapshotSchema = z
+  .object({
+    kind: z.literal("progress"),
+    requestId: z.string().trim().min(1).max(200),
+    sequence: z.number().int().nonnegative().safe(),
+    phase: inferenceProgressPhaseSchema,
+    fractionComplete: z.number().min(0).max(1).nullable(),
+    completedTokens: z.number().int().nonnegative().safe().nullable(),
+    totalTokens: z.number().int().positive().safe().nullable(),
+    precision: inferenceProgressPrecisionSchema,
+    source: inferenceProgressSourceSchema,
+    observedAt: z.iso.datetime(),
+  })
+  .strict()
+  .superRefine((progress, context) => {
+    if (
+      progress.precision === "indeterminate" &&
+      progress.fractionComplete !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Indeterminate progress cannot include a completed fraction.",
+        path: ["precision"],
+      });
+    }
+    if (
+      progress.precision !== "indeterminate" &&
+      progress.fractionComplete === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Determinate progress requires a completed fraction.",
+        path: ["precision"],
+      });
+    }
+    if (progress.totalTokens !== null && progress.completedTokens === null) {
+      context.addIssue({
+        code: "custom",
+        message: "A total token count requires a completed token count.",
+        path: ["totalTokens"],
+      });
+    }
+    if (
+      progress.completedTokens !== null &&
+      progress.totalTokens !== null &&
+      progress.completedTokens > progress.totalTokens
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Completed tokens cannot exceed total tokens.",
+        path: ["completedTokens"],
+      });
+    }
+  });
+
+export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
+  inferenceProgressSnapshotSchema,
+  z
+    .object({
+      kind: z.literal("clear"),
+      requestId: z.string().trim().min(1).max(200),
+      sequence: z.number().int().nonnegative().safe(),
+      observedAt: z.iso.datetime(),
+    })
+    .strict(),
+]);
+
 export const workerEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("project.replica.progress"),
@@ -13796,6 +13883,12 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     type: z.literal("agent.message"),
     message: normalizedAgentMessageSchema,
   }),
+  z
+    .object({
+      type: z.literal("agent.inference-progress"),
+      progress: inferenceProgressUpdateSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("agent.protected-message"),
@@ -15590,6 +15683,21 @@ export type CodeGraphActionAcknowledgement = z.infer<
   typeof codeGraphActionAcknowledgementSchema
 >;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;
+export type InferenceProgressPhase = z.infer<
+  typeof inferenceProgressPhaseSchema
+>;
+export type InferenceProgressPrecision = z.infer<
+  typeof inferenceProgressPrecisionSchema
+>;
+export type InferenceProgressSource = z.infer<
+  typeof inferenceProgressSourceSchema
+>;
+export type InferenceProgressSnapshot = z.infer<
+  typeof inferenceProgressSnapshotSchema
+>;
+export type InferenceProgressUpdate = z.infer<
+  typeof inferenceProgressUpdateSchema
+>;
 export type WorkerRequestEnvelope = z.infer<typeof workerRequestEnvelopeSchema>;
 export type WorkerConnectionEnvelope = z.infer<
   typeof workerConnectionEnvelopeSchema

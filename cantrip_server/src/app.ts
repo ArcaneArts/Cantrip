@@ -553,6 +553,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
   AgentTurnResult,
   AppLiveResource,
+  InferenceProgressUpdate,
   AppLiveScope,
   EncryptedBrowserUpdate,
   ChatMessage,
@@ -1149,6 +1150,7 @@ type ChatLiveResource = Extract<
   | "chat-plan"
   | "chat-queue"
   | "customization"
+  | "inference-progress"
   | "task"
 >;
 
@@ -2682,6 +2684,31 @@ export async function buildApp({
       app.log.error(
         { chatId: message.chatId, err: error, messageId: message.id },
         "Could not publish persisted chat message",
+      );
+    }
+  };
+  const publishInferenceProgress = (
+    chatId: string,
+    progress: InferenceProgressUpdate,
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: applicationOwnerId(),
+        scope: { kind: "chat", chatId },
+        resource: "inference-progress",
+        action: progress.kind === "clear" ? "deleted" : "updated",
+        entityId: progress.requestId,
+        revision: progress.sequence,
+        payload:
+          progress.kind === "clear"
+            ? null
+            : appLiveEventPayloadSchema.parse(progress),
+      });
+    } catch (error) {
+      app.log.error(
+        { chatId, err: error, requestId: progress.requestId },
+        "Could not publish inference progress",
       );
     }
   };
@@ -10448,6 +10475,14 @@ export async function buildApp({
                     behaviorTracker.markActivity(observedAt);
                     attemptActivity = true;
                     anyActivity = true;
+                    if (event.type === "agent.inference-progress") {
+                      if (event.progress.requestId !== userMessage.id) return;
+                      publishInferenceProgress(
+                        execution.chatId,
+                        event.progress,
+                      );
+                      return;
+                    }
                     if (event.type === "agent.interaction.requested") {
                       if (encryptedChatMessages) {
                         try {

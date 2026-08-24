@@ -217,6 +217,7 @@ import {
   userSettingsUpdateSchema,
   workerCommandSchema,
   workerEventSchema,
+  inferenceProgressSnapshotSchema,
   workerNotificationSchema,
   workerProjectShareDescriptorSchema,
   workerProjectShareOpenResultSchema,
@@ -4730,6 +4731,44 @@ describe("Cantrip protocol", () => {
     expect(JSON.stringify(event)).not.toContain(secret);
     expect(JSON.stringify(event)).not.toContain("provider-access-token");
     expect(JSON.stringify(event)).not.toContain("credentialEnvelope");
+  });
+
+  it("validates provider-neutral inference progress without prompt content", () => {
+    const input = {
+      kind: "progress",
+      requestId: "message-one",
+      sequence: 1,
+      phase: "prefill",
+      fractionComplete: 10_240 / 46_492,
+      completedTokens: 10_240,
+      totalTokens: 46_492,
+      precision: "estimated",
+      source: "provider-observer",
+      observedAt: "2026-08-24T12:00:00.000Z",
+    } as const;
+    expect(
+      inferenceProgressSnapshotSchema.safeParse({
+        ...input,
+        prompt: "must not cross this boundary",
+      }).success,
+    ).toBe(false);
+    const progress = inferenceProgressSnapshotSchema.parse(input);
+    expect(progress).toEqual(input);
+    expect(
+      workerEventSchema.parse({
+        type: "agent.inference-progress",
+        progress,
+      }),
+    ).toMatchObject({
+      type: "agent.inference-progress",
+      progress: { phase: "prefill", completedTokens: 10_240 },
+    });
+    expect(
+      inferenceProgressSnapshotSchema.safeParse({
+        ...progress,
+        fractionComplete: null,
+      }).success,
+    ).toBe(false);
   });
 
   it("validates durable Plan Mode state and no-timeout worker questions", () => {

@@ -539,6 +539,57 @@ describe("application live query bridge", () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
+  it("applies and clears ephemeral inference progress without a GET", () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const progress = {
+      kind: "progress" as const,
+      requestId: "message-one",
+      sequence: 2,
+      phase: "prefill" as const,
+      fractionComplete: 10_240 / 46_492,
+      completedTokens: 10_240,
+      totalTokens: 46_492,
+      precision: "estimated" as const,
+      source: "provider-observer" as const,
+      observedAt: "2026-08-24T12:00:00.000Z",
+    };
+    bridge.handleEvent({
+      ...event({
+        entityId: progress.requestId,
+        resource: "inference-progress",
+        scope: { kind: "chat", chatId: "chat-one" },
+      }),
+      cursor: 10,
+      payload: progress,
+      revision: progress.sequence,
+    });
+
+    expect(
+      queryClient.getQueryData(["inference-progress", "chat-one"]),
+    ).toEqual(progress);
+    expect(invalidate).not.toHaveBeenCalled();
+
+    bridge.handleEvent({
+      ...event({
+        entityId: progress.requestId,
+        resource: "inference-progress",
+        scope: { kind: "chat", chatId: "chat-one" },
+      }),
+      action: "deleted",
+      cursor: 11,
+      payload: null,
+      revision: 3,
+    });
+    expect(
+      queryClient.getQueryData(["inference-progress", "chat-one"]),
+    ).toBeNull();
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
   it("decrypts encrypted Task live messages before updating the cache", async () => {
     const ownerId = "owner-live-task";
     const serverId = "server-live-task";
