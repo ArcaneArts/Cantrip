@@ -12,8 +12,9 @@ import {
   type DirectAttachmentPrepareInput,
 } from "../src/direct-attachments/coordinator.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import { WorkerUnavailableError } from "../src/workers/bridge.js";
 
-function worker(): WorkerSummary {
+function worker(leaseRenewal = false): WorkerSummary {
   return {
     workerId: "worker-1",
     name: "Worker",
@@ -39,6 +40,7 @@ function worker(): WorkerSummary {
     },
     directBroker: {
       available: true,
+      leaseRenewal,
       protocol: "ws-v1",
       loopbackHost: "127.0.0.1",
       loopbackPort: 43123,
@@ -116,6 +118,554 @@ async function prepareDirect(
 }
 
 describe("DirectAttachmentCoordinator", () => {
+  it("rejects renewal at the fixed-expiry boundary before a delayed timer can resurrect it", async () => {
+    const commands: WorkerCommand[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        commands.push(command);
+        if (command.type === "direct.capability.prepare") {
+          return { accepted: true, capabilityId: command.binding.capabilityId };
+        }
+        if (command.type === "direct.capability.renew") {
+          return { renewed: true, leaseExpiresAt: command.leaseExpiresAt };
+        }
+        return { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const ticket = await prepareDirect(coordinator, {
+      authSessionId: "session-1",
+      channels: ["probe"],
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+      worker: worker(true),
+    });
+    coordinator.recordActivationOutcome(
+      ticket.binding.capabilityId,
+      {
+        attachmentId: ticket.binding.attachmentId,
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+      },
+      "completed",
+    );
+
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse(ticket.binding.leaseExpiresAt) + 1);
+    try {
+      await expect(
+        coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).resolves.toMatchObject({ status: "expired" });
+      expect(
+        commands.filter(
+          (command) => command.type === "direct.capability.renew",
+        ),
+      ).toHaveLength(0);
+      expect(
+        coordinator.matches(ticket.binding.capabilityId, {
+          attachmentId: ticket.binding.attachmentId,
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).toBe(false);
+    } finally {
+      now.mockRestore();
+      await coordinator.close();
+    }
+  });
+
+  it("keeps legacy workers compatible by treating lease renewal as unsupported", async () => {
+    const commands: WorkerCommand[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        commands.push(command);
+        return command.type === "direct.capability.prepare"
+          ? { accepted: true, capabilityId: command.binding.capabilityId }
+          : { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const ticket = await prepareDirect(coordinator, {
+      authSessionId: "session-1",
+      channels: ["probe"],
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+      worker: worker(),
+    });
+    coordinator.recordActivationOutcome(
+      ticket.binding.capabilityId,
+      {
+        attachmentId: ticket.binding.attachmentId,
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+      },
+      "completed",
+    );
+    try {
+      await expect(
+        coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).resolves.toEqual({ status: "unsupported" });
+      expect(
+        commands.filter(
+          (command) => command.type === "direct.capability.renew",
+        ),
+      ).toHaveLength(0);
+    } finally {
+      await coordinator.close();
+    }
+  });
+
+  it("slides an exact Code root on heartbeat but renews the child only inside its stable window", async () => {
+    const startedAtMs = Date.now();
+    const hardExpiresAtMs = startedAtMs + 12 * 60 * 60_000;
+    let rootExpiresAtMs = startedAtMs + 15 * 60_000;
+    let rootValid = true;
+    const generation = Symbol("code-root");
+    const rootState = () =>
+      rootValid
+        ? {
+            expiresAt: new Date(rootExpiresAtMs).toISOString(),
+            generation,
+            hardExpiresAt: new Date(hardExpiresAtMs).toISOString(),
+          }
+        : null;
+    const authoritativeRoot = {
+      ...rootState()!,
+      recordActivity: () => {
+        if (!rootValid) return null;
+        rootExpiresAtMs = Math.min(hardExpiresAtMs, Date.now() + 15 * 60_000);
+        return rootState();
+      },
+      validate: rootState,
+    };
+    const commands: WorkerCommand[] = [];
+    const requestOptions: unknown[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(
+        async (
+          _workerId: string,
+          command: WorkerCommand,
+          options?: unknown,
+        ) => {
+          commands.push(command);
+          requestOptions.push(options);
+          if (command.type === "direct.capability.prepare") {
+            return {
+              accepted: true,
+              capabilityId: command.binding.capabilityId,
+            };
+          }
+          if (command.type === "direct.capability.renew") {
+            return { renewed: true, leaseExpiresAt: command.leaseExpiresAt };
+          }
+          return { revoked: true };
+        },
+      ),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const ticket = await prepareDirect(coordinator, {
+      attachmentId: "desktop-attachment-1",
+      authoritativeRoot,
+      authSessionId: "session-1",
+      channels: ["tunnel-data"],
+      leaseExpiresAt: new Date(rootExpiresAtMs),
+      maxLeaseExpiresAt: new Date(hardExpiresAtMs),
+      ownerId: "owner-1",
+      resourceId: "code-tunnel-1",
+      resourceKind: "tunnel",
+      tunnelRoute: {
+        tunnelId: "code-tunnel-1",
+        attachmentId: "desktop-attachment-1",
+        sourceEndpointId: "desktop:client-1:desktop-attachment-1",
+        destinationEndpointId: "worker:worker-1",
+        target: { kind: "tcp", host: "127.0.0.1", port: 43124 },
+      },
+      worker: worker(true),
+    });
+    coordinator.recordActivationOutcome(
+      ticket.binding.capabilityId,
+      {
+        attachmentId: ticket.binding.attachmentId,
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+      },
+      "completed",
+    );
+
+    const now = vi.spyOn(Date, "now");
+    try {
+      now.mockReturnValue(startedAtMs + 60_000);
+      await expect(
+        coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).resolves.toMatchObject({ status: "completed", renewed: false });
+      expect(rootExpiresAtMs).toBe(startedAtMs + 16 * 60_000);
+      expect(
+        commands.filter(
+          (command) => command.type === "direct.capability.renew",
+        ),
+      ).toHaveLength(0);
+
+      now.mockReturnValue(startedAtMs + 14 * 60_000);
+      await expect(
+        coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).resolves.toMatchObject({ status: "completed", renewed: true });
+      const renew = commands.find(
+        (command) => command.type === "direct.capability.renew",
+      );
+      expect(renew).toMatchObject({
+        type: "direct.capability.renew",
+        capabilityId: ticket.binding.capabilityId,
+        leaseExpiresAt: new Date(startedAtMs + 29 * 60_000).toISOString(),
+      });
+      expect(requestOptions.at(-1)).toMatchObject({
+        ownerId: "owner-1",
+        timeoutMs: 5_000,
+      });
+
+      rootValid = false;
+      await expect(
+        coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).resolves.toMatchObject({ status: "root-missing" });
+    } finally {
+      now.mockRestore();
+      await coordinator.close();
+    }
+  });
+
+  it("retains the original Code hard cap when renewing near maximum lifetime", async () => {
+    const codeCreatedAtMs = 1_000_000;
+    const hardExpiresAtMs = codeCreatedAtMs + 12 * 60 * 60_000;
+    const prepareAtMs = hardExpiresAtMs - 15 * 60_000;
+    let rootExpiresAtMs = hardExpiresAtMs - 30_000;
+    const generation = Symbol("code-root-hard-cap");
+    const rootState = () => ({
+      expiresAt: new Date(rootExpiresAtMs).toISOString(),
+      generation,
+      hardExpiresAt: new Date(hardExpiresAtMs).toISOString(),
+    });
+    const authoritativeRoot = {
+      ...rootState(),
+      recordActivity: () => {
+        rootExpiresAtMs = Math.min(hardExpiresAtMs, Date.now() + 15 * 60_000);
+        return rootState();
+      },
+      validate: rootState,
+    };
+    const commands: WorkerCommand[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        commands.push(command);
+        if (command.type === "direct.capability.prepare") {
+          return { accepted: true, capabilityId: command.binding.capabilityId };
+        }
+        if (command.type === "direct.capability.renew") {
+          return { renewed: true, leaseExpiresAt: command.leaseExpiresAt };
+        }
+        return { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const now = vi.spyOn(Date, "now").mockReturnValue(prepareAtMs);
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    try {
+      const ticket = await prepareDirect(coordinator, {
+        attachmentId: "desktop-attachment-1",
+        authoritativeRoot,
+        authSessionId: "session-1",
+        channels: ["tunnel-data"],
+        leaseExpiresAt: new Date(rootExpiresAtMs),
+        maxLeaseExpiresAt: new Date(hardExpiresAtMs),
+        ownerId: "owner-1",
+        resourceId: "code-tunnel-1",
+        resourceKind: "tunnel",
+        tunnelRoute: {
+          tunnelId: "code-tunnel-1",
+          attachmentId: "desktop-attachment-1",
+          sourceEndpointId: "desktop:client-1:desktop-attachment-1",
+          destinationEndpointId: "worker:worker-1",
+          target: { kind: "tcp", host: "127.0.0.1", port: 43124 },
+        },
+        worker: worker(true),
+      });
+      coordinator.recordActivationOutcome(
+        ticket.binding.capabilityId,
+        {
+          attachmentId: ticket.binding.attachmentId,
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        },
+        "completed",
+      );
+      now.mockReturnValue(hardExpiresAtMs - 90_000);
+      await expect(
+        coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).resolves.toMatchObject({
+        leaseExpiresAt: new Date(hardExpiresAtMs).toISOString(),
+        renewed: true,
+        status: "completed",
+      });
+      expect(
+        commands.filter(
+          (command) => command.type === "direct.capability.renew",
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          capabilityId: ticket.binding.capabilityId,
+          leaseExpiresAt: new Date(hardExpiresAtMs).toISOString(),
+        }),
+      ]);
+    } finally {
+      now.mockRestore();
+      await coordinator.close();
+    }
+  });
+
+  it("keeps the old valid lease after a transient worker transport failure", async () => {
+    const commands: WorkerCommand[] = [];
+    const options: unknown[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(
+        async (
+          _workerId: string,
+          command: WorkerCommand,
+          requestOptions?: unknown,
+        ) => {
+          commands.push(command);
+          options.push(requestOptions);
+          if (command.type === "direct.capability.prepare") {
+            return {
+              accepted: true,
+              capabilityId: command.binding.capabilityId,
+            };
+          }
+          if (command.type === "direct.capability.renew") {
+            throw new WorkerUnavailableError("Worker temporarily unavailable.");
+          }
+          return { revoked: true };
+        },
+      ),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const ticket = await prepareDirect(coordinator, {
+      attachmentId: "attachment-1",
+      authSessionId: "session-1",
+      channels: ["probe"],
+      maxLeaseExpiresAt: new Date(Date.now() + 10 * 60_000),
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+      worker: worker(true),
+    });
+    coordinator.recordActivationOutcome(
+      ticket.binding.capabilityId,
+      {
+        attachmentId: ticket.binding.attachmentId,
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+      },
+      "completed",
+    );
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse(ticket.binding.leaseExpiresAt) - 30_000);
+    try {
+      await expect(
+        coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).resolves.toEqual({ status: "retryable-failure" });
+      expect(options.at(-1)).toMatchObject({
+        ownerId: "owner-1",
+        timeoutMs: 5_000,
+      });
+      expect(
+        commands.filter(
+          (command) => command.type === "direct.capability.revoke",
+        ),
+      ).toHaveLength(0);
+      expect(
+        coordinator.matches(ticket.binding.capabilityId, {
+          attachmentId: ticket.binding.attachmentId,
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).toBe(true);
+    } finally {
+      now.mockRestore();
+      await coordinator.close();
+    }
+  });
+
+  it("fails closed when the worker no longer has the exact active grant", async () => {
+    const commands: WorkerCommand[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        commands.push(command);
+        if (command.type === "direct.capability.prepare") {
+          return { accepted: true, capabilityId: command.binding.capabilityId };
+        }
+        if (command.type === "direct.capability.renew") {
+          return { renewed: false };
+        }
+        return { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const ticket = await prepareDirect(coordinator, {
+      attachmentId: "attachment-1",
+      authSessionId: "session-1",
+      channels: ["probe"],
+      maxLeaseExpiresAt: new Date(Date.now() + 10 * 60_000),
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+      worker: worker(true),
+    });
+    coordinator.recordActivationOutcome(
+      ticket.binding.capabilityId,
+      {
+        attachmentId: ticket.binding.attachmentId,
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+      },
+      "completed",
+    );
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse(ticket.binding.leaseExpiresAt) - 30_000);
+    try {
+      await expect(
+        coordinator.renewActiveLease(ticket.binding.capabilityId, {
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).resolves.toEqual({ status: "worker-rejected" });
+      expect(
+        coordinator.matches(ticket.binding.capabilityId, {
+          attachmentId: ticket.binding.attachmentId,
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).toBe(false);
+      expect(commands.at(-1)).toMatchObject({
+        type: "direct.capability.revoke",
+        capabilityId: ticket.binding.capabilityId,
+      });
+    } finally {
+      now.mockRestore();
+      await coordinator.close();
+    }
+  });
+
+  it("cannot resurrect a grant when resource revocation overtakes worker renewal", async () => {
+    let releaseRenew!: () => void;
+    let signalRenew!: () => void;
+    const renewStarted = new Promise<void>((resolve) => {
+      signalRenew = resolve;
+    });
+    const renewRelease = new Promise<void>((resolve) => {
+      releaseRenew = resolve;
+    });
+    const commands: WorkerCommand[] = [];
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        commands.push(command);
+        if (command.type === "direct.capability.prepare") {
+          return { accepted: true, capabilityId: command.binding.capabilityId };
+        }
+        if (command.type === "direct.capability.renew") {
+          signalRenew();
+          await renewRelease;
+          return { renewed: true, leaseExpiresAt: command.leaseExpiresAt };
+        }
+        return { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const ticket = await prepareDirect(coordinator, {
+      attachmentId: "attachment-1",
+      authSessionId: "session-1",
+      channels: ["probe"],
+      maxLeaseExpiresAt: new Date(Date.now() + 10 * 60_000),
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+      worker: worker(true),
+    });
+    coordinator.recordActivationOutcome(
+      ticket.binding.capabilityId,
+      {
+        attachmentId: ticket.binding.attachmentId,
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+      },
+      "completed",
+    );
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.parse(ticket.binding.leaseExpiresAt) - 30_000);
+    try {
+      const renewal = coordinator.renewActiveLease(
+        ticket.binding.capabilityId,
+        { authSessionId: "session-1", ownerId: "owner-1" },
+      );
+      await renewStarted;
+      await coordinator.revokeResource("owner-1", "probe", "worker-1");
+      releaseRenew();
+      await expect(renewal).resolves.toMatchObject({ status: "missing" });
+      expect(
+        coordinator.matches(ticket.binding.capabilityId, {
+          attachmentId: ticket.binding.attachmentId,
+          authSessionId: "session-1",
+          ownerId: "owner-1",
+        }),
+      ).toBe(false);
+      expect(
+        commands.filter(
+          (command) => command.type === "direct.capability.revoke",
+        ).length,
+      ).toBeGreaterThanOrEqual(2);
+    } finally {
+      releaseRenew();
+      now.mockRestore();
+      await coordinator.close();
+    }
+  });
   it("fences an unbound tunnel route lease across resource revocation", async () => {
     const bus = {
       isConnected: () => true,

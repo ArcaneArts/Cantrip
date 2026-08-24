@@ -529,6 +529,7 @@ export interface TunnelAttachmentAuthorization {
       });
   expiresAt: Date;
   ownerId: string;
+  origin: TunnelWireSummary["origin"];
   projectId: string | null;
   protectedRecord: ProtectedTunnelContentRecord;
   tunnelId: string;
@@ -7584,6 +7585,7 @@ export class ServerRepository {
         destination.kind === "worker-tcp" ? destination : destination,
       expiresAt: row.attachment.expiresAt!,
       ownerId: row.tunnel.ownerId,
+      origin: row.tunnel.origin as TunnelWireSummary["origin"],
       projectId: row.tunnel.projectId,
       protectedRecord,
       tunnelId: row.tunnel.id,
@@ -7637,6 +7639,7 @@ export class ServerRepository {
         destination.kind === "worker-tcp" ? destination : destination,
       expiresAt: row.attachment.expiresAt,
       ownerId: row.tunnel.ownerId,
+      origin: row.tunnel.origin as TunnelWireSummary["origin"],
       projectId: row.tunnel.projectId,
       protectedRecord,
       tunnelId: row.tunnel.id,

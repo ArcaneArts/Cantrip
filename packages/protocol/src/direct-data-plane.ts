@@ -33,6 +33,7 @@ export const unavailableDirectBroker = { available: false } as const;
 
 export const availableDirectBrokerSchema = z.object({
   available: z.literal(true),
+  leaseRenewal: z.boolean().default(false),
   protocol: z.literal("ws-v1"),
   loopbackHost: z.literal("127.0.0.1"),
   loopbackPort: z.number().int().min(1).max(65_535),
@@ -100,6 +101,11 @@ export const directCapabilityRenewCommandSchema = z.object({
   type: z.literal("direct.capability.renew"),
   capabilityId: directCapabilityBindingSchema.shape.capabilityId,
   leaseExpiresAt: directCapabilityBindingSchema.shape.leaseExpiresAt,
+});
+
+export const directCapabilityRenewResultSchema = z.object({
+  renewed: z.boolean(),
+  leaseExpiresAt: directCapabilityBindingSchema.shape.leaseExpiresAt.optional(),
 });
 
 export const directCapabilityPrepareResultSchema = z.object({

@@ -138,6 +138,7 @@ export class DirectBroker {
     this.#webSockets = webSockets;
     this.#advertisement = {
       available: true,
+      leaseRenewal: true,
       protocol: "ws-v1",
       loopbackHost: "127.0.0.1",
       loopbackPort: address.port,
@@ -226,17 +227,45 @@ export class DirectBroker {
     });
   }
 
-  renew(capabilityId: string, leaseExpiresAt: string): boolean {
+  renew(capabilityId: string, leaseExpiresAt: string): string | null {
     const active = this.#active.get(capabilityId);
-    if (!active) return false;
-    const expiry = Date.parse(leaseExpiresAt);
-    if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+    if (!active) return null;
+    const now = Date.now();
+    const currentExpiry = Date.parse(active.binding.leaseExpiresAt);
+    const requestedExpiry = Date.parse(leaseExpiresAt);
+    if (
+      !Number.isFinite(currentExpiry) ||
+      !Number.isFinite(requestedExpiry) ||
+      currentExpiry <= now ||
+      requestedExpiry <= now
+    ) {
       this.revoke(capabilityId, "Lease expired");
-      return false;
+      return null;
     }
+    if (requestedExpiry <= currentExpiry) {
+      return active.binding.leaseExpiresAt;
+    }
+    const acceptedLeaseExpiresAt = new Date(requestedExpiry).toISOString();
+    active.binding = {
+      ...active.binding,
+      leaseExpiresAt: acceptedLeaseExpiresAt,
+    };
     clearTimeout(active.timer);
-    active.timer = this.#leaseTimer(capabilityId, expiry);
-    return true;
+    active.timer = this.#leaseTimer(capabilityId, requestedExpiry);
+    workerLogger.event("debug", "Direct capability lease renewed", {
+      event: "direct.capability.renewed",
+      subsystem: "direct-broker",
+      operation: "renew",
+      status: "completed",
+      resourceKind: active.binding.resourceKind,
+      attachmentId: active.binding.attachmentId,
+      ...(active.diagnosticTraceId
+        ? { diagnosticTraceId: active.diagnosticTraceId }
+        : {}),
+      leaseDurationMs: requestedExpiry - now,
+      counts: { prepared: this.#prepared.size, active: this.#active.size },
+    });
+    return acceptedLeaseExpiresAt;
   }
 
   revoke(capabilityId: string, reason: string): boolean {

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   directAttachmentTicketSchema,
+  directBrokerAdvertisementSchema,
   directCapabilityPrepareCommandSchema,
+  directCapabilityRenewResultSchema,
   directRouteStateSchema,
   directTunnelPrepareRequestSchema,
   workerHeartbeatSchema,
@@ -19,6 +21,44 @@ describe("direct data plane protocol", () => {
       startedAt: new Date().toISOString(),
     });
     expect(worker.directBroker).toEqual({ available: false });
+  });
+
+  it("defaults older available broker advertisements to no lease renewal", () => {
+    const legacy = {
+      available: true,
+      protocol: "ws-v1",
+      loopbackHost: "127.0.0.1",
+      loopbackPort: 43123,
+      instanceId: crypto.randomUUID(),
+      publicKey: "a".repeat(43),
+      fingerprint: "b".repeat(64),
+    } as const;
+
+    expect(directBrokerAdvertisementSchema.parse(legacy)).toMatchObject({
+      leaseRenewal: false,
+    });
+    expect(
+      directBrokerAdvertisementSchema.parse({
+        ...legacy,
+        leaseRenewal: true,
+      }),
+    ).toMatchObject({ leaseRenewal: true });
+  });
+
+  it("parses additive direct capability renewal acknowledgements", () => {
+    const leaseExpiresAt = new Date(Date.now() + 10_000).toISOString();
+    expect(
+      directCapabilityRenewResultSchema.parse({
+        renewed: true,
+        leaseExpiresAt,
+      }),
+    ).toEqual({ renewed: true, leaseExpiresAt });
+    expect(directCapabilityRenewResultSchema.parse({ renewed: true })).toEqual({
+      renewed: true,
+    });
+    expect(directCapabilityRenewResultSchema.parse({ renewed: false })).toEqual(
+      { renewed: false },
+    );
   });
 
   it("binds one ticket to its complete authorization context", () => {
