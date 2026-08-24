@@ -1473,6 +1473,168 @@ script = ""
     expect(stopped.statusCode).toBe(202);
   });
 
+  it("keeps captured generations controllable when Primary removes their definition externally", async () => {
+    const definitionPath = path.join(
+      primaryRoot,
+      ".cantrip",
+      "run-configurations",
+      `${configurationId}.json`,
+    );
+    const definition = await readFile(definitionPath, "utf8");
+    const worktrees = await database.repository.listProjectWorktrees(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const primary = worktrees.find(({ isPrimary }) => isPrimary);
+    const alternate = worktrees.find(({ isPrimary }) => !isPrimary);
+    if (!primary || !alternate) throw new Error("Expected both Run targets.");
+
+    const started = await Promise.all(
+      [null, alternate.id].map(async (targetWorktreeId) => {
+        const response = await app.inject({
+          method: "POST",
+          url: "/api/run-configuration-runtimes/operations",
+          payload: {
+            operation: "start",
+            operationId: randomUUID(),
+            projectId,
+            configurationId,
+            targetWorktreeId,
+          },
+        });
+        expect(response.statusCode).toBe(202);
+        const runtime = runConfigurationRuntimeOperationResultSchema.parse(
+          response.json(),
+        ).runtime;
+        if (!runtime) throw new Error("Expected a running generation.");
+        return runtime;
+      }),
+    );
+    const primaryRuntime = started.find(
+      ({ worktreeId }) => worktreeId === primary.id,
+    );
+    const alternateRuntime = started.find(
+      ({ worktreeId }) => worktreeId === alternate.id,
+    );
+    if (!primaryRuntime || !alternateRuntime) {
+      throw new Error("Expected Primary and alternate Run generations.");
+    }
+
+    commands.length = 0;
+    await rm(definitionPath);
+    try {
+      await expect
+        .poll(async () => {
+          const response = await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/run-configurations/${configurationId}?operationId=${randomUUID()}`,
+          });
+          return runConfigurationGetResponseSchema.parse(response.json()).result
+            .found;
+        })
+        .toBe(false);
+      expect(
+        commands.some(
+          ({ type }) => type === "project.run-configuration-runtime.stop",
+        ),
+      ).toBe(false);
+
+      const restart = await app.inject({
+        method: "POST",
+        url: "/api/run-configuration-runtimes/operations",
+        payload: {
+          operation: "restart",
+          operationId: randomUUID(),
+          projectId,
+          configurationId,
+          targetWorktreeId: null,
+        },
+      });
+      expect(restart.statusCode).toBe(404);
+      expect(restart.json()).toMatchObject({
+        error: expect.stringMatching(/not found in Primary/iu),
+      });
+      expect(
+        commands.some(
+          ({ type }) => type === "project.run-configuration-runtime.restart",
+        ),
+      ).toBe(false);
+      await expect(
+        database.repository.getRunConfigurationRuntime(
+          LOCAL_USER_ID,
+          projectId,
+          configurationId,
+          primary.id,
+        ),
+      ).resolves.toMatchObject({ state: "running" });
+
+      const stopped = await app.inject({
+        method: "POST",
+        url: "/api/run-configuration-runtimes/operations",
+        payload: {
+          operation: "stop",
+          operationId: randomUUID(),
+          projectId,
+          configurationId,
+          targetWorktreeId: null,
+        },
+      });
+      expect(stopped.statusCode).toBe(202);
+      expect(
+        runConfigurationRuntimeOperationResultSchema.parse(stopped.json()),
+      ).toMatchObject({ runtime: { state: "idle" } });
+
+      await emitNotification({
+        type: "project.run-configuration-runtime.observed",
+        observation: runtimeObservation(alternateRuntime, "exited"),
+      });
+      await expect(
+        database.repository.getRunConfigurationRuntime(
+          LOCAL_USER_ID,
+          projectId,
+          configurationId,
+          alternate.id,
+        ),
+      ).resolves.toMatchObject({ state: "exited", exitCode: 0 });
+      const terminals = terminalWireListSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/terminals`,
+          })
+        ).json(),
+      );
+      expect(
+        terminals.filter(
+          ({ runConfigurationId }) => runConfigurationId === configurationId,
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: primaryRuntime.terminalId,
+            status: "exited",
+          }),
+          expect.objectContaining({
+            id: alternateRuntime.terminalId,
+            status: "exited",
+          }),
+        ]),
+      );
+    } finally {
+      await writeFile(definitionPath, definition, "utf8");
+    }
+    await expect
+      .poll(async () => {
+        const response = await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/run-configurations/${configurationId}?operationId=${randomUUID()}`,
+        });
+        return runConfigurationGetResponseSchema.parse(response.json()).result
+          .found;
+      })
+      .toBe(true);
+  }, 15_000);
+
   it("preflights revision conflicts, then stops every instance and removes managed terminals before deleting", async () => {
     const inventory = runConfigurationGetResponseSchema.parse(
       (
