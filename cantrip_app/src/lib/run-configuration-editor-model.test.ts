@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createNodeRunConfigurationDocument,
   createShellRunConfigurationDocument,
+  nodeRunConfigurationEffectiveCommand,
+  parseRunConfigurationEditorDocument,
   parseShellRunConfigurationEditorDocument,
   shellRunConfigurationEffectiveCommand,
 } from "./run-configuration-editor-model";
@@ -47,5 +50,27 @@ describe("Shell Run configuration editor model", () => {
     const parsed = parseShellRunConfigurationEditorDocument(document, "{}");
     expect(parsed.success).toBe(false);
     if (!parsed.success) expect(parsed.errors.join(" ")).toContain("name");
+  });
+
+  it("builds structured Node package and entrypoint commands", () => {
+    const document = createNodeRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    document.name = "Run web";
+    document.options.packageManager = "pnpm";
+    document.target = { kind: "packageScript", script: "dev" };
+    document.arguments = ["--host", "two words"];
+    expect(nodeRunConfigurationEffectiveCommand(document)).toEqual({
+      command: 'pnpm run dev -- --host "two words"',
+      overridden: false,
+    });
+    document.target = { kind: "entry", path: "src/index.js" };
+    document.options.runtimeArguments = ["--enable-source-maps"];
+    expect(nodeRunConfigurationEffectiveCommand(document).command).toBe(
+      'node --enable-source-maps src/index.js --host "two words"',
+    );
+    const parsed = parseRunConfigurationEditorDocument(document, "{}");
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.document.provider).toBe("node");
   });
 });

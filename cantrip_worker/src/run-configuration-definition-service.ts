@@ -2,6 +2,7 @@ import {
   runConfigurationCapabilitiesResponseSchema,
   runConfigurationDefinitionChangeNotificationSchema,
   runConfigurationDeleteResponseSchema,
+  runConfigurationDetectResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationWriteResponseSchema,
@@ -11,12 +12,20 @@ import {
 } from "@cantrip/protocol/run-configuration-operations";
 
 import { shellRunConfigurationProvider } from "./run-configuration-provider.js";
+import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.js";
 import {
   RunConfigurationRepository,
   type RunConfigurationRepositoryWatcher,
 } from "./run-configuration-repository.js";
 
 const MAX_OBSERVED_PROJECTS = 256;
+
+function workerPlatform(): "darwin" | "linux" | "win32" {
+  if (process.platform === "darwin" || process.platform === "win32") {
+    return process.platform;
+  }
+  return "linux";
+}
 
 interface ObservedRepository {
   repository: RunConfigurationRepository;
@@ -70,8 +79,51 @@ export class RunConfigurationDefinitionService {
         return runConfigurationCapabilitiesResponseSchema.parse({
           operation: "capabilities",
           ...context,
-          capabilities: [shellRunConfigurationProvider.capability],
+          capabilities: [
+            shellRunConfigurationProvider.capability,
+            nodeRunConfigurationProvider.capability,
+          ],
         });
+      case "project.run-configuration-definitions.detect": {
+        const providerContext = {
+          defaultShell: process.env.SHELL ?? null,
+          platform: workerPlatform(),
+          targetRoot: command.sourcePath,
+        };
+        const candidates =
+          command.providerKind === null || command.providerKind === "node"
+            ? (
+                await nodeRunConfigurationProvider.discover(providerContext)
+              ).map((candidate) => ({
+                ...candidate,
+                provider: "node" as const,
+                effectiveCommand:
+                  nodeRunConfigurationProvider.renderEffectiveCommand(
+                    candidate.document,
+                    providerContext.platform,
+                  ),
+              }))
+            : [];
+        const diagnostics =
+          command.providerKind &&
+          !["shell", "node"].includes(command.providerKind)
+            ? [
+                {
+                  severity: "warning" as const,
+                  code: "provider-unavailable",
+                  message: `The ${command.providerKind} Run configuration provider is not installed on this worker.`,
+                  relativePath: null,
+                  field: "provider",
+                },
+              ]
+            : [];
+        return runConfigurationDetectResponseSchema.parse({
+          operation: "detect",
+          ...context,
+          candidates,
+          diagnostics,
+        });
+      }
       case "project.run-configuration-definitions.write":
         return runConfigurationWriteResponseSchema.parse({
           operation: "write",

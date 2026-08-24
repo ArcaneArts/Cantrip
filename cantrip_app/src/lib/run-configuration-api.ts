@@ -1,5 +1,8 @@
 import type {
   RunConfigurationDeleteResult,
+  RunConfigurationDetectionCandidate,
+  RunConfigurationDiagnostic,
+  RunConfigurationProviderKind,
   RunConfigurationReadResult,
   RunConfigurationRepositoryInventory,
   RunConfigurationWriteRequest,
@@ -20,6 +23,7 @@ import {
 import {
   runConfigurationCapabilitiesResponseSchema,
   runConfigurationDeleteResponseSchema,
+  runConfigurationDetectResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationWriteResponseSchema,
@@ -92,6 +96,29 @@ export async function getRunConfigurationCapabilities(
   );
   assertCorrelated(response, projectId, operationId);
   return response.capabilities;
+}
+
+export async function detectRunConfigurations(
+  projectId: string,
+  provider: RunConfigurationProviderKind | null = null,
+  operationId = crypto.randomUUID(),
+): Promise<{
+  candidates: RunConfigurationDetectionCandidate[];
+  diagnostics: RunConfigurationDiagnostic[];
+}> {
+  const providerQuery = provider
+    ? `&provider=${encodeURIComponent(provider)}`
+    : "";
+  const response = runConfigurationDetectResponseSchema.parse(
+    await request(
+      `${configurationCollectionPath(projectId)}/detect${operationQuery(operationId)}${providerQuery}`,
+    ),
+  );
+  assertCorrelated(response, projectId, operationId);
+  return {
+    candidates: response.candidates,
+    diagnostics: response.diagnostics,
+  };
 }
 
 export async function saveRunConfiguration(

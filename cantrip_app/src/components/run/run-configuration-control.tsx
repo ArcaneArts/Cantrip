@@ -10,6 +10,7 @@ import {
   GitBranch,
   Loader2,
   MoreHorizontal,
+  Package,
   Pencil,
   Play,
   Plus,
@@ -73,8 +74,12 @@ type LifecycleInput = {
   target: RunConfigurationTargetControl;
 };
 
-function ProviderIcon() {
-  return <SquareTerminal className="size-4 shrink-0 text-muted-foreground" />;
+function ProviderIcon({ provider }: { provider?: string | null }) {
+  return provider === "node" ? (
+    <Package className="size-4 shrink-0 text-muted-foreground" />
+  ) : (
+    <SquareTerminal className="size-4 shrink-0 text-muted-foreground" />
+  );
 }
 
 function LifecycleButtons({
@@ -378,7 +383,7 @@ export function RunConfigurationControl({
             {loading ? (
               <Loader2 className="size-3.5 animate-spin" />
             ) : (
-              <ProviderIcon />
+              <ProviderIcon provider={selected?.provider} />
             )}
             <span className="truncate">
               {selected?.name ?? "Add Run Configuration"}
@@ -434,7 +439,7 @@ export function RunConfigurationControl({
                           operate(item, item.primary, operation)
                         }
                       />
-                      <ProviderIcon />
+                      <ProviderIcon provider={item.provider} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="truncate font-medium">

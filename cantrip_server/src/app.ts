@@ -488,6 +488,8 @@ import {
   runConfigurationApiWriteRequestSchema,
   runConfigurationCapabilitiesResponseSchema,
   runConfigurationDeleteResponseSchema,
+  runConfigurationDetectQuerySchema,
+  runConfigurationDetectResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListQuerySchema,
   runConfigurationListResponseSchema,
@@ -23461,6 +23463,45 @@ export async function buildApp({
         ) {
           throw new Error(
             "The Run configuration capability response was misrouted.",
+          );
+        }
+        return reply.send(result);
+      } catch (error) {
+        return sendRunApiFailure(reply, error);
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string };
+    Querystring: { operationId?: string; provider?: string };
+  }>(
+    "/api/projects/:projectId/run-configurations/detect",
+    async (request, reply) => {
+      const input = runConfigurationDetectQuerySchema.safeParse(request.query);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const source = await resolvePrimaryRunConfigurationSource(
+          applicationOwnerId(),
+          request.params.projectId,
+        );
+        const result = runConfigurationDetectResponseSchema.parse(
+          await bridge.request(source.workerId, {
+            type: "project.run-configuration-definitions.detect",
+            operationId: input.data.operationId,
+            projectId: request.params.projectId,
+            sourcePath: source.cwd,
+            providerKind: input.data.provider ?? null,
+          }),
+        );
+        if (
+          result.operationId !== input.data.operationId ||
+          result.projectId !== request.params.projectId
+        ) {
+          throw new Error(
+            "The Run configuration detection response was misrouted.",
           );
         }
         return reply.send(result);

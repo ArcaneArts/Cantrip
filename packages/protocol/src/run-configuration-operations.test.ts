@@ -8,6 +8,8 @@ import {
   runConfigurationCapabilitiesWorkerCommandSchema,
   runConfigurationDefinitionChangeNotificationSchema,
   runConfigurationDeleteWorkerCommandSchema,
+  runConfigurationDetectResponseSchema,
+  runConfigurationDetectWorkerCommandSchema,
   runConfigurationGetWorkerCommandSchema,
   runConfigurationListResponseSchema,
   runConfigurationListWorkerCommandSchema,
@@ -49,6 +51,13 @@ describe("run configuration operation protocol", () => {
       }).type,
     ).toContain("capabilities");
     expect(
+      runConfigurationDetectWorkerCommandSchema.parse({
+        type: "project.run-configuration-definitions.detect",
+        ...context,
+        providerKind: "node",
+      }).providerKind,
+    ).toBe("node");
+    expect(
       runConfigurationWriteWorkerCommandSchema.parse({
         type: "project.run-configuration-definitions.write",
         ...context,
@@ -68,6 +77,13 @@ describe("run configuration operation protocol", () => {
         ...context,
       }).type,
     ).toBe("project.run-configuration-definitions.list");
+    expect(
+      workerCommandSchema.parse({
+        type: "project.run-configuration-definitions.detect",
+        ...context,
+        providerKind: null,
+      }).type,
+    ).toBe("project.run-configuration-definitions.detect");
   });
 
   it("correlates bounded responses and watcher notifications", () => {
@@ -138,5 +154,35 @@ describe("run configuration operation protocol", () => {
         plaintextSecret: "never",
       }).success,
     ).toBe(false);
+  });
+
+  it("correlates bounded typed detection results", () => {
+    const detected = runConfigurationDetectResponseSchema.parse({
+      operation: "detect",
+      operationId,
+      projectId,
+      candidates: [
+        {
+          provider: "node",
+          confidence: "high",
+          reason: "The package defines a start script.",
+          effectiveCommand: "pnpm run start",
+          document: {
+            schema: "cantrip.run-configuration",
+            version: 1,
+            id: configurationId,
+            name: "Run app",
+            provider: "node",
+            target: { kind: "packageScript", script: "start" },
+            options: { packageManager: "pnpm" },
+          },
+        },
+      ],
+      diagnostics: [],
+    });
+    expect(detected.candidates[0]).toMatchObject({
+      provider: "node",
+      document: { environment: { includeCodexEnvironment: true } },
+    });
   });
 });

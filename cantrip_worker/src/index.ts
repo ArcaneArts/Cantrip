@@ -1986,6 +1986,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "project.run-configuration-definitions.list":
       case "project.run-configuration-definitions.get":
       case "project.run-configuration-definitions.capabilities":
+      case "project.run-configuration-definitions.detect":
       case "project.run-configuration-definitions.write":
       case "project.run-configuration-definitions.delete":
         return runConfigurationDefinitions.execute(command);

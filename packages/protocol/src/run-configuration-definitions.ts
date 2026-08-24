@@ -326,8 +326,109 @@ export const runConfigurationShellDocumentSchema = z
     }
   });
 
+export const runConfigurationNodePackageManagerSchema = z.enum([
+  "npm",
+  "pnpm",
+  "yarn",
+  "bun",
+]);
+
+export const runConfigurationNodeRuntimeSchema = z.enum(["node", "bun"]);
+
+export const runConfigurationNodeTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("packageScript"),
+      script: z.string().trim().min(1).max(200),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("entry"),
+      path: runConfigurationRepositoryPathSchema,
+    })
+    .strict(),
+]);
+
+export const runConfigurationNodeOptionsSchema = z
+  .object({
+    packageManager: runConfigurationNodePackageManagerSchema.default("npm"),
+    runtime: runConfigurationNodeRuntimeSchema.default("node"),
+    runtimeArguments: runConfigurationArgumentsSchema.max(128).default([]),
+  })
+  .strict();
+
+const runConfigurationNodePlatformOverrideSchema = z
+  .object({
+    workingDirectory: runConfigurationWorkingDirectorySchema.optional(),
+    commandOverride: runConfigurationCommandSchema.nullable().optional(),
+    arguments: runConfigurationArgumentsSchema.optional(),
+    environment: runConfigurationEnvironmentOverrideSchema.optional(),
+    options: z
+      .object({
+        packageManager: runConfigurationNodePackageManagerSchema.optional(),
+        runtime: runConfigurationNodeRuntimeSchema.optional(),
+        runtimeArguments: runConfigurationArgumentsSchema.max(128).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const runConfigurationNodePlatformOverridesSchema = z
+  .object({
+    win32: runConfigurationNodePlatformOverrideSchema.optional(),
+    darwin: runConfigurationNodePlatformOverrideSchema.optional(),
+    linux: runConfigurationNodePlatformOverrideSchema.optional(),
+  })
+  .strict();
+
+export const runConfigurationNodeDocumentSchema = z
+  .object({
+    schema: z.literal(RUN_CONFIGURATION_FILE_SCHEMA),
+    version: z.literal(RUN_CONFIGURATION_FILE_VERSION),
+    id: runConfigurationIdSchema,
+    name: z.string().trim().min(1).max(200),
+    provider: z.literal("node"),
+    workingDirectory: runConfigurationWorkingDirectorySchema.default("."),
+    target: runConfigurationNodeTargetSchema,
+    commandOverride: runConfigurationCommandSchema.nullable().default(null),
+    arguments: runConfigurationArgumentsSchema.default([]),
+    environment: runConfigurationEnvironmentSchema.default({
+      includeCodexEnvironment: true,
+      files: [],
+      variables: [],
+      secrets: [],
+    }),
+    beforeLaunch: z
+      .array(runConfigurationBeforeLaunchStepSchema)
+      .max(32)
+      .default([]),
+    platformOverrides: runConfigurationNodePlatformOverridesSchema.default({}),
+    options: runConfigurationNodeOptionsSchema.default({
+      packageManager: "npm",
+      runtime: "node",
+      runtimeArguments: [],
+    }),
+    stop: runConfigurationStopSchema.default({ gracePeriodMs: 3_000 }),
+  })
+  .strict()
+  .superRefine((document, context) => {
+    const bytes = new TextEncoder().encode(JSON.stringify(document)).byteLength;
+    if (bytes > RUN_CONFIGURATION_MAX_FILE_BYTES) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Run configuration documents cannot exceed " +
+          RUN_CONFIGURATION_MAX_FILE_BYTES +
+          " encoded bytes.",
+      });
+    }
+  });
+
 export const runConfigurationFileSchema = z.discriminatedUnion("provider", [
   runConfigurationShellDocumentSchema,
+  runConfigurationNodeDocumentSchema,
 ]);
 
 export const runConfigurationDiagnosticSchema = z
@@ -493,6 +594,25 @@ export const runConfigurationProviderCapabilitySchema = z
   })
   .strict();
 
+export const runConfigurationDetectionCandidateSchema = z
+  .object({
+    provider: runConfigurationProviderKindSchema,
+    confidence: z.enum(["high", "medium", "low"]),
+    reason: z.string().trim().min(1).max(1_000),
+    effectiveCommand: z.string().trim().min(1).max(MAX_COMMAND_CHARACTERS),
+    document: runConfigurationFileSchema,
+  })
+  .strict()
+  .superRefine((candidate, context) => {
+    if (candidate.provider !== candidate.document.provider) {
+      context.addIssue({
+        code: "custom",
+        message: "The detected provider must match its document.",
+        path: ["provider"],
+      });
+    }
+  });
+
 export type RunConfigurationId = z.infer<typeof runConfigurationIdSchema>;
 export type RunConfigurationRevision = z.infer<
   typeof runConfigurationRevisionSchema
@@ -511,6 +631,9 @@ export type RunConfigurationBeforeLaunchStep = z.infer<
 >;
 export type RunConfigurationShellDocument = z.infer<
   typeof runConfigurationShellDocumentSchema
+>;
+export type RunConfigurationNodeDocument = z.infer<
+  typeof runConfigurationNodeDocumentSchema
 >;
 export type RunConfigurationFile = z.infer<typeof runConfigurationFileSchema>;
 export type RunConfigurationDiagnostic = z.infer<
@@ -542,4 +665,7 @@ export type RunConfigurationRepositoryChange = z.infer<
 >;
 export type RunConfigurationProviderCapability = z.infer<
   typeof runConfigurationProviderCapabilitySchema
+>;
+export type RunConfigurationDetectionCandidate = z.infer<
+  typeof runConfigurationDetectionCandidateSchema
 >;

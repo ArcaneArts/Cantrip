@@ -272,7 +272,11 @@ function inspectUnsupportedDocument(
       ],
     });
   }
-  if (typeof record.provider === "string" && record.provider !== "shell") {
+  if (
+    typeof record.provider === "string" &&
+    record.provider !== "shell" &&
+    record.provider !== "node"
+  ) {
     return runConfigurationRepositoryEntrySchema.parse({
       relativePath,
       revision,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   RUN_CONFIGURATION_FILE_SCHEMA,
   RUN_CONFIGURATION_REPOSITORY_DIRECTORY,
+  runConfigurationDetectionCandidateSchema,
   runConfigurationFileSchema,
   runConfigurationProviderCapabilitySchema,
   runConfigurationProviderKindSchema,
@@ -26,6 +27,18 @@ function shellConfiguration() {
       kind: "command" as const,
       command: "pnpm --filter @cantrip/server dev",
     },
+  };
+}
+
+function nodeConfiguration() {
+  return {
+    schema: RUN_CONFIGURATION_FILE_SCHEMA,
+    version: 1 as const,
+    id: configurationId,
+    name: "Run web",
+    provider: "node" as const,
+    workingDirectory: "packages/web",
+    target: { kind: "packageScript" as const, script: "dev" },
   };
 }
 
@@ -55,7 +68,7 @@ describe("run configuration definition protocol", () => {
     ).toEqual(["--listen", "127.0.0.1:4400"]);
   });
 
-  it("declares every planned provider while admitting only implemented documents", () => {
+  it("declares every planned provider while admitting implemented typed documents", () => {
     expect(runConfigurationProviderKindSchema.options).toEqual([
       "shell",
       "node",
@@ -70,6 +83,19 @@ describe("run configuration definition protocol", () => {
         provider: "rust",
       }).success,
     ).toBe(false);
+    expect(runConfigurationFileSchema.parse(nodeConfiguration())).toMatchObject(
+      {
+        provider: "node",
+        workingDirectory: "packages/web",
+        target: { kind: "packageScript", script: "dev" },
+        options: {
+          packageManager: "npm",
+          runtime: "node",
+          runtimeArguments: [],
+        },
+        environment: { includeCodexEnvironment: true },
+      },
+    );
     expect(
       runConfigurationProviderCapabilitySchema.parse({
         provider: "rust",
@@ -82,6 +108,45 @@ describe("run configuration definition protocol", () => {
         supportsPlatformOverrides: true,
       }),
     ).toMatchObject({ provider: "rust", available: false });
+  });
+
+  it("keeps Node targets and detection candidates strict and provider-correlated", () => {
+    expect(
+      runConfigurationFileSchema.safeParse({
+        ...nodeConfiguration(),
+        target: { kind: "entry", path: "../outside.js" },
+      }).success,
+    ).toBe(false);
+    expect(
+      runConfigurationFileSchema.safeParse({
+        ...nodeConfiguration(),
+        options: {
+          packageManager: "pnpm",
+          runtime: "node",
+          runtimeArguments: [],
+          executable: "arbitrary",
+        },
+      }).success,
+    ).toBe(false);
+    const document = runConfigurationFileSchema.parse(nodeConfiguration());
+    expect(
+      runConfigurationDetectionCandidateSchema.parse({
+        provider: "node",
+        confidence: "high",
+        reason: "The package defines a dev script.",
+        effectiveCommand: "npm run dev",
+        document,
+      }).document.provider,
+    ).toBe("node");
+    expect(
+      runConfigurationDetectionCandidateSchema.safeParse({
+        provider: "shell",
+        confidence: "high",
+        reason: "Mismatched",
+        effectiveCommand: "npm run dev",
+        document,
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects traversal, absolute paths, Windows paths, and NULs", () => {
