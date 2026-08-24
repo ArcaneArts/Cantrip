@@ -17,6 +17,7 @@ import {
 import { parse as parseToml } from "smol-toml";
 
 import {
+  findRunConfigurationExecutable,
   type MaterializedRunCommand,
   type RunConfigurationProvider,
   type RunConfigurationProviderCandidate,
@@ -33,6 +34,7 @@ const MAX_DISCOVERY_MANIFESTS = 256;
 const MAX_DISCOVERY_TARGETS = 1_024;
 const MAX_DISCOVERY_CANDIDATES = 128;
 const MAX_MANIFEST_BYTES = 512 * 1024;
+const MAX_RUSTUP_TOOLCHAINS = 512;
 const SUPPORTED_PROVIDER_TASKS = new Set(["build", "check", "clippy"]);
 
 const IGNORED_DIRECTORIES = new Set([
@@ -551,6 +553,112 @@ function cargoExecutable(platform: RunConfigurationPlatform): string {
   return platform === "win32" ? "cargo.exe" : "cargo";
 }
 
+function launchEnvironmentValue(
+  context: RunConfigurationProviderContext,
+  name: string,
+): string | undefined {
+  if (!context.environment) return undefined;
+  if (context.platform !== "win32") return context.environment[name];
+  const normalizedName = name.toUpperCase();
+  return Object.entries(context.environment).find(
+    ([key]) => key.toUpperCase() === normalizedName,
+  )?.[1];
+}
+
+function absoluteEnvironmentPath(
+  value: string,
+  workingDirectory: string,
+): string {
+  return path.isAbsolute(value) ? value : path.resolve(workingDirectory, value);
+}
+
+function rustupHome(
+  context: RunConfigurationProviderContext,
+  workingDirectory: string,
+): string | null {
+  const configured = launchEnvironmentValue(context, "RUSTUP_HOME");
+  if (configured !== undefined) {
+    return absoluteEnvironmentPath(configured, workingDirectory);
+  }
+  let userHome = launchEnvironmentValue(context, "HOME");
+  if (context.platform === "win32") {
+    userHome = launchEnvironmentValue(context, "USERPROFILE") ?? userHome;
+    if (!userHome) {
+      const drive = launchEnvironmentValue(context, "HOMEDRIVE");
+      const homePath = launchEnvironmentValue(context, "HOMEPATH");
+      if (drive && homePath) userHome = `${drive}${homePath}`;
+    }
+  }
+  return userHome
+    ? path.join(absoluteEnvironmentPath(userHome, workingDirectory), ".rustup")
+    : null;
+}
+
+function rustupToolchainNameMatches(
+  requested: string,
+  installed: string,
+): boolean {
+  if (installed === requested) return true;
+  const shorthand =
+    /^(?:(?:stable|beta|nightly)(?:-\d{4}-\d{2}-\d{2})?|\d+\.\d+(?:\.\d+)?)$/u.test(
+      requested,
+    );
+  return shorthand && installed.startsWith(`${requested}-`);
+}
+
+async function rustToolchainDiagnostic(
+  toolchain: string,
+  workingDirectory: string,
+  context: RunConfigurationProviderContext,
+): Promise<RunConfigurationDiagnostic | null> {
+  if (!context.environment) return null;
+  const requested =
+    toolchain === "default"
+      ? launchEnvironmentValue(context, "RUSTUP_TOOLCHAIN")
+      : toolchain;
+  if (!requested) return null;
+  const home = rustupHome(context, workingDirectory);
+  if (home) {
+    try {
+      const installed = await readdir(path.join(home, "toolchains"));
+      if (installed.length > MAX_RUSTUP_TOOLCHAINS) {
+        return runConfigurationProviderDiagnostic(
+          "rust-toolchain-inventory-too-large",
+          "The Rustup toolchain inventory exceeds the validation limit.",
+          "options.toolchain",
+        );
+      }
+      for (const name of installed) {
+        if (!rustupToolchainNameMatches(requested, name)) continue;
+        const executable = path.join(
+          home,
+          "toolchains",
+          name,
+          "bin",
+          cargoExecutable(context.platform),
+        );
+        if (
+          await findRunConfigurationExecutable(executable, {
+            environment: context.environment,
+            platform: context.platform,
+            targetRoot: workingDirectory,
+          })
+        ) {
+          return null;
+        }
+      }
+    } catch {
+      // The actionable missing-toolchain diagnostic below covers absent or
+      // unreadable Rustup state without executing rustup during validation.
+    }
+  }
+  return runConfigurationProviderDiagnostic(
+    "rust-toolchain-unavailable",
+    `The selected Rust toolchain ${JSON.stringify(requested)} is not installed for this launch environment. Install it with rustup or select an installed toolchain.`,
+    "options.toolchain",
+  );
+}
+
 function cargoSelectionArguments(
   document: RunConfigurationRustDocument,
   options: RunConfigurationRustDocument["options"],
@@ -797,6 +905,14 @@ export const rustRunConfigurationProvider: RunConfigurationProvider<RunConfigura
           "options.toolchain",
         );
         if (diagnostic) diagnostics.push(diagnostic);
+        if (!diagnostic) {
+          const toolchainDiagnostic = await rustToolchainDiagnostic(
+            resolved.options.toolchain,
+            workingDirectory,
+            context,
+          );
+          if (toolchainDiagnostic) diagnostics.push(toolchainDiagnostic);
+        }
         const packages = await scanPackages({
           ...context,
           targetRoot: workingDirectory,
