@@ -40,6 +40,10 @@ import { spawnGuardedProcess } from "./process-guard.js";
 import { CodeWorkbenchBridge } from "./workbench-bridge.js";
 
 type CodeOpenCommand = Extract<WorkerCommand, { type: "code.open" }>;
+type CodeSettingsWorkbenchOpenCommand = Extract<
+  WorkerCommand,
+  { type: "code.settings.workbench.open" }
+>;
 
 interface CodeSession {
   activeTunnelStreams: Set<string>;
@@ -50,6 +54,7 @@ interface CodeSession {
   codeTabId: string;
   cwd: string;
   initialFile: string | null;
+  kind: "workspace" | "settings";
   lastActivityAt: string;
   lastError: string | null;
   profileId: string;
@@ -388,7 +393,29 @@ export class CodeSupervisor {
   async open(command: CodeOpenCommand): Promise<CodeRuntimeStatus> {
     const generation = this.#sessionGeneration(command.sessionId);
     return this.#enqueueSessionOperation(command.sessionId, () =>
-      this.#open(command, generation),
+      this.#open(command, generation, "workspace"),
+    );
+  }
+
+  async openSettingsWorkbench(
+    command: CodeSettingsWorkbenchOpenCommand,
+  ): Promise<CodeRuntimeStatus> {
+    const openCommand: CodeOpenCommand = {
+      type: "code.open",
+      sessionId: command.sessionId,
+      codeTabId: "global-code-settings",
+      projectId: "global-code-settings",
+      worktreeId: "global-settings",
+      worktreeName: "Global settings",
+      cwd: this.#codeRoot,
+      profileId: command.profileId,
+      themeMode: "follow-cantrip",
+      appearance: command.appearance,
+      presentation: "editor",
+    };
+    const generation = this.#sessionGeneration(command.sessionId);
+    return this.#enqueueSessionOperation(command.sessionId, () =>
+      this.#open(openCommand, generation, "settings"),
     );
   }
 
@@ -499,6 +526,7 @@ export class CodeSupervisor {
   async #open(
     command: CodeOpenCommand,
     generation: number,
+    kind: CodeSession["kind"],
   ): Promise<CodeRuntimeStatus> {
     const startedAtMs = Date.now();
     this.#assertAvailable();
@@ -531,7 +559,11 @@ export class CodeSupervisor {
     this.#assertCurrentOperation(command.sessionId, generation);
 
     const current = this.#sessions.get(command.sessionId);
-    if (current && !sameBinding(current, command, workspaceRootPath)) {
+    if (
+      current &&
+      (current.kind !== kind ||
+        !sameBinding(current, command, workspaceRootPath))
+    ) {
       await this.#retireSession(current);
     }
     let session = this.#sessions.get(command.sessionId);
@@ -582,13 +614,15 @@ export class CodeSupervisor {
           codeTabId: command.codeTabId,
           cwd,
           initialFile,
+          kind,
           lastActivityAt: isoNow(),
           lastError: null,
           profileId: command.profileId,
           profileKey,
           presentation: command.presentation,
           projectId: command.projectId,
-          projectName: path.basename(cwd),
+          projectName:
+            kind === "settings" ? "Code settings" : path.basename(cwd),
           sessionId: command.sessionId,
           startedAt: null,
           status: "starting",
@@ -740,6 +774,9 @@ export class CodeSupervisor {
     return this.#enqueueSessionOperation(sessionId, async () => {
       this.#assertCurrentOperation(sessionId, generation);
       const session = this.#requireSession(sessionId);
+      if (session.kind !== "workspace") {
+        throw new Error("Cantrip Code settings sessions cannot open files.");
+      }
       const relativePath = await this.#authorizedRelativeFile(
         session.workspaceRootPath,
         requestedPath,
@@ -778,6 +815,23 @@ export class CodeSupervisor {
       await this.#bridge.setPresentation(sessionId, presentation);
       this.#assertCurrentOperation(sessionId, generation, session);
       return this.#status(session);
+    });
+  }
+
+  async openSettings(sessionId: string) {
+    const generation = this.#sessionGeneration(sessionId);
+    return this.#enqueueSessionOperation(sessionId, async () => {
+      this.#assertCurrentOperation(sessionId, generation);
+      const session = this.#requireSession(sessionId);
+      if (session.kind !== "settings") {
+        throw new Error(
+          "Cantrip Code graphical settings require a settings session.",
+        );
+      }
+      this.#touch(session);
+      const result = await this.#bridge.openSettings(sessionId);
+      this.#assertCurrentOperation(sessionId, generation, session);
+      return result;
     });
   }
 
@@ -1684,14 +1738,20 @@ export class CodeSupervisor {
         "workbench.statusBar.visible": false,
       });
     }
+    if (session.kind === "settings") {
+      settings["workbench.settings.editor"] = "ui";
+    }
     settings["workbench.colorTheme"] = THEME_NAMES[session.appearance];
     const workspace = {
-      folders: [
-        {
-          name: path.basename(session.workspaceRootPath),
-          path: session.workspaceRootPath,
-        },
-      ],
+      folders:
+        session.kind === "settings"
+          ? []
+          : [
+              {
+                name: path.basename(session.workspaceRootPath),
+                path: session.workspaceRootPath,
+              },
+            ],
       settings,
     };
     const temporary = `${session.workspacePath}.${randomUUID()}.tmp`;
@@ -1748,7 +1808,7 @@ export class CodeSupervisor {
   #sessionsForCwd(cwd: string): CodeSession[] {
     const resolved = path.resolve(cwd);
     return [...this.#sessions.values()].filter(
-      (session) => session.cwd === resolved,
+      (session) => session.kind === "workspace" && session.cwd === resolved,
     );
   }
 
@@ -1907,6 +1967,7 @@ export class CodeSupervisor {
         codeTabId: candidate.codeTabId as string,
         cwd,
         initialFile,
+        kind: "workspace",
         lastActivityAt: isoNow(),
         lastError: null,
         profileId,

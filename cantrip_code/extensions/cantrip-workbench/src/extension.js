@@ -15,6 +15,7 @@ const {
   setWorkbenchPresentation,
 } = require("./layout.js");
 const { observeSocketErrors } = require("./socket.js");
+const { openGraphicalSettings } = require("./settings.js");
 
 function configuration() {
   return vscode.workspace.getConfiguration("cantrip");
@@ -464,6 +465,15 @@ class WorkbenchCoordinator {
       return this.externalFilesChanged(params.paths);
     }
     if (method === "openFile") return this.openFile(params);
+    if (method === "openSettings") {
+      await setWorkbenchPresentation(
+        "editor",
+        vscode.workspace,
+        vscode.commands,
+        vscode.ConfigurationTarget.Workspace,
+      );
+      return openGraphicalSettings(vscode.commands);
+    }
     if (method === "agentTurnState") return this.agentTurnState(params);
     if (method === "ping") return { connected: true };
     throw new Error(`Unsupported Cantrip workbench method: ${method}`);

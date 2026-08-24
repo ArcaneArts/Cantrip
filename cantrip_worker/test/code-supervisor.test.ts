@@ -1539,6 +1539,80 @@ describe("Cantrip Code supervisor", () => {
     expect(() => restored.status("temporary-editor")).toThrow("is not open");
   });
 
+  it("opens graphical settings in an ephemeral folderless session", async () => {
+    const {
+      capabilities,
+      dataDirectory,
+      installation,
+      repository,
+      supervisor,
+    } = await fixture();
+    const sessionId = "ec77be8d-9623-4a2f-b488-48b23584b1fd";
+
+    // A global settings workbench must not depend on a project or repository
+    // remaining available on the worker.
+    await rm(repository, { recursive: true, force: true });
+    await expect(
+      supervisor.openSettingsWorkbench({
+        type: "code.settings.workbench.open",
+        sessionId,
+        profileId: "default",
+        appearance: "dark",
+      }),
+    ).resolves.toMatchObject({ status: "running", sessionId });
+
+    const target = supervisor.proxyTarget(sessionId);
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as {
+      folders: Array<{ path: string }>;
+      settings: Record<string, unknown>;
+    };
+    expect(workspace.folders).toEqual([]);
+    expect(workspace.settings).toMatchObject({
+      "cantrip.presentation": "editor",
+      "workbench.settings.editor": "ui",
+      "workbench.activityBar.location": "hidden",
+      "workbench.editor.showTabs": "none",
+      "workbench.statusBar.visible": false,
+    });
+
+    const bridge = await openControlledBridge(
+      workspace.settings["cantrip.bridgeUrl"] as string,
+    );
+    const requestPromise = bridge.nextRequest();
+    const opening = supervisor.openSettings(sessionId);
+    const request = await requestPromise;
+    expect(request).toMatchObject({ method: "openSettings", params: {} });
+    bridge.socket.send(
+      JSON.stringify({
+        type: "response",
+        id: request.id,
+        ok: true,
+        result: { opened: true },
+      }),
+    );
+    await expect(opening).resolves.toEqual({ opened: true });
+    await expect(supervisor.openFile(sessionId, "anything.ts")).rejects.toThrow(
+      "settings sessions cannot open files",
+    );
+
+    const stateFile = path.join(dataDirectory, "code", "state", "runtime.json");
+    expect(await readFile(stateFile, "utf8")).not.toContain(sessionId);
+    bridge.socket.close();
+    await supervisor.close();
+
+    const restored = new CodeSupervisor({
+      capabilities,
+      dataDirectory,
+      installation,
+      readinessTimeoutMs: 3_000,
+    });
+    supervisors.push(restored);
+    await restored.start();
+    expect(() => restored.status(sessionId)).toThrow("is not open");
+  });
+
   it("makes compatibility sessions ephemeral before bridge acknowledgement", async () => {
     const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 50 });
     const { dataDirectory, repository, supervisor } = await fixture({ bridge });

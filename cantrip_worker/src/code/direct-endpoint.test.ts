@@ -259,3 +259,91 @@ describe("CodeDirectEndpointManager presentation control", () => {
     }
   });
 });
+
+describe("CodeDirectEndpointManager graphical settings control", () => {
+  it("opens graphical settings for the bound session from an empty POST body", async () => {
+    const openSettings = vi.fn().mockResolvedValue({ opened: true });
+    const manager = new CodeDirectEndpointManager({
+      openSettings,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "settings-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/open-settings`,
+        {
+          body: "{}",
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      await expect(response.json()).resolves.toEqual({ opened: true });
+      expect(openSettings).toHaveBeenCalledWith("settings-session");
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("rejects non-empty graphical settings request bodies", async () => {
+    const openSettings = vi.fn();
+    const manager = new CodeDirectEndpointManager({
+      openSettings,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "settings-invalid-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/open-settings`,
+        {
+          body: JSON.stringify({ path: "not-allowed" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Cantrip Code settings-open requests require an empty body.",
+      });
+      expect(openSettings).not.toHaveBeenCalled();
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("rejects a malformed supervisor acknowledgement", async () => {
+    const openSettings = vi.fn().mockResolvedValue({ opened: false });
+    const manager = new CodeDirectEndpointManager({
+      openSettings,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "settings-malformed-tunnel",
+        "settings-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/open-settings`,
+        {
+          body: "{}",
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(503);
+      expect(openSettings).toHaveBeenCalledWith("settings-session");
+    } finally {
+      manager.close();
+    }
+  });
+});

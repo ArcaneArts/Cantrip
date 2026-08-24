@@ -12,6 +12,8 @@ import {
   CODE_MAX_WEBSOCKET_MESSAGE_BYTES,
   codeOpenFileRequestSchema,
   codeOpenFileResultSchema,
+  codeOpenSettingsRequestSchema,
+  codeOpenSettingsResultSchema,
   codePresentationUpdateSchema,
   isForwardableCodeWebSocketCloseCode,
 } from "@cantrip/protocol";
@@ -63,6 +65,7 @@ interface CodeEndpointContext extends CodeEndpointPreparationContext {
 
 const BASE_PATH = "/code";
 const OPEN_FILE_PATH = `${BASE_PATH}/_cantrip/open-file`;
+const OPEN_SETTINGS_PATH = `${BASE_PATH}/_cantrip/open-settings`;
 const PRESENTATION_PATH = `${BASE_PATH}/_cantrip/presentation`;
 const MAX_CONTROL_REQUEST_BYTES = 16 * 1_024;
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
@@ -495,6 +498,10 @@ export class CodeDirectEndpointManager {
       void this.#openFile(context, request, response);
       return;
     }
+    if (pathname === OPEN_SETTINGS_PATH) {
+      void this.#openSettings(context, request, response);
+      return;
+    }
     if (pathname === PRESENTATION_PATH) {
       void this.#setPresentation(context, request, response);
       return;
@@ -729,6 +736,73 @@ export class CodeDirectEndpointManager {
       }
     });
     return result;
+  }
+
+  async #openSettings(
+    context: CodeEndpointContext,
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    const { sessionId } = context;
+    const sessionGeneration = this.#sessionGenerations.get(sessionId) ?? 0;
+    if (request.method === "OPTIONS") {
+      writeControlResponse(response, 204);
+      return;
+    }
+    if (request.method !== "POST") {
+      writeControlResponse(response, 405, {
+        error: "Cantrip Code settings-open requests require POST.",
+      });
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readControlRequest(request);
+    } catch {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code requires a valid JSON request body.",
+      });
+      return;
+    }
+    if (!codeOpenSettingsRequestSchema.safeParse(body).success) {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code settings-open requests require an empty body.",
+      });
+      return;
+    }
+    try {
+      const result = codeOpenSettingsResultSchema.parse(
+        await this.#enqueueControl(sessionId, () =>
+          (this.#sessionGenerations.get(sessionId) ?? 0) === sessionGeneration
+            ? this.supervisor.openSettings(sessionId)
+            : Promise.reject(new Error("Cantrip Code session stopped.")),
+        ),
+      );
+      writeControlResponse(response, 200, result);
+      workerLogger.event("debug", "Cantrip Code graphical settings opened", {
+        event: "code.direct.settings-opened",
+        subsystem: "code",
+        operation: "open-settings",
+        status: "completed",
+        ...context,
+      });
+    } catch (error) {
+      workerLogger.event("warn", "Cantrip Code settings open failed", {
+        event: "code.direct.settings-open-failed",
+        subsystem: "code",
+        operation: "open-settings",
+        reasonCode: "open-failed",
+        status: "failed",
+        ...context,
+        error: workerLogError(error),
+      });
+      writeControlResponse(response, 503, {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Cantrip Code could not open graphical settings.",
+      });
+    }
   }
 
   async #setPresentation(

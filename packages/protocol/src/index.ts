@@ -8,6 +8,7 @@ import {
 import {
   codeSettingsProfileIdSchema,
   codeSettingsResolutionSchema,
+  codeSettingsWorkerStatusSchema,
 } from "./code-settings.js";
 
 export * from "./json-message.js";
@@ -5150,6 +5151,13 @@ export const codeRuntimeStatusSchema = z.object({
   lastError: z.string().nullable(),
 });
 
+export const codeSettingsWorkbenchOpenResultSchema = z
+  .object({
+    synchronization: codeSettingsWorkerStatusSchema,
+    runtime: codeRuntimeStatusSchema,
+  })
+  .strict();
+
 export const codeSaveAllResultSchema = z.object({
   saved: z.array(z.string().max(16_384)).max(1_000),
   failed: z
@@ -5312,6 +5320,34 @@ export const explorerCodeProtectedAttachmentCreateSchema =
     path: repositoryRelativePathSchema.optional(),
   });
 
+export const codeSettingsWorkbenchAttachmentCreateSchema =
+  codeAttachmentCreateSchema
+    .omit({ expectedWorktreeId: true })
+    .extend({
+      tunnelId: z.string().uuid(),
+      sessionId: z.string().uuid(),
+      protectedRecord: protectedTunnelContentRecordSchema,
+    })
+    .strict()
+    .refine(
+      ({ tunnelId, protectedRecord }) =>
+        tunnelId === protectedRecord.operationId &&
+        protectedRecord.revision === 1,
+      {
+        message:
+          "A protected Code settings attachment must begin with its tunnel-bound record.",
+        path: ["protectedRecord"],
+      },
+    );
+
+export const codeSettingsWorkbenchAttachmentWireSchema = z
+  .object({
+    workerId: executionResourceIdSchema,
+    synchronization: codeSettingsWorkerStatusSchema,
+    attachment: codeProtectedAttachmentWireSchema,
+  })
+  .strict();
+
 export const explorerCodeAttachmentCreateSchema = codeAttachmentCreateSchema
   .extend({
     path: repositoryRelativePathSchema,
@@ -5325,6 +5361,12 @@ export const codeOpenFileResultSchema = z
   .strict();
 
 export const codeOpenFileRequestSchema = codeOpenFileResultSchema;
+
+export const codeOpenSettingsRequestSchema = z.object({}).strict();
+
+export const codeOpenSettingsResultSchema = z
+  .object({ opened: z.literal(true) })
+  .strict();
 
 export const codePresentationUpdateSchema = z
   .object({
@@ -12745,6 +12787,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     .strict(),
   z.object({ type: z.literal("code.probe") }),
   z.object({
+    type: z.literal("code.settings.workbench.open"),
+    sessionId: z.string().uuid(),
+    profileId: z.string().min(1).max(200),
+    appearance: codeAppearanceSchema,
+  }),
+  z.object({
     type: z.literal("code.open"),
     sessionId: z.string().min(1),
     codeTabId: z.string().min(1),
@@ -14805,6 +14853,12 @@ export type CodeProtectedAttachmentIntent = z.infer<
 export type CodeProtectedAttachmentCreate = z.infer<
   typeof codeProtectedAttachmentCreateSchema
 >;
+export type CodeSettingsWorkbenchAttachmentCreate = z.infer<
+  typeof codeSettingsWorkbenchAttachmentCreateSchema
+>;
+export type CodeSettingsWorkbenchAttachmentWire = z.infer<
+  typeof codeSettingsWorkbenchAttachmentWireSchema
+>;
 export type ExplorerCodeAttachmentCreate = z.infer<
   typeof explorerCodeAttachmentCreateSchema
 >;
@@ -14813,6 +14867,12 @@ export type ExplorerCodeProtectedAttachmentCreate = z.infer<
 >;
 export type CodeOpenFileResult = z.infer<typeof codeOpenFileResultSchema>;
 export type CodeOpenFileRequest = z.infer<typeof codeOpenFileRequestSchema>;
+export type CodeOpenSettingsResult = z.infer<
+  typeof codeOpenSettingsResultSchema
+>;
+export type CodeSettingsWorkbenchOpenResult = z.infer<
+  typeof codeSettingsWorkbenchOpenResultSchema
+>;
 export type CodePresentationUpdate = z.infer<
   typeof codePresentationUpdateSchema
 >;
