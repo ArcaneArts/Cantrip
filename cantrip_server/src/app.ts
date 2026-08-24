@@ -16626,6 +16626,7 @@ export async function buildApp({
         applicationOwnerId(),
         input.data,
       );
+      publishLiveInvalidation("settings", { entityId: taskWorker.id });
       return reply.code(201).send(taskWorkerSummarySchema.parse(taskWorker));
     } catch (error) {
       if (error instanceof TaskSchedulingConflictError) {
@@ -16648,6 +16649,9 @@ export async function buildApp({
           request.params.taskWorkerId,
           input.data,
         );
+        if (taskWorker) {
+          publishLiveInvalidation("settings", { entityId: taskWorker.id });
+        }
         return taskWorker
           ? reply.send(taskWorkerSummarySchema.parse(taskWorker))
           : reply.code(404).send({ error: "Task Worker not found." });
@@ -16675,6 +16679,11 @@ export async function buildApp({
           request.params.taskWorkerId,
           input.data.rowVersion,
         );
+        if (deleted) {
+          publishLiveInvalidation("settings", {
+            entityId: request.params.taskWorkerId,
+          });
+        }
         return deleted
           ? reply.code(204).send()
           : reply.code(404).send({ error: "Task Worker not found." });
@@ -16699,6 +16708,7 @@ export async function buildApp({
         applicationOwnerId(),
         input.data,
       );
+      publishLiveInvalidation("settings");
       return reply.send(taskWorkerListSchema.parse(taskWorkers));
     } catch (error) {
       if (error instanceof TaskSchedulingConflictError) {

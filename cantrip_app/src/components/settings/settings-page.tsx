@@ -29,6 +29,7 @@ import {
   Gauge,
   KeyRound,
   Layers3,
+  ListTodo,
   Loader2,
   Lock,
   LogOut,
@@ -128,6 +129,7 @@ import { EliteSettings } from "./elite-settings";
 import { PolicySettings } from "./policy-settings";
 import { CodeSettings } from "./code-settings";
 import { AccountUsageSettings } from "./account-usage-settings";
+import { TaskSettings } from "./task-settings";
 import {
   availableCatalogModelIds,
   catalogDisplayStatus,
@@ -161,6 +163,7 @@ export type SettingsSection =
   | "code"
   | "elite"
   | "models"
+  | "tasks"
   | "workers"
   | "logs"
   | "tunnels"
@@ -174,6 +177,7 @@ const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "code", label: "Code", icon: Code2 },
   { id: "usage", label: "Usage", icon: BarChart3 },
   { id: "models", label: "Models", icon: Cpu },
+  { id: "tasks", label: "Tasks", icon: ListTodo },
   { id: "workers", label: "Workers", icon: Network },
   { id: "logs", label: "Logs", icon: ScrollText },
   { id: "tunnels", label: "Tunnels", icon: Route },
@@ -1669,6 +1673,7 @@ export function SettingsPage({
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}
+        {section === "tasks" ? <TaskSettings /> : null}
         {section === "usage" ? <AccountUsageSettings /> : null}
         {codeActivated ? (
           <CodeSettings

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   projectTaskPauseStateSchema,
+  taskWorkerContinuityFamilySchema,
   taskWorkerListSchema,
   taskWorkerSummarySchema,
   type ProjectTaskPauseState,
@@ -20,10 +21,21 @@ import * as schema from "./schema.js";
 type TaskSchedulingDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type TaskWorkerRow = typeof schema.taskWorkers.$inferSelect;
 
+const TRUSTED_CONTINUITY_METADATA_SOURCES = new Set([
+  "codex",
+  "grok",
+  "ollama",
+  "zai",
+]);
+
 export class TaskSchedulingConflictError extends Error {
   constructor(
     message: string,
-    readonly code: "invalid-order" | "model-unavailable" | "stale-version",
+    readonly code:
+      | "invalid-order"
+      | "model-incompatible"
+      | "model-unavailable"
+      | "stale-version",
   ) {
     super(message);
     this.name = "TaskSchedulingConflictError";
@@ -36,6 +48,17 @@ function iso(value: Date): string {
 
 function fallbackContinuityFamily(modelId: string): string {
   return `model:${modelId}`;
+}
+
+function normalizedCatalogFamily(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replaceAll(/\s+/gu, "-");
+  const parsed = taskWorkerContinuityFamilySchema.safeParse(normalized);
+  return parsed.success ? parsed.data : null;
 }
 
 function modelConfiguration(row: TaskWorkerRow) {
@@ -72,6 +95,48 @@ function toTaskWorkerSummary(
 export class TaskSchedulingRepository {
   constructor(private readonly database: TaskSchedulingDatabase) {}
 
+  private async inferContinuityFamily(
+    ownerId: string,
+    modelId: string,
+  ): Promise<string> {
+    const rows = await this.database
+      .select({
+        family: schema.providerModels.family,
+        metadataSource: schema.providerModels.metadataSource,
+      })
+      .from(schema.modelRoutes)
+      .innerJoin(
+        schema.modelProfiles,
+        and(
+          eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+          eq(schema.modelProfiles.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.providerModels,
+        and(
+          eq(schema.providerModels.id, schema.modelRoutes.providerModelId),
+          eq(schema.providerModels.providerId, schema.modelRoutes.providerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.modelRoutes.modelId, modelId),
+          eq(schema.modelRoutes.enabled, true),
+        ),
+      );
+    const families = new Set(
+      rows.flatMap(({ family, metadataSource }) => {
+        if (!TRUSTED_CONTINUITY_METADATA_SOURCES.has(metadataSource)) return [];
+        const normalized = normalizedCatalogFamily(family);
+        return normalized ? [normalized] : [];
+      }),
+    );
+    return families.size === 1
+      ? [...families][0]!
+      : fallbackContinuityFamily(modelId);
+  }
+
   private async assertOwnedModels(
     ownerId: string,
     modelIds: readonly string[],
@@ -90,6 +155,48 @@ export class TaskSchedulingRepository {
       throw new TaskSchedulingConflictError(
         "A selected Task Worker model is unavailable.",
         "model-unavailable",
+      );
+    }
+  }
+
+  private async assertCompatibleSubagentModel(
+    ownerId: string,
+    rootModelId: string,
+    subagentModelId: string,
+  ): Promise<void> {
+    const routes = await this.database
+      .select({
+        modelId: schema.modelRoutes.modelId,
+        providerId: schema.modelRoutes.providerId,
+      })
+      .from(schema.modelRoutes)
+      .innerJoin(
+        schema.modelProfiles,
+        and(
+          eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+          eq(schema.modelProfiles.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          inArray(schema.modelRoutes.modelId, [rootModelId, subagentModelId]),
+          eq(schema.modelRoutes.enabled, true),
+        ),
+      );
+    const rootProviders = new Set(
+      routes.flatMap(({ modelId, providerId }) =>
+        modelId === rootModelId ? [providerId] : [],
+      ),
+    );
+    if (
+      !routes.some(
+        ({ modelId, providerId }) =>
+          modelId === subagentModelId && rootProviders.has(providerId),
+      )
+    ) {
+      throw new TaskSchedulingConflictError(
+        "Task Worker root and subagent models must share an enabled provider.",
+        "model-incompatible",
       );
     }
   }
@@ -149,6 +256,16 @@ export class TaskSchedulingRepository {
         : []),
     ];
     await this.assertOwnedModels(ownerId, modelIds);
+    if (
+      input.modelConfiguration.customSubagentModel &&
+      input.modelConfiguration.subagentModelId
+    ) {
+      await this.assertCompatibleSubagentModel(
+        ownerId,
+        rootModelId,
+        input.modelConfiguration.subagentModelId,
+      );
+    }
     const positions = await this.database
       .select({ value: max(schema.taskWorkers.position) })
       .from(schema.taskWorkers)
@@ -176,7 +293,7 @@ export class TaskSchedulingRepository {
           allowsPlanGoal: input.allowsPlanGoal,
           continuityFamily:
             input.continuityFamilyOverride ??
-            fallbackContinuityFamily(rootModelId),
+            (await this.inferContinuityFamily(ownerId, rootModelId)),
           continuityFamilyOverride: input.continuityFamilyOverride,
           position: (positions[0]?.value ?? -1) + 1,
         })
@@ -226,16 +343,23 @@ export class TaskSchedulingRepository {
         ? [configuration.subagentModelId]
         : []),
     ]);
+    if (configuration.customSubagentModel && configuration.subagentModelId) {
+      await this.assertCompatibleSubagentModel(
+        ownerId,
+        rootModelId,
+        configuration.subagentModelId,
+      );
+    }
 
     const continuityFamilyOverride =
       input.continuityFamilyOverride !== undefined
         ? input.continuityFamilyOverride
         : current.continuityFamilyOverride;
-    const continuityFamily =
-      continuityFamilyOverride ??
-      (input.modelConfiguration || input.continuityFamilyOverride === null
-        ? fallbackContinuityFamily(rootModelId)
-        : current.continuityFamily);
+    const continuityFamily = continuityFamilyOverride
+      ? continuityFamilyOverride
+      : input.modelConfiguration || input.continuityFamilyOverride === null
+        ? await this.inferContinuityFamily(ownerId, rootModelId)
+        : current.continuityFamily;
     const updated = (
       await this.database
         .update(schema.taskWorkers)
