@@ -46,6 +46,10 @@ export interface ServerConfig {
   appOrigins: string[];
   authRateLimit?: number;
   authMode: AuthMode;
+  accountUsageDailyRetentionDays?: number;
+  accountUsageFlushRetentionDays?: number;
+  accountUsageHourlyRetentionDays?: number;
+  accountUsageMaintenanceIntervalMs?: number;
   bandwidthUsageFlushIntervalMs?: number;
   bandwidthUsageFlushThresholdBytes?: number;
   bandwidthUsageMaxBufferedEntries?: number;
@@ -69,6 +73,7 @@ export interface ServerConfig {
   redisUrl?: string;
   requireHttps?: boolean;
   schedulerLeaseTtlMs?: number;
+  storageReconciliationIntervalMs?: number;
   sessionTtlSeconds?: number;
   coordinationMaxInstances?: number;
   coordinationPresenceTtlMs?: number;
@@ -601,6 +606,34 @@ export function readServerConfig(): ServerConfig {
       1,
       1_000,
     ),
+    accountUsageDailyRetentionDays: readBoundedInteger(
+      "CANTRIP_ACCOUNT_USAGE_DAILY_RETENTION_DAYS",
+      process.env.CANTRIP_ACCOUNT_USAGE_DAILY_RETENTION_DAYS,
+      400,
+      31,
+      3_650,
+    ),
+    accountUsageFlushRetentionDays: readBoundedInteger(
+      "CANTRIP_ACCOUNT_USAGE_FLUSH_RETENTION_DAYS",
+      process.env.CANTRIP_ACCOUNT_USAGE_FLUSH_RETENTION_DAYS,
+      7,
+      1,
+      90,
+    ),
+    accountUsageHourlyRetentionDays: readBoundedInteger(
+      "CANTRIP_ACCOUNT_USAGE_HOURLY_RETENTION_DAYS",
+      process.env.CANTRIP_ACCOUNT_USAGE_HOURLY_RETENTION_DAYS,
+      30,
+      1,
+      30,
+    ),
+    accountUsageMaintenanceIntervalMs: readBoundedInteger(
+      "CANTRIP_ACCOUNT_USAGE_MAINTENANCE_INTERVAL_MS",
+      process.env.CANTRIP_ACCOUNT_USAGE_MAINTENANCE_INTERVAL_MS,
+      60 * 60_000,
+      60_000,
+      24 * 60 * 60_000,
+    ),
     bandwidthUsageFlushIntervalMs: readBoundedInteger(
       "CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS",
       process.env.CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS,
@@ -643,6 +676,13 @@ export function readServerConfig(): ServerConfig {
       120_000,
       30_000,
       600_000,
+    ),
+    storageReconciliationIntervalMs: readBoundedInteger(
+      "CANTRIP_STORAGE_RECONCILIATION_INTERVAL_MS",
+      process.env.CANTRIP_STORAGE_RECONCILIATION_INTERVAL_MS,
+      60 * 60_000,
+      60_000,
+      24 * 60 * 60_000,
     ),
     dataDirectory: resolveServerDataDirectory(),
     databaseUrl,

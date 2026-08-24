@@ -85,6 +85,31 @@ export interface AccountBandwidthFlushResult {
   ownerIds: string[];
 }
 
+export interface AccountUsageHistoryMaintenanceOptions {
+  dailyRetentionDays: number;
+  flushRetentionDays: number;
+  hourlyRetentionDays: number;
+  leaseMs?: number;
+}
+
+export interface AccountUsageHistoryMaintenanceResult {
+  acquired: boolean;
+  bandwidthDailyRowsDeleted: number;
+  bandwidthDaysRolled: number;
+  bandwidthHourlyRowsDeleted: number;
+  flushRowsDeleted: number;
+  storageDailyRowsDeleted: number;
+  storageDaysRolled: number;
+  storageHourlyRowsDeleted: number;
+}
+
+export interface AccountUsageOperationalTotals {
+  accountCount: number;
+  logicalServerBytes: bigint;
+  logicalWorkerManagedBytes: bigint;
+  physicalDatabaseBytes: bigint | null;
+}
+
 interface RawMeasurementRow extends Record<string, unknown> {
   category: AccountStorageMeasurement["category"];
   logical_bytes: bigint | number | string;
@@ -110,12 +135,27 @@ interface RawBandwidthRow extends Record<string, unknown> {
   updated_at: Date | string;
 }
 
+interface RawCountRow extends Record<string, unknown> {
+  row_count: bigint | number | string;
+}
+
+interface RawOperationalTotalsRow extends Record<string, unknown> {
+  account_count: bigint | number | string;
+  logical_server_bytes: bigint | number | string;
+  logical_worker_managed_bytes: bigint | number | string;
+}
+
+interface RawPhysicalDatabaseSizeRow extends Record<string, unknown> {
+  physical_database_bytes: bigint | number | string;
+}
+
 interface OwnerSql {
   expression: string;
   joins: string;
 }
 
 const STORAGE_RECONCILIATION_LEASE_KEY = "full-storage-reconciliation";
+const USAGE_HISTORY_MAINTENANCE_LEASE_KEY = "usage-history-maintenance";
 const DEFAULT_LEASE_MS = 30 * 60_000;
 
 export class StorageReconciliationLeaseLostError extends Error {
@@ -291,6 +331,17 @@ function hourBucket(value: Date): Date {
   );
 }
 
+function dayBucket(value: Date): Date {
+  return new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
+  );
+}
+
+function countRows(result: unknown): number {
+  const row = resultRows<RawCountRow>(result)[0];
+  return row ? Number(bigintValue(row.row_count)) : 0;
+}
+
 export class AccountResourceUsageRepository {
   constructor(private readonly database: ResourceUsageDatabase) {}
 
@@ -337,6 +388,7 @@ export class AccountResourceUsageRepository {
         .where(
           and(
             eq(schema.accountStorageUsageSnapshots.ownerId, ownerId),
+            eq(schema.accountStorageUsageSnapshots.resolution, "hour"),
             gte(schema.accountStorageUsageSnapshots.bucketStart, from),
             lt(schema.accountStorageUsageSnapshots.bucketStart, to),
           ),
@@ -364,10 +416,11 @@ export class AccountResourceUsageRepository {
           row_count,
           row_number() over (
             partition by date_trunc('day', bucket_start at time zone 'UTC'), storage_class, category
-            order by bucket_start desc
+            order by measured_at desc, bucket_start desc
           ) as recency
         from ${schema.accountStorageUsageSnapshots}
         where owner_id = ${ownerId}
+          and resolution in ('hour', 'day')
           and bucket_start >= ${from}
           and bucket_start < ${to}
       ) daily
@@ -468,6 +521,10 @@ export class AccountResourceUsageRepository {
       resolution === "hour"
         ? sql`bucket_start`
         : sql`date_trunc('day', bucket_start at time zone 'UTC') at time zone 'UTC'`;
+    const resolutionFilter =
+      resolution === "hour"
+        ? sql`resolution = 'hour'`
+        : sql`resolution in ('hour', 'day')`;
     const result = await this.database.execute<RawBandwidthRow>(sql`
       select ${bucketExpression} as bucket_start,
         channel,
@@ -477,7 +534,7 @@ export class AccountResourceUsageRepository {
         max(updated_at) as updated_at
       from ${schema.accountBandwidthUsageBuckets}
       where owner_id = ${ownerId}
-        and resolution = 'hour'
+        and ${resolutionFilter}
         and bucket_start >= ${from}
         and bucket_start < ${to}
       group by ${bucketExpression}, channel, direction
@@ -499,20 +556,253 @@ export class AccountResourceUsageRepository {
     }));
   }
 
-  async acquireStorageReconciliationLease(
+  async getOperationalTotals(): Promise<AccountUsageOperationalTotals> {
+    const totalsResult = await this.database.execute<RawOperationalTotalsRow>(
+      sql`
+        select count(distinct owner_id)::text as account_count,
+          coalesce(sum(logical_bytes) filter (where storage_class = 'server'), 0)::text as logical_server_bytes,
+          coalesce(sum(logical_bytes) filter (where storage_class = 'worker-managed'), 0)::text as logical_worker_managed_bytes
+        from ${schema.accountStorageUsageCurrent}
+      `,
+    );
+    const totals = resultRows<RawOperationalTotalsRow>(totalsResult)[0];
+    let physicalDatabaseBytes: bigint | null = null;
+    try {
+      const physicalResult =
+        await this.database.execute<RawPhysicalDatabaseSizeRow>(
+          sql`select pg_database_size(current_database())::text as physical_database_bytes`,
+        );
+      const physical =
+        resultRows<RawPhysicalDatabaseSizeRow>(physicalResult)[0];
+      if (physical) {
+        physicalDatabaseBytes = bigintValue(physical.physical_database_bytes);
+      }
+    } catch {
+      // Some embedded/test PostgreSQL-compatible engines do not expose this.
+    }
+    return {
+      accountCount: totals ? Number(bigintValue(totals.account_count)) : 0,
+      logicalServerBytes: totals
+        ? bigintValue(totals.logical_server_bytes)
+        : 0n,
+      logicalWorkerManagedBytes: totals
+        ? bigintValue(totals.logical_worker_managed_bytes)
+        : 0n,
+      physicalDatabaseBytes,
+    };
+  }
+
+  async maintainUsageHistory(
+    holderId: string,
+    now: Date,
+    options: AccountUsageHistoryMaintenanceOptions,
+  ): Promise<AccountUsageHistoryMaintenanceResult> {
+    if (
+      !Number.isFinite(now.getTime()) ||
+      !Number.isSafeInteger(options.hourlyRetentionDays) ||
+      options.hourlyRetentionDays < 1 ||
+      !Number.isSafeInteger(options.dailyRetentionDays) ||
+      options.dailyRetentionDays <= options.hourlyRetentionDays ||
+      !Number.isSafeInteger(options.flushRetentionDays) ||
+      options.flushRetentionDays < 1
+    ) {
+      throw new Error("Account usage history maintenance options are invalid.");
+    }
+    const leaseMs = options.leaseMs ?? DEFAULT_LEASE_MS;
+    const acquired = await this.acquireUsageLease(
+      USAGE_HISTORY_MAINTENANCE_LEASE_KEY,
+      holderId,
+      now,
+      leaseMs,
+    );
+    const emptyResult: AccountUsageHistoryMaintenanceResult = {
+      acquired,
+      bandwidthDailyRowsDeleted: 0,
+      bandwidthDaysRolled: 0,
+      bandwidthHourlyRowsDeleted: 0,
+      flushRowsDeleted: 0,
+      storageDailyRowsDeleted: 0,
+      storageDaysRolled: 0,
+      storageHourlyRowsDeleted: 0,
+    };
+    if (!acquired) return emptyResult;
+
+    const hourlyCutoff = dayBucket(
+      new Date(now.getTime() - options.hourlyRetentionDays * 86_400_000),
+    );
+    const dailyCutoff = dayBucket(
+      new Date(now.getTime() - options.dailyRetentionDays * 86_400_000),
+    );
+    const flushCutoff = new Date(
+      now.getTime() - options.flushRetentionDays * 86_400_000,
+    );
+
+    try {
+      return await this.database.transaction(async (transaction) => {
+        const refreshedAt = now;
+        const leaseRows = await transaction
+          .update(schema.accountStorageReconciliationLeases)
+          .set({
+            expiresAt: new Date(refreshedAt.getTime() + leaseMs),
+            updatedAt: refreshedAt,
+          })
+          .where(
+            and(
+              eq(
+                schema.accountStorageReconciliationLeases.key,
+                USAGE_HISTORY_MAINTENANCE_LEASE_KEY,
+              ),
+              eq(schema.accountStorageReconciliationLeases.holderId, holderId),
+              gt(
+                schema.accountStorageReconciliationLeases.expiresAt,
+                refreshedAt,
+              ),
+            ),
+          )
+          .returning({ key: schema.accountStorageReconciliationLeases.key });
+        if (leaseRows.length !== 1) {
+          throw new StorageReconciliationLeaseLostError();
+        }
+
+        const bandwidthRollup = await transaction.execute<RawCountRow>(sql`
+          with daily as (
+            select owner_id,
+              date_trunc('day', bucket_start at time zone 'UTC') at time zone 'UTC' as bucket_start,
+              channel,
+              direction,
+              sum(bytes)::bigint as bytes,
+              sum(operation_count)::bigint as operation_count,
+              max(updated_at) as updated_at
+            from ${schema.accountBandwidthUsageBuckets}
+            where resolution = 'hour'
+              and bucket_start >= ${dailyCutoff}
+              and bucket_start < ${hourlyCutoff}
+            group by owner_id,
+              date_trunc('day', bucket_start at time zone 'UTC'),
+              channel,
+              direction
+          ), upserted as (
+            insert into ${schema.accountBandwidthUsageBuckets}
+              (owner_id, bucket_start, resolution, channel, direction, bytes, operation_count, created_at, updated_at)
+            select owner_id, bucket_start, 'day', channel, direction, bytes, operation_count, ${now}, updated_at
+            from daily
+            on conflict (owner_id, bucket_start, resolution, channel, direction)
+            do update set bytes = ${schema.accountBandwidthUsageBuckets}.bytes + excluded.bytes,
+              operation_count = ${schema.accountBandwidthUsageBuckets}.operation_count + excluded.operation_count,
+              updated_at = excluded.updated_at
+            returning 1
+          ) select count(*)::text as row_count from upserted
+        `);
+
+        const storageRollup = await transaction.execute<RawCountRow>(sql`
+          with ranked as (
+            select owner_id,
+              date_trunc('day', bucket_start at time zone 'UTC') at time zone 'UTC' as bucket_start,
+              storage_class,
+              category,
+              logical_bytes,
+              row_count,
+              basis_version,
+              measured_at,
+              updated_at,
+              row_number() over (
+                partition by owner_id,
+                  date_trunc('day', bucket_start at time zone 'UTC'),
+                  storage_class,
+                  category
+                order by bucket_start desc, measured_at desc
+              ) as recency
+            from ${schema.accountStorageUsageSnapshots}
+            where resolution = 'hour'
+              and bucket_start >= ${dailyCutoff}
+              and bucket_start < ${hourlyCutoff}
+          ), upserted as (
+            insert into ${schema.accountStorageUsageSnapshots}
+              (owner_id, bucket_start, resolution, storage_class, category, logical_bytes, row_count, basis_version, measured_at, created_at, updated_at)
+            select owner_id, bucket_start, 'day', storage_class, category, logical_bytes, row_count, basis_version, measured_at, ${now}, updated_at
+            from ranked where recency = 1
+            on conflict (owner_id, bucket_start, resolution, storage_class, category)
+            do update set
+              logical_bytes = case when excluded.measured_at > ${schema.accountStorageUsageSnapshots}.measured_at then excluded.logical_bytes else ${schema.accountStorageUsageSnapshots}.logical_bytes end,
+              row_count = case when excluded.measured_at > ${schema.accountStorageUsageSnapshots}.measured_at then excluded.row_count else ${schema.accountStorageUsageSnapshots}.row_count end,
+              basis_version = case when excluded.measured_at > ${schema.accountStorageUsageSnapshots}.measured_at then excluded.basis_version else ${schema.accountStorageUsageSnapshots}.basis_version end,
+              measured_at = greatest(${schema.accountStorageUsageSnapshots}.measured_at, excluded.measured_at),
+              updated_at = greatest(${schema.accountStorageUsageSnapshots}.updated_at, excluded.updated_at)
+            returning 1
+          ) select count(*)::text as row_count from upserted
+        `);
+
+        const bandwidthHours = await transaction
+          .delete(schema.accountBandwidthUsageBuckets)
+          .where(
+            and(
+              eq(schema.accountBandwidthUsageBuckets.resolution, "hour"),
+              lt(schema.accountBandwidthUsageBuckets.bucketStart, hourlyCutoff),
+            ),
+          )
+          .returning({ ownerId: schema.accountBandwidthUsageBuckets.ownerId });
+        const storageHours = await transaction
+          .delete(schema.accountStorageUsageSnapshots)
+          .where(
+            and(
+              eq(schema.accountStorageUsageSnapshots.resolution, "hour"),
+              lt(schema.accountStorageUsageSnapshots.bucketStart, hourlyCutoff),
+            ),
+          )
+          .returning({ ownerId: schema.accountStorageUsageSnapshots.ownerId });
+        const bandwidthDays = await transaction
+          .delete(schema.accountBandwidthUsageBuckets)
+          .where(
+            and(
+              eq(schema.accountBandwidthUsageBuckets.resolution, "day"),
+              lt(schema.accountBandwidthUsageBuckets.bucketStart, dailyCutoff),
+            ),
+          )
+          .returning({ ownerId: schema.accountBandwidthUsageBuckets.ownerId });
+        const storageDays = await transaction
+          .delete(schema.accountStorageUsageSnapshots)
+          .where(
+            and(
+              eq(schema.accountStorageUsageSnapshots.resolution, "day"),
+              lt(schema.accountStorageUsageSnapshots.bucketStart, dailyCutoff),
+            ),
+          )
+          .returning({ ownerId: schema.accountStorageUsageSnapshots.ownerId });
+        const flushes = await transaction
+          .delete(schema.accountBandwidthFlushes)
+          .where(lt(schema.accountBandwidthFlushes.flushedAt, flushCutoff))
+          .returning({ meterId: schema.accountBandwidthFlushes.meterId });
+
+        return {
+          acquired: true,
+          bandwidthDailyRowsDeleted: bandwidthDays.length,
+          bandwidthDaysRolled: countRows(bandwidthRollup),
+          bandwidthHourlyRowsDeleted: bandwidthHours.length,
+          flushRowsDeleted: flushes.length,
+          storageDailyRowsDeleted: storageDays.length,
+          storageDaysRolled: countRows(storageRollup),
+          storageHourlyRowsDeleted: storageHours.length,
+        };
+      });
+    } finally {
+      await this.releaseUsageLease(
+        USAGE_HISTORY_MAINTENANCE_LEASE_KEY,
+        holderId,
+      );
+    }
+  }
+
+  async acquireUsageLease(
+    key: string,
     holderId: string,
     now: Date,
     leaseMs = DEFAULT_LEASE_MS,
   ): Promise<boolean> {
+    if (!key.trim() || !holderId.trim() || leaseMs < 1) return false;
     const expiresAt = new Date(now.getTime() + leaseMs);
     const rows = await this.database
       .insert(schema.accountStorageReconciliationLeases)
-      .values({
-        key: STORAGE_RECONCILIATION_LEASE_KEY,
-        holderId,
-        expiresAt,
-        updatedAt: now,
-      })
+      .values({ key, holderId, expiresAt, updatedAt: now })
       .onConflictDoUpdate({
         target: schema.accountStorageReconciliationLeases.key,
         set: { holderId, expiresAt, updatedAt: now },
@@ -525,18 +815,32 @@ export class AccountResourceUsageRepository {
     return rows.length === 1;
   }
 
-  async releaseStorageReconciliationLease(holderId: string): Promise<void> {
+  async releaseUsageLease(key: string, holderId: string): Promise<void> {
     await this.database
       .delete(schema.accountStorageReconciliationLeases)
       .where(
         and(
-          eq(
-            schema.accountStorageReconciliationLeases.key,
-            STORAGE_RECONCILIATION_LEASE_KEY,
-          ),
+          eq(schema.accountStorageReconciliationLeases.key, key),
           eq(schema.accountStorageReconciliationLeases.holderId, holderId),
         ),
       );
+  }
+
+  async acquireStorageReconciliationLease(
+    holderId: string,
+    now: Date,
+    leaseMs = DEFAULT_LEASE_MS,
+  ): Promise<boolean> {
+    return this.acquireUsageLease(
+      STORAGE_RECONCILIATION_LEASE_KEY,
+      holderId,
+      now,
+      leaseMs,
+    );
+  }
+
+  async releaseStorageReconciliationLease(holderId: string): Promise<void> {
+    await this.releaseUsageLease(STORAGE_RECONCILIATION_LEASE_KEY, holderId);
   }
 
   async reconcileStorage(
@@ -605,6 +909,7 @@ export class AccountResourceUsageRepository {
               ...measurement,
               basisVersion: STORAGE_ACCOUNTING_BASIS_VERSION,
               bucketStart,
+              resolution: "hour",
               measuredAt,
               createdAt: reconciledAt,
               updatedAt: reconciledAt,
@@ -614,6 +919,7 @@ export class AccountResourceUsageRepository {
             target: [
               schema.accountStorageUsageSnapshots.ownerId,
               schema.accountStorageUsageSnapshots.bucketStart,
+              schema.accountStorageUsageSnapshots.resolution,
               schema.accountStorageUsageSnapshots.storageClass,
               schema.accountStorageUsageSnapshots.category,
             ],

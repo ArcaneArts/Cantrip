@@ -830,6 +830,7 @@ import {
 } from "./logger.js";
 import { StorageReconciliationService } from "./account-usage/storage-reconciler.js";
 import { AccountUsageMeter } from "./account-usage/bandwidth-meter.js";
+import { AccountUsageHistoryMaintenanceService } from "./account-usage/history-maintenance.js";
 import {
   encodedFrameBytes,
   recordEncodedFrame,
@@ -1476,13 +1477,31 @@ export async function buildApp({
     serverInstanceId,
     serverLogger,
     {
+      intervalMs: config.storageReconciliationIntervalMs,
       onReconciled: ({ ownerIds }) => {
         for (const ownerId of ownerIds)
           publishAccountResourceUsageChange(ownerId);
       },
     },
   );
-  app.addHook("onListen", () => storageReconciler.start());
+  const usageHistoryMaintenance = new AccountUsageHistoryMaintenanceService(
+    repository.accountResourceUsage,
+    serverInstanceId,
+    serverLogger,
+    {
+      dailyRetentionDays: config.accountUsageDailyRetentionDays ?? 400,
+      flushRetentionDays: config.accountUsageFlushRetentionDays ?? 7,
+      hourlyRetentionDays: config.accountUsageHourlyRetentionDays ?? 30,
+      intervalMs: config.accountUsageMaintenanceIntervalMs,
+    },
+  );
+  app.addHook("onListen", () => {
+    storageReconciler.start(false);
+    usageHistoryMaintenance.start(false);
+    void storageReconciler
+      .reconcile()
+      .finally(() => usageHistoryMaintenance.run());
+  });
   const publishProjectTokenUsageChange = (
     ownerId: string,
     projectId: string,
@@ -11916,6 +11935,9 @@ export async function buildApp({
       performance.now() - probeStartedAt,
     );
     const ownerId = principalOwnerId(request);
+    const bandwidthMeterStats = accountUsageMeter.stats();
+    const historyMaintenanceStats = usageHistoryMaintenance.stats();
+    const storageReconciliationStats = storageReconciler.stats();
     return reply.send(
       systemHealthSchema.parse({
         status: "ok",
@@ -11932,6 +11954,51 @@ export async function buildApp({
           quotas: relayQuotas.stats(),
           tunnels: tunnelRuntime.stats(),
           workerCommands: bridge.stats(),
+          accountUsage: {
+            bandwidthMeter: {
+              bufferedBytes: bandwidthMeterStats.bufferedBytes.toString(),
+              bufferedEntries: bandwidthMeterStats.bufferedEntries,
+              droppedBytes: bandwidthMeterStats.droppedBytes.toString(),
+              droppedMeasurements:
+                bandwidthMeterStats.droppedMeasurements.toString(),
+              flushCount: bandwidthMeterStats.flushCount,
+              flushFailureCount: bandwidthMeterStats.flushFailureCount,
+              lastFlushDurationMs: bandwidthMeterStats.lastFlushDurationMs,
+              lastFlushedAt: bandwidthMeterStats.lastFlushedAt,
+            },
+            historyMaintenance: {
+              completionCount: historyMaintenanceStats.completionCount,
+              failureCount: historyMaintenanceStats.failureCount,
+              lastCompletedAt: historyMaintenanceStats.lastCompletedAt,
+              lastDurationMs: historyMaintenanceStats.lastDurationMs,
+              lastErrorAt: historyMaintenanceStats.lastErrorAt,
+              lastSuccessfulAt: historyMaintenanceStats.lastSuccessfulAt,
+              leaseContentionCount:
+                historyMaintenanceStats.leaseContentionCount,
+              running: historyMaintenanceStats.running,
+              totals: {
+                accountCount: historyMaintenanceStats.totals.accountCount,
+                logicalServerBytes:
+                  historyMaintenanceStats.totals.logicalServerBytes.toString(),
+                logicalWorkerManagedBytes:
+                  historyMaintenanceStats.totals.logicalWorkerManagedBytes.toString(),
+                physicalDatabaseBytes:
+                  historyMaintenanceStats.totals.physicalDatabaseBytes?.toString() ??
+                  null,
+              },
+            },
+            storageReconciliation: {
+              completionCount: storageReconciliationStats.completionCount,
+              failureCount: storageReconciliationStats.failureCount,
+              lastCompletedAt: storageReconciliationStats.lastCompletedAt,
+              lastDurationMs: storageReconciliationStats.lastDurationMs,
+              lastErrorAt: storageReconciliationStats.lastErrorAt,
+              lastSuccessfulAt: storageReconciliationStats.lastSuccessfulAt,
+              leaseContentionCount:
+                storageReconciliationStats.leaseContentionCount,
+              running: storageReconciliationStats.running,
+            },
+          },
         },
         timestamp: new Date().toISOString(),
       }),
@@ -12014,6 +12081,11 @@ export async function buildApp({
     }
     return reply.type("text/plain; version=0.0.4; charset=utf-8").send(
       operationalMetrics.renderPrometheus({
+        accountUsage: {
+          bandwidthMeter: accountUsageMeter.stats(),
+          historyMaintenance: usageHistoryMaintenance.stats(),
+          storageReconciliation: storageReconciler.stats(),
+        },
         coordination: coordinationStats(),
         live: liveHub.stats(),
         quotas: relayQuotas.stats(),
@@ -30512,6 +30584,7 @@ export async function buildApp({
     chatRelocationJobExecutor.stop();
     chatImportJobExecutor.stop();
     workflowExecutor.stop();
+    await usageHistoryMaintenance.close();
     await storageReconciler.close();
     app.log.info(
       { live: liveHub.stats() },
