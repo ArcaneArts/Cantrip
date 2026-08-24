@@ -25,6 +25,7 @@ import {
   runConfigurationDetectResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
+  runConfigurationPathsResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
 import {
@@ -164,6 +165,7 @@ const bridge: WorkerCommandBus = {
       case "project.run-configuration-definitions.get":
       case "project.run-configuration-definitions.capabilities":
       case "project.run-configuration-definitions.detect":
+      case "project.run-configuration-definitions.paths":
       case "project.run-configuration-definitions.write":
       case "project.run-configuration-definitions.delete":
         return definitionService.execute(command);
@@ -393,6 +395,35 @@ describe.sequential("Run configuration definition API", () => {
         }),
       ]),
     });
+
+    const pathsOperationId = randomUUID();
+    const paths = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configurations/paths?operationId=${pathsOperationId}&purpose=file&query=index`,
+    });
+    expect(paths.statusCode).toBe(200);
+    expect(runConfigurationPathsResponseSchema.parse(paths.json())).toEqual({
+      operation: "paths",
+      operationId: pathsOperationId,
+      projectId,
+      purpose: "file",
+      query: "index",
+      suggestions: [{ kind: "file", path: "index.js" }],
+      truncated: false,
+    });
+    expect(commands).toContainEqual({
+      type: "project.run-configuration-definitions.paths",
+      operationId: pathsOperationId,
+      projectId,
+      sourcePath: primaryRoot,
+      purpose: "file",
+      query: "index",
+    });
+    const invalidPaths = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configurations/paths?operationId=${randomUUID()}&purpose=absolute`,
+    });
+    expect(invalidPaths.statusCode).toBe(400);
 
     await mkdir(path.join(primaryRoot, "java", "src", "main", "java", "demo"), {
       recursive: true,

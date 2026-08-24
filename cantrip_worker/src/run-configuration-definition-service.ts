@@ -5,6 +5,7 @@ import {
   runConfigurationDetectResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
+  runConfigurationPathsResponseSchema,
   runConfigurationWriteResponseSchema,
   type RunConfigurationDefinitionChangeNotification,
   type RunConfigurationDefinitionWorkerCommand,
@@ -17,6 +18,7 @@ import { javaRunConfigurationProvider } from "./run-configuration-java-provider.
 import { dartRunConfigurationProvider } from "./run-configuration-dart-provider.js";
 import { flutterRunConfigurationProvider } from "./run-configuration-flutter-provider.js";
 import { rustRunConfigurationProvider } from "./run-configuration-rust-provider.js";
+import { discoverRunConfigurationPaths } from "./run-configuration-path-discovery.js";
 import { inspectRunConfigurationCodexEnvironmentSource } from "./run-configuration-environment-source.js";
 import {
   RunConfigurationRepository,
@@ -220,6 +222,18 @@ export class RunConfigurationDefinitionService {
           diagnostics,
         });
       }
+      case "project.run-configuration-definitions.paths":
+        return runConfigurationPathsResponseSchema.parse({
+          operation: "paths",
+          ...context,
+          purpose: command.purpose,
+          query: command.query,
+          ...(await discoverRunConfigurationPaths({
+            purpose: command.purpose,
+            query: command.query,
+            sourceRoot: command.sourcePath,
+          })),
+        });
       case "project.run-configuration-definitions.write":
         return runConfigurationWriteResponseSchema.parse({
           operation: "write",

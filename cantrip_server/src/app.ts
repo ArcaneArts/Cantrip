@@ -481,6 +481,8 @@ import {
   runConfigurationGetResponseSchema,
   runConfigurationListQuerySchema,
   runConfigurationListResponseSchema,
+  runConfigurationPathsQuerySchema,
+  runConfigurationPathsResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
 import {
@@ -6647,6 +6649,43 @@ export async function buildApp({
       throw new Error(
         "The Run configuration detection response was misrouted.",
       );
+    }
+    return { result, source };
+  };
+
+  const discoverRunConfigurationDefinitionPaths = async (
+    ownerId: string,
+    projectId: string,
+    operationId: string,
+    purpose: unknown,
+    query: unknown,
+  ) => {
+    const input = runConfigurationPathsQuerySchema.parse({
+      operationId,
+      purpose,
+      ...(query == null ? {} : { query }),
+    });
+    const source = await resolvePrimaryRunConfigurationSource(
+      ownerId,
+      projectId,
+    );
+    const result = runConfigurationPathsResponseSchema.parse(
+      await bridge.request(source.workerId, {
+        type: "project.run-configuration-definitions.paths",
+        operationId,
+        projectId,
+        sourcePath: source.cwd,
+        purpose: input.purpose,
+        query: input.query,
+      }),
+    );
+    if (
+      result.operationId !== operationId ||
+      result.projectId !== projectId ||
+      result.purpose !== input.purpose ||
+      result.query !== input.query
+    ) {
+      throw new Error("The Run configuration path response was misrouted.");
     }
     return { result, source };
   };
@@ -23535,6 +23574,31 @@ export async function buildApp({
           request.params.projectId,
           input.data.operationId,
           input.data.provider,
+        );
+        return reply.send(result);
+      } catch (error) {
+        return sendRunApiFailure(reply, error);
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string };
+    Querystring: { operationId?: string; purpose?: string; query?: string };
+  }>(
+    "/api/projects/:projectId/run-configurations/paths",
+    async (request, reply) => {
+      const input = runConfigurationPathsQuerySchema.safeParse(request.query);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const { result } = await discoverRunConfigurationDefinitionPaths(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data.operationId,
+          input.data.purpose,
+          input.data.query,
         );
         return reply.send(result);
       } catch (error) {

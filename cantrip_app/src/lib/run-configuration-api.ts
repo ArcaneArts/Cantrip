@@ -3,6 +3,7 @@ import type {
   RunConfigurationDetectionCandidate,
   RunConfigurationDiagnostic,
   RunConfigurationProviderKind,
+  RunConfigurationPathPurpose,
   RunConfigurationReadResult,
   RunConfigurationRepositoryInventory,
   RunConfigurationWriteRequest,
@@ -26,6 +27,7 @@ import {
   runConfigurationDetectResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
+  runConfigurationPathsResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
 import {
@@ -129,6 +131,27 @@ export async function detectRunConfigurations(
   return {
     candidates: response.candidates,
     diagnostics: response.diagnostics,
+  };
+}
+
+export async function discoverRunConfigurationPaths(
+  projectId: string,
+  purpose: RunConfigurationPathPurpose,
+  query = "",
+  operationId = crypto.randomUUID(),
+) {
+  const response = runConfigurationPathsResponseSchema.parse(
+    await request(
+      `${configurationCollectionPath(projectId)}/paths${operationQuery(operationId)}&purpose=${encodeURIComponent(purpose)}&query=${encodeURIComponent(query)}`,
+    ),
+  );
+  assertCorrelated(response, projectId, operationId);
+  if (response.purpose !== purpose || response.query !== query) {
+    throw new Error("The Run configuration path response was misrouted.");
+  }
+  return {
+    suggestions: response.suggestions,
+    truncated: response.truncated,
   };
 }
 

@@ -115,7 +115,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "bd6174828b93ba7a40de3eba885c6c21e1bc15f71c2872c6e537b9520492a505",
   applicationRoutes:
-    "262f2d4e439edcd14e0b66313e62f0ddfce5f7f11f39f1e6247fb933c9f1e0a7",
+    "7c6ce2de16438045e7fc81643197b322307d32d7fb0aa77e54437ca8e9dd1dcf",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -123,7 +123,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "a02279408c3c49838d1b824ae39326f71cfb3f52e9c0ba0f606d478e7832bd15",
   workerCommands:
-    "9781ef864f89badc8a5c6f630e3670d63ac2dbf784902b28d1597b344c980b57",
+    "0ab0ac39ee666f418b0ee3ce44080a832a8617159efd539c7c52506c15e66720",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -4032,6 +4032,13 @@ function applicationRouteContentClassification(route) {
       rationale: "revision- and generation-bound Run lifecycle metadata",
     };
   }
+  if (/\/run-configurations\/paths$/u.test(route.path)) {
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "bounded Primary-relative path suggestions without file contents",
+    };
+  }
   if (/\/run-configurations(?:\/|$)/u.test(route.path)) {
     return {
       classification: "intentionally-public-control-plane",
@@ -4112,6 +4119,13 @@ function workerCommandContentClassification(command) {
       classification: "worker-local",
       rationale:
         "revision- and generation-bound worker process lifecycle metadata",
+    };
+  }
+  if (command === "project.run-configuration-definitions.paths") {
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "bounded Primary-relative path suggestions without file contents",
     };
   }
   if (/^project\.run-configuration-definitions\./u.test(command)) {
