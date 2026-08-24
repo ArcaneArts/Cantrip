@@ -3,6 +3,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  rename,
   rm,
   symlink,
   writeFile,
@@ -340,51 +341,84 @@ describe("RunConfigurationRepository", () => {
     ).rejects.toThrow("must be a real directory");
   });
 
-  it("observes external creation, update, and deletion from an initially empty project", async () => {
+  it("observes external creation, edit, rename, and deletion from an initially empty project", async () => {
     const root = await createRoot();
     const repository = await RunConfigurationRepository.open(root);
-    const changes: Array<{ kind: string; id: string | null }> = [];
+    const changes: Array<{
+      kind: string;
+      id: string | null;
+      relativePath: string | null;
+      revision: string | null;
+    }> = [];
     let watcher: RunConfigurationRepositoryWatcher | null = null;
     try {
       watcher = await repository.watch((change) => {
-        changes.push({ kind: change.kind, id: change.id });
+        changes.push(change);
       });
       const document = shellDocument();
-      const created = await repository.write({
-        expectedRevision: null,
-        document,
-      });
+      const directory = path.join(root, ".cantrip", "run-configurations");
+      const file = path.join(directory, `${document.id}.json`);
+      const renamedFile = path.join(directory, `${document.id}.disabled`);
+      await mkdir(directory, { recursive: true });
+      await writeFile(file, JSON.stringify(document, null, 2) + "\n");
       await waitFor(() =>
         changes.some(
-          ({ kind, id }) => kind === "created" && id === document.id,
+          ({ kind, id, revision }) =>
+            kind === "created" && id === document.id && revision !== null,
         ),
       );
-      if (!("entry" in created) || !created.entry.revision) {
-        throw new Error("Expected a created revision.");
-      }
-      const updated = await repository.write({
-        expectedRevision: created.entry.revision,
-        document: { ...document, name: "Updated Run API" },
-      });
+      const createdRevision = changes.find(
+        ({ kind, id }) => kind === "created" && id === document.id,
+      )?.revision;
+
+      await writeFile(
+        file,
+        JSON.stringify({ ...document, name: "Externally Updated Run API" }) +
+          "\n",
+      );
       await waitFor(() =>
         changes.some(
-          ({ kind, id }) => kind === "updated" && id === document.id,
+          ({ kind, id, revision }) =>
+            kind === "updated" &&
+            id === document.id &&
+            revision !== createdRevision,
         ),
       );
-      if (!("entry" in updated) || !updated.entry.revision) {
-        throw new Error("Expected an updated revision.");
-      }
-      await repository.delete({
-        id: document.id,
-        expectedRevision: updated.entry.revision,
-      });
-      await waitFor(() =>
-        changes.some(
-          ({ kind, id }) => kind === "deleted" && id === document.id,
-        ),
+
+      const deletedBeforeRename = changes.filter(
+        ({ kind, id }) => kind === "deleted" && id === document.id,
+      ).length;
+      await rename(file, renamedFile);
+      await waitFor(
+        () =>
+          changes.filter(
+            ({ kind, id }) => kind === "deleted" && id === document.id,
+          ).length > deletedBeforeRename,
+      );
+
+      const createdBeforeRestore = changes.filter(
+        ({ kind, id }) => kind === "created" && id === document.id,
+      ).length;
+      await rename(renamedFile, file);
+      await waitFor(
+        () =>
+          changes.filter(
+            ({ kind, id }) => kind === "created" && id === document.id,
+          ).length > createdBeforeRestore,
+      );
+
+      const deletedBeforeRemoval = changes.filter(
+        ({ kind, id }) => kind === "deleted" && id === document.id,
+      ).length;
+      await rm(file);
+      await waitFor(
+        () =>
+          changes.filter(
+            ({ kind, id }) => kind === "deleted" && id === document.id,
+          ).length > deletedBeforeRemoval,
       );
     } finally {
       watcher?.close();
     }
-  });
+  }, 30_000);
 });
