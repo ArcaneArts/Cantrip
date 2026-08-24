@@ -121,6 +121,7 @@ import {
 } from "@/components/chat/agent-turn-projection";
 import {
   DEFAULT_CHAT_SIDE_PANEL_VIEW,
+  subagentRootSidePanelView,
   subagentSidePanelView,
   type ChatSidePanelView,
 } from "@/components/chat/chat-side-panel-state";
@@ -1400,6 +1401,13 @@ function ChatTranscript({
   const viewSubagent = useCallback(
     (agentKey: string, focusItemKey: string | null = null) => {
       setSidePanelView(subagentSidePanelView(agentKey, focusItemKey));
+      onInspectOpenChange(true);
+    },
+    [onInspectOpenChange],
+  );
+  const viewSubagentRoot = useCallback(
+    (rootTurnId: string) => {
+      setSidePanelView(subagentRootSidePanelView(rootTurnId));
       onInspectOpenChange(true);
     },
     [onInspectOpenChange],
@@ -3734,7 +3742,7 @@ function ChatTranscript({
       ) : null}
       <AgentInspectPanelShell
         ariaLabel={
-          sidePanelView.type === "subagent"
+          sidePanelView.type !== "inspect"
             ? "Subagent transcript"
             : "Agent activity inspector"
         }
@@ -3744,16 +3752,29 @@ function ChatTranscript({
         onWidthChange={setInspectWidth}
         open={inspectOpen}
         overlay={inspectOverlay}
-        panelTitle={sidePanelView.type === "subagent" ? "Subagent" : "Inspect"}
+        panelTitle={sidePanelView.type !== "inspect" ? "Subagent" : "Inspect"}
       >
-        {sidePanelView.type === "subagent" ? (
+        {sidePanelView.type !== "inspect" ? (
           <SubagentTranscriptPanel
-            focusItemKey={sidePanelView.focusItemKey}
+            focusItemKey={
+              sidePanelView.type === "subagent"
+                ? sidePanelView.focusItemKey
+                : null
+            }
             modelSummary={subagentModelSummary}
             onOpenFile={onOpenFile}
             onSelectAgent={viewSubagent}
+            onSelectRoot={viewSubagentRoot}
             projection={agentProjection}
-            selectedAgentKey={sidePanelView.agentKey}
+            rootTurnId={
+              sidePanelView.type === "subagent-root"
+                ? sidePanelView.rootTurnId
+                : (agentProjection.byKey.get(sidePanelView.agentKey)?.scope
+                    .rootTurnId ?? null)
+            }
+            selectedAgentKey={
+              sidePanelView.type === "subagent" ? sidePanelView.agentKey : null
+            }
           />
         ) : (
           <AgentInspectContent
