@@ -828,6 +828,22 @@ describe.sequential("Run configuration definition API", () => {
   }, 15_000);
 
   it("runs, restarts, stops, reports, and reuses a Primary-bound Run terminal", async () => {
+    const codexEnvironmentDirectory = path.join(
+      primaryRoot,
+      ".codex",
+      "environments",
+    );
+    const codexEnvironmentPath = path.join(
+      codexEnvironmentDirectory,
+      "environment.toml",
+    );
+    await mkdir(codexEnvironmentDirectory, { recursive: true });
+    await writeFile(
+      codexEnvironmentPath,
+      `[setup]
+script = "export SERVER_PREFLIGHT=first"
+`,
+    );
     commands.length = 0;
     const startOperationId = randomUUID();
     const startedResponse = await app.inject({
@@ -850,6 +866,8 @@ describe.sequential("Run configuration definition API", () => {
       operation: { operation: "start", outcome: "accepted", generation: 1 },
       runtime: { state: "running", generation: 1 },
     });
+    const firstCodexRevision = started.runtime?.codexEnvironmentRevision;
+    expect(firstCodexRevision).toMatch(/^[0-9a-f]{64}$/u);
     expect(started.runtime?.terminalId).toBe(started.runtime?.id);
     const terminalId = started.runtime?.terminalId;
     if (!terminalId || !started.runtime) throw new Error("Expected a runtime.");
@@ -963,6 +981,12 @@ describe.sequential("Run configuration definition API", () => {
       protectedOutput: protectedRunOutput,
     });
 
+    await writeFile(
+      codexEnvironmentPath,
+      `[setup]
+script = "export SERVER_PREFLIGHT=second"
+`,
+    );
     const restartedResponse = await app.inject({
       method: "POST",
       url: "/api/run-configuration-runtimes/operations",
@@ -975,12 +999,30 @@ describe.sequential("Run configuration definition API", () => {
       },
     });
     expect(restartedResponse.statusCode).toBe(202);
-    expect(
-      runConfigurationRuntimeOperationResultSchema.parse(
-        restartedResponse.json(),
-      ),
-    ).toMatchObject({
+    const restarted = runConfigurationRuntimeOperationResultSchema.parse(
+      restartedResponse.json(),
+    );
+    expect(restarted).toMatchObject({
       runtime: { terminalId, generation: 2, state: "running" },
+    });
+    expect(restarted.runtime?.codexEnvironmentRevision).toMatch(
+      /^[0-9a-f]{64}$/u,
+    );
+    expect(restarted.runtime?.codexEnvironmentRevision).not.toBe(
+      firstCodexRevision,
+    );
+    expect(
+      commands
+        .filter(
+          (command) =>
+            command.type === "project.run-configuration-runtime.restart",
+        )
+        .at(-1),
+    ).toMatchObject({
+      identity: {
+        codexEnvironmentRevision: restarted.runtime?.codexEnvironmentRevision,
+        generation: 2,
+      },
     });
 
     const stoppedResponse = await app.inject({
@@ -1003,6 +1045,7 @@ describe.sequential("Run configuration definition API", () => {
       runtime: { terminalId, generation: 2, state: "idle" },
     });
 
+    await rm(codexEnvironmentPath);
     const startedAgainResponse = await app.inject({
       method: "POST",
       url: "/api/run-configuration-runtimes/operations",
@@ -1020,7 +1063,12 @@ describe.sequential("Run configuration definition API", () => {
         startedAgainResponse.json(),
       ),
     ).toMatchObject({
-      runtime: { terminalId, generation: 3, state: "running" },
+      runtime: {
+        terminalId,
+        codexEnvironmentRevision: null,
+        generation: 3,
+        state: "running",
+      },
     });
 
     const finalStop = await app.inject({
@@ -1035,6 +1083,44 @@ describe.sequential("Run configuration definition API", () => {
       },
     });
     expect(finalStop.statusCode).toBe(202);
+    await rm(codexEnvironmentDirectory, { recursive: true, force: true });
+  });
+
+  it("rejects an invalid enabled Codex environment before committing a generation", async () => {
+    const codexEnvironmentDirectory = path.join(
+      primaryRoot,
+      ".codex",
+      "environments",
+    );
+    await mkdir(codexEnvironmentDirectory, { recursive: true });
+    await writeFile(
+      path.join(codexEnvironmentDirectory, "environment.toml"),
+      `[setup]
+script = ""
+`,
+    );
+    commands.length = 0;
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "start",
+        operationId: randomUUID(),
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+      },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      error: expect.stringMatching(/setup\.script/u),
+    });
+    expect(
+      commands.some(
+        ({ type }) => type === "project.run-configuration-runtime.start",
+      ),
+    ).toBe(false);
+    await rm(codexEnvironmentDirectory, { recursive: true, force: true });
   });
 
   it("fails a committed generation closed when worker dispatch is lost", async () => {

@@ -17,6 +17,7 @@ import { javaRunConfigurationProvider } from "./run-configuration-java-provider.
 import { dartRunConfigurationProvider } from "./run-configuration-dart-provider.js";
 import { flutterRunConfigurationProvider } from "./run-configuration-flutter-provider.js";
 import { rustRunConfigurationProvider } from "./run-configuration-rust-provider.js";
+import { inspectRunConfigurationCodexEnvironmentSource } from "./run-configuration-environment-source.js";
 import {
   RunConfigurationRepository,
   type RunConfigurationRepositoryWatcher,
@@ -73,12 +74,31 @@ export class RunConfigurationDefinitionService {
           ...context,
           inventory: await repository.scan(),
         });
-      case "project.run-configuration-definitions.get":
+      case "project.run-configuration-definitions.get": {
+        const result = await repository.read(command.configurationId);
+        const document =
+          result.found && result.entry.status === "ready"
+            ? result.entry.document
+            : null;
+        const platform = workerPlatform();
+        const enabled = document
+          ? (document.platformOverrides[platform]?.environment
+              ?.includeCodexEnvironment ??
+            document.environment.includeCodexEnvironment)
+          : false;
         return runConfigurationGetResponseSchema.parse({
           operation: "get",
           ...context,
-          result: await repository.read(command.configurationId),
+          result,
+          codexEnvironment: await inspectRunConfigurationCodexEnvironmentSource(
+            {
+              enabled,
+              platform,
+              sourceRoot: command.sourcePath,
+            },
+          ),
         });
+      }
       case "project.run-configuration-definitions.capabilities":
         return runConfigurationCapabilitiesResponseSchema.parse({
           operation: "capabilities",

@@ -229,6 +229,15 @@ describe("RunConfigurationDefinitionService", () => {
     }
     expect(created.result.outcome).toBe("created");
     const revision = created.result.entry.revision!;
+    await mkdir(path.join(root, ".codex", "environments"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, ".codex", "environments", "environment.toml"),
+      `[setup]
+script = "export SERVICE_ENVIRONMENT=ready"
+`,
+    );
 
     const read = await service.execute({
       type: "project.run-configuration-definitions.get",
@@ -242,6 +251,14 @@ describe("RunConfigurationDefinitionService", () => {
         found: true,
         entry: { document: { arguments: ["--listen", "127.0.0.1:4400"] } },
       },
+      codexEnvironment: {
+        enabled: true,
+        configured: true,
+        valid: true,
+        revision: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        hasSetup: true,
+        diagnostics: [],
+      },
     });
 
     const deleted = await service.execute({
@@ -253,6 +270,58 @@ describe("RunConfigurationDefinitionService", () => {
     expect(deleted).toMatchObject({
       operation: "delete",
       result: { outcome: "deleted", id: configurationId },
+    });
+    service.close();
+  });
+
+  it("reports the effective platform override for Codex environment injection", async () => {
+    const root = await projectRoot();
+    const platform =
+      process.platform === "win32" || process.platform === "darwin"
+        ? process.platform
+        : "linux";
+    await mkdir(path.join(root, ".codex", "environments"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, ".codex", "environments", "environment.toml"),
+      `[setup]
+script = "export DISABLED_SOURCE=must-not-run"
+`,
+    );
+    const service = new RunConfigurationDefinitionService({ emit: () => true });
+    await service.execute({
+      type: "project.run-configuration-definitions.write",
+      operationId: randomUUID(),
+      projectId,
+      sourcePath: root,
+      request: {
+        expectedRevision: null,
+        document: {
+          ...shellDocument(),
+          platformOverrides: {
+            [platform]: {
+              environment: { includeCodexEnvironment: false },
+            },
+          },
+        },
+      },
+    });
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.get",
+        operationId: randomUUID(),
+        projectId,
+        sourcePath: root,
+        configurationId,
+      }),
+    ).resolves.toMatchObject({
+      codexEnvironment: {
+        enabled: false,
+        configured: true,
+        valid: true,
+        hasSetup: true,
+      },
     });
     service.close();
   });

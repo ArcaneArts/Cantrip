@@ -161,6 +161,14 @@ describe("Run configuration app API", () => {
           operationId,
           projectId,
           result: { found: true, entry },
+          codexEnvironment: {
+            enabled: true,
+            configured: false,
+            valid: true,
+            revision: null,
+            hasSetup: false,
+            diagnostics: [],
+          },
         }),
       )
       .mockResolvedValueOnce(

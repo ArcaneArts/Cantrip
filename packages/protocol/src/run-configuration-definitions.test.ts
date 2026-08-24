@@ -4,6 +4,7 @@ import {
   RUN_CONFIGURATION_FILE_SCHEMA,
   RUN_CONFIGURATION_REPOSITORY_DIRECTORY,
   runConfigurationDartEntrypointSchema,
+  runConfigurationCodexEnvironmentSourceStatusSchema,
   runConfigurationDetectionCandidateSchema,
   runConfigurationFileSchema,
   runConfigurationFlutterEntrypointSchema,
@@ -540,6 +541,47 @@ describe("run configuration definition protocol", () => {
     expect(
       runConfigurationSecretReferenceSchema.safeParse("project/./database-url")
         .success,
+    ).toBe(false);
+  });
+
+  it("keeps Codex environment source status bounded and internally consistent", () => {
+    expect(
+      runConfigurationCodexEnvironmentSourceStatusSchema.parse({
+        enabled: true,
+        configured: true,
+        valid: true,
+        revision: "a".repeat(64),
+        hasSetup: true,
+        diagnostics: [],
+      }),
+    ).toMatchObject({ enabled: true, revision: "a".repeat(64) });
+    expect(
+      runConfigurationCodexEnvironmentSourceStatusSchema.safeParse({
+        enabled: false,
+        configured: false,
+        valid: true,
+        revision: "a".repeat(64),
+        hasSetup: false,
+        diagnostics: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      runConfigurationCodexEnvironmentSourceStatusSchema.safeParse({
+        enabled: true,
+        configured: true,
+        valid: true,
+        revision: "a".repeat(64),
+        hasSetup: false,
+        diagnostics: [
+          {
+            severity: "error",
+            code: "invalid",
+            message: "invalid",
+            relativePath: ".codex/environments/environment.toml",
+            field: null,
+          },
+        ],
+      }).success,
     ).toBe(false);
   });
 

@@ -14036,6 +14036,7 @@ export async function buildApp({
               input.data.targetWorktreeId,
             );
             let definitionRevision: string | null = null;
+            let codexEnvironmentRevision: string | null = null;
             if (input.data.operation !== "stop") {
               const definition = runConfigurationGetResponseSchema.parse(
                 await bridge.request(target.workerId, {
@@ -14071,6 +14072,15 @@ export async function buildApp({
                 );
               }
               definitionRevision = definition.result.entry.revision;
+              if (definition.codexEnvironment.enabled) {
+                if (!definition.codexEnvironment.valid) {
+                  throw new ExecutionLaneConflictError(
+                    definition.codexEnvironment.diagnostics[0]?.message ??
+                      "The Codex environment source is invalid.",
+                  );
+                }
+                codexEnvironmentRevision = definition.codexEnvironment.revision;
+              }
             }
 
             const operationRequest =
@@ -14093,7 +14103,7 @@ export async function buildApp({
                     workerId: target.workerId,
                     operation: input.data.operation,
                     definitionRevision: definitionRevision!,
-                    codexEnvironmentRevision: null,
+                    codexEnvironmentRevision,
                   };
             const durable =
               await repository.requestRunConfigurationRuntimeOperation(

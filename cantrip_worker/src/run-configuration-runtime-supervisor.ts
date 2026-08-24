@@ -37,6 +37,10 @@ import {
 } from "./run-configuration-provider.js";
 import { RunConfigurationRepository } from "./run-configuration-repository.js";
 import { ensureSpawnHelperExecutable } from "./terminal-manager.js";
+import {
+  RunConfigurationEnvironmentResolutionError,
+  type RunConfigurationEnvironmentExecutionResult,
+} from "./run-configuration-environment-source.js";
 
 const MAX_RETAINED_RUNTIMES = RUN_CONFIGURATION_RUNTIME_LIST_LIMIT;
 const MAX_SCROLLBACK_CHARS = 256 * 1_024;
@@ -79,11 +83,19 @@ export interface RunConfigurationEnvironmentLayers {
 }
 
 export interface RunConfigurationRuntimeEnvironmentInput {
+  baseline: Record<string, string>;
+  defaultShell: string | null;
   document: RunConfigurationFile;
   environment: RunConfigurationEnvironment;
   identity: RunConfigurationRuntimeLaunchIdentity;
+  platform: RunConfigurationPlatform;
   sourceRoot: string;
   targetRoot: string;
+  execute(
+    command: MaterializedRunCommand,
+    environment: Record<string, string>,
+    timeoutMs: number,
+  ): Promise<RunConfigurationEnvironmentExecutionResult>;
 }
 
 export interface RunConfigurationRuntimeSupervisorOptions {
@@ -227,6 +239,21 @@ function reservedEnvironment(
     CANTRIP_WORKTREE_PATH: targetRoot,
     CODEX_WORKTREE_PATH: targetRoot,
   };
+}
+
+function protectedBaselineEnvironment(
+  environment: Record<string, string>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(environment).filter(([name]) => {
+      const upper = name.toUpperCase();
+      return (
+        upper.startsWith("CANTRIP_") ||
+        upper.startsWith("_CANTRIP_") ||
+        upper === "CODEX_WORKTREE_PATH"
+      );
+    }),
+  );
 }
 
 function platformForProvider(
@@ -746,16 +773,39 @@ export class RunConfigurationRuntimeSupervisor {
       session.stopGracePeriodMs = document.stop.gracePeriodMs;
 
       let layers: RunConfigurationEnvironmentLayers;
+      const baseline = {
+        ...stringEnvironment(process.env),
+        ...stringEnvironment(this.#environment),
+      };
       try {
         layers = await this.#resolveEnvironment({
+          baseline,
+          defaultShell: providerContext.defaultShell,
           document,
           environment: materialized.environment,
           identity: command.identity,
+          platform: providerContext.platform,
           sourceRoot: roots.sourceRoot,
           targetRoot: roots.targetRoot,
+          execute: (environmentCommand, environment, timeoutMs) =>
+            this.#runBeforeLaunch(
+              session,
+              command.identity,
+              environmentCommand,
+              environment,
+              timeoutMs,
+            ),
         });
       } catch (error) {
         if (error instanceof RuntimeLaunchError) throw error;
+        if (error instanceof RunConfigurationEnvironmentResolutionError) {
+          throw new RuntimeLaunchError(
+            "environment",
+            error.code,
+            error.message,
+            error.retryable,
+          );
+        }
         throw new RuntimeLaunchError(
           "environment",
           "environment-resolution-failed",
@@ -776,13 +826,13 @@ export class RunConfigurationRuntimeSupervisor {
         );
       }
       const environment = {
-        ...stringEnvironment(process.env),
-        ...stringEnvironment(this.#environment),
+        ...baseline,
         ...boundedEnvironmentLayer(layers.codex),
         ...boundedEnvironmentLayer(layers.files),
         ...enabledVariables(materialized.environment),
         ...boundedEnvironmentLayer(layers.secrets),
         ...boundedEnvironmentLayer(materialized.environmentAdditions),
+        ...protectedBaselineEnvironment(baseline),
         TERM: "xterm-256color",
         COLORTERM: "truecolor",
         ...reservedEnvironment(session, roots.sourceRoot, roots.targetRoot),
@@ -864,6 +914,7 @@ export class RunConfigurationRuntimeSupervisor {
     identity: RunConfigurationRuntimeLaunchIdentity,
     command: MaterializedRunCommand,
     environment: Record<string, string>,
+    timeoutMs?: number,
   ): Promise<ProcessExit> {
     const tracked = await this.#withLock(session.runtimeId, async () => {
       if (!generationLaunchIsCurrent(session, identity)) {
@@ -880,7 +931,16 @@ export class RunConfigurationRuntimeSupervisor {
       return child;
     });
     if (!tracked) return { exitCode: 1, signal: null };
-    return tracked.exit;
+    if (timeoutMs === undefined) return tracked.exit;
+    const result = await this.#waitForExitOrTimeout(tracked, timeoutMs);
+    if (result) return result;
+    await this.#terminateTracked(tracked, 0, true);
+    throw new RuntimeLaunchError(
+      "environment",
+      "codex-environment-setup-timeout",
+      "The Codex environment setup exceeded its bounded execution time.",
+      true,
+    );
   }
 
   #spawn(

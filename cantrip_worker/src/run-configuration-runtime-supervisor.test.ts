@@ -21,6 +21,10 @@ import {
   RunConfigurationRuntimeSupervisor,
   type RunConfigurationRuntimeSupervisorOptions,
 } from "./run-configuration-runtime-supervisor.js";
+import {
+  inspectRunConfigurationCodexEnvironmentSource,
+  resolveRunConfigurationEnvironmentSources,
+} from "./run-configuration-environment-source.js";
 import { RunConfigurationRepository } from "./run-configuration-repository.js";
 
 const temporaryDirectories: string[] = [];
@@ -471,6 +475,24 @@ function supervisor(
   });
 }
 
+function resolveLiveEnvironment(
+  resolution: Parameters<
+    NonNullable<RunConfigurationRuntimeSupervisorOptions["resolveEnvironment"]>
+  >[0],
+) {
+  return resolveRunConfigurationEnvironmentSources({
+    baseline: resolution.baseline,
+    defaultShell: resolution.defaultShell,
+    environment: resolution.environment,
+    expectedCodexEnvironmentRevision:
+      resolution.identity.codexEnvironmentRevision,
+    execute: resolution.execute,
+    platform: resolution.platform,
+    sourceRoot: resolution.sourceRoot,
+    targetRoot: resolution.targetRoot,
+  });
+}
+
 async function waitForState(
   runs: RunConfigurationRuntimeSupervisor,
   runtimeIdentity: RunConfigurationRuntimeLaunchIdentity,
@@ -572,6 +594,171 @@ describe.skipIf(process.platform === "win32")(
           tail: 8,
         }),
       ).toMatchObject({ truncated: true });
+      await runs.closeAll();
+    });
+
+    it("re-resolves live Codex setup and ordered environment files for every generation", async () => {
+      const input = await fixture(
+        `printf '%s|%s|%s|%s' "$CODEX_VALUE" "$LAYERED_VALUE" "$FILE_ONLY" "$CANTRIP_WORKER_CREDENTIAL"`,
+        {
+          environment: {
+            includeCodexEnvironment: true,
+            files: [".env", ".env.local"],
+            variables: [
+              { name: "LAYERED_VALUE", value: "plain", enabled: true },
+              {
+                name: "CANTRIP_WORKER_CREDENTIAL",
+                value: "definition-must-not-win",
+                enabled: true,
+              },
+            ],
+            secrets: [],
+          },
+        },
+      );
+      await mkdir(path.join(input.sourceRoot, ".codex", "environments"), {
+        recursive: true,
+      });
+      const environmentPath = path.join(
+        input.sourceRoot,
+        ".codex",
+        "environments",
+        "environment.toml",
+      );
+      await writeFile(
+        environmentPath,
+        `[setup]
+script = "printf 'materializing-first\\n'; export CODEX_VALUE=first; export LAYERED_VALUE=codex"
+`,
+      );
+      await writeFile(
+        path.join(input.targetRoot, ".env"),
+        "LAYERED_VALUE=file-first\nFILE_ONLY=first\n",
+      );
+      await writeFile(
+        path.join(input.targetRoot, ".env.local"),
+        "LAYERED_VALUE=file-second\n",
+      );
+      const firstSource = await inspectRunConfigurationCodexEnvironmentSource({
+        enabled: true,
+        platform: "linux",
+        sourceRoot: input.sourceRoot,
+      });
+      const runs = supervisor([], {
+        environment: {
+          ...process.env,
+          CANTRIP_WORKER_CREDENTIAL: "protected-baseline",
+        },
+        resolveEnvironment: resolveLiveEnvironment,
+      });
+      const firstIdentity = identity(input, 1, {
+        codexEnvironmentRevision: firstSource.revision,
+      });
+      await runs.start(startCommand(input, firstIdentity));
+      await waitForState(runs, firstIdentity, "exited");
+      const firstOutput = runs.output({
+        type: "project.run-configuration-runtime.output",
+        requestOperationId: randomUUID(),
+        identity: firstIdentity,
+        tail: 100_000,
+      }).data;
+      expect(firstOutput).toContain("materializing-first");
+      expect(firstOutput).toContain("first|plain|first|protected-baseline");
+
+      await writeFile(
+        environmentPath,
+        `[setup]
+script = "printf 'materializing-second\\n'; export CODEX_VALUE=second; export LAYERED_VALUE=codex"
+`,
+      );
+      const secondSource = await inspectRunConfigurationCodexEnvironmentSource({
+        enabled: true,
+        platform: "linux",
+        sourceRoot: input.sourceRoot,
+      });
+      expect(secondSource.revision).not.toBe(firstSource.revision);
+      const secondIdentity = {
+        ...firstIdentity,
+        codexEnvironmentRevision: secondSource.revision,
+        generation: 2,
+        operationId: randomUUID(),
+      };
+      await runs.start(startCommand(input, secondIdentity));
+      await waitForState(runs, secondIdentity, "exited");
+      const secondOutput = runs.output({
+        type: "project.run-configuration-runtime.output",
+        requestOperationId: randomUUID(),
+        identity: secondIdentity,
+        tail: 100_000,
+      }).data;
+      expect(secondOutput).toContain("materializing-second");
+      expect(secondOutput).toContain("second|plain|first|protected-baseline");
+      expect(secondOutput).toContain(
+        "[Starting next generation · generation 2]",
+      );
+      await runs.closeAll();
+    });
+
+    it("tracks Codex setup as a stoppable pre-launch process", async () => {
+      const input = await fixture("printf launched > launched.txt", {
+        environment: {
+          includeCodexEnvironment: true,
+          files: [],
+          variables: [],
+          secrets: [],
+        },
+      });
+      await mkdir(path.join(input.sourceRoot, ".codex", "environments"), {
+        recursive: true,
+      });
+      await writeFile(
+        path.join(
+          input.sourceRoot,
+          ".codex",
+          "environments",
+          "environment.toml",
+        ),
+        `[setup]
+script = "printf 'setup-started\\n'; while :; do sleep 1; done"
+`,
+      );
+      const source = await inspectRunConfigurationCodexEnvironmentSource({
+        enabled: true,
+        platform: "linux",
+        sourceRoot: input.sourceRoot,
+      });
+      const runtimeIdentity = identity(input, 1, {
+        codexEnvironmentRevision: source.revision,
+      });
+      const runs = supervisor([], {
+        resolveEnvironment: resolveLiveEnvironment,
+      });
+      await runs.start(startCommand(input, runtimeIdentity));
+      await expect
+        .poll(
+          () =>
+            runs.output({
+              type: "project.run-configuration-runtime.output",
+              requestOperationId: randomUUID(),
+              identity: runtimeIdentity,
+              tail: 100_000,
+            }).data,
+          { timeout: 3_000 },
+        )
+        .toContain("setup-started");
+      const stopIdentity = { ...runtimeIdentity, operationId: randomUUID() };
+      await expect(
+        runs.stop({
+          type: "project.run-configuration-runtime.stop",
+          identity: stopIdentity,
+        }),
+      ).resolves.toMatchObject({
+        outcome: "accepted",
+        observation: { state: "idle" },
+      });
+      await expect(
+        readFile(path.join(input.targetRoot, "launched.txt")),
+      ).rejects.toThrow();
       await runs.closeAll();
     });
 
