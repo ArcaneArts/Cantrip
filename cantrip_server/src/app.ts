@@ -285,6 +285,8 @@ import {
   providerModelCatalogResultSchema,
   providerQuotaSnapshotSchema,
   providerRateLimitResetConsumeRequestSchema,
+  PROVIDER_REAUTH_REQUIRED_ERROR_CODE,
+  PROVIDER_REAUTH_REQUIRED_MESSAGE,
   providerRateLimitResetConsumeResultSchema,
   providerTelemetryWireAnalyticsSchema,
   providerTelemetryDeleteResultSchema,
@@ -905,6 +907,10 @@ import {
   isAccountProviderKind,
 } from "./models/account-provider.js";
 import { providerAccountAuthStatus } from "./models/provider-account-status.js";
+import {
+  isProviderAccountReauthenticationRequired,
+  markProviderAccountReauthenticationRequired,
+} from "./models/provider-account-reauth.js";
 import {
   persistProviderQuotaSnapshot,
   persistProviderRateLimitActivity,
@@ -11771,6 +11777,18 @@ export async function buildApp({
         request.params.providerId,
         request.params.accountId,
       );
+      if (record?.state === "reauth-required") {
+        return reply.code(409).send({
+          code: "reauth-required",
+          error: PROVIDER_REAUTH_REQUIRED_MESSAGE,
+        });
+      }
+      if (record?.state === "conflict") {
+        return reply.code(409).send({
+          code: "identity-conflict",
+          error: "The provider account has a credential identity conflict.",
+        });
+      }
       return record
         ? reply.send(
             providerCredentialWireRecordSchema.parse({
@@ -14956,6 +14974,23 @@ export async function buildApp({
     return { account, provider };
   }
 
+  async function sendProviderQuotaAuthenticationFailure(
+    reply: FastifyReply,
+    error: unknown,
+    input: { accountId: string; providerId: string },
+  ): Promise<FastifyReply | null> {
+    if (!isProviderAccountReauthenticationRequired(error)) return null;
+    await markProviderAccountReauthenticationRequired(repository, {
+      ...input,
+      ownerId: applicationOwnerId(),
+    });
+    publishLiveInvalidation("settings");
+    return reply.code(409).send({
+      code: PROVIDER_REAUTH_REQUIRED_ERROR_CODE,
+      error: PROVIDER_REAUTH_REQUIRED_MESSAGE,
+    });
+  }
+
   app.get<{
     Params: { providerId: string; accountId: string };
     Querystring: { workerId?: string };
@@ -14994,6 +15029,15 @@ export async function buildApp({
         return reply.send(providerQuotaSnapshotSchema.parse(snapshot));
       } catch (error) {
         const message = errorMessage(error);
+        const authFailure = await sendProviderQuotaAuthenticationFailure(
+          reply,
+          error,
+          {
+            providerId: request.params.providerId,
+            accountId: request.params.accountId,
+          },
+        );
+        if (authFailure) return authFailure;
         if (message.endsWith("not found.")) {
           return reply.code(404).send({ error: message });
         }
@@ -15076,6 +15120,15 @@ export async function buildApp({
         return reply.send(result);
       } catch (error) {
         const message = errorMessage(error);
+        const authFailure = await sendProviderQuotaAuthenticationFailure(
+          reply,
+          error,
+          {
+            providerId: request.params.providerId,
+            accountId: request.params.accountId,
+          },
+        );
+        if (authFailure) return authFailure;
         if (message.endsWith("not found.")) {
           return reply.code(404).send({ error: message });
         }

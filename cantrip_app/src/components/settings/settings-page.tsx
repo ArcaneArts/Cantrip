@@ -13,6 +13,7 @@ import type {
 } from "@cantrip/protocol";
 import {
   isZaiCodingPlanBaseUrl,
+  PROVIDER_REAUTH_REQUIRED_ERROR_CODE,
   ZAI_CODING_PLAN_BASE_URL,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -83,6 +84,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   createModelProfile,
+  CantripApiError,
   createModelProvider,
   createModelProviderAccount,
   consumeProviderRateLimitReset,
@@ -740,6 +742,9 @@ export function SettingsPage({
     retry: false,
     staleTime: 30_000,
   });
+  const rateLimitAuthenticationExpired =
+    rateLimitResets.error instanceof CantripApiError &&
+    rateLimitResets.error.code === PROVIDER_REAUTH_REQUIRED_ERROR_CODE;
   const selectedWeeklyUsage =
     providerWeeklyUsageFromQuotaSnapshot(rateLimitResets.data) ??
     codexAuth.data?.weeklyUsage ??
@@ -2214,10 +2219,30 @@ export function SettingsPage({
                       </div>
                       {rateLimitResets.isError ? (
                         <InlineAlert size="sm" tone="error">
-                          {errorText(
-                            rateLimitResets.error,
-                            "Could not check reset availability.",
-                          )}
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span>
+                              {errorText(
+                                rateLimitResets.error,
+                                "Could not check reset availability.",
+                              )}
+                            </span>
+                            {rateLimitAuthenticationExpired && worker ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={beginCodexLogin.isPending}
+                                onClick={() => beginCodexLogin.mutate()}
+                              >
+                                {beginCodexLogin.isPending ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <KeyRound className="size-3.5" />
+                                )}
+                                Sign in again
+                              </Button>
+                            ) : null}
+                          </div>
                         </InlineAlert>
                       ) : null}
                       {rateLimitResetNotice ? (

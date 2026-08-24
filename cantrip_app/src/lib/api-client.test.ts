@@ -93,6 +93,30 @@ describe("authenticated API client", () => {
     unsubscribe();
   });
 
+  it("preserves a safe machine-readable API error code", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: "provider-reauth-required",
+            error: "Sign in again.",
+          }),
+          {
+            status: 409,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ),
+    );
+
+    await expect(request("/api/provider-quota")).rejects.toMatchObject({
+      code: "provider-reauth-required",
+      message: "Sign in again.",
+      status: 409,
+    });
+  });
+
   it("retains a sanitized route and status in failed-request diagnostics", async () => {
     vi.stubGlobal(
       "fetch",

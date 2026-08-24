@@ -14,6 +14,7 @@ export class CantripApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code: string | null = null,
   ) {
     super(message);
   }
@@ -216,6 +217,7 @@ export async function requestResponse(
 
   if (!response.ok && !allowedStatuses.includes(response.status)) {
     let body = (await response.json().catch(() => null)) as {
+      code?: string;
       error?: string;
     } | null;
     if (
@@ -237,6 +239,7 @@ export async function requestResponse(
       response = await sendRequest(url, method, init);
       if (response.ok) return response;
       body = (await response.json().catch(() => null)) as {
+        code?: string;
         error?: string;
       } | null;
     }
@@ -264,6 +267,7 @@ export async function requestResponse(
     throw new CantripApiError(
       body?.error ?? `Cantrip Server returned HTTP ${response.status}.`,
       response.status,
+      body?.code ?? null,
     );
   }
   const durationMs = Math.round(performance.now() - startedAt);
