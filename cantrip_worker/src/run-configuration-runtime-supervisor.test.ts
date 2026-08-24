@@ -712,8 +712,9 @@ describe.skipIf(process.platform === "win32")(
       });
       expect(output.data).toContain("before-launch");
       expect(output.data).toContain(
-        `${input.sourceRoot}|${input.targetRoot}|${input.configurationId}|1|plain|secret|unset|unset|unset|unset|unset`,
+        `${input.sourceRoot}|${input.targetRoot}|${input.configurationId}|1|plain|••••|unset|unset|unset|unset|unset`,
       );
+      expect(output.data).not.toContain("secret");
       expect(JSON.stringify(notifications)).not.toContain(
         "reserved-must-not-win",
       );
@@ -795,7 +796,8 @@ script = "printf 'materializing-first\\n'; export CODEX_VALUE=first; export LAYE
         tail: 100_000,
       }).data;
       expect(firstOutput).toContain("materializing-first");
-      expect(firstOutput).toContain("first|plain|first|protected-baseline");
+      expect(firstOutput).toContain("first|plain|first|••••");
+      expect(firstOutput).not.toContain("protected-baseline");
 
       await writeFile(
         environmentPath,
@@ -824,16 +826,26 @@ script = "printf 'materializing-second\\n'; export CODEX_VALUE=second; export LA
         tail: 100_000,
       }).data;
       expect(secondOutput).toContain("materializing-second");
-      expect(secondOutput).toContain("second|plain|first|protected-baseline");
+      expect(secondOutput).toContain("second|plain|first|••••");
+      expect(secondOutput).not.toContain("protected-baseline");
       expect(secondOutput).toContain(
         "[Starting next generation · generation 2]",
       );
       await runs.closeAll();
     });
 
-    it("uses the current project-secret revision on each generation without exposing it in observations", async () => {
+    it("uses rotated project secrets without exposing them in observations or output", async () => {
       const input = await fixture(
-        `printf '%s|%s' "$TOKEN" "$CANTRIP_WORKER_CREDENTIAL" > secret-result.txt`,
+        `if [ "$CANTRIP_RUN_GENERATION" = "1" ]; then
+  printf 'opened-secret-'
+  sleep 0.05
+  printf 'revision-1|%s\n' "$CANTRIP_WORKER_CREDENTIAL"
+else
+  printf 'opened-secret-'
+  sleep 0.05
+  printf 'revision-2|%s\n' "$CANTRIP_WORKER_CREDENTIAL"
+fi
+printf '%s|%s' "$TOKEN" "$CANTRIP_WORKER_CREDENTIAL" > secret-result.txt`,
         {
           environment: {
             includeCodexEnvironment: false,
@@ -866,6 +878,15 @@ script = "printf 'materializing-second\\n'; export CODEX_VALUE=second; export LA
       await expect(
         readFile(path.join(input.targetRoot, "secret-result.txt"), "utf8"),
       ).resolves.toBe("opened-secret-revision-1|protected-baseline");
+      const firstOutput = runs.output({
+        type: "project.run-configuration-runtime.output",
+        requestOperationId: randomUUID(),
+        identity: first,
+        tail: 100_000,
+      }).data;
+      expect(firstOutput).toContain("••••|••••");
+      expect(firstOutput).not.toContain("opened-secret-revision-1");
+      expect(firstOutput).not.toContain("protected-baseline");
 
       const second = {
         ...first,
@@ -879,6 +900,15 @@ script = "printf 'materializing-second\\n'; export CODEX_VALUE=second; export LA
       await expect(
         readFile(path.join(input.targetRoot, "secret-result.txt"), "utf8"),
       ).resolves.toBe("opened-secret-revision-2|protected-baseline");
+      const secondOutput = runs.output({
+        type: "project.run-configuration-runtime.output",
+        requestOperationId: randomUUID(),
+        identity: second,
+        tail: 100_000,
+      }).data;
+      expect(secondOutput).not.toContain("opened-secret-revision-1");
+      expect(secondOutput).not.toContain("opened-secret-revision-2");
+      expect(secondOutput).not.toContain("protected-baseline");
       expect(JSON.stringify(notifications)).not.toContain(
         "opened-secret-revision",
       );

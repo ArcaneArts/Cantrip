@@ -38,6 +38,7 @@ import {
   type RunConfigurationProviderContext,
 } from "./run-configuration-provider.js";
 import { RunConfigurationRepository } from "./run-configuration-repository.js";
+import { RunConfigurationOutputRedactor } from "./run-configuration-output-redactor.js";
 import { RunConfigurationProcessTreeController } from "./run-configuration-process-tree.js";
 import { ensureSpawnHelperExecutable } from "./terminal-manager.js";
 import {
@@ -135,6 +136,7 @@ interface RuntimeSession extends RunConfigurationRuntimeLaunchIdentity {
   exitCode: number | null;
   failure: RunConfigurationRuntimeWorkerObservation["failure"];
   launchTask: Promise<void> | null;
+  outputRedactor: RunConfigurationOutputRedactor;
   process: TrackedProcess | null;
   requestedRootKind: LaunchCommand["rootKind"];
   requestedSourcePath: string;
@@ -480,6 +482,7 @@ export class RunConfigurationRuntimeSupervisor {
         exitCode: null,
         failure: null,
         launchTask: null,
+        outputRedactor: new RunConfigurationOutputRedactor([]),
         process: null,
         requestedRootKind: command.rootKind,
         requestedSourcePath: command.sourcePath,
@@ -600,6 +603,7 @@ export class RunConfigurationRuntimeSupervisor {
         return this.#operationResult("stale", session);
       }
       session.process = null;
+      this.#flushOutput(session);
       session.state = "idle";
       session.endedAt = new Date().toISOString();
       session.exitCode = result?.exitCode ?? session.exitCode;
@@ -815,6 +819,10 @@ export class RunConfigurationRuntimeSupervisor {
         stringEnvironment(process.env),
         stringEnvironment(this.#environment),
       );
+      const protectedOutputValues = Object.values(
+        protectedBaselineEnvironment(baseline),
+      );
+      this.#replaceOutputSecrets(session, protectedOutputValues);
       try {
         layers = await this.#resolveEnvironment({
           baseline,
@@ -864,13 +872,18 @@ export class RunConfigurationRuntimeSupervisor {
           true,
         );
       }
+      const resolvedSecrets = boundedEnvironmentLayer(layers.secrets);
+      this.#replaceOutputSecrets(session, [
+        ...protectedOutputValues,
+        ...Object.values(resolvedSecrets),
+      ]);
       const environment = mergeRunConfigurationEnvironmentLayers(
         providerContext.platform,
         baseline,
         boundedEnvironmentLayer(layers.codex),
         boundedEnvironmentLayer(layers.files),
         boundedEnvironmentLayer(enabledVariables(materialized.environment)),
-        boundedEnvironmentLayer(layers.secrets),
+        resolvedSecrets,
         boundedEnvironmentLayer(materialized.environmentAdditions),
         protectedBaselineEnvironment(baseline),
         { TERM: "xterm-256color", COLORTERM: "truecolor" },
@@ -940,6 +953,7 @@ export class RunConfigurationRuntimeSupervisor {
       await this.#withLock(session.runtimeId, async () => {
         if (!generationLaunchIsCurrent(session, command.identity)) return;
         session.process = null;
+        this.#flushOutput(session);
         session.state = "failed";
         session.failure = boundedFailure(error);
         session.endedAt = new Date().toISOString();
@@ -1069,6 +1083,7 @@ export class RunConfigurationRuntimeSupervisor {
       ) {
         return;
       }
+      this.#flushOutput(session);
       session.state = "exited";
       session.endedAt = new Date().toISOString();
       session.exitCode = result.exitCode;
@@ -1140,6 +1155,7 @@ export class RunConfigurationRuntimeSupervisor {
       };
       if (tracked) await this.#terminateTracked(tracked, 0, true);
       session.process = null;
+      this.#flushOutput(session);
       session.endedAt = new Date().toISOString();
       this.#emit(session);
     });
@@ -1231,7 +1247,24 @@ export class RunConfigurationRuntimeSupervisor {
   }
 
   #appendOutput(session: RuntimeSession, data: string): void {
+    this.#appendRedactedOutput(session, session.outputRedactor.write(data));
+  }
+
+  #appendRedactedOutput(session: RuntimeSession, data: string): void {
     session.buffer = `${session.buffer}${data}`.slice(-MAX_SCROLLBACK_CHARS);
+  }
+
+  #flushOutput(session: RuntimeSession): void {
+    this.#appendRedactedOutput(session, session.outputRedactor.flush());
+  }
+
+  #replaceOutputSecrets(session: RuntimeSession, values: string[]): void {
+    this.#flushOutput(session);
+    const redactor = new RunConfigurationOutputRedactor(values);
+    session.buffer = redactor
+      .redactComplete(session.buffer)
+      .slice(-MAX_SCROLLBACK_CHARS);
+    session.outputRedactor = redactor;
   }
 
   #appendDivider(session: RuntimeSession, label: string): void {
