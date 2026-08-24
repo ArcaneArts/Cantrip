@@ -41,8 +41,9 @@ use codex_sandboxing::policy_transforms::merge_permission_profiles;
 use codex_sandboxing::policy_transforms::normalize_additional_permissions;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_absolute_path::AbsolutePathBufGuard;
-use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::Map;
+use serde_json::Number;
 use serde_json::Value;
 use std::path::Path;
 
@@ -84,11 +85,71 @@ pub use wait_for_environment::WaitForEnvironmentToolConfig;
 
 pub(crate) fn parse_arguments<T>(arguments: &str) -> Result<T, FunctionCallError>
 where
-    T: for<'de> Deserialize<'de>,
+    T: DeserializeOwned,
 {
-    serde_json::from_str(arguments).map_err(|err| {
-        FunctionCallError::RespondToModel(format!("failed to parse function arguments: {err}"))
-    })
+    match serde_json::from_str(arguments) {
+        Ok(arguments) => Ok(arguments),
+        Err(initial_error) => {
+            let Ok(mut value) = serde_json::from_str::<Value>(arguments) else {
+                return Err(function_arguments_error(initial_error));
+            };
+            if !normalize_whole_float_numbers(&mut value) {
+                return Err(function_arguments_error(initial_error));
+            }
+            serde_json::from_value(value).map_err(function_arguments_error)
+        }
+    }
+}
+
+pub(crate) fn deserialize_tool_arguments<T>(value: Value) -> Result<T, serde_json::Error>
+where
+    T: DeserializeOwned,
+{
+    match serde_json::from_value(value.clone()) {
+        Ok(arguments) => Ok(arguments),
+        Err(initial_error) => {
+            let mut value = value;
+            if !normalize_whole_float_numbers(&mut value) {
+                return Err(initial_error);
+            }
+            serde_json::from_value(value)
+        }
+    }
+}
+
+fn function_arguments_error(error: serde_json::Error) -> FunctionCallError {
+    FunctionCallError::RespondToModel(format!("failed to parse function arguments: {error}"))
+}
+
+fn normalize_whole_float_numbers(value: &mut Value) -> bool {
+    const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+    match value {
+        Value::Number(number) if number.is_f64() => {
+            let Some(float) = number.as_f64() else {
+                return false;
+            };
+            if !float.is_finite()
+                || float.fract() != 0.0
+                || !(-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&float)
+            {
+                return false;
+            }
+            *number = if float < 0.0 {
+                Number::from(float as i64)
+            } else {
+                Number::from(float as u64)
+            };
+            true
+        }
+        Value::Array(values) => values.iter_mut().fold(false, |normalized, value| {
+            normalize_whole_float_numbers(value) || normalized
+        }),
+        Value::Object(values) => values.values_mut().fold(false, |normalized, value| {
+            normalize_whole_float_numbers(value) || normalized
+        }),
+        _ => false,
+    }
 }
 
 fn resolve_sandbox_permissions(
@@ -150,7 +211,7 @@ fn parse_arguments_with_base_path<T>(
     base_path: &AbsolutePathBuf,
 ) -> Result<T, FunctionCallError>
 where
-    T: for<'de> Deserialize<'de>,
+    T: DeserializeOwned,
 {
     let _guard = AbsolutePathBufGuard::new(base_path);
     parse_arguments(arguments)
@@ -359,6 +420,7 @@ mod tests {
     use super::EffectiveAdditionalPermissions;
     use super::implicit_granted_permissions;
     use super::normalize_and_validate_additional_permissions;
+    use super::parse_arguments;
     use super::preapproved_permission_profile;
     use crate::sandboxing::SandboxPermissions;
     use codex_protocol::models::AdditionalPermissionProfile;
@@ -374,7 +436,38 @@ mod tests {
     use codex_sandboxing::policy_transforms::merge_permission_profiles;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use pretty_assertions::assert_eq;
+    use serde::Deserialize;
     use tempfile::tempdir;
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    struct IntegralArguments {
+        timeout_ms: u64,
+        signed_value: i64,
+    }
+
+    #[test]
+    fn parse_arguments_accepts_safe_whole_float_numbers_for_integer_fields() {
+        let parsed: IntegralArguments =
+            parse_arguments(r#"{"timeout_ms":120000.0,"signed_value":-4.0}"#)
+                .expect("whole float values should normalize to integers");
+
+        assert_eq!(
+            parsed,
+            IntegralArguments {
+                timeout_ms: 120_000,
+                signed_value: -4,
+            }
+        );
+    }
+
+    #[test]
+    fn parse_arguments_rejects_fractional_numbers_for_integer_fields() {
+        let error =
+            parse_arguments::<IntegralArguments>(r#"{"timeout_ms":120000.5,"signed_value":-4}"#)
+                .expect_err("fractional values must remain invalid for integer fields");
+
+        assert!(error.to_string().contains("floating point"));
+    }
 
     fn network_permissions() -> AdditionalPermissionProfile {
         AdditionalPermissionProfile {

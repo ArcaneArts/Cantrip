@@ -13,13 +13,13 @@ pub fn create_test_sync_tool() -> ToolSpec {
         ),
         (
             "participants".to_string(),
-            JsonSchema::number(Some(
+            JsonSchema::integer(Some(
                 "Number of tool calls that must arrive before the barrier opens".to_string(),
             )),
         ),
         (
             "timeout_ms".to_string(),
-            JsonSchema::number(Some(
+            JsonSchema::integer(Some(
                 "Maximum barrier wait in milliseconds. Defaults to 1000.".to_string(),
             )),
         ),
@@ -28,13 +28,13 @@ pub fn create_test_sync_tool() -> ToolSpec {
     let properties = BTreeMap::from([
         (
             "sleep_before_ms".to_string(),
-            JsonSchema::number(Some(
+            JsonSchema::integer(Some(
                 "Delay before any other action. Defaults to no delay.".to_string(),
             )),
         ),
         (
             "sleep_after_ms".to_string(),
-            JsonSchema::number(Some(
+            JsonSchema::integer(Some(
                 "Delay after completing the barrier. Defaults to no delay.".to_string(),
             )),
         ),

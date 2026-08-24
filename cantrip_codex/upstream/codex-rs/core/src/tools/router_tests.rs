@@ -239,6 +239,29 @@ async fn build_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()
     Ok(())
 }
 
+#[test]
+fn build_tool_search_call_accepts_a_whole_float_limit() -> anyhow::Result<()> {
+    let call = ToolRouter::build_tool_call(ResponseItem::ToolSearchCall {
+        id: None,
+        call_id: Some("search-1".to_string()),
+        status: None,
+        execution: "client".to_string(),
+        arguments: json!({"query": "calendar", "limit": 8.0}),
+        internal_chat_message_metadata_passthrough: None,
+    })?
+    .expect("client tool_search should produce a tool call");
+
+    match call.payload {
+        ToolPayload::ToolSearch { arguments } => {
+            assert_eq!(arguments.query, "calendar");
+            assert_eq!(arguments.limit, Some(8));
+        }
+        other => panic!("expected tool_search payload, got {other:?}"),
+    }
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn build_custom_tool_call_uses_namespace_for_registry_name() -> anyhow::Result<()> {
     let tool_name = "exec".to_string();

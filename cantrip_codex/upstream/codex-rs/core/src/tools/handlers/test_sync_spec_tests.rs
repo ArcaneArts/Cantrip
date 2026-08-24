@@ -27,14 +27,14 @@ fn test_sync_tool_matches_expected_spec() {
                                 ),
                                 (
                                     "participants".to_string(),
-                                    JsonSchema::number(Some(
+                                    JsonSchema::integer(Some(
                                         "Number of tool calls that must arrive before the barrier opens"
                                             .to_string(),
                                     )),
                                 ),
                                 (
                                     "timeout_ms".to_string(),
-                                    JsonSchema::number(Some(
+                                    JsonSchema::integer(Some(
                                         "Maximum barrier wait in milliseconds. Defaults to 1000."
                                             .to_string(),
                                     )),
@@ -46,14 +46,14 @@ fn test_sync_tool_matches_expected_spec() {
                     ),
                     (
                         "sleep_after_ms".to_string(),
-                        JsonSchema::number(Some(
+                        JsonSchema::integer(Some(
                             "Delay after completing the barrier. Defaults to no delay."
                                 .to_string(),
                         )),
                     ),
                     (
                         "sleep_before_ms".to_string(),
-                        JsonSchema::number(Some(
+                        JsonSchema::integer(Some(
                             "Delay before any other action. Defaults to no delay.".to_string(),
                         )),
                     ),
