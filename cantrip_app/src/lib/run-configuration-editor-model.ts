@@ -8,6 +8,7 @@ import {
   type RunConfigurationJavaDocument,
   type RunConfigurationNodeDocument,
   type RunConfigurationProviderKind,
+  type RunConfigurationRustDocument,
   type RunConfigurationShellDocument,
 } from "@cantrip/protocol/run-configuration-definitions";
 
@@ -106,10 +107,30 @@ export function createFlutterRunConfigurationDocument(
   };
 }
 
+export function createRustRunConfigurationDocument(
+  id = crypto.randomUUID(),
+): RunConfigurationRustDocument {
+  return {
+    ...commonDocument(id),
+    provider: "rust",
+    target: { kind: "binary", package: "app", name: "app" },
+    options: {
+      toolchain: "default",
+      features: [],
+      allFeatures: false,
+      useDefaultFeatures: true,
+      targetTriple: null,
+      profile: "dev",
+      locked: false,
+      offline: false,
+    },
+  };
+}
+
 export function createRunConfigurationDocument(
   provider: Extract<
     RunConfigurationProviderKind,
-    "dart" | "flutter" | "java" | "node" | "shell"
+    "dart" | "flutter" | "java" | "node" | "rust" | "shell"
   >,
   id = crypto.randomUUID(),
 ): RunConfigurationFile {
@@ -117,6 +138,7 @@ export function createRunConfigurationDocument(
   if (provider === "java") return createJavaRunConfigurationDocument(id);
   if (provider === "dart") return createDartRunConfigurationDocument(id);
   if (provider === "flutter") return createFlutterRunConfigurationDocument(id);
+  if (provider === "rust") return createRustRunConfigurationDocument(id);
   return createShellRunConfigurationDocument(id);
 }
 
@@ -371,6 +393,55 @@ export function flutterRunConfigurationEffectiveCommand(
   };
 }
 
+export function rustRunConfigurationEffectiveCommand(
+  document: RunConfigurationRustDocument,
+): { command: string; overridden: boolean } {
+  if (document.commandOverride !== null) {
+    return {
+      command: [
+        document.commandOverride,
+        ...document.arguments.map(quoteArgument),
+      ].join(" "),
+      overridden: true,
+    };
+  }
+  return {
+    command: [
+      "cargo",
+      ...(document.options.toolchain === "default"
+        ? []
+        : [`+${document.options.toolchain}`]),
+      "run",
+      `--package=${quoteArgument(document.target.package)}`,
+      document.target.kind === "binary"
+        ? `--bin=${quoteArgument(document.target.name)}`
+        : `--example=${quoteArgument(document.target.name)}`,
+      ...(document.options.allFeatures
+        ? ["--all-features"]
+        : document.options.features.map(
+            (feature) => `--features=${quoteArgument(feature)}`,
+          )),
+      ...(!document.options.useDefaultFeatures
+        ? ["--no-default-features"]
+        : []),
+      ...(document.options.targetTriple
+        ? [`--target=${quoteArgument(document.options.targetTriple)}`]
+        : []),
+      ...(document.options.profile === "dev"
+        ? []
+        : document.options.profile === "release"
+          ? ["--release"]
+          : [`--profile=${quoteArgument(document.options.profile)}`]),
+      ...(document.options.locked ? ["--locked"] : []),
+      ...(document.options.offline ? ["--offline"] : []),
+      ...(document.arguments.length
+        ? ["--", ...document.arguments.map(quoteArgument)]
+        : []),
+    ].join(" "),
+    overridden: false,
+  };
+}
+
 export function runConfigurationEffectiveCommand(
   document: RunConfigurationFile,
 ): { command: string; overridden: boolean } {
@@ -385,6 +456,9 @@ export function runConfigurationEffectiveCommand(
   }
   if (document.provider === "flutter") {
     return flutterRunConfigurationEffectiveCommand(document);
+  }
+  if (document.provider === "rust") {
+    return rustRunConfigurationEffectiveCommand(document);
   }
   return shellRunConfigurationEffectiveCommand(document);
 }

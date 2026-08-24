@@ -285,6 +285,78 @@ async function flutterFixture(): Promise<Fixture> {
   };
 }
 
+async function rustFixture(): Promise<
+  Fixture & { executableDirectory: string }
+> {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-rust-run-configuration-runtime-"),
+  );
+  temporaryDirectories.push(root);
+  const sourceRoot = path.join(root, "primary");
+  const targetRoot = path.join(root, "target");
+  const executableDirectory = path.join(root, "bin");
+  await Promise.all([
+    mkdir(sourceRoot, { recursive: true }),
+    mkdir(path.join(targetRoot, "src"), { recursive: true }),
+    mkdir(executableDirectory, { recursive: true }),
+  ]);
+  await writeFile(
+    path.join(targetRoot, "Cargo.toml"),
+    '[package]\nname = "api"\nversion = "0.1.0"\n\n[[bin]]\nname = "server"\npath = "src/server.rs"\n',
+  );
+  await writeFile(path.join(targetRoot, "src", "server.rs"), "fn main() {}\n");
+  await writeFile(
+    path.join(executableDirectory, "cargo"),
+    "#!/bin/sh\nprintf 'rust-provider|%s' \"$*\"\n",
+  );
+  await chmod(path.join(executableDirectory, "cargo"), 0o755);
+  const configurationId = randomUUID();
+  const repository = await RunConfigurationRepository.open(sourceRoot);
+  const written = await repository.write({
+    expectedRevision: null,
+    document: {
+      schema: "cantrip.run-configuration",
+      version: 1,
+      id: configurationId,
+      name: "Rust runtime fixture",
+      provider: "rust",
+      workingDirectory: ".",
+      target: { kind: "binary", package: "api", name: "server" },
+      commandOverride: null,
+      arguments: ["--listen", "two words"],
+      environment: {
+        includeCodexEnvironment: false,
+        files: [],
+        variables: [],
+        secrets: [],
+      },
+      beforeLaunch: [],
+      platformOverrides: {},
+      options: {
+        toolchain: "default",
+        features: ["tls"],
+        allFeatures: false,
+        useDefaultFeatures: false,
+        targetTriple: null,
+        profile: "release",
+        locked: true,
+        offline: false,
+      },
+      stop: { gracePeriodMs: 50 },
+    },
+  });
+  if (!("entry" in written) || !written.entry.revision) {
+    throw new Error("Expected a ready Rust Run configuration fixture.");
+  }
+  return {
+    configurationId,
+    definitionRevision: written.entry.revision,
+    executableDirectory,
+    sourceRoot,
+    targetRoot,
+  };
+}
+
 async function fixture(
   command: string,
   options: {
@@ -590,6 +662,34 @@ describe.skipIf(process.platform === "win32")(
       }).data;
       expect(output).toContain(
         "flutter-provider|run --profile --target=lib/main.dart --device-id=linux --flavor=staging --dart-define=API_URL=https://example.test --no-pub --dart-entrypoint-args=two words",
+      );
+      await runs.closeAll();
+    });
+
+    it("launches a structured Rust target without a handwritten command", async () => {
+      const input = await rustFixture();
+      const runtimeIdentity = identity(input);
+      const runs = supervisor([], {
+        environment: {
+          ...process.env,
+          PATH: `${input.executableDirectory}${path.delimiter}${process.env.PATH ?? ""}`,
+        },
+      });
+      await expect(
+        runs.start(startCommand(input, runtimeIdentity)),
+      ).resolves.toMatchObject({
+        outcome: "accepted",
+        observation: { state: "starting" },
+      });
+      await waitForState(runs, runtimeIdentity, "exited");
+      const output = runs.output({
+        type: "project.run-configuration-runtime.output",
+        requestOperationId: randomUUID(),
+        identity: runtimeIdentity,
+        tail: 100_000,
+      }).data;
+      expect(output).toContain(
+        "rust-provider|run --package=api --bin=server --features=tls --no-default-features --release --locked -- --listen two words",
       );
       await runs.closeAll();
     });

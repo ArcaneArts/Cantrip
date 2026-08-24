@@ -289,4 +289,48 @@ describe("Run configuration control model", () => {
     });
     expect(model.configurations[0]?.searchValue).toContain("chrome");
   });
+
+  it("indexes structured Rust packages, targets, and toolchains", () => {
+    const id = "00000000-0000-4000-8000-000000000008";
+    const shell = entry(id, "Rust API", "unused");
+    const inventory = {
+      directory: ".cantrip/run-configurations",
+      diagnostics: [],
+      entries: [
+        {
+          ...shell,
+          document: {
+            ...shell.document,
+            provider: "rust" as const,
+            target: {
+              kind: "binary" as const,
+              package: "api",
+              name: "api-server",
+            },
+            options: {
+              toolchain: "nightly",
+              features: ["tls"],
+              allFeatures: false,
+              useDefaultFeatures: true,
+              targetTriple: null,
+              profile: "dev",
+              locked: false,
+              offline: false,
+            },
+          },
+        },
+      ],
+    } satisfies RunConfigurationRepositoryInventory;
+    const model = buildRunConfigurationControlModel({
+      inventory,
+      runtimes: [],
+      workers: [worker],
+      worktrees: [primary],
+    });
+    expect(model.configurations[0]).toMatchObject({
+      provider: "rust",
+      targetLabel: "cargo +nightly run --package=api --bin=api-server",
+    });
+    expect(model.configurations[0]?.searchValue).toContain("api-server");
+  });
 });

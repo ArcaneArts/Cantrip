@@ -28,6 +28,7 @@ import * as pty from "node-pty";
 import { workerLogger } from "./logger.js";
 import { dartRunConfigurationProvider } from "./run-configuration-dart-provider.js";
 import { flutterRunConfigurationProvider } from "./run-configuration-flutter-provider.js";
+import { rustRunConfigurationProvider } from "./run-configuration-rust-provider.js";
 import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.js";
 import { javaRunConfigurationProvider } from "./run-configuration-java-provider.js";
 import {
@@ -732,10 +733,15 @@ export class RunConfigurationRuntimeSupervisor {
                     document,
                     providerContext,
                   )
-                : await flutterRunConfigurationProvider.materialize(
-                    document,
-                    providerContext,
-                  );
+                : document.provider === "flutter"
+                  ? await flutterRunConfigurationProvider.materialize(
+                      document,
+                      providerContext,
+                    )
+                  : await rustRunConfigurationProvider.materialize(
+                      document,
+                      providerContext,
+                    );
       if (!generationLaunchIsCurrent(session, command.identity)) return;
       session.stopGracePeriodMs = document.stop.gracePeriodMs;
 

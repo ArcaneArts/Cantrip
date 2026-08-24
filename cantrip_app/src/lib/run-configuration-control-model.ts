@@ -89,6 +89,17 @@ export function runConfigurationTargetLabel(
       : "";
     return `${executable} run --${document.options.mode} --target=${document.target.path}${device}`;
   }
+  if (document.provider === "rust") {
+    const toolchain =
+      document.options.toolchain === "default"
+        ? ""
+        : ` +${document.options.toolchain}`;
+    const target =
+      document.target.kind === "binary"
+        ? `--bin=${document.target.name}`
+        : `--example=${document.target.name}`;
+    return `cargo${toolchain} run --package=${document.target.package} ${target}`;
+  }
   return document.target.kind === "command"
     ? document.target.command
     : `${document.target.interpreter ? `${document.target.interpreter} ` : ""}${document.target.path}`;
