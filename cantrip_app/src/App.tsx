@@ -446,6 +446,7 @@ import {
   listRunConfigurations,
   operateRunConfigurationRuntime,
 } from "@/lib/run-configuration-api";
+import { installRunConfigurationFocusRecovery } from "@/lib/run-configuration-focus-recovery";
 import {
   createProjectWorkspace,
   getProjectWorkspaces,
@@ -4548,6 +4549,14 @@ export function App() {
           : 10_000,
     retry: false,
   });
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    return installRunConfigurationFocusRecovery(
+      queryClient,
+      selectedProjectId,
+      { document, window },
+    );
+  }, [queryClient, selectedProjectId]);
   const explorers = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getExplorers(selectedProjectId!),
