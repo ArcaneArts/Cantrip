@@ -5462,6 +5462,11 @@ export async function createProtectedCodeSettingsAttachment(
   workerId: string,
   appearance: CodeAppearance,
 ) {
+  // A fresh worker can register its encryption principal before it has any
+  // account component grants. Settings is a global surface, so authorize the
+  // customization payload domain on demand just like the other settings
+  // customization flows do instead of leaving the user at a dead end.
+  await ensureCustomizationWorker(workerId);
   const tunnelId = crypto.randomUUID();
   const sessionId = crypto.randomUUID();
   const input = await protectedCodeAttachmentInput({

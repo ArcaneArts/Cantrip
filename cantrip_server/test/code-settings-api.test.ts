@@ -169,6 +169,24 @@ const internalUrl = `/api/internal/workers/${workerId}/code-settings/profiles/de
 const authorization = { authorization: `Bearer ${config.workerToken}` };
 
 describe.sequential("global Code settings API", () => {
+  it("serves encryption initialization preflights before principal hooks", async () => {
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/api/encryption/profile/initialize",
+      headers: {
+        origin: config.appOrigins[0]!,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,x-cantrip-csrf",
+      },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["access-control-allow-origin"]).toBe(
+      config.appOrigins[0],
+    );
+    expect(response.headers["access-control-allow-methods"]).toContain("POST");
+  });
+
   it("dispatches metadata-only worker status, synchronization, and resolution commands", async () => {
     workerCommands.length = 0;
 

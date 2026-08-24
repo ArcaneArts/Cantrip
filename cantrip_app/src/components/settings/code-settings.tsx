@@ -56,10 +56,8 @@ function workerCanHostCodeSettings(worker: WorkerSummary): boolean {
   return (
     worker.online &&
     worker.code.available &&
-    worker.encryption.state === "ready" &&
-    worker.encryption.grants.some(
-      ({ component }) => component === "customization-content",
-    )
+    worker.encryption.supported &&
+    ["pending-approval", "ready"].includes(worker.encryption.state)
   );
 }
 
@@ -418,7 +416,7 @@ export function CodeSettings({
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {noWorker
-                    ? "Connect an encryption-authorized worker with Cantrip Code installed."
+                    ? "Connect an encryption-capable worker with Cantrip Code installed."
                     : conflict
                       ? statusMessage(synchronization)
                       : (connectionError ??

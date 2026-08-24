@@ -1,10 +1,13 @@
 # Cantrip Code Integration Plan
 
-- Status: implementation complete; multi-platform and manual QA remain
+- Status: implementation complete; multi-platform QA remains
 - Scope: browser-native Code OSS workbench hosted by `cantrip_worker`
 - Source location: `cantrip_code/` in the Cantrip monorepo
 - Immediate upstream: OpenVSCode Server
 - Upstream editor: Code OSS
+
+Global, end-to-end encrypted user settings and the folderless graphical
+Settings workbench are documented in [CODE_SETTINGS.md](CODE_SETTINGS.md).
 
 ## 1. Decision
 

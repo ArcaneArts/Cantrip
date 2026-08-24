@@ -14,6 +14,8 @@ function worker(
   options: {
     code?: boolean;
     encryption?: boolean;
+    encryptionState?: "pending-approval" | "ready";
+    grants?: boolean;
     online?: boolean;
   } = {},
 ): WorkerSummary {
@@ -41,9 +43,17 @@ function worker(
         ? undefined
         : {
             supported: true,
-            state: "ready",
+            state: options.encryptionState ?? "ready",
             principalId: "11111111-1111-4111-8111-111111111111",
-            grants: [{ component: "customization-content", keyRevision: 1 }],
+            grants:
+              options.grants === false
+                ? []
+                : [
+                    {
+                      component: "customization-content",
+                      keyRevision: 1,
+                    },
+                  ],
             lastSyncedAt: now,
             error: null,
           },
@@ -72,7 +82,21 @@ describe("Code settings worker selection", () => {
     ).toBe("worker-a");
   });
 
-  it("requires Code plus the customization encryption grant", () => {
+  it("can select a fresh worker for on-demand encryption authorization", () => {
+    expect(
+      selectCodeSettingsWorker(
+        [
+          worker("pending", {
+            encryptionState: "pending-approval",
+            grants: false,
+          }),
+        ],
+        null,
+      )?.workerId,
+    ).toBe("pending");
+  });
+
+  it("requires Code plus encryption capability", () => {
     expect(
       selectCodeSettingsWorker(
         [

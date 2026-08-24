@@ -3647,6 +3647,7 @@ export async function buildApp({
 
   app.addHook("preParsing", async (request, _reply, payload) => {
     if (
+      request.method === "OPTIONS" ||
       request.principal.state !== "authenticated" ||
       request.headers.upgrade?.toLowerCase() === "websocket"
     ) {
@@ -3665,6 +3666,7 @@ export async function buildApp({
 
   app.addHook("onSend", async (request, reply, payload) => {
     if (
+      request.method === "OPTIONS" ||
       request.principal.state !== "authenticated" ||
       request.method === "HEAD" ||
       request.headers.upgrade?.toLowerCase() === "websocket" ||
@@ -3701,7 +3703,10 @@ export async function buildApp({
   });
 
   app.addHook("onRequest", (request, _reply, done) => {
-    if (request.principal.state !== "authenticated") {
+    if (
+      request.method === "OPTIONS" ||
+      request.principal.state !== "authenticated"
+    ) {
       done();
       return;
     }
@@ -3762,7 +3767,12 @@ export async function buildApp({
   };
 
   app.addHook("onResponse", async (request, reply) => {
-    if (request.principal.state !== "authenticated") return;
+    if (
+      request.method === "OPTIONS" ||
+      request.principal.state !== "authenticated"
+    ) {
+      return;
+    }
     const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
     const descriptor = mutationAuditDescriptor(request.method, route);
     if (!descriptor) return;
