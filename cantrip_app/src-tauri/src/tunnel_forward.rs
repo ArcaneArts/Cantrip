@@ -2366,6 +2366,16 @@ mod desktop {
                 self.read("CANTRIP_CODE_E2E_SNAPSHOT ")
             }
 
+            fn revoke_direct(&mut self, capability_id: &str) {
+                self.send(&json!({
+                    "type": "revoke-direct",
+                    "capabilityId": capability_id,
+                }));
+                let response: Value = self.read("CANTRIP_CODE_E2E_DIRECT_REVOKED ");
+                assert_eq!(response["capabilityId"], capability_id);
+                assert_eq!(response["revoked"], true);
+            }
+
             fn shutdown(mut self) -> CodeTransportHarnessSnapshot {
                 self.send(&json!({ "type": "shutdown" }));
                 let snapshot = self.read("CANTRIP_CODE_E2E_DONE ");
@@ -2801,7 +2811,7 @@ mod desktop {
             let data_key = URL_SAFE_NO_PAD.encode([24_u8; 32]);
             let expires_at = (chrono::Utc::now() + chrono::Duration::seconds(30))
                 .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-            let lease_expires_at = (chrono::Utc::now() + chrono::Duration::seconds(8))
+            let lease_expires_at = (chrono::Utc::now() + chrono::Duration::seconds(30))
                 .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
             let configuration = json!({
                 "attachmentId": attachment_id,
@@ -2827,7 +2837,7 @@ mod desktop {
                 "tunnelId": tunnel_id,
                 "workerId": worker_id,
             });
-            let (harness, ready) = CodeTransportHarness::start(&configuration);
+            let (mut harness, ready) = CodeTransportHarness::start(&configuration);
             let listener = bind_listener(None).await.unwrap();
             let local_port = listener.local_addr().unwrap().port();
             let counters = Arc::new(ForwardCounters::default());
@@ -2889,6 +2899,7 @@ mod desktop {
             assert!(String::from_utf8(direct_response)
                 .unwrap()
                 .contains("openvscode-compatible-workbench"));
+            harness.revoke_direct(&good_capability_id);
 
             timeout(Duration::from_secs(12), async {
                 while counters.route_state.load(Ordering::Acquire) != 3 {
