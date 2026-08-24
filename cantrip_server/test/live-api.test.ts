@@ -496,6 +496,30 @@ describe.sequential("application live WebSocket", () => {
       worktreeId,
     );
     if (!gitContext) throw new Error("Could not resolve the Git worktree.");
+    const explorerFilesystemEventStart = messages.length;
+    await notificationListener({
+      type: "worktree.filesystem.changed",
+      sourcePath: gitContext.sourcePath,
+      worktreePath: gitContext.worktree.path,
+    });
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(explorerFilesystemEventStart)
+          .find(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "explorer-filesystem" &&
+              message.entityId === worktreeId,
+          ),
+      ).toMatchObject({
+        type: "event",
+        action: "invalidated",
+        scope: { kind: "project", projectId },
+        payload: null,
+        revision: null,
+      }),
+    );
     const gitHead = "a".repeat(40);
     const gitOperationContext = {
       type: "rebase" as const,

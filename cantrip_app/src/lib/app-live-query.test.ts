@@ -255,6 +255,24 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          entityId: "worktree-one",
+          resource: "explorer-filesystem",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([
+      ["explorer-directory", "project-one", "worktree-one"],
+      ["explorer-directory-commits", "project-one", "worktree-one"],
+    ]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["explorer-directory", "project-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["explorer-directory-commits", "project-one"]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           resource: "project",
           scope: { kind: "project", projectId: "project-one" },
         }),

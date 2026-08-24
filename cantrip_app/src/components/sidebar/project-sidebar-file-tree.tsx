@@ -268,11 +268,13 @@ function SidebarDirectoryNode({
   onRenameSubmit,
   onRenameValueChange,
   onToggle,
+  projectId,
   queryScope,
   editingPath,
   renamePending,
   renameValue,
   revealLabel,
+  worktreeId,
 }: {
   activePath: string | null;
   depth: number;
@@ -290,11 +292,13 @@ function SidebarDirectoryNode({
   onRenameSubmit(): void;
   onRenameValueChange(value: string): void;
   onToggle(path: string): void;
+  projectId: string;
   queryScope: string;
   editingPath: string | null;
   renamePending: boolean;
   renameValue: string;
   revealLabel?: string;
+  worktreeId: string;
 }) {
   const expanded = expandedPaths.has(entry.path);
   const { directory, entries } = useExplorerDirectory({
@@ -302,7 +306,9 @@ function SidebarDirectoryNode({
     explorerId,
     gitStatus: undefined,
     path: entry.path,
+    projectId,
     queryScope,
+    worktreeId,
   });
   return (
     <>
@@ -376,10 +382,12 @@ function SidebarDirectoryNode({
                   onRenameSubmit={onRenameSubmit}
                   onRenameValueChange={onRenameValueChange}
                   onToggle={onToggle}
+                  projectId={projectId}
                   queryScope={queryScope}
                   renamePending={renamePending}
                   renameValue={renameValue}
                   revealLabel={revealLabel}
+                  worktreeId={worktreeId}
                 />
               ) : (
                 <SidebarFileRow
@@ -482,7 +490,9 @@ export function ProjectSidebarFileTree({
     explorerId: explorer?.id ?? "unavailable",
     gitStatus: undefined,
     path: "",
+    projectId: explorer?.projectId ?? "unavailable",
     queryScope: streamEncryption.bindingKey ?? "unavailable",
+    worktreeId: explorer?.worktreeId ?? "unavailable",
   });
 
   useEffect(() => {
@@ -674,10 +684,12 @@ export function ProjectSidebarFileTree({
                   onRenameSubmit={submitRename}
                   onRenameValueChange={setRenameValue}
                   onToggle={toggle}
+                  projectId={explorer.projectId}
                   queryScope={streamEncryption.bindingKey!}
                   renamePending={renamePending}
                   renameValue={renameValue}
                   revealLabel={revealLabel}
+                  worktreeId={explorer.worktreeId}
                 />
               ) : (
                 <SidebarFileRow

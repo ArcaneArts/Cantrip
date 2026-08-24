@@ -5197,7 +5197,12 @@ export function App() {
         );
         void Promise.all([
           queryClient.invalidateQueries({
-            queryKey: ["explorer-directory", value.id],
+            queryKey: [
+              "explorer-directory",
+              value.projectId,
+              value.worktreeId,
+              value.id,
+            ],
           }),
           queryClient.invalidateQueries({
             queryKey: ["explorer-file", value.id],
@@ -7270,17 +7275,25 @@ export function App() {
       .filter((candidate) => candidate.worktreeId === explorer.worktreeId)
       .map((candidate) => candidate.id);
     await Promise.all([
-      ...relatedExplorerIds.flatMap((explorerId) => [
-        queryClient.invalidateQueries({
-          queryKey: ["explorer-directory", explorerId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["explorer-directory-commits", explorerId],
-        }),
+      queryClient.invalidateQueries({
+        queryKey: [
+          "explorer-directory",
+          explorer.projectId,
+          explorer.worktreeId,
+        ],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [
+          "explorer-directory-commits",
+          explorer.projectId,
+          explorer.worktreeId,
+        ],
+      }),
+      ...relatedExplorerIds.map((explorerId) =>
         queryClient.invalidateQueries({
           queryKey: ["explorer-file", explorerId],
         }),
-      ]),
+      ),
       queryClient.invalidateQueries({
         exact: true,
         queryKey: ["worktree-status", explorer.projectId, explorer.worktreeId],

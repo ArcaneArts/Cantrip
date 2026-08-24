@@ -374,7 +374,12 @@ export function ExplorerView({
   const worktreeIdRef = useRef(explorer.worktreeId);
   const viewStateQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const directoryFetches = useIsFetching({
-    queryKey: ["explorer-directory", explorer.id],
+    queryKey: [
+      "explorer-directory",
+      explorer.projectId,
+      explorer.worktreeId,
+      explorer.id,
+    ],
   });
 
   useEffect(() => {
@@ -384,7 +389,12 @@ export function ExplorerView({
     setGraphRootPath(graphRequest.rootPath);
   }, [explorer.id, graphRequest]);
   const commitFetches = useIsFetching({
-    queryKey: ["explorer-directory-commits", explorer.id],
+    queryKey: [
+      "explorer-directory-commits",
+      explorer.projectId,
+      explorer.worktreeId,
+      explorer.id,
+    ],
   });
   const file = useQuery({
     enabled: Boolean(
@@ -632,10 +642,20 @@ export function ExplorerView({
       }
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ["explorer-directory", explorer.id],
+          queryKey: [
+            "explorer-directory",
+            explorer.projectId,
+            explorer.worktreeId,
+            explorer.id,
+          ],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["explorer-directory-commits", explorer.id],
+          queryKey: [
+            "explorer-directory-commits",
+            explorer.projectId,
+            explorer.worktreeId,
+            explorer.id,
+          ],
         }),
         queryClient.invalidateQueries({
           exact: true,
@@ -747,10 +767,20 @@ export function ExplorerView({
     }
     await Promise.all([
       queryClient.invalidateQueries({
-        queryKey: ["explorer-directory", explorer.id],
+        queryKey: [
+          "explorer-directory",
+          explorer.projectId,
+          explorer.worktreeId,
+          explorer.id,
+        ],
       }),
       queryClient.invalidateQueries({
-        queryKey: ["explorer-directory-commits", explorer.id],
+        queryKey: [
+          "explorer-directory-commits",
+          explorer.projectId,
+          explorer.worktreeId,
+          explorer.id,
+        ],
       }),
       queryClient.invalidateQueries({
         exact: true,
