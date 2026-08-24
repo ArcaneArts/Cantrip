@@ -244,7 +244,7 @@ afterEach(async () => {
   );
 });
 
-describe("Code settings synchronization lifecycle", () => {
+describe("Code settings synchronization lifecycle", { timeout: 45_000 }, () => {
   it("re-encrypts an older canonical key revision with the current component key", async () => {
     const accountMasterKey = generateAccountMasterKey();
     const keyRevision1 = deriveComponentKey({

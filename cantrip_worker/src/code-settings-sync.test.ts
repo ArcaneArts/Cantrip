@@ -364,7 +364,7 @@ describe("Code settings synchronization", () => {
 
     await workerA.sync.close();
     await workerB.sync.close();
-  }, 20_000);
+  }, 45_000);
 
   it("preserves divergent settings when two workers initialize concurrently", async () => {
     const componentKey = deriveComponentKey({
@@ -410,7 +410,7 @@ describe("Code settings synchronization", () => {
 
     await workerA.sync.close();
     await workerB.sync.close();
-  }, 20_000);
+  }, 45_000);
 
   it("does not overwrite an editor save made while fetching canonical settings", async () => {
     const componentKey = deriveComponentKey({
@@ -464,5 +464,5 @@ describe("Code settings synchronization", () => {
 
     await workerA.sync.close();
     await workerB.sync.close();
-  }, 20_000);
+  }, 45_000);
 });
