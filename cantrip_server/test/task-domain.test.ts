@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   taskWorkerCreateSchema,
+  projectTaskWorkloadOpaqueSchema,
   taskWireCreateResultSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
@@ -410,6 +411,21 @@ describe.sequential("opaque encrypted Task persistence", () => {
     expect(
       stored.messages.every((message) => "protectedContent" in message),
     ).toBe(true);
+
+    const workloadResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/tasks/workload`,
+    });
+    expect(workloadResponse.statusCode).toBe(200);
+    const workload = projectTaskWorkloadOpaqueSchema.parse(
+      workloadResponse.json(),
+    );
+    const workloadItem = workload.items.find(
+      (item) => item.task.chatId === chatId,
+    );
+    expect(workloadItem?.messages).toHaveLength(2);
+    expect(workloadItem?.plan.chatId).toBe(chatId);
+    expect(JSON.stringify(workload)).not.toContain(sentinel);
   });
 
   it("defaults new Tasks to one direct non-Goal turn", async () => {

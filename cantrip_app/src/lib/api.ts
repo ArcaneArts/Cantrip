@@ -58,6 +58,7 @@ import {
   chatPlanAcceptedSchema,
   chatPlanAnswerSchema,
   encryptedChatPlanWireStateSchema,
+  projectTaskWorkloadOpaqueSchema,
   chatPlanUpdateSchema,
   chatRelocationCreateSchema,
   chatRelocationJobCancelSchema,
@@ -1258,6 +1259,26 @@ export async function getProjectTaskPauseState(projectId: string) {
   return projectTaskPauseStateSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/tasks/pause`),
   );
+}
+
+export async function getProjectTaskWorkload(projectId: string) {
+  const opaque = projectTaskWorkloadOpaqueSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/tasks/workload`,
+    ),
+  );
+  const items = await mapWithConcurrency(opaque.items, 6, async (item) => ({
+    task: await openTaskOpaqueSummary(item.task),
+    plan: await openEncryptedChatPlanWireState(item.task.chatId, item.plan),
+    messages: chatMessageListSchema.parse(
+      await mapWithConcurrency(
+        item.messages,
+        CHAT_MESSAGE_DECRYPT_CONCURRENCY,
+        (message) => openTaskMessageOpaqueSummary(message),
+      ),
+    ),
+  }));
+  return { projectId: opaque.projectId, items };
 }
 
 export async function setProjectTaskPauseState(

@@ -284,6 +284,7 @@ import {
   taskDispatchWorkerLeaseSchema,
   projectTaskPauseStateSchema,
   projectTaskPauseUpdateSchema,
+  projectTaskWorkloadOpaqueSchema,
   type TaskDispatchCycleSummary,
   type TaskDispatchWorkerLease,
   encryptedModelProviderAccountCreateSchema,
@@ -2611,9 +2612,10 @@ export async function buildApp({
     entityId: string | null = null,
   ): void => {
     if (!livePublishingEnabled) return;
+    const ownerId = applicationOwnerId();
     try {
       liveHub.publish({
-        ownerId: applicationOwnerId(),
+        ownerId,
         scope: { kind: "chat", chatId },
         resource,
         action: "invalidated",
@@ -2626,6 +2628,31 @@ export async function buildApp({
         { chatId, err: error, resource },
         "Could not publish chat live invalidation",
       );
+    }
+    if (
+      resource === "task" ||
+      resource === "chat-message" ||
+      resource === "chat-plan" ||
+      resource === "chat-goal" ||
+      resource === "agent-interaction"
+    ) {
+      void repository
+        .getChatExecutionContext(ownerId, chatId)
+        .then((context) => {
+          if (context?.experience !== "task") return;
+          runAsOwner(ownerId, () =>
+            publishLiveInvalidation(resource, {
+              entityId: entityId ?? chatId,
+              projectId: context.projectId,
+            }),
+          );
+        })
+        .catch((error) => {
+          app.log.warn(
+            { chatId, err: error, resource },
+            "Could not publish Task workload invalidation",
+          );
+        });
     }
   };
   const publishChatMessage = (message: ChatMessage): void => {
@@ -2669,6 +2696,7 @@ export async function buildApp({
         "Could not publish encrypted Task message",
       );
     }
+    publishChatInvalidation(message.chatId, "task", message.id);
   };
   const publishEncryptedChatMessage = (
     message: ChatMessageOpaqueSummary,
@@ -24242,6 +24270,44 @@ export async function buildApp({
   };
 
   app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/tasks/workload",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      const tasks = await repository.tasks.list(
+        ownerId,
+        request.params.projectId,
+      );
+      const project = await repository.getProject(
+        ownerId,
+        request.params.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      const items = await Promise.all(
+        tasks.map(async (task) => {
+          const [plan, messagePage] = await Promise.all([
+            repository.getChatPlanWireState(ownerId, task.chatId),
+            repository.listTaskMessagePage(ownerId, task.chatId, {
+              limit: 100,
+            }),
+          ]);
+          if (!plan) {
+            throw new Error("Task Chat plan state was not found.");
+          }
+          return { task, plan, messages: messagePage.messages };
+        }),
+      );
+      return reply.send(
+        projectTaskWorkloadOpaqueSchema.parse({
+          projectId: request.params.projectId,
+          items,
+        }),
+      );
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/tasks/pause",
     async (request, reply) => {
       const state = await repository.taskScheduling.getProjectTaskPauseState(
@@ -24285,6 +24351,9 @@ export async function buildApp({
         } else {
           queueTaskScheduleTick();
         }
+        publishLiveInvalidation("task", {
+          projectId: request.params.projectId,
+        });
         return reply
           .code(state.paused ? 200 : 202)
           .send(projectTaskPauseStateSchema.parse(state));

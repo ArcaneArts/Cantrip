@@ -151,6 +151,7 @@ describe("application live query bridge", () => {
     ).toEqual([
       ["messages", "chat-one"],
       ["message-history", "chat-one"],
+      ["project-task-workload"],
     ]);
     expect(
       appLiveEventQueryKeys(
@@ -193,6 +194,7 @@ describe("application live query bridge", () => {
     ).toEqual([
       ["task", "chat-one"],
       ["task-dashboard", "chat-one"],
+      ["project-task-workload"],
     ]);
     expect(
       appLiveEventQueryKeys(
@@ -204,6 +206,18 @@ describe("application live query bridge", () => {
     ).toEqual([
       ["goal", "chat-one"],
       ["task-dashboard", "chat-one"],
+      ["project-task-workload"],
+    ]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          resource: "task",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([
+      ["project-task-workload", "project-one"],
+      ["project-task-pause", "project-one"],
     ]);
     expect(
       appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
