@@ -57,8 +57,13 @@ describe("account settings", () => {
   });
 
   it("mounts the retained Code settings workbench only after Code is activated", () => {
-    expect(renderSettings("general")).not.toContain("VS Code settings");
-    expect(renderSettings("code")).toContain("VS Code settings");
+    expect(renderSettings("general")).not.toContain(
+      'data-slot="code-settings-surface"',
+    );
+    const code = renderSettings("code");
+    expect(code).toContain('data-slot="code-settings-surface"');
+    expect(code).toContain("Starting the Code settings workbench…");
+    expect(code).not.toContain("VS Code settings</p>");
   });
 
   it("keeps the Elite configuration entry in Appearance without Pro Mode", () => {

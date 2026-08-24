@@ -7,7 +7,7 @@ import type {
   WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Code2, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -18,7 +18,6 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
-import { NativeSelect } from "@/components/ui/native-select";
 import {
   createProtectedCodeSettingsAttachment,
   getCodeSettingsWorkerStatus,
@@ -334,39 +333,12 @@ export function CodeSettings({
   return (
     <section
       aria-hidden={!active}
+      data-slot="code-settings-surface"
       className={cn(
-        "h-full min-h-0 min-w-0 overflow-hidden rounded-lg border bg-background",
+        "h-full min-h-0 min-w-0 overflow-hidden bg-background",
         active ? "flex flex-col" : "hidden",
       )}
     >
-      <div className="flex min-h-12 flex-wrap items-center gap-2 border-b px-3 py-2">
-        <Code2 className="size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">VS Code settings</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {statusMessage(synchronization)}
-          </p>
-        </div>
-        {eligibleWorkers.length > 1 ? (
-          <NativeSelect
-            aria-label="Code settings worker"
-            className="h-8 max-w-48"
-            value={selectedWorkerId ?? ""}
-            onChange={(event) => setSelectedWorkerId(event.target.value)}
-          >
-            {eligibleWorkers.map((worker) => (
-              <option key={worker.workerId} value={worker.workerId}>
-                {worker.name}
-              </option>
-            ))}
-          </NativeSelect>
-        ) : selectedWorker ? (
-          <span className="max-w-48 truncate text-xs text-muted-foreground">
-            {selectedWorker.name}
-          </span>
-        ) : null}
-      </div>
-
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         {attachment && frameMount ? (
           <iframe
