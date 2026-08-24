@@ -558,6 +558,13 @@ function cargoExecutable(platform: RunConfigurationPlatform): string {
   return platform === "win32" ? "cargo.exe" : "cargo";
 }
 
+function rustToolchainExecutable(
+  name: string,
+  platform: RunConfigurationPlatform,
+): string {
+  return platform === "win32" ? `${name}.exe` : name;
+}
+
 function launchEnvironmentValue(
   context: RunConfigurationProviderContext,
   name: string,
@@ -698,6 +705,45 @@ async function rustTargetDiagnostic(
     "rust-target-unavailable",
     `The selected Rust target ${JSON.stringify(targetTriple)} is not installed for the launch toolchain. Install it with rustup target add or choose an installed target.`,
     "options.targetTriple",
+  );
+}
+
+async function rustToolchainExecutablesDiagnostic(input: {
+  code: string;
+  component: string;
+  executables: string[];
+  field: string;
+  installCommand: string;
+  context: RunConfigurationProviderContext;
+  toolchainRoots: string[];
+}): Promise<RunConfigurationDiagnostic | null> {
+  for (const root of input.toolchainRoots) {
+    let complete = true;
+    for (const executable of input.executables) {
+      if (
+        !(await findRunConfigurationExecutable(
+          path.join(
+            root,
+            "bin",
+            rustToolchainExecutable(executable, input.context.platform),
+          ),
+          {
+            environment: input.context.environment,
+            platform: input.context.platform,
+            targetRoot: input.context.targetRoot,
+          },
+        ))
+      ) {
+        complete = false;
+        break;
+      }
+    }
+    if (complete) return null;
+  }
+  return runConfigurationProviderDiagnostic(
+    input.code,
+    `The selected Rust toolchain does not include the ${input.component} required by this Run configuration. Install it with ${input.installCommand} or select a toolchain that includes it.`,
+    input.field,
   );
 }
 
@@ -955,15 +1001,43 @@ export const rustRunConfigurationProvider: RunConfigurationProvider<RunConfigura
           );
           if (toolchain.diagnostic) {
             diagnostics.push(toolchain.diagnostic);
-          } else if (
-            resolved.options.targetTriple &&
-            toolchain.roots.length > 0
-          ) {
-            const targetDiagnostic = await rustTargetDiagnostic(
-              resolved.options.targetTriple,
-              toolchain.roots,
+          } else if (toolchain.roots.length > 0) {
+            const compilerDiagnostic = await rustToolchainExecutablesDiagnostic(
+              {
+                code: "rust-compiler-unavailable",
+                component: "Rust compiler",
+                executables: ["rustc"],
+                field: "options.toolchain",
+                installCommand: "rustup component add rustc",
+                context,
+                toolchainRoots: toolchain.roots,
+              },
             );
-            if (targetDiagnostic) diagnostics.push(targetDiagnostic);
+            if (compilerDiagnostic) diagnostics.push(compilerDiagnostic);
+            const clippyIndex = parsed.beforeLaunch.findIndex(
+              (step) => step.kind === "providerTask" && step.task === "clippy",
+            );
+            if (clippyIndex >= 0) {
+              const clippyDiagnostic = await rustToolchainExecutablesDiagnostic(
+                {
+                  code: "rust-clippy-unavailable",
+                  component: "Clippy component",
+                  executables: ["cargo-clippy", "clippy-driver"],
+                  field: `beforeLaunch[${clippyIndex}].task`,
+                  installCommand: "rustup component add clippy",
+                  context,
+                  toolchainRoots: toolchain.roots,
+                },
+              );
+              if (clippyDiagnostic) diagnostics.push(clippyDiagnostic);
+            }
+            if (resolved.options.targetTriple) {
+              const targetDiagnostic = await rustTargetDiagnostic(
+                resolved.options.targetTriple,
+                toolchain.roots,
+              );
+              if (targetDiagnostic) diagnostics.push(targetDiagnostic);
+            }
           }
         }
         const packages = await scanPackages({

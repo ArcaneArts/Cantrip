@@ -366,6 +366,7 @@ async function flutterFixture(): Promise<Fixture> {
 async function rustFixture(
   toolchain = "default",
   targetTriple: string | null = null,
+  beforeLaunchTask: "build" | "check" | "clippy" | null = null,
 ): Promise<Fixture & { executableDirectory: string }> {
   const root = await mkdtemp(
     path.join(os.tmpdir(), "cantrip-rust-run-configuration-runtime-"),
@@ -409,7 +410,9 @@ async function rustFixture(
         variables: [],
         secrets: [],
       },
-      beforeLaunch: [],
+      beforeLaunch: beforeLaunchTask
+        ? [{ kind: "providerTask", task: beforeLaunchTask }]
+        : [],
       platformOverrides: {},
       options: {
         toolchain,
@@ -1187,6 +1190,94 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
       await runs.closeAll();
     });
 
+    it("fails before spawn when a selected Rust toolchain lacks the compiler", async () => {
+      const input = await rustFixture("nightly-2026-08-01");
+      const rustupHome = path.join(
+        path.dirname(input.sourceRoot),
+        "rustup-without-compiler",
+      );
+      const toolchainBin = path.join(
+        rustupHome,
+        "toolchains",
+        "nightly-2026-08-01-x86_64-unknown-linux-gnu",
+        "bin",
+      );
+      await mkdir(toolchainBin, { recursive: true });
+      const toolchainCargo = path.join(toolchainBin, "cargo");
+      await writeFile(toolchainCargo, "#!/bin/sh\nexit 0\n");
+      await chmod(toolchainCargo, 0o755);
+      const runtimeIdentity = identity(input);
+      const runs = supervisor([], {
+        environment: {
+          PATH: input.executableDirectory,
+          RUSTUP_HOME: rustupHome,
+        },
+      });
+
+      await runs.start(startCommand(input, runtimeIdentity));
+      const failed = await waitForState(runs, runtimeIdentity, "failed");
+      expect(failed.failure).toMatchObject({
+        phase: "provider",
+        code: "rust-compiler-unavailable",
+        message: expect.stringContaining("Rust compiler"),
+      });
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).not.toContain("rust-provider");
+      await runs.closeAll();
+    });
+
+    it("fails before spawn when a selected Rust toolchain lacks Clippy", async () => {
+      const input = await rustFixture("nightly-2026-08-01", null, "clippy");
+      const rustupHome = path.join(
+        path.dirname(input.sourceRoot),
+        "rustup-without-clippy",
+      );
+      const toolchainBin = path.join(
+        rustupHome,
+        "toolchains",
+        "nightly-2026-08-01-x86_64-unknown-linux-gnu",
+        "bin",
+      );
+      await mkdir(toolchainBin, { recursive: true });
+      await Promise.all(
+        ["cargo", "rustc"].map(async (name) => {
+          const executable = path.join(toolchainBin, name);
+          await writeFile(executable, "#!/bin/sh\nexit 0\n");
+          await chmod(executable, 0o755);
+        }),
+      );
+      const runtimeIdentity = identity(input);
+      const runs = supervisor([], {
+        environment: {
+          PATH: input.executableDirectory,
+          RUSTUP_HOME: rustupHome,
+        },
+      });
+
+      await runs.start(startCommand(input, runtimeIdentity));
+      const failed = await waitForState(runs, runtimeIdentity, "failed");
+      expect(failed.failure).toMatchObject({
+        phase: "provider",
+        code: "rust-clippy-unavailable",
+        message: expect.stringContaining("Clippy"),
+      });
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).not.toContain("rust-provider");
+      await runs.closeAll();
+    });
+
     it("fails before spawn when an explicit Rust target is absent", async () => {
       const targetTriple = "wasm32-wasip1";
       const input = await rustFixture("nightly-2026-08-01", targetTriple);
@@ -1202,8 +1293,15 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
       );
       await mkdir(toolchainBin, { recursive: true });
       const toolchainCargo = path.join(toolchainBin, "cargo");
-      await writeFile(toolchainCargo, "#!/bin/sh\nexit 0\n");
-      await chmod(toolchainCargo, 0o755);
+      const toolchainRustc = path.join(toolchainBin, "rustc");
+      await Promise.all([
+        writeFile(toolchainCargo, "#!/bin/sh\nexit 0\n"),
+        writeFile(toolchainRustc, "#!/bin/sh\nexit 0\n"),
+      ]);
+      await Promise.all([
+        chmod(toolchainCargo, 0o755),
+        chmod(toolchainRustc, 0o755),
+      ]);
       const runtimeIdentity = identity(input);
       const runs = supervisor([], {
         environment: {
@@ -1264,8 +1362,15 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
         mkdir(targetLibrary, { recursive: true }),
       ]);
       const toolchainCargo = path.join(toolchainBin, "cargo");
-      await writeFile(toolchainCargo, "#!/bin/sh\nexit 0\n");
-      await chmod(toolchainCargo, 0o755);
+      const toolchainRustc = path.join(toolchainBin, "rustc");
+      await Promise.all([
+        writeFile(toolchainCargo, "#!/bin/sh\nexit 0\n"),
+        writeFile(toolchainRustc, "#!/bin/sh\nexit 0\n"),
+      ]);
+      await Promise.all([
+        chmod(toolchainCargo, 0o755),
+        chmod(toolchainRustc, 0o755),
+      ]);
       const runtimeIdentity = identity(input);
       const runs = supervisor([], {
         environment: { PATH: emptyPath, RUSTUP_HOME: emptyRustupHome },

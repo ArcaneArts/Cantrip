@@ -1938,7 +1938,7 @@ describe("rustRunConfigurationProvider", () => {
     ).toBe(false);
   });
 
-  it("validates explicit Rustup toolchains and targets without executing them", async () => {
+  it("validates explicit Rustup toolchain components and targets without executing them", async () => {
     const root = await createRoot();
     const cargoHome = path.join(root, "cargo-bin");
     const rustupHome = path.join(root, "rustup");
@@ -1974,11 +1974,17 @@ describe("rustRunConfigurationProvider", () => {
     const executableBody = `#!/bin/sh\nprintf executed > ${JSON.stringify(marker)}\n`;
     const cargo = path.join(cargoHome, "cargo");
     const toolchainCargo = path.join(toolchainBin, "cargo");
+    const toolchainRustc = path.join(toolchainBin, "rustc");
     await Promise.all([
       writeFile(cargo, executableBody),
       writeFile(toolchainCargo, executableBody),
+      writeFile(toolchainRustc, executableBody),
     ]);
-    await Promise.all([chmod(cargo, 0o755), chmod(toolchainCargo, 0o755)]);
+    await Promise.all([
+      chmod(cargo, 0o755),
+      chmod(toolchainCargo, 0o755),
+      chmod(toolchainRustc, 0o755),
+    ]);
     const definition = rustRunConfigurationProvider.createDefault({
       id: randomUUID(),
       name: "Run Rust API",
@@ -2050,6 +2056,80 @@ describe("rustRunConfigurationProvider", () => {
         severity: "error",
       }),
     ]);
+    const compilerlessToolchain = "nightly-2026-08-03-x86_64-unknown-linux-gnu";
+    const compilerlessBin = path.join(
+      rustupHome,
+      "toolchains",
+      compilerlessToolchain,
+      "bin",
+    );
+    await Promise.all([
+      mkdir(compilerlessBin, { recursive: true }),
+      mkdir(
+        path.join(
+          rustupHome,
+          "toolchains",
+          compilerlessToolchain,
+          "lib",
+          "rustlib",
+          installedTarget,
+          "lib",
+        ),
+        { recursive: true },
+      ),
+    ]);
+    const compilerlessCargo = path.join(compilerlessBin, "cargo");
+    await writeFile(compilerlessCargo, executableBody);
+    await chmod(compilerlessCargo, 0o755);
+    await expect(
+      rustRunConfigurationProvider.validate(
+        {
+          ...document,
+          options: {
+            ...document.options,
+            toolchain: "nightly-2026-08-03",
+          },
+        },
+        context,
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        code: "rust-compiler-unavailable",
+        field: "options.toolchain",
+        severity: "error",
+      }),
+    ]);
+    await expect(
+      rustRunConfigurationProvider.validate(
+        {
+          ...document,
+          beforeLaunch: [{ kind: "providerTask", task: "clippy" }],
+        },
+        context,
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        code: "rust-clippy-unavailable",
+        field: "beforeLaunch[0].task",
+        severity: "error",
+      }),
+    ]);
+    const cargoClippy = path.join(toolchainBin, "cargo-clippy");
+    const clippyDriver = path.join(toolchainBin, "clippy-driver");
+    await Promise.all([
+      writeFile(cargoClippy, executableBody),
+      writeFile(clippyDriver, executableBody),
+    ]);
+    await Promise.all([chmod(cargoClippy, 0o755), chmod(clippyDriver, 0o755)]);
+    await expect(
+      rustRunConfigurationProvider.validate(
+        {
+          ...document,
+          beforeLaunch: [{ kind: "providerTask", task: "clippy" }],
+        },
+        context,
+      ),
+    ).resolves.toEqual([]);
     await expect(access(marker)).rejects.toThrow();
   });
 
