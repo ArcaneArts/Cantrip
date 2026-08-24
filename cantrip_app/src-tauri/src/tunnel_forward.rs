@@ -176,10 +176,15 @@ pub async fn force_tunnel_forward_relay(
     app: AppHandle,
     state: State<'_, TunnelForwards>,
     tunnel_id: String,
-    direct_capability_id: String,
+    direct_capability_id: Option<String>,
 ) -> Result<Option<TunnelForwardSummary>, String> {
     #[cfg(desktop)]
-    return desktop::force_relay(&app, &state, &tunnel_id, &direct_capability_id).await;
+    {
+        let direct_capability_id = direct_capability_id.ok_or_else(|| {
+            "The desktop tunnel capability identity is required for relay fallback.".to_string()
+        })?;
+        return desktop::force_relay(&app, &state, &tunnel_id, &direct_capability_id).await;
+    }
     #[cfg(mobile)]
     {
         let _ = (app, state, tunnel_id, direct_capability_id);
