@@ -198,6 +198,7 @@ export async function openTaskOpaqueSummary(
       requestedTaskWorkerId: opaque.requestedTaskWorkerId,
       continuityFamily: opaque.continuityFamily,
       lastTaskWorkerId: opaque.lastTaskWorkerId,
+      dispatch: opaque.dispatch,
       state: opaque.state,
       stableStateBeforeFailure: opaque.stableStateBeforeFailure,
       activeOperationId: opaque.activeOperationId,
@@ -231,6 +232,8 @@ async function mutationForTask(
   options: TrustedOptions,
   draftAttachmentIds?: string[],
   planGoalEnabled?: boolean,
+  priority?: number,
+  requestedTaskWorkerId?: string | null,
 ): Promise<TaskOpaqueMutation> {
   return taskOpaqueMutationSchema.parse({
     rowVersion: task.rowVersion,
@@ -241,6 +244,8 @@ async function mutationForTask(
     ),
     ...(draftAttachmentIds ? { draftAttachmentIds } : {}),
     ...(planGoalEnabled !== undefined ? { planGoalEnabled } : {}),
+    ...(priority !== undefined ? { priority } : {}),
+    ...(requestedTaskWorkerId !== undefined ? { requestedTaskWorkerId } : {}),
   });
 }
 
@@ -266,6 +271,10 @@ export async function prepareTaskDraftPersistence(
     ...(input.draftAttachmentIds !== undefined
       ? { draftAttachmentIds: input.draftAttachmentIds }
       : {}),
+    ...(input.priority !== undefined ? { priority: input.priority } : {}),
+    ...(input.requestedTaskWorkerId !== undefined
+      ? { requestedTaskWorkerId: input.requestedTaskWorkerId }
+      : {}),
   });
   return mutationForTask(
     task,
@@ -273,6 +282,8 @@ export async function prepareTaskDraftPersistence(
     options,
     input.draftAttachmentIds ?? task.draftAttachmentIds,
     input.planGoalEnabled,
+    input.priority,
+    input.requestedTaskWorkerId,
   );
 }
 

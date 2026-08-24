@@ -4,6 +4,7 @@ import {
   decryptTaskGoalObjective,
   encryptTaskMessageProtectedContent,
   encryptTaskProtectedContent,
+  openTaskOperationRelayRequest,
   openTaskOperationRelayResult,
   randomBytes,
   taskOperationRunningClassification,
@@ -20,6 +21,7 @@ import {
   executeEncryptedTaskOperation,
   openTaskRelocationPayload,
   openEncryptedTaskGoalObjective,
+  prepareEncryptedTaskOperation,
   protectTaskGoalResult,
 } from "./task-operation.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
@@ -117,6 +119,92 @@ function taskContent(
 }
 
 describe("worker encrypted Task operations", () => {
+  it("prepares a claimed direct operation from the latest encrypted Task snapshot", async () => {
+    const componentKey = randomBytes(32);
+    const classification = {
+      state: "draft" as const,
+      stableStateBeforeFailure: null,
+      activeOperationKind: null,
+      planAuthorship: "agent" as const,
+      planningRound: 0,
+      hasPlan: false,
+      hasQuestions: false,
+      hasFinalPlan: false,
+      hasGoalPrompt: false,
+      lastError: null,
+    };
+    const prepared = await prepareEncryptedTaskOperation({
+      getComponentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      }),
+      ownerId,
+      request: {
+        operationId,
+        operationKind: "direct",
+        task: {
+          chatId,
+          planGoalEnabled: false,
+          priority: 12,
+          requestedTaskWorkerId: null,
+          continuityFamily: null,
+          lastTaskWorkerId: null,
+          dispatch: null,
+          ...classification,
+          activeOperationId: null,
+          draftAttachmentIds: [],
+          protectedContent: await encryptTaskProtectedContent({
+            ownerId,
+            chatId,
+            keyRevision,
+            componentKey,
+            content: {
+              version: 1,
+              classification,
+              briefMarkdown: "SENTINEL latest queued prompt",
+              planMarkdown: null,
+              currentQuestions: [],
+              currentAnswers: [],
+              additionalDirection: "",
+              finalPlanMarkdown: null,
+              goalPrompt: null,
+              lastError: null,
+            },
+          }),
+          implementationStartedAt: null,
+          completedAt: null,
+          schedulerRevision: 3,
+          rowVersion: 4,
+          createdAt: "2026-08-24T10:00:00.000Z",
+          updatedAt: "2026-08-24T10:02:00.000Z",
+        },
+      },
+    });
+
+    expect(prepared.rowVersion).toBe(4);
+    await expect(
+      openTaskOperationRelayRequest({
+        ownerId,
+        keyRevision,
+        componentKey,
+        request: prepared.operation,
+      }),
+    ).resolves.toMatchObject({
+      round: {
+        inputBriefMarkdown: "SENTINEL latest queued prompt",
+        classification: { kind: "direct", ordinal: 1 },
+      },
+      task: {
+        briefMarkdown: "SENTINEL latest queued prompt",
+        classification: { state: "implementing" },
+      },
+      userMessage: {
+        classification: { mode: "default", role: "user" },
+        content: [{ type: "text", text: "SENTINEL latest queued prompt" }],
+      },
+    });
+  });
+
   it("seals raw trajectory activity inside Task message content", async () => {
     const componentKey = randomBytes(32);
     const service = {

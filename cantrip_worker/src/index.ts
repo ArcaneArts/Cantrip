@@ -219,6 +219,7 @@ import {
   EncryptedTaskEventSealer,
   encryptTaskTurnResult,
   executeEncryptedTaskOperation,
+  prepareEncryptedTaskOperation,
   openTaskRelocationPayload,
   openEncryptedTaskGoalObjective,
   protectTaskGoalResult,
@@ -3741,6 +3742,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       case "chat.turn.protect":
         return protectChatTurn({ ...command, service: workerEncryption });
+      case "task.operation.prepare":
+        return prepareEncryptedTaskOperation({
+          getComponentKey: () => workerEncryption.componentKey("task-content"),
+          ownerId: workerEncryption.ownerId(),
+          request: {
+            operationId: command.operationId,
+            operationKind: command.operationKind,
+            task: command.task,
+          },
+        });
       case "chat.turn": {
         if (command.automationPaused) pausedChats.add(command.chatId);
         const subagentDefaults = command.subagentDefaults

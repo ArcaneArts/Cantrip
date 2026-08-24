@@ -280,6 +280,7 @@ import {
   taskWorkerOrderUpdateSchema,
   taskWorkerSummarySchema,
   taskWorkerUpdateSchema,
+  type TaskDispatchWorkerLease,
   encryptedModelProviderAccountCreateSchema,
   encryptedModelProviderAccountUpdateSchema,
   modelProviderAccountWireListSchema,
@@ -643,6 +644,7 @@ import {
   taskGoalWorkerResultSchema,
   taskMessageOpaqueSummarySchema,
   taskMessageRelayResultSchema,
+  taskOperationStartSchema,
   taskOpaqueMutationSchema,
   taskOpaqueSummarySchema,
   type TaskAssociatedPullRequest,
@@ -653,6 +655,7 @@ import {
   type TaskMessageOpaqueContent,
   type TaskMessageOpaqueSummary,
   type TaskOpaqueSummary,
+  type TaskOperationStart,
 } from "@cantrip/protocol/tasks";
 import { cantripVersion } from "@cantrip/version";
 
@@ -738,6 +741,12 @@ import { terminalRelayOutputMessage } from "./terminals/relay.js";
 import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
 import type { DatabaseConnection } from "./db/index.js";
 import { TaskConflictError } from "./db/tasks.js";
+import {
+  TASK_DISPATCH_LEASE_MS,
+  TaskDispatchConflictError,
+  type ClaimedTaskDispatch,
+  type TaskDispatchEligibilityResolver,
+} from "./db/task-dispatch.js";
 import { TaskSchedulingConflictError } from "./db/task-scheduling.js";
 import { TaskStateTransitionError } from "./tasks/state.js";
 import {
@@ -1000,6 +1009,7 @@ const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
 const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
+const TASK_SCHEDULE_POLL_MS = 1_000;
 const PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS = 10_000;
 const PROJECT_TOKEN_USAGE_LIVE_TIMER_LIMIT = 4_096;
 const ACCOUNT_RESOURCE_USAGE_LIVE_COALESCE_MS = 5_000;
@@ -9483,6 +9493,39 @@ export async function buildApp({
         userMessageId: notification.clientMessageId,
       },
     );
+    const taskDispatchFence = notification.taskDispatchFence;
+    if (taskDispatchFence) {
+      if (
+        !taskOperation ||
+        taskOperation.round.id !== taskDispatchFence.operationId
+      ) {
+        app.log.warn(
+          {
+            chatId: notification.chatId,
+            cycleId: taskDispatchFence.cycleId,
+            operationId: taskDispatchFence.operationId,
+          },
+          "Ignored a Task outcome without its claimed operation",
+        );
+        return;
+      }
+      try {
+        await repository.taskDispatch.heartbeat(taskDispatchFence);
+      } catch (error) {
+        if (error instanceof TaskDispatchConflictError) {
+          app.log.warn(
+            {
+              chatId: notification.chatId,
+              cycleId: taskDispatchFence.cycleId,
+              operationId: taskDispatchFence.operationId,
+            },
+            "Ignored a stale fenced Task outcome",
+          );
+          return;
+        }
+        throw error;
+      }
+    }
     let recoveredOutcomeOk = notification.outcome.ok;
     let recoveredFinalizationOperationId: string | null = null;
     if (taskOperation) {
@@ -9536,6 +9579,17 @@ export async function buildApp({
         );
         publishChatInvalidation(notification.chatId, "task");
       }
+    }
+    if (taskDispatchFence) {
+      try {
+        await repository.taskDispatch.settle(
+          taskDispatchFence,
+          recoveredOutcomeOk ? "succeeded" : "failed",
+        );
+      } catch (error) {
+        if (!(error instanceof TaskDispatchConflictError)) throw error;
+      }
+      queueTaskScheduleTick();
     }
     const assistantKey = `assistant:${notification.clientMessageId}`;
     const errorKey = `error:${notification.clientMessageId}`;
@@ -9733,6 +9787,7 @@ export async function buildApp({
         }): Promise<void>;
       };
       workerPrompt?: string;
+      taskDispatchLease?: TaskDispatchWorkerLease;
     } = {},
   ): Promise<ChatMessage> {
     const turnStartedAtMs = Date.now();
@@ -9987,6 +10042,9 @@ export async function buildApp({
         },
         "Agent turn accepted",
       );
+      if (options.taskDispatchLease) {
+        await repository.taskDispatch.markRunning(options.taskDispatchLease);
+      }
     } catch (error) {
       await repository.finishChatExecutionLane(
         execution.chatId,
@@ -10004,6 +10062,22 @@ export async function buildApp({
     void runAsOwner(ownerId, async () => {
       let anyActivity = false;
       const changedPaths = new Set<string>();
+      const taskDispatchHeartbeat = options.taskDispatchLease
+        ? setInterval(
+            () => {
+              void repository.taskDispatch
+                .heartbeat(options.taskDispatchLease!)
+                .catch((error) => {
+                  app.log.warn(
+                    { chatId: execution.chatId, err: error },
+                    "Could not renew the Task dispatch lease",
+                  );
+                });
+            },
+            Math.floor(TASK_DISPATCH_LEASE_MS / 3),
+          )
+        : null;
+      taskDispatchHeartbeat?.unref();
       try {
         await notifyCodeAgentState(execution, "started");
         for (const [index, runtime] of runtimes.entries()) {
@@ -10261,6 +10335,7 @@ export async function buildApp({
                             encryptedChatMessages.response.idempotencyKey,
                         }
                       : { kind: "visible" },
+                taskDispatchLease: options.taskDispatchLease,
               },
               {
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
@@ -11101,6 +11176,8 @@ export async function buildApp({
         ) {
           void dispatchNextQueuedPrompt(execution.chatId);
         }
+      } finally {
+        if (taskDispatchHeartbeat) clearInterval(taskDispatchHeartbeat);
       }
     });
 
@@ -23105,6 +23182,391 @@ export async function buildApp({
     }
   }
 
+  const prepareTaskDispatchEligibility = async (
+    ownerId: string,
+  ): Promise<TaskDispatchEligibilityResolver> => {
+    const [cycles, taskWorkers] = await Promise.all([
+      repository.taskDispatch.list(ownerId),
+      repository.taskScheduling.listTaskWorkers(ownerId),
+    ]);
+    const resolutions = new Map<
+      string,
+      {
+        physicalWorkerId: string;
+        projectId: string;
+        resolution: Awaited<ReturnType<TaskDispatchEligibilityResolver>>;
+        taskWorkerRevision: number;
+        worktreeId: string;
+      }
+    >();
+    for (const cycle of cycles) {
+      if (cycle.state !== "queued") continue;
+      const context = await repository.getChatExecutionContext(
+        ownerId,
+        cycle.chatId,
+      );
+      if (!context || context.experience !== "task") continue;
+      const physicalWorker = await repository.getWorker(
+        ownerId,
+        context.workerId,
+      );
+      for (const taskWorker of taskWorkers) {
+        if (!taskWorker.enabled) continue;
+        const key = `${cycle.id}:${taskWorker.id}`;
+        let resolution: Awaited<ReturnType<TaskDispatchEligibilityResolver>>;
+        if (!bridge.isConnected(context.workerId)) {
+          resolution = { eligible: false, code: "worker-offline" };
+        } else if (
+          !physicalWorker?.encryption.grants.some(
+            ({ component }) => component === "task-content",
+          )
+        ) {
+          resolution = {
+            eligible: false,
+            code: "encryption-grant-unavailable",
+          };
+        } else {
+          try {
+            const pairs = await routePairsForConfiguration(
+              { ...context, providerAccountId: null },
+              taskWorker.modelConfiguration,
+            );
+            const selected = pairs[0]?.root.runtime;
+            resolution = selected
+              ? {
+                  eligible: true,
+                  modelRouteId: selected.routeId,
+                  providerAccountId: selected.provider.accountId,
+                  codexThreadId:
+                    context.threadId &&
+                    runtimeCanResumeContext(context, selected)
+                      ? context.threadId
+                      : null,
+                }
+              : { eligible: false, code: "model-unavailable" };
+          } catch (error) {
+            const failure = modelConfigurationFailure(error);
+            resolution = {
+              eligible: false,
+              code:
+                failure?.code === "worker-offline"
+                  ? "worker-offline"
+                  : failure?.code === "provider-route-incompatible"
+                    ? "provider-route-unavailable"
+                    : "model-unavailable",
+            };
+          }
+        }
+        resolutions.set(key, {
+          physicalWorkerId: context.workerId,
+          projectId: context.projectId,
+          resolution,
+          taskWorkerRevision: taskWorker.rowVersion,
+          worktreeId: context.worktreeId,
+        });
+      }
+    }
+    return async (input) => {
+      const prepared = resolutions.get(
+        `${input.cycle.id}:${input.taskWorker.id}`,
+      );
+      if (
+        !prepared ||
+        prepared.projectId !== input.projectId ||
+        prepared.physicalWorkerId !== input.physicalWorkerId ||
+        prepared.worktreeId !== input.worktreeId ||
+        prepared.taskWorkerRevision !== input.taskWorker.rowVersion
+      ) {
+        return { eligible: false, code: "placement-unavailable" };
+      }
+      return prepared.resolution;
+    };
+  };
+
+  let activeTaskScheduleTick: Promise<void> | null = null;
+  const queueTaskScheduleTick = (): void => {
+    if (activeTaskScheduleTick) return;
+    activeTaskScheduleTick = (async () => {
+      const ownerIds = await repository.taskDispatch.listSchedulerOwnerIds();
+      for (const ownerId of ownerIds) {
+        await runAsOwner(ownerId, async () => {
+          await repository.taskDispatch.requeueExpiredLeases(ownerId);
+          const resolveEligibility =
+            await prepareTaskDispatchEligibility(ownerId);
+          while (true) {
+            const claimed = await repository.taskDispatch.claimNext(
+              ownerId,
+              `${serverId}:${serverInstanceId}`,
+              resolveEligibility,
+            );
+            if (!claimed) break;
+            void runClaimedTaskOperation(ownerId, claimed).catch((error) => {
+              app.log.error(
+                {
+                  chatId: claimed.cycle.chatId,
+                  cycleId: claimed.cycle.id,
+                  err: error,
+                },
+                "Scheduled Task execution failed",
+              );
+            });
+          }
+        });
+      }
+    })()
+      .catch((error) => {
+        app.log.error({ err: error }, "Could not schedule queued Tasks");
+      })
+      .finally(() => {
+        activeTaskScheduleTick = null;
+      });
+  };
+
+  const finishClaimedTaskFailure = async (
+    ownerId: string,
+    claim: ClaimedTaskDispatch,
+  ): Promise<void> => {
+    try {
+      await repository.taskDispatch.heartbeat(claim.lease);
+      const operation = await repository.tasks.getOperationContext(
+        ownerId,
+        claim.cycle.chatId,
+        { operationId: claim.cycle.operationId },
+      );
+      if (operation?.relayResult) {
+        await repository.taskDispatch.settle(claim.lease, "succeeded");
+      } else {
+        if (operation) {
+          await repository.tasks.failOperation(
+            ownerId,
+            claim.cycle.chatId,
+            claim.cycle.operationId,
+          );
+        }
+        await repository.taskDispatch.settle(claim.lease, "failed");
+      }
+      publishChatInvalidation(claim.cycle.chatId, "task");
+    } catch (error) {
+      if (!(error instanceof TaskDispatchConflictError)) throw error;
+    } finally {
+      queueTaskScheduleTick();
+    }
+  };
+
+  const runClaimedTaskOperation = async (
+    ownerId: string,
+    claim: ClaimedTaskDispatch,
+  ): Promise<void> => {
+    await runAsOwner(ownerId, async () => {
+      const context = await repository.getChatExecutionContext(
+        ownerId,
+        claim.cycle.chatId,
+      );
+      try {
+        if (
+          !context ||
+          context.experience !== "task" ||
+          context.projectId !== claim.projectId ||
+          context.workerId !== claim.cycle.physicalWorkerId ||
+          context.worktreeId !== claim.cycle.worktreeId
+        ) {
+          throw new Error("The claimed Task placement is no longer available.");
+        }
+        if (
+          claim.cycle.operationKind === "goal-continuation" ||
+          !claim.cycle.modelRouteId ||
+          !claim.cycle.modelConfiguration?.modelId
+        ) {
+          throw new Error("The claimed Task cycle is not executable yet.");
+        }
+        const taskModelId = claim.cycle.modelConfiguration.modelId;
+        const task = await repository.tasks.get(ownerId, context.chatId);
+        if (!task) throw new Error("The claimed Task no longer exists.");
+
+        const prior = await repository.tasks.getOperationContext(
+          ownerId,
+          context.chatId,
+          { operationId: claim.cycle.operationId },
+        );
+        if (prior?.relayResult) {
+          await repository.taskDispatch.heartbeat(claim.lease);
+          await repository.taskDispatch.settle(claim.lease, "succeeded");
+          publishChatInvalidation(context.chatId, "task");
+          queueTaskScheduleTick();
+          return;
+        }
+
+        let request: TaskOperationRelayRequest;
+        let startedTask: TaskOpaqueSummary;
+        if (prior) {
+          request = prior.relayRequest;
+          startedTask = prior.task;
+        } else {
+          const prepared = taskEncryptedOperationStartSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "task.operation.prepare",
+              operationId: claim.cycle.operationId,
+              operationKind: claim.cycle.operationKind,
+              task,
+            }),
+          );
+          const started = await repository.tasks.beginOperation(
+            ownerId,
+            context.chatId,
+            prepared,
+          );
+          if (!started) throw new Error("The claimed Task no longer exists.");
+          request = started.relayRequest;
+          startedTask = started.task;
+          publishChatInvalidation(context.chatId, "task");
+        }
+
+        const configuredRuntimes = await availableModelRuntimes(
+          {
+            workerId: context.workerId,
+            providerAccountId: claim.cycle.providerAccountId,
+          },
+          taskModelId,
+        );
+        const runtime = configuredRuntimes.find(
+          (candidate) =>
+            candidate.routeId === claim.cycle.modelRouteId &&
+            candidate.provider.accountId === claim.cycle.providerAccountId,
+        );
+        if (!runtime) {
+          throw new Error(
+            "The claimed Task model route is no longer available.",
+          );
+        }
+
+        const userMessage = await beginTurn(
+          context,
+          {
+            text: "Run the encrypted Task operation.",
+            attachmentIds: startedTask.draftAttachmentIds,
+            idempotencyKey: `task-operation:${request.operationId}`,
+            modelId: taskModelId,
+            reasoningEffort: claim.cycle.modelConfiguration.reasoningEffort,
+            customSubagentModel:
+              claim.cycle.modelConfiguration.customSubagentModel,
+            subagentModelId: claim.cycle.modelConfiguration.subagentModelId,
+            subagentReasoningEffort:
+              claim.cycle.modelConfiguration.subagentReasoningEffort,
+          },
+          {
+            purpose: "Scheduled encrypted Task operation",
+            encryptedTaskMessages: { userMessage: request.userMessage },
+            runtimes: [runtime],
+            taskDispatchLease: claim.lease,
+            structuredResult: {
+              taskOperation: request,
+              async onCompleted({ attribution, result }) {
+                await repository.taskDispatch.heartbeat(claim.lease);
+                const relayResult = parseTaskOperationRelayResult(
+                  result.structuredResult,
+                  request,
+                );
+                const completed = await repository.tasks.completeOperation(
+                  ownerId,
+                  context.chatId,
+                  request.operationId,
+                  relayResult,
+                  result.turnId ?? null,
+                );
+                if (!completed) {
+                  throw new Error("Encrypted Task operation was not found.");
+                }
+                const assistantMessage = await appendLiveTaskMessage(
+                  ownerId,
+                  context.chatId,
+                  relayResult.assistantMessage,
+                  attribution,
+                );
+                if (!assistantMessage) {
+                  throw new Error("Task Chat was not found.");
+                }
+                await repository.tasks.attachOperationAssistantMessage(
+                  ownerId,
+                  context.chatId,
+                  request.operationId,
+                  assistantMessage.id,
+                );
+                await repository.taskDispatch.settle(claim.lease, "succeeded");
+                publishChatInvalidation(context.chatId, "task");
+                queueTaskScheduleTick();
+              },
+              async afterCompleted() {
+                if (request.classification.kind !== "finalize") return;
+                try {
+                  await launchPreparedTaskGoal(
+                    context.chatId,
+                    request.operationId,
+                  );
+                } catch (error) {
+                  await failTaskGoalLaunch(
+                    context.chatId,
+                    request.operationId,
+                    error,
+                  );
+                }
+              },
+              async onFailed() {
+                await finishClaimedTaskFailure(ownerId, claim);
+              },
+            },
+          },
+        );
+        if (!userMessage.executionLaneId) {
+          throw new Error("Encrypted Task operation did not acquire a lane.");
+        }
+        await repository.tasks.attachOperationExecution(
+          ownerId,
+          context.chatId,
+          request.operationId,
+          {
+            executionLaneId: userMessage.executionLaneId,
+            userMessageId: userMessage.id,
+          },
+        );
+      } catch (error) {
+        app.log.warn(
+          {
+            chatId: claim.cycle.chatId,
+            cycleId: claim.cycle.id,
+            err: error,
+          },
+          "Scheduled Task operation failed to start",
+        );
+        await finishClaimedTaskFailure(ownerId, claim);
+      }
+    });
+  };
+
+  const taskScheduleTimer = setInterval(
+    queueTaskScheduleTick,
+    TASK_SCHEDULE_POLL_MS,
+  );
+  taskScheduleTimer.unref();
+  queueTaskScheduleTick();
+
+  const queueTaskOperation = async (
+    chatId: string,
+    input: TaskOperationStart,
+    operationKind: "direct" | "initial-plan",
+  ): Promise<TaskOpaqueSummary | null> => {
+    const ownerId = applicationOwnerId();
+    await repository.taskDispatch.enqueue(
+      ownerId,
+      chatId,
+      input.operationId,
+      operationKind,
+      input.rowVersion,
+    );
+    publishChatInvalidation(chatId, "task");
+    queueTaskScheduleTick();
+    return repository.tasks.get(ownerId, chatId);
+  };
+
   app.get<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId",
     async (request, reply) => {
@@ -23298,6 +23760,9 @@ export async function buildApp({
     error: unknown,
     reply: FastifyReply,
   ): FastifyReply | null => {
+    if (error instanceof TaskDispatchConflictError) {
+      return reply.code(409).send({ code: error.code, error: error.message });
+    }
     if (error instanceof TaskConflictError) {
       return reply.code(409).send({ code: error.code, error: error.message });
     }
@@ -23403,7 +23868,7 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId/start",
     async (request, reply) => {
-      const input = taskEncryptedOperationStartSchema.safeParse(request.body);
+      const input = taskOperationStartSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -23415,12 +23880,11 @@ export async function buildApp({
         return reply.code(404).send({ error: "Task not found." });
       }
       try {
-        if (input.data.operation.classification.kind !== "direct") {
-          return reply
-            .code(400)
-            .send({ error: "Task operation kind is invalid." });
-        }
-        const task = await beginEncryptedTaskOperation(context, input.data);
+        const task = await queueTaskOperation(
+          request.params.chatId,
+          input.data,
+          "direct",
+        );
         return task
           ? reply.code(202).send(taskOpaqueSummarySchema.parse(task))
           : reply.code(404).send({ error: "Task not found." });
@@ -23435,7 +23899,7 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId/plan",
     async (request, reply) => {
-      const input = taskEncryptedOperationStartSchema.safeParse(request.body);
+      const input = taskOperationStartSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -23447,12 +23911,11 @@ export async function buildApp({
         return reply.code(404).send({ error: "Task not found." });
       }
       try {
-        if (input.data.operation.classification.kind !== "initial-plan") {
-          return reply
-            .code(400)
-            .send({ error: "Task operation kind is invalid." });
-        }
-        const task = await beginEncryptedTaskOperation(context, input.data);
+        const task = await queueTaskOperation(
+          request.params.chatId,
+          input.data,
+          "initial-plan",
+        );
         return task
           ? reply.code(202).send(taskOpaqueSummarySchema.parse(task))
           : reply.code(404).send({ error: "Task not found." });
@@ -31812,6 +32275,7 @@ export async function buildApp({
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(workflowGateExpiryTimer);
     clearInterval(workflowScheduleTimer);
+    clearInterval(taskScheduleTimer);
     clearInterval(workerCatalogRefreshTimer);
     for (const timer of quotaObservationTimers) clearTimeout(timer);
     quotaObservationTimers.clear();
@@ -31859,6 +32323,7 @@ export async function buildApp({
     accountResourceUsageLiveInvalidations.close();
     await coordinator?.close();
     await activeScheduleTick;
+    await activeTaskScheduleTick;
     await projectReplicaJobExecutor.drain();
     await projectFolderSetupJobExecutor.drain();
     await projectGithubConversionJobExecutor.drain();

@@ -13,6 +13,7 @@ const baseTask = {
   requestedTaskWorkerId: null,
   continuityFamily: null,
   lastTaskWorkerId: null,
+  dispatch: null,
   state: "draft" as const,
   stableStateBeforeFailure: null,
   activeOperationId: null,
@@ -90,6 +91,18 @@ describe("Task draft presentation", () => {
     );
     expect(taskDraftSignature("Brief", ["a"], false)).not.toBe(
       taskDraftSignature("Brief", ["a"], true),
+    );
+    expect(taskDraftSignature("Brief", ["a"], false, 0, null)).not.toBe(
+      taskDraftSignature("Brief", ["a"], false, 1, null),
+    );
+    expect(taskDraftSignature("Brief", ["a"], false, 0, null)).not.toBe(
+      taskDraftSignature(
+        "Brief",
+        ["a"],
+        false,
+        0,
+        "00000000-0000-4000-8000-000000000001",
+      ),
     );
   });
 

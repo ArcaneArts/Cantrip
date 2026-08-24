@@ -1,10 +1,12 @@
-import type {
-  ChatAttachmentSummary,
-  ChatSummary,
-  ModelConfiguration,
-  SettingsBundle,
-  TaskDetail,
-  WorkerSummary,
+import {
+  TASK_PRIORITY_MAX,
+  TASK_PRIORITY_MIN,
+  type ChatAttachmentSummary,
+  type ChatSummary,
+  type SettingsBundle,
+  type TaskDetail,
+  type TaskWorkerSummary,
+  type WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -43,23 +45,18 @@ import {
   shouldAttachPastedText,
 } from "@/components/chat/attachment-utils";
 import { AgentInspectContent } from "@/components/chat/agent-inspect-content";
-import {
-  chatModelConfiguration,
-  ModelReasoningPicker,
-} from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { Button } from "@/components/ui/button";
 import {
   chatAttachmentContentUrl,
   deleteChatAttachment,
   getChatPermissionProfiles,
-  getChatReasoning,
   getTask,
   getTaskAttachments,
+  getTaskWorkers,
   loadChatAttachmentContent,
   startTaskDirectly,
   startTaskPlanning,
-  updateChatModelConfiguration,
   updateChatPermissionProfile,
   updateTaskDraft,
   uploadChatAttachment,
@@ -134,8 +131,16 @@ export function taskDraftSignature(
   briefMarkdown: string,
   attachmentIds: readonly string[],
   planGoalEnabled = false,
+  priority = 0,
+  requestedTaskWorkerId: string | null = null,
 ): string {
-  return JSON.stringify([briefMarkdown, attachmentIds, planGoalEnabled]);
+  return JSON.stringify([
+    briefMarkdown,
+    attachmentIds,
+    planGoalEnabled,
+    priority,
+    requestedTaskWorkerId,
+  ]);
 }
 
 export function taskAutosaveLabel(input: {
@@ -179,6 +184,10 @@ export function TaskSurface({
   );
   const [brief, setBrief] = useState("");
   const [planGoalEnabled, setPlanGoalEnabled] = useState(false);
+  const [priority, setPriority] = useState(0);
+  const [requestedTaskWorkerId, setRequestedTaskWorkerId] = useState<
+    string | null
+  >(null);
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [attachmentRecords, setAttachmentRecords] = useState(
     () => new Map<string, ChatAttachmentSummary>(),
@@ -200,9 +209,13 @@ export function TaskSurface({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const briefRef = useRef(brief);
   const planGoalEnabledRef = useRef(planGoalEnabled);
+  const priorityRef = useRef(priority);
+  const requestedTaskWorkerIdRef = useRef(requestedTaskWorkerId);
   const attachmentIdsRef = useRef(attachmentIds);
   briefRef.current = brief;
   planGoalEnabledRef.current = planGoalEnabled;
+  priorityRef.current = priority;
+  requestedTaskWorkerIdRef.current = requestedTaskWorkerId;
   attachmentIdsRef.current = attachmentIds;
 
   useEffect(() => setTitleDraft(chat.title), [chat.title]);
@@ -220,6 +233,11 @@ export function TaskSurface({
     queryFn: () => getTaskAttachments(chat.id),
     queryKey: ["task-attachments", chat.id],
   });
+  const taskWorkers = useQuery({
+    queryFn: getTaskWorkers,
+    queryKey: ["task-workers"],
+    staleTime: 30_000,
+  });
   const messages = useChatMessageHistory({
     autoLoadOlder: true,
     chatId: chat.id,
@@ -235,12 +253,16 @@ export function TaskSurface({
     if (!task.data || initialized) return;
     setBrief(task.data.briefMarkdown);
     setPlanGoalEnabled(task.data.planGoalEnabled);
+    setPriority(task.data.priority);
+    setRequestedTaskWorkerId(task.data.requestedTaskWorkerId);
     setAttachmentIds(task.data.draftAttachmentIds);
     rowVersionRef.current = task.data.rowVersion;
     savedSignatureRef.current = taskDraftSignature(
       task.data.briefMarkdown,
       task.data.draftAttachmentIds,
       task.data.planGoalEnabled,
+      task.data.priority,
+      task.data.requestedTaskWorkerId,
     );
     setInitialized(true);
   }, [initialized, task.data]);
@@ -256,35 +278,12 @@ export function TaskSurface({
 
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
-  const currentModelConfiguration = chatModelConfiguration(
-    chat,
-    settings?.preferences.defaultModelId ?? null,
-  );
-  const reasoningState = useQuery({
-    enabled: Boolean(selectedModelId),
-    queryFn: () => getChatReasoning(chat.id),
-    queryKey: ["chat-reasoning", chat.id, selectedModelId],
-    retry: false,
-    staleTime: 30_000,
-  });
   const permissionProfiles = useQuery({
     enabled: Boolean(selectedModelId),
     queryFn: () => getChatPermissionProfiles(chat.id),
     queryKey: ["permission-profiles", chat.id, selectedModelId],
     retry: false,
     staleTime: 30_000,
-  });
-  const selectModelConfiguration = useMutation({
-    mutationFn: (configuration: ModelConfiguration) =>
-      updateChatModelConfiguration(chat.id, configuration),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
-        queryClient.invalidateQueries({
-          queryKey: ["chat-reasoning", chat.id],
-        }),
-      ]);
-    },
   });
   const selectPermission = useMutation({
     mutationFn: (id: string | null) => updateChatPermissionProfile(chat.id, id),
@@ -303,6 +302,8 @@ export function TaskSurface({
     brief,
     attachmentIds,
     planGoalEnabled,
+    priority,
+    requestedTaskWorkerId,
   );
   const dirty = initialized && currentSignature !== savedSignatureRef.current;
   const saveDraft = useMutation({
@@ -310,12 +311,16 @@ export function TaskSurface({
       attachmentIds: string[];
       briefMarkdown: string;
       planGoalEnabled: boolean;
+      priority: number;
+      requestedTaskWorkerId: string | null;
       signature: string;
     }) =>
       updateTaskDraft(chat.id, {
         briefMarkdown: snapshot.briefMarkdown,
         draftAttachmentIds: snapshot.attachmentIds,
         planGoalEnabled: snapshot.planGoalEnabled,
+        priority: snapshot.priority,
+        requestedTaskWorkerId: snapshot.requestedTaskWorkerId,
         rowVersion: rowVersionRef.current,
       }).then((updated) => ({ snapshot, updated })),
     onSuccess: ({ snapshot, updated }) => {
@@ -328,6 +333,8 @@ export function TaskSurface({
           briefRef.current,
           attachmentIdsRef.current,
           planGoalEnabledRef.current,
+          priorityRef.current,
+          requestedTaskWorkerIdRef.current,
         )
       ) {
         savedSignatureRef.current = snapshot.signature;
@@ -359,6 +366,8 @@ export function TaskSurface({
       briefRef.current,
       attachmentIdsRef.current,
       planGoalEnabledRef.current,
+      priorityRef.current,
+      requestedTaskWorkerIdRef.current,
     );
     if (signature === savedSignatureRef.current) {
       if (!task.data) throw new Error("Task is still loading.");
@@ -368,6 +377,8 @@ export function TaskSurface({
       attachmentIds: [...attachmentIdsRef.current],
       briefMarkdown: briefRef.current,
       planGoalEnabled: planGoalEnabledRef.current,
+      priority: priorityRef.current,
+      requestedTaskWorkerId: requestedTaskWorkerIdRef.current,
       signature,
     });
     savedSignatureRef.current = signature;
@@ -381,7 +392,8 @@ export function TaskSurface({
       conflict ||
       saveDraft.isPending ||
       failedDraftSignatureRef.current === currentSignature ||
-      task.data?.state !== "draft"
+      task.data?.state !== "draft" ||
+      (task.data.dispatch !== null && task.data.dispatch.state !== "queued")
     ) {
       return;
     }
@@ -390,10 +402,14 @@ export function TaskSurface({
         attachmentIds: [...attachmentIdsRef.current],
         briefMarkdown: briefRef.current,
         planGoalEnabled: planGoalEnabledRef.current,
+        priority: priorityRef.current,
+        requestedTaskWorkerId: requestedTaskWorkerIdRef.current,
         signature: taskDraftSignature(
           briefRef.current,
           attachmentIdsRef.current,
           planGoalEnabledRef.current,
+          priorityRef.current,
+          requestedTaskWorkerIdRef.current,
         ),
       });
     }, TASK_AUTOSAVE_DELAY_MS);
@@ -404,6 +420,7 @@ export function TaskSurface({
     dirty,
     initialized,
     saveDraft.isPending,
+    task.data?.dispatch,
     task.data?.state,
     mutateDraft,
   ]);
@@ -411,14 +428,19 @@ export function TaskSurface({
   const starting = useMutation({
     mutationFn: async () => {
       const saved = await saveCurrentDraft();
-      const encryption = await ensureTaskWorkerEncryption({ worker });
-      queryClient.setQueryData<WorkerSummary[]>(["workers"], (current) =>
-        current?.map((candidate) =>
-          candidate.workerId === worker?.workerId
-            ? { ...candidate, encryption }
-            : candidate,
-        ),
-      );
+      if (taskWorkerEncryptionCanAttempt(workerEncryptionReadiness)) {
+        void ensureTaskWorkerEncryption({ worker })
+          .then((encryption) => {
+            queryClient.setQueryData<WorkerSummary[]>(["workers"], (current) =>
+              current?.map((candidate) =>
+                candidate.workerId === worker?.workerId
+                  ? { ...candidate, encryption }
+                  : candidate,
+              ),
+            );
+          })
+          .catch(() => undefined);
+      }
       const start = saved.planGoalEnabled
         ? startTaskPlanning
         : startTaskDirectly;
@@ -558,12 +580,16 @@ export function TaskSurface({
     if (!result.data) return;
     setBrief(result.data.briefMarkdown);
     setPlanGoalEnabled(result.data.planGoalEnabled);
+    setPriority(result.data.priority);
+    setRequestedTaskWorkerId(result.data.requestedTaskWorkerId);
     setAttachmentIds(result.data.draftAttachmentIds);
     rowVersionRef.current = result.data.rowVersion;
     savedSignatureRef.current = taskDraftSignature(
       result.data.briefMarkdown,
       result.data.draftAttachmentIds,
       result.data.planGoalEnabled,
+      result.data.priority,
+      result.data.requestedTaskWorkerId,
     );
     setConflict(false);
     pendingDeletionIdsRef.current.clear();
@@ -652,14 +678,37 @@ export function TaskSurface({
     const attachment = attachmentRecords.get(id);
     return attachment ? [attachment] : [];
   });
+  const configuredTaskWorkers = (taskWorkers.data ?? []).filter(
+    (candidate) => candidate.enabled,
+  );
+  const selectedTaskWorker: TaskWorkerSummary | undefined =
+    requestedTaskWorkerId === null
+      ? undefined
+      : configuredTaskWorkers.find(
+          (candidate) => candidate.id === requestedTaskWorkerId,
+        );
+  const eligibleTaskWorkers = configuredTaskWorkers.filter(
+    (candidate) => !planGoalEnabled || candidate.allowsPlanGoal,
+  );
+  const hasEligibleTaskWorker = requestedTaskWorkerId
+    ? Boolean(
+        selectedTaskWorker &&
+        (!planGoalEnabled || selectedTaskWorker.allowsPlanGoal),
+      )
+    : eligibleTaskWorkers.length > 0;
+  const dispatchQueued = task.data.dispatch?.state === "queued";
+  const draftEditable =
+    task.data.state === "draft" &&
+    !["claimed", "running", "paused"].includes(task.data.dispatch?.state ?? "");
   const canStart =
     brief.trim().length > 0 &&
-    selectedModelId.length > 0 &&
+    hasEligibleTaskWorker &&
     pendingAttachments.length === 0 &&
     !conflict &&
     !saveDraft.isPending &&
     !starting.isPending &&
-    taskWorkerEncryptionCanAttempt(workerEncryptionReadiness) &&
+    !dispatchQueued &&
+    draftEditable &&
     chat.status !== "running";
 
   return (
@@ -718,6 +767,15 @@ export function TaskSurface({
         </div>
       ) : null}
 
+      {dispatchQueued ? (
+        <div className="flex shrink-0 items-center gap-3 border-b border-violet-500/25 bg-violet-500/5 px-5 py-3 text-sm">
+          <ListTodo className="size-4 text-violet-500" />
+          <span>
+            Queued for a Task Worker. You can keep editing until it is claimed.
+          </span>
+        </div>
+      ) : null}
+
       {workerEncryptionMessage ? (
         <div className="flex shrink-0 items-center gap-3 border-b bg-muted/35 px-5 py-3 text-sm">
           {workerEncryptionReadiness === "offline" ? (
@@ -766,6 +824,7 @@ export function TaskSurface({
             onChange={setBrief}
             onSave={() => void saveCurrentDraft().catch(() => undefined)}
             placeholder="Describe the outcome, constraints, and context for this Task…"
+            readOnly={!draftEditable}
             value={brief}
           />
         </Suspense>
@@ -851,26 +910,64 @@ export function TaskSurface({
             }}
           />
           <Button
+            disabled={!draftEditable}
             size="sm"
             variant="ghost"
             onClick={() => fileInputRef.current?.click()}
           >
             <Paperclip className="size-4" /> Attach
           </Button>
-          <ModelReasoningPicker
-            configuration={currentModelConfiguration}
-            models={settings?.models ?? []}
-            pending={selectModelConfiguration.isPending}
-            readOnly={
-              chat.status === "running" ||
-              chat.status === "waiting-for-approval"
-            }
-            reasoningState={reasoningState.data}
-            subagentCapability={worker?.codexRuntime.nativeSubagents}
-            onSave={(configuration) =>
-              selectModelConfiguration.mutateAsync(configuration)
-            }
-          />
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Worker
+            <select
+              aria-label="Task Worker"
+              className="h-8 max-w-48 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+              disabled={!draftEditable || taskWorkers.isLoading}
+              value={requestedTaskWorkerId ?? ""}
+              onChange={(event) =>
+                setRequestedTaskWorkerId(event.target.value || null)
+              }
+            >
+              <option value="">Auto</option>
+              {requestedTaskWorkerId && !selectedTaskWorker ? (
+                <option value={requestedTaskWorkerId}>
+                  Unavailable Task Worker
+                </option>
+              ) : null}
+              {configuredTaskWorkers.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.name}
+                  {planGoalEnabled && !candidate.allowsPlanGoal
+                    ? " (Direct only)"
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            Priority
+            <input
+              aria-label="Task priority"
+              className="h-8 w-20 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+              disabled={!draftEditable}
+              max={TASK_PRIORITY_MAX}
+              min={TASK_PRIORITY_MIN}
+              step={1}
+              type="number"
+              value={priority}
+              onChange={(event) => {
+                const value = event.currentTarget.valueAsNumber;
+                if (Number.isInteger(value)) {
+                  setPriority(
+                    Math.max(
+                      TASK_PRIORITY_MIN,
+                      Math.min(TASK_PRIORITY_MAX, value),
+                    ),
+                  );
+                }
+              }}
+            />
+          </label>
           <span className="ml-1 text-[11px] text-muted-foreground">
             Implementation access
           </span>
@@ -885,6 +982,7 @@ export function TaskSurface({
             className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             role="switch"
             type="button"
+            disabled={!draftEditable}
             onClick={() => setPlanGoalEnabled((current) => !current)}
           >
             <span
@@ -908,30 +1006,42 @@ export function TaskSurface({
             ) : (
               <Play className="size-4" />
             )}
-            {mode === "failed"
-              ? planGoalEnabled
-                ? "Retry planning"
-                : "Retry Task"
-              : planGoalEnabled
-                ? "Plan Task"
-                : "Start Task"}
+            {dispatchQueued
+              ? "Queued"
+              : mode === "failed"
+                ? planGoalEnabled
+                  ? "Retry planning"
+                  : "Retry Task"
+                : planGoalEnabled
+                  ? "Add Plan + Goal Task"
+                  : "Add Task"}
           </Button>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
           {planGoalEnabled
-            ? "Planning is always read-only. Implementation access is reserved for the Goal."
-            : "The saved prompt starts immediately as a normal agent turn using Implementation access."}
+            ? "The Task queues for one read-only planning cycle. Implementation access is reserved for its Goal."
+            : "The saved prompt queues as a normal agent turn and starts when an eligible Task Worker has capacity."}
         </p>
+        {!taskWorkers.isLoading && configuredTaskWorkers.length === 0 ? (
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            Configure and enable a Task Worker in Settings before adding this
+            Task to the queue.
+          </p>
+        ) : null}
+        {requestedTaskWorkerId && !hasEligibleTaskWorker ? (
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            The selected Task Worker is unavailable or cannot run Plan + Goal
+            Tasks.
+          </p>
+        ) : null}
         {attachmentNotice ||
         starting.isError ||
-        selectModelConfiguration.isError ||
+        taskWorkers.isError ||
         selectPermission.isError ? (
           <p className="mt-2 text-xs text-destructive">
             {attachmentNotice ??
               errorMessage(
-                starting.error ??
-                  selectModelConfiguration.error ??
-                  selectPermission.error,
+                starting.error ?? taskWorkers.error ?? selectPermission.error,
               )}
           </p>
         ) : null}

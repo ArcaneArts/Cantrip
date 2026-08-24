@@ -40,6 +40,7 @@ const task: TaskDetail = {
   requestedTaskWorkerId: null,
   continuityFamily: null,
   lastTaskWorkerId: null,
+  dispatch: null,
   state: "review",
   stableStateBeforeFailure: null,
   activeOperationId: null,

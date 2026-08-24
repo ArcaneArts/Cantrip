@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  taskDispatchCycleSummarySchema,
   taskPrioritySchema,
   taskWorkerContinuityFamilySchema,
 } from "./task-scheduling.js";
@@ -177,6 +178,7 @@ export const taskDetailSchema = z.object({
   requestedTaskWorkerId: z.string().uuid().nullable().default(null),
   continuityFamily: taskWorkerContinuityFamilySchema.nullable().default(null),
   lastTaskWorkerId: z.string().uuid().nullable().default(null),
+  dispatch: taskDispatchCycleSummarySchema.nullable().default(null),
   state: taskStateSchema,
   stableStateBeforeFailure: taskStableStateSchema.nullable(),
   activeOperationId: z.string().min(1).max(200).nullable(),
@@ -311,12 +313,16 @@ export const taskDraftUpdateSchema = z
         "Task attachment IDs must be unique.",
       )
       .optional(),
+    priority: taskPrioritySchema.optional(),
+    requestedTaskWorkerId: z.string().uuid().nullable().optional(),
   })
   .refine(
     (value) =>
       value.planGoalEnabled !== undefined ||
       value.briefMarkdown !== undefined ||
-      value.draftAttachmentIds !== undefined,
+      value.draftAttachmentIds !== undefined ||
+      value.priority !== undefined ||
+      value.requestedTaskWorkerId !== undefined,
     { message: "At least one Task draft field is required." },
   );
 
@@ -906,6 +912,8 @@ export const taskOpaqueMutationSchema = z
         message: "Task attachment IDs must be unique.",
       })
       .optional(),
+    priority: taskPrioritySchema.optional(),
+    requestedTaskWorkerId: z.string().uuid().nullable().optional(),
   })
   .strict();
 
@@ -984,6 +992,7 @@ export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
     requestedTaskWorkerId: z.string().uuid().nullable().default(null),
     continuityFamily: taskWorkerContinuityFamilySchema.nullable().default(null),
     lastTaskWorkerId: z.string().uuid().nullable().default(null),
+    dispatch: taskDispatchCycleSummarySchema.nullable().default(null),
     activeOperationId: z.string().min(1).max(200).nullable(),
     draftAttachmentIds: z
       .array(z.string().min(1).max(200))
@@ -998,6 +1007,14 @@ export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
     rowVersion: z.number().int().positive(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const taskOperationPrepareRequestSchema = z
+  .object({
+    operationId: z.string().uuid(),
+    operationKind: taskOperationKindSchema,
+    task: taskOpaqueSummarySchema,
   })
   .strict();
 
@@ -1176,6 +1193,9 @@ export type TaskMessageRelayResult = z.infer<
 >;
 export type TaskGoalSyncContext = z.infer<typeof taskGoalSyncContextSchema>;
 export type TaskOpaqueSummary = z.infer<typeof taskOpaqueSummarySchema>;
+export type TaskOperationPrepareRequest = z.infer<
+  typeof taskOperationPrepareRequestSchema
+>;
 export type TaskImplementationOpaqueDashboard = z.infer<
   typeof taskImplementationOpaqueDashboardSchema
 >;

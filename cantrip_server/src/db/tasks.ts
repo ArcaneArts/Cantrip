@@ -14,7 +14,7 @@ import {
   type TaskPlanningRoundOpaqueContent,
   type TaskPlanningRoundOpaqueSummary,
 } from "@cantrip/protocol/tasks";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -24,6 +24,7 @@ import {
   validateTaskOperationStart,
 } from "../tasks/state.js";
 import * as schema from "./schema.js";
+import { toTaskDispatchCycleSummary } from "./task-dispatch.js";
 
 type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type TaskRow = typeof schema.tasks.$inferSelect;
@@ -115,7 +116,10 @@ function roundColumns(content: TaskPlanningRoundOpaqueContent) {
   };
 }
 
-export function toTaskOpaqueSummary(row: TaskRow): TaskOpaqueSummary {
+export function toTaskOpaqueSummary(
+  row: TaskRow,
+  dispatch: typeof schema.taskDispatchCycles.$inferSelect | null = null,
+): TaskOpaqueSummary {
   return taskOpaqueSummarySchema.parse({
     chatId: row.chatId,
     planGoalEnabled: row.planGoalEnabled,
@@ -123,6 +127,7 @@ export function toTaskOpaqueSummary(row: TaskRow): TaskOpaqueSummary {
     requestedTaskWorkerId: row.requestedTaskWorkerId,
     continuityFamily: row.continuityFamily,
     lastTaskWorkerId: row.lastTaskWorkerId,
+    dispatch: dispatch ? toTaskDispatchCycleSummary(dispatch) : null,
     state: row.state,
     stableStateBeforeFailure: row.stableStateBeforeFailure,
     activeOperationId: row.activeOperationId,
@@ -233,7 +238,17 @@ export class TaskRepository {
       )
       .where(eq(schema.tasks.chatId, chatId))
       .limit(1);
-    return rows[0] ? toTaskOpaqueSummary(rows[0].task) : null;
+    if (!rows[0]) return null;
+    const dispatchRows = await this.database
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(eq(schema.taskDispatchCycles.chatId, chatId))
+      .orderBy(
+        desc(schema.taskDispatchCycles.createdAt),
+        desc(schema.taskDispatchCycles.id),
+      )
+      .limit(1);
+    return toTaskOpaqueSummary(rows[0].task, dispatchRows[0] ?? null);
   }
 
   async listRounds(ownerId: string, chatId: string): Promise<any[]> {
@@ -252,45 +267,161 @@ export class TaskRepository {
     rawInput: TaskOpaqueMutation,
   ): Promise<TaskOpaqueSummary | null> {
     const input = taskOpaqueMutationSchema.parse(rawInput);
-    const current = await this.get(ownerId, chatId);
-    if (!current) return null;
-    if (
-      current.state !== "draft" &&
-      !(
-        current.state === "failed" &&
-        current.stableStateBeforeFailure === "draft"
-      )
-    ) {
-      throw new TaskStateTransitionError(current.state, "draft");
-    }
-    assertMutationKeepsOperationalState(current, input);
-    const updated = await this.database
-      .update(schema.tasks)
-      .set({
-        ...taskOpaqueColumns(input.task),
-        ...(input.planGoalEnabled !== undefined
-          ? { planGoalEnabled: input.planGoalEnabled }
-          : {}),
-        ...(input.draftAttachmentIds
-          ? { draftAttachmentIds: input.draftAttachmentIds }
-          : {}),
-        rowVersion: current.rowVersion + 1,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.tasks.chatId, chatId),
-          eq(schema.tasks.rowVersion, input.rowVersion),
-        ),
-      )
-      .returning();
-    if (!updated[0]) {
-      throw new TaskConflictError(
-        "The Task draft changed in another client.",
-        "stale-version",
-      );
-    }
-    return toTaskOpaqueSummary(updated[0]);
+    return this.database.transaction(async (transaction) => {
+      const ownerRows = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!ownerRows[0]) return null;
+      const dispatchRows = await transaction
+        .select({ dispatch: schema.taskDispatchCycles })
+        .from(schema.taskDispatchCycles)
+        .innerJoin(schema.tasks, eq(schema.tasks.chatId, chatId))
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.chatId, chatId),
+            inArray(schema.taskDispatchCycles.state, [
+              "queued",
+              "claimed",
+              "running",
+              "paused",
+            ]),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const activeDispatch = dispatchRows[0]?.dispatch ?? null;
+      if (activeDispatch && activeDispatch.state !== "queued") {
+        throw new TaskConflictError(
+          "The Task has already started and can no longer be edited.",
+          "operation-active",
+        );
+      }
+
+      const rows = await transaction
+        .select({ task: schema.tasks })
+        .from(schema.tasks)
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = rows[0]?.task;
+      if (!task) return null;
+      const current = toTaskOpaqueSummary(task, activeDispatch);
+      if (
+        current.state !== "draft" &&
+        !(
+          current.state === "failed" &&
+          current.stableStateBeforeFailure === "draft"
+        )
+      ) {
+        throw new TaskStateTransitionError(current.state, "draft");
+      }
+      assertMutationKeepsOperationalState(current, input);
+
+      if (
+        input.requestedTaskWorkerId !== undefined &&
+        input.requestedTaskWorkerId
+      ) {
+        const assigned = await transaction
+          .select({ id: schema.taskWorkers.id })
+          .from(schema.taskWorkers)
+          .where(
+            and(
+              eq(schema.taskWorkers.id, input.requestedTaskWorkerId),
+              eq(schema.taskWorkers.ownerId, ownerId),
+              isNull(schema.taskWorkers.deletedAt),
+            ),
+          )
+          .limit(1);
+        if (!assigned[0]) {
+          throw new TaskConflictError(
+            "The selected Task Worker is unavailable.",
+            "stale-version",
+          );
+        }
+      }
+
+      const now = new Date();
+      const updated = await transaction
+        .update(schema.tasks)
+        .set({
+          ...taskOpaqueColumns(input.task),
+          ...(input.planGoalEnabled !== undefined
+            ? { planGoalEnabled: input.planGoalEnabled }
+            : {}),
+          ...(input.draftAttachmentIds !== undefined
+            ? { draftAttachmentIds: input.draftAttachmentIds }
+            : {}),
+          ...(input.priority !== undefined ? { priority: input.priority } : {}),
+          ...(input.requestedTaskWorkerId !== undefined
+            ? { requestedTaskWorkerId: input.requestedTaskWorkerId }
+            : {}),
+          schedulerRevision: sql`${schema.tasks.schedulerRevision} + 1`,
+          rowVersion: current.rowVersion + 1,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.tasks.chatId, chatId),
+            eq(schema.tasks.rowVersion, input.rowVersion),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new TaskConflictError(
+          "The Task draft changed in another client.",
+          "stale-version",
+        );
+      }
+
+      let updatedDispatch = activeDispatch;
+      if (activeDispatch) {
+        const planGoalEnabled =
+          input.planGoalEnabled ?? updated[0].planGoalEnabled;
+        const dispatch = await transaction
+          .update(schema.taskDispatchCycles)
+          .set({
+            operationKind: planGoalEnabled ? "initial-plan" : "direct",
+            requestedTaskWorkerId: updated[0].requestedTaskWorkerId,
+            fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+            eligibilityCode: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.id, activeDispatch.id),
+              eq(schema.taskDispatchCycles.state, "queued"),
+            ),
+          )
+          .returning();
+        if (!dispatch[0]) {
+          throw new TaskConflictError(
+            "The Task started before this edit could be saved.",
+            "operation-active",
+          );
+        }
+        updatedDispatch = dispatch[0];
+      }
+      return toTaskOpaqueSummary(updated[0], updatedDispatch);
+    });
   }
 
   async updatePlan(
@@ -640,6 +771,8 @@ export class TaskRepository {
           .set({
             ...taskOpaqueColumns(result.task),
             activeOperationId: null,
+            completedAt:
+              result.task.classification.state === "complete" ? now : null,
             rowVersion: task.rowVersion + 1,
             updatedAt: now,
           })
