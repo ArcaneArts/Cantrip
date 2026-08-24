@@ -317,7 +317,11 @@ describe("application live query bridge", () => {
           scope: { kind: "project", projectId: "project-one" },
         }),
       ),
-    ).toEqual([["run-environment", "project-one"]]);
+    ).toEqual([
+      ["run-environment", "project-one"],
+      ["run-configuration-runtimes", "project-one"],
+      ["terminals", "project-one"],
+    ]);
 
     expect(
       appLiveEventQueryKeys(

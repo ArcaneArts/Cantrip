@@ -253,9 +253,13 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           : [];
     case "run":
       return projectId
-        ? [["run-environment", projectId]]
+        ? [
+            ["run-environment", projectId],
+            ["run-configuration-runtimes", projectId],
+            ["terminals", projectId],
+          ]
         : event.scope.kind === "current-user"
-          ? [["run-environment"]]
+          ? [["run-environment"], ["run-configuration-runtimes"], ["terminals"]]
           : [];
     case "run-configuration":
       return projectId
@@ -397,6 +401,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["chat-import-jobs", scope.projectId],
         ["chats", scope.projectId],
         ["terminals", scope.projectId],
+        ["run-configuration-runtimes", scope.projectId],
         ["run-configurations", scope.projectId],
         ["explorers", scope.projectId],
         ["explorer-directory", scope.projectId],

@@ -1963,7 +1963,7 @@ async function ensureRepositoryOperationWorker(
   );
 }
 
-async function ensureRunOperationWorker(input: {
+export async function ensureRunOperationWorker(input: {
   projectId: string;
   worktreeId?: string;
 }) {

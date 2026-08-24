@@ -11,11 +11,12 @@ import {
   FileCode2,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   Trash2,
   X,
 } from "lucide-react";
-import type { ExecutionTarget } from "@cantrip/protocol";
+import type { ExecutionTarget, TerminalSummary } from "@cantrip/protocol";
 import { useState, type ReactNode } from "react";
 
 import { ProjectSurfaceIcon } from "./project-surface-icon";
@@ -45,12 +46,30 @@ import {
   workspaceTopBarDropId,
 } from "@/lib/workspace-dnd-model";
 
-function surfaceIsExecuting(surface: ProjectSurface): boolean {
+function surfaceIsActiveAgent(surface: ProjectSurface): boolean {
   return (
     surface.kind === "chat" &&
     (surface.entity.status === "running" ||
       surface.entity.status === "waiting-for-approval")
   );
+}
+
+function surfaceIsActiveRun(
+  surface: ProjectSurface,
+): surface is Extract<ProjectSurface, { kind: "terminal" }> {
+  return (
+    surface.kind === "terminal" &&
+    surface.entity.kind === "run-configuration" &&
+    surface.entity.status === "running"
+  );
+}
+
+export function projectTabRemovalDisposition(
+  surface: ProjectSurface,
+): "delete" | "stop-and-close-run" | "blocked-active-agent" {
+  if (surfaceIsActiveAgent(surface)) return "blocked-active-agent";
+  if (surfaceIsActiveRun(surface)) return "stop-and-close-run";
+  return "delete";
 }
 
 export interface ProjectTabBarProps {
@@ -62,6 +81,7 @@ export interface ProjectTabBarProps {
   onDuplicate?(surface: ProjectSurface): void;
   onRename(surface: ProjectSurface, title: string): void;
   onSelect(tabKey: string): void;
+  onStopAndCloseRunTerminal(terminal: TerminalSummary): Promise<void>;
   placement?: ProjectSurfacePlacementContext;
   previewFile?: {
     active: boolean;
@@ -84,6 +104,7 @@ export function ProjectTabBar({
   onDuplicate,
   onRename,
   onSelect,
+  onStopAndCloseRunTerminal,
   placement,
   previewFile,
   surfaces,
@@ -91,6 +112,8 @@ export function ProjectTabBar({
   const [editingTabKey, setEditingTabKey] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ProjectSurface | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
   const groupId = surfaces[0]?.groupId ?? "empty";
   const projectId = surfaces[0]?.projectId ?? previewFile?.projectId ?? "empty";
   const topBarDrop = useDroppable({
@@ -116,7 +139,8 @@ export function ProjectTabBar({
     if (title && title !== surface.title) onRename(surface, title);
   };
   const closeImmediately = (surface: ProjectSurface) => {
-    if (surfaceIsExecuting(surface)) {
+    if (projectTabRemovalDisposition(surface) !== "delete") {
+      setDeleteError(null);
       setDeleteTarget(surface);
       return;
     }
@@ -188,11 +212,19 @@ export function ProjectTabBar({
                             onClick={() => onSelect(surface.tabKey)}
                             onDoubleClick={(event) => {
                               event.preventDefault();
-                              beginRename(surface);
+                              if (
+                                surface.kind !== "terminal" ||
+                                surface.entity.kind !== "run-configuration"
+                              ) {
+                                beginRename(surface);
+                              }
                             }}
                           >
-                            {surface.kind === "explorer" &&
-                            surface.entity.selectedPath ? (
+                            {surface.kind === "terminal" &&
+                            surface.entity.kind === "run-configuration" ? (
+                              <Play className="size-3.5 shrink-0 fill-current" />
+                            ) : surface.kind === "explorer" &&
+                              surface.entity.selectedPath ? (
                               <FileCode2 className="size-3.5 shrink-0" />
                             ) : (
                               <ProjectSurfaceIcon
@@ -206,6 +238,23 @@ export function ProjectTabBar({
                               />
                             )}
                             <span className="truncate">{surface.title}</span>
+                            {surface.kind === "terminal" &&
+                            surface.entity.kind === "run-configuration" ? (
+                              <span
+                                aria-label={
+                                  surface.entity.status === "running"
+                                    ? "Run configuration running"
+                                    : "Run configuration inactive"
+                                }
+                                className={cn(
+                                  "size-1.5 shrink-0 rounded-full bg-muted-foreground/40",
+                                  surface.entity.status === "running" &&
+                                    "bg-emerald-500",
+                                  surface.entity.status === "failed" &&
+                                    "bg-red-500",
+                                )}
+                              />
+                            ) : null}
                             {surface.kind === "chat" ? (
                               <ChatActivityStatus chat={surface.entity} />
                             ) : null}
@@ -213,7 +262,7 @@ export function ProjectTabBar({
                         )}
                         {!editing ? (
                           <SurfaceActionsMenu
-                            deleteDisabled={surfaceIsExecuting(surface)}
+                            deleteDisabled={surfaceIsActiveAgent(surface)}
                             title={surface.title}
                             onDelete={() => setDeleteTarget(surface)}
                             onDuplicate={
@@ -221,7 +270,12 @@ export function ProjectTabBar({
                                 ? () => onDuplicate(surface)
                                 : undefined
                             }
-                            onRename={() => beginRename(surface)}
+                            onRename={
+                              surface.kind === "terminal" &&
+                              surface.entity.kind === "run-configuration"
+                                ? undefined
+                                : () => beginRename(surface)
+                            }
                             trigger={
                               <button
                                 type="button"
@@ -244,11 +298,14 @@ export function ProjectTabBar({
                     </ContextMenu.Trigger>
                     <ContextMenu.Portal>
                       <StyledContextMenuContent className="min-w-40">
-                        <StyledContextMenuItem
-                          onSelect={() => beginRename(surface)}
-                        >
-                          <Pencil className="size-4" /> Rename
-                        </StyledContextMenuItem>
+                        {surface.kind !== "terminal" ||
+                        surface.entity.kind !== "run-configuration" ? (
+                          <StyledContextMenuItem
+                            onSelect={() => beginRename(surface)}
+                          >
+                            <Pencil className="size-4" /> Rename
+                          </StyledContextMenuItem>
+                        ) : null}
                         {surface.kind === "chat" && onDuplicate ? (
                           <StyledContextMenuItem
                             onSelect={() => onDuplicate(surface)}
@@ -259,7 +316,7 @@ export function ProjectTabBar({
                         <ContextMenu.Separator className="my-1 h-px bg-border" />
                         <StyledContextMenuItem
                           className="text-destructive focus:bg-destructive/10"
-                          disabled={surfaceIsExecuting(surface)}
+                          disabled={surfaceIsActiveAgent(surface)}
                           onSelect={() => setDeleteTarget(surface)}
                         >
                           <Trash2 className="size-4" /> Delete
@@ -337,30 +394,66 @@ export function ProjectTabBar({
 
       <ConfirmDialog
         confirmDisabled={Boolean(
-          deleteTarget && surfaceIsExecuting(deleteTarget),
+          deleteTarget && surfaceIsActiveAgent(deleteTarget),
         )}
-        confirmLabel="Delete"
-        description={
-          deleteTarget && surfaceIsExecuting(deleteTarget)
-            ? "Stop the active agent before removing this tab."
-            : deleteTarget?.kind === "chat"
-              ? "Agents with conversation history move to Archive for 90 days. Empty agents are deleted immediately."
-              : `This permanently removes the ${deleteTarget?.kind ?? "surface"} tab and its Cantrip-owned state. Project files are not deleted.`
+        confirmLabel={
+          deleteTarget && surfaceIsActiveRun(deleteTarget)
+            ? "Stop and close"
+            : "Delete"
         }
+        confirmPendingLabel="Stopping and closing…"
+        description={
+          deleteTarget && surfaceIsActiveAgent(deleteTarget)
+            ? "Stop the active agent before removing this tab."
+            : deleteTarget && surfaceIsActiveRun(deleteTarget)
+              ? "The active process will be stopped immediately, then this Run terminal tab will be removed. The shared Run configuration remains available."
+              : deleteTarget?.kind === "chat"
+                ? "Agents with conversation history move to Archive for 90 days. Empty agents are deleted immediately."
+                : `This permanently removes the ${deleteTarget?.kind ?? "surface"} tab and its Cantrip-owned state. Project files are not deleted.`
+        }
+        error={deleteError}
+        pending={deletePending}
         onConfirm={() => {
           if (deleteTarget) {
             const nextTabKey = nextProjectTabAfterRemoval(
               surfaces,
               deleteTarget.tabKey,
             );
+            if (surfaceIsActiveRun(deleteTarget)) {
+              setDeletePending(true);
+              setDeleteError(null);
+              void onStopAndCloseRunTerminal(deleteTarget.entity)
+                .then(() => {
+                  if (nextTabKey) onSelect(nextTabKey);
+                  setDeleteTarget(null);
+                })
+                .catch((error: unknown) =>
+                  setDeleteError(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not stop and close this Run terminal.",
+                  ),
+                )
+                .finally(() => setDeletePending(false));
+              return;
+            }
             if (nextTabKey) onSelect(nextTabKey);
             onDelete(deleteTarget);
           }
           setDeleteTarget(null);
         }}
         open={Boolean(deleteTarget)}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={`Delete ${deleteTarget?.title ?? "tab"}?`}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteError(null);
+            setDeleteTarget(null);
+          }
+        }}
+        title={
+          deleteTarget && surfaceIsActiveRun(deleteTarget)
+            ? `Stop and close ${deleteTarget.title}?`
+            : `Delete ${deleteTarget?.title ?? "tab"}?`
+        }
       />
     </>
   );

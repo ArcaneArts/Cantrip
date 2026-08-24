@@ -457,6 +457,57 @@ describe("Run configuration runtime persistence", () => {
     ).toMatchObject({ generation: 1, state: "starting" });
   });
 
+  it("refuses to detach an active Run terminal and allows closing it after exit", async () => {
+    const configurationId = randomUUID();
+    const start =
+      await database.repository.requestRunConfigurationRuntimeOperation(
+        LOCAL_USER_ID,
+        startRequest(configurationId),
+      );
+    if (!start.runtime?.terminalId) {
+      throw new Error("Expected a bound Run terminal.");
+    }
+
+    await expect(
+      database.repository.deleteTerminal(
+        LOCAL_USER_ID,
+        start.runtime.terminalId,
+      ),
+    ).rejects.toThrow(/stop the active Run configuration/iu);
+    await expect(
+      database.repository.getTerminalExecutionContext(
+        LOCAL_USER_ID,
+        start.runtime.terminalId,
+      ),
+    ).resolves.not.toBeNull();
+
+    const exited =
+      await database.repository.applyRunConfigurationRuntimeObservation(
+        LOCAL_USER_ID,
+        workerId,
+        observation(start.runtime, "exited", {
+          startedAt: "2026-08-24T12:00:00.000Z",
+          exitCode: 0,
+        }),
+      );
+    expect(exited?.runtime.state).toBe("exited");
+    await expect(
+      database.repository.deleteTerminal(
+        LOCAL_USER_ID,
+        start.runtime.terminalId,
+      ),
+    ).resolves.toMatchObject({
+      kind: "run-configuration",
+      terminalId: start.runtime.terminalId,
+    });
+    await expect(
+      database.repository.getTerminalExecutionContext(
+        LOCAL_USER_ID,
+        start.runtime.terminalId,
+      ),
+    ).resolves.toBeNull();
+  });
+
   it("persists only bounded runtime and operation metadata", () => {
     expect(
       Object.keys(getTableColumns(runConfigurationRuntimes)).sort(),

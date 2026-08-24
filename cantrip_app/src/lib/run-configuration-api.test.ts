@@ -1,10 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/api", () => ({
+  ensureRunOperationWorker: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("./run-content-encryption", () => ({
+  openRunContent: vi.fn().mockResolvedValue({
+    data: "server ready\r\n",
+    truncated: false,
+  }),
+}));
+
 import {
   deleteRunConfiguration,
   getRunConfiguration,
   getRunConfigurationCapabilities,
+  listRunConfigurationRuntimes,
   listRunConfigurations,
+  operateRunConfigurationRuntime,
+  readRunConfigurationRuntimeOutput,
   saveRunConfiguration,
 } from "./run-configuration-api";
 
@@ -12,6 +25,9 @@ const projectId = "f288701f-e4a6-4d08-bd54-eddb41aadbe5";
 const configurationId = "0f82c573-704d-4a06-984e-5ce0b8d688ca";
 const operationId = "b455011d-47c5-478a-a74c-3d2635511263";
 const revision = "a".repeat(64);
+const runtimeId = "4c7d93b8-56af-4d14-b736-b0222923d959";
+const worktreeId = "399d57c4-5f17-4ce8-a811-07d6462daf41";
+const timestamp = "2026-08-24T12:00:00.000Z";
 const document = {
   schema: "cantrip.run-configuration" as const,
   version: 1 as const,
@@ -206,5 +222,114 @@ describe("Run configuration app API", () => {
     await expect(listRunConfigurations(projectId, operationId)).rejects.toThrow(
       "misrouted",
     );
+  });
+
+  it("starts and lists correlated Run configuration runtimes", async () => {
+    const runtime = {
+      id: runtimeId,
+      projectId,
+      configurationId,
+      worktreeId,
+      workerId: "worker-one",
+      terminalId: runtimeId,
+      definitionRevision: revision,
+      codexEnvironmentRevision: null,
+      generation: 1,
+      requestedOperationId: operationId,
+      state: "running",
+      startedAt: timestamp,
+      endedAt: null,
+      exitCode: null,
+      signal: null,
+      failure: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const operation = {
+      id: operationId,
+      projectId,
+      configurationId,
+      worktreeId,
+      runtimeId,
+      workerId: "worker-one",
+      operation: "start",
+      outcome: "accepted",
+      generation: 1,
+      definitionRevision: revision,
+      codexEnvironmentRevision: null,
+      createdAt: timestamp,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ operation, replayed: false, runtime }, 202),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ operationId, projectId, runtimes: [runtime] }),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      operateRunConfigurationRuntime(
+        {
+          operation: "start",
+          projectId,
+          configurationId,
+          targetWorktreeId: worktreeId,
+        },
+        operationId,
+      ),
+    ).resolves.toMatchObject({ runtime: { state: "running" } });
+    await expect(
+      listRunConfigurationRuntimes(
+        projectId,
+        { configurationId, targetWorktreeId: worktreeId },
+        operationId,
+      ),
+    ).resolves.toMatchObject([{ id: runtimeId }]);
+    expect(fetch.mock.calls[0]![0]).toContain(
+      "/api/run-configuration-runtimes/operations",
+    );
+    expect(fetch.mock.calls[1]![0]).toContain(
+      "/api/run-configuration-runtimes/status",
+    );
+  });
+
+  it("opens protected runtime output only after checking exact identity", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          operationId,
+          projectId,
+          configurationId,
+          worktreeId,
+          generation: 3,
+          protectedOutput: {
+            formatVersion: 1,
+            domain: "run-content",
+            keyRevision: 1,
+            envelope: {
+              version: 1,
+              algorithm: "AES-256-GCM",
+              keyRevision: 1,
+              nonce: "AAAAAAAAAAAAAAAA",
+              ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+            },
+          },
+        }),
+      ),
+    );
+
+    await expect(
+      readRunConfigurationRuntimeOutput(
+        { projectId, configurationId, worktreeId },
+        operationId,
+      ),
+    ).resolves.toEqual({
+      data: "server ready\r\n",
+      generation: 3,
+      truncated: false,
+    });
   });
 });

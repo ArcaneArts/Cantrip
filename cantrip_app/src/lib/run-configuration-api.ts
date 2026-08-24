@@ -5,6 +5,18 @@ import type {
   RunConfigurationWriteRequest,
   RunConfigurationWriteResult,
 } from "@cantrip/protocol/run-configuration-definitions";
+import type {
+  RunConfigurationRuntime,
+  RunConfigurationRuntimeLifecycleRequest,
+  RunConfigurationRuntimeOperationResult,
+  RunConfigurationRuntimeOutputContent,
+} from "@cantrip/protocol/run-configuration-runtime";
+import {
+  protectedRunConfigurationRuntimeOutputResultSchema,
+  runConfigurationRuntimeOperationResultSchema,
+  runConfigurationRuntimeOutputContentSchema,
+  runConfigurationRuntimeStatusResultSchema,
+} from "@cantrip/protocol/run-configuration-runtime";
 import {
   runConfigurationCapabilitiesResponseSchema,
   runConfigurationDeleteResponseSchema,
@@ -14,6 +26,8 @@ import {
 } from "@cantrip/protocol/run-configuration-operations";
 
 import { request, requestResponse } from "@/lib/api-client";
+import { ensureRunOperationWorker } from "@/lib/api";
+import { openRunContent } from "@/lib/run-content-encryption";
 
 function configurationCollectionPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/run-configurations`;
@@ -117,4 +131,100 @@ export async function deleteRunConfiguration(
   );
   assertCorrelated(wire, projectId, operationId);
   return wire.result;
+}
+
+export async function operateRunConfigurationRuntime(
+  input: Omit<RunConfigurationRuntimeLifecycleRequest, "operationId">,
+  operationId = crypto.randomUUID(),
+): Promise<RunConfigurationRuntimeOperationResult> {
+  const result = runConfigurationRuntimeOperationResultSchema.parse(
+    await request("/api/run-configuration-runtimes/operations", {
+      method: "POST",
+      body: JSON.stringify({ ...input, operationId }),
+    }),
+  );
+  if (
+    result.operation.id !== operationId ||
+    result.operation.projectId !== input.projectId ||
+    result.operation.configurationId !== input.configurationId ||
+    result.operation.operation !== input.operation ||
+    (input.targetWorktreeId !== null &&
+      result.operation.worktreeId !== input.targetWorktreeId)
+  ) {
+    throw new Error("The Run configuration runtime response was misrouted.");
+  }
+  return result;
+}
+
+export async function listRunConfigurationRuntimes(
+  projectId: string,
+  input: {
+    configurationId?: string | null;
+    targetWorktreeId?: string | null;
+    limit?: number;
+  } = {},
+  operationId = crypto.randomUUID(),
+): Promise<RunConfigurationRuntime[]> {
+  const result = runConfigurationRuntimeStatusResultSchema.parse(
+    await request("/api/run-configuration-runtimes/status", {
+      method: "POST",
+      body: JSON.stringify({
+        operationId,
+        projectId,
+        configurationId: input.configurationId ?? null,
+        targetWorktreeId: input.targetWorktreeId ?? null,
+        limit: input.limit ?? 256,
+      }),
+    }),
+  );
+  if (result.operationId !== operationId || result.projectId !== projectId) {
+    throw new Error("The Run configuration runtime status was misrouted.");
+  }
+  return result.runtimes;
+}
+
+export async function readRunConfigurationRuntimeOutput(
+  input: {
+    projectId: string;
+    configurationId: string;
+    worktreeId: string;
+    tail?: number;
+  },
+  operationId = crypto.randomUUID(),
+): Promise<RunConfigurationRuntimeOutputContent & { generation: number }> {
+  await ensureRunOperationWorker({
+    projectId: input.projectId,
+    worktreeId: input.worktreeId,
+  });
+  const result = protectedRunConfigurationRuntimeOutputResultSchema.parse(
+    await request("/api/run-configuration-runtimes/output", {
+      method: "POST",
+      body: JSON.stringify({
+        operationId,
+        projectId: input.projectId,
+        configurationId: input.configurationId,
+        worktreeId: input.worktreeId,
+        tail: input.tail ?? 100_000,
+      }),
+    }),
+  );
+  if (
+    result.operationId !== operationId ||
+    result.projectId !== input.projectId ||
+    result.configurationId !== input.configurationId ||
+    result.worktreeId !== input.worktreeId
+  ) {
+    throw new Error("The Run configuration runtime output was misrouted.");
+  }
+  return {
+    generation: result.generation,
+    ...(await openRunContent({
+      projectId: input.projectId,
+      worktreeId: input.worktreeId,
+      operationId,
+      operation: "run.configuration.output",
+      opaque: result.protectedOutput,
+      schema: runConfigurationRuntimeOutputContentSchema,
+    })),
+  };
 }

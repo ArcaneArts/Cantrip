@@ -33,6 +33,7 @@ import {
   MonitorUp,
   MoreHorizontal,
   Pencil,
+  Play,
   Settings,
   SquareTerminal,
   Trash2,
@@ -198,7 +199,7 @@ function StandardSidebarSurfaceTab({
   icon: ReactNode;
   onClose(): void;
   onDelete(): void;
-  onRename(): void;
+  onRename?: () => void;
   onSelect(): void;
   renameValue: string;
   setRenameValue(value: string): void;
@@ -226,7 +227,7 @@ function StandardSidebarSurfaceTab({
       title={title}
       trailing={trailing}
       renameValue={renameValue}
-      onCancelRename={onRename}
+      onCancelRename={onRename ?? (() => undefined)}
       onClose={onClose}
       onRename={setRenameValue}
       onSelect={onSelect}
@@ -497,6 +498,7 @@ export function ProjectChatList({
   onOpenProjectSettings,
   onRevealProject,
   onDeleteTerminal,
+  onStopAndCloseRunTerminal,
   onRemoveProject,
   onRequestChatWorktreeCreate,
   onRenameChat,
@@ -577,6 +579,7 @@ export function ProjectChatList({
     localFolder: boolean,
   ) => Promise<void>;
   onDeleteTerminal(terminalId: string): void;
+  onStopAndCloseRunTerminal(terminal: TerminalSummary): Promise<void>;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): Promise<void>;
   onRequestChatWorktreeCreate(chat: ChatSummary): void;
   onRenameChat(chatId: string, title: string): void;
@@ -623,6 +626,10 @@ export function ProjectChatList({
     useState<ExplorerSummary | null>(null);
   const [deleteTerminalTarget, setDeleteTerminalTarget] =
     useState<TerminalSummary | null>(null);
+  const [deleteTerminalPending, setDeleteTerminalPending] = useState(false);
+  const [deleteTerminalError, setDeleteTerminalError] = useState<string | null>(
+    null,
+  );
   const [deleteProjectViewTarget, setDeleteProjectViewTarget] =
     useState<ProjectViewSummary | null>(null);
   const [removeProjectTarget, setRemoveProjectTarget] =
@@ -868,7 +875,14 @@ export function ProjectChatList({
     ) {
       setDeleteTarget(tab.chat);
     } else if (tab.kind === "chat") onDeleteChat(tab.chat.id);
-    else if (tab.kind === "terminal") onDeleteTerminal(tab.terminal.id);
+    else if (
+      tab.kind === "terminal" &&
+      tab.terminal.kind === "run-configuration" &&
+      tab.terminal.status === "running"
+    ) {
+      setDeleteTerminalError(null);
+      setDeleteTerminalTarget(tab.terminal);
+    } else if (tab.kind === "terminal") onDeleteTerminal(tab.terminal.id);
     else if (tab.kind === "explorer") onCloseExplorer(tab.explorer.id);
     else if (tab.kind === "browser") onDeleteBrowser(tab.browser.id);
     else if (tab.kind === "code") onDeleteCode(tab.codeTab.id);
@@ -1073,7 +1087,11 @@ export function ProjectChatList({
                             sortId={tab.id}
                             title={tab.terminal.title}
                             icon={
-                              <SquareTerminal className="size-3.5 shrink-0" />
+                              tab.terminal.kind === "run-configuration" ? (
+                                <Play className="size-3.5 shrink-0 fill-current" />
+                              ) : (
+                                <SquareTerminal className="size-3.5 shrink-0" />
+                              )
                             }
                             status={
                               <span
@@ -1094,7 +1112,11 @@ export function ProjectChatList({
                               finishTerminalRename(tab.terminal)
                             }
                             onSelect={selectGroup}
-                            onRename={() => beginTerminalRename(tab.terminal)}
+                            onRename={
+                              tab.terminal.kind === "run-configuration"
+                                ? undefined
+                                : () => beginTerminalRename(tab.terminal)
+                            }
                             onClose={() => closeTabImmediately(tab)}
                             onDelete={() =>
                               setDeleteTerminalTarget(tab.terminal)
@@ -1502,29 +1524,69 @@ export function ProjectChatList({
       </Dialog>
       <Dialog
         open={Boolean(deleteTerminalTarget)}
-        onOpenChange={(open) => !open && setDeleteTerminalTarget(null)}
+        onOpenChange={(open) => {
+          if (!open && !deleteTerminalPending) {
+            setDeleteTerminalError(null);
+            setDeleteTerminalTarget(null);
+          }
+        }}
       >
-        <DialogContent>
+        <DialogContent showClose={!deleteTerminalPending}>
           <DialogHeader>
-            <DialogTitle>Delete terminal?</DialogTitle>
+            <DialogTitle>
+              {deleteTerminalTarget?.kind === "run-configuration" &&
+              deleteTerminalTarget.status === "running"
+                ? "Stop and close Run terminal?"
+                : "Delete terminal?"}
+            </DialogTitle>
             <DialogDescription>
-              “{deleteTerminalTarget?.title}” will be closed and removed from
-              this project.
+              {deleteTerminalTarget?.kind === "run-configuration" &&
+              deleteTerminalTarget.status === "running"
+                ? `“${deleteTerminalTarget.title}” will be stopped immediately and its terminal tab removed. The shared Run configuration remains available.`
+                : `“${deleteTerminalTarget?.title}” will be closed and removed from this project.`}
             </DialogDescription>
           </DialogHeader>
+          {deleteTerminalError ? (
+            <InlineAlert tone="error">{deleteTerminalError}</InlineAlert>
+          ) : null}
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button disabled={deleteTerminalPending} variant="outline">
+                Cancel
+              </Button>
             </DialogClose>
             <Button
               variant="destructive"
+              pending={deleteTerminalPending}
+              pendingLabel="Stopping and closing…"
               onClick={() => {
-                if (deleteTerminalTarget)
-                  onDeleteTerminal(deleteTerminalTarget.id);
+                if (!deleteTerminalTarget) return;
+                if (
+                  deleteTerminalTarget.kind === "run-configuration" &&
+                  deleteTerminalTarget.status === "running"
+                ) {
+                  setDeleteTerminalPending(true);
+                  setDeleteTerminalError(null);
+                  void onStopAndCloseRunTerminal(deleteTerminalTarget)
+                    .then(() => setDeleteTerminalTarget(null))
+                    .catch((error: unknown) =>
+                      setDeleteTerminalError(
+                        error instanceof Error
+                          ? error.message
+                          : "Could not stop and close this Run terminal.",
+                      ),
+                    )
+                    .finally(() => setDeleteTerminalPending(false));
+                  return;
+                }
+                onDeleteTerminal(deleteTerminalTarget.id);
                 setDeleteTerminalTarget(null);
               }}
             >
-              Delete
+              {deleteTerminalTarget?.kind === "run-configuration" &&
+              deleteTerminalTarget?.status === "running"
+                ? "Stop and close"
+                : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
