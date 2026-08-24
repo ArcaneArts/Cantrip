@@ -16,6 +16,8 @@ type CapacityWaiter = (attachmentId: string) => Promise<boolean>;
 type ConnectionObserver = (localPort: number) => void;
 
 interface TcpStream {
+  destinationHalfClosed: boolean;
+  destinationHalfCloseSent: boolean;
   destinationToSourceCredit: number;
   flushing: boolean;
   header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>;
@@ -23,7 +25,7 @@ interface TcpStream {
   outputSequence: number;
   pendingBytes: number;
   pendingOutput: Uint8Array[];
-  pausedForCredit: boolean;
+  pausedForOutput: boolean;
   socket: Socket;
   sourceHalfClosed: boolean;
   startedAtMs: number;
@@ -201,6 +203,8 @@ export class TunnelTcpDestinationAdapter {
       allowHalfOpen: true,
     });
     const stream: TcpStream = {
+      destinationHalfClosed: false,
+      destinationHalfCloseSent: false,
       destinationToSourceCredit: header.initialCreditBytes,
       flushing: false,
       header,
@@ -208,7 +212,7 @@ export class TunnelTcpDestinationAdapter {
       outputSequence: 0,
       pendingBytes: 0,
       pendingOutput: [],
-      pausedForCredit: false,
+      pausedForOutput: false,
       socket,
       sourceHalfClosed: false,
       startedAtMs: Date.now(),
@@ -256,8 +260,7 @@ export class TunnelTcpDestinationAdapter {
           EMPTY_PAYLOAD,
         )
       ) {
-        this.#remove(stream);
-        socket.destroy();
+        this.#close(stream, "congested", "accepted-frame-emitter-rejected");
       }
     });
     socket.once("timeout", () => {
@@ -273,24 +276,17 @@ export class TunnelTcpDestinationAdapter {
       );
       socket.destroy();
     });
-    socket.on(
-      "data",
-      (data) =>
-        void this.#sendData(
-          stream,
-          typeof data === "string" ? Buffer.from(data) : data,
-        ),
+    socket.on("data", (data) =>
+      this.#sendData(
+        stream,
+        typeof data === "string" ? Buffer.from(data) : data,
+      ),
     );
     socket.once("end", () => {
       if (!this.#streams.has(streamKey)) return;
-      this.#emit(
-        {
-          ...responseBase(stream),
-          kind: "half-close",
-          direction: "destination-to-source",
-        },
-        EMPTY_PAYLOAD,
-      );
+      stream.destinationHalfClosed = true;
+      this.#pauseOutput(stream);
+      void this.#flushOutput(stream);
     });
     socket.once("error", () => {
       if (!this.#remove(stream)) return;
@@ -328,17 +324,22 @@ export class TunnelTcpDestinationAdapter {
     });
   }
 
-  async #sendData(stream: TcpStream, data: Buffer): Promise<void> {
+  #sendData(stream: TcpStream, data: Buffer): void {
+    if (!this.#streams.has(key(stream.header))) return;
+    // A TCP socket can produce more data events while an async capacity wait is
+    // pending. Pause before queueing so the bounded queue reflects one already
+    // delivered read instead of the speed difference between TCP and WebSocket.
+    this.#pauseOutput(stream);
     for (const payload of chunks(data)) {
       if (!this.#streams.has(key(stream.header))) return;
       stream.pendingOutput.push(payload.slice());
       stream.pendingBytes += payload.byteLength;
       if (stream.pendingBytes > MAX_SOCKET_BUFFER_BYTES) {
-        this.#close(stream, "congested");
+        this.#close(stream, "congested", "destination-output-buffer-limit");
         return;
       }
     }
-    await this.#flushOutput(stream);
+    void this.#flushOutput(stream);
   }
 
   async #flushOutput(stream: TcpStream): Promise<void> {
@@ -349,8 +350,6 @@ export class TunnelTcpDestinationAdapter {
         if (!this.#streams.has(key(stream.header))) return;
         const payload = stream.pendingOutput[0]!;
         if (payload.byteLength > stream.destinationToSourceCredit) {
-          stream.pausedForCredit = true;
-          stream.socket.pause();
           return;
         }
         stream.pendingOutput.shift();
@@ -364,20 +363,64 @@ export class TunnelTcpDestinationAdapter {
               direction: "destination-to-source",
             },
             payload,
-          ) ||
-          !(await this.#waitForCapacity(stream.header.attachmentId))
+          )
         ) {
-          this.#close(stream, "congested");
+          this.#close(stream, "congested", "data-frame-emitter-rejected");
+          return;
+        }
+        let capacityAvailable = false;
+        try {
+          capacityAvailable = await this.#waitForCapacity(
+            stream.header.attachmentId,
+          );
+        } catch {
+          this.#close(stream, "congested", "capacity-wait-failed");
+          return;
+        }
+        if (!capacityAvailable) {
+          this.#close(stream, "congested", "capacity-unavailable");
           return;
         }
       }
-      if (stream.pausedForCredit) {
-        stream.pausedForCredit = false;
-        stream.socket.resume();
+      if (!this.#streams.has(key(stream.header))) return;
+      if (stream.destinationHalfClosed && !stream.destinationHalfCloseSent) {
+        if (
+          !this.#emit(
+            {
+              ...responseBase(stream),
+              kind: "half-close",
+              direction: "destination-to-source",
+            },
+            EMPTY_PAYLOAD,
+          )
+        ) {
+          this.#close(stream, "congested", "half-close-emitter-rejected");
+          return;
+        }
+        stream.destinationHalfCloseSent = true;
       }
     } finally {
       stream.flushing = false;
+      if (
+        this.#streams.has(key(stream.header)) &&
+        stream.pendingOutput.length === 0 &&
+        !stream.destinationHalfClosed
+      ) {
+        this.#resumeOutput(stream);
+      }
     }
+  }
+
+  #pauseOutput(stream: TcpStream): void {
+    if (stream.pausedForOutput) return;
+    stream.pausedForOutput = true;
+    stream.socket.pause();
+  }
+
+  #resumeOutput(stream: TcpStream): void {
+    if (!stream.pausedForOutput) return;
+    stream.pausedForOutput = false;
+    stream.socket.resume();
   }
 
   #reject(
@@ -403,8 +446,30 @@ export class TunnelTcpDestinationAdapter {
   #close(
     stream: TcpStream,
     code: Extract<TunnelDataPlaneFrameHeader, { kind: "close" }>["code"],
+    reasonCode: string = code,
   ): void {
     if (!this.#remove(stream)) return;
+    workerLogger.rateLimited(
+      `tunnel-destination-close:${reasonCode}`,
+      code === "normal" ? "debug" : "warn",
+      "Tunnel destination connection closed locally",
+      {
+        event: "tunnel.destination.closed-locally",
+        subsystem: "tunnel",
+        operation: "close",
+        reasonCode,
+        status: code === "normal" ? "completed" : "failed",
+        tunnelId: stream.header.tunnelId,
+        attachmentId: stream.header.attachmentId,
+        connectionId: stream.header.connectionId,
+        code,
+        durationMs: Date.now() - stream.startedAtMs,
+        counts: {
+          streams: this.#streams.size,
+          pendingBytes: stream.pendingBytes,
+        },
+      },
+    );
     this.#emit(
       {
         ...responseBase(stream),

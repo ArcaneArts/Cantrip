@@ -68,13 +68,12 @@
  			}
  
  			// Auxiliary Sidebar
-@@ -1299,6 +1312,18 @@
+@@ -1299,6 +1312,17 @@
  			return true; // cannot hide editor part in auxiliary windows
  		}
  
 +		if (targetWindow === mainWindow && isCantripEditorPresentation(this.configurationService)) {
 +			switch (part) {
-+				case Parts.TITLEBAR_PART:
 +				case Parts.SIDEBAR_PART:
 +				case Parts.PANEL_PART:
 +				case Parts.AUXILIARYBAR_PART:
@@ -252,3 +251,53 @@
  			this._control = this.createControl();
  		}
  
+--- a/src/vs/workbench/browser/parts/notifications/notificationsToasts.ts
++++ b/src/vs/workbench/browser/parts/notifications/notificationsToasts.ts
+@@ -11,7 +11,7 @@
+ import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+ import { NotificationsList } from './notificationsList.js';
+ import { Event, Emitter } from '../../../../base/common/event.js';
+-import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
++import { isCantripEditorPresentation, IWorkbenchLayoutService, LayoutSettings, Parts } from '../../../services/layout/browser/layoutService.js';
+ import { NOTIFICATIONS_TOAST_BORDER, NOTIFICATIONS_BACKGROUND } from '../../../common/theme.js';
+ import { IThemeService, Themable } from '../../../../platform/theme/common/themeService.js';
+ import { widgetShadow } from '../../../../platform/theme/common/colorRegistry.js';
+@@ -26,6 +26,7 @@
+ import { assertReturnsDefined } from '../../../../base/common/types.js';
+ import { NotificationsToastsVisibleContext } from '../../../common/contextkeys.js';
+ import { mainWindow } from '../../../../base/browser/window.js';
++import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+ 
+ interface INotificationToast {
+ 	readonly item: INotificationViewItem;
+@@ -83,6 +84,7 @@
+ 		@IThemeService themeService: IThemeService,
+ 		@IEditorGroupsService private readonly editorGroupService: IEditorGroupsService,
+ 		@IContextKeyService contextKeyService: IContextKeyService,
++		@IConfigurationService private readonly configurationService: IConfigurationService,
+ 		@ILifecycleService private readonly lifecycleService: ILifecycleService,
+ 		@IHostService private readonly hostService: IHostService
+ 	) {
+@@ -97,6 +99,11 @@
+ 
+ 		// Layout
+ 		this._register(this.layoutService.onDidLayoutMainContainer(dimension => this.layout(Dimension.lift(dimension))));
++		this._register(this.configurationService.onDidChangeConfiguration(event => {
++			if (event.affectsConfiguration(LayoutSettings.CANTRIP_PRESENTATION) && isCantripEditorPresentation(this.configurationService)) {
++				this.hide();
++			}
++		}));
+ 
+ 		// Delay some tasks until after we have restored
+ 		// to reduce UI pressure from the startup phase
+@@ -133,6 +140,10 @@
+ 	}
+ 
+ 	private addToast(item: INotificationViewItem): void {
++		if (isCantripEditorPresentation(this.configurationService)) {
++			return; // editor-only embeds do not render workbench notification chrome
++		}
++
+ 		if (this.isNotificationsCenterVisible) {
+ 			return; // do not show toasts while notification center is visible
+ 		}

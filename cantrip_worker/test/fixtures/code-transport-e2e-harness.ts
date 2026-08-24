@@ -60,6 +60,11 @@ interface HarnessStart {
 }
 
 const serverUrl = "https://cantrip-native-e2e.test";
+const LARGE_RESPONSE_BYTES = 16 * 1_024 * 1_024 + 137;
+const largeResponse = Buffer.allocUnsafe(LARGE_RESPONSE_BYTES);
+for (let index = 0; index < largeResponse.byteLength; index += 1) {
+  largeResponse[index] = index % 251;
+}
 
 interface HarnessCommand {
   type: "snapshot" | "shutdown";
@@ -270,6 +275,15 @@ async function main(): Promise<void> {
       request.once("close", () => {
         hangingRequestClosed = true;
       });
+      return;
+    }
+    if (request.url?.startsWith("/large")) {
+      response.writeHead(200, {
+        "content-length": largeResponse.byteLength,
+        "content-type": "application/octet-stream",
+        "x-openvscode-workbench": "large-response",
+      });
+      response.end(largeResponse);
       return;
     }
     response.writeHead(200, {

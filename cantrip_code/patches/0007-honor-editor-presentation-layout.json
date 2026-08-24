@@ -1,18 +1,19 @@
 {
   "id": "0007-honor-editor-presentation-layout",
   "title": "Honor Cantrip editor-only workbench presentation",
-  "reason": "Explorer popouts transition an already-running OpenVSCode workbench into an editor-only presentation. The extension API cannot inspect or authoritatively constrain runtime workbench-part visibility, and OpenVSCode restores persisted sidebars, panels, the Activity Bar, status bar, title bar, editor tabs, and breadcrumbs before the remote extension activates. This patch makes the per-workspace cantrip.presentation setting authoritative for every non-editor workbench part and editor title strip without changing normal Code sessions.",
+  "reason": "Explorer popouts transition an already-running OpenVSCode workbench into an editor-only presentation. The extension API cannot inspect or authoritatively constrain runtime workbench-part visibility or future notification toasts, and OpenVSCode restores persisted sidebars, panels, the Activity Bar, status bar, title bar, editor tabs, breadcrumbs, and notifications before the remote extension activates. This patch makes the per-workspace cantrip.presentation setting authoritative for every non-editor workbench part, editor title strip, and toast surface without changing normal Code sessions.",
   "upstreamCommit": "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
   "files": [
     "src/vs/workbench/browser/layout.ts",
     "src/vs/workbench/services/layout/browser/layoutService.ts",
     "src/vs/workbench/browser/parts/editor/editor.ts",
-    "src/vs/workbench/browser/parts/editor/breadcrumbsControl.ts"
+    "src/vs/workbench/browser/parts/editor/breadcrumbsControl.ts",
+    "src/vs/workbench/browser/parts/notifications/notificationsToasts.ts"
   ],
   "validation": [
     "pnpm code:patch -- --source cantrip_code/upstream --check",
     "pnpm code:build",
-    "Open a file from Explorer in the desktop popout and confirm the title, Activity Bar, both sidebars, panel, status bar, and editor tab strip are absent"
+    "Open a file from Explorer in the desktop popout and confirm the title, Activity Bar, both sidebars, panel, status bar, editor tab strip, minimap, and notification toasts are absent"
   ],
-  "removal": "Remove if OpenVSCode exposes a window-local extension API for authoritatively constraining every non-editor workbench part and editor title strip, or if Cantrip stops transitioning shared workbench processes into editor-only sessions."
+  "removal": "Remove if OpenVSCode exposes a window-local extension API for authoritatively constraining every non-editor workbench part, editor title strip, and notification toast, or if Cantrip stops transitioning shared workbench processes into editor-only sessions."
 }

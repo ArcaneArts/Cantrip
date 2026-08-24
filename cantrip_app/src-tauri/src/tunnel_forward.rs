@@ -2194,6 +2194,8 @@ mod desktop {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use tokio_tungstenite::accept_hdr_async;
 
+        const LARGE_CODE_RESPONSE_BYTES: usize = 16 * 1_024 * 1_024 + 137;
+
         fn test_data_protection() -> Arc<DataProtection> {
             Arc::new(DataProtection {
                 key_revision: 3,
@@ -2362,7 +2364,7 @@ mod desktop {
                 .await
                 .expect("write loopback HTTP request");
             let mut response = Vec::new();
-            let read = timeout(Duration::from_secs(10), stream.read_to_end(&mut response))
+            let read = timeout(Duration::from_secs(30), stream.read_to_end(&mut response))
                 .await
                 .expect("loopback HTTP response deadline");
             if let Err(error) = read {
@@ -2373,6 +2375,28 @@ mod desktop {
                 );
             }
             response
+        }
+
+        fn assert_large_code_response(response: &[u8]) {
+            let header_end = response
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .expect("large response headers")
+                + 4;
+            let headers = std::str::from_utf8(&response[..header_end])
+                .expect("large response headers are UTF-8");
+            assert!(headers.starts_with("HTTP/1.1 200"));
+            assert!(headers
+                .to_ascii_lowercase()
+                .contains(&format!("content-length: {LARGE_CODE_RESPONSE_BYTES}")));
+            let body = &response[header_end..];
+            assert_eq!(body.len(), LARGE_CODE_RESPONSE_BYTES);
+            assert!(
+                body.iter()
+                    .enumerate()
+                    .all(|(index, byte)| *byte == (index % 251) as u8),
+                "large response bytes must remain complete and ordered"
+            );
         }
 
         #[tokio::test]
@@ -2469,6 +2493,8 @@ mod desktop {
             let direct_text = String::from_utf8(direct_response).unwrap();
             assert!(direct_text.starts_with("HTTP/1.1 200"));
             assert!(direct_text.contains("openvscode-compatible-workbench"));
+            let direct_large_response = local_http(direct_port, "/code/large").await;
+            assert_large_code_response(&direct_large_response);
 
             // A second in-flight upstream is cancelled by shutting down the
             // native route. This must close both proxy legs and stream state.
@@ -2498,11 +2524,11 @@ mod desktop {
             direct_counters.wait_for_connections_drained().await;
             assert_eq!(
                 direct_counters.connections_opened.load(Ordering::Acquire),
-                2
+                3
             );
             assert_eq!(
                 direct_counters.connections_closed.load(Ordering::Acquire),
-                2
+                3
             );
 
             // The second direct capability authenticates successfully but its
@@ -2631,6 +2657,8 @@ mod desktop {
             let relay_text = String::from_utf8(relay_response).unwrap();
             assert!(relay_text.starts_with("HTTP/1.1 200"));
             assert!(relay_text.contains("openvscode-compatible-workbench"));
+            let relay_large_response = local_http(fallback_port, "/code/large").await;
+            assert_large_code_response(&relay_large_response);
             relay_stop.send(()).unwrap();
             assert!(matches!(
                 relay_task.await.unwrap().unwrap(),
@@ -2639,11 +2667,11 @@ mod desktop {
             fallback_counters.wait_for_connections_drained().await;
             assert_eq!(
                 fallback_counters.connections_opened.load(Ordering::Acquire),
-                2
+                3
             );
             assert_eq!(
                 fallback_counters.connections_closed.load(Ordering::Acquire),
-                2
+                3
             );
             assert_eq!(fallback_counters.route_fallbacks.load(Ordering::Acquire), 1);
 
@@ -2662,8 +2690,8 @@ mod desktop {
                 request.url
                     == "/?preserved=relay&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
             }));
-            assert_eq!(snapshot.relay_stats.opened_connections, 1);
-            assert_eq!(snapshot.relay_stats.closed_connections, 1);
+            assert_eq!(snapshot.relay_stats.opened_connections, 2);
+            assert_eq!(snapshot.relay_stats.closed_connections, 2);
             assert_eq!(snapshot.relay_stats.active_connections, 0);
             assert_eq!(snapshot.relay_stats.rejected_connections, 0);
             assert!(snapshot.worker_contexts.iter().any(|context| {

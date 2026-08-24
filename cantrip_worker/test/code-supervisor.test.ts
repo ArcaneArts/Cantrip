@@ -926,6 +926,139 @@ describe("Cantrip Code supervisor", () => {
     ).toEqual(["true", "true"]);
   });
 
+  it("prewarms and retains the requested profile before its first session", async () => {
+    const { dataDirectory, repository, supervisor } = await fixture({
+      idleSweepIntervalMs: 60_000,
+      profileIdleTimeoutMs: 1_000,
+    });
+    const profileDirectory = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+    );
+
+    await supervisor.prewarmProfile("default");
+    const prewarmedPid = await readFile(
+      path.join(profileDirectory, "process.pid"),
+      "utf8",
+    );
+    await supervisor.evictIdleSessions(Date.now() + 60_000);
+
+    const opened = await supervisor.open(
+      openCommand("prewarmed-editor", repository, "primary"),
+    );
+    expect(opened.status).toBe("running");
+    expect(
+      await readFile(path.join(profileDirectory, "process.pid"), "utf8"),
+    ).toBe(prewarmedPid);
+  });
+
+  it("serializes the first session behind an in-flight profile prewarm", async () => {
+    const { dataDirectory, repository, startupGate, supervisor } =
+      await fixture({ gateStartup: true });
+    const profileDirectory = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+    );
+    const prewarm = supervisor.prewarmProfile("default");
+    await waitForFile(path.join(profileDirectory, "launch-args.json"));
+    const opening = supervisor.open(
+      openCommand("prewarm-race", repository, "primary"),
+    );
+
+    await writeFile(startupGate!, "ready\n");
+    await expect(prewarm).resolves.toBeUndefined();
+    const runtime = await opening;
+    expect(runtime.status).toBe("running");
+    expect(
+      await readFile(path.join(profileDirectory, "process.pid"), "utf8"),
+    ).toMatch(/^\d+$/u);
+  });
+
+  it("deduplicates concurrent profile prewarm requests", async () => {
+    const { dataDirectory, startupGate, supervisor } = await fixture({
+      gateStartup: true,
+    });
+    const profileDirectory = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+    );
+    const requests = [
+      supervisor.prewarmProfile("default"),
+      supervisor.prewarmProfile("default"),
+      supervisor.prewarmProfile("default"),
+    ];
+    await waitForFile(path.join(profileDirectory, "launch-args.json"));
+
+    await writeFile(startupGate!, "ready\n");
+    await expect(Promise.all(requests)).resolves.toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(
+      (
+        await readFile(
+          path.join(profileDirectory, "health-requests.log"),
+          "utf8",
+        )
+      )
+        .trim()
+        .split("\n"),
+    ).toEqual(["true"]);
+  });
+
+  it("does not leak an in-flight profile prewarm across shutdown", async () => {
+    const { dataDirectory, startupGate, supervisor } = await fixture({
+      gateStartup: true,
+    });
+    const processFile = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+      "process.pid",
+    );
+    const prewarm = supervisor.prewarmProfile("default");
+    await waitForFile(processFile);
+    const pid = Number(await readFile(processFile, "utf8"));
+
+    const closing = supervisor.close();
+    await writeFile(startupGate!, "ready\n");
+
+    await expect(prewarm).rejects.toThrow("stopped during prewarm");
+    await expect(closing).resolves.toBeUndefined();
+    expect(() => process.kill(pid, 0)).toThrow();
+  });
+
+  it("restarts a retained prewarm after it crashes without sessions", async () => {
+    const { dataDirectory, supervisor } = await fixture();
+    const processFile = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+      "process.pid",
+    );
+    await supervisor.prewarmProfile("default");
+    const firstPid = await readFile(processFile, "utf8");
+
+    process.kill(Number(firstPid), "SIGKILL");
+    const restartedPid = await waitForFileChange(processFile, firstPid, 3_000);
+    expect(restartedPid).toMatch(/^\d+$/u);
+    expect(restartedPid).not.toBe(firstPid);
+  });
+
   it("restarts a cached profile that no longer serves authenticated HTTP", async () => {
     const { dataDirectory, repository, supervisor } = await fixture({
       readinessTimeoutMs: 500,
@@ -1124,12 +1257,16 @@ describe("Cantrip Code supervisor", () => {
     expect(workspace.settings).toMatchObject({
       "breadcrumbs.enabled": false,
       "cantrip.presentation": "editor",
+      "debug.toolBarLocation": "hidden",
+      "editor.minimap.enabled": false,
+      "extensions.ignoreRecommendations": true,
       "window.commandCenter": false,
       "workbench.activityBar.location": "hidden",
       "workbench.editor.editorActionsLocation": "hidden",
       "workbench.editor.empty.hint": "hidden",
       "workbench.editor.showTabs": "none",
       "workbench.layoutControl.enabled": false,
+      "workbench.navigationControl.enabled": false,
       "workbench.startupEditor": "none",
       "workbench.statusBar.visible": false,
     });
