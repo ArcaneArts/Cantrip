@@ -57,25 +57,76 @@ export function collectProcessTreePids(rootPid, processes) {
   return result;
 }
 
-export function findLegacyDevtopRootPids(processes) {
-  return [
-    ...new Set(
-      processes
-        .filter(({ command }) => {
-          const normalizedCommand = command.replaceAll("\\", "/");
-          return (
-            (normalizedCommand.includes("concurrently") &&
-              normalizedCommand.includes(
-                "--names protocol,server,worker,desktop",
-              )) ||
-            /(?:^|\s)(?:.*\/)?target\/debug\/cantrip-app(?:\.exe)?(?:\s|$)/u.test(
-              normalizedCommand,
-            )
-          );
-        })
-        .map(({ pid }) => pid),
-    ),
-  ];
+function pathIsWithin(root, candidate) {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return (
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
+}
+
+function isCantripDevelopmentCommand(process, repositoryRoots) {
+  const normalizedCommand = process.command.replaceAll("\\", "/");
+  if (
+    (normalizedCommand.includes("concurrently") &&
+      normalizedCommand.includes("--names protocol,server,worker,desktop")) ||
+    /(?:^|\s)(?:.*\/)?target\/debug\/cantrip-app(?:\.exe)?(?:\s|$)/u.test(
+      normalizedCommand,
+    ) ||
+    /--filter\s+@cantrip\/(?:app|protocol|server|worker)\s+(?:run\s+)?dev(?:\s|$)/u.test(
+      normalizedCommand,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    typeof process.cwd !== "string" ||
+    !repositoryRoots.some((root) => pathIsWithin(root, process.cwd))
+  ) {
+    return false;
+  }
+  const normalizedCwd = process.cwd.replaceAll("\\", "/");
+  return (
+    (/\b(?:tsx(?:\.cmd)?|cli\.mjs)\s+watch\s+src\/index\.ts(?:\s|$)/u.test(
+      normalizedCommand,
+    ) &&
+      /\/(?:cantrip_server|cantrip_worker)$/u.test(normalizedCwd)) ||
+    (/\btsc(?:\.cmd)?\s+-p\s+tsconfig\.json\s+--watch(?:\s|$)/u.test(
+      normalizedCommand,
+    ) &&
+      /\/packages\/protocol$/u.test(normalizedCwd)) ||
+    (/\bvite(?:\.cmd|\.js)?\s+--port\s+1420(?:\s|$)/u.test(normalizedCommand) &&
+      /\/cantrip_app$/u.test(normalizedCwd)) ||
+    (/\btauri(?:\.cmd)?\s+dev(?:\s|$)/u.test(normalizedCommand) &&
+      /\/cantrip_app$/u.test(normalizedCwd))
+  );
+}
+
+function highestProcessRoots(pids, processes) {
+  const candidates = new Set(pids);
+  const parentByPid = new Map(
+    processes.map((process) => [process.pid, process.ppid]),
+  );
+  return pids.filter((pid) => {
+    const visited = new Set([pid]);
+    let parent = parentByPid.get(pid);
+    while (parent && !visited.has(parent)) {
+      if (candidates.has(parent)) return false;
+      visited.add(parent);
+      parent = parentByPid.get(parent);
+    }
+    return true;
+  });
+}
+
+export function findLegacyDevtopRootPids(processes, repositoryRoots = []) {
+  const candidates = processes
+    .filter((process) => isCantripDevelopmentCommand(process, repositoryRoots))
+    .map(({ pid }) => pid);
+  return [...new Set(highestProcessRoots(candidates, processes))];
 }
 
 function runCommand(command, args) {
@@ -102,13 +153,76 @@ function processStartMarker(pid, platform = process.platform) {
   }
 }
 
-function unixProcessSnapshot() {
+function processWorkingDirectory(pid) {
   try {
-    return parseUnixProcessTable(
+    const output = runCommand("lsof", [
+      "-a",
+      "-p",
+      String(pid),
+      "-d",
+      "cwd",
+      "-Fn",
+    ]);
+    const directory = output
+      .split(/\r?\n/u)
+      .find((line) => line.startsWith("n"))
+      ?.slice(1);
+    return directory
+      ? path.resolve(directory.replace(/ \(deleted\)$/u, ""))
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function commandMayNeedWorkingDirectory(command) {
+  return /(?:^|[\\/\s])(?:concurrently|pnpm|tauri|tsc|tsx|vite)(?:\.cmd)?(?:[\\/\s]|$)|cantrip-app/u.test(
+    command,
+  );
+}
+
+function unixProcessSnapshot(includeWorkingDirectories = false) {
+  try {
+    const processes = parseUnixProcessTable(
       runCommand("ps", ["-axo", "pid=,ppid=,command="]),
     );
+    if (!includeWorkingDirectories) return processes;
+    return processes.map((process) => ({
+      ...process,
+      cwd: commandMayNeedWorkingDirectory(process.command)
+        ? processWorkingDirectory(process.pid)
+        : null,
+    }));
   } catch {
     return [];
+  }
+}
+
+export function resolveRepositoryCommonDirectory(repositoryRoot) {
+  const root = path.resolve(repositoryRoot);
+  const commonDirectory = runCommand("git", [
+    "-C",
+    root,
+    "rev-parse",
+    "--git-common-dir",
+  ]).trim();
+  return path.resolve(root, commonDirectory);
+}
+
+function repositoryWorktreeRoots(repositoryRoot) {
+  try {
+    return runCommand("git", [
+      "-C",
+      path.resolve(repositoryRoot),
+      "worktree",
+      "list",
+      "--porcelain",
+    ])
+      .split(/\r?\n/u)
+      .flatMap((line) => (line.startsWith("worktree ") ? [line.slice(9)] : []))
+      .map((root) => path.resolve(root));
+  } catch {
+    return [path.resolve(repositoryRoot)];
   }
 }
 
@@ -206,17 +320,43 @@ function findListeningPids(ports, platform = process.platform) {
 export function forceKillDevelopmentPortListeners(
   ports = DEVTOP_PORTS,
   platform = process.platform,
+  repositoryRoot = null,
 ) {
   const pids = findListeningPids(ports, platform).filter(
     (pid) => pid !== process.pid,
   );
+  const processes =
+    platform !== "win32" && repositoryRoot ? unixProcessSnapshot(true) : [];
+  const developmentRoots = new Set(
+    repositoryRoot
+      ? findLegacyDevtopRootPids(
+          processes,
+          repositoryWorktreeRoots(repositoryRoot),
+        )
+      : [],
+  );
+  const parentByPid = new Map(
+    processes.map((process) => [process.pid, process.ppid]),
+  );
   for (const pid of pids) {
-    forceKillProcessTree(pid, platform);
+    let target = pid;
+    let parent = parentByPid.get(pid);
+    const visited = new Set([pid]);
+    while (parent && !visited.has(parent)) {
+      if (developmentRoots.has(parent)) target = parent;
+      visited.add(parent);
+      parent = parentByPid.get(parent);
+    }
+    if (platform === "win32") {
+      forceKillProcessTree(target, platform);
+    } else {
+      forceKillUnixProcessTree(target, processes);
+    }
   }
   return pids;
 }
 
-export function forceKillLegacyDevtop() {
+export function forceKillLegacyDevtop(repositoryRoot = null) {
   if (process.platform === "win32") {
     try {
       const pids = parsePidList(
@@ -235,10 +375,11 @@ export function forceKillLegacyDevtop() {
       return [];
     }
   }
-  const processes = unixProcessSnapshot();
-  const roots = findLegacyDevtopRootPids(processes).filter(
-    (pid) => pid !== process.pid,
-  );
+  const processes = unixProcessSnapshot(Boolean(repositoryRoot));
+  const roots = findLegacyDevtopRootPids(
+    processes,
+    repositoryRoot ? repositoryWorktreeRoots(repositoryRoot) : [],
+  ).filter((pid) => pid !== process.pid);
   for (const pid of roots) {
     forceKillUnixProcessTree(pid, processes);
   }
@@ -263,24 +404,44 @@ function identityMatches(identity) {
   );
 }
 
-export async function forceKillRecordedDevtop(stateFile, repositoryRoot) {
+async function waitForIdentitiesToExit(identities, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (identities.some(identityMatches)) {
+    if (Date.now() >= deadline) {
+      throw new Error("Previous devtop processes did not stop after SIGKILL.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+export async function forceKillRecordedDevtop(stateFile, repositoryKey) {
   const state = await readState(stateFile);
-  if (state?.repositoryRoot !== path.resolve(repositoryRoot)) {
+  if (state?.repositoryKey !== path.resolve(repositoryKey)) {
     await rm(stateFile, { force: true });
     return [];
   }
 
-  const identities = [state.child, state.wrapper].filter(identityMatches);
-  for (const identity of identities) {
-    forceKillProcessTree(identity.pid);
-  }
+  const wrapper = identityMatches(state.wrapper) ? state.wrapper : null;
+  const child = identityMatches(state.child) ? state.child : null;
+  const identities = [wrapper, child].filter(Boolean);
+  // Stop the wrapper first so it cannot rewrite the shared ownership record
+  // while a replacement devtop is taking over. The child is a detached
+  // process-group leader; kill the group as well as the captured tree so a
+  // watcher cannot race the snapshot by spawning a replacement service.
+  if (wrapper) forceKillProcessTree(wrapper.pid);
+  if (child) forceKillSpawnedProcessGroup(child.pid);
+  await waitForIdentitiesToExit(identities);
   await rm(stateFile, { force: true });
   return identities.map(({ pid }) => pid);
 }
 
-export function createDevtopState(repositoryRoot) {
+export function createDevtopState(
+  repositoryRoot,
+  repositoryKey = repositoryRoot,
+) {
   return {
     repositoryRoot: path.resolve(repositoryRoot),
+    repositoryKey: path.resolve(repositoryKey),
     wrapper: {
       pid: process.pid,
       start: processStartMarker(process.pid),
