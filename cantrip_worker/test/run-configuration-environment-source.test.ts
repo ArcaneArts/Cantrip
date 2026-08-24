@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { RunConfigurationProtectedSecret } from "@cantrip/protocol/run-configuration-secrets";
+
 import {
   RunConfigurationEnvironmentResolutionError,
   inspectRunConfigurationCodexEnvironmentSource,
@@ -15,6 +17,27 @@ import {
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
+
+function protectedSecret(
+  reference: string,
+  revision: number,
+): RunConfigurationProtectedSecret {
+  return {
+    reference,
+    revision,
+    protectedValue: {
+      formatVersion: 1,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
+  };
+}
 
 async function root(prefix: string): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), prefix));
@@ -63,6 +86,8 @@ function resolutionInput(input: {
   includeCodexEnvironment?: boolean;
   files?: string[];
   secrets?: Array<{ name: string; secret: string; enabled: boolean }>;
+  protectedSecrets?: RunConfigurationProtectedSecret[];
+  openSecret?: RunConfigurationEnvironmentResolutionInput["openSecret"];
   execute?: RunConfigurationEnvironmentResolutionInput["execute"];
 }): RunConfigurationEnvironmentResolutionInput {
   return {
@@ -79,8 +104,14 @@ function resolutionInput(input: {
     },
     expectedCodexEnvironmentRevision: input.expectedCodexEnvironmentRevision,
     platform: "linux",
+    protectedSecrets: input.protectedSecrets ?? [],
     sourceRoot: input.sourceRoot,
     targetRoot: input.targetRoot,
+    openSecret:
+      input.openSecret ??
+      (async () => {
+        throw new Error("The test secret cannot be opened.");
+      }),
     execute: input.execute ?? execute,
   };
 }
@@ -224,6 +255,37 @@ script = "export MUST_NOT_EXIST=yes"
       expect(executeSpy).not.toHaveBeenCalled();
     });
 
+    it("opens each referenced project secret once and maps it by environment name", async () => {
+      const sourceRoot = await root("cantrip-run-env-source-");
+      const targetRoot = await root("cantrip-run-env-target-");
+      const openSecret = vi.fn().mockResolvedValue("resolved-secret-value");
+      const secret = protectedSecret("project/token", 2);
+
+      await expect(
+        resolveRunConfigurationEnvironmentSources(
+          resolutionInput({
+            expectedCodexEnvironmentRevision: null,
+            sourceRoot,
+            targetRoot,
+            includeCodexEnvironment: false,
+            secrets: [
+              { name: "TOKEN", secret: secret.reference, enabled: true },
+              { name: "TOKEN_COPY", secret: secret.reference, enabled: true },
+            ],
+            protectedSecrets: [secret],
+            openSecret,
+          }),
+        ),
+      ).resolves.toMatchObject({
+        secrets: {
+          TOKEN: "resolved-secret-value",
+          TOKEN_COPY: "resolved-secret-value",
+        },
+      });
+      expect(openSecret).toHaveBeenCalledOnce();
+      expect(openSecret).toHaveBeenCalledWith(secret);
+    });
+
     it("fails closed when the source changes during materialization", async () => {
       const sourceRoot = await root("cantrip-run-env-source-");
       const targetRoot = await root("cantrip-run-env-target-");
@@ -298,7 +360,6 @@ script = ""
         ),
       ).rejects.toMatchObject({ code: "environment-file-unsafe" });
 
-      const secretValue = "secret-plaintext-sentinel";
       let error: unknown;
       try {
         await resolveRunConfigurationEnvironmentSources(
@@ -316,8 +377,35 @@ script = ""
         error = caught;
       }
       expect(error).toBeInstanceOf(RunConfigurationEnvironmentResolutionError);
-      expect(error).toMatchObject({ code: "secret-reference-unavailable" });
-      expect(JSON.stringify(error)).not.toContain(secretValue);
+      expect(error).toMatchObject({ code: "secret-reference-missing" });
+      expect((error as Error).message).toContain("project/token");
+
+      const secretValue = "secret-plaintext-sentinel";
+      await expect(
+        resolveRunConfigurationEnvironmentSources(
+          resolutionInput({
+            expectedCodexEnvironmentRevision: null,
+            sourceRoot,
+            targetRoot,
+            includeCodexEnvironment: false,
+            secrets: [
+              { name: "TOKEN", secret: "project/token", enabled: true },
+            ],
+            protectedSecrets: [protectedSecret("project/token", 1)],
+            openSecret: async () => {
+              throw new Error(secretValue);
+            },
+          }),
+        ),
+      ).rejects.toSatisfy((caught: unknown) => {
+        expect(caught).toMatchObject({
+          code: "secret-reference-unavailable",
+          message:
+            "Secret reference project/token could not be opened on this worker.",
+        });
+        expect(JSON.stringify(caught)).not.toContain(secretValue);
+        return true;
+      });
     });
   },
 );

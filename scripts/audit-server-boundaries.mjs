@@ -115,7 +115,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "a55a0a6d756b51e505049bb9315023c4b27510d9eb5f201ba28901b8d3d7c94a",
+    "186005095cd4fc86135c63012bdc2d6952e3fc84faea6acbfe97b6a670b9f57a",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:
@@ -179,6 +179,11 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   // output, scrollback, and materialized environment deltas stay worker-local.
   runConfigurationRuntimes: "minimized-operational-metadata",
   runConfigurationRuntimeOperations: "minimized-operational-metadata",
+  // Secret values are endpoint-encrypted before they cross the app boundary.
+  // The companion operation ledger stores only identity, revision, and an
+  // idempotency digest of the already protected envelope.
+  runConfigurationSecrets: "endpoint-protected",
+  runConfigurationSecretOperations: "minimized-operational-metadata",
   chats: "endpoint-protected",
   tasks: "endpoint-protected",
   taskPlanningRounds: "endpoint-protected",
@@ -4004,6 +4009,18 @@ function durableTableContentInventory(schemaText) {
 
 function applicationRouteContentClassification(route) {
   const key = `${route.method} ${route.path}`;
+  if (route.path.endsWith("/run-configuration-secrets")) {
+    return route.method === "PUT"
+      ? {
+          classification: "endpoint-protected",
+          rationale:
+            "write-only project secret envelope protected before upload",
+        }
+      : {
+          classification: "intentionally-public-control-plane",
+          rationale: "value-free project secret availability metadata",
+        };
+  }
   if (route.path === "/api/run-configuration-runtimes/output") {
     return {
       classification: "endpoint-protected",

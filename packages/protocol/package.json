@@ -64,6 +64,10 @@
       "types": "./src/run-configuration-runtime.ts",
       "import": "./dist/run-configuration-runtime.js"
     },
+    "./run-configuration-secrets": {
+      "types": "./src/run-configuration-secrets.ts",
+      "import": "./dist/run-configuration-secrets.js"
+    },
     "./endpoint-content": {
       "types": "./src/endpoint-content.ts",
       "import": "./dist/endpoint-content.js"

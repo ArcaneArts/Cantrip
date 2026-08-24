@@ -156,6 +156,7 @@ export * from "./tasks.js";
 
 export * from "./encryption.js";
 export * from "./protected-secrets.js";
+export * from "./run-configuration-secrets.js";
 
 export * from "./private-labels.js";
 export * from "./surface-private-state.js";

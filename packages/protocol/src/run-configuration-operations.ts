@@ -15,6 +15,7 @@ import {
   runConfigurationWriteRequestSchema,
   runConfigurationWriteResultSchema,
 } from "./run-configuration-definitions.js";
+import { runConfigurationSecretSummaryListSchema } from "./run-configuration-secrets.js";
 
 export const runConfigurationOperationIdSchema = z.string().uuid();
 
@@ -97,6 +98,7 @@ export const runConfigurationGetResponseSchema = z
     ...runConfigurationOperationContextFields,
     result: runConfigurationReadResultSchema,
     codexEnvironment: runConfigurationCodexEnvironmentSourceStatusSchema,
+    secretReferences: runConfigurationSecretSummaryListSchema,
   })
   .strict();
 

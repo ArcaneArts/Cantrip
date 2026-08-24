@@ -106,6 +106,7 @@ describe("run configuration operation protocol", () => {
         operationId,
         projectId,
         result: { found: false, id: configurationId },
+        secretReferences: [],
         codexEnvironment: {
           enabled: false,
           configured: false,

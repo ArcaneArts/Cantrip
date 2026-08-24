@@ -180,6 +180,7 @@ import { ProjectGithubConverter } from "./project-github-conversion.js";
 import { ProviderAuthObserver } from "./provider-auth-observer.js";
 import { RunConfigurationDefinitionService } from "./run-configuration-definition-service.js";
 import { resolveRunConfigurationEnvironmentSources } from "./run-configuration-environment-source.js";
+import { openRunConfigurationSecretValue } from "./run-configuration-secret-encryption.js";
 import { RunConfigurationRuntimeSupervisor } from "./run-configuration-runtime-supervisor.js";
 import { GrokAuthClient } from "./grok-auth-client.js";
 import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
@@ -969,7 +970,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         expectedCodexEnvironmentRevision:
           input.identity.codexEnvironmentRevision,
         execute: input.execute,
+        openSecret: (secret) =>
+          openRunConfigurationSecretValue({
+            projectId: input.identity.projectId,
+            secret,
+            service: workerEncryption,
+          }),
         platform: input.platform,
+        protectedSecrets: input.protectedSecrets,
         sourceRoot: input.sourceRoot,
         targetRoot: input.targetRoot,
       }),

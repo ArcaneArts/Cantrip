@@ -28,15 +28,20 @@ function associatedData(input: {
   ownerId: string;
   component: Extract<
     EncryptionComponentScope,
-    "provider-credential" | "mcp-secret"
+    "provider-credential" | "mcp-secret" | "run-content"
   >;
-  table: "model_providers" | "model_provider_accounts" | "mcp_servers";
+  table:
+    | "model_providers"
+    | "model_provider_accounts"
+    | "mcp_servers"
+    | "run_configuration_secrets";
   rowId: string;
   field:
     | "protected_api_key"
     | "protected_credential"
     | "protected_configuration"
-    | "protected_label";
+    | "protected_label"
+    | "protected_value";
   keyRevision: number;
 }): EncryptionAssociatedData {
   return encryptionAssociatedDataSchema.parse({
@@ -49,15 +54,20 @@ export async function encryptProtectedSecret<T>(input: {
   ownerId: string;
   component: Extract<
     EncryptionComponentScope,
-    "provider-credential" | "mcp-secret"
+    "provider-credential" | "mcp-secret" | "run-content"
   >;
-  table: "model_providers" | "model_provider_accounts" | "mcp_servers";
+  table:
+    | "model_providers"
+    | "model_provider_accounts"
+    | "mcp_servers"
+    | "run_configuration_secrets";
   rowId: string;
   field:
     | "protected_api_key"
     | "protected_credential"
     | "protected_configuration"
-    | "protected_label";
+    | "protected_label"
+    | "protected_value";
   keyRevision: number;
   componentKey: Uint8Array;
   content: T;
@@ -108,15 +118,20 @@ export async function decryptProtectedSecret<T>(input: {
   ownerId: string;
   component: Extract<
     EncryptionComponentScope,
-    "provider-credential" | "mcp-secret"
+    "provider-credential" | "mcp-secret" | "run-content"
   >;
-  table: "model_providers" | "model_provider_accounts" | "mcp_servers";
+  table:
+    | "model_providers"
+    | "model_provider_accounts"
+    | "mcp_servers"
+    | "run_configuration_secrets";
   rowId: string;
   field:
     | "protected_api_key"
     | "protected_credential"
     | "protected_configuration"
-    | "protected_label";
+    | "protected_label"
+    | "protected_value";
   keyRevision: number;
   componentKey: Uint8Array;
   encrypted: ProtectedSecretEnvelope;

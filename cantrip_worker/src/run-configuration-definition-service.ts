@@ -97,6 +97,7 @@ export class RunConfigurationDefinitionService {
               sourceRoot: command.sourcePath,
             },
           ),
+          secretReferences: [],
         });
       }
       case "project.run-configuration-definitions.capabilities":

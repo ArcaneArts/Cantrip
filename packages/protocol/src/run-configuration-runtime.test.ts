@@ -206,6 +206,7 @@ describe("Run configuration runtime protocol", () => {
       rootKind: "git-root" as const,
       sourcePath: "/projects/example",
       targetPath: "/projects/example-worktree",
+      protectedSecrets: [],
     };
     expect(
       runConfigurationRuntimeStartWorkerCommandSchema.parse(start),

@@ -495,7 +495,10 @@ import {
   runConfigurationListResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
-import { runConfigurationIdSchema } from "@cantrip/protocol/run-configuration-definitions";
+import {
+  runConfigurationIdSchema,
+  type RunConfigurationFile,
+} from "@cantrip/protocol/run-configuration-definitions";
 import {
   protectedRunConfigurationRuntimeOutputResultSchema,
   protectedRunConfigurationRuntimeWorkerOutputSchema,
@@ -508,6 +511,12 @@ import {
   runConfigurationRuntimeWorkerObservationSchema,
   runConfigurationRuntimeWorkerReconciliationSchema,
 } from "@cantrip/protocol/run-configuration-runtime";
+import {
+  runConfigurationSecretListResultSchema,
+  runConfigurationSecretSetRequestSchema,
+  runConfigurationSecretSetResultSchema,
+  type RunConfigurationProtectedSecret,
+} from "@cantrip/protocol/run-configuration-secrets";
 import {
   accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
@@ -1174,7 +1183,12 @@ export function mutationLiveResources(
     return ["project", "project-tab-layout"];
   }
   if (route.includes("/worktrees")) return ["worktree"];
-  if (route.includes("/run-configurations")) return ["run-configuration"];
+  if (
+    route.includes("/run-configurations") ||
+    route.includes("/run-configuration-secrets")
+  ) {
+    return ["run-configuration"];
+  }
   if (route === "/api/chats/:chatId/console") {
     return ["chat", "terminal", "project-tab-layout"];
   }
@@ -1223,6 +1237,23 @@ function mutationChatLiveResources(route: string): ChatLiveResource[] {
 function workerPresenceFingerprint(worker: WorkerSummary): string {
   const { lastSeenAt: _lastSeenAt, ...presence } = worker;
   return JSON.stringify(presence);
+}
+
+function runConfigurationSecretReferences(
+  document: RunConfigurationFile,
+): string[] {
+  const references = new Set(
+    document.environment.secrets.map(({ secret }) => secret),
+  );
+  const overrides = Object.values(document.platformOverrides) as Array<{
+    environment?: { secrets?: Array<{ secret: string }> };
+  }>;
+  for (const override of overrides) {
+    for (const secret of override.environment?.secrets ?? []) {
+      references.add(secret.secret);
+    }
+  }
+  return [...references].sort((left, right) => left.localeCompare(right));
 }
 
 const CONFIGURABLE_PERMISSION_PROFILES = [
@@ -14037,6 +14068,7 @@ export async function buildApp({
             );
             let definitionRevision: string | null = null;
             let codexEnvironmentRevision: string | null = null;
+            let protectedSecrets: RunConfigurationProtectedSecret[] = [];
             if (input.data.operation !== "stop") {
               const definition = runConfigurationGetResponseSchema.parse(
                 await bridge.request(target.workerId, {
@@ -14064,7 +14096,8 @@ export async function buildApp({
               }
               if (
                 definition.result.entry.status !== "ready" ||
-                !definition.result.entry.revision
+                !definition.result.entry.revision ||
+                !definition.result.entry.document
               ) {
                 throw new ExecutionLaneConflictError(
                   definition.result.entry.diagnostics[0]?.message ??
@@ -14072,6 +14105,15 @@ export async function buildApp({
                 );
               }
               definitionRevision = definition.result.entry.revision;
+              protectedSecrets = (
+                await repository.listRunConfigurationProtectedSecrets(
+                  ownerId,
+                  input.data.projectId,
+                  runConfigurationSecretReferences(
+                    definition.result.entry.document,
+                  ),
+                )
+              ).map(({ updatedAt: _updatedAt, ...secret }) => secret);
               if (definition.codexEnvironment.enabled) {
                 if (!definition.codexEnvironment.valid) {
                   throw new ExecutionLaneConflictError(
@@ -14159,6 +14201,7 @@ export async function buildApp({
                           rootKind: target.rootKind,
                           sourcePath: target.sourcePath,
                           targetPath: target.targetPath,
+                          protectedSecrets,
                         },
                     { timeoutMs: 30_000 },
                   ),
@@ -23411,6 +23454,65 @@ export async function buildApp({
     },
   );
 
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/run-configuration-secrets",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      if (!(await repository.getProject(ownerId, request.params.projectId))) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      return reply.send(
+        runConfigurationSecretListResultSchema.parse({
+          projectId: request.params.projectId,
+          secrets: await repository.listRunConfigurationSecretSummaries(
+            ownerId,
+            request.params.projectId,
+          ),
+        }),
+      );
+    },
+  );
+
+  app.put<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/run-configuration-secrets",
+    async (request, reply) => {
+      const input = runConfigurationSecretSetRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      if (!(await repository.getProject(ownerId, request.params.projectId))) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      try {
+        const result = runConfigurationSecretSetResultSchema.parse(
+          await repository.setRunConfigurationSecret(
+            ownerId,
+            request.params.projectId,
+            input.data,
+          ),
+        );
+        publishLiveInvalidation("run-configuration", {
+          entityId: null,
+          projectId: request.params.projectId,
+        });
+        await appendAudit(request, {
+          action: "run.configuration.secret.app.set",
+          resourceId: input.data.reference,
+          resourceType: "run-configuration-secret",
+          result: "succeeded",
+        });
+        return reply
+          .code(!result.replayed && result.secret.revision === 1 ? 201 : 200)
+          .send(result);
+      } catch (error) {
+        return sendRunApiFailure(reply, error);
+      }
+    },
+  );
+
   app.get<{
     Params: { projectId: string };
     Querystring: { operationId?: string };
@@ -23557,7 +23659,23 @@ export async function buildApp({
         ) {
           throw new Error("The Run configuration read response was misrouted.");
         }
-        return reply.send(result);
+        const references =
+          result.result.found &&
+          result.result.entry.status === "ready" &&
+          result.result.entry.document
+            ? runConfigurationSecretReferences(result.result.entry.document)
+            : [];
+        return reply.send(
+          runConfigurationGetResponseSchema.parse({
+            ...result,
+            secretReferences:
+              await repository.getRunConfigurationSecretStatuses(
+                applicationOwnerId(),
+                request.params.projectId,
+                references,
+              ),
+          }),
+        );
       } catch (error) {
         return sendRunApiFailure(reply, error);
       }

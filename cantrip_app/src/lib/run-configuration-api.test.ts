@@ -9,6 +9,19 @@ vi.mock("./run-content-encryption", () => ({
     truncated: false,
   }),
 }));
+vi.mock("./run-configuration-secret-encryption", () => ({
+  protectRunConfigurationSecretValue: vi.fn().mockResolvedValue({
+    formatVersion: 1,
+    keyRevision: 3,
+    envelope: {
+      version: 1,
+      algorithm: "AES-256-GCM",
+      keyRevision: 3,
+      nonce: "AAAAAAAAAAAAAAAA",
+      ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+    },
+  }),
+}));
 
 import {
   detectRunConfigurations,
@@ -16,10 +29,12 @@ import {
   getRunConfiguration,
   getRunConfigurationCapabilities,
   listRunConfigurationRuntimes,
+  listRunConfigurationSecrets,
   listRunConfigurations,
   operateRunConfigurationRuntime,
   readRunConfigurationRuntimeOutput,
   saveRunConfiguration,
+  setRunConfigurationSecret,
 } from "./run-configuration-api";
 
 const projectId = "f288701f-e4a6-4d08-bd54-eddb41aadbe5";
@@ -161,6 +176,7 @@ describe("Run configuration app API", () => {
           operationId,
           projectId,
           result: { found: true, entry },
+          secretReferences: [],
           codexEnvironment: {
             enabled: true,
             configured: false,
@@ -194,6 +210,63 @@ describe("Run configuration app API", () => {
         operationId,
       ),
     ).resolves.toMatchObject({ outcome: "created", entry: { revision } });
+  });
+
+  it("lists value-free secret metadata and sends only locally protected values", async () => {
+    const reference = "project/database-url";
+    const secretValue = "secret-plaintext-sentinel";
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          projectId,
+          secrets: [
+            {
+              reference,
+              available: false,
+              revision: null,
+              updatedAt: null,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            operationId,
+            projectId,
+            replayed: false,
+            secret: {
+              reference,
+              available: true,
+              revision: 1,
+              updatedAt: timestamp,
+            },
+          },
+          201,
+        ),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(listRunConfigurationSecrets(projectId)).resolves.toEqual([
+      {
+        reference,
+        available: false,
+        revision: null,
+        updatedAt: null,
+      },
+    ]);
+    await expect(
+      setRunConfigurationSecret(projectId, reference, secretValue, operationId),
+    ).resolves.toMatchObject({ secret: { reference, revision: 1 } });
+
+    const body = String(fetch.mock.calls[1]![1]!.body);
+    expect(body).not.toContain(secretValue);
+    expect(JSON.parse(body)).toMatchObject({
+      operationId,
+      reference,
+      protectedValue: { keyRevision: 3 },
+    });
   });
 
   it("returns revision conflicts and exact delete outcomes without hiding them", async () => {

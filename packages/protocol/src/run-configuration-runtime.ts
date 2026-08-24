@@ -5,6 +5,7 @@ import {
   runConfigurationRevisionSchema,
 } from "./run-configuration-definitions.js";
 import { runConfigurationOperationIdSchema } from "./run-configuration-operations.js";
+import { runConfigurationProtectedSecretListSchema } from "./run-configuration-secrets.js";
 import { endpointContentOpaqueSchema } from "./endpoint-content.js";
 
 export const RUN_CONFIGURATION_RUNTIME_OUTPUT_LIMIT = 100_000;
@@ -224,6 +225,7 @@ const runConfigurationRuntimeWorkerTargetFields = {
   rootKind: runConfigurationRuntimeRootKindSchema,
   sourcePath: z.string().min(1).max(RUN_CONFIGURATION_RUNTIME_PATH_LIMIT),
   targetPath: z.string().min(1).max(RUN_CONFIGURATION_RUNTIME_PATH_LIMIT),
+  protectedSecrets: runConfigurationProtectedSecretListSchema,
 };
 
 export const runConfigurationRuntimeStartWorkerCommandSchema = z
