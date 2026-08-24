@@ -1,4 +1,19 @@
-import { and, eq, getTableName, gt, gte, lt, lte, or, sql } from "drizzle-orm";
+import type {
+  AccountBandwidthChannel,
+  AccountBandwidthDirection,
+} from "@cantrip/protocol/resource-usage";
+import {
+  and,
+  eq,
+  getTableName,
+  gt,
+  gte,
+  inArray,
+  lt,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -40,6 +55,36 @@ export interface AccountStorageHistoryMeasurement {
   storageClass: AccountStorageClass;
 }
 
+export interface AccountBandwidthMeasurement {
+  bucketStart: Date;
+  bytes: bigint;
+  channel: AccountBandwidthChannel;
+  direction: AccountBandwidthDirection;
+  operationCount: bigint;
+  updatedAt: Date;
+}
+
+export interface AccountBandwidthFlushEntry {
+  bucketStart: Date;
+  bytes: bigint;
+  channel: AccountBandwidthChannel;
+  direction: AccountBandwidthDirection;
+  operationCount: bigint;
+  ownerId: string;
+}
+
+export interface AccountBandwidthFlushBatch {
+  entries: AccountBandwidthFlushEntry[];
+  flushedAt: Date;
+  meterId: string;
+  sequence: bigint;
+}
+
+export interface AccountBandwidthFlushResult {
+  applied: boolean;
+  ownerIds: string[];
+}
+
 interface RawMeasurementRow extends Record<string, unknown> {
   category: AccountStorageMeasurement["category"];
   logical_bytes: bigint | number | string;
@@ -54,6 +99,15 @@ interface RawHistoryRow extends Record<string, unknown> {
   logical_bytes: bigint | number | string;
   row_count: bigint | number | string;
   storage_class: AccountStorageClass;
+}
+
+interface RawBandwidthRow extends Record<string, unknown> {
+  bucket_start: Date | string;
+  bytes: bigint | number | string;
+  channel: AccountBandwidthChannel;
+  direction: AccountBandwidthDirection;
+  operation_count: bigint | number | string;
+  updated_at: Date | string;
 }
 
 interface OwnerSql {
@@ -329,6 +383,119 @@ export class AccountResourceUsageRepository {
       logicalBytes: bigintValue(row.logical_bytes),
       rowCount: bigintValue(row.row_count),
       storageClass: row.storage_class,
+    }));
+  }
+
+  async flushBandwidthBatch(
+    batch: AccountBandwidthFlushBatch,
+  ): Promise<AccountBandwidthFlushResult> {
+    if (batch.entries.length === 0) {
+      return { applied: false, ownerIds: [] };
+    }
+    return this.database.transaction(async (transaction) => {
+      const requestedOwnerIds = [
+        ...new Set(batch.entries.map((entry) => entry.ownerId)),
+      ];
+      const owners = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(inArray(schema.users.id, requestedOwnerIds));
+      const activeOwnerIds = new Set(owners.map((owner) => owner.id));
+      const inserted = await transaction
+        .insert(schema.accountBandwidthFlushes)
+        .values({
+          meterId: batch.meterId,
+          sequence: batch.sequence,
+          entryCount: batch.entries.length,
+          bytes: batch.entries.reduce(
+            (total, entry) => total + entry.bytes,
+            0n,
+          ),
+          flushedAt: batch.flushedAt,
+        })
+        .onConflictDoNothing()
+        .returning({ meterId: schema.accountBandwidthFlushes.meterId });
+      if (inserted.length === 0) {
+        return { applied: false, ownerIds: [...activeOwnerIds].sort() };
+      }
+      const entries = batch.entries.filter((entry) =>
+        activeOwnerIds.has(entry.ownerId),
+      );
+      if (entries.length > 0) {
+        await transaction
+          .insert(schema.accountBandwidthUsageBuckets)
+          .values(
+            entries.map((entry) => ({
+              ownerId: entry.ownerId,
+              bucketStart: entry.bucketStart,
+              resolution: "hour",
+              channel: entry.channel,
+              direction: entry.direction,
+              bytes: entry.bytes,
+              operationCount: entry.operationCount,
+              updatedAt: batch.flushedAt,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [
+              schema.accountBandwidthUsageBuckets.ownerId,
+              schema.accountBandwidthUsageBuckets.bucketStart,
+              schema.accountBandwidthUsageBuckets.resolution,
+              schema.accountBandwidthUsageBuckets.channel,
+              schema.accountBandwidthUsageBuckets.direction,
+            ],
+            set: {
+              bytes: sql`${schema.accountBandwidthUsageBuckets.bytes} + excluded.bytes`,
+              operationCount: sql`${schema.accountBandwidthUsageBuckets.operationCount} + excluded.operation_count`,
+              updatedAt: batch.flushedAt,
+            },
+          });
+      }
+      return {
+        applied: true,
+        ownerIds: [...activeOwnerIds].sort(),
+      };
+    });
+  }
+
+  async listBandwidthHistory(
+    ownerId: string,
+    from: Date,
+    to: Date,
+    resolution: "day" | "hour",
+  ): Promise<AccountBandwidthMeasurement[]> {
+    const bucketExpression =
+      resolution === "hour"
+        ? sql`bucket_start`
+        : sql`date_trunc('day', bucket_start at time zone 'UTC') at time zone 'UTC'`;
+    const result = await this.database.execute<RawBandwidthRow>(sql`
+      select ${bucketExpression} as bucket_start,
+        channel,
+        direction,
+        sum(bytes)::text as bytes,
+        sum(operation_count)::text as operation_count,
+        max(updated_at) as updated_at
+      from ${schema.accountBandwidthUsageBuckets}
+      where owner_id = ${ownerId}
+        and resolution = 'hour'
+        and bucket_start >= ${from}
+        and bucket_start < ${to}
+      group by ${bucketExpression}, channel, direction
+      order by bucket_start, channel, direction
+    `);
+    return resultRows<RawBandwidthRow>(result).map((row) => ({
+      bucketStart:
+        row.bucket_start instanceof Date
+          ? row.bucket_start
+          : new Date(row.bucket_start),
+      bytes: bigintValue(row.bytes),
+      channel: row.channel,
+      direction: row.direction,
+      operationCount: bigintValue(row.operation_count),
+      updatedAt:
+        row.updated_at instanceof Date
+          ? row.updated_at
+          : new Date(row.updated_at),
     }));
   }
 

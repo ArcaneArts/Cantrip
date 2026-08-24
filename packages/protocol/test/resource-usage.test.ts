@@ -29,10 +29,11 @@ describe("account resource usage protocol", () => {
         },
       },
       bandwidth: {
-        accuracy: "unavailable",
+        accuracy: "metered",
+        measuredAt: null,
         periodStart: "2026-08-23T00:00:00.000Z",
         periodEnd: "2026-08-24T00:00:00.000Z",
-        ingressBytes: "0",
+        ingressBytes: "9223372036854775807",
         egressBytes: "0",
         operationCount: "0",
         breakdown: [],
@@ -41,6 +42,7 @@ describe("account resource usage protocol", () => {
       enforcement: "disabled",
     });
     expect(parsed.storage.server.logicalBytes).toBe("9223372036854775807");
+    expect(parsed.bandwidth.ingressBytes).toBe("9223372036854775807");
     expect(() =>
       accountResourceUsageSchema.parse({
         ...parsed,

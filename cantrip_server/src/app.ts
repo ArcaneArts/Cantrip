@@ -820,10 +820,17 @@ import {
   serverLogger,
 } from "./logger.js";
 import { StorageReconciliationService } from "./account-usage/storage-reconciler.js";
+import { AccountUsageMeter } from "./account-usage/bandwidth-meter.js";
 import {
+  encodedPayloadBytes,
+  isReadablePayload,
+  meterPayloadStream,
+} from "./account-usage/http-bandwidth.js";
+import {
+  accountBandwidthPeriod,
   buildAccountResourceUsage,
+  buildBandwidthUsageHistory,
   buildStorageUsageHistory,
-  buildUnavailableBandwidthHistory,
 } from "./account-usage/resource-usage-response.js";
 import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
 import { OperationalMetrics } from "./operations/metrics.js";
@@ -834,6 +841,7 @@ import {
   SlidingWindowRateLimiter,
 } from "./security/abuse-limits.js";
 import { LimitedWorkerCommandBus } from "./workers/limited-command-bus.js";
+import { MeteredWorkerCommandBus } from "./workers/metered-command-bus.js";
 import {
   DirectAttachmentCoordinator,
   DirectAttachmentUnavailableError,
@@ -1295,6 +1303,21 @@ export async function buildApp({
     done();
   });
   const relayQuotas = providedRelayQuotas ?? new RelayQuotaManager(config);
+  let publishAccountResourceUsageChange = (_ownerId: string): void => undefined;
+  const accountUsageMeter = new AccountUsageMeter(
+    repository.accountResourceUsage,
+    serverLogger,
+    {
+      flushIntervalMs: config.bandwidthUsageFlushIntervalMs,
+      flushThresholdBytes: config.bandwidthUsageFlushThresholdBytes,
+      maxBufferedEntries: config.bandwidthUsageMaxBufferedEntries,
+      meterId: `${config.serverInstanceId ?? "local-single-instance"}:${randomUUID()}`,
+      onFlushed: (ownerIds) => {
+        for (const ownerId of ownerIds)
+          publishAccountResourceUsageChange(ownerId);
+      },
+    },
+  );
   const rawBridge = workerBridge ?? new WorkerBridge();
   const coordinationStats = () =>
     coordinator?.stats() ?? {
@@ -1306,15 +1329,18 @@ export async function buildApp({
       sentMessages: 0,
       shared: false,
     };
-  const bridge = new LimitedWorkerCommandBus(rawBridge, {
-    accountConcurrency: config.accountCommandConcurrency ?? 128,
-    accountRatePerMinute: config.accountCommandRatePerMinute ?? 2_400,
-    consumeRelayBytes: (ownerId, workerId, bytes) =>
-      relayQuotas.consumeRelay(ownerId, workerId, bytes),
-    resolveOwnerId: (workerId) => repository.getWorkerOwnerId(workerId),
-    workerConcurrency: config.workerCommandConcurrency ?? 64,
-    workerRatePerMinute: config.workerCommandRatePerMinute ?? 1_200,
-  });
+  const bridge = new LimitedWorkerCommandBus(
+    new MeteredWorkerCommandBus(rawBridge, accountUsageMeter),
+    {
+      accountConcurrency: config.accountCommandConcurrency ?? 128,
+      accountRatePerMinute: config.accountCommandRatePerMinute ?? 2_400,
+      consumeRelayBytes: (ownerId, workerId, bytes) =>
+        relayQuotas.consumeRelay(ownerId, workerId, bytes),
+      resolveOwnerId: (workerId) => repository.getWorkerOwnerId(workerId),
+      workerConcurrency: config.workerCommandConcurrency ?? 64,
+      workerRatePerMinute: config.workerCommandRatePerMinute ?? 1_200,
+    },
+  );
   const ollamaCatalogService = new OllamaCatalogService(repository, bridge);
   const chatGptCatalogService = new ChatGptCatalogService(repository, bridge);
   const grokCatalogService = new GrokCatalogService(repository, bridge);
@@ -1362,6 +1388,7 @@ export async function buildApp({
   const serverInstanceId = config.serverInstanceId ?? "local-single-instance";
   const schedulerLeaseTtlMs = config.schedulerLeaseTtlMs ?? 120_000;
   const liveHub = new AppLiveHub({
+    usageRecorder: accountUsageMeter,
     publishExternal: coordinator
       ? (publication) =>
           coordinator.publish({ kind: "live-publication", publication })
@@ -1427,7 +1454,7 @@ export async function buildApp({
           publishLiveInvalidation("account-resource-usage"),
         ),
     });
-  const publishAccountResourceUsageChange = (ownerId: string): void =>
+  publishAccountResourceUsageChange = (ownerId: string): void =>
     accountResourceUsageLiveInvalidations.schedule(ownerId, ownerId);
   const storageReconciler = new StorageReconciliationService(
     repository.accountResourceUsage,
@@ -3568,6 +3595,58 @@ export async function buildApp({
       resolve: (request) => sessionService.resolvePrincipal(request),
     });
   }
+
+  app.addHook("preParsing", async (request, _reply, payload) => {
+    if (
+      request.principal.state !== "authenticated" ||
+      request.headers.upgrade?.toLowerCase() === "websocket"
+    ) {
+      return payload;
+    }
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    return meterPayloadStream(
+      payload,
+      request.principal.user.id,
+      "ingress",
+      accountUsageMeter,
+      !route.startsWith("/api/account/resource-usage"),
+    );
+  });
+
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (
+      request.principal.state !== "authenticated" ||
+      request.method === "HEAD" ||
+      request.headers.upgrade?.toLowerCase() === "websocket" ||
+      reply.statusCode === 204 ||
+      reply.statusCode === 304
+    ) {
+      return payload;
+    }
+    const ownerId = request.principal.user.id;
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    const notifyChange = !route.startsWith("/api/account/resource-usage");
+    const bytes = encodedPayloadBytes(payload);
+    if (bytes !== null) {
+      accountUsageMeter.record({
+        ownerId,
+        direction: "egress",
+        channel: "http",
+        bytes,
+        notifyChange,
+      });
+      return payload;
+    }
+    return isReadablePayload(payload)
+      ? meterPayloadStream(
+          payload,
+          ownerId,
+          "egress",
+          accountUsageMeter,
+          notifyChange,
+        )
+      : payload;
+  });
 
   app.addHook("onRequest", (request, _reply, done) => {
     if (request.principal.state !== "authenticated") {
@@ -11563,12 +11642,25 @@ export async function buildApp({
   });
 
   app.get("/api/account/resource-usage", async (request, reply) => {
-    const rows = await repository.accountResourceUsage.listCurrentStorage(
-      principalOwnerId(request),
-    );
+    const ownerId = principalOwnerId(request);
+    const now = new Date();
+    const period = accountBandwidthPeriod(now);
+    const [rows, bandwidthRows] = await Promise.all([
+      repository.accountResourceUsage.listCurrentStorage(ownerId),
+      repository.accountResourceUsage.listBandwidthHistory(
+        ownerId,
+        period.start,
+        period.end,
+        "day",
+      ),
+    ]);
     return reply
       .header("cache-control", "private, no-store")
-      .send(accountResourceUsageSchema.parse(buildAccountResourceUsage(rows)));
+      .send(
+        accountResourceUsageSchema.parse(
+          buildAccountResourceUsage(rows, bandwidthRows, now),
+        ),
+      );
   });
 
   app.get("/api/account/resource-usage/history", async (request, reply) => {
@@ -11589,7 +11681,15 @@ export async function buildApp({
               query.data.resolution,
             ),
           )
-        : buildUnavailableBandwidthHistory(query.data);
+        : buildBandwidthUsageHistory(
+            query.data,
+            await repository.accountResourceUsage.listBandwidthHistory(
+              principalOwnerId(request),
+              new Date(query.data.from),
+              new Date(query.data.to),
+              query.data.resolution,
+            ),
+          );
     return reply
       .header("cache-control", "private, no-store")
       .send(accountResourceUsageHistorySchema.parse(history));
@@ -30118,7 +30218,6 @@ export async function buildApp({
     chatImportJobExecutor.stop();
     workflowExecutor.stop();
     await storageReconciler.close();
-    accountResourceUsageLiveInvalidations.close();
     app.log.info(
       { live: liveHub.stats() },
       "Application live transport stopped",
@@ -30138,6 +30237,8 @@ export async function buildApp({
     tunnelRuntime.close();
     await directAttachments.close();
     await bridge.close();
+    await accountUsageMeter.close();
+    accountResourceUsageLiveInvalidations.close();
     await coordinator?.close();
     await activeScheduleTick;
     await projectReplicaJobExecutor.drain();

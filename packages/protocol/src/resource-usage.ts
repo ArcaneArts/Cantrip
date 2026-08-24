@@ -102,6 +102,7 @@ export const accountResourceUsageSchema = z
     bandwidth: z
       .object({
         accuracy: accountResourceUsageAccuracySchema,
+        measuredAt: z.iso.datetime().nullable(),
         periodStart: z.iso.datetime(),
         periodEnd: z.iso.datetime(),
         ingressBytes: resourceUsageDecimalSchema,
