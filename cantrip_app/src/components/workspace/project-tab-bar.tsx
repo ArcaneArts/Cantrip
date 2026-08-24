@@ -271,7 +271,7 @@ export function ProjectTabBar({
           {previewFile ? (
             <div
               className={cn(
-                "group relative flex min-w-0 max-w-56 shrink-0 items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                "group relative flex min-w-0 max-w-56 shrink-0 self-start items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                 previewFile.active && "bg-muted text-foreground",
               )}
               data-preview-file-path={previewFile.path}
