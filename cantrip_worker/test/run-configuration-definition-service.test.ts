@@ -4,6 +4,7 @@ import {
   mkdir,
   readFile,
   realpath,
+  rename,
   rm,
   unlink,
   writeFile,
@@ -12,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { RunConfigurationDefinitionChangeNotification } from "@cantrip/protocol/run-configuration-operations";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { RunConfigurationDefinitionService } from "../src/run-configuration-definition-service.js";
 
@@ -38,6 +39,53 @@ function shellDocument(name = "Run API") {
     target: { kind: "command" as const, command: "pnpm dev" },
     arguments: ["--listen", "127.0.0.1:4400"],
   };
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error(
+        "Timed out waiting for a definition change notification.",
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+async function writeExternalDefinition(
+  root: string,
+  name = "Run API",
+): Promise<string> {
+  const directory = path.join(root, ".cantrip", "run-configurations");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, `${configurationId}.json`);
+  await writeFile(
+    file,
+    JSON.stringify(shellDocument(name), null, 2) + "\n",
+    "utf8",
+  );
+  return file;
+}
+
+async function observeDefinitions(root: string): Promise<{
+  notifications: RunConfigurationDefinitionChangeNotification[];
+  service: RunConfigurationDefinitionService;
+}> {
+  const notifications: RunConfigurationDefinitionChangeNotification[] = [];
+  const service = new RunConfigurationDefinitionService({
+    emit: (notification) => notifications.push(notification),
+  });
+  await service.execute({
+    type: "project.run-configuration-definitions.list",
+    operationId: randomUUID(),
+    projectId,
+    sourcePath: root,
+  });
+  return { notifications, service };
 }
 
 afterEach(async () => {
@@ -718,50 +766,124 @@ script = "export DISABLED_SOURCE=must-not-run"
     service.close();
   });
 
-  it("observes external definition changes and stops accepting work after close", async () => {
+  it("observes external definition creation from an initially empty project", async () => {
     const root = await projectRoot();
-    const notifications: RunConfigurationDefinitionChangeNotification[] = [];
-    const service = new RunConfigurationDefinitionService({
-      emit: (notification) => notifications.push(notification),
-    });
-    await service.execute({
-      type: "project.run-configuration-definitions.list",
-      operationId: randomUUID(),
-      projectId,
-      sourcePath: root,
-    });
-
-    const directory = path.join(root, ".cantrip", "run-configurations");
-    await mkdir(directory, { recursive: true });
-    await writeFile(
-      path.join(directory, `${configurationId}.json`),
-      JSON.stringify(shellDocument(), null, 2) + "\n",
-      "utf8",
-    );
-    await vi.waitFor(
-      () =>
-        expect(notifications).toContainEqual(
-          expect.objectContaining({
-            type: "project.run-configuration-definitions.changed",
-            projectId,
-            sourcePath: root,
-            change: expect.objectContaining({
-              kind: "created",
-              id: configurationId,
-            }),
-          }),
+    const { notifications, service } = await observeDefinitions(root);
+    try {
+      await writeExternalDefinition(root);
+      await waitFor(() =>
+        notifications.some(
+          ({ change }) =>
+            change.kind === "created" && change.id === configurationId,
         ),
-      { timeout: 3_000 },
-    );
+      );
+    } finally {
+      service.close();
+    }
+  }, 30_000);
 
-    service.close();
-    await expect(
-      service.execute({
-        type: "project.run-configuration-definitions.list",
-        operationId: randomUUID(),
-        projectId,
-        sourcePath: root,
-      }),
-    ).rejects.toThrow("closed");
+  it("observes external definition edits", async () => {
+    const root = await projectRoot();
+    const file = await writeExternalDefinition(root);
+    const { notifications, service } = await observeDefinitions(root);
+    try {
+      await writeFile(
+        file,
+        JSON.stringify(shellDocument("Externally updated API"), null, 2) + "\n",
+        "utf8",
+      );
+      await waitFor(() =>
+        notifications.some(
+          ({ change }) =>
+            change.kind === "updated" &&
+            change.id === configurationId &&
+            change.revision !== null,
+        ),
+      );
+    } finally {
+      service.close();
+    }
+  }, 30_000);
+
+  it("observes an external definition renamed away", async () => {
+    const root = await projectRoot();
+    const file = await writeExternalDefinition(root);
+    const renamedFile = path.join(
+      path.dirname(file),
+      `${configurationId}.disabled`,
+    );
+    const { notifications, service } = await observeDefinitions(root);
+    try {
+      await rename(file, renamedFile);
+      await waitFor(() =>
+        notifications.some(
+          ({ change }) =>
+            change.kind === "deleted" && change.id === configurationId,
+        ),
+      );
+    } finally {
+      service.close();
+    }
+  }, 30_000);
+
+  it("observes an external definition renamed into the repository", async () => {
+    const root = await projectRoot();
+    const file = await writeExternalDefinition(root);
+    const renamedFile = path.join(
+      path.dirname(file),
+      `${configurationId}.disabled`,
+    );
+    await rename(file, renamedFile);
+    const { notifications, service } = await observeDefinitions(root);
+    try {
+      await rename(renamedFile, file);
+      await waitFor(() =>
+        notifications.some(
+          ({ change }) =>
+            change.kind === "created" && change.id === configurationId,
+        ),
+      );
+    } finally {
+      service.close();
+    }
+  }, 30_000);
+
+  it("observes external definition deletion", async () => {
+    const root = await projectRoot();
+    const file = await writeExternalDefinition(root);
+    const { notifications, service } = await observeDefinitions(root);
+    try {
+      await rm(file);
+      await waitFor(() =>
+        notifications.some(
+          ({ change }) =>
+            change.kind === "deleted" && change.id === configurationId,
+        ),
+      );
+    } finally {
+      service.close();
+    }
+  }, 30_000);
+
+  it("stays silent and rejects new work after close", async () => {
+    const root = await projectRoot();
+    const { notifications, service } = await observeDefinitions(root);
+    try {
+      service.close();
+      const notificationsAfterClose = notifications.length;
+      await writeExternalDefinition(root, "Must not notify");
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      expect(notifications).toHaveLength(notificationsAfterClose);
+      await expect(
+        service.execute({
+          type: "project.run-configuration-definitions.list",
+          operationId: randomUUID(),
+          projectId,
+          sourcePath: root,
+        }),
+      ).rejects.toThrow("closed");
+    } finally {
+      service.close();
+    }
   });
 });

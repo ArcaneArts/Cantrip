@@ -903,6 +903,7 @@ export class RunConfigurationRepositoryWatcher {
   #baseline: RunConfigurationRepositoryInventory;
   #closed = false;
   #pollTimer: NodeJS.Timeout | null = null;
+  #refreshRequestedDelay: number | null = null;
   #refreshTimer: NodeJS.Timeout | null = null;
   #refreshing = false;
   #watcher: FSWatcher | null = null;
@@ -944,6 +945,7 @@ export class RunConfigurationRepositoryWatcher {
     if (this.#refreshTimer) clearTimeout(this.#refreshTimer);
     if (this.#pollTimer) clearInterval(this.#pollTimer);
     this.#pollTimer = null;
+    this.#refreshRequestedDelay = null;
     this.#refreshTimer = null;
     this.#watcher?.close();
     this.#watcher = null;
@@ -977,7 +979,15 @@ export class RunConfigurationRepositoryWatcher {
   }
 
   #scheduleRefresh(delay = WATCH_DEBOUNCE_MS): void {
-    if (this.#closed || this.#refreshTimer) return;
+    if (this.#closed) return;
+    if (this.#refreshing) {
+      this.#refreshRequestedDelay =
+        this.#refreshRequestedDelay === null
+          ? delay
+          : Math.min(this.#refreshRequestedDelay, delay);
+      return;
+    }
+    if (this.#refreshTimer) return;
     this.#refreshTimer = setTimeout(() => {
       this.#refreshTimer = null;
       void this.#refresh();
@@ -986,20 +996,36 @@ export class RunConfigurationRepositoryWatcher {
   }
 
   async #refresh(): Promise<void> {
-    if (this.#closed || this.#refreshing) return;
+    if (this.#closed) return;
+    if (this.#refreshing) {
+      this.#refreshRequestedDelay = 0;
+      return;
+    }
     this.#refreshing = true;
+    this.#refreshRequestedDelay = null;
+    let retry = false;
     try {
       const current = await this.#repository.scan();
+      if (this.#closed) return;
       const changes = changeEvents(this.#baseline, current);
       this.#baseline = current;
       await this.#arm();
+      if (this.#closed) return;
       for (const change of changes) {
+        if (this.#closed) return;
         await this.#listener(change);
       }
     } catch {
-      this.#scheduleRefresh(WATCH_RETRY_MS);
+      retry = true;
     } finally {
       this.#refreshing = false;
+      const requestedDelay = retry
+        ? WATCH_RETRY_MS
+        : this.#refreshRequestedDelay;
+      this.#refreshRequestedDelay = null;
+      if (!this.#closed && requestedDelay !== null) {
+        this.#scheduleRefresh(requestedDelay);
+      }
     }
   }
 }

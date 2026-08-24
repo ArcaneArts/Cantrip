@@ -412,20 +412,26 @@ export class RunConfigurationDefinitionService {
       }
 
       const watcher = await opened.watch(async (change) => {
+        if (this.#closed) return;
         try {
-          await this.#emit(
+          const notification =
             runConfigurationDefinitionChangeNotificationSchema.parse({
               type: "project.run-configuration-definitions.changed",
               projectId,
               sourcePath: opened.root,
               change,
-            }),
-          );
+            });
+          if (this.#closed) return;
+          await this.#emit(notification);
         } catch {
           // A disconnected command channel is recovered by list-on-focus and
           // list-on-reconnect. Definition watching must remain alive meanwhile.
         }
       });
+      if (this.#closed) {
+        watcher.close();
+        throw new Error("The Run configuration definition service is closed.");
+      }
       current?.watcher.close();
       this.#repositories.delete(projectId);
       this.#repositories.set(projectId, { repository: opened, watcher });
