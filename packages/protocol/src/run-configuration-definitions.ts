@@ -1038,6 +1038,45 @@ export const runConfigurationDiagnosticSchema = z
   })
   .strict();
 
+export const runConfigurationCodexEnvironmentSourceStatusSchema = z
+  .object({
+    enabled: z.boolean(),
+    configured: z.boolean(),
+    valid: z.boolean(),
+    revision: runConfigurationRevisionSchema.nullable(),
+    hasSetup: z.boolean(),
+    diagnostics: z
+      .array(runConfigurationDiagnosticSchema)
+      .max(RUN_CONFIGURATION_MAX_DIAGNOSTICS),
+  })
+  .strict()
+  .superRefine((status, context) => {
+    if (!status.configured && status.revision !== null) {
+      context.addIssue({
+        code: "custom",
+        message: "An absent Codex environment cannot have a revision.",
+        path: ["revision"],
+      });
+    }
+    if (!status.configured && status.hasSetup) {
+      context.addIssue({
+        code: "custom",
+        message: "An absent Codex environment cannot have a setup script.",
+        path: ["hasSetup"],
+      });
+    }
+    if (
+      status.valid &&
+      status.diagnostics.some(({ severity }) => severity === "error")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "A valid Codex environment cannot include error diagnostics.",
+        path: ["diagnostics"],
+      });
+    }
+  });
+
 export const runConfigurationRepositoryEntryStatusSchema = z.enum([
   "ready",
   "invalid",
@@ -1247,6 +1286,9 @@ export type RunConfigurationRustDocument = z.infer<
 export type RunConfigurationFile = z.infer<typeof runConfigurationFileSchema>;
 export type RunConfigurationDiagnostic = z.infer<
   typeof runConfigurationDiagnosticSchema
+>;
+export type RunConfigurationCodexEnvironmentSourceStatus = z.infer<
+  typeof runConfigurationCodexEnvironmentSourceStatusSchema
 >;
 export type RunConfigurationRepositoryEntry = z.infer<
   typeof runConfigurationRepositoryEntrySchema

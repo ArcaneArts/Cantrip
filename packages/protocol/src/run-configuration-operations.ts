@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   runConfigurationDeleteRequestSchema,
   runConfigurationDeleteResultSchema,
+  runConfigurationCodexEnvironmentSourceStatusSchema,
   runConfigurationDetectionCandidateSchema,
   runConfigurationDiagnosticSchema,
   runConfigurationIdSchema,
@@ -95,6 +96,7 @@ export const runConfigurationGetResponseSchema = z
     operation: z.literal("get"),
     ...runConfigurationOperationContextFields,
     result: runConfigurationReadResultSchema,
+    codexEnvironment: runConfigurationCodexEnvironmentSourceStatusSchema,
   })
   .strict();
 

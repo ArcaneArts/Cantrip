@@ -308,6 +308,9 @@ importers:
       "@zavora-ai/computer-use-mcp":
         specifier: 7.0.0
         version: 7.0.0(supports-color@10.2.2)
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       jsonc-parser:
         specifier: 3.3.1
         version: 3.3.1

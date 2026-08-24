@@ -1125,6 +1125,12 @@ export function RunConfigurationEditor({
               />
               Inject the current Codex environment when this runs
             </label>
+            <p className="text-xs text-muted-foreground">
+              Cantrip resolves Primary&apos;s
+              {" .codex/environments/environment.toml "}
+              immediately before each generation. If it is absent, this source
+              is a no-op.
+            </p>
             <div className="grid gap-2">
               <span className={labelClassName}>Environment files</span>
               <StringListEditor

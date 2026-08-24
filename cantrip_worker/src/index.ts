@@ -179,6 +179,7 @@ import { ManagedFolderManager } from "./managed-folders.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
 import { ProviderAuthObserver } from "./provider-auth-observer.js";
 import { RunConfigurationDefinitionService } from "./run-configuration-definition-service.js";
+import { resolveRunConfigurationEnvironmentSources } from "./run-configuration-environment-source.js";
 import { RunConfigurationRuntimeSupervisor } from "./run-configuration-runtime-supervisor.js";
 import { GrokAuthClient } from "./grok-auth-client.js";
 import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
@@ -960,6 +961,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       };
     },
     environment: cliBroker.childEnvironment(),
+    resolveEnvironment: (input) =>
+      resolveRunConfigurationEnvironmentSources({
+        baseline: input.baseline,
+        defaultShell: input.defaultShell,
+        environment: input.environment,
+        expectedCodexEnvironmentRevision:
+          input.identity.codexEnvironmentRevision,
+        execute: input.execute,
+        platform: input.platform,
+        sourceRoot: input.sourceRoot,
+        targetRoot: input.targetRoot,
+      }),
     notify: (observation) =>
       workerNotificationEmitter?.({
         type: "project.run-configuration-runtime.observed",

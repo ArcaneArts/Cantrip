@@ -11,6 +11,7 @@ import {
   runConfigurationDetectResponseSchema,
   runConfigurationDetectWorkerCommandSchema,
   runConfigurationGetWorkerCommandSchema,
+  runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationListWorkerCommandSchema,
   runConfigurationWriteWorkerCommandSchema,
@@ -99,6 +100,22 @@ describe("run configuration operation protocol", () => {
         },
       }).operationId,
     ).toBe(operationId);
+    expect(
+      runConfigurationGetResponseSchema.parse({
+        operation: "get",
+        operationId,
+        projectId,
+        result: { found: false, id: configurationId },
+        codexEnvironment: {
+          enabled: false,
+          configured: false,
+          valid: true,
+          revision: null,
+          hasSetup: false,
+          diagnostics: [],
+        },
+      }).codexEnvironment,
+    ).toMatchObject({ configured: false, revision: null });
     expect(
       runConfigurationDefinitionChangeNotificationSchema.parse({
         type: "project.run-configuration-definitions.changed",
