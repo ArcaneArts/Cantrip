@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { workerCommandSchema, workerNotificationSchema } from "./index.js";
 
 import {
+  runConfigurationApiValidateRequestSchema,
   runConfigurationApiWriteRequestSchema,
   runConfigurationCapabilitiesResponseSchema,
   runConfigurationCapabilitiesWorkerCommandSchema,
@@ -17,6 +18,8 @@ import {
   runConfigurationPathsQuerySchema,
   runConfigurationPathsResponseSchema,
   runConfigurationPathsWorkerCommandSchema,
+  runConfigurationValidateResponseSchema,
+  runConfigurationValidateWorkerCommandSchema,
   runConfigurationWriteWorkerCommandSchema,
 } from "./run-configuration-operations.js";
 
@@ -70,6 +73,13 @@ describe("run configuration operation protocol", () => {
       }).purpose,
     ).toBe("shell-script");
     expect(
+      runConfigurationValidateWorkerCommandSchema.parse({
+        type: "project.run-configuration-definitions.validate",
+        ...context,
+        document,
+      }).document.id,
+    ).toBe(configurationId);
+    expect(
       runConfigurationWriteWorkerCommandSchema.parse({
         type: "project.run-configuration-definitions.write",
         ...context,
@@ -104,6 +114,13 @@ describe("run configuration operation protocol", () => {
         query: "packages",
       }).type,
     ).toBe("project.run-configuration-definitions.paths");
+    expect(
+      workerCommandSchema.parse({
+        type: "project.run-configuration-definitions.validate",
+        ...context,
+        document,
+      }).type,
+    ).toBe("project.run-configuration-definitions.validate");
   });
 
   it("correlates bounded responses and watcher notifications", () => {
@@ -189,6 +206,50 @@ describe("run configuration operation protocol", () => {
         expectedRevision: null,
         document,
         plaintextSecret: "never",
+      }).success,
+    ).toBe(false);
+    expect(
+      runConfigurationApiValidateRequestSchema.safeParse({
+        operationId,
+        document,
+        plaintextSecret: "never",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("correlates provider validation and derives validity from diagnostics", () => {
+    const validation = runConfigurationValidateResponseSchema.parse({
+      operation: "validate",
+      operationId,
+      projectId,
+      validation: {
+        configurationId,
+        provider: "shell",
+        platform: "linux",
+        effectiveCommand: "pnpm dev",
+        valid: true,
+        diagnostics: [],
+      },
+    });
+    expect(validation.validation).toMatchObject({
+      platform: "linux",
+      valid: true,
+    });
+    expect(
+      runConfigurationValidateResponseSchema.safeParse({
+        ...validation,
+        validation: {
+          ...validation.validation,
+          diagnostics: [
+            {
+              severity: "error",
+              code: "target-missing",
+              message: "The selected target is missing.",
+              relativePath: null,
+              field: "target",
+            },
+          ],
+        },
       }).success,
     ).toBe(false);
   });

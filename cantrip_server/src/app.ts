@@ -474,6 +474,7 @@ import {
 import {
   runConfigurationApiDeleteRequestSchema,
   runConfigurationApiWriteRequestSchema,
+  runConfigurationApiValidateRequestSchema,
   runConfigurationCapabilitiesResponseSchema,
   runConfigurationDeleteResponseSchema,
   runConfigurationDetectQuerySchema,
@@ -483,6 +484,7 @@ import {
   runConfigurationListResponseSchema,
   runConfigurationPathsQuerySchema,
   runConfigurationPathsResponseSchema,
+  runConfigurationValidateResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
 import {
@@ -6686,6 +6688,42 @@ export async function buildApp({
       result.query !== input.query
     ) {
       throw new Error("The Run configuration path response was misrouted.");
+    }
+    return { result, source };
+  };
+
+  const validateRunConfigurationDefinition = async (
+    ownerId: string,
+    projectId: string,
+    operationId: string,
+    document: unknown,
+  ) => {
+    const input = runConfigurationApiValidateRequestSchema.parse({
+      operationId,
+      document,
+    });
+    const source = await resolvePrimaryRunConfigurationSource(
+      ownerId,
+      projectId,
+    );
+    const result = runConfigurationValidateResponseSchema.parse(
+      await bridge.request(source.workerId, {
+        type: "project.run-configuration-definitions.validate",
+        operationId,
+        projectId,
+        sourcePath: source.cwd,
+        document: input.document,
+      }),
+    );
+    if (
+      result.operationId !== operationId ||
+      result.projectId !== projectId ||
+      result.validation.configurationId !== input.document.id ||
+      result.validation.provider !== input.document.provider
+    ) {
+      throw new Error(
+        "The Run configuration validation response was misrouted.",
+      );
     }
     return { result, source };
   };
@@ -23599,6 +23637,32 @@ export async function buildApp({
           input.data.operationId,
           input.data.purpose,
           input.data.query,
+        );
+        return reply.send(result);
+      } catch (error) {
+        return sendRunApiFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{
+    Body: { document?: unknown; operationId?: string };
+    Params: { projectId: string };
+  }>(
+    "/api/projects/:projectId/run-configurations/validate",
+    async (request, reply) => {
+      const input = runConfigurationApiValidateRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const { result } = await validateRunConfigurationDefinition(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data.operationId,
+          input.data.document,
         );
         return reply.send(result);
       } catch (error) {

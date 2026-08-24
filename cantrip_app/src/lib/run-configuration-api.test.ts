@@ -36,6 +36,7 @@ import {
   readRunConfigurationRuntimeOutput,
   saveRunConfiguration,
   setRunConfigurationSecret,
+  validateRunConfiguration,
 } from "./run-configuration-api";
 
 const projectId = "f288701f-e4a6-4d08-bd54-eddb41aadbe5";
@@ -238,6 +239,42 @@ describe("Run configuration app API", () => {
         operationId,
       ),
     ).resolves.toMatchObject({ outcome: "created", entry: { revision } });
+  });
+
+  it("validates a complete draft through Primary with exact correlation", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        operation: "validate",
+        operationId,
+        projectId,
+        validation: {
+          configurationId,
+          provider: "shell",
+          platform: "linux",
+          effectiveCommand: "pnpm dev",
+          valid: true,
+          diagnostics: [],
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      validateRunConfiguration(projectId, document, operationId),
+    ).resolves.toMatchObject({
+      configurationId,
+      platform: "linux",
+      effectiveCommand: "pnpm dev",
+      valid: true,
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/projects/${projectId}/run-configurations/validate`,
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]!.body))).toEqual({
+      operationId,
+      document,
+    });
   });
 
   it("lists value-free secret metadata and sends only locally protected values", async () => {

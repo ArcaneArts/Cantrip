@@ -9,6 +9,7 @@ import {
   type RunConfigurationPathPurpose,
   type RunConfigurationProviderCapability,
   type RunConfigurationProviderKind,
+  type RunConfigurationProviderValidation,
   type RunConfigurationRepositoryEntry,
   type RunConfigurationRustDocument,
   type RunConfigurationShellDocument,
@@ -52,12 +53,14 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { RunConfigurationPathPicker } from "@/components/run/run-configuration-path-picker";
 import { RunConfigurationTargetPicker } from "@/components/run/run-configuration-target-picker";
+import { RunConfigurationValidationStatus } from "@/components/run/run-configuration-validation-status";
 import {
   detectRunConfigurations,
   getRunConfigurationCapabilities,
   listRunConfigurationSecrets,
   saveRunConfiguration,
   setRunConfigurationSecret,
+  validateRunConfiguration,
 } from "@/lib/run-configuration-api";
 import {
   applyRunConfigurationDetectionCandidate,
@@ -847,6 +850,10 @@ export function RunConfigurationEditor({
   const [errors, setErrors] = useState<string[]>([]);
   const [conflictRevision, setConflictRevision] = useState<string | null>(null);
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
+  const [validationDraft, setValidationDraft] = useState<{
+    document: RunConfigurationFile;
+    fingerprint: string;
+  } | null>(null);
   const queryClient = useQueryClient();
   const editingRevision = entry?.revision ?? null;
   const detection = useQuery({
@@ -904,6 +911,54 @@ export function RunConfigurationEditor({
       ),
     [storedSecrets.data],
   );
+  const parsedDraft = useMemo(
+    () => parseRunConfigurationEditorDocument(document, platformOverrides),
+    [document, platformOverrides],
+  );
+  const draftFingerprint = parsedDraft.success
+    ? JSON.stringify(parsedDraft.document)
+    : null;
+
+  useEffect(() => {
+    if (
+      !open ||
+      stage !== "edit" ||
+      !parsedDraft.success ||
+      !draftFingerprint
+    ) {
+      setValidationDraft(null);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setValidationDraft({
+        document: parsedDraft.document,
+        fingerprint: draftFingerprint,
+      });
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [draftFingerprint, open, parsedDraft, stage]);
+
+  const providerValidation = useQuery({
+    enabled: validationDraft !== null,
+    queryKey: [
+      "run-configuration-provider-validation",
+      projectId,
+      validationDraft?.fingerprint,
+    ],
+    queryFn: () => {
+      if (!validationDraft) {
+        throw new Error("No Run configuration draft is ready to validate.");
+      }
+      return validateRunConfiguration(projectId, validationDraft.document);
+    },
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const validationIsCurrent =
+    validationDraft !== null &&
+    validationDraft.fingerprint === draftFingerprint;
+  const currentValidation: RunConfigurationProviderValidation | null =
+    validationIsCurrent ? (providerValidation.data ?? null) : null;
   const updateSecretSummary = (summary: RunConfigurationSecretSummary) => {
     queryClient.setQueryData<RunConfigurationSecretSummary[]>(
       secretQueryKey,
@@ -923,6 +978,7 @@ export function RunConfigurationEditor({
     setErrors([]);
     setConflictRevision(null);
     setTargetPickerOpen(false);
+    setValidationDraft(null);
     setStage(creating ? "choose" : "edit");
   };
 
@@ -947,6 +1003,8 @@ export function RunConfigurationEditor({
     () => runConfigurationEffectiveCommand(document),
     [document],
   );
+  const effectiveCommand =
+    currentValidation?.effectiveCommand ?? effective.command;
   const save = useMutation({
     mutationFn: async (overwriteRevision?: string) => {
       const parsed = parseRunConfigurationEditorDocument(
@@ -1004,6 +1062,7 @@ export function RunConfigurationEditor({
     setErrors([]);
     setConflictRevision(null);
     setTargetPickerOpen(false);
+    setValidationDraft(null);
     setStage("edit");
   };
 
@@ -1443,10 +1502,25 @@ export function RunConfigurationEditor({
                 {effective.overridden ? " · override active" : ""}
               </span>
               <code className="break-all text-sm">
-                {effective.command ||
+                {effectiveCommand ||
                   "Complete the target to preview the command"}
               </code>
             </div>
+            <RunConfigurationValidationStatus
+              error={validationIsCurrent ? providerValidation.error : null}
+              localErrors={parsedDraft.success ? [] : parsedDraft.errors}
+              onRediscover={
+                document.provider === "shell"
+                  ? null
+                  : () => setTargetPickerOpen(true)
+              }
+              onRetry={() => void providerValidation.refetch()}
+              pending={
+                parsedDraft.success &&
+                (!validationIsCurrent || providerValidation.isFetching)
+              }
+              validation={currentValidation}
+            />
           </section>
 
           <section className="grid gap-3 rounded-lg border p-4">

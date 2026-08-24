@@ -97,6 +97,7 @@ import {
   runConfigurationListResponseSchema,
   runConfigurationListWorkerCommandSchema,
   runConfigurationPathsWorkerCommandSchema,
+  runConfigurationValidateWorkerCommandSchema,
   runConfigurationWriteResponseSchema,
   runConfigurationWriteWorkerCommandSchema,
 } from "./run-configuration-operations.js";
@@ -12355,6 +12356,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   runConfigurationPathsWorkerCommandSchema.extend({
     type: z.literal("project.run-configuration-definitions.paths"),
+  }),
+  runConfigurationValidateWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-definitions.validate"),
   }),
   runConfigurationWriteWorkerCommandSchema.extend({
     type: z.literal("project.run-configuration-definitions.write"),

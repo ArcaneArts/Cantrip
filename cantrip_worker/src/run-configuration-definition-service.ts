@@ -6,11 +6,16 @@ import {
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationPathsResponseSchema,
+  runConfigurationValidateResponseSchema,
   runConfigurationWriteResponseSchema,
   type RunConfigurationDefinitionChangeNotification,
   type RunConfigurationDefinitionWorkerCommand,
   type RunConfigurationOperationResponse,
 } from "@cantrip/protocol/run-configuration-operations";
+import type {
+  RunConfigurationDiagnostic,
+  RunConfigurationFile,
+} from "@cantrip/protocol/run-configuration-definitions";
 
 import { shellRunConfigurationProvider } from "./run-configuration-provider.js";
 import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.js";
@@ -32,6 +37,90 @@ function workerPlatform(): "darwin" | "linux" | "win32" {
     return process.platform;
   }
   return "linux";
+}
+
+async function validateProviderDocument(
+  document: RunConfigurationFile,
+  sourcePath: string,
+) {
+  const platform = workerPlatform();
+  const providerContext = {
+    defaultShell: process.env.SHELL ?? null,
+    platform,
+    targetRoot: sourcePath,
+  };
+  let diagnostics: RunConfigurationDiagnostic[];
+  let effectiveCommand: string;
+  switch (document.provider) {
+    case "shell":
+      diagnostics = await shellRunConfigurationProvider.validate(
+        document,
+        providerContext,
+      );
+      effectiveCommand = shellRunConfigurationProvider.renderEffectiveCommand(
+        document,
+        platform,
+      );
+      break;
+    case "node":
+      diagnostics = await nodeRunConfigurationProvider.validate(
+        document,
+        providerContext,
+      );
+      effectiveCommand = nodeRunConfigurationProvider.renderEffectiveCommand(
+        document,
+        platform,
+      );
+      break;
+    case "java":
+      diagnostics = await javaRunConfigurationProvider.validate(
+        document,
+        providerContext,
+      );
+      effectiveCommand = javaRunConfigurationProvider.renderEffectiveCommand(
+        document,
+        platform,
+      );
+      break;
+    case "dart":
+      diagnostics = await dartRunConfigurationProvider.validate(
+        document,
+        providerContext,
+      );
+      effectiveCommand = dartRunConfigurationProvider.renderEffectiveCommand(
+        document,
+        platform,
+      );
+      break;
+    case "flutter":
+      diagnostics = await flutterRunConfigurationProvider.validate(
+        document,
+        providerContext,
+      );
+      effectiveCommand = flutterRunConfigurationProvider.renderEffectiveCommand(
+        document,
+        platform,
+      );
+      break;
+    case "rust":
+      diagnostics = await rustRunConfigurationProvider.validate(
+        document,
+        providerContext,
+      );
+      effectiveCommand = rustRunConfigurationProvider.renderEffectiveCommand(
+        document,
+        platform,
+      );
+      break;
+  }
+  return {
+    configurationId: document.id,
+    provider: document.provider,
+    platform,
+    effectiveCommand,
+    valid: diagnostics.every(({ severity }) => severity !== "error"),
+    diagnostics,
+  };
 }
 
 interface ObservedRepository {
@@ -233,6 +322,15 @@ export class RunConfigurationDefinitionService {
             query: command.query,
             sourceRoot: command.sourcePath,
           })),
+        });
+      case "project.run-configuration-definitions.validate":
+        return runConfigurationValidateResponseSchema.parse({
+          operation: "validate",
+          ...context,
+          validation: await validateProviderDocument(
+            command.document,
+            command.sourcePath,
+          ),
         });
       case "project.run-configuration-definitions.write":
         return runConfigurationWriteResponseSchema.parse({
