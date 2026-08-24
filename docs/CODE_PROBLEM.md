@@ -129,15 +129,24 @@ prove a stable process generation they do not receive this continuity guarantee.
 
 Both sides fence messages, frames, timers, shared presence publications, and
 asynchronous relay claims by the socket or claim generation that created them.
-The server also captures the worker's bounded reconnect flush before async
-authentication and shared claim completion, then replays at most 1,024 events
-or 8 MiB after the authenticated bridge has subscribed. Overflow closes the
-connection instead of accepting an unbounded unauthenticated queue. Focused
-tests cover a short interruption, grace expiry, repeated flaps, stale sockets,
-identity mismatch, explicit termination, failed retry attempts, shared-claim
-replacement, and pre-authentication flush ordering. This cycle does not add a
-Pong deadline or make process-local Code-root authority multi-replica; those
-remain later-cycle work.
+Generation-aware workers now wait for an additive `pending`/`ready` handshake:
+raw WebSocket open does not cancel grace, start keepalive, flush queued command
+outcomes, or enable data-plane sends. The server sends `pending` before async
+authentication and `ready` only after owner validation and an atomically
+accepted bridge/relay claim. The ready deadline is anchored to the original
+loss, so repeated pending sockets cannot extend retention.
+
+Legacy workers remain compatible through the bounded input buffer and receive
+no new handshake envelopes. One socket may retain at most 1,024 events or
+8 MiB; the process retains at most 64 MiB across at most 32 concurrent pending
+handshakes, and authentication/claim wait closes its socket after 10 seconds.
+Dead or overflowing sockets cannot activate, reset grace, or leave a false
+relay claim. Focused tests cover a short interruption, grace expiry, repeated
+flaps, stale sockets, identity mismatch, explicit termination, failed retry
+attempts, shared-claim replacement, dead refresh/claim races, authenticated
+readiness, pre-authentication ordering, and aggregate budget release. This
+cycle does not add a Pong deadline or make process-local Code-root authority
+multi-replica; those remain later-cycle work.
 
 ## Final remediation and acceptance addendum (2026-08-23)
 

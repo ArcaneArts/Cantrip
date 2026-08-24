@@ -574,11 +574,22 @@ socket as an unverifiable lifecycle and does not promise resource continuity.
 All socket input is fenced by the currently attached socket, and all deferred
 cleanup and coordinated relay presence work is fenced by its connection/claim
 generation. Repeated failed retries cannot extend the original grace deadline.
-Because a worker may flush bounded command outcomes immediately after WebSocket
-open, the server buffers input while authentication and any shared relay claim
-complete, with fixed event and byte limits, and activates it only after bridge
-subscriptions exist. No credential, token, payload, or protected path is added
-to lifecycle telemetry.
+For generation-aware workers, raw WebSocket open begins only protocol
+negotiation. The server advertises `pending` before asynchronous authentication
+and sends `ready` only after owner validation and atomic local/shared bridge
+attachment. Until matching `ready`, the worker keeps command outcomes queued,
+does not start keepalive or data-plane traffic, and does not cancel its original
+grace deadline. A short fallback retains compatibility with older servers;
+older workers omit the generation and receive no new handshake messages.
+
+Legacy workers may still flush on raw open, so the server retains a bounded
+compatibility buffer until bridge subscriptions exist. Each socket is limited
+to 1,024 events or 8 MiB, with a 64 MiB process-wide byte budget, at most 32
+pending handshakes, and a 10-second socket deadline. A dead, timed-out, or
+overflowing socket is rejected before it can activate, reset grace, or commit a
+relay claim. Exact claim rollback and socket/attachment-generation fences make
+late async completions harmless. No credential, token, payload, or protected
+path is added to lifecycle telemetry.
 
 Concurrent views share the editor process, persistent profile, generated
 workspace, and filesystem state without transferring control between windows.
