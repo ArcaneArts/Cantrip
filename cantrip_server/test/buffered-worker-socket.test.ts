@@ -39,7 +39,9 @@ describe("BufferedWorkerSocket", () => {
     socket.emit("message", "first", false);
     socket.emit("message", new Uint8Array([1, 2]), true);
     buffered.on("message", (data, isBinary) => {
-      received.push(isBinary ? `binary:${String((data as Uint8Array)[1])}` : String(data));
+      received.push(
+        isBinary ? `binary:${String((data as Uint8Array)[1])}` : String(data),
+      );
     });
     expect(received).toEqual([]);
 
@@ -51,13 +53,17 @@ describe("BufferedWorkerSocket", () => {
 
   it("bounds unauthenticated reconnect data before activation", () => {
     const socket = new TestSocket();
-    new BufferedWorkerSocket(socket);
+    const buffered = new BufferedWorkerSocket(socket);
+    const closed = vi.fn();
+    buffered.on("close", closed);
 
     socket.emit("message", new Uint8Array(8 * 1_024 * 1_024 + 1), true);
+    buffered.activate();
 
     expect(socket.closes).toEqual([
       { code: 1009, reason: "Worker authentication buffer exceeded" },
     ]);
+    expect(closed).toHaveBeenCalledOnce();
   });
 
   it("replays a pre-activation close exactly once", () => {

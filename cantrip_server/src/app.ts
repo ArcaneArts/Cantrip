@@ -833,6 +833,7 @@ import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "./workers/bridge.js";
+import { BufferedWorkerSocket } from "./workers/buffered-socket.js";
 import { workerLogStreamConsumerIsSlow } from "./workers/log-stream.js";
 import {
   authenticateWorkerRequest,
@@ -32583,10 +32584,13 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Querystring: { workerId?: string } }>(
+  app.get<{
+    Querystring: { connectionGeneration?: string; workerId?: string };
+  }>(
     "/api/internal/workers/connect",
     { websocket: true },
     async (socket, request) => {
+      const workerSocket = new BufferedWorkerSocket(socket);
       const workerId = request.query.workerId;
       if (!workerId) {
         serverLogger.rateLimited(
@@ -32602,7 +32606,31 @@ export async function buildApp({
             status: "rejected",
           },
         );
-        socket.close(1008, "Unauthorized");
+        workerSocket.close(1008, "Unauthorized");
+        return;
+      }
+      const workerProcessGeneration = request.query.connectionGeneration;
+      if (
+        workerProcessGeneration !== undefined &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+          workerProcessGeneration,
+        )
+      ) {
+        serverLogger.rateLimited(
+          `worker-connect-invalid-generation:${workerId}`,
+          "warn",
+          "Worker connection rejected",
+          {
+            event: "worker.authentication.rejected",
+            subsystem: "worker-connection",
+            operation: "connect",
+            reasonCode: "connection-generation-invalid",
+            requestId: request.id,
+            status: "rejected",
+            workerId,
+          },
+        );
+        workerSocket.close(1008, "Unauthorized");
         return;
       }
       const workerAuth = await authenticateWorkerRequest(
@@ -32627,7 +32655,7 @@ export async function buildApp({
             workerId,
           },
         );
-        socket.close(1008, "Unauthorized");
+        workerSocket.close(1008, "Unauthorized");
         return;
       }
       if (
@@ -32643,7 +32671,7 @@ export async function buildApp({
           status: "rejected",
           workerId,
         });
-        socket.close(1008, "Worker credential was revoked");
+        workerSocket.close(1008, "Worker credential was revoked");
         return;
       }
       const ownerId = await repository.getWorkerOwnerId(workerId);
@@ -32657,16 +32685,23 @@ export async function buildApp({
           status: "rejected",
           workerId,
         });
-        socket.close(1008, "Worker identity mismatch");
+        workerSocket.close(1008, "Worker identity mismatch");
         return;
       }
-      // Subscribe before attaching the socket. A reconnecting worker flushes
-      // buffered command outcomes as soon as the WebSocket opens, so attaching
-      // first leaves a race where the bridge receives a valid outcome before
-      // the application has registered its persistence listener.
+      // Subscribe before activating the bounded authentication buffer. A
+      // reconnecting worker flushes outcomes as soon as the WebSocket opens;
+      // neither persistence nor command correlation may miss that flush while
+      // authentication and a shared-presence claim are still completing.
       ensureWorkerNotificationSubscription(workerAuth.ownerId, workerId);
+      const resolvedWorkerProcessGeneration =
+        workerProcessGeneration ?? randomUUID();
       try {
-        await bridge.attach(workerId, socket, workerAuth.ownerId);
+        await bridge.attach(workerId, workerSocket, workerAuth.ownerId, {
+          credentialId: workerAuth.id,
+          ownerId: workerAuth.ownerId,
+          workerProcessGeneration: resolvedWorkerProcessGeneration,
+        });
+        workerSocket.activate();
       } catch (error) {
         serverLogger.event("error", "Could not claim worker connection", {
           event: "worker.connection.claim-failed",
@@ -32678,7 +32713,7 @@ export async function buildApp({
           workerId,
           error: error instanceof Error ? error : new Error(String(error)),
         });
-        socket.close(1013, "Worker relay coordination is unavailable");
+        workerSocket.close(1013, "Worker relay coordination is unavailable");
         return;
       }
       runAsOwner(workerAuth.ownerId, () =>
@@ -32691,6 +32726,7 @@ export async function buildApp({
         requestId: request.id,
         status: "authenticated",
         workerId,
+        workerProcessGeneration: resolvedWorkerProcessGeneration,
       });
       catalogWorkers.set(workerId, workerAuth.ownerId);
       void providerCredentialMigrations

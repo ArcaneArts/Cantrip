@@ -15,7 +15,10 @@ import {
 } from "@cantrip/logging";
 import { describe, expect, it, vi } from "vitest";
 
-import { WorkerBridge } from "../src/workers/bridge.js";
+import {
+  WorkerBridge,
+  type WorkerConnectionContinuityIdentity,
+} from "../src/workers/bridge.js";
 
 class TestWorkerSocket {
   bufferedAmount = 0;
@@ -53,6 +56,12 @@ const header: RemoteSurfaceFrameHeader = {
   attachmentId: "attachment-1",
   sequence: 0,
   channel: "control",
+};
+
+const continuityIdentity: WorkerConnectionContinuityIdentity = {
+  credentialId: "credential-1",
+  ownerId: "owner-1",
+  workerProcessGeneration: "process-1",
 };
 
 describe("WorkerBridge Remote Surface transport", () => {
@@ -110,7 +119,7 @@ describe("WorkerBridge Remote Surface transport", () => {
     bridge.close();
   });
 
-  it("keeps an in-flight command alive across a short worker reconnect", async () => {
+  it("keeps a legacy in-flight command alive when neither socket asserts continuity", async () => {
     const bridge = new WorkerBridge(1_000);
     const firstSocket = new TestWorkerSocket();
     bridge.attach("worker-1", firstSocket);
@@ -149,6 +158,139 @@ describe("WorkerBridge Remote Surface transport", () => {
     socket.close(1006, "network loss");
 
     await expect(response).rejects.toThrow(/disconnected/i);
+    bridge.close();
+  });
+
+  it("emits reconnecting for every flap but terminal offline only after the latest grace expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const bridge = new WorkerBridge(15_000);
+      const firstSocket = new TestWorkerSocket();
+      const reconnecting = vi.fn();
+      const offline = vi.fn();
+      bridge.subscribeWorkerDisconnect("worker-1", reconnecting);
+      bridge.subscribeWorkerOffline("worker-1", offline);
+      bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
+
+      const response = bridge.request("worker-1", { type: "code.probe" });
+      const rejected = expect(response).rejects.toThrow(/disconnected/i);
+      firstSocket.close(1006, "first flap");
+      expect(reconnecting).toHaveBeenCalledOnce();
+      expect(offline).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      const secondSocket = new TestWorkerSocket();
+      bridge.attach("worker-1", secondSocket, "owner-1", continuityIdentity);
+      await vi.advanceTimersByTimeAsync(5_001);
+      expect(offline).not.toHaveBeenCalled();
+
+      secondSocket.close(1006, "second flap");
+      expect(reconnecting).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(offline).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(offline).toHaveBeenCalledOnce();
+      await rejected;
+      bridge.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("terminates the old lifecycle immediately when continuity identity changes", async () => {
+    const bridge = new WorkerBridge();
+    const firstSocket = new TestWorkerSocket();
+    const reconnecting = vi.fn();
+    const offline = vi.fn();
+    bridge.subscribeWorkerDisconnect("worker-1", reconnecting);
+    bridge.subscribeWorkerOffline("worker-1", offline);
+    bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
+    const pending = bridge.request("worker-1", { type: "code.probe" });
+    const rejected = expect(pending).rejects.toThrow(/identity changed/i);
+
+    const replacementSocket = new TestWorkerSocket();
+    bridge.attach("worker-1", replacementSocket, "owner-1", {
+      ...continuityIdentity,
+      workerProcessGeneration: "process-2",
+    });
+
+    expect(firstSocket.closes).toContainEqual({
+      code: 1008,
+      reason: "Worker continuity identity changed",
+    });
+    expect(reconnecting).toHaveBeenCalledOnce();
+    expect(offline).toHaveBeenCalledOnce();
+    await rejected;
+    expect(bridge.isConnected("worker-1")).toBe(true);
+
+    bridge.disconnect("worker-1", "credential revoked", 1008);
+    expect(replacementSocket.closes).toContainEqual({
+      code: 1008,
+      reason: "credential revoked",
+    });
+    expect(reconnecting).toHaveBeenCalledTimes(2);
+    expect(offline).toHaveBeenCalledTimes(2);
+    bridge.close();
+  });
+
+  it("ignores messages and frames from a replaced socket", async () => {
+    const bridge = new WorkerBridge();
+    const firstSocket = new TestWorkerSocket();
+    const surface = vi.fn();
+    bridge.subscribeSurfaceFrames("worker-1", surface);
+    bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
+
+    const replacementSocket = new TestWorkerSocket();
+    bridge.attach("worker-1", replacementSocket, "owner-1", continuityIdentity);
+    const response = bridge.request("worker-1", { type: "code.probe" });
+    const request = JSON.parse(String(replacementSocket.sent.at(-1))) as {
+      requestId: string;
+    };
+    const settled = vi.fn();
+    void response.then(settled);
+
+    firstSocket.emit(
+      "message",
+      JSON.stringify(
+        workerResponseEnvelopeSchema.parse({
+          kind: "response",
+          requestId: request.requestId,
+          ok: true,
+          result: { stale: true },
+        }),
+      ),
+      false,
+    );
+    firstSocket.emit(
+      "message",
+      encodeRemoteSurfaceFrame(header, new Uint8Array([1, 2])),
+      true,
+    );
+    await Promise.resolve();
+    expect(settled).not.toHaveBeenCalled();
+    expect(surface).not.toHaveBeenCalled();
+
+    replacementSocket.emit(
+      "message",
+      encodeRemoteSurfaceFrame(header, new Uint8Array([3, 4])),
+      true,
+    );
+    replacementSocket.emit(
+      "message",
+      JSON.stringify(
+        workerResponseEnvelopeSchema.parse({
+          kind: "response",
+          requestId: request.requestId,
+          ok: true,
+          result: { recovered: true },
+        }),
+      ),
+      false,
+    );
+
+    await expect(response).resolves.toEqual({ recovered: true });
+    expect(surface).toHaveBeenCalledOnce();
     bridge.close();
   });
 

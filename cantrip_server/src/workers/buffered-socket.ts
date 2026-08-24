@@ -124,6 +124,7 @@ export class BufferedWorkerSocket implements WorkerSocket {
     ) {
       this.#inputClosed = true;
       this.#events.length = 0;
+      this.#events.push({ kind: "close" });
       this.#bufferedBytes = 0;
       this.socket.close(1009, "Worker authentication buffer exceeded");
       return;

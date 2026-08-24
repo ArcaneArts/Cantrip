@@ -36,9 +36,11 @@ const config: ServerConfig = {
 
 let notificationSubscribed = false;
 let subscribedBeforeAttach: boolean | null = null;
+let attachedContinuityIdentity: Parameters<WorkerCommandBus["attach"]>[3];
 const workerBridge: WorkerCommandBus = {
-  attach() {
+  attach(_workerId, _socket, _ownerId, continuityIdentity) {
     subscribedBeforeAttach = notificationSubscribed;
+    attachedContinuityIdentity = continuityIdentity;
   },
   close() {},
   isConnected() {
@@ -94,12 +96,18 @@ afterAll(async () => {
 
 describe("worker notification connection order", () => {
   it("subscribes before attachment and trusts the live command connection", async () => {
+    const workerProcessGeneration = "11111111-1111-4111-8111-111111111111";
     const socket = await app.injectWS(
-      "/api/internal/workers/connect?workerId=notification-order-worker",
+      `/api/internal/workers/connect?workerId=notification-order-worker&connectionGeneration=${workerProcessGeneration}`,
       { headers: { authorization: "Bearer test-worker-token" } },
     );
 
     await expect.poll(() => subscribedBeforeAttach).toBe(true);
+    expect(attachedContinuityIdentity).toEqual({
+      credentialId: "development-bootstrap",
+      ownerId: LOCAL_USER_ID,
+      workerProcessGeneration,
+    });
     const worker = await database.repository.getWorker(
       LOCAL_USER_ID,
       "notification-order-worker",

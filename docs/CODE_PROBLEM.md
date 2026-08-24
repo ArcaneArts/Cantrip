@@ -114,6 +114,31 @@ acceptance run remains a Cycle 10 requirement; this cycle does not claim that
 evidence or change worker reconnect, bridge-liveness, or retained-workbench
 policy.
 
+Cycle 3 separates a recoverable command-channel interruption from terminal
+worker offline state. A current worker process supplies one random connection
+generation for its whole lifetime; the server binds that generation to the
+authenticated credential and owner. During the existing 15-second grace, the
+server retains the worker's Code roots, relay routes, direct grants, and tunnel
+endpoints, while the worker retains its authorized tunnel destinations, direct
+capabilities, and Code endpoints. Pending commands keep their existing bounded
+outcome. A reconnect cancels deferred cleanup only when all three continuity
+fields match. Grace expiry, credential or owner mismatch, process-generation
+change, authentication rejection, explicit revocation, and shutdown perform
+terminal cleanup. Older workers remain connectable, but because they cannot
+prove a stable process generation they do not receive this continuity guarantee.
+
+Both sides fence messages, frames, timers, shared presence publications, and
+asynchronous relay claims by the socket or claim generation that created them.
+The server also captures the worker's bounded reconnect flush before async
+authentication and shared claim completion, then replays at most 1,024 events
+or 8 MiB after the authenticated bridge has subscribed. Overflow closes the
+connection instead of accepting an unbounded unauthenticated queue. Focused
+tests cover a short interruption, grace expiry, repeated flaps, stale sockets,
+identity mismatch, explicit termination, failed retry attempts, shared-claim
+replacement, and pre-authentication flush ordering. This cycle does not add a
+Pong deadline or make process-local Code-root authority multi-replica; those
+remain later-cycle work.
+
 ## Final remediation and acceptance addendum (2026-08-23)
 
 The incident was a stack of independent defects. Fixing only OpenVSCode process

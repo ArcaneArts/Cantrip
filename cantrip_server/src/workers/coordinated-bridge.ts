@@ -22,12 +22,17 @@ import { serverLogger } from "../logger.js";
 import type {
   WorkerCommandBus,
   WorkerCommandBusStats,
+  WorkerConnectionContinuityIdentity,
   WorkerNotificationListener,
   WorkerRequestOptions,
   WorkerSurfaceFrameListener,
   WorkerTunnelDataPlaneFrameListener,
 } from "./bridge.js";
-import { WorkerBridge, WorkerUnavailableError } from "./bridge.js";
+import {
+  sameWorkerConnectionContinuityIdentity,
+  WorkerBridge,
+  WorkerUnavailableError,
+} from "./bridge.js";
 
 const MAX_PENDING_REMOTE_REQUESTS = 2_048;
 const MAX_INCOMING_REMOTE_REQUESTS = 512;
@@ -39,6 +44,7 @@ type Transport = "surface" | "tunnel";
 
 interface LocalConnection {
   connectionId: string;
+  continuityIdentity?: WorkerConnectionContinuityIdentity;
   ownerId: string;
   unsubscribers: Array<() => void>;
 }
@@ -56,6 +62,7 @@ interface PendingRemoteRequest {
 
 export interface CoordinatedWorkerBridgeOptions {
   coordinator: RelayCoordinator;
+  reconnectGraceMs?: number;
   resolveOwnerId(workerId: string): Promise<string | null>;
 }
 
@@ -73,11 +80,13 @@ function decodePayload(value: string): Uint8Array | null {
 }
 
 export class CoordinatedWorkerBridge implements WorkerCommandBus {
+  readonly #attachmentGenerations = new Map<string, symbol>();
   readonly #connections = new Map<string, LocalConnection>();
   readonly #coordinator: RelayCoordinator;
   readonly #disconnectListeners = new Map<string, Set<() => void>>();
-  readonly #local = new WorkerBridge();
-  readonly #knownRemoteWorkers = new Set<string>();
+  readonly #local: WorkerBridge;
+  readonly #knownRemoteWorkers = new Map<string, string>();
+  readonly #offlineListeners = new Map<string, Set<() => void>>();
   readonly #notificationListeners = new Map<
     string,
     Set<WorkerNotificationListener>
@@ -103,6 +112,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
 
   constructor(options: CoordinatedWorkerBridgeOptions) {
     this.#coordinator = options.coordinator;
+    this.#local = new WorkerBridge(options.reconnectGraceMs);
     this.#resolveOwnerId = options.resolveOwnerId;
     this.#unsubscribeCoordination = this.#coordinator.subscribe((message) =>
       this.#receive(message),
@@ -118,12 +128,19 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     workerId: string,
     socket: WorkerSocket,
     ownerId?: string,
+    continuityIdentity?: WorkerConnectionContinuityIdentity,
   ): Promise<void> {
     if (this.#closed) {
       socket.close(1012, "Server is shutting down");
       return;
     }
+    const attachmentGeneration = Symbol(workerId);
+    this.#attachmentGenerations.set(workerId, attachmentGeneration);
     const resolvedOwnerId = ownerId ?? (await this.#resolveOwnerId(workerId));
+    if (!this.#isCurrentAttachment(workerId, attachmentGeneration)) {
+      socket.close(1012, "Worker connection was superseded");
+      return;
+    }
     if (!resolvedOwnerId) {
       serverLogger.event("warn", "Worker relay attachment rejected", {
         event: "coordination.worker.attach-rejected",
@@ -136,8 +153,57 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       socket.close(1008, "Worker owner is unavailable");
       return;
     }
-    if (this.#local.isConnected(workerId)) {
-      this.#local.disconnect(workerId, "Worker reconnected", 1012);
+    if (continuityIdentity && continuityIdentity.ownerId !== resolvedOwnerId) {
+      socket.close(1008, "Worker continuity identity does not match owner");
+      return;
+    }
+    const existing = this.#connections.get(workerId);
+    const continuityMatches = Boolean(
+      existing?.ownerId === resolvedOwnerId &&
+      sameWorkerConnectionContinuityIdentity(
+        existing.continuityIdentity,
+        continuityIdentity,
+      ),
+    );
+    if (existing && continuityMatches) {
+      const retained = await this.#coordinator.refreshWorker(
+        workerId,
+        existing.connectionId,
+      );
+      if (
+        !this.#isCurrentAttachment(workerId, attachmentGeneration) ||
+        this.#connections.get(workerId) !== existing
+      ) {
+        socket.close(1012, "Worker connection was superseded");
+        return;
+      }
+      if (retained) {
+        this.#local.attach(
+          workerId,
+          socket,
+          resolvedOwnerId,
+          continuityIdentity,
+        );
+        serverLogger.event("info", "Worker relay attachment recovered", {
+          event: "coordination.worker.recovered",
+          subsystem: "relay-coordination",
+          operation: "attach-worker",
+          status: "online",
+          workerId,
+        });
+        return;
+      }
+    }
+    if (existing) {
+      this.#local.disconnect(
+        workerId,
+        continuityMatches
+          ? "Worker relay claim was lost"
+          : existing.ownerId === resolvedOwnerId
+            ? "Worker continuity identity changed"
+            : "Worker owner changed",
+        continuityMatches ? 1012 : 1008,
+      );
     }
     const connectionId = randomUUID();
     const previous = await this.#coordinator.claimWorker({
@@ -145,6 +211,10 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       ownerId: resolvedOwnerId,
       workerId,
     });
+    if (!this.#isCurrentAttachment(workerId, attachmentGeneration)) {
+      await this.#discardSupersededClaim(workerId, connectionId, socket);
+      return;
+    }
     if (
       previous &&
       (previous.instanceId !== this.#coordinator.instanceId ||
@@ -158,14 +228,33 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         code: 1012,
         reason: "Worker connected to another server instance",
       });
+      if (!this.#isCurrentAttachment(workerId, attachmentGeneration)) {
+        await this.#discardSupersededClaim(workerId, connectionId, socket);
+        return;
+      }
     }
 
-    this.#local.attach(workerId, socket);
-    const unsubscribers = [
+    const connection: LocalConnection = {
+      connectionId,
+      continuityIdentity,
+      ownerId: resolvedOwnerId,
+      unsubscribers: [],
+    };
+    this.#connections.set(workerId, connection);
+    this.#knownRemoteWorkers.delete(workerId);
+    connection.unsubscribers.push(
       this.#local.subscribeWorkerDisconnect(workerId, () => {
-        void this.#localDisconnected(workerId, connectionId);
+        const current = this.#connections.get(workerId);
+        if (current?.connectionId === connectionId) {
+          this.#dispatchDisconnect(workerId);
+        }
+      }),
+      this.#local.subscribeWorkerOffline(workerId, () => {
+        void this.#localOffline(workerId, connectionId);
       }),
       this.#local.subscribeSurfaceFrames(workerId, (header, payload) => {
+        if (this.#connections.get(workerId)?.connectionId !== connectionId)
+          return;
         this.#dispatchFrame("surface", workerId, header, payload);
         this.#publishWorkerFrame(
           "from-worker",
@@ -179,6 +268,8 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       this.#local.subscribeTunnelDataPlaneFrames(
         workerId,
         (header, payload) => {
+          if (this.#connections.get(workerId)?.connectionId !== connectionId)
+            return;
           this.#dispatchFrame("tunnel", workerId, header, payload);
           this.#publishWorkerFrame(
             "from-worker",
@@ -191,6 +282,8 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         },
       ),
       this.#local.subscribeNotifications(workerId, (notification) => {
+        if (this.#connections.get(workerId)?.connectionId !== connectionId)
+          return;
         this.#dispatchNotification(workerId, notification);
         this.#publishBounded({
           kind: "worker-notification",
@@ -199,12 +292,8 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
           notification,
         });
       }),
-    ];
-    this.#connections.set(workerId, {
-      connectionId,
-      ownerId: resolvedOwnerId,
-      unsubscribers,
-    });
+    );
+    this.#local.attach(workerId, socket, resolvedOwnerId, continuityIdentity);
     serverLogger.event("info", "Worker attached to relay instance", {
       event: "coordination.worker.attached",
       subsystem: "relay-coordination",
@@ -239,6 +328,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       );
     }
     this.#connections.clear();
+    this.#attachmentGenerations.clear();
     this.#local.close();
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timeout);
@@ -246,6 +336,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     }
     this.#pending.clear();
     this.#disconnectListeners.clear();
+    this.#offlineListeners.clear();
     this.#notificationListeners.clear();
     this.#surfaceListeners.clear();
     this.#tunnelListeners.clear();
@@ -261,6 +352,8 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
   }
 
   disconnect(workerId: string, reason?: string, code?: number): void {
+    const attachmentGeneration = Symbol(workerId);
+    this.#attachmentGenerations.set(workerId, attachmentGeneration);
     const local = this.#connections.get(workerId);
     if (local) {
       this.#local.disconnect(workerId, reason, code);
@@ -271,8 +364,13 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       void this.#coordinator
         .findWorker(workerId)
         .then((remote) => {
-          if (!remote) return;
-          this.#knownRemoteWorkers.add(workerId);
+          if (
+            !remote ||
+            !this.#isCurrentAttachment(workerId, attachmentGeneration)
+          ) {
+            return;
+          }
+          this.#knownRemoteWorkers.set(workerId, remote.connectionId);
           this.#publishBounded({
             kind: "worker-disconnect",
             targetInstanceId: remote.instanceId,
@@ -285,7 +383,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         .catch(() => undefined);
       return;
     }
-    this.#knownRemoteWorkers.add(workerId);
+    this.#knownRemoteWorkers.set(workerId, presence.connectionId);
     this.#publishBounded({
       kind: "worker-disconnect",
       targetInstanceId: presence.instanceId,
@@ -297,10 +395,14 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
   }
 
   isConnected(workerId: string): boolean {
-    if (this.#local.isConnected(workerId)) return true;
-    const connected = this.#coordinator.cachedWorker(workerId) !== null;
-    if (connected) this.#knownRemoteWorkers.add(workerId);
-    return connected;
+    if (this.#connections.has(workerId))
+      return this.#local.isConnected(workerId);
+    const presence = this.#coordinator.cachedWorker(workerId);
+    if (presence) {
+      this.#knownRemoteWorkers.set(workerId, presence.connectionId);
+      return true;
+    }
+    return false;
   }
 
   stats(): WorkerCommandBusStats {
@@ -318,7 +420,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     command: WorkerCommand,
     options: WorkerRequestOptions = {},
   ): Promise<unknown> {
-    if (this.#local.isConnected(workerId)) {
+    if (this.#connections.has(workerId)) {
       return this.#local.request(workerId, command, options);
     }
     return this.#requestRemote(workerId, command, options);
@@ -345,6 +447,10 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     listener: () => void,
   ): () => void {
     return this.#subscribe(this.#disconnectListeners, workerId, listener);
+  }
+
+  subscribeWorkerOffline(workerId: string, listener: () => void): () => void {
+    return this.#subscribe(this.#offlineListeners, workerId, listener);
   }
 
   subscribeSurfaceFrames(
@@ -408,7 +514,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       );
       throw new WorkerUnavailableError(`Worker ${workerId} is offline.`);
     }
-    this.#knownRemoteWorkers.add(workerId);
+    this.#knownRemoteWorkers.set(workerId, presence.connectionId);
     const ownerId = options.ownerId ?? (await this.#resolveOwnerId(workerId));
     if (!ownerId || ownerId !== presence.ownerId) {
       this.#failedRequests += 1;
@@ -607,11 +713,24 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       case "worker-presence":
         if (message.action === "online") {
           if (!this.#connections.has(message.presence.workerId)) {
-            this.#knownRemoteWorkers.add(message.presence.workerId);
+            this.#knownRemoteWorkers.set(
+              message.presence.workerId,
+              message.presence.connectionId,
+            );
           }
         } else {
-          this.#knownRemoteWorkers.delete(message.presence.workerId);
-          this.#dispatchDisconnect(message.presence.workerId);
+          const workerId = message.presence.workerId;
+          if (this.#connections.has(workerId)) return;
+          if (
+            this.#knownRemoteWorkers.get(workerId) !==
+              message.presence.connectionId ||
+            this.#coordinator.cachedWorker(workerId)
+          ) {
+            return;
+          }
+          this.#knownRemoteWorkers.delete(workerId);
+          this.#dispatchDisconnect(workerId);
+          this.#dispatchOffline(workerId);
         }
         return;
       case "live-publication":
@@ -754,7 +873,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     header: unknown,
     payload: Uint8Array,
   ): boolean {
-    if (this.#local.isConnected(workerId)) {
+    if (this.#connections.has(workerId)) {
       if (transport === "surface") {
         return this.#local.sendSurfaceFrame(
           workerId,
@@ -770,7 +889,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     }
     const presence = this.#coordinator.cachedWorker(workerId);
     if (!presence) return false;
-    this.#knownRemoteWorkers.add(workerId);
+    this.#knownRemoteWorkers.set(workerId, presence.connectionId);
     return this.#publishWorkerFrame(
       "to-worker",
       transport,
@@ -854,19 +973,35 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     }
   }
 
-  async #localDisconnected(
-    workerId: string,
-    connectionId: string,
-  ): Promise<void> {
+  #dispatchOffline(workerId: string): void {
+    for (const listener of this.#offlineListeners.get(workerId) ?? []) {
+      listener();
+    }
+  }
+
+  async #localOffline(workerId: string, connectionId: string): Promise<void> {
     const connection = this.#connections.get(workerId);
     if (!connection || connection.connectionId !== connectionId) return;
     this.#connections.delete(workerId);
     for (const unsubscribe of connection.unsubscribers) unsubscribe();
-    const released = await this.#coordinator.releaseWorker(
-      workerId,
-      connectionId,
-    );
-    if (released) this.#dispatchDisconnect(workerId);
+    this.#dispatchOffline(workerId);
+    try {
+      await this.#coordinator.releaseWorker(workerId, connectionId);
+    } catch {
+      serverLogger.rateLimited(
+        `coordination-worker-release-failed:${workerId}`,
+        "warn",
+        "Worker relay ownership could not be released",
+        {
+          event: "coordination.worker.release-failed",
+          subsystem: "relay-coordination",
+          operation: "release-worker",
+          reasonCode: "coordination-unavailable",
+          status: "degraded",
+          workerId,
+        },
+      );
+    }
   }
 
   async #refreshPresence(): Promise<void> {
@@ -883,6 +1018,12 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         continue;
       }
       if (!retained) {
+        if (
+          this.#connections.get(workerId)?.connectionId !==
+          connection.connectionId
+        ) {
+          continue;
+        }
         serverLogger.event("warn", "Worker relay claim was lost", {
           event: "coordination.worker.claim-lost",
           subsystem: "relay-coordination",
@@ -899,24 +1040,31 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       }
     }
     const observedWorkers = new Set([
-      ...this.#knownRemoteWorkers,
+      ...this.#knownRemoteWorkers.keys(),
       ...this.#surfaceListeners.keys(),
       ...this.#tunnelListeners.keys(),
       ...this.#notificationListeners.keys(),
       ...this.#disconnectListeners.keys(),
+      ...this.#offlineListeners.keys(),
     ]);
     for (const workerId of observedWorkers) {
       if (this.#connections.has(workerId)) continue;
+      const knownConnectionId = this.#knownRemoteWorkers.get(workerId);
       let presence: WorkerPresenceClaim | null;
       try {
         presence = await this.#coordinator.findWorker(workerId);
       } catch {
         continue;
       }
+      if (this.#connections.has(workerId)) continue;
       if (presence) {
-        this.#knownRemoteWorkers.add(workerId);
-      } else if (this.#knownRemoteWorkers.delete(workerId)) {
+        this.#knownRemoteWorkers.set(workerId, presence.connectionId);
+      } else if (
+        this.#knownRemoteWorkers.get(workerId) === knownConnectionId &&
+        this.#knownRemoteWorkers.delete(workerId)
+      ) {
         this.#dispatchDisconnect(workerId);
+        this.#dispatchOffline(workerId);
       }
     }
   }
@@ -936,5 +1084,25 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       listeners?.delete(listener);
       if (listeners?.size === 0) map.delete(workerId);
     };
+  }
+
+  #isCurrentAttachment(workerId: string, generation: symbol): boolean {
+    return (
+      !this.#closed && this.#attachmentGenerations.get(workerId) === generation
+    );
+  }
+
+  async #discardSupersededClaim(
+    workerId: string,
+    connectionId: string,
+    socket: WorkerSocket,
+  ): Promise<void> {
+    try {
+      await this.#coordinator.releaseWorker(workerId, connectionId);
+    } catch {
+      // The exact-generation release is best effort. A newer claim cannot be
+      // removed because RelayCoordinator release is fenced by connectionId.
+    }
+    socket.close(1012, "Worker connection was superseded");
   }
 }

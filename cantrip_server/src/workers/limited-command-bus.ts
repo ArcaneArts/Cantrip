@@ -64,8 +64,9 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     workerId: string,
     socket: Parameters<WorkerCommandBus["attach"]>[1],
     ownerId?: string,
+    continuityIdentity?: Parameters<WorkerCommandBus["attach"]>[3],
   ) {
-    return this.delegate.attach(workerId, socket, ownerId);
+    return this.delegate.attach(workerId, socket, ownerId, continuityIdentity);
   }
 
   close(): Promise<void> | void {
@@ -113,6 +114,13 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
 
   subscribeWorkerDisconnect(workerId: string, listener: () => void) {
     return this.delegate.subscribeWorkerDisconnect(workerId, listener);
+  }
+
+  subscribeWorkerOffline(workerId: string, listener: () => void) {
+    return (
+      this.delegate.subscribeWorkerOffline?.(workerId, listener) ??
+      this.delegate.subscribeWorkerDisconnect(workerId, listener)
+    );
   }
 
   subscribeSurfaceFrames(

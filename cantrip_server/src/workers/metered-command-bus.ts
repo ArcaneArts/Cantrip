@@ -85,11 +85,17 @@ export class MeteredWorkerCommandBus implements WorkerCommandBus {
     readonly recorder: AccountUsageRecorder,
   ) {}
 
-  attach(workerId: string, socket: WorkerSocket, ownerId?: string) {
+  attach(
+    workerId: string,
+    socket: WorkerSocket,
+    ownerId?: string,
+    continuityIdentity?: Parameters<WorkerCommandBus["attach"]>[3],
+  ) {
     return this.delegate.attach(
       workerId,
       ownerId ? meteredWorkerSocket(socket, ownerId, this.recorder) : socket,
       ownerId,
+      continuityIdentity,
     );
   }
 
@@ -139,6 +145,13 @@ export class MeteredWorkerCommandBus implements WorkerCommandBus {
 
   subscribeWorkerDisconnect(workerId: string, listener: () => void) {
     return this.delegate.subscribeWorkerDisconnect(workerId, listener);
+  }
+
+  subscribeWorkerOffline(workerId: string, listener: () => void) {
+    return (
+      this.delegate.subscribeWorkerOffline?.(workerId, listener) ??
+      this.delegate.subscribeWorkerDisconnect(workerId, listener)
+    );
   }
 
   subscribeSurfaceFrames(
