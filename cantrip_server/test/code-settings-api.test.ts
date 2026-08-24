@@ -15,6 +15,11 @@ import {
   codeSettingsStoredProfileSchema,
   type CodeSettingsUpload,
 } from "@cantrip/protocol/code-settings";
+import type {
+  AccountEncryptionProfileInitialize,
+  EncryptionPublicKey,
+  WorkerComponentKeyGrant,
+} from "@cantrip/protocol/encryption";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -44,6 +49,14 @@ const peerWorkerId = "code-settings-api-peer-worker";
 const unauthorizedWorkerId = "code-settings-api-worker-without-grant";
 const crossAccountWorkerId = "code-settings-api-cross-account-worker";
 const workerCommands: Array<{ command: WorkerCommand; workerId: string }> = [];
+const zero48 = Buffer.alloc(48).toString("base64url");
+const zero65 = Buffer.alloc(65).toString("base64url");
+const publicKey: EncryptionPublicKey = {
+  version: 1,
+  algorithm: "P-256",
+  format: "raw",
+  value: zero65,
+};
 const connectedWorkers = new Set([
   workerId,
   peerWorkerId,
@@ -147,6 +160,63 @@ function upload(
   };
 }
 
+function initialProfile(clientId: string): AccountEncryptionProfileInitialize {
+  return {
+    profile: {
+      formatVersion: 1,
+      activeMasterKeyRevision: 1,
+      passwordKdf: null,
+      passwordWrappedMasterKey: null,
+      payloadMigrationStatus: "complete",
+    },
+    initialClient: {
+      id: clientId,
+      label: "Code settings test client",
+      publicKey,
+      wrappedMasterKey: {
+        version: 1,
+        purpose: "client-account-master-key",
+        clientId,
+        masterKeyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "HPKE-RFC9180",
+          suite: {
+            mode: "base",
+            kem: "DHKEM(P-256,HKDF-SHA256)",
+            kdf: "HKDF-SHA256",
+            aead: "AES-256-GCM",
+          },
+          encapsulatedKey: zero65,
+          ciphertext: zero48,
+        },
+      },
+    },
+  };
+}
+
+function customizationGrant(workerId: string): WorkerComponentKeyGrant {
+  return {
+    version: 1,
+    purpose: "worker-component-key",
+    workerId,
+    component: "customization-content",
+    keyRevision: 1,
+    envelope: {
+      version: 1,
+      algorithm: "HPKE-RFC9180",
+      suite: {
+        mode: "base",
+        kem: "DHKEM(P-256,HKDF-SHA256)",
+        kdf: "HKDF-SHA256",
+        aead: "AES-256-GCM",
+      },
+      encapsulatedKey: zero65,
+      ciphertext: zero48,
+    },
+  };
+}
+
 let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 
@@ -154,15 +224,15 @@ beforeAll(async () => {
   database = await connectDatabase(config);
   await database.repository.recordWorker(
     LOCAL_USER_ID,
-    heartbeat(workerId, true),
+    heartbeat(workerId, false),
   );
   await database.repository.recordWorker(
     LOCAL_USER_ID,
-    heartbeat(unauthorizedWorkerId, false),
+    heartbeat(unauthorizedWorkerId, true),
   );
   await database.repository.recordWorker(
     LOCAL_USER_ID,
-    heartbeat(peerWorkerId, true),
+    heartbeat(peerWorkerId, false),
   );
   const crossAccount = await database.repository.createAccount({
     displayName: "Other Code settings account",
@@ -181,6 +251,51 @@ beforeAll(async () => {
     logger: false,
     workerBridge: bridge,
   });
+  const profile = await app.inject({
+    method: "POST",
+    url: "/api/encryption/profile/initialize",
+    payload: initialProfile("11111111-1111-4111-8111-111111111111"),
+  });
+  if (profile.statusCode !== 201) {
+    throw new Error(`Encryption profile setup failed: ${profile.body}`);
+  }
+  for (const [authorizedWorkerId, principalId] of [
+    [workerId, "22222222-2222-4222-8222-222222222222"],
+    [peerWorkerId, "33333333-3333-4333-8333-333333333333"],
+  ] as const) {
+    const bootstrap = await app.inject({
+      method: "POST",
+      url: "/api/internal/workers/encryption/bootstrap",
+      headers: {
+        authorization: `Bearer ${config.workerToken}`,
+        "x-cantrip-worker-id": authorizedWorkerId,
+      },
+      payload: { principalId, publicKey },
+    });
+    if (bootstrap.statusCode !== 200) {
+      throw new Error(`Worker principal setup failed: ${bootstrap.body}`);
+    }
+    const approve = await app.inject({
+      method: "POST",
+      url: `/api/encryption/principals/${principalId}/approve`,
+      payload: { expectedRevision: 1 },
+    });
+    if (approve.statusCode !== 200) {
+      throw new Error(`Worker principal approval failed: ${approve.body}`);
+    }
+    const grant = await app.inject({
+      method: "POST",
+      url: `/api/encryption/principals/${principalId}/grants`,
+      payload: {
+        component: "customization-content",
+        keyRevision: 1,
+        wrappedKey: customizationGrant(authorizedWorkerId),
+      },
+    });
+    if (grant.statusCode !== 201) {
+      throw new Error(`Worker grant setup failed: ${grant.body}`);
+    }
+  }
 });
 
 afterAll(async () => {
@@ -325,6 +440,21 @@ describe.sequential("global Code settings API", () => {
         payload: upload(null, 2),
       }),
     ).toMatchObject({ statusCode: 403 });
+  });
+
+  it("uses authoritative grants while the worker heartbeat is stale", async () => {
+    const worker = await database.repository.getWorker(LOCAL_USER_ID, workerId);
+    expect(worker?.encryption.grants).toEqual([]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: internalUrl,
+      headers: authorization,
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: "Global Code settings are not initialized.",
+    });
   });
 
   it("relays opaque settings with CAS while public routes expose metadata only", async () => {

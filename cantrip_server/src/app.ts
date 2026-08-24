@@ -10750,6 +10750,31 @@ export async function buildApp({
       .code(429)
       .send({ error: "Too many authentication attempts. Try again later." });
   };
+
+  const workerHasActiveCodeSettingsGrant = async (
+    ownerId: string,
+    workerId: string,
+    keyRevision?: number,
+  ): Promise<boolean> => {
+    const principal =
+      await repository.encryptionRegistry.findActiveWorkerPrincipal(
+        ownerId,
+        workerId,
+      );
+    if (!principal) return false;
+    const result = await repository.encryptionRegistry.listActiveGrants(
+      ownerId,
+      principal.id,
+    );
+    return (
+      result.status === "ok" &&
+      result.grants.some(
+        ({ component, keyRevision: grantedRevision }) =>
+          component === "customization-content" &&
+          (keyRevision === undefined || grantedRevision === keyRevision),
+      )
+    );
+  };
   let registrationTail = Promise.resolve();
   const withRegistrationLock = async <T>(operation: () => Promise<T>) => {
     const predecessor = registrationTail;
@@ -10795,9 +10820,10 @@ export async function buildApp({
         profileId.data,
       );
       if (
-        !worker.encryption.grants.some(
-          ({ component }) => component === "customization-content",
-        )
+        !(await workerHasActiveCodeSettingsGrant(
+          workerAuth.ownerId,
+          request.params.workerId,
+        ))
       ) {
         return reply.code(403).send({
           error: "Worker lacks Code settings encryption authorization.",
@@ -10843,11 +10869,11 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       if (
-        !worker.encryption.grants.some(
-          ({ component, keyRevision }) =>
-            component === "customization-content" &&
-            keyRevision === input.data.record.protectedContent.keyRevision,
-        )
+        !(await workerHasActiveCodeSettingsGrant(
+          workerAuth.ownerId,
+          request.params.workerId,
+          input.data.record.protectedContent.keyRevision,
+        ))
       ) {
         return reply.code(403).send({
           error: "Worker lacks this Code settings encryption key revision.",
@@ -10867,17 +10893,28 @@ export async function buildApp({
         );
         void repository
           .listWorkers(workerAuth.ownerId)
-          .then((workers) =>
-            Promise.allSettled(
+          .then(async (workers) =>
+            Promise.all(
               workers
                 .filter(
                   (worker) =>
                     worker.workerId !== request.params.workerId &&
-                    bridge.isConnected(worker.workerId) &&
-                    worker.encryption.grants.some(
-                      ({ component }) => component === "customization-content",
-                    ),
+                    bridge.isConnected(worker.workerId),
                 )
+                .map(async (worker) =>
+                  (await workerHasActiveCodeSettingsGrant(
+                    workerAuth.ownerId,
+                    worker.workerId,
+                  ))
+                    ? worker
+                    : null,
+                ),
+            ),
+          )
+          .then((workers) =>
+            Promise.allSettled(
+              workers
+                .filter((worker) => worker !== null)
                 .map((worker) =>
                   bridge.request(
                     worker.workerId,
