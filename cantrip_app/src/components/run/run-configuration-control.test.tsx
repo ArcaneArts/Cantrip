@@ -103,10 +103,15 @@ function markup(
 describe("Run configuration control", () => {
   it("renders the remembered/default configuration with a green Run action", () => {
     const html = markup();
+    const selector = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/gu)]
+      .map(([value]) => value)
+      .find((value) => value.includes("Development server"));
     expect(html).toContain("Development server");
     expect(html).toContain('aria-label="Run"');
     expect(html).toContain("text-emerald");
     expect(html).not.toContain("Worker Online");
+    expect(selector).toContain("hover:bg-accent");
+    expect(selector).not.toContain("border-input");
   });
 
   it("replaces Run with restart and stop while Primary is active", () => {

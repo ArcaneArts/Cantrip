@@ -400,7 +400,7 @@ export function RunConfigurationControl({
                 ? `${selected.name} · ${selected.targetLabel}`
                 : "Add Run Configuration"
             }
-            variant="outline"
+            variant="ghost"
           >
             {loading ? (
               <Loader2 className="size-3.5 animate-spin" />

@@ -64,20 +64,23 @@ function renderView(
     stopAvailable?: boolean | null;
     stopProblem?: string | null;
   } = {},
+  retainedOutput: string | null = "ready\r\n",
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  queryClient.setQueryData(
-    [
-      "run-configuration-runtime-output",
-      projectId,
-      configurationId,
-      worktreeId,
-      2,
-    ],
-    { data: "ready\r\n", generation: 2, truncated: false },
-  );
+  if (retainedOutput !== null) {
+    queryClient.setQueryData(
+      [
+        "run-configuration-runtime-output",
+        projectId,
+        configurationId,
+        worktreeId,
+        2,
+      ],
+      { data: retainedOutput, generation: 2, truncated: false },
+    );
+  }
   return renderToStaticMarkup(
     <QueryClientProvider client={queryClient}>
       <RunTerminalView
@@ -123,13 +126,23 @@ describe("Run terminal surface", () => {
     expect(markup).not.toContain("contenteditable");
   });
 
-  it("shows live output controls only while active", () => {
+  it("keeps retained output visible with stopped controls after exit", () => {
     const running = renderView("running", true);
     const exited = renderView("exited", true);
 
     expect(running).toContain('data-run-terminal-readonly="true"');
     expect(running).toContain("Restart");
     expect(running).toContain("Stop");
+    expect(exited).toContain('data-run-terminal-readonly="true"');
+    expect(exited).toContain("Exited with code 0");
+    expect(exited).toContain("Start");
+    expect(exited).not.toContain("Restart");
+    expect(exited).not.toContain(">Stop<");
+  });
+
+  it("shows the centered launch state when no output remains", () => {
+    const exited = renderView("exited", true, {}, "");
+
     expect(exited).not.toContain("data-run-terminal-readonly");
     expect(exited).toContain("Exited with code 0");
     expect(exited).toContain("Start");
@@ -143,18 +156,23 @@ describe("Run terminal surface", () => {
   });
 
   it("blocks an unavailable idle target with its actionable reason", () => {
-    const markup = renderView("exited", true, {
-      launchAvailable: false,
-      launchProblem: "Worker is offline.",
-      stopAvailable: false,
-      stopProblem: "Worker is offline.",
-    });
+    const markup = renderView(
+      "exited",
+      true,
+      {
+        launchAvailable: false,
+        launchProblem: "Worker is offline.",
+        stopAvailable: false,
+        stopProblem: "Worker is offline.",
+      },
+      "",
+    );
     expect(markup).toContain("Run is unavailable: Worker is offline.");
     expect(renderedButton(markup, "Start")).toContain("disabled=");
   });
 
   it("keeps idle launch disabled while target availability reloads", () => {
-    const markup = renderView("exited", true, { launchAvailable: null });
+    const markup = renderView("exited", true, { launchAvailable: null }, "");
     expect(markup).toContain("Checking target availability…");
     expect(renderedButton(markup, "Start")).toContain("disabled=");
   });
