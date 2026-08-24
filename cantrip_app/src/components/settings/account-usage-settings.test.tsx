@@ -157,6 +157,8 @@ describe("account usage settings", () => {
     expect(markup).toContain("HTTP API");
     expect(markup).toContain("Client live updates");
     expect(markup).toContain("Usage limits are not enforced");
+    expect(markup).not.toContain("mx-auto");
+    expect(markup).not.toContain("max-w-7xl");
     expect(
       markup.match(/No measured activity in this range yet\./gu),
     ).toHaveLength(2);
