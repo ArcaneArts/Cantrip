@@ -17,6 +17,7 @@ import {
   CodexAppServer,
   agentPathSegments,
   childThreadMetadataFromNotification,
+  reconciledRootTurnStatus,
   type CodexProcessLauncher,
 } from "../src/codex/app-server.js";
 
@@ -105,15 +106,15 @@ function notify(socket, method, params) {
   socket.send(JSON.stringify({ method, params }));
 }
 
-function completedTurn(socket, threadId, turnId) {
+function completedTurn(socket, threadId, turnId, status = "completed") {
   notify(socket, "turn/completed", {
     threadId,
     turn: {
       id: turnId,
-      status: "completed",
-      error: null,
-      startedAt: 1,
-      completedAt: 2,
+      status,
+      error: status === "completed" ? null : { message: "Late terminal failure", additionalDetails: null },
+      startedAt: fixtureStartedAt,
+      completedAt: fixtureStartedAt + 1,
       durationMs: 10
     }
   });
@@ -386,7 +387,7 @@ server.on("connection", (socket) => {
             phase: "final_answer"
           }
         });
-        completedTurn(socket, rootThreadId, rootTurnId);
+        completedTurn(socket, rootThreadId, rootTurnId, "failed");
       }, 25);
     }, 10);
   });
@@ -400,6 +401,12 @@ process.on("SIGINT", () => server.close(() => process.exit(0)));
 }
 
 describe("native subagent execution ownership", () => {
+  it("uses final-answer and interrupt evidence to reconcile root status", () => {
+    expect(reconciledRootTurnStatus("failed", true, false)).toBe("completed");
+    expect(reconciledRootTurnStatus("failed", false, true)).toBe("interrupted");
+    expect(reconciledRootTurnStatus("failed", false, false)).toBe("failed");
+  });
+
   it("parses native thread metadata without trusting missing parents", () => {
     expect(agentPathSegments("root/Scout.Indexer")).toEqual([
       "root",
@@ -479,6 +486,14 @@ describe("native subagent execution ownership", () => {
         threadId: "root-thread",
         turnId: "root-turn",
       });
+      expect(
+        activities.some(
+          (activity) =>
+            activity.type === "turnSummary" &&
+            activity.correlation?.turnId === "root-turn" &&
+            activity.status === "completed",
+        ),
+      ).toBe(true);
       expect(interactions).toHaveLength(1);
       expect(interactions[0]).toMatchObject({
         threadId: "child-thread",
@@ -568,6 +583,13 @@ describe("native subagent execution ownership", () => {
         activities.some(
           (activity) =>
             activity.agentScope?.agentThreadId === "child-thread" &&
+            activity.status === "failed",
+        ),
+      ).toBe(false);
+      expect(
+        activities.some(
+          (activity) =>
+            activity.agentScope?.agentThreadId === "nested-thread" &&
             activity.status === "failed",
         ),
       ).toBe(false);
