@@ -229,6 +229,16 @@ describe("public HTTP hardening", () => {
         'cantrip_tunnel_terminations_total{reason="protocol-error"}',
       );
       expect(metrics.body).toContain("cantrip_scheduler_scans_total");
+      expect(metrics.body).toContain(
+        "cantrip_account_usage_storage_reconciliations_total",
+      );
+      expect(metrics.body).toContain(
+        "cantrip_account_usage_bandwidth_buffered_bytes",
+      );
+      expect(metrics.body).toContain(
+        "cantrip_account_usage_history_maintenance_total",
+      );
+      expect(metrics.body).not.toContain("owner_id");
       expect(metrics.body).not.toContain("operator-metrics-token");
     } finally {
       await app.close();

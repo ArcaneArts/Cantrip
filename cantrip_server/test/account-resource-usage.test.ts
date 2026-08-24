@@ -114,6 +114,18 @@ describe("account resource usage storage accounting", () => {
         ),
       ).toBe(true);
 
+      const totals =
+        await repository.accountResourceUsage.getOperationalTotals();
+      expect(totals).toMatchObject({
+        accountCount: 1,
+        logicalWorkerManagedBytes: 0n,
+      });
+      expect(typeof totals.logicalServerBytes).toBe("bigint");
+      expect(totals.logicalServerBytes).toBeGreaterThan(0n);
+      if (totals.physicalDatabaseBytes !== null) {
+        expect(totals.physicalDatabaseBytes).toBeGreaterThan(0n);
+      }
+
       expect(
         await repository.accountResourceUsage.acquireStorageReconciliationLease(
           "first-instance",

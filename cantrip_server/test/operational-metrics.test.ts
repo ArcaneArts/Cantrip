@@ -12,6 +12,64 @@ describe("OperationalMetrics direct data plane", () => {
       connectionsOpened: 2,
     });
     const output = metrics.renderPrometheus({
+      accountUsage: {
+        bandwidthMeter: {
+          bufferedBytes: 9_223_372_036_854_775_000n,
+          bufferedEntries: 2,
+          droppedBytes: 11n,
+          droppedMeasurements: 1n,
+          flushCount: 4,
+          flushFailureCount: 1,
+          lastFlushDurationMs: 25,
+          lastFlushedAt: "2026-08-23T12:00:00.000Z",
+          pendingSequence: null,
+        },
+        historyMaintenance: {
+          completionCount: 3,
+          failureCount: 1,
+          lastCompletedAt: "2026-08-23T12:00:00.000Z",
+          lastDurationMs: 40,
+          lastErrorAt: null,
+          lastResult: {
+            acquired: true,
+            bandwidthDailyRowsDeleted: 2,
+            bandwidthDaysRolled: 5,
+            bandwidthHourlyRowsDeleted: 7,
+            flushRowsDeleted: 3,
+            storageDailyRowsDeleted: 1,
+            storageDaysRolled: 4,
+            storageHourlyRowsDeleted: 6,
+          },
+          lastSuccessfulAt: "2026-08-23T12:00:00.000Z",
+          leaseContentionCount: 2,
+          running: false,
+          totals: {
+            accountCount: 3,
+            logicalServerBytes: 1_000n,
+            logicalWorkerManagedBytes: 2_000n,
+            physicalDatabaseBytes: 1_500n,
+          },
+        },
+        storageReconciliation: {
+          completionCount: 2,
+          failureCount: 1,
+          lastCompletedAt: "2026-08-23T12:00:00.000Z",
+          lastDurationMs: 30,
+          lastErrorAt: null,
+          lastResult: {
+            acquired: true,
+            accountCount: 3,
+            categoryCount: 9,
+            logicalBytes: 1_000n,
+            measuredAt: new Date("2026-08-23T12:00:00.000Z"),
+            ownerIds: ["private-owner"],
+            rowCount: 20n,
+          },
+          lastSuccessfulAt: "2026-08-23T12:00:00.000Z",
+          leaseContentionCount: 1,
+          running: false,
+        },
+      },
       coordination: {
         instanceCount: 1,
         maximumInstances: 1,
@@ -60,6 +118,17 @@ describe("OperationalMetrics direct data plane", () => {
     expect(output).toContain(
       'cantrip_data_plane_bytes_total{direction="source_to_destination",resource_kind="tunnel",transport="server-relay"} 40',
     );
+    expect(output).toContain(
+      "cantrip_account_usage_bandwidth_buffered_bytes 9223372036854775000",
+    );
+    expect(output).toContain(
+      'cantrip_account_usage_storage_reconciliations_total{outcome="completed"} 2',
+    );
+    expect(output).toContain("cantrip_database_physical_bytes 1500");
+    expect(output).toContain(
+      "cantrip_account_usage_physical_logical_drift_bytes 500",
+    );
     expect(output).not.toContain("owner");
+    expect(output).not.toContain("private-owner");
   });
 });

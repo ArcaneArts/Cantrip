@@ -2,76 +2,82 @@ import type { ServiceLogger } from "@cantrip/logging";
 
 import type {
   AccountResourceUsageRepository,
-  AccountStorageReconciliationResult,
+  AccountUsageHistoryMaintenanceOptions,
+  AccountUsageHistoryMaintenanceResult,
+  AccountUsageOperationalTotals,
 } from "../db/account-resource-usage.js";
 
-const DEFAULT_RECONCILIATION_INTERVAL_MS = 60 * 60_000;
+const DEFAULT_INTERVAL_MS = 60 * 60_000;
 
-export interface StorageReconciliationStats {
+export interface AccountUsageHistoryMaintenanceStats {
   completionCount: number;
   failureCount: number;
   lastCompletedAt: string | null;
   lastDurationMs: number | null;
   lastErrorAt: string | null;
-  lastResult: AccountStorageReconciliationResult | null;
+  lastResult: AccountUsageHistoryMaintenanceResult | null;
   lastSuccessfulAt: string | null;
   leaseContentionCount: number;
   running: boolean;
+  totals: AccountUsageOperationalTotals;
 }
 
-export interface StorageReconciliationServiceOptions {
+export interface AccountUsageHistoryMaintenanceServiceOptions extends AccountUsageHistoryMaintenanceOptions {
   intervalMs?: number;
   now?: () => Date;
-  onReconciled?: (result: AccountStorageReconciliationResult) => void;
 }
 
-/** Maintains the derived storage projection and hourly history. */
-export class StorageReconciliationService {
+const EMPTY_TOTALS: AccountUsageOperationalTotals = {
+  accountCount: 0,
+  logicalServerBytes: 0n,
+  logicalWorkerManagedBytes: 0n,
+  physicalDatabaseBytes: null,
+};
+
+/** Compacts and expires usage history without ever enforcing account limits. */
+export class AccountUsageHistoryMaintenanceService {
   readonly #intervalMs: number;
   readonly #now: () => Date;
   #closed = false;
   #completionCount = 0;
   #failureCount = 0;
-  #inFlight: Promise<AccountStorageReconciliationResult | null> | null = null;
+  #inFlight: Promise<AccountUsageHistoryMaintenanceResult | null> | null = null;
   #lastCompletedAt: string | null = null;
   #lastDurationMs: number | null = null;
   #lastErrorAt: string | null = null;
-  #lastResult: AccountStorageReconciliationResult | null = null;
+  #lastResult: AccountUsageHistoryMaintenanceResult | null = null;
   #lastSuccessfulAt: string | null = null;
   #leaseContentionCount = 0;
   #timer: ReturnType<typeof setInterval> | null = null;
+  #totals: AccountUsageOperationalTotals = EMPTY_TOTALS;
 
   constructor(
     private readonly repository: AccountResourceUsageRepository,
     private readonly holderId: string,
     private readonly logger: ServiceLogger,
-    private readonly options: StorageReconciliationServiceOptions = {},
+    private readonly options: AccountUsageHistoryMaintenanceServiceOptions,
   ) {
-    this.#intervalMs =
-      this.options.intervalMs ?? DEFAULT_RECONCILIATION_INTERVAL_MS;
-    this.#now = this.options.now ?? (() => new Date());
+    this.#intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
+    this.#now = options.now ?? (() => new Date());
+    if (!Number.isSafeInteger(this.#intervalMs) || this.#intervalMs < 1) {
+      throw new Error("Account usage maintenance interval is invalid.");
+    }
   }
 
-  start(reconcileImmediately = true): void {
+  start(runImmediately = true): void {
     if (this.#timer || this.#closed) return;
-    if (reconcileImmediately) void this.reconcile();
-    this.#timer = setInterval(() => void this.reconcile(), this.#intervalMs);
+    if (runImmediately) void this.run();
+    this.#timer = setInterval(() => void this.run(), this.#intervalMs);
     this.#timer.unref();
   }
 
-  reconcile(): Promise<AccountStorageReconciliationResult | null> {
+  run(): Promise<AccountUsageHistoryMaintenanceResult | null> {
     if (this.#closed) return Promise.resolve(null);
     if (this.#inFlight) return this.#inFlight;
     const startedAt = this.#now();
-    this.logger.event("debug", "Account storage reconciliation started", {
-      event: "account-usage.storage-reconciliation.started",
-      subsystem: "account-usage",
-      operation: "reconcile-storage",
-      status: "started",
-    });
     this.#inFlight = this.repository
-      .reconcileStorage(this.holderId, startedAt)
-      .then((result) => {
+      .maintainUsageHistory(this.holderId, startedAt, this.options)
+      .then(async (result) => {
         const completedAt = this.#now();
         this.#lastCompletedAt = completedAt.toISOString();
         this.#lastDurationMs = completedAt.getTime() - startedAt.getTime();
@@ -79,29 +85,34 @@ export class StorageReconciliationService {
         if (result.acquired) {
           this.#completionCount += 1;
           this.#lastSuccessfulAt = this.#lastCompletedAt;
-          this.options.onReconciled?.(result);
         } else {
           this.#leaseContentionCount += 1;
         }
+        this.#totals = await this.repository.getOperationalTotals();
         this.logger.event(
           result.acquired ? "info" : "debug",
           result.acquired
-            ? "Account storage reconciliation completed"
-            : "Account storage reconciliation skipped",
+            ? "Account usage history maintenance completed"
+            : "Account usage history maintenance skipped",
           {
             event: result.acquired
-              ? "account-usage.storage-reconciliation.completed"
-              : "account-usage.storage-reconciliation.lease-unavailable",
+              ? "account-usage.history-maintenance.completed"
+              : "account-usage.history-maintenance.lease-unavailable",
             subsystem: "account-usage",
-            operation: "reconcile-storage",
+            operation: "maintain-history",
             status: result.acquired ? "completed" : "skipped",
             durationMs: this.#lastDurationMs,
             counts: {
-              accounts: result.accountCount,
-              categories: result.categoryCount,
+              bandwidthDaysRolled: result.bandwidthDaysRolled,
+              bandwidthRowsDeleted:
+                result.bandwidthHourlyRowsDeleted +
+                result.bandwidthDailyRowsDeleted,
+              flushRowsDeleted: result.flushRowsDeleted,
+              storageDaysRolled: result.storageDaysRolled,
+              storageRowsDeleted:
+                result.storageHourlyRowsDeleted +
+                result.storageDailyRowsDeleted,
             },
-            logicalBytes: result.logicalBytes.toString(),
-            rowCount: result.rowCount.toString(),
           },
         );
         return result;
@@ -111,12 +122,12 @@ export class StorageReconciliationService {
         this.#failureCount += 1;
         this.#lastErrorAt = failedAt.toISOString();
         this.#lastDurationMs = failedAt.getTime() - startedAt.getTime();
-        this.logger.event("error", "Account storage reconciliation failed", {
-          event: "account-usage.storage-reconciliation.failed",
+        this.logger.event("error", "Account usage history maintenance failed", {
+          event: "account-usage.history-maintenance.failed",
           subsystem: "account-usage",
-          operation: "reconcile-storage",
-          status: "failed",
+          operation: "maintain-history",
           reasonCode: "database-error",
+          status: "failed",
           durationMs: this.#lastDurationMs,
           error: error instanceof Error ? error : new Error(String(error)),
         });
@@ -128,7 +139,7 @@ export class StorageReconciliationService {
     return this.#inFlight;
   }
 
-  stats(): StorageReconciliationStats {
+  stats(): AccountUsageHistoryMaintenanceStats {
     return {
       completionCount: this.#completionCount,
       failureCount: this.#failureCount,
@@ -139,6 +150,7 @@ export class StorageReconciliationService {
       lastSuccessfulAt: this.#lastSuccessfulAt,
       leaseContentionCount: this.#leaseContentionCount,
       running: this.#inFlight !== null,
+      totals: { ...this.#totals },
     };
   }
 

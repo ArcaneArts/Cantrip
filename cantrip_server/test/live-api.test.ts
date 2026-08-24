@@ -1286,6 +1286,22 @@ describe.sequential("application live WebSocket", () => {
     });
     expect(health.live.publicationCount).toBeGreaterThan(0);
     expect(health.live.deliveredEventCount).toBeGreaterThan(0);
+    expect(health.operations.accountUsage).toMatchObject({
+      bandwidthMeter: {
+        bufferedBytes: expect.stringMatching(/^\d+$/u),
+        droppedBytes: expect.stringMatching(/^\d+$/u),
+      },
+      historyMaintenance: {
+        completionCount: expect.any(Number),
+        totals: {
+          logicalServerBytes: expect.stringMatching(/^\d+$/u),
+          logicalWorkerManagedBytes: expect.stringMatching(/^\d+$/u),
+        },
+      },
+      storageReconciliation: {
+        completionCount: expect.any(Number),
+      },
+    });
 
     workerSocket.terminate();
     socket.terminate();

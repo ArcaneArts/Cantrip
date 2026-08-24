@@ -4838,6 +4838,7 @@ export const accountStorageUsageSnapshots = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     bucketStart: timestamp("bucket_start", { withTimezone: true }).notNull(),
+    resolution: text("resolution").notNull().default("hour"),
     storageClass: text("storage_class").notNull(),
     category: text("category").notNull(),
     logicalBytes: bigint("logical_bytes", { mode: "bigint" })
@@ -4860,6 +4861,7 @@ export const accountStorageUsageSnapshots = pgTable(
       columns: [
         table.ownerId,
         table.bucketStart,
+        table.resolution,
         table.storageClass,
         table.category,
       ],
@@ -4867,6 +4869,10 @@ export const accountStorageUsageSnapshots = pgTable(
     index("account_storage_usage_snapshots_owner_time_index").on(
       table.ownerId,
       table.bucketStart,
+    ),
+    check(
+      "account_storage_usage_snapshots_resolution_check",
+      sql`${table.resolution} IN ('hour', 'day')`,
     ),
     check(
       "account_storage_usage_snapshots_class_check",
