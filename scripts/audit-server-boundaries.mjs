@@ -115,15 +115,15 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "fefd1c6d6e56410710ca6f16d84472f42bd182a896f9c0a5959a23b77d268724",
+    "9a9633bf3c2c3475f83bdce4f3d0a6e327619cf54aa2cfa74b0cfbea4b85aa34",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:
     "c60e6813bbd3b2ed4df9a4b2377d8b1db15dafcf9c16fef4034cb0739fe88ad5",
   liveResources:
-    "4ee5989e02f8624ce0b3a55c8ca46e6ba4cabd148c3e6cca1203b59d8b1f5c8c",
+    "a02279408c3c49838d1b824ae39326f71cfb3f52e9c0ba0f606d478e7832bd15",
   workerCommands:
-    "4fca0c1a7d571ebf17e5efb931f2243437f04df9b5c279085c33b84f45e8e7fc",
+    "9de911db1e4168798e862bddb380e711b4b4d05f63d3d21dbeec22c34ca2af30",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -3998,6 +3998,13 @@ function durableTableContentInventory(schemaText) {
 
 function applicationRouteContentClassification(route) {
   const key = `${route.method} ${route.path}`;
+  if (/\/run-configurations(?:\/|$)/u.test(route.path)) {
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "bounded revision-checked Git-shared definition with secret references only",
+    };
+  }
   if (
     /(?:\/run-environment(?:\/|$)|\/script-commands(?:\/|$))/u.test(route.path)
   ) {
@@ -4061,6 +4068,13 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (/^project\.run-configuration-definitions\./u.test(command)) {
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale:
+        "bounded revision-checked Git-shared definition with secret references only",
+    };
+  }
   if (/^code\.settings\./u.test(command)) {
     return {
       classification: "endpoint-protected",
@@ -4122,6 +4136,13 @@ function liveResourceContentClassification(resource) {
     return {
       classification: "minimized-operational-metadata",
       rationale: "Run lifecycle invalidation without semantic content",
+    };
+  }
+  if (resource === "run-configuration") {
+    return {
+      classification: "minimized-operational-metadata",
+      rationale:
+        "definition invalidation without document or environment content",
     };
   }
   if (resource === "customization") {

@@ -56,6 +56,10 @@
       "types": "./src/run-configuration-definitions.ts",
       "import": "./dist/run-configuration-definitions.js"
     },
+    "./run-configuration-operations": {
+      "types": "./src/run-configuration-operations.ts",
+      "import": "./dist/run-configuration-operations.js"
+    },
     "./endpoint-content": {
       "types": "./src/endpoint-content.ts",
       "import": "./dist/endpoint-content.js"

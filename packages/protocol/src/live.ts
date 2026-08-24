@@ -206,6 +206,7 @@ export const appLiveResourceSchema = z.enum([
   "agent-interaction",
   "terminal",
   "run",
+  "run-configuration",
   "explorer",
   "explorer-filesystem",
   "browser",
