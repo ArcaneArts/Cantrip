@@ -3667,7 +3667,7 @@ export async function buildApp({
   app.addHook("onSend", async (request, reply, payload) => {
     if (
       request.method === "OPTIONS" ||
-      request.principal.state !== "authenticated" ||
+      request.principal?.state !== "authenticated" ||
       request.method === "HEAD" ||
       request.headers.upgrade?.toLowerCase() === "websocket" ||
       reply.statusCode === 204 ||

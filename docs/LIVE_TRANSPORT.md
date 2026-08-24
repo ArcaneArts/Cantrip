@@ -64,7 +64,11 @@ Every event contains exactly one authorized scope, typed resource and action,
 optional entity ID and revision, committed timestamp, and optional bounded JSON
 payload. Resource types cover settings, workers, projects, worktrees, project
 tabs and tab layouts, chat state, interactions, workflows, customization, and
-tunnels. Tunnel stream bytes and flow control remain on bounded binary data
+tunnels. Current-user account-resource-usage invalidations cover successful
+storage reconciliation and meaningful durable bandwidth flushes; the client
+invalidates current and history snapshots and uses a one-minute fallback only
+while live is unavailable. Usage-observer traffic suppresses recursive
+invalidation. Tunnel stream bytes and flow control remain on bounded binary data
 planes. Raw TCP, project-share, and Cantrip Code traffic use the unified tunnel
 stream protocol; feature adapters retain only their bounded protocol-specific
 translation.

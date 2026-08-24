@@ -298,6 +298,12 @@ balancer, but `/metrics` must never be public. Exported series cover HTTP volume
 and latency, database probes, worker/command activity, live and tunnel
 connections, relay bytes and quota rejections, and scheduler throughput/lag.
 They contain no account, project, prompt, source, or credential labels.
+Account-usage series add storage reconciliation age/duration/failures,
+bandwidth buffer/flush/drop health, history maintenance, global logical totals,
+and optional physical database size. Physical-minus-logical drift is a trend
+signal rather than an equality target because the two measurements have
+different definitions. See the
+[account resource usage contract](ACCOUNT_USAGE.md#operations-and-troubleshooting).
 Tunnel diagnostics also include directional byte counters, opened/closed and
 rejected connection totals, and bounded termination reasons such as congestion,
 idle expiry, bandwidth limits, or endpoint disconnects. See
@@ -315,6 +321,23 @@ existing request, WebSocket, upload-concurrency, and worker-command limits:
 | `CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE`   | 268435456 | Relayed data per worker                         |
 | `CANTRIP_ACCOUNT_REMOTE_SURFACE_LIMIT`    |        16 | Concurrent browser/desktop surfaces per account |
 | `CANTRIP_WORKER_REMOTE_SURFACE_LIMIT`     |         8 | Concurrent browser/desktop surfaces per worker  |
+
+Durable account usage accounting is informational and does not add account
+limits. Its tuning and retention variables are:
+
+| Variable                                        | Default | Purpose                               |
+| ----------------------------------------------- | ------: | ------------------------------------- |
+| `CANTRIP_STORAGE_RECONCILIATION_INTERVAL_MS`    | 3600000 | Full logical storage sweep            |
+| `CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS`     |    5000 | Normal bandwidth batch interval       |
+| `CANTRIP_BANDWIDTH_USAGE_FLUSH_THRESHOLD_BYTES` | 1048576 | Early bandwidth flush threshold       |
+| `CANTRIP_BANDWIDTH_USAGE_MAX_BUFFERED_ENTRIES`  |    4096 | In-memory dimensional cardinality cap |
+| `CANTRIP_ACCOUNT_USAGE_MAINTENANCE_INTERVAL_MS` | 3600000 | Rollup/retention interval             |
+| `CANTRIP_ACCOUNT_USAGE_HOURLY_RETENTION_DAYS`   |      30 | Hourly history retention              |
+| `CANTRIP_ACCOUNT_USAGE_DAILY_RETENTION_DAYS`    |     400 | Daily history retention               |
+| `CANTRIP_ACCOUNT_USAGE_FLUSH_RETENTION_DAYS`    |       7 | Idempotent flush-ledger retention     |
+
+The exact definitions, bounds, API response semantics, and troubleshooting
+steps are in [the usage accounting guide](ACCOUNT_USAGE.md).
 
 Quota rejection is explicit (HTTP 429, WebSocket close code 1013, or a worker
 command error) and does not silently queue work. Limits are configured globally
