@@ -17,6 +17,7 @@ import { nodeRunConfigurationProvider } from "../src/run-configuration-node-prov
 import { javaRunConfigurationProvider } from "../src/run-configuration-java-provider.js";
 import { dartRunConfigurationProvider } from "../src/run-configuration-dart-provider.js";
 import { flutterRunConfigurationProvider } from "../src/run-configuration-flutter-provider.js";
+import { rustRunConfigurationProvider } from "../src/run-configuration-rust-provider.js";
 import { shellRunConfigurationProvider } from "../src/run-configuration-provider.js";
 
 const roots: string[] = [];
@@ -1565,6 +1566,369 @@ describe("flutterRunConfigurationProvider", () => {
             sdkHome: "relative/sdk",
             dartDefineFiles: ["config/missing.env"],
           },
+        },
+        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+      ),
+    ).resolves.toEqual([]);
+  });
+});
+
+describe("rustRunConfigurationProvider", () => {
+  it("discovers Cargo workspace binaries and examples without executing manifests or crossing ignored and symlinked directories", async () => {
+    const root = await createRoot();
+    const outside = await createRoot();
+    await mkdir(path.join(root, "crates", "api", "src"), { recursive: true });
+    await mkdir(path.join(root, "crates", "api", "examples"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "crates", "cli", "src", "bin"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "crates", "cli", "examples", "demo"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "crates", "library", "src"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "disabled", "src"), { recursive: true });
+    await mkdir(path.join(root, "vendor", "vendored", "src"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "Cargo.toml"),
+      '[workspace]\nmembers = ["crates/*"]\nresolver = "3"\n',
+    );
+    await writeFile(
+      path.join(root, "crates", "api", "Cargo.toml"),
+      [
+        "[package]",
+        'name = "api"',
+        'version = "0.1.0"',
+        'default-run = "server"',
+        "",
+        "[features]",
+        "server = []",
+        "",
+        "[[bin]]",
+        'name = "server"',
+        'path = "src/main.rs"',
+        'required-features = ["server"]',
+        "",
+        "[[example]]",
+        'name = "quickstart"',
+        'path = "examples/quickstart.rs"',
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(root, "crates", "api", "src", "main.rs"),
+      "fn main() {}\n",
+    );
+    await writeFile(
+      path.join(root, "crates", "api", "examples", "quickstart.rs"),
+      "fn main() {}\n",
+    );
+    await writeFile(
+      path.join(root, "crates", "cli", "Cargo.toml"),
+      '[package]\nname = "cli"\nversion = "0.1.0"\n',
+    );
+    await writeFile(
+      path.join(root, "crates", "cli", "src", "main.rs"),
+      "fn main() {}\n",
+    );
+    await writeFile(
+      path.join(root, "crates", "cli", "src", "bin", "admin.rs"),
+      "fn main() {}\n",
+    );
+    await writeFile(
+      path.join(root, "crates", "cli", "examples", "demo", "main.rs"),
+      "fn main() {}\n",
+    );
+    await writeFile(
+      path.join(root, "crates", "library", "Cargo.toml"),
+      '[package]\nname = "library"\nversion = "0.1.0"\n',
+    );
+    await writeFile(
+      path.join(root, "crates", "library", "src", "lib.rs"),
+      "pub fn value() -> u8 { 1 }\n",
+    );
+    await writeFile(
+      path.join(root, "disabled", "Cargo.toml"),
+      '[package]\nname = "disabled"\nversion = "0.1.0"\nautobins = false\n',
+    );
+    await writeFile(
+      path.join(root, "disabled", "src", "main.rs"),
+      "fn main() {}\n",
+    );
+    await writeFile(
+      path.join(root, "vendor", "vendored", "Cargo.toml"),
+      '[package]\nname = "vendored"\nversion = "0.1.0"\n',
+    );
+    await writeFile(
+      path.join(root, "vendor", "vendored", "src", "main.rs"),
+      "fn main() {}\n",
+    );
+    await mkdir(path.join(outside, "src"));
+    await writeFile(
+      path.join(outside, "Cargo.toml"),
+      '[package]\nname = "escaped"\nversion = "0.1.0"\n',
+    );
+    await writeFile(path.join(outside, "src", "main.rs"), "fn main() {}\n");
+    await symlink(outside, path.join(root, "linked-cargo-package"));
+
+    const candidates = await rustRunConfigurationProvider.discover({
+      platform: "linux",
+      targetRoot: root,
+      defaultShell: "/bin/sh",
+    });
+    expect(candidates).toHaveLength(5);
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          confidence: "high",
+          document: expect.objectContaining({
+            provider: "rust",
+            workingDirectory: "crates/api",
+            target: { kind: "binary", package: "api", name: "server" },
+            options: expect.objectContaining({ features: ["server"] }),
+            environment: expect.objectContaining({
+              includeCodexEnvironment: true,
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          confidence: "high",
+          document: expect.objectContaining({
+            workingDirectory: "crates/cli",
+            target: { kind: "binary", package: "cli", name: "cli" },
+          }),
+        }),
+        expect.objectContaining({
+          confidence: "medium",
+          document: expect.objectContaining({
+            target: { kind: "example", package: "cli", name: "demo" },
+          }),
+        }),
+      ]),
+    );
+    expect(new Set(candidates.map(({ document }) => document.id)).size).toBe(
+      candidates.length,
+    );
+    expect(
+      candidates.some(({ document, reason }) =>
+        [document.target.package, reason].some((value) =>
+          /disabled|escaped|library|vendored/u.test(value),
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("materializes toolchain, package, target, feature, profile, target-triple, lock, program argument, environment, and ordered task controls", async () => {
+    const root = await createRoot();
+    const canonicalRoot = await realpath(root);
+    await mkdir(path.join(root, "api", "src"), { recursive: true });
+    await writeFile(
+      path.join(root, "api", "Cargo.toml"),
+      '[package]\nname = "api"\nversion = "0.1.0"\n\n[[bin]]\nname = "server"\npath = "src/server.rs"\nrequired-features = ["tls"]\n',
+    );
+    await writeFile(
+      path.join(root, "api", "src", "server.rs"),
+      "fn main() {}\n",
+    );
+    const definition = rustRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Rust API",
+    });
+    const materialized = await rustRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        workingDirectory: "api",
+        target: { kind: "binary", package: "api", name: "server" },
+        arguments: ["--listen", "two words"],
+        environment: {
+          includeCodexEnvironment: true,
+          files: [".env"],
+          variables: [],
+          secrets: [],
+        },
+        beforeLaunch: [
+          { kind: "providerTask", task: "build" },
+          { kind: "command", command: "echo prepared", workingDirectory: "." },
+        ],
+        options: {
+          toolchain: "nightly-2026-08-01",
+          features: ["tls", "tracing"],
+          allFeatures: false,
+          useDefaultFeatures: false,
+          targetTriple: "aarch64-apple-darwin",
+          profile: "release-lto",
+          locked: true,
+          offline: true,
+        },
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/bash" },
+    );
+    const cargoOptions = [
+      "+nightly-2026-08-01",
+      "run",
+      "--package=api",
+      "--bin=server",
+      "--features=tls",
+      "--features=tracing",
+      "--no-default-features",
+      "--target=aarch64-apple-darwin",
+      "--profile=release-lto",
+      "--locked",
+      "--offline",
+    ];
+    expect(materialized).toMatchObject({
+      executable: "cargo",
+      arguments: [...cargoOptions, "--", "--listen", "two words"],
+      workingDirectory: path.join(canonicalRoot, "api"),
+      beforeLaunch: [
+        {
+          executable: "cargo",
+          arguments: ["+nightly-2026-08-01", "build", ...cargoOptions.slice(2)],
+          workingDirectory: path.join(canonicalRoot, "api"),
+        },
+        {
+          executable: "/bin/bash",
+          arguments: ["-lc", "echo prepared"],
+          workingDirectory: canonicalRoot,
+        },
+      ],
+      environment: {
+        includeCodexEnvironment: true,
+        files: [".env"],
+      },
+    });
+    expect(materialized.effectiveCommand).toContain(
+      "cargo +nightly-2026-08-01 run --package=api --bin=server --features=tls --features=tracing",
+    );
+    expect(materialized.effectiveCommand).toContain("-- --listen 'two words'");
+  });
+
+  it("applies typed Windows Cargo and environment overrides", async () => {
+    const root = await createRoot();
+    await mkdir(path.join(root, "windows", "examples"), { recursive: true });
+    await writeFile(
+      path.join(root, "windows", "Cargo.toml"),
+      '[package]\nname = "demo"\nversion = "0.1.0"\n',
+    );
+    await writeFile(
+      path.join(root, "windows", "examples", "quickstart.rs"),
+      "fn main() {}\n",
+    );
+    const definition = rustRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Windows Rust",
+    });
+    const materialized = await rustRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        target: { kind: "example", package: "demo", name: "quickstart" },
+        environment: {
+          includeCodexEnvironment: true,
+          files: [".env"],
+          variables: [],
+          secrets: [],
+        },
+        platformOverrides: {
+          win32: {
+            workingDirectory: "windows",
+            arguments: ["two words"],
+            environment: {
+              includeCodexEnvironment: false,
+              files: [".env.windows"],
+            },
+            options: {
+              toolchain: "stable",
+              features: [],
+              allFeatures: true,
+              useDefaultFeatures: true,
+              targetTriple: null,
+              profile: "release",
+              locked: false,
+              offline: false,
+            },
+          },
+        },
+      },
+      { platform: "win32", targetRoot: root, defaultShell: null },
+    );
+    expect(materialized).toMatchObject({
+      executable: "cargo.exe",
+      arguments: [
+        "+stable",
+        "run",
+        "--package=demo",
+        "--example=quickstart",
+        "--all-features",
+        "--release",
+        "--",
+        "two words",
+      ],
+      environment: {
+        includeCodexEnvironment: false,
+        files: [".env.windows"],
+      },
+      effectiveCommand:
+        'cargo.exe +stable run --package=demo --example=quickstart --all-features --release -- "two words"',
+    });
+  });
+
+  it("fails closed for missing packages, targets, required features, and unsupported provider tasks while honoring complete command overrides", async () => {
+    const root = await createRoot();
+    await mkdir(path.join(root, "src"));
+    await writeFile(
+      path.join(root, "Cargo.toml"),
+      '[package]\nname = "api"\nversion = "0.1.0"\n\n[[bin]]\nname = "server"\npath = "src/server.rs"\nrequired-features = ["tls"]\n',
+    );
+    await writeFile(path.join(root, "src", "server.rs"), "fn main() {}\n");
+    const definition = rustRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Invalid Rust",
+    });
+    await expect(
+      rustRunConfigurationProvider.validate(
+        {
+          ...definition,
+          target: { kind: "binary", package: "missing", name: "server" },
+        },
+        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "cargo-package-missing" }),
+    ]);
+    await expect(
+      rustRunConfigurationProvider.validate(
+        {
+          ...definition,
+          target: { kind: "binary", package: "api", name: "missing" },
+        },
+        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "cargo-target-missing" }),
+    ]);
+    const diagnostics = await rustRunConfigurationProvider.validate(
+      {
+        ...definition,
+        target: { kind: "binary", package: "api", name: "server" },
+        beforeLaunch: [{ kind: "providerTask", task: "publish" }],
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+    );
+    expect(diagnostics.map(({ code }) => code).sort()).toEqual([
+      "cargo-target-features-missing",
+      "rust-provider-task-invalid",
+    ]);
+    await expect(
+      rustRunConfigurationProvider.validate(
+        {
+          ...definition,
+          commandOverride: "echo overridden",
+          target: { kind: "binary", package: "missing", name: "missing" },
         },
         { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
       ),

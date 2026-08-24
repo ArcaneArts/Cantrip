@@ -8,11 +8,13 @@ import type {
   RunConfigurationProviderCapability,
   RunConfigurationProviderKind,
   RunConfigurationRepositoryEntry,
+  RunConfigurationRustDocument,
   RunConfigurationShellDocument,
 } from "@cantrip/protocol/run-configuration-definitions";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Boxes,
   Coffee,
   FileCode2,
   Loader2,
@@ -284,6 +286,7 @@ function ProviderGlyph({
   if (provider === "java") return <Coffee className="size-5" />;
   if (provider === "dart") return <FileCode2 className="size-5" />;
   if (provider === "flutter") return <Smartphone className="size-5" />;
+  if (provider === "rust") return <Boxes className="size-5" />;
   return <Terminal className="size-5" />;
 }
 
@@ -305,7 +308,7 @@ function RunConfigurationCreationChooser({
   onCancel(): void;
   onChooseCandidate(candidate: RunConfigurationDetectionCandidate): void;
   onChooseProvider(
-    provider: "dart" | "flutter" | "java" | "node" | "shell",
+    provider: "dart" | "flutter" | "java" | "node" | "rust" | "shell",
   ): void;
 }) {
   const highConfidence = candidates.filter(
@@ -317,13 +320,14 @@ function RunConfigurationCreationChooser({
     (
       capability,
     ): capability is RunConfigurationProviderCapability & {
-      provider: "dart" | "flutter" | "java" | "node" | "shell";
+      provider: "dart" | "flutter" | "java" | "node" | "rust" | "shell";
     } =>
       capability.available &&
       (capability.provider === "dart" ||
         capability.provider === "flutter" ||
         capability.provider === "java" ||
         capability.provider === "node" ||
+        capability.provider === "rust" ||
         capability.provider === "shell"),
   );
   return (
@@ -391,7 +395,7 @@ function RunConfigurationCreationChooser({
             ) : (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                 No typed project targets were detected. You can still create a
-                blank Dart, Flutter, Java, Node, or Shell configuration.
+                blank Dart, Flutter, Java, Node, Rust, or Shell configuration.
               </div>
             )}
           </section>
@@ -419,7 +423,9 @@ function RunConfigurationCreationChooser({
                             ? "Gradle or Maven application"
                             : capability.provider === "dart"
                               ? "Dart package entrypoint"
-                              : "Flutter app entrypoint and device"}
+                              : capability.provider === "flutter"
+                                ? "Flutter app entrypoint and device"
+                                : "Cargo binary or example"}
                     </span>
                   </span>
                 </button>
@@ -564,6 +570,51 @@ function FlutterTargetEditor({
   );
 }
 
+function RustTargetEditor({
+  document,
+  onChange,
+}: {
+  document: RunConfigurationRustDocument;
+  onChange(document: RunConfigurationRustDocument): void;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label className={fieldClassName}>
+        <span className={labelClassName}>Cargo package</span>
+        <Input
+          className="font-mono"
+          placeholder="api"
+          value={document.target.package}
+          onChange={(event) =>
+            onChange({
+              ...document,
+              target: { ...document.target, package: event.target.value },
+            })
+          }
+        />
+      </label>
+      <label className={fieldClassName}>
+        <span className={labelClassName}>
+          {document.target.kind === "binary" ? "Binary" : "Example"} target
+        </span>
+        <Input
+          className="font-mono"
+          placeholder={
+            document.target.kind === "binary" ? "api-server" : "quickstart"
+          }
+          value={document.target.name}
+          onChange={(event) =>
+            onChange({
+              ...document,
+              target: { ...document.target, name: event.target.value },
+            })
+          }
+        />
+      </label>
+    </div>
+  );
+}
+
 export function RunConfigurationEditor({
   creating,
   entry,
@@ -632,7 +683,8 @@ export function RunConfigurationEditor({
   const supportsProviderTask =
     document.provider === "node" ||
     document.provider === "java" ||
-    document.provider === "flutter";
+    document.provider === "flutter" ||
+    document.provider === "rust";
   const effective = useMemo(
     () => runConfigurationEffectiveCommand(document),
     [document],
@@ -789,6 +841,7 @@ export function RunConfigurationEditor({
                   <option value="java">Java</option>
                   <option value="dart">Dart</option>
                   <option value="flutter">Flutter</option>
+                  <option value="rust">Rust / Cargo</option>
                 </NativeSelect>
               </label>
               <label className={fieldClassName}>
@@ -817,38 +870,45 @@ export function RunConfigurationEditor({
                             ? kind === "entry"
                               ? { kind: "entry", path: "" }
                               : { kind: "packageScript", script: "start" }
-                            : document.provider === "dart" ||
-                                document.provider === "flutter"
+                            : document.provider === "rust"
                               ? {
-                                  kind: "entrypoint",
-                                  path:
-                                    document.provider === "dart"
-                                      ? "bin/main.dart"
-                                      : "lib/main.dart",
+                                  kind:
+                                    kind === "example" ? "example" : "binary",
+                                  package: document.target.package,
+                                  name: document.target.name,
                                 }
-                              : kind === "gradleMainClass"
+                              : document.provider === "dart" ||
+                                  document.provider === "flutter"
                                 ? {
-                                    kind: "gradleMainClass",
-                                    projectPath: ":",
-                                    className: "",
+                                    kind: "entrypoint",
+                                    path:
+                                      document.provider === "dart"
+                                        ? "bin/main.dart"
+                                        : "lib/main.dart",
                                   }
-                                : kind === "mavenGoal"
+                                : kind === "gradleMainClass"
                                   ? {
-                                      kind: "mavenGoal",
-                                      module: null,
-                                      goal: "spring-boot:run",
+                                      kind: "gradleMainClass",
+                                      projectPath: ":",
+                                      className: "",
                                     }
-                                  : kind === "mavenMainClass"
+                                  : kind === "mavenGoal"
                                     ? {
-                                        kind: "mavenMainClass",
+                                        kind: "mavenGoal",
                                         module: null,
-                                        className: "",
+                                        goal: "spring-boot:run",
                                       }
-                                    : {
-                                        kind: "gradleTask",
-                                        projectPath: ":",
-                                        task: "run",
-                                      },
+                                    : kind === "mavenMainClass"
+                                      ? {
+                                          kind: "mavenMainClass",
+                                          module: null,
+                                          className: "",
+                                        }
+                                      : {
+                                          kind: "gradleTask",
+                                          projectPath: ":",
+                                          task: "run",
+                                        },
                     });
                   }}
                 >
@@ -866,6 +926,11 @@ export function RunConfigurationEditor({
                     <option value="entrypoint">Dart entrypoint</option>
                   ) : document.provider === "flutter" ? (
                     <option value="entrypoint">Flutter entrypoint</option>
+                  ) : document.provider === "rust" ? (
+                    <>
+                      <option value="binary">Cargo binary</option>
+                      <option value="example">Cargo example</option>
+                    </>
                   ) : (
                     <>
                       <option value="gradleTask">Gradle task</option>
@@ -997,8 +1062,10 @@ export function RunConfigurationEditor({
               <JavaTargetEditor document={document} onChange={setDocument} />
             ) : document.provider === "dart" ? (
               <DartTargetEditor document={document} onChange={setDocument} />
-            ) : (
+            ) : document.provider === "flutter" ? (
               <FlutterTargetEditor document={document} onChange={setDocument} />
+            ) : (
+              <RustTargetEditor document={document} onChange={setDocument} />
             )}
             <label className={fieldClassName}>
               <span className={labelClassName}>
@@ -1209,7 +1276,9 @@ export function RunConfigurationEditor({
                         ? "Runs a Gradle task or Maven goal in the selected module."
                         : document.provider === "flutter"
                           ? "Use clean, gen-l10n, or pub get in the Flutter package."
-                          : "Change this step to Command or remove it."}
+                          : document.provider === "rust"
+                            ? "Use build, check, or clippy for the selected Cargo target."
+                            : "Change this step to Command or remove it."}
                   </span>
                 )}
                 <Button
@@ -1431,7 +1500,7 @@ export function RunConfigurationEditor({
                     }
                   />
                 </label>
-              ) : (
+              ) : document.provider === "flutter" ? (
                 <>
                   <label className={fieldClassName}>
                     <span className={labelClassName}>
@@ -1543,6 +1612,154 @@ export function RunConfigurationEditor({
                       type="checkbox"
                     />{" "}
                     Resolve packages before launch
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>Rust toolchain</span>
+                    <Input
+                      className="font-mono"
+                      placeholder="default, stable, or nightly"
+                      value={document.options.toolchain}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "rust"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  toolchain: event.target.value,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>Cargo profile</span>
+                    <Input
+                      className="font-mono"
+                      placeholder="dev, release, or custom"
+                      value={document.options.profile}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "rust"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  profile: event.target.value,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>
+                      Target triple (optional)
+                    </span>
+                    <Input
+                      className="font-mono"
+                      placeholder="aarch64-apple-darwin"
+                      value={document.options.targetTriple ?? ""}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "rust"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  targetTriple: event.target.value || null,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="flex items-end gap-2 pb-2 text-sm">
+                    <input
+                      checked={document.options.useDefaultFeatures}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "rust"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  useDefaultFeatures: event.target.checked,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                      type="checkbox"
+                    />{" "}
+                    Enable default features
+                  </label>
+                  <label className="flex items-end gap-2 pb-2 text-sm">
+                    <input
+                      checked={document.options.allFeatures}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "rust"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  allFeatures: event.target.checked,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                      type="checkbox"
+                    />{" "}
+                    Enable all features
+                  </label>
+                  <label className="flex items-end gap-2 pb-2 text-sm">
+                    <input
+                      checked={document.options.locked}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "rust"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  locked: event.target.checked,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                      type="checkbox"
+                    />{" "}
+                    Require Cargo.lock
+                  </label>
+                  <label className="flex items-end gap-2 pb-2 text-sm">
+                    <input
+                      checked={document.options.offline}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "rust"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  offline: event.target.checked,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                      type="checkbox"
+                    />{" "}
+                    Offline mode
                   </label>
                 </>
               )}
@@ -1680,6 +1897,25 @@ export function RunConfigurationEditor({
                     }
                   />
                 </div>
+              </div>
+            ) : null}
+            {document.provider === "rust" ? (
+              <div className="grid gap-2">
+                <span className={labelClassName}>Cargo features</span>
+                <StringListEditor
+                  addLabel="Add Cargo feature"
+                  values={document.options.features}
+                  onChange={(features) =>
+                    setDocument((current) =>
+                      current.provider === "rust"
+                        ? {
+                            ...current,
+                            options: { ...current.options, features },
+                          }
+                        : current,
+                    )
+                  }
+                />
               </div>
             ) : null}
             <label className={fieldClassName}>

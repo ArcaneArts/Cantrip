@@ -16,6 +16,7 @@ import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.
 import { javaRunConfigurationProvider } from "./run-configuration-java-provider.js";
 import { dartRunConfigurationProvider } from "./run-configuration-dart-provider.js";
 import { flutterRunConfigurationProvider } from "./run-configuration-flutter-provider.js";
+import { rustRunConfigurationProvider } from "./run-configuration-rust-provider.js";
 import {
   RunConfigurationRepository,
   type RunConfigurationRepositoryWatcher,
@@ -88,6 +89,7 @@ export class RunConfigurationDefinitionService {
             javaRunConfigurationProvider.capability,
             dartRunConfigurationProvider.capability,
             flutterRunConfigurationProvider.capability,
+            rustRunConfigurationProvider.capability,
           ],
         });
       case "project.run-configuration-definitions.detect": {
@@ -160,9 +162,24 @@ export class RunConfigurationDefinitionService {
             })),
           );
         }
+        if (command.providerKind === null || command.providerKind === "rust") {
+          candidates.push(
+            ...(
+              await rustRunConfigurationProvider.discover(providerContext)
+            ).map((candidate) => ({
+              ...candidate,
+              provider: "rust" as const,
+              effectiveCommand:
+                rustRunConfigurationProvider.renderEffectiveCommand(
+                  candidate.document,
+                  providerContext.platform,
+                ),
+            })),
+          );
+        }
         const diagnostics =
           command.providerKind &&
-          !["shell", "node", "java", "dart", "flutter"].includes(
+          !["shell", "node", "java", "dart", "flutter", "rust"].includes(
             command.providerKind,
           )
             ? [

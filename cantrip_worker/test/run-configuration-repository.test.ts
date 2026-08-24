@@ -230,8 +230,8 @@ describe("RunConfigurationRepository", () => {
         schema: RUN_CONFIGURATION_FILE_SCHEMA,
         version: 1,
         id: unsupportedId,
-        name: "Rust app",
-        provider: "rust",
+        name: "Future provider app",
+        provider: "python",
       }),
     );
     await writeFile(

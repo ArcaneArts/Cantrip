@@ -87,6 +87,22 @@ function flutterConfiguration() {
   };
 }
 
+function rustConfiguration() {
+  return {
+    schema: RUN_CONFIGURATION_FILE_SCHEMA,
+    version: 1 as const,
+    id: configurationId,
+    name: "Run Rust API",
+    provider: "rust" as const,
+    workingDirectory: ".",
+    target: {
+      kind: "binary" as const,
+      package: "cantrip_server",
+      name: "cantrip-server",
+    },
+  };
+}
+
 describe("run configuration definition protocol", () => {
   it("normalizes a minimal Shell definition with safe defaults", () => {
     expect(runConfigurationFileSchema.parse(shellConfiguration())).toEqual({
@@ -122,12 +138,6 @@ describe("run configuration definition protocol", () => {
       "flutter",
       "rust",
     ]);
-    expect(
-      runConfigurationFileSchema.safeParse({
-        ...shellConfiguration(),
-        provider: "rust",
-      }).success,
-    ).toBe(false);
     expect(runConfigurationFileSchema.parse(nodeConfiguration())).toMatchObject(
       {
         provider: "node",
@@ -182,6 +192,27 @@ describe("run configuration definition protocol", () => {
       },
       environment: { includeCodexEnvironment: true },
     });
+    expect(runConfigurationFileSchema.parse(rustConfiguration())).toMatchObject(
+      {
+        provider: "rust",
+        target: {
+          kind: "binary",
+          package: "cantrip_server",
+          name: "cantrip-server",
+        },
+        options: {
+          toolchain: "default",
+          features: [],
+          allFeatures: false,
+          useDefaultFeatures: true,
+          targetTriple: null,
+          profile: "dev",
+          locked: false,
+          offline: false,
+        },
+        environment: { includeCodexEnvironment: true },
+      },
+    );
     expect(
       runConfigurationProviderCapabilitySchema.parse({
         provider: "rust",
@@ -381,6 +412,68 @@ describe("run configuration definition protocol", () => {
         document,
       }).document.provider,
     ).toBe("flutter");
+  });
+
+  it("keeps Rust targets and Cargo controls strict and provider-correlated", () => {
+    expect(
+      runConfigurationFileSchema.safeParse({
+        ...rustConfiguration(),
+        target: {
+          kind: "example",
+          package: "demo-api",
+          name: "quickstart",
+        },
+        options: {
+          toolchain: "nightly-2026-08-01",
+          features: ["tls", "workspace/tracing"],
+          allFeatures: false,
+          useDefaultFeatures: false,
+          targetTriple: "aarch64-apple-darwin",
+          profile: "release-lto",
+          locked: true,
+          offline: true,
+        },
+      }).success,
+    ).toBe(true);
+    for (const target of [
+      { kind: "binary", package: "../api", name: "server" },
+      { kind: "example", package: "api", name: "bad target" },
+      { kind: "library", package: "api", name: "api" },
+    ]) {
+      expect(
+        runConfigurationFileSchema.safeParse({
+          ...rustConfiguration(),
+          target,
+        }).success,
+        JSON.stringify(target),
+      ).toBe(false);
+    }
+    expect(
+      runConfigurationFileSchema.safeParse({
+        ...rustConfiguration(),
+        options: {
+          toolchain: "+nightly",
+          features: ["tls", "tls"],
+          allFeatures: false,
+          useDefaultFeatures: true,
+          targetTriple: null,
+          profile: "dev",
+          locked: false,
+          offline: false,
+        },
+      }).success,
+    ).toBe(false);
+    const document = runConfigurationFileSchema.parse(rustConfiguration());
+    expect(
+      runConfigurationDetectionCandidateSchema.parse({
+        provider: "rust",
+        confidence: "high",
+        reason: "The Cargo package has one binary target.",
+        effectiveCommand:
+          "cargo run --package=cantrip_server --bin=cantrip-server",
+        document,
+      }).document.provider,
+    ).toBe("rust");
   });
 
   it("rejects traversal, absolute paths, Windows paths, and NULs", () => {

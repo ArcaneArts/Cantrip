@@ -843,12 +843,189 @@ export const runConfigurationFlutterDocumentSchema = z
     }
   });
 
+export const runConfigurationRustPackageNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(256)
+  .regex(
+    /^[A-Za-z0-9_-]+$/u,
+    "Cargo package names may contain only letters, digits, underscores, and hyphens.",
+  );
+
+export const runConfigurationRustTargetNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(256)
+  .regex(
+    /^[A-Za-z0-9_.-]+$/u,
+    "Cargo target names may contain only letters, digits, dots, underscores, and hyphens.",
+  );
+
+export const runConfigurationRustTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("binary"),
+      package: runConfigurationRustPackageNameSchema,
+      name: runConfigurationRustTargetNameSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("example"),
+      package: runConfigurationRustPackageNameSchema,
+      name: runConfigurationRustTargetNameSchema,
+    })
+    .strict(),
+]);
+
+export const runConfigurationRustToolchainSchema = noNulString(256)
+  .trim()
+  .regex(
+    /^(?:default|[A-Za-z0-9][A-Za-z0-9_.-]*)$/u,
+    "Expected default or a rustup toolchain name without the leading plus sign.",
+  );
+
+export const runConfigurationRustFeatureSchema = noNulString(256)
+  .trim()
+  .min(1)
+  .regex(
+    /^[A-Za-z0-9_+.-]+(?:\/[A-Za-z0-9_+.-]+)?$/u,
+    "Expected a Cargo feature name, optionally qualified by package.",
+  );
+
+export const runConfigurationRustProfileSchema = noNulString(256)
+  .trim()
+  .min(1)
+  .regex(/^[A-Za-z0-9_.-]+$/u, "Expected a Cargo profile name.");
+
+export const runConfigurationRustTargetTripleSchema = noNulString(256)
+  .trim()
+  .min(1)
+  .regex(/^[A-Za-z0-9_.-]+$/u, "Expected a Rust target triple.")
+  .nullable();
+
+function addDuplicateRustFeatureIssues(
+  options: { features?: string[] },
+  context: z.RefinementCtx,
+): void {
+  const names = new Set<string>();
+  for (const [index, feature] of (options.features ?? []).entries()) {
+    if (names.has(feature)) {
+      context.addIssue({
+        code: "custom",
+        message: "Cargo feature " + feature + " is already enabled.",
+        path: ["features", index],
+      });
+    }
+    names.add(feature);
+  }
+}
+
+export const runConfigurationRustOptionsSchema = z
+  .object({
+    toolchain: runConfigurationRustToolchainSchema.default("default"),
+    features: z.array(runConfigurationRustFeatureSchema).max(128).default([]),
+    allFeatures: z.boolean().default(false),
+    useDefaultFeatures: z.boolean().default(true),
+    targetTriple: runConfigurationRustTargetTripleSchema.default(null),
+    profile: runConfigurationRustProfileSchema.default("dev"),
+    locked: z.boolean().default(false),
+    offline: z.boolean().default(false),
+  })
+  .strict()
+  .superRefine(addDuplicateRustFeatureIssues);
+
+const runConfigurationRustPlatformOverrideSchema = z
+  .object({
+    workingDirectory: runConfigurationWorkingDirectorySchema.optional(),
+    commandOverride: runConfigurationCommandSchema.nullable().optional(),
+    arguments: runConfigurationArgumentsSchema.optional(),
+    environment: runConfigurationEnvironmentOverrideSchema.optional(),
+    options: z
+      .object({
+        toolchain: runConfigurationRustToolchainSchema.optional(),
+        features: z
+          .array(runConfigurationRustFeatureSchema)
+          .max(128)
+          .optional(),
+        allFeatures: z.boolean().optional(),
+        useDefaultFeatures: z.boolean().optional(),
+        targetTriple: runConfigurationRustTargetTripleSchema.optional(),
+        profile: runConfigurationRustProfileSchema.optional(),
+        locked: z.boolean().optional(),
+        offline: z.boolean().optional(),
+      })
+      .strict()
+      .superRefine(addDuplicateRustFeatureIssues)
+      .optional(),
+  })
+  .strict();
+
+const runConfigurationRustPlatformOverridesSchema = z
+  .object({
+    win32: runConfigurationRustPlatformOverrideSchema.optional(),
+    darwin: runConfigurationRustPlatformOverrideSchema.optional(),
+    linux: runConfigurationRustPlatformOverrideSchema.optional(),
+  })
+  .strict();
+
+export const runConfigurationRustDocumentSchema = z
+  .object({
+    schema: z.literal(RUN_CONFIGURATION_FILE_SCHEMA),
+    version: z.literal(RUN_CONFIGURATION_FILE_VERSION),
+    id: runConfigurationIdSchema,
+    name: z.string().trim().min(1).max(200),
+    provider: z.literal("rust"),
+    workingDirectory: runConfigurationWorkingDirectorySchema.default("."),
+    target: runConfigurationRustTargetSchema,
+    commandOverride: runConfigurationCommandSchema.nullable().default(null),
+    arguments: runConfigurationArgumentsSchema.default([]),
+    environment: runConfigurationEnvironmentSchema.default({
+      includeCodexEnvironment: true,
+      files: [],
+      variables: [],
+      secrets: [],
+    }),
+    beforeLaunch: z
+      .array(runConfigurationBeforeLaunchStepSchema)
+      .max(32)
+      .default([]),
+    platformOverrides: runConfigurationRustPlatformOverridesSchema.default({}),
+    options: runConfigurationRustOptionsSchema.default({
+      toolchain: "default",
+      features: [],
+      allFeatures: false,
+      useDefaultFeatures: true,
+      targetTriple: null,
+      profile: "dev",
+      locked: false,
+      offline: false,
+    }),
+    stop: runConfigurationStopSchema.default({ gracePeriodMs: 3_000 }),
+  })
+  .strict()
+  .superRefine((document, context) => {
+    const bytes = new TextEncoder().encode(JSON.stringify(document)).byteLength;
+    if (bytes > RUN_CONFIGURATION_MAX_FILE_BYTES) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Run configuration documents cannot exceed " +
+          RUN_CONFIGURATION_MAX_FILE_BYTES +
+          " encoded bytes.",
+      });
+    }
+  });
+
 export const runConfigurationFileSchema = z.discriminatedUnion("provider", [
   runConfigurationShellDocumentSchema,
   runConfigurationNodeDocumentSchema,
   runConfigurationJavaDocumentSchema,
   runConfigurationDartDocumentSchema,
   runConfigurationFlutterDocumentSchema,
+  runConfigurationRustDocumentSchema,
 ]);
 
 export const runConfigurationDiagnosticSchema = z
@@ -1063,6 +1240,9 @@ export type RunConfigurationDartDocument = z.infer<
 >;
 export type RunConfigurationFlutterDocument = z.infer<
   typeof runConfigurationFlutterDocumentSchema
+>;
+export type RunConfigurationRustDocument = z.infer<
+  typeof runConfigurationRustDocumentSchema
 >;
 export type RunConfigurationFile = z.infer<typeof runConfigurationFileSchema>;
 export type RunConfigurationDiagnostic = z.infer<

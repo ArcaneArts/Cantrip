@@ -5,6 +5,7 @@ import {
   createFlutterRunConfigurationDocument,
   createJavaRunConfigurationDocument,
   createNodeRunConfigurationDocument,
+  createRustRunConfigurationDocument,
   createShellRunConfigurationDocument,
   dartRunConfigurationEffectiveCommand,
   flutterRunConfigurationEffectiveCommand,
@@ -12,6 +13,7 @@ import {
   nodeRunConfigurationEffectiveCommand,
   parseRunConfigurationEditorDocument,
   parseShellRunConfigurationEditorDocument,
+  rustRunConfigurationEffectiveCommand,
   shellRunConfigurationEffectiveCommand,
 } from "./run-configuration-editor-model";
 
@@ -178,5 +180,41 @@ describe("Shell Run configuration editor model", () => {
     const parsed = parseRunConfigurationEditorDocument(document, "{}");
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.document.provider).toBe("flutter");
+  });
+
+  it("builds structured Cargo commands with target, toolchain, feature, target, and profile controls", () => {
+    const document = createRustRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000004",
+    );
+    document.name = "Run Rust API";
+    document.target = {
+      kind: "example",
+      package: "api",
+      name: "quickstart",
+    };
+    document.arguments = ["--listen", "two words"];
+    document.options = {
+      toolchain: "nightly-2026-08-01",
+      features: ["tls", "tracing"],
+      allFeatures: false,
+      useDefaultFeatures: false,
+      targetTriple: "aarch64-apple-darwin",
+      profile: "release-lto",
+      locked: true,
+      offline: true,
+    };
+    expect(rustRunConfigurationEffectiveCommand(document)).toEqual({
+      command:
+        'cargo +nightly-2026-08-01 run --package=api --example=quickstart --features=tls --features=tracing --no-default-features --target=aarch64-apple-darwin --profile=release-lto --locked --offline -- --listen "two words"',
+      overridden: false,
+    });
+    document.commandOverride = "cargo custom";
+    expect(rustRunConfigurationEffectiveCommand(document)).toEqual({
+      command: 'cargo custom --listen "two words"',
+      overridden: true,
+    });
+    const parsed = parseRunConfigurationEditorDocument(document, "{}");
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.document.provider).toBe("rust");
   });
 });

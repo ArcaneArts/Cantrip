@@ -342,6 +342,11 @@ describe.sequential("Run configuration definition API", () => {
           available: true,
           supportsDiscovery: true,
         }),
+        expect.objectContaining({
+          provider: "rust",
+          available: true,
+          supportsDiscovery: true,
+        }),
       ]),
     });
 
@@ -576,6 +581,67 @@ describe.sequential("Run configuration definition API", () => {
       },
     });
     expect(flutterDeletedResponse.statusCode).toBe(200);
+
+    await mkdir(path.join(primaryRoot, "rust", "src"), { recursive: true });
+    await writeFile(
+      path.join(primaryRoot, "rust", "Cargo.toml"),
+      '[package]\nname = "rust_api"\nversion = "0.1.0"\n',
+    );
+    await writeFile(
+      path.join(primaryRoot, "rust", "src", "main.rs"),
+      "fn main() {}\n",
+    );
+    const rustDetectedResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configurations/detect?operationId=${randomUUID()}&provider=rust`,
+    });
+    expect(rustDetectedResponse.statusCode).toBe(200);
+    const rustDetected = runConfigurationDetectResponseSchema.parse(
+      rustDetectedResponse.json(),
+    );
+    const rustCandidate = rustDetected.candidates.find(
+      ({ document }) => document.provider === "rust",
+    );
+    if (!rustCandidate) {
+      throw new Error("Expected a detected Rust binary.");
+    }
+    expect(rustCandidate).toMatchObject({
+      confidence: "high",
+      effectiveCommand: "cargo run --package=rust_api --bin=rust_api",
+      document: {
+        provider: "rust",
+        workingDirectory: "rust",
+        target: { kind: "binary", package: "rust_api", name: "rust_api" },
+      },
+    });
+    const rustCreatedResponse = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-configurations/${rustCandidate.document.id}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: null,
+        document: rustCandidate.document,
+      },
+    });
+    expect(rustCreatedResponse.statusCode).toBe(201);
+    const rustCreated = runConfigurationWriteResponseSchema.parse(
+      rustCreatedResponse.json(),
+    );
+    if (
+      !("entry" in rustCreated.result) ||
+      !rustCreated.result.entry.revision
+    ) {
+      throw new Error("Expected a saved Rust definition.");
+    }
+    const rustDeletedResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/run-configurations/${rustCandidate.document.id}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: rustCreated.result.entry.revision,
+      },
+    });
+    expect(rustDeletedResponse.statusCode).toBe(200);
 
     const createOperationId = randomUUID();
     const created = await app.inject({

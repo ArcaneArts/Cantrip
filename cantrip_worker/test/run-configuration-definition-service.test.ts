@@ -82,6 +82,11 @@ describe("RunConfigurationDefinitionService", () => {
           available: true,
           supportsDiscovery: true,
         }),
+        expect.objectContaining({
+          provider: "rust",
+          available: true,
+          supportsDiscovery: true,
+        }),
       ]),
     });
 
@@ -122,6 +127,15 @@ describe("RunConfigurationDefinitionService", () => {
     await writeFile(
       path.join(root, "flutter", "lib", "main.dart"),
       "void main() {}\n",
+    );
+    await mkdir(path.join(root, "rust", "src"), { recursive: true });
+    await writeFile(
+      path.join(root, "rust", "Cargo.toml"),
+      '[package]\nname = "rust_api"\nversion = "0.1.0"\n',
+    );
+    await writeFile(
+      path.join(root, "rust", "src", "main.rs"),
+      "fn main() {}\n",
     );
     const detected = await service.execute({
       type: "project.run-configuration-definitions.detect",
@@ -170,6 +184,19 @@ describe("RunConfigurationDefinitionService", () => {
             },
           }),
         }),
+        expect.objectContaining({
+          provider: "rust",
+          confidence: "high",
+          effectiveCommand: "cargo run --package=rust_api --bin=rust_api",
+          document: expect.objectContaining({
+            workingDirectory: "rust",
+            target: {
+              kind: "binary",
+              package: "rust_api",
+              name: "rust_api",
+            },
+          }),
+        }),
       ]),
       diagnostics: [],
     });
@@ -182,8 +209,13 @@ describe("RunConfigurationDefinitionService", () => {
       }),
     ).resolves.toMatchObject({
       operation: "detect",
-      candidates: [],
-      diagnostics: [expect.objectContaining({ code: "provider-unavailable" })],
+      candidates: [
+        expect.objectContaining({
+          provider: "rust",
+          effectiveCommand: "cargo run --package=rust_api --bin=rust_api",
+        }),
+      ],
+      diagnostics: [],
     });
 
     const created = await service.execute({
