@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   projectTaskPauseStateSchema,
+  taskDispatchFenceSchema,
   taskDispatchCycleSummarySchema,
+  taskDispatchWorkerLeaseSchema,
   taskPrioritySchema,
   taskWorkerCreateSchema,
   taskWorkerOrderUpdateSchema,
@@ -84,6 +86,7 @@ describe("Task scheduling contracts", () => {
     const cycle = taskDispatchCycleSummarySchema.parse({
       id: "00000000-0000-4000-8000-000000000201",
       chatId: "chat-1",
+      operationId: "operation-1",
       operationKind: "initial-plan",
       state: "queued",
       fifoCreatedAt: "2026-08-24T00:00:00.000Z",
@@ -114,6 +117,25 @@ describe("Task scheduling contracts", () => {
     });
     expect(cycle).not.toHaveProperty("prompt");
     expect(cycle.operationKind).toBe("initial-plan");
+  });
+
+  it("requires complete positive fencing data for worker dispatches", () => {
+    const fence = {
+      cycleId: "00000000-0000-4000-8000-000000000201",
+      operationId: "operation-1",
+      leaseOwner: "scheduler-1",
+      fencingToken: 2,
+    };
+    expect(taskDispatchFenceSchema.parse(fence)).toEqual(fence);
+    expect(
+      taskDispatchWorkerLeaseSchema.parse({
+        ...fence,
+        leaseExpiresAt: "2026-08-24T00:01:00.000Z",
+      }),
+    ).toMatchObject(fence);
+    expect(
+      taskDispatchFenceSchema.safeParse({ ...fence, fencingToken: 0 }).success,
+    ).toBe(false);
   });
 
   it("versions Project Task pause state independently", () => {

@@ -31,6 +31,15 @@ describe("Task scheduling migration", () => {
         "task_dispatch_cycles",
         "task_workers",
       ]);
+      const dispatchColumns = await client.query<{ column_name: string }>(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'task_dispatch_cycles'
+          AND column_name = 'operation_id'
+          AND is_nullable = 'NO'
+      `);
+      expect(dispatchColumns.rows).toEqual([{ column_name: "operation_id" }]);
 
       const taskColumns = await client.query<{
         column_name: string;

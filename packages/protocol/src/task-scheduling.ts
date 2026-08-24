@@ -145,10 +145,26 @@ export const taskDispatchEligibilityCodeSchema = z.enum([
   "worker-offline",
 ]);
 
+export const taskDispatchFenceSchema = z
+  .object({
+    cycleId: z.string().uuid(),
+    operationId: z.string().min(1).max(200),
+    leaseOwner: z.string().min(1).max(200),
+    fencingToken: z.number().int().positive(),
+  })
+  .strict();
+
+export const taskDispatchWorkerLeaseSchema = taskDispatchFenceSchema
+  .extend({
+    leaseExpiresAt: z.iso.datetime(),
+  })
+  .strict();
+
 export const taskDispatchCycleSummarySchema = z
   .object({
     id: z.string().uuid(),
     chatId: z.string().min(1).max(200),
+    operationId: z.string().min(1).max(200),
     operationKind: taskDispatchOperationKindSchema,
     state: taskDispatchCycleStateSchema,
     fifoCreatedAt: z.iso.datetime(),
@@ -211,6 +227,10 @@ export type TaskDispatchCycleState = z.infer<
 >;
 export type TaskDispatchEligibilityCode = z.infer<
   typeof taskDispatchEligibilityCodeSchema
+>;
+export type TaskDispatchFence = z.infer<typeof taskDispatchFenceSchema>;
+export type TaskDispatchWorkerLease = z.infer<
+  typeof taskDispatchWorkerLeaseSchema
 >;
 export type TaskDispatchCycleSummary = z.infer<
   typeof taskDispatchCycleSummarySchema

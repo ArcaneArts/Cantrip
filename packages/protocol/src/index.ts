@@ -175,7 +175,10 @@ import {
   taskOperationRelayGoalSchema,
   taskOperationRelayRequestSchema,
 } from "./tasks.js";
-import { taskPrioritySchema } from "./task-scheduling.js";
+import {
+  taskDispatchWorkerLeaseSchema,
+  taskPrioritySchema,
+} from "./task-scheduling.js";
 import {
   encryptedPayloadEnvelopeSchema,
   encryptionKeyBytesSchema,
@@ -13389,6 +13392,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
       automationPaused: z.boolean().default(false),
       resultMode: agentTurnResultModeSchema.default({ kind: "visible" }),
+      taskDispatchLease: taskDispatchWorkerLeaseSchema.optional(),
     })
     .superRefine((command, context) => {
       if (Boolean(command.prompt) === Boolean(command.protectedPrompt)) {
@@ -13407,6 +13411,17 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
           code: "custom",
           message: "Protected chat prompts require protected chat results.",
           path: ["resultMode"],
+        });
+      }
+      if (
+        command.taskDispatchLease &&
+        command.resultMode.kind !== "task-encrypted" &&
+        command.resultMode.kind !== "task-message-encrypted"
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Task dispatch leases are only valid for Task turns.",
+          path: ["taskDispatchLease"],
         });
       }
     }),
@@ -13836,6 +13851,9 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
     clientMessageId: z.string().min(1),
     executionLaneId: z.string().min(1),
     worktreeId: z.string().min(1),
+    taskDispatchFence: taskDispatchWorkerLeaseSchema
+      .omit({ leaseExpiresAt: true })
+      .optional(),
     outcome: z.discriminatedUnion("ok", [
       z.object({
         ok: z.literal(true),

@@ -287,6 +287,7 @@ import {
   toTaskOpaqueSummary,
 } from "./tasks.js";
 import { TaskSchedulingRepository } from "./task-scheduling.js";
+import { TaskDispatchRepository } from "./task-dispatch.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
 import { WorkflowTriggerRepository } from "./workflow-triggers.js";
@@ -2285,6 +2286,7 @@ export class ServerRepository {
   readonly projectAutomations: ProjectAutomationRepository;
   readonly policies: PolicyRepository;
   readonly tasks: TaskRepository;
+  readonly taskDispatch: TaskDispatchRepository;
   readonly taskScheduling: TaskSchedulingRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
@@ -2310,6 +2312,7 @@ export class ServerRepository {
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.policies = new PolicyRepository(database);
     this.tasks = new TaskRepository(database);
+    this.taskDispatch = new TaskDispatchRepository(database);
     this.taskScheduling = new TaskSchedulingRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);

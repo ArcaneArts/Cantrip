@@ -432,6 +432,14 @@ export class WorkerConnection {
         clientMessageId: command.clientMessageId,
         executionLaneId: command.executionLaneId,
         worktreeId: command.worktreeId,
+        taskDispatchFence: command.taskDispatchLease
+          ? {
+              cycleId: command.taskDispatchLease.cycleId,
+              operationId: command.taskDispatchLease.operationId,
+              leaseOwner: command.taskDispatchLease.leaseOwner,
+              fencingToken: command.taskDispatchLease.fencingToken,
+            }
+          : undefined,
         outcome,
       },
     });

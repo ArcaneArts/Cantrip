@@ -2843,6 +2843,7 @@ export const taskDispatchCycles = pgTable(
     chatId: text("chat_id")
       .notNull()
       .references(() => tasks.chatId, { onDelete: "cascade" }),
+    operationId: text("operation_id").notNull(),
     operationKind: text("operation_kind")
       .$type<TaskDispatchOperationKind>()
       .notNull(),
@@ -2919,6 +2920,10 @@ export const taskDispatchCycles = pgTable(
     index("task_dispatch_cycles_task_created_index").on(
       table.chatId,
       table.createdAt,
+    ),
+    index("task_dispatch_cycles_operation_index").on(
+      table.chatId,
+      table.operationId,
     ),
     check(
       "task_dispatch_cycles_operation_kind_check",
