@@ -286,6 +286,7 @@ import {
   taskOpaqueColumns,
   toTaskOpaqueSummary,
 } from "./tasks.js";
+import { TaskSchedulingRepository } from "./task-scheduling.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
 import { WorkflowTriggerRepository } from "./workflow-triggers.js";
@@ -2284,6 +2285,7 @@ export class ServerRepository {
   readonly projectAutomations: ProjectAutomationRepository;
   readonly policies: PolicyRepository;
   readonly tasks: TaskRepository;
+  readonly taskScheduling: TaskSchedulingRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
   readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
@@ -2308,6 +2310,7 @@ export class ServerRepository {
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.policies = new PolicyRepository(database);
     this.tasks = new TaskRepository(database);
+    this.taskScheduling = new TaskSchedulingRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);
     this.projectGithubConversionJobs = new ProjectGithubConversionJobRepository(
@@ -12711,6 +12714,9 @@ export class ServerRepository {
                   chatId: chat.id,
                   planGoalEnabled: (input as EncryptedTaskCreate)
                     .planGoalEnabled,
+                  priority: (input as EncryptedTaskCreate).priority,
+                  requestedTaskWorkerId: (input as EncryptedTaskCreate)
+                    .requestedTaskWorkerId,
                   ...taskOpaqueColumns((input as EncryptedTaskCreate).task),
                 })
                 .returning(),

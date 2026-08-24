@@ -119,6 +119,10 @@ export function toTaskOpaqueSummary(row: TaskRow): TaskOpaqueSummary {
   return taskOpaqueSummarySchema.parse({
     chatId: row.chatId,
     planGoalEnabled: row.planGoalEnabled,
+    priority: row.priority,
+    requestedTaskWorkerId: row.requestedTaskWorkerId,
+    continuityFamily: row.continuityFamily,
+    lastTaskWorkerId: row.lastTaskWorkerId,
     state: row.state,
     stableStateBeforeFailure: row.stableStateBeforeFailure,
     activeOperationId: row.activeOperationId,
@@ -135,6 +139,8 @@ export function toTaskOpaqueSummary(row: TaskRow): TaskOpaqueSummary {
     implementationStartedAt: row.implementationStartedAt
       ? iso(row.implementationStartedAt)
       : null,
+    completedAt: row.completedAt ? iso(row.completedAt) : null,
+    schedulerRevision: row.schedulerRevision,
     rowVersion: row.rowVersion,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),

@@ -148,6 +148,8 @@ export * from "./policies.js";
 
 export * from "./tasks.js";
 
+export * from "./task-scheduling.js";
+
 export * from "./encryption.js";
 export * from "./protected-secrets.js";
 export * from "./run-configuration-secrets.js";
@@ -173,6 +175,7 @@ import {
   taskOperationRelayGoalSchema,
   taskOperationRelayRequestSchema,
 } from "./tasks.js";
+import { taskPrioritySchema } from "./task-scheduling.js";
 import {
   encryptedPayloadEnvelopeSchema,
   encryptionKeyBytesSchema,
@@ -4491,6 +4494,8 @@ export const encryptedChatCreateSchema = chatPlacementCreateSchema
 const taskCreateBaseSchema = chatPlacementCreateSchema.safeExtend({
   chatId: z.string().uuid(),
   planGoalEnabled: z.boolean().default(false),
+  priority: taskPrioritySchema.default(0),
+  requestedTaskWorkerId: z.string().uuid().nullable().default(null),
   task: taskOpaqueContentSchema,
 });
 
