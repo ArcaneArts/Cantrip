@@ -7,6 +7,8 @@ import {
   runConfigurationDetectionCandidateSchema,
   runConfigurationDiagnosticSchema,
   runConfigurationIdSchema,
+  runConfigurationPathPurposeSchema,
+  runConfigurationPathSuggestionSchema,
   runConfigurationProviderCapabilitySchema,
   runConfigurationProviderKindSchema,
   runConfigurationReadResultSchema,
@@ -59,6 +61,20 @@ export const runConfigurationDetectWorkerCommandSchema = z
   })
   .strict();
 
+export const runConfigurationPathSearchQuerySchema = z
+  .string()
+  .max(256)
+  .refine((value) => !value.includes("\0"), "Queries cannot contain NULs.");
+
+export const runConfigurationPathsWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-definitions.paths"),
+    ...runConfigurationWorkerContextFields,
+    purpose: runConfigurationPathPurposeSchema,
+    query: runConfigurationPathSearchQuerySchema,
+  })
+  .strict();
+
 export const runConfigurationWriteWorkerCommandSchema = z
   .object({
     type: z.literal("project.run-configuration-definitions.write"),
@@ -80,6 +96,7 @@ export const runConfigurationDefinitionWorkerCommandSchemas = [
   runConfigurationGetWorkerCommandSchema,
   runConfigurationCapabilitiesWorkerCommandSchema,
   runConfigurationDetectWorkerCommandSchema,
+  runConfigurationPathsWorkerCommandSchema,
   runConfigurationWriteWorkerCommandSchema,
   runConfigurationDeleteWorkerCommandSchema,
 ] as const;
@@ -136,6 +153,17 @@ export const runConfigurationDetectResponseSchema = z
   })
   .strict();
 
+export const runConfigurationPathsResponseSchema = z
+  .object({
+    operation: z.literal("paths"),
+    ...runConfigurationOperationContextFields,
+    purpose: runConfigurationPathPurposeSchema,
+    query: runConfigurationPathSearchQuerySchema,
+    suggestions: z.array(runConfigurationPathSuggestionSchema).max(100),
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export const runConfigurationWriteResponseSchema = z
   .object({
     operation: z.literal("write"),
@@ -159,6 +187,7 @@ export const runConfigurationOperationResponseSchema = z.discriminatedUnion(
     runConfigurationGetResponseSchema,
     runConfigurationCapabilitiesResponseSchema,
     runConfigurationDetectResponseSchema,
+    runConfigurationPathsResponseSchema,
     runConfigurationWriteResponseSchema,
     runConfigurationDeleteResponseSchema,
   ],
@@ -181,6 +210,14 @@ export const runConfigurationDetectQuerySchema = z
   .object({
     operationId: runConfigurationOperationIdSchema,
     provider: runConfigurationProviderKindSchema.optional(),
+  })
+  .strict();
+
+export const runConfigurationPathsQuerySchema = z
+  .object({
+    operationId: runConfigurationOperationIdSchema,
+    purpose: runConfigurationPathPurposeSchema,
+    query: runConfigurationPathSearchQuerySchema.default(""),
   })
   .strict();
 

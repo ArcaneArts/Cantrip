@@ -26,6 +26,7 @@ vi.mock("./run-configuration-secret-encryption", () => ({
 import {
   detectRunConfigurations,
   deleteRunConfiguration,
+  discoverRunConfigurationPaths,
   getRunConfiguration,
   getRunConfigurationCapabilities,
   listRunConfigurationRuntimes,
@@ -76,7 +77,7 @@ function jsonResponse(value: unknown, status = 200): Response {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Run configuration app API", () => {
-  it("lists definitions and capabilities through correlated project routes", async () => {
+  it("lists definitions, capabilities, detection, and paths through correlated project routes", async () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(
@@ -136,6 +137,17 @@ describe("Run configuration app API", () => {
           ],
           diagnostics: [],
         }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          operation: "paths",
+          operationId,
+          projectId,
+          purpose: "environment-file",
+          query: "local",
+          suggestions: [{ kind: "file", path: ".env.local" }],
+          truncated: false,
+        }),
       );
     vi.stubGlobal("fetch", fetch);
 
@@ -150,12 +162,28 @@ describe("Run configuration app API", () => {
     ).resolves.toMatchObject({
       candidates: [{ provider: "node", confidence: "high" }],
     });
+    await expect(
+      discoverRunConfigurationPaths(
+        projectId,
+        "environment-file",
+        "local",
+        operationId,
+      ),
+    ).resolves.toEqual({
+      suggestions: [{ kind: "file", path: ".env.local" }],
+      truncated: false,
+    });
     expect(fetch.mock.calls[0]![0]).toContain(
       `/api/projects/${projectId}/run-configurations?operationId=${operationId}`,
     );
     expect(fetch.mock.calls[1]![0]).toContain("/capabilities?operationId=");
     expect(fetch.mock.calls[2]![0]).toContain(
       "/detect?operationId=" + operationId + "&provider=node",
+    );
+    expect(fetch.mock.calls[3]![0]).toContain(
+      "/paths?operationId=" +
+        operationId +
+        "&purpose=environment-file&query=local",
     );
   });
 

@@ -218,6 +218,25 @@ describe("RunConfigurationDefinitionService", () => {
       diagnostics: [],
     });
 
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.paths",
+        operationId: randomUUID(),
+        ...context,
+        purpose: "directory",
+        query: "rust",
+      }),
+    ).resolves.toMatchObject({
+      operation: "paths",
+      projectId: context.projectId,
+      purpose: "directory",
+      query: "rust",
+      suggestions: expect.arrayContaining([
+        { kind: "directory", path: "rust" },
+      ]),
+      truncated: false,
+    });
+
     const created = await service.execute({
       type: "project.run-configuration-definitions.write",
       operationId: randomUUID(),

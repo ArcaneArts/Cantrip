@@ -6,6 +6,7 @@ import {
   type RunConfigurationFlutterDocument,
   type RunConfigurationJavaDocument,
   type RunConfigurationNodeDocument,
+  type RunConfigurationPathPurpose,
   type RunConfigurationProviderCapability,
   type RunConfigurationProviderKind,
   type RunConfigurationRepositoryEntry,
@@ -49,6 +50,7 @@ import {
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { RunConfigurationPathPicker } from "@/components/run/run-configuration-path-picker";
 import { RunConfigurationTargetPicker } from "@/components/run/run-configuration-target-picker";
 import {
   detectRunConfigurations,
@@ -111,10 +113,16 @@ function documentSecretReferences(
 
 function StringListEditor({
   addLabel,
+  pathPicker,
   values,
   onChange,
 }: {
   addLabel: string;
+  pathPicker?: {
+    ariaLabel: string;
+    projectId: string;
+    purpose: RunConfigurationPathPurpose;
+  };
   values: string[];
   onChange(values: string[]): void;
 }) {
@@ -123,6 +131,7 @@ function StringListEditor({
       {values.map((value, index) => (
         <div className="flex gap-2" key={index}>
           <Input
+            className="min-w-0 flex-1"
             aria-label={`${addLabel} ${index + 1}`}
             value={value}
             onChange={(event) =>
@@ -133,6 +142,21 @@ function StringListEditor({
               )
             }
           />
+          {pathPicker ? (
+            <RunConfigurationPathPicker
+              ariaLabel={`${pathPicker.ariaLabel} ${index + 1}`}
+              currentPath={value}
+              onChoose={(path) =>
+                onChange(
+                  values.map((item, itemIndex) =>
+                    itemIndex === index ? path : item,
+                  ),
+                )
+              }
+              projectId={pathPicker.projectId}
+              purpose={pathPicker.purpose}
+            />
+          ) : null}
           <Button
             aria-label={`Remove ${addLabel.toLocaleLowerCase()} ${index + 1}`}
             onClick={() =>
@@ -576,9 +600,11 @@ function RunConfigurationCreationChooser({
 
 function JavaTargetEditor({
   document,
+  projectId,
   onChange,
 }: {
   document: RunConfigurationJavaDocument;
+  projectId: string;
   onChange(document: RunConfigurationJavaDocument): void;
 }) {
   const target = document.target;
@@ -586,24 +612,41 @@ function JavaTargetEditor({
     target.kind === "gradleTask" || target.kind === "gradleMainClass";
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <label className={fieldClassName}>
+      <div className={fieldClassName}>
         <span className={labelClassName}>
           {gradle ? "Gradle project" : "Maven module (optional)"}
         </span>
-        <Input
-          className="font-mono"
-          placeholder={gradle ? ":app" : ":api or services/api"}
-          value={gradle ? target.projectPath : (target.module ?? "")}
-          onChange={(event) =>
-            onChange({
-              ...document,
-              target: gradle
-                ? { ...target, projectPath: event.target.value }
-                : { ...target, module: event.target.value || null },
-            } as RunConfigurationJavaDocument)
-          }
-        />
-      </label>
+        <div className="flex gap-2">
+          <Input
+            aria-label={gradle ? "Gradle project" : "Maven module"}
+            className="min-w-0 flex-1 font-mono"
+            placeholder={gradle ? ":app" : ":api or services/api"}
+            value={gradle ? target.projectPath : (target.module ?? "")}
+            onChange={(event) =>
+              onChange({
+                ...document,
+                target: gradle
+                  ? { ...target, projectPath: event.target.value }
+                  : { ...target, module: event.target.value || null },
+              } as RunConfigurationJavaDocument)
+            }
+          />
+          {!gradle ? (
+            <RunConfigurationPathPicker
+              ariaLabel="Browse Maven module directories"
+              currentPath={target.module ?? "."}
+              onChoose={(path) =>
+                onChange({
+                  ...document,
+                  target: { ...target, module: path === "." ? null : path },
+                })
+              }
+              projectId={projectId}
+              purpose="directory"
+            />
+          ) : null}
+        </div>
+      </div>
       <label className={fieldClassName}>
         <span className={labelClassName}>
           {target.kind === "gradleTask"
@@ -647,51 +690,85 @@ function JavaTargetEditor({
 
 function DartTargetEditor({
   document,
+  projectId,
   onChange,
 }: {
   document: RunConfigurationDartDocument;
+  projectId: string;
   onChange(document: RunConfigurationDartDocument): void;
 }) {
   return (
-    <label className={fieldClassName}>
+    <div className={fieldClassName}>
       <span className={labelClassName}>Dart entrypoint</span>
-      <Input
-        className="font-mono"
-        placeholder="bin/server.dart"
-        value={document.target.path}
-        onChange={(event) =>
-          onChange({
-            ...document,
-            target: { kind: "entrypoint", path: event.target.value },
-          })
-        }
-      />
-    </label>
+      <div className="flex gap-2">
+        <Input
+          aria-label="Dart entrypoint"
+          className="min-w-0 flex-1 font-mono"
+          placeholder="bin/server.dart"
+          value={document.target.path}
+          onChange={(event) =>
+            onChange({
+              ...document,
+              target: { kind: "entrypoint", path: event.target.value },
+            })
+          }
+        />
+        <RunConfigurationPathPicker
+          ariaLabel="Browse Dart entrypoints"
+          currentPath={document.target.path}
+          onChoose={(path) =>
+            onChange({
+              ...document,
+              target: { kind: "entrypoint", path },
+            })
+          }
+          projectId={projectId}
+          purpose="file"
+        />
+      </div>
+    </div>
   );
 }
 
 function FlutterTargetEditor({
   document,
+  projectId,
   onChange,
 }: {
   document: RunConfigurationFlutterDocument;
+  projectId: string;
   onChange(document: RunConfigurationFlutterDocument): void;
 }) {
   return (
-    <label className={fieldClassName}>
+    <div className={fieldClassName}>
       <span className={labelClassName}>Flutter entrypoint</span>
-      <Input
-        className="font-mono"
-        placeholder="lib/main.dart"
-        value={document.target.path}
-        onChange={(event) =>
-          onChange({
-            ...document,
-            target: { kind: "entrypoint", path: event.target.value },
-          })
-        }
-      />
-    </label>
+      <div className="flex gap-2">
+        <Input
+          aria-label="Flutter entrypoint"
+          className="min-w-0 flex-1 font-mono"
+          placeholder="lib/main.dart"
+          value={document.target.path}
+          onChange={(event) =>
+            onChange({
+              ...document,
+              target: { kind: "entrypoint", path: event.target.value },
+            })
+          }
+        />
+        <RunConfigurationPathPicker
+          ariaLabel="Browse Flutter entrypoints"
+          currentPath={document.target.path}
+          onChoose={(path) =>
+            onChange({
+              ...document,
+              target: { kind: "entrypoint", path },
+            })
+          }
+          projectId={projectId}
+          purpose="file"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -1026,16 +1103,29 @@ export function RunConfigurationEditor({
                   <option value="rust">Rust / Cargo</option>
                 </NativeSelect>
               </label>
-              <label className={fieldClassName}>
+              <div className={fieldClassName}>
                 <span className={labelClassName}>Start directory</span>
-                <Input
-                  placeholder="."
-                  value={document.workingDirectory}
-                  onChange={(event) =>
-                    patchDocument({ workingDirectory: event.target.value })
-                  }
-                />
-              </label>
+                <div className="flex gap-2">
+                  <Input
+                    aria-label="Start directory"
+                    className="min-w-0 flex-1 font-mono"
+                    placeholder="."
+                    value={document.workingDirectory}
+                    onChange={(event) =>
+                      patchDocument({ workingDirectory: event.target.value })
+                    }
+                  />
+                  <RunConfigurationPathPicker
+                    ariaLabel="Browse start directories"
+                    currentPath={document.workingDirectory}
+                    onChoose={(workingDirectory) =>
+                      patchDocument({ workingDirectory })
+                    }
+                    projectId={projectId}
+                    purpose="directory"
+                  />
+                </div>
+              </div>
               <label className={fieldClassName}>
                 <span className={labelClassName}>Target type</span>
                 <NativeSelect
@@ -1177,28 +1267,48 @@ export function RunConfigurationEditor({
                 </label>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className={fieldClassName}>
+                  <div className={fieldClassName}>
                     <span className={labelClassName}>Script path</span>
-                    <Input
-                      className="font-mono"
-                      placeholder="tool/run.sh"
-                      value={document.target.path}
-                      onChange={(event) =>
-                        setDocument((current) =>
-                          current.provider === "shell" &&
-                          current.target.kind === "script"
-                            ? {
-                                ...current,
-                                target: {
-                                  ...current.target,
-                                  path: event.target.value,
-                                },
-                              }
-                            : current,
-                        )
-                      }
-                    />
-                  </label>
+                    <div className="flex gap-2">
+                      <Input
+                        aria-label="Script path"
+                        className="min-w-0 flex-1 font-mono"
+                        placeholder="tool/run.sh"
+                        value={document.target.path}
+                        onChange={(event) =>
+                          setDocument((current) =>
+                            current.provider === "shell" &&
+                            current.target.kind === "script"
+                              ? {
+                                  ...current,
+                                  target: {
+                                    ...current.target,
+                                    path: event.target.value,
+                                  },
+                                }
+                              : current,
+                          )
+                        }
+                      />
+                      <RunConfigurationPathPicker
+                        ariaLabel="Browse shell scripts"
+                        currentPath={document.target.path}
+                        onChoose={(path) =>
+                          setDocument((current) =>
+                            current.provider === "shell" &&
+                            current.target.kind === "script"
+                              ? {
+                                  ...current,
+                                  target: { ...current.target, path },
+                                }
+                              : current,
+                          )
+                        }
+                        projectId={projectId}
+                        purpose="shell-script"
+                      />
+                    </div>
+                  </div>
                   <label className={fieldClassName}>
                     <span className={labelClassName}>
                       Interpreter (optional)
@@ -1250,35 +1360,67 @@ export function RunConfigurationEditor({
                   />
                 </label>
               ) : (
-                <label className={fieldClassName}>
+                <div className={fieldClassName}>
                   <span className={labelClassName}>Entrypoint path</span>
-                  <Input
-                    className="font-mono"
-                    placeholder="src/index.js"
-                    value={document.target.path}
-                    onChange={(event) =>
-                      setDocument((current) =>
-                        current.provider === "node" &&
-                        current.target.kind === "entry"
-                          ? {
-                              ...current,
-                              target: {
-                                kind: "entry",
-                                path: event.target.value,
-                              },
-                            }
-                          : current,
-                      )
-                    }
-                  />
-                </label>
+                  <div className="flex gap-2">
+                    <Input
+                      aria-label="Node entrypoint path"
+                      className="min-w-0 flex-1 font-mono"
+                      placeholder="src/index.js"
+                      value={document.target.path}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "node" &&
+                          current.target.kind === "entry"
+                            ? {
+                                ...current,
+                                target: {
+                                  kind: "entry",
+                                  path: event.target.value,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                    <RunConfigurationPathPicker
+                      ariaLabel="Browse Node entrypoints"
+                      currentPath={document.target.path}
+                      onChoose={(path) =>
+                        setDocument((current) =>
+                          current.provider === "node" &&
+                          current.target.kind === "entry"
+                            ? {
+                                ...current,
+                                target: { kind: "entry", path },
+                              }
+                            : current,
+                        )
+                      }
+                      projectId={projectId}
+                      purpose="file"
+                    />
+                  </div>
+                </div>
               )
             ) : document.provider === "java" ? (
-              <JavaTargetEditor document={document} onChange={setDocument} />
+              <JavaTargetEditor
+                document={document}
+                projectId={projectId}
+                onChange={setDocument}
+              />
             ) : document.provider === "dart" ? (
-              <DartTargetEditor document={document} onChange={setDocument} />
+              <DartTargetEditor
+                document={document}
+                projectId={projectId}
+                onChange={setDocument}
+              />
             ) : document.provider === "flutter" ? (
-              <FlutterTargetEditor document={document} onChange={setDocument} />
+              <FlutterTargetEditor
+                document={document}
+                projectId={projectId}
+                onChange={setDocument}
+              />
             ) : (
               <RustTargetEditor document={document} onChange={setDocument} />
             )}
@@ -1350,6 +1492,11 @@ export function RunConfigurationEditor({
               <span className={labelClassName}>Environment files</span>
               <StringListEditor
                 addLabel="Add environment file"
+                pathPicker={{
+                  ariaLabel: "Browse environment file",
+                  projectId,
+                  purpose: "environment-file",
+                }}
                 values={document.environment.files}
                 onChange={(files) =>
                   patchDocument({
@@ -1485,23 +1632,43 @@ export function RunConfigurationEditor({
                   }
                 />
                 {step.kind === "command" ? (
-                  <Input
-                    value={step.workingDirectory}
-                    placeholder="Working directory"
-                    onChange={(event) =>
-                      patchDocument({
-                        beforeLaunch: document.beforeLaunch.map(
-                          (item, itemIndex) =>
-                            itemIndex === index && item.kind === "command"
-                              ? {
-                                  ...item,
-                                  workingDirectory: event.target.value,
-                                }
-                              : item,
-                        ),
-                      })
-                    }
-                  />
+                  <div className="flex min-w-0 gap-2">
+                    <Input
+                      aria-label={`Before-launch working directory ${index + 1}`}
+                      className="min-w-0 flex-1 font-mono"
+                      value={step.workingDirectory}
+                      placeholder="Working directory"
+                      onChange={(event) =>
+                        patchDocument({
+                          beforeLaunch: document.beforeLaunch.map(
+                            (item, itemIndex) =>
+                              itemIndex === index && item.kind === "command"
+                                ? {
+                                    ...item,
+                                    workingDirectory: event.target.value,
+                                  }
+                                : item,
+                          ),
+                        })
+                      }
+                    />
+                    <RunConfigurationPathPicker
+                      ariaLabel={`Browse before-launch working directory ${index + 1}`}
+                      currentPath={step.workingDirectory}
+                      onChoose={(workingDirectory) =>
+                        patchDocument({
+                          beforeLaunch: document.beforeLaunch.map(
+                            (item, itemIndex) =>
+                              itemIndex === index && item.kind === "command"
+                                ? { ...item, workingDirectory }
+                                : item,
+                          ),
+                        })
+                      }
+                      projectId={projectId}
+                      purpose="directory"
+                    />
+                  </div>
                 ) : (
                   <span
                     className={cn(
@@ -2122,6 +2289,11 @@ export function RunConfigurationEditor({
                   <span className={labelClassName}>Dart define files</span>
                   <StringListEditor
                     addLabel="Add define file"
+                    pathPicker={{
+                      ariaLabel: "Browse Dart define file",
+                      projectId,
+                      purpose: "file",
+                    }}
                     values={document.options.dartDefineFiles}
                     onChange={(dartDefineFiles) =>
                       setDocument((current) =>

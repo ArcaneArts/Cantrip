@@ -14,6 +14,9 @@ import {
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationListWorkerCommandSchema,
+  runConfigurationPathsQuerySchema,
+  runConfigurationPathsResponseSchema,
+  runConfigurationPathsWorkerCommandSchema,
   runConfigurationWriteWorkerCommandSchema,
 } from "./run-configuration-operations.js";
 
@@ -59,6 +62,14 @@ describe("run configuration operation protocol", () => {
       }).providerKind,
     ).toBe("node");
     expect(
+      runConfigurationPathsWorkerCommandSchema.parse({
+        type: "project.run-configuration-definitions.paths",
+        ...context,
+        purpose: "shell-script",
+        query: "scripts/dev",
+      }).purpose,
+    ).toBe("shell-script");
+    expect(
       runConfigurationWriteWorkerCommandSchema.parse({
         type: "project.run-configuration-definitions.write",
         ...context,
@@ -85,6 +96,14 @@ describe("run configuration operation protocol", () => {
         providerKind: null,
       }).type,
     ).toBe("project.run-configuration-definitions.detect");
+    expect(
+      workerCommandSchema.parse({
+        type: "project.run-configuration-definitions.paths",
+        ...context,
+        purpose: "directory",
+        query: "packages",
+      }).type,
+    ).toBe("project.run-configuration-definitions.paths");
   });
 
   it("correlates bounded responses and watcher notifications", () => {
@@ -202,5 +221,40 @@ describe("run configuration operation protocol", () => {
       provider: "node",
       document: { environment: { includeCodexEnvironment: true } },
     });
+  });
+
+  it("correlates strict bounded path discovery", () => {
+    expect(
+      runConfigurationPathsQuerySchema.parse({
+        operationId,
+        purpose: "environment-file",
+      }),
+    ).toMatchObject({ query: "" });
+    const paths = runConfigurationPathsResponseSchema.parse({
+      operation: "paths",
+      operationId,
+      projectId,
+      purpose: "directory",
+      query: "src",
+      suggestions: [
+        { kind: "directory", path: "src" },
+        { kind: "directory", path: "packages/api/src" },
+      ],
+      truncated: false,
+    });
+    expect(paths.suggestions).toHaveLength(2);
+    expect(
+      runConfigurationPathsResponseSchema.safeParse({
+        ...paths,
+        suggestions: [{ kind: "file", path: "." }],
+      }).success,
+    ).toBe(false);
+    expect(
+      runConfigurationPathsQuerySchema.safeParse({
+        operationId,
+        purpose: "file",
+        query: "bad\0query",
+      }).success,
+    ).toBe(false);
   });
 });

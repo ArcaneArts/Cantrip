@@ -1249,6 +1249,31 @@ export const runConfigurationDetectionCandidateSchema = z
     }
   });
 
+export const runConfigurationPathPurposeSchema = z.enum([
+  "directory",
+  "shell-script",
+  "environment-file",
+  "file",
+]);
+
+export const runConfigurationPathSuggestionSchema = z.discriminatedUnion(
+  "kind",
+  [
+    z
+      .object({
+        kind: z.literal("directory"),
+        path: runConfigurationWorkingDirectorySchema,
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("file"),
+        path: runConfigurationRepositoryPathSchema,
+      })
+      .strict(),
+  ],
+);
+
 export type RunConfigurationId = z.infer<typeof runConfigurationIdSchema>;
 export type RunConfigurationRevision = z.infer<
   typeof runConfigurationRevisionSchema
@@ -1319,4 +1344,10 @@ export type RunConfigurationProviderCapability = z.infer<
 >;
 export type RunConfigurationDetectionCandidate = z.infer<
   typeof runConfigurationDetectionCandidateSchema
+>;
+export type RunConfigurationPathPurpose = z.infer<
+  typeof runConfigurationPathPurposeSchema
+>;
+export type RunConfigurationPathSuggestion = z.infer<
+  typeof runConfigurationPathSuggestionSchema
 >;
