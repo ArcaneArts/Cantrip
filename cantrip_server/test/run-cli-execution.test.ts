@@ -553,6 +553,21 @@ describe("Run protected server boundary", () => {
       state: "running",
       generation: 1,
     });
+    const commandsBeforeRejectedInput = routedCommands.length;
+    const rejectedInput = await mcp("terminal.send", {
+      target: {
+        kind: "surface",
+        projectId,
+        surfaceKind: "terminal",
+        surfaceId: startedRuntime.terminalId,
+      },
+    });
+    expect(rejectedInput.statusCode, rejectedInput.body).toBe(409);
+    expect(rejectedInput.json()).toMatchObject({
+      code: "conflict",
+      error: expect.stringMatching(/read-only/u),
+    });
+    expect(routedCommands).toHaveLength(commandsBeforeRejectedInput);
     const replayedStart = await mcp("run-configuration.start", startArguments);
     expect(replayedStart.statusCode, replayedStart.body).toBe(200);
     expect(

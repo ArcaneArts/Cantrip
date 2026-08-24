@@ -899,6 +899,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         observation,
       }),
   });
+  terminalDirectEndpoints.setInputPolicy(
+    (terminalId) => !runConfigurationRuntimes.ownsTerminal(terminalId),
+  );
   const providerAuthObserver = new ProviderAuthObserver({
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
   });
@@ -3489,6 +3492,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return result;
       }
       case "terminal.input": {
+        if (runConfigurationRuntimes.ownsTerminal(command.terminalId)) {
+          throw new Error("Run configuration terminals are read-only.");
+        }
         const streamContext = {
           serverId: command.serverId,
           surfaceKind: "terminal" as const,
