@@ -5,6 +5,7 @@ import {
   gitConflictListSchema,
   gitManagedOperationResponseSchema,
   gitStatusSchema,
+  inferenceProgressSnapshotSchema,
 } from "@cantrip/protocol";
 import type {
   AppLiveResyncReason,
@@ -15,6 +16,7 @@ import type {
   GitConflictList,
   GitManagedOperationResponse,
   GitStatus,
+  InferenceProgressSnapshot,
 } from "@cantrip/protocol";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { chatMessageOpaqueSummarySchema } from "@cantrip/protocol/communication-content";
@@ -257,6 +259,8 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : event.scope.kind === "chat"
           ? [["plan", event.scope.chatId], ["project-task-workload"]]
           : [];
+    case "inference-progress":
+      return [];
     case "agent-interaction":
       return projectId
         ? [["project-task-workload", projectId]]
@@ -470,6 +474,7 @@ export class AppLiveQueryBridge {
   readonly #codeGraphRevisions = new Map<string, number>();
   readonly #gitConflictRevisions = new Map<string, number>();
   readonly #gitOperationRevisions = new Map<string, number>();
+  readonly #inferenceProgressCursors = new Map<string, number>();
   readonly #messageCursors = new Map<string, number>();
   readonly #providerAuthRevisions = new Map<string, number>();
   readonly #pendingKeys = new Map<string, QueryKey>();
@@ -493,6 +498,7 @@ export class AppLiveQueryBridge {
     const worktreeStatus = this.#applyWorktreeStatusEvent(event);
     const directlyApplied =
       this.#applyChatMessageEvent(event) ||
+      this.#applyInferenceProgressEvent(event) ||
       this.#applyCodeGraphStatusEvent(event) ||
       this.#applyProviderAuthEvent(event) ||
       this.#applyGitOperationEvent(event) ||
@@ -659,6 +665,39 @@ export class AppLiveQueryBridge {
       (current) => upsertChatMessageLiveOverlay(current, parsed.data),
     );
     this.#messageCursors.set(entityKey, event.cursor);
+    return true;
+  }
+
+  #applyInferenceProgressEvent(event: AppLiveEvent): boolean {
+    if (
+      event.resource !== "inference-progress" ||
+      event.scope.kind !== "chat" ||
+      !event.entityId
+    ) {
+      return false;
+    }
+    const chatId = event.scope.chatId;
+    const latestCursor = this.#inferenceProgressCursors.get(chatId);
+    if (latestCursor !== undefined && event.cursor <= latestCursor) return true;
+    const queryKey = ["inference-progress", chatId] as const;
+    if (event.action === "deleted") {
+      this.#queryClient.setQueryData<InferenceProgressSnapshot | null>(
+        queryKey,
+        (current) =>
+          current?.requestId === event.entityId ? null : (current ?? null),
+      );
+      this.#inferenceProgressCursors.set(chatId, event.cursor);
+      return true;
+    }
+    const parsed = inferenceProgressSnapshotSchema.safeParse(event.payload);
+    if (!parsed.success || parsed.data.requestId !== event.entityId) {
+      return false;
+    }
+    this.#queryClient.setQueryData<InferenceProgressSnapshot>(
+      queryKey,
+      parsed.data,
+    );
+    this.#inferenceProgressCursors.set(chatId, event.cursor);
     return true;
   }
 
@@ -906,6 +945,11 @@ export class AppLiveQueryBridge {
       this.#queryClient.removeQueries({
         queryKey: ["message-history", scope.chatId],
       });
+      this.#queryClient.setQueryData(
+        ["inference-progress", scope.chatId],
+        null,
+      );
+      this.#inferenceProgressCursors.delete(scope.chatId);
       const prefix = `${scope.chatId}:`;
       for (const key of this.#messageCursors.keys()) {
         if (key.startsWith(prefix)) this.#messageCursors.delete(key);
