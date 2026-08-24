@@ -749,6 +749,7 @@ export async function getWorkerServiceLogs(
   workerId: string,
   options: {
     afterCursor?: number;
+    beforeCursor?: number;
     limit?: number;
     minimumLevel?: ServiceLogLevel;
   } = {},

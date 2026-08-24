@@ -42,6 +42,28 @@ describe("local service log bridge", () => {
     });
   });
 
+  it("passes a newest-first cursor without accepting a filesystem path", async () => {
+    tauri.invoke.mockResolvedValue({
+      records: [],
+      nextCursor: 400,
+      oldestCursor: 1,
+      latestCursor: 400,
+      hasMore: true,
+      truncated: false,
+    });
+    await readLocalServiceLogs(
+      { source: "client" },
+      { beforeCursor: Number.MAX_SAFE_INTEGER, limit: 100 },
+    );
+    expect(tauri.invoke).toHaveBeenCalledWith("read_local_service_logs", {
+      request: {
+        source: "client",
+        beforeCursor: Number.MAX_SAFE_INTEGER,
+        limit: 100,
+      },
+    });
+  });
+
   it("cannot read local files from a browser build", async () => {
     tauri.isTauri.mockReturnValue(false);
     await expect(readLocalServiceLogs({ source: "server" })).rejects.toThrow(

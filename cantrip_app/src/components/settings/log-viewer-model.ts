@@ -36,6 +36,50 @@ export function scheduleLogViewportScroll(
   schedule((current) => ({ ...current, scrollTop }));
 }
 
+export function shouldLoadOlderLogs(input: {
+  hasOlder: boolean;
+  loadingOlder: boolean;
+  scrollTop: number;
+  threshold: number;
+}): boolean {
+  return (
+    input.hasOlder && !input.loadingOlder && input.scrollTop <= input.threshold
+  );
+}
+
+export function restoredLogScrollTop(input: {
+  nextScrollHeight: number;
+  previousScrollHeight: number;
+  previousScrollTop: number;
+}): number {
+  return Math.max(
+    0,
+    input.previousScrollTop +
+      Math.max(0, input.nextScrollHeight - input.previousScrollHeight),
+  );
+}
+
+export function shouldStopFollowingLogs(input: {
+  clientHeight: number;
+  followTail: boolean;
+  scrollHeight: number;
+  scrollTop: number;
+  threshold: number;
+}): boolean {
+  return (
+    input.followTail &&
+    input.scrollHeight - input.clientHeight - input.scrollTop > input.threshold
+  );
+}
+
+export function shouldJumpToNewestLogs(input: {
+  direction: "backward" | "forward";
+  hasMore: boolean;
+  truncated: boolean;
+}): boolean {
+  return input.direction === "forward" && (input.hasMore || input.truncated);
+}
+
 const levelWeight: Record<ServiceLogLevel, number> = {
   trace: 10,
   debug: 20,

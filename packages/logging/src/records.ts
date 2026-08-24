@@ -29,6 +29,7 @@ export type ServiceLogRecord = ServiceLogRecordInput & {
 
 export type ServiceLogReadOptions = {
   afterCursor?: number;
+  beforeCursor?: number;
   limit?: number;
   minimumLevel?: ServiceLogLevel;
 };
@@ -447,9 +448,36 @@ export class ServiceLogBuffer {
 
   read(options: ServiceLogReadOptions = {}): ServiceLogReadResult {
     const afterCursor = Math.max(0, Math.floor(options.afterCursor ?? 0));
+    const beforeCursor =
+      options.beforeCursor === undefined
+        ? null
+        : Math.max(1, Math.floor(options.beforeCursor));
     const limit = Math.min(500, positiveInteger(options.limit, 200));
     const minimumWeight = LEVEL_WEIGHT[options.minimumLevel ?? "trace"];
     const oldestCursor = this.#entries[0]?.record.cursor ?? null;
+    if (beforeCursor !== null) {
+      const records: ServiceLogRecord[] = [];
+      let hasMore = false;
+      for (let index = this.#entries.length - 1; index >= 0; index -= 1) {
+        const record = this.#entries[index]!.record;
+        if (record.cursor >= beforeCursor) continue;
+        if (LEVEL_WEIGHT[record.level] < minimumWeight) continue;
+        if (records.length >= limit) {
+          hasMore = true;
+          break;
+        }
+        records.push(record);
+      }
+      records.reverse();
+      return {
+        records,
+        nextCursor: this.#cursor,
+        oldestCursor,
+        latestCursor: this.#cursor,
+        hasMore,
+        truncated: !hasMore && oldestCursor !== null && oldestCursor > 1,
+      };
+    }
     const truncated =
       oldestCursor !== null &&
       afterCursor > 0 &&

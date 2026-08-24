@@ -151,6 +151,59 @@ describe("structured service logs", () => {
     });
   });
 
+  it("reads the newest page first and pages backward without reversing rows", () => {
+    const buffer = new ServiceLogBuffer();
+    for (let cursor = 1; cursor <= 6; cursor += 1) {
+      buffer.append({ ...baseRecord, message: `record-${cursor}` });
+    }
+
+    expect(
+      buffer.read({ beforeCursor: Number.MAX_SAFE_INTEGER, limit: 2 }),
+    ).toMatchObject({
+      records: [
+        expect.objectContaining({ cursor: 5 }),
+        expect.objectContaining({ cursor: 6 }),
+      ],
+      nextCursor: 6,
+      latestCursor: 6,
+      hasMore: true,
+    });
+    expect(buffer.read({ beforeCursor: 5, limit: 2 })).toMatchObject({
+      records: [
+        expect.objectContaining({ cursor: 3 }),
+        expect.objectContaining({ cursor: 4 }),
+      ],
+      nextCursor: 6,
+      hasMore: true,
+    });
+    expect(buffer.read({ beforeCursor: 3, limit: 2 })).toMatchObject({
+      records: [
+        expect.objectContaining({ cursor: 1 }),
+        expect.objectContaining({ cursor: 2 }),
+      ],
+      hasMore: false,
+    });
+  });
+
+  it("reports rotation after backward paging reaches the retained boundary", () => {
+    const buffer = new ServiceLogBuffer({ maxEntries: 2, maxBytes: 10_000 });
+    buffer.append({ ...baseRecord, message: "one" });
+    buffer.append({ ...baseRecord, message: "two" });
+    buffer.append({ ...baseRecord, message: "three" });
+
+    expect(
+      buffer.read({ beforeCursor: Number.MAX_SAFE_INTEGER, limit: 2 }),
+    ).toMatchObject({
+      records: [
+        expect.objectContaining({ cursor: 2 }),
+        expect.objectContaining({ cursor: 3 }),
+      ],
+      hasMore: false,
+      oldestCursor: 2,
+      truncated: true,
+    });
+  });
+
   it("persists only event-coded operational metadata", () => {
     const buffer = new ServiceLogBuffer({
       maxBytes: 1_000,

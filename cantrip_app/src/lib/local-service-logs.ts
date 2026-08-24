@@ -26,6 +26,7 @@ export async function readLocalServiceLogs(
   source: LocalServiceLogSource,
   options: {
     afterCursor?: number;
+    beforeCursor?: number;
     limit?: number;
     minimumLevel?: ServiceLogLevel;
   } = {},
