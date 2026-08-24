@@ -24,6 +24,7 @@ import {
   type VisualFileFormat,
 } from "@/components/explorer/explorer-file-language";
 import { DesktopExplorerWindowHeader } from "@/components/explorer/desktop-explorer-window-shell";
+import { ExplorerImageViewport } from "@/components/explorer/explorer-image-viewport";
 import { Button } from "@/components/ui/button";
 import { clientLogger } from "@/lib/client-log-relay";
 import {
@@ -155,15 +156,7 @@ function MediaView({
   const source = useMemo(() => URL.createObjectURL(blob), [blob]);
   useEffect(() => () => URL.revokeObjectURL(source), [source]);
   if (kind === "image") {
-    return (
-      <div className="grid h-full place-items-center overflow-auto p-4">
-        <img
-          alt={fileName(path)}
-          className="max-h-full max-w-full object-contain"
-          src={source}
-        />
-      </div>
-    );
+    return <ExplorerImageViewport alt={fileName(path)} source={source} />;
   }
   if (kind === "audio") {
     return (
