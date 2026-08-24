@@ -29,6 +29,7 @@ import { Markdown } from "@/components/chat/markdown";
 import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser";
 import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file-routing";
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
+import { ExplorerImageViewport } from "@/components/explorer/explorer-image-viewport";
 import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
 import { RetainedExplorerCodeEditor } from "@/components/explorer/retained-explorer-code-editor";
 import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
@@ -198,14 +199,11 @@ function ExplorerMediaView({
   }
   if (kind === "image") {
     return (
-      <div className="grid h-full place-items-center overflow-auto p-4">
-        <img
-          alt={path.split("/").at(-1) ?? path}
-          className="max-h-full max-w-full object-contain"
-          onError={() => setFailed(true)}
-          src={source}
-        />
-      </div>
+      <ExplorerImageViewport
+        alt={path.split("/").at(-1) ?? path}
+        onError={() => setFailed(true)}
+        source={source}
+      />
     );
   }
   if (kind === "audio") {
