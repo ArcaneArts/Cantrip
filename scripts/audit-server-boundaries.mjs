@@ -173,6 +173,12 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   projectReplicaJobs: "minimized-operational-metadata",
   gitOperations: "endpoint-protected",
   runInstances: "minimized-operational-metadata",
+  // New Run configuration persistence is deliberately limited to stable
+  // identities, revisions, generations, lifecycle state, timestamps, and a
+  // bounded redacted failure shape. Commands, environment values, secrets,
+  // output, scrollback, and materialized environment deltas stay worker-local.
+  runConfigurationRuntimes: "minimized-operational-metadata",
+  runConfigurationRuntimeOperations: "minimized-operational-metadata",
   chats: "endpoint-protected",
   tasks: "endpoint-protected",
   taskPlanningRounds: "endpoint-protected",
