@@ -178,6 +178,7 @@ const appLiveScopesSchema = z
 export const appLiveResourceSchema = z.enum([
   "server",
   "account-session",
+  "account-resource-usage",
   "settings",
   "provider-auth",
   "policy",

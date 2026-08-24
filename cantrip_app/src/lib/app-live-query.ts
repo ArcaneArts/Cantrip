@@ -56,6 +56,8 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return [["server-bootstrap"]];
     case "account-session":
       return [["account-sessions"]];
+    case "account-resource-usage":
+      return [["account-resource-usage"], ["account-resource-usage-history"]];
     case "settings":
       return [["settings"]];
     case "provider-auth":
@@ -331,6 +333,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
       return [
         ["server-bootstrap"],
         ["account-sessions"],
+        ["account-resource-usage"],
+        ["account-resource-usage-history"],
         ["settings"],
         ["codex-auth"],
         ["policies"],

@@ -1,0 +1,252 @@
+import { z } from "zod";
+
+export const resourceUsageDecimalSchema = z
+  .string()
+  .regex(/^(?:0|[1-9]\d*)$/u, "Expected a nonnegative decimal integer.");
+
+export const accountStorageClassSchema = z.enum(["server", "worker-managed"]);
+
+export const accountStorageCategorySchema = z.enum([
+  "account",
+  "analytics",
+  "configuration",
+  "conversations",
+  "projects",
+  "workflows",
+]);
+
+export const accountResourceUsageAccuracySchema = z.enum([
+  "logical-reconciled",
+  "server-known-estimate",
+  "metered",
+  "stale",
+  "unavailable",
+]);
+
+export const accountResourceUsageStatusSchema = z.enum([
+  "current",
+  "stale",
+  "unavailable",
+]);
+
+export const accountBandwidthDirectionSchema = z.enum(["ingress", "egress"]);
+
+export const accountBandwidthChannelSchema = z.enum([
+  "http",
+  "client-live-websocket",
+  "worker-control-websocket",
+  "worker-log-stream",
+  "terminal-relay",
+  "remote-surface-relay",
+  "tunnel-relay",
+  "attachment-transfer",
+  "code-relay",
+  "project-share-relay",
+  "other",
+]);
+
+const storageCategoryUsageSchema = z
+  .object({
+    category: accountStorageCategorySchema,
+    logicalBytes: resourceUsageDecimalSchema,
+    rowCount: resourceUsageDecimalSchema,
+  })
+  .strict();
+
+const workerStorageUsageSchema = z
+  .object({
+    logicalBytes: resourceUsageDecimalSchema,
+    objectCount: resourceUsageDecimalSchema,
+  })
+  .strict();
+
+const bandwidthBreakdownSchema = z
+  .object({
+    channel: accountBandwidthChannelSchema,
+    direction: accountBandwidthDirectionSchema,
+    bytes: resourceUsageDecimalSchema,
+    operationCount: resourceUsageDecimalSchema,
+  })
+  .strict();
+
+export const accountResourceUsageSchema = z
+  .object({
+    measurement: z
+      .object({
+        basisVersion: z.string().trim().min(1).max(100),
+        measuredAt: z.iso.datetime().nullable(),
+        reconciledAt: z.iso.datetime().nullable(),
+        status: accountResourceUsageStatusSchema,
+      })
+      .strict(),
+    storage: z
+      .object({
+        server: z
+          .object({
+            accuracy: accountResourceUsageAccuracySchema,
+            logicalBytes: resourceUsageDecimalSchema,
+            rowCount: resourceUsageDecimalSchema,
+            categories: z.array(storageCategoryUsageSchema).max(32),
+          })
+          .strict(),
+        workerManaged: z
+          .object({
+            accuracy: accountResourceUsageAccuracySchema,
+            attachmentSources: workerStorageUsageSchema,
+            readyReplicas: workerStorageUsageSchema,
+            logicalBytes: resourceUsageDecimalSchema,
+          })
+          .strict(),
+      })
+      .strict(),
+    bandwidth: z
+      .object({
+        accuracy: accountResourceUsageAccuracySchema,
+        periodStart: z.iso.datetime(),
+        periodEnd: z.iso.datetime(),
+        ingressBytes: resourceUsageDecimalSchema,
+        egressBytes: resourceUsageDecimalSchema,
+        operationCount: resourceUsageDecimalSchema,
+        breakdown: z.array(bandwidthBreakdownSchema).max(64),
+      })
+      .strict(),
+    limits: z
+      .object({
+        storageBytes: resourceUsageDecimalSchema.nullable(),
+        bandwidthBytes: resourceUsageDecimalSchema.nullable(),
+      })
+      .strict()
+      .nullable(),
+    enforcement: z.literal("disabled"),
+  })
+  .strict();
+
+export const accountResourceUsageHistoryMetricSchema = z.enum([
+  "storage",
+  "bandwidth",
+]);
+
+export const accountResourceUsageHistoryResolutionSchema = z.enum([
+  "hour",
+  "day",
+]);
+
+const MAX_HOURLY_HISTORY_MS = 31 * 24 * 60 * 60_000;
+const MAX_DAILY_HISTORY_MS = 2 * 366 * 24 * 60 * 60_000;
+
+export const accountResourceUsageHistoryQuerySchema = z
+  .object({
+    metric: accountResourceUsageHistoryMetricSchema,
+    resolution: accountResourceUsageHistoryResolutionSchema,
+    from: z.iso.datetime(),
+    to: z.iso.datetime(),
+  })
+  .strict()
+  .superRefine((query, context) => {
+    const from = Date.parse(query.from);
+    const to = Date.parse(query.to);
+    if (to <= from) {
+      context.addIssue({
+        code: "custom",
+        message: "History end must be after its start.",
+        path: ["to"],
+      });
+      return;
+    }
+    const maximum =
+      query.resolution === "hour"
+        ? MAX_HOURLY_HISTORY_MS
+        : MAX_DAILY_HISTORY_MS;
+    if (to - from > maximum) {
+      context.addIssue({
+        code: "custom",
+        message:
+          query.resolution === "hour"
+            ? "Hourly history is limited to 31 days."
+            : "Daily history is limited to two years.",
+        path: ["from"],
+      });
+    }
+  });
+
+const accountStorageHistoryPointSchema = z
+  .object({
+    bucketStart: z.iso.datetime(),
+    logicalBytes: resourceUsageDecimalSchema,
+    rowCount: resourceUsageDecimalSchema,
+  })
+  .strict();
+
+const accountBandwidthHistoryPointSchema = z
+  .object({
+    bucketStart: z.iso.datetime(),
+    bytes: resourceUsageDecimalSchema,
+    operationCount: resourceUsageDecimalSchema,
+  })
+  .strict();
+
+export const accountResourceUsageHistorySchema = z.discriminatedUnion(
+  "metric",
+  [
+    z
+      .object({
+        metric: z.literal("storage"),
+        resolution: accountResourceUsageHistoryResolutionSchema,
+        from: z.iso.datetime(),
+        to: z.iso.datetime(),
+        status: accountResourceUsageStatusSchema,
+        series: z
+          .array(
+            z
+              .object({
+                storageClass: accountStorageClassSchema,
+                category: z.string().trim().min(1).max(100),
+                accuracy: accountResourceUsageAccuracySchema,
+                points: z.array(accountStorageHistoryPointSchema).max(744),
+              })
+              .strict(),
+          )
+          .max(32),
+        limits: z.null(),
+        enforcement: z.literal("disabled"),
+      })
+      .strict(),
+    z
+      .object({
+        metric: z.literal("bandwidth"),
+        resolution: accountResourceUsageHistoryResolutionSchema,
+        from: z.iso.datetime(),
+        to: z.iso.datetime(),
+        status: accountResourceUsageStatusSchema,
+        series: z
+          .array(
+            z
+              .object({
+                channel: accountBandwidthChannelSchema,
+                direction: accountBandwidthDirectionSchema,
+                accuracy: accountResourceUsageAccuracySchema,
+                points: z.array(accountBandwidthHistoryPointSchema).max(744),
+              })
+              .strict(),
+          )
+          .max(32),
+        limits: z.null(),
+        enforcement: z.literal("disabled"),
+      })
+      .strict(),
+  ],
+);
+
+export type AccountBandwidthChannel = z.infer<
+  typeof accountBandwidthChannelSchema
+>;
+export type AccountBandwidthDirection = z.infer<
+  typeof accountBandwidthDirectionSchema
+>;
+export type AccountResourceUsage = z.infer<typeof accountResourceUsageSchema>;
+export type AccountResourceUsageHistory = z.infer<
+  typeof accountResourceUsageHistorySchema
+>;
+export type AccountResourceUsageHistoryQuery = z.infer<
+  typeof accountResourceUsageHistoryQuerySchema
+>;

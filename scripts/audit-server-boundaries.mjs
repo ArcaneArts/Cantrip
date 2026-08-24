@@ -115,13 +115,13 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "63c730f1b2ab438de288c86edd01567421bc034a34844edbf865c261a34d84fc",
+    "21dd9aeb49b3197384c1c0345e73b504a198e47f6bc51620d610e3e581c15119",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:
     "c60e6813bbd3b2ed4df9a4b2377d8b1db15dafcf9c16fef4034cb0739fe88ad5",
   liveResources:
-    "794d634c9d77ded0dab79d3b92edae59c63272c203a224ab75cf5fbb472484e6",
+    "e0d8d028aad8247d7111b25b002989e944cc0df1a006a436fc6978da350524f9",
   workerCommands:
     "6716ab3a1581e8658fdf782c99708e8b8b4af886832d7c371ecab5fd59d38ba2",
   tunnelFrameKinds:
@@ -213,6 +213,9 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   projectBranchLeases: "minimized-operational-metadata",
   workflowRunEvents: "endpoint-protected",
   workflowApprovalGates: "endpoint-protected",
+  accountStorageUsageCurrent: "minimized-operational-metadata",
+  accountStorageUsageSnapshots: "minimized-operational-metadata",
+  accountStorageReconciliationLeases: "minimized-operational-metadata",
 };
 
 const prohibitedTaskProtocolSymbols = new Set([
