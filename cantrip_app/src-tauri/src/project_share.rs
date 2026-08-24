@@ -1,12 +1,11 @@
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
 use serde::Deserialize;
-#[cfg(target_os = "macos")]
-use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use tauri::Manager;
 use tauri::{AppHandle, State};
@@ -88,6 +87,18 @@ enum NativeMount {
     Windows { remote: String },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NativeRevealTargetKind {
+    Directory,
+    File,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct NativeRevealTarget {
+    kind: NativeRevealTargetKind,
+    path: PathBuf,
+}
+
 #[derive(Default)]
 pub struct ProjectShareMounts {
     mounts: Arc<Mutex<HashMap<String, MountedProjectShare>>>,
@@ -149,8 +160,8 @@ pub async fn reveal_local_project_folder(
     let Some(project_directory) = project_directory else {
         return Ok(false);
     };
-    let reveal_directory = resolve_reveal_directory(&project_directory, &request.relative_path)?;
-    tauri::async_runtime::spawn_blocking(move || open_local_project_folder(&reveal_directory))
+    let reveal_target = resolve_reveal_target(&project_directory, &request.relative_path)?;
+    tauri::async_runtime::spawn_blocking(move || open_local_project_target(&reveal_target))
         .await
         .map_err(|error| format!("Could not join the local project reveal task: {error}"))??;
     Ok(true)
@@ -310,23 +321,27 @@ fn validate_relative_reveal_path(relative_path: &str) -> Result<Vec<&str>, Strin
     Ok(segments)
 }
 
-fn resolve_reveal_directory(
+fn resolve_reveal_target(
     root: &std::path::Path,
     relative_path: &str,
-) -> Result<std::path::PathBuf, String> {
-    let directory = validate_relative_reveal_path(relative_path)?
+) -> Result<NativeRevealTarget, String> {
+    let path = validate_relative_reveal_path(relative_path)?
         .into_iter()
         .fold(root.to_path_buf(), |path, segment| path.join(segment));
-    let metadata = std::fs::metadata(&directory).map_err(|error| {
+    let metadata = std::fs::metadata(&path).map_err(|error| {
         format!(
-            "The requested project folder is unavailable ({}): {error}",
-            directory.display()
+            "The requested project path is unavailable ({}): {error}",
+            path.display()
         )
     })?;
-    if !metadata.is_dir() {
-        return Err("The requested project path is not a folder.".into());
-    }
-    Ok(directory)
+    let kind = if metadata.is_dir() {
+        NativeRevealTargetKind::Directory
+    } else if metadata.is_file() {
+        NativeRevealTargetKind::File
+    } else {
+        return Err("The requested project path is not a file or folder.".into());
+    };
+    Ok(NativeRevealTarget { kind, path })
 }
 
 fn validate_share_url(value: &str) -> Result<Url, String> {
@@ -490,21 +505,8 @@ fn native_mount_is_active(location: &NativeMount) -> bool {
 
 #[cfg(target_os = "macos")]
 fn open_native_mount(location: &NativeMount, relative_path: &str) -> Result<(), String> {
-    use std::process::{Command, Stdio};
-
     let NativeMount::MacOs(path) = location;
-    let reveal_directory = resolve_reveal_directory(path, relative_path)?;
-    let output = Command::new("/usr/bin/open")
-        .arg(&reveal_directory)
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|error| format!("Could not start Finder: {error}"))?;
-    output
-        .status
-        .success()
-        .then_some(())
-        .ok_or_else(|| process_failure("Finder could not reveal the project share", &output))
+    reveal_native_target(&resolve_reveal_target(path, relative_path)?)
 }
 
 #[cfg(target_os = "macos")]
@@ -630,21 +632,11 @@ fn native_mount_is_active(location: &NativeMount) -> bool {
 
 #[cfg(windows)]
 fn open_native_mount(location: &NativeMount, relative_path: &str) -> Result<(), String> {
-    use std::process::{Command, Stdio};
-
     let NativeMount::Windows { remote } = location;
-    let reveal_directory = resolve_reveal_directory(std::path::Path::new(remote), relative_path)?;
-    let output = Command::new("explorer.exe")
-        .arg(&reveal_directory)
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|error| format!("Could not start File Explorer: {error}"))?;
-    output
-        .status
-        .success()
-        .then_some(())
-        .ok_or_else(|| process_failure("File Explorer could not reveal the project share", &output))
+    reveal_native_target(&resolve_reveal_target(
+        std::path::Path::new(remote),
+        relative_path,
+    )?)
 }
 
 #[cfg(windows)]
@@ -701,11 +693,15 @@ fn open_native_mount(_location: &NativeMount, _relative_path: &str) -> Result<()
 }
 
 #[cfg(target_os = "macos")]
-fn open_local_project_folder(path: &std::path::Path) -> Result<(), String> {
+fn reveal_native_target(target: &NativeRevealTarget) -> Result<(), String> {
     use std::process::{Command, Stdio};
 
-    let output = Command::new("/usr/bin/open")
-        .arg(path)
+    let mut command = Command::new("/usr/bin/open");
+    if target.kind == NativeRevealTargetKind::File {
+        command.arg("-R");
+    }
+    let output = command
+        .arg(&target.path)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
@@ -714,30 +710,43 @@ fn open_local_project_folder(path: &std::path::Path) -> Result<(), String> {
         .status
         .success()
         .then_some(())
-        .ok_or_else(|| process_failure("Finder could not open the local project folder", &output))
+        .ok_or_else(|| process_failure("Finder could not reveal the project entry", &output))
 }
 
 #[cfg(windows)]
-fn open_local_project_folder(path: &std::path::Path) -> Result<(), String> {
+fn reveal_native_target(target: &NativeRevealTarget) -> Result<(), String> {
     use std::process::{Command, Stdio};
 
     let output = Command::new("explorer.exe")
-        .arg(path)
+        .arg(windows_reveal_argument(target))
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
         .map_err(|error| format!("Could not start File Explorer: {error}"))?;
-    output.status.success().then_some(()).ok_or_else(|| {
-        process_failure(
-            "File Explorer could not open the local project folder",
-            &output,
-        )
-    })
+    output
+        .status
+        .success()
+        .then_some(())
+        .ok_or_else(|| process_failure("File Explorer could not reveal the project entry", &output))
+}
+
+#[cfg(any(windows, test))]
+fn windows_reveal_argument(target: &NativeRevealTarget) -> std::ffi::OsString {
+    if target.kind == NativeRevealTargetKind::Directory {
+        return target.path.as_os_str().to_owned();
+    }
+    let mut selection = std::ffi::OsString::from("/select,");
+    selection.push(&target.path);
+    selection
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn open_local_project_folder(_path: &std::path::Path) -> Result<(), String> {
+fn reveal_native_target(_target: &NativeRevealTarget) -> Result<(), String> {
     Err("Project reveal is available only in Cantrip for macOS and Windows.".into())
+}
+
+fn open_local_project_target(target: &NativeRevealTarget) -> Result<(), String> {
+    reveal_native_target(target)
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
@@ -811,6 +820,43 @@ mod tests {
         ] {
             assert!(validate_relative_reveal_path(path).is_err(), "{path}");
         }
+    }
+
+    #[test]
+    fn resolves_files_and_directories_as_distinct_reveal_targets() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-project-reveal-target-{}-{nonce}",
+            std::process::id()
+        ));
+        let directory = root.join("src");
+        let file = directory.join("main.ts");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(&file, b"export {};\n").unwrap();
+
+        assert_eq!(
+            resolve_reveal_target(&root, "src").unwrap(),
+            NativeRevealTarget {
+                kind: NativeRevealTargetKind::Directory,
+                path: directory,
+            }
+        );
+        let file_target = resolve_reveal_target(&root, "src/main.ts").unwrap();
+        assert_eq!(
+            file_target,
+            NativeRevealTarget {
+                kind: NativeRevealTargetKind::File,
+                path: file,
+            }
+        );
+        assert!(windows_reveal_argument(&file_target)
+            .to_string_lossy()
+            .starts_with("/select,"));
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

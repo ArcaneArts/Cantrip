@@ -169,7 +169,8 @@ export function ExplorerEntryRow({
   );
   if (
     !onShowInGraph &&
-    (entry.kind !== "directory" || (!onOpenTerminal && !onReveal))
+    !onReveal &&
+    (entry.kind !== "directory" || !onOpenTerminal)
   )
     return row;
   return (
@@ -191,7 +192,7 @@ export function ExplorerEntryRow({
               Open in Terminal
             </StyledContextMenuItem>
           ) : null}
-          {entry.kind === "directory" && onReveal && revealLabel ? (
+          {onReveal && revealLabel ? (
             <StyledContextMenuItem
               onClick={(event) => {
                 revealLocalFolder.current = event.shiftKey;

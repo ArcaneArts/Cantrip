@@ -200,7 +200,7 @@ function SidebarFileRow({
       <ContextMenu.Trigger asChild>{row}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <StyledContextMenuContent className="min-w-48">
-          {entry.kind === "directory" && onOpenNative && revealLabel ? (
+          {onOpenNative && revealLabel ? (
             <StyledContextMenuItem
               onClick={(event) => {
                 revealLocalFolder.current = event.shiftKey;
@@ -212,7 +212,7 @@ function SidebarFileRow({
               }}
             >
               <FolderOpen className="size-4" />
-              Open in {revealLabel}
+              {entry.kind === "directory" ? "Open" : "Show"} in {revealLabel}
             </StyledContextMenuItem>
           ) : null}
           {entry.kind === "directory" && onOpenTerminal ? (
@@ -227,8 +227,8 @@ function SidebarFileRow({
               Open in Graph
             </StyledContextMenuItem>
           ) : null}
-          {entry.kind === "directory" &&
-          (onOpenNative || onOpenTerminal || onOpenGraph) ? (
+          {onOpenNative ||
+          (entry.kind === "directory" && (onOpenTerminal || onOpenGraph)) ? (
             <ContextMenu.Separator className="my-1 h-px bg-border" />
           ) : null}
           <StyledContextMenuItem onSelect={onRename}>
@@ -382,6 +382,11 @@ function SidebarDirectoryNode({
                   entry={child}
                   key={child.path}
                   onDelete={() => onDelete(child)}
+                  onOpenNative={
+                    onOpenNative
+                      ? (localFolder) => onOpenNative(child, localFolder)
+                      : undefined
+                  }
                   onOpen={() => onPreview(child)}
                   onPin={() => onPin(child)}
                   onRename={() => onRename(child)}
@@ -390,6 +395,7 @@ function SidebarDirectoryNode({
                   onRenameValueChange={onRenameValueChange}
                   renamePending={renamePending}
                   renameValue={renameValue}
+                  revealLabel={revealLabel}
                 />
               ),
             )
@@ -674,6 +680,11 @@ export function ProjectSidebarFileTree({
                   entry={entry}
                   key={entry.path}
                   onDelete={() => setDeleteTarget(entry)}
+                  onOpenNative={
+                    onOpenNative
+                      ? (localFolder) => onOpenNative(entry, localFolder)
+                      : undefined
+                  }
                   onOpen={() => onPreview(entry)}
                   onPin={() => onPin(entry)}
                   onRename={() => beginRename(entry)}
@@ -682,6 +693,7 @@ export function ProjectSidebarFileTree({
                   onRenameValueChange={setRenameValue}
                   renamePending={renamePending}
                   renameValue={renameValue}
+                  revealLabel={revealLabel}
                 />
               ),
             )}

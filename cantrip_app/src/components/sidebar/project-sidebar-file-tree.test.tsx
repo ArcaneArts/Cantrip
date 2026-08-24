@@ -37,13 +37,19 @@ vi.mock("@radix-ui/react-context-menu", async () => {
     unknown,
     {
       children?: React.ReactNode;
-      onClick?(): void;
+      onClick?(event: { shiftKey: boolean }): void;
       onSelect?(): void;
     }
   >(({ children, onClick, onSelect }, _ref) =>
     React.createElement(
       "button",
-      { onClick: onSelect ?? onClick, type: "button" },
+      {
+        onClick: (event: { shiftKey: boolean }) => {
+          onClick?.(event);
+          onSelect?.();
+        },
+        type: "button",
+      },
       children,
     ),
   );
@@ -282,6 +288,25 @@ describe("project sidebar file tree encryption gate", () => {
     expect(
       renderer.root.findAllByProps({ "aria-label": "Rename example.ts" }),
     ).toHaveLength(0);
+    await act(async () => renderer.unmount());
+  });
+
+  it("shows files in the native manager and forwards the Shift local preference", async () => {
+    const onOpenNative = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        tree({ onOpenNative, revealLabel: "Finder" }),
+      );
+    });
+
+    const reveal = buttonNamed(renderer, "Show in Finder");
+    await act(async () => reveal.props.onClick({ shiftKey: false }));
+    expect(onOpenNative).toHaveBeenLastCalledWith(runtime.entry, false);
+
+    await act(async () => reveal.props.onClick({ shiftKey: true }));
+    expect(onOpenNative).toHaveBeenLastCalledWith(runtime.entry, true);
+    expect(onOpenNative).toHaveBeenCalledTimes(2);
     await act(async () => renderer.unmount());
   });
 });
