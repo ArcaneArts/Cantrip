@@ -212,6 +212,7 @@ import {
   userSettingsUpdateSchema,
   workerCommandSchema,
   workerEventSchema,
+  workerNotificationSchema,
   workerProjectShareDescriptorSchema,
   workerProjectShareOpenResultSchema,
   worktreeCreateMutationFailureSchema,
@@ -4402,6 +4403,48 @@ describe("Cantrip protocol", () => {
         rootKind: "folder-root",
       }),
     ).toMatchObject({ type: "chat.turn", rootKind: "folder-root" });
+
+    const taskTurn = workerCommandSchema.parse({
+      ...turn,
+      resultMode: {
+        kind: "task-message-encrypted",
+        messageId: "11111111-1111-4111-8111-111111111111",
+        idempotencyKey: "task-message-1",
+      },
+      taskDispatchLease: {
+        cycleId: "22222222-2222-4222-8222-222222222222",
+        operationId: "task-operation-1",
+        leaseOwner: "scheduler-1",
+        fencingToken: 1,
+        leaseExpiresAt: "2026-08-24T12:02:00.000Z",
+      },
+    });
+    expect(taskTurn.taskDispatchLease?.fencingToken).toBe(1);
+    expect(
+      workerNotificationSchema.parse({
+        type: "chat.turn.outcome",
+        chatId: taskTurn.chatId,
+        clientMessageId: taskTurn.clientMessageId,
+        executionLaneId: taskTurn.executionLaneId,
+        worktreeId: taskTurn.worktreeId,
+        taskDispatchFence: {
+          cycleId: taskTurn.taskDispatchLease!.cycleId,
+          operationId: taskTurn.taskDispatchLease!.operationId,
+          leaseOwner: taskTurn.taskDispatchLease!.leaseOwner,
+          fencingToken: taskTurn.taskDispatchLease!.fencingToken,
+        },
+        outcome: {
+          ok: true,
+          result: { threadId: "thread-1", text: "Done", status: "completed" },
+        },
+      }).taskDispatchFence,
+    ).toMatchObject({ operationId: "task-operation-1", fencingToken: 1 });
+    expect(
+      workerCommandSchema.safeParse({
+        ...turn,
+        taskDispatchLease: taskTurn.taskDispatchLease,
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps workflow node execution distinct and attempt-attributed", () => {
