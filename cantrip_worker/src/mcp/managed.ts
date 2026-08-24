@@ -13,6 +13,9 @@ export interface CantripMcpHostInvocation {
   command: string;
 }
 
+export const CANTRIP_MCP_OMIT_OUTPUT_SCHEMAS_ENVIRONMENT =
+  "CANTRIP_MCP_OMIT_TOOL_OUTPUT_SCHEMAS";
+
 export function cantripMcpHostInvocation(
   options: {
     execArguments?: string[];

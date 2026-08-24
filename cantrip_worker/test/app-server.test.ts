@@ -1710,6 +1710,36 @@ describe("codexMcpConfigOverride", () => {
     );
   });
 
+  it("omits managed tool result schemas only when requested for local inference", () => {
+    const server = {
+      name: "cantrip",
+      transport: "stdio" as const,
+      command: "/worker/runtime/node",
+      args: ["/worker/dist/mcp/stdio.js", "--connection", "/binding.json"],
+      environment: {},
+      enabled: true,
+    };
+
+    expect(
+      codexMcpConfigOverride([server], {
+        omitManagedCantripToolOutputSchemas: true,
+      }),
+    ).toMatchObject({
+      mcp_servers: {
+        cantrip: {
+          env: { CANTRIP_MCP_OMIT_TOOL_OUTPUT_SCHEMAS: "1" },
+        },
+      },
+    });
+    expect(codexMcpConfigOverride([server])).toMatchObject({
+      mcp_servers: {
+        cantrip: {
+          env: {},
+        },
+      },
+    });
+  });
+
   it("limits managed Cantrip tools to the binding permission catalog", () => {
     const server = {
       name: "cantrip",

@@ -75,6 +75,7 @@ import { cantripVersion } from "@cantrip/version";
 
 import { spawnGuardedProcess } from "../code/process-guard.js";
 import { workerLogError, workerLogger } from "../logger.js";
+import { CANTRIP_MCP_OMIT_OUTPUT_SCHEMAS_ENVIRONMENT } from "../mcp/managed.js";
 import {
   ProviderAccessTokenRequestError,
   type ProviderAccessTokenClient,
@@ -2093,6 +2094,7 @@ function managedCantripEnabledToolNames(server: McpServerConfiguration) {
 
 export function codexMcpConfigOverride(
   servers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
+  options: { omitManagedCantripToolOutputSchemas?: boolean } = {},
 ): Record<string, unknown> {
   return {
     mcp_servers: Object.fromEntries(
@@ -2117,7 +2119,14 @@ export function codexMcpConfigOverride(
               ? {
                   command: server.command,
                   args: server.args,
-                  env: server.environment,
+                  env:
+                    isManagedCantrip &&
+                    options.omitManagedCantripToolOutputSchemas
+                      ? {
+                          ...server.environment,
+                          [CANTRIP_MCP_OMIT_OUTPUT_SCHEMAS_ENVIRONMENT]: "1",
+                        }
+                      : server.environment,
                   enabled: server.enabled,
                   ...managedOverrides,
                 }
@@ -5432,7 +5441,10 @@ export class CodexAppServer implements CodexRuntime {
     const modelProvider = codexModelProviderName(options.provider);
     const mcpConfig =
       !structuredReadOnly && options.mcpServers
-        ? codexMcpConfigOverride(options.mcpServers)
+        ? codexMcpConfigOverride(options.mcpServers, {
+            omitManagedCantripToolOutputSchemas:
+              options.provider.kind === "ollama",
+          })
         : null;
     const threadConfig = {
       ...codexNativeSubagentConfigOverride(options.subagentDefaults ?? null),
@@ -5567,7 +5579,9 @@ export class CodexAppServer implements CodexRuntime {
     options: RunWorkflowNodeOptions,
   ): Promise<string> {
     const modelProvider = codexModelProviderName(options.provider);
-    const mcpConfig = codexMcpConfigOverride(options.mcpServers);
+    const mcpConfig = codexMcpConfigOverride(options.mcpServers, {
+      omitManagedCantripToolOutputSchemas: options.provider.kind === "ollama",
+    });
     const mcpConfigFingerprint = JSON.stringify(mcpConfig);
     const approvalPolicy =
       options.approvalMode === "preauthorized" ? "never" : "on-request";
