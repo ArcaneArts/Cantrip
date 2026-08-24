@@ -44,6 +44,7 @@ function directTicket() {
   return {
     broker: {
       available: true as const,
+      leaseRenewal: true,
       protocol: "ws-v1" as const,
       loopbackHost: "127.0.0.1" as const,
       loopbackPort: 43_123,
@@ -533,10 +534,122 @@ describe("refreshDesktopTunnelRelay", () => {
     expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
   });
 
+  it("single-flights each tunnel rotation without blocking other tunnels", async () => {
+    type Attachment = {
+      attachmentId: string;
+      tunnelId: string;
+      secret: string;
+      connectPath: string;
+      secretExpiresAt: string;
+      expiresAt: string;
+    };
+    let releaseFirst: ((attachment: Attachment) => void) | undefined;
+    const firstAttachment = new Promise<Attachment>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let tunnelOneCreates = 0;
+    mocks.createTunnelAttachment.mockImplementation((tunnelId: string) => {
+      if (tunnelId === "tunnel-1") {
+        tunnelOneCreates += 1;
+        if (tunnelOneCreates === 1) return firstAttachment;
+      }
+      const attachmentId =
+        tunnelId === "tunnel-1" ? "attachment-1" : "attachment-2";
+      return Promise.resolve({
+        attachmentId,
+        tunnelId,
+        secret: `${tunnelId}-${tunnelOneCreates}`.repeat(4),
+        connectPath: `/api/tunnel-attachments/${attachmentId}/connect`,
+        secretExpiresAt: expiresAt,
+        expiresAt,
+      });
+    });
+    const published: Array<{ secret: string; tunnelId: string }> = [];
+    mocks.invoke.mockImplementation(
+      (
+        command: string,
+        input: { relay: { secret: string }; tunnelId: string },
+      ) => {
+        if (command === "refresh_tunnel_forward_relay") {
+          published.push({
+            secret: input.relay.secret,
+            tunnelId: input.tunnelId,
+          });
+        }
+        return Promise.resolve(true);
+      },
+    );
+    const forward = {
+      attachmentId: "attachment-1",
+      diagnosticTraceId: null,
+      expiresAt,
+      localHost: "127.0.0.1" as const,
+      localPort: 41_234,
+      routeState: "local-direct" as const,
+      relayFallbackAvailable: true,
+      directCapabilityId: capabilityId,
+      directFallbackReason: null,
+      tunnelId: "tunnel-1",
+    };
+    const otherForward = {
+      ...forward,
+      attachmentId: "attachment-2",
+      tunnelId: "tunnel-2",
+    };
+
+    const first = refreshDesktopTunnelRelay(forward);
+    const duplicate = refreshDesktopTunnelRelay(forward);
+    expect(duplicate).toBe(first);
+    await expect(refreshDesktopTunnelRelay(otherForward)).resolves.toBe(true);
+    expect(tunnelOneCreates).toBe(1);
+    expect(published.map(({ tunnelId }) => tunnelId)).toEqual(["tunnel-2"]);
+
+    releaseFirst?.({
+      attachmentId: "attachment-1",
+      tunnelId: "tunnel-1",
+      secret: "older-server-credential".repeat(2),
+      connectPath: "/api/tunnel-attachments/attachment-1/connect",
+      secretExpiresAt: expiresAt,
+      expiresAt,
+    });
+    await expect(Promise.all([first, duplicate])).resolves.toEqual([
+      true,
+      true,
+    ]);
+    await expect(refreshDesktopTunnelRelay(forward)).resolves.toBe(true);
+
+    expect(
+      published
+        .filter(({ tunnelId }) => tunnelId === "tunnel-1")
+        .map(({ secret }) => secret),
+    ).toEqual(["older-server-credential".repeat(2), "tunnel-1-2".repeat(4)]);
+  });
+
+  it("treats an older native credential generation as a successful no-op", async () => {
+    mocks.invoke.mockResolvedValue({ outcome: "stale" });
+
+    await expect(
+      refreshDesktopTunnelRelay({
+        attachmentId: "attachment-1",
+        diagnosticTraceId: null,
+        expiresAt,
+        localHost: "127.0.0.1",
+        localPort: 41_234,
+        routeState: "local-direct",
+        relayFallbackAvailable: true,
+        directCapabilityId: capabilityId,
+        directFallbackReason: null,
+        tunnelId: "tunnel-1",
+      }),
+    ).resolves.toBe(true);
+
+    expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
+  });
+
   it("revokes a rotated attachment when its native forward disappeared", async () => {
     mocks.invoke.mockResolvedValue(false);
 
-    await refreshDesktopTunnelRelay({
+    const forward = {
       attachmentId: "attachment-1",
       diagnosticTraceId: null,
       expiresAt,
@@ -547,8 +660,17 @@ describe("refreshDesktopTunnelRelay", () => {
       directCapabilityId: capabilityId,
       directFallbackReason: null,
       tunnelId: "tunnel-1",
-    });
+    } as const;
+
+    const first = refreshDesktopTunnelRelay(forward);
+    const duplicate = refreshDesktopTunnelRelay(forward);
+    await expect(Promise.all([first, duplicate])).resolves.toEqual([
+      false,
+      false,
+    ]);
 
     expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1");
+    expect(mocks.createTunnelAttachment).toHaveBeenCalledTimes(1);
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
   });
 });

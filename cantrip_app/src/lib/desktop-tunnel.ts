@@ -19,6 +19,7 @@ const clientIdStorageKey = "cantrip.desktop-tunnel-client.v1";
 const FINAL_TELEMETRY_TIMEOUT_MS = 2_000;
 const DIRECT_CAPABILITY_RETIRE_TIMEOUT_MS = 2_000;
 const directCapabilityRetirements = new Map<string, Promise<void>>();
+const relayRefreshes = new Map<string, Promise<boolean>>();
 
 export interface DesktopTunnelForwardSummary {
   attachmentId: string;
@@ -49,6 +50,10 @@ interface DesktopTunnelTerminalSnapshot {
   bytesToLocal: number;
   connectionsClosed: number;
   connectionsOpened: number;
+}
+
+interface DesktopTunnelRelayRefreshResult {
+  outcome: "accepted" | "stale" | "forward-unavailable";
 }
 
 export type DesktopTunnelDestinationRejectionCode =
@@ -363,10 +368,26 @@ export async function listDesktopTunnels(): Promise<
     : [];
 }
 
-export async function refreshDesktopTunnelRelay(
+export function refreshDesktopTunnelRelay(
   forward: DesktopTunnelForwardSummary,
 ): Promise<boolean> {
-  if (!isTauri() || !forward.relayFallbackAvailable) return false;
+  if (!isTauri() || !forward.relayFallbackAvailable) {
+    return Promise.resolve(false);
+  }
+  const existing = relayRefreshes.get(forward.tunnelId);
+  if (existing) return existing;
+  const refresh = rotateDesktopTunnelRelay(forward).finally(() => {
+    if (relayRefreshes.get(forward.tunnelId) === refresh) {
+      relayRefreshes.delete(forward.tunnelId);
+    }
+  });
+  relayRefreshes.set(forward.tunnelId, refresh);
+  return refresh;
+}
+
+async function rotateDesktopTunnelRelay(
+  forward: DesktopTunnelForwardSummary,
+): Promise<boolean> {
   const attachment = await createTunnelAttachment(forward.tunnelId, {
     clientId: desktopTunnelClientId(window.localStorage),
   });
@@ -381,17 +402,26 @@ export async function refreshDesktopTunnelRelay(
     serverUrl: getActiveServerUrl(),
   };
   try {
-    const accepted = await invoke<boolean>("refresh_tunnel_forward_relay", {
-      expiresAt: attachment.expiresAt,
-      relay,
-      tunnelId: forward.tunnelId,
-    });
-    if (!accepted) {
+    const result = await invoke<DesktopTunnelRelayRefreshResult | boolean>(
+      "refresh_tunnel_forward_relay",
+      {
+        expiresAt: attachment.expiresAt,
+        relay,
+        tunnelId: forward.tunnelId,
+      },
+    );
+    const outcome =
+      typeof result === "boolean"
+        ? result
+          ? "accepted"
+          : "forward-unavailable"
+        : result.outcome;
+    if (outcome === "forward-unavailable") {
       await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
         // The forward disappeared while its relay credential was rotating.
       });
     }
-    return accepted;
+    return outcome !== "forward-unavailable";
   } finally {
     relay.secret = "";
     attachment.secret = "";
