@@ -66,9 +66,9 @@ for (let index = 0; index < largeResponse.byteLength; index += 1) {
   largeResponse[index] = index % 251;
 }
 
-interface HarnessCommand {
-  type: "snapshot" | "shutdown";
-}
+type HarnessCommand =
+  | { type: "snapshot" | "shutdown" }
+  | { type: "revoke-direct"; capabilityId: string };
 
 class HarnessSupervisor {
   readonly activeStreams = new Set<string>();
@@ -525,6 +525,16 @@ async function main(): Promise<void> {
     const command = JSON.parse(next.value) as HarnessCommand;
     if (command.type === "snapshot") {
       output("CANTRIP_CODE_E2E_SNAPSHOT ", await snapshot());
+      continue;
+    }
+    if (command.type === "revoke-direct") {
+      output("CANTRIP_CODE_E2E_DIRECT_REVOKED ", {
+        capabilityId: command.capabilityId,
+        revoked: directBroker.revoke(
+          command.capabilityId,
+          "E2E requested direct revocation",
+        ),
+      });
       continue;
     }
     if (command.type === "shutdown") break;

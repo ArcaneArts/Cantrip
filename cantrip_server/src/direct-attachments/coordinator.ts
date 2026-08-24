@@ -22,6 +22,7 @@ interface DirectGrant {
   authSessionId: string;
   createdAtMs: number;
   diagnosticTraceId: string;
+  leaseExpiresAtMs: number;
   mode: "direct-capability" | "direct-tunnel";
   ownerId: string;
   resourceId: string;
@@ -386,6 +387,7 @@ export class DirectAttachmentCoordinator {
       authSessionId: input.authSessionId,
       createdAtMs: startedAtMs,
       diagnosticTraceId,
+      leaseExpiresAtMs: leaseExpiresAt,
       mode,
       ownerId: input.ownerId,
       resourceId: input.resourceId,
@@ -415,6 +417,7 @@ export class DirectAttachmentCoordinator {
       workerId: input.worker.workerId,
       durationMs: Date.now() - startedAtMs,
       channelCount: binding.channels.length,
+      leaseDurationMs: leaseExpiresAt - now,
     });
     return ticket;
   }
@@ -657,6 +660,7 @@ export class DirectAttachmentCoordinator {
           }
         : {}),
       telemetryReportCount: grant.telemetryReportCount,
+      leaseRemainingMs: Math.max(0, grant.leaseExpiresAtMs - Date.now()),
     });
     return delta;
   }

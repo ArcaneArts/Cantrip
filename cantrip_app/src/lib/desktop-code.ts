@@ -26,6 +26,7 @@ import {
 export interface PreferredCodeAttachment {
   attachment: CodeAttachment;
   directTunnelId: string | null;
+  transportKind: "local-direct" | "relay";
 }
 
 const protectedAttachmentIds = new Map<string, string>();
@@ -508,6 +509,7 @@ export async function preferProtectedCodeAttachment(
     return {
       attachment: await startBrowserCodeAttachment(wire),
       directTunnelId: wire.tunnelId,
+      transportKind: "relay",
     };
   }
   const diagnosticTraceId = crypto.randomUUID();
@@ -665,6 +667,8 @@ export async function preferProtectedCodeAttachment(
     return {
       attachment,
       directTunnelId: wire.tunnelId,
+      transportKind:
+        forward.routeState === "local-direct" ? "local-direct" : "relay",
     };
   } catch (error) {
     await stopDesktopTunnel(wire.tunnelId, forward.attachmentId).catch(
