@@ -30,6 +30,7 @@ import {
 } from "@cantrip/protocol/communication-content";
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
+import { protectedAgentRuntimeTelemetry } from "./agent-runtime-telemetry.js";
 import {
   protectChatPlanState,
   type PrivateChatPlanState,
@@ -408,6 +409,7 @@ export class EncryptedChatEventSealer {
 
   async activity(activity: AgentActivity) {
     const turnId = activity.correlation?.turnId ?? null;
+    const agentRuntime = protectedAgentRuntimeTelemetry(activity);
     const agentKey = activity.agentScope
       ? `${activity.agentScope.rootTurnId}:${activity.agentScope.agentThreadId}`
       : "root";
@@ -441,6 +443,7 @@ export class EncryptedChatEventSealer {
               kind: "activity" as const,
               activityType: activity.type,
               turnId,
+              ...(agentRuntime ? { agentRuntime } : {}),
             },
     };
   }

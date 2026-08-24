@@ -64,6 +64,7 @@ import type {
   CodeSessionSummary,
   EncryptedCodeTabCreate,
   CodeTabWireSummary,
+  AgentTimeSummary,
   DetailedTokenUsageTotals,
   EncryptedCodeTabUpdate,
   DesktopUpdateActiveWorkSummary,
@@ -233,6 +234,7 @@ import {
   quotaValueStatistics,
   type QuotaTokenAnalytics,
 } from "../analytics/quota-token.js";
+import { groupAgentTime, summarizeAgentTime } from "../analytics/agent-time.js";
 import {
   groupModelBehavior,
   sumDetailedTokenUsage,
@@ -781,6 +783,12 @@ export interface QuotaTokenAnalyticsQuery {
   to?: Date;
 }
 
+interface AgentTimeAnalytics {
+  models: Map<string, AgentTimeSummary>;
+  providers: Map<string, AgentTimeSummary>;
+  total: AgentTimeSummary;
+}
+
 export interface ProviderQuotaObservationInput {
   eventKey: string;
   observationBatchKey: string;
@@ -809,6 +817,13 @@ const ZERO_TOKEN_USAGE: TokenUsageTotals = {
   inputTokens: 0,
   outputTokens: 0,
   totalTokens: 0,
+};
+
+const ZERO_AGENT_TIME: AgentTimeSummary = {
+  activeAgentCount: 0,
+  agentTimeMs: 0,
+  wallTimeMs: 0,
+  averageConcurrency: 0,
 };
 
 function tokenUsageTotals(
@@ -1820,6 +1835,7 @@ function toRemoteDesktopWireSummary(
 function toProviderSummary(
   provider: typeof schema.modelProviders.$inferSelect,
   tokenUsage: TokenUsageTotals = ZERO_TOKEN_USAGE,
+  agentTime: AgentTimeSummary = ZERO_AGENT_TIME,
   accounts: ModelProviderAccountWireSummary[] = [],
 ): ModelProviderWireSummary {
   return {
@@ -1831,6 +1847,7 @@ function toProviderSummary(
     weeklyUsageReservePercent: provider.weeklyUsageReservePercent,
     accounts,
     tokenUsage,
+    agentTime,
     createdAt: toISOString(provider.createdAt),
     updatedAt: toISOString(provider.updatedAt),
   };
@@ -1978,6 +1995,7 @@ function toModelSummary(
   model: typeof schema.modelProfiles.$inferSelect,
   routes: ModelRouteSummary[],
   tokenUsage: TokenUsageTotals = ZERO_TOKEN_USAGE,
+  agentTime: AgentTimeSummary = ZERO_AGENT_TIME,
 ): ModelProfileSummary {
   return {
     id: model.id,
@@ -1988,6 +2006,7 @@ function toModelSummary(
     routingPolicy: "priority",
     routes,
     tokenUsage,
+    agentTime,
     createdAt: toISOString(model.createdAt),
     updatedAt: toISOString(model.updatedAt),
   };
@@ -2886,6 +2905,7 @@ export class ServerRepository {
       routeRows,
       providerUsageRows,
       modelUsageRows,
+      agentTime,
     ] = await Promise.all([
       this.database
         .select()
@@ -2982,6 +3002,7 @@ export class ServerRepository {
         .from(schema.tokenUsageRecords)
         .where(eq(schema.tokenUsageRecords.ownerId, ownerId))
         .groupBy(schema.tokenUsageRecords.modelId),
+      this.getAgentTimeAnalytics(ownerId),
     ]);
     const settings = firstOrThrow(settingsRows, "loading user settings");
     const providerUsage = new Map(
@@ -3028,6 +3049,7 @@ export class ServerRepository {
         toProviderSummary(
           provider,
           providerUsage.get(provider.id),
+          agentTime.providers.get(provider.id),
           providerAccountRows
             .filter(({ account }) => account.providerId === provider.id)
             .map(({ account }) =>
@@ -3049,8 +3071,38 @@ export class ServerRepository {
               toModelRouteSummary(route, providerName),
             ),
           modelUsage.get(model.id),
+          agentTime.models.get(model.id),
         ),
       ),
+    };
+  }
+
+  async getAgentTimeAnalytics(
+    ownerId: string,
+    projectId?: string,
+    now = new Date(),
+  ): Promise<AgentTimeAnalytics> {
+    const rows = await this.database
+      .select({
+        attemptStatus: schema.tokenUsageRecords.attemptStatus,
+        completedAt: schema.tokenUsageRecords.completedAt,
+        modelId: schema.tokenUsageRecords.modelId,
+        providerId: schema.tokenUsageRecords.providerId,
+        startedAt: schema.tokenUsageRecords.startedAt,
+      })
+      .from(schema.tokenUsageRecords)
+      .where(
+        and(
+          eq(schema.tokenUsageRecords.ownerId, ownerId),
+          ...(projectId
+            ? [eq(schema.tokenUsageRecords.projectId, projectId)]
+            : []),
+        ),
+      );
+    return {
+      total: summarizeAgentTime(rows, now),
+      providers: groupAgentTime(rows, (row) => row.providerId, now),
+      models: groupAgentTime(rows, (row) => row.modelId, now),
     };
   }
 
@@ -3333,50 +3385,54 @@ export class ServerRepository {
       reasoningOutputTokens: sumReasoningOutput,
     };
     const day = sql<string>`to_char(${schema.tokenUsageRecords.startedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
-    const [totalRows, dailyRows, providerRows, modelRows] = await Promise.all([
-      this.database
-        .select(tokenSums)
-        .from(schema.tokenUsageRecords)
-        .where(filter),
-      this.database
-        .select({
-          date: day,
-          ...tokenSums,
-        })
-        .from(schema.tokenUsageRecords)
-        .where(and(filter, gte(schema.tokenUsageRecords.startedAt, rangeStart)))
-        .groupBy(day)
-        .orderBy(day),
-      this.database
-        .select({
-          id: schema.tokenUsageRecords.providerId,
-          name: sql<string>`coalesce(${schema.modelProviders.name}, 'Deleted provider')`,
-          ...tokenSums,
-        })
-        .from(schema.tokenUsageRecords)
-        .leftJoin(
-          schema.modelProviders,
-          eq(schema.modelProviders.id, schema.tokenUsageRecords.providerId),
-        )
-        .where(filter)
-        .groupBy(
-          schema.tokenUsageRecords.providerId,
-          schema.modelProviders.name,
-        ),
-      this.database
-        .select({
-          id: schema.tokenUsageRecords.modelId,
-          name: sql<string>`coalesce(${schema.modelProfiles.name}, 'Deleted model')`,
-          ...tokenSums,
-        })
-        .from(schema.tokenUsageRecords)
-        .leftJoin(
-          schema.modelProfiles,
-          eq(schema.modelProfiles.id, schema.tokenUsageRecords.modelId),
-        )
-        .where(filter)
-        .groupBy(schema.tokenUsageRecords.modelId, schema.modelProfiles.name),
-    ]);
+    const [totalRows, dailyRows, providerRows, modelRows, agentTime] =
+      await Promise.all([
+        this.database
+          .select(tokenSums)
+          .from(schema.tokenUsageRecords)
+          .where(filter),
+        this.database
+          .select({
+            date: day,
+            ...tokenSums,
+          })
+          .from(schema.tokenUsageRecords)
+          .where(
+            and(filter, gte(schema.tokenUsageRecords.startedAt, rangeStart)),
+          )
+          .groupBy(day)
+          .orderBy(day),
+        this.database
+          .select({
+            id: schema.tokenUsageRecords.providerId,
+            name: sql<string>`coalesce(${schema.modelProviders.name}, 'Deleted provider')`,
+            ...tokenSums,
+          })
+          .from(schema.tokenUsageRecords)
+          .leftJoin(
+            schema.modelProviders,
+            eq(schema.modelProviders.id, schema.tokenUsageRecords.providerId),
+          )
+          .where(filter)
+          .groupBy(
+            schema.tokenUsageRecords.providerId,
+            schema.modelProviders.name,
+          ),
+        this.database
+          .select({
+            id: schema.tokenUsageRecords.modelId,
+            name: sql<string>`coalesce(${schema.modelProfiles.name}, 'Deleted model')`,
+            ...tokenSums,
+          })
+          .from(schema.tokenUsageRecords)
+          .leftJoin(
+            schema.modelProfiles,
+            eq(schema.modelProfiles.id, schema.tokenUsageRecords.modelId),
+          )
+          .where(filter)
+          .groupBy(schema.tokenUsageRecords.modelId, schema.modelProfiles.name),
+        this.getAgentTimeAnalytics(ownerId, projectId, now),
+      ]);
     const mergeBreakdowns = (
       rows: Array<{
         id: string | null;
@@ -3387,6 +3443,7 @@ export class ServerRepository {
         cacheWriteInputTokens: number;
         reasoningOutputTokens: number;
       }>,
+      timeById: ReadonlyMap<string, AgentTimeSummary>,
     ) => {
       const merged = new Map<
         string,
@@ -3420,6 +3477,9 @@ export class ServerRepository {
         .map((row) => ({
           id: row.id,
           name: row.name,
+          agentTime: row.id
+            ? (timeById.get(row.id) ?? ZERO_AGENT_TIME)
+            : ZERO_AGENT_TIME,
           ...detailedTokenUsageTotals(
             row.inputTokens,
             row.outputTokens,
@@ -3444,6 +3504,7 @@ export class ServerRepository {
         totalRow.cacheWriteInputTokens,
         totalRow.reasoningOutputTokens,
       ),
+      agentTime: agentTime.total,
       daily: dailyRows.map((row) => ({
         date: row.date,
         ...detailedTokenUsageTotals(
@@ -3454,8 +3515,8 @@ export class ServerRepository {
           row.reasoningOutputTokens,
         ),
       })),
-      providers: mergeBreakdowns(providerRows),
-      models: mergeBreakdowns(modelRows),
+      providers: mergeBreakdowns(providerRows, agentTime.providers),
+      models: mergeBreakdowns(modelRows, agentTime.models),
       range: {
         start: rangeStart.toISOString().slice(0, 10),
         end: rangeEnd.toISOString().slice(0, 10),
@@ -3605,7 +3666,7 @@ export class ServerRepository {
           credentialHomeKey: id,
         })
         .returning();
-      return toProviderSummary(provider, ZERO_TOKEN_USAGE, [
+      return toProviderSummary(provider, ZERO_TOKEN_USAGE, ZERO_AGENT_TIME, [
         toProviderAccountSummary(
           firstOrThrow(
             accountRows,

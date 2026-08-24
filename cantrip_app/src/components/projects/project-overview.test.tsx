@@ -85,6 +85,12 @@ const stats = {
   truncated: true,
 } satisfies ProjectRepositoryStats;
 const usage = {
+  agentTime: {
+    activeAgentCount: 2,
+    agentTimeMs: 1_200_000,
+    wallTimeMs: 600_000,
+    averageConcurrency: 2,
+  },
   total: {
     inputTokens: 8_000,
     outputTokens: 2_500,
@@ -114,6 +120,12 @@ const usage = {
       cacheWriteInputTokens: 0,
       reasoningOutputTokens: 500,
       totalTokens: 10_500,
+      agentTime: {
+        activeAgentCount: 2,
+        agentTimeMs: 1_200_000,
+        wallTimeMs: 600_000,
+        averageConcurrency: 2,
+      },
     },
   ],
   models: [
@@ -126,6 +138,12 @@ const usage = {
       cacheWriteInputTokens: 0,
       reasoningOutputTokens: 500,
       totalTokens: 10_500,
+      agentTime: {
+        activeAgentCount: 2,
+        agentTimeMs: 1_200_000,
+        wallTimeMs: 600_000,
+        averageConcurrency: 2,
+      },
     },
   ],
   range: { start: "2025-08-12", end: "2026-08-11" },
@@ -201,6 +219,9 @@ describe("project overview", () => {
     expect(markup).toContain("3.5 GB");
     expect(markup).toContain("10.5K");
     expect(markup).toContain("Input and output tokens");
+    expect(markup).toContain("AI active time");
+    expect(markup).toContain("20m");
+    expect(markup).toContain("10m wall · 2.0x concurrency");
     expect(markup).toContain("Ship project overview");
     expect(markup).toContain('aria-label="Open Ship project overview"');
     expect(markup).toContain('tabindex="0"');
@@ -212,7 +233,7 @@ describe("project overview", () => {
       markup.indexOf('href="https://github.com/ArcaneArts/Cantrip"'),
     );
     expect(markup).not.toContain("bounded line scan");
-    expect(markup.match(/data-elite-global=/g)).toHaveLength(10);
+    expect(markup.match(/data-elite-global=/g)).toHaveLength(11);
     expect(markup).toContain(
       'data-elite-global="project-overview:project-1:hero"',
     );

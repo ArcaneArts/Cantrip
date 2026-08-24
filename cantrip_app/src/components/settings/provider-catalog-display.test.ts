@@ -23,6 +23,12 @@ const provider = {
   weeklyUsageReservePercent: 3,
   accounts: [],
   tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+  agentTime: {
+    activeAgentCount: 0,
+    agentTimeMs: 0,
+    wallTimeMs: 0,
+    averageConcurrency: 0,
+  },
   createdAt: "2026-08-14T00:00:00.000Z",
   updatedAt: "2026-08-14T00:00:00.000Z",
 } satisfies ModelProviderSummary;

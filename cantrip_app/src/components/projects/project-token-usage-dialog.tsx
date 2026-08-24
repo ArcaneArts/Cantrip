@@ -6,6 +6,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Brain,
+  Clock3,
   Coins,
   DatabaseZap,
 } from "lucide-react";
@@ -21,12 +22,55 @@ import {
 import { cn } from "@/lib/utils";
 
 import {
+  formatAgentTime,
+  formatConcurrency,
   formatTokenCount,
   tokenUsageCalendar,
   tokenUsageConicGradient,
   tokenUsageIntensity,
   tokenUsageSlices,
 } from "./token-usage-analytics";
+
+function TimeBreakdown({
+  title,
+  values,
+}: {
+  title: string;
+  values: readonly ProjectTokenUsageBreakdown[];
+}) {
+  const rows = [...values]
+    .filter(({ agentTime }) => agentTime.agentTimeMs > 0)
+    .sort(
+      (left, right) => right.agentTime.agentTimeMs - left.agentTime.agentTimeMs,
+    );
+  return (
+    <section className="rounded-xl border bg-card/60 p-4">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {rows.length ? (
+        <div className="mt-3 divide-y">
+          {rows.map((row) => (
+            <div
+              key={`${row.id ?? "other"}:${row.name}`}
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 py-2 text-xs"
+            >
+              <span className="truncate font-medium">{row.name}</span>
+              <span className="tabular-nums">
+                {formatAgentTime(row.agentTime.agentTimeMs)}
+              </span>
+              <span className="text-muted-foreground">Wall-clock time</span>
+              <span className="tabular-nums text-muted-foreground">
+                {formatAgentTime(row.agentTime.wallTimeMs)} ·{" "}
+                {formatConcurrency(row.agentTime)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 text-xs text-muted-foreground">No activity yet.</p>
+      )}
+    </section>
+  );
+}
 
 const dateLabel = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -96,6 +140,43 @@ export function ProjectTokenUsageAnalytics({
 
   return (
     <>
+      <section>
+        <h3 className="flex items-center gap-2 pb-2 text-sm font-semibold">
+          <Clock3 className="size-4" /> AI active time
+        </h3>
+        <div className="grid divide-x border-y sm:grid-cols-3">
+          <div className="px-3 py-3">
+            <p className="text-xs text-muted-foreground">Agent time</p>
+            <p className="mt-2 text-lg font-semibold tabular-nums">
+              {formatAgentTime(usage.agentTime.agentTimeMs)}
+            </p>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Every agent counted independently
+            </p>
+          </div>
+          <div className="px-3 py-3">
+            <p className="text-xs text-muted-foreground">Wall-clock time</p>
+            <p className="mt-2 text-lg font-semibold tabular-nums">
+              {formatAgentTime(usage.agentTime.wallTimeMs)}
+            </p>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Overlapping agents merged
+            </p>
+          </div>
+          <div className="px-3 py-3">
+            <p className="text-xs text-muted-foreground">Average concurrency</p>
+            <p className="mt-2 text-lg font-semibold tabular-nums">
+              {formatConcurrency(usage.agentTime)}
+            </p>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {usage.agentTime.activeAgentCount
+                ? `${usage.agentTime.activeAgentCount} active now`
+                : "No agents active now"}
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="grid divide-x border-y sm:grid-cols-5">
         <div className="px-3 py-3">
           <p className="text-xs text-muted-foreground">Total</p>
@@ -200,6 +281,11 @@ export function ProjectTokenUsageAnalytics({
       <div className="grid gap-4 lg:grid-cols-2">
         <PieBreakdown title="By provider" values={usage.providers} />
         <PieBreakdown title="By model" values={usage.models} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <TimeBreakdown title="AI time by provider" values={usage.providers} />
+        <TimeBreakdown title="AI time by model" values={usage.models} />
       </div>
     </>
   );

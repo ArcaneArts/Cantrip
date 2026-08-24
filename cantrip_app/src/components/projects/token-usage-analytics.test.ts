@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatAgentTime,
+  formatConcurrency,
   formatTokenCount,
   tokenUsageCalendar,
   tokenUsageConicGradient,
@@ -9,6 +11,13 @@ import {
 } from "./token-usage-analytics";
 
 describe("token usage analytics", () => {
+  it("formats agent time and concurrency compactly", () => {
+    expect(formatAgentTime(0)).toBe("0m");
+    expect(formatAgentTime(45_000)).toBe("<1m");
+    expect(formatAgentTime(3_720_000)).toBe("1h 2m");
+    expect(formatAgentTime(93_600_000)).toBe("1d 2h");
+    expect(formatConcurrency({ averageConcurrency: 2.17 })).toBe("2.2x");
+  });
   it("formats compact counts without losing useful precision", () => {
     expect(formatTokenCount(0)).toBe("0");
     expect(formatTokenCount(999)).toBe("999");
@@ -54,6 +63,12 @@ describe("token usage analytics", () => {
         cacheWriteInputTokens: 0,
         reasoningOutputTokens: 0,
         totalTokens,
+        agentTime: {
+          activeAgentCount: 0,
+          agentTimeMs: 0,
+          wallTimeMs: 0,
+          averageConcurrency: 0,
+        },
       })),
       3,
     );

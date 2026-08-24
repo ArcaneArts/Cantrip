@@ -8994,6 +8994,50 @@ export async function buildApp({
           let behaviorTurnId: string | null = null;
           const preparedReasoning = preparedRuntimes[index]!;
           const subagentRuntime = routePairs[index]!.subagent?.runtime ?? null;
+          const recordChildAgentTime = async (
+            telemetry:
+              | {
+                  agentThreadId: string;
+                  completedAtMs: number | null;
+                  isRoot: boolean;
+                  startedAtMs: number | null;
+                  status: "running" | "completed" | "failed";
+                }
+              | null
+              | undefined,
+            childTurnId: string | null,
+          ) => {
+            if (!telemetry || telemetry.isRoot || !childTurnId) return;
+            const childExecutionAttemptId = `${executionAttemptId}:subagent:${telemetry.agentThreadId}:${childTurnId}`;
+            const dateFromTelemetry = (value: number | null) => {
+              if (value === null) return undefined;
+              const date = new Date(value);
+              return Number.isNaN(date.getTime()) ? undefined : date;
+            };
+            const startedAt = dateFromTelemetry(telemetry.startedAtMs);
+            const completedAt =
+              telemetry.status === "running"
+                ? null
+                : (dateFromTelemetry(telemetry.completedAtMs) ?? new Date());
+            await recordRuntimeTokenUsage(
+              `chat-subagent:${childExecutionAttemptId}`,
+              execution.projectId,
+              execution.chatId,
+              subagentRuntime ?? runtime,
+              undefined,
+              {
+                workerId: execution.workerId,
+                turnId: childTurnId,
+                executionAttemptId: childExecutionAttemptId,
+                attemptKind: "subagent-turn",
+                attemptStatus: telemetry.status,
+                startedAt,
+                completedAt,
+                finalizedAt: completedAt,
+                codexVersion: attributedWorker?.codexVersion ?? null,
+              },
+            );
+          };
           let attemptActivity = false;
           const canResume = runtimeCanResumeContext(execution, runtime);
           const threadId = canResume ? execution.threadId : null;
@@ -9324,6 +9368,12 @@ export async function buildApp({
                         );
                       }
                       behaviorTurnId = event.telemetry.turnId ?? behaviorTurnId;
+                      if (event.telemetry.kind === "activity") {
+                        await recordChildAgentTime(
+                          event.telemetry.agentRuntime,
+                          event.telemetry.turnId,
+                        );
+                      }
                       if (event.telemetry.kind === "usage") {
                         behaviorTracker.observeUsage(
                           {
@@ -9379,6 +9429,12 @@ export async function buildApp({
                     }
                     if (event.type === "agent.protected-message") {
                       behaviorTurnId = event.telemetry.turnId ?? behaviorTurnId;
+                      if (event.telemetry.kind === "activity") {
+                        await recordChildAgentTime(
+                          event.telemetry.agentRuntime,
+                          event.telemetry.turnId,
+                        );
+                      }
                       if (event.telemetry.kind === "message") {
                         behaviorTracker.markVisibleResponse(
                           event.telemetry.phase !== "commentary",
@@ -9540,6 +9596,33 @@ export async function buildApp({
                     if (event.type !== "agent.activity") return;
                     behaviorTurnId =
                       event.activity.correlation?.turnId ?? behaviorTurnId;
+                    if (
+                      event.activity.type === "turnSummary" &&
+                      event.activity.agentScope
+                    ) {
+                      await recordChildAgentTime(
+                        {
+                          agentThreadId:
+                            event.activity.agentScope.agentThreadId,
+                          isRoot: event.activity.agentScope.isRoot,
+                          startedAtMs:
+                            event.activity.startedAt === null
+                              ? null
+                              : event.activity.startedAt * 1_000,
+                          completedAtMs:
+                            event.activity.completedAt === null
+                              ? null
+                              : event.activity.completedAt * 1_000,
+                          status:
+                            event.activity.status === "running"
+                              ? "running"
+                              : event.activity.status === "completed"
+                                ? "completed"
+                                : "failed",
+                        },
+                        event.activity.correlation?.turnId ?? null,
+                      );
+                    }
                     behaviorTracker.observeActivity(event.activity, observedAt);
                     if (event.activity.type === "usage") {
                       const usageTurnId =

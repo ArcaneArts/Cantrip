@@ -65,7 +65,11 @@ import {
   BUILTIN_PERMISSION_PROFILES,
   permissionProfileLabel,
 } from "@/components/chat/permission-profile-control";
-import { formatTokenCount } from "@/components/projects/token-usage-analytics";
+import {
+  formatAgentTime,
+  formatConcurrency,
+  formatTokenCount,
+} from "@/components/projects/token-usage-analytics";
 import {
   Dialog,
   DialogClose,
@@ -376,6 +380,10 @@ function ProviderRow({
         <p className="truncate text-sm font-medium">{provider.name}</p>
         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
           {formatTokenCount(provider.tokenUsage.totalTokens)} tokens
+        </span>
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+          {formatAgentTime(provider.agentTime.agentTimeMs)} AI ·{" "}
+          {formatConcurrency(provider.agentTime)}
         </span>
         <Badge className="sm:hidden" variant="secondary">
           {providerFamilyLabel(provider)}
@@ -1524,6 +1532,10 @@ export function SettingsPage({
                           <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                             {formatTokenCount(model.tokenUsage.totalTokens)}{" "}
                             tokens
+                          </span>
+                          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                            {formatAgentTime(model.agentTime.agentTimeMs)} AI ·{" "}
+                            {formatConcurrency(model.agentTime)}
                           </span>
                           {settings.data?.preferences.defaultModelId ===
                           model.id ? (
