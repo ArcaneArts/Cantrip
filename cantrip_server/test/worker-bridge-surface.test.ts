@@ -61,6 +61,36 @@ class RejectingActivationSocket extends TestWorkerSocket {
   }
 }
 
+class AttachmentVisibilitySocket extends TestWorkerSocket {
+  readonly commandReadyStates: boolean[] = [];
+  dispatch: Promise<void> | null = null;
+  #readyPublished = false;
+
+  constructor(private readonly bridge: WorkerBridge) {
+    super();
+  }
+
+  activate(): boolean {
+    this.dispatch = this.bridge
+      .request("worker-1", { type: "code.probe" })
+      .then(
+        () => undefined,
+        () => undefined,
+      );
+    return true;
+  }
+
+  publishReady(): boolean {
+    this.#readyPublished = true;
+    return true;
+  }
+
+  override send(data: string | Uint8Array): void {
+    this.commandReadyStates.push(this.#readyPublished);
+    super.send(data);
+  }
+}
+
 const header: RemoteSurfaceFrameHeader = {
   protocolVersion: 1,
   surfaceId: "surface-1",
@@ -76,6 +106,19 @@ const continuityIdentity: WorkerConnectionContinuityIdentity = {
 };
 
 describe("WorkerBridge Remote Surface transport", () => {
+  it("publishes readiness before attachment becomes command-visible", async () => {
+    const bridge = new WorkerBridge();
+    const socket = new AttachmentVisibilitySocket(bridge);
+
+    expect(
+      bridge.attach("worker-1", socket, "owner-1", continuityIdentity),
+    ).toBe(true);
+    expect(socket.commandReadyStates).toEqual([true]);
+
+    bridge.close();
+    await socket.dispatch;
+  });
+
   it("logs command lifecycle metadata without command payloads", async () => {
     const records: ServiceLogRecordInput[] = [];
     const logger = createServiceLogEmitter("server-test", {

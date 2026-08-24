@@ -34,6 +34,24 @@ class TestSocket {
 }
 
 describe("BufferedWorkerSocket", () => {
+  it("publishes readiness before replaying buffered worker data", () => {
+    const socket = new TestSocket();
+    const buffered = new BufferedWorkerSocket(socket);
+    const observed: string[] = [];
+    buffered.prepareReady("ready");
+    socket.emit("message", "outcome", false);
+    buffered.on("message", () => {
+      observed.push(String(socket.sent.at(-1)));
+    });
+
+    expect(buffered.publishReady()).toBe(true);
+    expect(buffered.publishReady()).toBe(true);
+    expect(buffered.activate()).toBe(true);
+
+    expect(socket.sent).toEqual(["ready"]);
+    expect(observed).toEqual(["ready"]);
+  });
+
   it("replays an authenticated reconnect flush in arrival order", () => {
     const socket = new TestSocket();
     const buffered = new BufferedWorkerSocket(socket);

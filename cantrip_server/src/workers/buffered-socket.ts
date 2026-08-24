@@ -67,6 +67,8 @@ export class BufferedWorkerSocket implements WorkerSocket {
   #bufferedBytes = 0;
   #closeDispatched = false;
   #inputClosed = false;
+  #readyEnvelope: string | null = null;
+  #readyPublished = false;
 
   constructor(
     private readonly socket: WorkerSocket,
@@ -108,6 +110,24 @@ export class BufferedWorkerSocket implements WorkerSocket {
     return !this.#inputClosed && this.socket.readyState === 1;
   }
 
+  prepareReady(envelope: string): void {
+    if (this.#readyPublished) return;
+    this.#readyEnvelope = envelope;
+  }
+
+  publishReady(): boolean {
+    if (this.#readyPublished || this.#readyEnvelope === null) return true;
+    if (!this.canActivate()) return false;
+    try {
+      this.socket.send(this.#readyEnvelope);
+      this.#readyEnvelope = null;
+      this.#readyPublished = true;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   close(code?: number, reason?: string): void {
     if (!this.#activated && !this.#inputClosed) {
       this.#inputClosed = true;
@@ -115,6 +135,7 @@ export class BufferedWorkerSocket implements WorkerSocket {
       this.#events.push({ kind: "close" });
       this.#releaseBudget();
     }
+    this.#readyEnvelope = null;
     this.socket.close(code, reason);
   }
 
@@ -122,6 +143,7 @@ export class BufferedWorkerSocket implements WorkerSocket {
     if (this.#activated) return;
     this.#inputClosed = true;
     this.#events.length = 0;
+    this.#readyEnvelope = null;
     this.#releaseBudget();
   }
 
@@ -194,6 +216,7 @@ export class BufferedWorkerSocket implements WorkerSocket {
     if (event.kind !== "message") {
       this.#inputClosed = true;
       this.#events.length = 0;
+      this.#readyEnvelope = null;
       this.#releaseBudget();
       return;
     }
@@ -205,6 +228,7 @@ export class BufferedWorkerSocket implements WorkerSocket {
     this.#inputClosed = true;
     this.#events.length = 0;
     this.#events.push({ kind: "close" });
+    this.#readyEnvelope = null;
     this.#releaseBudget();
     this.socket.close(code, reason);
   }

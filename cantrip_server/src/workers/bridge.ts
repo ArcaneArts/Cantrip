@@ -30,6 +30,7 @@ export interface WorkerSocket {
     event: "message",
     listener: (data: unknown, isBinary?: boolean) => void,
   ): void;
+  publishReady?(): boolean;
   readyState: number;
   send(data: string | Uint8Array, options?: { binary?: boolean }): void;
 }
@@ -269,9 +270,19 @@ export class WorkerBridge implements WorkerCommandBus {
     socket.on("close", disconnect);
     socket.on("error", disconnect);
 
-    // Temporarily make the socket current so a bounded pre-authentication
-    // flush is correlated correctly. Do not cancel an existing reconnect
-    // grace until the wrapper confirms that it can activate.
+    // Publish readiness before the socket becomes command-visible. WebSocket
+    // ordering then guarantees every command sent through this socket follows
+    // the ready envelope on the wire.
+    let readyPublished = true;
+    try {
+      readyPublished = socket.publishReady?.() ?? true;
+    } catch {
+      readyPublished = false;
+    }
+    if (!readyPublished || !workerSocketIsAttachable(socket)) return false;
+
+    // Make buffered reconnect outcomes visible only after readiness is queued,
+    // but retain the previous lifecycle until activation also succeeds.
     this.#sockets.set(workerId, socket);
     let activated = true;
     try {

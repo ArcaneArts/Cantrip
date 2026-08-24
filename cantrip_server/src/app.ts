@@ -32662,6 +32662,14 @@ export async function buildApp({
               connectionGeneration: workerProcessGeneration,
             }),
           );
+          workerSocket.prepareReady(
+            encodeWorkerConnectionEnvelope({
+              kind: "connection",
+              state: "ready",
+              protocolVersion: 1,
+              connectionGeneration: workerProcessGeneration,
+            }),
+          );
         }
         const workerAuth = await authenticateWorkerRequest(
           repository,
@@ -32736,19 +32744,13 @@ export async function buildApp({
               workerProcessGeneration: resolvedWorkerProcessGeneration,
             },
           );
-          if (accepted === false || !workerSocket.activate()) {
+          if (
+            accepted === false ||
+            !workerSocket.publishReady() ||
+            !workerSocket.activate()
+          ) {
             workerSocket.close(1012, "Worker connection was not accepted");
             return;
-          }
-          if (workerProcessGeneration) {
-            workerSocket.send(
-              encodeWorkerConnectionEnvelope({
-                kind: "connection",
-                state: "ready",
-                protocolVersion: 1,
-                connectionGeneration: workerProcessGeneration,
-              }),
-            );
           }
         } catch (error) {
           serverLogger.event("error", "Could not claim worker connection", {

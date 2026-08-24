@@ -66,6 +66,9 @@ function meteredWorkerSocket(
         );
       });
     },
+    ...(socket.publishReady
+      ? { publishReady: () => socket.publishReady!() }
+      : {}),
     send(data, options) {
       socket.send(data, options);
       if (typeof data === "string") {
