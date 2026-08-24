@@ -104,6 +104,7 @@ function SidebarFileRow({
       aria-disabled={!openable}
       aria-expanded={entry.kind === "directory" ? expanded : undefined}
       aria-level={depth + 1}
+      data-elite-global
       className={cn(
         "flex h-7 w-full min-w-0 items-center gap-1 rounded px-1 text-left text-xs text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
         active && "bg-muted text-foreground",
