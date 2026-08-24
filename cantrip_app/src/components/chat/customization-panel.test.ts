@@ -42,7 +42,7 @@ describe("Codex customization inspection", () => {
         isolatedCodexHome: true,
         collaborationModes: available,
         threadGoals: available,
-        nativeSubagents: available,
+        nativeSubagents: { ...available, protocolVersion: 1 },
         customAgents: unsupported,
         hooks: available,
         skills: {
