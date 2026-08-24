@@ -16,11 +16,13 @@ import {
   parseDesktopExplorerFileTarget,
   updateDesktopWindowTheme,
 } from "@/lib/desktop-popout";
+import { installNativeTooltipSuppression } from "@/lib/native-tooltip-suppression";
 import { readStartupThemePreference } from "@/lib/startup-theme";
 
 import "./index.css";
 
 installClientLogCapture();
+installNativeTooltipSuppression(document);
 
 async function start(): Promise<void> {
   const startupThemePreference = readStartupThemePreference();
