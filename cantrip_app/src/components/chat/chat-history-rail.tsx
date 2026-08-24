@@ -5,6 +5,9 @@ import { cn } from "@/lib/utils";
 
 export const CHAT_HISTORY_RAIL_MIN_TURNS = 8;
 export const CHAT_HISTORY_RAIL_MAX_LANDMARKS = 80;
+export const CHAT_HISTORY_RAIL_LANDMARK_GAP_PX = 16;
+
+const CHAT_HISTORY_RAIL_LANDMARK_HEIGHT_PX = 12;
 
 export interface ChatHistoryLandmark {
   messageId: string;
@@ -176,6 +179,10 @@ function tooltipPosition(position: number): string {
   return "top-1/2 -translate-y-1/2";
 }
 
+export function chatHistoryRailPreferredSpan(landmarkCount: number): number {
+  return Math.max(0, landmarkCount - 1) * CHAT_HISTORY_RAIL_LANDMARK_GAP_PX;
+}
+
 export function activeChatHistoryLandmarkId(
   offsets: readonly ChatHistoryAnchorOffset[],
   activationOffset: number,
@@ -289,6 +296,8 @@ export function ChatHistoryRail({
 
   if (landmarks.length === 0) return null;
 
+  const preferredSpan = chatHistoryRailPreferredSpan(landmarks.length);
+
   const jumpTo = (messageId: string) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -312,59 +321,67 @@ export function ChatHistoryRail({
         withComposer ? "bottom-64" : "bottom-10",
       )}
     >
-      <div className="absolute inset-y-0 left-1 w-px bg-border/35" />
-      {landmarks.map((landmark, index) => {
-        const hoveredDistance =
-          hoveredIndex === null
-            ? Number.POSITIVE_INFINITY
-            : Math.abs(index - hoveredIndex);
-        const wave = Math.max(0, 22 - hoveredDistance * 5);
-        const active = activeMessageId === landmark.messageId;
-        const lineWidth = 5 + landmark.strength * 8 + wave + (active ? 5 : 0);
-        return (
-          <button
-            key={landmark.messageId}
-            type="button"
-            aria-label={`Jump to turn ${landmark.ordinal}: ${landmark.title}`}
-            aria-current={active ? "location" : undefined}
-            className="group/landmark pointer-events-auto absolute left-1 flex h-3 w-11 -translate-y-1/2 items-center outline-none"
-            style={{ top: `${6 + landmark.position * 88}%` }}
-            onBlur={() => setHoveredIndex(null)}
-            onClick={() => jumpTo(landmark.messageId)}
-            onFocus={() => setHoveredIndex(index)}
-            onMouseEnter={() => setHoveredIndex(index)}
-            onMouseLeave={() => setHoveredIndex(null)}
-          >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "block h-px origin-left rounded-full bg-muted-foreground/45 transition-[width,background-color] duration-150 motion-reduce:transition-none",
-                active && "bg-foreground/80",
-                hoveredIndex === index && "bg-foreground",
-              )}
-              style={{ width: `${lineWidth}px` }}
-            />
-            {hoveredIndex === index ? (
+      <div
+        className="absolute inset-x-0 top-1/2 -translate-y-1/2"
+        style={{
+          height: `${preferredSpan}px`,
+          maxHeight: `calc(100% - ${CHAT_HISTORY_RAIL_LANDMARK_HEIGHT_PX}px)`,
+        }}
+      >
+        <div className="absolute -bottom-1.5 -top-1.5 left-1 w-px bg-border/35" />
+        {landmarks.map((landmark, index) => {
+          const hoveredDistance =
+            hoveredIndex === null
+              ? Number.POSITIVE_INFINITY
+              : Math.abs(index - hoveredIndex);
+          const wave = Math.max(0, 22 - hoveredDistance * 5);
+          const active = activeMessageId === landmark.messageId;
+          const lineWidth = 5 + landmark.strength * 8 + wave + (active ? 5 : 0);
+          return (
+            <button
+              key={landmark.messageId}
+              type="button"
+              aria-label={`Jump to turn ${landmark.ordinal}: ${landmark.title}`}
+              aria-current={active ? "location" : undefined}
+              className="group/landmark pointer-events-auto absolute left-1 flex h-3 w-11 -translate-y-1/2 items-center outline-none"
+              style={{ top: `${landmark.position * 100}%` }}
+              onBlur={() => setHoveredIndex(null)}
+              onClick={() => jumpTo(landmark.messageId)}
+              onFocus={() => setHoveredIndex(index)}
+              onMouseEnter={() => setHoveredIndex(index)}
+              onMouseLeave={() => setHoveredIndex(null)}
+            >
               <span
+                aria-hidden="true"
                 className={cn(
-                  "pointer-events-none absolute left-9 z-30 w-72 rounded-xl border bg-popover p-3 text-left text-popover-foreground opacity-0 shadow-xl backdrop-blur-xl transition-opacity duration-150 group-hover/landmark:opacity-100 group-focus-visible/landmark:opacity-100 motion-reduce:transition-none",
-                  tooltipPosition(landmark.position),
+                  "block h-px origin-left rounded-full bg-muted-foreground/45 transition-[width,background-color] duration-150 motion-reduce:transition-none",
+                  active && "bg-foreground/80",
+                  hoveredIndex === index && "bg-foreground",
                 )}
-              >
-                <span className="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Turn {landmark.ordinal}
+                style={{ width: `${lineWidth}px` }}
+              />
+              {hoveredIndex === index ? (
+                <span
+                  className={cn(
+                    "pointer-events-none absolute left-9 z-30 w-72 rounded-xl border bg-popover p-3 text-left text-popover-foreground opacity-0 shadow-xl backdrop-blur-xl transition-opacity duration-150 group-hover/landmark:opacity-100 group-focus-visible/landmark:opacity-100 motion-reduce:transition-none",
+                    tooltipPosition(landmark.position),
+                  )}
+                >
+                  <span className="block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Turn {landmark.ordinal}
+                  </span>
+                  <span className="mt-1 block line-clamp-2 text-xs font-medium leading-5">
+                    {landmark.title}
+                  </span>
+                  <span className="mt-1 block line-clamp-3 text-xs leading-5 text-muted-foreground">
+                    {landmark.summary}
+                  </span>
                 </span>
-                <span className="mt-1 block line-clamp-2 text-xs font-medium leading-5">
-                  {landmark.title}
-                </span>
-                <span className="mt-1 block line-clamp-3 text-xs leading-5 text-muted-foreground">
-                  {landmark.summary}
-                </span>
-              </span>
-            ) : null}
-          </button>
-        );
-      })}
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
     </nav>
   );
 }
