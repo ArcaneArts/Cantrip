@@ -629,6 +629,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     "initialize-worker-encryption",
     () =>
       WorkerEncryptionService.open({
+        allowLoopbackServerIdentityChange: config.tokenSource === "development",
         allowLoopbackServerPortChange: config.tokenSource === "development",
         dataDirectory: config.dataDirectory,
         serverUrl: config.serverUrl,

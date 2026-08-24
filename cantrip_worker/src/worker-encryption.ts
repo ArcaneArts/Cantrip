@@ -290,6 +290,7 @@ export class WorkerEncryptionService {
     private readonly pathname: string,
     private readonly serverUrl: string,
     private readonly transportServerUrl: string,
+    private readonly allowLoopbackServerIdentityChange: boolean,
     private readonly workerId: string,
     private readonly principalId: string,
     private readonly publicKey: EncryptionPublicKey,
@@ -322,6 +323,7 @@ export class WorkerEncryptionService {
   }
 
   static async open(input: {
+    allowLoopbackServerIdentityChange?: boolean;
     allowLoopbackServerPortChange?: boolean;
     dataDirectory: string;
     serverUrl: string;
@@ -334,6 +336,9 @@ export class WorkerEncryptionService {
       serverUrl,
       allowLoopbackServerPortChange,
     );
+    const allowLoopbackServerIdentityChange =
+      (input.allowLoopbackServerIdentityChange ?? false) &&
+      isLoopbackHostname(new URL(serverUrl).hostname);
     const pathname = workerEncryptionKeyPath(input.dataDirectory);
     if (existsSync(pathname)) {
       const record = parseRecord(readRecord(pathname), {
@@ -385,6 +390,7 @@ export class WorkerEncryptionService {
           pathname,
           serverUrl,
           transportServerUrl,
+          allowLoopbackServerIdentityChange,
           input.workerId,
           record.principalId,
           record.publicKey,
@@ -422,6 +428,7 @@ export class WorkerEncryptionService {
       pathname,
       serverUrl,
       transportServerUrl,
+      allowLoopbackServerIdentityChange,
       input.workerId,
       principalId,
       publicKey,
@@ -564,7 +571,10 @@ export class WorkerEncryptionService {
       );
     }
     const principal = result.principal;
-    if (this.#boundServerId && this.#boundServerId !== result.serverId) {
+    const serverIdentityChanged = Boolean(
+      this.#boundServerId && this.#boundServerId !== result.serverId,
+    );
+    if (serverIdentityChanged && !this.allowLoopbackServerIdentityChange) {
       throw new WorkerEncryptionError(
         "identity-mismatch",
         "The worker encryption key belongs to another logical server.",
@@ -586,10 +596,14 @@ export class WorkerEncryptionService {
         "The worker encryption key belongs to another account.",
       );
     }
+    const acceptedRevisions = serverIdentityChanged
+      ? new Map<WorkerEncryptionComponentScope, number>()
+      : new Map(this.#acceptedRevisions);
     if (principal.state !== "approved") {
       if (
         !(await this.persistIdentity(
           {
+            acceptedRevisions,
             ownerId: result.ownerId,
             serverId: result.serverId,
           },
@@ -602,6 +616,10 @@ export class WorkerEncryptionService {
       this.#boundServerId = result.serverId;
       this.#serverId = result.serverId;
       this.clearComponentKeys();
+      this.#acceptedRevisions.clear();
+      for (const [component, revision] of acceptedRevisions) {
+        this.#acceptedRevisions.set(component, revision);
+      }
       this.#status = workerEncryptionStatusSchema.parse({
         supported: true,
         state:
@@ -640,7 +658,7 @@ export class WorkerEncryptionService {
       }
     }
     for (const [component, grant] of latest) {
-      const acceptedRevision = this.#acceptedRevisions.get(component) ?? 0;
+      const acceptedRevision = acceptedRevisions.get(component) ?? 0;
       if (grant.keyRevision < acceptedRevision) {
         throw new WorkerEncryptionError(
           "principal-unavailable",
@@ -672,7 +690,6 @@ export class WorkerEncryptionService {
         "A worker encryption grant could not be opened.",
       );
     }
-    const acceptedRevisions = new Map(this.#acceptedRevisions);
     for (const [component, entry] of replacement) {
       acceptedRevisions.set(component, entry.keyRevision);
     }
