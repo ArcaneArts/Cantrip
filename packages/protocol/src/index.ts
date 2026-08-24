@@ -121,6 +121,15 @@ import {
   runConfigurationListWorkerCommandSchema,
   runConfigurationWriteWorkerCommandSchema,
 } from "./run-configuration-operations.js";
+import {
+  runConfigurationRuntimeOutputWorkerCommandSchema,
+  runConfigurationRuntimeReconcileWorkerCommandSchema,
+  runConfigurationRuntimeRestartWorkerCommandSchema,
+  runConfigurationRuntimeStartWorkerCommandSchema,
+  runConfigurationRuntimeStatusWorkerCommandSchema,
+  runConfigurationRuntimeStopWorkerCommandSchema,
+  runConfigurationRuntimeWorkerNotificationSchema,
+} from "./run-configuration-runtime.js";
 
 import {
   directBrokerAdvertisementSchema,
@@ -12271,6 +12280,24 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   runConfigurationDeleteWorkerCommandSchema.extend({
     type: z.literal("project.run-configuration-definitions.delete"),
   }),
+  runConfigurationRuntimeStartWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-runtime.start"),
+  }),
+  runConfigurationRuntimeRestartWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-runtime.restart"),
+  }),
+  runConfigurationRuntimeStopWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-runtime.stop"),
+  }),
+  runConfigurationRuntimeStatusWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-runtime.status"),
+  }),
+  runConfigurationRuntimeOutputWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-runtime.output"),
+  }),
+  runConfigurationRuntimeReconcileWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-runtime.reconcile"),
+  }),
   z
     .object({
       type: z.literal("project.run-configurations.metadata"),
@@ -13886,6 +13913,7 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
       run: workerRunSnapshotSchema,
     })
     .strict(),
+  runConfigurationRuntimeWorkerNotificationSchema,
   runConfigurationDefinitionChangeNotificationSchema,
   providerAuthStatusObservationSchema,
 ]);

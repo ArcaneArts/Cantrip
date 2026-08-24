@@ -495,6 +495,10 @@ import {
 } from "@cantrip/protocol/run-configuration-operations";
 import { runConfigurationIdSchema } from "@cantrip/protocol/run-configuration-definitions";
 import {
+  runConfigurationRuntimeWorkerObservationSchema,
+  runConfigurationRuntimeWorkerReconciliationSchema,
+} from "@cantrip/protocol/run-configuration-runtime";
+import {
   accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
   accountEncryptionProfileInitializeSchema,
@@ -1940,6 +1944,86 @@ export async function buildApp({
       }),
     );
   };
+  const reconcileRunConfigurationRuntimesForWorker = async (
+    ownerId: string,
+    workerId: string,
+  ): Promise<void> => {
+    if (!bridge.isConnected(workerId)) return;
+    const active =
+      await repository.listActiveRunConfigurationRuntimeIdentitiesForWorker(
+        ownerId,
+        workerId,
+      );
+    const reconciliation =
+      runConfigurationRuntimeWorkerReconciliationSchema.parse(
+        await bridge.request(workerId, {
+          type: "project.run-configuration-runtime.reconcile",
+          identities: active,
+        }),
+      );
+    await Promise.all(
+      active.map(async (identity) => {
+        const lookup = reconciliation.runtimes.find((candidate) =>
+          candidate.found
+            ? candidate.observation.runtimeId === identity.runtimeId
+            : candidate.identity.runtimeId === identity.runtimeId,
+        );
+        const observationMatches =
+          lookup?.found === true &&
+          lookup.observation.projectId === identity.projectId &&
+          lookup.observation.configurationId === identity.configurationId &&
+          lookup.observation.worktreeId === identity.worktreeId &&
+          lookup.observation.workerId === identity.workerId &&
+          lookup.observation.definitionRevision ===
+            identity.definitionRevision &&
+          lookup.observation.codexEnvironmentRevision ===
+            identity.codexEnvironmentRevision &&
+          lookup.observation.generation === identity.generation &&
+          lookup.observation.operationId === identity.operationId &&
+          lookup.observation.terminalId === identity.terminalId;
+        const observation = observationMatches
+          ? lookup.observation
+          : runConfigurationRuntimeWorkerObservationSchema.parse({
+              ...identity,
+              state: "lost",
+              startedAt: null,
+              endedAt: new Date().toISOString(),
+              exitCode: null,
+              signal: null,
+              failure: {
+                phase: "reconcile",
+                code: "process-missing",
+                message:
+                  "The Run configuration process was not present after worker reconnect.",
+                retryable: true,
+              },
+            });
+        const result = await repository.applyRunConfigurationRuntimeObservation(
+          ownerId,
+          workerId,
+          observation,
+        );
+        if (result?.applied) {
+          publishLiveInvalidation("run", {
+            projectId: result.runtime.projectId,
+            entityId: result.runtime.id,
+          });
+          if (result.runtime.terminalId) {
+            await updateTerminalStatus(
+              result.runtime.terminalId,
+              ["starting", "running", "restarting", "stopping"].includes(
+                result.runtime.state,
+              )
+                ? "running"
+                : result.runtime.state === "failed"
+                  ? "failed"
+                  : "exited",
+            );
+          }
+        }
+      }),
+    );
+  };
   const scheduleProjectWorktreeObservation = async (
     projectId: string,
   ): Promise<void> => {
@@ -2307,6 +2391,32 @@ export async function buildApp({
             ["queued", "starting", "running", "stopping"].includes(run.state)
               ? "running"
               : run.state === "failed"
+                ? "failed"
+                : "exited",
+          );
+        }
+      }
+      return;
+    }
+    if (notification.type === "project.run-configuration-runtime.observed") {
+      const result = await repository.applyRunConfigurationRuntimeObservation(
+        ownerId,
+        workerId,
+        notification.observation,
+      );
+      if (result?.applied) {
+        publishLiveInvalidation("run", {
+          projectId: result.runtime.projectId,
+          entityId: result.runtime.id,
+        });
+        if (result.runtime.terminalId) {
+          await updateTerminalStatus(
+            result.runtime.terminalId,
+            ["starting", "running", "restarting", "stopping"].includes(
+              result.runtime.state,
+            )
+              ? "running"
+              : result.runtime.state === "failed"
                 ? "failed"
                 : "exited",
           );
@@ -30471,6 +30581,15 @@ export async function buildApp({
           );
         },
       );
+      void reconcileRunConfigurationRuntimesForWorker(
+        workerAuth.ownerId,
+        workerId,
+      ).catch((error) => {
+        app.log.error(
+          { err: error, workerId },
+          "Could not reconcile Run configuration runtimes",
+        );
+      });
       scheduleWorkerWorktreeObservation(workerId);
       void resumePendingWorktreeTransitionsForWorker(
         workerAuth.ownerId,
