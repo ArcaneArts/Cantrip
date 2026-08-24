@@ -47,6 +47,12 @@ describe("run configuration definition protocol", () => {
       options: { shell: "automatic", login: true },
       stop: { gracePeriodMs: 3_000 },
     });
+    expect(
+      runConfigurationFileSchema.parse({
+        ...shellConfiguration(),
+        arguments: ["--listen", "127.0.0.1:4400"],
+      }).arguments,
+    ).toEqual(["--listen", "127.0.0.1:4400"]);
   });
 
   it("declares every planned provider while admitting only implemented documents", () => {

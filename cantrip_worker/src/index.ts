@@ -174,6 +174,7 @@ import { probeManagedLinkPlacement } from "./project-replica-placement.js";
 import { ManagedFolderManager } from "./managed-folders.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
 import { ProviderAuthObserver } from "./provider-auth-observer.js";
+import { RunConfigurationDefinitionService } from "./run-configuration-definition-service.js";
 import { GrokAuthClient } from "./grok-auth-client.js";
 import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
 import {
@@ -878,6 +879,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ((notification: WorkerNotification) => boolean) | null = null;
   let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
+  const runConfigurationDefinitions = new RunConfigurationDefinitionService({
+    emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
+  });
   const managedRuns = new ManagedRunSupervisor({
     authorize: async (input) => {
       if (input.rootKind === "folder-root") {
@@ -1930,6 +1934,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         } catch {
           throw new Error("Could not discover project script commands.");
         }
+      case "project.run-configuration-definitions.list":
+      case "project.run-configuration-definitions.get":
+      case "project.run-configuration-definitions.capabilities":
+      case "project.run-configuration-definitions.write":
+      case "project.run-configuration-definitions.delete":
+        return runConfigurationDefinitions.execute(command);
       case "project.run-configurations.metadata": {
         const inspection = runConfigurationInspectionSchema.parse(
           await inspectRunConfigurations(command.sourcePath),
@@ -4981,6 +4991,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     codegraphProjects?.close();
     worktrees.close();
     providerAuthObserver.close();
+    runConfigurationDefinitions.close();
     await runSetups!.closeAll();
     await managedRuns.closeAll();
     commandConnection.close();

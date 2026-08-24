@@ -1,0 +1,172 @@
+import {
+  runConfigurationCapabilitiesResponseSchema,
+  runConfigurationDefinitionChangeNotificationSchema,
+  runConfigurationDeleteResponseSchema,
+  runConfigurationGetResponseSchema,
+  runConfigurationListResponseSchema,
+  runConfigurationWriteResponseSchema,
+  type RunConfigurationDefinitionChangeNotification,
+  type RunConfigurationDefinitionWorkerCommand,
+  type RunConfigurationOperationResponse,
+} from "@cantrip/protocol/run-configuration-operations";
+
+import { shellRunConfigurationProvider } from "./run-configuration-provider.js";
+import {
+  RunConfigurationRepository,
+  type RunConfigurationRepositoryWatcher,
+} from "./run-configuration-repository.js";
+
+const MAX_OBSERVED_PROJECTS = 256;
+
+interface ObservedRepository {
+  repository: RunConfigurationRepository;
+  watcher: RunConfigurationRepositoryWatcher;
+}
+
+export class RunConfigurationDefinitionService {
+  readonly #emit: (
+    notification: RunConfigurationDefinitionChangeNotification,
+  ) => boolean | void | Promise<boolean | void>;
+  readonly #locks = new Map<string, Promise<void>>();
+  readonly #repositories = new Map<string, ObservedRepository>();
+  #closed = false;
+
+  constructor(options: {
+    emit: (
+      notification: RunConfigurationDefinitionChangeNotification,
+    ) => boolean | void | Promise<boolean | void>;
+  }) {
+    this.#emit = options.emit;
+  }
+
+  async execute(
+    command: RunConfigurationDefinitionWorkerCommand,
+  ): Promise<RunConfigurationOperationResponse> {
+    if (this.#closed) {
+      throw new Error("The Run configuration definition service is closed.");
+    }
+    const repository = await this.#repositoryFor(
+      command.projectId,
+      command.sourcePath,
+    );
+    const context = {
+      operationId: command.operationId,
+      projectId: command.projectId,
+    };
+    switch (command.type) {
+      case "project.run-configuration-definitions.list":
+        return runConfigurationListResponseSchema.parse({
+          operation: "list",
+          ...context,
+          inventory: await repository.scan(),
+        });
+      case "project.run-configuration-definitions.get":
+        return runConfigurationGetResponseSchema.parse({
+          operation: "get",
+          ...context,
+          result: await repository.read(command.configurationId),
+        });
+      case "project.run-configuration-definitions.capabilities":
+        return runConfigurationCapabilitiesResponseSchema.parse({
+          operation: "capabilities",
+          ...context,
+          capabilities: [shellRunConfigurationProvider.capability],
+        });
+      case "project.run-configuration-definitions.write":
+        return runConfigurationWriteResponseSchema.parse({
+          operation: "write",
+          ...context,
+          result: await repository.write(command.request),
+        });
+      case "project.run-configuration-definitions.delete":
+        return runConfigurationDeleteResponseSchema.parse({
+          operation: "delete",
+          ...context,
+          result: await repository.delete(command.request),
+        });
+    }
+  }
+
+  close(): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    for (const { watcher } of this.#repositories.values()) watcher.close();
+    this.#repositories.clear();
+  }
+
+  async #repositoryFor(
+    projectId: string,
+    sourcePath: string,
+  ): Promise<RunConfigurationRepository> {
+    return this.#serialize(projectId, async () => {
+      const opened = await RunConfigurationRepository.open(sourcePath);
+      const current = this.#repositories.get(projectId);
+      if (current?.repository.root === opened.root) {
+        this.#repositories.delete(projectId);
+        this.#repositories.set(projectId, current);
+        return current.repository;
+      }
+
+      const watcher = await opened.watch(async (change) => {
+        try {
+          await this.#emit(
+            runConfigurationDefinitionChangeNotificationSchema.parse({
+              type: "project.run-configuration-definitions.changed",
+              projectId,
+              sourcePath: opened.root,
+              change,
+            }),
+          );
+        } catch {
+          // A disconnected command channel is recovered by list-on-focus and
+          // list-on-reconnect. Definition watching must remain alive meanwhile.
+        }
+      });
+      current?.watcher.close();
+      this.#repositories.delete(projectId);
+      this.#repositories.set(projectId, { repository: opened, watcher });
+      this.#evictInactiveProjects(projectId);
+      return opened;
+    });
+  }
+
+  #evictInactiveProjects(activeProjectId: string): void {
+    while (this.#repositories.size > MAX_OBSERVED_PROJECTS) {
+      const candidate = this.#repositories.entries().next().value as
+        [string, ObservedRepository] | undefined;
+      if (!candidate) return;
+      const [projectId, observed] = candidate;
+      if (projectId === activeProjectId) {
+        this.#repositories.delete(projectId);
+        this.#repositories.set(projectId, observed);
+        continue;
+      }
+      observed.watcher.close();
+      this.#repositories.delete(projectId);
+    }
+  }
+
+  async #serialize<T>(
+    projectId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.#locks.get(projectId) ?? Promise.resolve();
+    let release = (): void => undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.#locks.set(projectId, current);
+    await previous;
+    try {
+      if (this.#closed) {
+        throw new Error("The Run configuration definition service is closed.");
+      }
+      return await operation();
+    } finally {
+      release();
+      if (this.#locks.get(projectId) === current) {
+        this.#locks.delete(projectId);
+      }
+    }
+  }
+}

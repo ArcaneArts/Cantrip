@@ -14,6 +14,14 @@ describe("live mutation invalidation", () => {
     expect(mutationLiveResources(worktreeRoute, "write")).toEqual(["worktree"]);
   });
 
+  it("invalidates shared Run definitions independently from runtime state", () => {
+    expect(
+      mutationLiveResources(
+        "/api/projects/:projectId/run-configurations/:configurationId",
+      ),
+    ).toEqual(["run-configuration"]);
+  });
+
   it("does not fan out chat-list invalidations for composer autosaves", () => {
     expect(mutationLiveResources("/api/chats/:chatId/composer-draft")).toEqual(
       [],

@@ -113,6 +113,14 @@ import {
   workerRunIdentitySchema,
   workerRunSnapshotSchema,
 } from "./run-configurations.js";
+import {
+  runConfigurationCapabilitiesWorkerCommandSchema,
+  runConfigurationDefinitionChangeNotificationSchema,
+  runConfigurationDeleteWorkerCommandSchema,
+  runConfigurationGetWorkerCommandSchema,
+  runConfigurationListWorkerCommandSchema,
+  runConfigurationWriteWorkerCommandSchema,
+} from "./run-configuration-operations.js";
 
 import {
   directBrokerAdvertisementSchema,
@@ -12248,6 +12256,21 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       sourcePath: z.string().min(1).max(8_192),
     })
     .strict(),
+  runConfigurationListWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-definitions.list"),
+  }),
+  runConfigurationGetWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-definitions.get"),
+  }),
+  runConfigurationCapabilitiesWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-definitions.capabilities"),
+  }),
+  runConfigurationWriteWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-definitions.write"),
+  }),
+  runConfigurationDeleteWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-definitions.delete"),
+  }),
   z
     .object({
       type: z.literal("project.run-configurations.metadata"),
@@ -13863,6 +13886,7 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
       run: workerRunSnapshotSchema,
     })
     .strict(),
+  runConfigurationDefinitionChangeNotificationSchema,
   providerAuthStatusObservationSchema,
 ]);
 
