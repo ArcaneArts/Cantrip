@@ -8,6 +8,7 @@ import test from "node:test";
 import { archiveDistribution } from "./archive-distribution.mjs";
 import { bundleNativeArtifacts } from "./bundle.mjs";
 import { normalizeTarget } from "./cantrip-code/build-lib.mjs";
+import { serviceWorkspaceBuilds } from "./package-workspace-runtime.mjs";
 
 test("archives standalone services and native client bundles", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-archive-test-"));
@@ -82,14 +83,27 @@ test("orchestrates server and worker before assembling the client", async () => 
       target: normalizeTarget(),
     });
     const labels = calls.map((call) => call.label);
-    assert.deepEqual(labels.slice(0, 6), [
-      "Version build",
-      "Logging build",
-      "Protocol build",
-      "server package",
-      "worker package",
-      "Desktop package",
-    ]);
+    const workspaceBuildLabels = serviceWorkspaceBuilds.map(
+      (packageName) => `${packageName} build`,
+    );
+    assert.deepEqual(
+      labels.slice(0, workspaceBuildLabels.length),
+      workspaceBuildLabels,
+    );
+    assert.ok(
+      labels.indexOf(workspaceBuildLabels.at(-1)) <
+        labels.indexOf("server package"),
+    );
+    assert.ok(
+      labels.indexOf(workspaceBuildLabels.at(-1)) <
+        labels.indexOf("worker package"),
+    );
+    assert.ok(
+      labels.indexOf("server package") < labels.indexOf("Desktop package"),
+    );
+    assert.ok(
+      labels.indexOf("worker package") < labels.indexOf("Desktop package"),
+    );
     assert.ok(
       labels.indexOf("Desktop package") < labels.indexOf("server archive"),
     );
