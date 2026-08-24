@@ -802,7 +802,7 @@ mod desktop {
         let (relay_refresh_sender, relay_refresh_receiver) = mpsc::channel(1);
         let (route_control_sender, route_control_receiver) = mpsc::channel(1);
         let task = tauri::async_runtime::spawn(run_forward(
-            app.clone(),
+            Some(app.clone()),
             listener,
             request,
             counters.clone(),
@@ -1390,8 +1390,55 @@ mod desktop {
             .unwrap_or(u64::MAX)
     }
 
+    fn route_connect_failure_reason_code(error: &str) -> &'static str {
+        match error {
+            "The tunnel attachment credential expired." => "relay-credential-expired",
+            "The tunnel attachment credential is invalid." => "relay-credential-invalid",
+            "Connecting the tunnel attachment timed out." => "connect-timeout",
+            "The tunnel attachment handshake timed out." => "handshake-timeout",
+            "Could not initialize the tunnel attachment."
+            | "The tunnel attachment closed during handshake."
+            | "The tunnel attachment handshake failed."
+            | "The tunnel attachment returned an invalid handshake."
+            | "The tunnel attachment handshake identity did not match." => "handshake-failed",
+            _ => "connect-failed",
+        }
+    }
+
+    fn relay_credential_state(relay: Option<&RelayRoute>, now_epoch_ms: u64) -> &'static str {
+        match relay {
+            Some(relay) if now_epoch_ms >= relay.expires_at_epoch_ms => "expired",
+            Some(_) => "valid",
+            None => "unavailable",
+        }
+    }
+
+    fn route_connect_failure_context(
+        request: &StartTunnelForwardRequest,
+        relay: Option<&RelayRoute>,
+        error: &str,
+        attempt: u64,
+        retry_delay: Duration,
+        now_epoch_ms: u64,
+    ) -> Value {
+        json!({
+            "attachmentId": request.attachment_id,
+            "attempt": attempt,
+            "diagnosticTraceId": request.diagnostic_trace_id,
+            "event": "desktop.tunnel.route.connect-failed",
+            "operation": "connect-route",
+            "reasonCode": route_connect_failure_reason_code(error),
+            "relayCredentialState": relay_credential_state(relay, now_epoch_ms),
+            "retryDelayMs": u64::try_from(retry_delay.as_millis()).unwrap_or(u64::MAX),
+            "routeCandidate": "relay",
+            "status": "retrying",
+            "subsystem": "tunnel-forward",
+            "tunnelId": request.tunnel_id,
+        })
+    }
+
     async fn run_forward(
-        app: AppHandle,
+        app: Option<AppHandle>,
         listener: TcpListener,
         mut request: StartTunnelForwardRequest,
         counters: Arc<ForwardCounters>,
@@ -1413,6 +1460,7 @@ mod desktop {
             .take()
             .and_then(|relay| relay_route(relay).ok());
         let mut ready = Some(ready);
+        let mut reconnect_attempt = 0_u64;
         let mut retry_delay = Duration::from_millis(250);
         let mut direct = request.direct.take();
         let mut direct_fallback_reason = None;
@@ -1487,6 +1535,20 @@ mod desktop {
                         return;
                     }
                     counters.route_state.store(3, Ordering::Relaxed);
+                    reconnect_attempt = reconnect_attempt.saturating_add(1);
+                    diagnostic_event(
+                        app.as_ref(),
+                        "warn",
+                        "Desktop tunnel route connection failed",
+                        route_connect_failure_context(
+                            &request,
+                            relay.as_ref(),
+                            &error,
+                            reconnect_attempt,
+                            retry_delay,
+                            unix_epoch_ms(),
+                        ),
+                    );
                     tokio::select! {
                         _ = &mut stop => return,
                         refresh = relay_refreshes.recv() => {
@@ -1512,7 +1574,7 @@ mod desktop {
             if startup.state == "relayed" {
                 if let Some(completed) = pending_relay_fallback.take() {
                     diagnostic_event(
-                        Some(&app),
+                        app.as_ref(),
                         "info",
                         "Desktop tunnel relay fallback completed",
                         json!({
@@ -1532,7 +1594,7 @@ mod desktop {
             }
             if counters.record_route_selection() {
                 diagnostic_event(
-                    Some(&app),
+                    app.as_ref(),
                     "info",
                     "Desktop tunnel route selected",
                     json!({
@@ -1551,9 +1613,10 @@ mod desktop {
             if let Some(ready) = ready.take() {
                 let _ = ready.send(Ok(startup));
             }
+            reconnect_attempt = 0;
             retry_delay = Duration::from_millis(250);
             match run_session(
-                Some(&app),
+                app.as_ref(),
                 diagnostic_trace_id.as_deref(),
                 &listener,
                 web_socket,
@@ -1587,7 +1650,7 @@ mod desktop {
                     };
                     if counters.record_route_disconnect() {
                         diagnostic_event(
-                            Some(&app),
+                            app.as_ref(),
                             "warn",
                             "Desktop tunnel route disconnected",
                             json!({
@@ -2720,6 +2783,167 @@ mod desktop {
             assert_eq!(final_snapshot.active_streams, 0);
         }
 
+        #[tokio::test]
+        async fn native_route_loop_recovers_on_the_same_listener_after_relay_refresh() {
+            let tunnel_id = Uuid::new_v4().to_string();
+            let attachment_id = Uuid::new_v4().to_string();
+            let worker_id = format!("worker-{}", Uuid::new_v4());
+            let client_id = format!("client-{}", Uuid::new_v4());
+            let owner_id = format!("owner-{}", Uuid::new_v4());
+            let session_id = Uuid::new_v4().to_string();
+            let good_capability_id = Uuid::new_v4().to_string();
+            let bad_capability_id = Uuid::new_v4().to_string();
+            let good_diagnostic_trace_id = Uuid::new_v4().to_string();
+            let bad_diagnostic_trace_id = Uuid::new_v4().to_string();
+            let good_secret = URL_SAFE_NO_PAD.encode([21_u8; 48]);
+            let bad_secret = URL_SAFE_NO_PAD.encode([22_u8; 48]);
+            let relay_secret = URL_SAFE_NO_PAD.encode([23_u8; 48]);
+            let data_key = URL_SAFE_NO_PAD.encode([24_u8; 32]);
+            let expires_at = (chrono::Utc::now() + chrono::Duration::seconds(30))
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let lease_expires_at = (chrono::Utc::now() + chrono::Duration::seconds(8))
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let configuration = json!({
+                "attachmentId": attachment_id,
+                "badCapabilityId": bad_capability_id,
+                "badDiagnosticTraceId": bad_diagnostic_trace_id,
+                "badSecret": bad_secret,
+                "clientId": client_id,
+                "dataProtection": {
+                    "formatVersion": 1,
+                    "algorithm": "AES-256-GCM",
+                    "keyRevision": 1,
+                    "key": data_key,
+                },
+                "expiresAt": expires_at,
+                "goodCapabilityId": good_capability_id,
+                "goodDiagnosticTraceId": good_diagnostic_trace_id,
+                "goodSecret": good_secret,
+                "leaseExpiresAt": lease_expires_at,
+                "ownerId": owner_id,
+                "relaySecret": relay_secret,
+                "serverId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "sessionId": session_id,
+                "tunnelId": tunnel_id,
+                "workerId": worker_id,
+            });
+            let (harness, ready) = CodeTransportHarness::start(&configuration);
+            let listener = bind_listener(None).await.unwrap();
+            let local_port = listener.local_addr().unwrap().port();
+            let counters = Arc::new(ForwardCounters::default());
+            let (stop_sender, stop_receiver) = oneshot::channel();
+            let (ready_sender, ready_receiver) = oneshot::channel();
+            let (relay_refresh_sender, relay_refresh_receiver) = mpsc::channel(1);
+            let (_route_control_sender, route_control_receiver) = mpsc::channel(1);
+            let request = StartTunnelForwardRequest {
+                attachment_id: attachment_id.clone(),
+                client_id: client_id.clone(),
+                data_protection: Some(TunnelDataProtectionRequest {
+                    format_version: 1,
+                    algorithm: "AES-256-GCM".into(),
+                    key_revision: 1,
+                    key: data_key.clone(),
+                }),
+                // The relay harness intentionally binds its route to this trace.
+                diagnostic_trace_id: Some(bad_diagnostic_trace_id.clone()),
+                direct: Some(super::super::DirectTunnelRequest {
+                    broker: serde_json::from_value(ready.broker.clone()).unwrap(),
+                    binding: direct_binding(&configuration, &good_capability_id),
+                    secret: good_secret.clone(),
+                    route: super::super::DirectTunnelRoute {
+                        tunnel_id: tunnel_id.clone(),
+                        attachment_id: attachment_id.clone(),
+                        source_endpoint_id: format!("desktop:{client_id}:{attachment_id}"),
+                        destination_endpoint_id: format!("worker:{worker_id}"),
+                    },
+                }),
+                expires_at: expires_at.clone(),
+                preferred_local_port: None,
+                relay: Some(RelayTunnelRequest {
+                    connect_path: ready.relay_path.clone(),
+                    secret: relay_secret.clone(),
+                    secret_expires_at_epoch_ms: unix_epoch_ms().saturating_sub(1),
+                    server_url: format!("http://127.0.0.1:{}", ready.relay_port),
+                }),
+                tunnel_id: tunnel_id.clone(),
+            };
+            let forward_counters = counters.clone();
+            let forward = tokio::spawn(run_forward(
+                None,
+                listener,
+                request,
+                forward_counters,
+                stop_receiver,
+                ready_sender,
+                relay_refresh_receiver,
+                route_control_receiver,
+            ));
+
+            let startup = timeout(Duration::from_secs(5), ready_receiver)
+                .await
+                .expect("native route startup deadline")
+                .expect("native route startup channel")
+                .expect("native direct route startup");
+            assert_eq!(startup.state, "local-direct");
+            let direct_response = local_http(local_port, "/code/?preserved=direct-loop").await;
+            assert!(String::from_utf8(direct_response)
+                .unwrap()
+                .contains("openvscode-compatible-workbench"));
+
+            timeout(Duration::from_secs(12), async {
+                while counters.route_state.load(Ordering::Acquire) != 3 {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("direct lease disconnect degraded the native route");
+            // Let the production loop reject the cached expired relay at least once.
+            sleep(Duration::from_millis(300)).await;
+            relay_refresh_sender
+                .send(RelayRefresh {
+                    relay: RelayTunnelRequest {
+                        connect_path: ready.relay_path,
+                        secret: relay_secret.clone(),
+                        secret_expires_at_epoch_ms: u64::MAX,
+                        server_url: format!("http://127.0.0.1:{}", ready.relay_port),
+                    },
+                })
+                .await
+                .unwrap();
+            timeout(Duration::from_secs(5), async {
+                while counters.route_state.load(Ordering::Acquire) != 2 {
+                    sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("refreshed relay restored the native route");
+
+            let relay_response = local_http(local_port, "/code/?preserved=relay-loop").await;
+            assert!(String::from_utf8(relay_response)
+                .unwrap()
+                .contains("openvscode-compatible-workbench"));
+            assert_eq!(counters.route_disconnects.load(Ordering::Acquire), 1);
+            assert_eq!(counters.route_fallbacks.load(Ordering::Acquire), 1);
+            assert_eq!(counters.route_selections.load(Ordering::Acquire), 2);
+
+            stop_sender.send(()).unwrap();
+            timeout(Duration::from_secs(5), forward)
+                .await
+                .expect("native route shutdown deadline")
+                .expect("native route task");
+            counters.wait_for_connections_drained().await;
+            let final_snapshot = harness.shutdown();
+            assert_eq!(final_snapshot.active_streams, 0);
+            assert!(final_snapshot.observed_requests.iter().any(|request| {
+                request.url
+                    == "/?preserved=direct-loop&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
+            }));
+            assert!(final_snapshot.observed_requests.iter().any(|request| {
+                request.url
+                    == "/?preserved=relay-loop&workspace=%2Fworker%2Fprivate%2Fproject.code-workspace"
+            }));
+        }
+
         #[test]
         fn rejects_credentialed_or_non_http_server_urls() {
             assert!(
@@ -3427,6 +3651,93 @@ mod desktop {
             assert_eq!(context.get("attachmentId"), Some(&json!("attachment")));
             assert!(context.get("capabilityId").is_none());
             assert!(context.get("directCapabilityId").is_none());
+        }
+
+        #[test]
+        fn route_connect_failure_diagnostics_are_bounded_and_secret_free() {
+            assert_eq!(
+                route_connect_failure_reason_code("The tunnel attachment credential expired."),
+                "relay-credential-expired"
+            );
+            assert_eq!(
+                route_connect_failure_reason_code("Connecting the tunnel attachment timed out."),
+                "connect-timeout"
+            );
+            assert_eq!(
+                route_connect_failure_reason_code("The tunnel attachment handshake timed out."),
+                "handshake-timeout"
+            );
+            assert_eq!(
+                route_connect_failure_reason_code(
+                    "The tunnel attachment handshake identity did not match."
+                ),
+                "handshake-failed"
+            );
+            assert_eq!(
+                route_connect_failure_reason_code(
+                    "unexpected failure containing super-secret-direct-material"
+                ),
+                "connect-failed"
+            );
+
+            let request = StartTunnelForwardRequest {
+                attachment_id: "attachment".into(),
+                client_id: "client".into(),
+                data_protection: Some(TunnelDataProtectionRequest {
+                    format_version: 1,
+                    algorithm: "AES-256-GCM".into(),
+                    key_revision: 1,
+                    key: "super-secret-content-key".into(),
+                }),
+                diagnostic_trace_id: Some("trace".into()),
+                direct: None,
+                expires_at: "2099-01-01T00:00:00.000Z".into(),
+                preferred_local_port: None,
+                relay: None,
+                tunnel_id: "tunnel".into(),
+            };
+            let relay = RelayRoute {
+                expires_at_epoch_ms: 1_000,
+                secret: Zeroizing::new("super-secret-relay-credential".into()),
+                url: Url::parse("wss://cantrip.invalid/api/tunnel-attachments/attachment/connect")
+                    .unwrap(),
+            };
+            assert_eq!(relay_credential_state(Some(&relay), 999), "valid");
+            assert_eq!(relay_credential_state(Some(&relay), 1_000), "expired");
+            assert_eq!(relay_credential_state(None, 1_000), "unavailable");
+
+            let mut context = route_connect_failure_context(
+                &request,
+                Some(&relay),
+                "The tunnel attachment credential expired.",
+                3,
+                Duration::from_secs(2),
+                1_000,
+            );
+            strip_capability_material(&mut context);
+
+            assert_eq!(
+                context,
+                json!({
+                    "attachmentId": "attachment",
+                    "attempt": 3,
+                    "diagnosticTraceId": "trace",
+                    "event": "desktop.tunnel.route.connect-failed",
+                    "operation": "connect-route",
+                    "reasonCode": "relay-credential-expired",
+                    "relayCredentialState": "expired",
+                    "retryDelayMs": 2_000,
+                    "routeCandidate": "relay",
+                    "status": "retrying",
+                    "subsystem": "tunnel-forward",
+                    "tunnelId": "tunnel",
+                })
+            );
+            let encoded = context.to_string();
+            assert!(!encoded.contains("super-secret"));
+            assert!(!encoded.contains("cantrip.invalid"));
+            assert!(!encoded.contains("authorization"));
+            assert!(!encoded.contains("capabilityId"));
         }
 
         #[test]
