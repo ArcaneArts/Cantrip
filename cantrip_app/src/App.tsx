@@ -2750,7 +2750,7 @@ function ChatTranscript({
       <div
         ref={transcriptViewportRef}
         className={cn(
-          "chat-message-scroll flex-1 overflow-y-auto px-4 pt-6 sm:px-8",
+          "chat-message-scroll flex-1 overflow-y-auto px-4 pt-6 sm:px-8 md:px-10",
           effectiveInspectOnly ? "pb-10" : "pb-60",
         )}
         onScroll={handleChatTranscriptScroll}
@@ -3072,7 +3072,7 @@ function ChatTranscript({
       <form
         onSubmit={submit}
         className={cn(
-          "pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4",
+          "pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4 md:px-10",
           effectiveInspectOnly && "hidden",
         )}
         style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}

@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   activeChatHistoryLandmarkId,
   buildChatHistoryLandmarks,
+  chatHistoryRailPreferredSpan,
+  CHAT_HISTORY_RAIL_LANDMARK_GAP_PX,
   CHAT_HISTORY_RAIL_MAX_LANDMARKS,
   CHAT_HISTORY_RAIL_MIN_TURNS,
   ChatHistoryRail,
@@ -111,6 +113,13 @@ function conversation(turnCount: number): ChatMessage[] {
 }
 
 describe("chat history rail landmarks", () => {
+  it("keeps sparse landmarks at a fixed cadence around the center", () => {
+    expect(chatHistoryRailPreferredSpan(1)).toBe(0);
+    expect(chatHistoryRailPreferredSpan(5)).toBe(
+      CHAT_HISTORY_RAIL_LANDMARK_GAP_PX * 4,
+    );
+  });
+
   it("stays hidden until the conversation is large enough", () => {
     expect(
       buildChatHistoryLandmarks(conversation(CHAT_HISTORY_RAIL_MIN_TURNS - 1)),
@@ -164,6 +173,11 @@ describe("chat history rail landmarks", () => {
 
     expect(markup).toContain('aria-label="Conversation history"');
     expect(markup).toContain('data-elite-ignore=""');
+    expect(markup).toContain("top-1/2 -translate-y-1/2");
+    expect(markup).toContain(
+      `height:${CHAT_HISTORY_RAIL_LANDMARK_GAP_PX * (CHAT_HISTORY_RAIL_MIN_TURNS - 1)}px`,
+    );
+    expect(markup).toContain("max-height:calc(100% - 12px)");
     expect(markup).toContain('aria-label="Jump to turn 1: Request 0');
     expect(markup.match(/type="button"/g)).toHaveLength(
       CHAT_HISTORY_RAIL_MIN_TURNS,
