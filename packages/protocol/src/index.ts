@@ -13739,6 +13739,13 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
   }),
   z
     .object({
+      type: z.literal("worktree.filesystem.changed"),
+      sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
+      worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("git.operation.observed"),
       projectId: z.string().uuid(),
       worktreeId: z.string().min(1).max(200),

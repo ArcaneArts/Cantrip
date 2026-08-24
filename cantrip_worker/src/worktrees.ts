@@ -66,6 +66,14 @@ function observationConfigurationFingerprint(
   });
 }
 
+export function worktreeWatchEventTouchesFiles(
+  filename: string | Buffer | null,
+): boolean {
+  if (filename === null) return true;
+  const normalized = filename.toString().replaceAll("\\", "/");
+  return normalized !== ".git" && !normalized.startsWith(".git/");
+}
+
 export function buildGitOperationObservation(input: {
   conflicts: GitConflictList;
   observedAt?: string;
@@ -286,6 +294,7 @@ export function parseGitWorktreePorcelain(
 export class WorktreeManager {
   private readonly mutationQueues = new Map<string, Promise<void>>();
   private readonly observationFingerprints = new Map<string, string>();
+  private readonly observationFilesystemChanges = new Set<string>();
   private readonly observationHeads = new Map<string, string | null>();
   private readonly observationInventoryFingerprints = new Map<string, string>();
   private readonly operationObservationFingerprints = new Map<string, string>();
@@ -349,6 +358,7 @@ export class WorktreeManager {
     for (const key of this.observationTargets.keys()) {
       if (next.has(key)) continue;
       this.observationFingerprints.delete(key);
+      this.observationFilesystemChanges.delete(key);
       this.observationHeads.delete(key);
       this.operationObservationFingerprints.delete(key);
     }
@@ -400,6 +410,7 @@ export class WorktreeManager {
     }
     this.observationWatchers.clear();
     this.observationTargets.clear();
+    this.observationFilesystemChanges.clear();
     this.observationHeads.clear();
     this.operationObservationFingerprints.clear();
   }
@@ -409,10 +420,16 @@ export class WorktreeManager {
     target: ObservedWorktree,
   ): Promise<void> {
     const watchers: FSWatcher[] = [];
-    const install = (watchedPath: string): void => {
+    const install = (watchedPath: string, reportsFiles: boolean): void => {
       if (this.observationWatchers.get(key) !== watchers) return;
-      const watcher = watch(watchedPath, { recursive: true }, () =>
-        this.scheduleObservedTarget(key),
+      const watcher = watch(
+        watchedPath,
+        { recursive: true },
+        (_eventType, filename) =>
+          this.scheduleObservedTarget(
+            key,
+            reportsFiles && worktreeWatchEventTouchesFiles(filename),
+          ),
       );
       watcher.on("error", () => {
         const current = this.observationWatchers.get(key);
@@ -426,7 +443,7 @@ export class WorktreeManager {
     };
     this.observationWatchers.set(key, watchers);
     try {
-      install(target.worktreePath);
+      install(target.worktreePath, true);
     } catch {
       // Git metadata watching below may still be available.
     }
@@ -444,7 +461,7 @@ export class WorktreeManager {
         gitDirectories.map((gitDirectory) => path.resolve(gitDirectory)),
       )) {
         if (gitDirectory !== path.resolve(target.worktreePath)) {
-          install(gitDirectory);
+          install(gitDirectory, false);
         }
       }
     } catch {
@@ -452,11 +469,22 @@ export class WorktreeManager {
     }
   }
 
-  private scheduleObservedTarget(key: string): void {
+  private scheduleObservedTarget(key: string, filesystemChanged = false): void {
+    if (filesystemChanged) this.observationFilesystemChanges.add(key);
     const existing = this.observationTimers.get(key);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       this.observationTimers.delete(key);
+      if (this.observationFilesystemChanges.delete(key)) {
+        const target = this.observationTargets.get(key);
+        if (target) {
+          this.observationEmitter({
+            type: "worktree.filesystem.changed",
+            sourcePath: target.sourcePath,
+            worktreePath: target.worktreePath,
+          });
+        }
+      }
       void this.refreshObservedTarget(key);
     }, OBSERVATION_DEBOUNCE_MS);
     timer.unref();

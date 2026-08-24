@@ -55,7 +55,9 @@ export function ExplorerFileBrowser({
     explorerId: explorer.id,
     gitStatus,
     path: "",
+    projectId: explorer.projectId,
     queryScope,
+    worktreeId: explorer.worktreeId,
   });
 
   useEffect(() => {
@@ -140,8 +142,10 @@ export function ExplorerFileBrowser({
                 onShowInGraph={onShowInGraph}
                 onOpenTerminal={onOpenTerminal}
                 onToggle={toggle}
+                projectId={explorer.projectId}
                 queryScope={queryScope}
                 revealedPath={revealedPath}
+                worktreeId={explorer.worktreeId}
               />
             ) : (
               <ExplorerEntryRow

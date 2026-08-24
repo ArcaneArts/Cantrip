@@ -2159,6 +2159,20 @@ export async function buildApp({
       scheduleWorkerWorktreeObservation(workerId);
       return;
     }
+    if (notification.type === "worktree.filesystem.changed") {
+      const context = await repository.getProjectWorktreeObservationContext(
+        ownerId,
+        workerId,
+        notification.sourcePath,
+        notification.worktreePath,
+      );
+      if (!context) return;
+      publishLiveInvalidation("explorer-filesystem", {
+        entityId: context.worktreeId,
+        projectId: context.projectId,
+      });
+      return;
+    }
     if (notification.type === "codegraph.status.observed") {
       const status = codeGraphProjectStatusSchema.parse(notification.status);
       const observationKey = `${ownerId}:${workerId}:${status.projectId}:${status.worktreeId}`;
