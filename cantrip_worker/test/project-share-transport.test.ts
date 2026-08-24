@@ -6,6 +6,7 @@ import {
   encodeTunnelDataPlaneFrame,
   encodeWorkerConnectionEnvelope,
   type TunnelDataPlaneFrameHeader,
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
@@ -24,7 +25,14 @@ describe("worker project share transport", () => {
     const tunnelId = "11111111-1111-4111-8111-111111111111";
     let authorization: string | undefined;
     const server = createServer();
-    const webSockets = new WebSocketServer({ noServer: true });
+    const webSockets = new WebSocketServer({
+      noServer: true,
+      handleProtocols(protocols) {
+        return protocols.has(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL)
+          ? WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL
+          : false;
+      },
+    });
     const connected = new Promise<WebSocket>((resolve) => {
       webSockets.once("connection", (client, request) => {
         const connectionGeneration = new URL(

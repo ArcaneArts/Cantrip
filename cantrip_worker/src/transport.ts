@@ -17,6 +17,9 @@ import {
   type WorkerNotification,
   type WorkerRequestEnvelope,
   type WorkerServerEnvelope,
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_SUBPROTOCOLS,
 } from "@cantrip/protocol";
 import type { OperationalLogContext } from "@cantrip/logging";
 import WebSocket, { type RawData } from "ws";
@@ -44,13 +47,11 @@ const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
 const MAX_BUFFERED_COMMAND_BYTES = 8 * 1_024 * 1_024;
 const TUNNEL_DATA_PLANE_LOW_WATER_BYTES = 256 * 1_024;
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
-const DEFAULT_CONNECTION_NEGOTIATION_WINDOW_MS = 250;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const DEFAULT_TRANSPORT_DISCONNECT_GRACE_MS = 15_000;
 type CommandEnvelopeDelivery = "sent" | "queued" | "dropped";
 
 export interface WorkerConnectionTimingOptions {
-  connectionNegotiationWindowMs?: number;
   reconnectDelayMs?: number;
   transportDisconnectGraceMs?: number;
 }
@@ -183,15 +184,14 @@ export class WorkerConnection {
   #closed = false;
   #authenticationRejected = false;
   readonly #connectionGeneration = randomUUID();
-  readonly #connectionNegotiationWindowMs: number;
-  #connectionNegotiationTimer: ReturnType<typeof setTimeout> | null = null;
   #connectionReadyDeadlineMs: number | null = null;
   #connectionReadyTimer: ReturnType<typeof setTimeout> | null = null;
+  #connectionPendingObserved = false;
   #connectAttempt = 0;
   #disconnectStartedAtMs: number | null = null;
   #lastConnectionError: string | null = null;
   #keepaliveTimer: ReturnType<typeof setInterval> | null = null;
-  #legacyFallbackAllowed = true;
+  #offerConnectionSubprotocols = true;
   #pendingCommandBytes = 0;
   readonly #pendingCommandEnvelopes: string[] = [];
   readonly #reconnectDelayMs: number;
@@ -218,11 +218,6 @@ export class WorkerConnection {
     private readonly handleTransportConnect: () => void = () => undefined,
     timing: WorkerConnectionTimingOptions = {},
   ) {
-    this.#connectionNegotiationWindowMs = Math.max(
-      0,
-      timing.connectionNegotiationWindowMs ??
-        DEFAULT_CONNECTION_NEGOTIATION_WINDOW_MS,
-    );
     this.#reconnectDelayMs = Math.max(
       0,
       timing.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS,
@@ -292,9 +287,12 @@ export class WorkerConnection {
       serverOrigin: url.origin,
     });
 
-    const socket = new WebSocket(url, {
+    const socketOptions = {
       headers: { authorization: `Bearer ${this.config.token}` },
-    });
+    };
+    const socket = this.#offerConnectionSubprotocols
+      ? new WebSocket(url, [...WORKER_WEBSOCKET_SUBPROTOCOLS], socketOptions)
+      : new WebSocket(url, socketOptions);
     this.clearSocketNegotiation();
     this.#socket = socket;
     this.#socketReadiness = "negotiating";
@@ -314,9 +312,9 @@ export class WorkerConnection {
       return;
     }
     this.#lastConnectionError = null;
-    if (this.#legacyFallbackAllowed) {
-      this.startLegacyNegotiationTimer(socket);
-    } else {
+    if (socket.protocol === WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL) {
+      this.markSocketReady(socket, "legacy-subprotocol");
+    } else if (socket.protocol === WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL) {
       this.#socketReadiness = "protocol-pending";
       this.startConnectionReadyTimer(socket);
     }
@@ -329,6 +327,12 @@ export class WorkerConnection {
       error.message === this.#lastConnectionError
     )
       return;
+    if (error.message === "Server sent no subprotocol") {
+      // Some legacy servers accept the offered handshake but omit the selected
+      // protocol. Retry without offers and require a real request or a
+      // pending/ready envelope before trusting that connection.
+      this.#offerConnectionSubprotocols = false;
+    }
     this.#lastConnectionError = error.message;
     workerLogger.rateLimited(
       `worker-connection-error:${this.config.workerId}`,
@@ -468,27 +472,6 @@ export class WorkerConnection {
     this.#transportDisconnectTimer = null;
   }
 
-  private startLegacyNegotiationTimer(socket: WebSocket): void {
-    this.clearConnectionNegotiationTimer();
-    let delayMs = this.#connectionNegotiationWindowMs;
-    if (this.#transportDisconnectDeadlineMs !== null) {
-      const graceRemainingMs = Math.max(
-        0,
-        this.#transportDisconnectDeadlineMs - Date.now(),
-      );
-      if (graceRemainingMs === 0) return;
-      delayMs = Math.min(delayMs, Math.max(0, graceRemainingMs - 1));
-    }
-    this.#connectionNegotiationTimer = setTimeout(() => {
-      this.#connectionNegotiationTimer = null;
-      if (this.#socket !== socket || this.#socketReadiness !== "negotiating") {
-        return;
-      }
-      this.markSocketReady(socket, "legacy-timeout");
-    }, delayMs);
-    this.#connectionNegotiationTimer.unref();
-  }
-
   private startConnectionReadyTimer(socket: WebSocket): void {
     this.clearConnectionReadyTimer();
     const deadlineMs =
@@ -513,7 +496,7 @@ export class WorkerConnection {
 
   private markSocketReady(
     socket: WebSocket,
-    negotiation: "legacy-request" | "legacy-timeout" | "protocol",
+    negotiation: "legacy-request" | "legacy-subprotocol" | "protocol",
   ): void {
     if (
       this.#closed ||
@@ -565,8 +548,6 @@ export class WorkerConnection {
         "kind" in decoded.value &&
         decoded.value.kind === "connection"
       ) {
-        this.#legacyFallbackAllowed = false;
-        this.clearConnectionNegotiationTimer();
         this.clearKeepalive();
         this.#readySocket = null;
         this.#socketReadiness = "protocol-pending";
@@ -575,8 +556,6 @@ export class WorkerConnection {
       }
       return false;
     }
-    this.#legacyFallbackAllowed = false;
-    this.clearConnectionNegotiationTimer();
     if (decoded.data.connectionGeneration !== this.#connectionGeneration) {
       this.clearKeepalive();
       this.#readySocket = null;
@@ -585,10 +564,21 @@ export class WorkerConnection {
       return true;
     }
     if (decoded.data.state === "pending") {
+      this.#connectionPendingObserved = true;
       if (this.#socketReadiness !== "ready") {
         this.#socketReadiness = "protocol-pending";
         this.startConnectionReadyTimer(socket);
       }
+      return true;
+    }
+    if (
+      this.#socketReadiness !== "protocol-pending" ||
+      !this.#connectionPendingObserved
+    ) {
+      this.clearKeepalive();
+      this.#readySocket = null;
+      this.#socketReadiness = "protocol-pending";
+      socket.close(1002, "Worker connection became ready before pending");
       return true;
     }
     this.markSocketReady(socket, "protocol");
@@ -598,19 +588,13 @@ export class WorkerConnection {
   private clearSocketNegotiation(): void {
     this.clearSocketNegotiationTimers();
     this.#connectionReadyDeadlineMs = null;
+    this.#connectionPendingObserved = false;
     this.#readySocket = null;
     this.#socketReadiness = "idle";
   }
 
   private clearSocketNegotiationTimers(): void {
-    this.clearConnectionNegotiationTimer();
     this.clearConnectionReadyTimer();
-  }
-
-  private clearConnectionNegotiationTimer(): void {
-    if (!this.#connectionNegotiationTimer) return;
-    clearTimeout(this.#connectionNegotiationTimer);
-    this.#connectionNegotiationTimer = null;
   }
 
   private clearConnectionReadyTimer(): void {

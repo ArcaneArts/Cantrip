@@ -10,6 +10,8 @@ import {
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
   type WorkerServerEnvelope,
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
@@ -114,9 +116,37 @@ function sendConnectionReady(socket: WebSocket, requestUrl: string): void {
   sendConnectionState(socket, requestUrl, "ready");
 }
 
-async function commandServer(options: { autoReady?: boolean } = {}) {
+function authenticatedReadyWebSocketServer(): WebSocketServer {
+  return new WebSocketServer({
+    noServer: true,
+    handleProtocols(protocols) {
+      return protocols.has(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL)
+        ? WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL
+        : false;
+    },
+  });
+}
+
+async function commandServer(
+  options: {
+    autoReady?: boolean;
+    protocol?: "auth-ready" | "legacy" | null;
+  } = {},
+) {
   const server = createServer();
-  const webSockets = new WebSocketServer({ noServer: true });
+  const selectedProtocol =
+    options.protocol === "legacy"
+      ? WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL
+      : options.protocol === null
+        ? null
+        : WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL;
+  const webSockets = new WebSocketServer({
+    noServer: true,
+    handleProtocols(protocols) {
+      if (selectedProtocol === null) return false;
+      return protocols.has(selectedProtocol) ? selectedProtocol : false;
+    },
+  });
   const pendingSockets: WebSocket[] = [];
   const connected: Array<(socket: WebSocket) => void> = [];
   const requestUrls: string[] = [];
@@ -164,7 +194,7 @@ async function commandServer(options: { autoReady?: boolean } = {}) {
 describe("worker generic tunnel data transport", () => {
   it("delivers a durable chat outcome after the command channel reconnects", async () => {
     const server = createServer();
-    const webSockets = new WebSocketServer({ noServer: true });
+    const webSockets = authenticatedReadyWebSocketServer();
     const sockets: WebSocket[] = [];
     const connected: Array<(socket: WebSocket) => void> = [];
     const nextSocket = () =>
@@ -282,7 +312,7 @@ describe("worker generic tunnel data transport", () => {
 
   it("keeps the channel active and returns a command after reconnecting", async () => {
     const server = createServer();
-    const webSockets = new WebSocketServer({ noServer: true });
+    const webSockets = authenticatedReadyWebSocketServer();
     const sockets: WebSocket[] = [];
     let resolveFirst: ((socket: WebSocket) => void) | undefined;
     let resolveSecond: ((socket: WebSocket) => void) | undefined;
@@ -377,7 +407,7 @@ describe("worker generic tunnel data transport", () => {
 
   it("multiplexes generic frames and reports transport disconnect", async () => {
     const server = createServer();
-    const webSockets = new WebSocketServer({ noServer: true });
+    const webSockets = authenticatedReadyWebSocketServer();
     const connected = new Promise<WebSocket>((resolve) => {
       webSockets.once("connection", (socket, request) => {
         resolve(socket);
@@ -716,32 +746,51 @@ describe("worker generic tunnel data transport", () => {
     expect(connected).toHaveBeenCalledOnce();
   });
 
-  it("falls back to legacy readiness after a bounded negotiation window", async () => {
-    const server = await commandServer({ autoReady: false });
+  it("waits for delayed pending on the authenticated-ready subprotocol", async () => {
+    const server = await commandServer({
+      autoReady: false,
+      protocol: "auth-ready",
+    });
+    const disconnected = vi.fn();
     const connected = vi.fn();
     const connection = new WorkerConnection(
       workerConfig(server.port),
       async () => undefined,
       () => undefined,
       () => undefined,
-      () => undefined,
+      disconnected,
       0,
       connected,
       {
-        connectionNegotiationWindowMs: 15,
         reconnectDelayMs: 5,
-        transportDisconnectGraceMs: 80,
+        transportDisconnectGraceMs: 1_000,
       },
     );
     connection.start();
     closers.push(() => connection.close());
-    const socket = await server.nextSocket();
+    const firstSocket = await server.nextSocket();
+    sendConnectionReady(firstSocket, server.requestUrls[0]!);
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledOnce());
+
+    const reconnect = server.nextSocket();
+    firstSocket.terminate();
+    const socket = await reconnect;
 
     expect(
       connection.sendTunnelDataPlaneFrame(frame, new Uint8Array([1])),
     ).toBe(false);
-    expect(connected).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(connected).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(connected).toHaveBeenCalledOnce();
+    expect(disconnected).not.toHaveBeenCalled();
+    expect(
+      connection.sendTunnelDataPlaneFrame(frame, new Uint8Array([1])),
+    ).toBe(false);
+
+    sendConnectionState(socket, server.requestUrls[1]!, "pending");
+    expect(connected).toHaveBeenCalledOnce();
+    sendConnectionState(socket, server.requestUrls[1]!, "ready");
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledTimes(2));
+
     const outbound = new Promise<Uint8Array>((resolve) => {
       socket.once("message", (data) =>
         resolve(Uint8Array.from(data as Buffer)),
@@ -755,8 +804,72 @@ describe("worker generic tunnel data transport", () => {
     );
   });
 
+  it("rejects a ready envelope that was not preceded by pending", async () => {
+    const server = await commandServer({
+      autoReady: false,
+      protocol: "auth-ready",
+    });
+    const connected = vi.fn();
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      0,
+      connected,
+      { reconnectDelayMs: 1_000, transportDisconnectGraceMs: 150 },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+    const socket = await server.nextSocket();
+    const closed = new Promise<number>((resolve) => {
+      socket.once("close", (code) => resolve(code));
+    });
+
+    sendConnectionState(socket, server.requestUrls[0]!, "ready");
+
+    await expect(closed).resolves.toBe(1002);
+    expect(connected).not.toHaveBeenCalled();
+  });
+
+  it("requires a new pending envelope before ready on reconnect", async () => {
+    const server = await commandServer({
+      autoReady: false,
+      protocol: "auth-ready",
+    });
+    const connected = vi.fn();
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      0,
+      connected,
+      { reconnectDelayMs: 5, transportDisconnectGraceMs: 150 },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    const firstSocket = await server.nextSocket();
+    sendConnectionReady(firstSocket, server.requestUrls[0]!);
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledOnce());
+    const reconnect = server.nextSocket();
+    firstSocket.terminate();
+    const secondSocket = await reconnect;
+    const closed = new Promise<number>((resolve) => {
+      secondSocket.once("close", (code) => resolve(code));
+    });
+
+    sendConnectionState(secondSocket, server.requestUrls[1]!, "ready");
+
+    await expect(closed).resolves.toBe(1002);
+    expect(connected).toHaveBeenCalledOnce();
+  });
+
   it("treats an old-server request as immediate legacy readiness", async () => {
-    const server = await commandServer({ autoReady: false });
+    const server = await commandServer({ autoReady: false, protocol: null });
     const connected = vi.fn();
     const connection = new WorkerConnection(
       workerConfig(server.port),
@@ -767,13 +880,15 @@ describe("worker generic tunnel data transport", () => {
       0,
       connected,
       {
-        connectionNegotiationWindowMs: 200,
         reconnectDelayMs: 5,
         transportDisconnectGraceMs: 300,
       },
     );
     connection.start();
     closers.push(() => connection.close());
+    // ws rejects the first handshake when an old server omits a selected
+    // protocol; the worker retries without offers and awaits a real request.
+    await server.nextSocket();
     const socket = await server.nextSocket();
     const response = new Promise<WorkerServerEnvelope>((resolve) => {
       socket.once("message", (data) => {
@@ -796,5 +911,94 @@ describe("worker generic tunnel data transport", () => {
       ok: true,
     });
     expect(connected).toHaveBeenCalledOnce();
+  });
+
+  it("flushes queued outcomes on a negotiated legacy reconnect without an inbound request", async () => {
+    const server = await commandServer({
+      autoReady: false,
+      protocol: "legacy",
+    });
+    const connected = vi.fn();
+    let releaseCommand: (() => void) | undefined;
+    let markCommandStarted: (() => void) | undefined;
+    let markCommandFinished: (() => void) | undefined;
+    const commandStarted = new Promise<void>((resolve) => {
+      markCommandStarted = resolve;
+    });
+    const commandFinished = new Promise<void>((resolve) => {
+      markCommandFinished = resolve;
+    });
+    const commandGate = new Promise<void>((resolve) => {
+      releaseCommand = resolve;
+    });
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async (command) => {
+        if (command.type === "chat.turn") {
+          markCommandStarted?.();
+          await commandGate;
+          markCommandFinished?.();
+          return {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            text: "Legacy queued result",
+            status: "completed",
+          };
+        }
+        return { available: true };
+      },
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      0,
+      connected,
+      {
+        reconnectDelayMs: 100,
+        transportDisconnectGraceMs: 300,
+      },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    const firstSocket = await server.nextSocket();
+    firstSocket.send(
+      encodeWorkerRequestEnvelope({
+        kind: "request",
+        requestId: "legacy-chat-request",
+        command: chatTurnCommand(),
+      }),
+    );
+    await commandStarted;
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledOnce());
+
+    const reconnect = server.nextSocket();
+    firstSocket.terminate();
+    await vi.waitFor(() => {
+      expect(
+        connection.sendTunnelDataPlaneFrame(frame, new Uint8Array([1])),
+      ).toBe(false);
+    });
+    releaseCommand?.();
+    await commandFinished;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(connected).toHaveBeenCalledOnce();
+
+    const secondSocket = await reconnect;
+    const received: WorkerServerEnvelope[] = [];
+    secondSocket.on("message", (data) => {
+      const decoded = decodeWorkerServerEnvelope(data.toString());
+      if (decoded.success) received.push(decoded.data);
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        received.some(
+          (envelope) =>
+            envelope.kind === "response" &&
+            envelope.requestId === "legacy-chat-request",
+        ),
+      ).toBe(true);
+    });
+    expect(connected).toHaveBeenCalledTimes(2);
   });
 });
