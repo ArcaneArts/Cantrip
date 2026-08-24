@@ -172,6 +172,7 @@ const workerBridge: WorkerCommandBus = {
             entries: [],
             diagnostics: [],
           },
+          validations: [],
         };
       case "project.script-commands.inspect":
         return protectedRepositoryPayload;

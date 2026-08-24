@@ -115,6 +115,33 @@ describe("RunConfigurationDefinitionService", () => {
     });
     await expect(readFile(marker, "utf8")).rejects.toThrow();
 
+    await service.execute({
+      type: "project.run-configuration-definitions.write",
+      operationId: randomUUID(),
+      projectId,
+      sourcePath: root,
+      request: { expectedRevision: null, document },
+    });
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.list",
+        operationId: randomUUID(),
+        projectId,
+        sourcePath: root,
+      }),
+    ).resolves.toMatchObject({
+      operation: "list",
+      validations: [
+        {
+          configurationId,
+          provider: "flutter",
+          valid: true,
+          diagnostics: [],
+        },
+      ],
+    });
+    await expect(readFile(marker, "utf8")).rejects.toThrow();
+
     const inspected = await service.execute({
       type: "project.run-configuration-definitions.flutter-devices",
       operationId: randomUUID(),
@@ -188,6 +215,7 @@ describe("RunConfigurationDefinitionService", () => {
     expect(initial).toMatchObject({ operation: "list", projectId });
     if (initial.operation !== "list") throw new Error("Expected list result.");
     expect(initial.inventory.entries).toEqual([]);
+    expect(initial.validations).toEqual([]);
 
     const capabilities = await service.execute({
       type: "project.run-configuration-definitions.capabilities",

@@ -168,12 +168,26 @@ export class RunConfigurationDefinitionService {
       projectId: command.projectId,
     };
     switch (command.type) {
-      case "project.run-configuration-definitions.list":
+      case "project.run-configuration-definitions.list": {
+        const inventory = await repository.scan();
+        const validations = [];
+        for (const entry of inventory.entries) {
+          if (entry.status !== "ready" || !entry.document) continue;
+          validations.push(
+            await validateProviderDocument(
+              entry.document,
+              command.sourcePath,
+              this.#environment,
+            ),
+          );
+        }
         return runConfigurationListResponseSchema.parse({
           operation: "list",
           ...context,
-          inventory: await repository.scan(),
+          inventory,
+          validations,
         });
+      }
       case "project.run-configuration-definitions.get": {
         const result = await repository.read(command.configurationId);
         const document =

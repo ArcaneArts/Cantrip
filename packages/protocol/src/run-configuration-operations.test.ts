@@ -158,6 +158,7 @@ describe("run configuration operation protocol", () => {
           entries: [],
           diagnostics: [],
         },
+        validations: [],
       }).operationId,
     ).toBe(operationId);
     expect(
@@ -203,6 +204,64 @@ describe("run configuration operation protocol", () => {
         },
       }).type,
     ).toBe("project.run-configuration-definitions.changed");
+  });
+
+  it("correlates one provider validation with every ready listed definition", () => {
+    const entry = {
+      relativePath: `.cantrip/run-configurations/${configurationId}.json`,
+      revision: "a".repeat(64),
+      id: configurationId,
+      status: "ready" as const,
+      document,
+      diagnostics: [],
+    };
+    const validation = {
+      configurationId,
+      provider: "shell" as const,
+      platform: "linux" as const,
+      effectiveCommand: "pnpm dev",
+      valid: true,
+      diagnostics: [],
+    };
+    const response = {
+      operation: "list" as const,
+      operationId,
+      projectId,
+      inventory: {
+        directory: ".cantrip/run-configurations" as const,
+        entries: [entry],
+        diagnostics: [],
+      },
+      validations: [validation],
+    };
+
+    expect(
+      runConfigurationListResponseSchema.parse(response).validations,
+    ).toEqual([
+      expect.objectContaining({
+        configurationId,
+        provider: "shell",
+        valid: true,
+      }),
+    ]);
+    expect(
+      runConfigurationListResponseSchema.safeParse({
+        ...response,
+        validations: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      runConfigurationListResponseSchema.safeParse({
+        ...response,
+        validations: [validation, validation],
+      }).success,
+    ).toBe(false);
+    expect(
+      runConfigurationListResponseSchema.safeParse({
+        ...response,
+        validations: [{ ...validation, provider: "node" }],
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects duplicate capabilities and unknown authoring fields", () => {

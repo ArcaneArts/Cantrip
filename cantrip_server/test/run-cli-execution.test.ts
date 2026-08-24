@@ -400,6 +400,13 @@ describe("Run protected server boundary", () => {
           },
         ],
       },
+      validations: [
+        expect.objectContaining({
+          configurationId,
+          provider: "shell",
+          valid: true,
+        }),
+      ],
     });
 
     const shown = await cli(
@@ -500,12 +507,19 @@ describe("Run protected server boundary", () => {
     const listed = await mcp("run-configuration.list", {});
     expect(listed.statusCode, listed.body).toBe(200);
     expect(
-      (
-        cantripCliCommandResultSchema.parse(listed.json()).data as {
-          inventory: { entries: Array<{ id: string }> };
-        }
-      ).inventory.entries.map(({ id: entryId }) => entryId),
-    ).toContain(id);
+      cantripCliCommandResultSchema.parse(listed.json()).data,
+    ).toMatchObject({
+      inventory: {
+        entries: expect.arrayContaining([expect.objectContaining({ id })]),
+      },
+      validations: expect.arrayContaining([
+        expect.objectContaining({
+          configurationId: id,
+          provider: "shell",
+          valid: true,
+        }),
+      ]),
+    });
 
     const detected = await mcp("run-configuration.detect", {
       provider: "shell",

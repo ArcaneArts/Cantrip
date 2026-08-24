@@ -1,6 +1,5 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ProjectWorktreeSummary, WorkerSummary } from "@cantrip/protocol";
-import type { RunConfigurationRepositoryInventory } from "@cantrip/protocol/run-configuration-definitions";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -56,6 +55,7 @@ import {
 import {
   deleteRunConfiguration,
   operateRunConfigurationRuntime,
+  type RunConfigurationListInventory,
 } from "@/lib/run-configuration-api";
 import {
   buildRunConfigurationControlModel,
@@ -104,6 +104,8 @@ function LifecycleButtons({
   disabledReason,
   pending,
   runtime,
+  stopDisabled = disabled,
+  stopDisabledReason = disabledReason,
   onOperate,
 }: {
   compact?: boolean;
@@ -111,6 +113,8 @@ function LifecycleButtons({
   disabledReason?: string | null;
   pending: boolean;
   runtime: RunConfigurationRuntime | null | undefined;
+  stopDisabled?: boolean;
+  stopDisabledReason?: string | null;
   onOperate(operation: "start" | "restart" | "stop"): void;
 }) {
   const active = runConfigurationRuntimeIsActive(runtime);
@@ -167,12 +171,12 @@ function LifecycleButtons({
           "grid place-items-center rounded text-red-600 hover:bg-red-500/10 disabled:pointer-events-none disabled:opacity-40 dark:text-red-400",
           compact ? "size-7" : "size-8",
         )}
-        disabled={disabled || pending || stopping}
+        disabled={stopDisabled || pending || stopping}
         onClick={(event) => {
           event.stopPropagation();
           onOperate("stop");
         }}
-        title={disabledReason ?? "Stop"}
+        title={stopDisabledReason ?? "Stop"}
         type="button"
       >
         {stopping ? (
@@ -202,7 +206,7 @@ export function RunConfigurationControl({
   compact?: boolean;
   editorConfigurationId: string | "new" | null;
   error?: string | null;
-  inventory: RunConfigurationRepositoryInventory | null | undefined;
+  inventory: RunConfigurationListInventory | null | undefined;
   loading: boolean;
   projectId: string;
   renderEditor?: boolean;
@@ -370,6 +374,8 @@ export function RunConfigurationControl({
           }
           pending={pendingFor(selected, selected.primary)}
           runtime={selected.primary?.runtime}
+          stopDisabled={!selected.primary?.stopAvailable}
+          stopDisabledReason={selected.primary?.stopReason}
           onOperate={(operation) =>
             operate(selected, selected.primary, operation)
           }
@@ -451,6 +457,8 @@ export function RunConfigurationControl({
                         }
                         pending={pendingFor(item, item.primary)}
                         runtime={item.primary?.runtime}
+                        stopDisabled={!item.primary?.stopAvailable}
+                        stopDisabledReason={item.primary?.stopReason}
                         onOperate={(operation) =>
                           operate(item, item.primary, operation)
                         }
@@ -548,6 +556,8 @@ export function RunConfigurationControl({
                           disabledReason={target.reason}
                           pending={pendingFor(item, target)}
                           runtime={target.runtime}
+                          stopDisabled={!target.stopAvailable}
+                          stopDisabledReason={target.stopReason}
                           onOperate={(operation) =>
                             operate(item, target, operation)
                           }
@@ -616,7 +626,7 @@ export function RunConfigurationControl({
             if (!open) onEditorConfigurationChange(null);
           }}
           onSaved={(saved) => {
-            queryClient.setQueryData<RunConfigurationRepositoryInventory>(
+            queryClient.setQueryData<RunConfigurationListInventory>(
               ["run-configurations", projectId],
               (current) => ({
                 directory: current?.directory ?? ".cantrip/run-configurations",
@@ -627,6 +637,10 @@ export function RunConfigurationControl({
                   ),
                   saved,
                 ],
+                validations:
+                  current?.validations.filter(
+                    ({ configurationId }) => configurationId !== saved.id,
+                  ) ?? [],
               }),
             );
             if (saved.id) {

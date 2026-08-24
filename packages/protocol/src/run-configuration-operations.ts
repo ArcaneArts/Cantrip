@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  RUN_CONFIGURATION_MAX_FILES,
   runConfigurationDeleteRequestSchema,
   runConfigurationDeleteResultSchema,
   runConfigurationCodexEnvironmentSourceStatusSchema,
@@ -138,8 +139,50 @@ export const runConfigurationListResponseSchema = z
     operation: z.literal("list"),
     ...runConfigurationOperationContextFields,
     inventory: runConfigurationRepositoryInventorySchema,
+    validations: z
+      .array(runConfigurationProviderValidationSchema)
+      .max(RUN_CONFIGURATION_MAX_FILES),
   })
-  .strict();
+  .strict()
+  .superRefine((response, context) => {
+    const ready = new Map(
+      response.inventory.entries.flatMap((entry) =>
+        entry.status === "ready" && entry.id && entry.document
+          ? [[entry.id, entry.document.provider] as const]
+          : [],
+      ),
+    );
+    const seen = new Set<string>();
+    response.validations.forEach((validation, index) => {
+      if (seen.has(validation.configurationId)) {
+        context.addIssue({
+          code: "custom",
+          message: "Run configuration list validations must be unique.",
+          path: ["validations", index, "configurationId"],
+        });
+      }
+      seen.add(validation.configurationId);
+      const provider = ready.get(validation.configurationId);
+      if (provider === undefined || provider !== validation.provider) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Run configuration list validation does not match a ready definition.",
+          path: ["validations", index],
+        });
+      }
+    });
+    for (const configurationId of ready.keys()) {
+      if (!seen.has(configurationId)) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Every ready Run configuration must include provider validation.",
+          path: ["validations"],
+        });
+      }
+    }
+  });
 
 export const runConfigurationGetResponseSchema = z
   .object({

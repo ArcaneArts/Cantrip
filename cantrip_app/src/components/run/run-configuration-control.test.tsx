@@ -1,9 +1,10 @@
 import type { ProjectWorktreeSummary, WorkerSummary } from "@cantrip/protocol";
-import type { RunConfigurationRepositoryInventory } from "@cantrip/protocol/run-configuration-definitions";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+
+import type { RunConfigurationListInventory } from "@/lib/run-configuration-api";
 
 import { MobileProjectHeader } from "../mobile/mobile-project-header";
 import { RunConfigurationControl } from "./run-configuration-control";
@@ -64,15 +65,28 @@ const inventory = {
       },
     },
   ],
-} satisfies RunConfigurationRepositoryInventory;
+  validations: [
+    {
+      configurationId,
+      provider: "shell",
+      platform: "linux",
+      effectiveCommand: "pnpm dev",
+      valid: true,
+      diagnostics: [],
+    },
+  ],
+} satisfies RunConfigurationListInventory;
 const worker = { workerId: "worker", online: true } as WorkerSummary;
 
-function markup(runtimes: RunConfigurationRuntime[] = []) {
+function markup(
+  runtimes: RunConfigurationRuntime[] = [],
+  listedInventory: RunConfigurationListInventory = inventory,
+) {
   return renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
       <RunConfigurationControl
         editorConfigurationId={null}
-        inventory={inventory}
+        inventory={listedInventory}
         loading={false}
         projectId="project"
         renderEditor={false}
@@ -106,6 +120,38 @@ describe("Run configuration control", () => {
     expect(html).toContain('aria-label="Restart"');
     expect(html).toContain('aria-label="Stop"');
     expect(html).not.toContain('aria-label="Run"');
+  });
+
+  it("keeps Stop available when provider validation blocks restart", () => {
+    const html = markup(
+      [
+        {
+          configurationId,
+          worktreeId: worktree.id,
+          state: "running",
+        } as RunConfigurationRuntime,
+      ],
+      {
+        ...inventory,
+        validations: [
+          {
+            ...inventory.validations[0]!,
+            valid: false,
+            diagnostics: [
+              {
+                severity: "error",
+                code: "invalid-target",
+                message: "The target is invalid.",
+                relativePath: null,
+                field: "target",
+              },
+            ],
+          },
+        ],
+      },
+    );
+    expect(html).toMatch(/aria-label="Restart"[^>]*disabled=""/u);
+    expect(html).not.toMatch(/aria-label="Stop"[^>]*disabled=""/u);
   });
 
   it("renders the real control inside the compact project header", () => {

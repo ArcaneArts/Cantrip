@@ -46,6 +46,11 @@ import { ensureRunOperationWorker } from "@/lib/api";
 import { openRunContent } from "@/lib/run-content-encryption";
 import { protectRunConfigurationSecretValue } from "@/lib/run-configuration-secret-encryption";
 
+export type RunConfigurationListInventory =
+  RunConfigurationRepositoryInventory & {
+    validations: RunConfigurationProviderValidation[];
+  };
+
 function configurationCollectionPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/run-configurations`;
 }
@@ -78,14 +83,14 @@ function assertCorrelated(
 export async function listRunConfigurations(
   projectId: string,
   operationId = crypto.randomUUID(),
-): Promise<RunConfigurationRepositoryInventory> {
+): Promise<RunConfigurationListInventory> {
   const response = runConfigurationListResponseSchema.parse(
     await request(
       `${configurationCollectionPath(projectId)}${operationQuery(operationId)}`,
     ),
   );
   assertCorrelated(response, projectId, operationId);
-  return response.inventory;
+  return { ...response.inventory, validations: response.validations };
 }
 
 export async function getRunConfiguration(

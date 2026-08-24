@@ -1,5 +1,6 @@
 import type { ProjectWorktreeSummary, WorkerSummary } from "@cantrip/protocol";
 import type {
+  RunConfigurationProviderValidation,
   RunConfigurationProviderKind,
   RunConfigurationRepositoryEntry,
   RunConfigurationRepositoryInventory,
@@ -13,6 +14,8 @@ export interface RunConfigurationTargetControl {
   label: string;
   reason: string | null;
   runtime: RunConfigurationRuntime | null;
+  stopAvailable: boolean;
+  stopReason: string | null;
   worktree: ProjectWorktreeSummary;
 }
 
@@ -109,25 +112,43 @@ function targetControl(
   worktree: ProjectWorktreeSummary,
   runtime: RunConfigurationRuntime | undefined,
   workers: readonly WorkerSummary[],
+  providerValidation: RunConfigurationProviderValidation | null | undefined,
 ): RunConfigurationTargetControl {
   const worker = workers.find(({ workerId }) => workerId === worktree.workerId);
-  const reason =
+  const validationError = providerValidation?.diagnostics.find(
+    ({ severity }) => severity === "error",
+  );
+  const stopReason =
     worktree.lifecycleState !== "ready"
       ? `Worktree is ${worktree.lifecycleState}.`
       : !worker?.online
         ? "Worker is offline."
         : null;
+  const reason =
+    stopReason ??
+    (providerValidation === undefined
+      ? "Run configuration validation is refreshing."
+      : providerValidation?.valid === false
+        ? `Run configuration is invalid: ${validationError?.message ?? "Fix its provider settings before running it."}`
+        : null);
   return {
     available: reason === null,
     label: worktree.isPrimary ? "Primary" : (worktree.branch ?? worktree.name),
     reason,
     runtime: runtime ?? null,
+    stopAvailable: stopReason === null,
+    stopReason,
     worktree,
   };
 }
 
 export function buildRunConfigurationControlModel(input: {
-  inventory: RunConfigurationRepositoryInventory | null | undefined;
+  inventory:
+    | (RunConfigurationRepositoryInventory & {
+        validations?: readonly RunConfigurationProviderValidation[];
+      })
+    | null
+    | undefined;
   runtimes: readonly RunConfigurationRuntime[];
   workers: readonly WorkerSummary[];
   worktrees: readonly ProjectWorktreeSummary[];
@@ -143,6 +164,12 @@ export function buildRunConfigurationControlModel(input: {
       runtime,
     ]),
   );
+  const validationByConfiguration = new Map(
+    (input.inventory?.validations ?? []).map((validation) => [
+      validation.configurationId,
+      validation,
+    ]),
+  );
   const ready = (input.inventory?.entries ?? []).flatMap((entry) => {
     if (
       entry.status !== "ready" ||
@@ -152,11 +179,15 @@ export function buildRunConfigurationControlModel(input: {
     ) {
       return [];
     }
+    const configurationId = entry.id;
     const controls = input.worktrees.map((worktree) =>
       targetControl(
         worktree,
-        runtimeByTarget.get(`${entry.id}:${worktree.id}`),
+        runtimeByTarget.get(`${configurationId}:${worktree.id}`),
         input.workers,
+        worktree.id === primaryWorktree?.id
+          ? validationByConfiguration.get(configurationId)
+          : null,
       ),
     );
     const primary = primaryWorktree
@@ -179,7 +210,7 @@ export function buildRunConfigurationControlModel(input: {
           activeAlternates.length > 0,
         document: entry.document,
         entry,
-        id: entry.id,
+        id: configurationId,
         name: entry.document.name,
         primary,
         provider: entry.document.provider,

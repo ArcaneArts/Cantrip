@@ -136,6 +136,50 @@ describe("Run configuration control model", () => {
     });
   });
 
+  it("blocks an invalid Primary definition without blocking alternate worktrees", () => {
+    const id = "00000000-0000-4000-8000-000000000009";
+    const model = buildRunConfigurationControlModel({
+      inventory: {
+        directory: ".cantrip/run-configurations",
+        diagnostics: [],
+        entries: [entry(id, "Broken API", "pnpm dev")],
+        validations: [
+          {
+            configurationId: id,
+            provider: "shell",
+            platform: "linux",
+            effectiveCommand: "pnpm dev",
+            valid: false,
+            diagnostics: [
+              {
+                severity: "error",
+                code: "shell-unavailable",
+                message: "The configured shell is unavailable.",
+                relativePath: null,
+                field: "options.shell",
+              },
+            ],
+          },
+        ],
+      },
+      runtimes: [],
+      workers: [worker],
+      worktrees: [primary, alternate],
+    });
+
+    expect(model.configurations[0]?.primary).toMatchObject({
+      available: false,
+      reason:
+        "Run configuration is invalid: The configured shell is unavailable.",
+      stopAvailable: true,
+      stopReason: null,
+    });
+    expect(model.configurations[0]?.targets[1]).toMatchObject({
+      available: true,
+      reason: null,
+    });
+  });
+
   it("indexes structured Node targets by their generated command", () => {
     const id = "00000000-0000-4000-8000-000000000004";
     const shell = entry(id, "Web", "unused");
