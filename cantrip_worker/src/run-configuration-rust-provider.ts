@@ -64,6 +64,11 @@ interface ResolvedRustConfiguration {
   workingDirectory: string;
 }
 
+interface RustToolchainPreflight {
+  diagnostic: RunConfigurationDiagnostic | null;
+  roots: string[];
+}
+
 interface CargoTarget {
   kind: "binary" | "example";
   name: string;
@@ -606,34 +611,37 @@ function rustupToolchainNameMatches(
   return shorthand && installed.startsWith(`${requested}-`);
 }
 
-async function rustToolchainDiagnostic(
+async function rustToolchainPreflight(
   toolchain: string,
   workingDirectory: string,
   context: RunConfigurationProviderContext,
-): Promise<RunConfigurationDiagnostic | null> {
-  if (!context.environment) return null;
+): Promise<RustToolchainPreflight> {
+  if (!context.environment) return { diagnostic: null, roots: [] };
   const requested =
     toolchain === "default"
       ? launchEnvironmentValue(context, "RUSTUP_TOOLCHAIN")
       : toolchain;
-  if (!requested) return null;
+  if (!requested) return { diagnostic: null, roots: [] };
   const home = rustupHome(context, workingDirectory);
   if (home) {
     try {
       const installed = await readdir(path.join(home, "toolchains"));
       if (installed.length > MAX_RUSTUP_TOOLCHAINS) {
-        return runConfigurationProviderDiagnostic(
-          "rust-toolchain-inventory-too-large",
-          "The Rustup toolchain inventory exceeds the validation limit.",
-          "options.toolchain",
-        );
+        return {
+          diagnostic: runConfigurationProviderDiagnostic(
+            "rust-toolchain-inventory-too-large",
+            "The Rustup toolchain inventory exceeds the validation limit.",
+            "options.toolchain",
+          ),
+          roots: [],
+        };
       }
+      const roots = new Set<string>();
       for (const name of installed) {
         if (!rustupToolchainNameMatches(requested, name)) continue;
+        const root = path.join(home, "toolchains", name);
         const executable = path.join(
-          home,
-          "toolchains",
-          name,
+          root,
           "bin",
           cargoExecutable(context.platform),
         );
@@ -644,18 +652,52 @@ async function rustToolchainDiagnostic(
             targetRoot: workingDirectory,
           })
         ) {
-          return null;
+          try {
+            const canonicalRoot = await realpath(root);
+            if ((await lstat(canonicalRoot)).isDirectory()) {
+              roots.add(canonicalRoot);
+            }
+          } catch {
+            // Another matching installed toolchain may still be usable.
+          }
         }
+      }
+      if (roots.size > 0) {
+        return { diagnostic: null, roots: [...roots] };
       }
     } catch {
       // The actionable missing-toolchain diagnostic below covers absent or
       // unreadable Rustup state without executing rustup during validation.
     }
   }
+  return {
+    diagnostic: runConfigurationProviderDiagnostic(
+      "rust-toolchain-unavailable",
+      `The selected Rust toolchain ${JSON.stringify(requested)} is not installed for this launch environment. Install it with rustup or select an installed toolchain.`,
+      "options.toolchain",
+    ),
+    roots: [],
+  };
+}
+
+async function rustTargetDiagnostic(
+  targetTriple: string,
+  toolchainRoots: string[],
+): Promise<RunConfigurationDiagnostic | null> {
+  for (const root of toolchainRoots) {
+    try {
+      const libraryDirectory = await realpath(
+        path.join(root, "lib", "rustlib", targetTriple, "lib"),
+      );
+      if ((await lstat(libraryDirectory)).isDirectory()) return null;
+    } catch {
+      // Check every matching toolchain before reporting the target missing.
+    }
+  }
   return runConfigurationProviderDiagnostic(
-    "rust-toolchain-unavailable",
-    `The selected Rust toolchain ${JSON.stringify(requested)} is not installed for this launch environment. Install it with rustup or select an installed toolchain.`,
-    "options.toolchain",
+    "rust-target-unavailable",
+    `The selected Rust target ${JSON.stringify(targetTriple)} is not installed for the launch toolchain. Install it with rustup target add or choose an installed target.`,
+    "options.targetTriple",
   );
 }
 
@@ -906,12 +948,23 @@ export const rustRunConfigurationProvider: RunConfigurationProvider<RunConfigura
         );
         if (diagnostic) diagnostics.push(diagnostic);
         if (!diagnostic) {
-          const toolchainDiagnostic = await rustToolchainDiagnostic(
+          const toolchain = await rustToolchainPreflight(
             resolved.options.toolchain,
             workingDirectory,
             context,
           );
-          if (toolchainDiagnostic) diagnostics.push(toolchainDiagnostic);
+          if (toolchain.diagnostic) {
+            diagnostics.push(toolchain.diagnostic);
+          } else if (
+            resolved.options.targetTriple &&
+            toolchain.roots.length > 0
+          ) {
+            const targetDiagnostic = await rustTargetDiagnostic(
+              resolved.options.targetTriple,
+              toolchain.roots,
+            );
+            if (targetDiagnostic) diagnostics.push(targetDiagnostic);
+          }
         }
         const packages = await scanPackages({
           ...context,
