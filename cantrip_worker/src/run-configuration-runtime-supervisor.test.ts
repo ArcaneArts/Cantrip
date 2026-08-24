@@ -93,6 +93,79 @@ async function nodeFixture(): Promise<Fixture> {
   };
 }
 
+async function nodePackageFixture(
+  includeNode = true,
+): Promise<Fixture & { executableDirectory: string }> {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-node-package-run-configuration-runtime-"),
+  );
+  temporaryDirectories.push(root);
+  const sourceRoot = path.join(root, "primary");
+  const targetRoot = path.join(root, "target");
+  const executableDirectory = path.join(root, "bin");
+  await Promise.all([
+    mkdir(sourceRoot, { recursive: true }),
+    mkdir(targetRoot, { recursive: true }),
+    mkdir(executableDirectory, { recursive: true }),
+  ]);
+  await writeFile(
+    path.join(targetRoot, "package.json"),
+    JSON.stringify({ scripts: { start: "node app.js" } }),
+  );
+  await writeFile(
+    path.join(executableDirectory, "npm"),
+    "#!/bin/sh\nprintf 'node-package-provider|%s' \"$*\"\n",
+  );
+  await chmod(path.join(executableDirectory, "npm"), 0o755);
+  if (includeNode) {
+    await writeFile(
+      path.join(executableDirectory, "node"),
+      "#!/bin/sh\nexit 0\n",
+    );
+    await chmod(path.join(executableDirectory, "node"), 0o755);
+  }
+  const configurationId = randomUUID();
+  const repository = await RunConfigurationRepository.open(sourceRoot);
+  const written = await repository.write({
+    expectedRevision: null,
+    document: {
+      schema: "cantrip.run-configuration",
+      version: 1,
+      id: configurationId,
+      name: "Node package runtime fixture",
+      provider: "node",
+      workingDirectory: ".",
+      target: { kind: "packageScript", script: "start" },
+      commandOverride: null,
+      arguments: ["--flag", "two words"],
+      environment: {
+        includeCodexEnvironment: false,
+        files: [],
+        variables: [],
+        secrets: [],
+      },
+      beforeLaunch: [],
+      platformOverrides: {},
+      options: {
+        packageManager: "npm",
+        runtime: "node",
+        runtimeArguments: [],
+      },
+      stop: { gracePeriodMs: 50 },
+    },
+  });
+  if (!("entry" in written) || !written.entry.revision) {
+    throw new Error("Expected a ready Node package Run configuration fixture.");
+  }
+  return {
+    configurationId,
+    definitionRevision: written.entry.revision,
+    executableDirectory,
+    sourceRoot,
+    targetRoot,
+  };
+}
+
 async function javaFixture(): Promise<Fixture> {
   const root = await mkdtemp(
     path.join(os.tmpdir(), "cantrip-java-run-configuration-runtime-"),
@@ -864,6 +937,56 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
           tail: 100_000,
         }).data,
       ).toContain("node-provider|--flag|two words");
+      await runs.closeAll();
+    });
+
+    it("launches a package script with a Node toolchain from the live environment", async () => {
+      const input = await nodePackageFixture();
+      const emptyPath = path.join(path.dirname(input.sourceRoot), "empty-bin");
+      await mkdir(emptyPath);
+      const runtimeIdentity = identity(input);
+      const runs = supervisor([], {
+        environment: { PATH: emptyPath },
+        resolveEnvironment: async () => ({
+          files: { PATH: input.executableDirectory },
+        }),
+      });
+
+      await runs.start(startCommand(input, runtimeIdentity));
+      await waitForState(runs, runtimeIdentity, "exited");
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).toContain("node-package-provider|run start -- --flag two words");
+      await runs.closeAll();
+    });
+
+    it("fails Node package validation before spawning when its host runtime is absent", async () => {
+      const input = await nodePackageFixture(false);
+      const runtimeIdentity = identity(input);
+      const runs = supervisor([], {
+        environment: { PATH: input.executableDirectory },
+      });
+
+      await runs.start(startCommand(input, runtimeIdentity));
+      const failed = await waitForState(runs, runtimeIdentity, "failed");
+      expect(failed.failure).toMatchObject({
+        phase: "provider",
+        code: "executable-unavailable",
+        message: expect.stringContaining("node"),
+      });
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).not.toContain("node-package-provider");
       await runs.closeAll();
     });
 

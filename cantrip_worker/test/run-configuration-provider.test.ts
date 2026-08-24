@@ -511,11 +511,81 @@ describe("nodeRunConfigurationProvider", () => {
     ]);
   });
 
+  it("validates package-manager host runtimes without executing either tool", async () => {
+    const root = await createRoot();
+    const completePath = path.join(root, "complete-bin");
+    const packageManagerOnlyPath = path.join(root, "package-manager-bin");
+    const bunPath = path.join(root, "bun-bin");
+    const marker = path.join(root, "executed.txt");
+    await Promise.all([
+      mkdir(completePath),
+      mkdir(packageManagerOnlyPath),
+      mkdir(bunPath),
+    ]);
+    await writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({ scripts: { start: "node index.js" } }),
+    );
+    const executableBody = `#!/bin/sh\nprintf executed > ${JSON.stringify(marker)}\n`;
+    await Promise.all([
+      writeFile(path.join(completePath, "npm"), executableBody),
+      writeFile(path.join(completePath, "node"), executableBody),
+      writeFile(path.join(packageManagerOnlyPath, "npm"), executableBody),
+      writeFile(path.join(bunPath, "bun"), executableBody),
+    ]);
+    await Promise.all([
+      chmod(path.join(completePath, "npm"), 0o755),
+      chmod(path.join(completePath, "node"), 0o755),
+      chmod(path.join(packageManagerOnlyPath, "npm"), 0o755),
+      chmod(path.join(bunPath, "bun"), 0o755),
+    ]);
+    const definition = nodeRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Node toolchain preflight",
+    });
+    const context = {
+      platform: "linux" as const,
+      targetRoot: root,
+      defaultShell: "/bin/sh",
+    };
+
+    await expect(
+      nodeRunConfigurationProvider.validate(definition, {
+        ...context,
+        environment: { PATH: completePath },
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      nodeRunConfigurationProvider.validate(definition, {
+        ...context,
+        environment: { PATH: packageManagerOnlyPath },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        code: "executable-unavailable",
+        field: "options.packageManager",
+        message: expect.stringContaining("node"),
+      }),
+    ]);
+    await expect(
+      nodeRunConfigurationProvider.validate(
+        {
+          ...definition,
+          options: { ...definition.options, packageManager: "bun" },
+        },
+        { ...context, environment: { PATH: bunPath } },
+      ),
+    ).resolves.toEqual([]);
+    await expect(access(marker)).rejects.toThrow();
+  });
+
   it("applies typed Windows package-manager and environment overrides", async () => {
     const root = await createRoot();
     await writeFile(
       path.join(root, "package.json"),
-      JSON.stringify({ scripts: { start: "node index.js" } }),
+      JSON.stringify({
+        scripts: { start: "node index.js", build: "node build.js" },
+      }),
     );
     const definition = nodeRunConfigurationProvider.createDefault({
       id: randomUUID(),
@@ -540,12 +610,19 @@ describe("nodeRunConfigurationProvider", () => {
             options: { packageManager: "yarn" },
           },
         },
+        beforeLaunch: [{ kind: "providerTask", task: "build" }],
       },
       { platform: "win32", targetRoot: root, defaultShell: null },
     );
     expect(materialized).toMatchObject({
-      executable: "yarn",
-      arguments: ["run", "start", "--", "two words"],
+      executable: "cmd.exe",
+      arguments: ["/d", "/s", "/c", 'yarn.cmd run start -- "two words"'],
+      beforeLaunch: [
+        {
+          executable: "cmd.exe",
+          arguments: ["/d", "/s", "/c", "yarn.cmd run build"],
+        },
+      ],
       effectiveCommand: 'yarn run start -- "two words"',
       environment: {
         includeCodexEnvironment: false,

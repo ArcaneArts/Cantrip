@@ -53,6 +53,7 @@ describe("RunConfigurationDefinitionService", () => {
     const toolNames = windows
       ? [
           "npm.CMD",
+          "node.exe",
           "gradle.bat",
           "java.exe",
           "dart.exe",
@@ -60,7 +61,7 @@ describe("RunConfigurationDefinitionService", () => {
           "cargo.exe",
           "cmd.exe",
         ]
-      : ["npm", "gradle", "java", "dart", "flutter", "cargo", "sh"];
+      : ["npm", "node", "gradle", "java", "dart", "flutter", "cargo", "sh"];
     await Promise.all(
       toolNames.map((name) =>
         writeFile(path.join(toolRoot, name), "#!/bin/sh\nexit 0\n", {
@@ -366,6 +367,35 @@ describe("RunConfigurationDefinitionService", () => {
       });
       await writeFile(toolPath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     }
+    const nodeCandidate = detected.candidates.find(
+      ({ provider }) => provider === "node",
+    );
+    if (!nodeCandidate) {
+      throw new Error("Expected a detected Node Run configuration.");
+    }
+    const nodePath = path.join(toolRoot, windows ? "node.exe" : "node");
+    await unlink(nodePath);
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.validate",
+        operationId: randomUUID(),
+        ...context,
+        document: nodeCandidate.document,
+      }),
+    ).resolves.toMatchObject({
+      operation: "validate",
+      validation: {
+        valid: false,
+        diagnostics: [
+          expect.objectContaining({
+            severity: "error",
+            code: "executable-unavailable",
+            field: "options.packageManager",
+          }),
+        ],
+      },
+    });
+    await writeFile(nodePath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     const javaCandidate = detected.candidates.find(
       ({ provider }) => provider === "java",
     );

@@ -308,7 +308,7 @@ function quoteArgument(
 ): string {
   if (/^[A-Za-z0-9_./:@%+=,-]+$/u.test(value)) return value;
   return platform === "win32"
-    ? `"${value.replaceAll('"', '\\"')}"`
+    ? `"${value.replaceAll('"', '""')}"`
     : `'${value.replaceAll("'", "'\\''")}'`;
 }
 
@@ -325,6 +325,61 @@ function renderCommand(
 
 function packageScriptArguments(script: string, values: string[]): string[] {
   return ["run", script, ...(values.length ? ["--", ...values] : [])];
+}
+
+function packageManagerExecutable(
+  packageManager: RunConfigurationNodeDocument["options"]["packageManager"],
+  platform: RunConfigurationPlatform,
+): string {
+  if (platform !== "win32") return packageManager;
+  return packageManager === "bun" ? "bun.exe" : `${packageManager}.cmd`;
+}
+
+function nodeRuntimeExecutable(
+  runtime: RunConfigurationNodeDocument["options"]["runtime"],
+  platform: RunConfigurationPlatform,
+): string {
+  return platform === "win32" ? `${runtime}.exe` : runtime;
+}
+
+async function materializedToolInvocation(
+  executable: string,
+  arguments_: string[],
+  context: RunConfigurationProviderContext,
+): Promise<Pick<MaterializedRunCommand, "arguments" | "executable">> {
+  if (context.platform === "win32" && /\.cmd$/iu.test(executable)) {
+    return shellCommandInvocation(
+      renderCommand(executable, arguments_, context.platform),
+      context,
+      { shell: "cmd", login: false },
+    );
+  }
+  return { executable, arguments: arguments_ };
+}
+
+async function packageManagerToolchainDiagnostics(
+  resolved: ResolvedNodeConfiguration,
+  context: RunConfigurationProviderContext,
+): Promise<RunConfigurationDiagnostic[]> {
+  const diagnostics: RunConfigurationDiagnostic[] = [];
+  const packageManager = packageManagerExecutable(
+    resolved.options.packageManager,
+    context.platform,
+  );
+  const packageManagerDiagnostic = await runConfigurationExecutableDiagnostic(
+    packageManager,
+    context,
+    "options.packageManager",
+  );
+  if (packageManagerDiagnostic) return [packageManagerDiagnostic];
+  if (resolved.options.packageManager === "bun") return diagnostics;
+  const runtimeDiagnostic = await runConfigurationExecutableDiagnostic(
+    nodeRuntimeExecutable("node", context.platform),
+    context,
+    "options.packageManager",
+  );
+  if (runtimeDiagnostic) diagnostics.push(runtimeDiagnostic);
+  return diagnostics;
 }
 
 function mergeEnvironment(
@@ -436,8 +491,14 @@ async function materializeBeforeLaunch(
   for (const step of document.beforeLaunch) {
     if (step.kind === "providerTask") {
       commands.push({
-        executable: resolved.options.packageManager,
-        arguments: packageScriptArguments(step.task, []),
+        ...(await materializedToolInvocation(
+          packageManagerExecutable(
+            resolved.options.packageManager,
+            context.platform,
+          ),
+          packageScriptArguments(step.task, []),
+          context,
+        )),
         workingDirectory,
       });
     } else {
@@ -591,6 +652,9 @@ export const nodeRunConfigurationProvider: RunConfigurationProvider<RunConfigura
       const parsed = runConfigurationNodeDocumentSchema.parse(document);
       const resolved = resolveConfiguration(parsed, context.platform);
       const diagnostics: RunConfigurationDiagnostic[] = [];
+      let needsPackageManager =
+        resolved.commandOverride === null &&
+        parsed.target.kind === "packageScript";
       try {
         await resolveRealDirectory(
           context.targetRoot,
@@ -627,18 +691,14 @@ export const nodeRunConfigurationProvider: RunConfigurationProvider<RunConfigura
             );
           }
         }
-        const executable =
-          parsed.target.kind === "packageScript"
-            ? resolved.options.packageManager
-            : resolved.options.runtime;
-        const diagnostic = await runConfigurationExecutableDiagnostic(
-          executable,
-          context,
-          parsed.target.kind === "packageScript"
-            ? "options.packageManager"
-            : "options.runtime",
-        );
-        if (diagnostic) diagnostics.push(diagnostic);
+        if (parsed.target.kind === "entry") {
+          const diagnostic = await runConfigurationExecutableDiagnostic(
+            nodeRuntimeExecutable(resolved.options.runtime, context.platform),
+            context,
+            "options.runtime",
+          );
+          if (diagnostic) diagnostics.push(diagnostic);
+        }
       }
       for (let index = 0; index < parsed.beforeLaunch.length; index += 1) {
         const step = parsed.beforeLaunch[index]!;
@@ -650,14 +710,7 @@ export const nodeRunConfigurationProvider: RunConfigurationProvider<RunConfigura
             `beforeLaunch[${index}].task`,
           );
           if (issue) diagnostics.push(issue);
-          if (!issue) {
-            const diagnostic = await runConfigurationExecutableDiagnostic(
-              resolved.options.packageManager,
-              context,
-              "options.packageManager",
-            );
-            if (diagnostic) diagnostics.push(diagnostic);
-          }
+          if (!issue) needsPackageManager = true;
         } else {
           try {
             await resolveRealDirectory(
@@ -681,6 +734,11 @@ export const nodeRunConfigurationProvider: RunConfigurationProvider<RunConfigura
             );
           }
         }
+      }
+      if (needsPackageManager) {
+        diagnostics.push(
+          ...(await packageManagerToolchainDiagnostics(resolved, context)),
+        );
       }
       if (resolved.commandOverride !== null) {
         try {
@@ -728,13 +786,21 @@ export const nodeRunConfigurationProvider: RunConfigurationProvider<RunConfigura
         executable = invocation.executable;
         arguments_ = invocation.arguments;
       } else if (parsed.target.kind === "packageScript") {
-        executable = resolved.options.packageManager;
-        arguments_ = packageScriptArguments(
-          parsed.target.script,
-          resolved.arguments,
+        const invocation = await materializedToolInvocation(
+          packageManagerExecutable(
+            resolved.options.packageManager,
+            context.platform,
+          ),
+          packageScriptArguments(parsed.target.script, resolved.arguments),
+          context,
         );
+        executable = invocation.executable;
+        arguments_ = invocation.arguments;
       } else {
-        executable = resolved.options.runtime;
+        executable = nodeRuntimeExecutable(
+          resolved.options.runtime,
+          context.platform,
+        );
         arguments_ = [
           ...resolved.options.runtimeArguments,
           await validateRealScript(context.targetRoot, parsed.target.path),
