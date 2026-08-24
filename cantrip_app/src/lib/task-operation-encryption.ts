@@ -55,11 +55,15 @@ function runningTaskContent(input: {
 }): TaskProtectedContent {
   const classification = {
     state:
-      input.kind === "finalize"
-        ? ("finalizing" as const)
-        : ("planning" as const),
+      input.kind === "direct"
+        ? ("implementing" as const)
+        : input.kind === "finalize"
+          ? ("finalizing" as const)
+          : ("planning" as const),
     stableStateBeforeFailure:
-      input.kind === "initial-plan" ? ("draft" as const) : ("review" as const),
+      input.kind === "direct" || input.kind === "initial-plan"
+        ? ("draft" as const)
+        : ("review" as const),
     activeOperationKind: input.kind,
     planAuthorship: input.task.planAuthorship,
     planningRound: input.task.planningRound + 1,
@@ -90,6 +94,7 @@ function operationMessageText(input: {
   kind: TaskOperationKind;
   task: TaskDetail;
 }): string {
+  if (input.kind === "direct") return input.task.briefMarkdown;
   if (input.kind === "initial-plan") {
     return `Plan this Task from the saved brief.\n\n${input.task.briefMarkdown}`;
   }
@@ -158,7 +163,7 @@ export async function prepareTaskOperationRelay(input: {
       content: [{ type: "text", text: operationMessageText(input) }],
       idempotencyKey: `task-operation:${input.operationId}`,
       messageId: crypto.randomUUID(),
-      mode: "plan",
+      mode: input.kind === "direct" ? "default" : "plan",
       role: "user",
     },
     input,

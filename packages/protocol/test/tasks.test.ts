@@ -98,6 +98,9 @@ describe("Task protocol", () => {
       taskDraftUpdateSchema.parse({ rowVersion: 2, briefMarkdown: "Idea" }),
     ).toEqual({ rowVersion: 2, briefMarkdown: "Idea" });
     expect(
+      taskDraftUpdateSchema.parse({ rowVersion: 2, planGoalEnabled: true }),
+    ).toEqual({ rowVersion: 2, planGoalEnabled: true });
+    expect(
       taskDraftUpdateSchema.safeParse({
         rowVersion: 1,
         draftAttachmentIds: ["one", "one"],
@@ -135,6 +138,7 @@ describe("Task protocol", () => {
       stableStateBeforeFailure: null,
       activeOperationId: null,
       activeOperationKind: null,
+      planGoalEnabled: false,
       briefMarkdown: "Initial idea",
       draftAttachmentIds: [],
       planMarkdown: null,

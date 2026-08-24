@@ -41,6 +41,7 @@ export const taskStateSchema = z.enum([
 
 export const taskStableStateSchema = z.enum(["draft", "review"]);
 export const taskOperationKindSchema = z.enum([
+  "direct",
   "initial-plan",
   "continue-plan",
   "finalize",
@@ -166,6 +167,7 @@ export const taskLastErrorSchema = z.object({
 
 export const taskDetailSchema = z.object({
   chatId: z.string().min(1),
+  planGoalEnabled: z.boolean(),
   state: taskStateSchema,
   stableStateBeforeFailure: taskStableStateSchema.nullable(),
   activeOperationId: z.string().min(1).max(200).nullable(),
@@ -288,6 +290,7 @@ export const taskImplementationDashboardSchema = z.object({
 export const taskDraftUpdateSchema = z
   .object({
     rowVersion: z.number().int().positive(),
+    planGoalEnabled: z.boolean().optional(),
     briefMarkdown: z.string().max(TASK_MARKDOWN_LIMIT).optional(),
     draftAttachmentIds: z
       .array(z.string().min(1))
@@ -300,6 +303,7 @@ export const taskDraftUpdateSchema = z
   })
   .refine(
     (value) =>
+      value.planGoalEnabled !== undefined ||
       value.briefMarkdown !== undefined ||
       value.draftAttachmentIds !== undefined,
     { message: "At least one Task draft field is required." },
@@ -731,6 +735,7 @@ export const taskOperationRelayRequestSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    const direct = value.classification.kind === "direct";
     if (
       value.classification.status !== "running" ||
       value.classification.hasOutputPlan ||
@@ -738,7 +743,7 @@ export const taskOperationRelayRequestSchema = z
       value.classification.hasOutputGoalPrompt ||
       value.classification.error !== null ||
       value.userMessage.classification.role !== "user" ||
-      value.userMessage.classification.mode !== "plan"
+      value.userMessage.classification.mode !== (direct ? "default" : "plan")
     ) {
       context.addIssue({
         code: "custom",
@@ -782,10 +787,12 @@ export const taskOperationRelayResultSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    const direct = value.classification.kind === "direct";
     const finalizing = value.classification.kind === "finalize";
     if (
       value.classification.status !== "completed" ||
-      !value.classification.hasOutputPlan ||
+      value.classification.hasOutputPlan === direct ||
+      (value.classification.hasOutputQuestions && direct) ||
       value.classification.error !== null ||
       value.classification.hasOutputGoalPrompt !== finalizing ||
       (value.goal !== null) !== finalizing
@@ -807,21 +814,26 @@ export const taskOperationRelayResultSchema = z
         path: ["goal", "classification"],
       });
     }
-    const expectedState = finalizing ? "implementing" : "review";
+    const expectedState = direct
+      ? "complete"
+      : finalizing
+        ? "implementing"
+        : "review";
     if (
       value.task.classification.state !== expectedState ||
       value.task.classification.stableStateBeforeFailure !== null ||
       value.task.classification.activeOperationKind !== null ||
       value.task.classification.planningRound !==
         value.classification.ordinal ||
-      !value.task.classification.hasPlan ||
+      value.task.classification.hasPlan === direct ||
       value.task.classification.hasQuestions !==
         value.classification.hasOutputQuestions ||
       value.task.classification.hasFinalPlan !== finalizing ||
       value.task.classification.hasGoalPrompt !== finalizing ||
       value.task.classification.lastError !== null ||
       value.assistantMessage.classification.role !== "assistant" ||
-      value.assistantMessage.classification.mode !== "plan"
+      value.assistantMessage.classification.mode !==
+        (direct ? "default" : "plan")
     ) {
       context.addIssue({
         code: "custom",
@@ -875,6 +887,7 @@ export const taskOpaqueMutationSchema = z
   .object({
     rowVersion: z.number().int().positive(),
     task: taskOpaqueContentSchema,
+    planGoalEnabled: z.boolean().optional(),
     draftAttachmentIds: z
       .array(z.string().min(1).max(200))
       .max(100)
@@ -903,9 +916,15 @@ export const taskEncryptedOperationStartSchema = z
     const failedTask = value.failure.task.classification;
     const failedRound = value.failure.round.classification;
     const expectedRunningState =
-      classification.kind === "finalize" ? "finalizing" : "planning";
+      classification.kind === "direct"
+        ? "implementing"
+        : classification.kind === "finalize"
+          ? "finalizing"
+          : "planning";
     const expectedStableState =
-      classification.kind === "initial-plan" ? "draft" : "review";
+      classification.kind === "direct" || classification.kind === "initial-plan"
+        ? "draft"
+        : "review";
     if (
       task.state !== expectedRunningState ||
       task.stableStateBeforeFailure !== expectedStableState ||
@@ -949,6 +968,7 @@ export const taskEncryptedOperationStartSchema = z
 export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
   .extend({
     chatId: z.string().min(1).max(200),
+    planGoalEnabled: z.boolean(),
     activeOperationId: z.string().min(1).max(200).nullable(),
     draftAttachmentIds: z
       .array(z.string().min(1).max(200))

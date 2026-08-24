@@ -12709,6 +12709,8 @@ export class ServerRepository {
                 .insert(schema.tasks)
                 .values({
                   chatId: chat.id,
+                  planGoalEnabled: (input as EncryptedTaskCreate)
+                    .planGoalEnabled,
                   ...taskOpaqueColumns((input as EncryptedTaskCreate).task),
                 })
                 .returning(),

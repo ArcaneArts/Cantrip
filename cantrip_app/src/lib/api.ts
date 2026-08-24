@@ -4351,6 +4351,7 @@ export async function createTask(
   const created = taskWireCreateResultSchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/tasks`, {
       chatId,
+      planGoalEnabled: false,
       task,
       titleProtection: await chatTitleEncryption.protect(chatId, title),
       ...(worktreeId ? { worktreeId } : {}),
@@ -4416,9 +4417,9 @@ export async function updateTaskDraft(chatId: string, input: TaskDraftUpdate) {
 
 async function sendEncryptedTaskOperation(
   chatId: string,
-  path: "plan" | "continue" | "begin-implementation" | "retry",
+  path: "start" | "plan" | "continue" | "begin-implementation" | "retry",
   input: TaskOperationStart | TaskContinuationStart,
-  kind: "initial-plan" | "continue-plan" | "finalize",
+  kind: "direct" | "initial-plan" | "continue-plan" | "finalize",
 ) {
   await getPolicies();
   const current = await getTask(chatId);
@@ -4445,6 +4446,13 @@ export async function startTaskPlanning(
   input: TaskOperationStart,
 ) {
   return sendEncryptedTaskOperation(chatId, "plan", input, "initial-plan");
+}
+
+export async function startTaskDirectly(
+  chatId: string,
+  input: TaskOperationStart,
+) {
+  return sendEncryptedTaskOperation(chatId, "start", input, "direct");
 }
 
 export async function updateTaskPlan(chatId: string, input: TaskPlanUpdate) {

@@ -127,6 +127,7 @@ describe("Task encryption contracts", () => {
     const opaque = taskOpaqueSummarySchema.parse({
       ...taskClassification,
       chatId: "chat-1",
+      planGoalEnabled: false,
       activeOperationId: null,
       draftAttachmentIds: [],
       protectedContent: encrypted,
@@ -136,6 +137,7 @@ describe("Task encryption contracts", () => {
       updatedAt: timestamp,
     });
     expect(opaque).not.toHaveProperty("briefMarkdown");
+    expect(opaque.planGoalEnabled).toBe(false);
     expect(opaque.protectedContent.envelope.ciphertext).toBe(
       encrypted.envelope.ciphertext,
     );
@@ -260,5 +262,62 @@ describe("Task encryption contracts", () => {
         goal: null,
       }).classification.status,
     ).toBe("completed");
+
+    const directRequest = taskOperationRelayRequestSchema.parse({
+      ...request,
+      classification: {
+        ...request.classification,
+        kind: "direct",
+      },
+      task: {
+        ...request.task,
+        classification: {
+          ...request.task.classification,
+          state: "implementing",
+          stableStateBeforeFailure: "draft",
+          activeOperationKind: "direct",
+          hasPlan: false,
+        },
+      },
+      userMessage: {
+        ...request.userMessage,
+        classification: {
+          ...request.userMessage.classification,
+          mode: "default",
+        },
+      },
+    });
+    expect(
+      taskOperationRelayResultSchema.parse({
+        chatId: directRequest.chatId,
+        operationId: directRequest.operationId,
+        fingerprint: directRequest.fingerprint,
+        classification: {
+          ...directRequest.classification,
+          status: "completed",
+        },
+        protectedResult: encrypted,
+        task: {
+          classification: {
+            ...directRequest.task.classification,
+            state: "complete",
+            stableStateBeforeFailure: null,
+            activeOperationKind: null,
+          },
+          protectedContent: encrypted,
+        },
+        assistantMessage: {
+          ...request.userMessage,
+          id: "44444444-4444-4444-8444-444444444444",
+          classification: {
+            role: "assistant",
+            mode: "default",
+            attachmentIds: [],
+          },
+          idempotencyKey: "task-direct:assistant",
+        },
+        goal: null,
+      }).task.classification.state,
+    ).toBe("complete");
   });
 });

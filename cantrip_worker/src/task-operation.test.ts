@@ -29,11 +29,14 @@ const chatId = "chat-worker-task-relay";
 const operationId = "11111111-1111-4111-8111-111111111111";
 const keyRevision = 2;
 
-async function userMessage(componentKey: Uint8Array) {
+async function userMessage(
+  componentKey: Uint8Array,
+  mode: "default" | "plan" = "plan",
+) {
   const id = "22222222-2222-4222-8222-222222222222";
   const classification = {
     role: "user" as const,
-    mode: "plan" as const,
+    mode,
     attachmentIds: [],
   };
   return {
@@ -56,14 +59,16 @@ async function userMessage(componentKey: Uint8Array) {
 }
 
 function protectedInput(
-  kind: "initial-plan" | "continue-plan" | "finalize",
+  kind: "direct" | "initial-plan" | "continue-plan" | "finalize",
 ): TaskPlanningRoundProtectedContent {
   return {
     version: 1,
     classification: taskOperationRunningClassification({ kind, ordinal: 3 }),
     inputBriefMarkdown: "SENTINEL worker-only brief",
     inputPlanMarkdown:
-      kind === "initial-plan" ? null : "# SENTINEL worker-only plan",
+      kind === "initial-plan" || kind === "direct"
+        ? null
+        : "# SENTINEL worker-only plan",
     inputQuestions: [],
     inputAnswers: [],
     additionalDirection: "SENTINEL worker-only direction",
@@ -75,17 +80,23 @@ function protectedInput(
 }
 
 function taskContent(
-  kind: "initial-plan" | "continue-plan" | "finalize",
+  kind: "direct" | "initial-plan" | "continue-plan" | "finalize",
 ): TaskProtectedContent {
   return {
     version: 1,
     classification: {
-      state: kind === "finalize" ? "finalizing" : "planning",
-      stableStateBeforeFailure: kind === "initial-plan" ? "draft" : "review",
+      state:
+        kind === "direct"
+          ? "implementing"
+          : kind === "finalize"
+            ? "finalizing"
+            : "planning",
+      stableStateBeforeFailure:
+        kind === "initial-plan" || kind === "direct" ? "draft" : "review",
       activeOperationKind: kind,
       planAuthorship: "agent",
       planningRound: 3,
-      hasPlan: kind !== "initial-plan",
+      hasPlan: kind !== "initial-plan" && kind !== "direct",
       hasQuestions: false,
       hasFinalPlan: false,
       hasGoalPrompt: false,
@@ -93,7 +104,9 @@ function taskContent(
     },
     briefMarkdown: "SENTINEL worker-only brief",
     planMarkdown:
-      kind === "initial-plan" ? null : "# SENTINEL worker-only plan",
+      kind === "initial-plan" || kind === "direct"
+        ? null
+        : "# SENTINEL worker-only plan",
     currentQuestions: [],
     currentAnswers: [],
     additionalDirection: "SENTINEL worker-only direction",
@@ -244,6 +257,84 @@ describe("worker encrypted Task operations", () => {
     });
   });
 
+  it("runs a direct Task as one ordinary turn with the brief verbatim", async () => {
+    const componentKey = randomBytes(32);
+    const request = await createTaskOperationRelayRequest({
+      ownerId,
+      chatId,
+      operationId,
+      keyRevision,
+      componentKey,
+      content: protectedInput("direct"),
+      taskContent: taskContent("direct"),
+      userMessage: await userMessage(componentKey, "default"),
+    });
+    const run = vi.fn(
+      async ({
+        outputSchema,
+        prompt,
+      }: {
+        outputSchema?: unknown;
+        prompt: string;
+      }) => {
+        expect(outputSchema).toBeUndefined();
+        expect(prompt).toBe("SENTINEL worker-only brief");
+        return {
+          threadId: "thread-direct",
+          turnId: "turn-direct",
+          text: "SENTINEL direct response",
+          status: "completed" as const,
+        };
+      },
+    );
+    const result = await executeEncryptedTaskOperation({
+      getComponentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      }),
+      ownerId,
+      request,
+      run,
+    });
+    expect(run).toHaveBeenCalledOnce();
+    expect(result.text).toBe("");
+    expect(JSON.stringify(result)).not.toContain("SENTINEL");
+    const relay = taskOperationRelayResultSchema.parse(result.structuredResult);
+    expect(relay.goal).toBeNull();
+    expect(relay.assistantMessage.classification.mode).toBe("default");
+    const opened = await openTaskOperationRelayResult({
+      ownerId,
+      keyRevision,
+      componentKey,
+      request,
+      result: relay,
+    });
+    expect(opened.round).toMatchObject({
+      classification: {
+        kind: "direct",
+        hasOutputPlan: false,
+        hasOutputGoalPrompt: false,
+      },
+      outputPlanMarkdown: null,
+      outputGoalPrompt: null,
+    });
+    expect(opened.task).toMatchObject({
+      classification: {
+        state: "complete",
+        hasPlan: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+      },
+      planMarkdown: null,
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+    });
+    expect(opened.assistantMessage).toMatchObject({
+      classification: { role: "assistant", mode: "default" },
+      content: [{ type: "text", text: "SENTINEL direct response" }],
+    });
+  });
+
   it("encrypts the combined finalization Goal and opens it only for the bound thread", async () => {
     const componentKey = randomBytes(32);
     const request = await createTaskOperationRelayRequest({
@@ -264,7 +355,7 @@ describe("worker encrypted Task operations", () => {
       ownerId,
       request,
       run: async ({ outputSchema }) => {
-        expect(outputSchema.required).toEqual([
+        expect(outputSchema?.required).toEqual([
           "finalPlanMarkdown",
           "goalPrompt",
         ]);

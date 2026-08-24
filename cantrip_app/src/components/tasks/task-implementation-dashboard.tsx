@@ -54,12 +54,14 @@ const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
 export function taskImplementationStatusLabel(
   task: TaskDetail,
   goal: TaskGoalSnapshot | null,
+  active = false,
 ): string {
   if (task.state === "failed") return "Failed";
   if (task.state === "paused") return "Paused";
   if (task.state === "blocked")
     return goal ? goalLabels[goal.status] : "Blocked";
   if (task.state === "complete") return "Complete";
+  if (!task.planGoalEnabled && active) return "Running";
   return goal ? goalLabels[goal.status] : "Starting";
 }
 
@@ -72,8 +74,12 @@ export function taskImplementationPlacementLabel(
 export function taskImplementationShowsLiveActivity(
   task: TaskDetail,
   goal: TaskGoalSnapshot | null,
+  active = false,
 ): boolean {
-  return task.state === "implementing" && goal?.status === "active";
+  return (
+    task.state === "implementing" &&
+    (task.planGoalEnabled ? goal?.status === "active" : active)
+  );
 }
 
 function PullRequestRow({
@@ -192,9 +198,9 @@ export function TaskImplementationDashboard({
   });
   const stop = useMutation({
     mutationFn: async () => {
-      await setChatPaused(chat.id, true);
+      if (task.planGoalEnabled) await setChatPaused(chat.id, true);
       await interruptChat(chat.id);
-      if (goal?.status === "active") {
+      if (task.planGoalEnabled && goal?.status === "active") {
         await updateChatGoal(chat.id, { status: "paused" });
       }
     },
@@ -202,18 +208,23 @@ export function TaskImplementationDashboard({
   });
   const controlError = pause.error ?? resume.error ?? stop.error;
   const controlPending = pause.isPending || resume.isPending || stop.isPending;
-  const statusLabel = taskImplementationStatusLabel(task, goal);
+  const statusLabel = taskImplementationStatusLabel(task, goal, active);
   const tokenProgress =
     goal?.tokenBudget && goal.tokenBudget > 0
       ? Math.min(100, (goal.tokensUsed / goal.tokenBudget) * 100)
       : null;
   const showResume =
-    chat.automationPaused ||
-    task.state === "paused" ||
-    goal?.status === "paused" ||
-    goal?.status === "blocked";
-  const showLiveActivity = taskImplementationShowsLiveActivity(task, goal);
-  const showPause = showLiveActivity;
+    task.planGoalEnabled &&
+    (chat.automationPaused ||
+      task.state === "paused" ||
+      goal?.status === "paused" ||
+      goal?.status === "blocked");
+  const showLiveActivity = taskImplementationShowsLiveActivity(
+    task,
+    goal,
+    active,
+  );
+  const showPause = task.planGoalEnabled && showLiveActivity;
   const latestMessages = useMemo(() => messages.data ?? [], [messages.data]);
   const placement = dashboard.data?.placement;
   const directFolder = placement?.kind === "folder";
@@ -227,11 +238,15 @@ export function TaskImplementationDashboard({
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold">Implementation</h2>
+              <h2 className="font-semibold">
+                {task.planGoalEnabled ? "Implementation" : "Task execution"}
+              </h2>
               <Badge variant="outline">{statusLabel}</Badge>
             </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              Goal mode on this Task&apos;s underlying Chat
+              {task.planGoalEnabled
+                ? "Goal mode on this Task's underlying Chat"
+                : "Normal agent turn from the saved Task prompt"}
             </p>
           </div>
           <Button
@@ -289,7 +304,7 @@ export function TaskImplementationDashboard({
               ) : (
                 <CircleStop className="size-3.5" />
               )}
-              Stop & pause
+              {task.planGoalEnabled ? "Stop & pause" : "Stop"}
             </Button>
           ) : null}
         </header>
@@ -477,9 +492,13 @@ export function TaskImplementationDashboard({
             id="task-plan-heading"
             className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            Final plan
+            {task.planGoalEnabled ? "Final plan" : "Task prompt"}
           </h3>
-          <Markdown>{task.finalPlanMarkdown ?? ""}</Markdown>
+          <Markdown>
+            {task.planGoalEnabled
+              ? (task.finalPlanMarkdown ?? "")
+              : task.briefMarkdown}
+          </Markdown>
           {task.goalPrompt ? (
             <details className="mt-8 border-y py-3 text-sm">
               <summary className="cursor-pointer font-medium">

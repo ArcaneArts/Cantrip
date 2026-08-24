@@ -5,7 +5,7 @@ import type {
 } from "@cantrip/protocol/tasks";
 
 const transitions: Readonly<Record<TaskState, readonly TaskState[]>> = {
-  draft: ["planning"],
+  draft: ["planning", "implementing"],
   planning: ["review", "failed"],
   review: ["planning", "finalizing"],
   finalizing: ["implementing", "failed"],
@@ -42,19 +42,26 @@ export function assertTaskStateTransition(
 }
 
 export function taskOperationState(kind: TaskOperationKind): TaskState {
+  if (kind === "direct") return "implementing";
   return kind === "finalize" ? "finalizing" : "planning";
 }
 
 export function taskOperationStableState(
   kind: TaskOperationKind,
 ): TaskStableState {
-  return kind === "initial-plan" ? "draft" : "review";
+  return kind === "direct" || kind === "initial-plan" ? "draft" : "review";
 }
 
 export function taskRetryState(
   stableState: TaskStableState,
   operationKind: TaskOperationKind,
 ): TaskState {
+  if (operationKind === "direct") {
+    if (stableState !== "draft") {
+      throw new TaskStateTransitionError("failed", "implementing");
+    }
+    return "implementing";
+  }
   if (operationKind === "finalize") {
     if (stableState !== "review") {
       throw new TaskStateTransitionError("failed", "finalizing");

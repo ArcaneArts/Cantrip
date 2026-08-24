@@ -9,6 +9,7 @@ import {
 
 const task = {
   state: "implementing",
+  planGoalEnabled: true,
 } as TaskDetail;
 const goal = {
   status: "active",
@@ -57,5 +58,22 @@ describe("Task implementation dashboard presentation", () => {
       }),
     ).toBe(false);
     expect(taskImplementationShowsLiveActivity(task, null)).toBe(false);
+  });
+
+  it("shows direct Task activity without requiring a Goal", () => {
+    const directTask = { ...task, planGoalEnabled: false };
+    expect(taskImplementationStatusLabel(directTask, null, true)).toBe(
+      "Running",
+    );
+    expect(taskImplementationShowsLiveActivity(directTask, null, true)).toBe(
+      true,
+    );
+    expect(
+      taskImplementationShowsLiveActivity(
+        { ...directTask, state: "complete" },
+        null,
+        false,
+      ),
+    ).toBe(false);
   });
 });

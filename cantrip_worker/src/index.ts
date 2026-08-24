@@ -3775,6 +3775,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.resultMode.kind === "task-message-encrypted";
         const encryptedTaskOperation =
           command.resultMode.kind === "task-encrypted";
+        const directTaskOperation =
+          command.resultMode.kind === "task-encrypted" &&
+          command.resultMode.operation.classification.kind === "direct";
         const encryptedChat =
           command.resultMode.kind === "chat-message-encrypted";
         const encryptedChatSealer = encryptedChat
@@ -3789,7 +3792,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             )
           : null;
         const encryptedTaskSealer = encryptedTask
-          ? new EncryptedTaskEventSealer(workerEncryption)
+          ? new EncryptedTaskEventSealer(
+              workerEncryption,
+              directTaskOperation
+                ? "default"
+                : encryptedTaskOperation
+                  ? "plan"
+                  : "goal",
+            )
           : null;
         const policyContext = await buildEncryptedAgentPolicyContext({
           policies: command.policies,
@@ -3810,7 +3820,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         const resolvedMcpServers = await agentMcpServers(
           command.cwd,
           command.mcpServers,
-          command.resultMode.kind === "task-encrypted"
+          encryptedTaskOperation && !directTaskOperation
             ? undefined
             : {
                 chatId: command.chatId,
@@ -3852,7 +3862,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             prompt,
             rootKind: command.rootKind,
             skillNames: encryptedTaskOperation
-              ? []
+              ? directTaskOperation
+                ? mentionedSkillNames(prompt)
+                : []
               : encryptedChat
                 ? mentionedSkillNames(prompt)
                 : command.skillNames,
@@ -3861,7 +3873,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             threadId: command.threadId,
             worktreeMode: command.worktreeMode,
             worktreePolicy: command.worktreePolicy,
-            ...(encryptedTaskOperation
+            ...(encryptedTaskOperation && !directTaskOperation
               ? encryptedTaskSealer
                 ? {
                     onActivity: (activity) =>
@@ -3872,7 +3884,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 : {}
               : {
                   onInteractionRequest: (request) =>
-                    encryptedChat
+                    encryptedChat || encryptedTask
                       ? emitProtected(async () => {
                           try {
                             return {
@@ -3972,7 +3984,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ownerId: workerEncryption.ownerId(),
             request: command.resultMode.operation,
             run: ({ outputSchema, prompt }) =>
-              runTurn(prompt, { kind: "structured", outputSchema }),
+              runTurn(
+                prompt,
+                outputSchema
+                  ? { kind: "structured", outputSchema }
+                  : { kind: "visible" },
+              ),
           });
           await protectedEventQueue;
           if (protectedEventFailure) throw protectedEventFailure;

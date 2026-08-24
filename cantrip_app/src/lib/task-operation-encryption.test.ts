@@ -35,6 +35,7 @@ function readyService() {
 
 const task: TaskDetail = {
   chatId: "chat-client-task-relay",
+  planGoalEnabled: true,
   state: "review",
   stableStateBeforeFailure: null,
   activeOperationId: null,
