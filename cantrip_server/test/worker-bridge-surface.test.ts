@@ -50,6 +50,17 @@ class TestWorkerSocket {
   }
 }
 
+class RejectingActivationSocket extends TestWorkerSocket {
+  activate(): boolean {
+    this.readyState = 3;
+    return false;
+  }
+
+  canActivate(): boolean {
+    return true;
+  }
+}
+
 const header: RemoteSurfaceFrameHeader = {
   protocolVersion: 1,
   surfaceId: "surface-1",
@@ -192,6 +203,68 @@ describe("WorkerBridge Remote Surface transport", () => {
 
       expect(offline).toHaveBeenCalledOnce();
       await rejected;
+      bridge.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects a non-open replacement without extending the original grace", async () => {
+    vi.useFakeTimers();
+    try {
+      const bridge = new WorkerBridge(100);
+      const firstSocket = new TestWorkerSocket();
+      const offline = vi.fn();
+      bridge.subscribeWorkerOffline("worker-1", offline);
+      bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
+      const pending = bridge.request("worker-1", { type: "code.probe" });
+      const rejected = pending.catch((error: unknown) => {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toMatch(/disconnected/i);
+      });
+
+      firstSocket.close(1006, "network loss");
+      await vi.advanceTimersByTimeAsync(60);
+      const deadSocket = new TestWorkerSocket();
+      deadSocket.close(1006, "closed during authentication");
+
+      expect(
+        bridge.attach("worker-1", deadSocket, "owner-1", continuityIdentity),
+      ).toBe(false);
+      await vi.advanceTimersByTimeAsync(39);
+      expect(offline).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(offline).toHaveBeenCalledOnce();
+      await rejected;
+      bridge.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not reset grace when buffered activation loses its final race", async () => {
+    vi.useFakeTimers();
+    try {
+      const bridge = new WorkerBridge(100);
+      const firstSocket = new TestWorkerSocket();
+      const offline = vi.fn();
+      bridge.subscribeWorkerOffline("worker-1", offline);
+      bridge.attach("worker-1", firstSocket, "owner-1", continuityIdentity);
+      firstSocket.close(1006, "network loss");
+      await vi.advanceTimersByTimeAsync(60);
+
+      expect(
+        bridge.attach(
+          "worker-1",
+          new RejectingActivationSocket(),
+          "owner-1",
+          continuityIdentity,
+        ),
+      ).toBe(false);
+      await vi.advanceTimersByTimeAsync(39);
+      expect(offline).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(offline).toHaveBeenCalledOnce();
       bridge.close();
     } finally {
       vi.useRealTimers();

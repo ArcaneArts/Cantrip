@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BufferedWorkerSocket } from "../src/workers/buffered-socket.js";
+import {
+  BufferedWorkerSocket,
+  BufferedWorkerSocketByteBudget,
+} from "../src/workers/buffered-socket.js";
 
 class TestSocket {
   bufferedAmount = 0;
@@ -58,24 +61,94 @@ describe("BufferedWorkerSocket", () => {
     buffered.on("close", closed);
 
     socket.emit("message", new Uint8Array(8 * 1_024 * 1_024 + 1), true);
-    buffered.activate();
+    expect(buffered.activate()).toBe(false);
 
     expect(socket.closes).toEqual([
       { code: 1009, reason: "Worker authentication buffer exceeded" },
     ]);
-    expect(closed).toHaveBeenCalledOnce();
+    expect(closed).not.toHaveBeenCalled();
   });
 
-  it("replays a pre-activation close exactly once", () => {
+  it("discards a pre-activation close and any retained messages", () => {
     const socket = new TestSocket();
-    const buffered = new BufferedWorkerSocket(socket);
+    const budget = new BufferedWorkerSocketByteBudget(16);
+    const buffered = new BufferedWorkerSocket(socket, budget);
     const closed = vi.fn();
+    const message = vi.fn();
 
+    socket.emit("message", "retained", false);
+    expect(budget.usedBytes).toBe(8);
     socket.emit("close");
     buffered.on("close", closed);
-    buffered.activate();
+    buffered.on("message", message);
+    expect(buffered.activate()).toBe(false);
     socket.emit("close");
 
-    expect(closed).toHaveBeenCalledOnce();
+    expect(budget.usedBytes).toBe(0);
+    expect(message).not.toHaveBeenCalled();
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  it("treats a pre-activation socket error as terminal", () => {
+    const budget = new BufferedWorkerSocketByteBudget(16);
+    const socket = new TestSocket();
+    const buffered = new BufferedWorkerSocket(socket, budget);
+    const error = vi.fn();
+
+    socket.emit("message", "retained", false);
+    socket.emit("error", new Error("connection reset"));
+    buffered.on("error", error);
+
+    expect(buffered.canActivate()).toBe(false);
+    expect(buffered.activate()).toBe(false);
+    expect(budget.usedBytes).toBe(0);
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("shares and releases a process-wide authentication byte budget", () => {
+    const budget = new BufferedWorkerSocketByteBudget(4);
+    const firstSocket = new TestSocket();
+    const first = new BufferedWorkerSocket(firstSocket, budget);
+    const secondSocket = new TestSocket();
+    const second = new BufferedWorkerSocket(secondSocket, budget);
+
+    firstSocket.emit("message", new Uint8Array(4), true);
+    expect(budget.usedBytes).toBe(4);
+    secondSocket.emit("message", new Uint8Array(1), true);
+    expect(secondSocket.closes).toEqual([
+      {
+        code: 1013,
+        reason: "Worker authentication capacity is unavailable",
+      },
+    ]);
+    expect(budget.usedBytes).toBe(4);
+
+    expect(first.activate()).toBe(true);
+    expect(budget.usedBytes).toBe(0);
+    const thirdSocket = new TestSocket();
+    const third = new BufferedWorkerSocket(thirdSocket, budget);
+    thirdSocket.emit("message", new Uint8Array(4), true);
+    expect(budget.usedBytes).toBe(4);
+
+    third.disposePending();
+    expect(budget.usedBytes).toBe(0);
+    expect(second.activate()).toBe(false);
+  });
+
+  it("makes a server-closed pending socket unattachable and releases its budget", () => {
+    const budget = new BufferedWorkerSocketByteBudget(16);
+    const socket = new TestSocket();
+    const buffered = new BufferedWorkerSocket(socket, budget);
+
+    socket.emit("message", "pending", false);
+    expect(budget.usedBytes).toBe(7);
+    buffered.close(1013, "Worker authentication timed out");
+
+    expect(buffered.canActivate()).toBe(false);
+    expect(buffered.activate()).toBe(false);
+    expect(budget.usedBytes).toBe(0);
+    expect(socket.closes).toEqual([
+      { code: 1013, reason: "Worker authentication timed out" },
+    ]);
   });
 });

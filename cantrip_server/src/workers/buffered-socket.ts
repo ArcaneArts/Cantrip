@@ -2,6 +2,7 @@ import type { WorkerSocket } from "./bridge.js";
 
 const MAX_AUTHENTICATION_BUFFER_BYTES = 8 * 1_024 * 1_024;
 const MAX_AUTHENTICATION_BUFFER_EVENTS = 1_024;
+const MAX_PROCESS_AUTHENTICATION_BUFFER_BYTES = 64 * 1_024 * 1_024;
 
 type BufferedSocketEvent =
   | { kind: "close" }
@@ -17,6 +18,38 @@ function frameBytes(data: unknown): number {
   }
   return Buffer.byteLength(String(data));
 }
+
+export class BufferedWorkerSocketByteBudget {
+  #usedBytes = 0;
+
+  constructor(readonly limitBytes: number) {
+    if (!Number.isSafeInteger(limitBytes) || limitBytes < 0) {
+      throw new Error(
+        "Worker authentication buffer limit must be a non-negative safe integer.",
+      );
+    }
+  }
+
+  get usedBytes(): number {
+    return this.#usedBytes;
+  }
+
+  acquire(bytes: number): boolean {
+    if (!Number.isSafeInteger(bytes) || bytes < 0) return false;
+    if (this.#usedBytes + bytes > this.limitBytes) return false;
+    this.#usedBytes += bytes;
+    return true;
+  }
+
+  release(bytes: number): void {
+    if (!Number.isSafeInteger(bytes) || bytes <= 0) return;
+    this.#usedBytes = Math.max(0, this.#usedBytes - bytes);
+  }
+}
+
+const processAuthenticationBufferBudget = new BufferedWorkerSocketByteBudget(
+  MAX_PROCESS_AUTHENTICATION_BUFFER_BYTES,
+);
 
 /**
  * Captures the worker's bounded reconnect flush while authentication and any
@@ -35,7 +68,10 @@ export class BufferedWorkerSocket implements WorkerSocket {
   #closeDispatched = false;
   #inputClosed = false;
 
-  constructor(private readonly socket: WorkerSocket) {
+  constructor(
+    private readonly socket: WorkerSocket,
+    private readonly byteBudget = processAuthenticationBufferBudget,
+  ) {
     socket.on("message", (data, isBinary) => {
       this.#receive({
         data,
@@ -55,15 +91,38 @@ export class BufferedWorkerSocket implements WorkerSocket {
     return this.socket.readyState;
   }
 
-  activate(): void {
-    if (this.#activated) return;
+  activate(): boolean {
+    if (this.#activated) return true;
+    if (!this.canActivate()) {
+      this.#events.length = 0;
+      this.#releaseBudget();
+      return false;
+    }
     this.#activated = true;
     for (const event of this.#events.splice(0)) this.#dispatch(event);
-    this.#bufferedBytes = 0;
+    this.#releaseBudget();
+    return true;
+  }
+
+  canActivate(): boolean {
+    return !this.#inputClosed && this.socket.readyState === 1;
   }
 
   close(code?: number, reason?: string): void {
+    if (!this.#activated && !this.#inputClosed) {
+      this.#inputClosed = true;
+      this.#events.length = 0;
+      this.#events.push({ kind: "close" });
+      this.#releaseBudget();
+    }
     this.socket.close(code, reason);
+  }
+
+  disposePending(): void {
+    if (this.#activated) return;
+    this.#inputClosed = true;
+    this.#events.length = 0;
+    this.#releaseBudget();
   }
 
   on(event: "close", listener: () => void): void;
@@ -122,15 +181,36 @@ export class BufferedWorkerSocket implements WorkerSocket {
       this.#events.length >= MAX_AUTHENTICATION_BUFFER_EVENTS ||
       this.#bufferedBytes + bytes > MAX_AUTHENTICATION_BUFFER_BYTES
     ) {
+      this.#rejectPending(1009, "Worker authentication buffer exceeded");
+      return;
+    }
+    if (!this.byteBudget.acquire(bytes)) {
+      this.#rejectPending(
+        1013,
+        "Worker authentication capacity is unavailable",
+      );
+      return;
+    }
+    if (event.kind !== "message") {
       this.#inputClosed = true;
       this.#events.length = 0;
-      this.#events.push({ kind: "close" });
-      this.#bufferedBytes = 0;
-      this.socket.close(1009, "Worker authentication buffer exceeded");
+      this.#releaseBudget();
       return;
     }
     this.#events.push(event);
     this.#bufferedBytes += bytes;
-    if (event.kind === "close") this.#inputClosed = true;
+  }
+
+  #rejectPending(code: number, reason: string): void {
+    this.#inputClosed = true;
+    this.#events.length = 0;
+    this.#events.push({ kind: "close" });
+    this.#releaseBudget();
+    this.socket.close(code, reason);
+  }
+
+  #releaseBudget(): void {
+    this.byteBudget.release(this.#bufferedBytes);
+    this.#bufferedBytes = 0;
   }
 }

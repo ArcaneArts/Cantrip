@@ -31,6 +31,7 @@ import type {
 import {
   sameWorkerConnectionContinuityIdentity,
   WorkerBridge,
+  workerSocketIsAttachable,
   WorkerUnavailableError,
 } from "./bridge.js";
 
@@ -129,17 +130,21 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     socket: WorkerSocket,
     ownerId?: string,
     continuityIdentity?: WorkerConnectionContinuityIdentity,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (this.#closed) {
       socket.close(1012, "Server is shutting down");
-      return;
+      return false;
     }
+    if (!workerSocketIsAttachable(socket)) return false;
     const attachmentGeneration = Symbol(workerId);
     this.#attachmentGenerations.set(workerId, attachmentGeneration);
     const resolvedOwnerId = ownerId ?? (await this.#resolveOwnerId(workerId));
-    if (!this.#isCurrentAttachment(workerId, attachmentGeneration)) {
+    if (
+      !this.#isCurrentAttachment(workerId, attachmentGeneration) ||
+      !workerSocketIsAttachable(socket)
+    ) {
       socket.close(1012, "Worker connection was superseded");
-      return;
+      return false;
     }
     if (!resolvedOwnerId) {
       serverLogger.event("warn", "Worker relay attachment rejected", {
@@ -151,11 +156,11 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         workerId,
       });
       socket.close(1008, "Worker owner is unavailable");
-      return;
+      return false;
     }
     if (continuityIdentity && continuityIdentity.ownerId !== resolvedOwnerId) {
       socket.close(1008, "Worker continuity identity does not match owner");
-      return;
+      return false;
     }
     const existing = this.#connections.get(workerId);
     const continuityMatches = Boolean(
@@ -172,18 +177,20 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       );
       if (
         !this.#isCurrentAttachment(workerId, attachmentGeneration) ||
-        this.#connections.get(workerId) !== existing
+        this.#connections.get(workerId) !== existing ||
+        !workerSocketIsAttachable(socket)
       ) {
         socket.close(1012, "Worker connection was superseded");
-        return;
+        return false;
       }
       if (retained) {
-        this.#local.attach(
+        const accepted = this.#local.attach(
           workerId,
           socket,
           resolvedOwnerId,
           continuityIdentity,
         );
+        if (!accepted) return false;
         serverLogger.event("info", "Worker relay attachment recovered", {
           event: "coordination.worker.recovered",
           subsystem: "relay-coordination",
@@ -191,9 +198,10 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
           status: "online",
           workerId,
         });
-        return;
+        return true;
       }
     }
+    if (!workerSocketIsAttachable(socket)) return false;
     if (existing) {
       this.#local.disconnect(
         workerId,
@@ -211,9 +219,12 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       ownerId: resolvedOwnerId,
       workerId,
     });
-    if (!this.#isCurrentAttachment(workerId, attachmentGeneration)) {
+    if (
+      !this.#isCurrentAttachment(workerId, attachmentGeneration) ||
+      !workerSocketIsAttachable(socket)
+    ) {
       await this.#discardSupersededClaim(workerId, connectionId, socket);
-      return;
+      return false;
     }
     if (
       previous &&
@@ -228,10 +239,18 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         code: 1012,
         reason: "Worker connected to another server instance",
       });
-      if (!this.#isCurrentAttachment(workerId, attachmentGeneration)) {
+      if (
+        !this.#isCurrentAttachment(workerId, attachmentGeneration) ||
+        !workerSocketIsAttachable(socket)
+      ) {
         await this.#discardSupersededClaim(workerId, connectionId, socket);
-        return;
+        return false;
       }
+    }
+
+    if (!workerSocketIsAttachable(socket)) {
+      await this.#discardSupersededClaim(workerId, connectionId, socket);
+      return false;
     }
 
     const connection: LocalConnection = {
@@ -293,7 +312,20 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         });
       }),
     );
-    this.#local.attach(workerId, socket, resolvedOwnerId, continuityIdentity);
+    const accepted = this.#local.attach(
+      workerId,
+      socket,
+      resolvedOwnerId,
+      continuityIdentity,
+    );
+    if (!accepted) {
+      if (this.#connections.get(workerId) === connection) {
+        this.#connections.delete(workerId);
+        for (const unsubscribe of connection.unsubscribers) unsubscribe();
+      }
+      await this.#discardSupersededClaim(workerId, connectionId, socket);
+      return false;
+    }
     serverLogger.event("info", "Worker attached to relay instance", {
       event: "coordination.worker.attached",
       subsystem: "relay-coordination",
@@ -302,6 +334,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       workerId,
       replacedRemoteClaim: Boolean(previous),
     });
+    return true;
   }
 
   async close(): Promise<void> {

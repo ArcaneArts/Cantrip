@@ -20,7 +20,9 @@ import type { ServiceLogger } from "@cantrip/logging";
 import { serverLogger } from "../logger.js";
 
 export interface WorkerSocket {
+  activate?(): boolean;
   bufferedAmount: number;
+  canActivate?(): boolean;
   close(code?: number, reason?: string): void;
   on(event: "close", listener: () => void): void;
   on(event: "error", listener: (error: Error) => void): void;
@@ -58,7 +60,7 @@ export interface WorkerCommandBus {
     socket: WorkerSocket,
     ownerId?: string,
     continuityIdentity?: WorkerConnectionContinuityIdentity,
-  ): Promise<void> | void;
+  ): Promise<boolean | void> | boolean | void;
   close(): Promise<void> | void;
   disconnect?(workerId: string, reason?: string, code?: number): void;
   isConnected(workerId: string): boolean;
@@ -169,6 +171,14 @@ export function sameWorkerConnectionContinuityIdentity(
   );
 }
 
+export function workerSocketIsAttachable(socket: WorkerSocket): boolean {
+  try {
+    return socket.readyState === 1 && (socket.canActivate?.() ?? true);
+  } catch {
+    return false;
+  }
+}
+
 export class WorkerBridge implements WorkerCommandBus {
   readonly #continuityIdentities = new Map<
     string,
@@ -207,14 +217,15 @@ export class WorkerBridge implements WorkerCommandBus {
     socket: WorkerSocket,
     ownerId?: string,
     continuityIdentity?: WorkerConnectionContinuityIdentity,
-  ): void {
+  ): boolean {
+    if (!workerSocketIsAttachable(socket)) return false;
     if (
       continuityIdentity &&
       ownerId &&
       continuityIdentity.ownerId !== ownerId
     ) {
       socket.close(1008, "Worker continuity identity does not match owner");
-      return;
+      return false;
     }
     const existing = this.#sockets.get(workerId);
     const hadLifecycle =
@@ -244,16 +255,37 @@ export class WorkerBridge implements WorkerCommandBus {
         "Worker continuity identity changed",
       );
     } else if (existing && existing !== socket) {
-      this.logger.event("warn", "Worker connection replaced", {
-        event: "worker.connection.replaced",
-        subsystem: "worker-connection",
-        status: "replaced",
-        workerId,
-      });
       closeReplacedSocket = true;
     }
+    if (!workerSocketIsAttachable(socket)) return false;
+    const restorableSocket = this.#sockets.get(workerId);
     const disconnectedAt = this.#disconnectedAt.get(workerId);
+
+    socket.on("message", (data, isBinary) =>
+      this.handleSocketMessage(workerId, socket, data, Boolean(isBinary)),
+    );
+
+    const disconnect = () => this.handleSocketDisconnect(workerId, socket);
+    socket.on("close", disconnect);
+    socket.on("error", disconnect);
+
+    // Temporarily make the socket current so a bounded pre-authentication
+    // flush is correlated correctly. Do not cancel an existing reconnect
+    // grace until the wrapper confirms that it can activate.
     this.#sockets.set(workerId, socket);
+    let activated = true;
+    try {
+      activated = socket.activate?.() ?? true;
+    } catch {
+      activated = false;
+    }
+    if (!activated) {
+      if (this.#sockets.get(workerId) === socket) {
+        if (restorableSocket) this.#sockets.set(workerId, restorableSocket);
+        else this.#sockets.delete(workerId);
+      }
+      return false;
+    }
     this.clearDisconnectTimer(workerId);
     this.#interruptionGenerations.delete(workerId);
     this.#disconnectedAt.delete(workerId);
@@ -263,6 +295,12 @@ export class WorkerBridge implements WorkerCommandBus {
       this.#continuityIdentities.delete(workerId);
     }
     if (closeReplacedSocket) {
+      this.logger.event("warn", "Worker connection replaced", {
+        event: "worker.connection.replaced",
+        subsystem: "worker-connection",
+        status: "replaced",
+        workerId,
+      });
       existing?.close(1012, "Worker reconnected");
     }
     this.logger.event(
@@ -281,13 +319,7 @@ export class WorkerBridge implements WorkerCommandBus {
       },
     );
 
-    socket.on("message", (data, isBinary) =>
-      this.handleSocketMessage(workerId, socket, data, Boolean(isBinary)),
-    );
-
-    const disconnect = () => this.handleSocketDisconnect(workerId, socket);
-    socket.on("close", disconnect);
-    socket.on("error", disconnect);
+    return true;
   }
 
   private handleSocketMessage(

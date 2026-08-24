@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  decodeWorkerConnectionEnvelope,
   unprobedCodexRuntimeReport,
   workerListSchema,
 } from "@cantrip/protocol";
@@ -37,10 +38,12 @@ const config: ServerConfig = {
 let notificationSubscribed = false;
 let subscribedBeforeAttach: boolean | null = null;
 let attachedContinuityIdentity: Parameters<WorkerCommandBus["attach"]>[3];
+let connectionLifecycle: string[] | null = null;
 const workerBridge: WorkerCommandBus = {
   attach(_workerId, _socket, _ownerId, continuityIdentity) {
     subscribedBeforeAttach = notificationSubscribed;
     attachedContinuityIdentity = continuityIdentity;
+    connectionLifecycle?.push("attach");
   },
   close() {},
   isConnected() {
@@ -97,12 +100,29 @@ afterAll(async () => {
 describe("worker notification connection order", () => {
   it("subscribes before attachment and trusts the live command connection", async () => {
     const workerProcessGeneration = "11111111-1111-4111-8111-111111111111";
+    const lifecycle: string[] = [];
+    connectionLifecycle = lifecycle;
     const socket = await app.injectWS(
       `/api/internal/workers/connect?workerId=notification-order-worker&connectionGeneration=${workerProcessGeneration}`,
       { headers: { authorization: "Bearer test-worker-token" } },
+      {
+        onInit(client) {
+          client.on("message", (data) => {
+            const envelope = decodeWorkerConnectionEnvelope(data.toString());
+            if (envelope.success) lifecycle.push(envelope.data.state);
+          });
+        },
+      },
     );
 
     await expect.poll(() => subscribedBeforeAttach).toBe(true);
+    await expect.poll(() => lifecycle.includes("ready")).toBe(true);
+    expect(lifecycle.indexOf("pending")).toBeLessThan(
+      lifecycle.indexOf("ready"),
+    );
+    expect(lifecycle.indexOf("attach")).toBeLessThan(
+      lifecycle.indexOf("ready"),
+    );
     expect(attachedContinuityIdentity).toEqual({
       credentialId: "development-bootstrap",
       ownerId: LOCAL_USER_ID,
@@ -128,6 +148,7 @@ describe("worker notification connection order", () => {
         ),
       ).toMatchObject({ online: true });
     } finally {
+      connectionLifecycle = null;
       now.mockRestore();
       socket.terminate();
     }

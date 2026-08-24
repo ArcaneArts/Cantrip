@@ -31,9 +31,11 @@ function meteredWorkerSocket(
   recorder: AccountUsageRecorder,
 ): WorkerSocket {
   return {
+    ...(socket.activate ? { activate: () => socket.activate!() } : {}),
     get bufferedAmount() {
       return socket.bufferedAmount;
     },
+    ...(socket.canActivate ? { canActivate: () => socket.canActivate!() } : {}),
     get readyState() {
       return socket.readyState;
     },
