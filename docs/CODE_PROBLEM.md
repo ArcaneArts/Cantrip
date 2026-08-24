@@ -1,9 +1,126 @@
 # Cantrip Code Explorer Connection Problem
 
-Status: root cause identified on current source; remediation is in progress.
+Status: current-source root causes remediated and accepted with fresh local-only
+desktop, direct-route, and forced-relay evidence on 2026-08-23. The historical
+sections remain below to preserve how the incident was narrowed; this addendum
+is the authoritative final state.
 
 Investigation baseline: `origin/main` at `169aee45` (`fix(explorer): reuse
 shared Code editor process (#913)`).
+
+## Final remediation and acceptance addendum (2026-08-23)
+
+The incident was a stack of independent defects. Fixing only OpenVSCode process
+reuse could not make the feature reliable because the client, server, native
+forwarder, and worker disagreed or failed at later boundaries:
+
+1. Protected Code content used two different server identities. The client
+   bound encrypted endpoint data to the server UUID while the worker attempted
+   to open it with a URL-derived identity. Direct and relay therefore rejected
+   the same valid record. The worker bootstrap now carries and persists the
+   authoritative logical server UUID separately from its transport URL.
+2. Explorer authorization readiness survived Explorer/server/account changes.
+   The client could consequently issue protected operations with stale surface
+   grants. Readiness is now scoped to the complete authorization identity and
+   is invalidated when that identity changes.
+3. The worker's tunnel adapter did not apply real TCP backpressure. A fast
+   OpenVSCode response could exceed the one-MiB pending queue while WebSocket
+   capacity was awaited, making the adapter close its own stream and truncate
+   the 15,449,528-byte `workbench.js` response at 65,128 bytes. Destination
+   reads are now paused synchronously before asynchronous capacity waits,
+   resumed only after queued data and credit permit, and half-close is deferred
+   until queued frames are emitted. A bounded guard remains for genuine
+   congestion and reports a safe local-close diagnostic.
+4. A cold Code profile was not consistently prewarmed. The first implementation
+   scheduled prewarm only from the periodic heartbeat. When a worker started
+   before the client authorized its encryption principal, the startup refresh
+   was not ready and the later server-driven `worker.encryption.refresh` did not
+   schedule Code. The first Explorer warmup or file open could therefore launch
+   OpenVSCode itself. Startup, server-driven refresh, and heartbeat now share one
+   refresh-and-prewarm path. Every ready refresh schedules the same bounded,
+   owner-scoped default profile; the supervisor deduplicates concurrent calls,
+   retains one warm process for the worker lifetime, restarts it with bounded
+   backoff after a crash, and terminates an in-flight launch during shutdown.
+5. Editor presentation hid most VS Code chrome but left the title/command area,
+   layout controls, minimap, and notification toasts visible. Editor mode now
+   suppresses those surfaces, navigation controls, extension recommendations,
+   the debug toolbar, activity bar, sidebar, panel, tabs, and status bar while
+   preserving the editor workbench itself.
+6. Desktop cleanup released the protected Code attachment before the native
+   forward had completely stopped. Cleanup now stops the forward first, then
+   releases the attachment, preventing late loopback work from racing revoked
+   credentials.
+
+### What “prewarmed at worker startup” can safely mean
+
+The worker can start the shared OpenVSCode **profile process** without creating
+a repository workspace or file session, but only after it has a verified owner
+and logical-server binding. Deriving the owner-scoped profile before that point
+would cross account boundaries. If the binding is already ready during worker
+startup, prewarm begins there. If the worker starts first, prewarm begins on the
+authorization refresh sent by the client/server, not on the next heartbeat and
+not on a file click.
+
+A fresh local delayed-authorization run on port 4330 proved the corrected
+ordering. Worker `cycle8-cu3-local` started with no usable encryption binding.
+Creating a minimal project caused the authoritative refresh to complete at
+`00:39:17.872Z`; `code.profile.prewarm-started` followed at
+`00:39:17.873Z`, and the process started at `00:39:17.875Z` with zero sessions.
+Explorer's own hidden workspace warmup reached `code.open` at
+`00:39:17.940Z`, while that profile launch was already in flight. The profile
+became ready after 227 ms as instance
+`3c0df936-2039-4ff5-9f83-bfc2690ef53d`, and the Explorer session reused that
+same instance. No file was clicked and no demand-created profile process was
+started.
+
+There are intentionally two warmup layers:
+
+- Worker profile prewarm starts OpenVSCode and retains the shared process.
+- Client Explorer prewarm creates the authoritative workspace/session, native
+  forward, iframe, workbench, and bridge after authenticated Explorer metadata
+  exists.
+
+The second layer cannot run inside the worker because WebKit belongs to the
+desktop client and no repository workspace may be invented before an
+authoritative Explorer target exists. A completely cold local WebKit cache took
+about 6.3 seconds end-to-end in the acceptance run (about 3.34 seconds to load
+the frame); that work now begins automatically when Explorer becomes available,
+before a file click. Switching files remains a warm control request in the same
+iframe and process.
+
+### Local-only acceptance evidence
+
+All accepted Code traffic used fresh loopback servers and local workers; the
+out-of-date Winterhold server was not used. A retained desktop profile did try
+and fail to start an unrelated Winterhold worker in one QA app launch, but it
+was never selected and carried none of the tested Explorer or Code traffic.
+
+- A fresh desktop Explorer expanded the cloned Gloss repository and opened the
+  exact requested `GlossPaperCommand.java`. The editor displayed that file's
+  source, not a welcome page or neighboring path.
+- Switching to `GlossPaperCommandRegistrar.java` reused the same iframe URL,
+  port, nonce, Code session, and OpenVSCode process.
+- The initial local-direct attachment moved 30,670,984 bytes toward the client
+  over nine accepted connections without truncating the workbench bundle.
+- The active attachment was then forced from connected local-direct transport
+  to managed relay. The existing rendered editor stayed usable, and selecting
+  `PaperBlockLockListener.java` completed a new worker `file-opened` control
+  request over that relay without remounting the workbench.
+- Visual and accessibility inspection confirmed editor-only presentation:
+  source editor and its ordinary editor actions remained, while VS Code's
+  activity bar, sidebar, panel, command center/title bar, tabs, status bar,
+  minimap, layout controls, and recommendation toast were absent.
+- Native end-to-end coverage sent a deterministic 16 MiB + 137 byte patterned
+  HTTP response through both direct transport and a connected-but-broken direct
+  route that fell back to managed relay, asserting exact byte length and order.
+
+The resulting normal first-click contract is therefore: if Explorer has had an
+opportunity to prewarm, clicking a file only reveals the already-mounted
+editor and sends an exact-path open request. If a user clicks before the client
+can finish a genuinely cold WebKit mount, the UI may still wait for that one
+client-side mount, but it no longer launches the worker Code profile on demand,
+truncates large assets, silently loops on a deterministic rejection, or exposes
+the full VS Code shell.
 
 ## Current-source reproduction addendum (2026-08-23)
 
@@ -52,7 +169,7 @@ logs alone did not expose the rejection, so their exact first failure remains a
 historical inference; the combined chronology and current correlated
 reproduction identify the same deterministic defect.
 
-The reproduction also exposed two independent follow-up defects:
+The reproduction also exposed three independent follow-up defects:
 
 - Health retries did not stop on a deterministic native destination rejection,
   producing 508 rejected connections in roughly eight seconds before cleanup.
@@ -70,7 +187,72 @@ content associated data. Completion still requires a fresh local desktop click
 that mounts the exact requested file in the editor-only workbench, with Explorer
 surface grants revalidated for the current server/account session.
 
-## Executive conclusion
+## Large-response cold-start addendum (2026-08-23)
+
+After the server-identity corrections reached the local build, Explorer loaded
+and a clicked `build.gradle` reached its authorized Code session. The first
+embedded workbench mount still failed with:
+
+```text
+Cantrip Code workbench did not become ready: The embedded editor timed out
+after its endpoint loaded.
+```
+
+The correlated WebKit and worker traces close that later failure boundary. The
+frame received the OpenVSCode HTML, the 910,568-byte workbench stylesheet, and
+the 822,802-byte localization bundle. Its 15,449,528-byte `workbench.js`
+response returned HTTP 200 but closed after only 65,128 bytes. WebKit reported
+`READ_CLOSE`, `HPE_INVALID_EOF_STATE`, and `NSURLErrorDomain -1005`. Because the
+workbench module never executed, there was correctly no editor WebSocket, bridge
+connection, or nonce-bound `cantrip-code.workbench-ready` message. The existing
+readiness patch itself was present and a separate framed Chromium check proved
+that it emits the expected nonce-bound message after a complete workbench load.
+
+The initiating defect is worker tunnel backpressure in
+[`tunnel-tcp-adapter.ts`](../cantrip_worker/src/tunnel-tcp-adapter.ts). A fast
+loopback destination continues producing data while asynchronous WebSocket
+capacity is pending. The adapter accumulates those chunks and self-closes the
+stream as `congested` once its one-MiB queue limit is crossed. The close used to
+remove the stream before the ordinary socket-close diagnostic, so the worker
+log looked clean while the browser received a truncated HTTP body. Destination
+`end` could also emit a half-close before queued data finished flushing.
+
+A manual Retry happened to avoid that timing window and proved the downstream
+path. Trace `4edebc5c-cb85-46da-a640-dc455427a77e` (session
+`fad38cfc-50ab-40c1-9b03-d0004df1043f`, tunnel
+`6cc720de-607e-4b15-934a-2e12b2897016`, generic attachment
+`90402744-3c43-4986-8c58-02324d43e8a1`) opened the editor WebSocket, connected
+the workbench bridge, applied editor presentation, and displayed the selected
+`build.gradle`. It reused process instance
+`cb70bbef-984c-40d9-8c43-0fa26d125ac1`; switching files is therefore already a
+warm navigation operation rather than a process launch.
+
+That successful screenshot also proves that editor-only presentation is still
+incomplete: the VS Code title/command-center and layout controls, minimap, and
+an extension recommendation toast remained visible. Those are independent UI
+acceptance defects, not causes of the truncated first load.
+
+The required transport correction is real TCP backpressure: pause destination
+reads before queueing while a flush or capacity wait is active, resume only
+after the queue drains and byte credit permits, defer destination half-close
+until the final queued data frame is emitted, keep a bounded safety guard for
+true failures, and log self-initiated closure reasons without protected data.
+Regression coverage must move a patterned response larger than the actual
+workbench module through both native direct and managed-relay paths and assert
+its exact length and ordering.
+
+Prewarming should then remove the remaining normal first-click wait rather than
+mask this corruption. Worker startup can safely warm one owner-scoped default
+OpenVSCode profile after verified server/encryption bootstrap; it must not
+invent worktree sessions or fan out across repositories before an authoritative
+target exists. The existing Explorer hidden-frame prewarm can then complete the
+workspace-specific workbench and bridge handshake before a file is clicked.
+
+## Original supplied-log conclusion (historical baseline)
+
+The remainder of this report preserves the earlier source audit and the limits
+of what the two originally supplied logs proved. The current-source addenda
+above supersede its unresolved-root conclusion with correlated local evidence.
 
 The existing report is directionally correct about the primary failure boundary,
 but the incident is not just an OpenVSCode connection problem and the evidence

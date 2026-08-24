@@ -27,6 +27,7 @@ import {
   type CodeWorkbenchStage,
 } from "@/lib/code-workbench-frame";
 import { errorMessage } from "@/lib/error-message";
+import { retireAttachmentBestEffort } from "@/lib/serialized-attachment-lifecycle";
 
 interface PreparedEditorAttachment {
   attachment: CodeAttachment;
@@ -133,10 +134,10 @@ async function releasePreparedEditor(
   attachmentId: string,
   directTunnelId: string,
 ): Promise<void> {
-  await Promise.allSettled([
-    stopDirectCodeAttachment(directTunnelId),
-    releaseCodeAttachment(attachmentId),
-  ]);
+  await retireAttachmentBestEffort(
+    () => stopDirectCodeAttachment(directTunnelId),
+    () => releaseCodeAttachment(attachmentId),
+  );
 }
 
 export function createDesktopExplorerWindowBroker(

@@ -16,6 +16,7 @@ test("makes every prohibited workbench part authoritative in editor presentation
   const source = patch("0007-honor-editor-presentation-layout");
 
   assert.match(source, /case Parts\.TITLEBAR_PART:/u);
+  assert.doesNotMatch(source, /^\+\s+case Parts\.TITLEBAR_PART:/mu);
   assert.match(source, /case Parts\.SIDEBAR_PART:/u);
   assert.match(source, /case Parts\.PANEL_PART:/u);
   assert.match(source, /case Parts\.AUXILIARYBAR_PART:/u);
@@ -40,6 +41,23 @@ test("makes every prohibited workbench part authoritative in editor presentation
   assert.match(
     source,
     /event\.affectsConfiguration\(LayoutSettings\.CANTRIP_PRESENTATION\)/u,
+  );
+  assert.match(
+    source,
+    /if \(isCantripEditorPresentation\(configurationService\)\) \{\n\+\t\treturn false;/u,
+  );
+});
+
+test("suppresses notification toasts throughout editor presentation", () => {
+  const source = patch("0007-honor-editor-presentation-layout");
+
+  assert.match(
+    source,
+    /private addToast\(item: INotificationViewItem\): void \{\n\+\t\tif \(isCantripEditorPresentation\(this\.configurationService\)\)/u,
+  );
+  assert.match(
+    source,
+    /event\.affectsConfiguration\(LayoutSettings\.CANTRIP_PRESENTATION\).*?this\.hide\(\);/su,
   );
 });
 

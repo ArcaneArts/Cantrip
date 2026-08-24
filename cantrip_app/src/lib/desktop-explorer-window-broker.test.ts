@@ -134,8 +134,18 @@ describe("desktop Explorer window broker", () => {
       { signal: expect.any(AbortSignal) },
     );
 
+    const stopped = deferred<void>();
+    desktopCode.stopDirectCodeAttachment.mockReturnValueOnce(stopped.promise);
     client.dispose();
-    await broker.dispose();
+    const disposal = broker.dispose();
+    await vi.waitFor(() =>
+      expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledWith(
+        wire.tunnelId,
+      ),
+    );
+    expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
+    stopped.resolve();
+    await disposal;
     expect(api.releaseCodeAttachment).toHaveBeenCalledWith(
       attachment.attachmentId,
     );

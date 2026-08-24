@@ -82,6 +82,7 @@ interface ProfileProcess {
   profileId: string;
   profileKey: string;
   ready: boolean;
+  retainWarm: boolean;
   restartTimer: ReturnType<typeof setTimeout> | null;
   sessions: Set<string>;
   stopping: boolean;
@@ -350,6 +351,110 @@ export class CodeSupervisor {
     return this.#enqueueSessionOperation(command.sessionId, () =>
       this.#open(command, generation),
     );
+  }
+
+  /**
+   * Starts the shared OpenVSCode process for a known profile without creating
+   * a workspace or session. The caller must only provide a profile id after
+   * its server/account binding has been authoritatively verified.
+   *
+   * A retained profile is deliberately bounded to one explicit profile id and
+   * remains warm for the worker lifetime. The first real session still creates
+   * and authorizes its own per-worktree workspace before it can be navigated.
+   */
+  async prewarmProfile(profileId: string): Promise<void> {
+    this.#assertAvailable();
+    if (this.#closed) {
+      throw new Error("Cantrip Code supervisor is stopped.");
+    }
+    if (
+      profileId.length === 0 ||
+      profileId.length > 200 ||
+      profileId.trim() !== profileId
+    ) {
+      throw new Error("Cantrip Code prewarm requires a valid profile id.");
+    }
+    const profileKey = stableKey(profileId);
+    const existing = this.#profiles.get(profileKey);
+    if (existing?.retainWarm) {
+      if (
+        existing.child &&
+        existing.ready &&
+        !existing.stopping &&
+        existing.child.exitCode === null &&
+        existing.child.signalCode === null
+      ) {
+        return;
+      }
+      if (existing.launchPromise) return existing.launchPromise;
+    }
+
+    return this.#enqueueProfileLifecycle(profileKey, async () => {
+      if (this.#closed) {
+        throw new Error("Cantrip Code supervisor is stopped.");
+      }
+      const profile = await this.#profile(profileId, profileKey);
+      profile.retainWarm = true;
+      profile.idleSinceMs = null;
+      const now = Date.now();
+      profile.crashTimes = profile.crashTimes.filter(
+        (crash) => now - crash < CRASH_WINDOW_MS,
+      );
+      if (profile.crashTimes.length >= MAX_CRASHES_PER_WINDOW) {
+        throw new Error(
+          "Cantrip Code prewarm is paused after repeatedly crashing.",
+        );
+      }
+      if (
+        profile.child &&
+        profile.ready &&
+        !profile.stopping &&
+        profile.child.exitCode === null &&
+        profile.child.signalCode === null
+      ) {
+        return;
+      }
+      const startedAtMs = Date.now();
+      workerLogger.event("info", "Cantrip Code profile prewarm requested", {
+        event: "code.profile.prewarm-started",
+        subsystem: "code",
+        operation: "prewarm-profile",
+        status: "started",
+        profileKey,
+      });
+      try {
+        await this.#ensureProfile(profile);
+        if (this.#closed) {
+          throw new Error("Cantrip Code supervisor stopped during prewarm.");
+        }
+        workerLogger.event("info", "Cantrip Code profile prewarm completed", {
+          event: "code.profile.prewarm-ready",
+          subsystem: "code",
+          operation: "prewarm-profile",
+          status: "completed",
+          durationMs: Date.now() - startedAtMs,
+          instanceId: profile.instanceId,
+          profileKey,
+        });
+      } catch (error) {
+        workerLogger.rateLimited(
+          `code-profile-prewarm-failed:${profileKey}`,
+          "warn",
+          "Cantrip Code profile prewarm failed",
+          {
+            event: "code.profile.prewarm-failed",
+            subsystem: "code",
+            operation: "prewarm-profile",
+            reasonCode: "profile-start-failed",
+            status: "degraded",
+            durationMs: Date.now() - startedAtMs,
+            error: workerLogError(error),
+            profileKey,
+          },
+        );
+        throw error;
+      }
+    });
   }
 
   async #open(
@@ -808,6 +913,7 @@ export class CodeSupervisor {
     );
     const idleProfiles = [...this.#profiles.values()].filter(
       (profile) =>
+        !profile.retainWarm &&
         profile.sessions.size === 0 &&
         profile.idleSinceMs !== null &&
         now - profile.idleSinceMs >= this.#profileIdleTimeoutMs,
@@ -1032,10 +1138,14 @@ export class CodeSupervisor {
       const profile = this.#profiles.get(session.profileKey);
       profile?.sessions.delete(session.sessionId);
       if (profile?.sessions.size === 0) {
-        profile.idleSinceMs = Date.now();
-        if (profile.restartTimer) {
-          clearTimeout(profile.restartTimer);
-          profile.restartTimer = null;
+        if (profile.retainWarm) {
+          profile.idleSinceMs = null;
+        } else {
+          profile.idleSinceMs = Date.now();
+          if (profile.restartTimer) {
+            clearTimeout(profile.restartTimer);
+            profile.restartTimer = null;
+          }
         }
       }
     });
@@ -1111,6 +1221,7 @@ export class CodeSupervisor {
         profileId,
         profileKey,
         ready: false,
+        retainWarm: false,
         restartTimer: null,
         sessions: new Set(),
         stopping: false,
@@ -1204,6 +1315,7 @@ export class CodeSupervisor {
   }
 
   async #launchProfile(profile: ProfileProcess): Promise<void> {
+    const startedAtMs = Date.now();
     const installation = this.#installation!;
     const profileDirectory = path.join(
       this.#codeRoot,
@@ -1330,6 +1442,7 @@ export class CodeSupervisor {
       subsystem: "code",
       operation: "start-profile",
       status: "completed",
+      durationMs: Date.now() - startedAtMs,
       instanceId,
       profileKey: profile.profileKey,
       counts: { sessions: profile.sessions.size },
@@ -1406,7 +1519,9 @@ export class CodeSupervisor {
         processExitContext,
       );
     }
-    if (intentional || profile.sessions.size === 0) return;
+    if (intentional || (profile.sessions.size === 0 && !profile.retainWarm)) {
+      return;
+    }
     const now = Date.now();
     profile.crashTimes = profile.crashTimes.filter(
       (crash) => now - crash < CRASH_WINDOW_MS,
@@ -1437,7 +1552,7 @@ export class CodeSupervisor {
         if (
           this.#closed ||
           this.#profiles.get(profile.profileKey) !== profile ||
-          profile.sessions.size === 0
+          (profile.sessions.size === 0 && !profile.retainWarm)
         ) {
           return;
         }
@@ -1515,12 +1630,16 @@ export class CodeSupervisor {
     if (session.presentation === "editor") {
       Object.assign(settings, {
         "breadcrumbs.enabled": false,
+        "debug.toolBarLocation": "hidden",
+        "editor.minimap.enabled": false,
+        "extensions.ignoreRecommendations": true,
         "window.commandCenter": false,
         "workbench.activityBar.location": "hidden",
         "workbench.editor.editorActionsLocation": "hidden",
         "workbench.editor.empty.hint": "hidden",
         "workbench.editor.showTabs": "none",
         "workbench.layoutControl.enabled": false,
+        "workbench.navigationControl.enabled": false,
         "workbench.startupEditor": "none",
         "workbench.statusBar.visible": false,
       });

@@ -2,11 +2,15 @@
 
 const EDITOR_CONFIGURATION = [
   ["breadcrumbs", "enabled", false],
+  ["debug", "toolBarLocation", "hidden"],
+  ["editor.minimap", "enabled", false],
+  ["extensions", "ignoreRecommendations", true],
   ["window", "commandCenter", false],
   ["workbench.activityBar", "location", "hidden"],
   ["workbench.editor", "editorActionsLocation", "hidden"],
   ["workbench.editor", "empty.hint", "hidden"],
   ["workbench.editor", "showTabs", "none"],
+  ["workbench.navigationControl", "enabled", false],
   ["workbench", "startupEditor", "none"],
   ["workbench.layoutControl", "enabled", false],
   ["workbench.statusBar", "visible", false],
