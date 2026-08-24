@@ -8990,6 +8990,19 @@ export const chatPauseStateSchema = z.object({
   paused: z.boolean(),
 });
 
+export const chatPauseRuntimeStateSchema = z
+  .object({
+    paused: z.boolean(),
+    active: z
+      .object({
+        threadId: z.string().min(1).max(500),
+        turnId: z.string().min(1).max(500),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
 export const threadGoalStatusSchema = z.enum([
   "active",
   "paused",
@@ -15306,6 +15319,7 @@ export type ChatCompactAccepted = z.infer<typeof chatCompactAcceptedSchema>;
 export type ChatInterruptAccepted = z.infer<typeof chatInterruptAcceptedSchema>;
 export type ChatPauseUpdate = z.infer<typeof chatPauseUpdateSchema>;
 export type ChatPauseState = z.infer<typeof chatPauseStateSchema>;
+export type ChatPauseRuntimeState = z.infer<typeof chatPauseRuntimeStateSchema>;
 export type ThreadGoalStatus = z.infer<typeof threadGoalStatusSchema>;
 export type ThreadGoal = z.infer<typeof threadGoalSchema>;
 export type ChatGoalResponse = z.infer<typeof chatGoalResponseSchema>;

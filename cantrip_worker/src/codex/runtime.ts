@@ -46,7 +46,10 @@ export interface CodexRuntime {
   readonly compatibility: CodexRuntimeReport;
 
   setChatPaused(chatId: string, paused: boolean): void;
-  setActiveChatPaused(chatId: string, paused: boolean): Promise<boolean>;
+  setActiveChatPaused(
+    chatId: string,
+    paused: boolean,
+  ): Promise<{ threadId: string; turnId: string } | null>;
   runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult>;
   runWorkflowNode(
     options: RunWorkflowNodeOptions,

@@ -328,6 +328,8 @@ import {
   chatAttachmentOpaqueSummarySchema,
 } from "@cantrip/protocol/attachment-content";
 import {
+  projectTaskPauseStateSchema,
+  projectTaskPauseUpdateSchema,
   taskWorkerCreateSchema,
   taskWorkerDeleteSchema,
   taskWorkerListSchema,
@@ -337,6 +339,7 @@ import {
   type TaskWorkerCreate,
   type TaskWorkerOrderUpdate,
   type TaskWorkerUpdate,
+  type ProjectTaskPauseUpdate,
 } from "@cantrip/protocol/task-scheduling";
 import {
   explorerOperationRequestContentSchema,
@@ -1248,6 +1251,27 @@ export async function reorderTaskWorkers(input: TaskWorkerOrderUpdate) {
       method: "PUT",
       body: JSON.stringify(taskWorkerOrderUpdateSchema.parse(input)),
     }),
+  );
+}
+
+export async function getProjectTaskPauseState(projectId: string) {
+  return projectTaskPauseStateSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/tasks/pause`),
+  );
+}
+
+export async function setProjectTaskPauseState(
+  projectId: string,
+  input: ProjectTaskPauseUpdate,
+) {
+  return projectTaskPauseStateSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/tasks/pause`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(projectTaskPauseUpdateSchema.parse(input)),
+      },
+    ),
   );
 }
 

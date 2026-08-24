@@ -83,6 +83,10 @@ let workerTaskKey = new Uint8Array();
 let goalObjective = `${sentinel} goal not initialized`;
 let goalCompleted = false;
 let continuedPromptSawAnswer = false;
+let pauseTestEnabled = false;
+let pauseTestTurnStarted = false;
+let resumePauseTestTurn: (() => void) | null = null;
+const pauseCommands: boolean[] = [];
 const serverObservedPayloads: string[] = [];
 const workerErrors: string[] = [];
 
@@ -316,6 +320,12 @@ async function encryptedTaskTurn(
       async run({ prompt }) {
         expect(prompt).toContain(sentinel);
         const kind = command.resultMode.operation.classification.kind;
+        if (kind === "direct" && pauseTestEnabled) {
+          pauseTestTurnStarted = true;
+          await new Promise<void>((resolve) => {
+            resumePauseTestTurn = resolve;
+          });
+        }
         if (kind === "continue-plan") {
           continuedPromptSawAnswer =
             prompt.includes("complete all milestones") &&
@@ -504,6 +514,16 @@ const workerBridge: WorkerCommandBus = {
         },
       });
     }
+    if (command.type === "chat.pause.set") {
+      pauseCommands.push(command.paused);
+      if (!command.paused) resumePauseTestTurn?.();
+      return {
+        paused: command.paused,
+        active: pauseTestTurnStarted
+          ? { threadId, turnId: "turn-direct" }
+          : null,
+      };
+    }
     const error = `Unexpected Task lifecycle command ${command.type}.`;
     workerErrors.push(error);
     throw new Error(error);
@@ -561,6 +581,18 @@ async function waitForTaskCycle(
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Task cycle ${operationId} did not complete in ${state}.`);
+}
+
+async function waitForDispatchState(
+  chatId: string,
+  state: NonNullable<TaskOpaqueSummary["dispatch"]>["state"],
+): Promise<TaskOpaqueSummary> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const task = await taskSummary(chatId);
+    if (task.dispatch?.state === state) return task;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Task dispatch did not reach ${state}.`);
 }
 
 beforeAll(async () => {
@@ -640,6 +672,101 @@ afterAll(async () => {
 });
 
 describe.sequential("Task E2EE closure lifecycle", () => {
+  it("pauses a Project Task turn and resumes its exact resident runtime", async () => {
+    pauseTestEnabled = true;
+    pauseTestTurnStarted = false;
+    resumePauseTestTurn = null;
+    pauseCommands.length = 0;
+    const chatId = randomUUID();
+    const initialTask = await sealTask(chatId, {
+      version: 1,
+      classification: {
+        state: "draft",
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent",
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel} direct pause test`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    });
+    const createdResponse = await app!.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: false,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task: initialTask,
+      },
+    });
+    expect(createdResponse.statusCode).toBe(201);
+    const created = taskWireCreateResultSchema.parse(createdResponse.json());
+    const queued = await app!.inject({
+      method: "POST",
+      url: `/api/tasks/${chatId}/start`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: taskOpaqueSummarySchema.parse(created.task).rowVersion,
+      },
+    });
+    expect(queued.statusCode).toBe(202);
+    for (
+      let attempt = 0;
+      attempt < 200 && !pauseTestTurnStarted;
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(pauseTestTurnStarted).toBe(true);
+
+    const initialPause = await app!.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/tasks/pause`,
+    });
+    expect(initialPause.statusCode).toBe(200);
+    const pauseResponse = await app!.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tasks/pause`,
+      payload: { paused: true, rowVersion: initialPause.json().rowVersion },
+    });
+    expect(pauseResponse.statusCode).toBe(200);
+    const paused = await waitForDispatchState(chatId, "paused");
+    expect(paused.dispatch).toMatchObject({
+      codexThreadId: threadId,
+      turnId: "turn-direct",
+    });
+    expect(
+      (await database.repository.taskScheduling.listTaskWorkers(ownerId))[0]
+        ?.activeTaskCount,
+    ).toBe(0);
+
+    const resumeResponse = await app!.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tasks/pause`,
+      payload: {
+        paused: false,
+        rowVersion: pauseResponse.json().rowVersion,
+      },
+    });
+    expect(resumeResponse.statusCode).toBe(202);
+    const completed = await waitForTask(chatId, "complete");
+    expect(completed.dispatch).toMatchObject({ state: "succeeded" });
+    expect(pauseCommands).toEqual([true, false]);
+    pauseTestEnabled = false;
+  });
+
   it("completes planning and a Goal with zero Task prose in the temporary database", async () => {
     const chatId = randomUUID();
     const initialContent: TaskProtectedContent = {

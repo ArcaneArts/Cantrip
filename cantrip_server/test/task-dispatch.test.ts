@@ -324,6 +324,88 @@ describe("Task dispatch scheduling", () => {
     }
   });
 
+  it("releases paused capacity and reacquires the exact resident affinity", async () => {
+    const value = await fixture();
+    try {
+      const taskWorker = await value.repository.taskScheduling.createTaskWorker(
+        LOCAL_USER_ID,
+        workerInput("One resumable slot", { maxConcurrency: 1 }),
+      );
+      const firstTask = await addTask(value, {
+        createdAt: new Date("2026-08-24T10:00:00.000Z"),
+      });
+      const secondTask = await addTask(value, {
+        createdAt: new Date("2026-08-24T11:00:00.000Z"),
+      });
+      await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        firstTask.chatId,
+        "resident-operation",
+        "direct",
+        1,
+      );
+      await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        secondTask.chatId,
+        "other-operation",
+        "direct",
+        1,
+      );
+      const resident = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler-a",
+        eligible,
+      );
+      await value.repository.taskDispatch.markRunning(resident!.lease);
+      const paused = await value.repository.taskDispatch.pause(
+        resident!.lease,
+        { threadId: "thread-resident", turnId: "turn-resident" },
+      );
+      expect(paused).toMatchObject({
+        state: "paused",
+        selectedTaskWorkerId: taskWorker.id,
+        codexThreadId: "thread-resident",
+        turnId: "turn-resident",
+      });
+      expect(paused.leaseExpiresAt).not.toBeNull();
+
+      const other = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler-b",
+        eligible,
+      );
+      expect(other?.cycle.chatId).toBe(secondTask.chatId);
+      expect(
+        await value.repository.taskDispatch.resumeNextPaused(
+          LOCAL_USER_ID,
+          "scheduler-c",
+          async () => ({ eligible: true }),
+        ),
+      ).toBeNull();
+
+      await value.repository.taskDispatch.settle(other!.lease, "succeeded");
+      const resumed = await value.repository.taskDispatch.resumeNextPaused(
+        LOCAL_USER_ID,
+        "scheduler-c",
+        async () => ({ eligible: true }),
+      );
+      expect(resumed?.cycle).toMatchObject({
+        id: paused.id,
+        state: "running",
+        selectedTaskWorkerId: taskWorker.id,
+        physicalWorkerId: resident!.cycle.physicalWorkerId,
+        modelRouteId: resident!.cycle.modelRouteId,
+        providerAccountId: resident!.cycle.providerAccountId,
+        codexThreadId: "thread-resident",
+        turnId: "turn-resident",
+      });
+      expect(resumed?.lease.leaseOwner).toBe(resident!.lease.leaseOwner);
+      expect(resumed?.lease.fencingToken).toBe(resident!.lease.fencingToken);
+    } finally {
+      await value.client.close();
+    }
+  });
+
   it("keeps queued Tasks editable until an atomic claim", async () => {
     const value = await fixture();
     try {
