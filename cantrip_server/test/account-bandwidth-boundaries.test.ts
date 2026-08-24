@@ -13,8 +13,10 @@ import type {
 } from "../src/account-usage/bandwidth-meter.js";
 import {
   encodedPayloadBytes,
+  httpBandwidthChannelForRoute,
   meterPayloadStream,
 } from "../src/account-usage/http-bandwidth.js";
+import { encodedFrameBytes } from "../src/account-usage/frame-bandwidth.js";
 import { AppLiveHub, type AppLiveSocket } from "../src/live/hub.js";
 import { WorkerBridge, type WorkerSocket } from "../src/workers/bridge.js";
 import { MeteredWorkerCommandBus } from "../src/workers/metered-command-bus.js";
@@ -83,6 +85,19 @@ class TestWorkerSocket implements WorkerSocket {
 }
 
 describe("account bandwidth network boundaries", () => {
+  it("counts fragmented frames and classifies attachment HTTP routes", () => {
+    expect(
+      encodedFrameBytes([Buffer.from("abc"), new Uint8Array([1, 2])]),
+    ).toBe(5);
+    expect(httpBandwidthChannelForRoute("/api/chats/:chatId/attachments")).toBe(
+      "attachment-transfer",
+    );
+    expect(
+      httpBandwidthChannelForRoute("/api/attachments/:attachmentId/content"),
+    ).toBe("attachment-transfer");
+    expect(httpBandwidthChannelForRoute("/api/projects")).toBe("http");
+  });
+
   it("counts HTTP buffers and completed or aborted streams", async () => {
     const meter = new RecordingMeter();
     expect(encodedPayloadBytes('{"ok":true}')).toBe(11);
@@ -106,16 +121,35 @@ describe("account bandwidth network boundaries", () => {
     source.destroy();
     await new Promise<void>((resolve) => setImmediate(resolve));
 
+    const attachment = meterPayloadStream(
+      Readable.from([Buffer.from("zip")]),
+      "owner-1",
+      "ingress",
+      meter,
+      true,
+      "attachment-transfer",
+    );
+    attachment.resume();
+    await new Promise<void>((resolve) => attachment.once("end", resolve));
+
     expect(
       meter.measurements
         .filter((item) => item.direction === "ingress")
         .reduce((total, item) => total + Number(item.bytes), 0),
-    ).toBe(6);
+    ).toBe(9);
     expect(
       meter.measurements.filter(
         (item) => item.channel === "http" && item.operationCount === 1,
       ),
     ).toHaveLength(2);
+    expect(
+      meter.measurements.filter(
+        (item) => item.channel === "attachment-transfer",
+      ),
+    ).toEqual([
+      expect.objectContaining({ bytes: 3, operationCount: 0 }),
+      expect.objectContaining({ bytes: 0, operationCount: 1 }),
+    ]);
   });
 
   it("meters live text frames once and suppresses accounting invalidation feedback", async () => {

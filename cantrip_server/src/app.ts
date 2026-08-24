@@ -695,7 +695,10 @@ import {
   projectCapabilityForRoute,
   requireProjectCapability,
 } from "./projects/capabilities.js";
-import { TunnelRuntimeManager } from "./tunnels/runtime.js";
+import {
+  TunnelRuntimeManager,
+  tunnelBandwidthChannel,
+} from "./tunnels/runtime.js";
 import { TunnelStreamBroker } from "./tunnels/broker.js";
 import { terminalRelayOutputMessage } from "./terminals/relay.js";
 import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
@@ -828,7 +831,12 @@ import {
 import { StorageReconciliationService } from "./account-usage/storage-reconciler.js";
 import { AccountUsageMeter } from "./account-usage/bandwidth-meter.js";
 import {
+  encodedFrameBytes,
+  recordEncodedFrame,
+} from "./account-usage/frame-bandwidth.js";
+import {
   encodedPayloadBytes,
+  httpBandwidthChannelForRoute,
   isReadablePayload,
   meterPayloadStream,
 } from "./account-usage/http-bandwidth.js";
@@ -1377,6 +1385,7 @@ export async function buildApp({
     bridge,
     (ownerId, workerId, bytes) =>
       relayQuotas.consumeRelay(ownerId, workerId, bytes),
+    accountUsageMeter,
   );
   const ownerContext = new AsyncLocalStorage<string>();
   const applicationOwnerId = (): string => {
@@ -1509,6 +1518,7 @@ export async function buildApp({
     bridge,
     publishTunnelRuntimeChange,
     tunnelStreamBroker,
+    accountUsageMeter,
   );
   projectShareTunnel.configureControlPlane(
     repository,
@@ -3630,6 +3640,7 @@ export async function buildApp({
       "ingress",
       accountUsageMeter,
       !route.startsWith("/api/account/resource-usage"),
+      httpBandwidthChannelForRoute(route),
     );
   });
 
@@ -3646,12 +3657,13 @@ export async function buildApp({
     const ownerId = request.principal.user.id;
     const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
     const notifyChange = !route.startsWith("/api/account/resource-usage");
+    const channel = httpBandwidthChannelForRoute(route);
     const bytes = encodedPayloadBytes(payload);
     if (bytes !== null) {
       accountUsageMeter.record({
         ownerId,
         direction: "egress",
-        channel: "http",
+        channel,
         bytes,
         notifyChange,
       });
@@ -3664,6 +3676,7 @@ export async function buildApp({
           "egress",
           accountUsageMeter,
           notifyChange,
+          channel,
         )
       : payload;
   });
@@ -12460,9 +12473,16 @@ export async function buildApp({
           cleanup();
           return false;
         }
-        socket.send(
-          JSON.stringify(workerLogStreamServerMessageSchema.parse(message)),
+        const encoded = JSON.stringify(
+          workerLogStreamServerMessageSchema.parse(message),
         );
+        socket.send(encoded);
+        recordEncodedFrame(accountUsageMeter, {
+          ownerId: principal.user.id,
+          direction: "egress",
+          channel: "worker-log-stream",
+          data: encoded,
+        });
         return true;
       };
       socket.once("close", cleanup);
@@ -13031,28 +13051,22 @@ export async function buildApp({
     "/api/tunnel-attachments/:attachmentId/connect",
     { websocket: true },
     async (socket, request) => {
-      const initialized = new Promise<unknown>((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(new Error("Tunnel initialization timed out.")),
-          TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS,
-        );
-        socket.once("message", (data, isBinary) => {
-          clearTimeout(timer);
-          if (isBinary) {
-            reject(new Error("Tunnel initialization must be JSON."));
-            return;
-          }
-          try {
-            resolve(JSON.parse(String(data)));
-          } catch {
-            reject(new Error("Tunnel initialization is invalid."));
-          }
-        });
-        socket.once("close", () => {
-          clearTimeout(timer);
-          reject(new Error("Tunnel attachment disconnected."));
-        });
-      });
+      const initialized = new Promise<{ data: unknown; isBinary: boolean }>(
+        (resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error("Tunnel initialization timed out.")),
+            TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS,
+          );
+          socket.once("message", (data, isBinary) => {
+            clearTimeout(timer);
+            resolve({ data, isBinary });
+          });
+          socket.once("close", () => {
+            clearTimeout(timer);
+            reject(new Error("Tunnel attachment disconnected."));
+          });
+        },
+      );
       void initialized.catch(() => undefined);
       const secret = tunnelAttachmentSocketSecret(request.headers);
       if (secret.length < 32 || secret.length > 512) {
@@ -13069,16 +13083,41 @@ export async function buildApp({
       }
       if (!registerAccountSocket(socket, authorization.ownerId)) return;
       try {
-        const initialize = tunnelAttachmentInitializeSchema.parse(
-          await initialized,
-        );
+        const initializedFrame = await initialized;
+        const usageChannel = tunnelBandwidthChannel(authorization);
+        accountUsageMeter.record({
+          ownerId: authorization.ownerId,
+          direction: "ingress",
+          channel: usageChannel,
+          bytes: encodedFrameBytes(initializedFrame.data),
+        });
+        if (initializedFrame.isBinary) {
+          throw new Error("Tunnel initialization must be JSON.");
+        }
+        let initializedValue: unknown;
+        try {
+          initializedValue = JSON.parse(String(initializedFrame.data));
+        } catch {
+          throw new Error("Tunnel initialization is invalid.");
+        }
+        const initialize =
+          tunnelAttachmentInitializeSchema.parse(initializedValue);
         const ready = await tunnelRuntime.attach(
           socket,
           authorization,
           initialize,
         );
         if (socket.readyState === 1) {
-          socket.send(JSON.stringify(tunnelAttachmentReadySchema.parse(ready)));
+          const encoded = JSON.stringify(
+            tunnelAttachmentReadySchema.parse(ready),
+          );
+          socket.send(encoded);
+          recordEncodedFrame(accountUsageMeter, {
+            ownerId: authorization.ownerId,
+            direction: "egress",
+            channel: usageChannel,
+            data: encoded,
+          });
         }
       } catch (error) {
         if (socket.readyState === 0 || socket.readyState === 1) {
@@ -24786,6 +24825,7 @@ export async function buildApp({
       }
       if (!registerAuthenticatedSocket(socket, request)) return;
       registerSessionSocket(socket, request);
+      const ownerId = principalOwnerId(request);
       const viewport = remoteSurfaceViewportSchema.safeParse({
         width: Number(request.query.width ?? 1_280),
         height: Number(request.query.height ?? 720),
@@ -24805,9 +24845,16 @@ export async function buildApp({
 
       const send = (message: unknown) => {
         if (socket.readyState === 1) {
-          socket.send(
-            JSON.stringify(remoteSurfaceConnectionMessageSchema.parse(message)),
+          const encoded = JSON.stringify(
+            remoteSurfaceConnectionMessageSchema.parse(message),
           );
+          socket.send(encoded);
+          recordEncodedFrame(accountUsageMeter, {
+            ownerId,
+            direction: "egress",
+            channel: "remote-surface-relay",
+            data: encoded,
+          });
         }
       };
 
@@ -24843,7 +24890,7 @@ export async function buildApp({
 
       void (async () => {
         const context = await repository.getRemoteSurfaceExecutionContext(
-          applicationOwnerId(),
+          ownerId,
           request.params.surfaceId,
         );
         if (!context) {
@@ -24859,7 +24906,7 @@ export async function buildApp({
         workerId = context.workerId;
         try {
           releaseSurfaceQuota = relayQuotas.acquireRemoteSurface(
-            applicationOwnerId(),
+            ownerId,
             workerId,
           );
         } catch (error) {
@@ -24878,12 +24925,10 @@ export async function buildApp({
         }
         const desktopStream =
           context.surface.kind === "desktop"
-            ? await repository
-                .getUserSettings(applicationOwnerId())
-                .then((preferences) => ({
-                  targetFps: preferences.desktopFrameRate,
-                  quality: preferences.desktopStreamQuality,
-                }))
+            ? await repository.getUserSettings(ownerId).then((preferences) => ({
+                targetFps: preferences.desktopFrameRate,
+                quality: preferences.desktopStreamQuality,
+              }))
             : null;
         if (!bridge.isConnected(workerId)) {
           await updateRemoteSurfaceStatus(
@@ -24910,13 +24955,13 @@ export async function buildApp({
           )
             ? createRemoteSurfaceWebRtcConfiguration(
                 config.remoteSurfaceWebRtc,
-                applicationOwnerId(),
+                ownerId,
               )
             : null;
         const cleanupRelay = surfaceRelay.bind(socket, {
           surfaceId,
           attachmentId,
-          ownerId: applicationOwnerId(),
+          ownerId,
           workerId,
         });
         try {
@@ -25658,6 +25703,7 @@ export async function buildApp({
         socket.close(1008, "Terminal stream operation is required");
         return;
       }
+      const ownerId = principalOwnerId(request);
       const attachmentId = randomUUID();
       let terminalId: string | null = null;
       let workerId: string | null = null;
@@ -25665,9 +25711,16 @@ export async function buildApp({
       let inputQueue = Promise.resolve();
       const send = (message: unknown) => {
         if (socket.readyState === 1) {
-          socket.send(
-            JSON.stringify(terminalServerMessageSchema.parse(message)),
+          const encoded = JSON.stringify(
+            terminalServerMessageSchema.parse(message),
           );
+          socket.send(encoded);
+          recordEncodedFrame(accountUsageMeter, {
+            ownerId,
+            direction: "egress",
+            channel: "terminal-relay",
+            data: encoded,
+          });
         }
       };
 
@@ -25684,6 +25737,12 @@ export async function buildApp({
       });
 
       socket.on("message", (raw) => {
+        recordEncodedFrame(accountUsageMeter, {
+          ownerId,
+          direction: "ingress",
+          channel: "terminal-relay",
+          data: raw,
+        });
         if (!terminalId || !workerId) return;
         let value: unknown;
         try {
@@ -25740,7 +25799,7 @@ export async function buildApp({
 
       void (async () => {
         const context = await repository.getTerminalExecutionContext(
-          applicationOwnerId(),
+          ownerId,
           request.params.terminalId,
         );
         if (!context) {
@@ -25763,7 +25822,7 @@ export async function buildApp({
         }
         try {
           const managedRun = await repository.getRunInstanceByTerminal(
-            applicationOwnerId(),
+            ownerId,
             terminalId,
           );
           let launch: Extract<
@@ -25772,7 +25831,7 @@ export async function buildApp({
           >["launch"] = { type: "shell" };
           if (context.linkedChatId) {
             const chat = await repository.getChatExecutionContext(
-              applicationOwnerId(),
+              ownerId,
               context.linkedChatId,
             );
             const runtime = chat ? await runtimeForContext(chat) : null;
@@ -25788,7 +25847,7 @@ export async function buildApp({
               provider: runtime.provider,
               permissionProfileId: effectivePermissionProfile(chat).effectiveId,
               mcpServers: await repository.listEffectiveMcpServers(
-                applicationOwnerId(),
+                ownerId,
                 chat.projectId,
                 workerId,
               ),

@@ -88,7 +88,11 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
-import { Activity, ActivityGroup } from "@/components/chat/activity";
+import {
+  Activity,
+  ActivityGroup,
+  CompletedTurnActivityGroup,
+} from "@/components/chat/activity";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
 import { AppCommandBar } from "@/components/app/app-command-bar";
 import {
@@ -142,6 +146,10 @@ import { updateChatConsoleOpenChats } from "@/components/chat/chat-console-state
 import { ChatPlanProgress } from "@/components/chat/chat-plan-progress";
 import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
+import {
+  ChatTurnPromptOverlay,
+  useChatTurnPromptOverlay,
+} from "@/components/chat/chat-turn-prompt-overlay";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import {
   editableMessageAttachments,
@@ -1553,6 +1561,12 @@ function ChatTranscript({
         chatTranscriptNeedsFastRefresh(loadedMessages),
       ),
   });
+  const turnPromptOverlay = useChatTurnPromptOverlay({
+    chatId: chat.id,
+    contentRef: transcriptContentRef,
+    messages: messages.data ?? [],
+    viewportRef: transcriptViewportRef,
+  });
   const loadOlderMessages = useCallback(async () => {
     if (!messages.hasOlder || messages.isFetchingOlder) return;
     await preserveScrollDuringPrepend(messages.fetchOlder);
@@ -2750,6 +2764,10 @@ function ChatTranscript({
           </div>
         </div>
       ) : null}
+      <ChatTurnPromptOverlay
+        message={turnPromptOverlay.message}
+        visible={turnPromptOverlay.visible}
+      />
       <div
         ref={transcriptViewportRef}
         className={cn(
@@ -2801,6 +2819,26 @@ function ChatTranscript({
             }
             const entry = transcriptEntry.entry;
             if (entry.type === "activityGroup") {
+              if (entry.kind === "turn") {
+                return (
+                  <CompletedTurnActivityGroup
+                    endedAt={entry.endedAt}
+                    key={entry.key}
+                    onViewTrajectory={viewTurnTrajectory}
+                    startedAt={entry.startedAt}
+                    turnId={entry.turnId}
+                    turnKey={entry.turnKey}
+                  >
+                    {entry.messages.map((message) => (
+                      <MessageContent
+                        key={message.id}
+                        message={message}
+                        onOpenFile={onOpenFile}
+                      />
+                    ))}
+                  </CompletedTurnActivityGroup>
+                );
+              }
               const groupedActivities = entry.messages.flatMap((message) =>
                 message.content.flatMap((item) =>
                   item.type === "activity" ? [item.activity] : [],

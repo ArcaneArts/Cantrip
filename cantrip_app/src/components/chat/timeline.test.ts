@@ -74,6 +74,7 @@ describe("chat activity timeline", () => {
     expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
+      kind: "turn",
       messages: [
         { content: [{ activity: { id: "command-1" } }] },
         { content: [{ activity: { id: "files-1" } }] },
@@ -109,6 +110,7 @@ describe("chat activity timeline", () => {
 
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
+      kind: "tool",
       endedAt: null,
     });
   });
@@ -141,6 +143,7 @@ describe("chat activity timeline", () => {
 
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
+      kind: "turn",
       messages: [
         {
           content: [{ activity: { id: "codegraph-1", status: "completed" } }],
@@ -178,6 +181,7 @@ describe("chat activity timeline", () => {
     ]);
     expect(correlated[1]).toMatchObject({
       type: "activityGroup",
+      kind: "tool",
       turnId: "turn-runtime",
       turnKey: "runtime:turn-runtime",
     });
@@ -210,17 +214,19 @@ describe("chat activity timeline", () => {
     ]);
     expect(activeLegacy[1]).toMatchObject({
       type: "activityGroup",
+      kind: "tool",
       turnId: null,
       turnKey: "legacy:user-legacy",
     });
     expect(completedLegacy[1]).toMatchObject({
       type: "activityGroup",
+      kind: "turn",
       turnId: null,
       turnKey: "legacy:user-legacy",
     });
   });
 
-  it("preserves recovered commentary and reasoning as thought boundaries", () => {
+  it("collapses recovered commentary and reasoning after a turn summary", () => {
     const timeline = buildChatTimeline([
       message("commentary", "assistant", "2026-08-07T12:00:01.000Z", [
         {
@@ -255,21 +261,18 @@ describe("chat activity timeline", () => {
       ]),
     ]);
 
-    expect(timeline).toHaveLength(2);
+    expect(timeline).toHaveLength(1);
     expect(timeline[0]).toMatchObject({
-      type: "message",
-      message: { id: "commentary", content: [{ phase: "commentary" }] },
-    });
-    expect(timeline[1]).toMatchObject({
-      type: "message",
-      message: {
-        id: "reasoning",
-        content: [{ activity: { id: "reasoning-1" } }],
-      },
+      type: "activityGroup",
+      kind: "turn",
+      messages: [
+        { id: "commentary", content: [{ phase: "commentary" }] },
+        { id: "reasoning", content: [{ activity: { id: "reasoning-1" } }] },
+      ],
     });
   });
 
-  it("starts a fresh compact tool group after each commentary thought", () => {
+  it("collapses commentary and tool groups together when work finishes", () => {
     const timeline = buildChatTimeline([
       message("user", "user", "2026-08-07T12:00:00.000Z", [
         { type: "text", text: "Inspect this project" },
@@ -321,28 +324,20 @@ describe("chat activity timeline", () => {
       ]),
     ]);
 
-    expect(timeline).toHaveLength(6);
+    expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
-      type: "message",
-      message: { id: "commentary-1" },
-    });
-    expect(timeline[2]).toMatchObject({
       type: "activityGroup",
-      messages: [{ id: "command-1" }],
-      startedAt: "2026-08-07T12:00:01.000Z",
-      endedAt: "2026-08-07T12:00:03.000Z",
-    });
-    expect(timeline[3]).toMatchObject({
-      type: "message",
-      message: { id: "commentary-2" },
-    });
-    expect(timeline[4]).toMatchObject({
-      type: "activityGroup",
-      messages: [{ id: "command-2" }],
-      startedAt: "2026-08-07T12:00:03.000Z",
+      kind: "turn",
+      messages: [
+        { id: "commentary-1" },
+        { id: "command-1" },
+        { id: "commentary-2" },
+        { id: "command-2" },
+      ],
+      startedAt: "2026-08-07T12:00:00.000Z",
       endedAt: "2026-08-07T12:00:37.000Z",
     });
-    expect(timeline[5]).toMatchObject({
+    expect(timeline[2]).toMatchObject({
       type: "message",
       message: { id: "answer" },
     });
@@ -397,6 +392,7 @@ describe("chat activity timeline", () => {
     expect(timeline).toHaveLength(4);
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
+      kind: "tool",
       messages: [{ id: "command-1" }],
       endedAt: "2026-08-07T12:00:02.000Z",
     });
@@ -406,6 +402,7 @@ describe("chat activity timeline", () => {
     });
     expect(timeline[3]).toMatchObject({
       type: "activityGroup",
+      kind: "tool",
       messages: [{ id: "command-2" }],
       endedAt: null,
     });
@@ -449,6 +446,7 @@ describe("chat activity timeline", () => {
     expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
+      kind: "tool",
       messages: [{ id: "command" }],
       endedAt: "2026-08-07T12:00:02.000Z",
     });
@@ -530,6 +528,7 @@ describe("chat activity timeline", () => {
     expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
+      kind: "turn",
       messages: [{ content: [{ activity: { type: "command" } }] }],
     });
     expect(timeline[2]).toMatchObject({
@@ -619,8 +618,9 @@ describe("chat activity timeline", () => {
 
     expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
-      type: "message",
-      message: { id: "commentary" },
+      type: "activityGroup",
+      kind: "turn",
+      messages: [{ id: "commentary" }],
     });
     expect(JSON.stringify(timeline)).not.toContain("rateLimit");
   });

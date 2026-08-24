@@ -8,6 +8,10 @@ import type {
   TunnelDataPlaneEndpoint,
   TunnelEndpointFrameListener,
 } from "./broker.js";
+import type { AccountBandwidthChannel } from "@cantrip/protocol/resource-usage";
+
+import type { AccountUsageRecorder } from "../account-usage/bandwidth-meter.js";
+import { recordEncodedFrame } from "../account-usage/frame-bandwidth.js";
 
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
 
@@ -52,11 +56,22 @@ export class DesktopTunnelEndpoint implements TunnelDataPlaneEndpoint {
     readonly socket: DesktopTunnelSocket,
     readonly clientId: string,
     attachmentId: string,
+    readonly usage?: {
+      channel: AccountBandwidthChannel;
+      ownerId: string;
+      recorder: AccountUsageRecorder;
+    },
   ) {
     this.endpointId = `desktop:${clientId}:${attachmentId}`;
     this.placement = { kind: "desktop-client", clientId };
     socket.on("message", (data, isBinary) => {
       if (!isBinary || this.#disconnected) return;
+      recordEncodedFrame(this.usage?.recorder, {
+        ownerId: this.usage?.ownerId ?? "",
+        direction: "ingress",
+        channel: this.usage?.channel ?? "tunnel-relay",
+        data,
+      });
       try {
         const frame = decodeTunnelDataPlaneFrame(frameBytes(data));
         for (const listener of this.#frameListeners) {
@@ -80,8 +95,15 @@ export class DesktopTunnelEndpoint implements TunnelDataPlaneEndpoint {
       return false;
     }
     try {
-      this.socket.send(encodeTunnelDataPlaneFrame(header, payload), {
+      const encoded = encodeTunnelDataPlaneFrame(header, payload);
+      this.socket.send(encoded, {
         binary: true,
+      });
+      recordEncodedFrame(this.usage?.recorder, {
+        ownerId: this.usage?.ownerId ?? "",
+        direction: "egress",
+        channel: this.usage?.channel ?? "tunnel-relay",
+        data: encoded,
       });
       return true;
     } catch {
