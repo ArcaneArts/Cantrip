@@ -20,6 +20,7 @@ vi.mock("@/lib/server-connections", () => ({
 
 import {
   browserCodeAttachmentHealthy,
+  proxyBrowserCodeHttp,
   startBrowserCodeAttachment,
   stopBrowserCodeAttachment,
   subscribeBrowserCodeAttachmentUnavailable,
@@ -181,6 +182,43 @@ afterEach(async () => {
 });
 
 describe("browser Code attachment terminal state", () => {
+  it("keeps the request stream open until the proxied HTTP response closes", async () => {
+    const response = new TextEncoder().encode(
+      "HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\neditor-ready",
+    );
+    let receive: ((chunk: Uint8Array) => void) | undefined;
+    const connection = {
+      close: vi.fn(),
+      halfClose: vi.fn(),
+      onData: vi.fn((listener: (chunk: Uint8Array) => void) => {
+        receive = listener;
+      }),
+      send: vi.fn().mockResolvedValue(undefined),
+      waitClosed: vi.fn(async () => {
+        receive?.(response);
+      }),
+    };
+    const tunnel = {
+      openConnection: vi.fn().mockResolvedValue(connection),
+    };
+
+    const result = await proxyBrowserCodeHttp(tunnel as never, {
+      adapterId: "33333333-3333-4333-8333-333333333333",
+      body: null,
+      headers: [],
+      method: "GET",
+      requestId: "request-1",
+      type: "cantrip-code-http-request-v1",
+      url: "https://cantrip.example/__cantrip_code/33333333-3333-4333-8333-333333333333/code/",
+    });
+
+    expect(connection.send).toHaveBeenCalledOnce();
+    expect(connection.halfClose).not.toHaveBeenCalled();
+    expect(connection.waitClosed).toHaveBeenCalledOnce();
+    expect(result.status).toBe(200);
+    expect(new TextDecoder().decode(result.body)).toBe("editor-ready");
+  });
+
   it("rejects an invalid workspace before allocating a relay attachment", async () => {
     const invalid = wire();
     invalid.runtime.workspaceUri = "https://example.com/not-a-workspace";
