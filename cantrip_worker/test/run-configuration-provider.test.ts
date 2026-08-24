@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  access,
   chmod,
   mkdtemp,
   mkdir,
@@ -1774,6 +1775,91 @@ describe("rustRunConfigurationProvider", () => {
         ),
       ),
     ).toBe(false);
+  });
+
+  it("validates explicit Rustup toolchains from the launch environment without executing them", async () => {
+    const root = await createRoot();
+    const cargoHome = path.join(root, "cargo-bin");
+    const rustupHome = path.join(root, "rustup");
+    const installedToolchain = "nightly-2026-08-01-x86_64-unknown-linux-gnu";
+    const toolchainBin = path.join(
+      rustupHome,
+      "toolchains",
+      installedToolchain,
+      "bin",
+    );
+    const marker = path.join(root, "executed.txt");
+    await Promise.all([
+      mkdir(path.join(root, "src"), { recursive: true }),
+      mkdir(cargoHome, { recursive: true }),
+      mkdir(toolchainBin, { recursive: true }),
+    ]);
+    await writeFile(
+      path.join(root, "Cargo.toml"),
+      '[package]\nname = "api"\nversion = "0.1.0"\n\n[[bin]]\nname = "server"\npath = "src/server.rs"\n',
+    );
+    await writeFile(path.join(root, "src", "server.rs"), "fn main() {}\n");
+    const executableBody = `#!/bin/sh\nprintf executed > ${JSON.stringify(marker)}\n`;
+    const cargo = path.join(cargoHome, "cargo");
+    const toolchainCargo = path.join(toolchainBin, "cargo");
+    await Promise.all([
+      writeFile(cargo, executableBody),
+      writeFile(toolchainCargo, executableBody),
+    ]);
+    await Promise.all([chmod(cargo, 0o755), chmod(toolchainCargo, 0o755)]);
+    const definition = rustRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Rust API",
+    });
+    const document = {
+      ...definition,
+      target: { kind: "binary" as const, package: "api", name: "server" },
+      options: {
+        ...definition.options,
+        toolchain: "nightly-2026-08-01",
+      },
+    };
+    const context = {
+      defaultShell: "/bin/sh",
+      environment: { PATH: cargoHome, RUSTUP_HOME: rustupHome },
+      platform: "linux" as const,
+      targetRoot: root,
+    };
+
+    await expect(
+      rustRunConfigurationProvider.validate(document, context),
+    ).resolves.toEqual([]);
+    await expect(
+      rustRunConfigurationProvider.validate(
+        {
+          ...document,
+          options: { ...document.options, toolchain: "default" },
+        },
+        {
+          ...context,
+          environment: {
+            ...context.environment,
+            RUSTUP_TOOLCHAIN: "nightly-2026-08-01",
+          },
+        },
+      ),
+    ).resolves.toEqual([]);
+    await expect(
+      rustRunConfigurationProvider.validate(
+        {
+          ...document,
+          options: { ...document.options, toolchain: "nightly-2026-08-02" },
+        },
+        context,
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        code: "rust-toolchain-unavailable",
+        field: "options.toolchain",
+        severity: "error",
+      }),
+    ]);
+    await expect(access(marker)).rejects.toThrow();
   });
 
   it("materializes toolchain, package, target, feature, profile, target-triple, lock, program argument, environment, and ordered task controls", async () => {

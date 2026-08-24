@@ -290,9 +290,9 @@ async function flutterFixture(): Promise<Fixture> {
   };
 }
 
-async function rustFixture(): Promise<
-  Fixture & { executableDirectory: string }
-> {
+async function rustFixture(
+  toolchain = "default",
+): Promise<Fixture & { executableDirectory: string }> {
   const root = await mkdtemp(
     path.join(os.tmpdir(), "cantrip-rust-run-configuration-runtime-"),
   );
@@ -338,7 +338,7 @@ async function rustFixture(): Promise<
       beforeLaunch: [],
       platformOverrides: {},
       options: {
-        toolchain: "default",
+        toolchain,
         features: ["tls"],
         allFeatures: false,
         useDefaultFeatures: false,
@@ -991,15 +991,72 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
       await runs.closeAll();
     });
 
-    it("preflights required tools against the fully resolved live environment", async () => {
-      const input = await rustFixture();
-      const emptyPath = path.join(path.dirname(input.sourceRoot), "empty-bin");
-      await mkdir(emptyPath);
+    it("fails before spawn when an explicit Rust toolchain is absent", async () => {
+      const input = await rustFixture("nightly-2026-08-01");
+      const emptyRustupHome = path.join(
+        path.dirname(input.sourceRoot),
+        "empty-rustup",
+      );
+      await mkdir(emptyRustupHome);
       const runtimeIdentity = identity(input);
       const runs = supervisor([], {
-        environment: { PATH: emptyPath },
+        environment: {
+          PATH: input.executableDirectory,
+          RUSTUP_HOME: emptyRustupHome,
+        },
+      });
+
+      await runs.start(startCommand(input, runtimeIdentity));
+      const failed = await waitForState(runs, runtimeIdentity, "failed");
+      expect(failed.failure).toMatchObject({
+        phase: "provider",
+        code: "rust-toolchain-unavailable",
+        message: expect.stringContaining("nightly-2026-08-01"),
+      });
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).not.toContain("rust-provider");
+      await runs.closeAll();
+    });
+
+    it("preflights required tools against the fully resolved live environment", async () => {
+      const input = await rustFixture("nightly-2026-08-01");
+      const emptyPath = path.join(path.dirname(input.sourceRoot), "empty-bin");
+      const emptyRustupHome = path.join(
+        path.dirname(input.sourceRoot),
+        "empty-rustup",
+      );
+      const rustupHome = path.join(
+        path.dirname(input.sourceRoot),
+        "resolved-rustup",
+      );
+      const toolchainBin = path.join(
+        rustupHome,
+        "toolchains",
+        "nightly-2026-08-01-x86_64-unknown-linux-gnu",
+        "bin",
+      );
+      await Promise.all([
+        mkdir(emptyPath),
+        mkdir(emptyRustupHome),
+        mkdir(toolchainBin, { recursive: true }),
+      ]);
+      const toolchainCargo = path.join(toolchainBin, "cargo");
+      await writeFile(toolchainCargo, "#!/bin/sh\nexit 0\n");
+      await chmod(toolchainCargo, 0o755);
+      const runtimeIdentity = identity(input);
+      const runs = supervisor([], {
+        environment: { PATH: emptyPath, RUSTUP_HOME: emptyRustupHome },
         resolveEnvironment: async () => ({
-          files: { PATH: input.executableDirectory },
+          files: {
+            PATH: input.executableDirectory,
+            RUSTUP_HOME: rustupHome,
+          },
         }),
       });
 
@@ -1012,7 +1069,7 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
           identity: runtimeIdentity,
           tail: 100_000,
         }).data,
-      ).toContain("rust-provider|run");
+      ).toContain("rust-provider|+nightly-2026-08-01 run");
       await runs.closeAll();
     });
 
