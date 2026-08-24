@@ -202,6 +202,8 @@ const bridge: WorkerCommandBus = {
           identity: command.identity,
           protectedOutput: protectedRunOutput,
         };
+      case "terminal.close":
+        return { accepted: true };
       default:
         throw new Error(`Unexpected worker command ${command.type}.`);
     }
@@ -1873,5 +1875,79 @@ script = ""
       )
       .toMatchObject({ identities: [] });
     emptyReconnect.terminate();
+  });
+
+  it("stops and retires active Run instances before unlinking a project", async () => {
+    const worktrees = await database.repository.listProjectWorktrees(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const primary = worktrees.find(({ isPrimary }) => isPrimary);
+    if (!primary) throw new Error("Expected a Primary worktree.");
+    const activeRuntimes = [];
+    for (const worktree of [primary, primary]) {
+      const requested =
+        await database.repository.requestRunConfigurationRuntimeOperation(
+          LOCAL_USER_ID,
+          {
+            operation: "start",
+            operationId: randomUUID(),
+            projectId,
+            configurationId: randomUUID(),
+            worktreeId: worktree.id,
+            workerId,
+            definitionRevision: "e".repeat(64),
+            codexEnvironmentRevision: null,
+          },
+        );
+      if (!requested.runtime) throw new Error("Expected an active runtime.");
+      await database.repository.applyRunConfigurationRuntimeObservation(
+        LOCAL_USER_ID,
+        workerId,
+        runtimeObservation(requested.runtime, "running"),
+      );
+      activeRuntimes.push(requested.runtime);
+    }
+
+    connected = false;
+    const commandsBeforeOfflineDelete = commands.length;
+    const offlineDelete = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}`,
+      payload: { deleteLocalFiles: false },
+    });
+    expect(offlineDelete.statusCode).toBe(503);
+    expect(commands).toHaveLength(commandsBeforeOfflineDelete);
+    expect(
+      await database.repository.getProject(LOCAL_USER_ID, projectId),
+    ).not.toBeNull();
+
+    connected = true;
+    const commandsBeforeDelete = commands.length;
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}`,
+      payload: { deleteLocalFiles: false },
+    });
+    expect(deleted.statusCode, deleted.body).toBe(204);
+    const removalCommands = commands.slice(commandsBeforeDelete);
+    const stoppedRuntimeIds = removalCommands.flatMap((command) =>
+      command.type === "project.run-configuration-runtime.stop"
+        ? [command.identity.runtimeId]
+        : [],
+    );
+    expect(new Set(stoppedRuntimeIds)).toEqual(
+      new Set(activeRuntimes.map(({ id }) => id)),
+    );
+    const firstTerminalClose = removalCommands.findIndex(
+      ({ type }) => type === "terminal.close",
+    );
+    expect(firstTerminalClose).toBeGreaterThanOrEqual(activeRuntimes.length);
+    expect(
+      removalCommands.some(({ type }) => type === "project.files.delete"),
+    ).toBe(false);
+    expect(
+      await database.repository.getProject(LOCAL_USER_ID, projectId),
+    ).toBeNull();
   });
 });

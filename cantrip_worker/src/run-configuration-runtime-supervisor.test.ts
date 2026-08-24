@@ -1229,7 +1229,9 @@ while :; do sleep 1; done`,
     });
 
     it("stops active processes before a matching target path is removed", async () => {
-      const input = await fixture("while :; do sleep 1; done");
+      const input = await fixture(`
+(sleep 0.4; printf survived > removal-orphan.txt) &
+while :; do sleep 1; done`);
       const runtimeIdentity = identity(input);
       const runs = supervisor();
       await runs.start(startCommand(input, runtimeIdentity));
@@ -1239,6 +1241,10 @@ while :; do sleep 1; done`,
         found: true,
         observation: { state: "lost" },
       });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await expect(
+        readFile(path.join(input.targetRoot, "removal-orphan.txt")),
+      ).rejects.toThrow();
       await runs.closeAll();
     });
   },
