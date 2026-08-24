@@ -34,6 +34,7 @@ describe("account settings", () => {
   it("keeps the Elite lab out of the visible settings tabs", () => {
     const markup = renderSettings("general");
     const general = markup.indexOf(">General<");
+    const usage = markup.indexOf(">Usage<");
     const code = markup.indexOf(">Code<");
     const models = markup.indexOf(">Models<");
     const workers = markup.indexOf(">Workers<");
@@ -41,10 +42,18 @@ describe("account settings", () => {
 
     expect(general).toBeGreaterThanOrEqual(0);
     expect(markup).not.toContain(">Elite<");
-    expect(code).toBeGreaterThan(general);
+    expect(usage).toBeGreaterThan(general);
+    expect(code).toBeGreaterThan(usage);
     expect(models).toBeGreaterThan(code);
     expect(workers).toBeGreaterThan(models);
     expect(logs).toBeGreaterThan(workers);
+  });
+
+  it("exposes account usage as its own settings section", () => {
+    const markup = renderSettings("usage");
+
+    expect(markup).toContain(">Usage<");
+    expect(markup).toContain("Loading account usage…");
   });
 
   it("mounts the retained Code settings workbench only after Code is activated", () => {

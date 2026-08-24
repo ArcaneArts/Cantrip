@@ -125,6 +125,7 @@ import { LogSettings } from "./log-settings";
 import { EliteSettings } from "./elite-settings";
 import { PolicySettings } from "./policy-settings";
 import { CodeSettings } from "./code-settings";
+import { AccountUsageSettings } from "./account-usage-settings";
 import {
   availableCatalogModelIds,
   catalogDisplayStatus,
@@ -154,6 +155,7 @@ import {
 
 export type SettingsSection =
   | "general"
+  | "usage"
   | "code"
   | "elite"
   | "models"
@@ -167,6 +169,7 @@ export type SettingsSection =
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "usage", label: "Usage", icon: BarChart3 },
   { id: "code", label: "Code", icon: Code2 },
   { id: "models", label: "Models", icon: Cpu },
   { id: "workers", label: "Workers", icon: Network },
@@ -1661,6 +1664,7 @@ export function SettingsPage({
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}
+        {section === "usage" ? <AccountUsageSettings /> : null}
         {codeActivated ? (
           <CodeSettings
             active={section === "code"}
