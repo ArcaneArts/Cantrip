@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
 
@@ -37,6 +36,7 @@ import {
   type MaterializedRunCommand,
 } from "./run-configuration-provider.js";
 import { RunConfigurationRepository } from "./run-configuration-repository.js";
+import { RunConfigurationProcessTreeController } from "./run-configuration-process-tree.js";
 import { ensureSpawnHelperExecutable } from "./terminal-manager.js";
 import {
   RunConfigurationEnvironmentResolutionError,
@@ -370,6 +370,7 @@ export class RunConfigurationRuntimeSupervisor {
     RunConfigurationRuntimeSupervisorOptions["notify"]
   >;
   readonly #platform: NodeJS.Platform;
+  readonly #processTree: RunConfigurationProcessTreeController;
   readonly #resolveEnvironment: NonNullable<
     RunConfigurationRuntimeSupervisorOptions["resolveEnvironment"]
   >;
@@ -381,6 +382,9 @@ export class RunConfigurationRuntimeSupervisor {
     this.#environment = options.environment ?? process.env;
     this.#notify = options.notify ?? (() => undefined);
     this.#platform = options.platform ?? process.platform;
+    this.#processTree = new RunConfigurationProcessTreeController({
+      platform: this.#platform,
+    });
     this.#resolveEnvironment =
       options.resolveEnvironment ??
       (async ({ environment }) => {
@@ -1055,35 +1059,7 @@ export class RunConfigurationRuntimeSupervisor {
   }
 
   async #signalProcessTree(child: pty.IPty, force: boolean): Promise<void> {
-    if (this.#platform === "win32") {
-      await new Promise<void>((resolve) => {
-        const args = ["/PID", String(child.pid), "/T"];
-        if (force) args.push("/F");
-        const killer = spawn("taskkill", args, {
-          stdio: "ignore",
-          windowsHide: true,
-        });
-        killer.once("error", () => {
-          try {
-            child.kill();
-          } catch {
-            // The process may already have exited.
-          }
-          resolve();
-        });
-        killer.once("exit", () => resolve());
-      });
-      return;
-    }
-    try {
-      process.kill(-child.pid, force ? "SIGKILL" : "SIGTERM");
-    } catch {
-      try {
-        child.kill(force ? "SIGKILL" : "SIGTERM");
-      } catch {
-        // The process may already have exited.
-      }
-    }
+    await this.#processTree.signal(child, force);
   }
 
   async #markLost(runtimeId: string): Promise<void> {
