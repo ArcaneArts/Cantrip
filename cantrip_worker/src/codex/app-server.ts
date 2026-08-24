@@ -185,6 +185,7 @@ interface ActiveTurn {
   fileStartedAtMs: Map<string, number>;
   finalText: string | null;
   interactionMode: "interactive" | "preauthorized";
+  interruptionRequestedAtMs: number | null;
   itemStartedAtMs: Map<string, number>;
   latestUsage: TokenUsageBreakdown | null;
   liveAgentMessageFingerprints: Set<string>;
@@ -1085,6 +1086,17 @@ interface TurnCompletedParams {
     startedAt?: number | null;
     status: "completed" | "failed" | "interrupted" | "inProgress";
   };
+}
+
+export function reconciledRootTurnStatus(
+  status: TurnCompletedParams["turn"]["status"],
+  finalAnswerAvailable: boolean,
+  interruptionRequested: boolean,
+): TurnCompletedParams["turn"]["status"] {
+  if (status === "completed") return status;
+  if (finalAnswerAvailable) return "completed";
+  if (interruptionRequested) return "interrupted";
+  return status;
 }
 
 interface ThreadStartedParams {
@@ -3921,6 +3933,7 @@ export class CodexAppServer implements CodexRuntime {
         fileStartedAtMs: new Map(),
         finalText: null,
         interactionMode: "interactive",
+        interruptionRequestedAtMs: null,
         itemStartedAtMs: new Map(),
         latestUsage: null,
         liveAgentMessageFingerprints: new Set(),
@@ -4086,6 +4099,7 @@ export class CodexAppServer implements CodexRuntime {
         fileStartedAtMs: new Map(),
         finalText: null,
         interactionMode: options.approvalMode,
+        interruptionRequestedAtMs: null,
         itemStartedAtMs: new Map(),
         latestUsage: null,
         liveAgentMessageFingerprints: new Set(),
@@ -4951,7 +4965,14 @@ export class CodexAppServer implements CodexRuntime {
       ([, turn]) => turn.threadId === threadId,
     );
     if (!active) return { interrupted: false };
-    await this.request("turn/interrupt", { threadId, turnId: active[0] });
+    const previousRequest = active[1].interruptionRequestedAtMs;
+    active[1].interruptionRequestedAtMs = Date.now();
+    try {
+      await this.request("turn/interrupt", { threadId, turnId: active[0] });
+    } catch (error) {
+      active[1].interruptionRequestedAtMs = previousRequest;
+      throw error;
+    }
     workerLogger.event("info", "Codex turn interrupt accepted", {
       event: "codex.turn.interrupt",
       subsystem: "codex",
@@ -4971,10 +4992,17 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<{ interrupted: boolean }> {
     const active = findActiveChatTurn(this.#activeTurns, chatId, threadId);
     if (!active) return { interrupted: false };
-    await this.request("turn/interrupt", {
-      threadId: active[1].threadId,
-      turnId: active[0],
-    });
+    const previousRequest = active[1].interruptionRequestedAtMs;
+    active[1].interruptionRequestedAtMs = Date.now();
+    try {
+      await this.request("turn/interrupt", {
+        threadId: active[1].threadId,
+        turnId: active[0],
+      });
+    } catch (error) {
+      active[1].interruptionRequestedAtMs = previousRequest;
+      throw error;
+    }
     workerLogger.event("info", "Codex chat turn interrupt accepted", {
       event: "codex.turn.interrupt",
       subsystem: "codex",
@@ -6215,15 +6243,16 @@ export class CodexAppServer implements CodexRuntime {
     diagnosticId: string | null,
   ): void {
     for (const state of execution.agents.values()) {
-      const childCompleted =
-        rootStatus === "completed" &&
-        (state.status === "completed" || state.status === "idle");
+      const runtimeStatus: AgentRuntimeStatus =
+        state.status === "completed" || state.status === "idle"
+          ? "completed"
+          : state.status === "failed" || state.status === "interrupted"
+            ? state.status
+            : rootStatus === "failed"
+              ? "failed"
+              : "interrupted";
+      const childCompleted = runtimeStatus === "completed";
       const settledStatus = childCompleted ? "completed" : "failed";
-      const runtimeStatus: AgentRuntimeStatus = childCompleted
-        ? "completed"
-        : rootStatus === "failed"
-          ? "failed"
-          : "interrupted";
       const turnId = state.currentTurnId;
       if (turnId) {
         const correlation = eventCorrelation(
@@ -7719,8 +7748,36 @@ export class CodexAppServer implements CodexRuntime {
         params.turn.completedAt === undefined
           ? Date.now()
           : params.turn.completedAt * 1_000;
+      const terminalStatus = target.isRoot
+        ? reconciledRootTurnStatus(
+            params.turn.status,
+            active.executionKind === "chat" &&
+              !active.structuredChat &&
+              Boolean(active.finalText?.trim()),
+            active.interruptionRequestedAtMs !== null,
+          )
+        : params.turn.status;
+      if (target.isRoot && terminalStatus !== params.turn.status) {
+        workerLogger.event(
+          "warn",
+          "Reconciled Codex root turn terminal status",
+          {
+            event: "codex.turn.status-reconciled",
+            subsystem: "codex",
+            operation: "chat-turn",
+            status: terminalStatus,
+            reasonCode:
+              terminalStatus === "completed"
+                ? "final-answer-observed"
+                : "interrupt-requested",
+            chatId: active.chatId ?? undefined,
+            threadId: params.threadId,
+            turnId: params.turn.id,
+          },
+        );
+      }
       const pendingCommandStatus =
-        params.turn.status === "completed" ? "completed" : "failed";
+        terminalStatus === "completed" ? "completed" : "failed";
       for (const telemetry of state.commandTelemetry.values()) {
         clearCommandFlush(telemetry);
         telemetry.updatedAtMs = observedAtMs;
@@ -7737,7 +7794,7 @@ export class CodexAppServer implements CodexRuntime {
         observedAtMs,
         correlation,
       );
-      if (params.turn.error?.message) {
+      if (terminalStatus !== "completed" && params.turn.error?.message) {
         emitTurnActivity(
           state,
           normalizeNoticeActivity({
@@ -7757,13 +7814,13 @@ export class CodexAppServer implements CodexRuntime {
           }),
         );
       }
-      flushActiveAgentMessage(state, params.turn.status === "completed");
+      flushActiveAgentMessage(state, terminalStatus === "completed");
       emitTurnActivity(
         state,
         turnSummaryActivity(
           {
             id: params.turn.id,
-            status: params.turn.status,
+            status: terminalStatus,
             startedAt: params.turn.startedAt ?? null,
             completedAt: params.turn.completedAt ?? null,
             durationMs: params.turn.durationMs ?? null,
@@ -7782,34 +7839,28 @@ export class CodexAppServer implements CodexRuntime {
         agent.currentTurnId = null;
         this.updateAgentStatus(
           agent,
-          params.turn.status === "completed"
+          terminalStatus === "completed"
             ? "completed"
-            : params.turn.status === "interrupted"
+            : terminalStatus === "interrupted"
               ? "interrupted"
               : "failed",
         );
         this.emitAgentCommunication({
           diagnosticId,
           kind:
-            params.turn.status === "completed"
+            terminalStatus === "completed"
               ? "returned"
-              : params.turn.status === "interrupted"
+              : terminalStatus === "interrupted"
                 ? "interrupted"
                 : "failed",
           sourceMethod: message.method,
           state: agent,
-          status: params.turn.status === "completed" ? "completed" : "failed",
+          status: terminalStatus === "completed" ? "completed" : "failed",
           turnId: params.turn.id,
         });
         clearTurnInspectionTelemetry(agent);
         return;
       }
-      this.settleDescendantsAtRootBoundary(
-        target.execution,
-        params.turn.status,
-        observedAtMs,
-        diagnosticId,
-      );
       this.#activeTurns.delete(params.turn.id);
       if (active.timeout) {
         clearTimeout(active.timeout);
@@ -7817,22 +7868,32 @@ export class CodexAppServer implements CodexRuntime {
       }
       active.durationMs =
         params.turn.durationMs ?? Math.max(0, Date.now() - active.startedAtMs);
-      if (params.turn.status !== "completed") {
+      if (terminalStatus !== "completed") {
         void this.failTurn(
           active,
           params.turn.id,
           new Error(
-            params.turn.error?.message
-              ? readableCodexProviderError(params.turn.error.message, {
-                  secrets: this.#diagnosticSecrets,
-                  zai: this.#runtimeIsZai,
-                })
-              : `Codex turn ended with ${params.turn.status}.`,
+            terminalStatus === "interrupted"
+              ? "Codex turn was interrupted."
+              : params.turn.error?.message
+                ? readableCodexProviderError(params.turn.error.message, {
+                    secrets: this.#diagnosticSecrets,
+                    zai: this.#runtimeIsZai,
+                  })
+                : `Codex turn ended with ${terminalStatus}.`,
           ),
+          terminalStatus,
+          observedAtMs,
+          diagnosticId,
         );
         return;
       }
-      void this.completeTurn(active, params.turn.id);
+      void this.completeTurn(
+        active,
+        params.turn.id,
+        observedAtMs,
+        diagnosticId,
+      );
       return;
     }
 
@@ -7863,6 +7924,8 @@ export class CodexAppServer implements CodexRuntime {
   private async completeTurn(
     active: ActiveTurn,
     turnId: string,
+    observedAtMs: number,
+    diagnosticId: string | null,
   ): Promise<void> {
     try {
       this.clearInteractionsForTurn(
@@ -7882,7 +7945,16 @@ export class CodexAppServer implements CodexRuntime {
           null,
         ),
       );
-      await this.reconcileSubagentExecution(active, Date.now());
+      await this.reconcileSubagentExecution(active, observedAtMs);
+      const execution = this.#rootExecutionsByActive.get(active);
+      if (execution) {
+        this.settleDescendantsAtRootBoundary(
+          execution,
+          "completed",
+          observedAtMs,
+          diagnosticId,
+        );
+      }
       const text = active.finalText ?? active.delta;
       if (active.executionKind === "chat" && this.#goals.has(active.threadId)) {
         await this.replayCompletedTurn(active, turnId);
@@ -7905,6 +7977,7 @@ export class CodexAppServer implements CodexRuntime {
           active.delta = "";
           active.diffChanges = [];
           active.finalText = null;
+          active.interruptionRequestedAtMs = null;
           active.liveAgentMessageFingerprints.clear();
           active.reasoningSummaries.clear();
           active.startedAtMs = Date.now();
@@ -8084,6 +8157,9 @@ export class CodexAppServer implements CodexRuntime {
     active: ActiveTurn,
     turnId: string,
     error: Error,
+    rootStatus: TurnCompletedParams["turn"]["status"] = "failed",
+    observedAtMs = Date.now(),
+    diagnosticId: string | null = null,
   ): Promise<void> {
     try {
       if (active.timeout) {
@@ -8104,7 +8180,16 @@ export class CodexAppServer implements CodexRuntime {
           null,
         ),
       );
-      await this.reconcileSubagentExecution(active, Date.now());
+      await this.reconcileSubagentExecution(active, observedAtMs);
+      const execution = this.#rootExecutionsByActive.get(active);
+      if (execution) {
+        this.settleDescendantsAtRootBoundary(
+          execution,
+          rootStatus,
+          observedAtMs,
+          diagnosticId,
+        );
+      }
     } finally {
       this.releaseActiveTurn(active);
       clearTurnInspectionTelemetry(active);

@@ -191,7 +191,7 @@ AgentRuntimeState
 
 Maintain a worker-level `threadId -> RootExecution` index. Associate a child when the parent emits spawn/subagent activity and confirm/enrich it through `thread/started` metadata (`parentThreadId`, source, nickname, role, and agent path). Namespace item and turn correlation by agent thread so repeated IDs or child completion cannot collide with the root.
 
-All child notifications flow through their own `AgentRuntimeState`. Child `turn/completed` updates only that child. Root completion follows native root semantics and deterministically settles or marks remaining child states during root interruption, failure, disconnect, or shutdown.
+All child notifications flow through their own `AgentRuntimeState`. Child `turn/completed` updates only that child. At a root boundary, Cantrip first reconciles native child thread history, then settles only genuinely unresolved descendants; an already completed child stays completed even if the root fails or is interrupted. For ordinary chat turns, a delivered native `final_answer` is stronger completion evidence than a later contradictory terminal status. A requested interrupt without a final answer is normalized to interrupted even when the runtime reports the low-level status as failed. These corrections use lifecycle metadata only and never log or expose the private final-answer text.
 
 Child approvals and user-input requests route through the root execution's existing interaction channel, labeled with encrypted child identity for the UI. Existing approval policy remains authoritative. No request should fail merely because its immediate thread ID is not the root thread.
 
