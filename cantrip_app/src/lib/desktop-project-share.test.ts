@@ -163,7 +163,7 @@ describe("desktop project reveal", () => {
     });
   });
 
-  it("targets a folder beneath the mounted or local project root", () => {
+  it("targets files and folders beneath the mounted or local project root", () => {
     expect(
       nativeProjectShareRequest(attachment, project, "src/components/explorer"),
     ).toMatchObject({ relativePath: "src/components/explorer" });
@@ -174,6 +174,16 @@ describe("desktop project reveal", () => {
         "src/components/explorer",
       ),
     ).toMatchObject({ relativePath: "src/components/explorer" });
+    expect(
+      nativeProjectShareRequest(attachment, project, "src/main.ts"),
+    ).toMatchObject({ relativePath: "src/main.ts" });
+    expect(
+      nativeLocalProjectFolderRequest(
+        project,
+        "https://cantrip.example",
+        "src/main.ts",
+      ),
+    ).toMatchObject({ relativePath: "src/main.ts" });
   });
 
   it("preserves the capability path when mounting a local direct listener", () => {

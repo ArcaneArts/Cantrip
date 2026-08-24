@@ -917,7 +917,7 @@ export function ExplorerView({
     });
   };
 
-  const revealFolder = (entry: ExplorerEntry, localFolder: boolean) => {
+  const revealEntry = (entry: ExplorerEntry, localFolder: boolean) => {
     if (!onRevealFolder) return;
     setViewStateError(null);
     void Promise.resolve(onRevealFolder(explorer, entry, localFolder)).catch(
@@ -926,7 +926,7 @@ export function ExplorerView({
         setViewStateError(
           error instanceof Error
             ? error.message
-            : "The folder could not be revealed.",
+            : "The entry could not be revealed.",
         );
       },
     );
@@ -1086,7 +1086,7 @@ export function ExplorerView({
             explorer={explorer}
             gitStatus={gitStatus}
             onOpenFile={openEntry}
-            onRevealFolder={onRevealFolder ? revealFolder : undefined}
+            onRevealFolder={onRevealFolder ? revealEntry : undefined}
             revealLabel={revealLabel}
             onShowInGraph={repositoryGraphAvailable ? openGraph : undefined}
             onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}

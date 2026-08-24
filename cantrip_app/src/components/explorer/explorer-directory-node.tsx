@@ -126,6 +126,12 @@ export function ExplorerDirectoryNode({
                     entry={child}
                     key={child.path}
                     onOpen={() => onOpenFile(child)}
+                    onReveal={
+                      onReveal
+                        ? (localFolder) => onReveal(child, localFolder)
+                        : undefined
+                    }
+                    revealLabel={revealLabel}
                     onShowInGraph={
                       onShowInGraph
                         ? () => onShowInGraph(explorerGraphRootForEntry(child))

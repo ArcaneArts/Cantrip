@@ -151,6 +151,12 @@ export function ExplorerFileBrowser({
                 entry={entry}
                 key={entry.path}
                 onOpen={() => onOpenFile(entry)}
+                onReveal={
+                  onRevealFolder
+                    ? (localFolder) => onRevealFolder(entry, localFolder)
+                    : undefined
+                }
+                revealLabel={revealLabel}
                 onShowInGraph={
                   onShowInGraph
                     ? () => onShowInGraph(explorerGraphRootForEntry(entry))
