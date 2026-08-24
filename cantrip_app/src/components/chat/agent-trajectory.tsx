@@ -22,6 +22,7 @@ import {
   projectTrajectory,
   trajectoryEventKinds,
   trajectoryKindLabel,
+  trajectoryLaneLabel,
   type TrajectoryEvent,
   type TrajectoryLane,
 } from "./trajectory-model";
@@ -35,7 +36,7 @@ import { useStickyChatScroll } from "./use-sticky-chat-scroll";
 
 const TRAJECTORY_CLOCK_INTERVAL_MS = 500;
 const TRAJECTORY_FOLLOW_THRESHOLD_PX = 24;
-const lanes = ["input", "model", "tools"] as const;
+const lanes = ["input", "model", "tools", "changes"] as const;
 const statuses = ["running", "completed", "failed", "declined"] as const;
 const timingQualities = ["exact", "derived", "instant"] as const;
 
@@ -104,6 +105,7 @@ function EventStatus({ event }: { event: TrajectoryEvent }) {
 function laneColor(lane: TrajectoryLane): string {
   if (lane === "input") return "bg-sky-500";
   if (lane === "model") return "bg-violet-500";
+  if (lane === "changes") return "bg-emerald-500";
   return "bg-amber-500";
 }
 
@@ -171,7 +173,7 @@ function TrajectoryEventRow({
             >
               {event.agentLabel}
             </span>
-            <span>{event.lane}</span>
+            <span>{trajectoryLaneLabel(event.lane)}</span>
             <span>{trajectoryKindLabel(event.kind)}</span>
             <span>{formatEventDuration(event)}</span>
             {event.timingQuality !== "exact" ? (
@@ -385,7 +387,7 @@ export function AgentTrajectory({
           <p className="mt-1 text-xs text-muted-foreground">
             {targetTurnKey
               ? "This turn is no longer present in the loaded chat history."
-              : "Start a turn to inspect its input, model, and tool activity."}
+              : "Start a turn to inspect its input, model, tool, and change activity."}
           </p>
           {targetTurnKey && onBackToCurrent ? (
             <Button
@@ -446,6 +448,12 @@ export function AgentTrajectory({
           <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground">
             {turn.laneCounts.tools} tools
           </span>
+          {turn.laneCounts.changes > 0 ? (
+            <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] tabular-nums text-emerald-600 dark:text-emerald-400">
+              {turn.laneCounts.changes}{" "}
+              {turn.laneCounts.changes === 1 ? "change" : "changes"}
+            </span>
+          ) : null}
           {!turn.completed ? (
             <Button
               aria-pressed={followingLive}
@@ -463,7 +471,7 @@ export function AgentTrajectory({
             </Button>
           ) : null}
         </div>
-        <div className="mt-3 grid grid-cols-3 gap-1.5 text-[10px]">
+        <div className="mt-3 grid grid-cols-4 gap-1.5 text-[10px]">
           {lanes.map((lane) => (
             <button
               aria-pressed={!hiddenLanes.has(lane)}
@@ -479,7 +487,7 @@ export function AgentTrajectory({
               }
               type="button"
             >
-              <span>{lane}</span>
+              <span>{trajectoryLaneLabel(lane)}</span>
               <span className="tabular-nums text-muted-foreground">
                 {turn.laneCounts[lane]}
               </span>

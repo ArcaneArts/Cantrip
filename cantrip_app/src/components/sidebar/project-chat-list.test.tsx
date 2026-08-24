@@ -2,7 +2,9 @@ import { chatSummarySchema } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ChatActivityStatus, ProjectOverviewTab } from "./project-chat-list";
+import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
+
+import { ProjectOverviewTab } from "./project-chat-list";
 
 const chat = chatSummarySchema.parse({
   id: "chat-1",

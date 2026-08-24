@@ -102,6 +102,40 @@ describe("account resource usage API", () => {
         "resource-usage-api-test",
         new Date("2026-08-23T10:15:00.000Z"),
       );
+      const bandwidthBucket = new Date(
+        Math.floor(Date.now() / 3_600_000) * 3_600_000,
+      );
+      await database.repository.accountResourceUsage.flushBandwidthBatch({
+        meterId: "resource-usage-api-bandwidth",
+        sequence: 1n,
+        flushedAt: new Date(),
+        entries: [
+          {
+            ownerId: firstOwnerId,
+            bucketStart: bandwidthBucket,
+            channel: "http",
+            direction: "ingress",
+            bytes: 100n,
+            operationCount: 2n,
+          },
+          {
+            ownerId: firstOwnerId,
+            bucketStart: bandwidthBucket,
+            channel: "client-live-websocket",
+            direction: "egress",
+            bytes: 40n,
+            operationCount: 1n,
+          },
+          {
+            ownerId: secondOwnerId,
+            bucketStart: bandwidthBucket,
+            channel: "http",
+            direction: "ingress",
+            bytes: 7n,
+            operationCount: 1n,
+          },
+        ],
+      });
 
       const firstRows =
         await database.repository.accountResourceUsage.listCurrentStorage(
@@ -140,9 +174,10 @@ describe("account resource usage API", () => {
       );
       expect(firstUsage.json()).toMatchObject({
         bandwidth: {
-          accuracy: "unavailable",
-          ingressBytes: "0",
-          egressBytes: "0",
+          accuracy: "metered",
+          ingressBytes: "100",
+          egressBytes: "40",
+          operationCount: "3",
         },
         enforcement: "disabled",
         limits: null,
@@ -150,6 +185,11 @@ describe("account resource usage API", () => {
           basisVersion: "postgres-logical-row-bytes-v1",
           status: "current",
         },
+      });
+      expect(secondUsage.json().bandwidth).toMatchObject({
+        ingressBytes: "7",
+        egressBytes: "0",
+        operationCount: "1",
       });
 
       const history = await app.inject({
@@ -166,6 +206,25 @@ describe("account resource usage API", () => {
         limits: null,
       });
       expect(history.json().series.length).toBeGreaterThan(0);
+
+      const bandwidthHistory = await app.inject({
+        method: "GET",
+        url: `/api/account/resource-usage/history?metric=bandwidth&resolution=hour&from=${encodeURIComponent(bandwidthBucket.toISOString())}&to=${encodeURIComponent(new Date(bandwidthBucket.getTime() + 3_600_000).toISOString())}`,
+        headers: { cookie: firstCookie, origin },
+      });
+      expect(bandwidthHistory.statusCode).toBe(200);
+      expect(bandwidthHistory.json()).toMatchObject({
+        metric: "bandwidth",
+        resolution: "hour",
+        status: "current",
+        series: expect.arrayContaining([
+          expect.objectContaining({
+            channel: "http",
+            direction: "ingress",
+            points: [expect.objectContaining({ bytes: "100" })],
+          }),
+        ]),
+      });
 
       const invalidHistory = await app.inject({
         method: "GET",

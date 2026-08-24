@@ -255,6 +255,7 @@ describe("project settings", () => {
     const renderSection = (
       initialSection:
         | "general"
+        | "environment"
         | "workflows"
         | "replicas"
         | "policies"
@@ -348,6 +349,10 @@ describe("project settings", () => {
     const workflowsMarkup = renderSection("workflows");
     expect(workflowsMarkup).toContain("New workflow");
     expect(workflowsMarkup).not.toContain("Agent managed");
+
+    const environmentMarkup = renderSection("environment");
+    expect(environmentMarkup).toContain("Environment configuration");
+    expect(environmentMarkup).toContain(".codex/environments/environment.toml");
 
     const worktreesMarkup = renderSection("worktrees");
     expect(worktreesMarkup).toContain("Agent managed");

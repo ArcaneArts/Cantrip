@@ -18,6 +18,8 @@ import type {
   ClientControlResultStatus,
 } from "@cantrip/protocol";
 
+import type { AccountUsageRecorder } from "../account-usage/bandwidth-meter.js";
+
 const OPEN_SOCKET_STATE = 1;
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 const DEFAULT_MAX_BUFFERED_BYTES = 1_024 * 1_024;
@@ -67,6 +69,7 @@ export interface AppLiveHubOptions {
   maxReplayEvents?: number;
   now?: () => number;
   publishExternal?(publication: AppLivePublication): Promise<void> | void;
+  usageRecorder?: AccountUsageRecorder;
 }
 
 export interface AppLiveHubStats {
@@ -112,6 +115,7 @@ interface Connection {
 interface EncodedServerMessage {
   bytes: number;
   data: string;
+  notifyChange: boolean;
 }
 
 interface RetainedEvent {
@@ -175,8 +179,11 @@ function requestIdFromUnknown(value: unknown): string | null {
   return null;
 }
 
-function encodedServerMessage(data: string): EncodedServerMessage {
-  return { bytes: Buffer.byteLength(data), data };
+function encodedServerMessage(
+  data: string,
+  notifyChange = true,
+): EncodedServerMessage {
+  return { bytes: Buffer.byteLength(data), data, notifyChange };
 }
 
 export class AppLiveHub {
@@ -189,6 +196,7 @@ export class AppLiveHub {
   readonly #maxReplayEvents: number;
   readonly #now: () => number;
   readonly #publishExternal?: AppLiveHubOptions["publishExternal"];
+  readonly #usageRecorder?: AccountUsageRecorder;
   readonly #pendingClientControlRequests = new Map<
     string,
     PendingClientControlRequest
@@ -231,6 +239,7 @@ export class AppLiveHub {
       options.maxReplayEvents ?? DEFAULT_MAX_REPLAY_EVENTS;
     this.#now = options.now ?? Date.now;
     this.#publishExternal = options.publishExternal;
+    this.#usageRecorder = options.usageRecorder;
 
     if (
       this.#heartbeatIntervalMs < 5_000 ||
@@ -427,7 +436,10 @@ export class AppLiveHub {
     this.#publicationCount += 1;
     // The event has already passed the server-message schema above. Stringify
     // that validated value once, then reuse the exact frame for fanout/replay.
-    const encoded = encodedServerMessage(JSON.stringify(parsed));
+    const encoded = encodedServerMessage(
+      JSON.stringify(parsed),
+      parsed.resource !== "account-resource-usage",
+    );
     const scopeKey = appLiveScopeKey(parsed.scope);
     this.#replayEvents.push({ cursor, encoded, ownerId, scopeKey });
     this.#replayBytes += encoded.bytes;
@@ -511,6 +523,12 @@ export class AppLiveHub {
       return;
     }
     connection.lastSeenAt = this.#now();
+    this.#usageRecorder?.record({
+      ownerId: connection.context.ownerId,
+      direction: "ingress",
+      channel: "client-live-websocket",
+      bytes: frameByteLength(data),
+    });
 
     if (isBinary) {
       this.#protocolViolation(
@@ -1046,6 +1064,13 @@ export class AppLiveHub {
     }
     try {
       connection.socket.send(encoded.data);
+      this.#usageRecorder?.record({
+        ownerId: connection.context.ownerId,
+        direction: "egress",
+        channel: "client-live-websocket",
+        bytes: encoded.bytes,
+        notifyChange: encoded.notifyChange,
+      });
       return true;
     } catch {
       this.#closeConnection(connection, 1011, "Live send failed");

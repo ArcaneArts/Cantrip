@@ -10,6 +10,7 @@ import {
   decodeAppLiveServerMessage,
   encodeAppLiveClientMessage,
   encodeAppLiveServerMessage,
+  workerNotificationSchema,
   type AppLiveScope,
 } from "../src/index.js";
 
@@ -32,6 +33,16 @@ describe("application live protocol", () => {
     expect(appLiveResourceSchema.parse("project-github-conversion-job")).toBe(
       "project-github-conversion-job",
     );
+    expect(appLiveResourceSchema.parse("explorer-filesystem")).toBe(
+      "explorer-filesystem",
+    );
+    expect(
+      workerNotificationSchema.parse({
+        type: "worktree.filesystem.changed",
+        sourcePath: "/workspace/project",
+        worktreePath: "/workspace/project",
+      }),
+    ).toMatchObject({ type: "worktree.filesystem.changed" });
   });
 
   it("initializes with an optional same-epoch replay cursor", () => {

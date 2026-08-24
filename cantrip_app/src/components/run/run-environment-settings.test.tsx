@@ -72,6 +72,8 @@ describe("RunEnvironmentSettings", () => {
     expect(markup).toContain("macOS setup");
     expect(markup).toContain("Run actions");
     expect(markup).toContain("Cantrip does not change .gitignore");
+    expect(markup).toContain('class="w-full space-y-6"');
+    expect(markup).not.toContain("max-w-5xl");
   });
 
   it("requires an explicit replacement before normalizing unsupported fields", () => {

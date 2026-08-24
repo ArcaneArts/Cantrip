@@ -121,7 +121,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   cliCommands:
     "c60e6813bbd3b2ed4df9a4b2377d8b1db15dafcf9c16fef4034cb0739fe88ad5",
   liveResources:
-    "e0d8d028aad8247d7111b25b002989e944cc0df1a006a436fc6978da350524f9",
+    "4ee5989e02f8624ce0b3a55c8ca46e6ba4cabd148c3e6cca1203b59d8b1f5c8c",
   workerCommands:
     "4fca0c1a7d571ebf17e5efb931f2243437f04df9b5c279085c33b84f45e8e7fc",
   tunnelFrameKinds:
@@ -216,6 +216,8 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   accountStorageUsageCurrent: "minimized-operational-metadata",
   accountStorageUsageSnapshots: "minimized-operational-metadata",
   accountStorageReconciliationLeases: "minimized-operational-metadata",
+  accountBandwidthUsageBuckets: "minimized-operational-metadata",
+  accountBandwidthFlushes: "minimized-operational-metadata",
 };
 
 const prohibitedTaskProtocolSymbols = new Set([

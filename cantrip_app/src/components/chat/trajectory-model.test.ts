@@ -219,6 +219,58 @@ describe("trajectory projection", () => {
     ]);
   });
 
+  it("treats prompts and returned results between agents as input", () => {
+    const childScope: AgentScope = {
+      agentThreadId: "child-thread",
+      rootThreadId: "root-thread",
+      parentThreadId: "root-thread",
+      rootTurnId: "root-turn",
+      agentPath: ["root", "Scout"],
+      nickname: "Scout",
+      role: "explorer",
+      depth: 1,
+      isRoot: false,
+    };
+    const turn = projectTrajectory({
+      active: false,
+      messages: [
+        message("user", 1, "user", 1_000, [
+          { type: "text", text: "Inspect this" },
+        ]),
+        activityMessage("spawned", 2, 1_100, {
+          type: "agentCommunication",
+          id: "spawned",
+          kind: "spawned",
+          senderThreadId: "root-thread",
+          receiverThreadIds: ["child-thread"],
+          message: "Inspect the parser",
+          status: "completed",
+          agentScope: childScope,
+        }),
+        activityMessage("returned", 3, 1_200, {
+          type: "agentCommunication",
+          id: "returned",
+          kind: "returned",
+          senderThreadId: "child-thread",
+          receiverThreadIds: ["root-thread"],
+          message: "The parser is safe",
+          status: "completed",
+          agentScope: childScope,
+        }),
+      ],
+      nowMs: 1_300,
+    });
+
+    expect(
+      turn?.events
+        .filter((event) => event.kind === "agentCommunication")
+        .map((event) => ({ lane: event.lane, preview: event.preview })),
+    ).toEqual([
+      { lane: "input", preview: "Inspect the parser" },
+      { lane: "input", preview: "The parser is safe" },
+    ]);
+  });
+
   it("does not treat child final text or summaries as root completion", () => {
     const childScope: AgentScope = {
       agentThreadId: "child-thread",
@@ -384,7 +436,7 @@ describe("trajectory projection", () => {
 
     expect(turn).toMatchObject({
       key: "runtime:turn-1",
-      laneCounts: { input: 2, model: 3, tools: 1 },
+      laneCounts: { changes: 0, input: 2, model: 3, tools: 1 },
       ordinal: 1,
       title: "Create the run configuration",
     });
@@ -477,7 +529,12 @@ describe("trajectory projection", () => {
       timingQuality: "exact",
       updatedAtMs: 1_300,
     });
-    expect(turn?.laneCounts).toEqual({ input: 1, model: 1, tools: 1 });
+    expect(turn?.laneCounts).toEqual({
+      changes: 0,
+      input: 1,
+      model: 1,
+      tools: 1,
+    });
     expect(turn?.kindCounts).toEqual({ command: 1, input: 1, response: 1 });
     expect(turn?.nextTransitionAtMs).toBeNull();
   });
@@ -584,7 +641,14 @@ describe("trajectory projection", () => {
     const files = turn?.events.find((event) => event.kind === "fileChange");
     expect(files?.preview).toContain("update src/a.ts");
     expect(files?.preview).toContain("add src/b.ts");
+    expect(files?.lane).toBe("changes");
     expect(files?.timingQuality).toBe("derived");
+    expect(turn?.laneCounts).toEqual({
+      changes: 1,
+      input: 1,
+      model: 0,
+      tools: 0,
+    });
   });
 
   it("filters projected events by lane, family, and local search", () => {

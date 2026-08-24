@@ -24,8 +24,10 @@ export function ExplorerDirectoryNode({
   onShowInGraph,
   onOpenTerminal,
   onToggle,
+  projectId,
   queryScope,
   revealedPath,
+  worktreeId,
 }: {
   changeByPath: ReadonlyMap<string, ExplorerChangeSummary>;
   commit: ExplorerLastCommit | null;
@@ -40,8 +42,10 @@ export function ExplorerDirectoryNode({
   onShowInGraph?(rootPath: string | null): void;
   onOpenTerminal(entry: ExplorerEntry): void;
   onToggle(path: string): void;
+  projectId: string;
   queryScope: string;
   revealedPath?: string | null;
+  worktreeId: string;
 }) {
   const expanded = expandedPaths.has(entry.path);
   const { commitByPath, directory, entries } = useExplorerDirectory({
@@ -49,7 +53,9 @@ export function ExplorerDirectoryNode({
     explorerId,
     gitStatus,
     path: entry.path,
+    projectId,
     queryScope,
+    worktreeId,
   });
   return (
     <>
@@ -115,8 +121,10 @@ export function ExplorerDirectoryNode({
                     onShowInGraph={onShowInGraph}
                     onOpenTerminal={onOpenTerminal}
                     onToggle={onToggle}
+                    projectId={projectId}
                     queryScope={queryScope}
                     revealedPath={revealedPath}
+                    worktreeId={worktreeId}
                   />
                 ) : (
                   <ExplorerEntryRow

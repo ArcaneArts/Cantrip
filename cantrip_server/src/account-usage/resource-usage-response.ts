@@ -6,6 +6,7 @@ import type {
 
 import { STORAGE_ACCOUNTING_BASIS_VERSION } from "./storage-manifest.js";
 import type { AccountStorageHistoryMeasurement } from "../db/account-resource-usage.js";
+import type { AccountBandwidthMeasurement } from "../db/account-resource-usage.js";
 
 const STORAGE_STALE_AFTER_MS = 2 * 60 * 60_000;
 
@@ -20,7 +21,10 @@ interface CurrentStorageRow {
   storageClass: string;
 }
 
-function utcDayRange(now: Date): { start: Date; end: Date } {
+export function accountBandwidthPeriod(now: Date): {
+  start: Date;
+  end: Date;
+} {
   const start = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
   );
@@ -41,6 +45,7 @@ function latestDate(
 
 export function buildAccountResourceUsage(
   rows: CurrentStorageRow[],
+  bandwidthRows: AccountBandwidthMeasurement[] = [],
   now = new Date(),
 ): AccountResourceUsage {
   const measuredAt = latestDate(rows, (row) => row.measuredAt);
@@ -72,7 +77,22 @@ export function buildAccountResourceUsage(
     (total, row) => total + row.logicalBytes,
     0n,
   );
-  const bandwidthPeriod = utcDayRange(now);
+  const bandwidthPeriod = accountBandwidthPeriod(now);
+  const bandwidthMeasuredAt = bandwidthRows.reduce<Date | null>(
+    (latest, row) =>
+      !latest || row.updatedAt > latest ? row.updatedAt : latest,
+    null,
+  );
+  const bandwidthIngress = bandwidthRows
+    .filter((row) => row.direction === "ingress")
+    .reduce((total, row) => total + row.bytes, 0n);
+  const bandwidthEgress = bandwidthRows
+    .filter((row) => row.direction === "egress")
+    .reduce((total, row) => total + row.bytes, 0n);
+  const bandwidthOperations = bandwidthRows.reduce(
+    (total, row) => total + row.operationCount,
+    0n,
+  );
 
   return {
     measurement: {
@@ -117,13 +137,19 @@ export function buildAccountResourceUsage(
       },
     },
     bandwidth: {
-      accuracy: "unavailable",
+      accuracy: "metered",
+      measuredAt: bandwidthMeasuredAt?.toISOString() ?? null,
       periodStart: bandwidthPeriod.start.toISOString(),
       periodEnd: bandwidthPeriod.end.toISOString(),
-      ingressBytes: "0",
-      egressBytes: "0",
-      operationCount: "0",
-      breakdown: [],
+      ingressBytes: bandwidthIngress.toString(),
+      egressBytes: bandwidthEgress.toString(),
+      operationCount: bandwidthOperations.toString(),
+      breakdown: bandwidthRows.map((row) => ({
+        channel: row.channel,
+        direction: row.direction,
+        bytes: row.bytes.toString(),
+        operationCount: row.operationCount.toString(),
+      })),
     },
     limits: null,
     enforcement: "disabled",
@@ -168,16 +194,36 @@ export function buildStorageUsageHistory(
   };
 }
 
-export function buildUnavailableBandwidthHistory(
+export function buildBandwidthUsageHistory(
   query: AccountResourceUsageHistoryQuery,
+  rows: AccountBandwidthMeasurement[],
 ): AccountResourceUsageHistory {
+  const grouped = new Map<string, AccountBandwidthMeasurement[]>();
+  for (const row of rows) {
+    const key = `${row.channel}:${row.direction}`;
+    const values = grouped.get(key) ?? [];
+    values.push(row);
+    grouped.set(key, values);
+  }
   return {
     metric: "bandwidth",
     resolution: query.resolution,
     from: query.from,
     to: query.to,
-    status: "unavailable",
-    series: [],
+    status: "current",
+    series: [...grouped.values()].map((points) => {
+      const first = points[0]!;
+      return {
+        channel: first.channel,
+        direction: first.direction,
+        accuracy: "metered",
+        points: points.map((point) => ({
+          bucketStart: point.bucketStart.toISOString(),
+          bytes: point.bytes.toString(),
+          operationCount: point.operationCount.toString(),
+        })),
+      };
+    }),
     limits: null,
     enforcement: "disabled",
   };

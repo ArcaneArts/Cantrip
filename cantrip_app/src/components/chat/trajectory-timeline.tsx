@@ -179,6 +179,7 @@ function accessibleDuration(durationMs: number): string {
 function laneClass(lane: TrajectoryLane): string {
   if (lane === "input") return "fill-sky-500";
   if (lane === "model") return "fill-violet-500";
+  if (lane === "changes") return "fill-emerald-500";
   return "fill-amber-500";
 }
 
@@ -299,7 +300,7 @@ export function TrajectoryTimeline({
             const label =
               mark.count === 1
                 ? `${event.agentLabel}, ${event.label}, ${event.status}, ${event.timingQuality} timing`
-                : `${mark.count} ${event.lane} events for ${event.agentLabel} near ${accessibleDuration(event.startMs - turn.timelineStartMs)}`;
+                : `${mark.count} ${event.lane === "changes" ? "change" : event.lane} events for ${event.agentLabel} near ${accessibleDuration(event.startMs - turn.timelineStartMs)}`;
             return (
               <rect
                 aria-label={label}

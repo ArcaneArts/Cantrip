@@ -263,6 +263,17 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : event.scope.kind === "current-user"
           ? [["explorers"]]
           : [];
+    case "explorer-filesystem":
+      return projectId
+        ? [
+            event.entityId
+              ? ["explorer-directory", projectId, event.entityId]
+              : ["explorer-directory", projectId],
+            event.entityId
+              ? ["explorer-directory-commits", projectId, event.entityId]
+              : ["explorer-directory-commits", projectId],
+          ]
+        : [];
     case "browser":
       return projectId
         ? [["browsers", projectId]]
@@ -375,6 +386,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["chats", scope.projectId],
         ["terminals", scope.projectId],
         ["explorers", scope.projectId],
+        ["explorer-directory", scope.projectId],
+        ["explorer-directory-commits", scope.projectId],
         ["browsers", scope.projectId],
         ["code-tabs", scope.projectId],
         ["project-views", scope.projectId],
