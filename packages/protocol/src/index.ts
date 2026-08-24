@@ -13714,6 +13714,14 @@ export const workerRequestEnvelopeSchema = z.object({
   command: workerCommandSchema,
 });
 
+export const WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL = "cantrip-worker-legacy";
+export const WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL =
+  "cantrip-worker-auth-ready-v1";
+export const WORKER_WEBSOCKET_SUBPROTOCOLS = [
+  WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+] as const;
+
 export const workerConnectionEnvelopeSchema = z
   .object({
     kind: z.literal("connection"),

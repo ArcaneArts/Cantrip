@@ -57,6 +57,9 @@ import {
   CANTRIP_MCP_MUTATION_TOOL_NAMES,
   CANTRIP_MCP_OPERATIONS,
   CANTRIP_MCP_TOOL_NAMES,
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_SUBPROTOCOLS,
   cantripMcpOperationsForPermissionProfile,
   cantripMcpToolNamesForOperations,
   isCantripMcpMutationOperation,
@@ -388,6 +391,17 @@ describe("worker channel JSON codec", () => {
         initialCommit: { message: "Initial commit" },
       }),
     ).not.toHaveProperty("path");
+  });
+
+  it("exports stable worker WebSocket subprotocols in compatibility order", () => {
+    expect(WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL).toBe("cantrip-worker-legacy");
+    expect(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL).toBe(
+      "cantrip-worker-auth-ready-v1",
+    );
+    expect(WORKER_WEBSOCKET_SUBPROTOCOLS).toEqual([
+      "cantrip-worker-legacy",
+      "cantrip-worker-auth-ready-v1",
+    ]);
   });
 
   it("round-trips request and server envelopes", () => {
