@@ -476,6 +476,33 @@ describe("trajectory projection", () => {
     ]);
   });
 
+  it("previews the latest three non-empty reasoning lines", () => {
+    const turn = projectTrajectory({
+      active: true,
+      messages: [
+        message("user-1", 1, "user", 1_000, [
+          { type: "text", text: "Inspect the project" },
+        ]),
+        activityMessage("reasoning-1", 2, 1_100, {
+          type: "reasoning",
+          id: "reasoning-1",
+          status: "running",
+          summary: [
+            "Old line\n",
+            "First current line\nSecond current line",
+            "Third current line",
+          ],
+          correlation: correlation("turn-1", "reasoning-1"),
+        }),
+      ],
+      nowMs: 1_200,
+    });
+
+    expect(
+      turn?.events.find((event) => event.kind === "reasoning")?.preview,
+    ).toBe("First current line · Second current line · Third current line");
+  });
+
   it("merges lifecycle replacements and retains exact item timing", () => {
     const messages = [
       message("user", 1, "user", 1_000, [

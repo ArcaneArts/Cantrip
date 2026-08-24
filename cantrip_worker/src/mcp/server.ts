@@ -90,6 +90,17 @@ export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
 ) => Promise<CantripAgentOperationResult>;
 
+export interface CantripMcpServerOptions {
+  /**
+   * Do not advertise result schemas to the MCP client. Every operation still
+   * parses its result with the authoritative schema before returning it. This
+   * is useful for local model providers where schemas are copied into the
+   * model prompt and result schemas add substantial prefill cost without
+   * helping the model form a tool call.
+   */
+  omitToolOutputSchemas?: boolean;
+}
+
 export function operationResult(
   result: CantripAgentOperationResult,
 ): CallToolResult {
@@ -160,7 +171,10 @@ const idempotentDestructiveOpenWorldMutationAnnotations = {
   idempotentHint: true,
 } as const;
 
-export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
+export function createCantripMcpServer(
+  gateway: CantripMcpOperationGateway,
+  options: CantripMcpServerOptions = {},
+) {
   const server = new McpServer(
     {
       name: "cantrip",
@@ -169,7 +183,15 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
     { instructions: CANTRIP_MCP_INSTRUCTIONS },
   );
-  server.registerTool(
+  const registerTool: typeof server.registerTool = (name, config, callback) =>
+    server.registerTool(
+      name,
+      options.omitToolOutputSchemas
+        ? { ...config, outputSchema: undefined }
+        : config,
+      callback,
+    );
+  registerTool(
     "context_get",
     {
       title: "Get Cantrip context",
@@ -191,7 +213,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "tool_help",
     {
       title: "Get exact Cantrip tool arguments",
@@ -210,7 +232,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "policy_list",
     {
       title: "List effective Cantrip policies",
@@ -232,7 +254,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "policy_read",
     {
       title: "Read an effective Cantrip policy",
@@ -257,7 +279,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "target_list",
     {
       title: "List authorized Cantrip targets",
@@ -282,7 +304,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "target_inspect",
     {
       title: "Inspect a Cantrip target",
@@ -307,7 +329,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_list",
     {
       title: "List Run configurations",
@@ -332,7 +354,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_get",
     {
       title: "Get a Run configuration",
@@ -357,7 +379,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_detect",
     {
       title: "Detect Run configuration targets",
@@ -382,7 +404,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_status",
     {
       title: "Read Run configuration status",
@@ -407,7 +429,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_read_output",
     {
       title: "Read Run configuration output",
@@ -432,7 +454,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "worktree_list",
     {
       title: "List Cantrip worktrees",
@@ -457,7 +479,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "worktree_status",
     {
       title: "Read Cantrip worktree status",
@@ -482,7 +504,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "explorer_list",
     {
       title: "List a Cantrip Explorer directory",
@@ -507,7 +529,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "explorer_read",
     {
       title: "Read a Cantrip Explorer file",
@@ -532,7 +554,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "terminal_read",
     {
       title: "Read a Cantrip terminal snapshot",
@@ -557,7 +579,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "browser_services",
     {
       title: "Discover Cantrip browser services",
@@ -582,7 +604,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_create",
     {
       title: "Create a Run configuration",
@@ -607,7 +629,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_update",
     {
       title: "Update a Run configuration",
@@ -632,7 +654,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_delete",
     {
       title: "Delete a Run configuration",
@@ -657,7 +679,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_start",
     {
       title: "Start a Run configuration",
@@ -682,7 +704,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_restart",
     {
       title: "Restart a Run configuration",
@@ -707,7 +729,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_stop",
     {
       title: "Stop a Run configuration",
@@ -732,7 +754,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "run_configuration_secret_set",
     {
       title: "Set a Run configuration secret",
@@ -757,7 +779,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "worktree_create",
     {
       title: "Create a Cantrip worktree",
@@ -782,7 +804,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "worktree_switch",
     {
       title: "Switch the Cantrip worktree",
@@ -807,7 +829,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "worktree_release",
     {
       title: "Release the current Cantrip worktree",
@@ -832,7 +854,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "worktree_remove",
     {
       title: "Remove a Cantrip worktree",
@@ -857,7 +879,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "explorer_write",
     {
       title: "Write a Cantrip Explorer file",
@@ -882,7 +904,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "terminal_send",
     {
       title: "Send input to a Cantrip terminal",
@@ -907,7 +929,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "terminal_restart",
     {
       title: "Restart a Cantrip terminal service",
@@ -932,7 +954,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "browser_navigate",
     {
       title: "Navigate a Cantrip browser",
@@ -957,7 +979,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "client_notify",
     {
       title: "Notify an active Cantrip client",
@@ -982,7 +1004,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "client_focus_project",
     {
       title: "Focus the bound Cantrip project",
@@ -1007,7 +1029,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "client_focus_surface",
     {
       title: "Focus a Cantrip surface",
@@ -1032,7 +1054,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
       }
     },
   );
-  server.registerTool(
+  registerTool(
     "client_show_interaction",
     {
       title: "Show a pending Cantrip interaction",

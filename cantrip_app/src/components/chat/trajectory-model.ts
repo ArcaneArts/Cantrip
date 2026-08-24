@@ -240,6 +240,15 @@ function compactText(value: string | null | undefined, limit = 360): string {
     : compact;
 }
 
+function latestReasoningLines(summary: string[], limit = 3): string {
+  return summary
+    .flatMap((part) => part.split(/\r?\n/gu))
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-limit)
+    .join(" · ");
+}
+
 function activityPreview(activity: AgentActivity): string | null {
   let preview = "";
   switch (activity.type) {
@@ -267,7 +276,7 @@ function activityPreview(activity: AgentActivity): string | null {
         activity.steps.map((step) => step.step).join(" · ");
       break;
     case "reasoning":
-      preview = activity.summary.join(" · ");
+      preview = latestReasoningLines(activity.summary);
       break;
     case "mcpToolCall":
       preview = activity.error ?? activity.query ?? activity.resultText ?? "";
