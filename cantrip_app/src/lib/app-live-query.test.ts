@@ -72,6 +72,11 @@ describe("application live query bridge", () => {
     ).toEqual([["account-resource-usage"], ["account-resource-usage-history"]]);
     expect(
       appLiveEventQueryKeys(
+        event({ resource: "settings", scope: { kind: "current-user" } }),
+      ),
+    ).toEqual([["settings"], ["code-settings-worker-status"]]);
+    expect(
+      appLiveEventQueryKeys(
         event({
           resource: "project-automation",
           scope: { kind: "project", projectId: "project-one" },
@@ -347,6 +352,9 @@ describe("application live query bridge", () => {
     ]);
     expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
       "workspace-policy-assignments",
+    ]);
+    expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
+      "code-settings-worker-status",
     ]);
   });
 

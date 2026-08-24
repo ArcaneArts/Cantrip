@@ -5,6 +5,8 @@ import {
   codeSettingsContentContext,
   codeSettingsPayloadSchema,
   codeSettingsPublicStatusSchema,
+  codeSettingsResolveRequestSchema,
+  codeSettingsSynchronizeRequestSchema,
   codeSettingsUploadSchema,
   codeSettingsWorkerStatusSchema,
   protectedCodeSettingsRecordSchema,
@@ -165,5 +167,28 @@ describe("global Code settings protocol", () => {
         state: "ready",
       }),
     ).toThrow(/conflict state/u);
+  });
+
+  it("keeps app recovery requests strict and non-initializing by default", () => {
+    expect(codeSettingsSynchronizeRequestSchema.parse({})).toEqual({
+      initializeIfMissing: false,
+    });
+    expect(
+      codeSettingsSynchronizeRequestSchema.safeParse({
+        initializeIfMissing: false,
+        settings: { "editor.fontSize": 99 },
+      }).success,
+    ).toBe(false);
+    expect(
+      codeSettingsResolveRequestSchema.parse({
+        resolution: "accept-canonical",
+      }),
+    ).toEqual({ resolution: "accept-canonical" });
+    expect(
+      codeSettingsResolveRequestSchema.safeParse({
+        resolution: "publish-local",
+        plaintext: "forbidden",
+      }).success,
+    ).toBe(false);
   });
 });

@@ -80,6 +80,11 @@ import {
   codeProtectedAttachmentCreateSchema,
   codeProtectedAttachmentIntentSchema,
   codeProtectedAttachmentWireSchema,
+  codeSettingsResolveRequestSchema,
+  codeSettingsSynchronizeRequestSchema,
+  codeSettingsWorkbenchAttachmentCreateSchema,
+  codeSettingsWorkbenchAttachmentWireSchema,
+  codeSettingsWorkerStatusSchema,
   codeRuntimeStatusSchema,
   codeGraphActionAcknowledgementSchema,
   codeGraphProjectStatusSchema,
@@ -374,6 +379,7 @@ import type {
   ChatTurnMode,
   EncryptedQueuedPrompt,
   CodeAppearance,
+  CodeSettingsResolution,
   CodeThemeMode,
   CodexExternalImportApply,
   CodexMcpOauthStart,
@@ -5416,7 +5422,7 @@ export async function deleteCodeTab(codeTabId: string) {
 
 async function protectedCodeAttachmentInput(input: {
   appearance: CodeAppearance;
-  expectedWorktreeId: string;
+  expectedWorktreeId?: string;
   sessionId: string;
   tunnelId: string;
   workerId: string;
@@ -5443,11 +5449,64 @@ async function protectedCodeAttachmentInput(input: {
   return {
     appearance: input.appearance,
     expectedWorkerId: input.workerId,
-    expectedWorktreeId: input.expectedWorktreeId,
+    ...(input.expectedWorktreeId
+      ? { expectedWorktreeId: input.expectedWorktreeId }
+      : {}),
     protectedRecord,
     sessionId: input.sessionId,
     tunnelId: input.tunnelId,
   };
+}
+
+export async function createProtectedCodeSettingsAttachment(
+  workerId: string,
+  appearance: CodeAppearance,
+) {
+  const tunnelId = crypto.randomUUID();
+  const sessionId = crypto.randomUUID();
+  const input = await protectedCodeAttachmentInput({
+    appearance,
+    sessionId,
+    tunnelId,
+    workerId,
+  });
+  return codeSettingsWorkbenchAttachmentWireSchema.parse(
+    await post(
+      "/api/settings/code/protected-code-attachments",
+      codeSettingsWorkbenchAttachmentCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function getCodeSettingsWorkerStatus(workerId: string) {
+  return codeSettingsWorkerStatusSchema.parse(
+    await request(
+      `/api/settings/code/workers/${encodeURIComponent(workerId)}/status`,
+    ),
+  );
+}
+
+export async function resolveCodeSettingsWorker(
+  workerId: string,
+  resolution: CodeSettingsResolution,
+) {
+  return codeSettingsWorkerStatusSchema.parse(
+    await post(
+      `/api/settings/code/workers/${encodeURIComponent(workerId)}/resolve`,
+      codeSettingsResolveRequestSchema.parse({ resolution }),
+    ),
+  );
+}
+
+export async function synchronizeCodeSettingsWorker(workerId: string) {
+  return codeSettingsWorkerStatusSchema.parse(
+    await post(
+      `/api/settings/code/workers/${encodeURIComponent(workerId)}/synchronize`,
+      codeSettingsSynchronizeRequestSchema.parse({
+        initializeIfMissing: false,
+      }),
+    ),
+  );
 }
 
 export async function createProtectedCodeAttachment(

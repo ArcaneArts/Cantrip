@@ -1446,7 +1446,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "code.settings.status":
         return (
-          codeSettingsSynchronizer?.status() ?? unavailableCodeSettingsStatus()
+          (await ensureCodeSettingsSynchronizer())?.status() ??
+          unavailableCodeSettingsStatus()
         );
       case "code.settings.resolve": {
         const synchronizer = await ensureCodeSettingsSynchronizer();

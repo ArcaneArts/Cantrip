@@ -167,6 +167,14 @@ export const codeSettingsResolutionSchema = z.enum([
   "publish-local",
 ]);
 
+export const codeSettingsResolveRequestSchema = z
+  .object({ resolution: codeSettingsResolutionSchema })
+  .strict();
+
+export const codeSettingsSynchronizeRequestSchema = z
+  .object({ initializeIfMissing: z.boolean().default(false) })
+  .strict();
+
 export function codeSettingsScopeId(profileId: string): string {
   return JSON.stringify(["global-code-settings", profileId]);
 }
@@ -212,4 +220,10 @@ export type CodeSettingsWorkerStatus = z.infer<
 >;
 export type CodeSettingsResolution = z.infer<
   typeof codeSettingsResolutionSchema
+>;
+export type CodeSettingsResolveRequest = z.infer<
+  typeof codeSettingsResolveRequestSchema
+>;
+export type CodeSettingsSynchronizeRequest = z.infer<
+  typeof codeSettingsSynchronizeRequestSchema
 >;
