@@ -8102,7 +8102,18 @@ export function App() {
                 onCreateWorkspace={async (name) => {
                   await createWorkspaceMutation.mutateAsync(name);
                 }}
+                creatingTabKinds={creatingSurfaceKinds}
                 onAddProject={openProjectCreateSource}
+                onCreateTab={(kind, target) => {
+                  if (selectedProject) {
+                    createProjectSurface(
+                      selectedProject.id,
+                      kind,
+                      undefined,
+                      target,
+                    );
+                  }
+                }}
                 onManageWorkspaces={() => {
                   setDesktopSidebarDrawerOpen(false);
                   setSettingsSection("workspaces");
@@ -8111,6 +8122,7 @@ export function App() {
                   setShowImporter(false);
                   setShowProjectSettings(false);
                 }}
+                tabPlacement={selectedPlacementContext}
               />
             </div>
 
