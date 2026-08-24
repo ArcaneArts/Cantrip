@@ -129,12 +129,19 @@ prove a stable process generation they do not receive this continuity guarantee.
 
 Both sides fence messages, frames, timers, shared presence publications, and
 asynchronous relay claims by the socket or claim generation that created them.
-Generation-aware workers now wait for an additive `pending`/`ready` handshake:
-raw WebSocket open does not cancel grace, start keepalive, flush queued command
-outcomes, or enable data-plane sends. The server sends `pending` before async
-authentication and `ready` only after owner validation and an atomically
-accepted bridge/relay claim. The ready deadline is anchored to the original
-loss, so repeated pending sockets cannot extend retention.
+Generation-aware workers now negotiate the additive
+`cantrip-worker-auth-ready-v1` WebSocket subprotocol and wait for its ordered
+`pending`/`ready` handshake: raw WebSocket open does not cancel grace, start
+keepalive, flush queued command outcomes, or enable data-plane sends. The worker
+offers the legacy protocol first, so an older server keeps its original
+raw-open behavior and can still flush durable outcomes during a rolling
+upgrade; the current server explicitly selects authenticated-ready only on the
+worker command route. The server sends `pending` before async authentication,
+queues `ready` before the accepted bridge/relay claim becomes command-visible,
+and relies on WebSocket ordering to prevent commands from overtaking readiness.
+The ready deadline is anchored to the original loss, so repeated pending
+sockets cannot extend retention. A matching `ready` without a preceding
+same-socket `pending` is a protocol error.
 
 Legacy workers remain compatible through the bounded input buffer and receive
 no new handshake envelopes. One socket may retain at most 1,024 events or

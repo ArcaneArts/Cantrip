@@ -574,13 +574,20 @@ socket as an unverifiable lifecycle and does not promise resource continuity.
 All socket input is fenced by the currently attached socket, and all deferred
 cleanup and coordinated relay presence work is fenced by its connection/claim
 generation. Repeated failed retries cannot extend the original grace deadline.
-For generation-aware workers, raw WebSocket open begins only protocol
-negotiation. The server advertises `pending` before asynchronous authentication
-and sends `ready` only after owner validation and atomic local/shared bridge
-attachment. Until matching `ready`, the worker keeps command outcomes queued,
-does not start keepalive or data-plane traffic, and does not cancel its original
-grace deadline. A short fallback retains compatibility with older servers;
-older workers omit the generation and receive no new handshake messages.
+Generation-aware workers offer explicit legacy and authenticated-ready
+WebSocket subprotocols. Older servers keep their default first-protocol
+selection and therefore preserve their original raw-open behavior; the current
+server selects `cantrip-worker-auth-ready-v1` only for the worker command route.
+Other WebSocket routes retain first-offered selection so tunnel-secret
+subprotocols are unchanged. Under the authenticated-ready protocol, raw
+WebSocket open begins only protocol negotiation. The server advertises
+`pending` before asynchronous authentication, then queues `ready` before the
+socket becomes command-visible after owner validation and atomic local/shared
+bridge attachment. WebSocket ordering therefore prevents a command from
+overtaking readiness. Until it receives matching, ordered `pending` and `ready`
+messages, the worker keeps command outcomes queued, does not start keepalive or
+data-plane traffic, and does not cancel its original grace deadline. Older
+workers omit the generation and receive no new handshake messages.
 
 Legacy workers may still flush on raw open, so the server retains a bounded
 compatibility buffer until bridge subscriptions exist. Each socket is limited
