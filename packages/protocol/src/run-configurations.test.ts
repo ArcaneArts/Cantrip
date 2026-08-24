@@ -136,21 +136,17 @@ describe("runConfigurationInspectionSchema", () => {
     expect(cantripAgentOperationNameSchema.parse("run-config.write")).toBe(
       "run-config.write",
     );
-    expect(cantripCliCommandNameSchema.parse("run.config-path")).toBe(
-      "run.config-path",
-    );
-    expect(cantripCliCommandNameSchema.parse("run.config-init")).toBe(
-      "run.config-init",
-    );
-    expect(cantripCliCommandNameSchema.parse("run.config-schema")).toBe(
-      "run.config-schema",
-    );
-    expect(cantripCliCommandNameSchema.parse("run.config-example")).toBe(
-      "run.config-example",
-    );
-    expect(cantripCliCommandNameSchema.parse("run.config-action-add")).toBe(
-      "run.config-action-add",
-    );
+    for (const command of [
+      "run.list",
+      "run.show",
+      "run.detect",
+      "run.create",
+      "run.update",
+      "run.delete",
+      "run.secret-set",
+    ]) {
+      expect(cantripCliCommandNameSchema.parse(command)).toBe(command);
+    }
     expect(
       workerCommandSchema.parse({
         type: "project.run-configurations.inspect",
@@ -300,8 +296,7 @@ describe("Run runtime schemas", () => {
     }
     for (const command of [
       "run.start",
-      "run.setup-status",
-      "run.setup-retry",
+      "run.restart",
       "run.status",
       "run.logs",
       "run.stop",

@@ -76,71 +76,61 @@ fn print_rows(items: &[Value], columns: &[(&str, &str)]) {
     }
 }
 
-fn run_action_rows(data: Option<&Value>) -> Vec<Value> {
-    data.and_then(|value| value.get("configurations"))
+fn run_definition_rows(data: Option<&Value>) -> Vec<Value> {
+    let runtimes = data
+        .and_then(|value| value.get("runtimes"))
+        .and_then(Value::as_array);
+    data.and_then(|value| value.get("inventory"))
+        .and_then(|value| value.get("entries"))
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .flat_map(|configuration| {
-            let environment = configuration
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("-")
-                .to_string();
-            let revision = configuration
+        .map(|entry| {
+            let mut row = entry.clone();
+            let document = entry.get("document");
+            let revision = entry
                 .get("revision")
                 .and_then(Value::as_str)
                 .unwrap_or("-")
                 .chars()
                 .take(12)
                 .collect::<String>();
-            configuration
-                .get("actions")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .map(move |action| {
-                    let mut action = action.clone();
-                    let platform = action
-                        .get("platform")
+            if let Some(object) = row.as_object_mut() {
+                object.insert("revisionShort".to_string(), Value::String(revision));
+                object.insert(
+                    "name".to_string(),
+                    document
+                        .and_then(|value| value.get("name"))
                         .cloned()
-                        .filter(|value| !value.is_null())
-                        .unwrap_or_else(|| Value::String("all".to_string()));
-                    if let Some(object) = action.as_object_mut() {
-                        object.insert(
-                            "environment".to_string(),
-                            Value::String(environment.clone()),
-                        );
-                        object.insert("revisionShort".to_string(), Value::String(revision.clone()));
-                        object.insert("platformLabel".to_string(), platform);
-                    }
-                    action
-                })
+                        .unwrap_or(Value::Null),
+                );
+                object.insert(
+                    "provider".to_string(),
+                    document
+                        .and_then(|value| value.get("provider"))
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                );
+                let runtime_state = entry
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .and_then(|id| {
+                        runtimes.into_iter().flatten().find(|runtime| {
+                            runtime.get("configurationId").and_then(Value::as_str) == Some(id)
+                                && matches!(
+                                    runtime.get("state").and_then(Value::as_str),
+                                    Some("starting" | "running" | "restarting" | "stopping")
+                                )
+                        })
+                    })
+                    .and_then(|runtime| runtime.get("state"))
+                    .cloned()
+                    .unwrap_or_else(|| Value::String("idle".to_string()));
+                object.insert("runtimeState".to_string(), runtime_state);
+            }
+            row
         })
         .collect()
-}
-
-fn run_diagnostics(data: Option<&Value>) -> Vec<Value> {
-    let mut diagnostics = data
-        .and_then(|value| value.get("diagnostics"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    for configuration in data
-        .and_then(|value| value.get("configurations"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        diagnostics.extend(
-            configuration
-                .get("diagnostics")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default(),
-        );
-    }
-    diagnostics
 }
 
 pub fn render(command: &str, result: &CommandResult, json: bool) {
@@ -287,15 +277,15 @@ pub fn render(command: &str, result: &CommandResult, json: bool) {
             }
         }
         "run.list" => {
-            let rows = run_action_rows(result.data.as_ref());
+            let rows = run_definition_rows(result.data.as_ref());
             if !rows.is_empty() {
                 print_rows(
                     &rows,
                     &[
-                        ("ENVIRONMENT", "environment"),
-                        ("ACTION", "name"),
-                        ("PLATFORM", "platformLabel"),
-                        ("SOURCE", "configurationPath"),
+                        ("NAME", "name"),
+                        ("PROVIDER", "provider"),
+                        ("RUNTIME", "runtimeState"),
+                        ("DEFINITION", "status"),
                         ("REVISION", "revisionShort"),
                         ("ID", "id"),
                     ],
@@ -306,73 +296,55 @@ pub fn render(command: &str, result: &CommandResult, json: bool) {
         "run.show" => {
             if let Some(data) = &result.data {
                 println!("{}", result.summary);
-                if let Some(action) = data.get("action") {
-                    println!("ID: {}", string(Some(action), "id"));
-                    println!("Source: {}", string(Some(action), "configurationPath"));
-                    println!("Platform: {}", string(Some(action), "platform"));
-                    if let Some(command) = action.get("command").and_then(Value::as_str) {
-                        println!("Command:\n{command}");
+                if let Some(entry) = data.get("result").and_then(|value| value.get("entry")) {
+                    println!("ID: {}", string(Some(entry), "id"));
+                    println!("Source: {}", string(Some(entry), "relativePath"));
+                    println!("Revision: {}", string(Some(entry), "revision"));
+                    println!("State: {}", string(Some(entry), "status"));
+                    if let Some(document) = entry.get("document") {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(document)
+                                .expect("serialize Run configuration")
+                        );
                     }
                 }
                 return;
             }
         }
-        "run.validate" => {
+        "run.start" | "run.restart" | "run.stop" => {
             println!("{}", result.summary);
-            let diagnostics = run_diagnostics(result.data.as_ref());
-            if !diagnostics.is_empty() {
-                print_rows(
-                    &diagnostics,
-                    &[
-                        ("SEVERITY", "severity"),
-                        ("CODE", "code"),
-                        ("SOURCE", "configurationPath"),
-                        ("MESSAGE", "message"),
-                    ],
-                );
-            }
-            return;
-        }
-        "run.config-path" => {
-            println!("{}", result.summary);
-            return;
-        }
-        "run.config-schema" => {
-            if let Some(schema) = result.data.as_ref().and_then(|data| data.get("schema")) {
+            if let Some(runtime) = result.data.as_ref().and_then(|data| data.get("runtime")) {
+                println!("Runtime: {}", string(Some(runtime), "id"));
                 println!(
-                    "{}",
-                    serde_json::to_string_pretty(schema).expect("serialize Run config schema")
+                    "Configuration: {}",
+                    string(Some(runtime), "configurationId")
                 );
-                return;
+                println!("Worktree: {}", string(Some(runtime), "worktreeId"));
+                println!("State: {}", string(Some(runtime), "state"));
+                println!("Generation: {}", string(Some(runtime), "generation"));
             }
+            return;
         }
-        "run.config-example" => {
-            if let Some(example) = result
+        "run.status" => {
+            if let Some(runtimes) = result
                 .data
                 .as_ref()
-                .and_then(|data| data.get("exampleToml"))
-                .and_then(Value::as_str)
+                .and_then(|data| data.get("runtimes"))
+                .and_then(Value::as_array)
             {
-                print!("{example}");
-                if !example.ends_with('\n') {
-                    println!();
-                }
+                print_rows(
+                    runtimes,
+                    &[
+                        ("CONFIGURATION", "configurationId"),
+                        ("STATE", "state"),
+                        ("GENERATION", "generation"),
+                        ("WORKTREE", "worktreeId"),
+                        ("RUNTIME", "id"),
+                    ],
+                );
                 return;
             }
-        }
-        "run.start" | "run.open" | "run.status" | "run.stop" => {
-            println!("{}", result.summary);
-            if let Some(run) = result.data.as_ref().and_then(|data| data.get("run")) {
-                println!("ID: {}", string(Some(run), "id"));
-                println!("State: {}", string(Some(run), "state"));
-                println!("Action: {}", string(Some(run), "actionId"));
-                println!("Worker: {}", string(Some(run), "workerId"));
-                println!("Started: {}", string(Some(run), "startedAt"));
-                println!("Ended: {}", string(Some(run), "endedAt"));
-                println!("Exit code: {}", string(Some(run), "exitCode"));
-                println!("Signal: {}", string(Some(run), "signal"));
-            }
-            return;
         }
         "run.logs" => {
             if let Some(data) = result
@@ -405,7 +377,7 @@ pub fn render(command: &str, result: &CommandResult, json: bool) {
 mod tests {
     use serde_json::json;
 
-    use super::{policy_source_labels, run_action_rows, string};
+    use super::{policy_source_labels, run_definition_rows, string};
 
     #[test]
     fn renders_policy_flags_and_source_labels() {
@@ -425,22 +397,18 @@ mod tests {
     }
 
     #[test]
-    fn flattens_run_actions_with_environment_context() {
+    fn flattens_run_definitions_with_document_context() {
         let data = json!({
-            "configurations": [{
-                "name": "Spectral Lab",
+            "inventory": { "entries": [{
+                "id": "spectral-lab",
+                "status": "ready",
                 "revision": "0123456789abcdef",
-                "actions": [{
-                    "id": "action-id",
-                    "name": "Run Spectral Lab",
-                    "platform": "win32",
-                    "configurationPath": ".codex/environments/environment.toml"
-                }]
-            }]
+                "document": { "name": "Spectral Lab", "provider": "rust" }
+            }] }
         });
-        let rows = run_action_rows(Some(&data));
-        assert_eq!(rows[0]["environment"], "Spectral Lab");
+        let rows = run_definition_rows(Some(&data));
+        assert_eq!(rows[0]["name"], "Spectral Lab");
+        assert_eq!(rows[0]["provider"], "rust");
         assert_eq!(rows[0]["revisionShort"], "0123456789ab");
-        assert_eq!(rows[0]["platformLabel"], "win32");
     }
 }

@@ -1,4 +1,8 @@
-import { clearSensitiveBytes, decryptProtectedSecret } from "@cantrip/crypto";
+import {
+  clearSensitiveBytes,
+  decryptProtectedSecret,
+  encryptProtectedSecret,
+} from "@cantrip/crypto";
 import {
   RUN_CONFIGURATION_SECRET_PROTECTED_CONTENT_BYTES_LIMIT,
   runConfigurationProtectedSecretSchema,
@@ -6,6 +10,7 @@ import {
   runConfigurationSecretValueContentSchema,
   type RunConfigurationProtectedSecret,
 } from "@cantrip/protocol/run-configuration-secrets";
+import { runConfigurationSecretReferenceSchema } from "@cantrip/protocol/run-configuration-definitions";
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
@@ -36,6 +41,37 @@ export async function openRunConfigurationSecretValue(input: {
       maximumBytes: RUN_CONFIGURATION_SECRET_PROTECTED_CONTENT_BYTES_LIMIT,
     });
     return content.value;
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
+
+export async function protectRunConfigurationSecretValue(input: {
+  projectId: string;
+  reference: string;
+  value: string;
+  service: Pick<WorkerEncryptionService, "componentKey" | "ownerId">;
+}) {
+  const reference = runConfigurationSecretReferenceSchema.parse(
+    input.reference,
+  );
+  const component = input.service.componentKey("run-content");
+  try {
+    return await encryptProtectedSecret({
+      ownerId: input.service.ownerId(),
+      component: "run-content",
+      table: "run_configuration_secrets",
+      rowId: runConfigurationSecretProtectionRowId({
+        projectId: input.projectId,
+        reference,
+      }),
+      field: "protected_value",
+      keyRevision: component.keyRevision,
+      componentKey: component.key,
+      content: { version: 1, value: input.value },
+      contentSchema: runConfigurationSecretValueContentSchema,
+      maximumBytes: RUN_CONFIGURATION_SECRET_PROTECTED_CONTENT_BYTES_LIMIT,
+    });
   } finally {
     clearSensitiveBytes(component.key);
   }
