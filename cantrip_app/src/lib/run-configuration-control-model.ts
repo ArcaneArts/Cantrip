@@ -54,6 +54,26 @@ export function runConfigurationTargetLabel(
       ? `${document.options.packageManager} run ${document.target.script}`
       : `${document.options.runtime} ${document.target.path}`;
   }
+  if (document.provider === "java") {
+    const gradle = document.target.kind.startsWith("gradle");
+    const tool = document.options.useWrapper
+      ? gradle
+        ? "./gradlew"
+        : "./mvnw"
+      : gradle
+        ? "gradle"
+        : "mvn";
+    switch (document.target.kind) {
+      case "gradleTask":
+        return `${tool} ${document.target.projectPath === ":" ? document.target.task : `${document.target.projectPath}:${document.target.task}`}`;
+      case "gradleMainClass":
+        return `${tool} ${document.target.projectPath} ${document.target.className}`;
+      case "mavenGoal":
+        return `${tool} ${document.target.module ? `-pl ${document.target.module} ` : ""}${document.target.goal}`;
+      case "mavenMainClass":
+        return `${tool} ${document.target.module ? `-pl ${document.target.module} ` : ""}${document.target.className}`;
+    }
+  }
   return document.target.kind === "command"
     ? document.target.command
     : `${document.target.interpreter ? `${document.target.interpreter} ` : ""}${document.target.path}`;

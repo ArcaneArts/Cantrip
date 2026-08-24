@@ -327,6 +327,11 @@ describe.sequential("Run configuration definition API", () => {
           available: true,
           supportsDiscovery: true,
         }),
+        expect.objectContaining({
+          provider: "java",
+          available: true,
+          supportsDiscovery: true,
+        }),
       ]),
     });
 
@@ -356,6 +361,81 @@ describe.sequential("Run configuration definition API", () => {
         }),
       ]),
     });
+
+    await mkdir(path.join(primaryRoot, "java", "src", "main", "java", "demo"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(primaryRoot, "java", "settings.gradle"),
+      "rootProject.name = 'java-api'\n",
+    );
+    await writeFile(
+      path.join(primaryRoot, "java", "build.gradle"),
+      "plugins { id 'application' }\napplication { mainClass = 'demo.Main' }\n",
+    );
+    await writeFile(
+      path.join(
+        primaryRoot,
+        "java",
+        "src",
+        "main",
+        "java",
+        "demo",
+        "Main.java",
+      ),
+      "package demo; public class Main { public static void main(String[] args) {} }\n",
+    );
+    const javaDetectedResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configurations/detect?operationId=${randomUUID()}&provider=java`,
+    });
+    expect(javaDetectedResponse.statusCode).toBe(200);
+    const javaDetected = runConfigurationDetectResponseSchema.parse(
+      javaDetectedResponse.json(),
+    );
+    const javaCandidate = javaDetected.candidates.find(
+      ({ document }) =>
+        document.provider === "java" &&
+        document.target.kind === "gradleMainClass",
+    );
+    if (!javaCandidate) throw new Error("Expected a detected Java main class.");
+    expect(javaCandidate).toMatchObject({
+      confidence: "high",
+      effectiveCommand: expect.stringContaining("demo.Main"),
+      document: {
+        provider: "java",
+        workingDirectory: "java",
+        target: { kind: "gradleMainClass", className: "demo.Main" },
+      },
+    });
+    const javaCreatedResponse = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-configurations/${javaCandidate.document.id}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: null,
+        document: javaCandidate.document,
+      },
+    });
+    expect(javaCreatedResponse.statusCode).toBe(201);
+    const javaCreated = runConfigurationWriteResponseSchema.parse(
+      javaCreatedResponse.json(),
+    );
+    if (
+      !("entry" in javaCreated.result) ||
+      !javaCreated.result.entry.revision
+    ) {
+      throw new Error("Expected a saved Java definition.");
+    }
+    const javaDeletedResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/run-configurations/${javaCandidate.document.id}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: javaCreated.result.entry.revision,
+      },
+    });
+    expect(javaDeletedResponse.statusCode).toBe(200);
 
     const createOperationId = randomUUID();
     const created = await app.inject({

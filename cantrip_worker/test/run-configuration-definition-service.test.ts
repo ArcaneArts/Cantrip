@@ -67,6 +67,11 @@ describe("RunConfigurationDefinitionService", () => {
           available: true,
           supportsDiscovery: true,
         }),
+        expect.objectContaining({
+          provider: "java",
+          available: true,
+          supportsDiscovery: true,
+        }),
       ]),
     });
 
@@ -75,6 +80,21 @@ describe("RunConfigurationDefinitionService", () => {
       JSON.stringify({ name: "demo", scripts: { start: "node index.js" } }),
     );
     await writeFile(path.join(root, "index.js"), "console.log('ready')\n");
+    await mkdir(path.join(root, "java", "src", "main", "java", "demo"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "java", "settings.gradle"),
+      "rootProject.name = 'java'\n",
+    );
+    await writeFile(
+      path.join(root, "java", "build.gradle"),
+      "plugins { id 'application' }\napplication { mainClass = 'demo.Main' }\n",
+    );
+    await writeFile(
+      path.join(root, "java", "src", "main", "java", "demo", "Main.java"),
+      "package demo; public class Main { public static void main(String[] args) {} }\n",
+    );
     const detected = await service.execute({
       type: "project.run-configuration-definitions.detect",
       operationId: randomUUID(),
@@ -88,6 +108,17 @@ describe("RunConfigurationDefinitionService", () => {
           provider: "node",
           confidence: "high",
           effectiveCommand: "npm run start",
+        }),
+        expect.objectContaining({
+          provider: "java",
+          confidence: "high",
+          document: expect.objectContaining({
+            workingDirectory: "java",
+            target: expect.objectContaining({
+              kind: "gradleMainClass",
+              className: "demo.Main",
+            }),
+          }),
         }),
       ]),
       diagnostics: [],

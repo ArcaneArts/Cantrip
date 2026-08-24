@@ -1,6 +1,7 @@
 import type {
   RunConfigurationDetectionCandidate,
   RunConfigurationFile,
+  RunConfigurationJavaDocument,
   RunConfigurationNodeDocument,
   RunConfigurationProviderCapability,
   RunConfigurationProviderKind,
@@ -10,6 +11,7 @@ import type {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Coffee,
   Loader2,
   Package,
   Plus,
@@ -209,11 +211,9 @@ function ProviderGlyph({
 }: {
   provider: RunConfigurationProviderKind;
 }) {
-  return provider === "node" ? (
-    <Package className="size-5" />
-  ) : (
-    <Terminal className="size-5" />
-  );
+  if (provider === "node") return <Package className="size-5" />;
+  if (provider === "java") return <Coffee className="size-5" />;
+  return <Terminal className="size-5" />;
 }
 
 function RunConfigurationCreationChooser({
@@ -233,7 +233,7 @@ function RunConfigurationCreationChooser({
   loading: boolean;
   onCancel(): void;
   onChooseCandidate(candidate: RunConfigurationDetectionCandidate): void;
-  onChooseProvider(provider: "node" | "shell"): void;
+  onChooseProvider(provider: "java" | "node" | "shell"): void;
 }) {
   const highConfidence = candidates.filter(
     ({ confidence }) => confidence === "high",
@@ -244,10 +244,12 @@ function RunConfigurationCreationChooser({
     (
       capability,
     ): capability is RunConfigurationProviderCapability & {
-      provider: "node" | "shell";
+      provider: "java" | "node" | "shell";
     } =>
       capability.available &&
-      (capability.provider === "node" || capability.provider === "shell"),
+      (capability.provider === "java" ||
+        capability.provider === "node" ||
+        capability.provider === "shell"),
   );
   return (
     <DialogContent className="max-w-3xl gap-4">
@@ -313,8 +315,8 @@ function RunConfigurationCreationChooser({
               </Command>
             ) : (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                No Node/package targets were detected. You can still create a
-                typed Node or Shell configuration.
+                No typed project targets were detected. You can still create a
+                blank Java, Node, or Shell configuration.
               </div>
             )}
           </section>
@@ -336,7 +338,9 @@ function RunConfigurationCreationChooser({
                     <span className="block text-xs text-muted-foreground">
                       {capability.provider === "shell"
                         ? "Blank command or script"
-                        : "Package script or Node entrypoint"}
+                        : capability.provider === "node"
+                          ? "Package script or Node entrypoint"
+                          : "Gradle or Maven application"}
                     </span>
                   </span>
                 </button>
@@ -357,6 +361,77 @@ function RunConfigurationCreationChooser({
         </Button>
       </DialogFooter>
     </DialogContent>
+  );
+}
+
+function JavaTargetEditor({
+  document,
+  onChange,
+}: {
+  document: RunConfigurationJavaDocument;
+  onChange(document: RunConfigurationJavaDocument): void;
+}) {
+  const target = document.target;
+  const gradle =
+    target.kind === "gradleTask" || target.kind === "gradleMainClass";
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label className={fieldClassName}>
+        <span className={labelClassName}>
+          {gradle ? "Gradle project" : "Maven module (optional)"}
+        </span>
+        <Input
+          className="font-mono"
+          placeholder={gradle ? ":app" : ":api or services/api"}
+          value={gradle ? target.projectPath : (target.module ?? "")}
+          onChange={(event) =>
+            onChange({
+              ...document,
+              target: gradle
+                ? { ...target, projectPath: event.target.value }
+                : { ...target, module: event.target.value || null },
+            } as RunConfigurationJavaDocument)
+          }
+        />
+      </label>
+      <label className={fieldClassName}>
+        <span className={labelClassName}>
+          {target.kind === "gradleTask"
+            ? "Gradle task"
+            : target.kind === "mavenGoal"
+              ? "Maven goal"
+              : "Main class"}
+        </span>
+        <Input
+          className="font-mono"
+          placeholder={
+            target.kind === "gradleTask"
+              ? "run"
+              : target.kind === "mavenGoal"
+                ? "spring-boot:run"
+                : "com.example.Application"
+          }
+          value={
+            target.kind === "gradleTask"
+              ? target.task
+              : target.kind === "mavenGoal"
+                ? target.goal
+                : target.className
+          }
+          onChange={(event) =>
+            onChange({
+              ...document,
+              target:
+                target.kind === "gradleTask"
+                  ? { ...target, task: event.target.value }
+                  : target.kind === "mavenGoal"
+                    ? { ...target, goal: event.target.value }
+                    : { ...target, className: event.target.value },
+            })
+          }
+        />
+      </label>
+    </div>
   );
 }
 
@@ -578,6 +653,7 @@ export function RunConfigurationEditor({
                 <NativeSelect disabled value={document.provider}>
                   <option value="shell">Shell</option>
                   <option value="node">Node / package</option>
+                  <option value="java">Java</option>
                 </NativeSelect>
               </label>
               <label className={fieldClassName}>
@@ -594,28 +670,60 @@ export function RunConfigurationEditor({
                 <span className={labelClassName}>Target type</span>
                 <NativeSelect
                   value={document.target.kind}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const kind = event.target.value;
                     patchDocument({
                       target:
                         document.provider === "shell"
-                          ? event.target.value === "script"
+                          ? kind === "script"
                             ? { kind: "script", path: "", interpreter: null }
                             : { kind: "command", command: "" }
-                          : event.target.value === "entry"
-                            ? { kind: "entry", path: "" }
-                            : { kind: "packageScript", script: "start" },
-                    })
-                  }
+                          : document.provider === "node"
+                            ? kind === "entry"
+                              ? { kind: "entry", path: "" }
+                              : { kind: "packageScript", script: "start" }
+                            : kind === "gradleMainClass"
+                              ? {
+                                  kind: "gradleMainClass",
+                                  projectPath: ":",
+                                  className: "",
+                                }
+                              : kind === "mavenGoal"
+                                ? {
+                                    kind: "mavenGoal",
+                                    module: null,
+                                    goal: "spring-boot:run",
+                                  }
+                                : kind === "mavenMainClass"
+                                  ? {
+                                      kind: "mavenMainClass",
+                                      module: null,
+                                      className: "",
+                                    }
+                                  : {
+                                      kind: "gradleTask",
+                                      projectPath: ":",
+                                      task: "run",
+                                    },
+                    });
+                  }}
                 >
                   {document.provider === "shell" ? (
                     <>
                       <option value="command">Command</option>
                       <option value="script">Script file</option>
                     </>
-                  ) : (
+                  ) : document.provider === "node" ? (
                     <>
                       <option value="packageScript">Package script</option>
                       <option value="entry">Node entrypoint</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="gradleTask">Gradle task</option>
+                      <option value="gradleMainClass">Gradle main class</option>
+                      <option value="mavenGoal">Maven goal</option>
+                      <option value="mavenMainClass">Maven main class</option>
                     </>
                   )}
                 </NativeSelect>
@@ -689,52 +797,56 @@ export function RunConfigurationEditor({
                   </label>
                 </div>
               )
-            ) : document.target.kind === "packageScript" ? (
-              <label className={fieldClassName}>
-                <span className={labelClassName}>Package script</span>
-                <Input
-                  className="font-mono"
-                  placeholder="start"
-                  value={document.target.script}
-                  onChange={(event) =>
-                    setDocument((current) =>
-                      current.provider === "node" &&
-                      current.target.kind === "packageScript"
-                        ? {
-                            ...current,
-                            target: {
-                              kind: "packageScript",
-                              script: event.target.value,
-                            },
-                          }
-                        : current,
-                    )
-                  }
-                />
-              </label>
+            ) : document.provider === "node" ? (
+              document.target.kind === "packageScript" ? (
+                <label className={fieldClassName}>
+                  <span className={labelClassName}>Package script</span>
+                  <Input
+                    className="font-mono"
+                    placeholder="start"
+                    value={document.target.script}
+                    onChange={(event) =>
+                      setDocument((current) =>
+                        current.provider === "node" &&
+                        current.target.kind === "packageScript"
+                          ? {
+                              ...current,
+                              target: {
+                                kind: "packageScript",
+                                script: event.target.value,
+                              },
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </label>
+              ) : (
+                <label className={fieldClassName}>
+                  <span className={labelClassName}>Entrypoint path</span>
+                  <Input
+                    className="font-mono"
+                    placeholder="src/index.js"
+                    value={document.target.path}
+                    onChange={(event) =>
+                      setDocument((current) =>
+                        current.provider === "node" &&
+                        current.target.kind === "entry"
+                          ? {
+                              ...current,
+                              target: {
+                                kind: "entry",
+                                path: event.target.value,
+                              },
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </label>
+              )
             ) : (
-              <label className={fieldClassName}>
-                <span className={labelClassName}>Entrypoint path</span>
-                <Input
-                  className="font-mono"
-                  placeholder="src/index.js"
-                  value={document.target.path}
-                  onChange={(event) =>
-                    setDocument((current) =>
-                      current.provider === "node" &&
-                      current.target.kind === "entry"
-                        ? {
-                            ...current,
-                            target: {
-                              kind: "entry",
-                              path: event.target.value,
-                            },
-                          }
-                        : current,
-                    )
-                  }
-                />
-              </label>
+              <JavaTargetEditor document={document} onChange={setDocument} />
             )}
             <label className={fieldClassName}>
               <span className={labelClassName}>
@@ -865,7 +977,7 @@ export function RunConfigurationEditor({
                         (item, itemIndex) =>
                           itemIndex === index
                             ? event.target.value === "providerTask" &&
-                              document.provider === "node"
+                              document.provider !== "shell"
                               ? { kind: "providerTask", task: "build" }
                               : {
                                   kind: "command",
@@ -878,14 +990,14 @@ export function RunConfigurationEditor({
                   }
                 >
                   <option value="command">Command</option>
-                  {document.provider === "node" ||
+                  {document.provider !== "shell" ||
                   step.kind === "providerTask" ? (
                     <option
-                      disabled={document.provider !== "node"}
+                      disabled={document.provider === "shell"}
                       value="providerTask"
                     >
                       Provider task
-                      {document.provider !== "node" ? " (unsupported)" : ""}
+                      {document.provider === "shell" ? " (unsupported)" : ""}
                     </option>
                   ) : null}
                 </NativeSelect>
@@ -929,14 +1041,16 @@ export function RunConfigurationEditor({
                   <span
                     className={cn(
                       "flex items-center text-xs",
-                      document.provider === "node"
+                      document.provider !== "shell"
                         ? "text-muted-foreground"
                         : "text-destructive",
                     )}
                   >
                     {document.provider === "node"
                       ? "Runs a package script in the start directory."
-                      : "Change this step to Command or remove it."}
+                      : document.provider === "java"
+                        ? "Runs a Gradle task or Maven goal in the selected module."
+                        : "Change this step to Command or remove it."}
                   </span>
                 )}
                 <Button
@@ -1033,7 +1147,7 @@ export function RunConfigurationEditor({
                     Login shell
                   </label>
                 </>
-              ) : (
+              ) : document.provider === "node" ? (
                 <>
                   <label className={fieldClassName}>
                     <span className={labelClassName}>Package manager</span>
@@ -1090,6 +1204,50 @@ export function RunConfigurationEditor({
                     </NativeSelect>
                   </label>
                 </>
+              ) : (
+                <>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>JDK home (optional)</span>
+                    <Input
+                      className="font-mono"
+                      placeholder="Use worker JAVA_HOME"
+                      value={document.options.jdkHome ?? ""}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "java"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  jdkHome: event.target.value || null,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="flex items-end gap-2 pb-2 text-sm">
+                    <input
+                      checked={document.options.useWrapper}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "java"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  useWrapper: event.target.checked,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                      type="checkbox"
+                    />{" "}
+                    Use project wrapper
+                  </label>
+                </>
               )}
               <label className={fieldClassName}>
                 <span className={labelClassName}>
@@ -1125,6 +1283,47 @@ export function RunConfigurationEditor({
                     )
                   }
                 />
+              </div>
+            ) : null}
+            {document.provider === "java" ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-2">
+                  <span className={labelClassName}>Build-tool arguments</span>
+                  <StringListEditor
+                    addLabel="Add build-tool argument"
+                    values={document.options.buildToolArguments}
+                    onChange={(buildToolArguments) =>
+                      setDocument((current) =>
+                        current.provider === "java"
+                          ? {
+                              ...current,
+                              options: {
+                                ...current.options,
+                                buildToolArguments,
+                              },
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <span className={labelClassName}>Java VM arguments</span>
+                  <StringListEditor
+                    addLabel="Add VM argument"
+                    values={document.options.vmArguments}
+                    onChange={(vmArguments) =>
+                      setDocument((current) =>
+                        current.provider === "java"
+                          ? {
+                              ...current,
+                              options: { ...current.options, vmArguments },
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </div>
               </div>
             ) : null}
             <label className={fieldClassName}>

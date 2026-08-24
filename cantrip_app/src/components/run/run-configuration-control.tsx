@@ -4,6 +4,7 @@ import type { RunConfigurationRepositoryInventory } from "@cantrip/protocol/run-
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  Coffee,
   Check,
   ChevronDown,
   CircleAlert,
@@ -75,6 +76,9 @@ type LifecycleInput = {
 };
 
 function ProviderIcon({ provider }: { provider?: string | null }) {
+  if (provider === "java") {
+    return <Coffee className="size-4 shrink-0 text-muted-foreground" />;
+  }
   return provider === "node" ? (
     <Package className="size-4 shrink-0 text-muted-foreground" />
   ) : (

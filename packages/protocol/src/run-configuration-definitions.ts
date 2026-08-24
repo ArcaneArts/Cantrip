@@ -426,9 +426,169 @@ export const runConfigurationNodeDocumentSchema = z
     }
   });
 
+export const runConfigurationJavaBuildSystemSchema = z.enum([
+  "gradle",
+  "maven",
+]);
+
+export const runConfigurationJavaClassNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(512)
+  .regex(
+    /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*$/u,
+    "Expected a fully qualified Java class name.",
+  );
+
+export const runConfigurationGradleProjectPathSchema = z
+  .string()
+  .trim()
+  .max(512)
+  .regex(
+    /^:(?:[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)*)?$/u,
+    "Expected a Gradle project path such as : or :app.",
+  );
+
+const runConfigurationBuildTaskSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(256)
+  .regex(
+    /^:?[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)*$/u,
+    "Expected a build-tool task or goal without command-line options.",
+  );
+
+export const runConfigurationMavenModuleSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(512)
+  .regex(
+    /^(?!-)(?::?[A-Za-z0-9_.+@-]+(?::[A-Za-z0-9_.+@-]+)*|[A-Za-z0-9_.+@-]+(?:\/[A-Za-z0-9_.+@-]+)*)$/u,
+    "Expected a Maven module selector or normalized relative module path.",
+  );
+
+export const runConfigurationJavaTargetSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("gradleTask"),
+      projectPath: runConfigurationGradleProjectPathSchema.default(":"),
+      task: runConfigurationBuildTaskSchema.default("run"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("gradleMainClass"),
+      projectPath: runConfigurationGradleProjectPathSchema.default(":"),
+      className: runConfigurationJavaClassNameSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("mavenGoal"),
+      module: runConfigurationMavenModuleSchema.nullable().default(null),
+      goal: runConfigurationBuildTaskSchema.default("spring-boot:run"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("mavenMainClass"),
+      module: runConfigurationMavenModuleSchema.nullable().default(null),
+      className: runConfigurationJavaClassNameSchema,
+    })
+    .strict(),
+]);
+
+const runConfigurationJdkHomeSchema = noNulString(1_024)
+  .trim()
+  .min(1)
+  .nullable();
+
+export const runConfigurationJavaOptionsSchema = z
+  .object({
+    jdkHome: runConfigurationJdkHomeSchema.default(null),
+    useWrapper: z.boolean().default(true),
+    buildToolArguments: runConfigurationArgumentsSchema.max(128).default([]),
+    vmArguments: runConfigurationArgumentsSchema.max(128).default([]),
+  })
+  .strict();
+
+const runConfigurationJavaPlatformOverrideSchema = z
+  .object({
+    workingDirectory: runConfigurationWorkingDirectorySchema.optional(),
+    commandOverride: runConfigurationCommandSchema.nullable().optional(),
+    arguments: runConfigurationArgumentsSchema.optional(),
+    environment: runConfigurationEnvironmentOverrideSchema.optional(),
+    options: z
+      .object({
+        jdkHome: runConfigurationJdkHomeSchema.optional(),
+        useWrapper: z.boolean().optional(),
+        buildToolArguments: runConfigurationArgumentsSchema.max(128).optional(),
+        vmArguments: runConfigurationArgumentsSchema.max(128).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const runConfigurationJavaPlatformOverridesSchema = z
+  .object({
+    win32: runConfigurationJavaPlatformOverrideSchema.optional(),
+    darwin: runConfigurationJavaPlatformOverrideSchema.optional(),
+    linux: runConfigurationJavaPlatformOverrideSchema.optional(),
+  })
+  .strict();
+
+export const runConfigurationJavaDocumentSchema = z
+  .object({
+    schema: z.literal(RUN_CONFIGURATION_FILE_SCHEMA),
+    version: z.literal(RUN_CONFIGURATION_FILE_VERSION),
+    id: runConfigurationIdSchema,
+    name: z.string().trim().min(1).max(200),
+    provider: z.literal("java"),
+    workingDirectory: runConfigurationWorkingDirectorySchema.default("."),
+    target: runConfigurationJavaTargetSchema,
+    commandOverride: runConfigurationCommandSchema.nullable().default(null),
+    arguments: runConfigurationArgumentsSchema.default([]),
+    environment: runConfigurationEnvironmentSchema.default({
+      includeCodexEnvironment: true,
+      files: [],
+      variables: [],
+      secrets: [],
+    }),
+    beforeLaunch: z
+      .array(runConfigurationBeforeLaunchStepSchema)
+      .max(32)
+      .default([]),
+    platformOverrides: runConfigurationJavaPlatformOverridesSchema.default({}),
+    options: runConfigurationJavaOptionsSchema.default({
+      jdkHome: null,
+      useWrapper: true,
+      buildToolArguments: [],
+      vmArguments: [],
+    }),
+    stop: runConfigurationStopSchema.default({ gracePeriodMs: 3_000 }),
+  })
+  .strict()
+  .superRefine((document, context) => {
+    const bytes = new TextEncoder().encode(JSON.stringify(document)).byteLength;
+    if (bytes > RUN_CONFIGURATION_MAX_FILE_BYTES) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Run configuration documents cannot exceed " +
+          RUN_CONFIGURATION_MAX_FILE_BYTES +
+          " encoded bytes.",
+      });
+    }
+  });
+
 export const runConfigurationFileSchema = z.discriminatedUnion("provider", [
   runConfigurationShellDocumentSchema,
   runConfigurationNodeDocumentSchema,
+  runConfigurationJavaDocumentSchema,
 ]);
 
 export const runConfigurationDiagnosticSchema = z
@@ -634,6 +794,9 @@ export type RunConfigurationShellDocument = z.infer<
 >;
 export type RunConfigurationNodeDocument = z.infer<
   typeof runConfigurationNodeDocumentSchema
+>;
+export type RunConfigurationJavaDocument = z.infer<
+  typeof runConfigurationJavaDocumentSchema
 >;
 export type RunConfigurationFile = z.infer<typeof runConfigurationFileSchema>;
 export type RunConfigurationDiagnostic = z.infer<

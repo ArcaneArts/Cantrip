@@ -13,6 +13,7 @@ import {
 
 import { shellRunConfigurationProvider } from "./run-configuration-provider.js";
 import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.js";
+import { javaRunConfigurationProvider } from "./run-configuration-java-provider.js";
 import {
   RunConfigurationRepository,
   type RunConfigurationRepositoryWatcher,
@@ -82,6 +83,7 @@ export class RunConfigurationDefinitionService {
           capabilities: [
             shellRunConfigurationProvider.capability,
             nodeRunConfigurationProvider.capability,
+            javaRunConfigurationProvider.capability,
           ],
         });
       case "project.run-configuration-definitions.detect": {
@@ -90,23 +92,40 @@ export class RunConfigurationDefinitionService {
           platform: workerPlatform(),
           targetRoot: command.sourcePath,
         };
-        const candidates =
-          command.providerKind === null || command.providerKind === "node"
-            ? (
-                await nodeRunConfigurationProvider.discover(providerContext)
-              ).map((candidate) => ({
-                ...candidate,
-                provider: "node" as const,
-                effectiveCommand:
-                  nodeRunConfigurationProvider.renderEffectiveCommand(
-                    candidate.document,
-                    providerContext.platform,
-                  ),
-              }))
-            : [];
+        const candidates = [];
+        if (command.providerKind === null || command.providerKind === "node") {
+          candidates.push(
+            ...(
+              await nodeRunConfigurationProvider.discover(providerContext)
+            ).map((candidate) => ({
+              ...candidate,
+              provider: "node" as const,
+              effectiveCommand:
+                nodeRunConfigurationProvider.renderEffectiveCommand(
+                  candidate.document,
+                  providerContext.platform,
+                ),
+            })),
+          );
+        }
+        if (command.providerKind === null || command.providerKind === "java") {
+          candidates.push(
+            ...(
+              await javaRunConfigurationProvider.discover(providerContext)
+            ).map((candidate) => ({
+              ...candidate,
+              provider: "java" as const,
+              effectiveCommand:
+                javaRunConfigurationProvider.renderEffectiveCommand(
+                  candidate.document,
+                  providerContext.platform,
+                ),
+            })),
+          );
+        }
         const diagnostics =
           command.providerKind &&
-          !["shell", "node"].includes(command.providerKind)
+          !["shell", "node", "java"].includes(command.providerKind)
             ? [
                 {
                   severity: "warning" as const,

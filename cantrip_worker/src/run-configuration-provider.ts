@@ -38,6 +38,7 @@ export interface MaterializedRunConfiguration extends MaterializedRunCommand {
   beforeLaunch: MaterializedRunCommand[];
   effectiveCommand: string;
   environment: RunConfigurationEnvironment;
+  environmentAdditions?: Record<string, string>;
 }
 
 export interface RunConfigurationProvider<

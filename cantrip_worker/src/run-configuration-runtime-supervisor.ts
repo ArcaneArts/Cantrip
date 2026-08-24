@@ -27,6 +27,7 @@ import * as pty from "node-pty";
 
 import { workerLogger } from "./logger.js";
 import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.js";
+import { javaRunConfigurationProvider } from "./run-configuration-java-provider.js";
 import {
   shellRunConfigurationProvider,
   type MaterializedRunCommand,
@@ -714,10 +715,15 @@ export class RunConfigurationRuntimeSupervisor {
               document,
               providerContext,
             )
-          : await nodeRunConfigurationProvider.materialize(
-              document,
-              providerContext,
-            );
+          : document.provider === "node"
+            ? await nodeRunConfigurationProvider.materialize(
+                document,
+                providerContext,
+              )
+            : await javaRunConfigurationProvider.materialize(
+                document,
+                providerContext,
+              );
       if (!generationLaunchIsCurrent(session, command.identity)) return;
       session.stopGracePeriodMs = document.stop.gracePeriodMs;
 
@@ -758,6 +764,7 @@ export class RunConfigurationRuntimeSupervisor {
         ...boundedEnvironmentLayer(layers.files),
         ...enabledVariables(materialized.environment),
         ...boundedEnvironmentLayer(layers.secrets),
+        ...boundedEnvironmentLayer(materialized.environmentAdditions),
         TERM: "xterm-256color",
         COLORTERM: "truecolor",
         ...reservedEnvironment(session, roots.sourceRoot, roots.targetRoot),
