@@ -7,6 +7,7 @@ import {
   projectFolderSetupJobSummarySchema,
   projectGithubConversionJobSummarySchema,
   projectGithubConversionPreflightResultSchema,
+  projectWorktreeListSchema,
   projectWireListSchema,
   projectWireSummarySchema,
   encryptedChatTurnCreateSchema,
@@ -804,6 +805,27 @@ describe("managed folder project lifecycle", () => {
         payload: { deleteLocalFiles: false },
       }),
     ).toMatchObject({ statusCode: 204 });
+  });
+
+  it("lists the Primary folder root for read-only execution consumers", async () => {
+    const project = await createFolder("Readable folder root");
+    await waitUntilReady(project.id);
+    const root = (
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, project.id)
+    )[0]!;
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/projects/${project.id}/worktrees`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(projectWorktreeListSchema.parse(response.json())).toEqual([
+      expect.objectContaining({
+        id: root.id,
+        rootKind: "folder-root",
+        isPrimary: true,
+      }),
+    ]);
   });
 
   it("binds every runtime surface and target to the folder owner", async () => {

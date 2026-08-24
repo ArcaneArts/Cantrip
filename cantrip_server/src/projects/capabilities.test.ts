@@ -79,6 +79,9 @@ describe("project capability guards", () => {
       ),
     ).toBe("worktrees");
     expect(
+      projectCapabilityForRoute("GET", "/api/projects/:projectId/worktrees"),
+    ).toBeNull();
+    expect(
       projectCapabilityForRoute("GET", "/api/projects/:projectId/chats"),
     ).toBeNull();
   });

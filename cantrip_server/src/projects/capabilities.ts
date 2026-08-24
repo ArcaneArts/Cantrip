@@ -50,6 +50,9 @@ export function projectCapabilityForRoute(
   route: string,
 ): ProjectCapability | null {
   if (!route.startsWith("/api/projects/:projectId/")) return null;
+  if (method === "GET" && route === "/api/projects/:projectId/worktrees") {
+    return null;
+  }
   if (route.includes("/github/")) return "github";
   if (route.includes("/git/") || route.endsWith("/git/status")) return "git";
   if (route.includes("/worktrees") || route.endsWith("/worktree-policy")) {
