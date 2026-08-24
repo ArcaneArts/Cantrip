@@ -116,21 +116,40 @@ import {
 import {
   runConfigurationCapabilitiesWorkerCommandSchema,
   runConfigurationDefinitionChangeNotificationSchema,
+  runConfigurationDeleteResponseSchema,
   runConfigurationDetectWorkerCommandSchema,
+  runConfigurationDetectResponseSchema,
   runConfigurationDeleteWorkerCommandSchema,
+  runConfigurationGetResponseSchema,
   runConfigurationGetWorkerCommandSchema,
+  runConfigurationListResponseSchema,
   runConfigurationListWorkerCommandSchema,
+  runConfigurationWriteResponseSchema,
   runConfigurationWriteWorkerCommandSchema,
 } from "./run-configuration-operations.js";
 import {
+  runConfigurationRuntimeOperationResultSchema,
+  runConfigurationRuntimeOutputSchema,
   runConfigurationRuntimeOutputWorkerCommandSchema,
   runConfigurationRuntimeReconcileWorkerCommandSchema,
   runConfigurationRuntimeRestartWorkerCommandSchema,
+  runConfigurationRuntimeStatusResultSchema,
   runConfigurationRuntimeStartWorkerCommandSchema,
   runConfigurationRuntimeStatusWorkerCommandSchema,
   runConfigurationRuntimeStopWorkerCommandSchema,
   runConfigurationRuntimeWorkerNotificationSchema,
 } from "./run-configuration-runtime.js";
+import {
+  runConfigurationFileSchema,
+  runConfigurationIdSchema,
+  runConfigurationProviderKindSchema,
+  runConfigurationRevisionSchema,
+  runConfigurationSecretReferenceSchema,
+} from "./run-configuration-definitions.js";
+import {
+  runConfigurationSecretSetResultSchema,
+  runConfigurationSecretValueContentSchema,
+} from "./run-configuration-secrets.js";
 
 import {
   directBrokerAdvertisementSchema,
@@ -7670,6 +7689,18 @@ export const cantripAgentOperationNameSchema = z.enum([
   "run-config.action-add",
   "run-config.authoring",
   "run-config.write",
+  "run-configuration.list",
+  "run-configuration.get",
+  "run-configuration.detect",
+  "run-configuration.create",
+  "run-configuration.update",
+  "run-configuration.delete",
+  "run-configuration.start",
+  "run-configuration.restart",
+  "run-configuration.stop",
+  "run-configuration.status",
+  "run-configuration.read-output",
+  "run-configuration.secret-set",
   "run.start",
   "run.open",
   "run.setup-status",
@@ -7705,12 +7736,11 @@ export const CANTRIP_MCP_READ_OPERATIONS = [
   "policy.read",
   "target.list",
   "target.inspect",
-  "run-config.list",
-  "run-config.read",
-  "run-config.schema",
-  "run.setup-status",
-  "run.status",
-  "run.read",
+  "run-configuration.list",
+  "run-configuration.get",
+  "run-configuration.detect",
+  "run-configuration.status",
+  "run-configuration.read-output",
   "worktree.list",
   "worktree.status",
   "explorer.list",
@@ -7726,12 +7756,11 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
   "policy_read",
   "target_list",
   "target_inspect",
-  "run_config_list",
-  "run_config_read",
-  "run_config_schema",
-  "run_setup_status",
-  "run_status",
-  "run_read",
+  "run_configuration_list",
+  "run_configuration_get",
+  "run_configuration_detect",
+  "run_configuration_status",
+  "run_configuration_read_output",
   "worktree_list",
   "worktree_status",
   "explorer_list",
@@ -7741,11 +7770,13 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 ] as const;
 
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
-  "run-config.action-add",
-  "run.start",
-  "run.open",
-  "run.setup-retry",
-  "run.stop",
+  "run-configuration.create",
+  "run-configuration.update",
+  "run-configuration.delete",
+  "run-configuration.start",
+  "run-configuration.restart",
+  "run-configuration.stop",
+  "run-configuration.secret-set",
   "worktree.create",
   "worktree.switch",
   "worktree.release",
@@ -7769,11 +7800,13 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 ] as const;
 
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
-  "run_config_action_add",
-  "run_start",
-  "run_open",
-  "run_setup_retry",
-  "run_stop",
+  "run_configuration_create",
+  "run_configuration_update",
+  "run_configuration_delete",
+  "run_configuration_start",
+  "run_configuration_restart",
+  "run_configuration_stop",
+  "run_configuration_secret_set",
   "worktree_create",
   "worktree_switch",
   "worktree_release",
@@ -8044,6 +8077,77 @@ export const cantripMcpRunReadInputSchema = z
   .object({
     runId: runInstanceSchema.shape.id,
     maxChars: z.number().int().min(1).max(100_000).default(20_000),
+  })
+  .strict();
+export const cantripMcpRunConfigurationListInputSchema = z.object({}).strict();
+export const cantripMcpRunConfigurationGetInputSchema = z
+  .object({ configurationId: runConfigurationIdSchema })
+  .strict();
+export const cantripMcpRunConfigurationDetectInputSchema = z
+  .object({ provider: runConfigurationProviderKindSchema.optional() })
+  .strict();
+export const cantripMcpRunConfigurationCreateInputSchema = z
+  .object({
+    operationId: z.string().uuid(),
+    document: runConfigurationFileSchema,
+  })
+  .strict();
+export const cantripMcpRunConfigurationUpdateInputSchema = z
+  .object({
+    operationId: z.string().uuid(),
+    configurationId: runConfigurationIdSchema,
+    expectedRevision: runConfigurationRevisionSchema,
+    document: runConfigurationFileSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.configurationId !== input.document.id) {
+      context.addIssue({
+        code: "custom",
+        message: "The requested and document configuration IDs must match.",
+        path: ["document", "id"],
+      });
+    }
+  });
+export const cantripMcpRunConfigurationDeleteInputSchema = z
+  .object({
+    operationId: z.string().uuid(),
+    configurationId: runConfigurationIdSchema,
+    expectedRevision: runConfigurationRevisionSchema,
+  })
+  .strict();
+const cantripMcpRunConfigurationTargetInputFields = {
+  operationId: z.string().uuid(),
+  configurationId: runConfigurationIdSchema,
+  worktreeId: z.string().min(1).max(200).nullable().default(null),
+};
+export const cantripMcpRunConfigurationStartInputSchema = z
+  .object(cantripMcpRunConfigurationTargetInputFields)
+  .strict();
+export const cantripMcpRunConfigurationRestartInputSchema = z
+  .object(cantripMcpRunConfigurationTargetInputFields)
+  .strict();
+export const cantripMcpRunConfigurationStopInputSchema = z
+  .object(cantripMcpRunConfigurationTargetInputFields)
+  .strict();
+export const cantripMcpRunConfigurationStatusInputSchema = z
+  .object({
+    configurationId: runConfigurationIdSchema.nullable().default(null),
+    worktreeId: z.string().min(1).max(200).nullable().default(null),
+    limit: z.number().int().positive().max(256).default(256),
+  })
+  .strict();
+export const cantripMcpRunConfigurationReadOutputInputSchema = z
+  .object({
+    ...cantripMcpRunConfigurationTargetInputFields,
+    tail: z.number().int().positive().max(100_000).default(10_000),
+  })
+  .strict();
+export const cantripMcpRunConfigurationSecretSetInputSchema = z
+  .object({
+    operationId: z.string().uuid(),
+    reference: runConfigurationSecretReferenceSchema,
+    value: runConfigurationSecretValueContentSchema.shape.value,
   })
   .strict();
 export const cantripMcpWorktreeListInputSchema = z
@@ -8379,6 +8483,85 @@ export const cantripMcpRunReadResultSchema =
     target: z.null().default(null),
     worktreeId: z.string().min(1).max(200),
     data: runLogResultSchema,
+  });
+
+const cantripMcpRunConfigurationProjectTargetSchema = z
+  .object({
+    kind: z.literal("project"),
+    projectId: z.string().min(1).max(200),
+  })
+  .strict();
+const cantripMcpRunConfigurationResultBaseSchema = z
+  .object({
+    summary: z.string().min(1).max(2_000),
+    target: cantripMcpRunConfigurationProjectTargetSchema,
+    worktreeId: z.string().min(1).max(200).nullable().default(null),
+    continuationScheduled: z.literal(false).default(false),
+    mutated: z.boolean(),
+  })
+  .strict();
+const cantripMcpRunConfigurationReadResultBaseSchema =
+  cantripMcpRunConfigurationResultBaseSchema.extend({
+    mutated: z.literal(false).default(false),
+  });
+export const cantripMcpRunConfigurationListResultSchema =
+  cantripMcpRunConfigurationReadResultBaseSchema.extend({
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationListResponseSchema
+      .extend({
+        runtimes: runConfigurationRuntimeStatusResultSchema.shape.runtimes,
+      })
+      .strict(),
+  });
+export const cantripMcpRunConfigurationGetResultSchema =
+  cantripMcpRunConfigurationReadResultBaseSchema.extend({
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationGetResponseSchema,
+  });
+export const cantripMcpRunConfigurationDetectResultSchema =
+  cantripMcpRunConfigurationReadResultBaseSchema.extend({
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationDetectResponseSchema,
+  });
+export const cantripMcpRunConfigurationStatusResultSchema =
+  cantripMcpRunConfigurationReadResultBaseSchema.extend({
+    data: runConfigurationRuntimeStatusResultSchema,
+  });
+export const cantripMcpRunConfigurationReadOutputResultSchema =
+  cantripMcpRunConfigurationReadResultBaseSchema.extend({
+    target: cantripMcpWorktreeTargetSchema,
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationRuntimeOutputSchema,
+  });
+export const cantripMcpRunConfigurationCreateResultSchema =
+  cantripMcpRunConfigurationResultBaseSchema.extend({
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationWriteResponseSchema,
+  });
+export const cantripMcpRunConfigurationUpdateResultSchema =
+  cantripMcpRunConfigurationCreateResultSchema;
+export const cantripMcpRunConfigurationDeleteResultSchema =
+  cantripMcpRunConfigurationResultBaseSchema.extend({
+    worktreeId: z.string().min(1).max(200),
+    mutated: z.literal(true),
+    data: runConfigurationDeleteResponseSchema,
+  });
+const cantripMcpRunConfigurationLifecycleResultSchema =
+  cantripMcpRunConfigurationResultBaseSchema.extend({
+    target: cantripMcpWorktreeTargetSchema,
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationRuntimeOperationResultSchema,
+  });
+export const cantripMcpRunConfigurationStartResultSchema =
+  cantripMcpRunConfigurationLifecycleResultSchema;
+export const cantripMcpRunConfigurationRestartResultSchema =
+  cantripMcpRunConfigurationLifecycleResultSchema;
+export const cantripMcpRunConfigurationStopResultSchema =
+  cantripMcpRunConfigurationLifecycleResultSchema;
+export const cantripMcpRunConfigurationSecretSetResultSchema =
+  cantripMcpRunConfigurationResultBaseSchema.extend({
+    worktreeId: z.null().default(null),
+    data: runConfigurationSecretSetResultSchema,
   });
 
 export const cantripMcpWorktreeSummarySchema = projectWorktreeSummarySchema

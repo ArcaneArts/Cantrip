@@ -113,7 +113,7 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
+    "2b5cec445a8cab3fbf3847e458639092777a8b5cbbd076a2ce55882fb8f45b31",
   applicationRoutes:
     "186005095cd4fc86135c63012bdc2d6952e3fc84faea6acbfe97b6a670b9f57a",
   clientControlCommands:

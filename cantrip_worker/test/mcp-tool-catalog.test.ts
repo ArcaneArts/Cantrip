@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  cantripMcpRunStartInputSchema,
-  cantripMcpRunConfigActionAddInputSchema,
+  cantripMcpRunConfigurationSecretSetInputSchema,
+  cantripMcpRunConfigurationStartInputSchema,
   cantripMcpToolHelpResultSchema,
   cantripMcpWorktreeCreateInputSchema,
 } from "@cantrip/protocol";
@@ -26,21 +26,23 @@ describe("Cantrip MCP tool help", () => {
     }
 
     const run = cantripMcpToolHelpResultSchema.parse(
-      cantripMcpToolHelp("run_start"),
+      cantripMcpToolHelp("run_configuration_start"),
     );
     expect(run.data.examples).toHaveLength(1);
     expect(
-      cantripMcpRunStartInputSchema.safeParse(run.data.examples[0]).success,
-    ).toBe(true);
-
-    const action = cantripMcpToolHelpResultSchema.parse(
-      cantripMcpToolHelp("run_config_action_add"),
-    );
-    expect(action.data.examples).toHaveLength(1);
-    expect(
-      cantripMcpRunConfigActionAddInputSchema.safeParse(action.data.examples[0])
+      cantripMcpRunConfigurationStartInputSchema.safeParse(run.data.examples[0])
         .success,
     ).toBe(true);
-    expect(action.data.notes.join(" ")).toContain("revision-checked");
+
+    const secret = cantripMcpToolHelpResultSchema.parse(
+      cantripMcpToolHelp("run_configuration_secret_set"),
+    );
+    expect(secret.data.examples).toHaveLength(1);
+    expect(
+      cantripMcpRunConfigurationSecretSetInputSchema.safeParse(
+        secret.data.examples[0],
+      ).success,
+    ).toBe(true);
+    expect(secret.data.notes.join(" ")).toContain("never readable back");
   });
 });

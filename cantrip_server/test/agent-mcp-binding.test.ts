@@ -180,8 +180,8 @@ describe("Cantrip MCP server binding", () => {
     };
     for (const operation of [
       "explorer.write",
-      "run.start",
-      "run.stop",
+      "run-configuration.start",
+      "run-configuration.stop",
     ] as const) {
       expect(() =>
         assertCantripMcpBinding({

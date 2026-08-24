@@ -39,6 +39,18 @@ import {
   cantripAgentOperationResultSchema,
   cantripMcpClientFocusProjectInputSchema,
   cantripMcpClientFocusSurfaceInputSchema,
+  cantripMcpRunConfigurationCreateInputSchema,
+  cantripMcpRunConfigurationDeleteInputSchema,
+  cantripMcpRunConfigurationDetectInputSchema,
+  cantripMcpRunConfigurationGetInputSchema,
+  cantripMcpRunConfigurationListInputSchema,
+  cantripMcpRunConfigurationReadOutputInputSchema,
+  cantripMcpRunConfigurationRestartInputSchema,
+  cantripMcpRunConfigurationSecretSetInputSchema,
+  cantripMcpRunConfigurationStartInputSchema,
+  cantripMcpRunConfigurationStatusInputSchema,
+  cantripMcpRunConfigurationStopInputSchema,
+  cantripMcpRunConfigurationUpdateInputSchema,
   protectedClientNotificationSchema,
   cantripMcpClientShowInteractionInputSchema,
   cantripCliCommandResultSchema,
@@ -5459,6 +5471,17 @@ export async function buildApp({
       if (!pending) throw new Error("Target worktree is not ready.");
       return pending;
     };
+    const requireBoundRunConfigurationWorker = (workerId: string) => {
+      if (workerId !== context.workerId) {
+        throw new ExecutionLaneConflictError(
+          "The Run configuration target is outside the managed MCP worker binding.",
+        );
+      }
+    };
+    const runConfigurationProjectTarget = {
+      kind: "project" as const,
+      projectId: context.projectId,
+    };
 
     switch (call.operation) {
       case "context.get": {
@@ -5532,6 +5555,291 @@ export async function buildApp({
           summary: "Returned opaque policy content.",
           worktreeId: context.worktreeId,
           data: policyCliWireReadResultSchema.parse({ policy: current }),
+        });
+      }
+      case "run-configuration.list": {
+        cantripMcpRunConfigurationListInputSchema.parse(call.arguments);
+        const { result, source } = await listRunConfigurationDefinitions(
+          applicationOwnerId(),
+          context.projectId,
+          randomUUID(),
+        );
+        requireBoundRunConfigurationWorker(source.workerId);
+        const runtimes = await repository.listRunConfigurationRuntimes(
+          applicationOwnerId(),
+          context.projectId,
+          { limit: 256 },
+        );
+        const activeConfigurationIds = new Set(
+          runtimes
+            .filter(({ state }) =>
+              ["starting", "running", "restarting", "stopping"].includes(state),
+            )
+            .map(({ configurationId }) => configurationId),
+        );
+        const entries = [...result.inventory.entries].sort(
+          (left, right) =>
+            Number(activeConfigurationIds.has(right.id ?? "")) -
+            Number(activeConfigurationIds.has(left.id ?? "")),
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: `Found ${entries.length} project Run configuration${entries.length === 1 ? "" : "s"}.`,
+          target: runConfigurationProjectTarget,
+          worktreeId: source.worktreeId,
+          data: {
+            ...result,
+            inventory: { ...result.inventory, entries },
+            runtimes,
+          },
+        });
+      }
+      case "run-configuration.get": {
+        const input = cantripMcpRunConfigurationGetInputSchema.parse(
+          call.arguments,
+        );
+        const { result, source } = await getRunConfigurationDefinition(
+          applicationOwnerId(),
+          context.projectId,
+          randomUUID(),
+          input.configurationId,
+        );
+        requireBoundRunConfigurationWorker(source.workerId);
+        if (!result.result.found) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            `Run configuration ${input.configurationId} was not found.`,
+          );
+        }
+        return cantripCliCommandResultSchema.parse({
+          summary: `Read Run configuration ${input.configurationId}.`,
+          target: runConfigurationProjectTarget,
+          worktreeId: source.worktreeId,
+          data: result,
+        });
+      }
+      case "run-configuration.detect": {
+        const input = cantripMcpRunConfigurationDetectInputSchema.parse(
+          call.arguments,
+        );
+        const { result, source } = await detectRunConfigurationDefinitions(
+          applicationOwnerId(),
+          context.projectId,
+          randomUUID(),
+          input.provider,
+        );
+        requireBoundRunConfigurationWorker(source.workerId);
+        return cantripCliCommandResultSchema.parse({
+          summary: `Detected ${result.candidates.length} Run configuration candidate${result.candidates.length === 1 ? "" : "s"}.`,
+          target: runConfigurationProjectTarget,
+          worktreeId: source.worktreeId,
+          data: result,
+        });
+      }
+      case "run-configuration.create":
+      case "run-configuration.update": {
+        requireRunMutation();
+        const boundSource = await resolvePrimaryRunConfigurationSource(
+          applicationOwnerId(),
+          context.projectId,
+        );
+        requireBoundRunConfigurationWorker(boundSource.workerId);
+        const input =
+          call.operation === "run-configuration.create"
+            ? {
+                ...cantripMcpRunConfigurationCreateInputSchema.parse(
+                  call.arguments,
+                ),
+                expectedRevision: null,
+              }
+            : cantripMcpRunConfigurationUpdateInputSchema.parse(call.arguments);
+        const { result, source } = await writeRunConfigurationDefinition(
+          applicationOwnerId(),
+          context.projectId,
+          input.operationId,
+          input.expectedRevision,
+          input.document,
+        );
+        requireBoundRunConfigurationWorker(source.workerId);
+        if (!("entry" in result.result)) {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            `Run configuration write was rejected: ${result.result.outcome}.`,
+          );
+        }
+        return cantripCliCommandResultSchema.parse({
+          summary: `${result.result.outcome === "created" ? "Created" : "Updated"} Run configuration ${result.result.entry.id}.`,
+          target: runConfigurationProjectTarget,
+          worktreeId: source.worktreeId,
+          mutated: result.result.outcome !== "unchanged",
+          data: result,
+        });
+      }
+      case "run-configuration.delete": {
+        requireRunMutation();
+        const boundSource = await resolvePrimaryRunConfigurationSource(
+          applicationOwnerId(),
+          context.projectId,
+        );
+        requireBoundRunConfigurationWorker(boundSource.workerId);
+        const input = cantripMcpRunConfigurationDeleteInputSchema.parse(
+          call.arguments,
+        );
+        const { result, source } = await deleteRunConfigurationDefinition(
+          applicationOwnerId(),
+          context.projectId,
+          input.operationId,
+          input.configurationId,
+          input.expectedRevision,
+        );
+        requireBoundRunConfigurationWorker(source.workerId);
+        if (result.result.outcome !== "deleted") {
+          throw new CliCommandRequestError(
+            result.result.outcome === "not-found" ? "not-found" : "conflict",
+            result.result.outcome === "not-found" ? 404 : 409,
+            `Run configuration delete was rejected: ${result.result.outcome}.`,
+          );
+        }
+        return cantripCliCommandResultSchema.parse({
+          summary: `Deleted Run configuration ${input.configurationId}.`,
+          target: runConfigurationProjectTarget,
+          worktreeId: source.worktreeId,
+          mutated: true,
+          data: result,
+        });
+      }
+      case "run-configuration.start":
+      case "run-configuration.restart":
+      case "run-configuration.stop": {
+        requireRunMutation();
+        const input =
+          call.operation === "run-configuration.start"
+            ? cantripMcpRunConfigurationStartInputSchema.parse(call.arguments)
+            : call.operation === "run-configuration.restart"
+              ? cantripMcpRunConfigurationRestartInputSchema.parse(
+                  call.arguments,
+                )
+              : cantripMcpRunConfigurationStopInputSchema.parse(call.arguments);
+        const target = await resolveRunConfigurationRuntimeTarget(
+          applicationOwnerId(),
+          context.projectId,
+          input.worktreeId,
+        );
+        requireBoundRunConfigurationWorker(target.workerId);
+        const operation = call.operation.slice("run-configuration.".length) as
+          "start" | "restart" | "stop";
+        const result = await operateRunConfigurationRuntime(
+          applicationOwnerId(),
+          {
+            operationId: input.operationId,
+            projectId: context.projectId,
+            configurationId: input.configurationId,
+            targetWorktreeId: target.worktree.id,
+            operation,
+          },
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: `${operation} ${result.operation.outcome} for Run configuration ${input.configurationId}.`,
+          target: {
+            kind: "worktree",
+            projectId: context.projectId,
+            worktreeId: result.operation.worktreeId,
+          },
+          worktreeId: result.operation.worktreeId,
+          mutated: result.operation.outcome === "accepted",
+          data: result,
+        });
+      }
+      case "run-configuration.status": {
+        const input = cantripMcpRunConfigurationStatusInputSchema.parse(
+          call.arguments,
+        );
+        if (input.worktreeId) {
+          const target = await resolveRunConfigurationRuntimeTarget(
+            applicationOwnerId(),
+            context.projectId,
+            input.worktreeId,
+          );
+          requireBoundRunConfigurationWorker(target.workerId);
+        }
+        const result = await queryRunConfigurationRuntimeStatus(
+          applicationOwnerId(),
+          {
+            operationId: randomUUID(),
+            projectId: context.projectId,
+            configurationId: input.configurationId,
+            targetWorktreeId: input.worktreeId,
+            limit: input.limit,
+          },
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: `Found ${result.runtimes.length} Run configuration runtime${result.runtimes.length === 1 ? "" : "s"}.`,
+          target: runConfigurationProjectTarget,
+          worktreeId: input.worktreeId,
+          data: result,
+        });
+      }
+      case "run-configuration.read-output": {
+        const input = cantripMcpRunConfigurationReadOutputInputSchema.parse(
+          call.arguments,
+        );
+        const target = await resolveRunConfigurationRuntimeTarget(
+          applicationOwnerId(),
+          context.projectId,
+          input.worktreeId,
+        );
+        requireBoundRunConfigurationWorker(target.workerId);
+        const result = await readRunConfigurationRuntimeOutput(
+          applicationOwnerId(),
+          {
+            operationId: input.operationId,
+            projectId: context.projectId,
+            configurationId: input.configurationId,
+            worktreeId: target.worktree.id,
+            tail: input.tail,
+          },
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: `Read Run configuration ${result.configurationId} output.`,
+          target: {
+            kind: "worktree",
+            projectId: context.projectId,
+            worktreeId: target.worktree.id,
+          },
+          worktreeId: target.worktree.id,
+          data: result,
+        });
+      }
+      case "run-configuration.secret-set": {
+        requireRunMutation();
+        const boundSource = await resolvePrimaryRunConfigurationSource(
+          applicationOwnerId(),
+          context.projectId,
+        );
+        requireBoundRunConfigurationWorker(boundSource.workerId);
+        const input = runConfigurationSecretSetRequestSchema.parse({
+          operationId: call.arguments.operationId,
+          reference: call.arguments.reference,
+          protectedValue: call.arguments.protectedValue,
+        });
+        const result = runConfigurationSecretSetResultSchema.parse(
+          await repository.setRunConfigurationSecret(
+            applicationOwnerId(),
+            context.projectId,
+            input,
+          ),
+        );
+        publishLiveInvalidation("run-configuration", {
+          entityId: null,
+          projectId: context.projectId,
+        });
+        return cantripCliCommandResultSchema.parse({
+          summary: `Stored Run configuration secret ${result.secret.reference}.`,
+          target: runConfigurationProjectTarget,
+          worktreeId: null,
+          mutated: !result.replayed,
+          data: result,
         });
       }
       case "run-config.list": {
@@ -31116,26 +31424,50 @@ export async function buildApp({
               : input.data.request.operation === "run.stop"
                 ? runInstanceResultSchema.safeParse(result.data)
                 : null;
+          const runConfigurationResult = [
+            "run-configuration.start",
+            "run-configuration.restart",
+            "run-configuration.stop",
+          ].includes(input.data.request.operation)
+            ? runConfigurationRuntimeOperationResultSchema.safeParse(
+                result.data,
+              )
+            : null;
           await appendAudit(request, {
             action:
-              input.data.request.operation === "run.start"
-                ? "run.mcp.started"
-                : input.data.request.operation === "run.open"
-                  ? "run.mcp.opened"
-                  : input.data.request.operation === "run.stop"
-                    ? "run.mcp.stopped"
-                    : isCantripMcpMutationOperation(
-                          input.data.request.operation,
-                        )
-                      ? "mcp.operation.mutated"
-                      : "mcp.operation.executed",
+              input.data.request.operation === "run-configuration.start"
+                ? "run-configuration.mcp.started"
+                : input.data.request.operation === "run-configuration.restart"
+                  ? "run-configuration.mcp.restarted"
+                  : input.data.request.operation === "run-configuration.stop"
+                    ? "run-configuration.mcp.stopped"
+                    : input.data.request.operation ===
+                        "run-configuration.delete"
+                      ? "run-configuration.mcp.deleted"
+                      : input.data.request.operation === "run.start"
+                        ? "run.mcp.started"
+                        : input.data.request.operation === "run.open"
+                          ? "run.mcp.opened"
+                          : input.data.request.operation === "run.stop"
+                            ? "run.mcp.stopped"
+                            : isCantripMcpMutationOperation(
+                                  input.data.request.operation,
+                                )
+                              ? "mcp.operation.mutated"
+                              : "mcp.operation.executed",
             actorSessionId: null,
             actorUserId: null,
             ownerId: workerAuth.ownerId,
-            resourceId: runResult?.success
-              ? runResult.data.run.id
-              : input.data.binding.bindingId,
-            resourceType: runResult?.success ? "run-instance" : "mcp-binding",
+            resourceId: runConfigurationResult?.success
+              ? runConfigurationResult.data.operation.configurationId
+              : runResult?.success
+                ? runResult.data.run.id
+                : input.data.binding.bindingId,
+            resourceType: runConfigurationResult?.success
+              ? "run-configuration"
+              : runResult?.success
+                ? "run-instance"
+                : "mcp-binding",
             result: "succeeded",
           });
           return reply.send(cantripAgentOperationResultSchema.parse(result));

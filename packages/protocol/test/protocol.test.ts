@@ -38,11 +38,11 @@ import {
   cantripMcpExplorerReadResultSchema,
   cantripMcpExplorerWriteInputSchema,
   cantripMcpExplorerWriteResultSchema,
-  cantripMcpRunConfigReadInputSchema,
-  cantripMcpRunReadInputSchema,
-  cantripMcpRunStartInputSchema,
-  cantripMcpRunStatusInputSchema,
-  cantripMcpRunStopInputSchema,
+  cantripMcpRunConfigurationGetInputSchema,
+  cantripMcpRunConfigurationReadOutputInputSchema,
+  cantripMcpRunConfigurationStartInputSchema,
+  cantripMcpRunConfigurationStatusInputSchema,
+  cantripMcpRunConfigurationStopInputSchema,
   cantripMcpTargetListInputSchema,
   cantripMcpTerminalReadInputSchema,
   cantripMcpToolHelpInputSchema,
@@ -822,27 +822,29 @@ describe("Cantrip protocol", () => {
         maxChars: 100_001,
       }).success,
     ).toBe(false);
-    const actionId = "a".repeat(64);
-    const configRevision = "b".repeat(64);
+    const configurationId = "00000000-0000-4000-8000-000000000098";
     expect(
-      cantripMcpRunConfigReadInputSchema.parse({
-        actionId,
-        configRevision,
+      cantripMcpRunConfigurationGetInputSchema.parse({ configurationId }),
+    ).toEqual({ configurationId });
+    expect(cantripMcpRunConfigurationGetInputSchema.safeParse({}).success).toBe(
+      false,
+    );
+    expect(cantripMcpRunConfigurationStatusInputSchema.parse({})).toEqual({
+      configurationId: null,
+      worktreeId: null,
+      limit: 256,
+    });
+    expect(
+      cantripMcpRunConfigurationReadOutputInputSchema.parse({
+        operationId: "00000000-0000-4000-8000-000000000099",
+        configurationId,
       }),
-    ).toEqual({ actionId, configRevision });
+    ).toMatchObject({ worktreeId: null, tail: 10_000 });
     expect(
-      cantripMcpRunConfigReadInputSchema.safeParse({ actionId }).success,
-    ).toBe(false);
-    expect(cantripMcpRunStatusInputSchema.parse({})).toEqual({});
-    expect(
-      cantripMcpRunReadInputSchema.parse({
-        runId: "00000000-0000-4000-8000-000000000099",
-      }),
-    ).toMatchObject({ maxChars: 20_000 });
-    expect(
-      cantripMcpRunReadInputSchema.safeParse({
-        runId: "00000000-0000-4000-8000-000000000099",
-        maxChars: 100_001,
+      cantripMcpRunConfigurationReadOutputInputSchema.safeParse({
+        operationId: "00000000-0000-4000-8000-000000000099",
+        configurationId,
+        tail: 100_001,
       }).success,
     ).toBe(false);
     expect(
@@ -945,37 +947,51 @@ describe("Cantrip protocol", () => {
       CANTRIP_MCP_MUTATION_OPERATIONS.every(isCantripMcpMutationOperation),
     ).toBe(true);
     expect(isCantripMcpMutationOperation("context.get")).toBe(false);
-    expect(isCantripMcpMutationOperation("run.start")).toBe(true);
-    expect(isCantripMcpMutationOperation("run.open")).toBe(true);
-    expect(isCantripMcpMutationOperation("run.stop")).toBe(true);
+    expect(isCantripMcpMutationOperation("run-configuration.start")).toBe(true);
+    expect(isCantripMcpMutationOperation("run-configuration.restart")).toBe(
+      true,
+    );
+    expect(isCantripMcpMutationOperation("run-configuration.stop")).toBe(true);
     expect(CANTRIP_MCP_READ_OPERATIONS).toEqual(
       expect.arrayContaining([
-        "run-config.list",
-        "run-config.read",
-        "run.status",
-        "run.read",
+        "run-configuration.list",
+        "run-configuration.get",
+        "run-configuration.status",
+        "run-configuration.read-output",
       ]),
     );
     expect(CANTRIP_MCP_MUTATION_OPERATIONS).toEqual(
-      expect.arrayContaining(["run.start", "run.open", "run.stop"]),
+      expect.arrayContaining([
+        "run-configuration.start",
+        "run-configuration.restart",
+        "run-configuration.stop",
+      ]),
     );
     expect(cantripMcpOperationsForPermissionProfile(":read-only")).not.toEqual(
-      expect.arrayContaining(["run.start", "run.open", "run.stop"]),
+      expect.arrayContaining([
+        "run-configuration.start",
+        "run-configuration.restart",
+        "run-configuration.stop",
+      ]),
     );
-    const actionId = "a".repeat(64);
-    const configRevision = "b".repeat(64);
+    const operationId = "00000000-0000-4000-8000-000000000099";
+    const configurationId = "00000000-0000-4000-8000-000000000098";
     expect(
-      cantripMcpRunStartInputSchema.parse({ actionId, configRevision }),
-    ).toEqual({ actionId, configRevision, focus: true });
+      cantripMcpRunConfigurationStartInputSchema.parse({
+        operationId,
+        configurationId,
+      }),
+    ).toEqual({ operationId, configurationId, worktreeId: null });
     expect(
-      cantripMcpRunStartInputSchema.safeParse({
-        action: "Run Spectral Lab",
-        configRevision,
+      cantripMcpRunConfigurationStartInputSchema.safeParse({
+        operationId,
+        configuration: "Run Spectral Lab",
       }).success,
     ).toBe(false);
     expect(
-      cantripMcpRunStopInputSchema.safeParse({
-        runId: "not-a-run-id",
+      cantripMcpRunConfigurationStopInputSchema.safeParse({
+        operationId,
+        configurationId: "not-a-configuration-id",
       }).success,
     ).toBe(false);
     expect(CANTRIP_MCP_CLIENT_CONTROL_OPERATIONS).toEqual([
