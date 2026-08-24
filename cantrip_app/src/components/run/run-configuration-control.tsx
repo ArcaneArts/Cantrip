@@ -359,6 +359,26 @@ export function RunConfigurationControl({
     lifecycle.variables.target.worktree.id === target?.worktree.id;
   const filteredWorktrees =
     worktreeItem?.targets.filter(({ worktree }) => !worktree.isPrimary) ?? [];
+  const emptyRepository =
+    model.configurations.length === 0 &&
+    model.invalidConfigurations.length === 0 &&
+    !error;
+
+  const selectorContent = (
+    <>
+      {loading ? (
+        <Loader2 className="size-3.5 animate-spin" />
+      ) : (
+        <ProviderIcon provider={selected?.provider} />
+      )}
+      <span className="truncate">
+        {selected?.name ?? "Add Run Configuration"}
+      </span>
+      {emptyRepository ? null : (
+        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+      )}
+    </>
+  );
 
   return (
     <div
@@ -382,18 +402,24 @@ export function RunConfigurationControl({
         />
       ) : null}
       <Popover
-        open={menuOpen}
+        open={emptyRepository ? false : menuOpen}
         onOpenChange={(open) => {
+          if (open && emptyRepository) {
+            if (!loading) onEditorConfigurationChange("new");
+            return;
+          }
           setMenuOpen(open);
           if (!open) setSearch("");
         }}
       >
         <PopoverTrigger asChild>
           <Button
+            aria-label={emptyRepository ? "Add Run Configuration" : undefined}
             className={cn(
               "min-w-0 justify-between px-2",
               compact ? "max-w-36" : "max-w-64",
             )}
+            disabled={emptyRepository && loading}
             size="sm"
             title={
               selected
@@ -402,15 +428,7 @@ export function RunConfigurationControl({
             }
             variant="ghost"
           >
-            {loading ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <ProviderIcon provider={selected?.provider} />
-            )}
-            <span className="truncate">
-              {selected?.name ?? "Add Run Configuration"}
-            </span>
-            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+            {selectorContent}
           </Button>
         </PopoverTrigger>
         <PopoverContent
