@@ -24,6 +24,18 @@ afterEach(() => {
 });
 
 describe("TerminalDirectEndpointManager", () => {
+  it("refuses a direct endpoint when terminal input is disabled", async () => {
+    const manager = new TerminalDirectEndpointManager(
+      {} as unknown as TerminalManager,
+    );
+    manager.setInputPolicy(() => false);
+    managers.push(manager);
+
+    await expect(
+      manager.prepare(randomUUID(), "run-terminal", "server-persistent-id"),
+    ).rejects.toThrow("Run configuration terminals are read-only");
+  });
+
   it("preserves the terminal WebSocket message contract", async () => {
     const input = vi.fn();
     const resize = vi.fn();

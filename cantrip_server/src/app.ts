@@ -5705,6 +5705,13 @@ export async function buildApp({
         ) {
           throw new Error("Terminal placement changed before input.");
         }
+        if (terminal.kind === "run-configuration") {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            "Run configuration terminals are read-only. Use the Run configuration lifecycle and output operations instead.",
+          );
+        }
         const wire = surfaceStreamWireArgument(call.arguments);
         const result = surfaceStreamWireResponseSchema.parse(
           await bridge.request(

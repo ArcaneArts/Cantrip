@@ -409,6 +409,12 @@ export class RunConfigurationRuntimeSupervisor {
       });
   }
 
+  ownsTerminal(terminalId: string): boolean {
+    return [...this.#runtimes.values()].some(
+      (session) => session.terminalId === terminalId,
+    );
+  }
+
   async start(
     command: StartCommand,
   ): Promise<RunConfigurationRuntimeWorkerOperationResult> {

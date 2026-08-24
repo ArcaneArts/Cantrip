@@ -40,6 +40,7 @@ function rawText(data: RawData): string {
 export class TerminalDirectEndpointManager {
   readonly #endpoints = new Map<string, Endpoint>();
   #encryption: WorkerEncryptionService | null = null;
+  #inputAllowed: (terminalId: string) => boolean = () => true;
   #replay: SurfaceStreamReplayGuard | null = null;
 
   constructor(private readonly terminals: TerminalManager) {}
@@ -52,11 +53,18 @@ export class TerminalDirectEndpointManager {
     this.#replay = replay;
   }
 
+  setInputPolicy(inputAllowed: (terminalId: string) => boolean): void {
+    this.#inputAllowed = inputAllowed;
+  }
+
   async prepare(
     capabilityId: string,
     terminalId: string,
     serverId: string,
   ): Promise<TunnelDataPlaneTarget> {
+    if (!this.#inputAllowed(terminalId)) {
+      throw new Error("Run configuration terminals are read-only.");
+    }
     this.revoke(capabilityId, "Direct terminal capability rotated");
     const server = createServer((_request, response) => {
       response.writeHead(404).end();
@@ -154,6 +162,10 @@ export class TerminalDirectEndpointManager {
   ): void {
     const encryption = this.#encryption;
     const replay = this.#replay;
+    if (!this.#inputAllowed(terminalId)) {
+      socket.close(1008, "Run configuration terminal is read-only");
+      return;
+    }
     if (!encryption || !replay) {
       socket.close(1011, "Terminal encryption unavailable");
       return;
@@ -208,6 +220,9 @@ export class TerminalDirectEndpointManager {
             JSON.parse(rawText(data)),
           );
           if (message.type === "input") {
+            if (!this.#inputAllowed(terminalId)) {
+              throw new Error("Run configuration terminal is read-only.");
+            }
             if (message.operationId !== operationId) {
               throw new Error("Terminal stream operation does not match.");
             }

@@ -599,6 +599,8 @@ describe.skipIf(process.platform === "win32")(
         outcome: "accepted",
         observation: { state: "starting", generation: 1 },
       });
+      expect(runs.ownsTerminal(runtimeIdentity.terminalId)).toBe(true);
+      expect(runs.ownsTerminal(randomUUID())).toBe(false);
       await waitForState(runs, runtimeIdentity, "exited");
       const output = runs.output({
         type: "project.run-configuration-runtime.output",
