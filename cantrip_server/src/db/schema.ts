@@ -4781,3 +4781,122 @@ export const workflowApprovalGates = pgTable(
     ),
   ],
 );
+
+/**
+ * Fast, reconciled projections of the logical storage currently retained for
+ * an account. These rows are accounting metadata and are deliberately kept
+ * outside Cantrip's protected-content system.
+ */
+export const accountStorageUsageCurrent = pgTable(
+  "account_storage_usage_current",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    storageClass: text("storage_class").notNull(),
+    category: text("category").notNull(),
+    logicalBytes: bigint("logical_bytes", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    rowCount: bigint("row_count", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    basisVersion: text("basis_version").notNull(),
+    measuredAt: timestamp("measured_at", { withTimezone: true }).notNull(),
+    reconciledAt: timestamp("reconciled_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.ownerId, table.storageClass, table.category],
+    }),
+    index("account_storage_usage_current_owner_measured_index").on(
+      table.ownerId,
+      table.measuredAt,
+    ),
+    check(
+      "account_storage_usage_current_class_check",
+      sql`${table.storageClass} IN ('server', 'worker-managed')`,
+    ),
+    check(
+      "account_storage_usage_current_bytes_check",
+      sql`${table.logicalBytes} >= 0`,
+    ),
+    check(
+      "account_storage_usage_current_rows_check",
+      sql`${table.rowCount} >= 0`,
+    ),
+  ],
+);
+
+/** Point-in-time storage history. Snapshot bytes are states, not deltas. */
+export const accountStorageUsageSnapshots = pgTable(
+  "account_storage_usage_snapshots",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bucketStart: timestamp("bucket_start", { withTimezone: true }).notNull(),
+    storageClass: text("storage_class").notNull(),
+    category: text("category").notNull(),
+    logicalBytes: bigint("logical_bytes", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    rowCount: bigint("row_count", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    basisVersion: text("basis_version").notNull(),
+    measuredAt: timestamp("measured_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.ownerId,
+        table.bucketStart,
+        table.storageClass,
+        table.category,
+      ],
+    }),
+    index("account_storage_usage_snapshots_owner_time_index").on(
+      table.ownerId,
+      table.bucketStart,
+    ),
+    check(
+      "account_storage_usage_snapshots_class_check",
+      sql`${table.storageClass} IN ('server', 'worker-managed')`,
+    ),
+    check(
+      "account_storage_usage_snapshots_bytes_check",
+      sql`${table.logicalBytes} >= 0`,
+    ),
+    check(
+      "account_storage_usage_snapshots_rows_check",
+      sql`${table.rowCount} >= 0`,
+    ),
+  ],
+);
+
+/** Database-backed lease fencing full storage reconciliation across instances. */
+export const accountStorageReconciliationLeases = pgTable(
+  "account_storage_reconciliation_leases",
+  {
+    key: text("key").primaryKey(),
+    holderId: text("holder_id").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("account_storage_reconciliation_leases_expiry_index").on(
+      table.expiresAt,
+    ),
+  ],
+);

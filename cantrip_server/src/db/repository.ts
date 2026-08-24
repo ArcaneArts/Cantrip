@@ -252,6 +252,7 @@ import {
 } from "../models/account-provider.js";
 import { sampleProviderTelemetryQuotaHistory } from "../models/provider-telemetry.js";
 import type { SecretVault } from "../security/secret-vault.js";
+import { AccountResourceUsageRepository } from "./account-resource-usage.js";
 import * as schema from "./schema.js";
 import { ChatImportJobRepository } from "./chat-import-jobs.js";
 import { ChatRelocationJobRepository } from "./chat-relocation-jobs.js";
@@ -2160,6 +2161,7 @@ function toEncryptedQueuedPrompt(
 }
 
 export class ServerRepository {
+  readonly accountResourceUsage: AccountResourceUsageRepository;
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
   readonly encryptionRegistry: EncryptionRegistryRepository;
@@ -2184,6 +2186,7 @@ export class ServerRepository {
     // finish moving out of this repository. Provider and MCP payloads never
     // use this server key.
     void secretVault;
+    this.accountResourceUsage = new AccountResourceUsageRepository(database);
     this.chatImportJobs = new ChatImportJobRepository(database);
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
     this.encryptionRegistry = new EncryptionRegistryRepository(database);
