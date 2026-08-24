@@ -88,7 +88,11 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
-import { Activity, ActivityGroup } from "@/components/chat/activity";
+import {
+  Activity,
+  ActivityGroup,
+  CompletedTurnActivityGroup,
+} from "@/components/chat/activity";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
 import { AppCommandBar } from "@/components/app/app-command-bar";
 import {
@@ -2815,6 +2819,26 @@ function ChatTranscript({
             }
             const entry = transcriptEntry.entry;
             if (entry.type === "activityGroup") {
+              if (entry.kind === "turn") {
+                return (
+                  <CompletedTurnActivityGroup
+                    endedAt={entry.endedAt}
+                    key={entry.key}
+                    onViewTrajectory={viewTurnTrajectory}
+                    startedAt={entry.startedAt}
+                    turnId={entry.turnId}
+                    turnKey={entry.turnKey}
+                  >
+                    {entry.messages.map((message) => (
+                      <MessageContent
+                        key={message.id}
+                        message={message}
+                        onOpenFile={onOpenFile}
+                      />
+                    ))}
+                  </CompletedTurnActivityGroup>
+                );
+              }
               const groupedActivities = entry.messages.flatMap((message) =>
                 message.content.flatMap((item) =>
                   item.type === "activity" ? [item.activity] : [],

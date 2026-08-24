@@ -10,21 +10,29 @@ export interface ChatTurnIdentity {
   turnKey: string;
 }
 
+interface ChatTimelineActivityGroupBase {
+  type: "activityGroup";
+  key: string;
+  messages: ChatMessage[];
+  startedAt: string;
+  turnId: string | null;
+  turnKey: string;
+}
+
+type ChatTimelineActivityGroup =
+  | (ChatTimelineActivityGroupBase & { kind: "turn"; endedAt: string })
+  | (ChatTimelineActivityGroupBase & {
+      kind: "tool";
+      endedAt: string | null;
+    });
+
 export type ChatTimelineEntry =
   | {
       type: "message";
       message: ChatMessage;
       turnMetadata: ChatTurnMetadata | null;
     }
-  | {
-      type: "activityGroup";
-      key: string;
-      messages: ChatMessage[];
-      startedAt: string;
-      endedAt: string | null;
-      turnId: string | null;
-      turnKey: string;
-    };
+  | ChatTimelineActivityGroup;
 
 function activities(message: ChatMessage): AgentActivity[] | null {
   if (
@@ -241,6 +249,22 @@ function projectWorkEntries(input: {
   identity: ChatTurnIdentity;
   startedAt: string;
 }): ChatTimelineEntry[] {
+  if (input.endedAt !== null && input.displayedMessages.length > 0) {
+    const firstMessage = input.displayedMessages[0]!;
+    return [
+      {
+        type: "activityGroup",
+        kind: "turn",
+        key: `turn:${firstMessage.id}`,
+        messages: input.displayedMessages,
+        startedAt: input.startedAt,
+        endedAt: input.endedAt,
+        turnId: input.identity.turnId,
+        turnKey: input.identity.turnKey,
+      },
+    ];
+  }
+
   const projected: ChatTimelineEntry[] = [];
   let activityMessages: ChatMessage[] = [];
   let groupIndex = 0;
@@ -251,6 +275,7 @@ function projectWorkEntries(input: {
     const firstActivityMessage = activityMessages[0]!;
     projected.push({
       type: "activityGroup",
+      kind: "tool",
       key: `activities:${firstActivityMessage.id}:${groupIndex}`,
       messages: activityMessages,
       startedAt: groupStartedAt,
@@ -383,13 +408,17 @@ export function buildChatTimeline(
         }
       }
       if (displayedMessages.length > 0) {
-        const trailingEntries = projectWorkEntries({
-          displayedMessages,
-          endedAt: previousMessageEntry.message.createdAt,
-          identity,
-          startedAt: precedingTurnStart(messages, index),
-        });
-        entries.splice(entries.length - 1, 0, ...trailingEntries);
+        if (previousActivityEntry?.kind === "turn") {
+          previousActivityEntry.messages.push(...displayedMessages);
+        } else {
+          const trailingEntries = projectWorkEntries({
+            displayedMessages,
+            endedAt: previousMessageEntry.message.createdAt,
+            identity,
+            startedAt: precedingTurnStart(messages, index),
+          });
+          entries.splice(entries.length - 1, 0, ...trailingEntries);
+        }
       }
       index = endIndex;
       continue;
