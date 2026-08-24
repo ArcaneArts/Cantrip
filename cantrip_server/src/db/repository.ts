@@ -10636,6 +10636,25 @@ export class ServerRepository {
     return rows.map(({ runtime }) => toRunConfigurationRuntime(runtime));
   }
 
+  async deleteRunConfigurationRuntimes(
+    ownerId: string,
+    projectId: string,
+    configurationId: string,
+  ): Promise<number> {
+    const rows = await this.database
+      .delete(schema.runConfigurationRuntimes)
+      .where(
+        and(
+          eq(schema.runConfigurationRuntimes.ownerId, ownerId),
+          eq(schema.runConfigurationRuntimes.projectId, projectId),
+          eq(schema.runConfigurationRuntimes.configurationId, configurationId),
+          sql`${schema.runConfigurationRuntimes.state} NOT IN ('starting', 'running', 'restarting', 'stopping')`,
+        ),
+      )
+      .returning({ id: schema.runConfigurationRuntimes.id });
+    return rows.length;
+  }
+
   async listActiveRunConfigurationRuntimeIdentitiesForWorker(
     ownerId: string,
     workerId: string,

@@ -95,6 +95,7 @@ import {
   CompletedTurnActivityGroup,
 } from "@/components/chat/activity";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
+import { RunConfigurationControl } from "@/components/run/run-configuration-control";
 import { AppCommandBar } from "@/components/app/app-command-bar";
 import {
   AttachmentPreview,
@@ -4004,6 +4005,10 @@ export function App() {
   const [projectSettingsSection, setProjectSettingsSection] =
     useState<ProjectSettingsSection>("general");
   const [commandBarOpen, setCommandBarOpen] = useState(false);
+  const [runConfigurationEditorId, setRunConfigurationEditorId] = useState<
+    string | "new" | null
+  >(null);
+  useEffect(() => setRunConfigurationEditorId(null), [selectedProjectId]);
   const projectOverviewSelected =
     !sidebarFilePreview?.active &&
     !showImporter &&
@@ -4466,9 +4471,7 @@ export function App() {
     refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const worktrees = useQuery({
-    enabled: Boolean(
-      selectedProjectId && selectedProject?.capabilities.worktrees,
-    ),
+    enabled: Boolean(selectedProjectId),
     queryFn: () =>
       getProjectWorktrees(selectedProjectId!, {
         onStatus: (worktreeId, result) => {
@@ -8006,6 +8009,14 @@ export function App() {
     : !sidebarCollapsed;
   const sidebarToggleVisible =
     !isPopout && (desktopSidebarDrawer || sidebarCollapsed);
+  const focusRunTerminal = (terminalId: string) => {
+    if (!selectedProject) return;
+    setPendingSurfaceSelection({
+      projectId: selectedProject.id,
+      tabKey: projectSurfaceTabKey("terminal", terminalId),
+    });
+    revealWorkspace();
+  };
   return (
     <WorkspaceDndProvider
       className="flex h-svh overflow-hidden bg-background text-foreground"
@@ -8703,6 +8714,30 @@ export function App() {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
+              {narrowViewport &&
+              !showImporter &&
+              !showSettings &&
+              !showServerAdmin &&
+              selectedProject ? (
+                <RunConfigurationControl
+                  compact
+                  editorConfigurationId={runConfigurationEditorId}
+                  error={
+                    runConfigurations.isError
+                      ? errorText(runConfigurations.error)
+                      : null
+                  }
+                  inventory={runConfigurations.data}
+                  loading={runConfigurations.isLoading}
+                  projectId={selectedProject.id}
+                  renderEditor
+                  runtimes={runConfigurationRuntimes.data ?? []}
+                  workers={workers.data ?? []}
+                  worktrees={worktrees.data ?? []}
+                  onEditorConfigurationChange={setRunConfigurationEditorId}
+                  onFocusTerminal={focusRunTerminal}
+                />
+              ) : null}
               <ContentHeaderActions {...contentHeaderActions} compact />
               {!isPopout && !compactShell ? (
                 <>
@@ -8737,22 +8772,29 @@ export function App() {
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
               <ContentHeaderActions {...contentHeaderActions} />
-              {!isPopout &&
+              {!narrowViewport &&
               !showImporter &&
               !showSettings &&
               !showServerAdmin &&
               selectedProject ? (
-                <span
-                  className={cn(
-                    "flex items-center",
-                    overlayTitlebar
-                      ? "gap-1.5 px-1 text-[10px]"
-                      : "gap-2 px-2 text-xs",
-                  )}
-                >
-                  <StatusDot online={Boolean(selectedWorker?.online)} />
-                  {selectedWorker?.name ?? "Worker offline"}
-                </span>
+                <RunConfigurationControl
+                  compact={overlayTitlebar}
+                  editorConfigurationId={runConfigurationEditorId}
+                  error={
+                    runConfigurations.isError
+                      ? errorText(runConfigurations.error)
+                      : null
+                  }
+                  inventory={runConfigurations.data}
+                  loading={runConfigurations.isLoading}
+                  projectId={selectedProject.id}
+                  renderEditor
+                  runtimes={runConfigurationRuntimes.data ?? []}
+                  workers={workers.data ?? []}
+                  worktrees={worktrees.data ?? []}
+                  onEditorConfigurationChange={setRunConfigurationEditorId}
+                  onFocusTerminal={focusRunTerminal}
+                />
               ) : null}
             </div>
             <span
@@ -9311,6 +9353,15 @@ export function App() {
                 runtime={selectedRunRuntime}
                 targetLabel={selectedRunTargetLabel}
                 terminal={selectedTerminal}
+                onEdit={
+                  selectedRunDefinitionAvailable === true &&
+                  selectedTerminal.runConfigurationId
+                    ? () =>
+                        setRunConfigurationEditorId(
+                          selectedTerminal.runConfigurationId!,
+                        )
+                    : undefined
+                }
               />
             ) : linkedConsoleChat ? (
               <TerminalView

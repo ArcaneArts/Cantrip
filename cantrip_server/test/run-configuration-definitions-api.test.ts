@@ -872,6 +872,99 @@ describe.sequential("Run configuration definition API", () => {
     expect(stopped.statusCode).toBe(202);
   });
 
+  it("preflights revision conflicts, then stops every instance and removes managed terminals before deleting", async () => {
+    const inventory = runConfigurationGetResponseSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/run-configurations/${configurationId}?operationId=${randomUUID()}`,
+        })
+      ).json(),
+    );
+    if (!inventory.result.found || !inventory.result.entry.revision) {
+      throw new Error("Expected the shared Run configuration.");
+    }
+    const worktrees = await database.repository.listProjectWorktrees(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const primary = worktrees.find(({ isPrimary }) => isPrimary);
+    const alternate = worktrees.find(({ isPrimary }) => !isPrimary);
+    if (!primary || !alternate) throw new Error("Expected both Run targets.");
+    for (const targetWorktreeId of [null, alternate.id]) {
+      const started = await app.inject({
+        method: "POST",
+        url: "/api/run-configuration-runtimes/operations",
+        payload: {
+          operation: "start",
+          operationId: randomUUID(),
+          projectId,
+          configurationId,
+          targetWorktreeId,
+        },
+      });
+      expect(started.statusCode).toBe(202);
+    }
+
+    commands.length = 0;
+    const stale = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/run-configurations/${configurationId}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: "b".repeat(64),
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(
+      commands.filter(
+        ({ type }) => type === "project.run-configuration-runtime.stop",
+      ),
+    ).toHaveLength(0);
+
+    commands.length = 0;
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/run-configurations/${configurationId}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: inventory.result.entry.revision,
+      },
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(
+      runConfigurationDeleteResponseSchema.parse(deleted.json()),
+    ).toMatchObject({ result: { outcome: "deleted" } });
+    const stopIndexes = commands.flatMap((command, index) =>
+      command.type === "project.run-configuration-runtime.stop" ? [index] : [],
+    );
+    const deleteIndex = commands.findIndex(
+      ({ type }) => type === "project.run-configuration-definitions.delete",
+    );
+    expect(stopIndexes).toHaveLength(2);
+    expect(stopIndexes.every((index) => index < deleteIndex)).toBe(true);
+    expect(
+      await database.repository.listRunConfigurationRuntimes(
+        LOCAL_USER_ID,
+        projectId,
+        { configurationId },
+      ),
+    ).toEqual([]);
+    const terminals = terminalWireListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/terminals`,
+        })
+      ).json(),
+    );
+    expect(
+      terminals.filter(
+        (terminal) => terminal.runConfigurationId === configurationId,
+      ),
+    ).toEqual([]);
+  });
+
   it("rejects invalid IDs before worker dispatch and does not route offline", async () => {
     const before = commands.length;
     const invalid = await app.inject({
