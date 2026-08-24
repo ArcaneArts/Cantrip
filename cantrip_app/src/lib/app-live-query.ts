@@ -191,17 +191,23 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
             ? [["chats"]]
             : [];
     case "task":
-      return event.scope.kind === "chat"
+      return projectId
         ? [
-            ["task", event.scope.chatId],
-            ["task-dashboard", event.scope.chatId],
+            ["project-task-workload", projectId],
+            ["project-task-pause", projectId],
           ]
-        : event.entityId
+        : event.scope.kind === "chat"
           ? [
-              ["task", event.entityId],
-              ["task-dashboard", event.entityId],
+              ["task", event.scope.chatId],
+              ["task-dashboard", event.scope.chatId],
+              ["project-task-workload"],
             ]
-          : [["tasks"], ["task-dashboard"]];
+          : event.entityId
+            ? [
+                ["task", event.entityId],
+                ["task-dashboard", event.entityId],
+              ]
+            : [["tasks"], ["task-dashboard"]];
     case "chat-import-job":
       return projectId
         ? [
@@ -222,29 +228,41 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           ]
         : [];
     case "chat-message":
-      return event.scope.kind === "chat"
-        ? [
-            ["messages", event.scope.chatId],
-            ["message-history", event.scope.chatId],
-          ]
-        : [];
+      return projectId
+        ? [["project-task-workload", projectId]]
+        : event.scope.kind === "chat"
+          ? [
+              ["messages", event.scope.chatId],
+              ["message-history", event.scope.chatId],
+              ["project-task-workload"],
+            ]
+          : [];
     case "chat-queue":
       return event.scope.kind === "chat"
         ? [["prompt-queue", event.scope.chatId]]
         : [];
     case "chat-goal":
-      return event.scope.kind === "chat"
-        ? [
-            ["goal", event.scope.chatId],
-            ["task-dashboard", event.scope.chatId],
-          ]
-        : [];
+      return projectId
+        ? [["project-task-workload", projectId]]
+        : event.scope.kind === "chat"
+          ? [
+              ["goal", event.scope.chatId],
+              ["task-dashboard", event.scope.chatId],
+              ["project-task-workload"],
+            ]
+          : [];
     case "chat-plan":
-      return event.scope.kind === "chat" ? [["plan", event.scope.chatId]] : [];
+      return projectId
+        ? [["project-task-workload", projectId]]
+        : event.scope.kind === "chat"
+          ? [["plan", event.scope.chatId], ["project-task-workload"]]
+          : [];
     case "agent-interaction":
-      return event.scope.kind === "chat"
-        ? [["agent-requests", event.scope.chatId]]
-        : [];
+      return projectId
+        ? [["project-task-workload", projectId]]
+        : event.scope.kind === "chat"
+          ? [["agent-requests", event.scope.chatId], ["project-task-workload"]]
+          : [];
     case "terminal":
       return projectId
         ? [["terminals", projectId]]
@@ -389,6 +407,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["project-folder-setup", scope.projectId],
         ["project-github-conversion", scope.projectId],
         ["project-tab-layout", scope.projectId],
+        ["project-task-workload", scope.projectId],
+        ["project-task-pause", scope.projectId],
         ["worktrees", scope.projectId],
         ["worktree-status", scope.projectId],
         ["codegraph", scope.projectId],

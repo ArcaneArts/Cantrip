@@ -253,6 +253,7 @@ import {
 } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
+import { ProjectTasksDashboard } from "@/components/projects/project-tasks-dashboard";
 import { WindowsLongPathDialog } from "@/components/projects/windows-long-path-dialog";
 import {
   FolderProjectDialog,
@@ -6072,7 +6073,8 @@ export function App() {
       ? selectedProject
       : undefined;
   const projectOverviewGitSection: GitViewSection | null =
-    activeProjectOverviewSection === "overview"
+    activeProjectOverviewSection === "overview" ||
+    activeProjectOverviewSection === "tasks"
       ? null
       : activeProjectOverviewSection;
   const projectOverviewGitProject =
@@ -6483,7 +6485,8 @@ export function App() {
             projectId: selectedProject.id,
             section: activeProjectOverviewSection,
             worktreeId:
-              activeProjectOverviewSection === "overview"
+              activeProjectOverviewSection === "overview" ||
+              activeProjectOverviewSection === "tasks"
                 ? null
                 : resolvedProjectOverviewWorktreeId,
           },
@@ -9613,50 +9616,61 @@ export function App() {
                   <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border" />
                 </div>
               ) : null}
-              <ProjectOverview
-                compact={compactShell}
-                creatingKinds={creatingSurfaceKinds}
-                project={selectedProject}
-                stats={repositoryStats.data}
-                statsError={
-                  repositoryStats.isError
-                    ? errorText(repositoryStats.error)
-                    : null
-                }
-                statsLoading={repositoryStats.isLoading}
-                usage={projectTokenUsage.data}
-                usageError={
-                  projectTokenUsage.isError
-                    ? errorText(projectTokenUsage.error)
-                    : null
-                }
-                usageLoading={projectTokenUsage.isLoading}
-                surfaces={projectSurfaces}
-                workerOnline={Boolean(
-                  workers.data?.find(
-                    ({ workerId }) => workerId === selectedProjectWorkerId,
-                  )?.online,
-                )}
-                worktrees={worktrees.data ?? []}
-                onCreateSurface={(kind, target) =>
-                  createProjectSurface(
-                    selectedProject.id,
-                    kind,
-                    undefined,
-                    target,
-                  )
-                }
-                placement={selectedPlacementContext}
-                onOpenSurface={selectTopTab}
-                onOpenTabs={() => setMobileTabGridOpen(true)}
-                onRevealProject={(preferLocalFolder) =>
-                  revealProjectInNativeFileManager(
-                    selectedProject,
-                    preferLocalFolder,
-                  )
-                }
-                revealLabel={projectRevealButtonLabel ?? undefined}
-              />
+              {activeProjectOverviewSection === "tasks" ? (
+                <ProjectTasksDashboard
+                  chats={chats.data ?? []}
+                  projectId={selectedProject.id}
+                  onConfigureWorkers={() => openCompactRootSettings("tasks")}
+                  onOpenTask={(chatId) =>
+                    openCreatedTab(selectedProject.id, "chat", chatId)
+                  }
+                />
+              ) : (
+                <ProjectOverview
+                  compact={compactShell}
+                  creatingKinds={creatingSurfaceKinds}
+                  project={selectedProject}
+                  stats={repositoryStats.data}
+                  statsError={
+                    repositoryStats.isError
+                      ? errorText(repositoryStats.error)
+                      : null
+                  }
+                  statsLoading={repositoryStats.isLoading}
+                  usage={projectTokenUsage.data}
+                  usageError={
+                    projectTokenUsage.isError
+                      ? errorText(projectTokenUsage.error)
+                      : null
+                  }
+                  usageLoading={projectTokenUsage.isLoading}
+                  surfaces={projectSurfaces}
+                  workerOnline={Boolean(
+                    workers.data?.find(
+                      ({ workerId }) => workerId === selectedProjectWorkerId,
+                    )?.online,
+                  )}
+                  worktrees={worktrees.data ?? []}
+                  onCreateSurface={(kind, target) =>
+                    createProjectSurface(
+                      selectedProject.id,
+                      kind,
+                      undefined,
+                      target,
+                    )
+                  }
+                  placement={selectedPlacementContext}
+                  onOpenSurface={selectTopTab}
+                  onOpenTabs={() => setMobileTabGridOpen(true)}
+                  onRevealProject={(preferLocalFolder) =>
+                    revealProjectInNativeFileManager(
+                      selectedProject,
+                      preferLocalFolder,
+                    )
+                  }
+                  revealLabel={projectRevealButtonLabel ?? undefined}
+                />
+              )}
             </div>
           ) : (
             <EmptyState>

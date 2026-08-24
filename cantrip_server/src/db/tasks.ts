@@ -224,6 +224,54 @@ function assertMutationKeepsOperationalState(
 export class TaskRepository {
   constructor(private readonly database: TaskDatabase) {}
 
+  async list(ownerId: string, projectId: string): Promise<TaskOpaqueSummary[]> {
+    const rows = await this.database
+      .select({ task: schema.tasks })
+      .from(schema.tasks)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chats.projectId, projectId),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .orderBy(desc(schema.tasks.createdAt), desc(schema.tasks.chatId));
+    if (rows.length === 0) return [];
+
+    const dispatchRows = await this.database
+      .select()
+      .from(schema.taskDispatchCycles)
+      .where(
+        inArray(
+          schema.taskDispatchCycles.chatId,
+          rows.map(({ task }) => task.chatId),
+        ),
+      )
+      .orderBy(
+        desc(schema.taskDispatchCycles.createdAt),
+        desc(schema.taskDispatchCycles.id),
+      );
+    const latestDispatchByChat = new Map<
+      string,
+      (typeof dispatchRows)[number]
+    >();
+    for (const dispatch of dispatchRows) {
+      if (!latestDispatchByChat.has(dispatch.chatId)) {
+        latestDispatchByChat.set(dispatch.chatId, dispatch);
+      }
+    }
+    return rows.map(({ task }) =>
+      toTaskOpaqueSummary(task, latestDispatchByChat.get(task.chatId) ?? null),
+    );
+  }
+
   async get(ownerId: string, chatId: string): Promise<any> {
     const rows = await this.database
       .select({ task: schema.tasks })

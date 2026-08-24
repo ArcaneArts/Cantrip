@@ -15,8 +15,9 @@ describe("project overview navigation", () => {
     );
 
     expect(markup.indexOf(">Overview<")).toBeLessThan(
-      markup.indexOf(">History<"),
+      markup.indexOf(">Tasks<"),
     );
+    expect(markup.indexOf(">Tasks<")).toBeLessThan(markup.indexOf(">History<"));
     expect(markup).toContain(">Issues<");
     expect(markup).toContain(">PRs<");
     expect(markup).toContain(">Graph<");
@@ -34,6 +35,22 @@ describe("project overview navigation", () => {
     );
 
     expect(markup).not.toContain(">Overview<");
+    expect(markup).not.toContain(">Tasks<");
     expect(markup).toContain(">History<");
+  });
+
+  it("keeps Tasks available when the project does not use Git", () => {
+    const markup = renderToStaticMarkup(
+      <ProjectOverviewNavigation
+        activeTab="tasks"
+        githubEnabled={false}
+        gitEnabled={false}
+        onTabChange={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain(">Overview<");
+    expect(markup).toContain(">Tasks<");
+    expect(markup).not.toContain(">History<");
   });
 });

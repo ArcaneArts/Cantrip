@@ -9116,6 +9116,34 @@ export const encryptedChatPlanWireStateSchema = z
     }
   });
 
+export const projectTaskWorkloadOpaqueItemSchema = z
+  .object({
+    task: taskOpaqueSummarySchema,
+    plan: encryptedChatPlanWireStateSchema,
+    messages: z
+      .array(taskMessageOpaqueSummarySchema)
+      .max(CHAT_MESSAGE_PAGE_BOUNDARY_MAX),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.plan.chatId !== value.task.chatId ||
+      value.messages.some((message) => message.chatId !== value.task.chatId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Task workload material must belong to the same Task Chat.",
+      });
+    }
+  });
+
+export const projectTaskWorkloadOpaqueSchema = z
+  .object({
+    projectId: z.string().min(1).max(200),
+    items: z.array(projectTaskWorkloadOpaqueItemSchema).max(10_000),
+  })
+  .strict();
+
 export const chatPlanUpdateSchema = z.object({ mode: planModeSchema });
 
 export const chatPlanAnswerSchema = z.object({
@@ -15334,6 +15362,12 @@ export type PendingPlanQuestion = z.infer<typeof pendingPlanQuestionSchema>;
 export type ChatPlanState = z.infer<typeof chatPlanStateSchema>;
 export type EncryptedChatPlanWireState = z.infer<
   typeof encryptedChatPlanWireStateSchema
+>;
+export type ProjectTaskWorkloadOpaqueItem = z.infer<
+  typeof projectTaskWorkloadOpaqueItemSchema
+>;
+export type ProjectTaskWorkloadOpaque = z.infer<
+  typeof projectTaskWorkloadOpaqueSchema
 >;
 export type ChatPlanUpdate = z.infer<typeof chatPlanUpdateSchema>;
 export type ChatPlanAnswer = z.infer<typeof chatPlanAnswerSchema>;
