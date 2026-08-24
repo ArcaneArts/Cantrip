@@ -49,6 +49,7 @@ import {
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { RunConfigurationTargetPicker } from "@/components/run/run-configuration-target-picker";
 import {
   detectRunConfigurations,
   getRunConfigurationCapabilities,
@@ -57,10 +58,12 @@ import {
   setRunConfigurationSecret,
 } from "@/lib/run-configuration-api";
 import {
+  applyRunConfigurationDetectionCandidate,
   createRunConfigurationDocument,
   createShellRunConfigurationDocument,
   parseRunConfigurationEditorDocument,
   runConfigurationEffectiveCommand,
+  runConfigurationTargetLabel,
 } from "@/lib/run-configuration-editor-model";
 import { cn } from "@/lib/utils";
 
@@ -766,6 +769,7 @@ export function RunConfigurationEditor({
   );
   const [errors, setErrors] = useState<string[]>([]);
   const [conflictRevision, setConflictRevision] = useState<string | null>(null);
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const queryClient = useQueryClient();
   const editingRevision = entry?.revision ?? null;
   const detection = useQuery({
@@ -779,6 +783,20 @@ export function RunConfigurationEditor({
     queryKey: ["run-configuration-capabilities", projectId],
     queryFn: () => getRunConfigurationCapabilities(projectId),
     staleTime: 30_000,
+  });
+  const targetDetection = useQuery({
+    enabled:
+      open &&
+      stage === "edit" &&
+      targetPickerOpen &&
+      document.provider !== "shell",
+    queryKey: [
+      "run-configuration-target-detection",
+      projectId,
+      document.provider,
+    ],
+    queryFn: () => detectRunConfigurations(projectId, document.provider),
+    staleTime: 5_000,
   });
   const secretQueryKey = ["run-configuration-secrets", projectId] as const;
   const storedSecrets = useQuery({
@@ -827,6 +845,7 @@ export function RunConfigurationEditor({
     setPlatformOverrides(JSON.stringify(next.platformOverrides, null, 2));
     setErrors([]);
     setConflictRevision(null);
+    setTargetPickerOpen(false);
     setStage(creating ? "choose" : "edit");
   };
 
@@ -907,6 +926,7 @@ export function RunConfigurationEditor({
     setPlatformOverrides(JSON.stringify(next.platformOverrides, null, 2));
     setErrors([]);
     setConflictRevision(null);
+    setTargetPickerOpen(false);
     setStage("edit");
   };
 
@@ -1104,6 +1124,39 @@ export function RunConfigurationEditor({
                 </NativeSelect>
               </label>
             </div>
+            {document.provider !== "shell" ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
+                <div className="min-w-0">
+                  <div className={labelClassName}>Worker-backed target</div>
+                  <code className="block truncate text-sm">
+                    {runConfigurationTargetLabel(document)}
+                  </code>
+                  <p className="text-xs text-muted-foreground">
+                    Browse static project discovery to update the target, start
+                    directory, and detected provider defaults.
+                  </p>
+                </div>
+                <RunConfigurationTargetPicker
+                  candidates={targetDetection.data?.candidates ?? []}
+                  current={document}
+                  diagnostics={targetDetection.data?.diagnostics ?? []}
+                  error={targetDetection.error ?? null}
+                  fetching={targetDetection.isFetching}
+                  open={targetPickerOpen}
+                  onChoose={(candidate) => {
+                    setDocument((current) =>
+                      applyRunConfigurationDetectionCandidate(
+                        current,
+                        candidate,
+                      ),
+                    );
+                    setTargetPickerOpen(false);
+                  }}
+                  onOpenChange={setTargetPickerOpen}
+                  onRefresh={() => void targetDetection.refetch()}
+                />
+              </div>
+            ) : null}
             {document.provider === "shell" ? (
               document.target.kind === "command" ? (
                 <label className={fieldClassName}>

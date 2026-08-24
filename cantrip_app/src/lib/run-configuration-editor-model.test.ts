@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyRunConfigurationDetectionCandidate,
   createDartRunConfigurationDocument,
   createFlutterRunConfigurationDocument,
   createJavaRunConfigurationDocument,
@@ -15,6 +16,7 @@ import {
   parseShellRunConfigurationEditorDocument,
   rustRunConfigurationEffectiveCommand,
   shellRunConfigurationEffectiveCommand,
+  runConfigurationTargetLabel,
 } from "./run-configuration-editor-model";
 
 describe("Shell Run configuration editor model", () => {
@@ -216,5 +218,183 @@ describe("Shell Run configuration editor model", () => {
     const parsed = parseRunConfigurationEditorDocument(document, "{}");
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.document.provider).toBe("rust");
+  });
+});
+
+describe("Run configuration detected target application", () => {
+  it("applies a Node target and discovery-owned runtime defaults without replacing common settings", () => {
+    const current = createNodeRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000011",
+    );
+    current.name = "My API";
+    current.arguments = ["--inspect"];
+    current.environment.variables = [
+      { name: "LOG_LEVEL", value: "debug", enabled: true },
+    ];
+    current.options.runtimeArguments = ["--enable-source-maps"];
+    const detected = createNodeRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000012",
+    );
+    detected.name = "Detected Bun API";
+    detected.workingDirectory = "packages/api";
+    detected.target = { kind: "entry", path: "packages/api/server.ts" };
+    detected.options = {
+      packageManager: "bun",
+      runtime: "bun",
+      runtimeArguments: [],
+    };
+
+    const applied = applyRunConfigurationDetectionCandidate(current, {
+      provider: "node",
+      confidence: "high",
+      reason: "The package declares an entrypoint.",
+      effectiveCommand: "bun packages/api/server.ts",
+      document: detected,
+    });
+
+    expect(applied).toMatchObject({
+      id: current.id,
+      name: "My API",
+      workingDirectory: "packages/api",
+      target: { kind: "entry", path: "packages/api/server.ts" },
+      arguments: ["--inspect"],
+      environment: current.environment,
+      options: {
+        packageManager: "bun",
+        runtime: "bun",
+        runtimeArguments: ["--enable-source-maps"],
+      },
+    });
+  });
+
+  it("keeps Java runtime tuning while applying the discovered module, main class, and wrapper", () => {
+    const current = createJavaRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000013",
+    );
+    current.name = "Java API";
+    current.options = {
+      jdkHome: "/opt/jdk-21",
+      useWrapper: false,
+      buildToolArguments: ["--quiet"],
+      vmArguments: ["-Xmx1g"],
+    };
+    const detected = createJavaRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000014",
+    );
+    detected.workingDirectory = "services/api";
+    detected.target = {
+      kind: "gradleMainClass",
+      projectPath: ":api",
+      className: "demo.ApiApplication",
+    };
+    detected.options.useWrapper = true;
+
+    const applied = applyRunConfigurationDetectionCandidate(current, {
+      provider: "java",
+      confidence: "high",
+      reason: "A static main method was found.",
+      effectiveCommand: "./gradlew :api:run",
+      document: detected,
+    });
+
+    expect(applied).toMatchObject({
+      id: current.id,
+      name: "Java API",
+      workingDirectory: "services/api",
+      target: detected.target,
+      options: {
+        jdkHome: "/opt/jdk-21",
+        useWrapper: true,
+        buildToolArguments: ["--quiet"],
+        vmArguments: ["-Xmx1g"],
+      },
+    });
+  });
+
+  it("applies Flutter flavor discovery and unions required Cargo features with user features", () => {
+    const flutter = createFlutterRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000015",
+    );
+    flutter.options.deviceId = "chrome";
+    flutter.options.mode = "profile";
+    const detectedFlutter = createFlutterRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000016",
+    );
+    detectedFlutter.workingDirectory = "apps/mobile";
+    detectedFlutter.target.path = "lib/main_staging.dart";
+    detectedFlutter.options.flavor = "staging";
+    const appliedFlutter = applyRunConfigurationDetectionCandidate(flutter, {
+      provider: "flutter",
+      confidence: "medium",
+      reason: "A likely Flutter entrypoint was found.",
+      effectiveCommand: "flutter run --target=lib/main_staging.dart",
+      document: detectedFlutter,
+    });
+    expect(appliedFlutter).toMatchObject({
+      workingDirectory: "apps/mobile",
+      target: { kind: "entrypoint", path: "lib/main_staging.dart" },
+      options: { deviceId: "chrome", mode: "profile", flavor: "staging" },
+    });
+    flutter.options.flavor = "local";
+    expect(
+      applyRunConfigurationDetectionCandidate(flutter, {
+        provider: "flutter",
+        confidence: "medium",
+        reason: "A likely Flutter entrypoint was found.",
+        effectiveCommand: "flutter run --target=lib/main_staging.dart",
+        document: detectedFlutter,
+      }),
+    ).toMatchObject({ options: { flavor: "local" } });
+
+    const rust = createRustRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000017",
+    );
+    rust.options.features = ["tracing", "tls"];
+    rust.options.toolchain = "nightly";
+    const detectedRust = createRustRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000018",
+    );
+    detectedRust.target = {
+      kind: "binary",
+      package: "api",
+      name: "api-server",
+    };
+    detectedRust.options.features = ["tls", "server"];
+    const appliedRust = applyRunConfigurationDetectionCandidate(rust, {
+      provider: "rust",
+      confidence: "high",
+      reason: "The Cargo target is statically declared.",
+      effectiveCommand: "cargo run --package=api --bin=api-server",
+      document: detectedRust,
+    });
+    expect(appliedRust).toMatchObject({
+      target: detectedRust.target,
+      options: {
+        toolchain: "nightly",
+        features: ["tls", "server", "tracing"],
+      },
+    });
+  });
+
+  it("rejects cross-provider candidates and renders concise searchable target labels", () => {
+    const current = createDartRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000019",
+    );
+    const rust = createRustRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000020",
+    );
+    expect(
+      applyRunConfigurationDetectionCandidate(current, {
+        provider: "rust",
+        confidence: "low",
+        reason: "A Rust target was found.",
+        effectiveCommand: "cargo run --package=app --bin=app",
+        document: rust,
+      }),
+    ).toBe(current);
+    expect(runConfigurationTargetLabel(current)).toBe(
+      "Dart entrypoint: bin/main.dart",
+    );
+    expect(runConfigurationTargetLabel(rust)).toBe("Cargo app · binary app");
   });
 });
