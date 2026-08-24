@@ -28,7 +28,11 @@ import {
   type MaterializedRunCommand,
   shellCommandInvocation,
 } from "./run-configuration-provider.js";
-import { runConfigurationEnvironmentNameIsReserved } from "./run-configuration-environment-policy.js";
+import {
+  mergeRunConfigurationEnvironmentLayers,
+  runConfigurationEnvironmentNameIsReserved,
+  runConfigurationEnvironmentValue,
+} from "./run-configuration-environment-policy.js";
 
 const CODEX_ENVIRONMENT_DIRECTORY = ".codex/environments";
 const CODEX_ENVIRONMENT_PATH = `${CODEX_ENVIRONMENT_DIRECTORY}/environment.toml`;
@@ -404,11 +408,14 @@ function protectedEnvironmentName(name: string): boolean {
 function boundedEnvironmentDelta(
   baseline: Record<string, string>,
   captured: Record<string, string>,
+  platform: RunConfigurationPlatform,
 ): Record<string, string> {
-  const entries = Object.entries(captured).filter(
+  const entries = Object.entries(
+    mergeRunConfigurationEnvironmentLayers(platform, captured),
+  ).filter(
     ([name, value]) =>
       !protectedEnvironmentName(name) &&
-      baseline[name] !== value &&
+      runConfigurationEnvironmentValue(baseline, name, platform) !== value &&
       /^[A-Za-z_][A-Za-z0-9_]*$/u.test(name) &&
       name.length <= MAX_ENVIRONMENT_NAME_CHARACTERS &&
       value.length <= MAX_ENVIRONMENT_VALUE_CHARACTERS &&
@@ -436,14 +443,14 @@ function boundedEnvironmentDelta(
 }
 
 function parsePosixEnvironment(contents: Buffer): Record<string, string> {
-  const environment: Record<string, string> = {};
+  const environment: Array<[string, string]> = [];
   for (const entry of contents.toString("utf8").split("\0")) {
     if (!entry) continue;
     const separator = entry.indexOf("=");
     if (separator <= 0) continue;
-    environment[entry.slice(0, separator)] = entry.slice(separator + 1);
+    environment.push([entry.slice(0, separator), entry.slice(separator + 1)]);
   }
-  return environment;
+  return Object.fromEntries(environment);
 }
 
 function parseWindowsEnvironment(contents: Buffer): Record<string, string> {
@@ -506,9 +513,10 @@ ${command}`;
 async function resolveEnvironmentFiles(
   targetRoot: string,
   files: string[],
+  platform: RunConfigurationPlatform,
 ): Promise<Record<string, string>> {
   const root = await realpath(targetRoot);
-  const result: Record<string, string> = {};
+  let result: Record<string, string> = {};
   let totalBytes = 0;
   for (const relativePath of files) {
     const candidate = path.join(root, ...relativePath.split("/"));
@@ -573,7 +581,11 @@ async function resolveEnvironmentFiles(
         false,
       );
     }
-    Object.assign(result, parseDotenv(contents));
+    result = mergeRunConfigurationEnvironmentLayers(
+      platform,
+      result,
+      parseDotenv(contents),
+    );
   }
   return result;
 }
@@ -590,13 +602,16 @@ async function materializeCodexEnvironment(
   const capturePath = path.join(directory, "environment.capture");
   try {
     await writeFile(capturePath, "", { mode: 0o600 });
-    const environment = {
-      ...input.baseline,
-      CODEX_WORKTREE_PATH: input.targetRoot,
-      CANTRIP_PROJECT_ROOT: input.sourceRoot,
-      CANTRIP_WORKTREE_PATH: input.targetRoot,
-      [CAPTURE_ENVIRONMENT_NAME]: capturePath,
-    };
+    const environment = mergeRunConfigurationEnvironmentLayers(
+      input.platform,
+      input.baseline,
+      {
+        CODEX_WORKTREE_PATH: input.targetRoot,
+        CANTRIP_PROJECT_ROOT: input.sourceRoot,
+        CANTRIP_WORKTREE_PATH: input.targetRoot,
+        [CAPTURE_ENVIRONMENT_NAME]: capturePath,
+      },
+    );
     const invocation = shellCommandInvocation(
       captureWrapper(inspected.setupCommand, input.platform),
       {
@@ -637,7 +652,7 @@ async function materializeCodexEnvironment(
       input.platform === "win32"
         ? parseWindowsEnvironment(capturedContents)
         : parsePosixEnvironment(capturedContents);
-    return boundedEnvironmentDelta(environment, captured);
+    return boundedEnvironmentDelta(environment, captured, input.platform);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -649,12 +664,13 @@ export async function resolveRunConfigurationEnvironmentSources(
   const files = await resolveEnvironmentFiles(
     input.targetRoot,
     input.environment.files,
+    input.platform,
   );
   const protectedSecrets = new Map(
     input.protectedSecrets.map((secret) => [secret.reference, secret]),
   );
   const openedSecrets = new Map<string, string>();
-  const secrets: Record<string, string> = {};
+  const secretEntries: Array<[string, string]> = [];
   for (const reference of input.environment.secrets) {
     if (!reference.enabled) continue;
     const protectedSecret = protectedSecrets.get(reference.secret);
@@ -678,8 +694,12 @@ export async function resolveRunConfigurationEnvironmentSources(
       }
       openedSecrets.set(reference.secret, value);
     }
-    secrets[reference.name] = value;
+    secretEntries.push([reference.name, value]);
   }
+  const secrets = mergeRunConfigurationEnvironmentLayers(
+    input.platform,
+    Object.fromEntries(secretEntries),
+  );
   if (!input.environment.includeCodexEnvironment) {
     if (input.expectedCodexEnvironmentRevision !== null) {
       throw new RunConfigurationEnvironmentResolutionError(

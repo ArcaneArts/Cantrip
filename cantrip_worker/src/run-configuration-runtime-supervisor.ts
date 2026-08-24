@@ -44,7 +44,10 @@ import {
   RunConfigurationEnvironmentResolutionError,
   type RunConfigurationEnvironmentExecutionResult,
 } from "./run-configuration-environment-source.js";
-import { runConfigurationEnvironmentNameIsReserved } from "./run-configuration-environment-policy.js";
+import {
+  mergeRunConfigurationEnvironmentLayers,
+  runConfigurationEnvironmentNameIsReserved,
+} from "./run-configuration-environment-policy.js";
 
 const MAX_RETAINED_RUNTIMES = RUN_CONFIGURATION_RUNTIME_LIST_LIMIT;
 const MAX_SCROLLBACK_CHARS = 256 * 1_024;
@@ -807,10 +810,11 @@ export class RunConfigurationRuntimeSupervisor {
       session.stopGracePeriodMs = document.stop.gracePeriodMs;
 
       let layers: RunConfigurationEnvironmentLayers;
-      const baseline = {
-        ...stringEnvironment(process.env),
-        ...stringEnvironment(this.#environment),
-      };
+      const baseline = mergeRunConfigurationEnvironmentLayers(
+        providerContext.platform,
+        stringEnvironment(process.env),
+        stringEnvironment(this.#environment),
+      );
       try {
         layers = await this.#resolveEnvironment({
           baseline,
@@ -860,18 +864,18 @@ export class RunConfigurationRuntimeSupervisor {
           true,
         );
       }
-      const environment = {
-        ...baseline,
-        ...boundedEnvironmentLayer(layers.codex),
-        ...boundedEnvironmentLayer(layers.files),
-        ...boundedEnvironmentLayer(enabledVariables(materialized.environment)),
-        ...boundedEnvironmentLayer(layers.secrets),
-        ...boundedEnvironmentLayer(materialized.environmentAdditions),
-        ...protectedBaselineEnvironment(baseline),
-        TERM: "xterm-256color",
-        COLORTERM: "truecolor",
-        ...reservedEnvironment(session, roots.sourceRoot, roots.targetRoot),
-      };
+      const environment = mergeRunConfigurationEnvironmentLayers(
+        providerContext.platform,
+        baseline,
+        boundedEnvironmentLayer(layers.codex),
+        boundedEnvironmentLayer(layers.files),
+        boundedEnvironmentLayer(enabledVariables(materialized.environment)),
+        boundedEnvironmentLayer(layers.secrets),
+        boundedEnvironmentLayer(materialized.environmentAdditions),
+        protectedBaselineEnvironment(baseline),
+        { TERM: "xterm-256color", COLORTERM: "truecolor" },
+        reservedEnvironment(session, roots.sourceRoot, roots.targetRoot),
+      );
 
       const providerDiagnostics = await validateRunConfigurationProvider(
         document,
