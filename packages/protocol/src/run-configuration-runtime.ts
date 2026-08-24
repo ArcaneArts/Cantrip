@@ -419,6 +419,15 @@ export const protectedRunConfigurationRuntimeWorkerOutputSchema = z
   })
   .strict();
 
+export const protectedRunConfigurationRuntimeOutputResultSchema = z
+  .object({
+    operationId: runConfigurationOperationIdSchema,
+    ...runConfigurationRuntimeIdentitySchema.shape,
+    generation: runConfigurationRuntimeSchema.shape.generation,
+    protectedOutput: endpointContentOpaqueSchema,
+  })
+  .strict();
+
 export const runConfigurationRuntimeWorkerNotificationSchema = z
   .object({
     type: z.literal("project.run-configuration-runtime.observed"),
@@ -493,6 +502,9 @@ export type RunConfigurationRuntimeWorkerOutput = z.infer<
 >;
 export type RunConfigurationRuntimeOutputContent = z.infer<
   typeof runConfigurationRuntimeOutputContentSchema
+>;
+export type ProtectedRunConfigurationRuntimeOutputResult = z.infer<
+  typeof protectedRunConfigurationRuntimeOutputResultSchema
 >;
 export type RunConfigurationRuntimeObservationApplyResult = z.infer<
   typeof runConfigurationRuntimeObservationApplyResultSchema

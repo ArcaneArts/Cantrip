@@ -1100,6 +1100,13 @@
       "when": 1787549621373,
       "tag": "0156_silky_maggott",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1787553729471,
+      "tag": "0157_illegal_wolfpack",
+      "breakpoints": true
     }
   ]
 }

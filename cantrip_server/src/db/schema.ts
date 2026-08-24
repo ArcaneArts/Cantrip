@@ -25,6 +25,7 @@ import type {
   ModelReasoningEffortOption,
   PrivateDisplayLabelOpaque,
   SurfacePrivateStateOpaque,
+  TerminalKind,
   ProjectFolderManagement,
   ProjectOriginKind,
   ProjectFolderSetupJobError,
@@ -2760,36 +2761,56 @@ export const taskPlanningRounds = pgTable(
   ],
 );
 
-export const terminals = pgTable("terminals", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  protectedLabel: jsonb("protected_label")
-    .$type<PrivateDisplayLabelOpaque>()
-    .notNull(),
-  protectedState: jsonb("protected_state")
-    .$type<SurfacePrivateStateOpaque>()
-    .notNull(),
-  position: integer("position").notNull().default(0),
-  status: text("status").notNull().default("idle"),
-  activeWorkerId: text("active_worker_id")
-    .notNull()
-    .references(() => workers.id, { onDelete: "cascade" }),
-  worktreeId: text("worktree_id")
-    .notNull()
-    .references(() => projectWorktrees.id, { onDelete: "restrict" }),
-  linkedChatId: text("linked_chat_id")
-    .unique()
-    .references(() => chats.id, { onDelete: "cascade" }),
-  serviceEnabled: boolean("service_enabled").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const terminals = pgTable(
+  "terminals",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<TerminalKind>().notNull().default("interactive"),
+    protectedLabel: jsonb("protected_label").$type<PrivateDisplayLabelOpaque>(),
+    protectedState: jsonb("protected_state").$type<SurfacePrivateStateOpaque>(),
+    position: integer("position").notNull().default(0),
+    status: text("status").notNull().default("idle"),
+    activeWorkerId: text("active_worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    linkedChatId: text("linked_chat_id")
+      .unique()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    runConfigurationId: text("run_configuration_id"),
+    runConfigurationRuntimeId: text("run_configuration_runtime_id")
+      .unique()
+      .references(() => runConfigurationRuntimes.id, { onDelete: "cascade" }),
+    serviceEnabled: boolean("service_enabled").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "terminals_kind_check",
+      sql`${table.kind} IN ('interactive', 'chat-console', 'run-configuration')`,
+    ),
+    check(
+      "terminals_kind_binding_check",
+      sql`(
+        (${table.kind} = 'interactive' AND ${table.linkedChatId} IS NULL AND ${table.runConfigurationId} IS NULL AND ${table.runConfigurationRuntimeId} IS NULL AND ${table.protectedLabel} IS NOT NULL AND ${table.protectedState} IS NOT NULL)
+        OR
+        (${table.kind} = 'chat-console' AND ${table.linkedChatId} IS NOT NULL AND ${table.runConfigurationId} IS NULL AND ${table.runConfigurationRuntimeId} IS NULL AND ${table.protectedLabel} IS NOT NULL AND ${table.protectedState} IS NOT NULL)
+        OR
+        (${table.kind} = 'run-configuration' AND ${table.linkedChatId} IS NULL AND ${table.runConfigurationId} IS NOT NULL AND ${table.runConfigurationRuntimeId} IS NOT NULL AND ${table.protectedLabel} IS NULL AND ${table.protectedState} IS NULL AND ${table.serviceEnabled} = false)
+      )`,
+    ),
+  ],
+);
 
 export const explorers = pgTable("explorers", {
   id: text("id").primaryKey(),
