@@ -2,7 +2,7 @@
 
 Cantrip gives each applicable Codex chat a worker-owned MCP server named
 `cantrip`. It is the preferred agent interface for Cantrip-owned context,
-Policies, Run configurations and instances, worktrees, execution targets,
+Policies, Run configurations and runtimes, worktrees, execution targets,
 surfaces, and bounded client controls.
 Normal repository reads, edits, commands, and Git operations still use normal
 shell, file, and Git tools. The worker-authenticated [`cantrip` CLI](CLI.md)
@@ -67,10 +67,9 @@ default, while retaining suspended secondary lanes because those still protect
 resumable work. Set `includeLeaseHistory: true` only for explicit lease-history
 inspection.
 
-Successful Run mutations are audited as `run.mcp.started` or
-`run.mcp.stopped` against the durable Run ID. That identity links to the exact
-project, worktree, worker, action ID, and configuration revision without adding
-the raw command or volatile PTY output to the audit log.
+Successful Run configuration mutations are audited against the stable
+configuration ID. Runtime output and secret plaintext are not added to audit
+records.
 
 ## Agent use
 
@@ -87,15 +86,12 @@ the raw command or volatile PTY output to the audit log.
    or reconstruct opaque target identifiers.
 5. Use the target-specific tool. Normal filesystem and Git work stays in normal
    repository tools.
-6. Prefer `run_config_action_add` to append one complete, revision-checked
-   action. Use `run_config_schema` for the exact document schema and complete
-   examples before direct `.codex/environments/environment.toml` editing, then
-   validate it with `cantrip run validate`. Use `run_config_list` or
-   `run_config_read` to obtain the exact action ID and configuration revision,
-   then prefer `run_start`, `run_status`, `run_read`, `run_open`, and
-   `run_stop` over copied shell commands. MCP never invokes the CLI internally.
-   A headless start is successful even when its surface status is unavailable;
-   use `run_open` after a compatible client reconnects.
+6. Use `run_configuration_list` and `run_configuration_get` to obtain stable
+   IDs and current revisions. Use detect/create/update/delete for authoring,
+   start/restart/stop for lifecycle control, status/read-output for observation,
+   and secret-set for encrypted project secret values. Omit `worktreeId` to run
+   on Primary; pass an exact ID from `worktree_list` for Run in Worktree. MCP
+   never invokes the CLI internally.
 7. If a result has `continuationScheduled: true`, end the current turn
    immediately so Cantrip can checkpoint and resume in the selected lane.
 8. If managed MCP is unavailable, use `cantrip -h` and the corresponding CLI
@@ -111,60 +107,58 @@ only. CodeGraph remains separately labeled **Read only**.
 
 ## Tool catalog
 
-The catalog contains 35 tools. Read-only and mutation annotations are attached
+The catalog contains 36 tools. Read-only and mutation annotations are attached
 per tool. Cantrip narrows Codex's enabled tool list to the current permission
-profile, so read-only bindings receive the Run read tools but not `run_start`,
-`run_open`, or `run_stop`; the broker and server independently enforce the same
-boundary.
+profile, so read-only bindings receive the Run configuration read tools but not
+authoring, lifecycle, or secret mutations; the broker and server independently
+enforce the same boundary.
 
-| Tool                      | Kind                            | Purpose                                                                                         |
-| ------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `context_get`             | Read                            | Return the validated project, chat lane, worker, root, worktree, and permission context.        |
-| `tool_help`               | Read                            | Return exact generated input JSON Schema, examples, and notes for one Cantrip MCP tool.         |
-| `policy_list`             | Read                            | List bounded summaries of effective Policies in configured order.                               |
-| `policy_read`             | Read                            | Read the current full body for a key returned by `policy_list`.                                 |
-| `target_list`             | Read                            | Page through exact authorized execution targets for the bound project.                          |
-| `target_inspect`          | Read                            | Revalidate one listed target and report current placement and availability.                     |
-| `run_config_list`         | Read                            | List platform-compatible Codex actions with their exact IDs and configuration revisions.        |
-| `run_config_read`         | Read                            | Read one exact action after revalidating both its ID and configuration revision.                |
-| `run_config_schema`       | Read                            | Return the exact authoring schema plus complete JSON and TOML examples.                         |
-| `run_status`              | Read                            | Refresh one Run, or the latest Run in the bound worktree, from its owning worker.               |
-| `run_read`                | Read                            | Read a bounded tail of volatile, worker-owned Run output.                                       |
-| `run_setup_status`        | Read                            | Read durable setup state and bounded output when its worker is available.                       |
-| `worktree_list`           | Read                            | Page through worktrees and work-protecting leases without exposing worker filesystem paths.     |
-| `worktree_status`         | Read                            | Read bounded Git status for the current or an exact listed worktree.                            |
-| `explorer_list`           | Read                            | List a bounded directory page through an exact Explorer target.                                 |
-| `explorer_read`           | Read                            | Read bounded protected text and its version from an Explorer target.                            |
-| `terminal_read`           | Read                            | Read a bounded protected Terminal snapshot.                                                     |
-| `browser_services`        | Read/open-world                 | Discover bounded local HTTP services visible to a Browser target.                               |
-| `run_config_action_add`   | Mutation                        | Append one complete revision-checked action in the MCP-bound worktree.                          |
-| `run_start`               | Open-world mutation             | Start an exact revision-checked action in the bound worktree through its target worker.         |
-| `run_open`                | Mutation                        | Retry idempotent encrypted terminal materialization for an exact Run through a live client.     |
-| `run_stop`                | Destructive/open-world mutation | Stop an exact Run and its complete worker-owned process group.                                  |
-| `run_setup_retry`         | Mutation                        | Queue explicit setup retry for the bound secondary worktree.                                    |
-| `worktree_create`         | Mutation                        | Create an agent-owned worktree in the bound project.                                            |
-| `worktree_switch`         | Mutation                        | Schedule continuation in an exact authorized worktree.                                          |
-| `worktree_release`        | Destructive mutation            | Release a clean secondary lease and schedule continuation on Primary.                           |
-| `worktree_remove`         | Destructive mutation            | Remove a clean, unused, agent-created secondary worktree while retaining its branch.            |
-| `explorer_write`          | Destructive mutation            | Replace bounded text using the expected version returned by `explorer_read`.                    |
-| `terminal_send`           | Open-world mutation             | Send bounded protected input to an exact Terminal target.                                       |
-| `terminal_restart`        | Destructive mutation            | Restart the service owned by an eligible Terminal target.                                       |
-| `browser_navigate`        | Open-world mutation             | Navigate a Browser target to a revision-checked HTTP(S) URL.                                    |
-| `client_notify`           | Client mutation                 | Deliver one bounded best-effort notice to a compatible project-active app.                      |
-| `client_focus_project`    | Client mutation                 | Ask a compatible app to focus the bound project.                                                |
-| `client_focus_surface`    | Client mutation                 | Ask a compatible app to focus an authorized Chat, Terminal, Explorer, Code, or Browser surface. |
-| `client_show_interaction` | Client mutation                 | Ask a compatible chat-active app to show an exact pending interaction without answering it.     |
+| Tool                            | Kind                            | Purpose                                                                                         |
+| ------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `context_get`                   | Read                            | Return the validated project, chat lane, worker, root, worktree, and permission context.        |
+| `tool_help`                     | Read                            | Return exact generated input JSON Schema, examples, and notes for one Cantrip MCP tool.         |
+| `policy_list`                   | Read                            | List bounded summaries of effective Policies in configured order.                               |
+| `policy_read`                   | Read                            | Read the current full body for a key returned by `policy_list`.                                 |
+| `target_list`                   | Read                            | Page through exact authorized execution targets for the bound project.                          |
+| `target_inspect`                | Read                            | Revalidate one listed target and report current placement and availability.                     |
+| `run_configuration_list`        | Read                            | List shared stable-ID definitions and diagnostics from Primary.                                 |
+| `run_configuration_get`         | Read                            | Read one exact definition and its current revision.                                             |
+| `run_configuration_detect`      | Read                            | Detect supported project types and propose definitions without writing.                         |
+| `run_configuration_status`      | Read                            | List durable runtime state for one configuration or worktree selection.                         |
+| `run_configuration_read_output` | Read                            | Read a bounded protected tail from one exact runtime.                                           |
+| `worktree_list`                 | Read                            | Page through worktrees and work-protecting leases without exposing worker filesystem paths.     |
+| `worktree_status`               | Read                            | Read bounded Git status for the current or an exact listed worktree.                            |
+| `explorer_list`                 | Read                            | List a bounded directory page through an exact Explorer target.                                 |
+| `explorer_read`                 | Read                            | Read bounded protected text and its version from an Explorer target.                            |
+| `terminal_read`                 | Read                            | Read a bounded protected Terminal snapshot.                                                     |
+| `browser_services`              | Read/open-world                 | Discover bounded local HTTP services visible to a Browser target.                               |
+| `run_configuration_create`      | Mutation                        | Create one revisioned shared definition using its document ID.                                  |
+| `run_configuration_update`      | Mutation                        | Update one exact definition with optimistic revision control.                                   |
+| `run_configuration_delete`      | Destructive mutation            | Delete one exact definition after revision validation.                                          |
+| `run_configuration_start`       | Open-world mutation             | Start the configuration on Primary or an exact requested worktree.                              |
+| `run_configuration_restart`     | Destructive/open-world mutation | Stop the active generation and launch the next in the same managed terminal.                    |
+| `run_configuration_stop`        | Destructive/open-world mutation | Stop the configuration's complete process tree.                                                 |
+| `run_configuration_secret_set`  | Mutation                        | Encrypt and store one project secret value referenced by definitions.                           |
+| `worktree_create`               | Mutation                        | Create an agent-owned worktree in the bound project.                                            |
+| `worktree_switch`               | Mutation                        | Schedule continuation in an exact authorized worktree.                                          |
+| `worktree_release`              | Destructive mutation            | Release a clean secondary lease and schedule continuation on Primary.                           |
+| `worktree_remove`               | Destructive mutation            | Remove a clean, unused, agent-created secondary worktree while retaining its branch.            |
+| `explorer_write`                | Destructive mutation            | Replace bounded text using the expected version returned by `explorer_read`.                    |
+| `terminal_send`                 | Open-world mutation             | Send bounded protected input to an exact Terminal target.                                       |
+| `terminal_restart`              | Destructive mutation            | Restart the service owned by an eligible Terminal target.                                       |
+| `browser_navigate`              | Open-world mutation             | Navigate a Browser target to a revision-checked HTTP(S) URL.                                    |
+| `client_notify`                 | Client mutation                 | Deliver one bounded best-effort notice to a compatible project-active app.                      |
+| `client_focus_project`          | Client mutation                 | Ask a compatible app to focus the bound project.                                                |
+| `client_focus_surface`          | Client mutation                 | Ask a compatible app to focus an authorized Chat, Terminal, Explorer, Code, or Browser surface. |
+| `client_show_interaction`       | Client mutation                 | Ask a compatible chat-active app to show an exact pending interaction without answering it.     |
 
-Unrestricted UI-surface creation is intentionally not an MCP tool. `run_open`
-is the narrow exception: the server first authorizes an exact existing Run,
-fixes project/worktree/worker identity, requires the terminal UUID to equal the
-Run UUID, and then asks a compatible client to author the encrypted terminal
-fields. A generic future `surface_create` still requires a separate durable
-design.
+Unrestricted UI-surface creation is intentionally not an MCP tool. Run
+configuration terminals are server-materialized from authorized runtime state
+and remain read-only. A generic future `surface_create` still requires a
+separate durable design.
 
-See [Codex-compatible Run environments](RUN_CONFIGURATIONS.md) for the shared
-configuration contract, CLI parity, platform behavior, setup lifecycle,
-limits, and threat model.
+See [Run Configurations](RUN_CONFIGURATIONS.md) for the shared configuration
+contract, CLI parity, provider behavior, lifecycle, limits, and threat model.
 
 ## Client controls
 
@@ -183,14 +177,6 @@ correlation IDs are acknowledged from a bounded client cache so a retry cannot
 apply the same control twice. Capability fields were introduced within live
 protocol version 1 and the app/server release is deployed as one compatibility
 unit; older clients that omit capabilities safely receive no controls.
-
-`materialize-run-terminal` carries the exact project, worktree, Run UUID,
-matching terminal UUID, and focus intent. The client verifies project access,
-encrypts the title and private terminal state, and calls the Run-specific
-idempotent server route. The server does not accept generic surface creation,
-and the worker attaches that surface only to the already existing managed Run
-PTY. No eligible client yields `surface.status = unavailable` without changing
-the successful Run result.
 
 ## Failure and recovery
 

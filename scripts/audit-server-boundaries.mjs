@@ -113,17 +113,17 @@ const CONTENT_CLASSIFICATIONS = new Set([
 // digest; regenerating the inventory alone cannot silently accept it.
 const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
-    "2b5cec445a8cab3fbf3847e458639092777a8b5cbbd076a2ce55882fb8f45b31",
+    "bd6174828b93ba7a40de3eba885c6c21e1bc15f71c2872c6e537b9520492a505",
   applicationRoutes:
-    "186005095cd4fc86135c63012bdc2d6952e3fc84faea6acbfe97b6a670b9f57a",
+    "262f2d4e439edcd14e0b66313e62f0ddfce5f7f11f39f1e6247fb933c9f1e0a7",
   clientControlCommands:
-    "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
+    "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
     "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
   liveResources:
     "a02279408c3c49838d1b824ae39326f71cfb3f52e9c0ba0f606d478e7832bd15",
   workerCommands:
-    "b2374dbba4d1f53cd912524d1e5bfbafa1276bd63a0afa376d2f333685293cca",
+    "9781ef864f89badc8a5c6f630e3670d63ac2dbf784902b28d1597b344c980b57",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -167,12 +167,10 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   tabGroupMembers: "intentionally-public-control-plane",
   projectSources: "endpoint-protected",
   projectWorktrees: "endpoint-protected",
-  worktreeSetupJobs: "minimized-operational-metadata",
   projectFolderSetupJobs: "minimized-operational-metadata",
   projectGithubConversionJobs: "minimized-operational-metadata",
   projectReplicaJobs: "minimized-operational-metadata",
   gitOperations: "endpoint-protected",
-  runInstances: "minimized-operational-metadata",
   // New Run configuration persistence is deliberately limited to stable
   // identities, revisions, generations, lifecycle state, timestamps, and a
   // bounded redacted failure shape. Commands, environment values, secrets,
@@ -4041,9 +4039,7 @@ function applicationRouteContentClassification(route) {
         "bounded revision-checked Git-shared definition with secret references only",
     };
   }
-  if (
-    /(?:\/run-environment(?:\/|$)|\/script-commands(?:\/|$))/u.test(route.path)
-  ) {
+  if (/\/script-commands(?:\/|$)/u.test(route.path)) {
     return {
       classification: "endpoint-protected",
       rationale: "operation-bound Run or discovered-command content",
@@ -4131,20 +4127,10 @@ function workerCommandContentClassification(command) {
       rationale: "worker-owned encrypted global Code settings lifecycle",
     };
   }
-  if (
-    /^(?:project\.run-configurations\.(?:inspect|read-authoring|write)|project\.run-setup\.(?:start|status)|project\.run\.logs|project\.script-commands(?:\.inspect)?)$/u.test(
-      command,
-    )
-  ) {
+  if (/^project\.script-commands(?:\.inspect)?$/u.test(command)) {
     return {
       classification: "endpoint-protected",
       rationale: "operation-bound Run or discovered-command content",
-    };
-  }
-  if (command === "project.run-configurations.metadata") {
-    return {
-      classification: "minimized-operational-metadata",
-      rationale: "bounded worktree-readiness metadata without Run semantics",
     };
   }
   if (/^(?:skills\.|customization\.)/u.test(command)) {

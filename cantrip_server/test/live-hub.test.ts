@@ -802,55 +802,6 @@ describe("AppLiveHub", () => {
     hub.close();
   });
 
-  it("routes exact Run terminal materialization identities through the active project client", async () => {
-    const hub = new AppLiveHub({ epoch: "run-terminal-control" });
-    const socket = new FakeSocket();
-    hub.attach(socket, { ownerId: "owner-one", authorizeScope: () => true });
-    socket.receive(initialize(null, ["materialize-run-terminal"]));
-    socket.receive({
-      type: "subscribe",
-      requestId: "run-project-scope",
-      scopes: [{ kind: "project", projectId: "project-one" }],
-    });
-    await settle();
-
-    const runId = "00000000-0000-4000-8000-000000000011";
-    const pending = hub.requestClientControl("owner-one", {
-      kind: "materialize-run-terminal",
-      projectId: "project-one",
-      worktreeId: "worktree-one",
-      runId,
-      terminalId: runId,
-      focus: true,
-    });
-    await settle();
-    const request = socket.sent.find(
-      ({ type }) => type === "client-control-request",
-    );
-    expect(request).toMatchObject({
-      type: "client-control-request",
-      command: {
-        kind: "materialize-run-terminal",
-        projectId: "project-one",
-        worktreeId: "worktree-one",
-        runId,
-        terminalId: runId,
-        focus: true,
-      },
-    });
-    if (request?.type !== "client-control-request") {
-      throw new Error("The Run materialization request was not delivered.");
-    }
-    socket.receive({
-      type: "client-control-ack",
-      correlationId: request.correlationId,
-      status: "applied",
-      detail: null,
-    });
-    await expect(pending).resolves.toMatchObject({ status: "applied" });
-    hub.close();
-  });
-
   it("prefers a compatible client subscribed to the interaction chat", async () => {
     const hub = new AppLiveHub({ epoch: "client-control-chat-target" });
     const projectOnly = new FakeSocket();

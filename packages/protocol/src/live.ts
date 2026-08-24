@@ -19,7 +19,6 @@ export const clientControlCapabilitySchema = z.enum([
   "focus-project",
   "focus-surface",
   "show-interaction",
-  "materialize-run-terminal",
 ]);
 
 export const clientControlCapabilitiesSchema = z
@@ -62,20 +61,6 @@ export const clientControlCommandSchema = z.discriminatedUnion("kind", [
       interactionId: liveIdSchema,
     })
     .strict(),
-  z
-    .object({
-      kind: z.literal("materialize-run-terminal"),
-      projectId: liveIdSchema,
-      worktreeId: liveIdSchema,
-      runId: z.string().uuid(),
-      terminalId: z.string().uuid(),
-      focus: z.boolean(),
-    })
-    .strict()
-    .refine((command) => command.runId === command.terminalId, {
-      message: "Run terminals must reuse the Run UUID.",
-      path: ["terminalId"],
-    }),
 ]);
 
 export const clientControlRequestSchema = z

@@ -123,7 +123,6 @@ function createHarness(input?: {
         "focus-project",
         "focus-surface",
         "show-interaction",
-        "materialize-run-terminal",
       ],
     },
     onAuthenticationRequired: input?.onAuthenticationRequired,
@@ -496,12 +495,8 @@ describe("application live client", () => {
       issuedAt: "2026-08-21T12:00:00.000Z",
       expiresAt: "2026-08-21T12:00:05.000Z",
       command: {
-        kind: "materialize-run-terminal" as const,
+        kind: "focus-project" as const,
         projectId: "project-one",
-        worktreeId: "worktree-one",
-        runId: "00000000-0000-4000-8000-000000000010",
-        terminalId: "00000000-0000-4000-8000-000000000010",
-        focus: true,
       },
     };
     socket.receive(request);

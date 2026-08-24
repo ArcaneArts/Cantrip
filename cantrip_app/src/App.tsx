@@ -401,7 +401,6 @@ import {
   getTerminals,
   getWorkers,
   getWorkflows,
-  materializeRunTerminal,
   getWorkflowAutomationTriggers,
   invokeSavedWorkflowCommand,
   interruptChat,
@@ -7153,9 +7152,7 @@ export function App() {
           detail: "The requested project is not available in this client.",
         };
       }
-      if (command.kind !== "materialize-run-terminal" || command.focus) {
-        window.focus();
-      }
+      window.focus();
       switch (command.kind) {
         case "notify": {
           const notification = await openClientNotification({
@@ -7189,43 +7186,6 @@ export function App() {
             queryKey: ["agent-requests", command.chatId, "pending"],
           });
           return { status: "applied" as const };
-        case "materialize-run-terminal": {
-          try {
-            const terminal = await materializeRunTerminal(
-              command.projectId,
-              command.worktreeId,
-              command.runId,
-            );
-            if (terminal.id !== command.terminalId) {
-              return {
-                status: "declined" as const,
-                detail:
-                  "The materialized terminal identity did not match the Run.",
-              };
-            }
-            queryClient.setQueryData<TerminalSummary[]>(
-              ["terminals", terminal.projectId],
-              (current = []) =>
-                [
-                  ...current.filter((item) => item.id !== terminal.id),
-                  terminal,
-                ].sort((left, right) => left.position - right.position),
-            );
-            await queryClient.invalidateQueries({
-              queryKey: ["project-tab-layout", terminal.projectId],
-            });
-            if (command.focus) {
-              selectProjectFromCommandBar(command.projectId);
-              openCreatedTab(command.projectId, "terminal", terminal.id);
-            }
-            return { status: "applied" as const };
-          } catch (error) {
-            return {
-              status: "declined" as const,
-              detail: errorText(error).slice(0, 500),
-            };
-          }
-        }
       }
     },
     [

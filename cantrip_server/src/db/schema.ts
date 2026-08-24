@@ -41,9 +41,6 @@ import type {
   ProjectReplicaOwnershipKind,
   ProjectReplicaPlacementMode,
   ProjectRootKind,
-  RunInstanceState,
-  WorktreeSetupJobError,
-  WorktreeSetupJobState,
   ProjectSourceKind,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
@@ -1918,74 +1915,6 @@ export const projectWorktrees = pgTable(
   ],
 );
 
-export const worktreeSetupJobs = pgTable(
-  "worktree_setup_jobs",
-  {
-    id: text("id").primaryKey(),
-    ownerId: text("owner_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    worktreeId: text("worktree_id")
-      .notNull()
-      .references(() => projectWorktrees.id, { onDelete: "cascade" }),
-    workerId: text("worker_id")
-      .notNull()
-      .references(() => workers.id, { onDelete: "cascade" }),
-    configurationRevision: text("configuration_revision"),
-    state: text("state").$type<WorktreeSetupJobState>().notNull(),
-    stateRevision: integer("state_revision").notNull().default(1),
-    attempt: integer("attempt").notNull().default(0),
-    commandId: text("command_id"),
-    lastErrorCode:
-      text("last_error_code").$type<WorktreeSetupJobError["code"]>(),
-    lastErrorMessage: text("last_error_message"),
-    errorRetryable: boolean("error_retryable"),
-    availableAt: timestamp("available_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
-    startedAt: timestamp("started_at", { withTimezone: true }),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("worktree_setup_jobs_worktree_unique").on(table.worktreeId),
-    uniqueIndex("worktree_setup_jobs_command_unique")
-      .on(table.commandId)
-      .where(sql`${table.commandId} IS NOT NULL`),
-    index("worktree_setup_jobs_dispatch_index").on(
-      table.state,
-      table.availableAt,
-      table.createdAt,
-    ),
-    index("worktree_setup_jobs_worker_state_index").on(
-      table.workerId,
-      table.state,
-    ),
-    check(
-      "worktree_setup_jobs_state_check",
-      sql`${table.state} IN ('queued', 'running', 'blocked', 'succeeded', 'failed', 'stale')`,
-    ),
-    check(
-      "worktree_setup_jobs_revision_check",
-      sql`${table.stateRevision} > 0`,
-    ),
-    check("worktree_setup_jobs_attempt_check", sql`${table.attempt} >= 0`),
-    check(
-      "worktree_setup_jobs_error_shape_check",
-      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
-    ),
-  ],
-);
-
 export const projectFolderSetupJobs = pgTable(
   "project_folder_setup_jobs",
   {
@@ -2311,66 +2240,6 @@ export const gitOperations = pgTable(
       .where(
         sql`${table.state} in ('queued', 'running', 'conflicted', 'awaiting-user-action')`,
       ),
-  ],
-);
-
-export const runInstances = pgTable(
-  "run_instances",
-  {
-    id: text("id").primaryKey(),
-    ownerId: text("owner_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    worktreeId: text("worktree_id")
-      .notNull()
-      .references(() => projectWorktrees.id, { onDelete: "cascade" }),
-    workerId: text("worker_id").notNull(),
-    idempotencyKey: text("idempotency_key").notNull(),
-    actionId: text("action_id").notNull(),
-    configurationRevision: text("configuration_revision").notNull(),
-    state: text("state").$type<RunInstanceState>().notNull().default("queued"),
-    terminalId: text("terminal_id"),
-    exitCode: integer("exit_code"),
-    signal: text("signal"),
-    startedAt: timestamp("started_at", { withTimezone: true }),
-    endedAt: timestamp("ended_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("run_instances_owner_idempotency_unique").on(
-      table.ownerId,
-      table.idempotencyKey,
-    ),
-    index("run_instances_project_worktree_updated_index").on(
-      table.projectId,
-      table.worktreeId,
-      table.updatedAt,
-    ),
-    index("run_instances_worker_active_index").on(
-      table.workerId,
-      table.state,
-      table.updatedAt,
-    ),
-    check(
-      "run_instances_state_check",
-      sql`${table.state} IN ('queued', 'starting', 'running', 'exited', 'failed', 'stopping', 'stopped', 'lost')`,
-    ),
-    check(
-      "run_instances_action_id_check",
-      sql`${table.actionId} ~ '^[0-9a-f]{64}$'`,
-    ),
-    check(
-      "run_instances_configuration_revision_check",
-      sql`${table.configurationRevision} ~ '^[0-9a-f]{64}$'`,
-    ),
   ],
 );
 

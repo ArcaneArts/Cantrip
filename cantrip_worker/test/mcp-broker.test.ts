@@ -210,7 +210,10 @@ describe("Cantrip MCP worker broker", () => {
         ],
       });
       expect(attachment.binding.allowedOperations).not.toEqual(
-        expect.arrayContaining(["run.start", "run.stop"]),
+        expect.arrayContaining([
+          "run-configuration.start",
+          "run-configuration.stop",
+        ]),
       );
       const denied = await fetch(`${broker.endpoint}/v1/execute`, {
         method: "POST",
@@ -221,10 +224,11 @@ describe("Cantrip MCP worker broker", () => {
         body: JSON.stringify({
           bindingId: attachment.binding.bindingId,
           request: {
-            operation: "run.start",
+            operation: "run-configuration.start",
             arguments: {
-              actionId: "a".repeat(64),
-              configRevision: "b".repeat(64),
+              operationId: crypto.randomUUID(),
+              configurationId: crypto.randomUUID(),
+              worktreeId: null,
             },
           },
         }),

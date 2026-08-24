@@ -123,16 +123,6 @@ const gitDiffCommands: Array<Extract<WorkerCommand, { type: "git.diff" }>> = [];
 const repositoryOperationCommands: Array<
   Extract<WorkerCommand, { type: "repository.operation" }>
 > = [];
-const runConfigurationAuthoringCommands: Array<
-  Extract<
-    WorkerCommand,
-    {
-      type:
-        | "project.run-configurations.read-authoring"
-        | "project.run-configurations.write";
-    }
-  >
-> = [];
 const runConfigurationDefinitionCommands: Array<
   Extract<
     WorkerCommand,
@@ -694,57 +684,6 @@ const workerBridge = {
       case "worktree.list":
       case "worktree.reconcile":
         return inventory();
-      case "project.run-configurations.metadata":
-        return {
-          platform: "darwin",
-          configured: false,
-          valid: true,
-          hasSetup: false,
-          configurationRevision: null,
-        };
-      case "project.run-configurations.read-authoring":
-        runConfigurationAuthoringCommands.push(command);
-        return {
-          relativePath: ".codex/environments/environment.toml",
-          sourceControlState: "absent",
-          revision: null,
-          document: null,
-          editingError: null,
-          inspection: {
-            platform: "darwin",
-            canonical: {
-              relativePath: ".codex/environments/environment.toml",
-              sourceControlState: "absent",
-            },
-            configured: false,
-            valid: true,
-            configurations: [],
-            diagnostics: [],
-          },
-        };
-      case "project.run-configurations.write":
-        runConfigurationAuthoringCommands.push(command);
-        return {
-          written: true,
-          snapshot: {
-            relativePath: ".codex/environments/environment.toml",
-            sourceControlState: "untracked",
-            revision: "c".repeat(64),
-            document: command.document,
-            editingError: null,
-            inspection: {
-              platform: "darwin",
-              canonical: {
-                relativePath: ".codex/environments/environment.toml",
-                sourceControlState: "untracked",
-              },
-              configured: true,
-              valid: true,
-              configurations: [],
-              diagnostics: [],
-            },
-          },
-        };
       case "project.run-configuration-definitions.write":
         runConfigurationDefinitionCommands.push(command);
         return {

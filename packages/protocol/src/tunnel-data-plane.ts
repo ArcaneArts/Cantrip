@@ -86,18 +86,8 @@ export const tunnelDataPlaneTargetSchema = z.union([
       adapter: z.literal("terminal"),
       resourceId: idSchema,
       serverId: z.string().trim().min(1).max(2_000),
-      managedRunId: z.string().uuid().nullable().optional(),
     })
-    .strict()
-    .refine(
-      (target) =>
-        target.managedRunId == null ||
-        target.managedRunId === target.resourceId,
-      {
-        message: "Managed Run terminals must reuse the Run UUID.",
-        path: ["managedRunId"],
-      },
-    ),
+    .strict(),
 ]);
 
 const frameBaseSchema = z
