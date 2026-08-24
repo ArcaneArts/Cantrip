@@ -1,4 +1,4 @@
-import { and, eq, getTableName, gt, lte, or, sql } from "drizzle-orm";
+import { and, eq, getTableName, gt, gte, lt, lte, or, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -28,13 +28,30 @@ export interface AccountStorageReconciliationResult {
   categoryCount: number;
   logicalBytes: bigint;
   measuredAt: Date;
+  ownerIds: string[];
   rowCount: bigint;
+}
+
+export interface AccountStorageHistoryMeasurement {
+  bucketStart: Date;
+  category: string;
+  logicalBytes: bigint;
+  rowCount: bigint;
+  storageClass: AccountStorageClass;
 }
 
 interface RawMeasurementRow extends Record<string, unknown> {
   category: AccountStorageMeasurement["category"];
   logical_bytes: bigint | number | string;
   owner_id: string;
+  row_count: bigint | number | string;
+  storage_class: AccountStorageClass;
+}
+
+interface RawHistoryRow extends Record<string, unknown> {
+  bucket_start: Date | string;
+  category: string;
+  logical_bytes: bigint | number | string;
   row_count: bigint | number | string;
   storage_class: AccountStorageClass;
 }
@@ -236,6 +253,85 @@ export class AccountResourceUsageRepository {
     }));
   }
 
+  listCurrentStorage(ownerId: string) {
+    return this.database
+      .select()
+      .from(schema.accountStorageUsageCurrent)
+      .where(eq(schema.accountStorageUsageCurrent.ownerId, ownerId))
+      .orderBy(
+        schema.accountStorageUsageCurrent.storageClass,
+        schema.accountStorageUsageCurrent.category,
+      );
+  }
+
+  async listStorageHistory(
+    ownerId: string,
+    from: Date,
+    to: Date,
+    resolution: "day" | "hour",
+  ): Promise<AccountStorageHistoryMeasurement[]> {
+    if (resolution === "hour") {
+      const rows = await this.database
+        .select({
+          bucketStart: schema.accountStorageUsageSnapshots.bucketStart,
+          category: schema.accountStorageUsageSnapshots.category,
+          logicalBytes: schema.accountStorageUsageSnapshots.logicalBytes,
+          rowCount: schema.accountStorageUsageSnapshots.rowCount,
+          storageClass: schema.accountStorageUsageSnapshots.storageClass,
+        })
+        .from(schema.accountStorageUsageSnapshots)
+        .where(
+          and(
+            eq(schema.accountStorageUsageSnapshots.ownerId, ownerId),
+            gte(schema.accountStorageUsageSnapshots.bucketStart, from),
+            lt(schema.accountStorageUsageSnapshots.bucketStart, to),
+          ),
+        )
+        .orderBy(
+          schema.accountStorageUsageSnapshots.bucketStart,
+          schema.accountStorageUsageSnapshots.storageClass,
+          schema.accountStorageUsageSnapshots.category,
+        );
+      return rows.map((row) => ({
+        ...row,
+        storageClass: row.storageClass as AccountStorageClass,
+      }));
+    }
+
+    const result = await this.database.execute<RawHistoryRow>(sql`
+      select bucket_start, storage_class, category,
+        logical_bytes::text as logical_bytes,
+        row_count::text as row_count
+      from (
+        select date_trunc('day', bucket_start at time zone 'UTC') at time zone 'UTC' as bucket_start,
+          storage_class,
+          category,
+          logical_bytes,
+          row_count,
+          row_number() over (
+            partition by date_trunc('day', bucket_start at time zone 'UTC'), storage_class, category
+            order by bucket_start desc
+          ) as recency
+        from ${schema.accountStorageUsageSnapshots}
+        where owner_id = ${ownerId}
+          and bucket_start >= ${from}
+          and bucket_start < ${to}
+      ) daily
+      where recency = 1
+      order by bucket_start, storage_class, category
+    `);
+    return resultRows<RawHistoryRow>(result).map((row) => ({
+      bucketStart:
+        row.bucket_start instanceof Date
+          ? row.bucket_start
+          : new Date(row.bucket_start),
+      category: row.category,
+      logicalBytes: bigintValue(row.logical_bytes),
+      rowCount: bigintValue(row.row_count),
+      storageClass: row.storage_class,
+    }));
+  }
+
   async acquireStorageReconciliationLease(
     holderId: string,
     now: Date,
@@ -292,6 +388,7 @@ export class AccountResourceUsageRepository {
         categoryCount: 0,
         logicalBytes: 0n,
         measuredAt,
+        ownerIds: [],
         rowCount: 0n,
       };
     }
@@ -374,6 +471,9 @@ export class AccountResourceUsageRepository {
           0n,
         ),
         measuredAt,
+        ownerIds: [
+          ...new Set(measurements.map((measurement) => measurement.ownerId)),
+        ].sort(),
         rowCount: measurements.reduce(
           (total, measurement) => total + measurement.rowCount,
           0n,

@@ -58,7 +58,11 @@ describe("account resource usage storage accounting", () => {
         "usage-test-instance",
         new Date("2026-08-23T10:15:00.000Z"),
       );
-      expect(first).toMatchObject({ acquired: true, accountCount: 1 });
+      expect(first).toMatchObject({
+        acquired: true,
+        accountCount: 1,
+        ownerIds: [LOCAL_USER_ID],
+      });
       expect(first.logicalBytes).toBeGreaterThan(0n);
       expect(first.rowCount).toBeGreaterThan(0n);
 
@@ -87,6 +91,28 @@ describe("account resource usage storage accounting", () => {
         .select()
         .from(schema.accountStorageUsageSnapshots);
       expect(sameHourSnapshots).toHaveLength(initialSnapshots.length);
+
+      const hourly = await repository.accountResourceUsage.listStorageHistory(
+        LOCAL_USER_ID,
+        new Date("2026-08-23T10:00:00.000Z"),
+        new Date("2026-08-23T11:00:00.000Z"),
+        "hour",
+      );
+      expect(hourly).toHaveLength(initialSnapshots.length);
+      const daily = await repository.accountResourceUsage.listStorageHistory(
+        LOCAL_USER_ID,
+        new Date("2026-08-23T00:00:00.000Z"),
+        new Date("2026-08-24T00:00:00.000Z"),
+        "day",
+      );
+      expect(daily).toHaveLength(initialSnapshots.length);
+      expect(
+        daily.every(
+          (measurement) =>
+            measurement.bucketStart.toISOString() ===
+            "2026-08-23T00:00:00.000Z",
+        ),
+      ).toBe(true);
 
       expect(
         await repository.accountResourceUsage.acquireStorageReconciliationLease(

@@ -18,6 +18,7 @@ export interface StorageReconciliationStats {
 export interface StorageReconciliationServiceOptions {
   intervalMs?: number;
   now?: () => Date;
+  onReconciled?: (result: AccountStorageReconciliationResult) => void;
 }
 
 /** Maintains the derived storage projection and hourly history. */
@@ -36,10 +37,11 @@ export class StorageReconciliationService {
     private readonly repository: AccountResourceUsageRepository,
     private readonly holderId: string,
     private readonly logger: ServiceLogger,
-    options: StorageReconciliationServiceOptions = {},
+    private readonly options: StorageReconciliationServiceOptions = {},
   ) {
-    this.#intervalMs = options.intervalMs ?? DEFAULT_RECONCILIATION_INTERVAL_MS;
-    this.#now = options.now ?? (() => new Date());
+    this.#intervalMs =
+      this.options.intervalMs ?? DEFAULT_RECONCILIATION_INTERVAL_MS;
+    this.#now = this.options.now ?? (() => new Date());
   }
 
   start(reconcileImmediately = true): void {
@@ -66,6 +68,7 @@ export class StorageReconciliationService {
         this.#lastCompletedAt = completedAt.toISOString();
         this.#lastDurationMs = completedAt.getTime() - startedAt.getTime();
         this.#lastResult = result;
+        if (result.acquired) this.options.onReconciled?.(result);
         this.logger.event(
           result.acquired ? "info" : "debug",
           result.acquired

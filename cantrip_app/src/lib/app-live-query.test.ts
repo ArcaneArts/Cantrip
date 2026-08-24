@@ -65,6 +65,14 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "account-resource-usage",
+          scope: { kind: "current-user" },
+        }),
+      ),
+    ).toEqual([["account-resource-usage"], ["account-resource-usage-history"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           resource: "project-automation",
           scope: { kind: "project", projectId: "project-one" },
         }),

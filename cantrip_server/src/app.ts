@@ -473,6 +473,11 @@ import {
   codeSettingsUploadSchema,
 } from "@cantrip/protocol/code-settings";
 import {
+  accountResourceUsageHistoryQuerySchema,
+  accountResourceUsageHistorySchema,
+  accountResourceUsageSchema,
+} from "@cantrip/protocol/resource-usage";
+import {
   accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
   accountEncryptionProfileInitializeSchema,
@@ -815,6 +820,11 @@ import {
   serverLogger,
 } from "./logger.js";
 import { StorageReconciliationService } from "./account-usage/storage-reconciler.js";
+import {
+  buildAccountResourceUsage,
+  buildStorageUsageHistory,
+  buildUnavailableBandwidthHistory,
+} from "./account-usage/resource-usage-response.js";
 import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
 import { OperationalMetrics } from "./operations/metrics.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
@@ -934,6 +944,8 @@ const GOAL_RESUME_PROMPT =
 const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
 const PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS = 10_000;
 const PROJECT_TOKEN_USAGE_LIVE_TIMER_LIMIT = 4_096;
+const ACCOUNT_RESOURCE_USAGE_LIVE_COALESCE_MS = 5_000;
+const ACCOUNT_RESOURCE_USAGE_LIVE_TIMER_LIMIT = 4_096;
 const TUNNEL_ATTACHMENT_SECRET_TTL_MS = 2 * 60_000;
 const TUNNEL_BROWSER_PROTOCOL_PREFIX = "cantrip-tunnel-v1.";
 
@@ -1349,12 +1361,6 @@ export async function buildApp({
     repository.getWorkerOwnerId(workerId);
   const serverInstanceId = config.serverInstanceId ?? "local-single-instance";
   const schedulerLeaseTtlMs = config.schedulerLeaseTtlMs ?? 120_000;
-  const storageReconciler = new StorageReconciliationService(
-    repository.accountResourceUsage,
-    serverInstanceId,
-    serverLogger,
-  );
-  app.addHook("onListen", () => storageReconciler.start());
   const liveHub = new AppLiveHub({
     publishExternal: coordinator
       ? (publication) =>
@@ -1412,6 +1418,29 @@ export async function buildApp({
         publishLiveInvalidation("project-token-usage", { projectId }),
       ),
   });
+  const accountResourceUsageLiveInvalidations =
+    new CoalescedInvalidations<string>({
+      delayMs: ACCOUNT_RESOURCE_USAGE_LIVE_COALESCE_MS,
+      limit: ACCOUNT_RESOURCE_USAGE_LIVE_TIMER_LIMIT,
+      publish: (ownerId) =>
+        runAsOwner(ownerId, () =>
+          publishLiveInvalidation("account-resource-usage"),
+        ),
+    });
+  const publishAccountResourceUsageChange = (ownerId: string): void =>
+    accountResourceUsageLiveInvalidations.schedule(ownerId, ownerId);
+  const storageReconciler = new StorageReconciliationService(
+    repository.accountResourceUsage,
+    serverInstanceId,
+    serverLogger,
+    {
+      onReconciled: ({ ownerIds }) => {
+        for (const ownerId of ownerIds)
+          publishAccountResourceUsageChange(ownerId);
+      },
+    },
+  );
+  app.addHook("onListen", () => storageReconciler.start());
   const publishProjectTokenUsageChange = (
     ownerId: string,
     projectId: string,
@@ -11494,6 +11523,39 @@ export async function buildApp({
         })),
       ),
     );
+  });
+
+  app.get("/api/account/resource-usage", async (request, reply) => {
+    const rows = await repository.accountResourceUsage.listCurrentStorage(
+      principalOwnerId(request),
+    );
+    return reply
+      .header("cache-control", "private, no-store")
+      .send(accountResourceUsageSchema.parse(buildAccountResourceUsage(rows)));
+  });
+
+  app.get("/api/account/resource-usage/history", async (request, reply) => {
+    const query = accountResourceUsageHistoryQuerySchema.safeParse(
+      request.query,
+    );
+    if (!query.success) {
+      return reply.code(400).send(invalidBody(query.error.issues));
+    }
+    const history =
+      query.data.metric === "storage"
+        ? buildStorageUsageHistory(
+            query.data,
+            await repository.accountResourceUsage.listStorageHistory(
+              principalOwnerId(request),
+              new Date(query.data.from),
+              new Date(query.data.to),
+              query.data.resolution,
+            ),
+          )
+        : buildUnavailableBandwidthHistory(query.data);
+    return reply
+      .header("cache-control", "private, no-store")
+      .send(accountResourceUsageHistorySchema.parse(history));
   });
 
   app.get("/api/account/audit-events", async (request, reply) => {
@@ -30019,6 +30081,7 @@ export async function buildApp({
     chatImportJobExecutor.stop();
     workflowExecutor.stop();
     await storageReconciler.close();
+    accountResourceUsageLiveInvalidations.close();
     app.log.info(
       { live: liveHub.stats() },
       "Application live transport stopped",
