@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildRunConfigurationControlModel,
   runConfigurationPrimaryOperation,
+  runConfigurationTargetControlForIdentity,
 } from "./run-configuration-control-model";
 
 const primary = {
@@ -178,6 +179,52 @@ describe("Run configuration control model", () => {
       available: true,
       reason: null,
     });
+    expect(
+      runConfigurationTargetControlForIdentity({
+        configurationId: id,
+        inventory: {
+          directory: ".cantrip/run-configurations",
+          diagnostics: [],
+          entries: [entry(id, "Broken API", "pnpm dev")],
+          validations: [
+            {
+              configurationId: id,
+              provider: "shell",
+              platform: "linux",
+              effectiveCommand: "pnpm dev",
+              valid: false,
+              diagnostics: [
+                {
+                  severity: "error",
+                  code: "shell-unavailable",
+                  message: "The configured shell is unavailable.",
+                  relativePath: null,
+                  field: "options.shell",
+                },
+              ],
+            },
+          ],
+        },
+        runtimes: [],
+        workers: [worker],
+        worktreeId: primary.id,
+        worktrees: [primary, alternate],
+      }),
+    ).toMatchObject({
+      available: false,
+      stopAvailable: true,
+      worktree: { id: primary.id },
+    });
+    expect(
+      runConfigurationTargetControlForIdentity({
+        configurationId: id,
+        inventory: null,
+        runtimes: [],
+        workers: [worker],
+        worktreeId: "missing",
+        worktrees: [primary, alternate],
+      }),
+    ).toBeNull();
   });
 
   it("indexes structured Node targets by their generated command", () => {

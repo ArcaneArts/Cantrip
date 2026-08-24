@@ -48,6 +48,10 @@ export interface RunConfigurationControlModel {
   worktrees: ProjectWorktreeSummary[];
 }
 
+type RunConfigurationControlInventory = RunConfigurationRepositoryInventory & {
+  validations?: readonly RunConfigurationProviderValidation[];
+};
+
 export function runConfigurationTargetLabel(
   document: NonNullable<RunConfigurationRepositoryEntry["document"]>,
 ): string {
@@ -142,13 +146,46 @@ function targetControl(
   };
 }
 
+export function runConfigurationTargetControlForIdentity(input: {
+  configurationId: string;
+  inventory: RunConfigurationControlInventory | null | undefined;
+  runtimes: readonly RunConfigurationRuntime[];
+  workers: readonly WorkerSummary[];
+  worktreeId: string;
+  worktrees: readonly ProjectWorktreeSummary[];
+}): RunConfigurationTargetControl | null {
+  const worktree = input.worktrees.find(({ id }) => id === input.worktreeId);
+  if (!worktree) return null;
+  const primaryWorktree =
+    input.worktrees.find(({ isPrimary }) => isPrimary) ??
+    input.worktrees.find(({ isDefault }) => isDefault) ??
+    input.worktrees[0] ??
+    null;
+  const definitionReady = Boolean(
+    input.inventory?.entries.some(
+      (entry) => entry.status === "ready" && entry.id === input.configurationId,
+    ),
+  );
+  const providerValidation =
+    definitionReady && worktree.id === primaryWorktree?.id
+      ? input.inventory?.validations?.find(
+          ({ configurationId }) => configurationId === input.configurationId,
+        )
+      : null;
+  return targetControl(
+    worktree,
+    input.runtimes.find(
+      (runtime) =>
+        runtime.configurationId === input.configurationId &&
+        runtime.worktreeId === worktree.id,
+    ),
+    input.workers,
+    providerValidation,
+  );
+}
+
 export function buildRunConfigurationControlModel(input: {
-  inventory:
-    | (RunConfigurationRepositoryInventory & {
-        validations?: readonly RunConfigurationProviderValidation[];
-      })
-    | null
-    | undefined;
+  inventory: RunConfigurationControlInventory | null | undefined;
   runtimes: readonly RunConfigurationRuntime[];
   workers: readonly WorkerSummary[];
   worktrees: readonly ProjectWorktreeSummary[];

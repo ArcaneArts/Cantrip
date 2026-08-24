@@ -58,6 +58,12 @@ function runtime(
 function renderView(
   state: RunConfigurationRuntime["state"],
   definitionAvailable: boolean,
+  availability: {
+    launchAvailable?: boolean | null;
+    launchProblem?: string | null;
+    stopAvailable?: boolean | null;
+    stopProblem?: string | null;
+  } = {},
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -76,7 +82,19 @@ function renderView(
     <QueryClientProvider client={queryClient}>
       <RunTerminalView
         definitionAvailable={definitionAvailable}
+        launchAvailable={
+          "launchAvailable" in availability
+            ? (availability.launchAvailable ?? null)
+            : definitionAvailable
+        }
+        launchProblem={availability.launchProblem}
         runtime={runtime(state)}
+        stopAvailable={
+          "stopAvailable" in availability
+            ? (availability.stopAvailable ?? null)
+            : true
+        }
+        stopProblem={availability.stopProblem}
         targetLabel="Primary"
         terminal={{
           ...terminal,
@@ -85,6 +103,14 @@ function renderView(
       />
     </QueryClientProvider>,
   );
+}
+
+function renderedButton(markup: string, label: string): string {
+  const button = [...markup.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/gu)]
+    .map(([value]) => value)
+    .find((value) => value.includes(label));
+  if (!button) throw new Error(`Expected a ${label} button.`);
+  return button;
 }
 
 describe("Run terminal surface", () => {
@@ -112,10 +138,51 @@ describe("Run terminal surface", () => {
   it("disables restart after external definition deletion but keeps stop", () => {
     const markup = renderView("running", false);
     expect(markup).toContain("Restart is disabled");
-    expect(markup).toMatch(/<button[^>]*disabled[^>]*>.*Restart/iu);
-    expect(markup.slice(markup.lastIndexOf("<button"))).not.toContain(
-      "disabled=",
+    expect(renderedButton(markup, "Restart")).toContain("disabled=");
+    expect(renderedButton(markup, "Stop")).not.toContain("disabled=");
+  });
+
+  it("blocks an unavailable idle target with its actionable reason", () => {
+    const markup = renderView("exited", true, {
+      launchAvailable: false,
+      launchProblem: "Worker is offline.",
+      stopAvailable: false,
+      stopProblem: "Worker is offline.",
+    });
+    expect(markup).toContain("Run is unavailable: Worker is offline.");
+    expect(renderedButton(markup, "Start")).toContain("disabled=");
+  });
+
+  it("keeps idle launch disabled while target availability reloads", () => {
+    const markup = renderView("exited", true, { launchAvailable: null });
+    expect(markup).toContain("Checking target availability…");
+    expect(renderedButton(markup, "Start")).toContain("disabled=");
+  });
+
+  it("blocks restart but preserves stop for an invalid captured generation", () => {
+    const markup = renderView("running", true, {
+      launchAvailable: false,
+      launchProblem: "Run configuration is invalid: Target missing.",
+      stopAvailable: true,
+    });
+    expect(markup).toContain(
+      "Restart is disabled: Run configuration is invalid: Target missing.",
     );
-    expect(markup.slice(markup.lastIndexOf("<button"))).toContain("Stop");
+    expect(renderedButton(markup, "Restart")).toContain("disabled=");
+    expect(renderedButton(markup, "Stop")).not.toContain("disabled=");
+  });
+
+  it("blocks both active controls when the target worker is offline", () => {
+    const markup = renderView("running", true, {
+      launchAvailable: false,
+      launchProblem: "Worker is offline.",
+      stopAvailable: false,
+      stopProblem: "Worker is offline.",
+    });
+    expect(markup).toContain(
+      "Restart and Stop are disabled: Worker is offline.",
+    );
+    expect(renderedButton(markup, "Restart")).toContain("disabled=");
+    expect(renderedButton(markup, "Stop")).toContain("disabled=");
   });
 });
