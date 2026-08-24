@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import {
   decodeTunnelDataPlaneFrame,
   encodeTunnelDataPlaneFrame,
+  encodeWorkerConnectionEnvelope,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,9 +25,25 @@ describe("worker project share transport", () => {
     let authorization: string | undefined;
     const server = createServer();
     const webSockets = new WebSocketServer({ noServer: true });
-    const connected = new Promise<WebSocket>((resolve) =>
-      webSockets.once("connection", resolve),
-    );
+    const connected = new Promise<WebSocket>((resolve) => {
+      webSockets.once("connection", (client, request) => {
+        const connectionGeneration = new URL(
+          request.url ?? "",
+          "http://worker.invalid",
+        ).searchParams.get("connectionGeneration")!;
+        for (const state of ["pending", "ready"] as const) {
+          client.send(
+            encodeWorkerConnectionEnvelope({
+              kind: "connection",
+              state,
+              protocolVersion: 1,
+              connectionGeneration,
+            }),
+          );
+        }
+        resolve(client);
+      });
+    });
     server.on("upgrade", (request, socket, head) => {
       authorization = request.headers.authorization;
       webSockets.handleUpgrade(request, socket, head, (client) => {
