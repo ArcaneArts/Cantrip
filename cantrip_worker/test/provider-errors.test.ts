@@ -1,8 +1,29 @@
 import { describe, expect, it } from "vitest";
 
-import { readableCodexProviderError } from "../src/codex/provider-errors.js";
+import {
+  isChatGptTokenExpiredError,
+  readableCodexProviderError,
+} from "../src/codex/provider-errors.js";
 
 describe("Codex provider errors", () => {
+  it("recognizes the structured ChatGPT expired-token quota failure", () => {
+    expect(
+      isChatGptTokenExpiredError(
+        new Error(
+          'GET https://chatgpt.com/backend-api/wham/usage failed: 401 Unauthorized; body={"error":{"code":"token_expired","message":"Provided authentication token is expired."}}',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    "401 Unauthorized",
+    'status 403; code="token_expired"',
+    "the authentication token is expired",
+  ])("does not misclassify non-matching ChatGPT auth failure %s", (message) => {
+    expect(isChatGptTokenExpiredError(message)).toBe(false);
+  });
+
   it.each([
     [401, "rejected the Coding Plan API key"],
     [403, "denied this Coding Plan request"],

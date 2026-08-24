@@ -137,6 +137,7 @@ function completeTurn(socket, turnId, text) {
 
 server.on("connection", (socket) => {
   let chatGptAuthenticated = false;
+  let chatGptAccessToken = null;
   let freshThreadCompactionRejected = false;
   let pendingChatGptTurn = null;
   let resetConsumed = false;
@@ -157,10 +158,13 @@ server.on("connection", (socket) => {
     if (message.method === "account/login/start") {
       if (
         message.params.type !== "chatgptAuthTokens" ||
-        message.params.accessToken !== "chatgpt-access-1" ||
+        !["chatgpt-access-1", "chatgpt-access-2"].includes(
+          message.params.accessToken
+        ) ||
         message.params.chatgptAccountId !== "upstream-workspace"
       ) process.exit(32);
       chatGptAuthenticated = true;
+      chatGptAccessToken = message.params.accessToken;
       socket.send(JSON.stringify({
         id: message.id,
         result: { type: "chatgptAuthTokens" }
@@ -199,6 +203,16 @@ server.on("connection", (socket) => {
       return;
     }
     if (message.method === "account/rateLimits/read") {
+      if (chatGptAccessToken === "chatgpt-access-1") {
+        socket.send(JSON.stringify({
+          id: message.id,
+          error: {
+            code: -32000,
+            message: 'failed to fetch codex rate limits: GET https://chatgpt.com/backend-api/wham/usage failed: 401 Unauthorized; body={"error":{"code":"token_expired","message":"Provided authentication token is expired."}}'
+          }
+        }));
+        return;
+      }
       socket.send(JSON.stringify({
         id: message.id,
         result: {
@@ -457,15 +471,15 @@ describe("portable provider accounts on a brand-new worker", () => {
     );
 
     try {
-      await expect(
+      const [chatGptCatalogResult, chatGptQuotaSnapshot] = await Promise.all([
         chatGptCatalog.listChatGptModels(chatGptProvider),
-      ).resolves.toMatchObject({
+        chatGptCatalog.readQuotaSnapshot(chatGptProvider),
+      ]);
+      expect(chatGptCatalogResult).toMatchObject({
         models: [{ model: "gpt-5.6-sol" }],
         weeklyUsage: { usedPercent: 24 },
       });
-      await expect(
-        chatGptCatalog.readQuotaSnapshot(chatGptProvider),
-      ).resolves.toMatchObject({
+      expect(chatGptQuotaSnapshot).toMatchObject({
         rateLimitResetCredits: {
           availableCount: 1,
           credits: [{ id: "reset-1", status: "available" }],
@@ -556,6 +570,12 @@ describe("portable provider accounts on a brand-new worker", () => {
           { forceRefresh: false, providerId: grokProvider.id },
         ]),
       );
+      expect(
+        leaseRequests.filter(
+          ({ forceRefresh, providerId }) =>
+            forceRefresh && providerId === chatGptProvider.id,
+        ),
+      ).toHaveLength(2);
       expect(JSON.stringify(leaseRequests)).not.toContain("access-");
     } finally {
       chatGptCatalog.close();

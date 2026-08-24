@@ -1,4 +1,13 @@
+import { PROVIDER_REAUTH_REQUIRED_MESSAGE } from "@cantrip/protocol";
+
 import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
+
+export class ProviderAccountReauthenticationRequiredError extends Error {
+  constructor() {
+    super(PROVIDER_REAUTH_REQUIRED_MESSAGE);
+    this.name = "ProviderAccountReauthenticationRequiredError";
+  }
+}
 
 function redactedMessage(
   message: string,
@@ -10,6 +19,16 @@ function redactedMessage(
 function hasStatus(message: string, status: number): boolean {
   return new RegExp(`(?:HTTP\\s+|status\\s+)?${String(status)}\\b`, "iu").test(
     message,
+  );
+}
+
+export function isChatGptTokenExpiredError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    hasStatus(message, 401) &&
+    /token_expired|(?:access|authentication) token (?:has )?(?:is )?expired/iu.test(
+      message,
+    )
   );
 }
 

@@ -1828,6 +1828,10 @@ export const providerCredentialStateSchema = z.enum([
   "conflict",
 ]);
 
+export const PROVIDER_REAUTH_REQUIRED_ERROR_CODE = "provider-reauth-required";
+export const PROVIDER_REAUTH_REQUIRED_MESSAGE =
+  "ChatGPT authentication expired. Sign in again to reconnect this provider account.";
+
 export const modelProviderAccountSummarySchema = z.object({
   id: z.string().min(1),
   providerId: z.string().min(1),

@@ -116,9 +116,14 @@ import {
   skillPathForConfiguration,
 } from "./customization.js";
 import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
-import { readableCodexProviderError } from "./provider-errors.js";
+import {
+  isChatGptTokenExpiredError,
+  ProviderAccountReauthenticationRequiredError,
+  readableCodexProviderError,
+} from "./provider-errors.js";
 import {
   chatGptExternalAuthCapabilityError,
+  chatGptExternalRefreshResponse,
   chatGptExternalAuthSession,
   chatGptExternalLoginParams,
   refreshExternalChatGptAuthSession,
@@ -3544,6 +3549,7 @@ export class CodexAppServer implements CodexRuntime {
   #appServerSessionId = randomUUID();
   #child: ChildProcessWithoutNullStreams | null = null;
   #externalChatGptAuth: ExternalChatGptAuthSession | null = null;
+  #externalChatGptReauthentication: Promise<void> | null = null;
   #remoteUrl: string | null = null;
   #runtimeId: string | null = null;
   #runtimeStartedAtMs: number | null = null;
@@ -3710,7 +3716,8 @@ export class CodexAppServer implements CodexRuntime {
       let quotaSnapshot: ProviderQuotaSnapshot | null = null;
       try {
         quotaSnapshot = quotaSnapshotFromRateLimits(
-          (await this.request(
+          (await this.requestWithChatGptAuthRecovery(
+            provider,
             "account/rateLimits/read",
             undefined,
           )) as AccountRateLimitsResult,
@@ -3767,7 +3774,8 @@ export class CodexAppServer implements CodexRuntime {
     try {
       await this.ensureCatalogStarted(provider);
       const snapshot = quotaSnapshotFromRateLimits(
-        (await this.request(
+        (await this.requestWithChatGptAuthRecovery(
+          provider,
           "account/rateLimits/read",
           undefined,
         )) as AccountRateLimitsResult,
@@ -3817,7 +3825,8 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<ProviderRateLimitResetConsumeResult> {
     const startedAtMs = Date.now();
     await this.ensureCatalogStarted(provider);
-    const response = (await this.request(
+    const response = (await this.requestWithChatGptAuthRecovery(
+      provider,
       "account/rateLimitResetCredit/consume",
       input,
     )) as { outcome?: unknown };
@@ -8359,6 +8368,119 @@ export class CodexAppServer implements CodexRuntime {
     );
     this.#diagnosticSecrets.add(refreshed.accessToken);
     return refreshed.response;
+  }
+
+  private async requestWithChatGptAuthRecovery(
+    provider: RuntimeProvider & { kind: "chatgpt" },
+    method: string,
+    params: unknown,
+  ): Promise<unknown> {
+    try {
+      return await this.request(method, params);
+    } catch (error) {
+      if (!isChatGptTokenExpiredError(error)) throw error;
+    }
+
+    await this.reauthenticateExternalChatGptRuntime(provider);
+    try {
+      return await this.request(method, params);
+    } catch (error) {
+      if (isChatGptTokenExpiredError(error)) {
+        throw new ProviderAccountReauthenticationRequiredError();
+      }
+      throw error;
+    }
+  }
+
+  private async reauthenticateExternalChatGptRuntime(
+    provider: RuntimeProvider & { kind: "chatgpt" },
+  ): Promise<void> {
+    if (this.#externalChatGptReauthentication) {
+      return this.#externalChatGptReauthentication;
+    }
+    const pending = this.performExternalChatGptReauthentication(provider);
+    this.#externalChatGptReauthentication = pending;
+    try {
+      await pending;
+    } finally {
+      if (this.#externalChatGptReauthentication === pending) {
+        this.#externalChatGptReauthentication = null;
+      }
+    }
+  }
+
+  private async performExternalChatGptReauthentication(
+    provider: RuntimeProvider & { kind: "chatgpt" },
+  ): Promise<void> {
+    const session = this.#externalChatGptAuth;
+    if (!session || !this.providerAccessTokens) {
+      throw new ProviderAccountReauthenticationRequiredError();
+    }
+
+    let lease: ProviderAccessTokenLease;
+    try {
+      lease = await this.providerAccessTokens.get(
+        session.providerId,
+        session.providerAccountId,
+        {
+          credentialRevision: session.credentialRevision,
+          forceRefresh: true,
+          minimumValiditySeconds: 120,
+        },
+      );
+    } catch (error) {
+      if (
+        error instanceof ProviderAccessTokenRequestError &&
+        error.code === "reauth-required"
+      ) {
+        throw new ProviderAccountReauthenticationRequiredError();
+      }
+      throw new Error(
+        "Cantrip could not refresh ChatGPT authentication. Try again.",
+        {
+          cause: error,
+        },
+      );
+    }
+
+    const refreshed = chatGptExternalRefreshResponse(
+      session,
+      lease,
+      session.upstreamAccountId,
+    );
+    this.#diagnosticSecrets.add(lease.accessToken);
+    let result: { type?: unknown };
+    try {
+      result = (await this.request("account/login/start", {
+        type: "chatgptAuthTokens",
+        ...refreshed,
+      })) as { type?: unknown };
+    } catch (error) {
+      if (isChatGptTokenExpiredError(error)) {
+        throw new ProviderAccountReauthenticationRequiredError();
+      }
+      throw new Error(
+        "Codex could not accept refreshed ChatGPT authentication.",
+        {
+          cause: error,
+        },
+      );
+    }
+    if (result.type !== "chatgptAuthTokens") {
+      throw new Error("Codex rejected refreshed ChatGPT authentication.");
+    }
+    session.credentialRevision = lease.credentialRevision;
+    workerLogger.event(
+      "info",
+      "ChatGPT authentication refreshed after an expired token",
+      {
+        event: "provider.auth.refresh",
+        subsystem: "provider-auth",
+        operation: "refresh-expired-token",
+        status: "completed",
+        ...codexProviderLogContext(provider),
+      },
+    );
   }
 
   private registerAgentInteraction(
