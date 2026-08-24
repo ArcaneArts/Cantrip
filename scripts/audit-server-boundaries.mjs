@@ -123,7 +123,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "a02279408c3c49838d1b824ae39326f71cfb3f52e9c0ba0f606d478e7832bd15",
   workerCommands:
-    "9de911db1e4168798e862bddb380e711b4b4d05f63d3d21dbeec22c34ca2af30",
+    "a7eca83e2f0a006a016feb1a81a0edf9bd4e03d12497885265defa51a5c8c753",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -4074,6 +4074,20 @@ function applicationRouteContentClassification(route) {
 }
 
 function workerCommandContentClassification(command) {
+  if (command === "project.run-configuration-runtime.output") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "bounded volatile Run output protected for its exact operation",
+    };
+  }
+  if (/^project\.run-configuration-runtime\./u.test(command)) {
+    return {
+      classification: "worker-local",
+      rationale:
+        "revision- and generation-bound worker process lifecycle metadata",
+    };
+  }
   if (/^project\.run-configuration-definitions\./u.test(command)) {
     return {
       classification: "intentionally-public-control-plane",

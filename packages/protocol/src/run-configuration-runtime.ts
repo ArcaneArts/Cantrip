@@ -5,9 +5,11 @@ import {
   runConfigurationRevisionSchema,
 } from "./run-configuration-definitions.js";
 import { runConfigurationOperationIdSchema } from "./run-configuration-operations.js";
+import { endpointContentOpaqueSchema } from "./endpoint-content.js";
 
 export const RUN_CONFIGURATION_RUNTIME_OUTPUT_LIMIT = 100_000;
 export const RUN_CONFIGURATION_RUNTIME_LIST_LIMIT = 256;
+export const RUN_CONFIGURATION_RUNTIME_PATH_LIMIT = 8_192;
 
 export const runConfigurationRuntimeStateSchema = z.enum([
   "idle",
@@ -206,6 +208,87 @@ export const runConfigurationRuntimeWorkerIdentitySchema = z
   })
   .strict();
 
+export const runConfigurationRuntimeLaunchIdentitySchema =
+  runConfigurationRuntimeWorkerIdentitySchema.extend({
+    generation: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    terminalId: z.string().uuid(),
+  });
+
+export const runConfigurationRuntimeRootKindSchema = z.enum([
+  "git-root",
+  "folder-root",
+]);
+
+const runConfigurationRuntimeWorkerTargetFields = {
+  identity: runConfigurationRuntimeLaunchIdentitySchema,
+  rootKind: runConfigurationRuntimeRootKindSchema,
+  sourcePath: z.string().min(1).max(RUN_CONFIGURATION_RUNTIME_PATH_LIMIT),
+  targetPath: z.string().min(1).max(RUN_CONFIGURATION_RUNTIME_PATH_LIMIT),
+};
+
+export const runConfigurationRuntimeStartWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-runtime.start"),
+    ...runConfigurationRuntimeWorkerTargetFields,
+  })
+  .strict();
+
+export const runConfigurationRuntimeRestartWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-runtime.restart"),
+    ...runConfigurationRuntimeWorkerTargetFields,
+  })
+  .strict();
+
+export const runConfigurationRuntimeStopWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-runtime.stop"),
+    identity: runConfigurationRuntimeLaunchIdentitySchema,
+  })
+  .strict();
+
+export const runConfigurationRuntimeStatusWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-runtime.status"),
+    identity: runConfigurationRuntimeWorkerIdentitySchema,
+  })
+  .strict();
+
+export const runConfigurationRuntimeOutputWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-runtime.output"),
+    requestOperationId: runConfigurationOperationIdSchema,
+    serverId: z.string().trim().min(1).max(2_000),
+    identity: runConfigurationRuntimeWorkerIdentitySchema,
+    tail: z
+      .number()
+      .int()
+      .positive()
+      .max(RUN_CONFIGURATION_RUNTIME_OUTPUT_LIMIT),
+  })
+  .strict();
+
+export const runConfigurationRuntimeReconcileWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-runtime.reconcile"),
+    identities: z
+      .array(runConfigurationRuntimeWorkerIdentitySchema)
+      .max(RUN_CONFIGURATION_RUNTIME_LIST_LIMIT),
+  })
+  .strict();
+
+export const runConfigurationRuntimeWorkerCommandSchema = z.discriminatedUnion(
+  "type",
+  [
+    runConfigurationRuntimeStartWorkerCommandSchema,
+    runConfigurationRuntimeRestartWorkerCommandSchema,
+    runConfigurationRuntimeStopWorkerCommandSchema,
+    runConfigurationRuntimeStatusWorkerCommandSchema,
+    runConfigurationRuntimeOutputWorkerCommandSchema,
+    runConfigurationRuntimeReconcileWorkerCommandSchema,
+  ],
+);
+
 const workerTerminalStates = new Set(["idle", "exited", "failed", "lost"]);
 
 export const runConfigurationRuntimeWorkerObservationSchema = z
@@ -260,6 +343,89 @@ export const runConfigurationRuntimeWorkerObservationSchema = z
     }
   });
 
+export const runConfigurationRuntimeWorkerOperationResultSchema = z
+  .object({
+    outcome: z.enum(["accepted", "replayed", "stale", "not-found"]),
+    observation: runConfigurationRuntimeWorkerObservationSchema.nullable(),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.outcome === "not-found" && result.observation !== null) {
+      context.addIssue({
+        code: "custom",
+        message: "A missing runtime cannot include an observation.",
+        path: ["observation"],
+      });
+    }
+    if (result.outcome !== "not-found" && result.observation === null) {
+      context.addIssue({
+        code: "custom",
+        message: "A runtime operation result requires an observation.",
+        path: ["observation"],
+      });
+    }
+  });
+
+export const runConfigurationRuntimeWorkerLookupSchema = z.discriminatedUnion(
+  "found",
+  [
+    z
+      .object({
+        found: z.literal(true),
+        observation: runConfigurationRuntimeWorkerObservationSchema,
+      })
+      .strict(),
+    z
+      .object({
+        found: z.literal(false),
+        identity: runConfigurationRuntimeWorkerIdentitySchema,
+      })
+      .strict(),
+  ],
+);
+
+export const runConfigurationRuntimeWorkerReconciliationSchema = z
+  .object({
+    runtimes: z
+      .array(runConfigurationRuntimeWorkerLookupSchema)
+      .max(RUN_CONFIGURATION_RUNTIME_LIST_LIMIT),
+    orphanedRuntimeIds: z
+      .array(z.string().uuid())
+      .max(RUN_CONFIGURATION_RUNTIME_LIST_LIMIT),
+  })
+  .strict();
+
+export const runConfigurationRuntimeWorkerOutputSchema = z
+  .object({
+    requestOperationId: runConfigurationOperationIdSchema,
+    identity: runConfigurationRuntimeWorkerIdentitySchema,
+    data: z.string().max(RUN_CONFIGURATION_RUNTIME_OUTPUT_LIMIT),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const runConfigurationRuntimeOutputContentSchema = z
+  .object({
+    data: z.string().max(RUN_CONFIGURATION_RUNTIME_OUTPUT_LIMIT),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const protectedRunConfigurationRuntimeWorkerOutputSchema = z
+  .object({
+    requestOperationId: runConfigurationOperationIdSchema,
+    identity: runConfigurationRuntimeWorkerIdentitySchema,
+    protectedOutput: endpointContentOpaqueSchema,
+  })
+  .strict();
+
+export const runConfigurationRuntimeWorkerNotificationSchema = z
+  .object({
+    type: z.literal("project.run-configuration-runtime.observed"),
+    observation: runConfigurationRuntimeWorkerObservationSchema,
+  })
+  .strict();
+
 export const runConfigurationRuntimeObservationApplyResultSchema = z
   .object({
     applied: z.boolean(),
@@ -304,8 +470,29 @@ export type RunConfigurationRuntimeOperationResult = z.infer<
 export type RunConfigurationRuntimeWorkerIdentity = z.infer<
   typeof runConfigurationRuntimeWorkerIdentitySchema
 >;
+export type RunConfigurationRuntimeLaunchIdentity = z.infer<
+  typeof runConfigurationRuntimeLaunchIdentitySchema
+>;
+export type RunConfigurationRuntimeWorkerCommand = z.infer<
+  typeof runConfigurationRuntimeWorkerCommandSchema
+>;
 export type RunConfigurationRuntimeWorkerObservation = z.infer<
   typeof runConfigurationRuntimeWorkerObservationSchema
+>;
+export type RunConfigurationRuntimeWorkerOperationResult = z.infer<
+  typeof runConfigurationRuntimeWorkerOperationResultSchema
+>;
+export type RunConfigurationRuntimeWorkerLookup = z.infer<
+  typeof runConfigurationRuntimeWorkerLookupSchema
+>;
+export type RunConfigurationRuntimeWorkerReconciliation = z.infer<
+  typeof runConfigurationRuntimeWorkerReconciliationSchema
+>;
+export type RunConfigurationRuntimeWorkerOutput = z.infer<
+  typeof runConfigurationRuntimeWorkerOutputSchema
+>;
+export type RunConfigurationRuntimeOutputContent = z.infer<
+  typeof runConfigurationRuntimeOutputContentSchema
 >;
 export type RunConfigurationRuntimeObservationApplyResult = z.infer<
   typeof runConfigurationRuntimeObservationApplyResultSchema

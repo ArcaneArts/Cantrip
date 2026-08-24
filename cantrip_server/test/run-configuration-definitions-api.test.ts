@@ -25,6 +25,12 @@ import {
   runConfigurationListResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
+import {
+  runConfigurationRuntimeWorkerObservationSchema,
+  runConfigurationRuntimeWorkerReconciliationSchema,
+  type RunConfigurationRuntime,
+  type RunConfigurationRuntimeWorkerIdentity,
+} from "@cantrip/protocol/run-configuration-runtime";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
@@ -64,6 +70,11 @@ const configurationId = "0f82c573-704d-4a06-984e-5ce0b8d688ca";
 const listeners = new Set<WorkerNotificationListener>();
 const commands: WorkerCommand[] = [];
 let connected = true;
+let reconcileRuntime = (identities: RunConfigurationRuntimeWorkerIdentity[]) =>
+  runConfigurationRuntimeWorkerReconciliationSchema.parse({
+    runtimes: identities.map((identity) => ({ found: false, identity })),
+    orphanedRuntimeIds: [],
+  });
 
 const emitNotification = async (
   notification: WorkerNotification,
@@ -108,6 +119,8 @@ const bridge: WorkerCommandBus = {
       case "project.run-configuration-definitions.write":
       case "project.run-configuration-definitions.delete":
         return definitionService.execute(command);
+      case "project.run-configuration-runtime.reconcile":
+        return reconcileRuntime(command.identities);
       default:
         throw new Error(`Unexpected worker command ${command.type}.`);
     }
@@ -144,6 +157,30 @@ function shellDocument(name = "Run API") {
     target: { kind: "command" as const, command: "pnpm dev" },
     arguments: ["--listen", "127.0.0.1:4400"],
   };
+}
+
+function runtimeObservation(
+  runtime: RunConfigurationRuntime,
+  state: "running" | "exited",
+) {
+  return runConfigurationRuntimeWorkerObservationSchema.parse({
+    runtimeId: runtime.id,
+    projectId: runtime.projectId,
+    configurationId: runtime.configurationId,
+    worktreeId: runtime.worktreeId,
+    workerId: runtime.workerId,
+    definitionRevision: runtime.definitionRevision,
+    codexEnvironmentRevision: runtime.codexEnvironmentRevision,
+    generation: runtime.generation,
+    operationId: runtime.requestedOperationId,
+    terminalId: runtime.terminalId,
+    state,
+    startedAt: "2026-08-24T02:00:00.000Z",
+    endedAt: state === "exited" ? "2026-08-24T02:01:00.000Z" : null,
+    exitCode: state === "exited" ? 0 : null,
+    signal: null,
+    failure: null,
+  });
 }
 
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -423,5 +460,118 @@ describe.sequential("Run configuration definition API", () => {
       connected = true;
     }
     expect(commands).toHaveLength(before);
+  });
+
+  it("applies runtime observations and reconciles missing or unclaimed generations on reconnect", async () => {
+    const worktrees = await database.repository.listProjectWorktrees(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const primary = worktrees[0];
+    if (!primary) throw new Error("Expected a Primary worktree.");
+    const runtimeConfigurationId = randomUUID();
+    const operationId = randomUUID();
+    const requested =
+      await database.repository.requestRunConfigurationRuntimeOperation(
+        LOCAL_USER_ID,
+        {
+          operation: "start",
+          operationId,
+          projectId,
+          configurationId: runtimeConfigurationId,
+          worktreeId: primary.id,
+          workerId,
+          definitionRevision: "d".repeat(64),
+          codexEnvironmentRevision: null,
+        },
+      );
+    if (!requested.runtime) throw new Error("Expected a runtime.");
+
+    // A definition request establishes the same worker notification
+    // subscription used by the persistent worker connection.
+    const subscribed = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configurations?operationId=${randomUUID()}`,
+    });
+    expect(subscribed.statusCode).toBe(200);
+    await emitNotification({
+      type: "project.run-configuration-runtime.observed",
+      observation: runtimeObservation(requested.runtime, "running"),
+    });
+    await expect
+      .poll(() =>
+        database.repository.getRunConfigurationRuntime(
+          LOCAL_USER_ID,
+          projectId,
+          runtimeConfigurationId,
+          primary.id,
+        ),
+      )
+      .toMatchObject({ state: "running" });
+
+    reconcileRuntime = () =>
+      runConfigurationRuntimeWorkerReconciliationSchema.parse({
+        runtimes: [],
+        orphanedRuntimeIds: [],
+      });
+    const beforeReconnect = commands.length;
+    const reconnect = await app.injectWS(
+      `/api/internal/workers/connect?workerId=${workerId}`,
+      { headers: { authorization: `Bearer ${config.workerToken}` } },
+    );
+    await expect
+      .poll(() =>
+        commands
+          .slice(beforeReconnect)
+          .find(
+            (command) =>
+              command.type === "project.run-configuration-runtime.reconcile",
+          ),
+      )
+      .toMatchObject({
+        identities: [
+          expect.objectContaining({
+            runtimeId: requested.runtime.id,
+            generation: 1,
+          }),
+        ],
+      });
+    await expect
+      .poll(() =>
+        database.repository.getRunConfigurationRuntime(
+          LOCAL_USER_ID,
+          projectId,
+          runtimeConfigurationId,
+          primary.id,
+        ),
+      )
+      .toMatchObject({
+        state: "lost",
+        failure: { phase: "reconcile", code: "process-missing" },
+      });
+    reconnect.terminate();
+
+    const orphanedRuntimeId = randomUUID();
+    reconcileRuntime = (identities) =>
+      runConfigurationRuntimeWorkerReconciliationSchema.parse({
+        runtimes: identities.map((identity) => ({ found: false, identity })),
+        orphanedRuntimeIds: [orphanedRuntimeId],
+      });
+    const beforeEmptyReconnect = commands.length;
+    const emptyReconnect = await app.injectWS(
+      `/api/internal/workers/connect?workerId=${workerId}`,
+      { headers: { authorization: `Bearer ${config.workerToken}` } },
+    );
+    await expect
+      .poll(() =>
+        commands
+          .slice(beforeEmptyReconnect)
+          .find(
+            (command) =>
+              command.type === "project.run-configuration-runtime.reconcile",
+          ),
+      )
+      .toMatchObject({ identities: [] });
+    emptyReconnect.terminate();
   });
 });

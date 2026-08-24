@@ -76,6 +76,10 @@ import {
   type CodeSettingsWorkerStatus,
 } from "@cantrip/protocol/code-settings";
 import {
+  protectedRunConfigurationRuntimeWorkerOutputSchema,
+  runConfigurationRuntimeOutputContentSchema,
+} from "@cantrip/protocol/run-configuration-runtime";
+import {
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,
   surfaceOperationOutcomeContentSchema,
@@ -175,6 +179,7 @@ import { ManagedFolderManager } from "./managed-folders.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
 import { ProviderAuthObserver } from "./provider-auth-observer.js";
 import { RunConfigurationDefinitionService } from "./run-configuration-definition-service.js";
+import { RunConfigurationRuntimeSupervisor } from "./run-configuration-runtime-supervisor.js";
 import { GrokAuthClient } from "./grok-auth-client.js";
 import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
 import {
@@ -921,6 +926,44 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       workerNotificationEmitter?.({
         type: "project.run.state.observed",
         run,
+      }),
+  });
+  const runConfigurationRuntimes = new RunConfigurationRuntimeSupervisor({
+    authorize: async (input) => {
+      if (input.rootKind === "folder-root") {
+        const sourceRoot = await realpath(input.sourcePath);
+        const targetRoot = await realpath(input.targetPath);
+        const sourceEntry = await lstat(sourceRoot);
+        const targetEntry = await lstat(targetRoot);
+        if (
+          !sourceEntry.isDirectory() ||
+          !targetEntry.isDirectory() ||
+          sourceRoot !== targetRoot
+        ) {
+          throw new Error(
+            "The requested folder Run root does not match its registered project source.",
+          );
+        }
+        return { sourceRoot, targetRoot };
+      }
+      const [authorized] = await worktrees.authorizeTargets(input.sourcePath, [
+        input.targetPath,
+      ]);
+      if (!authorized) {
+        throw new Error(
+          "The requested Run configuration worktree is unavailable.",
+        );
+      }
+      return {
+        sourceRoot: authorized.inventory.sourcePath,
+        targetRoot: authorized.worktree.path,
+      };
+    },
+    environment: cliBroker.childEnvironment(),
+    notify: (observation) =>
+      workerNotificationEmitter?.({
+        type: "project.run-configuration-runtime.observed",
+        observation,
       }),
   });
   terminalDirectEndpoints.setManagedRunSupervisor(managedRuns);
@@ -1812,7 +1855,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "project.folder.materialize":
         return managedFolders.materialize(command);
       case "project.folder.delete": {
-        await managedRuns.stopProject(command.projectId);
+        await Promise.all([
+          managedRuns.stopProject(command.projectId),
+          runConfigurationRuntimes.stopProject(command.projectId),
+        ]);
         return managedFolders.delete(command.projectId);
       }
       case "project.folder-conversion.preflight":
@@ -1887,7 +1933,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           repositoryFingerprint: command.repositoryFingerprint,
         });
       case "project.files.delete":
-        await managedRuns.stopForPath(command.path);
+        await Promise.all([
+          managedRuns.stopForPath(command.path),
+          runConfigurationRuntimes.stopForPath(command.path),
+        ]);
         return github.deleteRepository(command.path);
       case "project.script-commands":
         try {
@@ -1940,6 +1989,36 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "project.run-configuration-definitions.write":
       case "project.run-configuration-definitions.delete":
         return runConfigurationDefinitions.execute(command);
+      case "project.run-configuration-runtime.start":
+        return runConfigurationRuntimes.start(command);
+      case "project.run-configuration-runtime.restart":
+        return runConfigurationRuntimes.restart(command);
+      case "project.run-configuration-runtime.stop":
+        return runConfigurationRuntimes.stop(command);
+      case "project.run-configuration-runtime.status":
+        return runConfigurationRuntimes.status(command.identity);
+      case "project.run-configuration-runtime.output": {
+        const snapshot = runConfigurationRuntimes.output(command);
+        return protectedRunConfigurationRuntimeWorkerOutputSchema.parse({
+          requestOperationId: command.requestOperationId,
+          identity: snapshot.identity,
+          protectedOutput: await protectWorkerRunContent({
+            serverId: command.serverId,
+            projectId: command.identity.projectId,
+            worktreeId: command.identity.worktreeId,
+            operationId: command.requestOperationId,
+            operation: "run.configuration.output",
+            content: {
+              data: snapshot.data,
+              truncated: snapshot.truncated,
+            },
+            schema: runConfigurationRuntimeOutputContentSchema,
+            service: workerEncryption,
+          }),
+        });
+      }
+      case "project.run-configuration-runtime.reconcile":
+        return runConfigurationRuntimes.reconcile(command.identities);
       case "project.run-configurations.metadata": {
         const inspection = runConfigurationInspectionSchema.parse(
           await inspectRunConfigurations(command.sourcePath),
@@ -2780,7 +2859,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             allowExternal: command.allowExternal,
             force: command.force,
             beforeRemove: async (worktreePath) => {
-              await managedRuns.stopForPath(worktreePath);
+              await Promise.all([
+                managedRuns.stopForPath(worktreePath),
+                runConfigurationRuntimes.stopForPath(worktreePath),
+              ]);
               await runSetups!.removeForPath(worktreePath);
             },
           },
@@ -4993,7 +5075,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     providerAuthObserver.close();
     runConfigurationDefinitions.close();
     await runSetups!.closeAll();
-    await managedRuns.closeAll();
+    await Promise.all([
+      managedRuns.closeAll(),
+      runConfigurationRuntimes.closeAll(),
+    ]);
     commandConnection.close();
     await directBroker.close();
     terminalDirectEndpoints.close();
