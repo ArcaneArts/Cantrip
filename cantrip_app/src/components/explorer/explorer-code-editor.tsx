@@ -30,6 +30,7 @@ import {
   releaseCodeAttachment,
 } from "@/lib/api";
 import {
+  CodeControlOperationTimeoutError,
   openDirectCodeAttachmentFile,
   directCodeAttachmentHealthyWithin,
   preferProtectedCodeAttachment,
@@ -48,10 +49,71 @@ const FILE_OPEN_RETRY_DELAY_MS = 250;
 const FILE_OPEN_RECONNECT_LIMIT = 1;
 const ATTACHMENT_HEALTH_INTERVAL_MS = 5_000;
 
-function shouldRetryFileOpen(error: unknown): boolean {
+function isCodeControlOperationTimeout(error: unknown): boolean {
+  const visited = new Set<unknown>();
+  let candidate = error;
+  while (candidate instanceof Error && !visited.has(candidate)) {
+    if (candidate instanceof CodeControlOperationTimeoutError) return true;
+    visited.add(candidate);
+    candidate = candidate.cause;
+  }
+  return false;
+}
+
+function isTransientFileOpenFailure(error: unknown): boolean {
   return /(?:failed to fetch|load failed|network|not connected|unavailable)/iu.test(
     errorMessage(error, ""),
   );
+}
+
+export function explorerCodeEditorOpenRecovery(
+  error: unknown,
+  attempt: number,
+  automaticReconnects: number,
+): "error" | "reload" | "retry" {
+  const controlTimeout = isCodeControlOperationTimeout(error);
+  const transient = isTransientFileOpenFailure(error);
+  if (attempt === 0 && (controlTimeout || transient)) return "retry";
+  if (
+    !controlTimeout &&
+    transient &&
+    automaticReconnects < FILE_OPEN_RECONNECT_LIMIT
+  ) {
+    return "reload";
+  }
+  return "error";
+}
+
+export class ExplorerCodePresentationCache {
+  #nonce: string | null = null;
+
+  async ensure(
+    nonce: string,
+    apply: () => Promise<void>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    signal.throwIfAborted();
+    if (this.#nonce === nonce) return;
+    await apply();
+    signal.throwIfAborted();
+    this.#nonce = nonce;
+  }
+}
+
+export async function configureExplorerCodeEditorNavigation<TResult>(options: {
+  frameNonce: string;
+  openFile(): Promise<TResult>;
+  presentation: ExplorerCodePresentationCache;
+  setPresentation(): Promise<void>;
+  signal: AbortSignal;
+}): Promise<TResult> {
+  await options.presentation.ensure(
+    options.frameNonce,
+    options.setPresentation,
+    options.signal,
+  );
+  options.signal.throwIfAborted();
+  return options.openFile();
 }
 
 export function explorerCodeEditorBindingKey(input: {
@@ -106,6 +168,7 @@ export function ExplorerCodeEditor({
   const frameLoadsRef = useRef(new CodeWorkbenchFrameLoadTracker());
   const frameRef = useRef<HTMLIFrameElement>(null);
   const navigationQueueRef = useRef(new SerialTaskQueue());
+  const presentationRef = useRef(new ExplorerCodePresentationCache());
   const attachmentLifecycleRef =
     useRef<SerializedAttachmentLifecycle<CodeProtectedAttachmentWire> | null>(
       null,
@@ -284,7 +347,7 @@ export function ExplorerCodeEditor({
   }, [frameFailureNonce, frameMount]);
 
   useEffect(() => {
-    if (!preferredAttachment || !frameReady) return;
+    if (!preferredAttachment || !frameReady || !frameMount) return;
     const navigationController = new AbortController();
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -296,25 +359,33 @@ export function ExplorerCodeEditor({
     );
     const openFile = async (attempt: number) => {
       try {
-        try {
-          await setDirectCodeAttachmentPresentation(
-            preferredAttachment.attachment,
-            "editor",
-            { signal: navigationController.signal },
-          );
-        } catch (presentationError) {
-          throw codeWorkbenchStageError("presentation", presentationError);
-        }
-        let result: Awaited<ReturnType<typeof openDirectCodeAttachmentFile>>;
-        try {
-          result = await openDirectCodeAttachmentFile(
-            preferredAttachment.attachment,
-            path,
-            { signal: navigationController.signal },
-          );
-        } catch (fileError) {
-          throw codeWorkbenchStageError("file", fileError);
-        }
+        const result = await configureExplorerCodeEditorNavigation({
+          frameNonce: frameMount.nonce,
+          openFile: async () => {
+            try {
+              return await openDirectCodeAttachmentFile(
+                preferredAttachment.attachment,
+                path,
+                { signal: navigationController.signal },
+              );
+            } catch (fileError) {
+              throw codeWorkbenchStageError("file", fileError);
+            }
+          },
+          presentation: presentationRef.current,
+          setPresentation: async () => {
+            try {
+              await setDirectCodeAttachmentPresentation(
+                preferredAttachment.attachment,
+                "editor",
+                { signal: navigationController.signal },
+              );
+            } catch (presentationError) {
+              throw codeWorkbenchStageError("presentation", presentationError);
+            }
+          },
+          signal: navigationController.signal,
+        });
         if (!cancelled && result.relativePath === path) {
           automaticReconnectsRef.current = 0;
           setError(null);
@@ -327,17 +398,19 @@ export function ExplorerCodeEditor({
         }
       } catch (openError) {
         if (cancelled) return;
-        if (attempt === 0 && shouldRetryFileOpen(openError)) {
+        const recovery = explorerCodeEditorOpenRecovery(
+          openError,
+          attempt,
+          automaticReconnectsRef.current,
+        );
+        if (recovery === "retry") {
           retryTimer = setTimeout(
             () => void openFile(attempt + 1),
             FILE_OPEN_RETRY_DELAY_MS,
           );
           return;
         }
-        if (
-          shouldRetryFileOpen(openError) &&
-          automaticReconnectsRef.current < FILE_OPEN_RECONNECT_LIMIT
-        ) {
+        if (recovery === "reload") {
           automaticReconnectsRef.current += 1;
           reload();
           return;
@@ -357,7 +430,7 @@ export function ExplorerCodeEditor({
       );
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [bindingKey, frameReady, path, preferredAttachment]);
+  }, [bindingKey, frameMount, frameReady, path, preferredAttachment]);
 
   return (
     <section

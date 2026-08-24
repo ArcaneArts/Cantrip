@@ -35,6 +35,7 @@ const CODE_ATTACHMENT_HEALTH_RETRY_MS = 50;
 const CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS = 750;
 const CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS = 8_000;
 const CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS = 2_500;
+export const CODE_CONTROL_OPERATION_TIMEOUT_MS = 10_000;
 const MAX_CODE_ATTACHMENT_HEALTH_ATTEMPTS = 100;
 const MAX_CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS = 5_000;
 const MAX_CODE_ATTACHMENT_HEALTH_RETRY_MS = 1_000;
@@ -135,6 +136,47 @@ export class CodeAttachmentHealthError extends Error {
 
   get relayFallbackEligible(): boolean {
     return this.failureKind !== "http-response";
+  }
+}
+
+export class CodeControlOperationTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs = CODE_CONTROL_OPERATION_TIMEOUT_MS) {
+    super("Cantrip Code control request timed out.");
+    this.name = "CodeControlOperationTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+async function boundedCodeControlOperation<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  options: { signal?: AbortSignal } = {},
+): Promise<T> {
+  options.signal?.throwIfAborted();
+  const timeoutController = new AbortController();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutController.signal])
+    : timeoutController.signal;
+  let rejectFromAbort!: (reason: unknown) => void;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectFromAbort = reject;
+  });
+  const onAbort = () =>
+    rejectFromAbort(
+      signal.reason ??
+        new DOMException("The operation was aborted.", "AbortError"),
+    );
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
+  const timeout = setTimeout(() => {
+    timeoutController.abort(new CodeControlOperationTimeoutError());
+  }, CODE_CONTROL_OPERATION_TIMEOUT_MS);
+  try {
+    return await Promise.race([operation(signal), aborted]);
+  } finally {
+    clearTimeout(timeout);
+    signal.removeEventListener("abort", onAbort);
   }
 }
 
@@ -716,25 +758,27 @@ export async function openDirectCodeAttachmentFile(
   options: { signal?: AbortSignal } = {},
 ): Promise<CodeOpenFileResult> {
   const endpoint = new URL("_cantrip/open-file", attachment.url);
-  const response = await fetch(endpoint, {
-    body: JSON.stringify({ relativePath }),
-    credentials: "omit",
-    headers: { "content-type": "application/json" },
-    method: "POST",
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
-  const body = (await response.json().catch(() => null)) as unknown;
-  if (!response.ok) {
-    const message =
-      body &&
-      typeof body === "object" &&
-      "error" in body &&
-      typeof body.error === "string"
-        ? body.error
-        : "Cantrip Code could not open this file.";
-    throw new Error(message);
-  }
-  return codeOpenFileResultSchema.parse(body);
+  return boundedCodeControlOperation(async (signal) => {
+    const response = await fetch(endpoint, {
+      body: JSON.stringify({ relativePath }),
+      credentials: "omit",
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal,
+    });
+    const body = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      const message =
+        body &&
+        typeof body === "object" &&
+        "error" in body &&
+        typeof body.error === "string"
+          ? body.error
+          : "Cantrip Code could not open this file.";
+      throw new Error(message);
+    }
+    return codeOpenFileResultSchema.parse(body);
+  }, options);
 }
 
 export async function openDirectCodeAttachmentSettings(
@@ -769,25 +813,27 @@ export async function setDirectCodeAttachmentPresentation(
   options: { signal?: AbortSignal } = {},
 ): Promise<CodePresentationUpdate> {
   const endpoint = new URL("_cantrip/presentation", attachment.url);
-  const response = await fetch(endpoint, {
-    body: JSON.stringify({ presentation }),
-    credentials: "omit",
-    headers: { "content-type": "application/json" },
-    method: "POST",
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
-  const body = (await response.json().catch(() => null)) as unknown;
-  if (!response.ok) {
-    const message =
-      body &&
-      typeof body === "object" &&
-      "error" in body &&
-      typeof body.error === "string"
-        ? body.error
-        : "Cantrip Code could not enter editor-only mode.";
-    throw new Error(message);
-  }
-  return codePresentationUpdateSchema.parse(body);
+  return boundedCodeControlOperation(async (signal) => {
+    const response = await fetch(endpoint, {
+      body: JSON.stringify({ presentation }),
+      credentials: "omit",
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal,
+    });
+    const body = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      const message =
+        body &&
+        typeof body === "object" &&
+        "error" in body &&
+        typeof body.error === "string"
+          ? body.error
+          : "Cantrip Code could not enter editor-only mode.";
+      throw new Error(message);
+    }
+    return codePresentationUpdateSchema.parse(body);
+  }, options);
 }
 
 export async function stopDirectCodeAttachment(

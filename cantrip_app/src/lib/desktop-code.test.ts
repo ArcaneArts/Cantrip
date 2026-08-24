@@ -38,6 +38,8 @@ vi.mock("@/lib/client-log-relay", () => ({
 }));
 
 import {
+  CODE_CONTROL_OPERATION_TIMEOUT_MS,
+  CodeControlOperationTimeoutError,
   directCodeAttachmentHealthy,
   directCodeAttachmentHealthyWithin,
   openDirectCodeAttachmentFile,
@@ -71,6 +73,86 @@ beforeEach(() => {
 });
 
 describe("openDirectCodeAttachmentFile", () => {
+  it("aborts and rejects a noncooperative control fetch at the internal deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      let requestSignal: AbortSignal | undefined;
+      mocks.fetch.mockImplementation(
+        (_input: URL, init?: RequestInit) =>
+          new Promise(() => {
+            requestSignal = init?.signal ?? undefined;
+          }),
+      );
+
+      const request = openDirectCodeAttachmentFile(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        "src/hung.ts",
+      );
+      const rejected = expect(request).rejects.toBeInstanceOf(
+        CodeControlOperationTimeoutError,
+      );
+
+      await vi.advanceTimersByTimeAsync(CODE_CONTROL_OPERATION_TIMEOUT_MS);
+
+      await rejected;
+      expect(requestSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the internal deadline active while parsing the response body", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.fetch.mockResolvedValue({
+        json: () => new Promise(() => undefined),
+        ok: true,
+      });
+
+      const request = openDirectCodeAttachmentFile(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        "src/hung-body.ts",
+      );
+      const rejected = expect(request).rejects.toBeInstanceOf(
+        CodeControlOperationTimeoutError,
+      );
+
+      await vi.advanceTimersByTimeAsync(CODE_CONTROL_OPERATION_TIMEOUT_MS);
+
+      await rejected;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("preserves caller cancellation ahead of the internal deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      let requestSignal: AbortSignal | undefined;
+      mocks.fetch.mockImplementation(
+        (_input: URL, init?: RequestInit) =>
+          new Promise(() => {
+            requestSignal = init?.signal ?? undefined;
+          }),
+      );
+      const reason = new DOMException("Navigation changed.", "AbortError");
+      const request = openDirectCodeAttachmentFile(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        "src/cancelled.ts",
+        { signal: controller.signal },
+      );
+      const rejected = expect(request).rejects.toBe(reason);
+
+      controller.abort(reason);
+
+      await rejected;
+      expect(requestSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("opens the file through the worker-backed local Code tunnel", async () => {
     const attachment = {
       attachmentId: "attachment-1",
@@ -95,6 +177,7 @@ describe("openDirectCodeAttachmentFile", () => {
         credentials: "omit",
         headers: { "content-type": "application/json" },
         method: "POST",
+        signal: expect.any(AbortSignal),
       },
     );
   });
@@ -130,7 +213,7 @@ describe("openDirectCodeAttachmentFile", () => {
 
     expect(mocks.fetch).toHaveBeenCalledWith(
       expect.any(URL),
-      expect.objectContaining({ signal: controller.signal }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 });
@@ -180,6 +263,26 @@ describe("openDirectCodeAttachmentSettings", () => {
 });
 
 describe("setDirectCodeAttachmentPresentation", () => {
+  it("bounds a noncooperative presentation control request", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.fetch.mockReturnValue(new Promise(() => undefined));
+      const request = setDirectCodeAttachmentPresentation(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        "editor",
+      );
+      const rejected = expect(request).rejects.toBeInstanceOf(
+        CodeControlOperationTimeoutError,
+      );
+
+      await vi.advanceTimersByTimeAsync(CODE_CONTROL_OPERATION_TIMEOUT_MS);
+
+      await rejected;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("switches the local compatibility session into editor-only mode", async () => {
     const attachment = {
       url: "http://127.0.0.1:52345/code/?workspace=%2Fworker%2Fproject.code-workspace",
@@ -200,6 +303,7 @@ describe("setDirectCodeAttachmentPresentation", () => {
         credentials: "omit",
         headers: { "content-type": "application/json" },
         method: "POST",
+        signal: expect.any(AbortSignal),
       },
     );
   });
@@ -219,7 +323,7 @@ describe("setDirectCodeAttachmentPresentation", () => {
 
     expect(mocks.fetch).toHaveBeenCalledWith(
       expect.any(URL),
-      expect.objectContaining({ signal: controller.signal }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 });
