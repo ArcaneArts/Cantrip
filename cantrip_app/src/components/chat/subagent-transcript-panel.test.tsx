@@ -68,7 +68,9 @@ describe("SubagentTranscriptPanel", () => {
         modelSummary="GPT-5.6 · high"
         onOpenFile={vi.fn()}
         onSelectAgent={vi.fn()}
+        onSelectRoot={vi.fn()}
         projection={projection}
+        rootTurnId={nested?.scope.rootTurnId ?? null}
         selectedAgentKey={nested?.key ?? "missing"}
       />,
     );
@@ -76,9 +78,31 @@ describe("SubagentTranscriptPanel", () => {
     expect(html).toContain("Reviewer");
     expect(html).toContain("Nested work");
     expect(html).toContain("Read-only subagent stream");
+    expect(html).not.toContain('aria-label="Agents in this turn"');
     expect(html).not.toContain("textarea");
     expect(html).not.toContain("Stop agent");
     expect(html).not.toContain("Steer");
     expect(html).not.toContain("Approve");
+  });
+
+  it("renders the full agent list only in the root overview", () => {
+    const projection = buildAgentTurnProjection([
+      childMessage("parent-message", 1, parentScope, "Parent work"),
+    ]);
+    const html = renderToStaticMarkup(
+      <SubagentTranscriptPanel
+        focusItemKey={null}
+        modelSummary="GPT-5.6 · high"
+        onOpenFile={vi.fn()}
+        onSelectAgent={vi.fn()}
+        onSelectRoot={vi.fn()}
+        projection={projection}
+        rootTurnId="turn"
+        selectedAgentKey={null}
+      />,
+    );
+    expect(html).toContain('aria-label="Agents in this turn"');
+    expect(html).toContain("Scout");
+    expect(html).not.toContain("Parent work");
   });
 });

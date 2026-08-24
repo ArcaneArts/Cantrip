@@ -100,7 +100,7 @@ The panel shows the selected agent's entire participation in the selected root t
 - wait, interruption, failure, and completion events;
 - final returned result.
 
-It reuses the main chat's message, markdown, activity, and detail renderers but has no composer, stop button, steer action, or direct approval controls. Command/activity rows remain inspectable. The header contains the agent path, status, model/reasoning summary, parent breadcrumb, and close action. Nested descendants can be selected through the flattened indented agent list or breadcrumbs. Mobile uses the existing overlay form of the right panel.
+It reuses the main chat's message, markdown, activity, and detail renderers but has no composer, stop button, steer action, or direct approval controls. Command/activity rows remain inspectable. The header contains the agent path, status, model/reasoning summary, parent breadcrumb, and close action. The selected transcript does not carry a permanent agent-tab list. Selecting `Root` in the breadcrumb opens a dedicated turn overview with the flattened, indented agent list; selecting an agent there returns to that transcript. Mobile uses the existing overlay form of the right panel. Finished transcript views retain their rendered state across no-op durable-history polling and update only when their projected agent snapshot actually changes.
 
 ### Trajectory
 
@@ -342,7 +342,7 @@ Light checks: encryption round trip, recovery replay, duplicate delivery, root c
 
 - Add the shared `AgentTurnProjection`.
 - Render one updating lifecycle/communication card per root-turn agent.
-- Generalize the right sidebar state to `inspect | subagent` and implement the read-only child stream.
+- Generalize the right sidebar state to `inspect | subagent | subagent-root` and implement the read-only child stream and root overview.
 - Add parent/child navigation, event focus, status, and mobile overlay behavior.
 
 Light checks: projection ordering/deduplication, panel replacement, absence of controls, and nested navigation.
