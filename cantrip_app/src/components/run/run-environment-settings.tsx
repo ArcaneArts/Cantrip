@@ -154,7 +154,7 @@ export function RunEnvironmentSettings({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="w-full space-y-6">
         <section aria-labelledby="environment-file-title">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
