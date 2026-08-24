@@ -27,6 +27,16 @@ describe("server logging", () => {
     );
   });
 
+  it("treats global Code settings payloads as redacted request fields", () => {
+    expect(SERVER_LOG_REDACTION_PATHS).toEqual(
+      expect.arrayContaining([
+        "req.body.protectedContent",
+        "req.body.record.protectedContent",
+        "req.body.settings",
+      ]),
+    );
+  });
+
   it("renders Fastify requests as one concise completion line", async () => {
     const lines: string[] = [];
     const app = Fastify({

@@ -60,6 +60,10 @@
       "types": "./src/customization-content.ts",
       "import": "./dist/customization-content.js"
     },
+    "./code-settings": {
+      "types": "./src/code-settings.ts",
+      "import": "./dist/code-settings.js"
+    },
     "./tunnel-content": {
       "types": "./src/tunnel-content.ts",
       "import": "./dist/tunnel-content.js"

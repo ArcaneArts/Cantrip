@@ -20,6 +20,7 @@ export * from "./run-configurations.js";
 export * from "./customization-content.js";
 export * from "./tunnel-content.js";
 export * from "./client-control-content.js";
+export * from "./code-settings.js";
 
 import { endpointContentOpaqueSchema } from "./endpoint-content.js";
 import {

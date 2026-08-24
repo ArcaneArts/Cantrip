@@ -1114,6 +1114,47 @@ export const workers = pgTable("workers", {
     .defaultNow(),
 });
 
+export const codeSettingsProfiles = pgTable(
+  "code_settings_profiles",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    profileId: text("profile_id").notNull(),
+    revision: integer("revision").notNull(),
+    protectedOperationId: text("protected_operation_id").notNull(),
+    protectedContent: jsonb("protected_content")
+      .$type<EndpointContentOpaque>()
+      .notNull(),
+    updatedByWorkerId: text("updated_by_worker_id").references(
+      () => workers.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerId, table.profileId] }),
+    uniqueIndex("code_settings_profiles_owner_operation_unique").on(
+      table.ownerId,
+      table.protectedOperationId,
+    ),
+    check(
+      "code_settings_profiles_profile_check",
+      sql`${table.profileId} = 'default'`,
+    ),
+    check("code_settings_profiles_revision_check", sql`${table.revision} > 0`),
+    check(
+      "code_settings_profiles_domain_check",
+      sql`${table.protectedContent}->>'domain' = 'customization-content'`,
+    ),
+  ],
+);
+
 export const workerCredentials = pgTable(
   "worker_credentials",
   {
