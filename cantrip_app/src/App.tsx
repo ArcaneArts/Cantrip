@@ -8821,6 +8821,7 @@ export function App() {
           />
         ) : showSettings ? (
           <SettingsPage
+            appearance={codeAppearance}
             initialSection={settingsSection}
             initialPolicyId={settingsPolicyId}
             onEliteOpen={() => setSettingsSection("elite")}

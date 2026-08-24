@@ -1,4 +1,5 @@
 import type {
+  CodeAppearance,
   CodexDeviceLogin,
   ModelProfileSummary,
   ModelProviderKind,
@@ -22,6 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  Code2,
   Cpu,
   Gauge,
   KeyRound,
@@ -122,6 +124,7 @@ import { TunnelSettings } from "./tunnel-settings";
 import { LogSettings } from "./log-settings";
 import { EliteSettings } from "./elite-settings";
 import { PolicySettings } from "./policy-settings";
+import { CodeSettings } from "./code-settings";
 import {
   availableCatalogModelIds,
   catalogDisplayStatus,
@@ -151,6 +154,7 @@ import {
 
 export type SettingsSection =
   | "general"
+  | "code"
   | "elite"
   | "models"
   | "workers"
@@ -163,6 +167,7 @@ export type SettingsSection =
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "code", label: "Code", icon: Code2 },
   { id: "models", label: "Models", icon: Cpu },
   { id: "workers", label: "Workers", icon: Network },
   { id: "logs", label: "Logs", icon: ScrollText },
@@ -605,12 +610,14 @@ function CatalogModelMetadata({
 }
 
 export function SettingsPage({
+  appearance,
   initialSection = "general",
   initialPolicyId = null,
   onEliteOpen,
   onPolicyOpenHandled,
   onOpenTunnelOwner,
 }: {
+  appearance: CodeAppearance;
   initialSection?: SettingsSection;
   initialPolicyId?: string | null;
   onEliteOpen?(): void;
@@ -618,6 +625,7 @@ export function SettingsPage({
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
 }) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
+  const [codeActivated, setCodeActivated] = useState(initialSection === "code");
   const [policyEditorId, setPolicyEditorId] = useState<string | null>(
     initialPolicyId,
   );
@@ -1133,6 +1141,7 @@ export function SettingsPage({
 
   useEffect(() => {
     setSection(initialSection);
+    if (initialSection === "code") setCodeActivated(true);
   }, [initialSection]);
   useEffect(() => {
     if (initialPolicyId) setPolicyEditorId(initialPolicyId);
@@ -1144,10 +1153,13 @@ export function SettingsPage({
         activeTab={section}
         ariaLabel="Account settings sections"
         tabs={settingsTabs}
-        onTabChange={setSection}
+        onTabChange={(next) => {
+          if (next === "code") setCodeActivated(true);
+          setSection(next);
+        }}
       />
       <div
-        className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
+        className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "logs" || section === "elite" || section === "code" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
       >
         <div
           className={`${section === "general" || section === "models" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
@@ -1649,6 +1661,13 @@ export function SettingsPage({
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}
+        {codeActivated ? (
+          <CodeSettings
+            active={section === "code"}
+            appearance={appearance}
+            defaultWorkerId={settings.data?.preferences.defaultWorkerId ?? null}
+          />
+        ) : null}
         {section === "elite" ? (
           <EliteSettings
             appWideEnabled={settings.data?.preferences.eliteMode ?? false}

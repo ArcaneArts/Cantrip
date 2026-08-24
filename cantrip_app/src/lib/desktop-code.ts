@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import {
   codeOpenFileResultSchema,
+  codeOpenSettingsResultSchema,
   codePresentationUpdateSchema,
   type CodeAttachment,
   type CodeProtectedAttachmentWire,
@@ -730,6 +731,32 @@ export async function openDirectCodeAttachmentFile(
     throw new Error(message);
   }
   return codeOpenFileResultSchema.parse(body);
+}
+
+export async function openDirectCodeAttachmentSettings(
+  attachment: CodeAttachment,
+  options: { signal?: AbortSignal } = {},
+) {
+  const endpoint = new URL("_cantrip/open-settings", attachment.url);
+  const response = await fetch(endpoint, {
+    body: JSON.stringify({}),
+    credentials: "omit",
+    headers: { "content-type": "application/json" },
+    method: "POST",
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  const body = (await response.json().catch(() => null)) as unknown;
+  if (!response.ok) {
+    const message =
+      body &&
+      typeof body === "object" &&
+      "error" in body &&
+      typeof body.error === "string"
+        ? body.error
+        : "Cantrip Code could not open graphical settings.";
+    throw new Error(message);
+  }
+  return codeOpenSettingsResultSchema.parse(body);
 }
 
 export async function setDirectCodeAttachmentPresentation(

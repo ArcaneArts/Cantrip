@@ -19,7 +19,7 @@ function renderSettings(
   if (settings) queryClient.setQueryData(["settings"], settings);
   return renderToStaticMarkup(
     <QueryClientProvider client={queryClient}>
-      <SettingsPage initialSection={initialSection} />
+      <SettingsPage appearance="dark" initialSection={initialSection} />
     </QueryClientProvider>,
   );
 }
@@ -34,15 +34,22 @@ describe("account settings", () => {
   it("keeps the Elite lab out of the visible settings tabs", () => {
     const markup = renderSettings("general");
     const general = markup.indexOf(">General<");
+    const code = markup.indexOf(">Code<");
     const models = markup.indexOf(">Models<");
     const workers = markup.indexOf(">Workers<");
     const logs = markup.indexOf(">Logs<");
 
     expect(general).toBeGreaterThanOrEqual(0);
     expect(markup).not.toContain(">Elite<");
-    expect(models).toBeGreaterThan(general);
+    expect(code).toBeGreaterThan(general);
+    expect(models).toBeGreaterThan(code);
     expect(workers).toBeGreaterThan(models);
     expect(logs).toBeGreaterThan(workers);
+  });
+
+  it("mounts the retained Code settings workbench only after Code is activated", () => {
+    expect(renderSettings("general")).not.toContain("VS Code settings");
+    expect(renderSettings("code")).toContain("VS Code settings");
   });
 
   it("keeps the Elite configuration entry in Appearance without Pro Mode", () => {

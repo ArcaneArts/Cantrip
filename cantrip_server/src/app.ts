@@ -471,9 +471,12 @@ import {
 import {
   codeSettingsProfileIdSchema,
   codeSettingsPublicStatusSchema,
+  codeSettingsResolveRequestSchema,
   codeSettingsRevisionConflictSchema,
   codeSettingsStoredProfileSchema,
+  codeSettingsSynchronizeRequestSchema,
   codeSettingsUploadSchema,
+  codeSettingsWorkerStatusSchema,
 } from "@cantrip/protocol/code-settings";
 import {
   accountResourceUsageHistoryQuerySchema,
@@ -14415,6 +14418,103 @@ export async function buildApp({
           ),
         ),
       );
+    },
+  );
+
+  app.get<{ Params: { workerId: string } }>(
+    "/api/settings/code/workers/:workerId/status",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      if (!bridge.isConnected(worker.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      reply.header("cache-control", "no-store");
+      try {
+        return reply.send(
+          codeSettingsWorkerStatusSchema.parse(
+            await bridge.request(worker.workerId, {
+              type: "code.settings.status",
+            }),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/settings/code/workers/:workerId/synchronize",
+    async (request, reply) => {
+      const input = codeSettingsSynchronizeRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      if (!bridge.isConnected(worker.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        return reply.send(
+          codeSettingsWorkerStatusSchema.parse(
+            await bridge.request(worker.workerId, {
+              type: "code.settings.synchronize",
+              initializeIfMissing: input.data.initializeIfMissing,
+            }),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/settings/code/workers/:workerId/resolve",
+    async (request, reply) => {
+      const input = codeSettingsResolveRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      if (!bridge.isConnected(worker.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        return reply.send(
+          codeSettingsWorkerStatusSchema.parse(
+            await bridge.request(worker.workerId, {
+              type: "code.settings.resolve",
+              resolution: input.data.resolution,
+            }),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
     },
   );
 

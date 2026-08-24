@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   unavailableCodeCapabilities,
   unprobedCodexRuntimeReport,
+  type WorkerCommand,
   type WorkerHeartbeat,
 } from "@cantrip/protocol";
 import {
@@ -20,6 +21,7 @@ import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
+import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-code-settings-api-"),
@@ -39,6 +41,47 @@ const config: ServerConfig = {
 };
 const workerId = "code-settings-api-worker";
 const unauthorizedWorkerId = "code-settings-api-worker-without-grant";
+const workerCommands: Array<{ command: WorkerCommand; workerId: string }> = [];
+const connectedWorkers = new Set([workerId]);
+
+const workerStatus = {
+  profileId: "default" as const,
+  state: "ready" as const,
+  revision: 7,
+  conflictCount: 0,
+  initializedFromWorker: false,
+  backupCreated: true,
+  lastSynchronizedAt: "2026-08-23T12:00:00.000Z",
+  error: null,
+};
+
+const bridge: WorkerCommandBus = {
+  attach() {},
+  close() {},
+  isConnected(id) {
+    return connectedWorkers.has(id);
+  },
+  sendSurfaceFrame() {
+    return false;
+  },
+  subscribeWorkerDisconnect() {
+    return () => undefined;
+  },
+  subscribeSurfaceFrames() {
+    return () => undefined;
+  },
+  async request(id, command) {
+    workerCommands.push({ command, workerId: id });
+    if (
+      command.type === "code.settings.status" ||
+      command.type === "code.settings.synchronize" ||
+      command.type === "code.settings.resolve"
+    ) {
+      return workerStatus;
+    }
+    throw new Error(`Unexpected worker command ${command.type}.`);
+  },
+};
 
 function heartbeat(id: string, authorized: boolean): WorkerHeartbeat {
   return {
@@ -109,7 +152,12 @@ beforeAll(async () => {
     LOCAL_USER_ID,
     heartbeat(unauthorizedWorkerId, false),
   );
-  app = await buildApp({ config, database, logger: false });
+  app = await buildApp({
+    config,
+    database,
+    logger: false,
+    workerBridge: bridge,
+  });
 });
 
 afterAll(async () => {
@@ -121,6 +169,100 @@ const internalUrl = `/api/internal/workers/${workerId}/code-settings/profiles/de
 const authorization = { authorization: `Bearer ${config.workerToken}` };
 
 describe.sequential("global Code settings API", () => {
+  it("dispatches metadata-only worker status, synchronization, and resolution commands", async () => {
+    workerCommands.length = 0;
+
+    const status = await app.inject({
+      method: "GET",
+      url: `/api/settings/code/workers/${workerId}/status`,
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.headers["cache-control"]).toBe("no-store");
+    expect(status.json()).toEqual(workerStatus);
+
+    const synchronize = await app.inject({
+      method: "POST",
+      url: `/api/settings/code/workers/${workerId}/synchronize`,
+      payload: {},
+    });
+    expect(synchronize.statusCode).toBe(200);
+    expect(synchronize.json()).toEqual(workerStatus);
+
+    const resolve = await app.inject({
+      method: "POST",
+      url: `/api/settings/code/workers/${workerId}/resolve`,
+      payload: { resolution: "publish-local" },
+    });
+    expect(resolve.statusCode).toBe(200);
+    expect(resolve.json()).toEqual(workerStatus);
+
+    expect(workerCommands).toEqual([
+      { workerId, command: { type: "code.settings.status" } },
+      {
+        workerId,
+        command: {
+          type: "code.settings.synchronize",
+          initializeIfMissing: false,
+        },
+      },
+      {
+        workerId,
+        command: {
+          type: "code.settings.resolve",
+          resolution: "publish-local",
+        },
+      },
+    ]);
+    for (const response of [status, synchronize, resolve]) {
+      expect(response.body).not.toContain("record");
+      expect(response.body).not.toContain("protectedContent");
+      expect(response.body).not.toContain("ciphertext");
+    }
+  });
+
+  it("rejects extra or invalid worker action input without dispatching it", async () => {
+    workerCommands.length = 0;
+    const sentinel = "GLOBAL_CODE_SETTINGS_ROUTE_PLAINTEXT_SENTINEL";
+
+    const synchronize = await app.inject({
+      method: "POST",
+      url: `/api/settings/code/workers/${workerId}/synchronize`,
+      payload: { initializeIfMissing: false, settings: sentinel },
+    });
+    expect(synchronize.statusCode).toBe(400);
+    expect(synchronize.body).not.toContain(sentinel);
+
+    const resolve = await app.inject({
+      method: "POST",
+      url: `/api/settings/code/workers/${workerId}/resolve`,
+      payload: { resolution: "merge" },
+    });
+    expect(resolve.statusCode).toBe(400);
+    expect(workerCommands).toEqual([]);
+  });
+
+  it("does not dispatch settings actions to unknown or offline workers", async () => {
+    workerCommands.length = 0;
+    const unknown = await app.inject({
+      method: "GET",
+      url: "/api/settings/code/workers/unknown-worker/status",
+    });
+    expect(unknown.statusCode).toBe(404);
+
+    connectedWorkers.delete(workerId);
+    try {
+      const offline = await app.inject({
+        method: "POST",
+        url: `/api/settings/code/workers/${workerId}/synchronize`,
+        payload: { initializeIfMissing: false },
+      });
+      expect(offline.statusCode).toBe(503);
+    } finally {
+      connectedWorkers.add(workerId);
+    }
+    expect(workerCommands).toEqual([]);
+  });
+
   it("requires worker authentication and the customization-content grant", async () => {
     expect(await app.inject({ method: "GET", url: internalUrl })).toMatchObject(
       { statusCode: 401 },
