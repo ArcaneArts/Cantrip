@@ -1682,6 +1682,10 @@ function ChatTranscript({
     retry: false,
     staleTime: 30_000,
   });
+  const loadModelReasoningState = useCallback(
+    (modelId: string) => getChatReasoning(chat.id, modelId),
+    [chat.id],
+  );
   const permissionProfiles = useQuery({
     enabled: Boolean(selectedModelId),
     queryFn: () => getChatPermissionProfiles(chat.id),
@@ -3702,6 +3706,7 @@ function ChatTranscript({
                 <ModelReasoningPicker
                   configuration={currentModelConfiguration}
                   disabled={relocationActive}
+                  loadReasoningState={loadModelReasoningState}
                   models={settings?.models ?? []}
                   pending={selectModelConfiguration.isPending}
                   readOnly={

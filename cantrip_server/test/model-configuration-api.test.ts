@@ -195,6 +195,31 @@ describe.sequential("atomic model configuration API", () => {
       throw new Error("Could not create model profiles.");
     }
 
+    const chatReasoningOptions = await app.inject({
+      method: "GET",
+      url: `/api/chats/${chat.id}/reasoning?modelId=${encodeURIComponent(root.id)}`,
+    });
+    expect(chatReasoningOptions.statusCode, chatReasoningOptions.body).toBe(
+      200,
+    );
+    expect(chatReasoningOptions.json()).toMatchObject({
+      modelId: root.id,
+      options: [],
+    });
+
+    const settingsReasoningOptions = await app.inject({
+      method: "GET",
+      url: `/api/settings/models/${encodeURIComponent(root.id)}/reasoning`,
+    });
+    expect(
+      settingsReasoningOptions.statusCode,
+      settingsReasoningOptions.body,
+    ).toBe(200);
+    expect(settingsReasoningOptions.json()).toMatchObject({
+      modelId: root.id,
+      options: [],
+    });
+
     const inherited = await app.inject({
       method: "PATCH",
       url: `/api/chats/${chat.id}/model-configuration`,

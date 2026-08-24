@@ -24,7 +24,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 
-interface ReasoningChoice {
+export interface ReasoningChoice {
   effort: ReasoningEffort | null;
   label: string;
 }
@@ -56,6 +56,7 @@ export interface ModelReasoningPickerProps {
   pending?: boolean;
   readOnly?: boolean;
   reasoningState?: ChatReasoningState;
+  loadReasoningState?: (modelId: string) => Promise<ChatReasoningState>;
   subagentCapability?: NativeSubagentRuntimeCapability;
   onSave(configuration: ModelConfiguration): Promise<unknown> | unknown;
 }
@@ -169,19 +170,31 @@ function fallbackReasoningChoices(
     : choices;
 }
 
-function choicesFor(
+export function modelConfigurationReasoningChoices(
   modelId: string | null,
   selected: ReasoningEffort | null,
   state?: ChatReasoningState,
+  authoritative = false,
 ): ReasoningChoice[] {
-  const advertised =
-    state?.modelId === modelId ? modelReasoningChoices(state) : [];
-  const choices = advertised.length
-    ? advertised
+  if (state?.modelId === modelId) {
+    const advertised = modelReasoningChoices(state);
+    return advertised.some(({ effort }) => effort === null)
+      ? advertised
+      : [{ effort: null, label: "Default" }, ...advertised];
+  }
+  return authoritative
+    ? [{ effort: null, label: "Default" }]
     : fallbackReasoningChoices(selected);
-  return choices.some(({ effort }) => effort === selected)
-    ? choices
-    : [...choices, { effort: selected, label: selected ?? "Default" }];
+}
+
+export function normalizeReasoningSelection(
+  selected: ReasoningEffort | null,
+  choices: ReasoningChoice[],
+  preferred: ReasoningEffort | null = null,
+): ReasoningEffort | null {
+  if (choices.some(({ effort }) => effort === selected)) return selected;
+  if (choices.some(({ effort }) => effort === preferred)) return preferred;
+  return choices[0]?.effort ?? null;
 }
 
 function providerIds(model: ModelProfileSummary | undefined): Set<string> {
@@ -202,17 +215,84 @@ export function modelsShareProvider(
   );
 }
 
+function useModelReasoningState({
+  enabled,
+  fallbackState,
+  loader,
+  modelId,
+}: {
+  enabled: boolean;
+  fallbackState?: ChatReasoningState;
+  loader?: (modelId: string) => Promise<ChatReasoningState>;
+  modelId: string | null;
+}): {
+  failed: boolean;
+  loading: boolean;
+  state?: ChatReasoningState;
+} {
+  const [loaded, setLoaded] = useState<{
+    modelId: string | null;
+    state?: ChatReasoningState;
+    status: "error" | "idle" | "loading" | "ready";
+  }>({ modelId: null, status: "idle" });
+
+  useEffect(() => {
+    if (!enabled || !modelId || !loader) {
+      setLoaded({ modelId: null, status: "idle" });
+      return;
+    }
+    let cancelled = false;
+    setLoaded({ modelId, status: "loading" });
+    void loader(modelId)
+      .then((state) => {
+        if (!cancelled) {
+          const matches = state.modelId === modelId;
+          setLoaded({
+            modelId,
+            state: matches ? state : undefined,
+            status: matches ? "ready" : "error",
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded({ modelId, status: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, loader, modelId]);
+
+  if (!loader) {
+    return {
+      failed: false,
+      loading: false,
+      state: fallbackState?.modelId === modelId ? fallbackState : undefined,
+    };
+  }
+  const matches = loaded.modelId === modelId;
+  return {
+    failed: matches && loaded.status === "error",
+    loading:
+      enabled && Boolean(modelId) && (!matches || loaded.status === "loading"),
+    state: matches ? loaded.state : undefined,
+  };
+}
+
 function ReasoningSlider({
   choices,
   disabled,
   label,
+  loading = false,
   onChange,
+  unavailable = false,
   value,
 }: {
   choices: ReasoningChoice[];
   disabled: boolean;
   label: string;
+  loading?: boolean;
   onChange(value: ReasoningEffort | null): void;
+  unavailable?: boolean;
   value: ReasoningEffort | null;
 }) {
   const selectedIndex = Math.max(
@@ -223,8 +303,13 @@ function ReasoningSlider({
     <div className="rounded-lg border bg-muted/20 px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between gap-3 text-xs">
         <span className="font-medium">{label}</span>
-        <span className="capitalize text-muted-foreground">
-          {choices[selectedIndex]?.label ?? "Default"}
+        <span className="flex items-center gap-1.5 capitalize text-muted-foreground">
+          {loading ? <Loader2 className="size-3 animate-spin" /> : null}
+          {loading
+            ? "Checking available efforts"
+            : unavailable
+              ? "Options unavailable"
+              : (choices[selectedIndex]?.label ?? "Default")}
         </span>
       </div>
       <input
@@ -233,7 +318,7 @@ function ReasoningSlider({
         max={Math.max(0, choices.length - 1)}
         step={1}
         value={selectedIndex}
-        disabled={disabled || choices.length < 2}
+        disabled={disabled || loading || unavailable || choices.length < 2}
         onChange={(event) =>
           onChange(choices[Number(event.currentTarget.value)]?.effort ?? null)
         }
@@ -251,6 +336,7 @@ function ReasoningSlider({
 export function ModelReasoningPicker({
   configuration,
   disabled = false,
+  loadReasoningState,
   models,
   mode = "chat",
   onSave,
@@ -268,20 +354,94 @@ export function ModelReasoningPicker({
     ({ id }) => id === configuration.subagentModelId,
   );
   const draftRootModel = models.find(({ id }) => id === draft.modelId);
+  const rootReasoning = useModelReasoningState({
+    enabled: open,
+    fallbackState: reasoningState,
+    loader: loadReasoningState,
+    modelId: draft.modelId,
+  });
+  const subagentReasoning = useModelReasoningState({
+    enabled: open && draft.customSubagentModel,
+    loader: loadReasoningState,
+    modelId: draft.subagentModelId,
+  });
   const rootChoices = useMemo(
-    () => choicesFor(draft.modelId, draft.reasoningEffort, reasoningState),
-    [draft.modelId, draft.reasoningEffort, reasoningState],
+    () =>
+      modelConfigurationReasoningChoices(
+        draft.modelId,
+        draft.reasoningEffort,
+        rootReasoning.state,
+        Boolean(loadReasoningState),
+      ),
+    [
+      draft.modelId,
+      draft.reasoningEffort,
+      loadReasoningState,
+      rootReasoning.state,
+    ],
   );
   const subagentChoices = useMemo(
-    () => choicesFor(draft.subagentModelId, draft.subagentReasoningEffort),
-    [draft.subagentModelId, draft.subagentReasoningEffort],
+    () =>
+      modelConfigurationReasoningChoices(
+        draft.subagentModelId,
+        draft.subagentReasoningEffort,
+        subagentReasoning.state,
+        Boolean(loadReasoningState),
+      ),
+    [
+      draft.subagentModelId,
+      draft.subagentReasoningEffort,
+      loadReasoningState,
+      subagentReasoning.state,
+    ],
   );
   const effectivePending = pending || saving;
+  const reasoningPending =
+    rootReasoning.loading ||
+    (draft.customSubagentModel && subagentReasoning.loading);
+  const reasoningUnavailable =
+    rootReasoning.failed ||
+    (draft.customSubagentModel && subagentReasoning.failed);
   const subagentsAvailable = subagentCapability?.available ?? true;
 
   useEffect(() => {
     if (!open) setDraft(configuration);
   }, [configuration, open]);
+
+  useEffect(() => {
+    if (!rootReasoning.state || rootReasoning.loading) return;
+    setDraft((current) => {
+      if (current.modelId !== rootReasoning.state?.modelId) return current;
+      const reasoningEffort = normalizeReasoningSelection(
+        current.reasoningEffort,
+        rootChoices,
+        rootReasoning.state.reasoningEffort,
+      );
+      return reasoningEffort === current.reasoningEffort
+        ? current
+        : { ...current, reasoningEffort };
+    });
+  }, [rootChoices, rootReasoning.loading, rootReasoning.state]);
+
+  useEffect(() => {
+    if (!subagentReasoning.state || subagentReasoning.loading) return;
+    setDraft((current) => {
+      if (
+        !current.customSubagentModel ||
+        current.subagentModelId !== subagentReasoning.state?.modelId
+      ) {
+        return current;
+      }
+      const subagentReasoningEffort = normalizeReasoningSelection(
+        current.subagentReasoningEffort,
+        subagentChoices,
+        subagentReasoning.state.reasoningEffort,
+      );
+      return subagentReasoningEffort === current.subagentReasoningEffort
+        ? current
+        : { ...current, subagentReasoningEffort };
+    });
+  }, [subagentChoices, subagentReasoning.loading, subagentReasoning.state]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (effectivePending) return;
@@ -291,7 +451,22 @@ export function ModelReasoningPicker({
   };
 
   const save = async () => {
-    const parsed = modelConfigurationSchema.safeParse(draft);
+    const normalizedDraft = {
+      ...draft,
+      reasoningEffort: normalizeReasoningSelection(
+        draft.reasoningEffort,
+        rootChoices,
+        rootReasoning.state?.reasoningEffort ?? null,
+      ),
+      subagentReasoningEffort: draft.customSubagentModel
+        ? normalizeReasoningSelection(
+            draft.subagentReasoningEffort,
+            subagentChoices,
+            subagentReasoning.state?.reasoningEffort ?? null,
+          )
+        : draft.subagentReasoningEffort,
+    };
+    const parsed = modelConfigurationSchema.safeParse(normalizedDraft);
     if (!parsed.success || !parsed.data.modelId) {
       setSaveError(
         parsed.success
@@ -416,6 +591,8 @@ export function ModelReasoningPicker({
               label="Root reasoning effort"
               choices={rootChoices}
               value={draft.reasoningEffort}
+              loading={rootReasoning.loading}
+              unavailable={rootReasoning.failed}
               disabled={readOnly || effectivePending}
               onChange={(reasoningEffort) =>
                 setDraft((current) => ({ ...current, reasoningEffort }))
@@ -492,6 +669,8 @@ export function ModelReasoningPicker({
                   label="Subagent reasoning effort"
                   choices={subagentChoices}
                   value={draft.subagentReasoningEffort}
+                  loading={subagentReasoning.loading}
+                  unavailable={subagentReasoning.failed}
                   disabled={readOnly || effectivePending || !subagentsAvailable}
                   onChange={(subagentReasoningEffort) =>
                     setDraft((current) => ({
@@ -529,6 +708,8 @@ export function ModelReasoningPicker({
             disabled={
               readOnly ||
               effectivePending ||
+              reasoningPending ||
+              reasoningUnavailable ||
               !draft.modelId ||
               (draft.customSubagentModel && !subagentsAvailable)
             }

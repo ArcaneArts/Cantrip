@@ -61,6 +61,47 @@ export function reasoningStateForRuntimes(
   };
 }
 
+/**
+ * Returns every reasoning effort that can be selected by model
+ * configuration routing. Unlike the per-turn state above, an effort is
+ * valid when at least one available route supports it because configuration
+ * routing can choose that exact route.
+ */
+export function configurationReasoningStateForRuntimes(
+  modelId: string,
+  reasoningEffort: ReasoningEffort | null,
+  runtimes: ModelRuntime[],
+): ChatReasoningState {
+  const optionsByEffort = new Map<ReasoningEffort, ChatReasoningOption>();
+  for (const runtime of runtimes) {
+    for (const option of advertisedOptions(runtime)) {
+      if (!optionsByEffort.has(option.effort)) {
+        optionsByEffort.set(option.effort, option);
+      }
+    }
+  }
+  const options = [...optionsByEffort.values()];
+  const supported = new Set(optionsByEffort.keys());
+  return {
+    modelId,
+    reasoningEffort:
+      reasoningEffort && supported.has(reasoningEffort)
+        ? reasoningEffort
+        : null,
+    options,
+    reasoningMandatory:
+      runtimes.length > 0 &&
+      runtimes.every(
+        (runtime) => runtime.model.catalog?.reasoningMandatory === true,
+      ),
+    incompleteMetadata: runtimes.some(
+      (runtime) =>
+        !runtime.model.catalog ||
+        runtime.model.catalog.supportsReasoning === null,
+    ),
+  };
+}
+
 export function prepareRuntimesForReasoning(
   runtimes: ModelRuntime[],
   requested: ReasoningEffort | null,

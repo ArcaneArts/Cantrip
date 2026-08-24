@@ -1,5 +1,6 @@
 import type { ModelRuntime } from "../src/db/repository.js";
 import {
+  configurationReasoningStateForRuntimes,
   prepareRuntimesForReasoning,
   reasoningStateForRuntimes,
 } from "../src/models/reasoning.js";
@@ -79,6 +80,23 @@ describe("model reasoning", () => {
       options: [
         { effort: "medium", description: "medium effort" },
         { effort: "high", description: "high effort" },
+      ],
+    });
+  });
+
+  it("advertises the selectable union for routed model configuration", () => {
+    expect(
+      configurationReasoningStateForRuntimes("model", "xhigh", [
+        runtime("primary", ["low", "medium"]),
+        runtime("fallback", ["high", "xhigh"]),
+      ]),
+    ).toMatchObject({
+      reasoningEffort: "xhigh",
+      options: [
+        { effort: "low", description: "low effort" },
+        { effort: "medium", description: "medium effort" },
+        { effort: "high", description: "high effort" },
+        { effort: "xhigh", description: "xhigh effort" },
       ],
     });
   });

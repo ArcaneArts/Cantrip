@@ -94,6 +94,7 @@ import {
   deleteModelProvider,
   getSettings,
   getCodexAuthStatus,
+  getModelReasoningOptions,
   getProviderRateLimitResets,
   getWorkers,
   logoutCodex,
@@ -1513,6 +1514,7 @@ export function SettingsPage({
                           settings.data.preferences,
                         )}
                         disabled={preferences.isPending}
+                        loadReasoningState={getModelReasoningOptions}
                         mode="settings"
                         models={models}
                         pending={preferences.isPending}
