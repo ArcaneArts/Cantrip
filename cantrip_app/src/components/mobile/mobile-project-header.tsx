@@ -1,14 +1,17 @@
 import { ArrowLeft, Settings, X } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 
 export function MobileProjectHeader({
+  actions,
   context,
   onBack,
   onCloseProject,
   onOpenProjectSettings,
   title,
 }: {
+  actions?: ReactNode;
   context?: string | null;
   onBack?: () => void;
   onCloseProject?: () => void;
@@ -45,16 +48,24 @@ export function MobileProjectHeader({
           <p className="truncate text-xs text-muted-foreground">{context}</p>
         ) : null}
       </div>
-      {onOpenProjectSettings ? (
-        <Button
-          aria-label="Project settings"
-          className="size-9"
-          onClick={onOpenProjectSettings}
-          size="icon"
-          variant="ghost"
+      {onOpenProjectSettings || actions ? (
+        <div
+          className="flex shrink-0 items-center gap-1"
+          data-slot="mobile-project-header-actions"
         >
-          <Settings className="size-4" />
-        </Button>
+          {onOpenProjectSettings ? (
+            <Button
+              aria-label="Project settings"
+              className="size-9"
+              onClick={onOpenProjectSettings}
+              size="icon"
+              variant="ghost"
+            >
+              <Settings className="size-4" />
+            </Button>
+          ) : null}
+          {actions}
+        </div>
       ) : null}
     </header>
   );

@@ -7977,6 +7977,25 @@ export function App() {
     });
     revealWorkspace();
   };
+  const renderProjectRunConfigurationControl = (compact: boolean) =>
+    selectedProject ? (
+      <RunConfigurationControl
+        compact={compact}
+        editorConfigurationId={runConfigurationEditorId}
+        error={
+          runConfigurations.isError ? errorText(runConfigurations.error) : null
+        }
+        inventory={runConfigurations.data}
+        loading={runConfigurations.isLoading}
+        projectId={selectedProject.id}
+        renderEditor
+        runtimes={runConfigurationRuntimes.data ?? []}
+        workers={workers.data ?? []}
+        worktrees={worktrees.data ?? []}
+        onEditorConfigurationChange={setRunConfigurationEditorId}
+        onFocusTerminal={focusRunTerminal}
+      />
+    ) : null;
   return (
     <WorkspaceDndProvider
       className="flex h-svh overflow-hidden bg-background text-foreground"
@@ -8388,6 +8407,7 @@ export function App() {
           />
         ) : compactShell && showProjectSettings && selectedProject ? (
           <MobileProjectHeader
+            actions={renderProjectRunConfigurationControl(true)}
             context={
               selectedProject.github?.nameWithOwner ??
               selectedProject.source?.displayPath
@@ -8397,6 +8417,7 @@ export function App() {
           />
         ) : compactShell && mobileTabGridOpen && selectedProject ? (
           <MobileProjectHeader
+            actions={renderProjectRunConfigurationControl(true)}
             context={`Tabs · ${
               selectedProject.github?.nameWithOwner ??
               selectedProject.source?.displayPath ??
@@ -8406,6 +8427,7 @@ export function App() {
           />
         ) : compactShell && projectOverviewSelected && selectedProject ? (
           <MobileProjectHeader
+            actions={renderProjectRunConfigurationControl(true)}
             context={
               selectedProject.github?.nameWithOwner ??
               selectedProject.source?.displayPath
@@ -8678,26 +8700,9 @@ export function App() {
               !showImporter &&
               !showSettings &&
               !showServerAdmin &&
-              selectedProject ? (
-                <RunConfigurationControl
-                  compact
-                  editorConfigurationId={runConfigurationEditorId}
-                  error={
-                    runConfigurations.isError
-                      ? errorText(runConfigurations.error)
-                      : null
-                  }
-                  inventory={runConfigurations.data}
-                  loading={runConfigurations.isLoading}
-                  projectId={selectedProject.id}
-                  renderEditor
-                  runtimes={runConfigurationRuntimes.data ?? []}
-                  workers={workers.data ?? []}
-                  worktrees={worktrees.data ?? []}
-                  onEditorConfigurationChange={setRunConfigurationEditorId}
-                  onFocusTerminal={focusRunTerminal}
-                />
-              ) : null}
+              selectedProject
+                ? renderProjectRunConfigurationControl(true)
+                : null}
               <ContentHeaderActions {...contentHeaderActions} compact />
               {!isPopout && !compactShell ? (
                 <>
@@ -8736,26 +8741,9 @@ export function App() {
               !showImporter &&
               !showSettings &&
               !showServerAdmin &&
-              selectedProject ? (
-                <RunConfigurationControl
-                  compact={overlayTitlebar}
-                  editorConfigurationId={runConfigurationEditorId}
-                  error={
-                    runConfigurations.isError
-                      ? errorText(runConfigurations.error)
-                      : null
-                  }
-                  inventory={runConfigurations.data}
-                  loading={runConfigurations.isLoading}
-                  projectId={selectedProject.id}
-                  renderEditor
-                  runtimes={runConfigurationRuntimes.data ?? []}
-                  workers={workers.data ?? []}
-                  worktrees={worktrees.data ?? []}
-                  onEditorConfigurationChange={setRunConfigurationEditorId}
-                  onFocusTerminal={focusRunTerminal}
-                />
-              ) : null}
+              selectedProject
+                ? renderProjectRunConfigurationControl(overlayTitlebar)
+                : null}
             </div>
             <span
               aria-hidden="true"

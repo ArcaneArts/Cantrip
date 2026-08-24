@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+import { MobileProjectHeader } from "../mobile/mobile-project-header";
 import { RunConfigurationControl } from "./run-configuration-control";
 
 const configurationId = "00000000-0000-4000-8000-000000000001";
@@ -105,5 +106,36 @@ describe("Run configuration control", () => {
     expect(html).toContain('aria-label="Restart"');
     expect(html).toContain('aria-label="Stop"');
     expect(html).not.toContain('aria-label="Run"');
+  });
+
+  it("renders the real control inside the compact project header", () => {
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={new QueryClient()}>
+        <MobileProjectHeader
+          actions={
+            <RunConfigurationControl
+              compact
+              editorConfigurationId={null}
+              inventory={inventory}
+              loading={false}
+              projectId="project"
+              renderEditor={false}
+              runtimes={[]}
+              workers={[worker]}
+              worktrees={[worktree]}
+              onEditorConfigurationChange={vi.fn()}
+              onFocusTerminal={vi.fn()}
+            />
+          }
+          context="ArcaneArts/Cantrip"
+          title="Cantrip"
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(html).toContain('data-slot="mobile-project-header-actions"');
+    expect(html).toContain('data-run-configuration-control="true"');
+    expect(html).toContain("Development server");
+    expect(html).toContain('aria-label="Run"');
   });
 });

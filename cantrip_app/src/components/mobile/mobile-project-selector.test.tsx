@@ -168,4 +168,34 @@ describe("mobile project selector", () => {
       markup.indexOf("Cantrip"),
     );
   });
+
+  it("keeps project actions in the compact header", () => {
+    const markup = renderToStaticMarkup(
+      <MobileProjectHeader
+        actions={
+          <div data-run-configuration-control="true">Run configuration</div>
+        }
+        context="ArcaneArts/Cantrip"
+        title="Cantrip"
+      />,
+    );
+
+    expect(markup).toContain('data-slot="mobile-project-header-actions"');
+    expect(markup).toContain('data-run-configuration-control="true"');
+    expect(markup).toContain("Run configuration");
+  });
+
+  it("keeps the Run control at the right edge after project settings", () => {
+    const markup = renderToStaticMarkup(
+      <MobileProjectHeader
+        actions={<div data-run-configuration-control="true" />}
+        onOpenProjectSettings={vi.fn()}
+        title="Cantrip"
+      />,
+    );
+
+    expect(markup.indexOf('aria-label="Project settings"')).toBeLessThan(
+      markup.indexOf('data-run-configuration-control="true"'),
+    );
+  });
 });
