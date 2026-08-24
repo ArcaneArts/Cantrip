@@ -168,6 +168,9 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_WORKER_UPLOAD_BYTES_PER_MINUTE", "16777216");
     vi.stubEnv("CANTRIP_ACCOUNT_RELAY_BYTES_PER_MINUTE", "67108864");
     vi.stubEnv("CANTRIP_WORKER_RELAY_BYTES_PER_MINUTE", "33554432");
+    vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS", "3000");
+    vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_FLUSH_THRESHOLD_BYTES", "65536");
+    vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_MAX_BUFFERED_ENTRIES", "2048");
     vi.stubEnv("CANTRIP_METRICS_TOKEN", "m".repeat(32));
     expect(readServerConfig()).toMatchObject({
       apiBodyLimitBytes: 65_536,
@@ -179,6 +182,9 @@ describe("server configuration safety", () => {
       accountUploadBytesPerMinute: 33_554_432,
       accountUploadConcurrency: 3,
       accountWebsocketLimit: 20,
+      bandwidthUsageFlushIntervalMs: 3_000,
+      bandwidthUsageFlushThresholdBytes: 65_536,
+      bandwidthUsageMaxBufferedEntries: 2_048,
       pairingRateLimitPerMinute: 9,
       metricsToken: "m".repeat(32),
       uploadLimitBytes: 1_048_576,
@@ -195,6 +201,9 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_API_BODY_LIMIT_BYTES", "100");
     expect(() => readServerConfig()).toThrow(/API_BODY_LIMIT/i);
     vi.stubEnv("CANTRIP_API_BODY_LIMIT_BYTES", "65536");
+    vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS", "100");
+    expect(() => readServerConfig()).toThrow(/BANDWIDTH_USAGE_FLUSH_INTERVAL/i);
+    vi.stubEnv("CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS", "3000");
     vi.stubEnv("CANTRIP_METRICS_TOKEN", "too-short");
     expect(() => readServerConfig()).toThrow(/METRICS_TOKEN/i);
   });

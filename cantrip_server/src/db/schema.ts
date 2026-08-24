@@ -4900,3 +4900,87 @@ export const accountStorageReconciliationLeases = pgTable(
     ),
   ],
 );
+
+/**
+ * Additive application-payload bytes observed at server network boundaries.
+ * Hourly buckets are the durable source for current usage and later rollups.
+ */
+export const accountBandwidthUsageBuckets = pgTable(
+  "account_bandwidth_usage_buckets",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bucketStart: timestamp("bucket_start", { withTimezone: true }).notNull(),
+    resolution: text("resolution").notNull().default("hour"),
+    channel: text("channel").notNull(),
+    direction: text("direction").notNull(),
+    bytes: bigint("bytes", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    operationCount: bigint("operation_count", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.ownerId,
+        table.bucketStart,
+        table.resolution,
+        table.channel,
+        table.direction,
+      ],
+    }),
+    index("account_bandwidth_usage_owner_time_index").on(
+      table.ownerId,
+      table.bucketStart,
+    ),
+    check(
+      "account_bandwidth_usage_resolution_check",
+      sql`${table.resolution} IN ('hour', 'day')`,
+    ),
+    check(
+      "account_bandwidth_usage_channel_check",
+      sql`${table.channel} IN ('http', 'client-live-websocket', 'worker-control-websocket', 'worker-log-stream', 'terminal-relay', 'remote-surface-relay', 'tunnel-relay', 'attachment-transfer', 'code-relay', 'project-share-relay', 'other')`,
+    ),
+    check(
+      "account_bandwidth_usage_direction_check",
+      sql`${table.direction} IN ('ingress', 'egress')`,
+    ),
+    check("account_bandwidth_usage_bytes_check", sql`${table.bytes} >= 0`),
+    check(
+      "account_bandwidth_usage_operations_check",
+      sql`${table.operationCount} >= 0`,
+    ),
+  ],
+);
+
+/** Idempotence fence for retrying an in-memory meter flush transaction. */
+export const accountBandwidthFlushes = pgTable(
+  "account_bandwidth_flushes",
+  {
+    meterId: text("meter_id").notNull(),
+    sequence: bigint("sequence", { mode: "bigint" }).notNull(),
+    entryCount: integer("entry_count").notNull(),
+    bytes: bigint("bytes", { mode: "bigint" }).notNull(),
+    flushedAt: timestamp("flushed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.meterId, table.sequence] }),
+    index("account_bandwidth_flushes_time_index").on(table.flushedAt),
+    check(
+      "account_bandwidth_flushes_entries_check",
+      sql`${table.entryCount} >= 0`,
+    ),
+    check("account_bandwidth_flushes_bytes_check", sql`${table.bytes} >= 0`),
+  ],
+);

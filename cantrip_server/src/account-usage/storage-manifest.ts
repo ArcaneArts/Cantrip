@@ -245,4 +245,14 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
       "accounting-excluded",
       "reconciliation coordination",
     ),
+    excluded(
+      schema.accountBandwidthUsageBuckets,
+      "accounting-excluded",
+      "bandwidth accounting data",
+    ),
+    excluded(
+      schema.accountBandwidthFlushes,
+      "accounting-excluded",
+      "bandwidth flush idempotence ledger",
+    ),
   ];

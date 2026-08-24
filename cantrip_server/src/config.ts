@@ -46,6 +46,9 @@ export interface ServerConfig {
   appOrigins: string[];
   authRateLimit?: number;
   authMode: AuthMode;
+  bandwidthUsageFlushIntervalMs?: number;
+  bandwidthUsageFlushThresholdBytes?: number;
+  bandwidthUsageMaxBufferedEntries?: number;
   bootstrapMode: BootstrapMode;
   dataDirectory: string;
   databaseUrl?: string;
@@ -597,6 +600,27 @@ export function readServerConfig(): ServerConfig {
       10,
       1,
       1_000,
+    ),
+    bandwidthUsageFlushIntervalMs: readBoundedInteger(
+      "CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS",
+      process.env.CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS,
+      5_000,
+      250,
+      60_000,
+    ),
+    bandwidthUsageFlushThresholdBytes: readBoundedInteger(
+      "CANTRIP_BANDWIDTH_USAGE_FLUSH_THRESHOLD_BYTES",
+      process.env.CANTRIP_BANDWIDTH_USAGE_FLUSH_THRESHOLD_BYTES,
+      1024 * 1024,
+      1024,
+      1024 * 1024 * 1024,
+    ),
+    bandwidthUsageMaxBufferedEntries: readBoundedInteger(
+      "CANTRIP_BANDWIDTH_USAGE_MAX_BUFFERED_ENTRIES",
+      process.env.CANTRIP_BANDWIDTH_USAGE_MAX_BUFFERED_ENTRIES,
+      4_096,
+      64,
+      65_536,
     ),
     bootstrapMode,
     coordinationMaxInstances: readBoundedInteger(

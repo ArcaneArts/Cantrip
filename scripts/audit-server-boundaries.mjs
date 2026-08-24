@@ -216,6 +216,8 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   accountStorageUsageCurrent: "minimized-operational-metadata",
   accountStorageUsageSnapshots: "minimized-operational-metadata",
   accountStorageReconciliationLeases: "minimized-operational-metadata",
+  accountBandwidthUsageBuckets: "minimized-operational-metadata",
+  accountBandwidthFlushes: "minimized-operational-metadata",
 };
 
 const prohibitedTaskProtocolSymbols = new Set([

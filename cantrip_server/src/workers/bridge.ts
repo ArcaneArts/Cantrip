@@ -19,7 +19,7 @@ import type { ServiceLogger } from "@cantrip/logging";
 
 import { serverLogger } from "../logger.js";
 
-interface WorkerSocket {
+export interface WorkerSocket {
   bufferedAmount: number;
   close(code?: number, reason?: string): void;
   on(event: "close", listener: () => void): void;
