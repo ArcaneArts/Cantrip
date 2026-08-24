@@ -46,6 +46,7 @@ const config: ServerConfig = {
 };
 const workerId = "code-settings-api-worker";
 const peerWorkerId = "code-settings-api-peer-worker";
+const currentPeerWorkerId = "code-settings-api-current-peer-worker";
 const unauthorizedWorkerId = "code-settings-api-worker-without-grant";
 const crossAccountWorkerId = "code-settings-api-cross-account-worker";
 const workerCommands: Array<{ command: WorkerCommand; workerId: string }> = [];
@@ -60,6 +61,7 @@ const publicKey: EncryptionPublicKey = {
 const connectedWorkers = new Set([
   workerId,
   peerWorkerId,
+  currentPeerWorkerId,
   unauthorizedWorkerId,
   crossAccountWorkerId,
 ]);
@@ -195,13 +197,16 @@ function initialProfile(clientId: string): AccountEncryptionProfileInitialize {
   };
 }
 
-function customizationGrant(workerId: string): WorkerComponentKeyGrant {
+function customizationGrant(
+  workerId: string,
+  keyRevision = 1,
+): WorkerComponentKeyGrant {
   return {
     version: 1,
     purpose: "worker-component-key",
     workerId,
     component: "customization-content",
-    keyRevision: 1,
+    keyRevision,
     envelope: {
       version: 1,
       algorithm: "HPKE-RFC9180",
@@ -234,6 +239,10 @@ beforeAll(async () => {
     LOCAL_USER_ID,
     heartbeat(peerWorkerId, false),
   );
+  await database.repository.recordWorker(
+    LOCAL_USER_ID,
+    heartbeat(currentPeerWorkerId, false),
+  );
   const crossAccount = await database.repository.createAccount({
     displayName: "Other Code settings account",
     email: "other-code-settings-account@example.com",
@@ -259,9 +268,10 @@ beforeAll(async () => {
   if (profile.statusCode !== 201) {
     throw new Error(`Encryption profile setup failed: ${profile.body}`);
   }
-  for (const [authorizedWorkerId, principalId] of [
-    [workerId, "22222222-2222-4222-8222-222222222222"],
-    [peerWorkerId, "33333333-3333-4333-8333-333333333333"],
+  for (const [authorizedWorkerId, principalId, keyRevisions] of [
+    [workerId, "22222222-2222-4222-8222-222222222222", [1, 2]],
+    [peerWorkerId, "33333333-3333-4333-8333-333333333333", [1]],
+    [currentPeerWorkerId, "44444444-4444-4444-8444-444444444444", [2]],
   ] as const) {
     const bootstrap = await app.inject({
       method: "POST",
@@ -283,17 +293,19 @@ beforeAll(async () => {
     if (approve.statusCode !== 200) {
       throw new Error(`Worker principal approval failed: ${approve.body}`);
     }
-    const grant = await app.inject({
-      method: "POST",
-      url: `/api/encryption/principals/${principalId}/grants`,
-      payload: {
-        component: "customization-content",
-        keyRevision: 1,
-        wrappedKey: customizationGrant(authorizedWorkerId),
-      },
-    });
-    if (grant.statusCode !== 201) {
-      throw new Error(`Worker grant setup failed: ${grant.body}`);
+    for (const keyRevision of keyRevisions) {
+      const grant = await app.inject({
+        method: "POST",
+        url: `/api/encryption/principals/${principalId}/grants`,
+        payload: {
+          component: "customization-content",
+          keyRevision,
+          wrappedKey: customizationGrant(authorizedWorkerId, keyRevision),
+        },
+      });
+      if (grant.statusCode !== 201) {
+        throw new Error(`Worker grant setup failed: ${grant.body}`);
+      }
     }
   }
 });
@@ -437,7 +449,7 @@ describe.sequential("global Code settings API", () => {
         method: "PUT",
         url: internalUrl,
         headers: authorization,
-        payload: upload(null, 2),
+        payload: upload(null, 3),
       }),
     ).toMatchObject({ statusCode: 403 });
   });
@@ -517,7 +529,7 @@ describe.sequential("global Code settings API", () => {
     expect(stale.body).not.toContain("ciphertext");
   });
 
-  it("invalidates only other connected authorized workers in the uploader's account", async () => {
+  it("reads and invalidates only workers authorized for the stored key revision", async () => {
     await vi.waitFor(() =>
       expect(workerCommands).toContainEqual({
         workerId: peerWorkerId,
@@ -530,7 +542,7 @@ describe.sequential("global Code settings API", () => {
     );
     workerCommands.length = 0;
 
-    const updatedUpload = upload(1);
+    const updatedUpload = upload(1, 2);
     const update = await app.inject({
       method: "PUT",
       url: internalUrl,
@@ -542,7 +554,7 @@ describe.sequential("global Code settings API", () => {
     await vi.waitFor(() =>
       expect(workerCommands).toEqual([
         {
-          workerId: peerWorkerId,
+          workerId: currentPeerWorkerId,
           command: {
             type: "code.settings.invalidate",
             profileId: "default",
@@ -558,8 +570,29 @@ describe.sequential("global Code settings API", () => {
       expect.objectContaining({ workerId: unauthorizedWorkerId }),
     );
     expect(workerCommands).not.toContainEqual(
+      expect.objectContaining({ workerId: peerWorkerId }),
+    );
+    expect(workerCommands).not.toContainEqual(
       expect.objectContaining({ workerId: crossAccountWorkerId }),
     );
+
+    const stalePeerRead = await app.inject({
+      method: "GET",
+      url: `/api/internal/workers/${peerWorkerId}/code-settings/profiles/default`,
+      headers: authorization,
+    });
+    expect(stalePeerRead.statusCode).toBe(403);
+
+    const currentPeerRead = await app.inject({
+      method: "GET",
+      url: `/api/internal/workers/${currentPeerWorkerId}/code-settings/profiles/default`,
+      headers: authorization,
+    });
+    expect(currentPeerRead.statusCode).toBe(200);
+    expect(
+      codeSettingsStoredProfileSchema.parse(currentPeerRead.json()).record
+        .protectedContent.keyRevision,
+    ).toBe(2);
   });
 
   it("rejects plaintext and malformed profile input without reflecting it", async () => {
