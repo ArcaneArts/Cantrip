@@ -2,6 +2,7 @@ import {
   RUN_CONFIGURATION_FILE_SCHEMA,
   RUN_CONFIGURATION_FILE_VERSION,
   runConfigurationFileSchema,
+  type RunConfigurationDetectionCandidate,
   type RunConfigurationDartDocument,
   type RunConfigurationFile,
   type RunConfigurationFlutterDocument,
@@ -140,6 +141,119 @@ export function createRunConfigurationDocument(
   if (provider === "flutter") return createFlutterRunConfigurationDocument(id);
   if (provider === "rust") return createRustRunConfigurationDocument(id);
   return createShellRunConfigurationDocument(id);
+}
+
+export function runConfigurationTargetLabel(
+  document: RunConfigurationFile,
+): string {
+  if (document.provider === "shell") {
+    return document.target.kind === "command"
+      ? document.target.command
+      : document.target.path;
+  }
+  if (document.provider === "node") {
+    return document.target.kind === "packageScript"
+      ? `Package script: ${document.target.script}`
+      : `Entrypoint: ${document.target.path}`;
+  }
+  if (document.provider === "java") {
+    switch (document.target.kind) {
+      case "gradleTask":
+        return `Gradle ${document.target.projectPath} · ${document.target.task}`;
+      case "gradleMainClass":
+        return `Gradle ${document.target.projectPath} · ${document.target.className}`;
+      case "mavenGoal":
+        return `Maven ${document.target.module ?? "root"} · ${document.target.goal}`;
+      case "mavenMainClass":
+        return `Maven ${document.target.module ?? "root"} · ${document.target.className}`;
+    }
+  }
+  if (document.provider === "dart") {
+    return `Dart entrypoint: ${document.target.path}`;
+  }
+  if (document.provider === "flutter") {
+    return `Flutter entrypoint: ${document.target.path}`;
+  }
+  return `Cargo ${document.target.package} · ${document.target.kind} ${document.target.name}`;
+}
+
+export function applyRunConfigurationDetectionCandidate(
+  current: RunConfigurationFile,
+  candidate: RunConfigurationDetectionCandidate,
+): RunConfigurationFile {
+  const detected = candidate.document;
+  if (
+    candidate.provider !== current.provider ||
+    detected.provider !== current.provider
+  ) {
+    return current;
+  }
+
+  if (current.provider === "shell" && detected.provider === "shell") {
+    return {
+      ...current,
+      workingDirectory: detected.workingDirectory,
+      target: detected.target,
+    };
+  }
+  if (current.provider === "node" && detected.provider === "node") {
+    return {
+      ...current,
+      workingDirectory: detected.workingDirectory,
+      target: detected.target,
+      options: {
+        ...current.options,
+        packageManager: detected.options.packageManager,
+        runtime: detected.options.runtime,
+      },
+    };
+  }
+  if (current.provider === "java" && detected.provider === "java") {
+    return {
+      ...current,
+      workingDirectory: detected.workingDirectory,
+      target: detected.target,
+      options: {
+        ...current.options,
+        useWrapper: detected.options.useWrapper,
+      },
+    };
+  }
+  if (current.provider === "dart" && detected.provider === "dart") {
+    return {
+      ...current,
+      workingDirectory: detected.workingDirectory,
+      target: detected.target,
+    };
+  }
+  if (current.provider === "flutter" && detected.provider === "flutter") {
+    return {
+      ...current,
+      workingDirectory: detected.workingDirectory,
+      target: detected.target,
+      options: {
+        ...current.options,
+        flavor: current.options.flavor ?? detected.options.flavor,
+      },
+    };
+  }
+  if (current.provider === "rust" && detected.provider === "rust") {
+    return {
+      ...current,
+      workingDirectory: detected.workingDirectory,
+      target: detected.target,
+      options: {
+        ...current.options,
+        features: [
+          ...new Set([
+            ...detected.options.features,
+            ...current.options.features,
+          ]),
+        ],
+      },
+    };
+  }
+  return current;
 }
 
 function quoteArgument(argument: string): string {
