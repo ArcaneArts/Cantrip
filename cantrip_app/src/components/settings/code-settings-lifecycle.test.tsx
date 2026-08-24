@@ -187,6 +187,10 @@ function updateActive(
   );
 }
 
+function renderedText(renderer: TestRenderer.ReactTestRenderer): string {
+  return JSON.stringify(renderer.toJSON());
+}
+
 const originalWindow = globalThis.window;
 
 beforeEach(() => {
@@ -220,6 +224,54 @@ afterEach(() => {
 });
 
 describe("CodeSettings retained workbench lifecycle", () => {
+  it("clearly reports when no compatible worker is available", async () => {
+    api.getWorkers.mockResolvedValue([]);
+
+    const { renderer } = await mount();
+
+    expect(renderedText(renderer)).toContain(
+      "No compatible Code worker is available",
+    );
+    expect(renderedText(renderer)).toContain(
+      "Connect an encryption-capable worker with Cantrip Code installed.",
+    );
+    expect(api.createProtectedCodeSettingsAttachment).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "offline",
+      "Cantrip Server is temporarily unavailable.",
+      "Cantrip Server is temporarily unavailable.",
+    ],
+    ["uninitialized", null, "Code settings are uninitialized."],
+    [
+      "error",
+      "Encrypted settings could not be authenticated.",
+      "Encrypted settings could not be authenticated.",
+    ],
+  ] as const)(
+    "renders the %s synchronization state",
+    async (state, error, expected) => {
+      const synchronization: CodeSettingsWorkerStatus = {
+        ...readyStatus,
+        state,
+        revision: state === "uninitialized" ? null : readyStatus.revision,
+        initializedFromWorker: false,
+        error,
+      };
+      api.createProtectedCodeSettingsAttachment.mockResolvedValue({
+        ...wire,
+        synchronization,
+      });
+
+      const { renderer } = await mount();
+
+      expect(renderedText(renderer)).toContain("Code settings could not open");
+      expect(renderedText(renderer)).toContain(expected);
+    },
+  );
+
   it("creates once when mounted and retains the iframe while active toggles", async () => {
     const { queryClient, renderer } = await mount(true);
     const initialFrame = renderer.root.findByType("iframe");

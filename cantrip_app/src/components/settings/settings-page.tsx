@@ -169,8 +169,8 @@ export type SettingsSection =
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "usage", label: "Usage", icon: BarChart3 },
   { id: "code", label: "Code", icon: Code2 },
+  { id: "usage", label: "Usage", icon: BarChart3 },
   { id: "models", label: "Models", icon: Cpu },
   { id: "workers", label: "Workers", icon: Network },
   { id: "logs", label: "Logs", icon: ScrollText },

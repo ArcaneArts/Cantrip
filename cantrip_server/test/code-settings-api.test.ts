@@ -15,7 +15,7 @@ import {
   codeSettingsStoredProfileSchema,
   type CodeSettingsUpload,
 } from "@cantrip/protocol/code-settings";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
@@ -40,9 +40,16 @@ const config: ServerConfig = {
   workerToken: "code-settings-worker-token",
 };
 const workerId = "code-settings-api-worker";
+const peerWorkerId = "code-settings-api-peer-worker";
 const unauthorizedWorkerId = "code-settings-api-worker-without-grant";
+const crossAccountWorkerId = "code-settings-api-cross-account-worker";
 const workerCommands: Array<{ command: WorkerCommand; workerId: string }> = [];
-const connectedWorkers = new Set([workerId]);
+const connectedWorkers = new Set([
+  workerId,
+  peerWorkerId,
+  unauthorizedWorkerId,
+  crossAccountWorkerId,
+]);
 
 const workerStatus = {
   profileId: "default" as const,
@@ -79,6 +86,7 @@ const bridge: WorkerCommandBus = {
     ) {
       return workerStatus;
     }
+    if (command.type === "code.settings.invalidate") return undefined;
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
 };
@@ -151,6 +159,21 @@ beforeAll(async () => {
   await database.repository.recordWorker(
     LOCAL_USER_ID,
     heartbeat(unauthorizedWorkerId, false),
+  );
+  await database.repository.recordWorker(
+    LOCAL_USER_ID,
+    heartbeat(peerWorkerId, true),
+  );
+  const crossAccount = await database.repository.createAccount({
+    displayName: "Other Code settings account",
+    email: "other-code-settings-account@example.com",
+    normalizedEmail: "other-code-settings-account@example.com",
+    passwordHash: "unused-code-settings-test-password-hash",
+    role: "owner",
+  });
+  await database.repository.recordWorker(
+    crossAccount.id,
+    heartbeat(crossAccountWorkerId, true),
   );
   app = await buildApp({
     config,
@@ -362,6 +385,51 @@ describe.sequential("global Code settings API", () => {
     ).toMatchObject({ code: "revision-conflict", currentRevision: 1 });
     expect(stale.body).not.toContain("protectedContent");
     expect(stale.body).not.toContain("ciphertext");
+  });
+
+  it("invalidates only other connected authorized workers in the uploader's account", async () => {
+    await vi.waitFor(() =>
+      expect(workerCommands).toContainEqual({
+        workerId: peerWorkerId,
+        command: {
+          type: "code.settings.invalidate",
+          profileId: "default",
+          revision: 1,
+        },
+      }),
+    );
+    workerCommands.length = 0;
+
+    const updatedUpload = upload(1);
+    const update = await app.inject({
+      method: "PUT",
+      url: internalUrl,
+      headers: authorization,
+      payload: updatedUpload,
+    });
+    expect(update.statusCode).toBe(200);
+
+    await vi.waitFor(() =>
+      expect(workerCommands).toEqual([
+        {
+          workerId: peerWorkerId,
+          command: {
+            type: "code.settings.invalidate",
+            profileId: "default",
+            revision: 2,
+          },
+        },
+      ]),
+    );
+    expect(workerCommands).not.toContainEqual(
+      expect.objectContaining({ workerId }),
+    );
+    expect(workerCommands).not.toContainEqual(
+      expect.objectContaining({ workerId: unauthorizedWorkerId }),
+    );
+    expect(workerCommands).not.toContainEqual(
+      expect.objectContaining({ workerId: crossAccountWorkerId }),
+    );
   });
 
   it("rejects plaintext and malformed profile input without reflecting it", async () => {

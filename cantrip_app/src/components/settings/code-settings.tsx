@@ -425,7 +425,8 @@ export function CodeSettings({
                 </p>
                 {conflict && synchronization?.backupCreated ? (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    A local recovery copy is available on this worker.
+                    The original pre-sync recovery copy is available on this
+                    worker.
                   </p>
                 ) : null}
               </div>

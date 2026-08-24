@@ -333,8 +333,17 @@ describe("Code settings synchronization", () => {
 
     await expect(
       workerB.sync.resolve("accept-canonical"),
-    ).resolves.toMatchObject({ state: "ready" });
+    ).resolves.toMatchObject({ state: "ready", revision: 5 });
+    expect(server.profile?.record.revision).toBe(5);
     expect((await settings(workerB.settingsPath))["editor.fontSize"]).toBe(18);
+    expect(
+      await settings(
+        path.join(
+          path.dirname(workerB.settingsPath),
+          "settings.pre-cantrip-conflict.json",
+        ),
+      ),
+    ).toMatchObject({ "editor.fontSize": 20 });
 
     await workerA.sync.synchronize({ initializeIfMissing: false });
     await writeSettings(
@@ -349,9 +358,55 @@ describe("Code settings synchronization", () => {
     await workerB.sync.synchronize({ initializeIfMissing: false });
     await expect(workerB.sync.resolve("publish-local")).resolves.toMatchObject({
       state: "ready",
-      revision: 6,
+      revision: 7,
     });
     expect((await settings(workerB.settingsPath))["editor.fontSize"]).toBe(24);
+
+    await workerA.sync.close();
+    await workerB.sync.close();
+  }, 20_000);
+
+  it("preserves divergent settings when two workers initialize concurrently", async () => {
+    const componentKey = deriveComponentKey({
+      accountMasterKey: generateAccountMasterKey(),
+      ownerId,
+      component: "customization-content",
+      keyRevision: 1,
+    });
+    const server = new OpaqueSettingsServer();
+    const workerA = await synchronizer(
+      "worker-initialize-a",
+      componentKey,
+      server,
+    );
+    const workerB = await synchronizer(
+      "worker-initialize-b",
+      componentKey,
+      server,
+    );
+    await writeSettings(workerA.settingsPath, '{"editor.fontSize":15}\n');
+    await writeSettings(workerB.settingsPath, '{"editor.fontSize":20}\n');
+
+    const gate = server.blockNextPut();
+    const initializeA = workerA.sync.synchronize({ initializeIfMissing: true });
+    await gate.entered;
+    await expect(
+      workerB.sync.synchronize({ initializeIfMissing: true }),
+    ).resolves.toMatchObject({ state: "ready", revision: 1 });
+    gate.release();
+
+    await expect(initializeA).resolves.toMatchObject({
+      state: "conflict",
+      revision: null,
+      conflictCount: 1,
+    });
+    expect(await settings(workerA.settingsPath)).toEqual({
+      "editor.fontSize": 15,
+    });
+    expect(await settings(workerB.settingsPath)).toEqual({
+      "editor.fontSize": 20,
+    });
+    expect(server.profile?.record.revision).toBe(1);
 
     await workerA.sync.close();
     await workerB.sync.close();

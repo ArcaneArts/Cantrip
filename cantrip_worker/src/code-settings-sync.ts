@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { watch, type FSWatcher } from "node:fs";
+import { watch } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -39,6 +39,16 @@ import type { WorkerEncryptionService } from "./worker-encryption.js";
 const DEFAULT_DEBOUNCE_MS = 350;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const reservedKeys = new Set<string>(codeSettingsReservedKeys);
+
+interface CodeSettingsWatcher {
+  close(): void;
+  once(event: "error", listener: () => void): CodeSettingsWatcher;
+}
+
+type CodeSettingsWatchFactory = (
+  directory: string,
+  listener: (event: string, filename: string | Buffer | null) => void,
+) => CodeSettingsWatcher;
 
 class LocalCodeSettingsChangedError extends Error {
   constructor() {
@@ -286,14 +296,16 @@ export class CodeSettingsSynchronizer {
   readonly #settingsPath: string;
   readonly #statePath: string;
   readonly #backupPath: string;
+  readonly #conflictBackupPath: string;
   readonly #service: WorkerEncryptionService;
   readonly #profileId = "default" as const;
   readonly #debounceMs: number;
   readonly #pollIntervalMs: number;
+  readonly #watchFactory: CodeSettingsWatchFactory;
   #state: PersistedSyncState = emptyState();
   #status: CodeSettingsWorkerStatus;
   #tail: Promise<void> = Promise.resolve();
-  #watcher: FSWatcher | null = null;
+  #watcher: CodeSettingsWatcher | null = null;
   #watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
   #debounceTimer: ReturnType<typeof setTimeout> | null = null;
   #pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -309,6 +321,7 @@ export class CodeSettingsSynchronizer {
     service: WorkerEncryptionService;
     settingsPath: string;
     statePath: string;
+    watchFactory?: CodeSettingsWatchFactory;
     workerId: string;
   }) {
     this.#settingsPath = input.settingsPath;
@@ -317,9 +330,17 @@ export class CodeSettingsSynchronizer {
       path.dirname(input.settingsPath),
       "settings.pre-cantrip-sync.json",
     );
+    this.#conflictBackupPath = path.join(
+      path.dirname(input.settingsPath),
+      "settings.pre-cantrip-conflict.json",
+    );
     this.#service = input.service;
     this.#debounceMs = input.debounceMs ?? DEFAULT_DEBOUNCE_MS;
     this.#pollIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.#watchFactory =
+      input.watchFactory ??
+      ((directory, listener) =>
+        watch(directory, { persistent: false }, listener));
     this.#client = new CodeSettingsClient({
       credential: input.credential,
       fetch: input.fetch,
@@ -371,12 +392,8 @@ export class CodeSettingsSynchronizer {
           throw new Error("There is no Code settings conflict to resolve.");
         if (resolution === "accept-canonical") {
           const local = await this.readLocal();
-          await this.applyRemote(conflict.remote, local);
-          await this.commitBase(
-            conflict.remote,
-            conflict.remoteRevision,
-            false,
-          );
+          await this.preserveConflictLocal(local);
+          await this.upload(conflict.remote, conflict.remoteRevision, local);
           return;
         }
         const local = await this.readLocal();
@@ -452,17 +469,46 @@ export class CodeSettingsSynchronizer {
         if (!(error instanceof CodeSettingsClientConflictError)) throw error;
         const winner = await this.#client.get();
         if (!winner) throw error;
-        await this.reconcileSnapshots(
+        await this.reconcileInitializationRace(
           winner,
           await this.openRemote(winner),
           local,
-          0,
         );
       }
       return;
     }
     const remote = await this.openRemote(remoteProfile);
     await this.reconcileSnapshots(remoteProfile, remote, local, 0);
+  }
+
+  private async reconcileInitializationRace(
+    remoteProfile: CodeSettingsStoredProfile,
+    remote: CodeSettingsJsonObject,
+    local: LocalSettingsSnapshot,
+  ): Promise<void> {
+    const remoteRevision = remoteProfile.record.revision;
+    const result = mergeCodeSettingsSnapshots({
+      base: {},
+      local: local.settings,
+      remote,
+    });
+    if (!result.merged) {
+      this.#state.conflict = {
+        base: {},
+        local: local.settings,
+        remote,
+        remoteRevision,
+        conflictCount: result.conflictCount,
+      };
+      await this.writeState();
+      this.#status = this.statusValue("conflict", null);
+      return;
+    }
+    if (codeSettingsDigest(result.merged) === codeSettingsDigest(remote)) {
+      await this.acceptRemote(remote, remoteRevision, local, false);
+      return;
+    }
+    await this.upload(result.merged, remoteRevision, local);
   }
 
   private async reconcileSnapshots(
@@ -662,6 +708,18 @@ export class CodeSettingsSynchronizer {
     this.#lastAppliedHash = codeSettingsDigest(settings);
   }
 
+  private async preserveConflictLocal(
+    local: LocalSettingsSnapshot,
+  ): Promise<void> {
+    const current = await this.readLocal();
+    if (current.raw !== local.raw) {
+      throw new LocalCodeSettingsChangedError();
+    }
+    if (current.raw !== null) {
+      await atomicWrite(this.#conflictBackupPath, current.raw);
+    }
+  }
+
   private async commitBase(
     settings: CodeSettingsJsonObject,
     revision: number,
@@ -733,9 +791,8 @@ export class CodeSettingsSynchronizer {
   private startWatcher(): void {
     if (this.#closed || this.#watcher) return;
     try {
-      this.#watcher = watch(
+      this.#watcher = this.#watchFactory(
         path.dirname(this.#settingsPath),
-        { persistent: false },
         (_event, filename) => {
           if (
             filename &&
