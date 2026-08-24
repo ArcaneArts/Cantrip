@@ -172,6 +172,7 @@ import {
   taskMessageRelayResultSchema,
   taskOpaqueContentSchema,
   taskOpaqueSummarySchema,
+  taskOperationPrepareRequestSchema,
   taskOperationRelayGoalSchema,
   taskOperationRelayRequestSchema,
 } from "./tasks.js";
@@ -13308,6 +13309,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       })
       .strict(),
     attachments: chatAttachmentOpaqueListSchema.default([]),
+  }),
+  taskOperationPrepareRequestSchema.extend({
+    type: z.literal("task.operation.prepare"),
   }),
   z.object({
     type: z.literal("chat.messages.protect"),

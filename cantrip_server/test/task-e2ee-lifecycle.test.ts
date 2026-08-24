@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
+  taskWorkerCreateSchema,
   taskWireCreateResultSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
@@ -29,6 +30,7 @@ import {
   executeEncryptedTaskOperation,
   encryptTaskTurnResult,
   openEncryptedTaskGoalObjective,
+  prepareEncryptedTaskOperation,
   protectTaskGoalResult,
 } from "../../cantrip_worker/src/task-operation.js";
 import {
@@ -45,7 +47,7 @@ import {
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
-import { LOCAL_USER_ID } from "../src/db/repository.js";
+import { DEFAULT_MODEL_ID, LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 import {
@@ -411,6 +413,24 @@ const workerBridge: WorkerCommandBus = {
     if (command.type === "code.prepareAgentTurn") {
       return { prepared: true, sessions: [] };
     }
+    if (command.type === "task.operation.prepare") {
+      try {
+        return await prepareEncryptedTaskOperation({
+          getComponentKey: workerComponentKey,
+          ownerId,
+          request: {
+            operationId: command.operationId,
+            operationKind: command.operationKind,
+            task: command.task,
+          },
+        });
+      } catch (error) {
+        workerErrors.push(
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
+    }
     if (command.type === "chat.turn") {
       try {
         return await encryptedTaskTurn(command);
@@ -520,7 +540,7 @@ async function waitForTask(
     chatId,
   );
   throw new Error(
-    `Task did not reach ${state}; latest state was ${latest?.state ?? "missing"} (${JSON.stringify(latest?.lastError ?? null)}); chat=${context?.status}; messages=${messages.map(({ idempotencyKey }) => idempotencyKey).join(",")}; worker payloads: ${serverObservedPayloads.length}; worker errors: ${workerErrors.join(" | ") || "none"}.`,
+    `Task did not reach ${state}; latest state was ${latest?.state ?? "missing"} (${JSON.stringify(latest?.lastError ?? null)}); dispatch=${JSON.stringify(latest?.dispatch ?? null)}; chat=${context?.status}; messages=${messages.map(({ idempotencyKey }) => idempotencyKey).join(",")}; worker payloads: ${serverObservedPayloads.length}; worker errors: ${workerErrors.join(" | ") || "none"}.`,
   );
 }
 
@@ -545,6 +565,14 @@ beforeAll(async () => {
     codexVersion: "0.149.0",
     codexRuntime: unprobedCodexRuntimeReport,
     managedFolders: { create: true, convertToGithub: true, remove: true },
+    encryption: {
+      supported: true,
+      state: "ready",
+      principalId: randomUUID(),
+      grants: [{ component: "task-content", keyRevision: 1 }],
+      lastSyncedAt: new Date().toISOString(),
+      error: null,
+    },
     remoteSurfaces: {
       browser: false,
       transports: ["websocket"],
@@ -552,6 +580,15 @@ beforeAll(async () => {
     },
     startedAt: new Date().toISOString(),
   });
+  await database.repository.taskScheduling.createTaskWorker(
+    ownerId,
+    taskWorkerCreateSchema.parse({
+      name: "Task lifecycle",
+      modelConfiguration: { modelId: DEFAULT_MODEL_ID },
+      allowsPlanGoal: true,
+      continuityFamilyOverride: "ollama",
+    }),
+  );
   const project = await database.repository.createGithubProject(ownerId, {
     workerId,
     ...protectedProjectFields(),
@@ -658,7 +695,10 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     const initialResponse = await app!.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/plan`,
-      payload: initialOperation,
+      payload: {
+        operationId: initialOperation.operation.operationId,
+        rowVersion: initialOperation.rowVersion,
+      },
     });
     expect(initialResponse.statusCode).toBe(202);
     task = await openTask(await waitForTask(chatId, "review"));
@@ -668,7 +708,10 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     const replayResponse = await app!.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/plan`,
-      payload: initialOperation,
+      payload: {
+        operationId: initialOperation.operation.operationId,
+        rowVersion: initialOperation.rowVersion,
+      },
     });
     expect(replayResponse.statusCode).toBe(202);
 

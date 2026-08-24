@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   clearSensitiveBytes,
+  createTaskOperationRelayRequest,
   createTaskOperationRelayResult,
   decryptChatMessageProtectedContent,
   decryptTaskMessageProtectedContent,
@@ -9,6 +10,7 @@ import {
   decryptTaskGoalObjective,
   encryptTaskGoalObjective,
   encryptTaskMessageProtectedContent,
+  encryptTaskPlanningRoundProtectedContent,
   encryptTaskProtectedContent,
   openTaskOperationRelayRequest,
 } from "@cantrip/crypto";
@@ -25,22 +27,29 @@ import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
 import {
   taskFinalizerOutputJsonSchema,
   taskFinalizerResultSchema,
+  taskEncryptedOperationStartSchema,
   taskGoalSyncContextSchema,
   taskGoalWorkerResultSchema,
   taskMessageRelayResultSchema,
   taskMessageOpaqueContentSchema,
   taskOperationRelayRequestSchema,
+  taskOperationPrepareRequestSchema,
   taskPlannerOutputJsonSchema,
   taskPlannerResultSchema,
   TASK_GOAL_PROMPT_LIMIT,
   type TaskFinalizerResult,
+  type TaskEncryptedOperationStart,
   type TaskGoalSyncContext,
   type TaskOperationRelayRequest,
+  type TaskOperationPrepareRequest,
   type TaskOperationRelayGoal,
   type TaskMessageProtectedClassification,
   type TaskMessageOpaqueContent,
   type TaskPlanningRoundProtectedContent,
+  type TaskProtectedClassification,
   type TaskProtectedContent,
+  type TaskStableState,
+  type TaskState,
 } from "@cantrip/protocol/tasks";
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
@@ -323,6 +332,179 @@ async function encryptedMessage(input: {
     reasoningEffort: null,
     idempotencyKey: input.idempotencyKey,
   };
+}
+
+function taskOperationMessage(
+  kind: TaskOperationPrepareRequest["operationKind"],
+  content: TaskProtectedContent,
+): string {
+  if (kind === "direct") return content.briefMarkdown;
+  if (kind === "initial-plan") {
+    return `Plan this Task from the saved brief.\n\n${content.briefMarkdown}`;
+  }
+  const action =
+    kind === "finalize"
+      ? "Finalize this Task plan for implementation."
+      : "Continue planning this Task.";
+  return `${action}\n\n${content.additionalDirection.trim() || "No additional direction was supplied."}`;
+}
+
+export async function prepareEncryptedTaskOperation(input: {
+  getComponentKey(): { key: Uint8Array; keyRevision: number };
+  ownerId: string;
+  request: TaskOperationPrepareRequest;
+}): Promise<TaskEncryptedOperationStart> {
+  const request = taskOperationPrepareRequestSchema.parse(input.request);
+  const component = input.getComponentKey();
+  try {
+    if (component.keyRevision !== request.task.protectedContent.keyRevision) {
+      throw new Error("The Task encryption key revision is unavailable.");
+    }
+    const current = await decryptTaskProtectedContent({
+      ownerId: input.ownerId,
+      chatId: request.task.chatId,
+      keyRevision: component.keyRevision,
+      componentKey: component.key,
+      encrypted: request.task.protectedContent,
+      publicClassification: {
+        state: request.task.state,
+        stableStateBeforeFailure: request.task.stableStateBeforeFailure,
+        activeOperationKind: request.task.activeOperationKind,
+        planAuthorship: request.task.planAuthorship,
+        planningRound: request.task.planningRound,
+        hasPlan: request.task.hasPlan,
+        hasQuestions: request.task.hasQuestions,
+        hasFinalPlan: request.task.hasFinalPlan,
+        hasGoalPrompt: request.task.hasGoalPrompt,
+        lastError: request.task.lastError,
+      },
+    });
+    const kind = request.operationKind;
+    const stableState: TaskStableState =
+      kind === "direct" || kind === "initial-plan" ? "draft" : "review";
+    const runningState: TaskState =
+      kind === "direct"
+        ? "implementing"
+        : kind === "finalize"
+          ? "finalizing"
+          : "planning";
+    const classification = {
+      ordinal: request.task.planningRound + 1,
+      kind,
+      status: "running" as const,
+      hasOutputPlan: false,
+      hasOutputQuestions: false,
+      hasOutputGoalPrompt: false,
+      error: null,
+    };
+    const round: TaskPlanningRoundProtectedContent = {
+      version: 1,
+      classification,
+      inputBriefMarkdown: current.briefMarkdown,
+      inputPlanMarkdown: current.planMarkdown,
+      inputQuestions: current.currentQuestions,
+      inputAnswers: current.currentAnswers,
+      additionalDirection: current.additionalDirection,
+      outputPlanMarkdown: null,
+      outputQuestions: [],
+      outputGoalPrompt: null,
+      error: null,
+    };
+    const runningClassification: TaskProtectedClassification = {
+      ...current.classification,
+      state: runningState,
+      stableStateBeforeFailure: stableState,
+      activeOperationKind: kind,
+      planningRound: classification.ordinal,
+      lastError: null,
+    };
+    const runningTask: TaskProtectedContent = {
+      ...current,
+      classification: runningClassification,
+      lastError: null,
+    };
+    const userMessage = await encryptedMessage({
+      componentKey: component.key,
+      content: taskOperationMessage(kind, current),
+      idempotencyKey: `task-operation:${request.operationId}`,
+      keyRevision: component.keyRevision,
+      mode: kind === "direct" ? "default" : "plan",
+      ownerId: input.ownerId,
+      role: "user",
+    });
+    const operation = await createTaskOperationRelayRequest({
+      ownerId: input.ownerId,
+      chatId: request.task.chatId,
+      operationId: request.operationId,
+      keyRevision: component.keyRevision,
+      componentKey: component.key,
+      content: round,
+      taskContent: runningTask,
+      userMessage,
+    });
+
+    const occurredAt = new Date().toISOString();
+    const error = {
+      code: "task-operation-failed",
+      message:
+        "The encrypted Task operation failed. Retry when the worker is ready.",
+      operationKind: kind,
+      occurredAt,
+    };
+    const errorMetadata = {
+      code: error.code,
+      operationKind: error.operationKind,
+      occurredAt: error.occurredAt,
+    };
+    const failedClassification: TaskProtectedClassification = {
+      ...runningClassification,
+      state: "failed" as const,
+      stableStateBeforeFailure: stableState,
+      activeOperationKind: null,
+      lastError: errorMetadata,
+    };
+    const failedRoundClassification = {
+      ...classification,
+      status: "failed" as const,
+      error: errorMetadata,
+    };
+    return taskEncryptedOperationStartSchema.parse({
+      rowVersion: request.task.rowVersion,
+      operation,
+      failure: {
+        task: {
+          classification: failedClassification,
+          protectedContent: await encryptTaskProtectedContent({
+            ownerId: input.ownerId,
+            chatId: request.task.chatId,
+            keyRevision: component.keyRevision,
+            componentKey: component.key,
+            content: {
+              ...current,
+              classification: failedClassification,
+              lastError: error,
+            },
+          }),
+        },
+        round: {
+          classification: failedRoundClassification,
+          protectedContent: await encryptTaskPlanningRoundProtectedContent({
+            ownerId: input.ownerId,
+            roundId: request.operationId,
+            keyRevision: component.keyRevision,
+            componentKey: component.key,
+            content: {
+              ...round,
+              classification: failedRoundClassification,
+              error,
+            },
+          }),
+        },
+      },
+    });
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
 }
 
 export async function encryptTaskTurnResult(input: {

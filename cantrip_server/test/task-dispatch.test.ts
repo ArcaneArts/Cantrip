@@ -20,6 +20,17 @@ import { SecretVault } from "../src/security/secret-vault.js";
 import { protectedProjectFields } from "./private-label-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
+const encryptedTaskContent = {
+  formatVersion: 1 as const,
+  keyRevision: 1,
+  envelope: {
+    version: 1 as const,
+    algorithm: "AES-256-GCM" as const,
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+};
 
 async function fixture() {
   const client = new PGlite();
@@ -116,7 +127,7 @@ async function addTask(
     planGoalEnabled: input.planGoalEnabled ?? false,
     priority: input.priority ?? 0,
     requestedTaskWorkerId: input.requestedTaskWorkerId ?? null,
-    protectedContent: {} as never,
+    protectedContent: encryptedTaskContent,
     createdAt: input.createdAt,
   });
   return { chatId, projectId: project.id, worktreeId };
@@ -153,6 +164,7 @@ describe("Task dispatch scheduling", () => {
           task.chatId,
           `operation-${task.chatId}`,
           "direct",
+          1,
         );
       }
 
@@ -219,12 +231,14 @@ describe("Task dispatch scheduling", () => {
         olderPlan.chatId,
         "older-plan",
         "initial-plan",
+        1,
       );
       await value.repository.taskDispatch.enqueue(
         LOCAL_USER_ID,
         newerDirect.chatId,
         "newer-direct",
         "direct",
+        1,
       );
 
       const first = await value.repository.taskDispatch.claimNext(
@@ -261,6 +275,7 @@ describe("Task dispatch scheduling", () => {
         task.chatId,
         "lease-operation",
         "direct",
+        1,
       );
       const claimed = await value.repository.taskDispatch.claimNext(
         LOCAL_USER_ID,
@@ -296,6 +311,93 @@ describe("Task dispatch scheduling", () => {
       ).rejects.toMatchObject<Partial<TaskDispatchConflictError>>({
         code: "stale-lease",
       });
+    } finally {
+      await value.client.close();
+    }
+  });
+
+  it("keeps queued Tasks editable until an atomic claim", async () => {
+    const value = await fixture();
+    try {
+      const taskWorker = await value.repository.taskScheduling.createTaskWorker(
+        LOCAL_USER_ID,
+        workerInput("Editable queue"),
+      );
+      const task = await addTask(value, {
+        createdAt: new Date("2026-08-24T10:00:00.000Z"),
+      });
+      const queued = await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        task.chatId,
+        "editable-operation",
+        "direct",
+        1,
+      );
+      const current = await value.repository.tasks.get(
+        LOCAL_USER_ID,
+        task.chatId,
+      );
+      const updated = await value.repository.tasks.updateDraft(
+        LOCAL_USER_ID,
+        task.chatId,
+        {
+          rowVersion: current.rowVersion,
+          task: {
+            classification: {
+              state: current.state,
+              stableStateBeforeFailure: current.stableStateBeforeFailure,
+              activeOperationKind: current.activeOperationKind,
+              planAuthorship: current.planAuthorship,
+              planningRound: current.planningRound,
+              hasPlan: current.hasPlan,
+              hasQuestions: current.hasQuestions,
+              hasFinalPlan: current.hasFinalPlan,
+              hasGoalPrompt: current.hasGoalPrompt,
+              lastError: current.lastError,
+            },
+            protectedContent: current.protectedContent,
+          },
+          priority: 50,
+          requestedTaskWorkerId: taskWorker.id,
+        },
+      );
+      expect(updated).toMatchObject({
+        priority: 50,
+        requestedTaskWorkerId: taskWorker.id,
+        dispatch: {
+          state: "queued",
+          fifoCreatedAt: queued.fifoCreatedAt,
+          requestedTaskWorkerId: taskWorker.id,
+        },
+      });
+
+      const claimed = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler-a",
+        eligible,
+      );
+      expect(claimed?.cycle.chatId).toBe(task.chatId);
+      await expect(
+        value.repository.tasks.updateDraft(LOCAL_USER_ID, task.chatId, {
+          rowVersion: updated!.rowVersion,
+          task: {
+            classification: {
+              state: updated!.state,
+              stableStateBeforeFailure: updated!.stableStateBeforeFailure,
+              activeOperationKind: updated!.activeOperationKind,
+              planAuthorship: updated!.planAuthorship,
+              planningRound: updated!.planningRound,
+              hasPlan: updated!.hasPlan,
+              hasQuestions: updated!.hasQuestions,
+              hasFinalPlan: updated!.hasFinalPlan,
+              hasGoalPrompt: updated!.hasGoalPrompt,
+              lastError: updated!.lastError,
+            },
+            protectedContent: updated!.protectedContent,
+          },
+          priority: 51,
+        }),
+      ).rejects.toThrow("already started");
     } finally {
       await value.client.close();
     }

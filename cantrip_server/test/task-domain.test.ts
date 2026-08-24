@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  taskWorkerCreateSchema,
   taskWireCreateResultSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
@@ -19,7 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
-import { LOCAL_USER_ID } from "../src/db/repository.js";
+import { DEFAULT_MODEL_ID, LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 import {
@@ -92,8 +93,8 @@ function operation(
   chatId: string,
   rowVersion: number,
   kind: "direct" | "initial-plan" = "initial-plan",
+  operationId = randomUUID(),
 ) {
-  const operationId = randomUUID();
   const request: TaskOperationRelayRequest = {
     chatId,
     operationId,
@@ -197,6 +198,14 @@ const workerBridge: WorkerCommandBus = {
       preparedAgentTurns += 1;
       return { prepared: true, sessions: [] };
     }
+    if (command.type === "task.operation.prepare") {
+      return operation(
+        command.task.chatId,
+        command.task.rowVersion,
+        command.operationKind,
+        command.operationId,
+      );
+    }
     if (command.type === "chat.turn") {
       observedTurn = command;
       if (command.resultMode.kind !== "task-encrypted") {
@@ -253,6 +262,14 @@ beforeAll(async () => {
     codexVersion: "0.149.0",
     codexRuntime: unprobedCodexRuntimeReport,
     managedFolders: { create: true, convertToGithub: true, remove: true },
+    encryption: {
+      supported: true,
+      state: "ready",
+      principalId: randomUUID(),
+      grants: [{ component: "task-content", keyRevision: 1 }],
+      lastSyncedAt: new Date().toISOString(),
+      error: null,
+    },
     remoteSurfaces: {
       browser: false,
       transports: ["websocket"],
@@ -260,6 +277,15 @@ beforeAll(async () => {
     },
     startedAt: new Date().toISOString(),
   });
+  await database.repository.taskScheduling.createTaskWorker(
+    LOCAL_USER_ID,
+    taskWorkerCreateSchema.parse({
+      name: "Task tests",
+      modelConfiguration: { modelId: DEFAULT_MODEL_ID },
+      allowsPlanGoal: true,
+      continuityFamilyOverride: "ollama",
+    }),
+  );
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "task-worker",
     ...protectedProjectFields(),
@@ -341,7 +367,10 @@ describe.sequential("opaque encrypted Task persistence", () => {
     const startResponse = await app.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/plan`,
-      payload: start,
+      payload: {
+        operationId: start.operation.operationId,
+        rowVersion: start.rowVersion,
+      },
     });
     expect(startResponse.statusCode, JSON.stringify(startResponse.json())).toBe(
       202,
@@ -355,7 +384,10 @@ describe.sequential("opaque encrypted Task persistence", () => {
     const duplicate = await app.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/plan`,
-      payload: start,
+      payload: {
+        operationId: start.operation.operationId,
+        rowVersion: start.rowVersion,
+      },
     });
     expect(duplicate.statusCode).toBe(202);
     expect(taskOpaqueSummarySchema.parse(duplicate.json()).rowVersion).toBe(
@@ -399,7 +431,10 @@ describe.sequential("opaque encrypted Task persistence", () => {
     const startResponse = await app.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/start`,
-      payload: start,
+      payload: {
+        operationId: start.operation.operationId,
+        rowVersion: start.rowVersion,
+      },
     });
     expect(startResponse.statusCode, JSON.stringify(startResponse.json())).toBe(
       202,

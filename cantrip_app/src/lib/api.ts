@@ -4505,18 +4505,30 @@ async function sendEncryptedTaskOperation(
   );
 }
 
+async function queueTaskOperation(
+  chatId: string,
+  path: "start" | "plan",
+  input: TaskOperationStart,
+) {
+  const current = await getTask(chatId);
+  assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
+  return openTaskOpaqueSummary(
+    await post(`/api/tasks/${encodeURIComponent(chatId)}/${path}`, input),
+  );
+}
+
 export async function startTaskPlanning(
   chatId: string,
   input: TaskOperationStart,
 ) {
-  return sendEncryptedTaskOperation(chatId, "plan", input, "initial-plan");
+  return queueTaskOperation(chatId, "plan", input);
 }
 
 export async function startTaskDirectly(
   chatId: string,
   input: TaskOperationStart,
 ) {
-  return sendEncryptedTaskOperation(chatId, "start", input, "direct");
+  return queueTaskOperation(chatId, "start", input);
 }
 
 export async function updateTaskPlan(chatId: string, input: TaskPlanUpdate) {

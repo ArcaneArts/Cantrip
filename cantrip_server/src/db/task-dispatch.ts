@@ -18,6 +18,10 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import * as schema from "./schema.js";
+import {
+  TaskStateTransitionError,
+  validateTaskOperationStart,
+} from "../tasks/state.js";
 
 type TaskDispatchDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type TaskDispatchRow = typeof schema.taskDispatchCycles.$inferSelect;
@@ -30,7 +34,11 @@ export class TaskDispatchNotFoundError extends Error {}
 export class TaskDispatchConflictError extends Error {
   constructor(
     message: string,
-    readonly code: "active-operation" | "stale-lease",
+    readonly code:
+      | "active-operation"
+      | "idempotency-conflict"
+      | "stale-lease"
+      | "stale-version",
   ) {
     super(message);
     this.name = "TaskDispatchConflictError";
@@ -100,7 +108,9 @@ function toTaskWorkerSummary(
   });
 }
 
-function toCycle(row: TaskDispatchRow): TaskDispatchCycleSummary {
+export function toTaskDispatchCycleSummary(
+  row: TaskDispatchRow,
+): TaskDispatchCycleSummary {
   return taskDispatchCycleSummarySchema.parse({
     id: row.id,
     chatId: row.chatId,
@@ -170,7 +180,7 @@ export class TaskDispatchRepository {
         ),
       )
       .limit(1);
-    return rows[0] ? toCycle(rows[0]) : null;
+    return rows[0] ? toTaskDispatchCycleSummary(rows[0]) : null;
   }
 
   async list(ownerId: string): Promise<TaskDispatchCycleSummary[]> {
@@ -182,7 +192,24 @@ export class TaskDispatchRepository {
         asc(schema.taskDispatchCycles.fifoCreatedAt),
         asc(schema.taskDispatchCycles.id),
       );
-    return taskDispatchCycleListSchema.parse(rows.map(toCycle));
+    return taskDispatchCycleListSchema.parse(
+      rows.map(toTaskDispatchCycleSummary),
+    );
+  }
+
+  async listSchedulerOwnerIds(): Promise<string[]> {
+    const rows = await this.database
+      .selectDistinct({ ownerId: schema.taskDispatchCycles.ownerId })
+      .from(schema.taskDispatchCycles)
+      .where(
+        inArray(schema.taskDispatchCycles.state, [
+          "queued",
+          "claimed",
+          "running",
+        ]),
+      )
+      .orderBy(asc(schema.taskDispatchCycles.ownerId));
+    return rows.map(({ ownerId }) => ownerId);
   }
 
   async enqueue(
@@ -190,9 +217,38 @@ export class TaskDispatchRepository {
     chatId: string,
     operationId: string,
     operationKind: TaskDispatchOperationKind,
+    rowVersion: number,
   ): Promise<TaskDispatchCycleSummary> {
     assertOperationId(operationId);
     return this.database.transaction(async (transaction) => {
+      const ownerRows = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!ownerRows[0]) throw new TaskDispatchNotFoundError("Task not found.");
+      const priorRows = await transaction
+        .select()
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.ownerId, ownerId),
+            eq(schema.taskDispatchCycles.chatId, chatId),
+            eq(schema.taskDispatchCycles.operationId, operationId),
+          ),
+        )
+        .limit(1);
+      const prior = priorRows[0];
+      if (prior) {
+        if (prior.operationKind !== operationKind) {
+          throw new TaskDispatchConflictError(
+            "This Task operation ID was already used for another operation.",
+            "idempotency-conflict",
+          );
+        }
+        return toTaskDispatchCycleSummary(prior);
+      }
       const taskRows = await transaction
         .select({ task: schema.tasks })
         .from(schema.tasks)
@@ -209,6 +265,37 @@ export class TaskDispatchRepository {
         .limit(1);
       const task = taskRows[0]?.task;
       if (!task) throw new TaskDispatchNotFoundError("Task not found.");
+      if (task.rowVersion !== rowVersion) {
+        throw new TaskDispatchConflictError(
+          "The Task changed in another client.",
+          "stale-version",
+        );
+      }
+      if (operationKind !== "goal-continuation") {
+        if ((operationKind === "direct") === task.planGoalEnabled) {
+          throw new TaskDispatchConflictError(
+            task.planGoalEnabled
+              ? "Disable Plan + Goal before queueing this Task directly."
+              : "Enable Plan + Goal before queueing a planning operation.",
+            "idempotency-conflict",
+          );
+        }
+        try {
+          validateTaskOperationStart(
+            task.state,
+            task.stableStateBeforeFailure,
+            operationKind,
+          );
+        } catch (error) {
+          if (error instanceof TaskStateTransitionError) {
+            throw new TaskDispatchConflictError(
+              error.message,
+              "idempotency-conflict",
+            );
+          }
+          throw error;
+        }
+      }
 
       const activeRows = await transaction
         .select()
@@ -226,7 +313,8 @@ export class TaskDispatchRepository {
         )
         .limit(1);
       const active = activeRows[0];
-      if (active?.operationId === operationId) return toCycle(active);
+      if (active?.operationId === operationId)
+        return toTaskDispatchCycleSummary(active);
       if (active) {
         throw new TaskDispatchConflictError(
           "The Task already has an active scheduled operation.",
@@ -247,7 +335,7 @@ export class TaskDispatchRepository {
           requestedTaskWorkerId: task.requestedTaskWorkerId,
         })
         .returning();
-      return toCycle(rows[0]!);
+      return toTaskDispatchCycleSummary(rows[0]!);
     });
   }
 
@@ -420,7 +508,7 @@ export class TaskDispatchRepository {
           }
 
           const resolution = await resolveEligibility({
-            cycle: toCycle(cycle),
+            cycle: toTaskDispatchCycleSummary(cycle),
             projectId: candidate.projectId,
             physicalWorkerId: candidate.physicalWorkerId,
             worktreeId: candidate.worktreeId,
@@ -481,7 +569,7 @@ export class TaskDispatchRepository {
             })
             .where(eq(schema.tasks.chatId, cycle.chatId));
 
-          const claimedCycle = toCycle(claimed);
+          const claimedCycle = toTaskDispatchCycleSummary(claimed);
           const lease = taskDispatchWorkerLeaseSchema.parse({
             cycleId: claimed.id,
             operationId: claimed.operationId,
@@ -540,7 +628,7 @@ export class TaskDispatchRepository {
       )
       .returning();
     if (!rows[0]) throw this.staleLease();
-    return toCycle(rows[0]);
+    return toTaskDispatchCycleSummary(rows[0]);
   }
 
   async heartbeat(
@@ -590,7 +678,7 @@ export class TaskDispatchRepository {
       )
       .returning();
     if (!rows[0]) throw this.staleLease();
-    return toCycle(rows[0]);
+    return toTaskDispatchCycleSummary(rows[0]);
   }
 
   async requeueExpiredLeases(
@@ -630,7 +718,9 @@ export class TaskDispatchRepository {
         ),
       )
       .returning();
-    return taskDispatchCycleListSchema.parse(rows.map(toCycle));
+    return taskDispatchCycleListSchema.parse(
+      rows.map(toTaskDispatchCycleSummary),
+    );
   }
 
   private staleLease(): TaskDispatchConflictError {

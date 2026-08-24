@@ -125,12 +125,14 @@ export function TaskMarkdownEditor({
   onChange,
   onSave,
   placeholder,
+  readOnly = false,
   value,
 }: {
   ariaLabel: string;
   onChange(value: string): void;
   onSave?(): void;
   placeholder?: string;
+  readOnly?: boolean;
   value: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -176,6 +178,7 @@ export function TaskMarkdownEditor({
         markdown={value}
         placeholder={placeholder}
         plugins={plugins}
+        readOnly={readOnly}
         spellCheck
         suppressHtmlProcessing
         toMarkdownOptions={{ bullet: "-", emphasis: "_" }}
