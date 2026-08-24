@@ -137,7 +137,7 @@ enforce the same boundary.
 | `run_configuration_delete`      | Destructive mutation            | Delete one exact definition after revision validation.                                          |
 | `run_configuration_start`       | Open-world mutation             | Start the configuration on Primary or an exact requested worktree.                              |
 | `run_configuration_restart`     | Destructive/open-world mutation | Stop the active generation and launch the next in the same managed terminal.                    |
-| `run_configuration_stop`        | Destructive/open-world mutation | Stop the configuration's complete process tree.                                                 |
+| `run_configuration_stop`        | Destructive mutation            | Stop the configuration's complete process tree.                                                 |
 | `run_configuration_secret_set`  | Mutation                        | Encrypt and store one project secret value referenced by definitions.                           |
 | `worktree_create`               | Mutation                        | Create an agent-owned worktree in the bound project.                                            |
 | `worktree_switch`               | Mutation                        | Schedule continuation in an exact authorized worktree.                                          |

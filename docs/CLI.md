@@ -68,8 +68,8 @@ cantrip browser open --target Preview http://127.0.0.1:5173
 cantrip run list
 cantrip run show 11111111-1111-4111-8111-111111111111
 cantrip run detect
-cantrip run create ./run-configuration.json
-cantrip run update 11111111-1111-4111-8111-111111111111 ./run-configuration.json --revision <revision>
+cantrip run create --file ./run-configuration.json
+cantrip run update 11111111-1111-4111-8111-111111111111 --file ./run-configuration.json --revision <revision>
 cantrip run delete 11111111-1111-4111-8111-111111111111 --revision <revision>
 cantrip run start 11111111-1111-4111-8111-111111111111
 cantrip run restart 11111111-1111-4111-8111-111111111111
@@ -151,14 +151,16 @@ commands can run from a normal project terminal.
 ## Codex integration
 
 For applicable new and resumed chat threads, the worker injects a required
-native MCP server named `cantrip`. Its 35 read, worker-mutation, and ephemeral
+native MCP server named `cantrip`. Its 36 read, worker-mutation, and ephemeral
 client-control tools appear in Codex's runtime inventory as **Managed by
 Cantrip**. The developer instruction directs Codex to prefer MCP, start with
-`context_get`, read required Policies, prefer `run_config_action_add` for
-simple authoring, consult `run_config_schema` before direct TOML editing, and
-use exact action IDs plus configuration revisions with managed Run tools.
-Read-only profiles receive only the read catalog. The CLI and `cantrip -h`
-remain the fallback.
+`context_get`, read required Policies, use `run_configuration_detect` for
+guided targets, and obtain stable IDs and revisions through
+`run_configuration_list` or `run_configuration_get`. Agents create and update
+structured JSON definitions through the revision-checked replacement tools,
+then use the explicit lifecycle, status, output, and write-only secret tools
+for an exact configuration/worktree identity. Read-only profiles receive only
+the read catalog. The CLI and `cantrip -h` remain the fallback.
 
 Both thread paths still send `dynamicTools: []`. The pinned runtime's resume
 compatibility patch distinguishes that explicit empty override from an omitted

@@ -459,7 +459,6 @@ describe("Cantrip MCP worker broker", () => {
             "browser_services",
             "run_configuration_start",
             "run_configuration_restart",
-            "run_configuration_stop",
             "terminal_send",
             "browser_navigate",
           ]).has(tool.name);
