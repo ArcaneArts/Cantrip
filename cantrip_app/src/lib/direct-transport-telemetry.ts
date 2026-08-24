@@ -9,6 +9,34 @@ import {
 } from "@/lib/desktop-tunnel";
 
 const REPORT_INTERVAL_MS = 10_000;
+const RELAY_CREDENTIAL_RENEWAL_MARGIN_MS = 30_000;
+const RELAY_CREDENTIAL_RENEWAL_JITTER_MS = 10_000;
+
+export function relayCredentialRenewalMarginMs(tunnelId: string): number {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < tunnelId.length; index += 1) {
+    hash ^= tunnelId.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (
+    RELAY_CREDENTIAL_RENEWAL_MARGIN_MS +
+    ((hash >>> 0) % (RELAY_CREDENTIAL_RENEWAL_JITTER_MS + 1))
+  );
+}
+
+function relayCredentialRefreshDue(
+  forward: Awaited<ReturnType<typeof listDesktopTunnels>>[number],
+): boolean {
+  if (!forward.relayFallbackAvailable) return false;
+  if (forward.routeState === "degraded") return true;
+  if (forward.routeState !== "local-direct") return false;
+  const expiresAt = forward.relayCredentialExpiresAtEpochMs;
+  return (
+    typeof expiresAt === "number" &&
+    Number.isFinite(expiresAt) &&
+    expiresAt <= Date.now() + relayCredentialRenewalMarginMs(forward.tunnelId)
+  );
+}
 
 export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
   const forwards = await listDesktopTunnels();
@@ -37,10 +65,7 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
   );
   await Promise.all(
     forwards
-      .filter(
-        (forward) =>
-          forward.routeState === "degraded" && forward.relayFallbackAvailable,
-      )
+      .filter(relayCredentialRefreshDue)
       .map((forward) => refreshDesktopTunnelRelay(forward).catch(() => false)),
   );
   await Promise.all(

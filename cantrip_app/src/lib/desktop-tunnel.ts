@@ -28,6 +28,7 @@ export interface DesktopTunnelForwardSummary {
   localPort: number;
   routeState: "local-direct" | "relayed" | "degraded";
   relayFallbackAvailable?: boolean;
+  relayCredentialExpiresAtEpochMs?: number | null;
   directCapabilityId: string | null;
   directFallbackReason: string | null;
   lastDestinationRejectionCode?: DesktopTunnelDestinationRejectionCode | null;
