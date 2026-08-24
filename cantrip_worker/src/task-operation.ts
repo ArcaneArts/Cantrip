@@ -44,6 +44,7 @@ import {
 } from "@cantrip/protocol/tasks";
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
+import { protectedAgentRuntimeTelemetry } from "./agent-runtime-telemetry.js";
 
 const PLANNER_RULES = `You are planning a Cantrip Task. Investigate the repository and its effective Policies before proposing architecture. This turn is strictly read-only: do not edit files, mutate Git or GitHub, call side-effecting tools, or implement any part of the plan.
 
@@ -80,6 +81,7 @@ export class EncryptedTaskEventSealer {
 
   async activity(activity: AgentActivity) {
     const turnId = activity.correlation?.turnId ?? null;
+    const agentRuntime = protectedAgentRuntimeTelemetry(activity);
     const key =
       activity.type === "worktree"
         ? activity.id
@@ -101,6 +103,7 @@ export class EncryptedTaskEventSealer {
               kind: "activity" as const,
               activityType: activity.type,
               turnId,
+              ...(agentRuntime ? { agentRuntime } : {}),
             },
     };
   }

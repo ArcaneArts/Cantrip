@@ -1,8 +1,26 @@
 import type {
+  AgentTimeSummary,
   ProjectTokenUsage,
   ProjectTokenUsageBreakdown,
   ProjectTokenUsageDay,
 } from "@cantrip/protocol";
+
+export function formatAgentTime(milliseconds: number): string {
+  const totalMinutes = Math.max(0, Math.floor(milliseconds / 60_000));
+  if (totalMinutes < 1) return milliseconds > 0 ? "<1m" : "0m";
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor((totalMinutes % 1_440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${minutes}m`;
+}
+
+export function formatConcurrency(
+  usage: Pick<AgentTimeSummary, "averageConcurrency">,
+): string {
+  return `${usage.averageConcurrency.toFixed(1)}x`;
+}
 
 export const tokenChartColors = [
   "hsl(188 86% 53%)",
@@ -100,6 +118,7 @@ export function tokenUsageSlices(
             reasoningOutputTokens:
               result.reasoningOutputTokens + value.reasoningOutputTokens,
             totalTokens: result.totalTokens + value.totalTokens,
+            agentTime: result.agentTime,
           }),
           {
             id: null,
@@ -110,6 +129,12 @@ export function tokenUsageSlices(
             cacheWriteInputTokens: 0,
             reasoningOutputTokens: 0,
             totalTokens: 0,
+            agentTime: {
+              activeAgentCount: 0,
+              agentTimeMs: 0,
+              wallTimeMs: 0,
+              averageConcurrency: 0,
+            },
           },
         ),
       ]

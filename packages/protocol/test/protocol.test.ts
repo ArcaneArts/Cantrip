@@ -1809,6 +1809,12 @@ describe("Cantrip protocol", () => {
           outputTokens: 400,
           totalTokens: 1_200,
         },
+        agentTime: {
+          activeAgentCount: 2,
+          agentTimeMs: 1_200_000,
+          wallTimeMs: 600_000,
+          averageConcurrency: 2,
+        },
         daily: [
           {
             date: "2026-08-11",
@@ -1824,6 +1830,12 @@ describe("Cantrip protocol", () => {
             inputTokens: 800,
             outputTokens: 400,
             totalTokens: 1_200,
+            agentTime: {
+              activeAgentCount: 2,
+              agentTimeMs: 1_200_000,
+              wallTimeMs: 600_000,
+              averageConcurrency: 2,
+            },
           },
         ],
         models: [],

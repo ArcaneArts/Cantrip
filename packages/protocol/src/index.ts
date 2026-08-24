@@ -1836,6 +1836,20 @@ export const detailedTokenUsageTotalsSchema = tokenUsageTotalsSchema.extend({
   reasoningOutputTokens: z.number().int().nonnegative().default(0),
 });
 
+export const agentTimeSummarySchema = z.object({
+  activeAgentCount: z.number().int().nonnegative(),
+  agentTimeMs: z.number().int().nonnegative(),
+  wallTimeMs: z.number().int().nonnegative(),
+  averageConcurrency: z.number().finite().nonnegative(),
+});
+
+const emptyAgentTimeSummary = {
+  activeAgentCount: 0,
+  agentTimeMs: 0,
+  wallTimeMs: 0,
+  averageConcurrency: 0,
+} as const;
+
 export const modelProviderCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
   kind: modelProviderKindSchema,
@@ -1886,6 +1900,7 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
       outputTokens: 0,
       totalTokens: 0,
     }),
+    agentTime: agentTimeSummarySchema.default(emptyAgentTimeSummary),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   });
@@ -1941,6 +1956,7 @@ export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
     outputTokens: 0,
     totalTokens: 0,
   }),
+  agentTime: agentTimeSummarySchema.default(emptyAgentTimeSummary),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -3997,10 +4013,12 @@ export const projectTokenUsageBreakdownSchema =
   detailedTokenUsageTotalsSchema.extend({
     id: z.string().min(1).nullable(),
     name: z.string().min(1),
+    agentTime: agentTimeSummarySchema,
   });
 
 export const projectTokenUsageSchema = z.object({
   total: detailedTokenUsageTotalsSchema,
+  agentTime: agentTimeSummarySchema,
   daily: z.array(projectTokenUsageDaySchema).max(366),
   providers: z.array(projectTokenUsageBreakdownSchema),
   models: z.array(projectTokenUsageBreakdownSchema),
@@ -13497,6 +13515,17 @@ const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
     kind: z.literal("activity"),
     activityType: z.string().min(1).max(100),
     turnId: z.string().min(1).nullable(),
+    agentRuntime: z
+      .object({
+        agentThreadId: z.string().min(1).max(200),
+        isRoot: z.boolean(),
+        startedAtMs: agentActivityTimestampSchema.nullable(),
+        completedAtMs: agentActivityTimestampSchema.nullable(),
+        status: z.enum(["running", "completed", "failed"]),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   }),
   z.object({
     kind: z.literal("usage"),
@@ -13944,6 +13973,7 @@ export type TokenUsageTotals = z.infer<typeof tokenUsageTotalsSchema>;
 export type DetailedTokenUsageTotals = z.infer<
   typeof detailedTokenUsageTotalsSchema
 >;
+export type AgentTimeSummary = z.infer<typeof agentTimeSummarySchema>;
 export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;
 export type ModelProviderUpdate = z.infer<typeof modelProviderUpdateSchema>;
 export type EncryptedModelProviderCreate = z.infer<

@@ -8,6 +8,7 @@ import type {
 import {
   ArrowRight,
   ArrowUpRight,
+  Clock3,
   Coins,
   Files,
   Folder,
@@ -36,7 +37,11 @@ import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
 
 import { ProjectTokenUsageDialog } from "./project-token-usage-dialog";
-import { formatTokenCount } from "./token-usage-analytics";
+import {
+  formatAgentTime,
+  formatConcurrency,
+  formatTokenCount,
+} from "./token-usage-analytics";
 
 const countFormat = new Intl.NumberFormat();
 const byteUnits = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
@@ -362,7 +367,7 @@ export function ProjectOverview({
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-7">
           <MetricCard
             eliteKey={`${eliteKeyPrefix}:metric:open-tabs`}
             icon={<Rows3 className="size-3.5" />}
@@ -427,6 +432,25 @@ export function ProjectOverview({
                 ? "Files scanned on this worker"
                 : "Tracked files on this worker"
             }
+          />
+          <MetricCard
+            eliteKey={`${eliteKeyPrefix}:metric:agent-time`}
+            icon={<Clock3 className="size-3.5" />}
+            label="AI active time"
+            value={
+              usage
+                ? formatAgentTime(usage.agentTime.agentTimeMs)
+                : usageLoading
+                  ? loadingValue
+                  : "—"
+            }
+            detail={
+              usageError ??
+              (usage
+                ? `${formatAgentTime(usage.agentTime.wallTimeMs)} wall · ${formatConcurrency(usage.agentTime)} concurrency`
+                : "Agent and wall-clock time")
+            }
+            onClick={usage ? () => setUsageOpen(true) : undefined}
           />
           <MetricCard
             eliteKey={`${eliteKeyPrefix}:metric:tokens`}

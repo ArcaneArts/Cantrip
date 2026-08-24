@@ -185,6 +185,44 @@ describe("worker chat message encryption", () => {
     expect(JSON.stringify(commandEvent.telemetry)).not.toContain(
       "captured request",
     );
+    const childSummaryEvent = await sealer.activity({
+      type: "turnSummary",
+      id: "turn:child-turn:summary",
+      status: "completed",
+      durationMs: 600_000,
+      startedAt: 1_787_486_400,
+      completedAt: 1_787_487_000,
+      correlation: {
+        sourceMethod: "turn/completed",
+        diagnosticId: null,
+        threadId: "child-thread",
+        turnId: "child-turn",
+        itemId: null,
+      },
+      agentScope: {
+        agentThreadId: "child-thread",
+        rootThreadId: "root-thread",
+        parentThreadId: "root-thread",
+        rootTurnId: "root-turn",
+        agentPath: ["root", "child"],
+        nickname: "child",
+        role: null,
+        depth: 1,
+        isRoot: false,
+      },
+    });
+    expect(childSummaryEvent.telemetry).toEqual({
+      kind: "activity",
+      activityType: "turnSummary",
+      turnId: "child-turn",
+      agentRuntime: {
+        agentThreadId: "child-thread",
+        isRoot: false,
+        startedAtMs: 1_787_486_400_000,
+        completedAtMs: 1_787_487_000_000,
+        status: "completed",
+      },
+    });
     await expect(
       decryptChatMessageProtectedContent({
         ownerId,
