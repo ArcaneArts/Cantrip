@@ -715,7 +715,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
         "Gracefully stop one exact configuration/worktree runtime and force-kill its complete process group after the configured bound.",
       inputSchema: cantripMcpRunConfigurationStopInputSchema,
       outputSchema: cantripMcpRunConfigurationStopResultSchema,
-      annotations: idempotentDestructiveOpenWorldMutationAnnotations,
+      annotations: idempotentDestructiveMutationAnnotations,
     },
     async (arguments_) => {
       try {

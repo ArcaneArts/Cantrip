@@ -235,7 +235,6 @@ describe("project worktree coordinator", () => {
         throw new Error("induced database failure");
       },
       rollbackProjectWorktreeCreation: rollbackCatalog,
-      worktreeSetupJobs: { initialize: vi.fn() },
     } as unknown as ServerRepository;
     const commands: WorkerCommand[] = [];
     const bridge = {

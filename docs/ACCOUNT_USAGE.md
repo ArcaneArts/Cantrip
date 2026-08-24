@@ -50,7 +50,7 @@ server rows are grouped as follows:
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `account`       | User/session state, mobile grants, worker enrollment and identity, worker credentials, and account encryption principals/grants                          |
 | `configuration` | Settings, providers and provider accounts, models and routes, policies and assignments, MCP definitions, Code settings, and current catalog state        |
-| `projects`      | Projects, workspaces, tabs/groups, sources, worktrees, setup/replica/Git jobs, run instances, terminals, explorers, browsers, surfaces, and tunnels      |
+| `projects`      | Projects, workspaces, tabs/groups, sources, worktrees, setup/replica/Git jobs, Run runtimes, terminals, explorers, browsers, surfaces, and tunnels       |
 | `conversations` | Chats, tasks and planning rounds, messages, drafts/plans, runtime lanes, interactions, queued prompts, attachment metadata, imports, and relocation data |
 | `workflows`     | Definitions, revisions, graph nodes/edges, runs, run nodes/items/attempts/events/gates, triggers/deliveries, automations, and worktree/branch leases     |
 | `analytics`     | Audit events, token usage, provider quota/catalog history, and model behavior observations                                                               |
