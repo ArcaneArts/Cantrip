@@ -255,6 +255,15 @@ describe("project sidebar file tree encryption gate", () => {
     const expandedEntries = renderer.root.findAllByProps({ role: "treeitem" });
     expect(expandedEntries).toHaveLength(2);
     expect(
+      expandedEntries[1]
+        ?.findAllByType("span")
+        .some(
+          (span) =>
+            (span.props.style as { paddingLeft?: string } | undefined)
+              ?.paddingLeft === "6px",
+        ),
+    ).toBe(true);
+    expect(
       expandedEntries.every((entry) => entry.props["data-elite-global"]),
     ).toBe(true);
 

@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
 
+const SIDEBAR_FILE_TREE_INDENT_PX = 6;
+
 export function sidebarEntryRenameError(value: string): string | null {
   const result = explorerEntryNameSchema.safeParse(value);
   return result.success
@@ -140,7 +142,7 @@ function SidebarFileRow({
         onClick={() => {
           if (!editing && openable) onOpen();
         }}
-        style={{ paddingLeft: `${depth * 12}px` }}
+        style={{ paddingLeft: `${depth * SIDEBAR_FILE_TREE_INDENT_PX}px` }}
       >
         {entry.kind === "directory" ? (
           expanded ? (
@@ -334,7 +336,9 @@ function SidebarDirectoryNode({
           {directory.isLoading ? (
             <div
               className="flex h-7 items-center gap-2 text-[10px] text-muted-foreground"
-              style={{ paddingLeft: `${18 + (depth + 1) * 12}px` }}
+              style={{
+                paddingLeft: `${18 + (depth + 1) * SIDEBAR_FILE_TREE_INDENT_PX}px`,
+              }}
             >
               <Loader2 className="size-3 animate-spin" />
               Loading {entry.name}
@@ -343,7 +347,9 @@ function SidebarDirectoryNode({
             <button
               className="h-7 w-full truncate text-left text-[10px] text-destructive hover:bg-destructive/5"
               onClick={() => void directory.refetch()}
-              style={{ paddingLeft: `${18 + (depth + 1) * 12}px` }}
+              style={{
+                paddingLeft: `${18 + (depth + 1) * SIDEBAR_FILE_TREE_INDENT_PX}px`,
+              }}
               type="button"
             >
               Could not load folder
