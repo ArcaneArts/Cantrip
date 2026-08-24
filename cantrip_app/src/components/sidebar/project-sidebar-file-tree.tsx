@@ -19,7 +19,7 @@ import {
   SquareTerminal,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useExplorerDirectory } from "@/components/explorer/use-explorer-directory";
 import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
@@ -436,6 +436,8 @@ export function ProjectSidebarFileTree({
   onRetry,
   pinningPath,
   revealLabel,
+  workerId,
+  workerOnline,
 }: {
   activePath: string | null;
   error?: string | null;
@@ -458,6 +460,8 @@ export function ProjectSidebarFileTree({
   onRetry?(): void;
   pinningPath?: string | null;
   revealLabel?: string;
+  workerId: string | null;
+  workerOnline: boolean;
 }) {
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -494,6 +498,75 @@ export function ProjectSidebarFileTree({
     queryScope: streamEncryption.bindingKey ?? "unavailable",
     worktreeId: explorer?.worktreeId ?? "unavailable",
   });
+  const directoryFailed = Boolean(
+    explorer && directory.isError && !directory.data,
+  );
+  const hasRetryableFailure = Boolean(
+    error || streamEncryption.error || directoryFailed,
+  );
+  const fileTreeReady = Boolean(
+    explorer && streamEncryption.ready && directory.data,
+  );
+  const retryCurrentFailure = useCallback(() => {
+    if (error) {
+      onRetry?.();
+      return;
+    }
+    if (streamEncryption.error) {
+      streamEncryption.retry();
+      return;
+    }
+    if (directoryFailed) {
+      void directory.refetch();
+      return;
+    }
+    onRetry?.();
+  }, [
+    directory.refetch,
+    directoryFailed,
+    error,
+    onRetry,
+    streamEncryption.error,
+    streamEncryption.retry,
+  ]);
+  const workerRetryStateRef = useRef({
+    online: workerOnline,
+    pending: !workerOnline,
+    workerId,
+  });
+
+  useEffect(() => {
+    const previous = workerRetryStateRef.current;
+    if (previous.workerId !== workerId) {
+      workerRetryStateRef.current = {
+        online: workerOnline,
+        pending: !workerOnline,
+        workerId,
+      };
+      return;
+    }
+
+    const pending = !workerOnline || previous.pending || !previous.online;
+    workerRetryStateRef.current = {
+      online: workerOnline,
+      pending,
+      workerId,
+    };
+    if (fileTreeReady) {
+      workerRetryStateRef.current.pending = false;
+      return;
+    }
+    if (!workerId || !workerOnline || !pending || !hasRetryableFailure) return;
+
+    workerRetryStateRef.current.pending = false;
+    retryCurrentFailure();
+  }, [
+    fileTreeReady,
+    hasRetryableFailure,
+    retryCurrentFailure,
+    workerId,
+    workerOnline,
+  ]);
 
   useEffect(() => {
     setExpandedPaths(new Set());
@@ -641,19 +714,23 @@ export function ProjectSidebarFileTree({
                 streamEncryption.error ??
                 "Project files could not be loaded."}
             </p>
-            {streamEncryption.error && !error ? (
+            {workerId && !workerOnline ? (
+              <p className="text-[10px] leading-4 text-muted-foreground">
+                Waiting for the worker to reconnect…
+              </p>
+            ) : streamEncryption.error && !error ? (
               <Button
                 className="h-7 text-[10px]"
-                onClick={streamEncryption.retry}
+                onClick={retryCurrentFailure}
                 size="sm"
                 variant="outline"
               >
                 Retry
               </Button>
-            ) : onRetry ? (
+            ) : onRetry || directoryFailed ? (
               <Button
                 className="h-7 text-[10px]"
-                onClick={onRetry}
+                onClick={retryCurrentFailure}
                 size="sm"
                 variant="outline"
               >

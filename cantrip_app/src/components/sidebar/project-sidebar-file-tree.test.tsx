@@ -163,6 +163,8 @@ function tree(
     onPin: () => undefined,
     onPreview: () => undefined,
     onRename: async () => undefined,
+    workerId: "worker-a",
+    workerOnline: true,
     ...overrides,
   });
 }
@@ -200,6 +202,70 @@ describe("project sidebar file tree encryption gate", () => {
     runtime.gate.bindingKey = "binding-a";
     runtime.gate.error = null;
     runtime.gate.ready = true;
+    runtime.gate.retry.mockClear();
+  });
+
+  it("retries a failed encryption gate once when its worker returns online", async () => {
+    runtime.gate.error = "Explorer encryption is unavailable for this worker.";
+    runtime.gate.ready = false;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(tree({ workerOnline: false }));
+    });
+
+    expect(runtime.gate.retry).not.toHaveBeenCalled();
+    expect(
+      renderer.root
+        .findAllByType("button")
+        .some((candidate) =>
+          textContent(candidate.props.children).includes("Retry"),
+        ),
+    ).toBe(false);
+    expect(
+      renderer.root
+        .findAllByType("p")
+        .some((candidate) =>
+          textContent(candidate.props.children).includes(
+            "Waiting for the worker to reconnect",
+          ),
+        ),
+    ).toBe(true);
+
+    await act(async () => renderer.update(tree({ workerOnline: true })));
+    expect(runtime.gate.retry).toHaveBeenCalledTimes(1);
+
+    await act(async () => renderer.update(tree({ workerOnline: true })));
+    expect(runtime.gate.retry).toHaveBeenCalledTimes(1);
+    await act(async () => renderer.unmount());
+  });
+
+  it("retries failed Explorer creation when the owning worker returns online", async () => {
+    const onRetry = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        tree({
+          error: "The project files could not be loaded.",
+          explorer: null,
+          onRetry,
+          workerOnline: false,
+        }),
+      );
+    });
+
+    expect(onRetry).not.toHaveBeenCalled();
+    await act(async () =>
+      renderer.update(
+        tree({
+          error: "The project files could not be loaded.",
+          explorer: null,
+          onRetry,
+          workerOnline: true,
+        }),
+      ),
+    );
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    await act(async () => renderer.unmount());
   });
 
   it("does not expose entries before the current binding is authorized", () => {

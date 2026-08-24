@@ -5845,6 +5845,13 @@ export function App() {
       ? sidebarFilePreview.explorerId
       : null,
   });
+  const sidebarFileWorkerId =
+    sidebarExplorer?.activeWorkerId ?? selectedProjectWorkerId;
+  const sidebarFileWorkerOnline = Boolean(
+    sidebarFileWorkerId &&
+    workers.data?.find(({ workerId }) => workerId === sidebarFileWorkerId)
+      ?.online,
+  );
   const sidebarExplorerCreationInput =
     selectedProject?.setupStatus === "ready" &&
     selectedProject.source &&
@@ -8136,6 +8143,8 @@ export function App() {
                     ? (pinSidebarFileMutation.variables?.path ?? null)
                     : null
                 }
+                fileTreeWorkerId={sidebarFileWorkerId}
+                fileTreeWorkerOnline={sidebarFileWorkerOnline}
                 fileRevealLabel={projectRevealButtonLabel ?? undefined}
                 onChangeChatWorktree={(chatId, worktreeId, mode) => {
                   const chat = chats.data?.find(({ id }) => id === chatId);
