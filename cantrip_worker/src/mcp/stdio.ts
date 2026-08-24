@@ -6,18 +6,13 @@ import {
   readCantripMcpConnection,
   verifyCantripMcpConnection,
 } from "./connection.js";
-import { CANTRIP_MCP_OMIT_OUTPUT_SCHEMAS_ENVIRONMENT } from "./managed.js";
 import { createCantripMcpServer } from "./server.js";
 
 async function main() {
   const connection = await readCantripMcpConnection(cantripMcpConnectionPath());
   await verifyCantripMcpConnection(connection);
-  const mcp = createCantripMcpServer(
-    (request) => invokeCantripMcpBrokerOperation(connection, request),
-    {
-      omitToolOutputSchemas:
-        process.env[CANTRIP_MCP_OMIT_OUTPUT_SCHEMAS_ENVIRONMENT] === "1",
-    },
+  const mcp = createCantripMcpServer((request) =>
+    invokeCantripMcpBrokerOperation(connection, request),
   );
   const transport = new StdioServerTransport();
   let closing = false;
