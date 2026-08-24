@@ -125,6 +125,23 @@ type CodeTunnelChange = (input: {
   tunnelId: string;
 }) => void;
 
+type WorkerOfflineSubscription = {
+  subscribeWorkerOffline?: WorkerCommandBus["subscribeWorkerDisconnect"];
+};
+
+function subscribeWorkerTerminalOffline(
+  bridge: WorkerCommandBus,
+  workerId: string,
+  listener: () => void,
+): () => void {
+  const subscribeOffline = (
+    bridge as WorkerCommandBus & WorkerOfflineSubscription
+  ).subscribeWorkerOffline;
+  return subscribeOffline
+    ? subscribeOffline.call(bridge, workerId, listener)
+    : bridge.subscribeWorkerDisconnect(workerId, listener);
+}
+
 export class CodeTunnelBroker {
   readonly #attachmentRevocations = new Map<string, number>();
   readonly #attachments = new Map<string, ProtectedCodeAttachmentBinding>();
@@ -987,15 +1004,19 @@ export class CodeTunnelBroker {
 
   #trackWorkerDisconnect(workerId: string): void {
     if (this.#workerDisconnectSubscriptions.has(workerId)) return;
-    const unsubscribe = this.bridge.subscribeWorkerDisconnect(workerId, () => {
-      for (const binding of [...this.#attachments.values()]) {
-        if (binding.workerId !== workerId) continue;
-        void this.#removeAttachment(binding).catch((error) =>
-          this.#reportCleanupFailure(binding, error),
-        );
-      }
-      this.#stopTrackingWorkerIfUnused(workerId);
-    });
+    const unsubscribe = subscribeWorkerTerminalOffline(
+      this.bridge,
+      workerId,
+      () => {
+        for (const binding of [...this.#attachments.values()]) {
+          if (binding.workerId !== workerId) continue;
+          void this.#removeAttachment(binding).catch((error) =>
+            this.#reportCleanupFailure(binding, error),
+          );
+        }
+        this.#stopTrackingWorkerIfUnused(workerId);
+      },
+    );
     this.#workerDisconnectSubscriptions.set(workerId, unsubscribe);
   }
 

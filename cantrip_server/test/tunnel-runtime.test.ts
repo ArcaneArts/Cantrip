@@ -5,7 +5,7 @@ import {
   encodeTunnelDataPlaneFrame,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   AccountUsageMeasurement,
@@ -127,6 +127,15 @@ class EchoWorkerBridge implements WorkerCommandBus {
   }
   async request() {
     throw new Error("Unexpected worker command.");
+  }
+}
+
+class OfflineAwareWorkerBridge extends EchoWorkerBridge {
+  readonly offlineListeners = new Set<() => void>();
+
+  subscribeWorkerOffline(_workerId: string, listener: () => void) {
+    this.offlineListeners.add(listener);
+    return () => this.offlineListeners.delete(listener);
   }
 }
 
@@ -465,6 +474,36 @@ describe("desktop tunnel runtime", () => {
     socket.close();
     expect(bridge.disconnectListeners).toHaveLength(0);
     expect(runtime.stats().activeRoutes).toBe(0);
+    runtime.close();
+  });
+
+  it("keeps an active route through reconnecting and cleans it up when the worker is offline", async () => {
+    const markDesktopTunnelAttachmentOffline = vi.fn(async () => undefined);
+    const repository = {
+      activateDesktopTunnelAttachment: async () => true,
+      markDesktopTunnelAttachmentOffline,
+    } as unknown as ServerRepository;
+    const bridge = new OfflineAwareWorkerBridge();
+    const runtime = new TunnelRuntimeManager(repository, bridge, () => {});
+    const socket = new FakeDesktopSocket();
+    await runtime.attach(socket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+    });
+
+    expect(bridge.disconnectListeners).toHaveLength(0);
+    expect(bridge.offlineListeners).toHaveLength(2);
+    expect(runtime.stats().activeRoutes).toBe(1);
+    expect(socket.readyState).toBe(1);
+    expect(markDesktopTunnelAttachmentOffline).not.toHaveBeenCalled();
+
+    for (const listener of [...bridge.offlineListeners]) listener();
+    await vi.waitFor(() =>
+      expect(markDesktopTunnelAttachmentOffline).toHaveBeenCalledOnce(),
+    );
+    expect(runtime.stats().activeRoutes).toBe(0);
+    expect(socket.readyState).toBe(3);
+    expect(bridge.offlineListeners).toHaveLength(0);
     runtime.close();
   });
 

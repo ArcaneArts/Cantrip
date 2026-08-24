@@ -16,7 +16,10 @@ import {
   DesktopTunnelEndpoint,
   type DesktopTunnelSocket,
 } from "./desktop-endpoint.js";
-import { WorkerTunnelEndpoint } from "./worker-endpoint.js";
+import {
+  subscribeWorkerTerminalOffline,
+  WorkerTunnelEndpoint,
+} from "./worker-endpoint.js";
 
 interface ActiveAttachment {
   authorization: TunnelAttachmentAuthorization;
@@ -135,7 +138,8 @@ export class TunnelRuntimeManager {
         .catch(() => undefined);
     }, expiresIn);
     expires.unref();
-    const unsubscribeWorker = this.bridge.subscribeWorkerDisconnect(
+    const unsubscribeWorker = subscribeWorkerTerminalOffline(
+      this.bridge,
       authorization.destination.workerId,
       () => {
         if (!this.#active.has(authorization.attachmentId)) return;
