@@ -443,7 +443,9 @@ describe("Cantrip MCP worker broker", () => {
             tool.name as (typeof CANTRIP_MCP_READ_TOOL_NAMES)[number],
           );
           const destructive = new Set([
-            "run_stop",
+            "run_configuration_delete",
+            "run_configuration_restart",
+            "run_configuration_stop",
             "worktree_release",
             "worktree_remove",
             "explorer_write",
@@ -451,17 +453,19 @@ describe("Cantrip MCP worker broker", () => {
           ]).has(tool.name);
           const openWorld = new Set([
             "browser_services",
-            "run_start",
-            "run_setup_retry",
-            "run_stop",
+            "run_configuration_start",
+            "run_configuration_restart",
+            "run_configuration_stop",
             "terminal_send",
             "browser_navigate",
           ]).has(tool.name);
+          const idempotent =
+            readOnly || tool.name.startsWith("run_configuration_");
           expect(tool).toMatchObject({
             annotations: {
               readOnlyHint: readOnly,
               destructiveHint: destructive,
-              idempotentHint: readOnly,
+              idempotentHint: idempotent,
               openWorldHint: openWorld,
             },
             inputSchema: { type: "object" },
@@ -499,7 +503,7 @@ describe("Cantrip MCP worker broker", () => {
             },
           },
         });
-        expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(17);
+        expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(19);
       } finally {
         await client.close();
         await broker.close();
@@ -582,48 +586,40 @@ describe("Cantrip MCP worker broker", () => {
       },
       {
         execute: async (binding) => ({
-          summary: "Found large Run actions.",
-          target: null,
+          summary: "Found large Run configurations.",
+          target: { kind: "project", projectId: binding.projectId },
           worktreeId: binding.worktreeId,
           continuationScheduled: false,
           mutated: false,
           data: {
-            platform: "linux",
-            canonical: {
-              relativePath: ".codex/environments/environment.toml",
-              sourceControlState: "tracked",
-            },
-            configured: true,
-            valid: true,
-            configurations: Array.from(
-              { length: 64 },
-              (_, configurationIndex) => {
-                const relativePath =
-                  configurationIndex === 0
-                    ? ".codex/environments/environment.toml"
-                    : `.codex/environments/environment-${configurationIndex}.toml`;
+            operation: "list",
+            operationId: "00000000-0000-4000-8000-000000000099",
+            projectId: binding.projectId,
+            inventory: {
+              directory: ".cantrip/run-configurations",
+              entries: Array.from({ length: 128 }, (_, index) => {
+                const id = `00000000-0000-4000-8000-${index
+                  .toString()
+                  .padStart(12, "0")}`;
                 return {
-                  relativePath,
-                  revision: configurationIndex.toString(16).padStart(64, "0"),
-                  version: 1,
-                  name: "Large environment".padEnd(200, "x"),
-                  sourceControlState: "tracked",
-                  setup: null,
-                  actions: Array.from({ length: 200 }, (_, sourceIndex) => ({
-                    id: (configurationIndex * 200 + sourceIndex)
-                      .toString(16)
-                      .padStart(64, "0"),
-                    name: `Action ${sourceIndex}`.padEnd(200, "x"),
-                    icon: "run".padEnd(100, "x"),
-                    platform: "linux",
-                    configurationPath: relativePath,
-                    sourceIndex,
-                  })),
+                  relativePath: `.cantrip/run-configurations/${id}.json`,
+                  revision: index.toString(16).padStart(64, "0"),
+                  id,
+                  status: "ready",
+                  document: {
+                    schema: "cantrip.run-configuration",
+                    version: 1,
+                    id,
+                    name: `Large configuration ${index}`,
+                    provider: "shell",
+                    target: { kind: "command", command: "x".repeat(100_000) },
+                  },
                   diagnostics: [],
                 };
-              },
-            ),
-            diagnostics: [],
+              }),
+              diagnostics: [],
+            },
+            runtimes: [],
           },
         }),
       },
@@ -634,7 +630,8 @@ describe("Cantrip MCP worker broker", () => {
     await broker.start();
     const attachment = broker.createBinding({
       ...bindingInput(),
-      allowedOperations: ["run-config.list"],
+      projectId: "00000000-0000-4000-8000-000000000010",
+      allowedOperations: ["run-configuration.list"],
     });
     try {
       const response = await fetch(`${broker.endpoint}/v1/execute`, {
@@ -645,7 +642,7 @@ describe("Cantrip MCP worker broker", () => {
         },
         body: JSON.stringify({
           bindingId: attachment.binding.bindingId,
-          request: { operation: "run-config.list", arguments: {} },
+          request: { operation: "run-configuration.list", arguments: {} },
         }),
       });
       expect(response.status).toBe(413);

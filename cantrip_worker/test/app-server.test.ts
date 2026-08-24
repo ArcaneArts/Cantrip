@@ -1213,20 +1213,22 @@ describe("managed Cantrip MCP guidance", () => {
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`context_get`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`policy_read`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
-      "`.codex/environments/environment.toml`",
+      "`.cantrip/run-configurations`",
     );
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
-      "`run_config_action_add`",
+      "`run_configuration_create`",
     );
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
-      "`run_config_schema`",
+      "`run_configuration_detect`",
     );
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
-      "`cantrip run validate`",
+      "`run_configuration_secret_set`",
     );
-    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`run_start`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
-      "exact action ID and configuration revision",
+      "`run_configuration_start`",
+    );
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
+      "stable configuration IDs and exact worktree IDs",
     );
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`cantrip -h`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("fallback");
@@ -1716,19 +1718,27 @@ describe("codexMcpConfigOverride", () => {
       args: ["/worker/dist/mcp/stdio.js", "--connection", "/binding.json"],
       environment: {},
       enabled: true,
-      managedToolNames: ["context_get", "run_config_list", "run_status"],
+      managedToolNames: [
+        "context_get",
+        "run_configuration_list",
+        "run_configuration_status",
+      ],
     };
     expect(codexMcpConfigOverride([server])).toMatchObject({
       mcp_servers: {
         cantrip: {
-          enabled_tools: ["context_get", "run_config_list", "run_status"],
+          enabled_tools: [
+            "context_get",
+            "run_configuration_list",
+            "run_configuration_status",
+          ],
         },
       },
     });
     expect(managedMcpToolRequirements([server])).toEqual([
       { name: "cantrip", tool: "context_get" },
-      { name: "cantrip", tool: "run_config_list" },
-      { name: "cantrip", tool: "run_status" },
+      { name: "cantrip", tool: "run_configuration_list" },
+      { name: "cantrip", tool: "run_configuration_status" },
     ]);
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CANTRIP_MCP_OPERATIONS,
+  CANTRIP_MCP_TOOL_NAMES,
   cantripAgentOperationNameSchema,
   cantripCliCommandNameSchema,
   workerCommandSchema,
@@ -117,25 +118,24 @@ describe("runConfigurationInspectionSchema", () => {
     ).toBe(false);
   });
 
-  it("registers the discovery operations without broad worker arguments", () => {
-    expect(cantripAgentOperationNameSchema.parse("run-config.list")).toBe(
-      "run-config.list",
-    );
-    expect(cantripAgentOperationNameSchema.parse("run-config.read")).toBe(
-      "run-config.read",
-    );
-    expect(cantripAgentOperationNameSchema.parse("run-config.schema")).toBe(
-      "run-config.schema",
-    );
-    expect(cantripAgentOperationNameSchema.parse("run-config.action-add")).toBe(
-      "run-config.action-add",
-    );
-    expect(cantripAgentOperationNameSchema.parse("run-config.authoring")).toBe(
-      "run-config.authoring",
-    );
-    expect(cantripAgentOperationNameSchema.parse("run-config.write")).toBe(
-      "run-config.write",
-    );
+  it("registers the stable-ID MCP operations without legacy tools", () => {
+    for (const operation of [
+      "run-configuration.list",
+      "run-configuration.get",
+      "run-configuration.detect",
+      "run-configuration.create",
+      "run-configuration.update",
+      "run-configuration.delete",
+      "run-configuration.start",
+      "run-configuration.restart",
+      "run-configuration.stop",
+      "run-configuration.status",
+      "run-configuration.read-output",
+      "run-configuration.secret-set",
+    ]) {
+      expect(cantripAgentOperationNameSchema.parse(operation)).toBe(operation);
+      expect(CANTRIP_MCP_OPERATIONS).toContain(operation);
+    }
     for (const command of [
       "run.list",
       "run.show",
@@ -177,8 +177,39 @@ describe("runConfigurationInspectionSchema", () => {
     ).toBe(false);
     expect(CANTRIP_MCP_OPERATIONS).not.toContain("run-config.authoring");
     expect(CANTRIP_MCP_OPERATIONS).not.toContain("run-config.write");
-    expect(CANTRIP_MCP_OPERATIONS).toContain("run-config.schema");
-    expect(CANTRIP_MCP_OPERATIONS).toContain("run-config.action-add");
+    expect(CANTRIP_MCP_OPERATIONS).not.toContain("run-config.list");
+    expect(CANTRIP_MCP_OPERATIONS).not.toContain("run-config.action-add");
+    expect(CANTRIP_MCP_TOOL_NAMES).toEqual(
+      expect.arrayContaining([
+        "run_configuration_list",
+        "run_configuration_get",
+        "run_configuration_detect",
+        "run_configuration_create",
+        "run_configuration_update",
+        "run_configuration_delete",
+        "run_configuration_start",
+        "run_configuration_restart",
+        "run_configuration_stop",
+        "run_configuration_status",
+        "run_configuration_read_output",
+        "run_configuration_secret_set",
+      ]),
+    );
+    for (const legacyTool of [
+      "run_config_list",
+      "run_config_read",
+      "run_config_schema",
+      "run_config_action_add",
+      "run_start",
+      "run_open",
+      "run_setup_status",
+      "run_setup_retry",
+      "run_status",
+      "run_read",
+      "run_stop",
+    ]) {
+      expect(CANTRIP_MCP_TOOL_NAMES).not.toContain(legacyTool);
+    }
   });
 
   it("bounds the complete cross-platform authoring document", () => {
@@ -283,17 +314,7 @@ describe("Run runtime schemas", () => {
     ).toMatchObject({ type: "project.run.state.observed" });
   });
 
-  it("registers exact CLI, MCP, and worker operations", () => {
-    for (const operation of [
-      "run.start",
-      "run.setup-status",
-      "run.setup-retry",
-      "run.status",
-      "run.read",
-      "run.stop",
-    ]) {
-      expect(cantripAgentOperationNameSchema.parse(operation)).toBe(operation);
-    }
+  it("registers exact CLI and worker operations", () => {
     for (const command of [
       "run.start",
       "run.restart",
@@ -305,14 +326,13 @@ describe("Run runtime schemas", () => {
     }
     expect(CANTRIP_MCP_OPERATIONS).toEqual(
       expect.arrayContaining([
-        "run-config.list",
-        "run-config.read",
-        "run.start",
-        "run.setup-status",
-        "run.setup-retry",
-        "run.status",
-        "run.read",
-        "run.stop",
+        "run-configuration.list",
+        "run-configuration.get",
+        "run-configuration.start",
+        "run-configuration.restart",
+        "run-configuration.status",
+        "run-configuration.read-output",
+        "run-configuration.stop",
       ]),
     );
 

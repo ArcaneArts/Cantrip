@@ -31,28 +31,30 @@ import {
   cantripMcpPolicyListResultSchema,
   cantripMcpPolicyReadInputSchema,
   cantripMcpPolicyReadResultSchema,
-  cantripMcpRunConfigListInputSchema,
-  cantripMcpRunConfigListResultSchema,
-  cantripMcpRunConfigReadInputSchema,
-  cantripMcpRunConfigReadResultSchema,
-  cantripMcpRunConfigSchemaInputSchema,
-  cantripMcpRunConfigSchemaResultSchema,
-  cantripMcpRunConfigActionAddInputSchema,
-  cantripMcpRunConfigActionAddResultSchema,
-  cantripMcpRunReadInputSchema,
-  cantripMcpRunReadResultSchema,
-  cantripMcpRunOpenInputSchema,
-  cantripMcpRunOpenResultSchema,
-  cantripMcpRunStartInputSchema,
-  cantripMcpRunStartResultSchema,
-  cantripMcpRunStatusInputSchema,
-  cantripMcpRunStatusResultSchema,
-  cantripMcpRunStopInputSchema,
-  cantripMcpRunStopResultSchema,
-  cantripMcpRunSetupRetryInputSchema,
-  cantripMcpRunSetupRetryResultSchema,
-  cantripMcpRunSetupStatusInputSchema,
-  cantripMcpRunSetupStatusResultSchema,
+  cantripMcpRunConfigurationCreateInputSchema,
+  cantripMcpRunConfigurationCreateResultSchema,
+  cantripMcpRunConfigurationDeleteInputSchema,
+  cantripMcpRunConfigurationDeleteResultSchema,
+  cantripMcpRunConfigurationDetectInputSchema,
+  cantripMcpRunConfigurationDetectResultSchema,
+  cantripMcpRunConfigurationGetInputSchema,
+  cantripMcpRunConfigurationGetResultSchema,
+  cantripMcpRunConfigurationListInputSchema,
+  cantripMcpRunConfigurationListResultSchema,
+  cantripMcpRunConfigurationReadOutputInputSchema,
+  cantripMcpRunConfigurationReadOutputResultSchema,
+  cantripMcpRunConfigurationRestartInputSchema,
+  cantripMcpRunConfigurationRestartResultSchema,
+  cantripMcpRunConfigurationSecretSetInputSchema,
+  cantripMcpRunConfigurationSecretSetResultSchema,
+  cantripMcpRunConfigurationStartInputSchema,
+  cantripMcpRunConfigurationStartResultSchema,
+  cantripMcpRunConfigurationStatusInputSchema,
+  cantripMcpRunConfigurationStatusResultSchema,
+  cantripMcpRunConfigurationStopInputSchema,
+  cantripMcpRunConfigurationStopResultSchema,
+  cantripMcpRunConfigurationUpdateInputSchema,
+  cantripMcpRunConfigurationUpdateResultSchema,
   cantripMcpTargetInspectInputSchema,
   cantripMcpTargetInspectResultSchema,
   cantripMcpTargetListInputSchema,
@@ -82,7 +84,7 @@ import {
 import { cantripMcpToolHelp } from "./tool-catalog.js";
 
 export const CANTRIP_MCP_INSTRUCTIONS =
-  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Call context_get first. Call tool_help with a tool name before guessing arguments; it returns exact schema generated from the live authoritative validator. Prefer run_config_action_add for simple revision-checked Run action authoring; run_config_schema returns the complete document schema and example when direct TOML editing is necessary. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. Setup runs only while a new secondary worktree is prepared or through explicit run_setup_retry; inspect run_setup_status instead of running setup before an action. A headless Run remains successful when no compatible client can create its encrypted terminal; use run_open after a client reconnects. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
+  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Call context_get first. Call tool_help with a tool name before guessing arguments; it returns exact schema generated from the live authoritative validator. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Use run_configuration_detect to discover typed targets and run_configuration_list or run_configuration_get to obtain stable configuration IDs and exact revisions. Create and update structured definitions with explicit operation IDs; never select a configuration or worktree by display name. A Run targets Primary unless an exact worktree ID is supplied. Use explicit start, restart, stop, status, and read-output operations for one configuration/worktree runtime identity. Secret values are write-only through run_configuration_secret_set. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
 
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
@@ -140,6 +142,22 @@ const openWorldMutationAnnotations = {
 const destructiveOpenWorldMutationAnnotations = {
   ...destructiveMutationAnnotations,
   openWorldHint: true,
+} as const;
+const idempotentMutationAnnotations = {
+  ...mutationAnnotations,
+  idempotentHint: true,
+} as const;
+const idempotentDestructiveMutationAnnotations = {
+  ...destructiveMutationAnnotations,
+  idempotentHint: true,
+} as const;
+const idempotentOpenWorldMutationAnnotations = {
+  ...openWorldMutationAnnotations,
+  idempotentHint: true,
+} as const;
+const idempotentDestructiveOpenWorldMutationAnnotations = {
+  ...destructiveOpenWorldMutationAnnotations,
+  idempotentHint: true,
 } as const;
 
 export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
@@ -290,20 +308,23 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
-    "run_config_list",
+    "run_configuration_list",
     {
-      title: "List Cantrip Run actions",
+      title: "List Run configurations",
       description:
-        "Read the Codex-compatible environment configuration from the registered project source and list platform-compatible actions with exact IDs and revisions.",
-      inputSchema: cantripMcpRunConfigListInputSchema,
-      outputSchema: cantripMcpRunConfigListResultSchema,
+        "List the shared project Run configurations with stable IDs, revisions, validation diagnostics, secret availability, and current runtime summaries. Active configurations sort first.",
+      inputSchema: cantripMcpRunConfigurationListInputSchema,
+      outputSchema: cantripMcpRunConfigurationListResultSchema,
       annotations: readAnnotations,
     },
     async (_arguments) => {
       try {
         return operationResult(
-          cantripMcpRunConfigListResultSchema.parse(
-            await gateway({ operation: "run-config.list", arguments: {} }),
+          cantripMcpRunConfigurationListResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.list",
+              arguments: {},
+            }),
           ),
         );
       } catch (error) {
@@ -312,21 +333,21 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
-    "run_config_read",
+    "run_configuration_get",
     {
-      title: "Read a Cantrip Run action",
+      title: "Get a Run configuration",
       description:
-        "Read one exact platform-compatible action using the opaque action ID and configuration revision returned by run_config_list.",
-      inputSchema: cantripMcpRunConfigReadInputSchema,
-      outputSchema: cantripMcpRunConfigReadResultSchema,
+        "Read one complete shared Run configuration by the stable configuration ID returned by run_configuration_list.",
+      inputSchema: cantripMcpRunConfigurationGetInputSchema,
+      outputSchema: cantripMcpRunConfigurationGetResultSchema,
       annotations: readAnnotations,
     },
     async (arguments_) => {
       try {
         return operationResult(
-          cantripMcpRunConfigReadResultSchema.parse(
+          cantripMcpRunConfigurationGetResultSchema.parse(
             await gateway({
-              operation: "run-config.read",
+              operation: "run-configuration.get",
               arguments: arguments_,
             }),
           ),
@@ -337,64 +358,23 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
-    "run_config_schema",
+    "run_configuration_detect",
     {
-      title: "Read the Run configuration authoring schema",
+      title: "Detect Run configuration targets",
       description:
-        "Return the exact canonical environment.toml document schema plus complete JSON and TOML examples.",
-      inputSchema: cantripMcpRunConfigSchemaInputSchema,
-      outputSchema: cantripMcpRunConfigSchemaResultSchema,
-      annotations: readAnnotations,
-    },
-    async (_arguments) => {
-      try {
-        return operationResult(
-          cantripMcpRunConfigSchemaResultSchema.parse(
-            await gateway({ operation: "run-config.schema", arguments: {} }),
-          ),
-        );
-      } catch (error) {
-        return operationError(error);
-      }
-    },
-  );
-  server.registerTool(
-    "run_setup_status",
-    {
-      title: "Read worktree setup status",
-      description:
-        "Read the durable setup state and bounded worker-owned output for the bound worktree without executing setup.",
-      inputSchema: cantripMcpRunSetupStatusInputSchema,
-      outputSchema: cantripMcpRunSetupStatusResultSchema,
-      annotations: readAnnotations,
-    },
-    async (_arguments) => {
-      try {
-        return operationResult(
-          cantripMcpRunSetupStatusResultSchema.parse(
-            await gateway({ operation: "run.setup-status", arguments: {} }),
-          ),
-        );
-      } catch (error) {
-        return operationError(error);
-      }
-    },
-  );
-  server.registerTool(
-    "run_status",
-    {
-      title: "Read Cantrip Run status",
-      description:
-        "Read one exact Run or the latest Run in the bound worktree, refreshing its worker-owned process state when available.",
-      inputSchema: cantripMcpRunStatusInputSchema,
-      outputSchema: cantripMcpRunStatusResultSchema,
+        "Discover bounded, side-effect-free Shell, Node, Java, Dart, Flutter, and Rust target suggestions from the project Primary checkout. Optionally restrict discovery to one provider.",
+      inputSchema: cantripMcpRunConfigurationDetectInputSchema,
+      outputSchema: cantripMcpRunConfigurationDetectResultSchema,
       annotations: readAnnotations,
     },
     async (arguments_) => {
       try {
         return operationResult(
-          cantripMcpRunStatusResultSchema.parse(
-            await gateway({ operation: "run.status", arguments: arguments_ }),
+          cantripMcpRunConfigurationDetectResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.detect",
+              arguments: arguments_,
+            }),
           ),
         );
       } catch (error) {
@@ -403,20 +383,48 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
-    "run_read",
+    "run_configuration_status",
     {
-      title: "Read Cantrip Run output",
+      title: "Read Run configuration status",
       description:
-        "Read bounded in-memory PTY output for one exact Run. Output is unavailable after the owning worker loses the Run.",
-      inputSchema: cantripMcpRunReadInputSchema,
-      outputSchema: cantripMcpRunReadResultSchema,
+        "Read durable runtime state for all project Run configurations or filter by an exact stable configuration ID and worktree ID.",
+      inputSchema: cantripMcpRunConfigurationStatusInputSchema,
+      outputSchema: cantripMcpRunConfigurationStatusResultSchema,
       annotations: readAnnotations,
     },
     async (arguments_) => {
       try {
         return operationResult(
-          cantripMcpRunReadResultSchema.parse(
-            await gateway({ operation: "run.read", arguments: arguments_ }),
+          cantripMcpRunConfigurationStatusResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.status",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_configuration_read_output",
+    {
+      title: "Read Run configuration output",
+      description:
+        "Read bounded volatile PTY output for one exact configuration/worktree runtime. Omit worktreeId to select Primary.",
+      inputSchema: cantripMcpRunConfigurationReadOutputInputSchema,
+      outputSchema: cantripMcpRunConfigurationReadOutputResultSchema,
+      annotations: readAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunConfigurationReadOutputResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.read-output",
+              arguments: arguments_,
+            }),
           ),
         );
       } catch (error) {
@@ -575,21 +583,21 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
-    "run_config_action_add",
+    "run_configuration_create",
     {
-      title: "Add a Cantrip Run action",
+      title: "Create a Run configuration",
       description:
-        'Append a complete action to the canonical environment.toml with revision checking. Arguments: {"name":"Run app","command":"pnpm run dev","icon":"run","platform":null,"environmentName":"Project environment"}. Omit platform for all hosts.',
-      inputSchema: cantripMcpRunConfigActionAddInputSchema,
-      outputSchema: cantripMcpRunConfigActionAddResultSchema,
-      annotations: mutationAnnotations,
+        "Create one structured shared Run configuration in Primary. Supply a fresh UUID operationId and a complete document whose stable UUID matches its file ID.",
+      inputSchema: cantripMcpRunConfigurationCreateInputSchema,
+      outputSchema: cantripMcpRunConfigurationCreateResultSchema,
+      annotations: idempotentMutationAnnotations,
     },
     async (arguments_) => {
       try {
         return operationResult(
-          cantripMcpRunConfigActionAddResultSchema.parse(
+          cantripMcpRunConfigurationCreateResultSchema.parse(
             await gateway({
-              operation: "run-config.action-add",
+              operation: "run-configuration.create",
               arguments: arguments_,
             }),
           ),
@@ -600,20 +608,23 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
-    "run_start",
+    "run_configuration_update",
     {
-      title: "Start a Cantrip Run",
+      title: "Update a Run configuration",
       description:
-        'Start one exact Codex-compatible action in the bound worktree. Arguments: {"actionId":"<from run_config_list>","configRevision":"<same result>","focus":true}. Call tool_help({"tool":"run_start"}) for the exact schema.',
-      inputSchema: cantripMcpRunStartInputSchema,
-      outputSchema: cantripMcpRunStartResultSchema,
-      annotations: openWorldMutationAnnotations,
+        "Revision-check and update one exact shared Run configuration. The requested ID, document ID, and expected revision must match the current definition.",
+      inputSchema: cantripMcpRunConfigurationUpdateInputSchema,
+      outputSchema: cantripMcpRunConfigurationUpdateResultSchema,
+      annotations: idempotentMutationAnnotations,
     },
     async (arguments_) => {
       try {
         return operationResult(
-          cantripMcpRunStartResultSchema.parse(
-            await gateway({ operation: "run.start", arguments: arguments_ }),
+          cantripMcpRunConfigurationUpdateResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.update",
+              arguments: arguments_,
+            }),
           ),
         );
       } catch (error) {
@@ -622,20 +633,23 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
-    "run_open",
+    "run_configuration_delete",
     {
-      title: "Open a Cantrip Run terminal",
+      title: "Delete a Run configuration",
       description:
-        "Materialize or reopen the exact Run as an encrypted Cantrip terminal through a compatible live client.",
-      inputSchema: cantripMcpRunOpenInputSchema,
-      outputSchema: cantripMcpRunOpenResultSchema,
-      annotations: mutationAnnotations,
+        "Stop all active instances, remove bound Run terminals, and revision-check deletion of one exact shared Run configuration.",
+      inputSchema: cantripMcpRunConfigurationDeleteInputSchema,
+      outputSchema: cantripMcpRunConfigurationDeleteResultSchema,
+      annotations: idempotentDestructiveMutationAnnotations,
     },
     async (arguments_) => {
       try {
         return operationResult(
-          cantripMcpRunOpenResultSchema.parse(
-            await gateway({ operation: "run.open", arguments: arguments_ }),
+          cantripMcpRunConfigurationDeleteResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.delete",
+              arguments: arguments_,
+            }),
           ),
         );
       } catch (error) {
@@ -644,20 +658,23 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
-    "run_setup_retry",
+    "run_configuration_start",
     {
-      title: "Retry worktree setup",
+      title: "Start a Run configuration",
       description:
-        "Explicitly queue the Codex-compatible setup script for the bound secondary worktree. Setup is an open-world mutation and may execute arbitrary project code.",
-      inputSchema: cantripMcpRunSetupRetryInputSchema,
-      outputSchema: cantripMcpRunSetupRetryResultSchema,
-      annotations: openWorldMutationAnnotations,
+        "Start one inactive configuration/runtime identity. Omit worktreeId to target Primary or supply one exact registered worktree ID.",
+      inputSchema: cantripMcpRunConfigurationStartInputSchema,
+      outputSchema: cantripMcpRunConfigurationStartResultSchema,
+      annotations: idempotentOpenWorldMutationAnnotations,
     },
-    async (_arguments) => {
+    async (arguments_) => {
       try {
         return operationResult(
-          cantripMcpRunSetupRetryResultSchema.parse(
-            await gateway({ operation: "run.setup-retry", arguments: {} }),
+          cantripMcpRunConfigurationStartResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.start",
+              arguments: arguments_,
+            }),
           ),
         );
       } catch (error) {
@@ -666,20 +683,73 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
-    "run_stop",
+    "run_configuration_restart",
     {
-      title: "Stop a Cantrip Run",
+      title: "Restart a Run configuration",
       description:
-        "Stop one exact Run and its complete worker-owned process group. The action may control external processes or services.",
-      inputSchema: cantripMcpRunStopInputSchema,
-      outputSchema: cantripMcpRunStopResultSchema,
-      annotations: destructiveOpenWorldMutationAnnotations,
+        "Immediately kill and relaunch one exact configuration/worktree runtime in its reusable Run terminal.",
+      inputSchema: cantripMcpRunConfigurationRestartInputSchema,
+      outputSchema: cantripMcpRunConfigurationRestartResultSchema,
+      annotations: idempotentDestructiveOpenWorldMutationAnnotations,
     },
     async (arguments_) => {
       try {
         return operationResult(
-          cantripMcpRunStopResultSchema.parse(
-            await gateway({ operation: "run.stop", arguments: arguments_ }),
+          cantripMcpRunConfigurationRestartResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.restart",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_configuration_stop",
+    {
+      title: "Stop a Run configuration",
+      description:
+        "Gracefully stop one exact configuration/worktree runtime and force-kill its complete process group after the configured bound.",
+      inputSchema: cantripMcpRunConfigurationStopInputSchema,
+      outputSchema: cantripMcpRunConfigurationStopResultSchema,
+      annotations: idempotentDestructiveOpenWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunConfigurationStopResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.stop",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_configuration_secret_set",
+    {
+      title: "Set a Run configuration secret",
+      description:
+        "Set a write-only project secret reference. The worker encrypts the value before it reaches the Cantrip server, and no read operation returns plaintext.",
+      inputSchema: cantripMcpRunConfigurationSecretSetInputSchema,
+      outputSchema: cantripMcpRunConfigurationSecretSetResultSchema,
+      annotations: idempotentMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunConfigurationSecretSetResultSchema.parse(
+            await gateway({
+              operation: "run-configuration.secret-set",
+              arguments: arguments_,
+            }),
           ),
         );
       } catch (error) {

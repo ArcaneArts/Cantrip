@@ -3,11 +3,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  CANTRIP_MCP_OPERATIONS,
   cantripCliCommandResultSchema,
   protectedRunConfigurationAuthoringSnapshotSchema,
   protectedRunConfigurationWriteResultSchema,
   unprobedCodexRuntimeReport,
   type EndpointContentOpaque,
+  type CantripMcpBinding,
   type WorkerCommand,
   type WorkerRunSnapshot,
 } from "@cantrip/protocol";
@@ -26,7 +28,10 @@ import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 import { RunConfigurationDefinitionService } from "../../cantrip_worker/src/run-configuration-definition-service.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-run-cli-"));
 const projectPath = path.join(dataDirectory, "project");
@@ -54,6 +59,17 @@ const opaque: EndpointContentOpaque = {
   envelope: {
     version: 1,
     algorithm: "AES-256-GCM",
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+};
+const protectedSecretValue = {
+  formatVersion: 1 as const,
+  keyRevision: 1,
+  envelope: {
+    version: 1 as const,
+    algorithm: "AES-256-GCM" as const,
     keyRevision: 1,
     nonce: "AAAAAAAAAAAAAAAA",
     ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
@@ -212,6 +228,7 @@ let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 let projectId: string;
 let worktreeId: string;
+let mcpBinding: CantripMcpBinding;
 
 async function cli(
   command:
@@ -245,6 +262,22 @@ async function cli(
       arguments: arguments_,
       requestId,
       workerId: "run-worker",
+    },
+  });
+}
+
+async function mcp(
+  operation: CantripMcpBinding["allowedOperations"][number],
+  arguments_: Record<string, unknown>,
+) {
+  return app.inject({
+    method: "POST",
+    url: "/api/internal/agent-operations",
+    headers: { authorization: `Bearer ${config.workerToken}` },
+    payload: {
+      requestId: crypto.randomUUID(),
+      binding: mcpBinding,
+      request: { operation, arguments: arguments_ },
     },
   });
 }
@@ -320,6 +353,41 @@ beforeAll(async () => {
     await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
   )[0]!.id;
   app = await buildApp({ config, database, logger: false, workerBridge });
+  const chat = await database.repository.createChat(LOCAL_USER_ID, projectId, {
+    ...protectedChatFields(),
+    worktreeId,
+    worktreeMode: "pinned",
+  });
+  if (!chat) throw new Error("Expected a managed MCP test chat.");
+  const execution = await database.repository.startChatExecutionLane(
+    LOCAL_USER_ID,
+    chat.id,
+    "agent",
+    "Exercise managed Run configuration MCP",
+  );
+  if (!execution) throw new Error("Expected a managed MCP execution lane.");
+  const context = await database.repository.getChatExecutionContext(
+    LOCAL_USER_ID,
+    chat.id,
+  );
+  if (!context?.executionLaneId) {
+    throw new Error("Expected an active managed MCP execution context.");
+  }
+  mcpBinding = {
+    bindingId: crypto.randomUUID(),
+    ownerId: LOCAL_USER_ID,
+    projectId,
+    chatId: chat.id,
+    executionLaneId: context.executionLaneId,
+    workerId: context.workerId,
+    worktreeId: context.worktreeId,
+    rootKind: context.rootKind,
+    permissionProfileId:
+      context.permissionProfileId ?? context.defaultPermissionProfileId,
+    allowedOperations: [...CANTRIP_MCP_OPERATIONS],
+    issuedAt: new Date(Date.now() - 1_000).toISOString(),
+    expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
+  };
 });
 
 afterAll(async () => {
@@ -338,8 +406,16 @@ describe("Run protected server boundary", () => {
     expect(response.statusCode, response.body).toBe(200);
     expect(response.json()).toMatchObject({
       bindingProtocolVersions: [1, 2],
-      operations: expect.arrayContaining(["context.get", "policy.read"]),
+      operations: expect.arrayContaining([
+        "context.get",
+        "policy.read",
+        "run-configuration.create",
+        "run-configuration.restart",
+        "run-configuration.secret-set",
+      ]),
     });
+    expect(response.json().operations).not.toContain("run-config.list");
+    expect(response.json().operations).not.toContain("run.start");
   });
 
   it("identifies malformed MCP relay envelopes as protocol failures", async () => {
@@ -514,6 +590,175 @@ describe("Run protected server boundary", () => {
       },
       crypto.randomUUID(),
     );
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(deleted.json()).data,
+    ).toMatchObject({ result: { outcome: "deleted", id } });
+  });
+
+  it("provides complete stable-ID managed MCP authoring and lifecycle parity", async () => {
+    const id = "2f82c573-704d-4a06-984e-5ce0b8d688ca";
+    const document = {
+      schema: "cantrip.run-configuration",
+      version: 1,
+      id,
+      name: "MCP server",
+      provider: "shell",
+      target: { kind: "command", command: "pnpm mcp" },
+    };
+    const created = await mcp("run-configuration.create", {
+      operationId: crypto.randomUUID(),
+      document,
+    });
+    expect(created.statusCode, created.body).toBe(200);
+    const createdData = cantripCliCommandResultSchema.parse(created.json())
+      .data as {
+      result: { entry: { revision: string }; outcome: string };
+    };
+    expect(createdData.result.outcome).toBe("created");
+
+    const listed = await mcp("run-configuration.list", {});
+    expect(listed.statusCode, listed.body).toBe(200);
+    expect(
+      (
+        cantripCliCommandResultSchema.parse(listed.json()).data as {
+          inventory: { entries: Array<{ id: string }> };
+        }
+      ).inventory.entries.map(({ id: entryId }) => entryId),
+    ).toContain(id);
+
+    const detected = await mcp("run-configuration.detect", {
+      provider: "shell",
+    });
+    expect(detected.statusCode, detected.body).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(detected.json()).data,
+    ).toMatchObject({ operation: "detect", projectId });
+
+    const fetched = await mcp("run-configuration.get", {
+      configurationId: id,
+    });
+    expect(fetched.statusCode, fetched.body).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(fetched.json()).data,
+    ).toMatchObject({ result: { found: true, entry: { id } } });
+
+    const updated = await mcp("run-configuration.update", {
+      operationId: crypto.randomUUID(),
+      configurationId: id,
+      expectedRevision: createdData.result.entry.revision,
+      document: { ...document, name: "MCP server updated" },
+    });
+    expect(updated.statusCode, updated.body).toBe(200);
+    const updatedData = cantripCliCommandResultSchema.parse(updated.json())
+      .data as {
+      result: { entry: { revision: string }; outcome: string };
+    };
+    expect(updatedData.result.outcome).toBe("updated");
+
+    const startOperationId = crypto.randomUUID();
+    const startArguments = {
+      operationId: startOperationId,
+      configurationId: id,
+      worktreeId: null,
+    };
+    const started = await mcp("run-configuration.start", startArguments);
+    expect(started.statusCode, started.body).toBe(200);
+    const startedRuntime = runConfigurationRuntimeOperationResultSchema.parse(
+      cantripCliCommandResultSchema.parse(started.json()).data,
+    ).runtime!;
+    expect(startedRuntime).toMatchObject({
+      configurationId: id,
+      worktreeId,
+      state: "running",
+      generation: 1,
+    });
+    const replayedStart = await mcp("run-configuration.start", startArguments);
+    expect(replayedStart.statusCode, replayedStart.body).toBe(200);
+    expect(
+      runConfigurationRuntimeOperationResultSchema.parse(
+        cantripCliCommandResultSchema.parse(replayedStart.json()).data,
+      ),
+    ).toMatchObject({
+      replayed: true,
+      runtime: { id: startedRuntime.id, generation: 1 },
+    });
+
+    const restarted = await mcp("run-configuration.restart", {
+      operationId: crypto.randomUUID(),
+      configurationId: id,
+      worktreeId,
+    });
+    expect(restarted.statusCode, restarted.body).toBe(200);
+    expect(
+      runConfigurationRuntimeOperationResultSchema.parse(
+        cantripCliCommandResultSchema.parse(restarted.json()).data,
+      ).runtime,
+    ).toMatchObject({ id: startedRuntime.id, state: "running", generation: 2 });
+
+    const status = await mcp("run-configuration.status", {
+      configurationId: id,
+      worktreeId,
+    });
+    expect(status.statusCode, status.body).toBe(200);
+    expect(
+      runConfigurationRuntimeStatusResultSchema.parse(
+        cantripCliCommandResultSchema.parse(status.json()).data,
+      ).runtimes,
+    ).toEqual([
+      expect.objectContaining({ id: startedRuntime.id, state: "running" }),
+    ]);
+
+    const output = await mcp("run-configuration.read-output", {
+      operationId: crypto.randomUUID(),
+      configurationId: id,
+      worktreeId,
+      tail: 20_000,
+    });
+    expect(output.statusCode, output.body).toBe(200);
+    expect(
+      protectedRunConfigurationRuntimeOutputResultSchema.parse(
+        cantripCliCommandResultSchema.parse(output.json()).data,
+      ),
+    ).toMatchObject({
+      projectId,
+      configurationId: id,
+      worktreeId,
+      generation: 2,
+      protectedOutput: opaque,
+    });
+
+    const secret = await mcp("run-configuration.secret-set", {
+      operationId: crypto.randomUUID(),
+      reference: "project/mcp-secret",
+      protectedValue: protectedSecretValue,
+    });
+    expect(secret.statusCode, secret.body).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(secret.json()).data,
+    ).toMatchObject({
+      projectId,
+      secret: { reference: "project/mcp-secret", available: true },
+    });
+    expect(secret.body).not.toContain("plaintext");
+
+    const stopped = await mcp("run-configuration.stop", {
+      operationId: crypto.randomUUID(),
+      configurationId: id,
+      worktreeId,
+    });
+    expect(stopped.statusCode, stopped.body).toBe(200);
+    expect(
+      runConfigurationRuntimeOperationResultSchema.parse(
+        cantripCliCommandResultSchema.parse(stopped.json()).data,
+      ).runtime,
+    ).toMatchObject({ id: startedRuntime.id, state: "idle" });
+
+    const deleted = await mcp("run-configuration.delete", {
+      operationId: crypto.randomUUID(),
+      configurationId: id,
+      expectedRevision: updatedData.result.entry.revision,
+    });
     expect(deleted.statusCode, deleted.body).toBe(200);
     expect(
       cantripCliCommandResultSchema.parse(deleted.json()).data,
