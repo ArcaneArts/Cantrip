@@ -2,6 +2,7 @@ import type { ProjectWorktreeSummary, WorkerSummary } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
+import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import type { RunConfigurationListInventory } from "@/lib/run-configuration-api";
@@ -76,6 +77,12 @@ const inventory = {
     },
   ],
 } satisfies RunConfigurationListInventory;
+const emptyInventory = {
+  directory: ".cantrip/run-configurations",
+  diagnostics: [],
+  entries: [],
+  validations: [],
+} satisfies RunConfigurationListInventory;
 const worker = { workerId: "worker", online: true } as WorkerSummary;
 
 function markup(
@@ -125,6 +132,40 @@ describe("Run configuration control", () => {
     expect(html).toContain('aria-label="Restart"');
     expect(html).toContain('aria-label="Stop"');
     expect(html).not.toContain('aria-label="Run"');
+  });
+
+  it("opens the editor directly from an empty project control", async () => {
+    const onEditorConfigurationChange = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <QueryClientProvider client={new QueryClient()}>
+          <RunConfigurationControl
+            editorConfigurationId={null}
+            inventory={emptyInventory}
+            loading={false}
+            projectId="project"
+            renderEditor={false}
+            runtimes={[]}
+            workers={[worker]}
+            worktrees={[worktree]}
+            onEditorConfigurationChange={onEditorConfigurationChange}
+            onFocusTerminal={vi.fn()}
+          />
+        </QueryClientProvider>,
+      );
+    });
+
+    const add = renderer.root.find(
+      (node) =>
+        node.type === "button" &&
+        node.props["aria-label"] === "Add Run Configuration",
+    );
+    await act(async () => add.props.onClick());
+    expect(onEditorConfigurationChange).toHaveBeenCalledExactlyOnceWith("new");
+    expect(add.props["aria-expanded"]).toBe(false);
+
+    await act(async () => renderer.unmount());
   });
 
   it("keeps Stop available when provider validation blocks restart", () => {
