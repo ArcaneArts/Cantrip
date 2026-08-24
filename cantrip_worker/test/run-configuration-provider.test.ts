@@ -4,6 +4,7 @@ import {
   chmod,
   mkdtemp,
   mkdir,
+  readFile,
   realpath,
   rm,
   symlink,
@@ -1660,6 +1661,148 @@ describe("flutterRunConfigurationProvider", () => {
     expect(materialized.effectiveCommand).toContain(
       "'--dart-entrypoint-args=two words'",
     );
+  });
+
+  it("validates selected Flutter devices with bounded SDK inspection before launch", async () => {
+    const root = await createRoot();
+    const sdkHome = path.join(root, "flutter-sdk");
+    const queryMarker = path.join(root, "device-queries.txt");
+    const launchMarker = path.join(root, "launched.txt");
+    await Promise.all([
+      mkdir(path.join(root, "lib"), { recursive: true }),
+      mkdir(path.join(sdkHome, "bin"), { recursive: true }),
+    ]);
+    await writeFile(
+      path.join(root, "pubspec.yaml"),
+      "name: mobile\ndependencies:\n  flutter:\n    sdk: flutter\n",
+    );
+    await writeFile(path.join(root, "lib", "main.dart"), "void main() {}\n");
+    const flutterExecutable = path.join(sdkHome, "bin", "flutter");
+    await writeFile(
+      flutterExecutable,
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$*" >> ${JSON.stringify(queryMarker)}`,
+        'if [ "$1" = "devices" ] && [ "$2" = "--machine" ]; then',
+        '  case "$CANTRIP_DEVICE_MODE" in',
+        `    unsupported) printf '%s' '${JSON.stringify([
+          { id: "android", isSupported: false, name: "Pixel" },
+        ])}' ;;`,
+        "    malformed) printf '%s' 'not-json' ;;",
+        "    oversized) yes x | head -c 262145 ;;",
+        `    *) printf '%s' '${JSON.stringify([
+          { id: "chrome", isSupported: true, name: "Chrome" },
+          { id: "linux", isSupported: true, name: "Linux" },
+        ])}' ;;`,
+        "  esac",
+        "else",
+        `  printf launched > ${JSON.stringify(launchMarker)}`,
+        "fi",
+        "",
+      ].join("\n"),
+    );
+    await chmod(flutterExecutable, 0o755);
+    const definition = flutterRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Flutter device validation",
+    });
+    const document = {
+      ...definition,
+      options: {
+        ...definition.options,
+        sdkHome,
+        deviceId: "Chrome",
+      },
+    };
+    const staticContext = {
+      defaultShell: "/bin/sh",
+      environment: { PATH: "/bin:/usr/bin" },
+      platform: "linux" as const,
+      targetRoot: root,
+    };
+    await expect(
+      flutterRunConfigurationProvider.validate(document, staticContext),
+    ).resolves.toEqual([]);
+    await expect(access(queryMarker)).rejects.toThrow();
+    const context = { ...staticContext, allowToolInspection: true };
+
+    await expect(
+      flutterRunConfigurationProvider.validate(document, context),
+    ).resolves.toEqual([]);
+    await expect(
+      flutterRunConfigurationProvider.validate(
+        {
+          ...document,
+          options: { ...document.options, deviceId: "disconnected" },
+        },
+        context,
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        code: "flutter-device-unavailable",
+        field: "options.deviceId",
+        message: expect.stringContaining("Chrome (chrome)"),
+      }),
+    ]);
+    await expect(
+      flutterRunConfigurationProvider.validate(
+        {
+          ...document,
+          options: { ...document.options, deviceId: "android" },
+        },
+        {
+          ...context,
+          environment: {
+            ...context.environment,
+            CANTRIP_DEVICE_MODE: "unsupported",
+          },
+        },
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "flutter-device-unsupported" }),
+    ]);
+    await expect(
+      flutterRunConfigurationProvider.validate(document, {
+        ...context,
+        environment: {
+          ...context.environment,
+          CANTRIP_DEVICE_MODE: "malformed",
+        },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "flutter-device-inspection-failed" }),
+    ]);
+    await expect(
+      flutterRunConfigurationProvider.validate(document, {
+        ...context,
+        environment: {
+          ...context.environment,
+          CANTRIP_DEVICE_MODE: "oversized",
+        },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "flutter-device-inspection-failed" }),
+    ]);
+    await expect(
+      flutterRunConfigurationProvider.validate(
+        { ...document, commandOverride: "echo overridden" },
+        {
+          ...context,
+          environment: {
+            ...context.environment,
+            CANTRIP_DEVICE_MODE: "malformed",
+          },
+        },
+      ),
+    ).resolves.toEqual([]);
+    expect((await readFile(queryMarker, "utf8")).trim().split("\n")).toEqual([
+      "devices --machine",
+      "devices --machine",
+      "devices --machine",
+      "devices --machine",
+      "devices --machine",
+    ]);
+    await expect(access(launchMarker)).rejects.toThrow();
   });
 
   it("applies typed Windows launch and environment overrides through Command Prompt", async () => {

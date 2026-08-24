@@ -292,7 +292,7 @@ async function dartFixture(): Promise<Fixture> {
   };
 }
 
-async function flutterFixture(): Promise<Fixture> {
+async function flutterFixture(deviceId = "linux"): Promise<Fixture> {
   const root = await mkdtemp(
     path.join(os.tmpdir(), "cantrip-flutter-run-configuration-runtime-"),
   );
@@ -315,7 +315,17 @@ async function flutterFixture(): Promise<Fixture> {
   );
   await writeFile(
     path.join(sdkHome, "bin", "flutter"),
-    "#!/bin/sh\nprintf 'flutter-provider|%s' \"$*\"\n",
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "devices" ] && [ "$2" = "--machine" ]; then',
+      `  printf '%s' '${JSON.stringify([
+        { id: "linux", isSupported: true, name: "Linux" },
+      ])}'`,
+      "else",
+      "  printf 'flutter-provider|%s' \"$*\"",
+      "fi",
+      "",
+    ].join("\n"),
   );
   await chmod(path.join(sdkHome, "bin", "flutter"), 0o755);
   const configurationId = randomUUID();
@@ -342,7 +352,7 @@ async function flutterFixture(): Promise<Fixture> {
       platformOverrides: {},
       options: {
         sdkHome,
-        deviceId: "linux",
+        deviceId,
         flavor: "staging",
         mode: "profile",
         dartDefines: [{ name: "API_URL", value: "https://example.test" }],
@@ -1099,6 +1109,29 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
       expect(output).toContain(
         "flutter-provider|run --profile --target=lib/main.dart --device-id=linux --flavor=staging --dart-define=API_URL=https://example.test --no-pub --dart-entrypoint-args=two words",
       );
+      await runs.closeAll();
+    });
+
+    it("fails before spawn when the selected Flutter device is unavailable", async () => {
+      const input = await flutterFixture("disconnected-device");
+      const runtimeIdentity = identity(input);
+      const runs = supervisor();
+
+      await runs.start(startCommand(input, runtimeIdentity));
+      const failed = await waitForState(runs, runtimeIdentity, "failed");
+      expect(failed.failure).toMatchObject({
+        phase: "provider",
+        code: "flutter-device-unavailable",
+        message: expect.stringContaining("disconnected-device"),
+      });
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).not.toContain("flutter-provider");
       await runs.closeAll();
     });
 

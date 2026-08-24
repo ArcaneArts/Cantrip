@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
@@ -13,6 +14,7 @@ import {
 } from "@cantrip/protocol/run-configuration-definitions";
 
 import {
+  findRunConfigurationExecutable,
   resolveRealDirectory,
   runConfigurationExecutableDiagnostic,
   runConfigurationProviderDiagnostic,
@@ -23,6 +25,7 @@ import {
   type RunConfigurationProviderCandidate,
   type RunConfigurationProviderContext,
 } from "./run-configuration-provider.js";
+import { RunConfigurationProcessTreeController } from "./run-configuration-process-tree.js";
 
 const MAX_DISCOVERY_DIRECTORIES = 1_024;
 const MAX_DISCOVERY_DEPTH = 10;
@@ -31,6 +34,9 @@ const MAX_DISCOVERY_SOURCES = 512;
 const MAX_DISCOVERY_CANDIDATES = 128;
 const MAX_PUBSPEC_BYTES = 512 * 1024;
 const MAX_SOURCE_BYTES = 512 * 1024;
+const MAX_FLUTTER_DEVICES = 256;
+const MAX_FLUTTER_DEVICE_OUTPUT_BYTES = 256 * 1024;
+const FLUTTER_DEVICE_TIMEOUT_MS = 15_000;
 const SUPPORTED_PROVIDER_TASKS = new Map([
   ["clean", ["clean"]],
   ["gen-l10n", ["gen-l10n"]],
@@ -76,6 +82,17 @@ interface FlutterPackage {
   directory: string;
   entrypoints: string[];
   name: string;
+}
+
+interface FlutterDevice {
+  id: string;
+  name: string;
+  supported: boolean;
+}
+
+interface FlutterToolOutcome {
+  exitCode: number;
+  stdout: string;
 }
 
 function portableJoin(parent: string, child: string): string {
@@ -551,6 +568,224 @@ async function materializedToolInvocation(
   return { executable, arguments: arguments_ };
 }
 
+function boundedFlutterToolOutcome(input: {
+  arguments: string[];
+  context: RunConfigurationProviderContext;
+  executable: string;
+  workingDirectory: string;
+}): Promise<FlutterToolOutcome> {
+  return new Promise((resolve, reject) => {
+    const processTree = new RunConfigurationProcessTreeController({
+      platform: input.context.platform,
+    });
+    const child = spawn(input.executable, input.arguments, {
+      cwd: input.workingDirectory,
+      detached: input.context.platform !== "win32",
+      env: {
+        ...input.context.environment,
+        CI: "true",
+        FLUTTER_SUPPRESS_ANALYTICS: "true",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    const stdout: Buffer[] = [];
+    let outputBytes = 0;
+    let settled = false;
+    let terminating = false;
+    const finish = (error?: Error, exitCode = 1): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve({
+        exitCode,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+      });
+    };
+    const terminate = async (error: Error): Promise<void> => {
+      if (settled || terminating) return;
+      terminating = true;
+      try {
+        if (child.pid === undefined) {
+          child.kill("SIGKILL");
+        } else {
+          await processTree.signal(
+            {
+              kill: (signal) =>
+                child.kill(signal as NodeJS.Signals | undefined),
+              pid: child.pid,
+            },
+            true,
+          );
+        }
+      } finally {
+        finish(error);
+      }
+    };
+    const append = (
+      destination: Buffer[] | null,
+      chunk: Buffer | string,
+    ): void => {
+      if (settled || terminating) return;
+      const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      outputBytes += value.byteLength;
+      if (outputBytes > MAX_FLUTTER_DEVICE_OUTPUT_BYTES) {
+        void terminate(
+          new Error("Flutter device output exceeded the validation limit."),
+        );
+        return;
+      }
+      destination?.push(value);
+    };
+    const timeout = setTimeout(() => {
+      void terminate(
+        new Error(
+          `Flutter device inspection timed out after ${FLUTTER_DEVICE_TIMEOUT_MS}ms.`,
+        ),
+      );
+    }, FLUTTER_DEVICE_TIMEOUT_MS);
+    timeout.unref();
+    child.stdout?.on("data", (chunk: Buffer | string) => append(stdout, chunk));
+    child.stderr?.on("data", (chunk: Buffer | string) => append(null, chunk));
+    child.once("error", (error) => {
+      if (!terminating) finish(error);
+    });
+    child.once("exit", (code, signal) => {
+      if (terminating) return;
+      finish(
+        signal
+          ? new Error(`Flutter device inspection exited from ${signal}.`)
+          : undefined,
+        code ?? 1,
+      );
+    });
+  });
+}
+
+function parseFlutterDevices(stdout: string): FlutterDevice[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new Error("Flutter returned malformed device output.");
+  }
+  if (!Array.isArray(parsed) || parsed.length > MAX_FLUTTER_DEVICES) {
+    throw new Error("Flutter returned an invalid device inventory.");
+  }
+  const devices: FlutterDevice[] = [];
+  const ids = new Set<string>();
+  for (const value of parsed) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error("Flutter returned an invalid device record.");
+    }
+    const record = value as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim() : "";
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    if (
+      id.length === 0 ||
+      id.length > 256 ||
+      /[\u0000-\u001F\u007F]/u.test(id) ||
+      name.length === 0 ||
+      name.length > 256 ||
+      /[\u0000-\u001F\u007F]/u.test(name)
+    ) {
+      throw new Error("Flutter returned an invalid device record.");
+    }
+    if (
+      record.isSupported !== undefined &&
+      typeof record.isSupported !== "boolean"
+    ) {
+      throw new Error("Flutter returned an invalid device record.");
+    }
+    const normalizedId = id.toLocaleLowerCase("en-US");
+    if (ids.has(normalizedId)) {
+      throw new Error("Flutter returned duplicate device identifiers.");
+    }
+    ids.add(normalizedId);
+    devices.push({
+      id,
+      name,
+      supported: record.isSupported !== false,
+    });
+  }
+  return devices;
+}
+
+async function inspectFlutterDevices(input: {
+  context: RunConfigurationProviderContext;
+  executable: string;
+  workingDirectory: string;
+}): Promise<FlutterDevice[]> {
+  const invocation = await materializedToolInvocation(
+    input.executable,
+    ["devices", "--machine"],
+    input.context,
+  );
+  const outcome = await boundedFlutterToolOutcome({
+    arguments: invocation.arguments,
+    context: input.context,
+    executable: invocation.executable,
+    workingDirectory: input.workingDirectory,
+  });
+  if (outcome.exitCode !== 0) {
+    throw new Error("Flutter device inspection failed.");
+  }
+  return parseFlutterDevices(outcome.stdout);
+}
+
+function flutterDeviceSummary(devices: FlutterDevice[]): string {
+  const supported = devices.filter((device) => device.supported);
+  if (supported.length === 0) return "No supported devices were reported.";
+  const display = (value: string): string =>
+    value.length <= 80 ? value : `${value.slice(0, 79)}…`;
+  const visible = supported
+    .slice(0, 5)
+    .map(({ id, name }) => `${display(name)} (${display(id)})`);
+  const remaining = supported.length - visible.length;
+  return `Available devices: ${visible.join(", ")}${remaining > 0 ? `, and ${remaining} more` : ""}.`;
+}
+
+async function flutterDeviceDiagnostic(input: {
+  context: RunConfigurationProviderContext;
+  deviceId: string;
+  executable: string;
+  workingDirectory: string;
+}): Promise<RunConfigurationDiagnostic | null> {
+  let devices: FlutterDevice[];
+  try {
+    devices = await inspectFlutterDevices(input);
+  } catch {
+    return runConfigurationProviderDiagnostic(
+      "flutter-device-inspection-failed",
+      "Flutter device inspection could not complete safely. Verify the selected SDK and connected-device tooling, then retry.",
+      "options.deviceId",
+    );
+  }
+  const selected = input.deviceId.toLocaleLowerCase("en-US");
+  const matches = devices.filter(
+    ({ id, name }) =>
+      id.toLocaleLowerCase("en-US") === selected ||
+      name.toLocaleLowerCase("en-US") === selected,
+  );
+  if (matches.some(({ supported }) => supported)) return null;
+  if (matches.length > 0) {
+    return runConfigurationProviderDiagnostic(
+      "flutter-device-unsupported",
+      `The selected Flutter device ${JSON.stringify(input.deviceId)} is connected but Flutter reports it unsupported for this launch. Choose another device or update the project and SDK.`,
+      "options.deviceId",
+    );
+  }
+  return runConfigurationProviderDiagnostic(
+    "flutter-device-unavailable",
+    `The selected Flutter device ${JSON.stringify(input.deviceId)} is not available on the target worker. ${flutterDeviceSummary(devices)}`,
+    "options.deviceId",
+  );
+}
+
 function providerTaskArguments(task: string): string[] {
   const arguments_ = SUPPORTED_PROVIDER_TASKS.get(task);
   if (!arguments_) {
@@ -692,8 +927,10 @@ export const flutterRunConfigurationProvider: RunConfigurationProvider<RunConfig
       const parsed = runConfigurationFlutterDocumentSchema.parse(document);
       const resolved = resolveConfiguration(parsed, context.platform);
       const diagnostics: RunConfigurationDiagnostic[] = [];
+      let flutterExecutable: string | null = null;
+      let workingDirectory: string | null = null;
       try {
-        await resolveRealDirectory(
+        workingDirectory = await resolveRealDirectory(
           context.targetRoot,
           resolved.workingDirectory,
         );
@@ -729,7 +966,7 @@ export const flutterRunConfigurationProvider: RunConfigurationProvider<RunConfig
         }
         if (resolved.options.sdkHome) {
           try {
-            await canonicalFlutterExecutable(
+            flutterExecutable = await canonicalFlutterExecutable(
               resolved.options.sdkHome,
               context.platform,
             );
@@ -743,12 +980,18 @@ export const flutterRunConfigurationProvider: RunConfigurationProvider<RunConfig
             );
           }
         } else {
-          const diagnostic = await runConfigurationExecutableDiagnostic(
+          flutterExecutable = await findRunConfigurationExecutable(
             systemFlutterExecutable(context.platform),
             context,
-            "options.sdkHome",
           );
-          if (diagnostic) diagnostics.push(diagnostic);
+          if (!flutterExecutable) {
+            const diagnostic = await runConfigurationExecutableDiagnostic(
+              systemFlutterExecutable(context.platform),
+              context,
+              "options.sdkHome",
+            );
+            if (diagnostic) diagnostics.push(diagnostic);
+          }
         }
       }
       if (resolved.commandOverride === null) {
@@ -796,6 +1039,23 @@ export const flutterRunConfigurationProvider: RunConfigurationProvider<RunConfig
             }
           }
         }
+      }
+      if (
+        resolved.commandOverride === null &&
+        resolved.options.deviceId &&
+        context.allowToolInspection === true &&
+        context.environment &&
+        flutterExecutable &&
+        workingDirectory &&
+        diagnostics.every(({ severity }) => severity !== "error")
+      ) {
+        const diagnostic = await flutterDeviceDiagnostic({
+          context,
+          deviceId: resolved.options.deviceId,
+          executable: flutterExecutable,
+          workingDirectory,
+        });
+        if (diagnostic) diagnostics.push(diagnostic);
       }
       for (let index = 0; index < parsed.beforeLaunch.length; index += 1) {
         const step = parsed.beforeLaunch[index]!;

@@ -15,6 +15,7 @@ import {
 } from "@cantrip/protocol/run-configuration-definitions";
 
 export interface RunConfigurationProviderContext {
+  allowToolInspection?: boolean;
   defaultShell: string | null;
   environment?: Readonly<NodeJS.ProcessEnv>;
   platform: RunConfigurationPlatform;
