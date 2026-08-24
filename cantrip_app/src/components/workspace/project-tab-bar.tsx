@@ -25,6 +25,7 @@ import {
   type ProjectSurfacePlacementContext,
 } from "./project-surface-create-menu";
 import { InlineRenameLabel, SurfaceActionsMenu } from "./surface-tab-controls";
+import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -205,6 +206,9 @@ export function ProjectTabBar({
                               />
                             )}
                             <span className="truncate">{surface.title}</span>
+                            {surface.kind === "chat" ? (
+                              <ChatActivityStatus chat={surface.entity} />
+                            ) : null}
                           </button>
                         )}
                         {!editing ? (
