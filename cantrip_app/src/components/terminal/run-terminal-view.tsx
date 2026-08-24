@@ -121,6 +121,36 @@ export function RunTerminalOutput({ output }: { output: string }) {
   );
 }
 
+export function runTerminalOutputAvailabilityPending(input: {
+  active: boolean;
+  becameInactive: boolean;
+  canReadOutput: boolean;
+  hasOutput: boolean;
+  queryFetching: boolean;
+  queryPending: boolean;
+}): boolean {
+  return (
+    !input.active &&
+    input.canReadOutput &&
+    !input.hasOutput &&
+    (input.becameInactive || input.queryFetching || input.queryPending)
+  );
+}
+
+function RunTerminalOutputLoading() {
+  return (
+    <div
+      className="grid min-h-0 flex-1 place-items-center text-sm text-muted-foreground"
+      data-run-terminal-output-state="loading"
+    >
+      <span>
+        <Loader2 className="mr-2 inline size-4 animate-spin" /> Loading Run
+        output…
+      </span>
+    </div>
+  );
+}
+
 export function RunTerminalView({
   definitionAvailable,
   definitionProblem,
@@ -199,20 +229,31 @@ export function RunTerminalView({
     retry: false,
   });
   const wasActiveRef = useRef(active);
+  const becameInactive = wasActiveRef.current && !active;
   useEffect(() => {
-    const justStopped = wasActiveRef.current && !active;
     wasActiveRef.current = active;
-    if (justStopped && canReadOutput) void output.refetch();
-  }, [active, canReadOutput, output.refetch]);
+    if (becameInactive && canReadOutput) void output.refetch();
+  }, [active, becameInactive, canReadOutput, output.refetch]);
   const definitionMissing = definitionAvailable === false;
   const status = runtime?.state ?? "idle";
   const hasOutput = Boolean(output.data?.data.length);
+  const outputAvailabilityPending = runTerminalOutputAvailabilityPending({
+    active,
+    becameInactive,
+    canReadOutput,
+    hasOutput,
+    queryFetching: output.isFetching,
+    queryPending: output.isPending,
+  });
   const sharedTargetProblem =
     launchProblem && launchProblem === stopProblem ? launchProblem : null;
 
-  if (!active && !hasOutput) {
+  if (!active && !hasOutput && !outputAvailabilityPending) {
     return (
-      <div className="grid min-h-0 flex-1 place-items-center overflow-auto p-6">
+      <div
+        className="grid min-h-0 flex-1 place-items-center overflow-auto p-6"
+        data-run-terminal-output-state="empty"
+      >
         <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
           <span className="grid size-12 place-items-center rounded-full border bg-muted/40">
             <Play className="size-5" />
@@ -402,13 +443,12 @@ export function RunTerminalView({
           : {output.error.message}
         </InlineAlert>
       ) : null}
-      {output.data ? (
+      {outputAvailabilityPending ? (
+        <RunTerminalOutputLoading />
+      ) : output.data ? (
         <RunTerminalOutput output={output.data.data} />
       ) : output.error ? null : (
-        <div className="grid min-h-0 flex-1 place-items-center text-sm text-muted-foreground">
-          <Loader2 className="mr-2 inline size-4 animate-spin" /> Loading Run
-          output…
-        </div>
+        <RunTerminalOutputLoading />
       )}
     </div>
   );
