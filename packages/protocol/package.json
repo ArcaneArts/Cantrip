@@ -24,6 +24,10 @@
       "types": "./src/tasks.ts",
       "import": "./dist/tasks.js"
     },
+    "./task-scheduling": {
+      "types": "./src/task-scheduling.ts",
+      "import": "./dist/task-scheduling.js"
+    },
     "./communication-content": {
       "types": "./src/communication-content.ts",
       "import": "./dist/communication-content.js"

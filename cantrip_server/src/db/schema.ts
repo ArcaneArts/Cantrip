@@ -74,6 +74,12 @@ import type {
   TaskStableState,
   TaskState,
 } from "@cantrip/protocol/tasks";
+import type {
+  TaskDispatchCycleState,
+  TaskDispatchEligibilityCode,
+  TaskDispatchOperationKind,
+} from "@cantrip/protocol/task-scheduling";
+import type { ModelConfiguration } from "@cantrip/protocol/model-configuration";
 import type { ProjectAutomationSchedule } from "@cantrip/protocol/automations";
 import type { WorkflowContentOpaque } from "@cantrip/protocol/workflow-content";
 import type {
@@ -881,6 +887,67 @@ export const modelRoutes = pgTable(
   ],
 );
 
+export const taskWorkers = pgTable(
+  "task_workers",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    modelId: text("model_id")
+      .notNull()
+      .references(() => modelProfiles.id, { onDelete: "restrict" }),
+    reasoningEffort: text("reasoning_effort"),
+    customSubagentModel: boolean("custom_subagent_model")
+      .notNull()
+      .default(false),
+    subagentModelId: text("subagent_model_id").references(
+      () => modelProfiles.id,
+      { onDelete: "restrict" },
+    ),
+    subagentReasoningEffort: text("subagent_reasoning_effort"),
+    maxConcurrency: integer("max_concurrency").notNull().default(1),
+    allowsPlanGoal: boolean("allows_plan_goal").notNull().default(false),
+    continuityFamily: text("continuity_family").notNull(),
+    continuityFamilyOverride: text("continuity_family_override"),
+    position: integer("position").notNull().default(0),
+    rowVersion: integer("row_version").notNull().default(1),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("task_workers_owner_position_unique")
+      .on(table.ownerId, table.position)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("task_workers_owner_enabled_index").on(
+      table.ownerId,
+      table.enabled,
+      table.position,
+    ),
+    check(
+      "task_workers_subagent_model_check",
+      sql`NOT ${table.customSubagentModel} OR ${table.subagentModelId} IS NOT NULL`,
+    ),
+    check(
+      "task_workers_concurrency_check",
+      sql`${table.maxConcurrency} >= 1 AND ${table.maxConcurrency} <= 64`,
+    ),
+    check("task_workers_position_check", sql`${table.position} >= 0`),
+    check("task_workers_row_version_check", sql`${table.rowVersion} >= 1`),
+    check(
+      "task_workers_deleted_disabled_check",
+      sql`${table.deletedAt} IS NULL OR ${table.enabled} = false`,
+    ),
+  ],
+);
+
 export const userSettings = pgTable(
   "user_settings",
   {
@@ -1375,6 +1442,15 @@ export const projects = pgTable(
       { onDelete: "set null" },
     ),
     tabLayoutRevision: integer("tab_layout_revision").notNull().default(0),
+    taskSchedulingPaused: boolean("task_scheduling_paused")
+      .notNull()
+      .default(false),
+    taskSchedulingPausedAt: timestamp("task_scheduling_paused_at", {
+      withTimezone: true,
+    }),
+    taskSchedulingRevision: integer("task_scheduling_revision")
+      .notNull()
+      .default(1),
     githubRepositoryBlindIndex: text("github_repository_blind_index"),
     githubRepositoryId: text("github_repository_id"),
     githubRepositoryFullName: text("github_repository_full_name"),
@@ -1402,6 +1478,14 @@ export const projects = pgTable(
     check(
       "projects_setup_error_minimized_check",
       sql`${table.setupError} IS NULL OR ${table.setupError} ~ '^(?:[a-z]+(?:-[a-z]+)*|ctrr_[A-Za-z0-9_-]{43})$'`,
+    ),
+    check(
+      "projects_task_scheduling_pause_check",
+      sql`(${table.taskSchedulingPaused} AND ${table.taskSchedulingPausedAt} IS NOT NULL) OR (NOT ${table.taskSchedulingPaused} AND ${table.taskSchedulingPausedAt} IS NULL)`,
+    ),
+    check(
+      "projects_task_scheduling_revision_check",
+      sql`${table.taskSchedulingRevision} >= 1`,
     ),
   ],
 );
@@ -2590,6 +2674,16 @@ export const tasks = pgTable(
       .references(() => chats.id, { onDelete: "cascade" }),
     state: text("state").$type<TaskState>().notNull().default("draft"),
     planGoalEnabled: boolean("plan_goal_enabled").notNull().default(false),
+    priority: integer("priority").notNull().default(0),
+    requestedTaskWorkerId: text("requested_task_worker_id").references(
+      () => taskWorkers.id,
+      { onDelete: "set null" },
+    ),
+    continuityFamily: text("continuity_family"),
+    lastTaskWorkerId: text("last_task_worker_id").references(
+      () => taskWorkers.id,
+      { onDelete: "set null" },
+    ),
     stableStateBeforeFailure: text(
       "stable_state_before_failure",
     ).$type<TaskStableState>(),
@@ -2616,7 +2710,9 @@ export const tasks = pgTable(
     implementationStartedAt: timestamp("implementation_started_at", {
       withTimezone: true,
     }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
     lastError: jsonb("last_error").$type<TaskProtectedLastErrorMetadata>(),
+    schedulerRevision: integer("scheduler_revision").notNull().default(1),
     rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -2650,7 +2746,20 @@ export const tasks = pgTable(
       sql`${table.planAuthorship} IN ('agent', 'user-edited', 'mixed')`,
     ),
     check("tasks_planning_round_check", sql`${table.planningRound} >= 0`),
+    check(
+      "tasks_priority_check",
+      sql`${table.priority} >= -1000000 AND ${table.priority} <= 1000000`,
+    ),
+    check(
+      "tasks_scheduler_revision_check",
+      sql`${table.schedulerRevision} >= 1`,
+    ),
     check("tasks_row_version_check", sql`${table.rowVersion} >= 1`),
+    index("tasks_requested_worker_created_index").on(
+      table.requestedTaskWorkerId,
+      table.createdAt,
+    ),
+    index("tasks_last_worker_index").on(table.lastTaskWorkerId),
   ],
 );
 
@@ -2720,6 +2829,120 @@ export const taskPlanningRounds = pgTable(
     check(
       "task_planning_rounds_status_check",
       sql`${table.status} IN ('running', 'completed', 'failed', 'interrupted')`,
+    ),
+  ],
+);
+
+export const taskDispatchCycles = pgTable(
+  "task_dispatch_cycles",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => tasks.chatId, { onDelete: "cascade" }),
+    operationKind: text("operation_kind")
+      .$type<TaskDispatchOperationKind>()
+      .notNull(),
+    state: text("state").$type<TaskDispatchCycleState>().notNull(),
+    fifoCreatedAt: timestamp("fifo_created_at", {
+      withTimezone: true,
+    }).notNull(),
+    requestedTaskWorkerId: text("requested_task_worker_id").references(
+      () => taskWorkers.id,
+      { onDelete: "set null" },
+    ),
+    selectedTaskWorkerId: text("selected_task_worker_id").references(
+      () => taskWorkers.id,
+      { onDelete: "set null" },
+    ),
+    taskWorkerRevision: integer("task_worker_revision"),
+    continuityFamily: text("continuity_family"),
+    modelConfiguration: jsonb(
+      "model_configuration",
+    ).$type<ModelConfiguration>(),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
+    providerAccountId: text("provider_account_id"),
+    physicalWorkerId: text("physical_worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "set null",
+    }),
+    codexThreadId: text("codex_thread_id"),
+    turnId: text("turn_id"),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+    fencingToken: bigint("fencing_token", { mode: "number" })
+      .notNull()
+      .default(0),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    eligibilityCode:
+      text("eligibility_code").$type<TaskDispatchEligibilityCode>(),
+    queuedAt: timestamp("queued_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    pausedAt: timestamp("paused_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("task_dispatch_cycles_active_task_unique")
+      .on(table.chatId)
+      .where(sql`${table.state} IN ('queued', 'claimed', 'running', 'paused')`),
+    index("task_dispatch_cycles_fifo_index").on(
+      table.ownerId,
+      table.state,
+      table.fifoCreatedAt,
+      table.id,
+    ),
+    index("task_dispatch_cycles_capacity_index").on(
+      table.selectedTaskWorkerId,
+      table.state,
+    ),
+    index("task_dispatch_cycles_lease_index").on(
+      table.state,
+      table.leaseExpiresAt,
+    ),
+    index("task_dispatch_cycles_task_created_index").on(
+      table.chatId,
+      table.createdAt,
+    ),
+    check(
+      "task_dispatch_cycles_operation_kind_check",
+      sql`${table.operationKind} IN ('direct', 'initial-plan', 'continue-plan', 'finalize', 'goal-continuation')`,
+    ),
+    check(
+      "task_dispatch_cycles_state_check",
+      sql`${table.state} IN ('queued', 'claimed', 'running', 'paused', 'succeeded', 'failed', 'cancelled', 'expired')`,
+    ),
+    check(
+      "task_dispatch_cycles_attempt_count_check",
+      sql`${table.attemptCount} >= 0`,
+    ),
+    check(
+      "task_dispatch_cycles_fencing_token_check",
+      sql`${table.fencingToken} >= 0`,
+    ),
+    check(
+      "task_dispatch_cycles_worker_revision_check",
+      sql`${table.taskWorkerRevision} IS NULL OR ${table.taskWorkerRevision} >= 1`,
+    ),
+    check(
+      "task_dispatch_cycles_eligibility_code_check",
+      sql`${table.eligibilityCode} IS NULL OR ${table.eligibilityCode} IN ('assignment-mismatch', 'capacity-unavailable', 'continuity-mismatch', 'encryption-grant-unavailable', 'model-unavailable', 'plan-goal-unsupported', 'placement-unavailable', 'project-paused', 'provider-route-unavailable', 'reconciliation-required', 'task-worker-disabled', 'worker-offline')`,
     ),
   ],
 );

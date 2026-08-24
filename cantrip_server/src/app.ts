@@ -274,6 +274,12 @@ import {
   modelProfileCreateSchema,
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
+  taskWorkerCreateSchema,
+  taskWorkerDeleteSchema,
+  taskWorkerListSchema,
+  taskWorkerOrderUpdateSchema,
+  taskWorkerSummarySchema,
+  taskWorkerUpdateSchema,
   encryptedModelProviderAccountCreateSchema,
   encryptedModelProviderAccountUpdateSchema,
   modelProviderAccountWireListSchema,
@@ -732,6 +738,7 @@ import { terminalRelayOutputMessage } from "./terminals/relay.js";
 import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
 import type { DatabaseConnection } from "./db/index.js";
 import { TaskConflictError } from "./db/tasks.js";
+import { TaskSchedulingConflictError } from "./db/task-scheduling.js";
 import { TaskStateTransitionError } from "./tasks/state.js";
 import {
   parseTaskOperationRelayResult,
@@ -16599,6 +16606,104 @@ export async function buildApp({
       return reply.code(201).send(modelProfileSummarySchema.parse(model));
     } catch (error) {
       return reply.code(409).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.get("/api/settings/task-workers", async (_request, reply) => {
+    const taskWorkers =
+      await repository.taskScheduling.listTaskWorkers(applicationOwnerId());
+    return reply.send(taskWorkerListSchema.parse(taskWorkers));
+  });
+
+  app.post("/api/settings/task-workers", async (request, reply) => {
+    const input = taskWorkerCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const taskWorker = await repository.taskScheduling.createTaskWorker(
+        applicationOwnerId(),
+        input.data,
+      );
+      return reply.code(201).send(taskWorkerSummarySchema.parse(taskWorker));
+    } catch (error) {
+      if (error instanceof TaskSchedulingConflictError) {
+        return reply.code(409).send({ code: error.code, error: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.patch<{ Params: { taskWorkerId: string } }>(
+    "/api/settings/task-workers/:taskWorkerId",
+    async (request, reply) => {
+      const input = taskWorkerUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const taskWorker = await repository.taskScheduling.updateTaskWorker(
+          applicationOwnerId(),
+          request.params.taskWorkerId,
+          input.data,
+        );
+        return taskWorker
+          ? reply.send(taskWorkerSummarySchema.parse(taskWorker))
+          : reply.code(404).send({ error: "Task Worker not found." });
+      } catch (error) {
+        if (error instanceof TaskSchedulingConflictError) {
+          return reply
+            .code(409)
+            .send({ code: error.code, error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.delete<{ Params: { taskWorkerId: string } }>(
+    "/api/settings/task-workers/:taskWorkerId",
+    async (request, reply) => {
+      const input = taskWorkerDeleteSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const deleted = await repository.taskScheduling.deleteTaskWorker(
+          applicationOwnerId(),
+          request.params.taskWorkerId,
+          input.data.rowVersion,
+        );
+        return deleted
+          ? reply.code(204).send()
+          : reply.code(404).send({ error: "Task Worker not found." });
+      } catch (error) {
+        if (error instanceof TaskSchedulingConflictError) {
+          return reply
+            .code(409)
+            .send({ code: error.code, error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.put("/api/settings/task-workers/order", async (request, reply) => {
+    const input = taskWorkerOrderUpdateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const taskWorkers = await repository.taskScheduling.reorderTaskWorkers(
+        applicationOwnerId(),
+        input.data,
+      );
+      return reply.send(taskWorkerListSchema.parse(taskWorkers));
+    } catch (error) {
+      if (error instanceof TaskSchedulingConflictError) {
+        return reply.code(409).send({ code: error.code, error: error.message });
+      }
+      throw error;
     }
   });
 

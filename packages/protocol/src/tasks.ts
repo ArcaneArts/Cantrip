@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 import {
+  taskPrioritySchema,
+  taskWorkerContinuityFamilySchema,
+} from "./task-scheduling.js";
+
+import {
   encryptedPayloadEnvelopeSchema,
   encryptionBytesSchema,
   encryptionKeyBytesSchema,
@@ -168,6 +173,10 @@ export const taskLastErrorSchema = z.object({
 export const taskDetailSchema = z.object({
   chatId: z.string().min(1),
   planGoalEnabled: z.boolean(),
+  priority: taskPrioritySchema.default(0),
+  requestedTaskWorkerId: z.string().uuid().nullable().default(null),
+  continuityFamily: taskWorkerContinuityFamilySchema.nullable().default(null),
+  lastTaskWorkerId: z.string().uuid().nullable().default(null),
   state: taskStateSchema,
   stableStateBeforeFailure: taskStableStateSchema.nullable(),
   activeOperationId: z.string().min(1).max(200).nullable(),
@@ -183,7 +192,9 @@ export const taskDetailSchema = z.object({
   goalPrompt: z.string().min(1).max(TASK_GOAL_PROMPT_LIMIT).nullable(),
   planningRound: z.number().int().nonnegative(),
   implementationStartedAt: z.iso.datetime().nullable(),
+  completedAt: z.iso.datetime().nullable().default(null),
   lastError: taskLastErrorSchema.nullable(),
+  schedulerRevision: z.number().int().positive().default(1),
   rowVersion: z.number().int().positive(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -969,6 +980,10 @@ export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
   .extend({
     chatId: z.string().min(1).max(200),
     planGoalEnabled: z.boolean(),
+    priority: taskPrioritySchema.default(0),
+    requestedTaskWorkerId: z.string().uuid().nullable().default(null),
+    continuityFamily: taskWorkerContinuityFamilySchema.nullable().default(null),
+    lastTaskWorkerId: z.string().uuid().nullable().default(null),
     activeOperationId: z.string().min(1).max(200).nullable(),
     draftAttachmentIds: z
       .array(z.string().min(1).max(200))
@@ -978,6 +993,8 @@ export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
       }),
     protectedContent: encryptedTaskProtectedContentSchema,
     implementationStartedAt: z.iso.datetime().nullable(),
+    completedAt: z.iso.datetime().nullable().default(null),
+    schedulerRevision: z.number().int().positive().default(1),
     rowVersion: z.number().int().positive(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
