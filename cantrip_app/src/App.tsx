@@ -31,7 +31,6 @@ import type {
   QueuedPrompt,
   ReasoningEffort,
   RemoteDesktopTarget,
-  RunConfigurationAction,
   ScriptCommand,
   SettingsBundle,
   SkillSummary,
@@ -244,7 +243,6 @@ import {
 } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
-import { EnvironmentRunMenu } from "@/components/run/environment-run-menu";
 import { WindowsLongPathDialog } from "@/components/projects/windows-long-path-dialog";
 import {
   FolderProjectDialog,
@@ -386,7 +384,6 @@ import {
   getProjectTokenUsage,
   getRemoteDesktop,
   getQueuedPrompts,
-  getRunEnvironment,
   getServerBootstrap,
   getSettings,
   getSkills,
@@ -395,7 +392,6 @@ import {
   getWorkers,
   getWorkflows,
   materializeRunTerminal,
-  openRun,
   getWorkflowAutomationTriggers,
   invokeSavedWorkflowCommand,
   interruptChat,
@@ -417,11 +413,9 @@ import {
   respondToAgentInteractionRequest,
   saveChatComposerDraft,
   setChatPaused,
-  startRun,
   startTurn,
   steerQueuedPrompt,
   syncChat,
-  stopRun,
   updateChatModelConfiguration,
   updateChatPermissionProfile,
   updateChatGoal,
@@ -6175,74 +6169,6 @@ export function App() {
       worktreeId: destination.worktreeId,
     });
   };
-  const runEnvironment = useQuery({
-    enabled: Boolean(
-      selectedProject &&
-      !showImporter &&
-      !showSettings &&
-      !showServerAdmin &&
-      !showProjectSettings,
-    ),
-    queryFn: () =>
-      getRunEnvironment(selectedProject!.id, activeWorktreeId ?? undefined),
-    queryKey: [
-      "run-environment",
-      selectedProject?.id,
-      activeWorktreeId ?? "default",
-    ],
-    refetchInterval: (query) =>
-      projectResourcesLive
-        ? false
-        : ["queued", "starting", "running", "stopping"].includes(
-              query.state.data?.run?.state ?? "",
-            ) ||
-            ["queued", "running"].includes(query.state.data?.setup?.state ?? "")
-          ? 2_000
-          : 15_000,
-    retry: false,
-  });
-  const refreshRunEnvironment = (projectId: string) =>
-    Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ["run-environment", projectId],
-      }),
-      queryClient.invalidateQueries({ queryKey: ["terminals", projectId] }),
-      queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", projectId],
-      }),
-    ]);
-  const startRunMutation = useMutation({
-    mutationFn: ({
-      requestId,
-      actionId,
-      configRevision,
-    }: {
-      requestId: string;
-      actionId: string;
-      configRevision: string;
-    }) =>
-      startRun(selectedProject!.id, {
-        requestId,
-        actionId,
-        configRevision,
-        focus: true,
-        worktreeId: runEnvironment.data?.worktreeId,
-      }),
-    onSuccess: (_result) => refreshRunEnvironment(selectedProject!.id),
-  });
-  const openRunMutation = useMutation({
-    mutationFn: (runId: string) =>
-      openRun(selectedProject!.id, runId, {
-        focus: true,
-        worktreeId: runEnvironment.data?.worktreeId,
-      }),
-    onSuccess: (_result) => refreshRunEnvironment(selectedProject!.id),
-  });
-  const stopRunMutation = useMutation({
-    mutationFn: (runId: string) =>
-      stopRun(selectedProject!.id, runId, runEnvironment.data?.worktreeId),
-    onSuccess: (_result) => refreshRunEnvironment(selectedProject!.id),
-  });
   const selectedWorkerId =
     selectedProjectView?.kind === "remote-desktop"
       ? remoteDesktop.data?.workerId
@@ -7861,44 +7787,6 @@ export function App() {
           }
         : null,
   } satisfies Omit<ContentHeaderActionsProps, "compact">;
-  const environmentRunMenuProps =
-    selectedProject &&
-    !showImporter &&
-    !showSettings &&
-    !showServerAdmin &&
-    !showProjectSettings
-      ? {
-          environment: runEnvironment.data ?? null,
-          error:
-            startRunMutation.error ??
-            openRunMutation.error ??
-            stopRunMutation.error ??
-            runEnvironment.error,
-          loading: runEnvironment.isLoading,
-          mutationPending:
-            startRunMutation.isPending ||
-            openRunMutation.isPending ||
-            stopRunMutation.isPending,
-          onConfigure: () =>
-            openProjectSettings(selectedProject.id, null, "environment"),
-          onOpen: (runId: string) => openRunMutation.mutate(runId),
-          onStart: (action: RunConfigurationAction, configRevision: string) =>
-            startRunMutation.mutate({
-              requestId: crypto.randomUUID(),
-              actionId: action.id,
-              configRevision,
-            }),
-          onStop: (runId: string) => stopRunMutation.mutate(runId),
-          onCompareBranch: selectedProject.capabilities.git
-            ? () =>
-                newProjectView.mutate({
-                  projectId: selectedProject.id,
-                  kind: "history",
-                  worktreeId: runEnvironment.data?.worktreeId,
-                })
-            : null,
-        }
-      : null;
   const codeSurfaceVisible = Boolean(
     selectedCodeTab &&
     !mobileProjectSelectorOpen &&
@@ -8648,9 +8536,6 @@ export function App() {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
-              {environmentRunMenuProps ? (
-                <EnvironmentRunMenu {...environmentRunMenuProps} />
-              ) : null}
               <ContentHeaderActions {...contentHeaderActions} compact />
               {!isPopout && !compactShell ? (
                 <>
@@ -8684,9 +8569,6 @@ export function App() {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
-              {environmentRunMenuProps ? (
-                <EnvironmentRunMenu {...environmentRunMenuProps} />
-              ) : null}
               <ContentHeaderActions {...contentHeaderActions} />
               {!isPopout &&
               !showImporter &&
