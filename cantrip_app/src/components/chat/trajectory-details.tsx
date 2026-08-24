@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button";
 import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 
 import { Markdown } from "./markdown";
-import { trajectoryKindLabel, type TrajectoryEvent } from "./trajectory-model";
+import {
+  trajectoryKindLabel,
+  trajectoryLaneLabel,
+  type TrajectoryEvent,
+} from "./trajectory-model";
 
 type TrajectoryDetailTab = "summary" | "preview" | "raw";
 
@@ -170,7 +174,7 @@ function Summary({ event }: { event: TrajectoryEvent }) {
       <DetailField label="Event" value={event.label} />
       <DetailField label="Agent" value={event.agentLabel} />
       <DetailField label="Type" value={trajectoryKindLabel(event.kind)} />
-      <DetailField label="Lane" value={event.lane} />
+      <DetailField label="Lane" value={trajectoryLaneLabel(event.lane)} />
       <DetailField label="Status" value={event.status} />
       <DetailField
         label="Timing"

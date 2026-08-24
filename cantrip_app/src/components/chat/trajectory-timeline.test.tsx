@@ -66,7 +66,7 @@ const turn: TrajectoryTurn = {
   exactTimingComplete: true,
   key: "legacy:user-1",
   kindCounts: {},
-  laneCounts: { input: 0, model: 0, tools: 0 },
+  laneCounts: { changes: 0, input: 0, model: 0, tools: 0 },
   nextTransitionAtMs: null,
   ordinal: 1,
   runtimeTurnId: null,
@@ -173,6 +173,7 @@ describe("trajectory timeline navigation", () => {
           { ...event("input", 1_000, 1_000, 1), lane: "input" },
           event("model", 1_200, 1_400, 2),
           { ...event("tools", 1_500, 1_900, 3), lane: "tools" },
+          { ...event("changes", 1_600, 1_800, 4), lane: "changes" },
         ]}
         onMovePlayhead={vi.fn()}
         onSelectEvent={vi.fn()}
@@ -196,6 +197,7 @@ describe("trajectory timeline navigation", () => {
     expect(markup).toContain("fill-sky-500");
     expect(markup).toContain("fill-violet-500");
     expect(markup).toContain("fill-amber-500");
+    expect(markup).toContain("fill-emerald-500");
     expect(markup).toContain('data-scrollable="false"');
   });
 

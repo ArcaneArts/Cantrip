@@ -117,6 +117,7 @@ describe("AgentTrajectory", () => {
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('aria-label="Search trajectory events"');
     expect(markup).toContain("Filters");
+    expect(markup).toContain("Made changes");
     expect(markup).toContain('aria-label="Trajectory events"');
     expect(markup).toContain('data-slot="trajectory-event-viewport"');
     expect(markup).toContain('data-event-kind="input"');
