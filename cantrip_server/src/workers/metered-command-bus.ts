@@ -69,6 +69,9 @@ function meteredWorkerSocket(
     ...(socket.publishReady
       ? { publishReady: () => socket.publishReady!() }
       : {}),
+    get protocol() {
+      return socket.protocol;
+    },
     send(data, options) {
       socket.send(data, options);
       if (typeof data === "string") {

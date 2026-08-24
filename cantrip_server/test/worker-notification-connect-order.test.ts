@@ -5,6 +5,9 @@ import path from "node:path";
 import {
   decodeWorkerConnectionEnvelope,
   unprobedCodexRuntimeReport,
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_SUBPROTOCOLS,
   workerListSchema,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -38,11 +41,13 @@ const config: ServerConfig = {
 let notificationSubscribed = false;
 let subscribedBeforeAttach: boolean | null = null;
 let attachedContinuityIdentity: Parameters<WorkerCommandBus["attach"]>[3];
+let attachedProtocol: string | undefined;
 let connectionLifecycle: string[] | null = null;
 const workerBridge: WorkerCommandBus = {
-  attach(_workerId, _socket, _ownerId, continuityIdentity) {
+  attach(_workerId, socket, _ownerId, continuityIdentity) {
     subscribedBeforeAttach = notificationSubscribed;
     attachedContinuityIdentity = continuityIdentity;
+    attachedProtocol = socket.protocol;
     connectionLifecycle?.push("attach");
   },
   close() {},
@@ -104,7 +109,12 @@ describe("worker notification connection order", () => {
     connectionLifecycle = lifecycle;
     const socket = await app.injectWS(
       `/api/internal/workers/connect?workerId=notification-order-worker&connectionGeneration=${workerProcessGeneration}`,
-      { headers: { authorization: "Bearer test-worker-token" } },
+      {
+        headers: {
+          authorization: "Bearer test-worker-token",
+          "sec-websocket-protocol": WORKER_WEBSOCKET_SUBPROTOCOLS.join(", "),
+        },
+      },
       {
         onInit(client) {
           client.on("message", (data) => {
@@ -128,6 +138,7 @@ describe("worker notification connection order", () => {
       ownerId: LOCAL_USER_ID,
       workerProcessGeneration,
     });
+    expect(attachedProtocol).toBe(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL);
     const worker = await database.repository.getWorker(
       LOCAL_USER_ID,
       "notification-order-worker",
@@ -150,6 +161,41 @@ describe("worker notification connection order", () => {
     } finally {
       connectionLifecycle = null;
       now.mockRestore();
+      socket.terminate();
+    }
+  });
+
+  it("preserves a legacy worker connection without ready envelopes", async () => {
+    const workerProcessGeneration = "22222222-2222-4222-8222-222222222222";
+    const lifecycle: string[] = [];
+    attachedProtocol = undefined;
+    connectionLifecycle = lifecycle;
+    const socket = await app.injectWS(
+      `/api/internal/workers/connect?workerId=notification-order-worker&connectionGeneration=${workerProcessGeneration}`,
+      {
+        headers: {
+          authorization: "Bearer test-worker-token",
+          "sec-websocket-protocol": WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
+        },
+      },
+      {
+        onInit(client) {
+          client.on("message", (data) => {
+            const envelope = decodeWorkerConnectionEnvelope(data.toString());
+            if (envelope.success) lifecycle.push(envelope.data.state);
+          });
+        },
+      },
+    );
+
+    try {
+      await expect
+        .poll(() => attachedProtocol)
+        .toBe(WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(lifecycle).toEqual(["attach"]);
+    } finally {
+      connectionLifecycle = null;
       socket.terminate();
     }
   });

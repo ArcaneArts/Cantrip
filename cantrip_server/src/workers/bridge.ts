@@ -31,6 +31,7 @@ export interface WorkerSocket {
     listener: (data: unknown, isBinary?: boolean) => void,
   ): void;
   publishReady?(): boolean;
+  readonly protocol?: string;
   readyState: number;
   send(data: string | Uint8Array, options?: { binary?: boolean }): void;
 }

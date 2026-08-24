@@ -420,6 +420,7 @@ import {
   workerCredentialRotateResultSchema,
   workerCredentialRotateSchema,
   encodeWorkerConnectionEnvelope,
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
   workerEnrollmentCodeCreateSchema,
   workerLogReadQuerySchema,
   workerEnrollmentCodeResultSchema,
@@ -910,6 +911,7 @@ import {
 } from "./security/abuse-limits.js";
 import { LimitedWorkerCommandBus } from "./workers/limited-command-bus.js";
 import { MeteredWorkerCommandBus } from "./workers/metered-command-bus.js";
+import { selectCantripWebSocketSubprotocol } from "./workers/websocket-subprotocol.js";
 import {
   DirectAttachmentCoordinator,
   DirectAttachmentUnavailableError,
@@ -3787,7 +3789,10 @@ export async function buildApp({
     origin: config.appOrigins,
   });
   await app.register(websocket, {
-    options: { maxPayload: websocketMaxPayloadBytes },
+    options: {
+      handleProtocols: selectCantripWebSocketSubprotocol,
+      maxPayload: websocketMaxPayloadBytes,
+    },
   });
 
   const sessionService = new UserSessionService(repository, config);
@@ -32653,7 +32658,13 @@ export async function buildApp({
           workerSocket.close(1008, "Unauthorized");
           return;
         }
-        if (workerProcessGeneration) {
+        const authenticatedReadyNegotiated =
+          workerSocket.protocol === WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL;
+        if (authenticatedReadyNegotiated && !workerProcessGeneration) {
+          workerSocket.close(1002, "Worker connection generation is required");
+          return;
+        }
+        if (authenticatedReadyNegotiated && workerProcessGeneration) {
           workerSocket.send(
             encodeWorkerConnectionEnvelope({
               kind: "connection",

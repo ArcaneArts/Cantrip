@@ -93,6 +93,10 @@ export class BufferedWorkerSocket implements WorkerSocket {
     return this.socket.readyState;
   }
 
+  get protocol(): string {
+    return this.socket.protocol ?? "";
+  }
+
   activate(): boolean {
     if (this.#activated) return true;
     if (!this.canActivate()) {
