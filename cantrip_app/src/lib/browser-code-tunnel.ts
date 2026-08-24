@@ -648,7 +648,7 @@ function parseHttpResponse(bytes: Uint8Array) {
   };
 }
 
-async function proxyHttp(
+export async function proxyBrowserCodeHttp(
   tunnel: BrowserTunnelClient,
   request: HttpProxyRequest,
 ) {
@@ -664,7 +664,10 @@ async function proxyHttp(
     chunks.push(chunk);
   });
   await connection.send(serializeHttpRequest(request));
-  connection.halfClose();
+  // The HTTP message is self-delimiting and requests connection closure after
+  // the response. Half-closing here makes Node treat the relay as a departed
+  // client and abort the worker's OpenVSCode upstream request before it can
+  // answer.
   await connection.waitClosed();
   if (bytes > MAX_HTTP_RESPONSE_BYTES)
     throw new Error("Protected Code response is too large.");
@@ -1047,7 +1050,7 @@ class BrowserCodeSession {
       request.adapterId !== this.adapterId
     )
       return;
-    void proxyHttp(this.tunnel, request)
+    void proxyBrowserCodeHttp(this.tunnel, request)
       .then((response) =>
         this.#channel.postMessage({
           type: "cantrip-code-http-response-v1",
