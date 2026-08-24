@@ -495,6 +495,14 @@ import {
 } from "@cantrip/protocol/run-configuration-operations";
 import { runConfigurationIdSchema } from "@cantrip/protocol/run-configuration-definitions";
 import {
+  protectedRunConfigurationRuntimeOutputResultSchema,
+  protectedRunConfigurationRuntimeWorkerOutputSchema,
+  runConfigurationRuntimeLifecycleRequestSchema,
+  runConfigurationRuntimeOperationResultSchema,
+  runConfigurationRuntimeOutputQuerySchema,
+  runConfigurationRuntimeStatusQuerySchema,
+  runConfigurationRuntimeStatusResultSchema,
+  runConfigurationRuntimeWorkerOperationResultSchema,
   runConfigurationRuntimeWorkerObservationSchema,
   runConfigurationRuntimeWorkerReconciliationSchema,
 } from "@cantrip/protocol/run-configuration-runtime";
@@ -1039,6 +1047,15 @@ function mutationAuditDescriptor(
   }
   if (method === "POST" && route === "/api/workers/enrollment-codes") {
     return { action: "worker.pairing-code-created", resourceType: "worker" };
+  }
+  if (
+    method === "POST" &&
+    route === "/api/run-configuration-runtimes/operations"
+  ) {
+    return {
+      action: "run.configuration.lifecycle-requested",
+      resourceType: "run-configuration-runtime",
+    };
   }
   if (route.startsWith("/api/workers/") && method !== "GET") {
     return { action: "worker.configuration-changed", resourceType: "worker" };
@@ -6800,6 +6817,51 @@ export async function buildApp({
     }
     ensureWorkerNotificationSubscription(ownerId, source.workerId);
     return source;
+  };
+
+  const resolveRunConfigurationRuntimeTarget = async (
+    ownerId: string,
+    projectId: string,
+    targetWorktreeId: string | null,
+  ) => {
+    const primary = targetWorktreeId
+      ? null
+      : await repository.getProjectSource(ownerId, projectId);
+    if (!targetWorktreeId && !primary) {
+      throw new CliCommandRequestError(
+        "not-found",
+        404,
+        "The project Primary source was not found.",
+      );
+    }
+    const context = await repository.getProjectWorktreeContext(
+      ownerId,
+      projectId,
+      targetWorktreeId ?? primary!.worktreeId,
+    );
+    if (!context || context.worktree.lifecycleState !== "ready") {
+      throw new CliCommandRequestError(
+        "not-found",
+        404,
+        "The Run configuration target worktree is not ready.",
+      );
+    }
+    if (!bridge.isConnected(context.workerId)) {
+      throw new CliCommandRequestError(
+        "unavailable",
+        503,
+        "The Run configuration target worker is offline.",
+      );
+    }
+    ensureWorkerNotificationSubscription(ownerId, context.workerId);
+    return {
+      ...context,
+      rootKind:
+        context.worktree.rootKind === "folder-root"
+          ? ("folder-root" as const)
+          : ("git-root" as const),
+      targetPath: context.worktree.path,
+    };
   };
 
   const normalizedWorkerPath = (value: string) => {
@@ -13792,6 +13854,430 @@ export async function buildApp({
       return reply.code(204).send();
     },
   );
+
+  app.post(
+    "/api/run-configuration-runtimes/operations",
+    async (request, reply) => {
+      const input = runConfigurationRuntimeLifecycleRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      try {
+        const replay =
+          await repository.getRunConfigurationRuntimeOperationResult(
+            ownerId,
+            input.data.operationId,
+          );
+        if (replay) {
+          if (
+            replay.operation.projectId !== input.data.projectId ||
+            replay.operation.configurationId !== input.data.configurationId ||
+            replay.operation.operation !== input.data.operation ||
+            (input.data.targetWorktreeId !== null &&
+              replay.operation.worktreeId !== input.data.targetWorktreeId)
+          ) {
+            return reply.code(409).send({
+              code: "operation-identity-conflict",
+              error:
+                "The Run configuration operation ID is already bound to another request.",
+            });
+          }
+          return reply.send(
+            runConfigurationRuntimeOperationResultSchema.parse(replay),
+          );
+        }
+
+        const target = await resolveRunConfigurationRuntimeTarget(
+          ownerId,
+          input.data.projectId,
+          input.data.targetWorktreeId,
+        );
+        let definitionRevision: string | null = null;
+        if (input.data.operation !== "stop") {
+          const definition = runConfigurationGetResponseSchema.parse(
+            await bridge.request(target.workerId, {
+              type: "project.run-configuration-definitions.get",
+              operationId: input.data.operationId,
+              projectId: input.data.projectId,
+              sourcePath: target.sourcePath,
+              configurationId: input.data.configurationId,
+            }),
+          );
+          if (
+            definition.operationId !== input.data.operationId ||
+            definition.projectId !== input.data.projectId
+          ) {
+            throw new Error(
+              "The Run configuration definition response was misrouted.",
+            );
+          }
+          if (!definition.result.found) {
+            throw new CliCommandRequestError(
+              "not-found",
+              404,
+              "The Run configuration definition was not found in Primary.",
+            );
+          }
+          if (
+            definition.result.entry.status !== "ready" ||
+            !definition.result.entry.revision
+          ) {
+            throw new ExecutionLaneConflictError(
+              definition.result.entry.diagnostics[0]?.message ??
+                "The Run configuration definition is invalid.",
+            );
+          }
+          definitionRevision = definition.result.entry.revision;
+        }
+
+        const operationRequest =
+          input.data.operation === "stop"
+            ? {
+                operationId: input.data.operationId,
+                projectId: input.data.projectId,
+                configurationId: input.data.configurationId,
+                worktreeId: target.worktree.id,
+                workerId: target.workerId,
+                operation: "stop" as const,
+                definitionRevision: null,
+                codexEnvironmentRevision: null,
+              }
+            : {
+                operationId: input.data.operationId,
+                projectId: input.data.projectId,
+                configurationId: input.data.configurationId,
+                worktreeId: target.worktree.id,
+                workerId: target.workerId,
+                operation: input.data.operation,
+                definitionRevision: definitionRevision!,
+                codexEnvironmentRevision: null,
+              };
+        const durable =
+          await repository.requestRunConfigurationRuntimeOperation(
+            ownerId,
+            operationRequest,
+          );
+        if (durable.operation.outcome !== "accepted") {
+          await appendAudit(request, {
+            action: `run.configuration.app.${input.data.operation}`,
+            resourceId: input.data.configurationId,
+            resourceType: "run-configuration-runtime",
+            result: "succeeded",
+          });
+          return reply.send(
+            runConfigurationRuntimeOperationResultSchema.parse(durable),
+          );
+        }
+        const runtime = durable.runtime;
+        if (!runtime?.terminalId) {
+          throw new Error(
+            "The accepted Run configuration runtime has no terminal binding.",
+          );
+        }
+        const identity = {
+          runtimeId: runtime.id,
+          projectId: runtime.projectId,
+          configurationId: runtime.configurationId,
+          worktreeId: runtime.worktreeId,
+          workerId: runtime.workerId,
+          definitionRevision: runtime.definitionRevision,
+          codexEnvironmentRevision: runtime.codexEnvironmentRevision,
+          generation: runtime.generation,
+          operationId: runtime.requestedOperationId,
+          terminalId: runtime.terminalId,
+        };
+        let workerResult;
+        try {
+          workerResult =
+            runConfigurationRuntimeWorkerOperationResultSchema.parse(
+              await bridge.request(
+                target.workerId,
+                input.data.operation === "stop"
+                  ? {
+                      type: "project.run-configuration-runtime.stop",
+                      identity,
+                    }
+                  : {
+                      type:
+                        input.data.operation === "start"
+                          ? "project.run-configuration-runtime.start"
+                          : "project.run-configuration-runtime.restart",
+                      identity,
+                      rootKind: target.rootKind,
+                      sourcePath: target.sourcePath,
+                      targetPath: target.targetPath,
+                    },
+                { timeoutMs: 30_000 },
+              ),
+            );
+        } catch (error) {
+          const failed = runConfigurationRuntimeWorkerObservationSchema.parse({
+            ...identity,
+            state: "failed",
+            startedAt: runtime.startedAt,
+            endedAt: new Date().toISOString(),
+            exitCode: null,
+            signal: null,
+            failure: {
+              phase: input.data.operation === "stop" ? "stop" : "spawn",
+              code: "worker-request-failed",
+              message: errorMessage(error).slice(0, 1_000),
+              retryable: true,
+            },
+          });
+          const applied =
+            await repository.applyRunConfigurationRuntimeObservation(
+              ownerId,
+              target.workerId,
+              failed,
+            );
+          if (applied?.runtime.terminalId) {
+            await updateTerminalStatus(applied.runtime.terminalId, "failed");
+          }
+          publishLiveInvalidation("run", {
+            projectId: input.data.projectId,
+            entityId: runtime.id,
+          });
+          throw error;
+        }
+        if (
+          workerResult.outcome !== "accepted" &&
+          workerResult.outcome !== "replayed"
+        ) {
+          const rejected = runConfigurationRuntimeWorkerObservationSchema.parse(
+            {
+              ...identity,
+              state: "failed",
+              startedAt: runtime.startedAt,
+              endedAt: new Date().toISOString(),
+              exitCode: null,
+              signal: null,
+              failure: {
+                phase: "reconcile",
+                code:
+                  workerResult.outcome === "not-found"
+                    ? "worker-runtime-not-found"
+                    : "worker-runtime-stale",
+                message:
+                  workerResult.outcome === "not-found"
+                    ? "The worker no longer has this Run configuration runtime."
+                    : "The worker rejected stale Run configuration lifecycle state.",
+                retryable: true,
+              },
+            },
+          );
+          const rejectedApply =
+            await repository.applyRunConfigurationRuntimeObservation(
+              ownerId,
+              target.workerId,
+              rejected,
+            );
+          if (rejectedApply?.applied && rejectedApply.runtime.terminalId) {
+            await updateTerminalStatus(
+              rejectedApply.runtime.terminalId,
+              "failed",
+            );
+            publishLiveInvalidation("run", {
+              projectId: rejectedApply.runtime.projectId,
+              entityId: rejectedApply.runtime.id,
+            });
+          }
+          throw new ExecutionLaneConflictError(
+            workerResult.outcome === "not-found"
+              ? "The worker no longer has this Run configuration runtime."
+              : "The worker rejected stale Run configuration lifecycle state.",
+          );
+        }
+        if (!workerResult.observation) {
+          throw new Error(
+            "The worker omitted the Run configuration runtime observation.",
+          );
+        }
+        const applied =
+          await repository.applyRunConfigurationRuntimeObservation(
+            ownerId,
+            target.workerId,
+            workerResult.observation,
+          );
+        if (!applied) {
+          throw new Error(
+            "The Run configuration runtime observation was unauthorized.",
+          );
+        }
+        if (applied.reason === "invalid-transition") {
+          const invalid = runConfigurationRuntimeWorkerObservationSchema.parse({
+            ...identity,
+            state: "failed",
+            startedAt: runtime.startedAt,
+            endedAt: new Date().toISOString(),
+            exitCode: null,
+            signal: null,
+            failure: {
+              phase: "reconcile",
+              code: "worker-invalid-transition",
+              message:
+                "The worker returned an invalid Run configuration state transition.",
+              retryable: true,
+            },
+          });
+          const invalidApply =
+            await repository.applyRunConfigurationRuntimeObservation(
+              ownerId,
+              target.workerId,
+              invalid,
+            );
+          if (invalidApply?.applied && invalidApply.runtime.terminalId) {
+            await updateTerminalStatus(
+              invalidApply.runtime.terminalId,
+              "failed",
+            );
+            publishLiveInvalidation("run", {
+              projectId: invalidApply.runtime.projectId,
+              entityId: invalidApply.runtime.id,
+            });
+          }
+          throw new ExecutionLaneConflictError(
+            "The worker returned an invalid Run configuration state transition.",
+          );
+        }
+        if (applied.runtime.terminalId) {
+          await updateTerminalStatus(
+            applied.runtime.terminalId,
+            ["starting", "running", "restarting", "stopping"].includes(
+              applied.runtime.state,
+            )
+              ? "running"
+              : applied.runtime.state === "failed"
+                ? "failed"
+                : "exited",
+          );
+        }
+        publishLiveInvalidation("run", {
+          projectId: applied.runtime.projectId,
+          entityId: applied.runtime.id,
+        });
+        await appendAudit(request, {
+          action: `run.configuration.app.${input.data.operation}`,
+          resourceId: input.data.configurationId,
+          resourceType: "run-configuration-runtime",
+          result: "succeeded",
+        });
+        return reply.code(202).send(
+          runConfigurationRuntimeOperationResultSchema.parse({
+            ...durable,
+            runtime: applied.runtime,
+          }),
+        );
+      } catch (error) {
+        return sendRunApiFailure(reply, error);
+      }
+    },
+  );
+
+  app.post("/api/run-configuration-runtimes/status", async (request, reply) => {
+    const input = runConfigurationRuntimeStatusQuerySchema.safeParse(
+      request.body,
+    );
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const runtimes = await repository.listRunConfigurationRuntimes(
+      applicationOwnerId(),
+      input.data.projectId,
+      {
+        configurationId: input.data.configurationId ?? undefined,
+        worktreeId: input.data.targetWorktreeId ?? undefined,
+        limit: input.data.limit,
+      },
+    );
+    return reply.send(
+      runConfigurationRuntimeStatusResultSchema.parse({
+        operationId: input.data.operationId,
+        projectId: input.data.projectId,
+        runtimes,
+      }),
+    );
+  });
+
+  app.post("/api/run-configuration-runtimes/output", async (request, reply) => {
+    const input = runConfigurationRuntimeOutputQuerySchema.safeParse(
+      request.body,
+    );
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const runtime = await repository.getRunConfigurationRuntime(
+        applicationOwnerId(),
+        input.data.projectId,
+        input.data.configurationId,
+        input.data.worktreeId,
+      );
+      if (!runtime?.terminalId) {
+        return reply
+          .code(404)
+          .send({ error: "Run configuration runtime not found." });
+      }
+      if (!bridge.isConnected(runtime.workerId)) {
+        return reply
+          .code(503)
+          .send({ error: "The Run configuration worker is offline." });
+      }
+      const protectedOutput =
+        protectedRunConfigurationRuntimeWorkerOutputSchema.parse(
+          await bridge.request(runtime.workerId, {
+            type: "project.run-configuration-runtime.output",
+            requestOperationId: input.data.operationId,
+            serverId,
+            identity: {
+              runtimeId: runtime.id,
+              projectId: runtime.projectId,
+              configurationId: runtime.configurationId,
+              worktreeId: runtime.worktreeId,
+              workerId: runtime.workerId,
+              definitionRevision: runtime.definitionRevision,
+              codexEnvironmentRevision: runtime.codexEnvironmentRevision,
+              generation: runtime.generation,
+              operationId: runtime.requestedOperationId,
+              terminalId: runtime.terminalId,
+            },
+            tail: input.data.tail,
+          }),
+        );
+      if (
+        protectedOutput.requestOperationId !== input.data.operationId ||
+        protectedOutput.identity.runtimeId !== runtime.id ||
+        protectedOutput.identity.projectId !== runtime.projectId ||
+        protectedOutput.identity.configurationId !== runtime.configurationId ||
+        protectedOutput.identity.worktreeId !== runtime.worktreeId ||
+        protectedOutput.identity.workerId !== runtime.workerId ||
+        protectedOutput.identity.definitionRevision !==
+          runtime.definitionRevision ||
+        protectedOutput.identity.codexEnvironmentRevision !==
+          runtime.codexEnvironmentRevision ||
+        protectedOutput.identity.generation !== runtime.generation ||
+        protectedOutput.identity.operationId !== runtime.requestedOperationId ||
+        protectedOutput.identity.terminalId !== runtime.terminalId
+      ) {
+        throw new Error("The Run configuration output response was misrouted.");
+      }
+      return reply.send(
+        protectedRunConfigurationRuntimeOutputResultSchema.parse({
+          operationId: input.data.operationId,
+          projectId: runtime.projectId,
+          configurationId: runtime.configurationId,
+          worktreeId: runtime.worktreeId,
+          generation: runtime.generation,
+          protectedOutput: protectedOutput.protectedOutput,
+        }),
+      );
+    } catch (error) {
+      return sendRunApiFailure(reply, error);
+    }
+  });
 
   app.get<{
     Querystring: {
@@ -23312,6 +23798,12 @@ export async function buildApp({
     if (!context) {
       return reply.code(404).send({ error: "Terminal not found." });
     }
+    if (context.kind === "run-configuration" || !context.stateProtection) {
+      return reply.code(409).send({
+        error:
+          "Run configuration terminals do not expose interactive terminal commands.",
+      });
+    }
     if (!bridge.isConnected(context.workerId)) {
       return reply.code(503).send({ error: "Project worker is offline." });
     }
@@ -23408,14 +23900,18 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const terminal = await repository.updateTerminal(
-        applicationOwnerId(),
-        request.params.terminalId,
-        input.data,
-      );
-      return terminal
-        ? reply.send(terminalWireSummarySchema.parse(terminal))
-        : reply.code(404).send({ error: "Terminal not found." });
+      try {
+        const terminal = await repository.updateTerminal(
+          applicationOwnerId(),
+          request.params.terminalId,
+          input.data,
+        );
+        return terminal
+          ? reply.send(terminalWireSummarySchema.parse(terminal))
+          : reply.code(404).send({ error: "Terminal not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
     },
   );
 
@@ -23435,6 +23931,12 @@ export async function buildApp({
         );
         if (!context) {
           return reply.code(404).send({ error: "Terminal not found." });
+        }
+        if (context.kind === "run-configuration" || !context.stateProtection) {
+          return reply.code(409).send({
+            error:
+              "Run configuration terminals are read-only and use the managed runtime output API.",
+          });
         }
         const terminal = await repository.updateTerminalService(
           applicationOwnerId(),
@@ -26004,6 +26506,12 @@ export async function buildApp({
         if (!context) {
           return reply.code(404).send({ error: "Terminal not found." });
         }
+        if (context.kind === "run-configuration" || !context.stateProtection) {
+          return reply.code(409).send({
+            error:
+              "Run configuration terminals are read-only and use the managed runtime output API.",
+          });
+        }
         const assertPreparationActive = () => {
           if (!directAttachments.preparationLeaseIsActive(preparationLease)) {
             throw new DirectAttachmentUnavailableError(
@@ -26328,6 +26836,15 @@ export async function buildApp({
         if (!context) {
           send({ type: "error", message: "Terminal not found." });
           socket.close(1008, "Terminal not found");
+          return;
+        }
+        if (context.kind === "run-configuration" || !context.stateProtection) {
+          send({
+            type: "error",
+            message:
+              "Run configuration terminals are read-only and use the managed runtime output API.",
+          });
+          socket.close(1008, "Run configuration terminal is read-only");
           return;
         }
         if (closed) return;

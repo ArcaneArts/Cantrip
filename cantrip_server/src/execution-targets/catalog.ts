@@ -87,7 +87,7 @@ export function buildExecutionTargetCatalog(input: {
     status: string | null;
     target: ExecutionTarget;
     title?: string;
-    titleProtection?: PrivateDisplayLabelOpaque;
+    titleProtection?: PrivateDisplayLabelOpaque | null;
   }) => {
     const worker = workersById.get(candidate.placement.workerId);
     if (!worker) return;
@@ -130,7 +130,7 @@ export function buildExecutionTargetCatalog(input: {
       "chat" | "terminal" | "explorer" | "code"
     >;
     status: string | null;
-    titleProtection: PrivateDisplayLabelOpaque;
+    titleProtection: PrivateDisplayLabelOpaque | null;
     worktreeId: string;
   }) => {
     const worktree = worktreesById.get(surface.worktreeId);
@@ -259,6 +259,7 @@ export function buildExecutionTargetCatalog(input: {
     });
   }
   for (const terminal of input.terminals) {
+    if (terminal.kind === "run-configuration") continue;
     appendWorktreeSurface({
       activeWorkerId: terminal.activeWorkerId,
       id: terminal.id,

@@ -12,6 +12,7 @@ import path from "node:path";
 
 import {
   appLiveServerMessageSchema,
+  terminalWireListSchema,
   unavailableCodeCapabilities,
   unprobedCodexRuntimeReport,
   type AppLiveServerMessage,
@@ -26,6 +27,10 @@ import {
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
 import {
+  protectedRunConfigurationRuntimeOutputResultSchema,
+  runConfigurationRuntimeOperationResultSchema,
+  runConfigurationRuntimeStatusResultSchema,
+  runConfigurationRuntimeWorkerOperationResultSchema,
   runConfigurationRuntimeWorkerObservationSchema,
   runConfigurationRuntimeWorkerReconciliationSchema,
   type RunConfigurationRuntime,
@@ -52,6 +57,9 @@ const dataDirectory = await mkdtemp(
 const primaryRoot = await realpath(
   await mkdtemp(path.join(tmpdir(), "cantrip-run-configuration-primary-")),
 );
+const alternateRoot = await realpath(
+  await mkdtemp(path.join(tmpdir(), "cantrip-run-configuration-alternate-")),
+);
 const config: ServerConfig = {
   agentModel: "gemma4:26b",
   agentModelProvider: "ollama",
@@ -70,11 +78,24 @@ const configurationId = "0f82c573-704d-4a06-984e-5ce0b8d688ca";
 const listeners = new Set<WorkerNotificationListener>();
 const commands: WorkerCommand[] = [];
 let connected = true;
+let runtimeCommandFailure: Error | null = null;
 let reconcileRuntime = (identities: RunConfigurationRuntimeWorkerIdentity[]) =>
   runConfigurationRuntimeWorkerReconciliationSchema.parse({
     runtimes: identities.map((identity) => ({ found: false, identity })),
     orphanedRuntimeIds: [],
   });
+const protectedRunOutput = {
+  formatVersion: 1 as const,
+  domain: "run-content" as const,
+  keyRevision: 1,
+  envelope: {
+    version: 1 as const,
+    algorithm: "AES-256-GCM" as const,
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+};
 
 const emitNotification = async (
   notification: WorkerNotification,
@@ -112,6 +133,16 @@ const bridge: WorkerCommandBus = {
   async request(id, command) {
     if (id !== workerId) throw new Error(`Unexpected worker ${id}.`);
     commands.push(command);
+    if (
+      runtimeCommandFailure &&
+      (command.type === "project.run-configuration-runtime.start" ||
+        command.type === "project.run-configuration-runtime.restart" ||
+        command.type === "project.run-configuration-runtime.stop")
+    ) {
+      const failure = runtimeCommandFailure;
+      runtimeCommandFailure = null;
+      throw failure;
+    }
     switch (command.type) {
       case "project.run-configuration-definitions.list":
       case "project.run-configuration-definitions.get":
@@ -121,6 +152,39 @@ const bridge: WorkerCommandBus = {
         return definitionService.execute(command);
       case "project.run-configuration-runtime.reconcile":
         return reconcileRuntime(command.identities);
+      case "project.run-configuration-runtime.start":
+      case "project.run-configuration-runtime.restart":
+        return runConfigurationRuntimeWorkerOperationResultSchema.parse({
+          outcome: "accepted",
+          observation: {
+            ...command.identity,
+            state: "running",
+            startedAt: new Date().toISOString(),
+            endedAt: null,
+            exitCode: null,
+            signal: null,
+            failure: null,
+          },
+        });
+      case "project.run-configuration-runtime.stop":
+        return runConfigurationRuntimeWorkerOperationResultSchema.parse({
+          outcome: "accepted",
+          observation: {
+            ...command.identity,
+            state: "idle",
+            startedAt: new Date().toISOString(),
+            endedAt: new Date().toISOString(),
+            exitCode: null,
+            signal: null,
+            failure: null,
+          },
+        });
+      case "project.run-configuration-runtime.output":
+        return {
+          requestOperationId: command.requestOperationId,
+          identity: command.identity,
+          protectedOutput: protectedRunOutput,
+        };
       default:
         throw new Error(`Unexpected worker command ${command.type}.`);
     }
@@ -227,6 +291,7 @@ afterAll(async () => {
   await Promise.all([
     rm(dataDirectory, { recursive: true, force: true }),
     rm(primaryRoot, { recursive: true, force: true }),
+    rm(alternateRoot, { recursive: true, force: true }),
   ]);
 });
 
@@ -440,6 +505,373 @@ describe.sequential("Run configuration definition API", () => {
     socket.terminate();
   }, 15_000);
 
+  it("runs, restarts, stops, reports, and reuses a Primary-bound Run terminal", async () => {
+    commands.length = 0;
+    const startOperationId = randomUUID();
+    const startedResponse = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "start",
+        operationId: startOperationId,
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+      },
+    });
+    expect(startedResponse.statusCode).toBe(202);
+    const started = runConfigurationRuntimeOperationResultSchema.parse(
+      startedResponse.json(),
+    );
+    expect(started).toMatchObject({
+      replayed: false,
+      operation: { operation: "start", outcome: "accepted", generation: 1 },
+      runtime: { state: "running", generation: 1 },
+    });
+    expect(started.runtime?.terminalId).toBe(started.runtime?.id);
+    const terminalId = started.runtime?.terminalId;
+    if (!terminalId || !started.runtime) throw new Error("Expected a runtime.");
+    expect(
+      commands.find(
+        (command) => command.type === "project.run-configuration-runtime.start",
+      ),
+    ).toMatchObject({
+      sourcePath: primaryRoot,
+      targetPath: primaryRoot,
+      identity: { terminalId, generation: 1 },
+    });
+
+    const terminals = terminalWireListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/terminals`,
+        })
+      ).json(),
+    );
+    expect(terminals).toContainEqual(
+      expect.objectContaining({
+        id: terminalId,
+        kind: "run-configuration",
+        runConfigurationId: configurationId,
+        runConfigurationRuntimeId: started.runtime.id,
+        titleProtection: null,
+        stateProtection: null,
+        status: "running",
+      }),
+    );
+    const direct = await app.inject({
+      method: "POST",
+      url: `/api/terminals/${terminalId}/direct`,
+      payload: { clientId: randomUUID() },
+    });
+    expect(direct.statusCode).toBe(409);
+    expect(direct.json()).toMatchObject({
+      error: expect.stringMatching(/read-only/u),
+    });
+
+    const startsBeforeReplay = commands.filter(
+      (command) => command.type === "project.run-configuration-runtime.start",
+    ).length;
+    const replayedResponse = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "start",
+        operationId: startOperationId,
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+      },
+    });
+    expect(replayedResponse.statusCode).toBe(200);
+    expect(
+      runConfigurationRuntimeOperationResultSchema.parse(
+        replayedResponse.json(),
+      ),
+    ).toMatchObject({ replayed: true, runtime: { state: "running" } });
+    expect(
+      commands.filter(
+        (command) => command.type === "project.run-configuration-runtime.start",
+      ),
+    ).toHaveLength(startsBeforeReplay);
+
+    const status = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/status",
+      payload: {
+        operationId: randomUUID(),
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+        limit: 10,
+      },
+    });
+    expect(status.statusCode).toBe(200);
+    expect(
+      runConfigurationRuntimeStatusResultSchema.parse(status.json()),
+    ).toMatchObject({
+      projectId,
+      runtimes: [
+        expect.objectContaining({ id: started.runtime.id, state: "running" }),
+      ],
+    });
+
+    const outputOperationId = randomUUID();
+    const output = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/output",
+      payload: {
+        operationId: outputOperationId,
+        projectId,
+        configurationId,
+        worktreeId: started.runtime.worktreeId,
+        tail: 4_096,
+      },
+    });
+    expect(output.statusCode).toBe(200);
+    expect(
+      protectedRunConfigurationRuntimeOutputResultSchema.parse(output.json()),
+    ).toEqual({
+      operationId: outputOperationId,
+      projectId,
+      configurationId,
+      worktreeId: started.runtime.worktreeId,
+      generation: 1,
+      protectedOutput: protectedRunOutput,
+    });
+
+    const restartedResponse = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "restart",
+        operationId: randomUUID(),
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+      },
+    });
+    expect(restartedResponse.statusCode).toBe(202);
+    expect(
+      runConfigurationRuntimeOperationResultSchema.parse(
+        restartedResponse.json(),
+      ),
+    ).toMatchObject({
+      runtime: { terminalId, generation: 2, state: "running" },
+    });
+
+    const stoppedResponse = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "stop",
+        operationId: randomUUID(),
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+      },
+    });
+    expect(stoppedResponse.statusCode).toBe(202);
+    expect(
+      runConfigurationRuntimeOperationResultSchema.parse(
+        stoppedResponse.json(),
+      ),
+    ).toMatchObject({
+      runtime: { terminalId, generation: 2, state: "idle" },
+    });
+
+    const startedAgainResponse = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "start",
+        operationId: randomUUID(),
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+      },
+    });
+    expect(startedAgainResponse.statusCode).toBe(202);
+    expect(
+      runConfigurationRuntimeOperationResultSchema.parse(
+        startedAgainResponse.json(),
+      ),
+    ).toMatchObject({
+      runtime: { terminalId, generation: 3, state: "running" },
+    });
+
+    const finalStop = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "stop",
+        operationId: randomUUID(),
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+      },
+    });
+    expect(finalStop.statusCode).toBe(202);
+  });
+
+  it("fails a committed generation closed when worker dispatch is lost", async () => {
+    const operationId = randomUUID();
+    const before = commands.length;
+    runtimeCommandFailure = new Error("Worker disconnected during launch.");
+    const failed = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "start",
+        operationId,
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+      },
+    });
+    expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    const worktrees = await database.repository.listProjectWorktrees(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const primary = worktrees.find((worktree) => worktree.isPrimary);
+    if (!primary) throw new Error("Expected a Primary worktree.");
+    await expect
+      .poll(() =>
+        database.repository.getRunConfigurationRuntime(
+          LOCAL_USER_ID,
+          projectId,
+          configurationId,
+          primary.id,
+        ),
+      )
+      .toMatchObject({
+        state: "failed",
+        failure: { phase: "spawn", code: "worker-request-failed" },
+      });
+
+    const replayed = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "start",
+        operationId,
+        projectId,
+        configurationId,
+        targetWorktreeId: null,
+      },
+    });
+    expect(replayed.statusCode).toBe(200);
+    expect(
+      runConfigurationRuntimeOperationResultSchema.parse(replayed.json()),
+    ).toMatchObject({
+      replayed: true,
+      runtime: { state: "failed" },
+    });
+    expect(
+      commands
+        .slice(before)
+        .filter(
+          (command) =>
+            command.type === "project.run-configuration-runtime.start",
+        ),
+    ).toHaveLength(1);
+  });
+
+  it("uses an explicitly selected worktree while still reading Primary definitions", async () => {
+    const worktrees = await database.repository.listProjectWorktrees(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    const primary = worktrees.find((worktree) => worktree.isPrimary);
+    if (!primary) throw new Error("Expected a Primary worktree.");
+    const alternateId = randomUUID();
+    await database.repository.reconcileProjectWorktrees(
+      LOCAL_USER_ID,
+      projectId,
+      workerId,
+      {
+        sourcePath: primaryRoot,
+        primaryPath: primaryRoot,
+        gitCommonDir: path.join(primaryRoot, ".git"),
+        managedRoot: path.join(dataDirectory, "worktrees"),
+        repositoryFingerprint: "c".repeat(64),
+        worktrees: [
+          {
+            path: primaryRoot,
+            head: "1".repeat(40),
+            branch: "main",
+            detached: false,
+            isPrimary: true,
+            managed: false,
+            locked: false,
+            lockReason: null,
+            prunable: false,
+            pruneReason: null,
+            missing: false,
+          },
+          {
+            path: alternateRoot,
+            head: "2".repeat(40),
+            branch: "feature/run-target",
+            detached: false,
+            isPrimary: false,
+            managed: true,
+            locked: false,
+            lockReason: null,
+            prunable: false,
+            pruneReason: null,
+            missing: false,
+          },
+        ],
+      },
+      {
+        id: alternateId,
+        name: "Run target",
+        origin: "user",
+        path: alternateRoot,
+      },
+    );
+    commands.length = 0;
+    const started = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "start",
+        operationId: randomUUID(),
+        projectId,
+        configurationId,
+        targetWorktreeId: alternateId,
+      },
+    });
+    expect(started.statusCode).toBe(202);
+    const runtime = runConfigurationRuntimeOperationResultSchema.parse(
+      started.json(),
+    ).runtime;
+    expect(runtime).toMatchObject({
+      worktreeId: alternateId,
+      state: "running",
+    });
+    expect(
+      commands.find(
+        (command) => command.type === "project.run-configuration-runtime.start",
+      ),
+    ).toMatchObject({ sourcePath: primaryRoot, targetPath: alternateRoot });
+    const stopped = await app.inject({
+      method: "POST",
+      url: "/api/run-configuration-runtimes/operations",
+      payload: {
+        operation: "stop",
+        operationId: randomUUID(),
+        projectId,
+        configurationId,
+        targetWorktreeId: alternateId,
+      },
+    });
+    expect(stopped.statusCode).toBe(202);
+  });
+
   it("rejects invalid IDs before worker dispatch and does not route offline", async () => {
     const before = commands.length;
     const invalid = await app.inject({
@@ -456,6 +888,18 @@ describe.sequential("Run configuration definition API", () => {
         url: `/api/projects/${projectId}/run-configurations?operationId=${randomUUID()}`,
       });
       expect(offline.statusCode).toBe(503);
+      const lifecycleOffline = await app.inject({
+        method: "POST",
+        url: "/api/run-configuration-runtimes/operations",
+        payload: {
+          operation: "start",
+          operationId: randomUUID(),
+          projectId,
+          configurationId,
+          targetWorktreeId: null,
+        },
+      });
+      expect(lifecycleOffline.statusCode).toBe(503);
     } finally {
       connected = true;
     }

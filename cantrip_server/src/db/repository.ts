@@ -527,6 +527,7 @@ export interface TunnelAttachmentAuthorization {
 }
 
 export interface TerminalExecutionContext {
+  kind: TerminalWireSummary["kind"];
   linkedChatId: string | null;
   projectId: string;
   rootKind: ProjectWorktreeSummary["rootKind"];
@@ -537,6 +538,8 @@ export interface TerminalExecutionContext {
   workerId: string;
   worktreePath: string;
   worktreeId: string;
+  runConfigurationId: string | null;
+  runConfigurationRuntimeId: string | null;
 }
 
 export interface ProjectRemovalContext {
@@ -1533,12 +1536,15 @@ function toTerminalWireSummary(
   return {
     id: terminal.id,
     projectId: terminal.projectId,
+    kind: terminal.kind,
     titleProtection: terminal.protectedLabel,
     position: terminal.position,
     status: terminal.status as TerminalWireSummary["status"],
     activeWorkerId: terminal.activeWorkerId,
     worktreeId: terminal.worktreeId,
     linkedChatId: terminal.linkedChatId,
+    runConfigurationId: terminal.runConfigurationId,
+    runConfigurationRuntimeId: terminal.runConfigurationRuntimeId,
     serviceEnabled: terminal.serviceEnabled,
     stateProtection: terminal.protectedState,
     createdAt: toISOString(terminal.createdAt),
@@ -10166,10 +10172,48 @@ export class ServerRepository {
         );
   }
 
+  async getRunConfigurationRuntimeOperationResult(
+    ownerId: string,
+    operationId: string,
+  ): Promise<RunConfigurationRuntimeOperationResult | null> {
+    const rows = await this.database
+      .select({ operation: schema.runConfigurationRuntimeOperations })
+      .from(schema.runConfigurationRuntimeOperations)
+      .where(
+        and(
+          eq(schema.runConfigurationRuntimeOperations.id, operationId),
+          eq(schema.runConfigurationRuntimeOperations.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const operation = rows[0]?.operation;
+    if (!operation) return null;
+    const runtimeRows = operation.runtimeId
+      ? await this.database
+          .select({ runtime: schema.runConfigurationRuntimes })
+          .from(schema.runConfigurationRuntimes)
+          .where(
+            and(
+              eq(schema.runConfigurationRuntimes.id, operation.runtimeId),
+              eq(schema.runConfigurationRuntimes.ownerId, ownerId),
+            ),
+          )
+          .limit(1)
+      : [];
+    return {
+      operation: toRunConfigurationRuntimeOperation(operation),
+      replayed: true,
+      runtime: runtimeRows[0]
+        ? toRunConfigurationRuntime(runtimeRows[0].runtime)
+        : null,
+    };
+  }
+
   async requestRunConfigurationRuntimeOperation(
     ownerId: string,
     input: RunConfigurationRuntimeOperationRequest,
   ): Promise<RunConfigurationRuntimeOperationResult> {
+    const terminalPosition = await this.nextProjectTabPosition(input.projectId);
     return this.database.transaction(async (transaction) => {
       const operationRows = await transaction
         .select()
@@ -10314,7 +10358,7 @@ export class ServerRepository {
         .limit(1);
       if (racedOperationRows[0]) return replay(racedOperationRows[0]);
 
-      const current = runtimeRows[0];
+      let current = runtimeRows[0];
       let outcome: RunConfigurationRuntimeOperationRecord["outcome"];
       let generation = current?.generation ?? 0;
       if (!current) {
@@ -10362,6 +10406,72 @@ export class ServerRepository {
         throw new Error(
           "The active Run configuration runtime belongs to another worker.",
         );
+      }
+
+      if (current && outcome === "accepted" && current.terminalId === null) {
+        const terminalId = current.id;
+        const insertedTerminals = await transaction
+          .insert(schema.terminals)
+          .values({
+            id: terminalId,
+            projectId: input.projectId,
+            kind: "run-configuration",
+            protectedLabel: null,
+            protectedState: null,
+            position: terminalPosition,
+            status: "running",
+            activeWorkerId: input.workerId,
+            worktreeId: input.worktreeId,
+            linkedChatId: null,
+            runConfigurationId: input.configurationId,
+            runConfigurationRuntimeId: current.id,
+            serviceEnabled: false,
+          })
+          .onConflictDoNothing({ target: schema.terminals.id })
+          .returning();
+        const terminalRows = insertedTerminals[0]
+          ? insertedTerminals
+          : await transaction
+              .select()
+              .from(schema.terminals)
+              .where(eq(schema.terminals.id, terminalId))
+              .limit(1);
+        const terminal = terminalRows[0];
+        if (
+          !terminal ||
+          terminal.projectId !== input.projectId ||
+          terminal.kind !== "run-configuration" ||
+          terminal.activeWorkerId !== input.workerId ||
+          terminal.worktreeId !== input.worktreeId ||
+          terminal.runConfigurationId !== input.configurationId ||
+          terminal.runConfigurationRuntimeId !== current.id
+        ) {
+          throw new Error(
+            "The Run configuration terminal identity belongs to another surface.",
+          );
+        }
+        const boundRows = await transaction
+          .update(schema.runConfigurationRuntimes)
+          .set({ terminalId, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.runConfigurationRuntimes.id, current.id),
+              eq(schema.runConfigurationRuntimes.ownerId, ownerId),
+              isNull(schema.runConfigurationRuntimes.terminalId),
+            ),
+          )
+          .returning();
+        if (!boundRows[0]) {
+          throw new Error("Could not bind the Run configuration terminal.");
+        }
+        current = boundRows[0];
+        if (insertedTerminals[0]) {
+          await attachProjectTab(transaction, {
+            projectId: input.projectId,
+            tabId: terminalId,
+            tabKind: "terminal",
+          });
+        }
       }
 
       const insertedOperations = await transaction
@@ -12880,6 +12990,7 @@ export class ServerRepository {
         activeWorkerId: row.worktree.workerId,
         worktreeId: row.chat.activeWorktreeId,
         linkedChatId: row.chat.id,
+        kind: "chat-console",
       })
       .returning();
     return toTerminalWireSummary(
@@ -12894,6 +13005,11 @@ export class ServerRepository {
   ): Promise<TerminalWireSummary | null> {
     const owned = await this.getTerminalExecutionContext(ownerId, terminalId);
     if (!owned) return null;
+    if (owned.kind === "run-configuration") {
+      throw new Error(
+        "Run configuration terminal titles come from their shared definition.",
+      );
+    }
     const result = await this.database
       .update(schema.terminals)
       .set({ protectedLabel: input.titleProtection, updatedAt: new Date() })
@@ -12909,6 +13025,11 @@ export class ServerRepository {
   ): Promise<TerminalWireSummary | null> {
     const owned = await this.getTerminalExecutionContext(ownerId, terminalId);
     if (!owned) return null;
+    if (owned.kind === "run-configuration") {
+      throw new Error(
+        "Run configuration terminals are controlled by their runtime.",
+      );
+    }
     if (owned.linkedChatId) {
       throw new Error("Linked Codex consoles cannot run terminal services.");
     }
@@ -12949,12 +13070,17 @@ export class ServerRepository {
           eq(schema.terminals.serviceEnabled, true),
         ),
       );
-    return rows.map(({ terminal, worktree }) => ({
-      terminalId: terminal.id,
-      serverId,
-      worktreePath: worktree.absolutePath,
-      stateProtection: terminal.protectedState,
-    }));
+    return rows.map(({ terminal, worktree }) => {
+      if (!terminal.protectedState) {
+        throw new Error("Terminal service protection is unavailable.");
+      }
+      return {
+        terminalId: terminal.id,
+        serverId,
+        worktreePath: worktree.absolutePath,
+        stateProtection: terminal.protectedState,
+      };
+    });
   }
 
   async updateTerminalWorktree(
@@ -12976,6 +13102,9 @@ export class ServerRepository {
       .limit(1);
     const terminal = rows[0]?.terminal;
     if (!terminal) return null;
+    if (terminal.kind === "run-configuration") {
+      throw new Error("Run configuration terminals cannot change worktrees.");
+    }
     if (terminal.linkedChatId) {
       throw new Error(
         "Linked Codex consoles inherit their parent chat worktree.",
@@ -14371,6 +14500,15 @@ export class ServerRepository {
             eq(schema.runInstances.terminalId, terminalId),
           ),
         );
+      await transaction
+        .update(schema.runConfigurationRuntimes)
+        .set({ terminalId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.runConfigurationRuntimes.ownerId, ownerId),
+            eq(schema.runConfigurationRuntimes.terminalId, terminalId),
+          ),
+        );
       await detachProjectTab(
         transaction,
         context.projectId,
@@ -14411,11 +14549,14 @@ export class ServerRepository {
       ? {
           terminalId: row.terminal.id,
           projectId: row.terminal.projectId,
+          kind: row.terminal.kind,
           rootKind: row.worktree.rootKind,
           workerId: row.terminal.activeWorkerId,
           worktreeId: row.worktree.id,
           worktreePath: row.worktree.absolutePath,
           linkedChatId: row.terminal.linkedChatId,
+          runConfigurationId: row.terminal.runConfigurationId,
+          runConfigurationRuntimeId: row.terminal.runConfigurationRuntimeId,
           serviceEnabled: row.terminal.serviceEnabled,
           stateProtection: row.terminal.protectedState,
           status: row.terminal.status as TerminalWireSummary["status"],

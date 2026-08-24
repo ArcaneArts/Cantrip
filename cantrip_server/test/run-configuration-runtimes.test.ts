@@ -301,7 +301,7 @@ describe("Run configuration runtime persistence", () => {
       codexEnvironmentRevision,
       generation: 2,
       operationId: restartOperationId,
-      terminalId: null,
+      terminalId: restart.runtime.id,
     });
 
     const staleExit =

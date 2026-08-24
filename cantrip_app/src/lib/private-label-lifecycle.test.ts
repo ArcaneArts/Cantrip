@@ -295,6 +295,7 @@ describe("protected app-facing label and surface-state lifecycle", () => {
     const terminal: TerminalWireSummary = {
       ...common,
       id: ids.terminal,
+      kind: "interactive",
       titleProtection: await surfaces.protect(
         ids.terminal,
         `${sentinel}-terminal`,
@@ -304,6 +305,8 @@ describe("protected app-facing label and surface-state lifecycle", () => {
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
       linkedChatId: null,
+      runConfigurationId: null,
+      runConfigurationRuntimeId: null,
       stateProtection: await surfaces.protectTerminalState(
         ids.terminal,
         `${sentinel}/terminal-directory`,

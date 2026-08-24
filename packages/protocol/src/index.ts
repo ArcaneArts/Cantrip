@@ -4817,14 +4817,23 @@ export const terminalServiceRuntimeConfigurationSchema = z
   })
   .strict();
 
+export const terminalKindSchema = z.enum([
+  "interactive",
+  "chat-console",
+  "run-configuration",
+]);
+
 const terminalSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
+  kind: terminalKindSchema,
   position: z.number().int().nonnegative(),
   status: z.enum(["idle", "running", "exited", "offline", "failed"]),
   activeWorkerId: z.string().min(1),
   worktreeId: z.string().min(1),
   linkedChatId: z.string().min(1).nullable(),
+  runConfigurationId: z.string().uuid().nullable(),
+  runConfigurationRuntimeId: z.string().uuid().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -4837,19 +4846,60 @@ export const terminalSummarySchema = terminalSummaryBaseSchema.extend({
 
 export const terminalWireSummarySchema = terminalSummaryBaseSchema
   .extend({
-    titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: terminalPrivateStateOpaqueSchema,
+    titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
+    stateProtection: terminalPrivateStateOpaqueSchema.nullable(),
     serviceEnabled: z.boolean(),
   })
   .strict()
-  .refine(
-    (terminal) =>
-      terminal.titleProtection.classification.recordKind === "terminal",
-    {
-      message: "Terminal title classification must be terminal.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
+  .superRefine((terminal, context) => {
+    if (terminal.kind === "run-configuration") {
+      if (
+        terminal.titleProtection !== null ||
+        terminal.stateProtection !== null ||
+        terminal.linkedChatId !== null ||
+        terminal.runConfigurationId === null ||
+        terminal.runConfigurationRuntimeId === null ||
+        terminal.serviceEnabled
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Run configuration terminals require only their runtime binding.",
+        });
+      }
+      return;
+    }
+    if (
+      terminal.titleProtection === null ||
+      terminal.stateProtection === null ||
+      terminal.runConfigurationId !== null ||
+      terminal.runConfigurationRuntimeId !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Interactive terminals require protected label and state fields.",
+      });
+      return;
+    }
+    if (terminal.titleProtection.classification.recordKind !== "terminal") {
+      context.addIssue({
+        code: "custom",
+        message: "Terminal title classification must be terminal.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+    if (
+      (terminal.kind === "chat-console") !==
+      (terminal.linkedChatId !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Only chat console terminals may have a linked chat.",
+        path: ["linkedChatId"],
+      });
+    }
+  });
 
 export const terminalListSchema = z.array(terminalSummarySchema);
 export const terminalWireListSchema = z.array(terminalWireSummarySchema);
@@ -6415,7 +6465,7 @@ export const projectTabMemberSummarySchema =
 export const projectTabMemberWireSummarySchema =
   projectTabMemberSummaryBaseSchema
     .extend({
-      titleProtection: privateDisplayLabelOpaqueSchema,
+      titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
     })
     .superRefine((member, context) => {
       const expectedRecordKind =
@@ -6430,7 +6480,16 @@ export const projectTabMemberWireSummarySchema =
                 : member.tabKind === "code"
                   ? "code-tab"
                   : "project-view";
-      if (
+      if (member.titleProtection === null) {
+        if (member.tabKind !== "terminal") {
+          context.addIssue({
+            code: "custom",
+            message:
+              "Only Run configuration terminal tabs may omit a protected title.",
+            path: ["titleProtection"],
+          });
+        }
+      } else if (
         member.titleProtection.classification.recordKind !== expectedRecordKind
       ) {
         context.addIssue({
@@ -14881,6 +14940,7 @@ export type TerminalServiceRuntimeConfiguration = z.infer<
 >;
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
 export type TerminalWireSummary = z.infer<typeof terminalWireSummarySchema>;
+export type TerminalKind = z.infer<typeof terminalKindSchema>;
 export type ScriptCommandKind = z.infer<typeof scriptCommandKindSchema>;
 export type ScriptCommand = z.infer<typeof scriptCommandSchema>;
 export type ExplorerCreate = z.infer<typeof explorerCreateSchema>;

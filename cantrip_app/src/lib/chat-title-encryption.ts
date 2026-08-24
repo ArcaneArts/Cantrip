@@ -133,13 +133,15 @@ export class ChatTitleEncryptionAdapter {
           const members = await Promise.all(
             group.members.map(async ({ titleProtection, ...member }) => ({
               ...member,
-              title: await decodePrivateDisplayLabelForClient({
-                identity: this.identity(),
-                opaque: titleProtection,
-                recordKind: titleProtection.classification.recordKind,
-                rowId: member.tabId,
-                service: this.service,
-              }),
+              title: titleProtection
+                ? await decodePrivateDisplayLabelForClient({
+                    identity: this.identity(),
+                    opaque: titleProtection,
+                    recordKind: titleProtection.classification.recordKind,
+                    rowId: member.tabId,
+                    service: this.service,
+                  })
+                : "Run configuration",
             })),
           );
           const anchor = members.find(

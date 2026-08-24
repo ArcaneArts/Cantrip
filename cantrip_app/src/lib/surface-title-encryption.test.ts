@@ -64,6 +64,7 @@ describe("surface title encryption adapter", () => {
     const terminal: TerminalWireSummary = {
       ...common,
       id: ids.terminal,
+      kind: "interactive",
       titleProtection: await adapter.protect(
         ids.terminal,
         "Private terminal",
@@ -73,6 +74,8 @@ describe("surface title encryption adapter", () => {
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
       linkedChatId: null,
+      runConfigurationId: null,
+      runConfigurationRuntimeId: null,
       stateProtection: await adapter.protectTerminalState(
         ids.terminal,
         "packages/app",
@@ -214,6 +217,35 @@ describe("surface title encryption adapter", () => {
     });
   });
 
+  it("opens a Run configuration terminal without interactive encryption", async () => {
+    const adapter = fixture();
+    const runtimeId = "00000000-0000-4000-8000-000000000119";
+    const terminal: TerminalWireSummary = {
+      id: runtimeId,
+      projectId: "project-a",
+      kind: "run-configuration",
+      titleProtection: null,
+      position: 0,
+      status: "running",
+      activeWorkerId: "worker-a",
+      worktreeId: "worktree-a",
+      linkedChatId: null,
+      runConfigurationId: "00000000-0000-4000-8000-000000000118",
+      runConfigurationRuntimeId: runtimeId,
+      stateProtection: null,
+      serviceEnabled: false,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    await expect(adapter.openTerminal(terminal)).resolves.toMatchObject({
+      kind: "run-configuration",
+      title: "Run configuration",
+      directoryPath: null,
+      service: { enabled: false, command: "" },
+    });
+  });
+
   it("rejects a title replayed under another row id", async () => {
     const adapter = fixture();
     const protectedId = "00000000-0000-4000-8000-000000000111";
@@ -221,6 +253,7 @@ describe("surface title encryption adapter", () => {
     const terminal: TerminalWireSummary = {
       id: replayedId,
       projectId: "project-a",
+      kind: "interactive",
       titleProtection: await adapter.protect(
         protectedId,
         "Bound title",
@@ -231,6 +264,8 @@ describe("surface title encryption adapter", () => {
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
       linkedChatId: null,
+      runConfigurationId: null,
+      runConfigurationRuntimeId: null,
       stateProtection: await adapter.protectTerminalState(replayedId, null, ""),
       serviceEnabled: false,
       createdAt: timestamp,

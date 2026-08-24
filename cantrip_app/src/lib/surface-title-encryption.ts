@@ -295,6 +295,23 @@ export class SurfaceTitleEncryptionAdapter {
   }
 
   async openTerminal(terminal: TerminalWireSummary): Promise<TerminalSummary> {
+    if (terminal.kind === "run-configuration") {
+      const {
+        serviceEnabled: _serviceEnabled,
+        stateProtection: _stateProtection,
+        titleProtection: _titleProtection,
+        ...publicTerminal
+      } = terminal;
+      return terminalSummarySchema.parse({
+        ...publicTerminal,
+        title: "Run configuration",
+        directoryPath: null,
+        service: { enabled: false, command: "" },
+      });
+    }
+    if (!terminal.stateProtection || !terminal.titleProtection) {
+      throw new Error("Interactive terminal protection is unavailable.");
+    }
     const identity = this.identity();
     const state = terminalPrivateStateProtectedContentSchema.parse(
       await decodeSurfacePrivateStateForClient({
