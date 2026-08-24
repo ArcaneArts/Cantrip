@@ -58,7 +58,7 @@ function activityMessage(
 }
 
 describe("trajectory projection", () => {
-  it("pins root, sorts active agents by recency, and scopes events to tracks", () => {
+  it("pins root, preserves spawn order, and scopes events to tracks", () => {
     const rootScope: AgentScope = {
       agentThreadId: "root-thread",
       rootThreadId: "root-thread",
@@ -148,10 +148,10 @@ describe("trajectory projection", () => {
     expect(turn?.key).toBe("runtime:root-turn");
     expect(turn?.agents.map((agent) => agent.label)).toEqual([
       "Root agent",
-      "Reviewer",
       "Scout",
+      "Reviewer",
     ]);
-    expect(turn?.agents.map((agent) => agent.depth)).toEqual([0, 2, 1]);
+    expect(turn?.agents.map((agent) => agent.depth)).toEqual([0, 1, 2]);
     const reviewerCommand = turn?.events.find(
       (event) => event.kind === "command",
     );
@@ -173,7 +173,7 @@ describe("trajectory projection", () => {
     ).toBe(false);
   });
 
-  it("orders inactive descendants after active descendants", () => {
+  it("pins root without reordering descendants when activity changes", () => {
     const agents = orderTrajectoryAgents([
       {
         active: false,
@@ -214,8 +214,8 @@ describe("trajectory projection", () => {
     ]);
     expect(agents.map((agent) => agent.key)).toEqual([
       "root",
-      "active",
       "inactive",
+      "active",
     ]);
   });
 
