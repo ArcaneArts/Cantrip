@@ -260,7 +260,7 @@ describe("Task dispatch scheduling", () => {
     }
   });
 
-  it("reconciles expired claims and fences stale mutations", async () => {
+  it("requeues unstarted claims but expires and fences started work", async () => {
     const value = await fixture();
     try {
       await value.repository.taskScheduling.createTaskWorker(
@@ -287,19 +287,6 @@ describe("Task dispatch scheduling", () => {
         },
       );
       expect(claimed?.cycle.fifoCreatedAt).toBe(queued.fifoCreatedAt);
-      await value.repository.taskDispatch.markRunning(claimed!.lease, {
-        now: new Date("2026-08-24T10:01:00.500Z"),
-        turnId: "turn-1",
-      });
-      const continued = await value.repository.taskDispatch.markRunning(
-        claimed!.lease,
-        {
-          now: new Date("2026-08-24T10:01:00.750Z"),
-          turnId: "turn-2",
-        },
-      );
-      expect(continued).toMatchObject({ state: "running", turnId: "turn-2" });
-
       const reconciled =
         await value.repository.taskDispatch.requeueExpiredLeases(
           LOCAL_USER_ID,
@@ -312,12 +299,86 @@ describe("Task dispatch scheduling", () => {
         eligibilityCode: "reconciliation-required",
         fencingToken: claimed!.lease.fencingToken + 1,
       });
+      const reclaimed = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler-b",
+        eligible,
+        {
+          now: new Date("2026-08-24T10:01:02.250Z"),
+          leaseMs: 1_000,
+        },
+      );
+      expect(reclaimed?.cycle.fifoCreatedAt).toBe(queued.fifoCreatedAt);
+      await value.repository.taskDispatch.markRunning(reclaimed!.lease, {
+        now: new Date("2026-08-24T10:01:02.500Z"),
+        turnId: "turn-1",
+      });
+      expect(
+        await value.repository.taskDispatch.requeueExpiredLeases(
+          LOCAL_USER_ID,
+          new Date("2026-08-24T10:01:04.000Z"),
+        ),
+      ).toHaveLength(0);
+      const expired = await value.repository.taskDispatch.expireStartedLeases(
+        LOCAL_USER_ID,
+        new Date("2026-08-24T10:01:04.000Z"),
+      );
+      expect(expired).toHaveLength(1);
+      expect(expired[0]).toMatchObject({
+        state: "expired",
+        fifoCreatedAt: queued.fifoCreatedAt,
+        eligibilityCode: "reconciliation-required",
+        fencingToken: reclaimed!.lease.fencingToken + 1,
+      });
       await expect(
-        value.repository.taskDispatch.settle(claimed!.lease, "succeeded", {
-          now: new Date("2026-08-24T10:01:02.500Z"),
+        value.repository.taskDispatch.settle(reclaimed!.lease, "succeeded", {
+          now: new Date("2026-08-24T10:01:04.500Z"),
         }),
       ).rejects.toMatchObject<Partial<TaskDispatchConflictError>>({
         code: "stale-lease",
+      });
+    } finally {
+      await value.client.close();
+    }
+  });
+
+  it("requeues a terminal cycle without changing its FIFO age", async () => {
+    const value = await fixture();
+    try {
+      await value.repository.taskScheduling.createTaskWorker(
+        LOCAL_USER_ID,
+        workerInput("Retry worker"),
+      );
+      const task = await addTask(value, {
+        createdAt: new Date("2026-08-24T10:00:00.000Z"),
+      });
+      const queued = await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        task.chatId,
+        "retry-operation",
+        "direct",
+        1,
+      );
+      const claimed = await value.repository.taskDispatch.claimNext(
+        LOCAL_USER_ID,
+        "scheduler-a",
+        eligible,
+      );
+      await value.repository.taskDispatch.settle(claimed!.lease, "failed");
+
+      const retried = await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        task.chatId,
+        "retry-operation",
+        "direct",
+        1,
+      );
+      expect(retried).toMatchObject({
+        id: queued.id,
+        state: "queued",
+        fifoCreatedAt: queued.fifoCreatedAt,
+        queuedAt: queued.queuedAt,
+        fencingToken: claimed!.lease.fencingToken + 1,
       });
     } finally {
       await value.client.close();

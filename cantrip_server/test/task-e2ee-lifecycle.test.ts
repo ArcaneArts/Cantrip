@@ -929,6 +929,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       operationKind: "finalize",
       state: "succeeded",
     });
+    expect(completedTask.completedAt).not.toBeNull();
     const goalResponse = await app!.inject({
       method: "GET",
       url: `/api/chats/${chatId}/goal`,

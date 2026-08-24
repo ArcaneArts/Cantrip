@@ -175,4 +175,17 @@ describe("project Task workload", () => {
       projectTaskWorkloadPresentation(value, undefined, true),
     ).toMatchObject({ band: "queued", label: "Paused · queued", paused: true });
   });
+
+  it("surfaces an expired started cycle as needing recovery", () => {
+    const value = task({
+      chatId: "expired-running",
+      createdAt: "2026-08-24T12:00:00.000Z",
+      state: "planning",
+    });
+    dispatch(value, "expired");
+
+    expect(
+      projectTaskWorkloadPresentation(value, undefined, false),
+    ).toMatchObject({ band: "attention", label: "Needs recovery" });
+  });
 });

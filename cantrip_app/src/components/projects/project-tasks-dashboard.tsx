@@ -134,18 +134,24 @@ export function projectTaskWorkloadPresentation(
     task.state === "failed" ||
     task.state === "blocked" ||
     task.state === "review" ||
-    dispatch?.state === "failed"
+    dispatch?.state === "failed" ||
+    dispatch?.state === "cancelled" ||
+    dispatch?.state === "expired"
   ) {
     return {
       band: "attention",
       label:
         task.state === "failed" || dispatch?.state === "failed"
           ? "Failed"
-          : task.state === "blocked"
-            ? "Blocked"
-            : task.currentQuestions.length > 0
-              ? "Needs answers"
-              : "Needs review",
+          : dispatch?.state === "expired"
+            ? "Needs recovery"
+            : dispatch?.state === "cancelled"
+              ? "Cancelled"
+              : task.state === "blocked"
+                ? "Blocked"
+                : task.currentQuestions.length > 0
+                  ? "Needs answers"
+                  : "Needs review",
       paused: false,
       tone: "attention",
     };

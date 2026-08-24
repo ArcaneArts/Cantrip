@@ -13,7 +13,7 @@ import {
   type TaskDispatchWorkerLease,
   type TaskWorkerSummary,
 } from "@cantrip/protocol/task-scheduling";
-import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -28,6 +28,11 @@ type TaskDispatchRow = typeof schema.taskDispatchCycles.$inferSelect;
 type TaskWorkerRow = typeof schema.taskWorkers.$inferSelect;
 
 export const TASK_DISPATCH_LEASE_MS = 2 * 60_000;
+const RETRYABLE_TERMINAL_STATES: readonly TaskDispatchCycleState[] = [
+  "failed",
+  "cancelled",
+  "expired",
+];
 
 export class TaskDispatchNotFoundError extends Error {}
 
@@ -247,13 +252,13 @@ export class TaskDispatchRepository {
         )
         .limit(1);
       const prior = priorRows[0];
-      if (prior) {
-        if (prior.operationKind !== operationKind) {
-          throw new TaskDispatchConflictError(
-            "This Task operation ID was already used for another operation.",
-            "idempotency-conflict",
-          );
-        }
+      if (prior && prior.operationKind !== operationKind) {
+        throw new TaskDispatchConflictError(
+          "This Task operation ID was already used for another operation.",
+          "idempotency-conflict",
+        );
+      }
+      if (prior && !RETRYABLE_TERMINAL_STATES.includes(prior.state)) {
         return toTaskDispatchCycleSummary(prior);
       }
       const taskRows = await transaction
@@ -327,6 +332,39 @@ export class TaskDispatchRepository {
           "The Task already has an active scheduled operation.",
           "active-operation",
         );
+      }
+
+      if (prior) {
+        const now = new Date();
+        const rows = await transaction
+          .update(schema.taskDispatchCycles)
+          .set({
+            state: "queued",
+            requestedTaskWorkerId: task.requestedTaskWorkerId,
+            selectedTaskWorkerId: null,
+            taskWorkerRevision: null,
+            continuityFamily: null,
+            modelConfiguration: null,
+            modelRouteId: null,
+            providerAccountId: null,
+            physicalWorkerId: null,
+            worktreeId: null,
+            codexThreadId: null,
+            turnId: null,
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            lastHeartbeatAt: null,
+            fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+            eligibilityCode: null,
+            claimedAt: null,
+            startedAt: null,
+            pausedAt: null,
+            completedAt: null,
+            updatedAt: now,
+          })
+          .where(eq(schema.taskDispatchCycles.id, prior.id))
+          .returning();
+        return toTaskDispatchCycleSummary(rows[0]!);
       }
 
       const rows = await transaction
@@ -441,6 +479,8 @@ export class TaskDispatchRepository {
               and(
                 eq(schema.taskDispatchCycles.ownerId, ownerId),
                 eq(schema.taskDispatchCycles.state, "queued"),
+                isNull(schema.chats.archivedAt),
+                ne(schema.tasks.state, "complete"),
               ),
             )
             .orderBy(
@@ -886,7 +926,43 @@ export class TaskDispatchRepository {
       .where(
         and(
           eq(schema.taskDispatchCycles.ownerId, ownerId),
-          inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+          eq(schema.taskDispatchCycles.state, "claimed"),
+          isNull(schema.taskDispatchCycles.startedAt),
+          lte(schema.taskDispatchCycles.leaseExpiresAt, now),
+        ),
+      )
+      .returning();
+    return taskDispatchCycleListSchema.parse(
+      rows.map(toTaskDispatchCycleSummary),
+    );
+  }
+
+  async expireStartedLeases(
+    ownerId: string,
+    now = new Date(),
+  ): Promise<TaskDispatchCycleSummary[]> {
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "expired",
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        lastHeartbeatAt: null,
+        fencingToken: sql`${schema.taskDispatchCycles.fencingToken} + 1`,
+        eligibilityCode: "reconciliation-required",
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.taskDispatchCycles.ownerId, ownerId),
+          or(
+            eq(schema.taskDispatchCycles.state, "running"),
+            and(
+              eq(schema.taskDispatchCycles.state, "claimed"),
+              sql`${schema.taskDispatchCycles.startedAt} IS NOT NULL`,
+            ),
+          ),
           lte(schema.taskDispatchCycles.leaseExpiresAt, now),
         ),
       )

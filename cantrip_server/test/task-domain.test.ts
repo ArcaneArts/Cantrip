@@ -488,6 +488,76 @@ describe.sequential("opaque encrypted Task persistence", () => {
     ]);
   });
 
+  it("requeues a failed operation without bypassing a paused scheduler", async () => {
+    const pauseState =
+      await database.repository.taskScheduling.getProjectTaskPauseState(
+        LOCAL_USER_ID,
+        projectId,
+      );
+    if (!pauseState) throw new Error("Expected a Project Task pause state.");
+    const paused =
+      await database.repository.taskScheduling.setProjectTaskPauseState(
+        LOCAL_USER_ID,
+        projectId,
+        { paused: true, rowVersion: pauseState.rowVersion },
+      );
+    if (!paused) throw new Error("Expected the Project Tasks to pause.");
+
+    const chatId = randomUUID();
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        planGoalEnabled: true,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task: taskContent("draft", 0, null),
+      },
+    });
+    const created = taskWireCreateResultSchema.parse(createdResponse.json());
+    const failedOperation = operation(chatId, created.task.rowVersion);
+    await database.repository.tasks.beginOperation(
+      LOCAL_USER_ID,
+      chatId,
+      failedOperation,
+    );
+    const failedContext = await database.repository.tasks.failOperation(
+      LOCAL_USER_ID,
+      chatId,
+      failedOperation.operation.operationId,
+    );
+    if (!failedContext) throw new Error("Expected a failed Task operation.");
+    const commandsBeforeRetry = observedWorkerCommandTypes.length;
+    const retryOperationId = randomUUID();
+
+    const retryResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${chatId}/retry`,
+      payload: {
+        operationId: retryOperationId,
+        rowVersion: failedContext.task.rowVersion,
+      },
+    });
+    expect(retryResponse.statusCode, JSON.stringify(retryResponse.json())).toBe(
+      202,
+    );
+    const dispatch = (
+      await database.repository.taskDispatch.list(LOCAL_USER_ID)
+    ).find((cycle) => cycle.operationId === retryOperationId);
+    expect(dispatch).toMatchObject({
+      chatId,
+      operationKind: "initial-plan",
+      state: "queued",
+    });
+    expect(observedWorkerCommandTypes).toHaveLength(commandsBeforeRetry);
+
+    await database.repository.taskScheduling.setProjectTaskPauseState(
+      LOCAL_USER_ID,
+      projectId,
+      { paused: false, rowVersion: paused.rowVersion },
+    );
+  });
+
   it("keeps ordinary agent messages on the encrypted API shape", async () => {
     const chat = await database.repository.createChat(
       LOCAL_USER_ID,

@@ -23836,7 +23836,57 @@ export async function buildApp({
       const ownerIds = await repository.taskDispatch.listSchedulerOwnerIds();
       for (const ownerId of ownerIds) {
         await runAsOwner(ownerId, async () => {
-          await repository.taskDispatch.requeueExpiredLeases(ownerId);
+          const requeued =
+            await repository.taskDispatch.requeueExpiredLeases(ownerId);
+          if (requeued.length > 0) {
+            app.log.warn(
+              {
+                event: "task.scheduler.unstarted-leases-requeued",
+                subsystem: "task-scheduler",
+                operation: "reconcile-leases",
+                status: "requeued",
+                counts: { requeued: requeued.length },
+              },
+              "Requeued expired Task claims that had not started",
+            );
+          }
+          const expired =
+            await repository.taskDispatch.expireStartedLeases(ownerId);
+          for (const cycle of expired) {
+            try {
+              await repository.tasks.failOperation(
+                ownerId,
+                cycle.chatId,
+                cycle.operationId,
+              );
+            } catch (error) {
+              app.log.error(
+                {
+                  chatId: cycle.chatId,
+                  cycleId: cycle.id,
+                  err: error,
+                  event: "task.scheduler.started-lease-reconcile-failed",
+                  subsystem: "task-scheduler",
+                  operation: "reconcile-leases",
+                  status: "failed",
+                },
+                "Could not reconcile an expired started Task lease",
+              );
+            }
+            publishChatInvalidation(cycle.chatId, "task");
+          }
+          if (expired.length > 0) {
+            app.log.warn(
+              {
+                event: "task.scheduler.started-leases-expired",
+                subsystem: "task-scheduler",
+                operation: "reconcile-leases",
+                status: "attention-required",
+                counts: { expired: expired.length },
+              },
+              "Expired started Task leases require user attention",
+            );
+          }
           const resolveResumeEligibility =
             await prepareTaskResumeEligibility(ownerId);
           while (true) {
@@ -24822,9 +24872,23 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId/retry",
     async (request, reply) => {
-      const input = taskEncryptedOperationStartSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
+      const plainInput = taskOperationStartSchema.safeParse(request.body);
+      const encryptedInput = taskEncryptedOperationStartSchema.safeParse(
+        request.body,
+      );
+      let input: TaskOperationStart;
+      let legacyOperationKind:
+        TaskOperationRelayRequest["classification"]["kind"] | null = null;
+      if (plainInput.success) {
+        input = plainInput.data;
+      } else if (encryptedInput.success) {
+        input = {
+          operationId: encryptedInput.data.operation.operationId,
+          rowVersion: encryptedInput.data.rowVersion,
+        };
+        legacyOperationKind = encryptedInput.data.operation.classification.kind;
+      } else {
+        return reply.code(400).send(invalidBody(plainInput.error.issues));
       }
       const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
@@ -24866,34 +24930,14 @@ export async function buildApp({
               )
             : null;
           if (prepared?.relayResult?.goal) {
-            if (!bridge.isConnected(context.workerId)) {
-              throw new WorkerUnavailableError("Project worker is offline.");
-            }
-            if (chatIsExecuting(context.status)) {
-              throw new TaskConflictError(
-                "The Task already has an active Chat turn.",
-                "operation-active",
-              );
-            }
-            if (input.data.rowVersion !== task.rowVersion) {
-              throw new TaskConflictError(
-                "The Task changed in another client.",
-                "stale-version",
-              );
-            }
-            publishChatInvalidation(request.params.chatId, "task");
-            try {
-              const resumed = await launchPreparedTaskGoal(
-                request.params.chatId,
-                latest.id,
-              );
-              return reply
-                .code(202)
-                .send(taskOpaqueSummarySchema.parse(resumed));
-            } catch (error) {
-              await failTaskGoalLaunch(request.params.chatId, latest.id, error);
-              throw error;
-            }
+            const retried = await queueTaskOperation(
+              request.params.chatId,
+              { operationId: latest.id, rowVersion: input.rowVersion },
+              "finalize",
+            );
+            return retried
+              ? reply.code(202).send(taskOpaqueSummarySchema.parse(retried))
+              : reply.code(404).send({ error: "Task not found." });
           }
         }
         if (task.lastError.operationKind === "implementation") {
@@ -24903,14 +24947,18 @@ export async function buildApp({
           });
         }
         if (
-          input.data.operation.classification.kind !==
-          task.lastError.operationKind
+          legacyOperationKind !== null &&
+          legacyOperationKind !== task.lastError.operationKind
         ) {
           return reply.code(409).send({
             error: "The encrypted retry does not match the failed operation.",
           });
         }
-        const retried = await beginEncryptedTaskOperation(context, input.data);
+        const retried = await queueTaskOperation(
+          request.params.chatId,
+          input,
+          task.lastError.operationKind,
+        );
         return retried
           ? reply.code(202).send(taskOpaqueSummarySchema.parse(retried))
           : reply.code(404).send({ error: "Task not found." });

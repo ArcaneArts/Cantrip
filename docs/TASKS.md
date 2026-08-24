@@ -574,6 +574,30 @@ Migration and compatibility parsing must accept old clients long enough to
 show an upgrade-required error instead of accidentally launching work through
 the obsolete immediate-execution path.
 
+### Operational recovery
+
+Rollout and scheduler recovery are deliberately conservative:
+
+- the data migration queues only non-archived legacy drafts with no active
+  operation or existing dispatch cycle, preserves their original creation
+  time, backfills missing completion times, and never creates a Task Worker;
+- an expired claim that has not started is fenced and returned to its original
+  FIFO position;
+- an expired claim that may have started is fenced, marked expired, and moved
+  to Needs Attention instead of being executed a second time;
+- retry accepts both the current compact request and the legacy encrypted
+  request during a rolling upgrade, but both forms only enqueue through the
+  scheduler; and
+- terminal-cycle retry reuses durable operation identity where Goal creation
+  may already have succeeded, preserving Goal idempotency and Task FIFO age.
+
+Operators can distinguish the two lease-recovery outcomes through the
+structured `task.scheduler.unstarted-leases-requeued` and
+`task.scheduler.started-leases-expired` log events. A
+`task.scheduler.started-lease-reconcile-failed` event identifies a Task whose
+encrypted phase record could not be reconciled automatically and therefore
+requires investigation from its Needs Attention row.
+
 ## Implementation sequence
 
 Implement this feature in independently reviewable milestones while preserving

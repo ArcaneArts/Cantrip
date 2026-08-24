@@ -1125,12 +1125,17 @@ export class TaskRepository {
           protectedContent: current.protectedContent,
         }) === JSON.stringify(next);
       if (unchanged) return toTaskOpaqueSummary(current);
+      const now = new Date();
       const updated = await transaction
         .update(schema.tasks)
         .set({
           ...taskOpaqueColumns(next),
+          completedAt:
+            next.classification.state === "complete"
+              ? (current.completedAt ?? now)
+              : null,
           rowVersion: current.rowVersion + 1,
-          updatedAt: new Date(),
+          updatedAt: now,
         })
         .where(eq(schema.tasks.chatId, chatId))
         .returning();
