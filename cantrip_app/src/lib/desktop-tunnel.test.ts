@@ -274,6 +274,7 @@ describe("forceDesktopTunnelRelay", () => {
     ).resolves.toMatchObject({ routeState: "relayed" });
 
     expect(mocks.invoke).toHaveBeenCalledWith("force_tunnel_forward_relay", {
+      directCapabilityId: capabilityId,
       tunnelId: "tunnel-1",
     });
     expect(mocks.invoke).toHaveBeenCalledWith(
@@ -518,9 +519,13 @@ describe("refreshDesktopTunnelRelay", () => {
       }),
     ).resolves.toBe(true);
 
-    expect(mocks.createTunnelAttachment).toHaveBeenCalledWith("tunnel-1", {
-      clientId: expect.any(String),
-    });
+    expect(mocks.createTunnelAttachment).toHaveBeenCalledWith(
+      "tunnel-1",
+      {
+        clientId: expect.any(String),
+      },
+      { signal: undefined },
+    );
     expect(mocks.invoke).toHaveBeenCalledWith(
       "refresh_tunnel_forward_relay",
       expect.objectContaining({
@@ -646,7 +651,7 @@ describe("refreshDesktopTunnelRelay", () => {
     expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
   });
 
-  it("revokes a rotated attachment when its native forward disappeared", async () => {
+  it("does not revoke shared attachment state when its native forward disappeared", async () => {
     mocks.invoke.mockResolvedValue(false);
 
     const forward = {
@@ -669,7 +674,7 @@ describe("refreshDesktopTunnelRelay", () => {
       false,
     ]);
 
-    expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1");
+    expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
     expect(mocks.createTunnelAttachment).toHaveBeenCalledTimes(1);
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
   });

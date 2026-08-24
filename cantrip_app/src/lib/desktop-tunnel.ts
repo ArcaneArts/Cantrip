@@ -238,6 +238,7 @@ export async function forceDesktopTunnelRelay(
   options.signal?.throwIfAborted();
   const relayed = await raceWithAbort(
     invoke<DesktopTunnelForwardSummary | null>("force_tunnel_forward_relay", {
+      directCapabilityId: forward.directCapabilityId,
       tunnelId: forward.tunnelId,
     }),
     options.signal,
@@ -250,7 +251,7 @@ export async function forceDesktopTunnelRelay(
     forward.directCapabilityId &&
     relayed.directCapabilityId === forward.directCapabilityId
   ) {
-    await retireDirectCapabilityAndConfirm(forward, relayed);
+    await retireDirectCapabilityAndConfirm(forward, relayed, options.signal);
     return { ...relayed, directCapabilityId: null };
   }
   return relayed;
@@ -259,32 +260,32 @@ export async function forceDesktopTunnelRelay(
 async function retireDirectCapabilityAndConfirm(
   forward: DesktopTunnelForwardSummary,
   snapshot: DesktopTunnelForwardSummary,
+  signal?: AbortSignal,
 ): Promise<void> {
   const capabilityId = forward.directCapabilityId;
   if (!capabilityId) return;
   const existing = directCapabilityRetirements.get(capabilityId);
-  if (existing) return existing;
-  const retirement = (async () => {
+  if (existing) return raceWithAbort(existing, signal);
+  const operation = (async () => {
     await retireDirectCapability(capabilityId, snapshot);
-    const confirmed = await invoke<boolean>(
-      "confirm_tunnel_forward_direct_retired",
-      {
+    const confirmed = await raceWithAbort(
+      invoke<boolean>("confirm_tunnel_forward_direct_retired", {
         directCapabilityId: capabilityId,
         tunnelId: forward.tunnelId,
-      },
+      }),
+      signal,
     );
     if (!confirmed) {
       throw new Error("The desktop tunnel stopped during direct retirement.");
     }
   })();
-  directCapabilityRetirements.set(capabilityId, retirement);
-  try {
-    await retirement;
-  } finally {
+  const retirement = operation.finally(() => {
     if (directCapabilityRetirements.get(capabilityId) === retirement) {
       directCapabilityRetirements.delete(capabilityId);
     }
-  }
+  });
+  directCapabilityRetirements.set(capabilityId, retirement);
+  await raceWithAbort(retirement, signal);
 }
 
 async function raceWithAbort<T>(
@@ -363,34 +364,54 @@ async function reportFinalDesktopTunnelTelemetry(
 export async function listDesktopTunnels(): Promise<
   DesktopTunnelForwardSummary[]
 > {
+  return listDesktopTunnelsWithOptions();
+}
+
+export function listDesktopTunnelsWithOptions(
+  options: { signal?: AbortSignal } = {},
+): Promise<DesktopTunnelForwardSummary[]> {
   return isTauri()
-    ? invoke<DesktopTunnelForwardSummary[]>("list_tunnel_forwards")
-    : [];
+    ? raceWithAbort(
+        invoke<DesktopTunnelForwardSummary[]>("list_tunnel_forwards"),
+        options.signal,
+      )
+    : Promise.resolve([]);
 }
 
 export function refreshDesktopTunnelRelay(
   forward: DesktopTunnelForwardSummary,
+  options: { signal?: AbortSignal } = {},
 ): Promise<boolean> {
   if (!isTauri() || !forward.relayFallbackAvailable) {
     return Promise.resolve(false);
   }
+  options.signal?.throwIfAborted();
   const existing = relayRefreshes.get(forward.tunnelId);
-  if (existing) return existing;
-  const refresh = rotateDesktopTunnelRelay(forward).finally(() => {
-    if (relayRefreshes.get(forward.tunnelId) === refresh) {
-      relayRefreshes.delete(forward.tunnelId);
-    }
-  });
+  if (existing) {
+    return options.signal ? raceWithAbort(existing, options.signal) : existing;
+  }
+  const refresh = rotateDesktopTunnelRelay(forward, options.signal).finally(
+    () => {
+      if (relayRefreshes.get(forward.tunnelId) === refresh) {
+        relayRefreshes.delete(forward.tunnelId);
+      }
+    },
+  );
   relayRefreshes.set(forward.tunnelId, refresh);
   return refresh;
 }
 
 async function rotateDesktopTunnelRelay(
   forward: DesktopTunnelForwardSummary,
+  signal?: AbortSignal,
 ): Promise<boolean> {
-  const attachment = await createTunnelAttachment(forward.tunnelId, {
-    clientId: desktopTunnelClientId(window.localStorage),
-  });
+  const attachment = await createTunnelAttachment(
+    forward.tunnelId,
+    {
+      clientId: desktopTunnelClientId(window.localStorage),
+    },
+    { signal },
+  );
   if (attachment.attachmentId !== forward.attachmentId) {
     attachment.secret = "";
     throw new Error("The refreshed tunnel attachment identity did not match.");
@@ -402,13 +423,16 @@ async function rotateDesktopTunnelRelay(
     serverUrl: getActiveServerUrl(),
   };
   try {
-    const result = await invoke<DesktopTunnelRelayRefreshResult | boolean>(
-      "refresh_tunnel_forward_relay",
-      {
-        expiresAt: attachment.expiresAt,
-        relay,
-        tunnelId: forward.tunnelId,
-      },
+    const result = await raceWithAbort(
+      invoke<DesktopTunnelRelayRefreshResult | boolean>(
+        "refresh_tunnel_forward_relay",
+        {
+          expiresAt: attachment.expiresAt,
+          relay,
+          tunnelId: forward.tunnelId,
+        },
+      ),
+      signal,
     );
     const outcome =
       typeof result === "boolean"
@@ -416,11 +440,6 @@ async function rotateDesktopTunnelRelay(
           ? "accepted"
           : "forward-unavailable"
         : result.outcome;
-    if (outcome === "forward-unavailable") {
-      await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
-        // The forward disappeared while its relay credential was rotating.
-      });
-    }
     return outcome !== "forward-unavailable";
   } finally {
     relay.secret = "";

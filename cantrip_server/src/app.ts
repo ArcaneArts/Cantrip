@@ -711,6 +711,7 @@ import {
   type ChatRelocationLiveChange,
 } from "./chat-relocations/executor.js";
 import {
+  type CodeAttachmentRootIdentity,
   type CodeAttachmentRootLease,
   CodeTunnelBroker,
   ExplorerCodeAttachmentLeaseError,
@@ -1609,7 +1610,9 @@ export async function buildApp({
   const tunnelStreamBroker = new TunnelStreamBroker({
     consumeRelayBytes: (ownerId, workerId, bytes) =>
       relayQuotas.consumeRelay(ownerId, workerId, bytes),
-    onActivity: (tunnelId) => codeTunnel.allowTunnelActivity(tunnelId),
+    onActivity: (tunnelId, attachmentId, authoritativeRootRequired) =>
+      !authoritativeRootRequired ||
+      codeTunnel.allowRelayAttachmentActivity(attachmentId, tunnelId),
   });
   const tunnelRuntime = new TunnelRuntimeManager(
     repository,
@@ -1636,6 +1639,7 @@ export async function buildApp({
       .expireDesktopTunnelAttachments()
       .then((expired) => {
         for (const attachment of expired) {
+          codeTunnel.releaseRelayAttachment(attachment.attachmentId);
           tunnelRuntime.closeActive(
             attachment.attachmentId,
             "Attachment expired",
@@ -3482,17 +3486,15 @@ export async function buildApp({
       ? Promise.resolve(null)
       : repository.ensureLocalIdentity(),
   ]);
-  const acquireAuthorizedCodeAttachmentRootLease = (
+  const authorizedCodeAttachmentRootIdentity = (
     authorization: Pick<
       TunnelAttachmentAuthorization,
       "destination" | "origin" | "ownerId" | "protectedRecord" | "tunnelId"
     >,
     authSessionId: string | null,
-  ) => {
-    if (authorization.origin !== "code") {
-      return { lease: null, managed: false } as const;
-    }
-    const acquired = codeTunnel.acquireAttachmentRootLease({
+  ): CodeAttachmentRootIdentity | null => {
+    if (authorization.origin !== "code") return null;
+    return {
       authSessionId,
       ownerId: authorization.ownerId,
       protectedKeyRevision:
@@ -3501,7 +3503,21 @@ export async function buildApp({
       serverId,
       tunnelId: authorization.tunnelId,
       workerId: authorization.destination.workerId,
-    });
+    };
+  };
+  const acquireAuthorizedCodeAttachmentRootLease = (
+    authorization: Pick<
+      TunnelAttachmentAuthorization,
+      "destination" | "origin" | "ownerId" | "protectedRecord" | "tunnelId"
+    >,
+    authSessionId: string | null,
+  ) => {
+    const identity = authorizedCodeAttachmentRootIdentity(
+      authorization,
+      authSessionId,
+    );
+    if (!identity) return { lease: null, managed: false } as const;
+    const acquired = codeTunnel.acquireAttachmentRootLease(identity);
     return acquired.managed
       ? acquired
       : ({ lease: null, managed: true } as const);
@@ -13854,20 +13870,22 @@ export async function buildApp({
         });
       }
       let codeRootLease: CodeAttachmentRootLease | null = null;
+      let codeRootIdentity: CodeAttachmentRootIdentity | null = null;
       if (tunnel.origin === "code") {
         if (!tunnel.protectedRecord) {
           return reply.code(409).send({
             error: "The protected Code attachment is unavailable.",
           });
         }
+        const authorization = {
+          destination: tunnel.destination,
+          origin: tunnel.origin,
+          ownerId,
+          protectedRecord: tunnel.protectedRecord,
+          tunnelId: tunnel.id,
+        };
         const acquired = acquireAuthorizedCodeAttachmentRootLease(
-          {
-            destination: tunnel.destination,
-            origin: tunnel.origin,
-            ownerId,
-            protectedRecord: tunnel.protectedRecord,
-            tunnelId: tunnel.id,
-          },
+          authorization,
           principal.sessionId,
         );
         if (!acquired.managed || !acquired.lease) {
@@ -13876,6 +13894,10 @@ export async function buildApp({
           });
         }
         codeRootLease = acquired.lease;
+        codeRootIdentity = authorizedCodeAttachmentRootIdentity(
+          authorization,
+          principal.sessionId,
+        );
       }
       const secret = randomBytes(32).toString("base64url");
       const now = Date.now();
@@ -13903,11 +13925,15 @@ export async function buildApp({
           error: "An attachable desktop tunnel was not found.",
         });
       }
-      if (codeRootLease && !codeRootLease.validate()) {
-        await tunnelRuntime
-          .revoke(ownerId, created.attachmentId)
-          .catch(() => false);
-        await directAttachments.revokeAttachment(created.attachmentId);
+      if (
+        codeRootLease &&
+        (!codeRootLease.validate() ||
+          !codeRootIdentity ||
+          !codeTunnel.bindRelayAttachment(
+            created.attachmentId,
+            codeRootIdentity,
+          ))
+      ) {
         return reply.code(409).send({
           error: "The protected Code attachment changed while opening.",
         });
@@ -13948,6 +13974,7 @@ export async function buildApp({
         return reply.code(404).send({ error: "Tunnel attachment not found." });
       }
       await directAttachments.revokeAttachment(request.params.attachmentId);
+      codeTunnel.releaseRelayAttachment(request.params.attachmentId);
       return reply.code(204).send();
     },
   );
@@ -14264,6 +14291,16 @@ export async function buildApp({
       );
       if (!authorization) {
         socket.close(1008, "Attachment authentication failed");
+        return;
+      }
+      if (
+        authorization.origin === "code" &&
+        !codeTunnel.allowRelayAttachmentActivity(
+          authorization.attachmentId,
+          authorization.tunnelId,
+        )
+      ) {
+        socket.close(1008, "Protected attachment authority is unavailable");
         return;
       }
       if (!registerAccountSocket(socket, authorization.ownerId)) return;

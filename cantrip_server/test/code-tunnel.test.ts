@@ -1385,6 +1385,21 @@ describe("protected Cantrip Code attachments", () => {
         expiresAt: new Date(1_100).toISOString(),
         hardExpiresAt: new Date(1_250).toISOString(),
       });
+      expect(
+        broker.allowRelayAttachmentActivity("relay-attachment", tunnelId),
+      ).toBe(false);
+      expect(
+        broker.bindRelayAttachment("relay-attachment", {
+          ...identity,
+          authSessionId: "another-session",
+        }),
+      ).toBe(false);
+      expect(broker.bindRelayAttachment("relay-attachment", identity)).toBe(
+        true,
+      );
+      expect(
+        broker.allowRelayAttachmentActivity("relay-attachment", tunnelId),
+      ).toBe(true);
 
       for (const mismatch of [
         { ...identity, rootAttachmentId: "another-attachment" },
@@ -1409,6 +1424,9 @@ describe("protected Cantrip Code attachments", () => {
       const removal = broker.revokeAttachment(tunnelId, "user-1");
       await removalStarted;
       expect(acquired.lease?.validate()).toBeNull();
+      expect(
+        broker.allowRelayAttachmentActivity("relay-attachment", tunnelId),
+      ).toBe(false);
       releaseRemoval();
       await removal;
       expect(acquired.lease?.validate()).toBeNull();

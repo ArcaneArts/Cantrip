@@ -128,6 +128,10 @@ type CodeTunnelChange = (input: {
 export class CodeTunnelBroker {
   readonly #attachmentRevocations = new Map<string, number>();
   readonly #attachments = new Map<string, ProtectedCodeAttachmentBinding>();
+  readonly #relayAttachments = new Map<
+    string,
+    ProtectedCodeAttachmentBinding
+  >();
   readonly #authSessionRevocations = new Map<string, number>();
   readonly #idleTtlMs: number;
   readonly #maxAttachments: number;
@@ -384,6 +388,50 @@ export class CodeTunnelBroker {
       },
       managed: true,
     };
+  }
+
+  bindRelayAttachment(
+    relayAttachmentId: string,
+    identity: CodeAttachmentRootIdentity,
+  ): boolean {
+    const binding = this.#attachments.get(identity.tunnelId);
+    if (
+      !binding ||
+      binding.attachmentId !== identity.rootAttachmentId ||
+      binding.authSessionId !== identity.authSessionId ||
+      binding.ownerId !== identity.ownerId ||
+      binding.protectedKeyRevision !== identity.protectedKeyRevision ||
+      binding.serverId !== identity.serverId ||
+      binding.tunnelId !== identity.tunnelId ||
+      binding.workerId !== identity.workerId ||
+      !this.#recordBindingActivity(binding)
+    ) {
+      return false;
+    }
+    this.#relayAttachments.set(relayAttachmentId, binding);
+    return true;
+  }
+
+  allowRelayAttachmentActivity(
+    relayAttachmentId: string,
+    tunnelId: string,
+  ): boolean {
+    const binding = this.#relayAttachments.get(relayAttachmentId);
+    if (
+      !binding ||
+      binding.tunnelId !== tunnelId ||
+      !this.#recordBindingActivity(binding)
+    ) {
+      if (this.#relayAttachments.get(relayAttachmentId) === binding) {
+        this.#relayAttachments.delete(relayAttachmentId);
+      }
+      return false;
+    }
+    return true;
+  }
+
+  releaseRelayAttachment(relayAttachmentId: string): void {
+    this.#relayAttachments.delete(relayAttachmentId);
   }
 
   async #createProtectedAttachment(
@@ -690,6 +738,11 @@ export class CodeTunnelBroker {
       );
     }
     this.#attachments.delete(binding.attachmentId);
+    for (const [relayAttachmentId, relayBinding] of this.#relayAttachments) {
+      if (relayBinding === binding) {
+        this.#relayAttachments.delete(relayAttachmentId);
+      }
+    }
     this.#changed?.({
       attachmentId: binding.attachmentId,
       ownerId: binding.ownerId,

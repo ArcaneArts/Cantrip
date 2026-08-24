@@ -82,12 +82,37 @@ zeroizing credential, discards stale out-of-order responses, interrupts a
 stalled degraded connect when a newer credential arrives, and can replace its
 standby fallback without restarting a healthy direct session.
 
+Relay data-plane activity is now bound to the exact authenticated root that
+minted the database attachment. A Code WebSocket without that local binding is
+rejected instead of falling through the generic unmanaged-tunnel allowance,
+and every accepted frame slides only that root. Client transport maintenance is
+deadline-bounded and isolated per tunnel, so a stalled refresh or route switch
+cannot suppress later heartbeats for other tunnels. A late
+`forward-unavailable` refresh no longer deletes the stable shared attachment
+identity; its unpublished credential expires naturally. Late forced-relay
+commands are fenced by the direct capability they observed and cannot mutate a
+replacement forward.
+
+One confirmed hosted-deployment gap remains intentionally unsolved in this
+cycle. Code roots and direct grants are process-local, while PostgreSQL
+attachments and HTTP routing are shared across replicas. The new local relay
+binding converts the previous cross-replica fail-open path into a safe rejection,
+but attachment creation, relay connect, direct activation, and renewal can
+still fail when consecutive requests land on different replicas. Sticky
+routing is therefore still an availability dependency for Code despite the
+general hosted contract. Correct removal requires a durable, fenced Code-root
+authority claim plus bounded owner-instance coordination for root activity and
+direct-grant operations; it must be implemented and exercised with two server
+instances before final continuity acceptance.
+
 Deterministic protocol, worker, server, app, and native tests cover renewal,
 hard caps, revoke-over-renew races, cross-ordered relay refreshes, stalled
 connect interruption, zero-byte heartbeats, monotonic credential generations,
-and fail-closed orphaned Code tunnels. The real 2/5/10/16-minute local acceptance
-run remains a Cycle 10 requirement; this cycle does not claim that evidence or
-change worker reconnect, bridge-liveness, or retained-workbench policy.
+fail-closed orphaned Code tunnels, exact relay-root binding, stalled maintenance
+isolation, and replacement-safe cleanup. The real 2/5/10/16-minute local
+acceptance run remains a Cycle 10 requirement; this cycle does not claim that
+evidence or change worker reconnect, bridge-liveness, or retained-workbench
+policy.
 
 ## Final remediation and acceptance addendum (2026-08-23)
 

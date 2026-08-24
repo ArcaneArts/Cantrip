@@ -936,12 +936,14 @@ export async function deleteTunnel(tunnelId: string): Promise<void> {
 export async function createTunnelAttachment(
   tunnelId: string,
   input: TunnelAttachmentCreate,
+  options: { signal?: AbortSignal } = {},
 ) {
   return tunnelAttachmentCreateResultSchema.parse(
-    await post(
-      `/api/tunnels/${encodeURIComponent(tunnelId)}/attachments`,
-      tunnelAttachmentCreateSchema.parse(input),
-    ),
+    await request(`/api/tunnels/${encodeURIComponent(tunnelId)}/attachments`, {
+      body: JSON.stringify(tunnelAttachmentCreateSchema.parse(input)),
+      method: "POST",
+      signal: options.signal,
+    }),
   );
 }
 

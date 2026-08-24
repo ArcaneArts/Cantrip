@@ -176,12 +176,13 @@ pub async fn force_tunnel_forward_relay(
     app: AppHandle,
     state: State<'_, TunnelForwards>,
     tunnel_id: String,
+    direct_capability_id: String,
 ) -> Result<Option<TunnelForwardSummary>, String> {
     #[cfg(desktop)]
-    return desktop::force_relay(&app, &state, &tunnel_id).await;
+    return desktop::force_relay(&app, &state, &tunnel_id, &direct_capability_id).await;
     #[cfg(mobile)]
     {
-        let _ = (app, state, tunnel_id);
+        let _ = (app, state, tunnel_id, direct_capability_id);
         Err("Local tunnel attachments are only available in the desktop app.".into())
     }
 }
@@ -890,6 +891,7 @@ mod desktop {
         app: &AppHandle,
         state: &State<'_, TunnelForwards>,
         tunnel_id: &str,
+        direct_capability_id: &str,
     ) -> Result<Option<TunnelForwardSummary>, String> {
         let transition_deadline = Instant::now() + RELAY_FALLBACK_TIMEOUT;
         let (route_control, mut summary, counters) = loop {
@@ -903,6 +905,9 @@ mod desktop {
                 };
                 let mut summary = forward.summary.clone();
                 forward.counters.apply(&mut summary);
+                if !matches_direct_capability(&summary, direct_capability_id) {
+                    return Err("The desktop tunnel changed before relay fallback.".into());
+                }
                 if summary.route_state == "relayed" {
                     summary.direct_fallback_reason = Some("connected-route-unusable".into());
                     forward.summary.direct_fallback_reason = summary.direct_fallback_reason.clone();
@@ -989,6 +994,9 @@ mod desktop {
         summary.direct_fallback_reason = Some("connected-route-unusable".into());
         if let Ok(mut forwards) = state.forwards.lock() {
             if let Some(forward) = forwards.get_mut(tunnel_id) {
+                if !matches_direct_capability(&forward.summary, direct_capability_id) {
+                    return Err("The desktop tunnel changed during relay fallback.".into());
+                }
                 forward.summary.direct_fallback_reason = summary.direct_fallback_reason.clone();
                 forward.summary.route_state = "relayed";
             }
@@ -1012,6 +1020,13 @@ mod desktop {
             &mut forward.summary,
             direct_capability_id,
         ))
+    }
+
+    fn matches_direct_capability(
+        summary: &TunnelForwardSummary,
+        direct_capability_id: &str,
+    ) -> bool {
+        summary.direct_capability_id.as_deref() == Some(direct_capability_id)
     }
 
     fn confirm_direct_retired_summary(
@@ -4128,6 +4143,11 @@ mod desktop {
                 summary.direct_capability_id.as_deref(),
                 Some("replacement-capability")
             );
+            assert!(!matches_direct_capability(&summary, "stale-capability"));
+            assert!(matches_direct_capability(
+                &summary,
+                "replacement-capability"
+            ));
             assert!(confirm_direct_retired_summary(
                 &mut summary,
                 "replacement-capability"

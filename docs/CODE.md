@@ -537,6 +537,20 @@ strictly increasing expiry generation, and native forwarding retains only the
 newest zeroizing fallback credential so out-of-order renderer responses cannot
 restore stale authorization.
 
+Each Code relay attachment is also bound in memory to the exact root generation
+that authorized its creation. Relay connection setup and every data-plane frame
+fail closed when that binding is absent or expired; generic non-Code tunnels do
+not inherit this requirement. Refresh and forced-relay maintenance are bounded
+and isolated per tunnel, and stale failure cleanup never deletes the stable
+attachment ID that a newer credential may already use.
+
+This authority is currently process-local. In a multi-replica hosted deployment,
+a Code request routed away from the root/direct-grant owner safely rejects but
+does not yet coordinate back to that owner. Until durable fenced root claims and
+bounded owner-instance operations are implemented, Code availability still
+requires request affinity even though the general hosted control plane does
+not. This is a documented continuity gap, not permission to relax root checks.
+
 Concurrent views share the editor process, persistent profile, generated
 workspace, and filesystem state without transferring control between windows.
 Expired or revoked surface attachments render a bounded recovery document that

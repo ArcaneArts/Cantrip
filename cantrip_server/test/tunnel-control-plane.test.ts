@@ -13,10 +13,11 @@ import {
   type CodeRuntimeStatus,
   type WorkerCommand,
 } from "@cantrip/protocol";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
+import { hashSecret } from "../src/auth/service.js";
 import { CodeTunnelBroker } from "../src/code/tunnel.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
@@ -547,6 +548,7 @@ describe.sequential("tunnel control plane", () => {
       payload: { clientId: "orphaned-code-client" },
     });
     expect(response.statusCode, response.body).toBe(409);
+    const orphanedSecret = "orphaned-code-secret".repeat(2);
     const orphanedAttachment =
       await database.repository.createDesktopTunnelAttachment(
         LOCAL_USER_ID,
@@ -555,7 +557,7 @@ describe.sequential("tunnel control plane", () => {
           clientId: "orphaned-code-client",
           expiresAt: new Date(Date.now() + 60_000),
           secretExpiresAt: new Date(Date.now() + 30_000),
-          secretHash: "orphaned-code-secret-hash",
+          secretHash: hashSecret(orphanedSecret),
         },
       );
     expect(orphanedAttachment).not.toBeNull();
@@ -565,6 +567,20 @@ describe.sequential("tunnel control plane", () => {
         url: `/api/tunnel-attachments/${orphanedAttachment!.attachmentId}/lease`,
       }),
     ).toMatchObject({ statusCode: 409 });
+    let orphanedClose: Promise<number>;
+    const orphanedSocket = await app.injectWS(
+      `/api/tunnel-attachments/${orphanedAttachment!.attachmentId}/connect`,
+      { headers: { authorization: `Bearer ${orphanedSecret}` } },
+      {
+        onInit(client) {
+          orphanedClose = new Promise((resolve) =>
+            client.once("close", resolve),
+          );
+        },
+      },
+    );
+    expect(await orphanedClose!).toBe(1008);
+    orphanedSocket.terminate();
     await database.repository.stopDesktopTunnelAttachment(
       LOCAL_USER_ID,
       orphanedAttachment!.attachmentId,
@@ -623,6 +639,34 @@ describe.sequential("tunnel control plane", () => {
       },
       tunnelId,
     });
+  });
+
+  it("does not revoke a newer shared attachment after a stale root-bind failure", async () => {
+    const bind = vi
+      .spyOn(codeTunnel, "bindRelayAttachment")
+      .mockReturnValueOnce(false);
+    const failed = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
+      payload: { clientId: "desktop-code-test" },
+    });
+    bind.mockRestore();
+
+    expect(failed.statusCode, failed.body).toBe(409);
+    await expect(
+      database.repository.getDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        codeAttachment.attachmentId,
+      ),
+    ).resolves.not.toBeNull();
+
+    const recovered = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
+      payload: { clientId: "desktop-code-test" },
+    });
+    expect(recovered.statusCode, recovered.body).toBe(201);
+    codeAttachment = tunnelAttachmentCreateResultSchema.parse(recovered.json());
   });
 
   it("preserves the relay credential after direct route activation", async () => {

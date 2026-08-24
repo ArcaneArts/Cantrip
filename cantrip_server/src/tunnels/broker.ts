@@ -31,6 +31,7 @@ export interface TunnelDataPlaneEndpoint {
 
 export interface TunnelRouteRegistration {
   attachmentId: string;
+  authoritativeRootRequired?: boolean;
   diagnosticTraceId?: string;
   destination: TunnelDataPlaneEndpoint;
   destinationTarget: TunnelDataPlaneTarget;
@@ -53,7 +54,11 @@ export interface TunnelStreamBrokerOptions {
   maxLifetimeMs?: number;
   maxRoutes?: number;
   now?: () => number;
-  onActivity?(tunnelId: string): boolean;
+  onActivity?(
+    tunnelId: string,
+    attachmentId: string,
+    authoritativeRootRequired: boolean,
+  ): boolean;
   sweepIntervalMs?: number;
 }
 
@@ -70,6 +75,7 @@ export interface TunnelStreamBrokerStats {
 
 interface Route {
   attachmentId: string;
+  authoritativeRootRequired: boolean;
   diagnosticTraceId?: string;
   destination: TunnelDataPlaneEndpoint;
   destinationTarget: TunnelDataPlaneTarget;
@@ -181,7 +187,13 @@ export class TunnelStreamBroker {
     if (this.#routes.size >= this.#maxRoutes) {
       throw new Error("Tunnel route limit reached.");
     }
-    const route: Route = { ...registration, key, unsubscribe: [] };
+    const route: Route = {
+      ...registration,
+      authoritativeRootRequired:
+        registration.authoritativeRootRequired ?? false,
+      key,
+      unsubscribe: [],
+    };
     this.#routes.set(key, route);
     try {
       route.unsubscribe.push(
@@ -284,7 +296,15 @@ export class TunnelStreamBroker {
         this.#rejectOpen(route, header, "limit-exceeded");
         return;
       }
-      if (!this.#onActivity(route.tunnelId)) return;
+      if (
+        !this.#onActivity(
+          route.tunnelId,
+          route.attachmentId,
+          route.authoritativeRootRequired,
+        )
+      ) {
+        return;
+      }
       if (this.#routes.get(route.key) !== route) return;
       const now = this.#now();
       connection = {
@@ -341,7 +361,13 @@ export class TunnelStreamBroker {
       this.#terminate(connection, "protocol-error");
       return;
     }
-    if (!this.#onActivity(route.tunnelId)) {
+    if (
+      !this.#onActivity(
+        route.tunnelId,
+        route.attachmentId,
+        route.authoritativeRootRequired,
+      )
+    ) {
       this.#terminate(connection, "endpoint-disconnected");
       return;
     }
