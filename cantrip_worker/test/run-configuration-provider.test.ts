@@ -1016,6 +1016,90 @@ describe("javaRunConfigurationProvider", () => {
       expect.objectContaining({ code: "gradle-task-missing" }),
     ]);
   });
+
+  it("validates the effective Java runtime without executing Java or the wrapper", async () => {
+    const root = await createRoot();
+    const executableDirectory = path.join(root, "bin");
+    const emptyPath = path.join(root, "empty-bin");
+    const jdkHome = path.join(root, "jdk");
+    const marker = path.join(root, "executed.txt");
+    await Promise.all([
+      mkdir(executableDirectory),
+      mkdir(emptyPath),
+      mkdir(path.join(jdkHome, "bin"), { recursive: true }),
+    ]);
+    await writeFile(
+      path.join(root, "settings.gradle"),
+      "rootProject.name = 'demo'\n",
+    );
+    await writeFile(
+      path.join(root, "build.gradle"),
+      "plugins { id 'application' }\n",
+    );
+    const executableBody = `#!/bin/sh\nprintf executed > ${JSON.stringify(marker)}\n`;
+    await Promise.all([
+      writeFile(path.join(root, "gradlew"), executableBody),
+      writeFile(path.join(executableDirectory, "java"), executableBody),
+      writeFile(path.join(jdkHome, "bin", "java"), executableBody),
+    ]);
+    await Promise.all([
+      chmod(path.join(root, "gradlew"), 0o755),
+      chmod(path.join(executableDirectory, "java"), 0o755),
+      chmod(path.join(jdkHome, "bin", "java"), 0o755),
+    ]);
+    const definition = javaRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Java runtime preflight",
+    });
+    const document = {
+      ...definition,
+      options: { ...definition.options, useWrapper: true },
+    };
+
+    await expect(
+      javaRunConfigurationProvider.validate(document, {
+        platform: "linux",
+        targetRoot: root,
+        defaultShell: "/bin/sh",
+        environment: { PATH: executableDirectory },
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      javaRunConfigurationProvider.validate(document, {
+        platform: "linux",
+        targetRoot: root,
+        defaultShell: "/bin/sh",
+        environment: { PATH: emptyPath },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        code: "executable-unavailable",
+        field: "options.jdkHome",
+      }),
+    ]);
+    await expect(
+      javaRunConfigurationProvider.validate(document, {
+        platform: "linux",
+        targetRoot: root,
+        defaultShell: "/bin/sh",
+        environment: { PATH: emptyPath, JAVA_HOME: jdkHome },
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      javaRunConfigurationProvider.validate(document, {
+        platform: "linux",
+        targetRoot: root,
+        defaultShell: "/bin/sh",
+        environment: { PATH: executableDirectory, JAVA_HOME: emptyPath },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        code: "java-home-invalid",
+        field: "options.jdkHome",
+      }),
+    ]);
+    await expect(access(marker)).rejects.toThrow();
+  });
 });
 
 describe("dartRunConfigurationProvider", () => {
