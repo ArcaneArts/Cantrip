@@ -518,7 +518,6 @@ import {
   createInitialTaskOpaqueContent,
   openTaskOpaqueSummary,
   prepareTaskDraftPersistence,
-  prepareTaskEncryptedOperation,
   prepareTaskPlanPersistence,
 } from "@/lib/task-persistence-encryption";
 import {
@@ -4541,7 +4540,7 @@ export async function updateTaskDraft(chatId: string, input: TaskDraftUpdate) {
 
 async function queueTaskOperation(
   chatId: string,
-  path: "start" | "plan" | "continue" | "begin-implementation",
+  path: "start" | "plan" | "continue" | "begin-implementation" | "retry",
   input: TaskOperationStart,
 ) {
   const current = await getTask(chatId);
@@ -4598,20 +4597,7 @@ export async function retryTaskPlanning(
   chatId: string,
   input: TaskOperationStart,
 ) {
-  const current = await getTask(chatId);
-  assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
-  const kind = current.lastError?.operationKind;
-  if (!kind || kind === "implementation") {
-    throw new Error("This Task has no encrypted planning operation to retry.");
-  }
-  const operation = await prepareTaskEncryptedOperation(current, {
-    kind,
-    operationId: input.operationId,
-    rowVersion: input.rowVersion,
-  });
-  return openTaskOpaqueSummary(
-    await post(`/api/tasks/${encodeURIComponent(chatId)}/retry`, operation),
-  );
+  return queueTaskOperation(chatId, "retry", input);
 }
 
 export async function getTerminals(projectId: string) {
