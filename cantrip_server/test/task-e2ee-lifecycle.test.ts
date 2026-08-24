@@ -555,6 +555,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(ownerId, {
     workerId,
     ...protectedProjectFields(),
+    repositoryBlindIndex: "B".repeat(43),
     repositoryId: "task-e2ee-lifecycle",
     nameWithOwner: "ArcaneArts/TaskE2EELifecycle",
     url: "https://github.com/ArcaneArts/TaskE2EELifecycle",
@@ -611,6 +612,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     const initialTask = await sealTask(chatId, initialContent);
     const createPayload = {
       chatId,
+      planGoalEnabled: true,
       titleProtection: protectedChatFields(chatId).titleProtection,
       task: initialTask,
     };
@@ -749,7 +751,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         content: [{ type: "text", text: `${sentinel} plaintext message` }],
       },
     });
-    expect(blockedMessage.statusCode).toBe(409);
+    expect(blockedMessage.statusCode).toBe(400);
     const blockedQueue = await app!.inject({
       method: "POST",
       url: `/api/chats/${chatId}/queue`,
@@ -761,7 +763,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         idempotencyKey: randomUUID(),
       },
     });
-    expect(blockedQueue.statusCode).toBe(409);
+    expect(blockedQueue.statusCode).toBe(400);
     const blockedAutomation = await app!.inject({
       method: "POST",
       url: `/api/projects/${projectId}/automations`,

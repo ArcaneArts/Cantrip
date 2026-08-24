@@ -2589,6 +2589,7 @@ export const tasks = pgTable(
       .primaryKey()
       .references(() => chats.id, { onDelete: "cascade" }),
     state: text("state").$type<TaskState>().notNull().default("draft"),
+    planGoalEnabled: boolean("plan_goal_enabled").notNull().default(false),
     stableStateBeforeFailure: text(
       "stable_state_before_failure",
     ).$type<TaskStableState>(),
@@ -2638,7 +2639,7 @@ export const tasks = pgTable(
     ),
     check(
       "tasks_active_operation_kind_check",
-      sql`${table.activeOperationKind} IS NULL OR ${table.activeOperationKind} IN ('initial-plan', 'continue-plan', 'finalize')`,
+      sql`${table.activeOperationKind} IS NULL OR ${table.activeOperationKind} IN ('direct', 'initial-plan', 'continue-plan', 'finalize')`,
     ),
     check(
       "tasks_active_operation_pair_check",
@@ -2714,7 +2715,7 @@ export const taskPlanningRounds = pgTable(
     check("task_planning_rounds_ordinal_check", sql`${table.ordinal} >= 0`),
     check(
       "task_planning_rounds_kind_check",
-      sql`${table.kind} IN ('initial-plan', 'continue-plan', 'finalize')`,
+      sql`${table.kind} IN ('direct', 'initial-plan', 'continue-plan', 'finalize')`,
     ),
     check(
       "task_planning_rounds_status_check",

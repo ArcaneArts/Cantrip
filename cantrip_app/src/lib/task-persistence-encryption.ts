@@ -193,6 +193,7 @@ export async function openTaskOpaqueSummary(
     });
     return taskDetailSchema.parse({
       chatId: opaque.chatId,
+      planGoalEnabled: opaque.planGoalEnabled,
       state: opaque.state,
       stableStateBeforeFailure: opaque.stableStateBeforeFailure,
       activeOperationId: opaque.activeOperationId,
@@ -223,6 +224,7 @@ async function mutationForTask(
   next: TaskDetail,
   options: TrustedOptions,
   draftAttachmentIds?: string[],
+  planGoalEnabled?: boolean,
 ): Promise<TaskOpaqueMutation> {
   return taskOpaqueMutationSchema.parse({
     rowVersion: task.rowVersion,
@@ -232,6 +234,7 @@ async function mutationForTask(
       options,
     ),
     ...(draftAttachmentIds ? { draftAttachmentIds } : {}),
+    ...(planGoalEnabled !== undefined ? { planGoalEnabled } : {}),
   });
 }
 
@@ -248,6 +251,9 @@ export async function prepareTaskDraftPersistence(
   }
   const next = taskDetailSchema.parse({
     ...task,
+    ...(input.planGoalEnabled !== undefined
+      ? { planGoalEnabled: input.planGoalEnabled }
+      : {}),
     ...(input.briefMarkdown !== undefined
       ? { briefMarkdown: input.briefMarkdown }
       : {}),
@@ -260,6 +266,7 @@ export async function prepareTaskDraftPersistence(
     next,
     options,
     input.draftAttachmentIds ?? task.draftAttachmentIds,
+    input.planGoalEnabled,
   );
 }
 
@@ -331,7 +338,7 @@ export async function prepareTaskEncryptedOperation(
       "The Task changed before its encrypted operation was prepared.",
     );
   }
-  if (input.kind !== "initial-plan") {
+  if (input.kind !== "direct" && input.kind !== "initial-plan") {
     const answers = input.answers ?? task.currentAnswers;
     validateAnswers(task, answers);
     const answered = new Set(answers.map((answer) => answer.questionId));
@@ -363,7 +370,9 @@ export async function prepareTaskEncryptedOperation(
     ...operation.task.classification,
     state: "failed",
     stableStateBeforeFailure:
-      input.kind === "initial-plan" ? "draft" : "review",
+      input.kind === "direct" || input.kind === "initial-plan"
+        ? "draft"
+        : "review",
     activeOperationKind: null,
     lastError: lastErrorMetadata(error),
   };
@@ -432,11 +441,13 @@ export async function prepareTaskEncryptedOperation(
 
 export function taskOpaqueSummaryFromCreate(input: {
   chatId: string;
+  planGoalEnabled?: boolean;
   task: TaskOpaqueContent;
   createdAt: string;
 }): TaskOpaqueSummary {
   return taskOpaqueSummarySchema.parse({
     chatId: input.chatId,
+    planGoalEnabled: input.planGoalEnabled ?? false,
     ...input.task.classification,
     activeOperationId: null,
     draftAttachmentIds: [],

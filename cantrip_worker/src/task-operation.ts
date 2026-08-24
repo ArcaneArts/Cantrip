@@ -65,10 +65,15 @@ const FALLBACK_TASK_GOAL_PROMPT =
 
 export class EncryptedTaskEventSealer {
   readonly #ids = new Map<string, string>();
+  readonly #mode: "default" | "goal" | "plan";
   readonly #service: WorkerEncryptionService;
 
-  constructor(service: WorkerEncryptionService) {
+  constructor(
+    service: WorkerEncryptionService,
+    mode: "default" | "goal" | "plan" = "goal",
+  ) {
     this.#service = service;
+    this.#mode = mode;
   }
 
   #id(key: string): string {
@@ -117,7 +122,7 @@ export class EncryptedTaskEventSealer {
     const ownerId = this.#service.ownerId();
     const classification: TaskMessageProtectedClassification = {
       role: "assistant",
-      mode: "goal",
+      mode: this.#mode,
       attachmentIds: [],
     };
     try {
@@ -167,6 +172,8 @@ export function buildEncryptedTaskOperationPrompt(
   content: TaskPlanningRoundProtectedContent,
 ): string {
   switch (content.classification.kind) {
+    case "direct":
+      return content.inputBriefMarkdown;
     case "initial-plan":
       return `${PLANNER_RULES}
 
@@ -288,7 +295,7 @@ async function encryptedMessage(input: {
   content: string;
   idempotencyKey: string;
   keyRevision: number;
-  mode: "goal" | "plan";
+  mode: "default" | "goal" | "plan";
   ownerId: string;
   role: "assistant" | "user";
   id?: string;
@@ -572,7 +579,7 @@ export async function executeEncryptedTaskOperation(input: {
   ownerId: string;
   request: TaskOperationRelayRequest;
   run(input: {
-    outputSchema: WorkflowJsonObject;
+    outputSchema?: WorkflowJsonObject;
     prompt: string;
   }): Promise<AgentTurnResult>;
 }): Promise<AgentTurnResult> {
@@ -590,21 +597,27 @@ export async function executeEncryptedTaskOperation(input: {
     });
     const protectedInput = opened.round;
     const taskInput = opened.task;
+    const direct = protectedInput.classification.kind === "direct";
     const finalizing = protectedInput.classification.kind === "finalize";
     const rawResult = agentTurnResultSchema.parse(
       await input.run({
         prompt: buildEncryptedTaskOperationPrompt(protectedInput),
-        outputSchema: finalizing
-          ? taskFinalizerOutputJsonSchema
-          : taskPlannerOutputJsonSchema,
+        ...(direct
+          ? {}
+          : {
+              outputSchema: finalizing
+                ? taskFinalizerOutputJsonSchema
+                : taskPlannerOutputJsonSchema,
+            }),
       }),
     );
     const fallbackPlan =
       protectedInput.inputPlanMarkdown?.trim() ||
       protectedInput.inputBriefMarkdown;
-    const plannerResult = finalizing
-      ? null
-      : parsePlannerResult(rawResult.structuredResult, fallbackPlan);
+    const plannerResult =
+      direct || finalizing
+        ? null
+        : parsePlannerResult(rawResult.structuredResult, fallbackPlan);
     const finalizerResult = finalizing
       ? parseFinalizerResult(rawResult.structuredResult, fallbackPlan)
       : null;
@@ -613,7 +626,7 @@ export async function executeEncryptedTaskOperation(input: {
       ordinal: protectedInput.classification.ordinal,
       kind: protectedInput.classification.kind,
       status: "completed" as const,
-      hasOutputPlan: true,
+      hasOutputPlan: !direct,
       hasOutputQuestions: Boolean(plannerResult?.questions.length),
       hasOutputGoalPrompt: finalizing,
       error: null,
@@ -621,42 +634,57 @@ export async function executeEncryptedTaskOperation(input: {
     const protectedResult: TaskPlanningRoundProtectedContent = {
       ...protectedInput,
       classification,
-      outputPlanMarkdown:
-        finalizerResult?.finalPlanMarkdown ?? plannerResult!.planMarkdown,
+      outputPlanMarkdown: direct
+        ? null
+        : (finalizerResult?.finalPlanMarkdown ?? plannerResult!.planMarkdown),
       outputQuestions: plannerResult?.questions ?? [],
       outputGoalPrompt: objective,
     };
-    const taskClassification = finalizing
+    const taskClassification = direct
       ? {
-          state: "implementing" as const,
+          state: "complete" as const,
           stableStateBeforeFailure: null,
           activeOperationKind: null,
           planAuthorship: taskInput.classification.planAuthorship,
           planningRound: protectedInput.classification.ordinal,
-          hasPlan: true,
+          hasPlan: false,
           hasQuestions: false,
-          hasFinalPlan: true,
-          hasGoalPrompt: true,
-          lastError: null,
-        }
-      : {
-          state: "review" as const,
-          stableStateBeforeFailure: null,
-          activeOperationKind: null,
-          planAuthorship: "agent" as const,
-          planningRound: protectedInput.classification.ordinal,
-          hasPlan: true,
-          hasQuestions: Boolean(plannerResult?.questions.length),
           hasFinalPlan: false,
           hasGoalPrompt: false,
           lastError: null,
-        };
+        }
+      : finalizing
+        ? {
+            state: "implementing" as const,
+            stableStateBeforeFailure: null,
+            activeOperationKind: null,
+            planAuthorship: taskInput.classification.planAuthorship,
+            planningRound: protectedInput.classification.ordinal,
+            hasPlan: true,
+            hasQuestions: false,
+            hasFinalPlan: true,
+            hasGoalPrompt: true,
+            lastError: null,
+          }
+        : {
+            state: "review" as const,
+            stableStateBeforeFailure: null,
+            activeOperationKind: null,
+            planAuthorship: "agent" as const,
+            planningRound: protectedInput.classification.ordinal,
+            hasPlan: true,
+            hasQuestions: Boolean(plannerResult?.questions.length),
+            hasFinalPlan: false,
+            hasGoalPrompt: false,
+            lastError: null,
+          };
     const taskResult: TaskProtectedContent = {
       version: 1,
       classification: taskClassification,
       briefMarkdown: protectedInput.inputBriefMarkdown,
-      planMarkdown:
-        finalizerResult?.finalPlanMarkdown ?? plannerResult!.planMarkdown,
+      planMarkdown: direct
+        ? null
+        : (finalizerResult?.finalPlanMarkdown ?? plannerResult!.planMarkdown),
       currentQuestions: plannerResult?.questions ?? [],
       currentAnswers: finalizing ? protectedInput.inputAnswers : [],
       additionalDirection: finalizing ? protectedInput.additionalDirection : "",
@@ -675,10 +703,12 @@ export async function executeEncryptedTaskOperation(input: {
       componentKey: component.key,
       content: finalizerResult
         ? finalizerResult.finalPlanMarkdown
-        : plannerMessage(plannerResult!),
+        : direct
+          ? rawResult.text || "The Task completed without a message."
+          : plannerMessage(plannerResult!),
       idempotencyKey: `task-result:${request.operationId}`,
       keyRevision: component.keyRevision,
-      mode: "plan",
+      mode: direct ? "default" : "plan",
       ownerId: input.ownerId,
       role: "assistant",
     });

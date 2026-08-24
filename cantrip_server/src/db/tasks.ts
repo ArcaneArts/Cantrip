@@ -118,6 +118,7 @@ function roundColumns(content: TaskPlanningRoundOpaqueContent) {
 export function toTaskOpaqueSummary(row: TaskRow): TaskOpaqueSummary {
   return taskOpaqueSummarySchema.parse({
     chatId: row.chatId,
+    planGoalEnabled: row.planGoalEnabled,
     state: row.state,
     stableStateBeforeFailure: row.stableStateBeforeFailure,
     activeOperationId: row.activeOperationId,
@@ -261,6 +262,9 @@ export class TaskRepository {
       .update(schema.tasks)
       .set({
         ...taskOpaqueColumns(input.task),
+        ...(input.planGoalEnabled !== undefined
+          ? { planGoalEnabled: input.planGoalEnabled }
+          : {}),
         ...(input.draftAttachmentIds
           ? { draftAttachmentIds: input.draftAttachmentIds }
           : {}),
@@ -394,6 +398,14 @@ export class TaskRepository {
           "stale-version",
         );
       }
+      if ((request.classification.kind === "direct") === task.planGoalEnabled) {
+        throw new TaskConflictError(
+          task.planGoalEnabled
+            ? "Disable Plan + Goal before starting this Task directly."
+            : "Enable Plan + Goal before starting a planning operation.",
+          "idempotency-conflict",
+        );
+      }
       validateTaskOperationStart(
         task.state,
         task.stableStateBeforeFailure,
@@ -426,6 +438,9 @@ export class TaskRepository {
         .set({
           ...taskOpaqueColumns(request.task),
           activeOperationId: request.operationId,
+          ...(request.classification.kind === "direct"
+            ? { implementationStartedAt: task.implementationStartedAt ?? now }
+            : {}),
           rowVersion: task.rowVersion + 1,
           updatedAt: now,
         })

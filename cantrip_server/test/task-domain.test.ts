@@ -41,15 +41,18 @@ const encrypted = {
 };
 
 function taskContent(
-  state: "draft" | "planning" | "review" | "failed",
+  state:
+    "draft" | "planning" | "review" | "implementing" | "complete" | "failed",
   planningRound: number,
-  operationKind: "initial-plan" | null,
+  operationKind: "direct" | "initial-plan" | null,
 ): TaskOpaqueContent {
   return {
     classification: {
       state,
       stableStateBeforeFailure:
-        state === "planning" || state === "failed" ? "draft" : null,
+        state === "planning" || state === "implementing" || state === "failed"
+          ? "draft"
+          : null,
       activeOperationKind: operationKind,
       planAuthorship: "agent",
       planningRound,
@@ -61,7 +64,7 @@ function taskContent(
         state === "failed"
           ? {
               code: "task-operation-failed",
-              operationKind: "initial-plan",
+              operationKind: operationKind ?? "initial-plan",
               occurredAt: "2026-08-19T12:00:00.000Z",
             }
           : null,
@@ -74,25 +77,30 @@ function taskMessage(
   role: "assistant" | "user",
   id: string,
   idempotencyKey: string,
+  mode: "default" | "plan" = "plan",
 ) {
   return {
     id,
-    classification: { role, mode: "plan" as const, attachmentIds: [] },
+    classification: { role, mode, attachmentIds: [] },
     protectedContent: encrypted,
     reasoningEffort: null,
     idempotencyKey,
   };
 }
 
-function operation(chatId: string, rowVersion: number) {
-  const operationId = "11111111-1111-4111-8111-111111111111";
+function operation(
+  chatId: string,
+  rowVersion: number,
+  kind: "direct" | "initial-plan" = "initial-plan",
+) {
+  const operationId = randomUUID();
   const request: TaskOperationRelayRequest = {
     chatId,
     operationId,
     fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     classification: {
       ordinal: 1,
-      kind: "initial-plan",
+      kind,
       status: "running",
       hasOutputPlan: false,
       hasOutputQuestions: false,
@@ -100,16 +108,17 @@ function operation(chatId: string, rowVersion: number) {
       error: null,
     },
     protectedInput: encrypted,
-    task: taskContent("planning", 1, "initial-plan"),
+    task: taskContent(kind === "direct" ? "implementing" : "planning", 1, kind),
     userMessage: taskMessage(
       "user",
-      "22222222-2222-4222-8222-222222222222",
+      randomUUID(),
       `task-operation:${operationId}`,
+      kind === "direct" ? "default" : "plan",
     ),
   };
   const error = {
     code: "task-operation-failed",
-    operationKind: "initial-plan" as const,
+    operationKind: kind,
     occurredAt: "2026-08-19T12:00:00.000Z",
   };
   return taskEncryptedOperationStartSchema.parse({
@@ -117,9 +126,10 @@ function operation(chatId: string, rowVersion: number) {
     operation: request,
     failure: {
       task: {
-        ...taskContent("failed", 1, null),
+        ...taskContent("failed", 1, kind),
         classification: {
-          ...taskContent("failed", 1, null).classification,
+          ...taskContent("failed", 1, kind).classification,
+          activeOperationKind: null,
           lastError: error,
         },
       },
@@ -151,6 +161,8 @@ const config: ServerConfig = {
 };
 
 let observedTurn: Extract<WorkerCommand, { type: "chat.turn" }> | null = null;
+let preparedAgentTurns = 0;
+const observedWorkerCommandTypes: string[] = [];
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -167,6 +179,7 @@ const workerBridge: WorkerCommandBus = {
     return () => undefined;
   },
   async request(_workerId, command) {
+    observedWorkerCommandTypes.push(command.type);
     if (command.type === "project.folder.materialize") {
       return {
         status: "ready",
@@ -180,12 +193,17 @@ const workerBridge: WorkerCommandBus = {
     if (command.type === "code.agentTurnState") {
       return { notifiedSessions: 0, refreshed: [], conflicts: [] };
     }
+    if (command.type === "code.prepareAgentTurn") {
+      preparedAgentTurns += 1;
+      return { prepared: true, sessions: [] };
+    }
     if (command.type === "chat.turn") {
       observedTurn = command;
       if (command.resultMode.kind !== "task-encrypted") {
         throw new Error("Expected the encrypted Task relay.");
       }
       const request = command.resultMode.operation;
+      const direct = request.classification.kind === "direct";
       return {
         threadId: "thread-task-e2ee",
         turnId: "turn-task-e2ee",
@@ -197,14 +215,15 @@ const workerBridge: WorkerCommandBus = {
           classification: {
             ...request.classification,
             status: "completed",
-            hasOutputPlan: true,
+            hasOutputPlan: !direct,
           },
           protectedResult: encrypted,
-          task: taskContent("review", 1, null),
+          task: taskContent(direct ? "complete" : "review", 1, null),
           assistantMessage: taskMessage(
             "assistant",
-            "33333333-3333-4333-8333-333333333333",
+            randomUUID(),
             `task-result:${request.operationId}`,
+            direct ? "default" : "plan",
           ),
           goal: null,
         },
@@ -244,6 +263,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "task-worker",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "A".repeat(43),
     repositoryId: "task-e2ee",
     nameWithOwner: "ArcaneArts/TaskE2EE",
     url: "https://github.com/ArcaneArts/TaskE2EE",
@@ -291,6 +311,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
       url: `/api/projects/${projectId}/tasks`,
       payload: {
         chatId,
+        planGoalEnabled: true,
         titleProtection: protectedChatFields(chatId).titleProtection,
         task: taskContent("draft", 0, null),
       },
@@ -299,6 +320,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
     const created = taskWireCreateResultSchema.parse(createdResponse.json());
     expect(created.task).toMatchObject({
       chatId,
+      planGoalEnabled: true,
       state: "draft",
       rowVersion: 1,
     });
@@ -321,10 +343,13 @@ describe.sequential("opaque encrypted Task persistence", () => {
       url: `/api/tasks/${chatId}/plan`,
       payload: start,
     });
-    expect(startResponse.statusCode).toBe(202);
+    expect(startResponse.statusCode, JSON.stringify(startResponse.json())).toBe(
+      202,
+    );
     const reviewed = await waitForState(chatId, "review");
     expect(reviewed).toMatchObject({ planningRound: 1, hasPlan: true });
     expect(observedTurn?.resultMode.kind).toBe("task-encrypted");
+    expect(preparedAgentTurns).toBe(0);
     expect(JSON.stringify(observedTurn)).not.toContain(sentinel);
 
     const duplicate = await app.inject({
@@ -355,7 +380,64 @@ describe.sequential("opaque encrypted Task persistence", () => {
     ).toBe(true);
   });
 
-  it("keeps ordinary agent messages on the existing visible API shape", async () => {
+  it("defaults new Tasks to one direct non-Goal turn", async () => {
+    const chatId = randomUUID();
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId,
+        titleProtection: protectedChatFields(chatId).titleProtection,
+        task: taskContent("draft", 0, null),
+      },
+    });
+    expect(createdResponse.statusCode).toBe(201);
+    const created = taskWireCreateResultSchema.parse(createdResponse.json());
+    expect(created.task.planGoalEnabled).toBe(false);
+
+    const start = operation(chatId, created.task.rowVersion, "direct");
+    const startResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${chatId}/start`,
+      payload: start,
+    });
+    expect(startResponse.statusCode, JSON.stringify(startResponse.json())).toBe(
+      202,
+    );
+    expect(preparedAgentTurns).toBe(1);
+    const completed = await waitForState(chatId, "complete");
+    expect(completed).toMatchObject({
+      planGoalEnabled: false,
+      planningRound: 1,
+      hasPlan: false,
+      hasFinalPlan: false,
+      hasGoalPrompt: false,
+    });
+    expect(completed.implementationStartedAt).not.toBeNull();
+    expect(observedTurn?.resultMode).toMatchObject({
+      kind: "task-encrypted",
+      operation: { classification: { kind: "direct" } },
+    });
+    expect(observedWorkerCommandTypes).not.toContain("chat.goal.create");
+
+    const storedRounds = await database.repository.tasks.listRounds(
+      LOCAL_USER_ID,
+      chatId,
+    );
+    const storedMessages = await database.repository.listTaskMessages(
+      LOCAL_USER_ID,
+      chatId,
+    );
+    expect(storedRounds).toMatchObject([
+      { kind: "direct", status: "completed" },
+    ]);
+    expect(storedMessages.map((message) => message.mode)).toEqual([
+      "default",
+      "default",
+    ]);
+  });
+
+  it("keeps ordinary agent messages on the encrypted API shape", async () => {
     const chat = await database.repository.createChat(
       LOCAL_USER_ID,
       projectId,
@@ -373,12 +455,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
       url: `/api/chats/${chat.id}/messages`,
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject([
-      {
-        chatId: chat.id,
-        content: [{ type: "text", text: "Visible ordinary chat message" }],
-      },
-    ]);
+    expect(response.json()).toEqual({ kind: "chat-encrypted", messages: [] });
   });
 
   it("keeps the destructive reset narrowly scoped to Task chats", async () => {

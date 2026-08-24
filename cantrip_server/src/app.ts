@@ -9496,7 +9496,7 @@ export async function buildApp({
             attribution,
           );
           if (!assistantMessage) {
-            throw new Error("Task planning Chat was not found.");
+            throw new Error("Task Chat was not found.");
           }
           await repository.tasks.attachOperationAssistantMessage(
             ownerId,
@@ -9734,6 +9734,8 @@ export async function buildApp({
     const encryptedTaskRelay = options.structuredResult?.taskOperation
       ? taskOperationRelayTurnFields(options.structuredResult.taskOperation)
       : null;
+    const directTaskOperation =
+      options.structuredResult?.taskOperation?.classification.kind === "direct";
     const encryptedTaskMessages = options.encryptedTaskMessages ?? null;
     let encryptedChatMessages = options.encryptedChatMessages ?? null;
     const modelId = await resolveModelId(context, input.modelId);
@@ -9824,14 +9826,17 @@ export async function buildApp({
     if (!effectivePolicies) {
       throw new Error("The chat project is no longer available.");
     }
-    if (!options.structuredResult) await prepareCodeEditorsForTurn(context);
-    const mcpServers = options.structuredResult
-      ? []
-      : await repository.listEffectiveMcpServers(
-          ownerId,
-          context.projectId,
-          context.workerId,
-        );
+    if (!options.structuredResult || directTaskOperation) {
+      await prepareCodeEditorsForTurn(context);
+    }
+    const mcpServers =
+      options.structuredResult && !directTaskOperation
+        ? []
+        : await repository.listEffectiveMcpServers(
+            ownerId,
+            context.projectId,
+            context.workerId,
+          );
     const execution = await repository.startChatExecutionLane(
       ownerId,
       context.chatId,
@@ -22956,7 +22961,10 @@ export async function buildApp({
       if (!task || !context || context.experience !== "task") {
         return reply.code(404).send({ error: "Task not found." });
       }
-      if (!task.implementationStartedAt || !task.hasFinalPlan) {
+      if (
+        !task.implementationStartedAt ||
+        (task.planGoalEnabled && !task.hasFinalPlan)
+      ) {
         return reply
           .code(409)
           .send({ error: "Task implementation has not started." });
@@ -23005,7 +23013,9 @@ export async function buildApp({
 
       let goal = null;
       let goalUnavailableReason: string | null = null;
-      if (!context.threadId) {
+      if (!task.planGoalEnabled) {
+        goalUnavailableReason = null;
+      } else if (!context.threadId) {
         goalUnavailableReason = "The Task Chat has no active Codex thread.";
       } else if (!bridge.isConnected(context.workerId)) {
         goalUnavailableReason = "The project worker is offline.";
@@ -23217,6 +23227,38 @@ export async function buildApp({
         const response = taskMutationError(error, reply);
         if (response) return response;
         throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/start",
+    async (request, reply) => {
+      const input = taskEncryptedOperationStartSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context || context.experience !== "task") {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      try {
+        if (input.data.operation.classification.kind !== "direct") {
+          return reply
+            .code(400)
+            .send({ error: "Task operation kind is invalid." });
+        }
+        const task = await beginEncryptedTaskOperation(context, input.data);
+        return task
+          ? reply.code(202).send(taskOpaqueSummarySchema.parse(task))
+          : reply.code(404).send({ error: "Task not found." });
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );

@@ -8,10 +8,17 @@ system in [POLICIES.md](POLICIES.md) was completed. This document now records
 the product and recovery contract for the shipped feature rather than a future
 proposal.
 
-The implementation uses the final Policy APIs: every planning, finalization,
-and Goal turn receives current effective Policy summaries, and the generated
-Goal objective tells the Agent how to inspect full effective policies through
-the Cantrip CLI. Task persistence never snapshots Policy bodies.
+New Tasks default to direct execution: the saved brief is submitted verbatim as
+one ordinary Agent turn, using the selected Implementation access, without a
+planning review or Goal. The draft's **Plan + Goal** switch opts into the
+original workflow described below. Tasks created before this option shipped are
+migrated with Plan + Goal enabled so their behavior does not change.
+
+The Plan + Goal workflow uses the final Policy APIs: every planning,
+finalization, and Goal turn receives current effective Policy summaries, and
+the generated Goal objective tells the Agent how to inspect full effective
+policies through the Cantrip CLI. Task persistence never snapshots Policy
+bodies.
 
 The initial release deliberately keeps pull-request tracking observational.
 Exact PR URLs in the durable transcript and branches from the Task's current or
@@ -21,22 +28,27 @@ progress. A separate durable dismissal table remains an optional future
 extension.
 
 Tasks also run as first-class managed-folder workloads. Planning and
-finalization remain read-only; Goal implementation runs directly in the one
-worker-bound folder under the selected permission profile. The dashboard uses
-folder/worker/path context, performs no GitHub pull-request lookup, and does not
-offer worktree or relocation controls. Durable Task state remains readable
-while the owning worker is offline and execution resumes after it reconnects.
+finalization remain read-only; direct turns and Goal implementation run in the
+one worker-bound folder under the selected permission profile. The dashboard
+uses folder/worker/path context, performs no GitHub pull-request lookup, and
+does not offer worktree or relocation controls. Durable Task state remains
+readable while the owning worker is offline and execution resumes after it
+reconnects.
 
-Tasks automate the user's existing large-job workflow:
+Tasks support two execution modes:
 
-1. write a broad idea/brief;
-2. let an Agent investigate and propose a Markdown plan;
-3. answer material questions;
-4. continue planning as many times as useful;
-5. optionally edit the plan directly;
-6. finalize the plan and generate a Goal prompt;
-7. automatically submit that prompt to the same Agent in Goal mode;
-8. observe implementation, PRs, pauses, and completion from one durable tab.
+- **Direct** (default): write a prompt and start it as one ordinary Agent turn.
+  There is no review, replanning, finalization, or Goal mode.
+- **Plan + Goal**: opt into the original large-job workflow:
+
+  1. write a broad idea/brief;
+  2. let an Agent investigate and propose a Markdown plan;
+  3. answer material questions;
+  4. continue planning as many times as useful;
+  5. optionally edit the plan directly;
+  6. finalize the plan and generate a Goal prompt;
+  7. automatically submit that prompt to the same Agent in Goal mode;
+  8. observe implementation, PRs, pauses, and completion from one durable tab.
 
 A Task looks like a new project tab type, but it is implemented as a specialized
 Chat experience. Cantrip does not create a second agent runtime or separate
@@ -89,8 +101,9 @@ header.
   presentation state; it does not change the Task's durable state.
 - During Draft, Planning, Review, and Finalizing, Chat view is inspect-only.
   Task actions remain the only way to submit planning turns.
-- During Implementing, Paused, Blocked, and Complete, Chat view exposes normal
-  Goal controls, steering, queueing, approvals, and console switching.
+- During Implementing, Paused, Blocked, and Complete, Chat view exposes the
+  applicable Chat controls, steering, approvals, and console switching. Goal
+  controls appear only for Plan + Goal Tasks.
 
 Restricting the early Chat composer prevents an unrelated prompt from bypassing
 the structured planning state machine.
@@ -99,23 +112,25 @@ the structured planning state machine.
 
 Durable Task states:
 
-| State        | Meaning                                                              |
-| ------------ | -------------------------------------------------------------------- |
-| draft        | User is writing the initial brief and adding attachments.            |
-| planning     | Initial or continued planning turn is active.                        |
-| review       | A valid Markdown plan is available for editing/questions.            |
-| finalizing   | Agent is incorporating final answers and producing the Goal prompt.  |
-| implementing | Goal mode is active.                                                 |
-| paused       | Goal/Chat automation is cooperatively paused.                        |
-| blocked      | Goal reported a genuine blocker or requires user action.             |
-| complete     | Goal completed.                                                      |
-| failed       | The current planning/finalization operation failed and is retryable. |
+| State        | Meaning                                                             |
+| ------------ | ------------------------------------------------------------------- |
+| draft        | User is writing the initial brief and adding attachments.           |
+| planning     | Initial or continued planning turn is active.                       |
+| review       | A valid Markdown plan is available for editing/questions.           |
+| finalizing   | Agent is incorporating final answers and producing the Goal prompt. |
+| implementing | A direct turn or Goal implementation is active.                     |
+| paused       | Goal/Chat automation is cooperatively paused.                       |
+| blocked      | Goal reported a genuine blocker or requires user action.            |
+| complete     | The direct turn or Goal completed.                                  |
+| failed       | The current Task operation failed and is retryable.                 |
 
 The Task stores the last stable state and failed operation kind so Retry can
-return to Planning or Finalizing correctly.
+return to Direct execution, Planning, or Finalizing correctly.
 
 Main transitions:
 
+    draft --Start Task (direct)--> implementing
+    implementing --direct turn completed--> complete
     draft --Plan Task--> planning
     planning --valid result--> review
     review --Continue Planning--> planning
@@ -125,8 +140,8 @@ Main transitions:
     implementing --> blocked
     blocked --Resume--> implementing
     implementing --> complete
-    planning/finalizing --> failed
-    failed --Retry--> planning/finalizing
+    implementing/planning/finalizing --> failed
+    failed --Retry--> implementing/planning/finalizing
 
 No transition from Finalizing to Implementing is committed until both the final
 Task result and Goal creation are durably accepted. Retrying must never create a
@@ -158,7 +173,9 @@ Draft view is a full-content Markdown document editor:
 - attachment chips/previews/removal;
 - title rename;
 - autosave status;
-- primary **Plan Task** action.
+- **Plan + Goal** switch, off by default;
+- primary **Start Task** action when the switch is off, or **Plan Task** when it
+  is on.
 
 The brief autosaves to Cantrip Server using a positive row version. Conflicting
 saves return a conflict that lets the user reload or copy their unsaved text;
@@ -174,8 +191,9 @@ Compact controls appear in the Task header/footer:
 - execution-root/worker placement where applicable. Managed folders show their
   fixed owning worker rather than a worktree or relocation selector.
 
-Model and reasoning apply immediately to planning. Implementation access is
-stored on the backing Chat but is not granted to planning turns.
+Model and reasoning apply immediately to either execution mode. Implementation
+access is granted to a direct Task turn and stored for the later Goal in Plan +
+Goal mode, but is never granted to planning/finalization turns.
 
 ### Attachments
 
@@ -188,12 +206,34 @@ Reuse normal Chat attachments:
   supports relocation;
 - Task deletion uses Chat attachment cleanup.
 
-The Task record stores the ordered attachment IDs selected for its draft. Plan
-Task uses exactly that saved set. An uploaded but removed attachment is deleted
-through the existing attachment lifecycle.
+The Task record stores the ordered attachment IDs selected for its draft. Start
+Task or Plan Task uses exactly that saved set. An uploaded but removed
+attachment is deleted through the existing attachment lifecycle.
 
 The brief and plan do not live in temporary repository files. Cantrip Server is
 the source of truth.
+
+## Direct execution
+
+With **Plan + Goal** off, Start Task persists the latest brief, attachments, and
+switch value before starting an encrypted `direct` Task operation. The worker
+decrypts the brief only at execution and supplies that exact string as the
+ordinary turn prompt—without a Task planning wrapper, structured response
+schema, or Goal-mode prompt. Mentioned skills, attachments, current policies,
+and the selected Implementation access behave as they do for an ordinary Agent
+turn.
+
+The Task moves from Draft to Implementing while the turn runs and to Complete
+when the assistant response is durably accepted. The user and assistant
+messages use normal/default mode in the backing Chat. The operation still uses
+Task encryption, optimistic row versions, idempotency, activity streaming,
+failure/retry state, and restart recovery. It must produce no plan, questions,
+final plan, Goal prompt, or Goal record.
+
+The implementation dashboard adapts to this mode: it labels the operation as
+Task execution, displays the original Task prompt instead of a final plan, and
+does not require or query Goal state. Stop interrupts the active turn; Goal-only
+pause and resume controls are omitted.
 
 ## Planning execution
 
@@ -574,52 +614,53 @@ icon/surface.
 
 One row per Task-backed Chat:
 
-| Field                    | Notes                                                |
-| ------------------------ | ---------------------------------------------------- |
-| chatId                   | Primary key and Chat foreign key.                    |
-| state                    | Durable Task state.                                  |
-| stableStateBeforeFailure | Nullable retry target.                               |
-| activeOperationId        | Nullable idempotent planning/finalization operation. |
-| activeOperationKind      | initial-plan, continue-plan, or finalize.            |
-| briefMarkdown            | Autosaved user brief.                                |
-| draftAttachmentIds       | Ordered existing Chat attachment IDs.                |
-| planMarkdown             | Current saved plan, including user edits.            |
-| planAuthorship           | agent, user-edited, or mixed.                        |
-| currentQuestions         | Current bounded structured questions.                |
-| currentAnswers           | Current answer drafts/saved answers.                 |
-| additionalDirection      | Current optional direction.                          |
-| finalPlanMarkdown        | Nullable immutable final plan.                       |
-| goalPrompt               | Nullable generated Goal prompt.                      |
-| planningRound            | Nonnegative ordinal.                                 |
-| implementationStartedAt  | Nullable timestamp.                                  |
-| lastError                | Bounded owner-visible error metadata.                |
-| rowVersion               | Positive optimistic-concurrency counter.             |
-| createdAt / updatedAt    | Server timestamps.                                   |
+| Field                    | Notes                                             |
+| ------------------------ | ------------------------------------------------- |
+| chatId                   | Primary key and Chat foreign key.                 |
+| planGoalEnabled          | False for direct execution; true for Plan + Goal. |
+| state                    | Durable Task state.                               |
+| stableStateBeforeFailure | Nullable retry target.                            |
+| activeOperationId        | Nullable idempotent Task operation.               |
+| activeOperationKind      | direct, initial-plan, continue-plan, or finalize. |
+| briefMarkdown            | Autosaved user brief.                             |
+| draftAttachmentIds       | Ordered existing Chat attachment IDs.             |
+| planMarkdown             | Current saved plan, including user edits.         |
+| planAuthorship           | agent, user-edited, or mixed.                     |
+| currentQuestions         | Current bounded structured questions.             |
+| currentAnswers           | Current answer drafts/saved answers.              |
+| additionalDirection      | Current optional direction.                       |
+| finalPlanMarkdown        | Nullable immutable final plan.                    |
+| goalPrompt               | Nullable generated Goal prompt.                   |
+| planningRound            | Nonnegative ordinal.                              |
+| implementationStartedAt  | Nullable timestamp.                               |
+| lastError                | Bounded owner-visible error metadata.             |
+| rowVersion               | Positive optimistic-concurrency counter.          |
+| createdAt / updatedAt    | Server timestamps.                                |
 
 Large immutable round inputs/outputs should not be duplicated unboundedly in the
 tasks row.
 
 ### task_planning_rounds
 
-| Field                              | Notes                                            |
-| ---------------------------------- | ------------------------------------------------ |
-| id                                 | UUID.                                            |
-| chatId                             | Task-backed Chat.                                |
-| ordinal                            | Unique increasing round number per Task.         |
-| kind                               | initial-plan, continue-plan, or finalize.        |
-| status                             | running, completed, failed, interrupted.         |
-| inputBriefMarkdown                 | Snapshot used for this round.                    |
-| inputPlanMarkdown                  | Nullable plan supplied to revision/finalization. |
-| inputQuestions                     | Questions being answered.                        |
-| inputAnswers                       | User answers.                                    |
-| additionalDirection                | User direction.                                  |
-| outputPlanMarkdown                 | Validated result when available.                 |
-| outputQuestions                    | Validated result when available.                 |
-| outputGoalPrompt                   | Finalization result when available.              |
-| userMessageId / assistantMessageId | Transcript correlation.                          |
-| executionLaneId / turnId           | Runtime correlation.                             |
-| error                              | Bounded failure.                                 |
-| startedAt / completedAt            | Timestamps.                                      |
+| Field                              | Notes                                             |
+| ---------------------------------- | ------------------------------------------------- |
+| id                                 | UUID.                                             |
+| chatId                             | Task-backed Chat.                                 |
+| ordinal                            | Unique increasing round number per Task.          |
+| kind                               | direct, initial-plan, continue-plan, or finalize. |
+| status                             | running, completed, failed, interrupted.          |
+| inputBriefMarkdown                 | Snapshot used for this round.                     |
+| inputPlanMarkdown                  | Nullable plan supplied to revision/finalization.  |
+| inputQuestions                     | Questions being answered.                         |
+| inputAnswers                       | User answers.                                     |
+| additionalDirection                | User direction.                                   |
+| outputPlanMarkdown                 | Validated result when available.                  |
+| outputQuestions                    | Validated result when available.                  |
+| outputGoalPrompt                   | Finalization result when available.               |
+| userMessageId / assistantMessageId | Transcript correlation.                           |
+| executionLaneId / turnId           | Runtime correlation.                              |
+| error                              | Bounded failure.                                  |
+| startedAt / completedAt            | Timestamps.                                       |
 
 Round history is owner-visible for recovery/debugging but the initial product
 does not need a complex diff/history editor.
@@ -654,6 +695,7 @@ Suggested routes:
 
 ### Operations
 
+    POST /api/tasks/:chatId/start
     POST /api/tasks/:chatId/plan
     POST /api/tasks/:chatId/continue
     POST /api/tasks/:chatId/begin-implementation
@@ -679,7 +721,7 @@ can invoke them without internal HTTP calls.
 
 ## Recovery and concurrency
 
-- only one planning/finalization operation may run per Task;
+- only one direct/planning/finalization operation may run per Task;
 - the ordinary Chat execution lane provides the underlying exclusive turn;
 - operation IDs make duplicate button submissions idempotent;
 - stale draft/plan edits return conflict;
@@ -847,13 +889,26 @@ wait-for-idle Chat relocation snapshots. Archive/restore retains Task identity
 and state, permanent deletion cascades Task-only rows, and forking the hidden
 transcript intentionally creates an ordinary Agent Chat.
 
+### Milestone 8: Direct prompt execution — complete
+
+- Plan + Goal draft switch, off for new Tasks and on for migrated Tasks;
+- direct Start Task action using the saved brief verbatim;
+- normal non-Goal worker execution with Implementation access;
+- direct encrypted operation, transcript, retry, and restart recovery;
+- dashboard behavior without final-plan or Goal requirements;
+- protocol, server, worker, app, migration, and lifecycle tests.
+
 ## Acceptance criteria
 
 - Users can create a Task from the normal project new-tab menu.
 - A Task is one durable Chat with a Task experience, not a parallel runtime.
 - Draft Markdown and attachments survive tab/window/client changes.
-- Model/reasoning affect planning; Implementation access never grants planning
-  mutation authority.
+- New Tasks default to direct execution; Plan + Goal is an explicit opt-in.
+- Direct execution submits the saved brief verbatim as one ordinary non-Goal
+  turn with Implementation access and creates no planning/Goal artifacts.
+- Existing Tasks retain Plan + Goal behavior after migration.
+- Model/reasoning affect direct execution and planning; Implementation access
+  never grants planning mutation authority.
 - Plan Task produces validated Markdown plus structured questions.
 - Live planning uses existing normalized Agent activity.
 - Users can answer questions, add direction, directly edit/save the plan, and

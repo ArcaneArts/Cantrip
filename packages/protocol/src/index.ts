@@ -4486,6 +4486,7 @@ export const encryptedChatCreateSchema = chatPlacementCreateSchema
 
 const taskCreateBaseSchema = chatPlacementCreateSchema.safeExtend({
   chatId: z.string().uuid(),
+  planGoalEnabled: z.boolean().default(false),
   task: taskOpaqueContentSchema,
 });
 

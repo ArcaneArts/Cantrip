@@ -8,6 +8,7 @@ import {
 
 const baseTask = {
   chatId: "chat-one",
+  planGoalEnabled: false,
   state: "draft" as const,
   stableStateBeforeFailure: null,
   activeOperationId: null,
@@ -80,6 +81,9 @@ describe("Task draft presentation", () => {
     );
     expect(taskDraftSignature("Brief", ["a"])).toBe(
       taskDraftSignature("Brief", ["a"]),
+    );
+    expect(taskDraftSignature("Brief", ["a"], false)).not.toBe(
+      taskDraftSignature("Brief", ["a"], true),
     );
   });
 

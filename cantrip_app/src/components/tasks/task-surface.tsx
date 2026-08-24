@@ -57,6 +57,7 @@ import {
   getTask,
   getTaskAttachments,
   loadChatAttachmentContent,
+  startTaskDirectly,
   startTaskPlanning,
   updateChatModelConfiguration,
   updateChatPermissionProfile,
@@ -132,8 +133,9 @@ export function taskSurfaceMode(task: TaskDetail): TaskSurfaceMode {
 export function taskDraftSignature(
   briefMarkdown: string,
   attachmentIds: readonly string[],
+  planGoalEnabled = false,
 ): string {
-  return JSON.stringify([briefMarkdown, attachmentIds]);
+  return JSON.stringify([briefMarkdown, attachmentIds, planGoalEnabled]);
 }
 
 export function taskAutosaveLabel(input: {
@@ -176,6 +178,7 @@ export function TaskSurface({
     workerName,
   );
   const [brief, setBrief] = useState("");
+  const [planGoalEnabled, setPlanGoalEnabled] = useState(false);
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [attachmentRecords, setAttachmentRecords] = useState(
     () => new Map<string, ChatAttachmentSummary>(),
@@ -196,8 +199,10 @@ export function TaskSurface({
   const savedSignatureRef = useRef(taskDraftSignature("", []));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const briefRef = useRef(brief);
+  const planGoalEnabledRef = useRef(planGoalEnabled);
   const attachmentIdsRef = useRef(attachmentIds);
   briefRef.current = brief;
+  planGoalEnabledRef.current = planGoalEnabled;
   attachmentIdsRef.current = attachmentIds;
 
   useEffect(() => setTitleDraft(chat.title), [chat.title]);
@@ -229,11 +234,13 @@ export function TaskSurface({
   useEffect(() => {
     if (!task.data || initialized) return;
     setBrief(task.data.briefMarkdown);
+    setPlanGoalEnabled(task.data.planGoalEnabled);
     setAttachmentIds(task.data.draftAttachmentIds);
     rowVersionRef.current = task.data.rowVersion;
     savedSignatureRef.current = taskDraftSignature(
       task.data.briefMarkdown,
       task.data.draftAttachmentIds,
+      task.data.planGoalEnabled,
     );
     setInitialized(true);
   }, [initialized, task.data]);
@@ -292,17 +299,23 @@ export function TaskSurface({
     },
   });
 
-  const currentSignature = taskDraftSignature(brief, attachmentIds);
+  const currentSignature = taskDraftSignature(
+    brief,
+    attachmentIds,
+    planGoalEnabled,
+  );
   const dirty = initialized && currentSignature !== savedSignatureRef.current;
   const saveDraft = useMutation({
     mutationFn: (snapshot: {
       attachmentIds: string[];
       briefMarkdown: string;
+      planGoalEnabled: boolean;
       signature: string;
     }) =>
       updateTaskDraft(chat.id, {
         briefMarkdown: snapshot.briefMarkdown,
         draftAttachmentIds: snapshot.attachmentIds,
+        planGoalEnabled: snapshot.planGoalEnabled,
         rowVersion: rowVersionRef.current,
       }).then((updated) => ({ snapshot, updated })),
     onSuccess: ({ snapshot, updated }) => {
@@ -311,7 +324,11 @@ export function TaskSurface({
       queryClient.setQueryData(["task", chat.id], updated);
       if (
         snapshot.signature ===
-        taskDraftSignature(briefRef.current, attachmentIdsRef.current)
+        taskDraftSignature(
+          briefRef.current,
+          attachmentIdsRef.current,
+          planGoalEnabledRef.current,
+        )
       ) {
         savedSignatureRef.current = snapshot.signature;
       }
@@ -341,6 +358,7 @@ export function TaskSurface({
     const signature = taskDraftSignature(
       briefRef.current,
       attachmentIdsRef.current,
+      planGoalEnabledRef.current,
     );
     if (signature === savedSignatureRef.current) {
       if (!task.data) throw new Error("Task is still loading.");
@@ -349,6 +367,7 @@ export function TaskSurface({
     const result = await saveDraft.mutateAsync({
       attachmentIds: [...attachmentIdsRef.current],
       briefMarkdown: briefRef.current,
+      planGoalEnabled: planGoalEnabledRef.current,
       signature,
     });
     savedSignatureRef.current = signature;
@@ -370,9 +389,11 @@ export function TaskSurface({
       mutateDraft({
         attachmentIds: [...attachmentIdsRef.current],
         briefMarkdown: briefRef.current,
+        planGoalEnabled: planGoalEnabledRef.current,
         signature: taskDraftSignature(
           briefRef.current,
           attachmentIdsRef.current,
+          planGoalEnabledRef.current,
         ),
       });
     }, TASK_AUTOSAVE_DELAY_MS);
@@ -387,7 +408,7 @@ export function TaskSurface({
     mutateDraft,
   ]);
 
-  const planning = useMutation({
+  const starting = useMutation({
     mutationFn: async () => {
       const saved = await saveCurrentDraft();
       const encryption = await ensureTaskWorkerEncryption({ worker });
@@ -398,7 +419,10 @@ export function TaskSurface({
             : candidate,
         ),
       );
-      return startTaskPlanning(chat.id, {
+      const start = saved.planGoalEnabled
+        ? startTaskPlanning
+        : startTaskDirectly;
+      return start(chat.id, {
         operationId: crypto.randomUUID(),
         rowVersion: saved.rowVersion,
       });
@@ -533,11 +557,13 @@ export function TaskSurface({
     const result = await task.refetch();
     if (!result.data) return;
     setBrief(result.data.briefMarkdown);
+    setPlanGoalEnabled(result.data.planGoalEnabled);
     setAttachmentIds(result.data.draftAttachmentIds);
     rowVersionRef.current = result.data.rowVersion;
     savedSignatureRef.current = taskDraftSignature(
       result.data.briefMarkdown,
       result.data.draftAttachmentIds,
+      result.data.planGoalEnabled,
     );
     setConflict(false);
     pendingDeletionIdsRef.current.clear();
@@ -606,7 +632,7 @@ export function TaskSurface({
     );
   }
 
-  if (mode === "implementation" && task.data.finalPlanMarkdown) {
+  if (mode === "implementation") {
     return (
       <TaskImplementationDashboard
         chat={chat}
@@ -626,13 +652,13 @@ export function TaskSurface({
     const attachment = attachmentRecords.get(id);
     return attachment ? [attachment] : [];
   });
-  const canPlan =
+  const canStart =
     brief.trim().length > 0 &&
     selectedModelId.length > 0 &&
     pendingAttachments.length === 0 &&
     !conflict &&
     !saveDraft.isPending &&
-    !planning.isPending &&
+    !starting.isPending &&
     taskWorkerEncryptionCanAttempt(workerEncryptionReadiness) &&
     chat.status !== "running";
 
@@ -854,27 +880,56 @@ export function TaskSurface({
             state={permissionProfiles.data}
           />
           <span className="min-w-0 flex-1" />
-          <Button disabled={!canPlan} onClick={() => planning.mutate()}>
-            {planning.isPending ? (
+          <button
+            aria-checked={planGoalEnabled}
+            className="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            role="switch"
+            type="button"
+            onClick={() => setPlanGoalEnabled((current) => !current)}
+          >
+            <span
+              className={cn(
+                "relative h-5 w-9 rounded-full bg-muted-foreground/25 transition-colors",
+                planGoalEnabled && "bg-violet-500",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform",
+                  planGoalEnabled && "translate-x-4",
+                )}
+              />
+            </span>
+            Plan + Goal
+          </button>
+          <Button disabled={!canStart} onClick={() => starting.mutate()}>
+            {starting.isPending ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <Play className="size-4" />
             )}
-            {mode === "failed" ? "Retry planning" : "Plan Task"}
+            {mode === "failed"
+              ? planGoalEnabled
+                ? "Retry planning"
+                : "Retry Task"
+              : planGoalEnabled
+                ? "Plan Task"
+                : "Start Task"}
           </Button>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Planning is always read-only. Implementation access is reserved for
-          the Goal.
+          {planGoalEnabled
+            ? "Planning is always read-only. Implementation access is reserved for the Goal."
+            : "The saved prompt starts immediately as a normal agent turn using Implementation access."}
         </p>
         {attachmentNotice ||
-        planning.isError ||
+        starting.isError ||
         selectModelConfiguration.isError ||
         selectPermission.isError ? (
           <p className="mt-2 text-xs text-destructive">
             {attachmentNotice ??
               errorMessage(
-                planning.error ??
+                starting.error ??
                   selectModelConfiguration.error ??
                   selectPermission.error,
               )}
