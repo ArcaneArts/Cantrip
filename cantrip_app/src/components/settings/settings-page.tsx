@@ -1162,7 +1162,7 @@ export function SettingsPage({
         }}
       />
       <div
-        className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "logs" || section === "elite" || section === "code" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
+        className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "code" ? "overflow-hidden" : section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
       >
         <div
           className={`${section === "general" || section === "models" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
