@@ -12,6 +12,7 @@ import {
 } from "@/lib/desktop-tunnel";
 
 const REPORT_INTERVAL_MS = 10_000;
+const REPORT_REQUEST_TIMEOUT_MS = 7_500;
 const RELAY_CREDENTIAL_RENEWAL_MARGIN_MS = 30_000;
 const RELAY_CREDENTIAL_RENEWAL_JITTER_MS = 10_000;
 
@@ -54,18 +55,24 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
   );
   await Promise.all(
     directTelemetryForwards.map((forward) =>
-      recordDirectAttachmentTelemetry(forward.directCapabilityId!, {
-        bytesFromLocal: forward.bytesFromLocal ?? 0,
-        bytesToLocal: forward.bytesToLocal ?? 0,
-        connectionsClosed: forward.connectionsClosed ?? 0,
-        connectionsOpened: forward.connectionsOpened ?? 0,
-        ...(forward.lastDestinationRejectionCode
-          ? {
-              lastDestinationRejectionCode:
-                forward.lastDestinationRejectionCode,
-            }
-          : {}),
-      }).catch(() => undefined),
+      recordDirectAttachmentTelemetry(
+        forward.directCapabilityId!,
+        {
+          bytesFromLocal: forward.bytesFromLocal ?? 0,
+          bytesToLocal: forward.bytesToLocal ?? 0,
+          connectionsClosed: forward.connectionsClosed ?? 0,
+          connectionsOpened: forward.connectionsOpened ?? 0,
+          ...(forward.lastDestinationRejectionCode
+            ? {
+                lastDestinationRejectionCode:
+                  forward.lastDestinationRejectionCode,
+              }
+            : {}),
+        },
+        {
+          signal: AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
+        },
+      ).catch(() => undefined),
     ),
   );
   await Promise.all(
@@ -74,7 +81,9 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
         (forward) => !directTelemetryAttachments.has(forward.attachmentId),
       )
       .map((forward) =>
-        renewTunnelAttachmentLease(forward.attachmentId).catch(() => undefined),
+        renewTunnelAttachmentLease(forward.attachmentId, {
+          signal: AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
+        }).catch(() => undefined),
       ),
   );
   await Promise.all(

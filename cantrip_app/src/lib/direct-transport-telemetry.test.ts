@@ -67,6 +67,7 @@ describe("reportDesktopDirectTransportTelemetry", () => {
     expect(mocks.recordDirectAttachmentTelemetry).not.toHaveBeenCalled();
     expect(mocks.renewTunnelAttachmentLease).toHaveBeenCalledWith(
       "attachment-1",
+      { signal: expect.any(AbortSignal) },
     );
     expect(mocks.refreshDesktopTunnelRelay).toHaveBeenCalledWith(forward);
     expect(mocks.forceDesktopTunnelRelay).toHaveBeenCalledWith(forward);
@@ -100,6 +101,7 @@ describe("reportDesktopDirectTransportTelemetry", () => {
         bytesToLocal: 20,
         lastDestinationRejectionCode: "protected-endpoint-unavailable",
       }),
+      { signal: expect.any(AbortSignal) },
     );
     expect(mocks.refreshDesktopTunnelRelay).not.toHaveBeenCalled();
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
@@ -141,6 +143,7 @@ describe("reportDesktopDirectTransportTelemetry", () => {
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
     expect(mocks.renewTunnelAttachmentLease).toHaveBeenCalledWith(
       "attachment-1",
+      { signal: expect.any(AbortSignal) },
     );
   });
 });
