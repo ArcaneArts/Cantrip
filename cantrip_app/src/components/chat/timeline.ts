@@ -212,6 +212,79 @@ function visibleWorkMessage(
   return content.length > 0 ? { ...message, content } : null;
 }
 
+function thoughtContent(content: ChatMessage["content"][number]): boolean {
+  return (
+    content.type !== "activity" ||
+    content.activity.type === "reasoning" ||
+    content.activity.type === "notice"
+  );
+}
+
+function segmentedMessage(
+  message: ChatMessage,
+  content: ChatMessage["content"][number],
+  contentIndex: number,
+): ChatMessage {
+  return {
+    ...message,
+    id:
+      message.content.length === 1
+        ? message.id
+        : `${message.id}:timeline:${contentIndex}`,
+    content: [content],
+  };
+}
+
+function projectWorkEntries(input: {
+  displayedMessages: ChatMessage[];
+  endedAt: string | null;
+  identity: ChatTurnIdentity;
+  startedAt: string;
+}): ChatTimelineEntry[] {
+  const projected: ChatTimelineEntry[] = [];
+  let activityMessages: ChatMessage[] = [];
+  let groupIndex = 0;
+  let groupStartedAt = input.startedAt;
+
+  const flushActivities = (groupEndedAt: string | null) => {
+    if (activityMessages.length === 0) return;
+    const firstActivityMessage = activityMessages[0]!;
+    projected.push({
+      type: "activityGroup",
+      key: `activities:${firstActivityMessage.id}:${groupIndex}`,
+      messages: activityMessages,
+      startedAt: groupStartedAt,
+      endedAt: groupEndedAt,
+      turnId: input.identity.turnId,
+      turnKey: input.identity.turnKey,
+    });
+    activityMessages = [];
+    groupIndex += 1;
+  };
+
+  for (const message of input.displayedMessages) {
+    message.content.forEach((content, contentIndex) => {
+      const segment = segmentedMessage(message, content, contentIndex);
+      if (!thoughtContent(content)) {
+        activityMessages.push(segment);
+        return;
+      }
+
+      // Prose, reasoning, and standalone notices bound each compact tool run.
+      flushActivities(message.createdAt);
+      projected.push({
+        type: "message",
+        message: segment,
+        turnMetadata: null,
+      });
+      groupStartedAt = message.createdAt;
+    });
+  }
+
+  flushActivities(input.endedAt);
+  return projected;
+}
+
 export function buildChatTimeline(
   messages: ChatMessage[],
 ): ChatTimelineEntry[] {
@@ -266,7 +339,17 @@ export function buildChatTimeline(
     });
 
     const previousMessageEntry = entries.at(-1);
-    const previousActivityEntry = entries.at(-2);
+    let previousActivityEntry:
+      Extract<ChatTimelineEntry, { type: "activityGroup" }> | undefined;
+    for (let cursor = entries.length - 2; cursor >= 0; cursor -= 1) {
+      const entry = entries[cursor];
+      if (!entry) continue;
+      if (entry.type === "message" && entry.message.role === "user") break;
+      if (entry.type === "activityGroup") {
+        previousActivityEntry = entry;
+        break;
+      }
+    }
     if (
       groupedMessages.every((groupedMessage) => {
         const groupedActivities = activities(groupedMessage);
@@ -288,24 +371,25 @@ export function buildChatTimeline(
           terminalMessage: previousMessageEntry.message,
           turnMessages: [...previousActivityEntry.messages, ...groupedMessages],
         });
-        previousActivityEntry.turnId = trailingIdentity.turnId;
-        previousActivityEntry.turnKey = trailingIdentity.turnKey;
+        const previousTurnKey = previousActivityEntry.turnKey;
+        for (const entry of entries) {
+          if (
+            entry.type === "activityGroup" &&
+            entry.turnKey === previousTurnKey
+          ) {
+            entry.turnId = trailingIdentity.turnId;
+            entry.turnKey = trailingIdentity.turnKey;
+          }
+        }
       }
-      if (
-        displayedMessages.length > 0 &&
-        previousActivityEntry?.type === "activityGroup"
-      ) {
-        previousActivityEntry.messages.push(...displayedMessages);
-      } else if (displayedMessages.length > 0) {
-        entries.splice(entries.length - 1, 0, {
-          type: "activityGroup",
-          key: `activities:${message.id}`,
-          messages: displayedMessages,
-          startedAt: precedingTurnStart(messages, index),
+      if (displayedMessages.length > 0) {
+        const trailingEntries = projectWorkEntries({
+          displayedMessages,
           endedAt: previousMessageEntry.message.createdAt,
-          turnId: identity.turnId,
-          turnKey: identity.turnKey,
+          identity,
+          startedAt: precedingTurnStart(messages, index),
         });
+        entries.splice(entries.length - 1, 0, ...trailingEntries);
       }
       index = endIndex;
       continue;
@@ -321,15 +405,14 @@ export function buildChatTimeline(
       );
     }
     if (displayedMessages.length > 0) {
-      entries.push({
-        type: "activityGroup",
-        key: `activities:${message.id}`,
-        messages: displayedMessages,
-        startedAt: precedingTurnStart(messages, index),
-        endedAt,
-        turnId: identity.turnId,
-        turnKey: identity.turnKey,
-      });
+      entries.push(
+        ...projectWorkEntries({
+          displayedMessages,
+          endedAt,
+          identity,
+          startedAt: precedingTurnStart(messages, index),
+        }),
+      );
     }
     index = endIndex;
   }

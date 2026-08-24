@@ -23,14 +23,13 @@ import {
   Terminal,
   Workflow,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 import { displayCommand } from "./command-display";
 import { Markdown } from "./markdown";
-import { formatElapsedTime } from "./timeline";
 
 function isCodeGraphActivity(activity: AgentActivity) {
   return (
@@ -218,6 +217,120 @@ export function activityLabel(activity: AgentActivity): string {
         : `Changed ${activity.changes.length} ${activity.changes.length === 1 ? "file" : "files"}`;
     case "command":
       return displayCommand(activity.command);
+  }
+}
+
+type ActivitySummaryKind =
+  | "agent"
+  | "command"
+  | "context"
+  | "file"
+  | "image"
+  | "notice"
+  | "plan"
+  | "review"
+  | "search"
+  | "tool"
+  | "worktree";
+
+function activitySummaryKind(activity: AgentActivity): ActivitySummaryKind {
+  switch (activity.type) {
+    case "command":
+      return "command";
+    case "fileChange":
+      return "file";
+    case "mcpToolCall":
+    case "dynamicToolCall":
+      return "tool";
+    case "collabToolCall":
+    case "subAgent":
+    case "agentCommunication":
+      return "agent";
+    case "webSearch":
+      return "search";
+    case "imageView":
+      return "image";
+    case "plan":
+      return "plan";
+    case "reviewMode":
+      return "review";
+    case "contextCompaction":
+      return "context";
+    case "worktree":
+      return "worktree";
+    case "instructionContext":
+    case "reasoning":
+    case "notice":
+    case "usage":
+    case "rateLimit":
+    case "turnSummary":
+      return "notice";
+  }
+}
+
+function summaryKindLabel(kind: ActivitySummaryKind, count: number): string {
+  switch (kind) {
+    case "command":
+      return count === 1 ? "ran a command" : "ran commands";
+    case "file":
+      return "edited files";
+    case "tool":
+      return count === 1 ? "used a tool" : "used tools";
+    case "agent":
+      return count === 1 ? "coordinated an agent" : "coordinated agents";
+    case "search":
+      return "searched the web";
+    case "image":
+      return count === 1 ? "viewed an image" : "viewed images";
+    case "plan":
+      return "updated the plan";
+    case "review":
+      return "reviewed changes";
+    case "context":
+      return "compacted context";
+    case "worktree":
+      return count === 1 ? "managed a worktree" : "managed worktrees";
+    case "notice":
+      return count === 1 ? "reported an update" : "reported updates";
+  }
+}
+
+export function activityGroupSummary(activities: AgentActivity[]): string {
+  const counts = new Map<ActivitySummaryKind, number>();
+  for (const activity of activities) {
+    const kind = activitySummaryKind(activity);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  const summary = [...counts]
+    .map(([kind, count]) => summaryKindLabel(kind, count))
+    .join(", ");
+  return summary
+    ? `${summary[0]!.toUpperCase()}${summary.slice(1)}`
+    : "Activity";
+}
+
+export function latestActivityLabel(activity: AgentActivity): string {
+  switch (activity.type) {
+    case "command":
+      return `${activity.status === "running" ? "Running" : "Ran"} ${displayCommand(activity.command)}`;
+    case "mcpToolCall":
+      return `${activity.status === "running" ? "Calling" : "Called"} ${activityLabel(activity).replace(/^MCP · /u, "")}`;
+    case "dynamicToolCall":
+      return `${activity.status === "running" ? "Calling" : "Called"} ${activityLabel(activity).replace(/^Tool · /u, "")}`;
+    case "collabToolCall":
+      return `${activity.status === "running" ? "Calling" : "Called"} ${activityLabel(activity).replace(/^Collaboration · /u, "")}`;
+    case "webSearch":
+      return activity.status === "running"
+        ? activity.query
+          ? `Searching · ${activity.query}`
+          : "Searching the web"
+        : activityLabel(activity);
+    case "imageView":
+      return activity.status === "running"
+        ? `Viewing image · ${activity.path}`
+        : activityLabel(activity);
+    default:
+      return activityLabel(activity);
   }
 }
 
@@ -624,38 +737,30 @@ export function Activity({ activity }: { activity: AgentActivity }) {
 }
 
 export function ActivityGroup({
-  children,
-  endedAt,
+  active,
+  activities,
   onViewTrajectory,
-  startedAt,
   turnId,
   turnKey,
 }: {
-  children: ReactNode;
-  endedAt: string | null;
+  active: boolean;
+  activities: AgentActivity[];
   onViewTrajectory?(turnKey: string): void;
-  startedAt: string;
   turnId: string | null;
   turnKey: string;
 }) {
-  const completed = endedAt !== null;
-  const [open, setOpen] = useState(!completed);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    setOpen(!completed);
-  }, [completed]);
+    if (!active) setOpen(false);
+  }, [active]);
 
-  if (!completed) {
-    return (
-      <div
-        className="grid min-w-0 gap-0"
-        data-turn-id={turnId ?? undefined}
-        data-turn-key={turnKey}
-      >
-        {children}
-      </div>
-    );
-  }
+  const latest = activities.at(-1);
+  if (!latest) return null;
+  const failed = activities.some((activity) => activity.status === "failed");
+  const label = active
+    ? latestActivityLabel(latest)
+    : activityGroupSummary(activities);
 
   return (
     <div
@@ -663,17 +768,25 @@ export function ActivityGroup({
       data-turn-id={turnId ?? undefined}
       data-turn-key={turnKey}
     >
-      <div className="flex items-center border-b">
+      <div className="flex min-w-0 items-center">
         <button
           type="button"
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 py-2 text-left text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
         >
-          <span>Worked for {formatElapsedTime(startedAt, endedAt)}</span>
+          <Workflow className="size-4 shrink-0" />
+          <span
+            className={cn("min-w-0 truncate", active && "chat-working-shimmer")}
+          >
+            {label}
+          </span>
+          {failed ? (
+            <CircleX className="size-3.5 shrink-0 text-destructive" />
+          ) : null}
           <ChevronDown
             className={cn(
-              "size-3.5 transition-transform",
+              "size-3.5 shrink-0 transition-transform",
               !open && "-rotate-90",
             )}
           />
@@ -690,7 +803,13 @@ export function ActivityGroup({
           </button>
         ) : null}
       </div>
-      {open ? <div className="grid min-w-0 gap-0 py-1">{children}</div> : null}
+      {open ? (
+        <div className="ml-2 max-h-64 min-w-0 overflow-y-auto overscroll-contain border-l pl-4 pr-2">
+          {activities.map((activity) => (
+            <Activity key={activity.id} activity={activity} />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

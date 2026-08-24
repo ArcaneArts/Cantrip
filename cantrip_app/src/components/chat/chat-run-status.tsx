@@ -3,6 +3,7 @@ import { Bot, Pause } from "lucide-react";
 
 interface ChatRunStatusProps {
   automationPaused: boolean;
+  hasLiveActivity: boolean;
   syncingCodeGraph: boolean;
   status: ChatSummary["status"];
   waitingForPlanAnswer: boolean;
@@ -10,6 +11,7 @@ interface ChatRunStatusProps {
 
 export function ChatRunStatus({
   automationPaused,
+  hasLiveActivity,
   syncingCodeGraph,
   status,
   waitingForPlanAnswer,
@@ -17,6 +19,7 @@ export function ChatRunStatus({
   if (status !== "running" && status !== "waiting-for-approval") return null;
 
   if (status === "running" && !automationPaused && !waitingForPlanAnswer) {
+    if (hasLiveActivity) return null;
     return (
       <div
         aria-live="polite"

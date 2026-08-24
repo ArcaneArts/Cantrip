@@ -220,7 +220,7 @@ describe("chat activity timeline", () => {
     });
   });
 
-  it("preserves commentary inside a recovered work group", () => {
+  it("preserves recovered commentary and reasoning as thought boundaries", () => {
     const timeline = buildChatTimeline([
       message("commentary", "assistant", "2026-08-07T12:00:01.000Z", [
         {
@@ -255,18 +255,21 @@ describe("chat activity timeline", () => {
       ]),
     ]);
 
-    expect(timeline).toHaveLength(1);
+    expect(timeline).toHaveLength(2);
     expect(timeline[0]).toMatchObject({
-      type: "activityGroup",
-      messages: [
-        { id: "commentary", content: [{ phase: "commentary" }] },
-        { id: "reasoning", content: [{ activity: { id: "reasoning-1" } }] },
-      ],
-      endedAt: "2026-08-07T12:00:03.000Z",
+      type: "message",
+      message: { id: "commentary", content: [{ phase: "commentary" }] },
+    });
+    expect(timeline[1]).toMatchObject({
+      type: "message",
+      message: {
+        id: "reasoning",
+        content: [{ activity: { id: "reasoning-1" } }],
+      },
     });
   });
 
-  it("keeps commentary-separated commands in one completed work group", () => {
+  it("starts a fresh compact tool group after each commentary thought", () => {
     const timeline = buildChatTimeline([
       message("user", "user", "2026-08-07T12:00:00.000Z", [
         { type: "text", text: "Inspect this project" },
@@ -318,21 +321,140 @@ describe("chat activity timeline", () => {
       ]),
     ]);
 
-    expect(timeline).toHaveLength(3);
+    expect(timeline).toHaveLength(6);
+    expect(timeline[1]).toMatchObject({
+      type: "message",
+      message: { id: "commentary-1" },
+    });
+    expect(timeline[2]).toMatchObject({
+      type: "activityGroup",
+      messages: [{ id: "command-1" }],
+      startedAt: "2026-08-07T12:00:01.000Z",
+      endedAt: "2026-08-07T12:00:03.000Z",
+    });
+    expect(timeline[3]).toMatchObject({
+      type: "message",
+      message: { id: "commentary-2" },
+    });
+    expect(timeline[4]).toMatchObject({
+      type: "activityGroup",
+      messages: [{ id: "command-2" }],
+      startedAt: "2026-08-07T12:00:03.000Z",
+      endedAt: "2026-08-07T12:00:37.000Z",
+    });
+    expect(timeline[5]).toMatchObject({
+      type: "message",
+      message: { id: "answer" },
+    });
+  });
+
+  it("uses reasoning activity as a tool-group boundary", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect this project" },
+      ]),
+      message("command-1", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-1",
+            command: "rg --files",
+            cwd: ".",
+            status: "completed",
+            exitCode: 0,
+            output: null,
+          },
+        },
+      ]),
+      message("reasoning", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "reasoning",
+            id: "reasoning-1",
+            status: "completed",
+            summary: ["The app has a dedicated chat timeline."],
+          },
+        },
+      ]),
+      message("command-2", "assistant", "2026-08-07T12:00:03.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-2",
+            command: "pnpm test",
+            cwd: ".",
+            status: "running",
+            exitCode: null,
+            output: null,
+          },
+        },
+      ]),
+    ]);
+
+    expect(timeline).toHaveLength(4);
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
-      messages: [
-        { id: "commentary-1" },
-        { id: "command-1" },
-        { id: "commentary-2" },
-        { id: "command-2" },
-      ],
-      startedAt: "2026-08-07T12:00:00.000Z",
-      endedAt: "2026-08-07T12:00:37.000Z",
+      messages: [{ id: "command-1" }],
+      endedAt: "2026-08-07T12:00:02.000Z",
     });
     expect(timeline[2]).toMatchObject({
       type: "message",
-      message: { id: "answer" },
+      message: { id: "reasoning" },
+    });
+    expect(timeline[3]).toMatchObject({
+      type: "activityGroup",
+      messages: [{ id: "command-2" }],
+      endedAt: null,
+    });
+  });
+
+  it("keeps notices visible instead of burying them in a tool summary", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect this project" },
+      ]),
+      message("command", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-1",
+            command: "pnpm test",
+            cwd: ".",
+            status: "failed",
+            exitCode: 1,
+            output: "Tests failed",
+          },
+        },
+      ]),
+      message("notice", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "notice",
+            id: "notice-1",
+            status: "failed",
+            level: "error",
+            message: "The command failed.",
+            details: "Tests failed",
+            willRetry: false,
+          },
+        },
+      ]),
+    ]);
+
+    expect(timeline).toHaveLength(3);
+    expect(timeline[1]).toMatchObject({
+      type: "activityGroup",
+      messages: [{ id: "command" }],
+      endedAt: "2026-08-07T12:00:02.000Z",
+    });
+    expect(timeline[2]).toMatchObject({
+      type: "message",
+      message: { id: "notice" },
     });
   });
 
@@ -497,8 +619,8 @@ describe("chat activity timeline", () => {
 
     expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
-      type: "activityGroup",
-      messages: [{ id: "commentary" }],
+      type: "message",
+      message: { id: "commentary" },
     });
     expect(JSON.stringify(timeline)).not.toContain("rateLimit");
   });
