@@ -875,7 +875,7 @@ export class RunConfigurationRuntimeSupervisor {
 
       const providerDiagnostics = await validateRunConfigurationProvider(
         document,
-        { ...providerContext, environment },
+        { ...providerContext, allowToolInspection: true, environment },
       );
       const providerError = providerDiagnostics.find(
         ({ severity }) => severity === "error",
