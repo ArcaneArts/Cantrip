@@ -3,6 +3,7 @@ import type {
   RunConfigurationDetectionCandidate,
   RunConfigurationDiagnostic,
   RunConfigurationProviderKind,
+  RunConfigurationProviderValidation,
   RunConfigurationPathPurpose,
   RunConfigurationReadResult,
   RunConfigurationRepositoryInventory,
@@ -28,6 +29,7 @@ import {
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationPathsResponseSchema,
+  runConfigurationValidateResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
 import {
@@ -153,6 +155,27 @@ export async function discoverRunConfigurationPaths(
     suggestions: response.suggestions,
     truncated: response.truncated,
   };
+}
+
+export async function validateRunConfiguration(
+  projectId: string,
+  document: RunConfigurationWriteRequest["document"],
+  operationId = crypto.randomUUID(),
+): Promise<RunConfigurationProviderValidation> {
+  const response = runConfigurationValidateResponseSchema.parse(
+    await request(`${configurationCollectionPath(projectId)}/validate`, {
+      method: "POST",
+      body: JSON.stringify({ operationId, document }),
+    }),
+  );
+  assertCorrelated(response, projectId, operationId);
+  if (
+    response.validation.configurationId !== document.id ||
+    response.validation.provider !== document.provider
+  ) {
+    throw new Error("The Run configuration validation response was misrouted.");
+  }
+  return response.validation;
 }
 
 export async function saveRunConfiguration(

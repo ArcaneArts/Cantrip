@@ -26,6 +26,7 @@ import {
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationPathsResponseSchema,
+  runConfigurationValidateResponseSchema,
   runConfigurationWriteResponseSchema,
 } from "@cantrip/protocol/run-configuration-operations";
 import {
@@ -166,6 +167,7 @@ const bridge: WorkerCommandBus = {
       case "project.run-configuration-definitions.capabilities":
       case "project.run-configuration-definitions.detect":
       case "project.run-configuration-definitions.paths":
+      case "project.run-configuration-definitions.validate":
       case "project.run-configuration-definitions.write":
       case "project.run-configuration-definitions.delete":
         return definitionService.execute(command);
@@ -395,6 +397,52 @@ describe.sequential("Run configuration definition API", () => {
         }),
       ]),
     });
+
+    const validationOperationId = randomUUID();
+    const validated = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/run-configurations/validate`,
+      payload: {
+        operationId: validationOperationId,
+        document: shellDocument(),
+      },
+    });
+    expect(validated.statusCode).toBe(200);
+    expect(
+      runConfigurationValidateResponseSchema.parse(validated.json()),
+    ).toMatchObject({
+      operation: "validate",
+      operationId: validationOperationId,
+      projectId,
+      validation: {
+        configurationId,
+        provider: "shell",
+        valid: true,
+        effectiveCommand: expect.stringContaining("pnpm dev"),
+        diagnostics: [],
+      },
+    });
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        type: "project.run-configuration-definitions.validate",
+        operationId: validationOperationId,
+        projectId,
+        sourcePath: primaryRoot,
+        document: expect.objectContaining({ id: configurationId }),
+      }),
+    );
+    const invalidValidation = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/run-configurations/validate`,
+      payload: {
+        operationId: randomUUID(),
+        document: {
+          ...shellDocument(),
+          target: { kind: "command", command: "" },
+        },
+      },
+    });
+    expect(invalidValidation.statusCode).toBe(400);
 
     const pathsOperationId = randomUUID();
     const paths = await app.inject({

@@ -237,6 +237,99 @@ describe("RunConfigurationDefinitionService", () => {
       truncated: false,
     });
 
+    if (detected.operation !== "detect") {
+      throw new Error("Expected a detection response.");
+    }
+    for (const provider of [
+      "node",
+      "java",
+      "dart",
+      "flutter",
+      "rust",
+    ] as const) {
+      const candidate = detected.candidates.find(
+        (item) => item.provider === provider,
+      );
+      if (!candidate) {
+        throw new Error(`Expected a detected ${provider} Run configuration.`);
+      }
+      await expect(
+        service.execute({
+          type: "project.run-configuration-definitions.validate",
+          operationId: randomUUID(),
+          ...context,
+          document: candidate.document,
+        }),
+      ).resolves.toMatchObject({
+        operation: "validate",
+        projectId,
+        validation: {
+          configurationId: candidate.document.id,
+          provider,
+          valid: true,
+          diagnostics: [],
+        },
+      });
+    }
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.validate",
+        operationId: randomUUID(),
+        ...context,
+        document: shellDocument(),
+      }),
+    ).resolves.toMatchObject({
+      operation: "validate",
+      validation: { provider: "shell", valid: true, diagnostics: [] },
+    });
+    const rustCandidate = detected.candidates.find(
+      ({ provider }) => provider === "rust",
+    );
+    if (!rustCandidate || rustCandidate.document.provider !== "rust") {
+      throw new Error("Expected a detected Rust Run configuration.");
+    }
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.validate",
+        operationId: randomUUID(),
+        ...context,
+        document: rustCandidate.document,
+      }),
+    ).resolves.toMatchObject({
+      operation: "validate",
+      projectId,
+      validation: {
+        configurationId: rustCandidate.document.id,
+        provider: "rust",
+        valid: true,
+        effectiveCommand: "cargo run --package=rust_api --bin=rust_api",
+        diagnostics: [],
+      },
+    });
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.validate",
+        operationId: randomUUID(),
+        ...context,
+        document: {
+          ...rustCandidate.document,
+          target: { ...rustCandidate.document.target, name: "missing" },
+        },
+      }),
+    ).resolves.toMatchObject({
+      operation: "validate",
+      validation: {
+        valid: false,
+        diagnostics: [
+          expect.objectContaining({
+            severity: "error",
+            code: "cargo-target-missing",
+            field: "target.name",
+          }),
+        ],
+      },
+    });
+
     const created = await service.execute({
       type: "project.run-configuration-definitions.write",
       operationId: randomUUID(),

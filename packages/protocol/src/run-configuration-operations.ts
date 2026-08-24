@@ -6,10 +6,12 @@ import {
   runConfigurationCodexEnvironmentSourceStatusSchema,
   runConfigurationDetectionCandidateSchema,
   runConfigurationDiagnosticSchema,
+  runConfigurationFileSchema,
   runConfigurationIdSchema,
   runConfigurationPathPurposeSchema,
   runConfigurationPathSuggestionSchema,
   runConfigurationProviderCapabilitySchema,
+  runConfigurationProviderValidationSchema,
   runConfigurationProviderKindSchema,
   runConfigurationReadResultSchema,
   runConfigurationRepositoryChangeSchema,
@@ -75,6 +77,14 @@ export const runConfigurationPathsWorkerCommandSchema = z
   })
   .strict();
 
+export const runConfigurationValidateWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-definitions.validate"),
+    ...runConfigurationWorkerContextFields,
+    document: runConfigurationFileSchema,
+  })
+  .strict();
+
 export const runConfigurationWriteWorkerCommandSchema = z
   .object({
     type: z.literal("project.run-configuration-definitions.write"),
@@ -97,6 +107,7 @@ export const runConfigurationDefinitionWorkerCommandSchemas = [
   runConfigurationCapabilitiesWorkerCommandSchema,
   runConfigurationDetectWorkerCommandSchema,
   runConfigurationPathsWorkerCommandSchema,
+  runConfigurationValidateWorkerCommandSchema,
   runConfigurationWriteWorkerCommandSchema,
   runConfigurationDeleteWorkerCommandSchema,
 ] as const;
@@ -164,6 +175,14 @@ export const runConfigurationPathsResponseSchema = z
   })
   .strict();
 
+export const runConfigurationValidateResponseSchema = z
+  .object({
+    operation: z.literal("validate"),
+    ...runConfigurationOperationContextFields,
+    validation: runConfigurationProviderValidationSchema,
+  })
+  .strict();
+
 export const runConfigurationWriteResponseSchema = z
   .object({
     operation: z.literal("write"),
@@ -188,6 +207,7 @@ export const runConfigurationOperationResponseSchema = z.discriminatedUnion(
     runConfigurationCapabilitiesResponseSchema,
     runConfigurationDetectResponseSchema,
     runConfigurationPathsResponseSchema,
+    runConfigurationValidateResponseSchema,
     runConfigurationWriteResponseSchema,
     runConfigurationDeleteResponseSchema,
   ],
@@ -221,6 +241,13 @@ export const runConfigurationPathsQuerySchema = z
   })
   .strict();
 
+export const runConfigurationApiValidateRequestSchema = z
+  .object({
+    operationId: runConfigurationOperationIdSchema,
+    document: runConfigurationFileSchema,
+  })
+  .strict();
+
 export const runConfigurationApiWriteRequestSchema = z
   .object({
     operationId: runConfigurationOperationIdSchema,
@@ -248,6 +275,9 @@ export type RunConfigurationDefinitionChangeNotification = z.infer<
 >;
 export type RunConfigurationApiWriteRequest = z.infer<
   typeof runConfigurationApiWriteRequestSchema
+>;
+export type RunConfigurationApiValidateRequest = z.infer<
+  typeof runConfigurationApiValidateRequestSchema
 >;
 export type RunConfigurationApiDeleteRequest = z.infer<
   typeof runConfigurationApiDeleteRequestSchema

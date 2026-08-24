@@ -1038,6 +1038,32 @@ export const runConfigurationDiagnosticSchema = z
   })
   .strict();
 
+export const runConfigurationProviderValidationSchema = z
+  .object({
+    configurationId: runConfigurationIdSchema,
+    provider: runConfigurationProviderKindSchema,
+    platform: runConfigurationPlatformSchema,
+    effectiveCommand: z.string().trim().min(1).max(MAX_COMMAND_CHARACTERS),
+    valid: z.boolean(),
+    diagnostics: z
+      .array(runConfigurationDiagnosticSchema)
+      .max(RUN_CONFIGURATION_MAX_DIAGNOSTICS),
+  })
+  .strict()
+  .superRefine((validation, context) => {
+    const hasErrors = validation.diagnostics.some(
+      ({ severity }) => severity === "error",
+    );
+    if (validation.valid === hasErrors) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Provider validation is valid exactly when it has no error diagnostics.",
+        path: ["valid"],
+      });
+    }
+  });
+
 export const runConfigurationCodexEnvironmentSourceStatusSchema = z
   .object({
     enabled: z.boolean(),
@@ -1311,6 +1337,9 @@ export type RunConfigurationRustDocument = z.infer<
 export type RunConfigurationFile = z.infer<typeof runConfigurationFileSchema>;
 export type RunConfigurationDiagnostic = z.infer<
   typeof runConfigurationDiagnosticSchema
+>;
+export type RunConfigurationProviderValidation = z.infer<
+  typeof runConfigurationProviderValidationSchema
 >;
 export type RunConfigurationCodexEnvironmentSourceStatus = z.infer<
   typeof runConfigurationCodexEnvironmentSourceStatusSchema
