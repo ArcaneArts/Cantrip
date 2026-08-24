@@ -3,6 +3,7 @@ import {
   RUN_CONFIGURATION_FILE_VERSION,
   runConfigurationFileSchema,
   type RunConfigurationFile,
+  type RunConfigurationJavaDocument,
   type RunConfigurationNodeDocument,
   type RunConfigurationProviderKind,
   type RunConfigurationShellDocument,
@@ -57,13 +58,29 @@ export function createNodeRunConfigurationDocument(
   };
 }
 
+export function createJavaRunConfigurationDocument(
+  id = crypto.randomUUID(),
+): RunConfigurationJavaDocument {
+  return {
+    ...commonDocument(id),
+    provider: "java",
+    target: { kind: "gradleTask", projectPath: ":", task: "run" },
+    options: {
+      jdkHome: null,
+      useWrapper: true,
+      buildToolArguments: [],
+      vmArguments: [],
+    },
+  };
+}
+
 export function createRunConfigurationDocument(
-  provider: Extract<RunConfigurationProviderKind, "node" | "shell">,
+  provider: Extract<RunConfigurationProviderKind, "java" | "node" | "shell">,
   id = crypto.randomUUID(),
 ): RunConfigurationFile {
-  return provider === "node"
-    ? createNodeRunConfigurationDocument(id)
-    : createShellRunConfigurationDocument(id);
+  if (provider === "node") return createNodeRunConfigurationDocument(id);
+  if (provider === "java") return createJavaRunConfigurationDocument(id);
+  return createShellRunConfigurationDocument(id);
 }
 
 function quoteArgument(argument: string): string {
@@ -126,12 +143,138 @@ export function nodeRunConfigurationEffectiveCommand(
   };
 }
 
+function qualifiedGradleTask(projectPath: string, task: string): string {
+  if (task.startsWith(":")) return task;
+  return projectPath === ":" ? task : `${projectPath}:${task}`;
+}
+
+function javaBuildTool(document: RunConfigurationJavaDocument): string {
+  const gradle = document.target.kind.startsWith("gradle");
+  if (!document.options.useWrapper) return gradle ? "gradle" : "mvn";
+  return gradle ? "./gradlew" : "./mvnw";
+}
+
+function joinedArguments(values: string[]): string {
+  return values.map(quoteArgument).join(" ");
+}
+
+export function javaRunConfigurationEffectiveCommand(
+  document: RunConfigurationJavaDocument,
+): { command: string; overridden: boolean } {
+  if (document.commandOverride !== null) {
+    const environment = [
+      ...(document.options.jdkHome
+        ? [`JAVA_HOME=${quoteArgument(document.options.jdkHome)}`]
+        : []),
+      ...(document.options.vmArguments.length
+        ? [
+            `JAVA_TOOL_OPTIONS=${quoteArgument(
+              joinedArguments(document.options.vmArguments),
+            )}`,
+          ]
+        : []),
+    ];
+    return {
+      command: [
+        ...environment,
+        document.commandOverride,
+        ...document.arguments.map(quoteArgument),
+      ].join(" "),
+      overridden: true,
+    };
+  }
+  const tool = javaBuildTool(document);
+  const buildArguments = document.options.buildToolArguments.map(quoteArgument);
+  let targetArguments: string[];
+  switch (document.target.kind) {
+    case "gradleTask":
+      targetArguments = [
+        qualifiedGradleTask(document.target.projectPath, document.target.task),
+        ...(document.arguments.length &&
+        (document.target.task === "run" || document.target.task === "bootRun")
+          ? [`--args=${quoteArgument(joinedArguments(document.arguments))}`]
+          : document.arguments.map(quoteArgument)),
+      ];
+      break;
+    case "gradleMainClass":
+      targetArguments = [
+        "--init-script",
+        "<cantrip-java-init.gradle>",
+        `-PcantripMainClass=${document.target.className}`,
+        qualifiedGradleTask(
+          document.target.projectPath,
+          "_cantripRunConfigurationJava",
+        ),
+        ...(document.options.vmArguments.length
+          ? [`--vm-options=${joinedArguments(document.options.vmArguments)}`]
+          : []),
+        ...(document.arguments.length
+          ? ["--", ...document.arguments.map(quoteArgument)]
+          : []),
+      ];
+      break;
+    case "mavenGoal":
+      targetArguments = [
+        ...(document.target.module
+          ? ["-pl", quoteArgument(document.target.module), "-am"]
+          : []),
+        document.target.goal,
+        ...(document.arguments.length
+          ? [
+              document.target.goal === "spring-boot:run"
+                ? `-Dspring-boot.run.arguments=${quoteArgument(joinedArguments(document.arguments))}`
+                : document.target.goal.endsWith("exec:java")
+                  ? `-Dexec.args=${quoteArgument(joinedArguments(document.arguments))}`
+                  : joinedArguments(document.arguments),
+            ]
+          : []),
+      ];
+      break;
+    case "mavenMainClass":
+      targetArguments = [
+        ...(document.target.module
+          ? ["-pl", quoteArgument(document.target.module), "-am"]
+          : []),
+        "org.codehaus.mojo:exec-maven-plugin:3.5.1:java",
+        `-Dexec.mainClass=${document.target.className}`,
+        ...(document.arguments.length
+          ? [
+              `-Dexec.args=${quoteArgument(joinedArguments(document.arguments))}`,
+            ]
+          : []),
+      ];
+      break;
+  }
+  const command = [tool, ...buildArguments, ...targetArguments].join(" ");
+  const environment = [
+    ...(document.options.jdkHome
+      ? [`JAVA_HOME=${quoteArgument(document.options.jdkHome)}`]
+      : []),
+    ...(document.options.vmArguments.length &&
+    document.target.kind !== "gradleMainClass"
+      ? [
+          `JAVA_TOOL_OPTIONS=${quoteArgument(
+            joinedArguments(document.options.vmArguments),
+          )}`,
+        ]
+      : []),
+  ];
+  return {
+    command: [...environment, command].join(" "),
+    overridden: false,
+  };
+}
+
 export function runConfigurationEffectiveCommand(
   document: RunConfigurationFile,
 ): { command: string; overridden: boolean } {
-  return document.provider === "node"
-    ? nodeRunConfigurationEffectiveCommand(document)
-    : shellRunConfigurationEffectiveCommand(document);
+  if (document.provider === "node") {
+    return nodeRunConfigurationEffectiveCommand(document);
+  }
+  if (document.provider === "java") {
+    return javaRunConfigurationEffectiveCommand(document);
+  }
+  return shellRunConfigurationEffectiveCommand(document);
 }
 
 export function parseRunConfigurationEditorDocument(

@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -72,6 +79,72 @@ async function nodeFixture(): Promise<Fixture> {
   });
   if (!("entry" in written) || !written.entry.revision) {
     throw new Error("Expected a ready Node Run configuration fixture.");
+  }
+  return {
+    configurationId,
+    definitionRevision: written.entry.revision,
+    sourceRoot,
+    targetRoot,
+  };
+}
+
+async function javaFixture(): Promise<Fixture> {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-java-run-configuration-runtime-"),
+  );
+  temporaryDirectories.push(root);
+  const sourceRoot = path.join(root, "primary");
+  const targetRoot = path.join(root, "target");
+  await Promise.all([
+    mkdir(sourceRoot, { recursive: true }),
+    mkdir(targetRoot, { recursive: true }),
+  ]);
+  await writeFile(
+    path.join(targetRoot, "pom.xml"),
+    "<project><artifactId>api</artifactId><build><plugins><plugin><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build></project>",
+  );
+  await writeFile(
+    path.join(targetRoot, "mvnw"),
+    "#!/bin/sh\nprintf 'java-provider|%s' \"$*\"\n",
+  );
+  await chmod(path.join(targetRoot, "mvnw"), 0o755);
+  const configurationId = randomUUID();
+  const repository = await RunConfigurationRepository.open(sourceRoot);
+  const written = await repository.write({
+    expectedRevision: null,
+    document: {
+      schema: "cantrip.run-configuration",
+      version: 1,
+      id: configurationId,
+      name: "Java runtime fixture",
+      provider: "java",
+      workingDirectory: ".",
+      target: {
+        kind: "mavenGoal",
+        module: null,
+        goal: "spring-boot:run",
+      },
+      commandOverride: null,
+      arguments: ["--server.port=4400", "two words"],
+      environment: {
+        includeCodexEnvironment: false,
+        files: [],
+        variables: [],
+        secrets: [],
+      },
+      beforeLaunch: [],
+      platformOverrides: {},
+      options: {
+        jdkHome: null,
+        useWrapper: true,
+        buildToolArguments: ["--no-transfer-progress"],
+        vmArguments: [],
+      },
+      stop: { gracePeriodMs: 50 },
+    },
+  });
+  if (!("entry" in written) || !written.entry.revision) {
+    throw new Error("Expected a ready Java Run configuration fixture.");
   }
   return {
     configurationId,
@@ -318,6 +391,29 @@ describe.skipIf(process.platform === "win32")(
           tail: 100_000,
         }).data,
       ).toContain("node-provider|--flag|two words");
+      await runs.closeAll();
+    });
+
+    it("launches a structured Java build target without a handwritten command", async () => {
+      const input = await javaFixture();
+      const runtimeIdentity = identity(input);
+      const runs = supervisor();
+      await expect(
+        runs.start(startCommand(input, runtimeIdentity)),
+      ).resolves.toMatchObject({
+        outcome: "accepted",
+        observation: { state: "starting" },
+      });
+      await waitForState(runs, runtimeIdentity, "exited");
+      const output = runs.output({
+        type: "project.run-configuration-runtime.output",
+        requestOperationId: randomUUID(),
+        identity: runtimeIdentity,
+        tail: 100_000,
+      }).data;
+      expect(output).toContain("java-provider|--no-transfer-progress");
+      expect(output).toContain("spring-boot:run");
+      expect(output).toContain("--server.port=4400");
       await runs.closeAll();
     });
 

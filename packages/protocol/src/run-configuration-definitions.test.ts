@@ -5,6 +5,9 @@ import {
   RUN_CONFIGURATION_REPOSITORY_DIRECTORY,
   runConfigurationDetectionCandidateSchema,
   runConfigurationFileSchema,
+  runConfigurationGradleProjectPathSchema,
+  runConfigurationJavaClassNameSchema,
+  runConfigurationMavenModuleSchema,
   runConfigurationProviderCapabilitySchema,
   runConfigurationProviderKindSchema,
   runConfigurationRepositoryInventorySchema,
@@ -39,6 +42,22 @@ function nodeConfiguration() {
     provider: "node" as const,
     workingDirectory: "packages/web",
     target: { kind: "packageScript" as const, script: "dev" },
+  };
+}
+
+function javaConfiguration() {
+  return {
+    schema: RUN_CONFIGURATION_FILE_SCHEMA,
+    version: 1 as const,
+    id: configurationId,
+    name: "Run Java API",
+    provider: "java" as const,
+    workingDirectory: "services/api",
+    target: {
+      kind: "gradleMainClass" as const,
+      projectPath: ":app",
+      className: "com.example.ApiApplication",
+    },
   };
 }
 
@@ -96,6 +115,23 @@ describe("run configuration definition protocol", () => {
         environment: { includeCodexEnvironment: true },
       },
     );
+    expect(runConfigurationFileSchema.parse(javaConfiguration())).toMatchObject(
+      {
+        provider: "java",
+        target: {
+          kind: "gradleMainClass",
+          projectPath: ":app",
+          className: "com.example.ApiApplication",
+        },
+        options: {
+          jdkHome: null,
+          useWrapper: true,
+          buildToolArguments: [],
+          vmArguments: [],
+        },
+        environment: { includeCodexEnvironment: true },
+      },
+    );
     expect(
       runConfigurationProviderCapabilitySchema.parse({
         provider: "rust",
@@ -147,6 +183,71 @@ describe("run configuration definition protocol", () => {
         document,
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps Java build targets typed, portable, and provider-correlated", () => {
+    expect(runConfigurationJavaClassNameSchema.parse("demo.Main$Nested")).toBe(
+      "demo.Main$Nested",
+    );
+    expect(runConfigurationGradleProjectPathSchema.parse(":apps:api")).toBe(
+      ":apps:api",
+    );
+    expect(runConfigurationMavenModuleSchema.parse("services/api")).toBe(
+      "services/api",
+    );
+    for (const target of [
+      { kind: "gradleTask", projectPath: ":api", task: "bootRun" },
+      {
+        kind: "gradleMainClass",
+        projectPath: ":api",
+        className: "demo.Main",
+      },
+      { kind: "mavenGoal", module: "api", goal: "spring-boot:run" },
+      {
+        kind: "mavenMainClass",
+        module: ":api",
+        className: "demo.Main",
+      },
+    ]) {
+      expect(
+        runConfigurationFileSchema.safeParse({
+          ...javaConfiguration(),
+          target,
+        }).success,
+        JSON.stringify(target),
+      ).toBe(true);
+    }
+    expect(
+      runConfigurationFileSchema.safeParse({
+        ...javaConfiguration(),
+        target: {
+          kind: "gradleMainClass",
+          projectPath: "../api",
+          className: "demo.Main",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      runConfigurationFileSchema.safeParse({
+        ...javaConfiguration(),
+        target: {
+          kind: "mavenGoal",
+          module: "-f",
+          goal: "spring-boot:run",
+        },
+      }).success,
+    ).toBe(false);
+    const document = runConfigurationFileSchema.parse(javaConfiguration());
+    expect(
+      runConfigurationDetectionCandidateSchema.parse({
+        provider: "java",
+        confidence: "high",
+        reason: "Gradle declares one application main class.",
+        effectiveCommand:
+          "./gradlew :app:_cantripRunConfigurationJava -PcantripMainClass=demo.Main",
+        document,
+      }).document.provider,
+    ).toBe("java");
   });
 
   it("rejects traversal, absolute paths, Windows paths, and NULs", () => {

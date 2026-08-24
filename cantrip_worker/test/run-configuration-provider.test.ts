@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  chmod,
   mkdtemp,
   mkdir,
   realpath,
@@ -13,6 +14,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { nodeRunConfigurationProvider } from "../src/run-configuration-node-provider.js";
+import { javaRunConfigurationProvider } from "../src/run-configuration-java-provider.js";
 import { shellRunConfigurationProvider } from "../src/run-configuration-provider.js";
 
 const roots: string[] = [];
@@ -493,5 +495,468 @@ describe("nodeRunConfigurationProvider", () => {
         files: [".env.windows"],
       },
     });
+  });
+});
+
+describe("javaRunConfigurationProvider", () => {
+  it("discovers bounded Gradle and Maven modules, tasks, and Java main classes without executing builds", async () => {
+    const root = await createRoot();
+    const outside = await createRoot();
+    await mkdir(
+      path.join(
+        root,
+        "gradle-app",
+        "modules",
+        "api",
+        "src",
+        "main",
+        "java",
+        "demo",
+      ),
+      {
+        recursive: true,
+      },
+    );
+    await writeFile(
+      path.join(root, "gradle-app", "settings.gradle.kts"),
+      'rootProject.name = "demo"\ninclude(":app")\nproject(":app").projectDir = file("modules/api")\n',
+    );
+    await writeFile(
+      path.join(root, "gradle-app", "modules", "api", "build.gradle.kts"),
+      'plugins { application }\napplication { mainClass.set("demo.GradleMain") }\ntasks.register<JavaExec>("seedData")\n',
+    );
+    await writeFile(
+      path.join(root, "gradle-app", "gradlew"),
+      "#!/bin/sh\nexit 0\n",
+    );
+    await chmod(path.join(root, "gradle-app", "gradlew"), 0o755);
+    await writeFile(
+      path.join(
+        root,
+        "gradle-app",
+        "modules",
+        "api",
+        "src",
+        "main",
+        "java",
+        "demo",
+        "GradleMain.java",
+      ),
+      "package demo; public class GradleMain { public static void main(String[] args) {} }\n",
+    );
+
+    await mkdir(
+      path.join(root, "maven-app", "service", "src", "main", "java", "demo"),
+      { recursive: true },
+    );
+    await writeFile(
+      path.join(root, "maven-app", "pom.xml"),
+      "<project><artifactId>parent</artifactId><modules><module>service</module></modules></project>",
+    );
+    await writeFile(
+      path.join(root, "maven-app", "mvnw"),
+      "#!/bin/sh\nexit 0\n",
+    );
+    await chmod(path.join(root, "maven-app", "mvnw"), 0o755);
+    await writeFile(
+      path.join(root, "maven-app", "service", "pom.xml"),
+      "<project><parent><artifactId>inherited-parent</artifactId></parent><artifactId>service</artifactId><build><plugins><plugin><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build></project>",
+    );
+    await writeFile(
+      path.join(
+        root,
+        "maven-app",
+        "service",
+        "src",
+        "main",
+        "java",
+        "demo",
+        "MavenMain.java",
+      ),
+      "package demo; public class MavenMain { public static void main(String... args) {} }\n",
+    );
+    await mkdir(path.join(outside, "src", "main", "java"), { recursive: true });
+    await writeFile(
+      path.join(outside, "build.gradle"),
+      "plugins { id 'application' }\n",
+    );
+    await symlink(outside, path.join(root, "linked-java-project"));
+
+    const candidates = await javaRunConfigurationProvider.discover({
+      platform: "linux",
+      targetRoot: root,
+      defaultShell: "/bin/sh",
+    });
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          confidence: "high",
+          document: expect.objectContaining({
+            provider: "java",
+            workingDirectory: "gradle-app",
+            target: {
+              kind: "gradleMainClass",
+              projectPath: ":app",
+              className: "demo.GradleMain",
+            },
+            options: expect.objectContaining({ useWrapper: true }),
+            environment: expect.objectContaining({
+              includeCodexEnvironment: true,
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          document: expect.objectContaining({
+            workingDirectory: "gradle-app",
+            target: {
+              kind: "gradleTask",
+              projectPath: ":app",
+              task: "run",
+            },
+          }),
+        }),
+        expect.objectContaining({
+          document: expect.objectContaining({
+            workingDirectory: "gradle-app",
+            target: {
+              kind: "gradleTask",
+              projectPath: ":app",
+              task: "seedData",
+            },
+          }),
+        }),
+        expect.objectContaining({
+          reason: expect.stringContaining("in service."),
+          document: expect.objectContaining({
+            workingDirectory: "maven-app",
+            target: {
+              kind: "mavenMainClass",
+              module: "service",
+              className: "demo.MavenMain",
+            },
+          }),
+        }),
+        expect.objectContaining({
+          document: expect.objectContaining({
+            workingDirectory: "maven-app",
+            target: {
+              kind: "mavenGoal",
+              module: "service",
+              goal: "spring-boot:run",
+            },
+          }),
+        }),
+      ]),
+    );
+    expect(candidates.some(({ reason }) => reason.includes("linked"))).toBe(
+      false,
+    );
+    expect(new Set(candidates.map(({ document }) => document.id)).size).toBe(
+      candidates.length,
+    );
+  });
+
+  it("materializes a Gradle main-class launcher, JDK choice, and ordered before-launch steps", async () => {
+    const root = await createRoot();
+    const canonicalRoot = await realpath(root);
+    const jdk = path.join(root, "jdk");
+    await mkdir(path.join(root, "app", "src", "main", "java", "demo"), {
+      recursive: true,
+    });
+    await mkdir(path.join(jdk, "bin"), { recursive: true });
+    await writeFile(path.join(root, "settings.gradle"), "include ':app'\n");
+    await writeFile(
+      path.join(root, "app", "build.gradle"),
+      "plugins { id 'java' }\n",
+    );
+    await writeFile(
+      path.join(root, "app", "src", "main", "java", "demo", "Main.java"),
+      "package demo; public class Main { public static void main(String[] args) {} }\n",
+    );
+    await writeFile(path.join(root, "gradlew"), "#!/bin/sh\nexit 0\n");
+    await chmod(path.join(root, "gradlew"), 0o755);
+    await writeFile(path.join(jdk, "bin", "java"), "#!/bin/sh\nexit 0\n");
+    await chmod(path.join(jdk, "bin", "java"), 0o755);
+    const canonicalJdk = await realpath(jdk);
+    const definition = javaRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Java main",
+    });
+    const materialized = await javaRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        target: {
+          kind: "gradleMainClass",
+          projectPath: ":app",
+          className: "demo.Main",
+        },
+        arguments: ["--port", "two words"],
+        beforeLaunch: [
+          { kind: "providerTask", task: "classes" },
+          { kind: "command", command: "echo ready", workingDirectory: "." },
+        ],
+        options: {
+          jdkHome: jdk,
+          useWrapper: true,
+          buildToolArguments: ["--console=plain"],
+          vmArguments: ["-Xmx512m"],
+        },
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/bash" },
+    );
+    expect(materialized.executable).toBe(path.join(canonicalRoot, "gradlew"));
+    expect(materialized.arguments).toEqual(
+      expect.arrayContaining([
+        "--console=plain",
+        "-PcantripMainClass=demo.Main",
+        expect.stringMatching(/^-PcantripArguments=/u),
+        expect.stringMatching(/^-PcantripVmArguments=/u),
+        ":app:_cantripRunConfigurationJava",
+      ]),
+    );
+    expect(materialized.beforeLaunch).toEqual([
+      {
+        executable: path.join(canonicalRoot, "gradlew"),
+        arguments: ["--console=plain", ":app:classes"],
+        workingDirectory: canonicalRoot,
+      },
+      {
+        executable: "/bin/bash",
+        arguments: ["-lc", "echo ready"],
+        workingDirectory: canonicalRoot,
+      },
+    ]);
+    expect(materialized.environmentAdditions).toEqual({
+      JAVA_HOME: canonicalJdk,
+    });
+    expect(materialized.effectiveCommand).toContain("JAVA_HOME=" + jdk);
+  });
+
+  it("materializes typed Maven goals and Windows wrapper invocation", async () => {
+    const root = await createRoot();
+    await writeFile(
+      path.join(root, "pom.xml"),
+      "<project><artifactId>api</artifactId><build><plugins><plugin><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build></project>",
+    );
+    await writeFile(path.join(root, "mvnw.cmd"), "@echo off\r\n");
+    const definition = javaRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Maven API",
+    });
+    const materialized = await javaRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        target: { kind: "mavenGoal", module: null, goal: "spring-boot:run" },
+        arguments: ["--ignored"],
+        environment: {
+          includeCodexEnvironment: true,
+          files: [".env"],
+          variables: [],
+          secrets: [],
+        },
+        platformOverrides: {
+          win32: {
+            arguments: ["--server.port=4400", "two words"],
+            environment: {
+              includeCodexEnvironment: false,
+              files: [".env.windows"],
+            },
+            options: {
+              useWrapper: true,
+              buildToolArguments: ["--no-transfer-progress"],
+              vmArguments: ["-Xms128m"],
+            },
+          },
+        },
+        options: {
+          jdkHome: null,
+          useWrapper: false,
+          buildToolArguments: ["--base"],
+          vmArguments: [],
+        },
+      },
+      { platform: "win32", targetRoot: root, defaultShell: null },
+    );
+    expect(materialized).toMatchObject({
+      executable: "cmd.exe",
+      arguments: ["/d", "/s", "/c", expect.stringContaining("mvnw.cmd")],
+      environmentAdditions: { JAVA_TOOL_OPTIONS: "-Xms128m" },
+      environment: {
+        includeCodexEnvironment: false,
+        files: [".env.windows"],
+      },
+    });
+    expect(materialized.effectiveCommand).toContain(
+      "-Dspring-boot.run.arguments=",
+    );
+    expect(materialized.effectiveCommand).toContain("--no-transfer-progress");
+    expect(materialized.effectiveCommand).not.toContain("--base");
+    expect(materialized.effectiveCommand).not.toContain("--ignored");
+  });
+
+  it("launches a Maven main class with application and VM arguments", async () => {
+    const root = await createRoot();
+    await mkdir(path.join(root, "src", "main", "java", "demo"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "pom.xml"),
+      "<project><artifactId>api</artifactId></project>",
+    );
+    await writeFile(
+      path.join(root, "src", "main", "java", "demo", "Main.java"),
+      "package demo; public class Main { public static void main(String args[]) {} }\n",
+    );
+    await writeFile(path.join(root, "mvnw"), "#!/bin/sh\nexit 0\n");
+    await chmod(path.join(root, "mvnw"), 0o755);
+    const definition = javaRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Maven main",
+    });
+    const materialized = await javaRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        target: {
+          kind: "mavenMainClass",
+          module: null,
+          className: "demo.Main",
+        },
+        arguments: ["--port", "two words"],
+        options: {
+          jdkHome: null,
+          useWrapper: true,
+          buildToolArguments: [],
+          vmArguments: ["-Xmx256m", "-Dmode=development"],
+        },
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+    );
+    expect(materialized.arguments).toEqual([
+      "org.codehaus.mojo:exec-maven-plugin:3.5.1:java",
+      "-Dexec.mainClass=demo.Main",
+      "-Dexec.args=--port 'two words'",
+    ]);
+    expect(materialized.environmentAdditions).toEqual({
+      JAVA_TOOL_OPTIONS: "-Xmx256m -Dmode=development",
+    });
+    expect(materialized.effectiveCommand).toContain(
+      "JAVA_TOOL_OPTIONS='-Xmx256m -Dmode=development'",
+    );
+  });
+
+  it("keeps the selected JDK and VM environment on a command override", async () => {
+    const root = await createRoot();
+    const jdk = path.join(root, "jdk");
+    await mkdir(path.join(jdk, "bin"), { recursive: true });
+    await writeFile(path.join(jdk, "bin", "java"), "#!/bin/sh\nexit 0\n");
+    await chmod(path.join(jdk, "bin", "java"), 0o755);
+    const definition = javaRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Java override",
+    });
+    const materialized = await javaRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        commandOverride: "java",
+        arguments: ["demo.Main"],
+        options: {
+          jdkHome: jdk,
+          useWrapper: true,
+          buildToolArguments: [],
+          vmArguments: ["-Xmx192m"],
+        },
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+    );
+    expect(materialized.environmentAdditions).toEqual({
+      JAVA_HOME: await realpath(jdk),
+      JAVA_TOOL_OPTIONS: "-Xmx192m",
+    });
+    expect(materialized.effectiveCommand).toContain(
+      "JAVA_TOOL_OPTIONS=-Xmx192m java demo.Main",
+    );
+  });
+
+  it("fails closed for missing modules, main classes, wrappers, and JDKs", async () => {
+    const root = await createRoot();
+    await mkdir(path.join(root, "app"));
+    await writeFile(path.join(root, "settings.gradle"), "include ':app'\n");
+    await writeFile(
+      path.join(root, "app", "build.gradle"),
+      "plugins { id 'java' }\n",
+    );
+    const definition = javaRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Invalid Java run",
+    });
+    const diagnostics = await javaRunConfigurationProvider.validate(
+      {
+        ...definition,
+        target: {
+          kind: "gradleMainClass",
+          projectPath: ":missing",
+          className: "demo.Missing",
+        },
+        options: {
+          ...definition.options,
+          jdkHome: "relative/jdk",
+          useWrapper: true,
+        },
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+    );
+    expect(diagnostics.map(({ code }) => code).sort()).toEqual([
+      "build-wrapper-invalid",
+      "gradle-module-missing",
+      "jdk-home-invalid",
+    ]);
+    const nonExecutableJdk = path.join(root, "non-executable-jdk");
+    await mkdir(path.join(nonExecutableJdk, "bin"), { recursive: true });
+    await writeFile(
+      path.join(nonExecutableJdk, "bin", "java"),
+      "not executable\n",
+    );
+    await expect(
+      javaRunConfigurationProvider.validate(
+        {
+          ...definition,
+          commandOverride: "java",
+          options: { ...definition.options, jdkHome: nonExecutableJdk },
+        },
+        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+      ),
+    ).resolves.toEqual([expect.objectContaining({ code: "jdk-home-invalid" })]);
+    await writeFile(path.join(root, "gradlew"), "#!/bin/sh\nexit 0\n");
+    await chmod(path.join(root, "gradlew"), 0o755);
+    await expect(
+      javaRunConfigurationProvider.validate(
+        {
+          ...definition,
+          target: {
+            kind: "gradleMainClass",
+            projectPath: ":app",
+            className: "demo.Missing",
+          },
+        },
+        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "java-main-class-missing" }),
+    ]);
+    await expect(
+      javaRunConfigurationProvider.validate(
+        {
+          ...definition,
+          target: {
+            kind: "gradleTask",
+            projectPath: ":app",
+            task: "missingRun",
+          },
+        },
+        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "gradle-task-missing" }),
+    ]);
   });
 });

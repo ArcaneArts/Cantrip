@@ -275,7 +275,8 @@ function inspectUnsupportedDocument(
   if (
     typeof record.provider === "string" &&
     record.provider !== "shell" &&
-    record.provider !== "node"
+    record.provider !== "node" &&
+    record.provider !== "java"
   ) {
     return runConfigurationRepositoryEntrySchema.parse({
       relativePath,

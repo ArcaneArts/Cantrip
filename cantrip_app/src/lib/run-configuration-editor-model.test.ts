@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createJavaRunConfigurationDocument,
   createNodeRunConfigurationDocument,
   createShellRunConfigurationDocument,
+  javaRunConfigurationEffectiveCommand,
   nodeRunConfigurationEffectiveCommand,
   parseRunConfigurationEditorDocument,
   parseShellRunConfigurationEditorDocument,
@@ -72,5 +74,50 @@ describe("Shell Run configuration editor model", () => {
     const parsed = parseRunConfigurationEditorDocument(document, "{}");
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.document.provider).toBe("node");
+  });
+
+  it("builds structured Gradle and Maven task and main-class commands", () => {
+    const document = createJavaRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    document.name = "Run Java API";
+    document.target = {
+      kind: "gradleMainClass",
+      projectPath: ":api",
+      className: "demo.ApiApplication",
+    };
+    document.arguments = ["--port", "two words"];
+    document.options.vmArguments = ["-Xmx512m"];
+    expect(javaRunConfigurationEffectiveCommand(document)).toMatchObject({
+      overridden: false,
+      command: expect.stringContaining(
+        "./gradlew --init-script <cantrip-java-init.gradle>",
+      ),
+    });
+    expect(javaRunConfigurationEffectiveCommand(document).command).toContain(
+      ":api:_cantripRunConfigurationJava",
+    );
+    document.target = {
+      kind: "mavenMainClass",
+      module: ":api",
+      className: "demo.ApiApplication",
+    };
+    document.options.useWrapper = false;
+    document.options.jdkHome = "/opt/jdk-21";
+    const maven = javaRunConfigurationEffectiveCommand(document);
+    expect(maven.command).toContain("JAVA_HOME=/opt/jdk-21");
+    expect(maven.command).toContain("JAVA_TOOL_OPTIONS=-Xmx512m");
+    expect(maven.command).toContain(" mvn ");
+    expect(maven.command).toContain("-pl :api -am");
+    expect(maven.command).toContain("-Dexec.mainClass=demo.ApiApplication");
+    document.commandOverride = "java";
+    expect(javaRunConfigurationEffectiveCommand(document)).toEqual({
+      command:
+        'JAVA_HOME=/opt/jdk-21 JAVA_TOOL_OPTIONS=-Xmx512m java --port "two words"',
+      overridden: true,
+    });
+    const parsed = parseRunConfigurationEditorDocument(document, "{}");
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.document.provider).toBe("java");
   });
 });
