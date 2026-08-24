@@ -22,6 +22,7 @@ import {
 
 import {
   resolveRealDirectory,
+  runConfigurationExecutableDiagnostic,
   runConfigurationProviderDiagnostic,
   shellCommandInvocation,
   validateRealScript,
@@ -1262,6 +1263,9 @@ export const javaRunConfigurationProvider: RunConfigurationProvider<RunConfigura
       const parsed = runConfigurationJavaDocumentSchema.parse(document);
       const resolved = resolveConfiguration(parsed, context.platform);
       const diagnostics: RunConfigurationDiagnostic[] = [];
+      const hasProviderTask = parsed.beforeLaunch.some(
+        ({ kind }) => kind === "providerTask",
+      );
       try {
         await resolveRealDirectory(
           context.targetRoot,
@@ -1290,13 +1294,31 @@ export const javaRunConfigurationProvider: RunConfigurationProvider<RunConfigura
         }
       }
       if (
-        resolved.commandOverride === null &&
         diagnostics.every(({ code }) => code !== "working-directory-invalid")
       ) {
-        diagnostics.push(
-          ...(await validateJavaTarget(parsed, resolved, context)),
-        );
-        if (resolved.options.useWrapper) {
+        if (resolved.commandOverride === null) {
+          diagnostics.push(
+            ...(await validateJavaTarget(parsed, resolved, context)),
+          );
+        }
+        if (resolved.commandOverride === null || hasProviderTask) {
+          const system = targetBuildSystem(parsed);
+          const executable = resolved.options.useWrapper
+            ? null
+            : systemExecutable(system, context.platform);
+          if (executable) {
+            const diagnostic = await runConfigurationExecutableDiagnostic(
+              executable,
+              context,
+              "options.useWrapper",
+            );
+            if (diagnostic) diagnostics.push(diagnostic);
+          }
+        }
+        if (
+          (resolved.commandOverride === null || hasProviderTask) &&
+          resolved.options.useWrapper
+        ) {
           try {
             await wrapperRelativePath(
               context,
@@ -1322,7 +1344,13 @@ export const javaRunConfigurationProvider: RunConfigurationProvider<RunConfigura
               context.targetRoot,
               step.workingDirectory,
             );
-            shellCommandInvocation(step.command, context);
+            const invocation = shellCommandInvocation(step.command, context);
+            const diagnostic = await runConfigurationExecutableDiagnostic(
+              invocation.executable,
+              context,
+              `beforeLaunch[${index}]`,
+            );
+            if (diagnostic) diagnostics.push(diagnostic);
           } catch (error) {
             diagnostics.push(
               runConfigurationProviderDiagnostic(
@@ -1336,7 +1364,7 @@ export const javaRunConfigurationProvider: RunConfigurationProvider<RunConfigura
       }
       if (resolved.commandOverride !== null) {
         try {
-          shellCommandInvocation(
+          const invocation = shellCommandInvocation(
             renderCommand(
               resolved.commandOverride,
               resolved.arguments,
@@ -1344,6 +1372,12 @@ export const javaRunConfigurationProvider: RunConfigurationProvider<RunConfigura
             ),
             context,
           );
+          const diagnostic = await runConfigurationExecutableDiagnostic(
+            invocation.executable,
+            context,
+            "commandOverride",
+          );
+          if (diagnostic) diagnostics.push(diagnostic);
         } catch (error) {
           diagnostics.push(
             runConfigurationProviderDiagnostic(

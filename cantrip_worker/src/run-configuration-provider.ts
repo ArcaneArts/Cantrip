@@ -16,6 +16,7 @@ import {
 
 export interface RunConfigurationProviderContext {
   defaultShell: string | null;
+  environment?: Readonly<NodeJS.ProcessEnv>;
   platform: RunConfigurationPlatform;
   targetRoot: string;
 }
@@ -88,6 +89,106 @@ export function runConfigurationProviderDiagnostic(
     relativePath: null,
     field,
   });
+}
+
+function environmentValue(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  name: string,
+  platform: RunConfigurationPlatform,
+): string | undefined {
+  if (platform !== "win32") return environment[name];
+  const entry = Object.entries(environment).find(
+    ([key]) => key.toUpperCase() === name,
+  );
+  return entry?.[1];
+}
+
+async function isExecutableFile(
+  candidate: string,
+  platform: RunConfigurationPlatform,
+): Promise<boolean> {
+  try {
+    const canonical = await realpath(candidate);
+    const metadata = await lstat(canonical);
+    return (
+      metadata.isFile() &&
+      (platform === "win32" || (metadata.mode & 0o111) !== 0)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function findRunConfigurationExecutable(
+  executable: string,
+  context: Pick<
+    RunConfigurationProviderContext,
+    "environment" | "platform" | "targetRoot"
+  >,
+): Promise<string | null> {
+  if (!context.environment) return null;
+  const hasPathSeparator =
+    executable.includes("/") || executable.includes("\\");
+  if (path.isAbsolute(executable) || hasPathSeparator) {
+    const candidate = path.isAbsolute(executable)
+      ? executable
+      : path.resolve(context.targetRoot, executable);
+    return (await isExecutableFile(candidate, context.platform))
+      ? await realpath(candidate)
+      : null;
+  }
+
+  const pathValue = environmentValue(
+    context.environment,
+    "PATH",
+    context.platform,
+  );
+  if (pathValue === undefined) return null;
+  const names = [executable];
+  if (context.platform === "win32" && path.extname(executable) === "") {
+    const pathExtensions =
+      environmentValue(context.environment, "PATHEXT", context.platform) ??
+      ".COM;.EXE;.BAT;.CMD";
+    for (const extension of pathExtensions.split(";")) {
+      const normalized = extension.trim();
+      if (normalized) {
+        names.push(
+          executable +
+            (normalized.startsWith(".") ? normalized : `.${normalized}`),
+        );
+      }
+    }
+  }
+  const delimiter = context.platform === "win32" ? ";" : ":";
+  for (const rawDirectory of pathValue.split(delimiter)) {
+    const directory = rawDirectory.trim().replace(/^"|"$/gu, "");
+    const resolvedDirectory = directory
+      ? path.isAbsolute(directory)
+        ? directory
+        : path.resolve(context.targetRoot, directory)
+      : context.targetRoot;
+    for (const name of names) {
+      const candidate = path.join(resolvedDirectory, name);
+      if (await isExecutableFile(candidate, context.platform)) {
+        return realpath(candidate);
+      }
+    }
+  }
+  return null;
+}
+
+export async function runConfigurationExecutableDiagnostic(
+  executable: string,
+  context: RunConfigurationProviderContext,
+  field: string,
+): Promise<RunConfigurationDiagnostic | null> {
+  if (!context.environment) return null;
+  if (await findRunConfigurationExecutable(executable, context)) return null;
+  return runConfigurationProviderDiagnostic(
+    "executable-unavailable",
+    `The required executable ${JSON.stringify(executable)} is not available in the target worker launch environment. Install it, add it to PATH, or select a configured SDK/toolchain path.`,
+    field,
+  );
 }
 
 function isInside(root: string, candidate: string): boolean {
@@ -442,11 +543,17 @@ export const shellRunConfigurationProvider: RunConfigurationProvider<RunConfigur
         }
       }
       try {
-        shellInvocation(
+        const invocation = shellInvocation(
           targetCommand(parsed, resolved, context.platform),
           resolved,
           context,
         );
+        const diagnostic = await runConfigurationExecutableDiagnostic(
+          invocation.executable,
+          context,
+          "options.shell",
+        );
+        if (diagnostic) diagnostics.push(diagnostic);
       } catch (error) {
         diagnostics.push(
           runConfigurationProviderDiagnostic(

@@ -14,6 +14,7 @@ import {
 
 import {
   resolveRealDirectory,
+  runConfigurationExecutableDiagnostic,
   runConfigurationProviderDiagnostic,
   shellCommandInvocation,
   validateRealScript,
@@ -626,6 +627,18 @@ export const nodeRunConfigurationProvider: RunConfigurationProvider<RunConfigura
             );
           }
         }
+        const executable =
+          parsed.target.kind === "packageScript"
+            ? resolved.options.packageManager
+            : resolved.options.runtime;
+        const diagnostic = await runConfigurationExecutableDiagnostic(
+          executable,
+          context,
+          parsed.target.kind === "packageScript"
+            ? "options.packageManager"
+            : "options.runtime",
+        );
+        if (diagnostic) diagnostics.push(diagnostic);
       }
       for (let index = 0; index < parsed.beforeLaunch.length; index += 1) {
         const step = parsed.beforeLaunch[index]!;
@@ -637,13 +650,27 @@ export const nodeRunConfigurationProvider: RunConfigurationProvider<RunConfigura
             `beforeLaunch[${index}].task`,
           );
           if (issue) diagnostics.push(issue);
+          if (!issue) {
+            const diagnostic = await runConfigurationExecutableDiagnostic(
+              resolved.options.packageManager,
+              context,
+              "options.packageManager",
+            );
+            if (diagnostic) diagnostics.push(diagnostic);
+          }
         } else {
           try {
             await resolveRealDirectory(
               context.targetRoot,
               step.workingDirectory,
             );
-            shellCommandInvocation(step.command, context);
+            const invocation = shellCommandInvocation(step.command, context);
+            const diagnostic = await runConfigurationExecutableDiagnostic(
+              invocation.executable,
+              context,
+              `beforeLaunch[${index}]`,
+            );
+            if (diagnostic) diagnostics.push(diagnostic);
           } catch (error) {
             diagnostics.push(
               runConfigurationProviderDiagnostic(
@@ -657,10 +684,16 @@ export const nodeRunConfigurationProvider: RunConfigurationProvider<RunConfigura
       }
       if (resolved.commandOverride !== null) {
         try {
-          shellCommandInvocation(
+          const invocation = shellCommandInvocation(
             effectiveCommand(parsed, resolved, context.platform),
             context,
           );
+          const diagnostic = await runConfigurationExecutableDiagnostic(
+            invocation.executable,
+            context,
+            "commandOverride",
+          );
+          if (diagnostic) diagnostics.push(diagnostic);
         } catch (error) {
           diagnostics.push(
             runConfigurationProviderDiagnostic(

@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  realpath,
+  rm,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -41,7 +48,35 @@ afterEach(async () => {
 describe("RunConfigurationDefinitionService", () => {
   it("executes correlated CRUD and capability commands against the shared repository", async () => {
     const root = await projectRoot();
-    const service = new RunConfigurationDefinitionService({ emit: () => true });
+    const toolRoot = await projectRoot();
+    const windows = process.platform === "win32";
+    const toolNames = windows
+      ? [
+          "npm.CMD",
+          "gradle.bat",
+          "dart.exe",
+          "flutter.bat",
+          "cargo.exe",
+          "cmd.exe",
+        ]
+      : ["npm", "gradle", "dart", "flutter", "cargo", "sh"];
+    await Promise.all(
+      toolNames.map((name) =>
+        writeFile(path.join(toolRoot, name), "#!/bin/sh\nexit 0\n", {
+          mode: 0o755,
+        }),
+      ),
+    );
+    const environment = {
+      PATH: toolRoot,
+      ...(windows
+        ? { PATHEXT: ".COM;.EXE;.BAT;.CMD" }
+        : { SHELL: path.join(toolRoot, "sh") }),
+    };
+    const service = new RunConfigurationDefinitionService({
+      emit: () => true,
+      environment,
+    });
     const context = { projectId, sourcePath: root };
 
     const initial = await service.execute({
@@ -271,6 +306,65 @@ describe("RunConfigurationDefinitionService", () => {
         },
       });
     }
+    for (const check of [
+      {
+        provider: "node" as const,
+        tool: windows ? "npm.CMD" : "npm",
+        field: "options.packageManager",
+      },
+      {
+        provider: "java" as const,
+        tool: windows ? "gradle.bat" : "gradle",
+        field: "options.useWrapper",
+      },
+      {
+        provider: "dart" as const,
+        tool: windows ? "dart.exe" : "dart",
+        field: "options.sdkHome",
+      },
+      {
+        provider: "flutter" as const,
+        tool: windows ? "flutter.bat" : "flutter",
+        field: "options.sdkHome",
+      },
+      {
+        provider: "rust" as const,
+        tool: windows ? "cargo.exe" : "cargo",
+        field: "options.toolchain",
+      },
+    ]) {
+      const candidate = detected.candidates.find(
+        ({ provider }) => provider === check.provider,
+      );
+      if (!candidate) {
+        throw new Error(
+          `Expected a detected ${check.provider} Run configuration.`,
+        );
+      }
+      const toolPath = path.join(toolRoot, check.tool);
+      await unlink(toolPath);
+      await expect(
+        service.execute({
+          type: "project.run-configuration-definitions.validate",
+          operationId: randomUUID(),
+          ...context,
+          document: candidate.document,
+        }),
+      ).resolves.toMatchObject({
+        operation: "validate",
+        validation: {
+          valid: false,
+          diagnostics: [
+            expect.objectContaining({
+              severity: "error",
+              code: "executable-unavailable",
+              field: check.field,
+            }),
+          ],
+        },
+      });
+      await writeFile(toolPath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    }
     await expect(
       service.execute({
         type: "project.run-configuration-definitions.validate",
@@ -329,7 +423,6 @@ describe("RunConfigurationDefinitionService", () => {
         ],
       },
     });
-
     const created = await service.execute({
       type: "project.run-configuration-definitions.write",
       operationId: randomUUID(),

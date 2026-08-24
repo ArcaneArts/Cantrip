@@ -22,6 +22,7 @@ import {
   type RunConfigurationProviderCandidate,
   type RunConfigurationProviderContext,
   resolveRealDirectory,
+  runConfigurationExecutableDiagnostic,
   runConfigurationProviderDiagnostic,
   shellCommandInvocation,
 } from "./run-configuration-provider.js";
@@ -790,6 +791,12 @@ export const rustRunConfigurationProvider: RunConfigurationProvider<RunConfigura
         workingDirectory &&
         (resolved.commandOverride === null || hasProviderTask)
       ) {
+        const diagnostic = await runConfigurationExecutableDiagnostic(
+          cargoExecutable(context.platform),
+          context,
+          "options.toolchain",
+        );
+        if (diagnostic) diagnostics.push(diagnostic);
         const packages = await scanPackages({
           ...context,
           targetRoot: workingDirectory,
@@ -863,7 +870,13 @@ export const rustRunConfigurationProvider: RunConfigurationProvider<RunConfigura
         }
         try {
           await resolveRealDirectory(context.targetRoot, step.workingDirectory);
-          shellCommandInvocation(step.command, context);
+          const invocation = shellCommandInvocation(step.command, context);
+          const diagnostic = await runConfigurationExecutableDiagnostic(
+            invocation.executable,
+            context,
+            `beforeLaunch[${index}]`,
+          );
+          if (diagnostic) diagnostics.push(diagnostic);
         } catch (error) {
           diagnostics.push(
             runConfigurationProviderDiagnostic(
@@ -876,10 +889,16 @@ export const rustRunConfigurationProvider: RunConfigurationProvider<RunConfigura
       }
       if (resolved.commandOverride !== null) {
         try {
-          shellCommandInvocation(
+          const invocation = shellCommandInvocation(
             effectiveCommand(parsed, resolved, context.platform),
             context,
           );
+          const diagnostic = await runConfigurationExecutableDiagnostic(
+            invocation.executable,
+            context,
+            "commandOverride",
+          );
+          if (diagnostic) diagnostics.push(diagnostic);
         } catch (error) {
           diagnostics.push(
             runConfigurationProviderDiagnostic(
