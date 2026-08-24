@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CodeAttachment } from "@cantrip/protocol";
 
 const mocks = vi.hoisted(() => ({
+  browserCodeAttachmentHealthy: vi.fn(),
   invoke: vi.fn(),
   isTauri: vi.fn(),
   forceDesktopTunnelRelay: vi.fn(),
+  startBrowserCodeAttachment: vi.fn(),
   startDesktopTunnel: vi.fn(),
+  stopBrowserCodeAttachment: vi.fn(),
   stopDesktopTunnel: vi.fn(),
   stopDesktopTunnelForward: vi.fn(),
   fetch: vi.fn(),
@@ -25,9 +28,9 @@ vi.mock("@/lib/desktop-tunnel", () => ({
 }));
 
 vi.mock("@/lib/browser-code-tunnel", () => ({
-  browserCodeAttachmentHealthy: vi.fn(),
-  startBrowserCodeAttachment: vi.fn(),
-  stopBrowserCodeAttachment: vi.fn(),
+  browserCodeAttachmentHealthy: mocks.browserCodeAttachmentHealthy,
+  startBrowserCodeAttachment: mocks.startBrowserCodeAttachment,
+  stopBrowserCodeAttachment: mocks.stopBrowserCodeAttachment,
 }));
 
 vi.mock("@/lib/client-log-relay", () => ({
@@ -259,6 +262,31 @@ describe("directCodeAttachmentHealthy", () => {
 });
 
 describe("preferProtectedCodeAttachment", () => {
+  it("classifies the browser transport as relay without changing its tunnel identity", async () => {
+    mocks.isTauri.mockReturnValue(false);
+    mocks.startBrowserCodeAttachment.mockResolvedValue({
+      attachmentId: "11111111-1111-4111-8111-111111111111",
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      url: "https://cantrip.test/__cantrip_code/11111111-1111-4111-8111-111111111111/code/",
+      expiresAt: "2026-08-13T12:00:00.000Z",
+      runtime: {},
+    });
+    const wire = {
+      attachmentId: "11111111-1111-4111-8111-111111111111",
+      tunnelId: "11111111-1111-4111-8111-111111111111",
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      expiresAt: "2026-08-13T12:00:00.000Z",
+      runtime: {},
+    } as never;
+
+    await expect(preferProtectedCodeAttachment(wire)).resolves.toMatchObject({
+      directTunnelId: "11111111-1111-4111-8111-111111111111",
+      transportKind: "relay",
+    });
+    expect(mocks.startBrowserCodeAttachment).toHaveBeenCalledWith(wire);
+    expect(mocks.startDesktopTunnel).not.toHaveBeenCalled();
+  });
+
   it("opens the protected generic tunnel at the worker-local Code path", async () => {
     mocks.startDesktopTunnel.mockResolvedValue({
       attachmentId: "transport-1",
@@ -288,6 +316,7 @@ describe("preferProtectedCodeAttachment", () => {
     expect(preferred.directTunnelId).toBe(
       "11111111-1111-4111-8111-111111111111",
     );
+    expect(preferred.transportKind).toBe("relay");
     expect(mocks.startDesktopTunnel).toHaveBeenCalledWith(
       "11111111-1111-4111-8111-111111111111",
       { diagnosticTraceId: expect.any(String) },
@@ -310,6 +339,32 @@ describe("preferProtectedCodeAttachment", () => {
         event: "code.attachment.health.completed",
       }),
     );
+  });
+
+  it("classifies a healthy desktop direct route without changing its tunnel identity", async () => {
+    mocks.startDesktopTunnel.mockResolvedValue({
+      attachmentId: "transport-1",
+      localHost: "127.0.0.1",
+      localPort: 52345,
+      routeState: "local-direct",
+      relayFallbackAvailable: false,
+      directCapabilityId: "capability-1",
+      tunnelId: "11111111-1111-4111-8111-111111111111",
+    });
+    mocks.fetch.mockResolvedValue({ ok: true });
+
+    await expect(
+      preferProtectedCodeAttachment({
+        attachmentId: "11111111-1111-4111-8111-111111111111",
+        tunnelId: "11111111-1111-4111-8111-111111111111",
+        sessionId: "22222222-2222-4222-8222-222222222222",
+        expiresAt: "2026-08-13T12:00:00.000Z",
+        runtime: {},
+      } as never),
+    ).resolves.toMatchObject({
+      directTunnelId: "11111111-1111-4111-8111-111111111111",
+      transportKind: "local-direct",
+    });
   });
 
   it("switches an unusable connected direct route to relay exactly once", async () => {
@@ -343,6 +398,7 @@ describe("preferProtectedCodeAttachment", () => {
 
       await expect(preferred).resolves.toMatchObject({
         directTunnelId: "11111111-1111-4111-8111-111111111111",
+        transportKind: "relay",
       });
       expect(mocks.forceDesktopTunnelRelay).toHaveBeenCalledTimes(1);
       expect(mocks.fetch).toHaveBeenCalledTimes(5);

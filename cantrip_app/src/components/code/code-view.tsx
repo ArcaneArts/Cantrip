@@ -282,7 +282,7 @@ export function CodeView({
           attachmentId: next.attachmentId,
           elapsedMs: Math.round(performance.now() - startedAt),
           sessionId: next.sessionId,
-          transport: preferred.directTunnelId ? "direct" : "relay",
+          transport: preferred.transportKind,
           url: codeAttachmentUrlForLog(next.url),
         });
         onChangedRef.current?.();
