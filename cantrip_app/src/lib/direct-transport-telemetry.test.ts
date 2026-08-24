@@ -5,10 +5,12 @@ const mocks = vi.hoisted(() => ({
   listDesktopTunnels: vi.fn(),
   recordDirectAttachmentTelemetry: vi.fn(),
   refreshDesktopTunnelRelay: vi.fn(),
+  renewTunnelAttachmentLease: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
   recordDirectAttachmentTelemetry: mocks.recordDirectAttachmentTelemetry,
+  renewTunnelAttachmentLease: mocks.renewTunnelAttachmentLease,
 }));
 vi.mock("@/lib/desktop-tunnel", () => ({
   desktopTunnelAvailable: () => true,
@@ -29,6 +31,7 @@ beforeEach(() => {
   mocks.forceDesktopTunnelRelay.mockResolvedValue(undefined);
   mocks.recordDirectAttachmentTelemetry.mockResolvedValue(undefined);
   mocks.refreshDesktopTunnelRelay.mockResolvedValue(true);
+  mocks.renewTunnelAttachmentLease.mockResolvedValue(undefined);
 });
 
 describe("reportDesktopDirectTransportTelemetry", () => {
@@ -62,6 +65,9 @@ describe("reportDesktopDirectTransportTelemetry", () => {
     await reportDesktopDirectTransportTelemetry();
 
     expect(mocks.recordDirectAttachmentTelemetry).not.toHaveBeenCalled();
+    expect(mocks.renewTunnelAttachmentLease).toHaveBeenCalledWith(
+      "attachment-1",
+    );
     expect(mocks.refreshDesktopTunnelRelay).toHaveBeenCalledWith(forward);
     expect(mocks.forceDesktopTunnelRelay).toHaveBeenCalledWith(forward);
     expect(
@@ -97,6 +103,7 @@ describe("reportDesktopDirectTransportTelemetry", () => {
     );
     expect(mocks.refreshDesktopTunnelRelay).not.toHaveBeenCalled();
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
+    expect(mocks.renewTunnelAttachmentLease).not.toHaveBeenCalled();
   });
 
   it("renews a healthy direct relay credential shortly before expiry", async () => {
@@ -114,6 +121,7 @@ describe("reportDesktopDirectTransportTelemetry", () => {
 
     expect(mocks.refreshDesktopTunnelRelay).toHaveBeenCalledWith(forward);
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
+    expect(mocks.renewTunnelAttachmentLease).not.toHaveBeenCalled();
   });
 
   it("does not rotate a healthy relayed credential", async () => {
@@ -131,5 +139,8 @@ describe("reportDesktopDirectTransportTelemetry", () => {
 
     expect(mocks.refreshDesktopTunnelRelay).not.toHaveBeenCalled();
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
+    expect(mocks.renewTunnelAttachmentLease).toHaveBeenCalledWith(
+      "attachment-1",
+    );
   });
 });

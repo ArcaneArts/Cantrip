@@ -7456,7 +7456,12 @@ export class ServerRepository {
       secretExpiresAt: Date;
       secretHash: string;
     },
-  ): Promise<{ attachmentId: string; projectId: string | null } | null> {
+  ): Promise<{
+    attachmentId: string;
+    expiresAt: Date;
+    projectId: string | null;
+    secretExpiresAt: Date;
+  } | null> {
     return this.database.transaction(async (transaction) => {
       const tunnels = await transaction
         .select({
@@ -7473,6 +7478,10 @@ export class ServerRepository {
             eq(schema.tunnels.ownerId, ownerId),
           ),
         )
+        // The tunnel row serializes all client rotations, including the first
+        // insert before an attachment row exists. This keeps the public
+        // secret-expiry generation strictly increasing across server processes.
+        .for("update")
         .limit(1);
       const tunnel = tunnels[0];
       if (
@@ -7490,7 +7499,10 @@ export class ServerRepository {
         return null;
       }
       const existing = await transaction
-        .select({ id: schema.tunnelAttachments.id })
+        .select({
+          id: schema.tunnelAttachments.id,
+          secretExpiresAt: schema.tunnelAttachments.secretExpiresAt,
+        })
         .from(schema.tunnelAttachments)
         .where(
           and(
@@ -7501,12 +7513,23 @@ export class ServerRepository {
         .limit(1);
       const now = new Date();
       const attachmentId = existing[0]?.id ?? randomUUID();
+      // Treat the public expiry as the relay-credential generation. Concurrent
+      // renderer refreshes can finish out of order, so every accepted rotation
+      // must advance it even when both requests were created in the same
+      // millisecond. Native clients can then reject an older response without
+      // retaining or comparing the credential itself.
+      const secretExpiresAt = new Date(
+        Math.max(
+          input.secretExpiresAt.getTime(),
+          (existing[0]?.secretExpiresAt?.getTime() ?? 0) + 1,
+        ),
+      );
       const values = {
         activeConnectionCount: 0,
         expiresAt: input.expiresAt,
         errorCode: null,
         lastSeenAt: null,
-        secretExpiresAt: input.secretExpiresAt,
+        secretExpiresAt,
         secretHash: input.secretHash,
         status: "starting",
         updatedAt: now,
@@ -7534,7 +7557,12 @@ export class ServerRepository {
           updatedAt: now,
         })
         .where(eq(schema.tunnels.id, tunnelId));
-      return { attachmentId, projectId: tunnel.projectId };
+      return {
+        attachmentId,
+        expiresAt: input.expiresAt,
+        projectId: tunnel.projectId,
+        secretExpiresAt,
+      };
     });
   }
 

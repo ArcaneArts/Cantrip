@@ -953,6 +953,19 @@ export async function deleteTunnelAttachment(
   });
 }
 
+export async function renewTunnelAttachmentLease(
+  attachmentId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  await request(
+    `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/lease`,
+    {
+      method: "POST",
+      signal: options.signal,
+    },
+  );
+}
+
 export async function createDirectTunnelAttachment(
   attachmentId: string,
   input: DirectTunnelPrepareRequest = {},

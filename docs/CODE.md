@@ -509,6 +509,34 @@ status, last attachment, and last error without storing editor credentials.
 - The shared logical Code tunnel remains visible while at least one attachment
   exists; revoking the last attachment removes the managed-ephemeral tunnel.
 
+### Authoritative Code-surface lifetime
+
+One protected Code attachment is the server-side lifetime root for its editor
+surface. Its opaque generation is bound to the logical server, owner/account,
+authentication session, protected-content key revision, worker, Explorer, and
+worktree captured when the surface is created. The generic relay attachment,
+direct capability, worker session, and retained client route may renew only
+while that exact generation remains current. A client heartbeat never supplies
+an expiry or any security identity.
+
+The desktop reports each active forward every 10 seconds. Local-direct reports
+renew the existing worker capability inside a stable jittered renewal window;
+relayed and degraded forwards call the route-independent attachment heartbeat.
+Both paths slide the root's 15-minute idle deadline but cannot exceed its
+12-hour absolute deadline or the generic attachment's own expiry. Transient
+renewal transport failures preserve the still-valid lease for retry. Explicit
+close, absolute/idle expiry, a rejected renewal, or any server, account,
+encryption, worker, Explorer, or worktree identity change retires the root and
+its children.
+
+Relay connection credentials remain short-lived. While direct is healthy the
+client refreshes its fallback shortly before expiry; a degraded route refreshes
+immediately. Healthy active relay connections are not periodically interrupted
+solely to rotate a credential. Rotation responses carry a database-serialized,
+strictly increasing expiry generation, and native forwarding retains only the
+newest zeroizing fallback credential so out-of-order renderer responses cannot
+restore stale authorization.
+
 Concurrent views share the editor process, persistent profile, generated
 workspace, and filesystem state without transferring control between windows.
 Expired or revoked surface attachments render a bounded recovery document that

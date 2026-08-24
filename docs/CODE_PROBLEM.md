@@ -53,6 +53,42 @@ Focused tests exercise those fields and the production reconnect seam without
 logging capability IDs, credentials, protected URLs, authorization headers, or
 payloads.
 
+Cycle 2 makes the in-memory protected Code attachment the authoritative lifetime
+root. Its opaque generation is created with the logical server, owner/account,
+raw authentication session, protected-content key revision, worker, and the
+creating Explorer/worktree identity. Explorer mutation, explicit release,
+security-identity change, idle expiry, or the 12-hour absolute cap invalidates
+that generation; clients cannot supply or extend any of those identity fields.
+Code-origin relay attachment creation, direct preparation, activation, and
+heartbeat now fail closed unless they acquire that exact live root.
+
+The desktop's existing 10-second transport report renews the root on every
+healthy forward, including zero-byte idle reports. A local-direct report also
+renews the existing worker capability inside a stable 90-150-second jittered
+window. The server and worker enforce monotonic expiry acknowledgements and the
+root's absolute cap. A transient worker/transport renewal failure preserves the
+currently valid grant for a bounded retry; a rejection, malformed acknowledgement,
+expired root, or changed generation revokes it. Healthy relay and degraded
+forwards use a route-independent authenticated attachment heartbeat, so relay
+traffic no longer depends on direct telemetry to keep the Code session alive.
+
+Relay fallback credentials remain ready while direct is healthy. The app
+refreshes a local-direct fallback 30-40 seconds before its two-minute secret
+expiry and refreshes degraded routes immediately, but does not disrupt a
+healthy active relay merely to rotate its connection credential. The database
+serializes rotations on the tunnel row and returns a strictly increasing public
+secret-expiry generation. Native forwarding retains only the latest
+zeroizing credential, discards stale out-of-order responses, interrupts a
+stalled degraded connect when a newer credential arrives, and can replace its
+standby fallback without restarting a healthy direct session.
+
+Deterministic protocol, worker, server, app, and native tests cover renewal,
+hard caps, revoke-over-renew races, cross-ordered relay refreshes, stalled
+connect interruption, zero-byte heartbeats, monotonic credential generations,
+and fail-closed orphaned Code tunnels. The real 2/5/10/16-minute local acceptance
+run remains a Cycle 10 requirement; this cycle does not claim that evidence or
+change worker reconnect, bridge-liveness, or retained-workbench policy.
+
 ## Final remediation and acceptance addendum (2026-08-23)
 
 The incident was a stack of independent defects. Fixing only OpenVSCode process

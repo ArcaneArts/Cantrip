@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 
-import { recordDirectAttachmentTelemetry } from "@/lib/api";
+import {
+  recordDirectAttachmentTelemetry,
+  renewTunnelAttachmentLease,
+} from "@/lib/api";
 import {
   desktopTunnelAvailable,
   forceDesktopTunnelRelay,
@@ -40,27 +43,38 @@ function relayCredentialRefreshDue(
 
 export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
   const forwards = await listDesktopTunnels();
+  const directTelemetryForwards = forwards.filter(
+    (forward) =>
+      Boolean(forward.directCapabilityId) &&
+      (forward.routeState === "local-direct" ||
+        !forward.relayFallbackAvailable),
+  );
+  const directTelemetryAttachments = new Set(
+    directTelemetryForwards.map((forward) => forward.attachmentId),
+  );
+  await Promise.all(
+    directTelemetryForwards.map((forward) =>
+      recordDirectAttachmentTelemetry(forward.directCapabilityId!, {
+        bytesFromLocal: forward.bytesFromLocal ?? 0,
+        bytesToLocal: forward.bytesToLocal ?? 0,
+        connectionsClosed: forward.connectionsClosed ?? 0,
+        connectionsOpened: forward.connectionsOpened ?? 0,
+        ...(forward.lastDestinationRejectionCode
+          ? {
+              lastDestinationRejectionCode:
+                forward.lastDestinationRejectionCode,
+            }
+          : {}),
+      }).catch(() => undefined),
+    ),
+  );
   await Promise.all(
     forwards
       .filter(
-        (forward) =>
-          Boolean(forward.directCapabilityId) &&
-          (forward.routeState === "local-direct" ||
-            !forward.relayFallbackAvailable),
+        (forward) => !directTelemetryAttachments.has(forward.attachmentId),
       )
       .map((forward) =>
-        recordDirectAttachmentTelemetry(forward.directCapabilityId!, {
-          bytesFromLocal: forward.bytesFromLocal ?? 0,
-          bytesToLocal: forward.bytesToLocal ?? 0,
-          connectionsClosed: forward.connectionsClosed ?? 0,
-          connectionsOpened: forward.connectionsOpened ?? 0,
-          ...(forward.lastDestinationRejectionCode
-            ? {
-                lastDestinationRejectionCode:
-                  forward.lastDestinationRejectionCode,
-              }
-            : {}),
-        }).catch(() => undefined),
+        renewTunnelAttachmentLease(forward.attachmentId).catch(() => undefined),
       ),
   );
   await Promise.all(
