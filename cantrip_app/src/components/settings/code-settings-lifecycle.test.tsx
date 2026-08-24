@@ -61,6 +61,7 @@ const worker = {
   online: true,
   code: { available: true },
   encryption: {
+    supported: true,
     state: "ready",
     grants: [{ component: "customization-content", keyRevision: 1 }],
   },
