@@ -1322,4 +1322,121 @@ describe("protected Cantrip Code attachments", () => {
       await broker.close();
     }
   });
+
+  it("issues an exact opaque direct-child root lease and invalidates it with the Code binding", async () => {
+    const tunnelId = "11111111-1111-4111-8111-111111111111";
+    let now = 1_000;
+    let releaseRemoval!: () => void;
+    let signalRemoval!: () => void;
+    const removalStarted = new Promise<void>((resolve) => {
+      signalRemoval = resolve;
+    });
+    const removalRelease = new Promise<void>((resolve) => {
+      releaseRemoval = resolve;
+    });
+    const repository = {
+      registerManagedTunnel: vi.fn(async () => ({ id: tunnelId })),
+      removeManagedTunnel: vi.fn(async () => {
+        signalRemoval();
+        await removalRelease;
+        return true;
+      }),
+    } as unknown as ServerRepository;
+    const worker = {
+      isConnected: () => true,
+      request: vi.fn(async () => null),
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus;
+    const broker = new CodeTunnelBroker(worker, {
+      idleTtlMs: 100,
+      maxLifetimeMs: 250,
+      now: () => now,
+    });
+    broker.configureControlPlane(repository, vi.fn(), vi.fn());
+
+    try {
+      await broker.createProtectedAttachment({
+        authSessionId: "auth-session-1",
+        codeTabId: "explorer:explorer-1:session-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord: protectedRecord(tunnelId),
+        runtime,
+        serverId: "server-1",
+        sessionId: runtime.sessionId,
+        tunnelId,
+        workerId: "worker-1",
+        worktreeId: "worktree-1",
+        worktreePath: "/worker/project",
+      });
+      const identity = {
+        authSessionId: "auth-session-1",
+        ownerId: "user-1",
+        protectedKeyRevision: 1,
+        rootAttachmentId: tunnelId,
+        serverId: "server-1",
+        tunnelId,
+        workerId: "worker-1",
+      };
+      const acquired = broker.acquireAttachmentRootLease(identity);
+      expect(acquired.managed).toBe(true);
+      expect(acquired.lease).not.toBeNull();
+      expect(acquired.lease).toMatchObject({
+        expiresAt: new Date(1_100).toISOString(),
+        hardExpiresAt: new Date(1_250).toISOString(),
+      });
+      expect(
+        broker.allowRelayAttachmentActivity("relay-attachment", tunnelId),
+      ).toBe(false);
+      expect(
+        broker.bindRelayAttachment("relay-attachment", {
+          ...identity,
+          authSessionId: "another-session",
+        }),
+      ).toBe(false);
+      expect(broker.bindRelayAttachment("relay-attachment", identity)).toBe(
+        true,
+      );
+      expect(
+        broker.allowRelayAttachmentActivity("relay-attachment", tunnelId),
+      ).toBe(true);
+
+      for (const mismatch of [
+        { ...identity, rootAttachmentId: "another-attachment" },
+        { ...identity, authSessionId: "another-session" },
+        { ...identity, ownerId: "another-owner" },
+        { ...identity, protectedKeyRevision: 2 },
+        { ...identity, serverId: "another-server" },
+        { ...identity, workerId: "another-worker" },
+      ]) {
+        expect(broker.acquireAttachmentRootLease(mismatch)).toEqual({
+          lease: null,
+          managed: true,
+        });
+      }
+
+      now = 1_050;
+      expect(acquired.lease?.recordActivity()).toMatchObject({
+        expiresAt: new Date(1_150).toISOString(),
+        hardExpiresAt: new Date(1_250).toISOString(),
+        generation: acquired.lease.generation,
+      });
+      const removal = broker.revokeAttachment(tunnelId, "user-1");
+      await removalStarted;
+      expect(acquired.lease?.validate()).toBeNull();
+      expect(
+        broker.allowRelayAttachmentActivity("relay-attachment", tunnelId),
+      ).toBe(false);
+      releaseRemoval();
+      await removal;
+      expect(acquired.lease?.validate()).toBeNull();
+      expect(broker.acquireAttachmentRootLease(identity)).toEqual({
+        lease: null,
+        managed: false,
+      });
+    } finally {
+      releaseRemoval();
+      await broker.close();
+    }
+  });
 });

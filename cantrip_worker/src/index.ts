@@ -18,6 +18,7 @@ import {
   codexMcpReloadResultSchema,
   codexMcpResourceReadRequestSchema,
   codexMcpResourceReadSchema,
+  directCapabilityRenewResultSchema,
   codexSkillConfigResultSchema,
   codexSkillConfigUpdateSchema,
   codexSkillRootsResultSchema,
@@ -1392,13 +1393,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return {
           revoked: directBroker.revoke(command.capabilityId, command.reason),
         };
-      case "direct.capability.renew":
-        return {
-          renewed: directBroker.renew(
-            command.capabilityId,
-            command.leaseExpiresAt,
-          ),
-        };
+      case "direct.capability.renew": {
+        const leaseExpiresAt = directBroker.renew(
+          command.capabilityId,
+          command.leaseExpiresAt,
+        );
+        return directCapabilityRenewResultSchema.parse({
+          renewed: leaseExpiresAt !== null,
+          ...(leaseExpiresAt ? { leaseExpiresAt } : {}),
+        });
+      }
       case "worker.version":
         return cantripVersion;
       case "worker.restart":

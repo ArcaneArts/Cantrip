@@ -4,6 +4,7 @@ import { normalizeLogError, type ServiceLogger } from "@cantrip/logging";
 import {
   directAttachmentTicketSchema,
   directCapabilityPrepareResultSchema,
+  directCapabilityRenewResultSchema,
   type DirectAttachmentTicket,
   type DirectResourceKind,
   type DirectTransportTelemetry,
@@ -11,7 +12,10 @@ import {
   type WorkerSummary,
 } from "@cantrip/protocol";
 
-import type { WorkerCommandBus } from "../workers/bridge.js";
+import {
+  WorkerUnavailableError,
+  type WorkerCommandBus,
+} from "../workers/bridge.js";
 import { serverLogger } from "../logger.js";
 
 interface DirectGrant {
@@ -23,10 +27,19 @@ interface DirectGrant {
   createdAtMs: number;
   diagnosticTraceId: string;
   leaseExpiresAtMs: number;
+  maxLeaseExpiresAtMs: number;
   mode: "direct-capability" | "direct-tunnel";
   ownerId: string;
+  renewalAttemptCount: number;
+  renewalCount: number;
+  renewalSupported: boolean;
+  renewalTail: Promise<void>;
+  renewalWindowMs: number;
   resourceId: string;
   resourceKind: DirectResourceKind;
+  resourceGeneration: symbol;
+  resourceLifecycle: DirectResourceLifecycle;
+  rootLease: DirectAttachmentAuthoritativeRootLease | null;
   telemetryObservedAtMs: number | null;
   telemetryReportCount: number;
   timer: ReturnType<typeof setTimeout>;
@@ -63,6 +76,34 @@ export interface DirectTransportTelemetryDelta extends DirectTransportTelemetry 
   resourceKind: DirectResourceKind;
 }
 
+export interface DirectAttachmentAuthoritativeRootLeaseState {
+  readonly expiresAt: string;
+  readonly generation: symbol;
+  readonly hardExpiresAt: string;
+}
+
+export interface DirectAttachmentAuthoritativeRootLease extends DirectAttachmentAuthoritativeRootLeaseState {
+  readonly recordActivity: () => DirectAttachmentAuthoritativeRootLeaseState | null;
+  readonly validate: () => DirectAttachmentAuthoritativeRootLeaseState | null;
+}
+
+export type DirectAttachmentRenewalOutcome =
+  | {
+      leaseExpiresAt: string;
+      renewed: boolean;
+      status: "completed";
+    }
+  | {
+      status:
+        | "expired"
+        | "missing"
+        | "not-active"
+        | "retryable-failure"
+        | "root-missing"
+        | "unsupported"
+        | "worker-rejected";
+    };
+
 export type DirectAttachmentActivationOutcome =
   | "attachment_missing"
   | "attachment_stale"
@@ -71,6 +112,7 @@ export type DirectAttachmentActivationOutcome =
 
 export interface DirectAttachmentPrepareInput {
   attachmentId?: string;
+  authoritativeRoot?: DirectAttachmentAuthoritativeRootLease;
   authSessionId: string;
   channels: string[];
   diagnosticTraceId?: string;
@@ -79,6 +121,7 @@ export interface DirectAttachmentPrepareInput {
   resourceId: string;
   resourceKind: DirectResourceKind;
   leaseExpiresAt?: Date;
+  maxLeaseExpiresAt?: Date;
   tunnelRoute?: Extract<
     WorkerCommand,
     { type: "direct.capability.prepare" }
@@ -88,6 +131,10 @@ export interface DirectAttachmentPrepareInput {
 
 const CAPABILITY_TTL_MS = 15_000;
 const LEASE_TTL_MS = 60_000;
+const MAX_LEASE_TTL_MS = 12 * 60 * 60_000;
+const MIN_RENEWAL_WINDOW_MS = 90_000;
+const RENEWAL_WINDOW_JITTER_MS = 60_000;
+const WORKER_RENEW_TIMEOUT_MS = 5_000;
 const SAFE_ERROR_CLASSES = new Set([
   "AggregateError",
   "Error",
@@ -107,6 +154,16 @@ const SAFE_ERROR_CODES = new Set([
   "ETIMEDOUT",
   "ERR_INVALID_ARG_TYPE",
   "ERR_INVALID_STATE",
+  "ERR_SOCKET_CLOSED",
+]);
+const RETRYABLE_RENEWAL_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "EPIPE",
+  "ETIMEDOUT",
   "ERR_SOCKET_CLOSED",
 ]);
 
@@ -228,7 +285,7 @@ export class DirectAttachmentCoordinator {
     lifecycle.pending.add(pending);
     this.#pendingPreparations.set(pending, input);
     try {
-      const ticket = await this.#prepare(input);
+      const ticket = await this.#prepare(input, lifecycle, generation);
       if (
         !this.#preparationLeaseMatches(input) ||
         lifecycle.generation !== generation ||
@@ -254,6 +311,8 @@ export class DirectAttachmentCoordinator {
 
   async #prepare(
     input: DirectAttachmentPrepareInput,
+    resourceLifecycle: DirectResourceLifecycle,
+    resourceGeneration: symbol,
   ): Promise<DirectAttachmentTicket> {
     const startedAtMs = Date.now();
     const diagnosticTraceId = input.diagnosticTraceId ?? randomUUID();
@@ -298,12 +357,49 @@ export class DirectAttachmentCoordinator {
     const now = Date.now();
     const capabilityId = randomUUID();
     const secret = randomBytes(32).toString("base64url");
+    const rootState = input.authoritativeRoot?.validate() ?? null;
+    if (
+      input.authoritativeRoot &&
+      (!rootState ||
+        rootState.generation !== input.authoritativeRoot.generation)
+    ) {
+      this.#logPrepareFailure(
+        diagnosticTraceId,
+        input,
+        mode,
+        startedAtMs,
+        "authoritative_root_missing",
+      );
+      throw new DirectAttachmentUnavailableError(
+        "The protected attachment root is no longer active.",
+      );
+    }
     const requestedLease = input.leaseExpiresAt?.getTime();
+    const requestedMaximumLease = input.maxLeaseExpiresAt?.getTime();
+    const rootLeaseExpiresAt = rootState
+      ? Date.parse(rootState.expiresAt)
+      : Number.POSITIVE_INFINITY;
+    const rootHardExpiresAt = rootState
+      ? Date.parse(rootState.hardExpiresAt)
+      : Number.POSITIVE_INFINITY;
+    const maxLeaseExpiresAt = Math.min(
+      Number.isFinite(requestedMaximumLease)
+        ? requestedMaximumLease!
+        : now + MAX_LEASE_TTL_MS,
+      rootHardExpiresAt,
+      now + MAX_LEASE_TTL_MS,
+    );
     const leaseExpiresAt = Math.min(
       Number.isFinite(requestedLease) ? requestedLease! : now + LEASE_TTL_MS,
-      now + 12 * 60 * 60_000,
+      rootLeaseExpiresAt,
+      maxLeaseExpiresAt,
     );
-    if (leaseExpiresAt <= now) {
+    if (
+      !Number.isFinite(leaseExpiresAt) ||
+      !Number.isFinite(maxLeaseExpiresAt) ||
+      leaseExpiresAt <= now ||
+      maxLeaseExpiresAt <= now
+    ) {
       this.#logPrepareFailure(
         diagnosticTraceId,
         input,
@@ -370,11 +466,39 @@ export class DirectAttachmentCoordinator {
       );
       throw new Error("Worker acknowledged another direct capability.");
     }
-    const timer = setTimeout(
-      () => void this.revoke(capabilityId, "Direct capability expired"),
-      Math.max(1, leaseExpiresAt - now),
-    );
-    timer.unref();
+    const postPrepareRootState = input.authoritativeRoot?.validate() ?? null;
+    if (
+      input.authoritativeRoot &&
+      (!postPrepareRootState ||
+        postPrepareRootState.generation !==
+          input.authoritativeRoot.generation ||
+        Date.parse(postPrepareRootState.hardExpiresAt) !==
+          Date.parse(input.authoritativeRoot.hardExpiresAt) ||
+        Date.parse(postPrepareRootState.expiresAt) < leaseExpiresAt)
+    ) {
+      await this.workers
+        .request(
+          input.worker.workerId,
+          {
+            type: "direct.capability.revoke",
+            capabilityId,
+            reason: "Authoritative root changed during preparation",
+          },
+          { ownerId: input.ownerId, timeoutMs: WORKER_RENEW_TIMEOUT_MS },
+        )
+        .catch(() => undefined);
+      this.#logPrepareFailure(
+        diagnosticTraceId,
+        input,
+        mode,
+        startedAtMs,
+        "authoritative_root_changed",
+      );
+      throw new DirectAttachmentUnavailableError(
+        "The protected attachment root changed while direct access was prepared.",
+      );
+    }
+    const timer = this.#scheduleExpiry(capabilityId, leaseExpiresAt);
     const unsubscribeDisconnect = this.workers.subscribeWorkerDisconnect(
       input.worker.workerId,
       () => this.#finalize(capabilityId, "worker_disconnected"),
@@ -388,10 +512,21 @@ export class DirectAttachmentCoordinator {
       createdAtMs: startedAtMs,
       diagnosticTraceId,
       leaseExpiresAtMs: leaseExpiresAt,
+      maxLeaseExpiresAtMs: maxLeaseExpiresAt,
       mode,
       ownerId: input.ownerId,
+      renewalAttemptCount: 0,
+      renewalCount: 0,
+      renewalSupported: input.worker.directBroker.leaseRenewal,
+      renewalTail: Promise.resolve(),
+      renewalWindowMs:
+        MIN_RENEWAL_WINDOW_MS +
+        (randomBytes(2).readUInt16BE(0) % (RENEWAL_WINDOW_JITTER_MS + 1)),
       resourceId: input.resourceId,
       resourceKind: input.resourceKind,
+      resourceGeneration,
+      resourceLifecycle,
+      rootLease: input.authoritativeRoot ?? null,
       telemetryObservedAtMs: null,
       telemetryReportCount: 0,
       timer,
@@ -584,6 +719,188 @@ export class DirectAttachmentCoordinator {
       activationCount: grant.activationCount,
     });
     return true;
+  }
+
+  async renewActiveLease(
+    capabilityId: string,
+    authorization: { authSessionId: string; ownerId: string },
+  ): Promise<DirectAttachmentRenewalOutcome> {
+    const grant = this.#grants.get(capabilityId);
+    if (
+      !grant ||
+      grant.ownerId !== authorization.ownerId ||
+      grant.authSessionId !== authorization.authSessionId
+    ) {
+      return { status: "missing" };
+    }
+    const renewal = grant.renewalTail
+      .catch(() => undefined)
+      .then(() => this.#renewActiveLease(capabilityId, grant));
+    grant.renewalTail = renewal.then(
+      () => undefined,
+      () => undefined,
+    );
+    return renewal;
+  }
+
+  async #renewActiveLease(
+    capabilityId: string,
+    grant: DirectGrant,
+  ): Promise<DirectAttachmentRenewalOutcome> {
+    if (!this.#grantIdentityIsCurrent(capabilityId, grant)) {
+      return { status: "missing" };
+    }
+    if (grant.activatedAtMs === null || grant.activationCount === 0) {
+      return { status: "not-active" };
+    }
+    const startedAtMs = Date.now();
+    if (grant.leaseExpiresAtMs <= startedAtMs) {
+      await this.revoke(capabilityId, "Direct capability expired");
+      return { status: "expired" };
+    }
+    let rootState: DirectAttachmentAuthoritativeRootLeaseState | null = null;
+    if (grant.rootLease) {
+      rootState = grant.rootLease.recordActivity();
+      if (!this.#rootMatchesGrant(grant, rootState)) {
+        await this.revoke(capabilityId, "Authoritative root was revoked");
+        return { status: "root-missing" };
+      }
+    }
+    if (!grant.renewalSupported) return { status: "unsupported" };
+    if (grant.leaseExpiresAtMs - startedAtMs > grant.renewalWindowMs) {
+      return {
+        leaseExpiresAt: new Date(grant.leaseExpiresAtMs).toISOString(),
+        renewed: false,
+        status: "completed",
+      };
+    }
+    const candidateExpiresAtMs = Math.max(
+      grant.leaseExpiresAtMs,
+      Math.min(
+        grant.maxLeaseExpiresAtMs,
+        rootState
+          ? Date.parse(rootState.expiresAt)
+          : startedAtMs + LEASE_TTL_MS,
+      ),
+    );
+    if (
+      !Number.isFinite(candidateExpiresAtMs) ||
+      candidateExpiresAtMs <= startedAtMs
+    ) {
+      await this.revoke(capabilityId, "Direct capability expired");
+      return { status: "expired" };
+    }
+    if (candidateExpiresAtMs <= grant.leaseExpiresAtMs) {
+      return {
+        leaseExpiresAt: new Date(grant.leaseExpiresAtMs).toISOString(),
+        renewed: false,
+        status: "completed",
+      };
+    }
+    grant.renewalAttemptCount += 1;
+    const requestedLeaseExpiresAt = new Date(
+      candidateExpiresAtMs,
+    ).toISOString();
+    let result: ReturnType<typeof directCapabilityRenewResultSchema.parse>;
+    try {
+      result = directCapabilityRenewResultSchema.parse(
+        await this.workers.request(
+          grant.workerId,
+          {
+            type: "direct.capability.renew",
+            capabilityId,
+            leaseExpiresAt: requestedLeaseExpiresAt,
+          },
+          {
+            ownerId: grant.ownerId,
+            timeoutMs: WORKER_RENEW_TIMEOUT_MS,
+          },
+        ),
+      );
+    } catch (error) {
+      if (directRenewalIsRetryable(error)) {
+        this.#logRenewalFailure(
+          grant,
+          startedAtMs,
+          directRenewalTimedOut(error)
+            ? "worker_timeout"
+            : "worker_transport_unavailable",
+          error,
+        );
+        return { status: "retryable-failure" };
+      }
+      this.#logRenewalFailure(
+        grant,
+        startedAtMs,
+        "worker_request_failed",
+        error,
+      );
+      await this.#failClosedRenewal(capabilityId, grant);
+      return { status: "worker-rejected" };
+    }
+    if (!result.renewed) {
+      this.#logRenewalFailure(grant, startedAtMs, "worker_rejected");
+      await this.#failClosedRenewal(capabilityId, grant);
+      return { status: "worker-rejected" };
+    }
+    const acceptedExpiresAtMs = result.leaseExpiresAt
+      ? Date.parse(result.leaseExpiresAt)
+      : candidateExpiresAtMs;
+    if (
+      !Number.isFinite(acceptedExpiresAtMs) ||
+      acceptedExpiresAtMs < candidateExpiresAtMs ||
+      acceptedExpiresAtMs > grant.maxLeaseExpiresAtMs
+    ) {
+      this.#logRenewalFailure(grant, startedAtMs, "worker_ack_invalid");
+      await this.#failClosedRenewal(capabilityId, grant);
+      return { status: "worker-rejected" };
+    }
+    if (
+      !this.#grantIdentityIsCurrent(capabilityId, grant) ||
+      (grant.rootLease &&
+        !this.#rootMatchesGrant(grant, grant.rootLease.validate(), {
+          minimumExpiresAtMs: acceptedExpiresAtMs,
+        }))
+    ) {
+      this.#logRenewalFailure(grant, startedAtMs, "identity_changed");
+      await this.#sendWorkerRevoke(
+        capabilityId,
+        grant,
+        "Direct renewal identity changed",
+      );
+      if (this.#grants.get(capabilityId) === grant) {
+        this.#finalize(capabilityId, "identity_changed");
+      }
+      return { status: grant.rootLease ? "root-missing" : "missing" };
+    }
+    clearTimeout(grant.timer);
+    grant.leaseExpiresAtMs = Math.max(
+      grant.leaseExpiresAtMs,
+      acceptedExpiresAtMs,
+    );
+    grant.timer = this.#scheduleExpiry(capabilityId, grant.leaseExpiresAtMs);
+    grant.renewalCount += 1;
+    this.logger.debug("Direct attachment capability lease renewed", {
+      event: "direct_attachment.renew.completed",
+      subsystem: "direct-attachment",
+      operation: "renew",
+      status: "completed",
+      diagnosticTraceId: grant.diagnosticTraceId,
+      mode: grant.mode,
+      attachmentId: grant.attachmentId,
+      resourceId: grant.resourceId,
+      resourceKind: grant.resourceKind,
+      workerId: grant.workerId,
+      durationMs: Date.now() - startedAtMs,
+      leaseDurationMs: Math.max(0, grant.leaseExpiresAtMs - Date.now()),
+      renewalAttemptCount: grant.renewalAttemptCount,
+      renewalCount: grant.renewalCount,
+    });
+    return {
+      leaseExpiresAt: new Date(grant.leaseExpiresAtMs).toISOString(),
+      renewed: true,
+      status: "completed",
+    };
   }
 
   recordTelemetry(
@@ -933,6 +1250,120 @@ export class DirectAttachmentCoordinator {
     this.#resourceLifecycles.delete(key);
   }
 
+  #scheduleExpiry(
+    capabilityId: string,
+    leaseExpiresAtMs: number,
+  ): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(
+      () => void this.revoke(capabilityId, "Direct capability expired"),
+      Math.max(1, leaseExpiresAtMs - Date.now()),
+    );
+    timer.unref();
+    return timer;
+  }
+
+  #grantIdentityIsCurrent(capabilityId: string, grant: DirectGrant): boolean {
+    const resourceKey = this.#resourceKey(
+      grant.ownerId,
+      grant.resourceKind,
+      grant.resourceId,
+    );
+    return Boolean(
+      !this.#closed &&
+      this.#grants.get(capabilityId) === grant &&
+      this.#resourceLifecycles.get(resourceKey) === grant.resourceLifecycle &&
+      grant.resourceLifecycle.generation === grant.resourceGeneration &&
+      grant.resourceLifecycle.revocationCount === 0 &&
+      !this.#ownerRevocations.has(grant.ownerId) &&
+      !this.#sessionRevocations.has(grant.authSessionId) &&
+      !this.#attachmentRevocations.has(grant.attachmentId) &&
+      !this.#resourceKindRevocations.has(
+        this.#resourceKindKey(grant.ownerId, grant.resourceKind),
+      ),
+    );
+  }
+
+  #rootMatchesGrant(
+    grant: DirectGrant,
+    state: DirectAttachmentAuthoritativeRootLeaseState | null,
+    options: { minimumExpiresAtMs?: number } = {},
+  ): state is DirectAttachmentAuthoritativeRootLeaseState {
+    if (!grant.rootLease || !state) return false;
+    const expiresAtMs = Date.parse(state.expiresAt);
+    const hardExpiresAtMs = Date.parse(state.hardExpiresAt);
+    return Boolean(
+      state.generation === grant.rootLease.generation &&
+      hardExpiresAtMs === Date.parse(grant.rootLease.hardExpiresAt) &&
+      Number.isFinite(expiresAtMs) &&
+      Number.isFinite(hardExpiresAtMs) &&
+      expiresAtMs <= hardExpiresAtMs &&
+      expiresAtMs >= (options.minimumExpiresAtMs ?? 0),
+    );
+  }
+
+  async #failClosedRenewal(
+    capabilityId: string,
+    grant: DirectGrant,
+  ): Promise<void> {
+    if (this.#grants.get(capabilityId) === grant) {
+      await this.revoke(capabilityId, "Direct capability renewal rejected");
+      return;
+    }
+    await this.#sendWorkerRevoke(
+      capabilityId,
+      grant,
+      "Direct capability renewal rejected",
+    );
+  }
+
+  async #sendWorkerRevoke(
+    capabilityId: string,
+    grant: DirectGrant,
+    reason: string,
+  ): Promise<void> {
+    await this.workers
+      .request(
+        grant.workerId,
+        { type: "direct.capability.revoke", capabilityId, reason },
+        { ownerId: grant.ownerId, timeoutMs: WORKER_RENEW_TIMEOUT_MS },
+      )
+      .catch(() => undefined);
+  }
+
+  #logRenewalFailure(
+    grant: DirectGrant,
+    startedAtMs: number,
+    reasonCode: string,
+    error?: unknown,
+  ): void {
+    this.logger.rateLimited(
+      `direct-renewal:${grant.diagnosticTraceId}:${reasonCode}`,
+      "warn",
+      "Direct attachment capability renewal failed",
+      {
+        event: "direct_attachment.renew.failed",
+        subsystem: "direct-attachment",
+        operation: "renew",
+        status:
+          reasonCode === "worker_timeout" ||
+          reasonCode === "worker_transport_unavailable"
+            ? "degraded"
+            : "failed",
+        reasonCode,
+        diagnosticTraceId: grant.diagnosticTraceId,
+        mode: grant.mode,
+        attachmentId: grant.attachmentId,
+        resourceId: grant.resourceId,
+        resourceKind: grant.resourceKind,
+        workerId: grant.workerId,
+        durationMs: Date.now() - startedAtMs,
+        renewalAttemptCount: grant.renewalAttemptCount,
+        renewalCount: grant.renewalCount,
+        ...(error === undefined ? {} : safeErrorMetadata(error)),
+      },
+    );
+  }
+
   #finalize(capabilityId: string, reasonCode: string): DirectGrant | null {
     const grant = this.#grants.get(capabilityId);
     if (!grant) return null;
@@ -964,6 +1395,8 @@ export class DirectAttachmentCoordinator {
       durationMs: now - grant.createdAtMs,
       activationAttemptCount: grant.activationAttemptCount,
       activationCount: grant.activationCount,
+      renewalAttemptCount: grant.renewalAttemptCount,
+      renewalCount: grant.renewalCount,
       telemetryReportCount: grant.telemetryReportCount,
       fromLocalBytes: grant.telemetry.bytesFromLocal,
       toLocalBytes: grant.telemetry.bytesToLocal,
@@ -1036,4 +1469,20 @@ function directRevocationReasonCode(reason: string): string {
   if (reason.includes("resource")) return "resource_revoked";
   if (reason.includes("Server")) return "server_shutdown";
   return "revoked";
+}
+
+function directRenewalIsRetryable(error: unknown): boolean {
+  if (error instanceof WorkerUnavailableError) return true;
+  if (directRenewalTimedOut(error)) return true;
+  const normalized = normalizeLogError(error);
+  return Boolean(
+    normalized.code && RETRYABLE_RENEWAL_ERROR_CODES.has(normalized.code),
+  );
+}
+
+function directRenewalTimedOut(error: unknown): boolean {
+  return Boolean(
+    error instanceof Error &&
+    error.message === "Worker command direct.capability.renew timed out.",
+  );
 }

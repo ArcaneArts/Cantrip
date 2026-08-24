@@ -15,12 +15,18 @@ interface ProtectedCodeAttachmentBinding {
   createdAt: number;
   explorerId: string | null;
   expiresAt: number;
+  generation: symbol;
+  hardExpiresAt: number;
   ownerId: string;
   projectId: string | null;
+  protectedKeyRevision: number;
+  serverId: string | null;
   sessionId: string;
   stopSessionOnRelease: boolean;
   tunnelId: string;
   workerId: string;
+  worktreeId: string | null;
+  worktreePath: string | null;
 }
 
 export interface CreateProtectedCodeAttachmentInput {
@@ -30,10 +36,13 @@ export interface CreateProtectedCodeAttachmentInput {
   projectId: string | null;
   protectedRecord: ProtectedTunnelContentRecord;
   runtime: CodeRuntimeStatus;
+  serverId?: string;
   sessionId: string;
   stopSessionOnRelease?: boolean;
   tunnelId: string;
   workerId: string;
+  worktreeId?: string | null;
+  worktreePath?: string | null;
   registrationLease?: CodeAttachmentRegistrationLease;
 }
 
@@ -76,6 +85,32 @@ export interface CodeTunnelActivityLease {
   readonly managed: boolean;
 }
 
+export interface CodeAttachmentRootIdentity {
+  readonly authSessionId: string | null;
+  readonly ownerId: string;
+  readonly protectedKeyRevision: number;
+  readonly rootAttachmentId: string;
+  readonly serverId: string;
+  readonly tunnelId: string;
+  readonly workerId: string;
+}
+
+export interface CodeAttachmentRootLeaseState {
+  readonly expiresAt: string;
+  readonly generation: symbol;
+  readonly hardExpiresAt: string;
+}
+
+export interface CodeAttachmentRootLease extends CodeAttachmentRootLeaseState {
+  readonly recordActivity: () => CodeAttachmentRootLeaseState | null;
+  readonly validate: () => CodeAttachmentRootLeaseState | null;
+}
+
+export interface CodeAttachmentRootLeaseResult {
+  readonly lease: CodeAttachmentRootLease | null;
+  readonly managed: boolean;
+}
+
 type CleanupTunnelResources = (
   ownerId: string,
   tunnelId: string,
@@ -93,6 +128,10 @@ type CodeTunnelChange = (input: {
 export class CodeTunnelBroker {
   readonly #attachmentRevocations = new Map<string, number>();
   readonly #attachments = new Map<string, ProtectedCodeAttachmentBinding>();
+  readonly #relayAttachments = new Map<
+    string,
+    ProtectedCodeAttachmentBinding
+  >();
   readonly #authSessionRevocations = new Map<string, number>();
   readonly #idleTtlMs: number;
   readonly #maxAttachments: number;
@@ -303,16 +342,7 @@ export class CodeTunnelBroker {
   recordTunnelActivity(tunnelId: string): string | null {
     const binding = this.#attachments.get(tunnelId);
     if (!binding) return null;
-    const now = this.#now();
-    const maximumExpiration = binding.createdAt + this.#maxLifetimeMs;
-    if (binding.expiresAt <= now || maximumExpiration <= now) {
-      void this.#removeAttachment(binding).catch((error) =>
-        this.#reportCleanupFailure(binding, error),
-      );
-      return null;
-    }
-    binding.expiresAt = Math.min(maximumExpiration, now + this.#idleTtlMs);
-    return new Date(binding.expiresAt).toISOString();
+    return this.#recordBindingActivity(binding)?.expiresAt ?? null;
   }
 
   allowTunnelActivity(tunnelId: string): boolean {
@@ -328,6 +358,80 @@ export class CodeTunnelBroker {
       expiresAt: this.recordTunnelActivity(tunnelId),
       managed: true,
     };
+  }
+
+  acquireAttachmentRootLease(
+    identity: CodeAttachmentRootIdentity,
+  ): CodeAttachmentRootLeaseResult {
+    const binding = this.#attachments.get(identity.tunnelId);
+    if (!binding) return { lease: null, managed: false };
+    if (
+      binding.attachmentId !== identity.rootAttachmentId ||
+      binding.authSessionId !== identity.authSessionId ||
+      binding.ownerId !== identity.ownerId ||
+      binding.protectedKeyRevision !== identity.protectedKeyRevision ||
+      binding.serverId !== identity.serverId ||
+      binding.tunnelId !== identity.tunnelId ||
+      binding.workerId !== identity.workerId
+    ) {
+      return { lease: null, managed: true };
+    }
+    const initial = this.#recordBindingActivity(binding);
+    if (!initial) return { lease: null, managed: true };
+    const validate = (): CodeAttachmentRootLeaseState | null =>
+      this.#validateBindingLease(binding);
+    return {
+      lease: {
+        ...initial,
+        recordActivity: () => this.#recordBindingActivity(binding),
+        validate,
+      },
+      managed: true,
+    };
+  }
+
+  bindRelayAttachment(
+    relayAttachmentId: string,
+    identity: CodeAttachmentRootIdentity,
+  ): boolean {
+    const binding = this.#attachments.get(identity.tunnelId);
+    if (
+      !binding ||
+      binding.attachmentId !== identity.rootAttachmentId ||
+      binding.authSessionId !== identity.authSessionId ||
+      binding.ownerId !== identity.ownerId ||
+      binding.protectedKeyRevision !== identity.protectedKeyRevision ||
+      binding.serverId !== identity.serverId ||
+      binding.tunnelId !== identity.tunnelId ||
+      binding.workerId !== identity.workerId ||
+      !this.#recordBindingActivity(binding)
+    ) {
+      return false;
+    }
+    this.#relayAttachments.set(relayAttachmentId, binding);
+    return true;
+  }
+
+  allowRelayAttachmentActivity(
+    relayAttachmentId: string,
+    tunnelId: string,
+  ): boolean {
+    const binding = this.#relayAttachments.get(relayAttachmentId);
+    if (
+      !binding ||
+      binding.tunnelId !== tunnelId ||
+      !this.#recordBindingActivity(binding)
+    ) {
+      if (this.#relayAttachments.get(relayAttachmentId) === binding) {
+        this.#relayAttachments.delete(relayAttachmentId);
+      }
+      return false;
+    }
+    return true;
+  }
+
+  releaseRelayAttachment(relayAttachmentId: string): void {
+    this.#relayAttachments.delete(relayAttachmentId);
   }
 
   async #createProtectedAttachment(
@@ -382,12 +486,18 @@ export class CodeTunnelBroker {
       createdAt: now,
       explorerId: input.registrationLease?.explorerId ?? null,
       expiresAt: Math.min(now + this.#idleTtlMs, now + this.#maxLifetimeMs),
+      generation: Symbol(input.tunnelId),
+      hardExpiresAt: now + this.#maxLifetimeMs,
       ownerId: input.ownerId,
       projectId: input.projectId,
+      protectedKeyRevision: input.protectedRecord.protectedContent.keyRevision,
+      serverId: input.serverId ?? null,
       sessionId: input.sessionId,
       stopSessionOnRelease: input.stopSessionOnRelease ?? false,
       tunnelId: tunnel.id,
       workerId: input.workerId,
+      worktreeId: input.worktreeId ?? null,
+      worktreePath: input.worktreePath ?? null,
     };
     this.#attachments.set(binding.attachmentId, binding);
     this.#trackWorkerDisconnect(binding.workerId);
@@ -519,15 +629,47 @@ export class CodeTunnelBroker {
   #prune(): void {
     const now = this.#now();
     for (const binding of this.#attachments.values()) {
-      if (
-        binding.expiresAt <= now ||
-        binding.createdAt + this.#maxLifetimeMs <= now
-      ) {
+      if (binding.expiresAt <= now || binding.hardExpiresAt <= now) {
         void this.#removeAttachment(binding).catch((error) =>
           this.#reportCleanupFailure(binding, error),
         );
       }
     }
+  }
+
+  #validateBindingLease(
+    binding: ProtectedCodeAttachmentBinding,
+  ): CodeAttachmentRootLeaseState | null {
+    const now = this.#now();
+    if (
+      this.#attachments.get(binding.tunnelId) !== binding ||
+      this.#removals.has(binding.attachmentId) ||
+      binding.expiresAt <= now ||
+      binding.hardExpiresAt <= now
+    ) {
+      if (this.#attachments.get(binding.tunnelId) === binding) {
+        void this.#removeAttachment(binding).catch((error) =>
+          this.#reportCleanupFailure(binding, error),
+        );
+      }
+      return null;
+    }
+    return {
+      expiresAt: new Date(binding.expiresAt).toISOString(),
+      generation: binding.generation,
+      hardExpiresAt: new Date(binding.hardExpiresAt).toISOString(),
+    };
+  }
+
+  #recordBindingActivity(
+    binding: ProtectedCodeAttachmentBinding,
+  ): CodeAttachmentRootLeaseState | null {
+    if (!this.#validateBindingLease(binding)) return null;
+    binding.expiresAt = Math.min(
+      binding.hardExpiresAt,
+      this.#now() + this.#idleTtlMs,
+    );
+    return this.#validateBindingLease(binding);
   }
 
   async #removeAttachment(
@@ -596,6 +738,11 @@ export class CodeTunnelBroker {
       );
     }
     this.#attachments.delete(binding.attachmentId);
+    for (const [relayAttachmentId, relayBinding] of this.#relayAttachments) {
+      if (relayBinding === binding) {
+        this.#relayAttachments.delete(relayAttachmentId);
+      }
+    }
     this.#changed?.({
       attachmentId: binding.attachmentId,
       ownerId: binding.ownerId,

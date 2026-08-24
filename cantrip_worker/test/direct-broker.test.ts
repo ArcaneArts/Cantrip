@@ -43,6 +43,33 @@ async function connect(port: number): Promise<WebSocket> {
   });
 }
 
+async function activate(
+  broker: DirectBroker,
+  port: number,
+  grant: ReturnType<typeof binding>,
+  secret: string,
+): Promise<WebSocket> {
+  await broker.prepare({
+    type: "direct.capability.prepare",
+    binding: grant,
+    secret,
+  });
+  const socket = await connect(port);
+  const ready = new Promise<void>((resolve) =>
+    socket.once("message", () => resolve()),
+  );
+  socket.send(
+    JSON.stringify({
+      type: "initialize",
+      binding: grant,
+      secret,
+      challenge: randomBytes(32).toString("base64url"),
+    }),
+  );
+  await ready;
+  return socket;
+}
+
 async function rejectedInitialization(
   port: number,
   grant: ReturnType<typeof binding>,
@@ -70,6 +97,7 @@ describe("DirectBroker", () => {
     const advertisement = await broker.start();
     expect(advertisement).toMatchObject({
       available: true,
+      leaseRenewal: true,
       loopbackHost: "127.0.0.1",
       protocol: "ws-v1",
     });
@@ -112,6 +140,76 @@ describe("DirectBroker", () => {
       }),
     );
     expect(await closed).toBe(1008);
+  });
+
+  it("does not resurrect an active capability after its current lease expires", async () => {
+    const broker = new DirectBroker();
+    brokers.push(broker);
+    const advertisement = await broker.start();
+    if (!advertisement.available) throw new Error("broker unavailable");
+    const grant = binding();
+    const secret = randomBytes(32).toString("base64url");
+    const socket = await activate(
+      broker,
+      advertisement.loopbackPort,
+      grant,
+      secret,
+    );
+    const currentExpiry = Date.parse(grant.leaseExpiresAt);
+    const now = vi.spyOn(Date, "now").mockReturnValue(currentExpiry + 1);
+    try {
+      expect(
+        broker.renew(
+          grant.capabilityId,
+          new Date(currentExpiry + 10_000).toISOString(),
+        ),
+      ).toBeNull();
+      await expect(
+        new Promise<number>((resolve) =>
+          socket.once("close", (code) => resolve(code)),
+        ),
+      ).resolves.toBe(1008);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("renews only active capabilities and never shortens their lease", async () => {
+    const broker = new DirectBroker();
+    brokers.push(broker);
+    const advertisement = await broker.start();
+    if (!advertisement.available) throw new Error("broker unavailable");
+    const grant = binding();
+    const secret = randomBytes(32).toString("base64url");
+    await broker.prepare({
+      type: "direct.capability.prepare",
+      binding: grant,
+      secret,
+    });
+    expect(
+      broker.renew(
+        grant.capabilityId,
+        new Date(Date.parse(grant.leaseExpiresAt) + 10_000).toISOString(),
+      ),
+    ).toBeNull();
+
+    broker.revoke(grant.capabilityId, "test reset");
+    const activeGrant = binding();
+    const activeSecret = randomBytes(32).toString("base64url");
+    const socket = await activate(
+      broker,
+      advertisement.loopbackPort,
+      activeGrant,
+      activeSecret,
+    );
+    const extended = new Date(
+      Date.parse(activeGrant.leaseExpiresAt) + 20_000,
+    ).toISOString();
+    expect(broker.renew(activeGrant.capabilityId, extended)).toBe(extended);
+    expect(
+      broker.renew(activeGrant.capabilityId, activeGrant.leaseExpiresAt),
+    ).toBe(extended);
+    socket.close();
   });
 
   it("revokes all grants when the authenticated server channel is lost", async () => {

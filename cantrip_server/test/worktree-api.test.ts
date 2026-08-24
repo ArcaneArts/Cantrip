@@ -3425,16 +3425,16 @@ describe.sequential("server worktree control plane", () => {
     });
     expect(desktopResponse.statusCode, desktopResponse.body).toBe(201);
     const attachmentId = desktopResponse.json().attachmentId as string;
-    const originalActivityLease =
-      CodeTunnelBroker.prototype.recordTunnelActivityLease;
+    const originalRootLease =
+      CodeTunnelBroker.prototype.acquireAttachmentRootLease;
     const activitySpy = vi
-      .spyOn(CodeTunnelBroker.prototype, "recordTunnelActivityLease")
+      .spyOn(CodeTunnelBroker.prototype, "acquireAttachmentRootLease")
       .mockImplementation(function (this: CodeTunnelBroker, candidate) {
-        if (candidate !== tunnelId) {
-          return originalActivityLease.call(this, candidate);
+        if (candidate.tunnelId !== tunnelId) {
+          return originalRootLease.call(this, candidate);
         }
         void this.revokeAttachment(tunnelId, LOCAL_USER_ID);
-        return { expiresAt: null, managed: true };
+        return { lease: null, managed: true };
       });
     const preparationsBefore = directPrepareCapabilityIds.length;
     try {
@@ -3784,9 +3784,9 @@ describe.sequential("server worktree control plane", () => {
     });
     expect(directResponse.statusCode, directResponse.body).toBe(201);
     const capabilityId = directResponse.json().binding.capabilityId as string;
-    const activitySpy = vi.spyOn(
-      CodeTunnelBroker.prototype,
-      "recordTunnelActivity",
+    const renewalSpy = vi.spyOn(
+      DirectAttachmentCoordinator.prototype,
+      "renewActiveLease",
     );
     try {
       const activationResponse = await app.inject({
@@ -3806,9 +3806,12 @@ describe.sequential("server worktree control plane", () => {
         },
       });
       expect(telemetryResponse.statusCode, telemetryResponse.body).toBe(204);
-      expect(activitySpy.mock.calls).toEqual([[tunnelId], [tunnelId]]);
+      expect(renewalSpy).toHaveBeenCalledWith(capabilityId, {
+        authSessionId: `local:${LOCAL_USER_ID}`,
+        ownerId: LOCAL_USER_ID,
+      });
     } finally {
-      activitySpy.mockRestore();
+      renewalSpy.mockRestore();
     }
     const endpointRevocationsBefore = codeEndpointRevokedTunnelIds.length;
     const sessionStopsBefore = codeStopSessionIds.length;

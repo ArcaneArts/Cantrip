@@ -100,6 +100,7 @@ export class TunnelRuntimeManager {
     );
     const route = this.#broker.registerRoute({
       attachmentId: authorization.attachmentId,
+      authoritativeRootRequired: authorization.origin === "code",
       diagnosticTraceId: initialize.diagnosticTraceId,
       destination,
       destinationTarget: {

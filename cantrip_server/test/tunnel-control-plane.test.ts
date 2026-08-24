@@ -10,12 +10,15 @@ import {
   tunnelWireListSchema,
   tunnelWireSummarySchema,
   unprobedCodexRuntimeReport,
+  type CodeRuntimeStatus,
   type WorkerCommand,
 } from "@cantrip/protocol";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
+import { hashSecret } from "../src/auth/service.js";
+import { CodeTunnelBroker } from "../src/code/tunnel.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
@@ -63,8 +66,36 @@ const workerBridge: WorkerCommandBus = {
     if (command.type === "direct.capability.revoke") {
       return { revoked: true };
     }
+    if (command.type === "direct.capability.renew") {
+      return { renewed: true, leaseExpiresAt: command.leaseExpiresAt };
+    }
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
+};
+const codeTunnel = new CodeTunnelBroker(workerBridge, { idleTtlMs: 60_000 });
+const codeRuntime: CodeRuntimeStatus = {
+  sessionId: "tunnel-control-plane-code-session",
+  workspaceUri: "file:///worker/state/project.code-workspace",
+  status: "running",
+  editorBuild: {
+    version: "1.109.5-cantrip.1",
+    upstreamRevision: "a".repeat(40),
+    patchset: 1,
+    fingerprint: "b".repeat(64),
+  },
+  processInstanceId: "tunnel-control-plane-code-process",
+  bridgeConnected: true,
+  dirtyEditors: [],
+  workbench: {
+    activeEditor: null,
+    git: null,
+    conflicts: [],
+    savePolicy: "always",
+    agentStatus: "idle",
+  },
+  startedAt: "2026-08-08T12:00:00.000Z",
+  lastActivityAt: "2026-08-08T12:00:00.000Z",
+  lastError: null,
 };
 
 let app: Awaited<ReturnType<typeof buildApp>>;
@@ -115,6 +146,7 @@ async function recordWorker(ownerId: string, workerId: string): Promise<void> {
       instanceId: randomUUID(),
       publicKey: "a".repeat(43),
       fingerprint: "b".repeat(64),
+      leaseRenewal: true,
     },
     startedAt: new Date().toISOString(),
   });
@@ -133,7 +165,13 @@ beforeAll(async () => {
     url: "https://github.com/ArcaneArts/Cantrip",
   });
   projectId = project.id;
-  app = await buildApp({ config, database, logger: false, workerBridge });
+  app = await buildApp({
+    codeTunnel,
+    config,
+    database,
+    logger: false,
+    workerBridge,
+  });
   await app.ready();
 });
 
@@ -303,7 +341,16 @@ describe.sequential("tunnel control plane", () => {
     );
     const second = await create();
     expect(second.attachmentId).toBe(first.attachmentId);
+    expect(Date.parse(second.secretExpiresAt)).toBeGreaterThan(
+      Date.parse(first.secretExpiresAt),
+    );
     expect(await firstClosed).toBe(1008);
+    expect(
+      await app.inject({
+        method: "POST",
+        url: `/api/tunnel-attachments/${second.attachmentId}/lease`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
 
     let staleClose: Promise<number>;
     const stale = await app.injectWS(
@@ -434,13 +481,49 @@ describe.sequential("tunnel control plane", () => {
     expect(remove.statusCode).toBe(409);
   });
 
-  it("attaches desktops to protected Cantrip Code tunnels", async () => {
+  it("advances relay credential generations monotonically", async () => {
+    const requestedSecretExpiry = new Date(Date.now() + 120_000);
+    const expiresAt = new Date(Date.now() + 600_000);
+    const first = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId: "monotonic-relay-generation",
+        expiresAt,
+        secretExpiresAt: requestedSecretExpiry,
+        secretHash: "first-secret-hash",
+      },
+    );
+    const second = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId: "monotonic-relay-generation",
+        expiresAt,
+        secretExpiresAt: requestedSecretExpiry,
+        secretHash: "second-secret-hash",
+      },
+    );
+
+    expect(first).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(second!.attachmentId).toBe(first!.attachmentId);
+    expect(second!.secretExpiresAt.getTime()).toBeGreaterThan(
+      first!.secretExpiresAt.getTime(),
+    );
+    await database.repository.stopDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      second!.attachmentId,
+    );
+  });
+
+  it("fails closed for an orphaned Code tunnel without its broker root", async () => {
     const tunnelId = randomUUID();
-    const tunnel = await database.repository.registerManagedTunnel(
+    await database.repository.registerManagedTunnel(
       LOCAL_USER_ID,
       {
-        name: "Cantrip Code",
-        description: "Protected desktop Code access.",
+        name: "Orphaned Cantrip Code",
+        description: null,
         projectId,
         origin: "code",
         management: "managed-ephemeral",
@@ -458,9 +541,71 @@ describe.sequential("tunnel control plane", () => {
       },
       { id: tunnelId, protectedRecord: protectedRecord(tunnelId, 1) },
     );
-    expect(tunnel).toMatchObject({
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${tunnelId}/attachments`,
+      payload: { clientId: "orphaned-code-client" },
+    });
+    expect(response.statusCode, response.body).toBe(409);
+    const orphanedSecret = "orphaned-code-secret".repeat(2);
+    const orphanedAttachment =
+      await database.repository.createDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        tunnelId,
+        {
+          clientId: "orphaned-code-client",
+          expiresAt: new Date(Date.now() + 60_000),
+          secretExpiresAt: new Date(Date.now() + 30_000),
+          secretHash: hashSecret(orphanedSecret),
+        },
+      );
+    expect(orphanedAttachment).not.toBeNull();
+    expect(
+      await app.inject({
+        method: "POST",
+        url: `/api/tunnel-attachments/${orphanedAttachment!.attachmentId}/lease`,
+      }),
+    ).toMatchObject({ statusCode: 409 });
+    let orphanedClose: Promise<number>;
+    const orphanedSocket = await app.injectWS(
+      `/api/tunnel-attachments/${orphanedAttachment!.attachmentId}/connect`,
+      { headers: { authorization: `Bearer ${orphanedSecret}` } },
+      {
+        onInit(client) {
+          orphanedClose = new Promise((resolve) =>
+            client.once("close", resolve),
+          );
+        },
+      },
+    );
+    expect(await orphanedClose!).toBe(1008);
+    orphanedSocket.terminate();
+    await database.repository.stopDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      orphanedAttachment!.attachmentId,
+    );
+    await database.repository.removeManagedTunnel(LOCAL_USER_ID, {
+      kind: "code",
       id: tunnelId,
-      capabilities: { canAttach: true },
+    });
+  });
+
+  it("attaches desktops to protected Cantrip Code tunnels", async () => {
+    const tunnelId = randomUUID();
+    await codeTunnel.createProtectedAttachment({
+      authSessionId: null,
+      codeTabId: "tunnel-control-plane-code-tab",
+      ownerId: LOCAL_USER_ID,
+      projectId,
+      protectedRecord: protectedRecord(tunnelId, 1),
+      runtime: codeRuntime,
+      serverId: await database.repository.getOrCreateServerId(),
+      sessionId: codeRuntime.sessionId,
+      tunnelId,
+      workerId: "worker-b",
+      worktreeId: "tunnel-control-plane-worktree",
+      worktreePath: "/test/tunnel-control-plane-worktree",
     });
 
     const response = await app.inject({
@@ -474,6 +619,12 @@ describe.sequential("tunnel control plane", () => {
     );
     codeAttachment = attachment;
     expect(attachment.tunnelId).toBe(tunnelId);
+    expect(
+      await app.inject({
+        method: "POST",
+        url: `/api/tunnel-attachments/${attachment.attachmentId}/lease`,
+      }),
+    ).toMatchObject({ statusCode: 204 });
     await expect(
       database.repository.getDesktopTunnelAttachment(
         LOCAL_USER_ID,
@@ -488,6 +639,34 @@ describe.sequential("tunnel control plane", () => {
       },
       tunnelId,
     });
+  });
+
+  it("does not revoke a newer shared attachment after a stale root-bind failure", async () => {
+    const bind = vi
+      .spyOn(codeTunnel, "bindRelayAttachment")
+      .mockReturnValueOnce(false);
+    const failed = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
+      payload: { clientId: "desktop-code-test" },
+    });
+    bind.mockRestore();
+
+    expect(failed.statusCode, failed.body).toBe(409);
+    await expect(
+      database.repository.getDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        codeAttachment.attachmentId,
+      ),
+    ).resolves.not.toBeNull();
+
+    const recovered = await app.inject({
+      method: "POST",
+      url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
+      payload: { clientId: "desktop-code-test" },
+    });
+    expect(recovered.statusCode, recovered.body).toBe(201);
+    codeAttachment = tunnelAttachmentCreateResultSchema.parse(recovered.json());
   });
 
   it("preserves the relay credential after direct route activation", async () => {
@@ -528,6 +707,25 @@ describe.sequential("tunnel control plane", () => {
       payload: { capabilityId: ticket.binding.capabilityId },
     });
     expect(activation.statusCode, activation.body).toBe(204);
+    const renewalsBefore = workerCommands.filter(
+      (candidate) => candidate.type === "direct.capability.renew",
+    ).length;
+    const telemetry = await app.inject({
+      method: "POST",
+      url: `/api/direct-attachments/${ticket.binding.capabilityId}/telemetry`,
+      payload: {
+        bytesFromLocal: 0,
+        bytesToLocal: 0,
+        connectionsClosed: 0,
+        connectionsOpened: 0,
+      },
+    });
+    expect(telemetry.statusCode, telemetry.body).toBe(204);
+    expect(
+      workerCommands.filter(
+        (candidate) => candidate.type === "direct.capability.renew",
+      ),
+    ).toHaveLength(renewalsBefore + 1);
 
     let relayClient: WebSocket | null = null;
     const readyMessages: unknown[] = [];

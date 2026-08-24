@@ -711,6 +711,8 @@ import {
   type ChatRelocationLiveChange,
 } from "./chat-relocations/executor.js";
 import {
+  type CodeAttachmentRootIdentity,
+  type CodeAttachmentRootLease,
   CodeTunnelBroker,
   ExplorerCodeAttachmentLeaseError,
 } from "./code/tunnel.js";
@@ -772,6 +774,7 @@ import {
   WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
   type ModelRuntime,
+  type TunnelAttachmentAuthorization,
   toChatAttachmentOpaqueSummary,
 } from "./db/repository.js";
 import { ProjectAutomationConflictError } from "./db/project-automations.js";
@@ -1607,7 +1610,9 @@ export async function buildApp({
   const tunnelStreamBroker = new TunnelStreamBroker({
     consumeRelayBytes: (ownerId, workerId, bytes) =>
       relayQuotas.consumeRelay(ownerId, workerId, bytes),
-    onActivity: (tunnelId) => codeTunnel.allowTunnelActivity(tunnelId),
+    onActivity: (tunnelId, attachmentId, authoritativeRootRequired) =>
+      !authoritativeRootRequired ||
+      codeTunnel.allowRelayAttachmentActivity(attachmentId, tunnelId),
   });
   const tunnelRuntime = new TunnelRuntimeManager(
     repository,
@@ -1634,6 +1639,7 @@ export async function buildApp({
       .expireDesktopTunnelAttachments()
       .then((expired) => {
         for (const attachment of expired) {
+          codeTunnel.releaseRelayAttachment(attachment.attachmentId);
           tunnelRuntime.closeActive(
             attachment.attachmentId,
             "Attachment expired",
@@ -3480,6 +3486,42 @@ export async function buildApp({
       ? Promise.resolve(null)
       : repository.ensureLocalIdentity(),
   ]);
+  const authorizedCodeAttachmentRootIdentity = (
+    authorization: Pick<
+      TunnelAttachmentAuthorization,
+      "destination" | "origin" | "ownerId" | "protectedRecord" | "tunnelId"
+    >,
+    authSessionId: string | null,
+  ): CodeAttachmentRootIdentity | null => {
+    if (authorization.origin !== "code") return null;
+    return {
+      authSessionId,
+      ownerId: authorization.ownerId,
+      protectedKeyRevision:
+        authorization.protectedRecord.protectedContent.keyRevision,
+      rootAttachmentId: authorization.tunnelId,
+      serverId,
+      tunnelId: authorization.tunnelId,
+      workerId: authorization.destination.workerId,
+    };
+  };
+  const acquireAuthorizedCodeAttachmentRootLease = (
+    authorization: Pick<
+      TunnelAttachmentAuthorization,
+      "destination" | "origin" | "ownerId" | "protectedRecord" | "tunnelId"
+    >,
+    authSessionId: string | null,
+  ) => {
+    const identity = authorizedCodeAttachmentRootIdentity(
+      authorization,
+      authSessionId,
+    );
+    if (!identity) return { lease: null, managed: false } as const;
+    const acquired = codeTunnel.acquireAttachmentRootLease(identity);
+    return acquired.managed
+      ? acquired
+      : ({ lease: null, managed: true } as const);
+  };
   if (localUser) {
     await repository.ensureAccountConfiguration(LOCAL_USER_ID);
     await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
@@ -13717,17 +13759,34 @@ export async function buildApp({
       if (!delta) {
         return reply.code(404).send({ error: "Direct attachment not found." });
       }
-      if (
-        delta.resourceKind === "tunnel" &&
-        (delta.bytesFromLocal > 0 ||
-          delta.bytesToLocal > 0 ||
-          delta.connectionsOpened > 0 ||
-          delta.connectionsClosed > 0)
-      ) {
-        codeTunnel.recordTunnelActivity(delta.resourceId);
-      }
       operationalMetrics.recordDirectTransport(delta.resourceKind, delta);
-      return reply.code(204).send();
+      const renewal = await directAttachments.renewActiveLease(
+        request.params.capabilityId,
+        {
+          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        },
+      );
+      switch (renewal.status) {
+        case "completed":
+        case "unsupported":
+          return reply.code(204).send();
+        case "retryable-failure":
+          return reply.code(503).send({
+            error: "Direct attachment renewal is temporarily unavailable.",
+          });
+        case "missing":
+          return reply
+            .code(404)
+            .send({ error: "Direct attachment not found." });
+        case "expired":
+        case "not-active":
+        case "root-missing":
+        case "worker-rejected":
+          return reply.code(409).send({
+            error: "Direct attachment renewal was rejected.",
+          });
+      }
     },
   );
 
@@ -13799,12 +13858,60 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const principal = authenticatedPrincipal(request);
+      const ownerId = principal.user.id;
+      const tunnel = await repository.getTunnel(
+        ownerId,
+        request.params.tunnelId,
+      );
+      if (!tunnel) {
+        return reply.code(404).send({
+          error: "An attachable desktop tunnel was not found.",
+        });
+      }
+      let codeRootLease: CodeAttachmentRootLease | null = null;
+      let codeRootIdentity: CodeAttachmentRootIdentity | null = null;
+      if (tunnel.origin === "code") {
+        if (!tunnel.protectedRecord) {
+          return reply.code(409).send({
+            error: "The protected Code attachment is unavailable.",
+          });
+        }
+        const authorization = {
+          destination: tunnel.destination,
+          origin: tunnel.origin,
+          ownerId,
+          protectedRecord: tunnel.protectedRecord,
+          tunnelId: tunnel.id,
+        };
+        const acquired = acquireAuthorizedCodeAttachmentRootLease(
+          authorization,
+          principal.sessionId,
+        );
+        if (!acquired.managed || !acquired.lease) {
+          return reply.code(409).send({
+            error: "The protected Code attachment has expired.",
+          });
+        }
+        codeRootLease = acquired.lease;
+        codeRootIdentity = authorizedCodeAttachmentRootIdentity(
+          authorization,
+          principal.sessionId,
+        );
+      }
       const secret = randomBytes(32).toString("base64url");
       const now = Date.now();
       const secretExpiresAt = new Date(now + TUNNEL_ATTACHMENT_SECRET_TTL_MS);
-      const expiresAt = new Date(now + TUNNEL_ATTACHMENT_LIFETIME_MS);
+      const expiresAt = new Date(
+        Math.min(
+          now + TUNNEL_ATTACHMENT_LIFETIME_MS,
+          codeRootLease
+            ? Date.parse(codeRootLease.hardExpiresAt)
+            : Number.POSITIVE_INFINITY,
+        ),
+      );
       const created = await repository.createDesktopTunnelAttachment(
-        principalOwnerId(request),
+        ownerId,
         request.params.tunnelId,
         {
           clientId: input.data.clientId,
@@ -13818,6 +13925,19 @@ export async function buildApp({
           error: "An attachable desktop tunnel was not found.",
         });
       }
+      if (
+        codeRootLease &&
+        (!codeRootLease.validate() ||
+          !codeRootIdentity ||
+          !codeTunnel.bindRelayAttachment(
+            created.attachmentId,
+            codeRootIdentity,
+          ))
+      ) {
+        return reply.code(409).send({
+          error: "The protected Code attachment changed while opening.",
+        });
+      }
       tunnelRuntime.closeActive(
         created.attachmentId,
         "Attachment credentials rotated",
@@ -13825,7 +13945,7 @@ export async function buildApp({
       );
       publishTunnelRuntimeChange({
         attachmentId: created.attachmentId,
-        ownerId: principalOwnerId(request),
+        ownerId,
         projectId: created.projectId,
         tunnelId: request.params.tunnelId,
       });
@@ -13835,8 +13955,8 @@ export async function buildApp({
           tunnelId: request.params.tunnelId,
           secret,
           connectPath: `/api/tunnel-attachments/${created.attachmentId}/connect`,
-          secretExpiresAt: secretExpiresAt.toISOString(),
-          expiresAt: expiresAt.toISOString(),
+          secretExpiresAt: created.secretExpiresAt.toISOString(),
+          expiresAt: created.expiresAt.toISOString(),
         }),
       );
     },
@@ -13854,6 +13974,32 @@ export async function buildApp({
         return reply.code(404).send({ error: "Tunnel attachment not found." });
       }
       await directAttachments.revokeAttachment(request.params.attachmentId);
+      codeTunnel.releaseRelayAttachment(request.params.attachmentId);
+      return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/tunnel-attachments/:attachmentId/lease",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const authorization = await repository.getDesktopTunnelAttachment(
+        principal.user.id,
+        request.params.attachmentId,
+      );
+      if (!authorization) {
+        return reply.code(404).send({ error: "Tunnel attachment not found." });
+      }
+      const acquired = acquireAuthorizedCodeAttachmentRootLease(
+        authorization,
+        principal.sessionId,
+      );
+      if (acquired.managed && !acquired.lease) {
+        return reply
+          .code(409)
+          .send({ error: "The protected Code attachment has expired." });
+      }
       return reply.code(204).send();
     },
   );
@@ -13902,11 +14048,17 @@ export async function buildApp({
               "The owning resource changed while direct access was opening.",
           });
         }
-        const codeActivityLease = codeTunnel.recordTunnelActivityLease(
-          authorization.tunnelId,
+        const codeRoot = acquireAuthorizedCodeAttachmentRootLease(
+          authorization,
+          principal.sessionId,
         );
-        if (codeActivityLease.managed && !codeActivityLease.expiresAt) {
-          directAttachments.releasePreparationLease(preparationLease);
+        if (codeRoot.managed && !codeRoot.lease) {
+          return reply.code(409).send({
+            error: "The protected Code attachment has expired.",
+          });
+        }
+        const codeRootState = codeRoot.lease?.validate() ?? null;
+        if (codeRoot.managed && !codeRootState) {
           return reply.code(409).send({
             error: "The protected Code attachment has expired.",
           });
@@ -13928,14 +14080,23 @@ export async function buildApp({
         };
         const ticket = await directAttachments.prepare({
           attachmentId: authorization.attachmentId,
+          ...(codeRoot.lease ? { authoritativeRoot: codeRoot.lease } : {}),
           authSessionId,
           channels: ["tunnel-data"],
           diagnosticTraceId: input.data.diagnosticTraceId,
-          leaseExpiresAt: codeActivityLease.expiresAt
+          leaseExpiresAt: codeRootState
             ? new Date(
                 Math.min(
                   authorization.expiresAt.getTime(),
-                  new Date(codeActivityLease.expiresAt).getTime(),
+                  Date.parse(codeRootState.expiresAt),
+                ),
+              )
+            : authorization.expiresAt,
+          maxLeaseExpiresAt: codeRootState
+            ? new Date(
+                Math.min(
+                  authorization.expiresAt.getTime(),
+                  Date.parse(codeRootState.hardExpiresAt),
                 ),
               )
             : authorization.expiresAt,
@@ -13969,6 +14130,7 @@ export async function buildApp({
           current.tunnelId !== authorization.tunnelId ||
           current.clientId !== authorization.clientId ||
           current.destination.workerId !== authorization.destination.workerId ||
+          (codeRoot.lease && !codeRoot.lease.validate()) ||
           !directAttachments.preparationLeaseIsActive(preparationLease)
         ) {
           await directAttachments.revoke(
@@ -14039,10 +14201,11 @@ export async function buildApp({
         );
         return reply.code(404).send({ error: "Tunnel attachment not found." });
       }
-      const codeActivityLease = codeTunnel.recordTunnelActivityLease(
-        authorization.tunnelId,
+      const codeRoot = acquireAuthorizedCodeAttachmentRootLease(
+        authorization,
+        principal.sessionId,
       );
-      if (codeActivityLease.managed && !codeActivityLease.expiresAt) {
+      if (codeRoot.managed && !codeRoot.lease) {
         directAttachments.recordActivationOutcome(
           input.data.capabilityId,
           {
@@ -14128,6 +14291,16 @@ export async function buildApp({
       );
       if (!authorization) {
         socket.close(1008, "Attachment authentication failed");
+        return;
+      }
+      if (
+        authorization.origin === "code" &&
+        !codeTunnel.allowRelayAttachmentActivity(
+          authorization.attachmentId,
+          authorization.tunnelId,
+        )
+      ) {
+        socket.close(1008, "Protected attachment authority is unavailable");
         return;
       }
       if (!registerAccountSocket(socket, authorization.ownerId)) return;
@@ -15785,10 +15958,13 @@ export async function buildApp({
             projectId: null,
             protectedRecord: input.data.protectedRecord,
             runtime: workbench.runtime,
+            serverId,
             sessionId,
             stopSessionOnRelease: true,
             tunnelId: input.data.tunnelId,
             workerId,
+            worktreeId: null,
+            worktreePath: null,
             registrationLease,
           }),
         );
@@ -25333,9 +25509,12 @@ export async function buildApp({
             projectId: context.codeTab.projectId,
             protectedRecord: input.data.protectedRecord,
             runtime,
+            serverId,
             sessionId: session.id,
             tunnelId: input.data.tunnelId,
             workerId: context.workerId,
+            worktreeId: context.worktreeId,
+            worktreePath: context.cwd,
             registrationLease,
           }),
         );
@@ -27175,10 +27354,13 @@ export async function buildApp({
               projectId: context.projectId,
               protectedRecord: input.data.protectedRecord,
               runtime,
+              serverId,
               sessionId,
               stopSessionOnRelease: true,
               tunnelId: input.data.tunnelId,
               workerId: context.workerId,
+              worktreeId: context.worktreeId,
+              worktreePath: context.root,
               registrationLease,
             }),
           );
