@@ -115,7 +115,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "bd6174828b93ba7a40de3eba885c6c21e1bc15f71c2872c6e537b9520492a505",
   applicationRoutes:
-    "989984b5d8715b04730ece41ed4a18b04590261ed66123eb65054aa0004d4d96",
+    "86a928fe69d07e15104a9a3609792acfb4cb7f59c3f62cd6af1e2d98e05b35f4",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
@@ -184,7 +184,13 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   runConfigurationSecretOperations: "minimized-operational-metadata",
   chats: "endpoint-protected",
   tasks: "endpoint-protected",
+  // Task Worker definitions contain only owner-scoped scheduling controls and
+  // model/profile references; task content remains endpoint-protected.
+  taskWorkers: "intentionally-public-control-plane",
   taskPlanningRounds: "endpoint-protected",
+  // Dispatch cycles are a bounded scheduler ledger: identities, selected
+  // routes, lease/fencing state, lifecycle timestamps, and safe reason codes.
+  taskDispatchCycles: "minimized-operational-metadata",
   terminals: "endpoint-protected",
   explorers: "endpoint-protected",
   codeTabs: "endpoint-protected",
