@@ -154,6 +154,66 @@ async function javaFixture(): Promise<Fixture> {
   };
 }
 
+async function dartFixture(): Promise<Fixture> {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-dart-run-configuration-runtime-"),
+  );
+  temporaryDirectories.push(root);
+  const sourceRoot = path.join(root, "primary");
+  const targetRoot = path.join(root, "target");
+  const sdkHome = path.join(root, "dart-sdk");
+  await Promise.all([
+    mkdir(sourceRoot, { recursive: true }),
+    mkdir(path.join(targetRoot, "bin"), { recursive: true }),
+    mkdir(path.join(sdkHome, "bin"), { recursive: true }),
+  ]);
+  await writeFile(path.join(targetRoot, "pubspec.yaml"), "name: api\n");
+  await writeFile(
+    path.join(targetRoot, "bin", "server.dart"),
+    "void main(List<String> arguments) {}\n",
+  );
+  await writeFile(
+    path.join(sdkHome, "bin", "dart"),
+    "#!/bin/sh\nprintf 'dart-provider|%s' \"$*\"\n",
+  );
+  await chmod(path.join(sdkHome, "bin", "dart"), 0o755);
+  const configurationId = randomUUID();
+  const repository = await RunConfigurationRepository.open(sourceRoot);
+  const written = await repository.write({
+    expectedRevision: null,
+    document: {
+      schema: "cantrip.run-configuration",
+      version: 1,
+      id: configurationId,
+      name: "Dart runtime fixture",
+      provider: "dart",
+      workingDirectory: ".",
+      target: { kind: "entrypoint", path: "bin/server.dart" },
+      commandOverride: null,
+      arguments: ["--port", "4400"],
+      environment: {
+        includeCodexEnvironment: false,
+        files: [],
+        variables: [],
+        secrets: [],
+      },
+      beforeLaunch: [],
+      platformOverrides: {},
+      options: { sdkHome, vmArguments: ["--enable-asserts"] },
+      stop: { gracePeriodMs: 50 },
+    },
+  });
+  if (!("entry" in written) || !written.entry.revision) {
+    throw new Error("Expected a ready Dart Run configuration fixture.");
+  }
+  return {
+    configurationId,
+    definitionRevision: written.entry.revision,
+    sourceRoot,
+    targetRoot,
+  };
+}
+
 async function fixture(
   command: string,
   options: {
@@ -414,6 +474,29 @@ describe.skipIf(process.platform === "win32")(
       expect(output).toContain("java-provider|--no-transfer-progress");
       expect(output).toContain("spring-boot:run");
       expect(output).toContain("--server.port=4400");
+      await runs.closeAll();
+    });
+
+    it("launches a structured Dart entrypoint without a handwritten command", async () => {
+      const input = await dartFixture();
+      const runtimeIdentity = identity(input);
+      const runs = supervisor();
+      await expect(
+        runs.start(startCommand(input, runtimeIdentity)),
+      ).resolves.toMatchObject({
+        outcome: "accepted",
+        observation: { state: "starting" },
+      });
+      await waitForState(runs, runtimeIdentity, "exited");
+      const output = runs.output({
+        type: "project.run-configuration-runtime.output",
+        requestOperationId: randomUUID(),
+        identity: runtimeIdentity,
+        tail: 100_000,
+      }).data;
+      expect(output).toContain(
+        "dart-provider|run --enable-asserts bin/server.dart --port 4400",
+      );
       await runs.closeAll();
     });
 

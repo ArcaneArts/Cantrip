@@ -332,6 +332,11 @@ describe.sequential("Run configuration definition API", () => {
           available: true,
           supportsDiscovery: true,
         }),
+        expect.objectContaining({
+          provider: "dart",
+          available: true,
+          supportsDiscovery: true,
+        }),
       ]),
     });
 
@@ -436,6 +441,65 @@ describe.sequential("Run configuration definition API", () => {
       },
     });
     expect(javaDeletedResponse.statusCode).toBe(200);
+
+    await mkdir(path.join(primaryRoot, "dart", "bin"), { recursive: true });
+    await writeFile(
+      path.join(primaryRoot, "dart", "pubspec.yaml"),
+      "name: dart_api\n",
+    );
+    await writeFile(
+      path.join(primaryRoot, "dart", "bin", "dart_api.dart"),
+      "void main(List<String> arguments) {}\n",
+    );
+    const dartDetectedResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configurations/detect?operationId=${randomUUID()}&provider=dart`,
+    });
+    expect(dartDetectedResponse.statusCode).toBe(200);
+    const dartDetected = runConfigurationDetectResponseSchema.parse(
+      dartDetectedResponse.json(),
+    );
+    const dartCandidate = dartDetected.candidates.find(
+      ({ document }) => document.provider === "dart",
+    );
+    if (!dartCandidate) throw new Error("Expected a detected Dart entrypoint.");
+    expect(dartCandidate).toMatchObject({
+      confidence: "high",
+      effectiveCommand: "dart run bin/dart_api.dart",
+      document: {
+        provider: "dart",
+        workingDirectory: "dart",
+        target: { kind: "entrypoint", path: "bin/dart_api.dart" },
+      },
+    });
+    const dartCreatedResponse = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-configurations/${dartCandidate.document.id}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: null,
+        document: dartCandidate.document,
+      },
+    });
+    expect(dartCreatedResponse.statusCode).toBe(201);
+    const dartCreated = runConfigurationWriteResponseSchema.parse(
+      dartCreatedResponse.json(),
+    );
+    if (
+      !("entry" in dartCreated.result) ||
+      !dartCreated.result.entry.revision
+    ) {
+      throw new Error("Expected a saved Dart definition.");
+    }
+    const dartDeletedResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/run-configurations/${dartCandidate.document.id}`,
+      payload: {
+        operationId: randomUUID(),
+        expectedRevision: dartCreated.result.entry.revision,
+      },
+    });
+    expect(dartDeletedResponse.statusCode).toBe(200);
 
     const createOperationId = randomUUID();
     const created = await app.inject({

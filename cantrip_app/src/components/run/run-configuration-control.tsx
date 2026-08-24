@@ -8,6 +8,7 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
+  FileCode2,
   GitBranch,
   Loader2,
   MoreHorizontal,
@@ -76,6 +77,9 @@ type LifecycleInput = {
 };
 
 function ProviderIcon({ provider }: { provider?: string | null }) {
+  if (provider === "dart") {
+    return <FileCode2 className="size-4 shrink-0 text-muted-foreground" />;
+  }
   if (provider === "java") {
     return <Coffee className="size-4 shrink-0 text-muted-foreground" />;
   }

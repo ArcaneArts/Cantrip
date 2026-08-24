@@ -212,4 +212,38 @@ describe("Run configuration control model", () => {
       "demo.apiapplication",
     );
   });
+
+  it("indexes structured Dart package entrypoints", () => {
+    const id = "00000000-0000-4000-8000-000000000006";
+    const shell = entry(id, "Dart API", "unused");
+    const inventory = {
+      directory: ".cantrip/run-configurations",
+      diagnostics: [],
+      entries: [
+        {
+          ...shell,
+          document: {
+            ...shell.document,
+            provider: "dart" as const,
+            target: {
+              kind: "entrypoint" as const,
+              path: "bin/server.dart",
+            },
+            options: { sdkHome: null, vmArguments: [] },
+          },
+        },
+      ],
+    } satisfies RunConfigurationRepositoryInventory;
+    const model = buildRunConfigurationControlModel({
+      inventory,
+      runtimes: [],
+      workers: [worker],
+      worktrees: [primary],
+    });
+    expect(model.configurations[0]).toMatchObject({
+      provider: "dart",
+      targetLabel: "dart run bin/server.dart",
+    });
+    expect(model.configurations[0]?.searchValue).toContain("bin/server.dart");
+  });
 });

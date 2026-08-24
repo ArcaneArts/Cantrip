@@ -1,5 +1,6 @@
 import type {
   RunConfigurationDetectionCandidate,
+  RunConfigurationDartDocument,
   RunConfigurationFile,
   RunConfigurationJavaDocument,
   RunConfigurationNodeDocument,
@@ -12,6 +13,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Coffee,
+  FileCode2,
   Loader2,
   Package,
   Plus,
@@ -213,6 +215,7 @@ function ProviderGlyph({
 }) {
   if (provider === "node") return <Package className="size-5" />;
   if (provider === "java") return <Coffee className="size-5" />;
+  if (provider === "dart") return <FileCode2 className="size-5" />;
   return <Terminal className="size-5" />;
 }
 
@@ -233,7 +236,7 @@ function RunConfigurationCreationChooser({
   loading: boolean;
   onCancel(): void;
   onChooseCandidate(candidate: RunConfigurationDetectionCandidate): void;
-  onChooseProvider(provider: "java" | "node" | "shell"): void;
+  onChooseProvider(provider: "dart" | "java" | "node" | "shell"): void;
 }) {
   const highConfidence = candidates.filter(
     ({ confidence }) => confidence === "high",
@@ -244,10 +247,11 @@ function RunConfigurationCreationChooser({
     (
       capability,
     ): capability is RunConfigurationProviderCapability & {
-      provider: "java" | "node" | "shell";
+      provider: "dart" | "java" | "node" | "shell";
     } =>
       capability.available &&
-      (capability.provider === "java" ||
+      (capability.provider === "dart" ||
+        capability.provider === "java" ||
         capability.provider === "node" ||
         capability.provider === "shell"),
   );
@@ -316,7 +320,7 @@ function RunConfigurationCreationChooser({
             ) : (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                 No typed project targets were detected. You can still create a
-                blank Java, Node, or Shell configuration.
+                blank Dart, Java, Node, or Shell configuration.
               </div>
             )}
           </section>
@@ -340,7 +344,9 @@ function RunConfigurationCreationChooser({
                         ? "Blank command or script"
                         : capability.provider === "node"
                           ? "Package script or Node entrypoint"
-                          : "Gradle or Maven application"}
+                          : capability.provider === "java"
+                            ? "Gradle or Maven application"
+                            : "Dart package entrypoint"}
                     </span>
                   </span>
                 </button>
@@ -435,6 +441,31 @@ function JavaTargetEditor({
   );
 }
 
+function DartTargetEditor({
+  document,
+  onChange,
+}: {
+  document: RunConfigurationDartDocument;
+  onChange(document: RunConfigurationDartDocument): void;
+}) {
+  return (
+    <label className={fieldClassName}>
+      <span className={labelClassName}>Dart entrypoint</span>
+      <Input
+        className="font-mono"
+        placeholder="bin/server.dart"
+        value={document.target.path}
+        onChange={(event) =>
+          onChange({
+            ...document,
+            target: { kind: "entrypoint", path: event.target.value },
+          })
+        }
+      />
+    </label>
+  );
+}
+
 export function RunConfigurationEditor({
   creating,
   entry,
@@ -500,6 +531,8 @@ export function RunConfigurationEditor({
     open &&
     expectedRevision !== null &&
     editingRevision !== expectedRevision;
+  const supportsProviderTask =
+    document.provider === "node" || document.provider === "java";
   const effective = useMemo(
     () => runConfigurationEffectiveCommand(document),
     [document],
@@ -654,6 +687,7 @@ export function RunConfigurationEditor({
                   <option value="shell">Shell</option>
                   <option value="node">Node / package</option>
                   <option value="java">Java</option>
+                  <option value="dart">Dart</option>
                 </NativeSelect>
               </label>
               <label className={fieldClassName}>
@@ -682,29 +716,31 @@ export function RunConfigurationEditor({
                             ? kind === "entry"
                               ? { kind: "entry", path: "" }
                               : { kind: "packageScript", script: "start" }
-                            : kind === "gradleMainClass"
-                              ? {
-                                  kind: "gradleMainClass",
-                                  projectPath: ":",
-                                  className: "",
-                                }
-                              : kind === "mavenGoal"
+                            : document.provider === "dart"
+                              ? { kind: "entrypoint", path: "bin/main.dart" }
+                              : kind === "gradleMainClass"
                                 ? {
-                                    kind: "mavenGoal",
-                                    module: null,
-                                    goal: "spring-boot:run",
+                                    kind: "gradleMainClass",
+                                    projectPath: ":",
+                                    className: "",
                                   }
-                                : kind === "mavenMainClass"
+                                : kind === "mavenGoal"
                                   ? {
-                                      kind: "mavenMainClass",
+                                      kind: "mavenGoal",
                                       module: null,
-                                      className: "",
+                                      goal: "spring-boot:run",
                                     }
-                                  : {
-                                      kind: "gradleTask",
-                                      projectPath: ":",
-                                      task: "run",
-                                    },
+                                  : kind === "mavenMainClass"
+                                    ? {
+                                        kind: "mavenMainClass",
+                                        module: null,
+                                        className: "",
+                                      }
+                                    : {
+                                        kind: "gradleTask",
+                                        projectPath: ":",
+                                        task: "run",
+                                      },
                     });
                   }}
                 >
@@ -718,6 +754,8 @@ export function RunConfigurationEditor({
                       <option value="packageScript">Package script</option>
                       <option value="entry">Node entrypoint</option>
                     </>
+                  ) : document.provider === "dart" ? (
+                    <option value="entrypoint">Dart entrypoint</option>
                   ) : (
                     <>
                       <option value="gradleTask">Gradle task</option>
@@ -845,8 +883,10 @@ export function RunConfigurationEditor({
                   />
                 </label>
               )
-            ) : (
+            ) : document.provider === "java" ? (
               <JavaTargetEditor document={document} onChange={setDocument} />
+            ) : (
+              <DartTargetEditor document={document} onChange={setDocument} />
             )}
             <label className={fieldClassName}>
               <span className={labelClassName}>
@@ -977,7 +1017,7 @@ export function RunConfigurationEditor({
                         (item, itemIndex) =>
                           itemIndex === index
                             ? event.target.value === "providerTask" &&
-                              document.provider !== "shell"
+                              supportsProviderTask
                               ? { kind: "providerTask", task: "build" }
                               : {
                                   kind: "command",
@@ -990,14 +1030,13 @@ export function RunConfigurationEditor({
                   }
                 >
                   <option value="command">Command</option>
-                  {document.provider !== "shell" ||
-                  step.kind === "providerTask" ? (
+                  {supportsProviderTask || step.kind === "providerTask" ? (
                     <option
-                      disabled={document.provider === "shell"}
+                      disabled={!supportsProviderTask}
                       value="providerTask"
                     >
                       Provider task
-                      {document.provider === "shell" ? " (unsupported)" : ""}
+                      {!supportsProviderTask ? " (unsupported)" : ""}
                     </option>
                   ) : null}
                 </NativeSelect>
@@ -1041,7 +1080,7 @@ export function RunConfigurationEditor({
                   <span
                     className={cn(
                       "flex items-center text-xs",
-                      document.provider !== "shell"
+                      supportsProviderTask
                         ? "text-muted-foreground"
                         : "text-destructive",
                     )}
@@ -1204,7 +1243,7 @@ export function RunConfigurationEditor({
                     </NativeSelect>
                   </label>
                 </>
-              ) : (
+              ) : document.provider === "java" ? (
                 <>
                   <label className={fieldClassName}>
                     <span className={labelClassName}>JDK home (optional)</span>
@@ -1248,6 +1287,30 @@ export function RunConfigurationEditor({
                     Use project wrapper
                   </label>
                 </>
+              ) : (
+                <label className={fieldClassName}>
+                  <span className={labelClassName}>
+                    Dart SDK home (optional)
+                  </span>
+                  <Input
+                    className="font-mono"
+                    placeholder="Use dart from the worker PATH"
+                    value={document.options.sdkHome ?? ""}
+                    onChange={(event) =>
+                      setDocument((current) =>
+                        current.provider === "dart"
+                          ? {
+                              ...current,
+                              options: {
+                                ...current.options,
+                                sdkHome: event.target.value || null,
+                              },
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </label>
               )}
               <label className={fieldClassName}>
                 <span className={labelClassName}>
@@ -1324,6 +1387,25 @@ export function RunConfigurationEditor({
                     }
                   />
                 </div>
+              </div>
+            ) : null}
+            {document.provider === "dart" ? (
+              <div className="grid gap-2">
+                <span className={labelClassName}>Dart VM arguments</span>
+                <StringListEditor
+                  addLabel="Add VM argument"
+                  values={document.options.vmArguments}
+                  onChange={(vmArguments) =>
+                    setDocument((current) =>
+                      current.provider === "dart"
+                        ? {
+                            ...current,
+                            options: { ...current.options, vmArguments },
+                          }
+                        : current,
+                    )
+                  }
+                />
               </div>
             ) : null}
             <label className={fieldClassName}>

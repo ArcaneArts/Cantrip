@@ -585,10 +585,102 @@ export const runConfigurationJavaDocumentSchema = z
     }
   });
 
+export const runConfigurationDartEntrypointSchema =
+  runConfigurationRepositoryPathSchema.refine(
+    (value) => value.endsWith(".dart"),
+    "Expected a repository-relative Dart entrypoint path.",
+  );
+
+export const runConfigurationDartTargetSchema = z
+  .object({
+    kind: z.literal("entrypoint"),
+    path: runConfigurationDartEntrypointSchema,
+  })
+  .strict();
+
+const runConfigurationDartSdkHomeSchema = noNulString(1_024)
+  .trim()
+  .min(1)
+  .nullable();
+
+export const runConfigurationDartOptionsSchema = z
+  .object({
+    sdkHome: runConfigurationDartSdkHomeSchema.default(null),
+    vmArguments: runConfigurationArgumentsSchema.max(128).default([]),
+  })
+  .strict();
+
+const runConfigurationDartPlatformOverrideSchema = z
+  .object({
+    workingDirectory: runConfigurationWorkingDirectorySchema.optional(),
+    commandOverride: runConfigurationCommandSchema.nullable().optional(),
+    arguments: runConfigurationArgumentsSchema.optional(),
+    environment: runConfigurationEnvironmentOverrideSchema.optional(),
+    options: z
+      .object({
+        sdkHome: runConfigurationDartSdkHomeSchema.optional(),
+        vmArguments: runConfigurationArgumentsSchema.max(128).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+const runConfigurationDartPlatformOverridesSchema = z
+  .object({
+    win32: runConfigurationDartPlatformOverrideSchema.optional(),
+    darwin: runConfigurationDartPlatformOverrideSchema.optional(),
+    linux: runConfigurationDartPlatformOverrideSchema.optional(),
+  })
+  .strict();
+
+export const runConfigurationDartDocumentSchema = z
+  .object({
+    schema: z.literal(RUN_CONFIGURATION_FILE_SCHEMA),
+    version: z.literal(RUN_CONFIGURATION_FILE_VERSION),
+    id: runConfigurationIdSchema,
+    name: z.string().trim().min(1).max(200),
+    provider: z.literal("dart"),
+    workingDirectory: runConfigurationWorkingDirectorySchema.default("."),
+    target: runConfigurationDartTargetSchema,
+    commandOverride: runConfigurationCommandSchema.nullable().default(null),
+    arguments: runConfigurationArgumentsSchema.default([]),
+    environment: runConfigurationEnvironmentSchema.default({
+      includeCodexEnvironment: true,
+      files: [],
+      variables: [],
+      secrets: [],
+    }),
+    beforeLaunch: z
+      .array(runConfigurationBeforeLaunchStepSchema)
+      .max(32)
+      .default([]),
+    platformOverrides: runConfigurationDartPlatformOverridesSchema.default({}),
+    options: runConfigurationDartOptionsSchema.default({
+      sdkHome: null,
+      vmArguments: [],
+    }),
+    stop: runConfigurationStopSchema.default({ gracePeriodMs: 3_000 }),
+  })
+  .strict()
+  .superRefine((document, context) => {
+    const bytes = new TextEncoder().encode(JSON.stringify(document)).byteLength;
+    if (bytes > RUN_CONFIGURATION_MAX_FILE_BYTES) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Run configuration documents cannot exceed " +
+          RUN_CONFIGURATION_MAX_FILE_BYTES +
+          " encoded bytes.",
+      });
+    }
+  });
+
 export const runConfigurationFileSchema = z.discriminatedUnion("provider", [
   runConfigurationShellDocumentSchema,
   runConfigurationNodeDocumentSchema,
   runConfigurationJavaDocumentSchema,
+  runConfigurationDartDocumentSchema,
 ]);
 
 export const runConfigurationDiagnosticSchema = z
@@ -797,6 +889,9 @@ export type RunConfigurationNodeDocument = z.infer<
 >;
 export type RunConfigurationJavaDocument = z.infer<
   typeof runConfigurationJavaDocumentSchema
+>;
+export type RunConfigurationDartDocument = z.infer<
+  typeof runConfigurationDartDocumentSchema
 >;
 export type RunConfigurationFile = z.infer<typeof runConfigurationFileSchema>;
 export type RunConfigurationDiagnostic = z.infer<
