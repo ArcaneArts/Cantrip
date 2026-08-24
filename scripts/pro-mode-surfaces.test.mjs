@@ -41,7 +41,10 @@ test("Terminal service structural surfaces stay transparent in Pro Mode", async 
     .join("\n");
 
   assert.match(panel, /data-slot="terminal-service-panel"/);
-  assert.match(terminalView, /data-slot="terminal-service-panel-surface"/);
+  assert.match(
+    terminalView,
+    /surfaceDataSlot="terminal-service-panel-surface"/,
+  );
   assert.match(
     transparentRules,
     /\.pro-mode \[data-slot="terminal-service-panel"\]/,
