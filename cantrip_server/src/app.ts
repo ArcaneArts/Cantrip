@@ -814,6 +814,7 @@ import {
   SERVER_LOG_REDACTION_PATHS,
   serverLogger,
 } from "./logger.js";
+import { StorageReconciliationService } from "./account-usage/storage-reconciler.js";
 import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
 import { OperationalMetrics } from "./operations/metrics.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
@@ -1348,6 +1349,12 @@ export async function buildApp({
     repository.getWorkerOwnerId(workerId);
   const serverInstanceId = config.serverInstanceId ?? "local-single-instance";
   const schedulerLeaseTtlMs = config.schedulerLeaseTtlMs ?? 120_000;
+  const storageReconciler = new StorageReconciliationService(
+    repository.accountResourceUsage,
+    serverInstanceId,
+    serverLogger,
+  );
+  app.addHook("onListen", () => storageReconciler.start());
   const liveHub = new AppLiveHub({
     publishExternal: coordinator
       ? (publication) =>
@@ -30011,6 +30018,7 @@ export async function buildApp({
     chatRelocationJobExecutor.stop();
     chatImportJobExecutor.stop();
     workflowExecutor.stop();
+    await storageReconciler.close();
     app.log.info(
       { live: liveHub.stats() },
       "Application live transport stopped",
