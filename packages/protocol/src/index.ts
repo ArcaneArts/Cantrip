@@ -11931,6 +11931,7 @@ export const workerLogStreamServerMessageSchema = z.discriminatedUnion("type", [
 export const workerLogReadQuerySchema = z
   .object({
     afterCursor: z.coerce.number().int().nonnegative().default(0),
+    beforeCursor: z.coerce.number().int().positive().optional(),
     limit: z.coerce.number().int().min(1).max(500).default(200),
     minimumLevel: serviceLogLevelSchema.default("trace"),
   })
@@ -11984,6 +11985,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("diagnostics.logs.read"),
     afterCursor: z.number().int().nonnegative().default(0),
+    beforeCursor: z.number().int().positive().optional(),
     limit: z.number().int().min(1).max(500).default(200),
     minimumLevel: serviceLogLevelSchema.default("trace"),
   }),

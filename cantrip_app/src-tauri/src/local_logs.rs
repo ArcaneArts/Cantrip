@@ -205,6 +205,7 @@ pub struct LocalServiceLogReadRequest {
     source: LocalLogSource,
     worker_id: Option<String>,
     after_cursor: Option<u64>,
+    before_cursor: Option<u64>,
     limit: Option<usize>,
     minimum_level: Option<ServiceLogLevel>,
 }
@@ -543,10 +544,36 @@ impl SourceTail {
     fn read(
         &self,
         after_cursor: u64,
+        before_cursor: Option<u64>,
         limit: usize,
         minimum_level: ServiceLogLevel,
     ) -> LocalServiceLogReadResult {
         let oldest_cursor = self.records.front().map(|entry| entry.record.cursor);
+        if let Some(before_cursor) = before_cursor {
+            let mut records = Vec::new();
+            let mut has_more = false;
+            for entry in self.records.iter().rev() {
+                if entry.record.cursor >= before_cursor
+                    || entry.record.level.weight() < minimum_level.weight()
+                {
+                    continue;
+                }
+                if records.len() >= limit {
+                    has_more = true;
+                    break;
+                }
+                records.push(entry.record.clone());
+            }
+            records.reverse();
+            return LocalServiceLogReadResult {
+                records,
+                next_cursor: self.cursor,
+                oldest_cursor,
+                latest_cursor: self.cursor,
+                has_more,
+                truncated: !has_more && oldest_cursor.is_some_and(|oldest| oldest > 1),
+            };
+        }
         let truncated = oldest_cursor
             .map(|oldest| after_cursor > 0 && after_cursor < oldest.saturating_sub(1))
             .unwrap_or(false);
@@ -866,6 +893,7 @@ impl LocalServiceLogs {
         tail.refresh()?;
         Ok(tail.read(
             request.after_cursor.unwrap_or(0),
+            request.before_cursor,
             request.limit.unwrap_or(200).clamp(1, 500),
             request.minimum_level.unwrap_or(ServiceLogLevel::Trace),
         ))
@@ -1046,10 +1074,57 @@ mod tests {
         .unwrap();
         let mut tail = SourceTail::new(root.clone(), "worker");
         tail.refresh().unwrap();
-        let result = tail.read(0, 10, ServiceLogLevel::Warn);
+        let result = tail.read(0, None, 10, ServiceLogLevel::Warn);
         assert_eq!(result.records.len(), 1);
         assert_eq!(result.records[0].message, "failed");
         assert_eq!(result.next_cursor, 2);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn local_tail_reads_newest_pages_in_display_order() {
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-local-log-backward-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let path = root.join("worker-2026-08-16.part-0001.jsonl");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            &path,
+            (1..=5)
+                .map(|cursor| {
+                    format!(
+                        "{{\"cursor\":{cursor},\"timestamp\":\"2026-08-16T00:00:00.000Z\",\"system\":\"worker\",\"level\":\"info\",\"message\":\"record-{cursor}\"}}\n"
+                    )
+                })
+                .collect::<String>(),
+        )
+        .unwrap();
+        let mut tail = SourceTail::new(root.clone(), "worker");
+        tail.refresh().unwrap();
+
+        let newest = tail.read(0, Some(u64::MAX), 2, ServiceLogLevel::Trace);
+        assert_eq!(
+            newest
+                .records
+                .iter()
+                .map(|record| record.cursor)
+                .collect::<Vec<_>>(),
+            vec![4, 5]
+        );
+        assert!(newest.has_more);
+        assert_eq!(newest.next_cursor, 5);
+
+        let older = tail.read(0, Some(4), 2, ServiceLogLevel::Trace);
+        assert_eq!(
+            older
+                .records
+                .iter()
+                .map(|record| record.cursor)
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert!(older.has_more);
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1135,7 +1210,7 @@ mod tests {
         .unwrap();
         let mut tail = SourceTail::new(root.clone(), "worker");
         tail.refresh().unwrap();
-        let result = tail.read(0, 10, ServiceLogLevel::Trace);
+        let result = tail.read(0, None, 10, ServiceLogLevel::Trace);
         let encoded = serde_json::to_string(&result.records).unwrap();
         assert!(!encoded.contains("session=unsafe"));
         assert!(!encoded.contains("token=unsafe"));

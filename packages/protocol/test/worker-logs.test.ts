@@ -13,13 +13,44 @@ describe("worker service log protocol", () => {
     expect(
       workerLogReadQuerySchema.parse({
         afterCursor: "42",
+        beforeCursor: "84",
         limit: "50",
         minimumLevel: "warn",
       }),
-    ).toEqual({ afterCursor: 42, limit: 50, minimumLevel: "warn" });
+    ).toEqual({
+      afterCursor: 42,
+      beforeCursor: 84,
+      limit: 50,
+      minimumLevel: "warn",
+    });
     expect(workerLogReadQuerySchema.safeParse({ limit: "501" }).success).toBe(
       false,
     );
+  });
+
+  it("decodes a bounded newest-first diagnostics read", () => {
+    const decoded = decodeWorkerRequestEnvelope(
+      JSON.stringify({
+        kind: "request",
+        requestId: "request-tail",
+        command: {
+          type: "diagnostics.logs.read",
+          beforeCursor: 9_001,
+          limit: 100,
+        },
+      }),
+    );
+    expect(decoded).toMatchObject({
+      success: true,
+      data: {
+        command: {
+          afterCursor: 0,
+          beforeCursor: 9_001,
+          limit: 100,
+          minimumLevel: "trace",
+        },
+      },
+    });
   });
 
   it("decodes the diagnostics read command with safe defaults", () => {

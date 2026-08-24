@@ -8,7 +8,11 @@ import {
   filterServiceLogRecords,
   formatServiceLogRecord,
   MAX_VIEWER_LOG_RECORDS,
+  restoredLogScrollTop,
   scheduleLogViewportScroll,
+  shouldJumpToNewestLogs,
+  shouldLoadOlderLogs,
+  shouldStopFollowingLogs,
 } from "./log-viewer-model";
 
 const localConnection: ServerConnection = {
@@ -59,6 +63,85 @@ describe("service log viewer model", () => {
 
     expect(next).toEqual({ height: 400, scrollTop: 176 });
     expect(current).toEqual({ height: 400, scrollTop: 0 });
+  });
+
+  it("loads older pages only near the top and preserves the visible row", () => {
+    expect(
+      shouldLoadOlderLogs({
+        hasOlder: true,
+        loadingOlder: false,
+        scrollTop: 20,
+        threshold: 44,
+      }),
+    ).toBe(true);
+    expect(
+      shouldLoadOlderLogs({
+        hasOlder: true,
+        loadingOlder: true,
+        scrollTop: 20,
+        threshold: 44,
+      }),
+    ).toBe(false);
+    expect(
+      shouldLoadOlderLogs({
+        hasOlder: false,
+        loadingOlder: false,
+        scrollTop: 0,
+        threshold: 44,
+      }),
+    ).toBe(false);
+    expect(
+      restoredLogScrollTop({
+        previousScrollHeight: 2_200,
+        nextScrollHeight: 4_400,
+        previousScrollTop: 10,
+      }),
+    ).toBe(2_210);
+  });
+
+  it("stops following when the user leaves the newest rows", () => {
+    expect(
+      shouldStopFollowingLogs({
+        clientHeight: 400,
+        followTail: true,
+        scrollHeight: 2_000,
+        scrollTop: 1_000,
+        threshold: 44,
+      }),
+    ).toBe(true);
+    expect(
+      shouldStopFollowingLogs({
+        clientHeight: 400,
+        followTail: true,
+        scrollHeight: 2_000,
+        scrollTop: 1_580,
+        threshold: 44,
+      }),
+    ).toBe(false);
+  });
+
+  it("jumps over eager forward catch-up while retaining backward history", () => {
+    expect(
+      shouldJumpToNewestLogs({
+        direction: "forward",
+        hasMore: true,
+        truncated: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldJumpToNewestLogs({
+        direction: "forward",
+        hasMore: false,
+        truncated: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldJumpToNewestLogs({
+        direction: "backward",
+        hasMore: true,
+        truncated: false,
+      }),
+    ).toBe(false);
   });
 
   it("only exposes the embedded server for the matching local Tauri deployment", () => {

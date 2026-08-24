@@ -156,6 +156,22 @@ describe.sequential("worker logs API", () => {
     });
   });
 
+  it("routes newest-first history reads without downloading earlier pages", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/workers/first-worker/logs?beforeCursor=9007199254740991&limit=100&minimumLevel=trace",
+      headers: { cookie: first.cookie, host: "server.cantrip.test", origin },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(commands).toContainEqual({
+      type: "diagnostics.logs.read",
+      afterCursor: 0,
+      beforeCursor: Number.MAX_SAFE_INTEGER,
+      limit: 100,
+      minimumLevel: "trace",
+    });
+  });
+
   it("makes foreign and unknown worker identifiers indistinguishable", async () => {
     const before = commands.length;
     for (const workerId of ["first-worker", "unknown-worker"]) {

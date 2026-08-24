@@ -13321,6 +13321,7 @@ export async function buildApp({
     Params: { workerId: string };
     Querystring: {
       afterCursor?: string;
+      beforeCursor?: string;
       limit?: string;
       minimumLevel?: string;
     };

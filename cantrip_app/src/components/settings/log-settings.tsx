@@ -75,16 +75,22 @@ import {
   canReadLocalServerLogs,
   filterServiceLogRecords,
   formatServiceLogRecord,
+  restoredLogScrollTop,
   scheduleLogViewportScroll,
   SERVICE_LOG_LEVELS,
+  shouldJumpToNewestLogs,
+  shouldLoadOlderLogs,
+  shouldStopFollowingLogs,
   type ViewerLogRecord,
 } from "./log-viewer-model";
 
 const POLL_INTERVAL_MS = 750;
 const MAX_BACKOFF_MS = 6_000;
-const PAGE_SIZE = 500;
+const PAGE_SIZE = 200;
+const TAIL_CURSOR = Number.MAX_SAFE_INTEGER;
 const ROW_HEIGHT = 22;
 const OVERSCAN_ROWS = 12;
+const HISTORY_LOAD_THRESHOLD = ROW_HEIGHT * 2;
 
 type LogSource = {
   fallback?: LocalServiceLogSource;
@@ -97,16 +103,20 @@ type LogSource = {
 };
 
 type LogSourceState = {
+  activeTransport: string | null;
   cursors: Record<string, number>;
   error: string | null;
+  history: Record<string, { beforeCursor: number; hasMore: boolean }>;
   records: ViewerLogRecord[];
   status: "connecting" | "live" | "local" | "offline" | "reconnecting";
   truncated: boolean;
 };
 
 const emptySourceState = (): LogSourceState => ({
+  activeTransport: null,
   cursors: {},
   error: null,
+  history: {},
   records: [],
   status: "connecting",
   truncated: false,
@@ -139,10 +149,30 @@ function localFallbackFor(
   return undefined;
 }
 
+function logReadPosition(
+  transport: string,
+  cursorFor: (transport: string) => number | undefined,
+  direction: "automatic" | "backward",
+): {
+  direction: "backward" | "forward";
+  position: { afterCursor: number } | { beforeCursor: number };
+} {
+  const cursor = cursorFor(transport);
+  if (direction === "backward" || cursor === undefined) {
+    return {
+      direction: "backward",
+      position: { beforeCursor: cursor ?? TAIL_CURSOR },
+    };
+  }
+  return { direction: "forward", position: { afterCursor: cursor } };
+}
+
 async function readSourcePage(
   source: LogSource,
-  cursorFor: (transport: string) => number,
+  cursorFor: (transport: string) => number | undefined,
+  direction: "automatic" | "backward" = "automatic",
 ): Promise<{
+  direction: "backward" | "forward";
   result: ServiceLogReadResult;
   status: "live" | "local";
   transport: string;
@@ -151,11 +181,13 @@ async function readSourcePage(
     if (isTauri()) {
       try {
         const transport = "local:client";
+        const page = logReadPosition(transport, cursorFor, direction);
         return {
           result: await readLocalServiceLogs(
             { source: "client" },
-            { afterCursor: cursorFor(transport), limit: PAGE_SIZE },
+            { ...page.position, limit: PAGE_SIZE },
           ),
+          direction: page.direction,
           status: "local",
           transport,
         };
@@ -165,11 +197,13 @@ async function readSourcePage(
       }
     }
     const transport = "memory:client";
+    const page = logReadPosition(transport, cursorFor, direction);
     return {
       result: readClientLogs({
-        afterCursor: cursorFor(transport),
+        ...page.position,
         limit: PAGE_SIZE,
       }),
+      direction: page.direction,
       status: "live",
       transport,
     };
@@ -177,11 +211,13 @@ async function readSourcePage(
 
   if (source.kind === "server") {
     const transport = "local:server";
+    const page = logReadPosition(transport, cursorFor, direction);
     return {
       result: await readLocalServiceLogs(
         { source: "server" },
-        { afterCursor: cursorFor(transport), limit: PAGE_SIZE },
+        { ...page.position, limit: PAGE_SIZE },
       ),
+      direction: page.direction,
       status: "local",
       transport,
     };
@@ -189,13 +225,15 @@ async function readSourcePage(
 
   if (source.workerId && source.online) {
     const transport = `remote:${source.workerId}`;
+    const page = logReadPosition(transport, cursorFor, direction);
     try {
       return {
         result: await getWorkerServiceLogs(source.workerId, {
-          afterCursor: cursorFor(transport),
+          ...page.position,
           limit: PAGE_SIZE,
           minimumLevel: "trace",
         }),
+        direction: page.direction,
         status: "live",
         transport,
       };
@@ -206,11 +244,13 @@ async function readSourcePage(
 
   if (source.fallback) {
     const transport = `local:${source.workerId ?? "worker"}`;
+    const page = logReadPosition(transport, cursorFor, direction);
     return {
       result: await readLocalServiceLogs(source.fallback, {
-        afterCursor: cursorFor(transport),
+        ...page.position,
         limit: PAGE_SIZE,
       }),
+      direction: page.direction,
       status: "local",
       transport,
     };
@@ -262,12 +302,21 @@ function downloadText(name: string, value: string) {
 
 export function VirtualLogConsole({
   followTail,
+  hasOlder = false,
+  loadingOlder = false,
+  onFollowTailChange,
+  onLoadOlder,
   records,
 }: {
   followTail: boolean;
+  hasOlder?: boolean;
+  loadingOlder?: boolean;
+  onFollowTailChange?: (follow: boolean) => void;
+  onLoadOlder?: () => Promise<void>;
   records: readonly ViewerLogRecord[];
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const historyRequestActive = useRef(false);
   const [viewport, setViewport] = useState({ height: 400, scrollTop: 0 });
 
   useEffect(() => {
@@ -305,11 +354,58 @@ export function VirtualLogConsole({
       role="log"
       aria-live="off"
       onScroll={(event) => {
+        const element = event.currentTarget;
         // React clears currentTarget after this callback. Snapshot the DOM value
         // before the state updater runs, especially when WebKit defers it.
-        scheduleLogViewportScroll(event.currentTarget, setViewport);
+        scheduleLogViewportScroll(element, setViewport);
+        if (
+          shouldStopFollowingLogs({
+            clientHeight: element.clientHeight,
+            followTail,
+            scrollHeight: element.scrollHeight,
+            scrollTop: element.scrollTop,
+            threshold: HISTORY_LOAD_THRESHOLD,
+          })
+        ) {
+          onFollowTailChange?.(false);
+        }
+        if (
+          !onLoadOlder ||
+          historyRequestActive.current ||
+          !shouldLoadOlderLogs({
+            hasOlder,
+            loadingOlder,
+            scrollTop: element.scrollTop,
+            threshold: HISTORY_LOAD_THRESHOLD,
+          })
+        ) {
+          return;
+        }
+        historyRequestActive.current = true;
+        const previousScrollHeight = element.scrollHeight;
+        const previousScrollTop = element.scrollTop;
+        void onLoadOlder()
+          .catch(() => undefined)
+          .finally(() => {
+            window.requestAnimationFrame(() => {
+              const current = viewportRef.current;
+              if (current) {
+                current.scrollTop = restoredLogScrollTop({
+                  nextScrollHeight: current.scrollHeight,
+                  previousScrollHeight,
+                  previousScrollTop,
+                });
+              }
+              historyRequestActive.current = false;
+            });
+          });
       }}
     >
+      {loadingOlder ? (
+        <div className="sticky left-0 top-0 z-10 h-6 bg-background/90 px-3 text-[10px] leading-6 text-muted-foreground backdrop-blur-sm">
+          Loading older records…
+        </div>
+      ) : null}
       {records.length ? (
         <div
           className="relative min-w-full"
@@ -426,6 +522,7 @@ export function LogSettings() {
   const selectedSource =
     sources.find((source) => source.id === selectedSourceId) ?? sources[0]!;
   const states = useRef(new Map<string, LogSourceState>());
+  const historyLoads = useRef(new Set<string>());
   const [, render] = useReducer((value) => value + 1, 0);
   const [retryToken, retry] = useReducer((value) => value + 1, 0);
   const [search, setSearch] = useState("");
@@ -546,6 +643,7 @@ export function LogSettings() {
           const transport = `remote:${selectedSource.workerId}`;
           commit((latest) => ({
             ...latest,
+            activeTransport: transport,
             cursors: {
               ...latest.cursors,
               [transport]: Math.max(
@@ -586,10 +684,23 @@ export function LogSettings() {
       const current =
         states.current.get(selectedSource.id) ?? emptySourceState();
       try {
-        const page = await readSourcePage(
+        let page = await readSourcePage(
           selectedSource,
-          (transport) => current.cursors[transport] ?? 0,
+          (transport) => current.cursors[transport],
         );
+        const cursorGap = page.direction === "forward" && page.result.truncated;
+        if (
+          shouldJumpToNewestLogs({
+            direction: page.direction,
+            hasMore: page.result.hasMore,
+            truncated: page.result.truncated,
+          })
+        ) {
+          // Do not churn through a large reconnect/poll backlog. Jump to the
+          // current tail; the skipped range remains available through the
+          // same backward pagination used when the user scrolls upward.
+          page = await readSourcePage(selectedSource, () => undefined);
+        }
         if (consecutiveFailures > 0) {
           clientLogger.info("Service log stream recovered", {
             attempt: consecutiveFailures + 1,
@@ -603,31 +714,58 @@ export function LogSettings() {
         }
         consecutiveFailures = 0;
         backoff = POLL_INTERVAL_MS;
-        commit((latest) => ({
-          ...latest,
-          cursors: {
-            ...latest.cursors,
-            [page.transport]: page.result.nextCursor,
-          },
-          error: null,
-          records: appendServiceLogRecords(
-            latest.records,
-            page.result.records,
-            page.transport,
-          ),
-          status: page.status,
-          truncated: latest.truncated || page.result.truncated,
-        }));
+        commit((latest) => {
+          const history =
+            page.direction === "backward"
+              ? {
+                  ...latest.history,
+                  [page.transport]: {
+                    beforeCursor: Math.max(
+                      1,
+                      page.result.records[0]?.cursor ??
+                        page.result.oldestCursor ??
+                        page.result.nextCursor,
+                    ),
+                    hasMore: page.result.hasMore,
+                  },
+                }
+              : latest.history;
+          return {
+            ...latest,
+            activeTransport: page.transport,
+            cursors: {
+              ...latest.cursors,
+              [page.transport]: Math.max(
+                latest.cursors[page.transport] ?? 0,
+                page.result.nextCursor,
+              ),
+            },
+            error: null,
+            history,
+            records: appendServiceLogRecords(
+              latest.records,
+              page.result.records,
+              page.transport,
+            ),
+            status: page.status,
+            truncated: latest.truncated || cursorGap || page.result.truncated,
+          };
+        });
         const remote =
           page.transport.startsWith("remote:") &&
           selectedSource.kind === "worker" &&
           Boolean(selectedSource.workerId) &&
           selectedSource.online;
-        const action = workerLogPageAction({
-          hasMore: page.result.hasMore,
-          remote,
-          streamFailures,
-        });
+        const action =
+          page.direction === "backward"
+            ? remote
+              ? "stream"
+              : "poll"
+            : workerLogPageAction({
+                hasMore: page.result.hasMore,
+                remote,
+                streamFailures,
+              });
         if (action === "catch-up") {
           schedule(0);
         } else if (action === "stream") {
@@ -655,6 +793,77 @@ export function LogSettings() {
       socket = null;
     };
   }, [activeServerUrl, retryToken, selectedSource]);
+
+  const activeHistory = currentState.activeTransport
+    ? currentState.history[currentState.activeTransport]
+    : undefined;
+  const historyLoadKey = currentState.activeTransport
+    ? `${selectedSource.id}:${currentState.activeTransport}`
+    : null;
+  const loadingOlder = historyLoadKey
+    ? historyLoads.current.has(historyLoadKey)
+    : false;
+  const hasOlder = !paused && (activeHistory?.hasMore ?? false);
+  const loadOlder = useCallback(async () => {
+    const sourceId = selectedSource.id;
+    const snapshot = states.current.get(sourceId) ?? emptySourceState();
+    const transport = snapshot.activeTransport;
+    const history = transport ? snapshot.history[transport] : undefined;
+    if (!transport || !history?.hasMore) return;
+
+    const key = `${sourceId}:${transport}`;
+    if (historyLoads.current.has(key)) return;
+    historyLoads.current.add(key);
+    render();
+
+    try {
+      const page = await readSourcePage(
+        selectedSource,
+        (candidate) =>
+          candidate === transport ? history.beforeCursor : undefined,
+        "backward",
+      );
+      // A failed remote read may switch to a local fallback. Its cursor space
+      // is independent, so let the normal source synchronizer adopt it.
+      if (page.transport !== transport) return;
+
+      const latest = states.current.get(sourceId) ?? emptySourceState();
+      const currentHistory = latest.history[transport];
+      if (!currentHistory) return;
+      states.current.set(sourceId, {
+        ...latest,
+        error: null,
+        history: {
+          ...latest.history,
+          [transport]: {
+            beforeCursor: Math.max(
+              1,
+              page.result.records[0]?.cursor ?? currentHistory.beforeCursor,
+            ),
+            hasMore: page.result.hasMore,
+          },
+        },
+        records: appendServiceLogRecords(
+          latest.records,
+          page.result.records,
+          transport,
+        ),
+        truncated: latest.truncated || page.result.truncated,
+      });
+    } catch (error) {
+      const latest = states.current.get(sourceId) ?? emptySourceState();
+      states.current.set(sourceId, {
+        ...latest,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not load older log records.",
+      });
+    } finally {
+      historyLoads.current.delete(key);
+      render();
+    }
+  }, [selectedSource]);
 
   const visibleText = useMemo(
     () => filteredRecords.map(formatServiceLogRecord).join("\n"),
@@ -980,7 +1189,12 @@ export function LogSettings() {
             </div>
           ) : null}
           <VirtualLogConsole
+            key={selectedSource.id}
             followTail={followTail}
+            hasOlder={hasOlder}
+            loadingOlder={loadingOlder}
+            onFollowTailChange={setFollowTail}
+            onLoadOlder={loadOlder}
             records={filteredRecords}
           />
         </div>
