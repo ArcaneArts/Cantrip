@@ -89,6 +89,7 @@ function resolutionInput(input: {
   protectedSecrets?: RunConfigurationProtectedSecret[];
   openSecret?: RunConfigurationEnvironmentResolutionInput["openSecret"];
   execute?: RunConfigurationEnvironmentResolutionInput["execute"];
+  platform?: RunConfigurationEnvironmentResolutionInput["platform"];
 }): RunConfigurationEnvironmentResolutionInput {
   return {
     baseline: {
@@ -103,7 +104,7 @@ function resolutionInput(input: {
       secrets: input.secrets ?? [],
     },
     expectedCodexEnvironmentRevision: input.expectedCodexEnvironmentRevision,
-    platform: "linux",
+    platform: input.platform ?? "linux",
     protectedSecrets: input.protectedSecrets ?? [],
     sourceRoot: input.sourceRoot,
     targetRoot: input.targetRoot,
@@ -253,6 +254,35 @@ script = "export MUST_NOT_EXIST=yes"
         secrets: {},
       });
       expect(executeSpy).not.toHaveBeenCalled();
+    });
+
+    it("applies ordered environment files with Windows case-insensitive precedence", async () => {
+      const sourceRoot = await root("cantrip-run-env-source-");
+      const targetRoot = await root("cantrip-run-env-target-");
+      await writeFile(
+        path.join(targetRoot, ".env"),
+        "Path=first-path\nSHARED=first\n",
+      );
+      await writeFile(
+        path.join(targetRoot, ".env.local"),
+        "PATH=second-path\nshared=second\n",
+      );
+
+      const resolved = await resolveRunConfigurationEnvironmentSources(
+        resolutionInput({
+          expectedCodexEnvironmentRevision: null,
+          sourceRoot,
+          targetRoot,
+          includeCodexEnvironment: false,
+          files: [".env", ".env.local"],
+          platform: "win32",
+        }),
+      );
+
+      expect(resolved.files).toEqual({
+        PATH: "second-path",
+        shared: "second",
+      });
     });
 
     it("opens each referenced project secret once and maps it by environment name", async () => {
