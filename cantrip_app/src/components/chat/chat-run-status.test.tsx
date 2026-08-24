@@ -8,6 +8,7 @@ describe("ChatRunStatus", () => {
     const markup = renderToStaticMarkup(
       <ChatRunStatus
         automationPaused={false}
+        hasLiveActivity={false}
         syncingCodeGraph={false}
         status="running"
         waitingForPlanAnswer={false}
@@ -26,6 +27,7 @@ describe("ChatRunStatus", () => {
     const markup = renderToStaticMarkup(
       <ChatRunStatus
         automationPaused={false}
+        hasLiveActivity={false}
         syncingCodeGraph
         status="running"
         waitingForPlanAnswer={false}
@@ -41,6 +43,7 @@ describe("ChatRunStatus", () => {
     const approvalMarkup = renderToStaticMarkup(
       <ChatRunStatus
         automationPaused={false}
+        hasLiveActivity={false}
         syncingCodeGraph={false}
         status="waiting-for-approval"
         waitingForPlanAnswer={false}
@@ -49,6 +52,7 @@ describe("ChatRunStatus", () => {
     const pausedMarkup = renderToStaticMarkup(
       <ChatRunStatus
         automationPaused
+        hasLiveActivity={false}
         syncingCodeGraph={false}
         status="running"
         waitingForPlanAnswer={false}
@@ -66,8 +70,23 @@ describe("ChatRunStatus", () => {
       renderToStaticMarkup(
         <ChatRunStatus
           automationPaused={false}
+          hasLiveActivity={false}
           syncingCodeGraph={false}
           status="idle"
+          waitingForPlanAnswer={false}
+        />,
+      ),
+    ).toBe("");
+  });
+
+  it("leaves the shimmer to the latest live activity group", () => {
+    expect(
+      renderToStaticMarkup(
+        <ChatRunStatus
+          automationPaused={false}
+          hasLiveActivity
+          syncingCodeGraph={false}
+          status="running"
           waitingForPlanAnswer={false}
         />,
       ),

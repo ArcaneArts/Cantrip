@@ -1774,6 +1774,19 @@ function ChatTranscript({
     () => mergeAgentCardsIntoTimeline(timeline, agentProjection.agents),
     [agentProjection.agents, timeline],
   );
+  const latestLiveActivityGroupKey = useMemo(() => {
+    for (let index = transcriptEntries.length - 1; index >= 0; index -= 1) {
+      const transcriptEntry = transcriptEntries[index];
+      if (
+        transcriptEntry?.type === "timeline" &&
+        transcriptEntry.entry.type === "activityGroup" &&
+        transcriptEntry.entry.endedAt === null
+      ) {
+        return transcriptEntry.entry.key;
+      }
+    }
+    return null;
+  }, [transcriptEntries]);
   const latestEditableMessage = useMemo(
     () =>
       effectiveInspectOnly ||
@@ -2785,34 +2798,41 @@ function ChatTranscript({
             }
             const entry = transcriptEntry.entry;
             if (entry.type === "activityGroup") {
+              const groupedActivities = entry.messages.flatMap((message) =>
+                message.content.flatMap((item) =>
+                  item.type === "activity" ? [item.activity] : [],
+                ),
+              );
               return (
                 <ActivityGroup
+                  activities={groupedActivities}
+                  active={entry.key === latestLiveActivityGroupKey}
                   key={entry.key}
-                  startedAt={entry.startedAt}
-                  endedAt={entry.endedAt}
                   onViewTrajectory={viewTurnTrajectory}
                   turnId={entry.turnId}
                   turnKey={entry.turnKey}
-                >
-                  {entry.messages.map((message) => (
-                    <MessageContent
-                      key={message.id}
-                      message={message}
-                      onOpenFile={onOpenFile}
-                    />
-                  ))}
-                </ActivityGroup>
+                />
               );
             }
             const message = entry.message;
             const turnMetadata = formatTurnMetadata(entry.turnMetadata);
             const user = message.role === "user";
             const system = message.role === "system";
+            const workThought =
+              message.role === "assistant" &&
+              message.content.every(
+                (item) =>
+                  (item.type === "text" && item.phase === "commentary") ||
+                  (item.type === "activity" &&
+                    item.activity.type === "reasoning"),
+              );
             const assistantText =
               message.role === "assistant"
                 ? message.content
                     .flatMap((item) =>
-                      item.type === "text" ? [item.text] : [],
+                      item.type === "text" && item.phase !== "commentary"
+                        ? [item.text]
+                        : [],
                     )
                     .join("\n\n")
                 : "";
@@ -2827,7 +2847,7 @@ function ChatTranscript({
                 data-chat-history-anchor={user ? message.id : undefined}
                 className={cn("flex gap-3", user && "justify-end")}
               >
-                {!user ? (
+                {!user && !workThought ? (
                   <div
                     className={cn(
                       "mt-1 grid size-7 shrink-0 place-items-center rounded-lg border bg-card",
@@ -3027,6 +3047,7 @@ function ChatTranscript({
 
           <ChatRunStatus
             automationPaused={chat.automationPaused}
+            hasLiveActivity={latestLiveActivityGroupKey !== null}
             syncingCodeGraph={syncingCodeGraph}
             status={chat.status}
             waitingForPlanAnswer={Boolean(planState.data?.question)}
