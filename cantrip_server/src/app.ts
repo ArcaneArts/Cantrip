@@ -24069,38 +24069,42 @@ export async function buildApp({
     "/api/terminals/:terminalId",
     async (request, reply) => {
       const ownerId = applicationOwnerId();
-      return directAttachments.mutateResource(
-        ownerId,
-        "terminal",
-        request.params.terminalId,
-        async () => {
-          const context = await repository.deleteTerminal(
-            ownerId,
-            request.params.terminalId,
-          );
-          if (!context) {
-            return reply.code(404).send({ error: "Terminal not found." });
-          }
-          if (bridge.isConnected(context.workerId)) {
-            await bridge
-              .request(
-                context.workerId,
-                {
-                  type: "terminal.close",
-                  terminalId: context.terminalId,
-                },
-                { ownerId, timeoutMs: 5_000 },
-              )
-              .catch((error: unknown) =>
-                app.log.warn(
-                  { err: error, terminalId: context.terminalId },
-                  "Could not close deleted terminal",
-                ),
-              );
-          }
-          return reply.code(204).send();
-        },
-      );
+      try {
+        return await directAttachments.mutateResource(
+          ownerId,
+          "terminal",
+          request.params.terminalId,
+          async () => {
+            const context = await repository.deleteTerminal(
+              ownerId,
+              request.params.terminalId,
+            );
+            if (!context) {
+              return reply.code(404).send({ error: "Terminal not found." });
+            }
+            if (bridge.isConnected(context.workerId)) {
+              await bridge
+                .request(
+                  context.workerId,
+                  {
+                    type: "terminal.close",
+                    terminalId: context.terminalId,
+                  },
+                  { ownerId, timeoutMs: 5_000 },
+                )
+                .catch((error: unknown) =>
+                  app.log.warn(
+                    { err: error, terminalId: context.terminalId },
+                    "Could not close deleted terminal",
+                  ),
+                );
+            }
+            return reply.code(204).send();
+          },
+        );
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
     },
   );
 

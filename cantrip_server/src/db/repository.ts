@@ -14490,6 +14490,24 @@ export class ServerRepository {
   ): Promise<TerminalExecutionContext | null> {
     const context = await this.getTerminalExecutionContext(ownerId, terminalId);
     if (!context) return null;
+    if (context.kind === "run-configuration") {
+      const active = await this.database
+        .select({ state: schema.runConfigurationRuntimes.state })
+        .from(schema.runConfigurationRuntimes)
+        .where(
+          and(
+            eq(schema.runConfigurationRuntimes.ownerId, ownerId),
+            eq(schema.runConfigurationRuntimes.terminalId, terminalId),
+            sql`${schema.runConfigurationRuntimes.state} IN ('starting', 'running', 'restarting', 'stopping')`,
+          ),
+        )
+        .limit(1);
+      if (active[0]) {
+        throw new Error(
+          "Stop the active Run configuration before closing its terminal.",
+        );
+      }
+    }
     await this.database.transaction(async (transaction) => {
       await transaction
         .update(schema.runInstances)

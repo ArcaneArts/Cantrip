@@ -60,7 +60,7 @@ export function SurfaceActionsMenu({
   deleteDisabled?: boolean;
   onDelete(): void;
   onDuplicate?: () => void;
-  onRename(): void;
+  onRename?: () => void;
   title: string;
   trigger?: ReactNode;
   triggerClassName?: string;
@@ -88,9 +88,11 @@ export function SurfaceActionsMenu({
           align={align}
           className={cn("min-w-40", contentClassName)}
         >
-          <StyledDropdownMenuItem onSelect={onRename}>
-            <Pencil className="size-4" /> Rename
-          </StyledDropdownMenuItem>
+          {onRename ? (
+            <StyledDropdownMenuItem onSelect={onRename}>
+              <Pencil className="size-4" /> Rename
+            </StyledDropdownMenuItem>
+          ) : null}
           {onDuplicate ? (
             <StyledDropdownMenuItem onSelect={onDuplicate}>
               <CopyPlus className="size-4" /> Duplicate

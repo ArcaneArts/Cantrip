@@ -38,6 +38,7 @@ import type {
   TunnelSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
+import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import {
   useMutation,
   useQueries,
@@ -441,6 +442,11 @@ import {
   uploadChatAttachment,
 } from "@/lib/api";
 import {
+  listRunConfigurationRuntimes,
+  listRunConfigurations,
+  operateRunConfigurationRuntime,
+} from "@/lib/run-configuration-api";
+import {
   createProjectWorkspace,
   getProjectWorkspaces,
 } from "@/lib/workspace-encryption";
@@ -484,6 +490,11 @@ import {
   projectSurfaceTabId,
   projectSurfaceTabKey,
 } from "@/lib/project-surface";
+import {
+  decorateRunConfigurationTerminals,
+  runtimeForRunTerminal,
+  runTerminalTargetLabel,
+} from "@/lib/run-terminal-model";
 import {
   pinnedExplorerForPath,
   preferredSidebarExplorer,
@@ -579,6 +590,11 @@ function codeAppearanceFor(
 const TerminalView = lazy(() =>
   import("@/components/terminal/terminal-view").then((module) => ({
     default: module.TerminalView,
+  })),
+);
+const RunTerminalView = lazy(() =>
+  import("@/components/terminal/run-terminal-view").then((module) => ({
+    default: module.RunTerminalView,
   })),
 );
 const PersistentExplorerViews = lazy(() =>
@@ -4507,6 +4523,29 @@ export function App() {
     queryKey: ["terminals", selectedProjectId],
     refetchInterval: projectResourcesLive ? false : 10_000,
   });
+  const runConfigurations = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => listRunConfigurations(selectedProjectId!),
+    queryKey: ["run-configurations", selectedProjectId],
+    refetchInterval: projectResourcesLive ? false : 10_000,
+    retry: false,
+  });
+  const runConfigurationRuntimes = useQuery({
+    enabled: Boolean(selectedProjectId),
+    queryFn: () => listRunConfigurationRuntimes(selectedProjectId!),
+    queryKey: ["run-configuration-runtimes", selectedProjectId],
+    refetchInterval: (query) =>
+      projectResourcesLive
+        ? false
+        : query.state.data?.some((runtime) =>
+              ["starting", "running", "restarting", "stopping"].includes(
+                runtime.state,
+              ),
+            )
+          ? 1_000
+          : 10_000,
+    retry: false,
+  });
   const explorers = useQuery({
     enabled: Boolean(selectedProjectId),
     queryFn: () => getExplorers(selectedProjectId!),
@@ -5470,6 +5509,36 @@ export function App() {
       });
     },
   });
+  const stopAndDeleteRunTerminalMutation = useMutation({
+    mutationFn: async (terminal: TerminalSummary) => {
+      if (
+        terminal.kind !== "run-configuration" ||
+        !terminal.runConfigurationId
+      ) {
+        throw new Error("Only a bound Run terminal can be stopped and closed.");
+      }
+      await operateRunConfigurationRuntime({
+        operation: "stop",
+        projectId: terminal.projectId,
+        configurationId: terminal.runConfigurationId,
+        targetWorktreeId: terminal.worktreeId,
+      });
+      await deleteTerminal(terminal.id);
+    },
+    onSuccess: async (_value, terminal) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["terminals", terminal.projectId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-tab-layout", terminal.projectId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["run-configuration-runtimes", terminal.projectId],
+        }),
+      ]);
+    },
+  });
   const renameExplorerMutation = useMutation({
     mutationFn: ({
       explorerId,
@@ -5806,6 +5875,15 @@ export function App() {
       showProjectSettings ||
       mobileTabGridOpen ||
       (projectOverviewSelected && Boolean(selectedProject)));
+  const displayTerminals = useMemo(
+    () =>
+      decorateRunConfigurationTerminals(
+        terminals.data ?? [],
+        runConfigurations.data,
+        worktrees.data ?? [],
+      ),
+    [runConfigurations.data, terminals.data, worktrees.data],
+  );
   const projectSurfaceIndex = useMemo(
     () =>
       buildProjectSurfaceIndex(tabLayout.data, {
@@ -5814,7 +5892,7 @@ export function App() {
         codeTabs: codeTabs.data ?? [],
         explorers: explorers.data ?? [],
         projectViews: projectViews.data ?? [],
-        terminals: terminals.data ?? [],
+        terminals: displayTerminals,
       }),
     [
       browsers.data,
@@ -5823,7 +5901,7 @@ export function App() {
       explorers.data,
       projectViews.data,
       tabLayout.data,
-      terminals.data,
+      displayTerminals,
     ],
   );
   const selectedSurface = selectedTabKey
@@ -6064,6 +6142,26 @@ export function App() {
       : undefined;
   const selectedTerminal = selectedStandaloneTerminal ?? linkedConsoleTerminal;
   const linkedConsoleChat = linkedConsoleTerminal ? selectedChat : undefined;
+  const selectedRunRuntime: RunConfigurationRuntime | null = selectedTerminal
+    ? runtimeForRunTerminal(
+        selectedTerminal,
+        runConfigurationRuntimes.data ?? [],
+      )
+    : null;
+  const selectedRunDefinitionAvailable =
+    selectedTerminal?.kind === "run-configuration" &&
+    runConfigurations.isSuccess
+      ? Boolean(
+          runConfigurations.data.entries.some(
+            (entry) =>
+              entry.status === "ready" &&
+              entry.id === selectedTerminal.runConfigurationId,
+          ),
+        )
+      : null;
+  const selectedRunTargetLabel = selectedTerminal
+    ? runTerminalTargetLabel(selectedTerminal, worktrees.data ?? [])
+    : "Unavailable worktree";
   const openTerminalLink = (url: string) => {
     if (!selectedTerminal || !selectedTabGroup) return;
     newBrowser.mutate({
@@ -6145,7 +6243,7 @@ export function App() {
         tabId: activeChat.id,
         mode: activeChat.worktreeMode,
       }
-    : selectedTerminal
+    : selectedTerminal && selectedTerminal.kind !== "run-configuration"
       ? {
           kind: "terminal",
           projectId: selectedTerminal.projectId,
@@ -6197,7 +6295,9 @@ export function App() {
       currentSurface,
       selectedTerminal:
         currentSurface?.kind === "terminal"
-          ? (selectedStandaloneTerminal ?? null)
+          ? selectedStandaloneTerminal?.kind === "run-configuration"
+            ? null
+            : (selectedStandaloneTerminal ?? null)
           : null,
     });
     const input = terminalCommandInput(command);
@@ -7758,7 +7858,8 @@ export function App() {
       !showSettings &&
       !showServerAdmin &&
       !showProjectSettings &&
-      selectedStandaloneTerminal
+      selectedStandaloneTerminal &&
+      selectedStandaloneTerminal.kind !== "run-configuration"
         ? {
             active: terminalServiceTerminalId === selectedStandaloneTerminal.id,
             open: () =>
@@ -7774,7 +7875,8 @@ export function App() {
       !showSettings &&
       !showServerAdmin &&
       !showProjectSettings &&
-      selectedStandaloneTerminal
+      selectedStandaloneTerminal &&
+      selectedStandaloneTerminal.kind !== "run-configuration"
         ? {
             active:
               terminalCommandPaletteTerminalId ===
@@ -8112,7 +8214,7 @@ export function App() {
                 codeTabs={codeTabs.data ?? []}
                 explorers={explorers.data ?? []}
                 projectViews={projectViews.data ?? []}
-                terminals={terminals.data ?? []}
+                terminals={displayTerminals}
                 workers={workers.data ?? []}
                 worktrees={worktrees.data ?? []}
                 worktreeStatuses={worktreeStatuses}
@@ -8215,6 +8317,11 @@ export function App() {
                 }
                 onDeleteTerminal={(terminalId) =>
                   deleteTerminalMutation.mutate(terminalId)
+                }
+                onStopAndCloseRunTerminal={(terminal) =>
+                  stopAndDeleteRunTerminalMutation
+                    .mutateAsync(terminal)
+                    .then(() => undefined)
                 }
                 onRemoveProject={(projectId, deleteLocalFiles) =>
                   removeProjectMutation
@@ -8691,6 +8798,11 @@ export function App() {
             }}
             onRename={renameSurface}
             onSelect={selectTopTab}
+            onStopAndCloseRunTerminal={(terminal) =>
+              stopAndDeleteRunTerminalMutation
+                .mutateAsync(terminal)
+                .then(() => undefined)
+            }
             placement={selectedPlacementContext}
             previewFile={
               showSidebarPreviewTab && sidebarFilePreview
@@ -8885,7 +8997,7 @@ export function App() {
             project={selectedProject}
             chats={chats.data ?? []}
             codeTabs={codeTabs.data ?? []}
-            terminals={terminals.data ?? []}
+            terminals={displayTerminals}
             explorers={explorers.data ?? []}
             projectViews={projectViews.data ?? []}
             workers={workers.data ?? []}
@@ -9188,7 +9300,19 @@ export function App() {
               </div>
             }
           >
-            {linkedConsoleChat ? (
+            {selectedTerminal.kind === "run-configuration" ? (
+              <RunTerminalView
+                definitionAvailable={selectedRunDefinitionAvailable}
+                definitionProblem={
+                  runConfigurations.isError
+                    ? errorText(runConfigurations.error)
+                    : null
+                }
+                runtime={selectedRunRuntime}
+                targetLabel={selectedRunTargetLabel}
+                terminal={selectedTerminal}
+              />
+            ) : linkedConsoleChat ? (
               <TerminalView
                 eliteContentGlitchEnabled={
                   (settings.data?.preferences.eliteMode ?? false) &&
