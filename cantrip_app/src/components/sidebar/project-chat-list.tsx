@@ -470,6 +470,8 @@ export function ProjectChatList({
   fileGraphAvailable,
   fileTreeLoading,
   fileTreePinningPath,
+  fileTreeWorkerId,
+  fileTreeWorkerOnline,
   fileRevealLabel,
   onChangeChatWorktree,
   overviewSelected,
@@ -528,6 +530,8 @@ export function ProjectChatList({
   fileGraphAvailable: boolean;
   fileTreeLoading: boolean;
   fileTreePinningPath?: string | null;
+  fileTreeWorkerId: string | null;
+  fileTreeWorkerOnline: boolean;
   fileRevealLabel?: string;
   onChangeChatWorktree(
     chatId: string,
@@ -1316,6 +1320,8 @@ export function ProjectChatList({
                       onRetry={onFileTreeRetry}
                       pinningPath={fileTreePinningPath}
                       revealLabel={fileRevealLabel}
+                      workerId={fileTreeWorkerId}
+                      workerOnline={fileTreeWorkerOnline}
                     />
                   </div>
                 ) : null}
