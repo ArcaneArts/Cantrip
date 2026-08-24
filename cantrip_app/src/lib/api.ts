@@ -4479,41 +4479,18 @@ export async function updateTaskDraft(chatId: string, input: TaskDraftUpdate) {
   );
 }
 
-async function sendEncryptedTaskOperation(
-  chatId: string,
-  path: "start" | "plan" | "continue" | "begin-implementation" | "retry",
-  input: TaskOperationStart | TaskContinuationStart,
-  kind: "direct" | "initial-plan" | "continue-plan" | "finalize",
-) {
-  await getPolicies();
-  const current = await getTask(chatId);
-  assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
-  const operation = await prepareTaskEncryptedOperation(current, {
-    kind,
-    operationId: input.operationId,
-    rowVersion: input.rowVersion,
-    ...(path === "continue" || path === "begin-implementation"
-      ? {
-          answers: (input as TaskContinuationStart).answers,
-          additionalDirection: (input as TaskContinuationStart)
-            .additionalDirection,
-        }
-      : {}),
-  });
-  return openTaskOpaqueSummary(
-    await post(`/api/tasks/${encodeURIComponent(chatId)}/${path}`, operation),
-  );
-}
-
 async function queueTaskOperation(
   chatId: string,
-  path: "start" | "plan",
+  path: "start" | "plan" | "continue" | "begin-implementation",
   input: TaskOperationStart,
 ) {
   const current = await getTask(chatId);
   assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
   return openTaskOpaqueSummary(
-    await post(`/api/tasks/${encodeURIComponent(chatId)}/${path}`, input),
+    await post(`/api/tasks/${encodeURIComponent(chatId)}/${path}`, {
+      operationId: input.operationId,
+      rowVersion: input.rowVersion,
+    }),
   );
 }
 
@@ -4547,19 +4524,14 @@ export async function continueTaskPlanning(
   chatId: string,
   input: TaskContinuationStart,
 ) {
-  return sendEncryptedTaskOperation(chatId, "continue", input, "continue-plan");
+  return queueTaskOperation(chatId, "continue", input);
 }
 
 export async function beginTaskImplementation(
   chatId: string,
   input: TaskContinuationStart,
 ) {
-  return sendEncryptedTaskOperation(
-    chatId,
-    "begin-implementation",
-    input,
-    "finalize",
-  );
+  return queueTaskOperation(chatId, "begin-implementation", input);
 }
 
 export async function retryTaskPlanning(

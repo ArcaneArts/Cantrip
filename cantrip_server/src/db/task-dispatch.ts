@@ -615,7 +615,7 @@ export class TaskDispatchRepository {
       .update(schema.taskDispatchCycles)
       .set({
         state: "running",
-        startedAt: now,
+        startedAt: sql`coalesce(${schema.taskDispatchCycles.startedAt}, ${now})`,
         turnId: options.turnId,
         lastHeartbeatAt: now,
         updatedAt: now,
@@ -623,7 +623,7 @@ export class TaskDispatchRepository {
       .where(
         and(
           fenceWhere(fence, now),
-          eq(schema.taskDispatchCycles.state, "claimed"),
+          inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
         ),
       )
       .returning();
