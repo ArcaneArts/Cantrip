@@ -22,6 +22,7 @@ import {
 } from "@cantrip/protocol";
 import {
   runConfigurationDeleteResponseSchema,
+  runConfigurationDetectResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationWriteResponseSchema,
@@ -147,6 +148,7 @@ const bridge: WorkerCommandBus = {
       case "project.run-configuration-definitions.list":
       case "project.run-configuration-definitions.get":
       case "project.run-configuration-definitions.capabilities":
+      case "project.run-configuration-definitions.detect":
       case "project.run-configuration-definitions.write":
       case "project.run-configuration-definitions.delete":
         return definitionService.execute(command);
@@ -296,7 +298,7 @@ afterAll(async () => {
 });
 
 describe.sequential("Run configuration definition API", () => {
-  it("performs Primary-backed CRUD with exact revisions and Shell capabilities", async () => {
+  it("performs Primary-backed CRUD, capabilities, and static target detection", async () => {
     commands.length = 0;
     const listOperationId = randomUUID();
     const initial = await app.inject({
@@ -318,7 +320,41 @@ describe.sequential("Run configuration definition API", () => {
     expect(capabilities.statusCode).toBe(200);
     expect(capabilities.json()).toMatchObject({
       operation: "capabilities",
-      capabilities: [{ provider: "shell", available: true }],
+      capabilities: expect.arrayContaining([
+        expect.objectContaining({ provider: "shell", available: true }),
+        expect.objectContaining({
+          provider: "node",
+          available: true,
+          supportsDiscovery: true,
+        }),
+      ]),
+    });
+
+    await writeFile(
+      path.join(primaryRoot, "package.json"),
+      JSON.stringify({ name: "api", scripts: { start: "node index.js" } }),
+    );
+    await writeFile(
+      path.join(primaryRoot, "index.js"),
+      "console.log('ready')\n",
+    );
+    const detectionOperationId = randomUUID();
+    const detected = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-configurations/detect?operationId=${detectionOperationId}&provider=node`,
+    });
+    expect(detected.statusCode).toBe(200);
+    expect(
+      runConfigurationDetectResponseSchema.parse(detected.json()),
+    ).toMatchObject({
+      operationId: detectionOperationId,
+      candidates: expect.arrayContaining([
+        expect.objectContaining({
+          provider: "node",
+          confidence: "high",
+          effectiveCommand: "npm run start",
+        }),
+      ]),
     });
 
     const createOperationId = randomUUID();

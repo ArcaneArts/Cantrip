@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -23,6 +23,62 @@ interface Fixture {
   definitionRevision: string;
   sourceRoot: string;
   targetRoot: string;
+}
+
+async function nodeFixture(): Promise<Fixture> {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-node-run-configuration-runtime-"),
+  );
+  temporaryDirectories.push(root);
+  const sourceRoot = path.join(root, "primary");
+  const targetRoot = path.join(root, "target");
+  await Promise.all([
+    mkdir(sourceRoot, { recursive: true }),
+    mkdir(targetRoot, { recursive: true }),
+  ]);
+  await writeFile(
+    path.join(targetRoot, "app.js"),
+    'process.stdout.write("node-provider|" + process.argv.slice(2).join("|"));\n',
+  );
+  const configurationId = randomUUID();
+  const repository = await RunConfigurationRepository.open(sourceRoot);
+  const written = await repository.write({
+    expectedRevision: null,
+    document: {
+      schema: "cantrip.run-configuration",
+      version: 1,
+      id: configurationId,
+      name: "Node runtime fixture",
+      provider: "node",
+      workingDirectory: ".",
+      target: { kind: "entry", path: "app.js" },
+      commandOverride: null,
+      arguments: ["--flag", "two words"],
+      environment: {
+        includeCodexEnvironment: false,
+        files: [],
+        variables: [],
+        secrets: [],
+      },
+      beforeLaunch: [],
+      platformOverrides: {},
+      options: {
+        packageManager: "npm",
+        runtime: "node",
+        runtimeArguments: [],
+      },
+      stop: { gracePeriodMs: 50 },
+    },
+  });
+  if (!("entry" in written) || !written.entry.revision) {
+    throw new Error("Expected a ready Node Run configuration fixture.");
+  }
+  return {
+    configurationId,
+    definitionRevision: written.entry.revision,
+    sourceRoot,
+    targetRoot,
+  };
 }
 
 async function fixture(
@@ -240,6 +296,28 @@ describe.skipIf(process.platform === "win32")(
           tail: 8,
         }),
       ).toMatchObject({ truncated: true });
+      await runs.closeAll();
+    });
+
+    it("launches a structured Node entrypoint without a handwritten command", async () => {
+      const input = await nodeFixture();
+      const runtimeIdentity = identity(input);
+      const runs = supervisor();
+      await expect(
+        runs.start(startCommand(input, runtimeIdentity)),
+      ).resolves.toMatchObject({
+        outcome: "accepted",
+        observation: { state: "starting" },
+      });
+      await waitForState(runs, runtimeIdentity, "exited");
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).toContain("node-provider|--flag|two words");
       await runs.closeAll();
     });
 

@@ -11,6 +11,7 @@ vi.mock("./run-content-encryption", () => ({
 }));
 
 import {
+  detectRunConfigurations,
   deleteRunConfiguration,
   getRunConfiguration,
   getRunConfigurationCapabilities,
@@ -93,6 +94,33 @@ describe("Run configuration app API", () => {
             },
           ],
         }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          operation: "detect",
+          operationId,
+          projectId,
+          candidates: [
+            {
+              provider: "node",
+              confidence: "high",
+              reason: "The package defines a start script.",
+              effectiveCommand: "pnpm run start",
+              document: {
+                ...document,
+                provider: "node",
+                name: "Run app",
+                target: { kind: "packageScript", script: "start" },
+                options: {
+                  packageManager: "pnpm",
+                  runtime: "node",
+                  runtimeArguments: [],
+                },
+              },
+            },
+          ],
+          diagnostics: [],
+        }),
       );
     vi.stubGlobal("fetch", fetch);
 
@@ -102,10 +130,18 @@ describe("Run configuration app API", () => {
     await expect(
       getRunConfigurationCapabilities(projectId, operationId),
     ).resolves.toMatchObject([{ provider: "shell" }]);
+    await expect(
+      detectRunConfigurations(projectId, "node", operationId),
+    ).resolves.toMatchObject({
+      candidates: [{ provider: "node", confidence: "high" }],
+    });
     expect(fetch.mock.calls[0]![0]).toContain(
       `/api/projects/${projectId}/run-configurations?operationId=${operationId}`,
     );
     expect(fetch.mock.calls[1]![0]).toContain("/capabilities?operationId=");
+    expect(fetch.mock.calls[2]![0]).toContain(
+      "/detect?operationId=" + operationId + "&provider=node",
+    );
   });
 
   it("reads and creates complete revisioned definitions", async () => {

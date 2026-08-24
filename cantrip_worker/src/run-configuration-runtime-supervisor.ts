@@ -26,6 +26,7 @@ import {
 import * as pty from "node-pty";
 
 import { workerLogger } from "./logger.js";
+import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.js";
 import {
   shellRunConfigurationProvider,
   type MaterializedRunCommand,
@@ -699,15 +700,24 @@ export class RunConfigurationRuntimeSupervisor {
         );
       }
       const document = result.entry.document;
-      const provider = this.#providerFor(document);
-      const materialized = await provider.materialize(document, {
+      const providerContext = {
         defaultShell:
           typeof this.#environment.SHELL === "string"
             ? this.#environment.SHELL
             : null,
         platform: platformForProvider(this.#platform),
         targetRoot: roots.targetRoot,
-      });
+      };
+      const materialized =
+        document.provider === "shell"
+          ? await shellRunConfigurationProvider.materialize(
+              document,
+              providerContext,
+            )
+          : await nodeRunConfigurationProvider.materialize(
+              document,
+              providerContext,
+            );
       if (!generationLaunchIsCurrent(session, command.identity)) return;
       session.stopGracePeriodMs = document.stop.gracePeriodMs;
 
@@ -1135,15 +1145,5 @@ export class RunConfigurationRuntimeSupervisor {
       release();
       if (this.#locks.get(runtimeId) === current) this.#locks.delete(runtimeId);
     }
-  }
-
-  #providerFor(document: RunConfigurationFile) {
-    if (document.provider === "shell") return shellRunConfigurationProvider;
-    throw new RuntimeLaunchError(
-      "provider",
-      "provider-unavailable",
-      `The ${document.provider} Run configuration provider is unavailable.`,
-      true,
-    );
   }
 }

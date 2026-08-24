@@ -60,7 +60,49 @@ describe("RunConfigurationDefinitionService", () => {
     });
     expect(capabilities).toMatchObject({
       operation: "capabilities",
-      capabilities: [{ provider: "shell", available: true }],
+      capabilities: expect.arrayContaining([
+        expect.objectContaining({ provider: "shell", available: true }),
+        expect.objectContaining({
+          provider: "node",
+          available: true,
+          supportsDiscovery: true,
+        }),
+      ]),
+    });
+
+    await writeFile(
+      path.join(root, "package.json"),
+      JSON.stringify({ name: "demo", scripts: { start: "node index.js" } }),
+    );
+    await writeFile(path.join(root, "index.js"), "console.log('ready')\n");
+    const detected = await service.execute({
+      type: "project.run-configuration-definitions.detect",
+      operationId: randomUUID(),
+      ...context,
+      providerKind: null,
+    });
+    expect(detected).toMatchObject({
+      operation: "detect",
+      candidates: expect.arrayContaining([
+        expect.objectContaining({
+          provider: "node",
+          confidence: "high",
+          effectiveCommand: "npm run start",
+        }),
+      ]),
+      diagnostics: [],
+    });
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.detect",
+        operationId: randomUUID(),
+        ...context,
+        providerKind: "rust",
+      }),
+    ).resolves.toMatchObject({
+      operation: "detect",
+      candidates: [],
+      diagnostics: [expect.objectContaining({ code: "provider-unavailable" })],
     });
 
     const created = await service.execute({

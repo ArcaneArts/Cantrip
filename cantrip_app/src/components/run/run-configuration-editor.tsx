@@ -1,12 +1,32 @@
 import type {
+  RunConfigurationDetectionCandidate,
+  RunConfigurationFile,
+  RunConfigurationNodeDocument,
+  RunConfigurationProviderCapability,
+  RunConfigurationProviderKind,
   RunConfigurationRepositoryEntry,
   RunConfigurationShellDocument,
 } from "@cantrip/protocol/run-configuration-definitions";
-import { useMutation } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  Loader2,
+  Package,
+  Plus,
+  Terminal,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -18,17 +38,27 @@ import {
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
-import { saveRunConfiguration } from "@/lib/run-configuration-api";
 import {
+  detectRunConfigurations,
+  getRunConfigurationCapabilities,
+  saveRunConfiguration,
+} from "@/lib/run-configuration-api";
+import {
+  createRunConfigurationDocument,
   createShellRunConfigurationDocument,
-  parseShellRunConfigurationEditorDocument,
-  shellRunConfigurationEffectiveCommand,
+  parseRunConfigurationEditorDocument,
+  runConfigurationEffectiveCommand,
 } from "@/lib/run-configuration-editor-model";
+import { cn } from "@/lib/utils";
 
 const fieldClassName = "grid gap-1.5 text-sm";
 const labelClassName = "text-xs font-medium text-muted-foreground";
 const textareaClassName =
   "min-h-20 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
+type RunConfigurationEditorPatch = {
+  [Field in keyof RunConfigurationFile]?: RunConfigurationFile[Field];
+};
 
 function StringListEditor({
   addLabel,
@@ -169,9 +199,165 @@ function EnvironmentRows({
 }
 
 function initialDocument(entry: RunConfigurationRepositoryEntry | null) {
-  return entry?.status === "ready" && entry.document?.provider === "shell"
+  return entry?.status === "ready" && entry.document
     ? entry.document
     : createShellRunConfigurationDocument();
+}
+
+function ProviderGlyph({
+  provider,
+}: {
+  provider: RunConfigurationProviderKind;
+}) {
+  return provider === "node" ? (
+    <Package className="size-5" />
+  ) : (
+    <Terminal className="size-5" />
+  );
+}
+
+function RunConfigurationCreationChooser({
+  candidates,
+  capabilities,
+  diagnostics,
+  error,
+  loading,
+  onCancel,
+  onChooseCandidate,
+  onChooseProvider,
+}: {
+  candidates: RunConfigurationDetectionCandidate[];
+  capabilities: RunConfigurationProviderCapability[];
+  diagnostics: string[];
+  error: Error | null;
+  loading: boolean;
+  onCancel(): void;
+  onChooseCandidate(candidate: RunConfigurationDetectionCandidate): void;
+  onChooseProvider(provider: "node" | "shell"): void;
+}) {
+  const highConfidence = candidates.filter(
+    ({ confidence }) => confidence === "high",
+  );
+  const recommendedId =
+    highConfidence.length === 1 ? highConfidence[0]!.document.id : null;
+  const available = capabilities.filter(
+    (
+      capability,
+    ): capability is RunConfigurationProviderCapability & {
+      provider: "node" | "shell";
+    } =>
+      capability.available &&
+      (capability.provider === "node" || capability.provider === "shell"),
+  );
+  return (
+    <DialogContent className="max-w-3xl gap-4">
+      <DialogHeader>
+        <DialogTitle>New Run configuration</DialogTitle>
+        <DialogDescription>
+          Review a statically detected project target or start with a typed
+          blank configuration. Nothing is written until you save.
+        </DialogDescription>
+      </DialogHeader>
+      {loading ? (
+        <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" /> Detecting project targets…
+        </div>
+      ) : (
+        <div className="grid gap-5">
+          <section className="grid gap-3">
+            <div>
+              <h3 className="font-medium">Detected targets</h3>
+              <p className="text-xs text-muted-foreground">
+                Detection reads bounded project metadata and never executes
+                project code.
+              </p>
+            </div>
+            {candidates.length ? (
+              <Command className="rounded-lg border">
+                <CommandInput placeholder="Search detected targets…" />
+                <CommandList className="max-h-72">
+                  <CommandEmpty>No matching detected targets.</CommandEmpty>
+                  <CommandGroup>
+                    {candidates.map((candidate) => (
+                      <CommandItem
+                        className="grid gap-2 border-b p-3 last:border-b-0"
+                        key={candidate.document.id}
+                        onSelect={() => onChooseCandidate(candidate)}
+                        value={`${candidate.document.name} ${candidate.provider} ${candidate.effectiveCommand} ${candidate.reason}`}
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <ProviderGlyph provider={candidate.provider} />
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {candidate.document.name}
+                          </span>
+                          {candidate.document.id === recommendedId ? (
+                            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+                              Recommended
+                            </span>
+                          ) : (
+                            <span className="text-[10px] uppercase text-muted-foreground">
+                              {candidate.confidence}
+                            </span>
+                          )}
+                        </div>
+                        <code className="truncate text-xs">
+                          {candidate.effectiveCommand}
+                        </code>
+                        <span className="text-xs text-muted-foreground">
+                          {candidate.reason}
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            ) : (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                No Node/package targets were detected. You can still create a
+                typed Node or Shell configuration.
+              </div>
+            )}
+          </section>
+          <section className="grid gap-3">
+            <h3 className="font-medium">Configuration type</h3>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {available.map((capability) => (
+                <button
+                  className="flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:border-ring hover:bg-muted/40"
+                  key={capability.provider}
+                  onClick={() => onChooseProvider(capability.provider)}
+                  type="button"
+                >
+                  <ProviderGlyph provider={capability.provider} />
+                  <span>
+                    <span className="block font-medium">
+                      {capability.label}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {capability.provider === "shell"
+                        ? "Blank command or script"
+                        : "Package script or Node entrypoint"}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+          {diagnostics.length ? (
+            <InlineAlert tone="warning" title="Detection notes">
+              {diagnostics.join(" ")}
+            </InlineAlert>
+          ) : null}
+          {error ? <InlineAlert error={error} tone="error" /> : null}
+        </div>
+      )}
+      <DialogFooter>
+        <Button onClick={onCancel} type="button" variant="outline">
+          Cancel
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
 }
 
 export function RunConfigurationEditor({
@@ -189,8 +375,11 @@ export function RunConfigurationEditor({
   onOpenChange(open: boolean): void;
   onSaved(entry: RunConfigurationRepositoryEntry): void;
 }) {
-  const [document, setDocument] = useState<RunConfigurationShellDocument>(() =>
+  const [document, setDocument] = useState<RunConfigurationFile>(() =>
     initialDocument(entry),
+  );
+  const [stage, setStage] = useState<"choose" | "edit">(
+    creating ? "choose" : "edit",
   );
   const [expectedRevision, setExpectedRevision] = useState<string | null>(
     entry?.revision ?? null,
@@ -201,6 +390,18 @@ export function RunConfigurationEditor({
   const [errors, setErrors] = useState<string[]>([]);
   const [conflictRevision, setConflictRevision] = useState<string | null>(null);
   const editingRevision = entry?.revision ?? null;
+  const detection = useQuery({
+    enabled: open && creating && stage === "choose",
+    queryKey: ["run-configuration-detection", projectId],
+    queryFn: () => detectRunConfigurations(projectId),
+    staleTime: 5_000,
+  });
+  const capabilities = useQuery({
+    enabled: open && creating && stage === "choose",
+    queryKey: ["run-configuration-capabilities", projectId],
+    queryFn: () => getRunConfigurationCapabilities(projectId),
+    staleTime: 30_000,
+  });
 
   const reload = () => {
     const next = initialDocument(entry);
@@ -209,6 +410,7 @@ export function RunConfigurationEditor({
     setPlatformOverrides(JSON.stringify(next.platformOverrides, null, 2));
     setErrors([]);
     setConflictRevision(null);
+    setStage(creating ? "choose" : "edit");
   };
 
   useEffect(() => {
@@ -224,12 +426,12 @@ export function RunConfigurationEditor({
     expectedRevision !== null &&
     editingRevision !== expectedRevision;
   const effective = useMemo(
-    () => shellRunConfigurationEffectiveCommand(document),
+    () => runConfigurationEffectiveCommand(document),
     [document],
   );
   const save = useMutation({
     mutationFn: async (overwriteRevision?: string) => {
-      const parsed = parseShellRunConfigurationEditorDocument(
+      const parsed = parseRunConfigurationEditorDocument(
         document,
         platformOverrides,
       );
@@ -273,16 +475,65 @@ export function RunConfigurationEditor({
     event.preventDefault();
     save.mutate(undefined);
   };
-  const patchDocument = (patch: Partial<RunConfigurationShellDocument>) =>
-    setDocument((current) => ({ ...current, ...patch }));
+  const patchDocument = (patch: RunConfigurationEditorPatch) =>
+    setDocument(
+      (current) => ({ ...current, ...patch }) as RunConfigurationFile,
+    );
+  const chooseDocument = (next: RunConfigurationFile) => {
+    setDocument(next);
+    setExpectedRevision(null);
+    setPlatformOverrides(JSON.stringify(next.platformOverrides, null, 2));
+    setErrors([]);
+    setConflictRevision(null);
+    setStage("edit");
+  };
+
+  if (creating && stage === "choose") {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <RunConfigurationCreationChooser
+          candidates={detection.data?.candidates ?? []}
+          capabilities={capabilities.data ?? []}
+          diagnostics={
+            detection.data?.diagnostics.map(({ message }) => message) ?? []
+          }
+          error={detection.error ?? capabilities.error ?? null}
+          loading={detection.isLoading || capabilities.isLoading}
+          onCancel={() => onOpenChange(false)}
+          onChooseCandidate={(candidate) =>
+            chooseDocument({
+              ...candidate.document,
+              id: crypto.randomUUID(),
+            } as RunConfigurationFile)
+          }
+          onChooseProvider={(provider) =>
+            chooseDocument(createRunConfigurationDocument(provider))
+          }
+        />
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl gap-4">
         <DialogHeader>
-          <DialogTitle>
-            {entry ? "Edit Run configuration" : "New Run configuration"}
-          </DialogTitle>
+          <div className="flex items-center gap-2">
+            {creating ? (
+              <Button
+                aria-label="Choose another Run configuration type"
+                onClick={() => setStage("choose")}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <ArrowLeft className="size-4" />
+              </Button>
+            ) : null}
+            <DialogTitle>
+              {entry ? "Edit Run configuration" : "New Run configuration"}
+            </DialogTitle>
+          </div>
           <DialogDescription>
             Shared as{" "}
             <code>.cantrip/run-configurations/{document.id}.json</code>.
@@ -324,8 +575,9 @@ export function RunConfigurationEditor({
               </label>
               <label className={fieldClassName}>
                 <span className={labelClassName}>Provider</span>
-                <NativeSelect disabled value="shell">
+                <NativeSelect disabled value={document.provider}>
                   <option value="shell">Shell</option>
+                  <option value="node">Node / package</option>
                 </NativeSelect>
               </label>
               <label className={fieldClassName}>
@@ -345,74 +597,144 @@ export function RunConfigurationEditor({
                   onChange={(event) =>
                     patchDocument({
                       target:
-                        event.target.value === "script"
-                          ? { kind: "script", path: "", interpreter: null }
-                          : { kind: "command", command: "" },
+                        document.provider === "shell"
+                          ? event.target.value === "script"
+                            ? { kind: "script", path: "", interpreter: null }
+                            : { kind: "command", command: "" }
+                          : event.target.value === "entry"
+                            ? { kind: "entry", path: "" }
+                            : { kind: "packageScript", script: "start" },
                     })
                   }
                 >
-                  <option value="command">Command</option>
-                  <option value="script">Script file</option>
+                  {document.provider === "shell" ? (
+                    <>
+                      <option value="command">Command</option>
+                      <option value="script">Script file</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="packageScript">Package script</option>
+                      <option value="entry">Node entrypoint</option>
+                    </>
+                  )}
                 </NativeSelect>
               </label>
             </div>
-            {document.target.kind === "command" ? (
+            {document.provider === "shell" ? (
+              document.target.kind === "command" ? (
+                <label className={fieldClassName}>
+                  <span className={labelClassName}>Run command</span>
+                  <Input
+                    className="font-mono"
+                    placeholder="pnpm dev"
+                    value={document.target.command}
+                    onChange={(event) =>
+                      patchDocument({
+                        target: {
+                          kind: "command",
+                          command: event.target.value,
+                        },
+                      })
+                    }
+                  />
+                </label>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>Script path</span>
+                    <Input
+                      className="font-mono"
+                      placeholder="tool/run.sh"
+                      value={document.target.path}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "shell" &&
+                          current.target.kind === "script"
+                            ? {
+                                ...current,
+                                target: {
+                                  ...current.target,
+                                  path: event.target.value,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>
+                      Interpreter (optional)
+                    </span>
+                    <Input
+                      className="font-mono"
+                      placeholder="bash"
+                      value={document.target.interpreter ?? ""}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "shell" &&
+                          current.target.kind === "script"
+                            ? {
+                                ...current,
+                                target: {
+                                  ...current.target,
+                                  interpreter: event.target.value || null,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              )
+            ) : document.target.kind === "packageScript" ? (
               <label className={fieldClassName}>
-                <span className={labelClassName}>Run command</span>
+                <span className={labelClassName}>Package script</span>
                 <Input
                   className="font-mono"
-                  placeholder="pnpm dev"
-                  value={document.target.command}
+                  placeholder="start"
+                  value={document.target.script}
                   onChange={(event) =>
-                    patchDocument({
-                      target: { kind: "command", command: event.target.value },
-                    })
+                    setDocument((current) =>
+                      current.provider === "node" &&
+                      current.target.kind === "packageScript"
+                        ? {
+                            ...current,
+                            target: {
+                              kind: "packageScript",
+                              script: event.target.value,
+                            },
+                          }
+                        : current,
+                    )
                   }
                 />
               </label>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className={fieldClassName}>
-                  <span className={labelClassName}>Script path</span>
-                  <Input
-                    className="font-mono"
-                    placeholder="tool/run.sh"
-                    value={document.target.path}
-                    onChange={(event) =>
-                      patchDocument({
-                        target: {
-                          kind: "script",
-                          path: event.target.value,
-                          interpreter:
-                            document.target.kind === "script"
-                              ? document.target.interpreter
-                              : null,
-                        },
-                      })
-                    }
-                  />
-                </label>
-                <label className={fieldClassName}>
-                  <span className={labelClassName}>Interpreter (optional)</span>
-                  <Input
-                    className="font-mono"
-                    placeholder="bash"
-                    value={document.target.interpreter ?? ""}
-                    onChange={(event) =>
-                      patchDocument({
-                        target: {
-                          kind: "script",
-                          path:
-                            document.target.kind === "script"
-                              ? document.target.path
-                              : "",
-                          interpreter: event.target.value || null,
-                        },
-                      })
-                    }
-                  />
-                </label>
-              </div>
+              <label className={fieldClassName}>
+                <span className={labelClassName}>Entrypoint path</span>
+                <Input
+                  className="font-mono"
+                  placeholder="src/index.js"
+                  value={document.target.path}
+                  onChange={(event) =>
+                    setDocument((current) =>
+                      current.provider === "node" &&
+                      current.target.kind === "entry"
+                        ? {
+                            ...current,
+                            target: {
+                              kind: "entry",
+                              path: event.target.value,
+                            },
+                          }
+                        : current,
+                    )
+                  }
+                />
+              </label>
             )}
             <label className={fieldClassName}>
               <span className={labelClassName}>
@@ -542,20 +864,28 @@ export function RunConfigurationEditor({
                       beforeLaunch: document.beforeLaunch.map(
                         (item, itemIndex) =>
                           itemIndex === index
-                            ? {
-                                kind: "command",
-                                command: "",
-                                workingDirectory: ".",
-                              }
+                            ? event.target.value === "providerTask" &&
+                              document.provider === "node"
+                              ? { kind: "providerTask", task: "build" }
+                              : {
+                                  kind: "command",
+                                  command: "",
+                                  workingDirectory: ".",
+                                }
                             : item,
                       ),
                     })
                   }
                 >
                   <option value="command">Command</option>
-                  {step.kind === "providerTask" ? (
-                    <option disabled value="providerTask">
-                      Provider task (unsupported)
+                  {document.provider === "node" ||
+                  step.kind === "providerTask" ? (
+                    <option
+                      disabled={document.provider !== "node"}
+                      value="providerTask"
+                    >
+                      Provider task
+                      {document.provider !== "node" ? " (unsupported)" : ""}
                     </option>
                   ) : null}
                 </NativeSelect>
@@ -596,8 +926,17 @@ export function RunConfigurationEditor({
                     }
                   />
                 ) : (
-                  <span className="flex items-center text-xs text-destructive">
-                    Change this step to Command or remove it.
+                  <span
+                    className={cn(
+                      "flex items-center text-xs",
+                      document.provider === "node"
+                        ? "text-muted-foreground"
+                        : "text-destructive",
+                    )}
+                  >
+                    {document.provider === "node"
+                      ? "Runs a package script in the start directory."
+                      : "Change this step to Command or remove it."}
                   </span>
                 )}
                 <Button
@@ -638,44 +977,120 @@ export function RunConfigurationEditor({
           <section className="grid gap-3 rounded-lg border p-4">
             <h3 className="font-medium">Execution options</h3>
             <div className="grid gap-3 sm:grid-cols-3">
-              <label className={fieldClassName}>
-                <span className={labelClassName}>Shell</span>
-                <NativeSelect
-                  value={document.options.shell}
-                  onChange={(event) =>
-                    patchDocument({
-                      options: {
-                        ...document.options,
-                        shell: event.target
-                          .value as RunConfigurationShellDocument["options"]["shell"],
-                      },
-                    })
-                  }
-                >
-                  {["automatic", "powershell", "cmd", "sh", "bash", "zsh"].map(
-                    (shell) => (
-                      <option key={shell} value={shell}>
-                        {shell}
-                      </option>
-                    ),
-                  )}
-                </NativeSelect>
-              </label>
-              <label className="flex items-end gap-2 pb-2 text-sm">
-                <input
-                  checked={document.options.login}
-                  onChange={(event) =>
-                    patchDocument({
-                      options: {
-                        ...document.options,
-                        login: event.target.checked,
-                      },
-                    })
-                  }
-                  type="checkbox"
-                />{" "}
-                Login shell
-              </label>
+              {document.provider === "shell" ? (
+                <>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>Shell</span>
+                    <NativeSelect
+                      value={document.options.shell}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "shell"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  shell: event.target
+                                    .value as RunConfigurationShellDocument["options"]["shell"],
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    >
+                      {[
+                        "automatic",
+                        "powershell",
+                        "cmd",
+                        "sh",
+                        "bash",
+                        "zsh",
+                      ].map((shell) => (
+                        <option key={shell} value={shell}>
+                          {shell}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </label>
+                  <label className="flex items-end gap-2 pb-2 text-sm">
+                    <input
+                      checked={document.options.login}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "shell"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  login: event.target.checked,
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                      type="checkbox"
+                    />{" "}
+                    Login shell
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>Package manager</span>
+                    <NativeSelect
+                      value={document.options.packageManager}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "node"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  packageManager: event.target
+                                    .value as RunConfigurationNodeDocument["options"]["packageManager"],
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    >
+                      {[
+                        ["npm", "npm"],
+                        ["pnpm", "pnpm"],
+                        ["yarn", "Yarn"],
+                        ["bun", "Bun"],
+                      ].map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </label>
+                  <label className={fieldClassName}>
+                    <span className={labelClassName}>Runtime</span>
+                    <NativeSelect
+                      value={document.options.runtime}
+                      onChange={(event) =>
+                        setDocument((current) =>
+                          current.provider === "node"
+                            ? {
+                                ...current,
+                                options: {
+                                  ...current.options,
+                                  runtime: event.target
+                                    .value as RunConfigurationNodeDocument["options"]["runtime"],
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    >
+                      <option value="node">Node.js</option>
+                      <option value="bun">Bun</option>
+                    </NativeSelect>
+                  </label>
+                </>
+              )}
               <label className={fieldClassName}>
                 <span className={labelClassName}>
                   Stop grace (milliseconds)
@@ -693,6 +1108,25 @@ export function RunConfigurationEditor({
                 />
               </label>
             </div>
+            {document.provider === "node" ? (
+              <div className="grid gap-2">
+                <span className={labelClassName}>Runtime arguments</span>
+                <StringListEditor
+                  addLabel="Add runtime argument"
+                  values={document.options.runtimeArguments}
+                  onChange={(runtimeArguments) =>
+                    setDocument((current) =>
+                      current.provider === "node"
+                        ? {
+                            ...current,
+                            options: { ...current.options, runtimeArguments },
+                          }
+                        : current,
+                    )
+                  }
+                />
+              </div>
+            ) : null}
             <label className={fieldClassName}>
               <span className={labelClassName}>
                 Platform overrides (advanced JSON)

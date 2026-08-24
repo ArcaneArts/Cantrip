@@ -115,7 +115,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "9a9633bf3c2c3475f83bdce4f3d0a6e327619cf54aa2cfa74b0cfbea4b85aa34",
+    "a55a0a6d756b51e505049bb9315023c4b27510d9eb5f201ba28901b8d3d7c94a",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:
@@ -123,7 +123,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "a02279408c3c49838d1b824ae39326f71cfb3f52e9c0ba0f606d478e7832bd15",
   workerCommands:
-    "a7eca83e2f0a006a016feb1a81a0edf9bd4e03d12497885265defa51a5c8c753",
+    "b2374dbba4d1f53cd912524d1e5bfbafa1276bd63a0afa376d2f333685293cca",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -4004,6 +4004,19 @@ function durableTableContentInventory(schemaText) {
 
 function applicationRouteContentClassification(route) {
   const key = `${route.method} ${route.path}`;
+  if (route.path === "/api/run-configuration-runtimes/output") {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "bounded volatile Run output protected for its exact operation",
+    };
+  }
+  if (/^\/api\/run-configuration-runtimes\//u.test(route.path)) {
+    return {
+      classification: "intentionally-public-control-plane",
+      rationale: "revision- and generation-bound Run lifecycle metadata",
+    };
+  }
   if (/\/run-configurations(?:\/|$)/u.test(route.path)) {
     return {
       classification: "intentionally-public-control-plane",

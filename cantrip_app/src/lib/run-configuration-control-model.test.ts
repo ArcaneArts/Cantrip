@@ -135,4 +135,39 @@ describe("Run configuration control model", () => {
       reason: "Worker is offline.",
     });
   });
+
+  it("indexes structured Node targets by their generated command", () => {
+    const id = "00000000-0000-4000-8000-000000000004";
+    const shell = entry(id, "Web", "unused");
+    const inventory = {
+      directory: ".cantrip/run-configurations",
+      diagnostics: [],
+      entries: [
+        {
+          ...shell,
+          document: {
+            ...shell.document,
+            provider: "node" as const,
+            target: { kind: "packageScript" as const, script: "dev" },
+            options: {
+              packageManager: "pnpm" as const,
+              runtime: "node" as const,
+              runtimeArguments: [],
+            },
+          },
+        },
+      ],
+    } satisfies RunConfigurationRepositoryInventory;
+    const model = buildRunConfigurationControlModel({
+      inventory,
+      runtimes: [],
+      workers: [worker],
+      worktrees: [primary],
+    });
+    expect(model.configurations[0]).toMatchObject({
+      provider: "node",
+      targetLabel: "pnpm run dev",
+    });
+    expect(model.configurations[0]?.searchValue).toContain("pnpm run dev");
+  });
 });

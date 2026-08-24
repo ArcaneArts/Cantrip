@@ -116,6 +116,7 @@ import {
 import {
   runConfigurationCapabilitiesWorkerCommandSchema,
   runConfigurationDefinitionChangeNotificationSchema,
+  runConfigurationDetectWorkerCommandSchema,
   runConfigurationDeleteWorkerCommandSchema,
   runConfigurationGetWorkerCommandSchema,
   runConfigurationListWorkerCommandSchema,
@@ -12332,6 +12333,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   runConfigurationCapabilitiesWorkerCommandSchema.extend({
     type: z.literal("project.run-configuration-definitions.capabilities"),
+  }),
+  runConfigurationDetectWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-definitions.detect"),
   }),
   runConfigurationWriteWorkerCommandSchema.extend({
     type: z.literal("project.run-configuration-definitions.write"),

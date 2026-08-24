@@ -49,6 +49,11 @@ export function runConfigurationTargetLabel(
   document: NonNullable<RunConfigurationRepositoryEntry["document"]>,
 ): string {
   if (document.commandOverride) return document.commandOverride;
+  if (document.provider === "node") {
+    return document.target.kind === "packageScript"
+      ? `${document.options.packageManager} run ${document.target.script}`
+      : `${document.options.runtime} ${document.target.path}`;
+  }
   return document.target.kind === "command"
     ? document.target.command
     : `${document.target.interpreter ? `${document.target.interpreter} ` : ""}${document.target.path}`;

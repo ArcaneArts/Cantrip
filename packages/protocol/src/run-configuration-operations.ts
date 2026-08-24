@@ -3,8 +3,11 @@ import { z } from "zod";
 import {
   runConfigurationDeleteRequestSchema,
   runConfigurationDeleteResultSchema,
+  runConfigurationDetectionCandidateSchema,
+  runConfigurationDiagnosticSchema,
   runConfigurationIdSchema,
   runConfigurationProviderCapabilitySchema,
+  runConfigurationProviderKindSchema,
   runConfigurationReadResultSchema,
   runConfigurationRepositoryChangeSchema,
   runConfigurationRepositoryInventorySchema,
@@ -46,6 +49,14 @@ export const runConfigurationCapabilitiesWorkerCommandSchema = z
   })
   .strict();
 
+export const runConfigurationDetectWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-definitions.detect"),
+    ...runConfigurationWorkerContextFields,
+    providerKind: runConfigurationProviderKindSchema.nullable().default(null),
+  })
+  .strict();
+
 export const runConfigurationWriteWorkerCommandSchema = z
   .object({
     type: z.literal("project.run-configuration-definitions.write"),
@@ -66,6 +77,7 @@ export const runConfigurationDefinitionWorkerCommandSchemas = [
   runConfigurationListWorkerCommandSchema,
   runConfigurationGetWorkerCommandSchema,
   runConfigurationCapabilitiesWorkerCommandSchema,
+  runConfigurationDetectWorkerCommandSchema,
   runConfigurationWriteWorkerCommandSchema,
   runConfigurationDeleteWorkerCommandSchema,
 ] as const;
@@ -111,6 +123,15 @@ export const runConfigurationCapabilitiesResponseSchema = z
   })
   .strict();
 
+export const runConfigurationDetectResponseSchema = z
+  .object({
+    operation: z.literal("detect"),
+    ...runConfigurationOperationContextFields,
+    candidates: z.array(runConfigurationDetectionCandidateSchema).max(128),
+    diagnostics: z.array(runConfigurationDiagnosticSchema).max(200),
+  })
+  .strict();
+
 export const runConfigurationWriteResponseSchema = z
   .object({
     operation: z.literal("write"),
@@ -133,6 +154,7 @@ export const runConfigurationOperationResponseSchema = z.discriminatedUnion(
     runConfigurationListResponseSchema,
     runConfigurationGetResponseSchema,
     runConfigurationCapabilitiesResponseSchema,
+    runConfigurationDetectResponseSchema,
     runConfigurationWriteResponseSchema,
     runConfigurationDeleteResponseSchema,
   ],
@@ -149,6 +171,13 @@ export const runConfigurationDefinitionChangeNotificationSchema = z
 
 export const runConfigurationListQuerySchema = z
   .object({ operationId: runConfigurationOperationIdSchema })
+  .strict();
+
+export const runConfigurationDetectQuerySchema = z
+  .object({
+    operationId: runConfigurationOperationIdSchema,
+    provider: runConfigurationProviderKindSchema.optional(),
+  })
   .strict();
 
 export const runConfigurationApiWriteRequestSchema = z

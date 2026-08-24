@@ -75,7 +75,7 @@ type ShellPlatformOverride = NonNullable<
   RunConfigurationShellDocument["platformOverrides"]["win32"]
 >;
 
-function diagnostic(
+export function runConfigurationProviderDiagnostic(
   code: string,
   message: string,
   field: string,
@@ -97,7 +97,7 @@ function isInside(root: string, candidate: string): boolean {
   );
 }
 
-async function resolveRealDirectory(
+export async function resolveRealDirectory(
   targetRoot: string,
   relativeDirectory: string,
 ): Promise<string> {
@@ -125,7 +125,7 @@ async function resolveRealDirectory(
   return canonical;
 }
 
-async function validateRealScript(
+export async function validateRealScript(
   targetRoot: string,
   relativePath: string,
 ): Promise<string> {
@@ -259,17 +259,25 @@ function targetCommand(
   );
 }
 
-function shellInvocation(
+export interface RunConfigurationShellInvocationOptions {
+  login: boolean;
+  shell: RunConfigurationShellDocument["options"]["shell"];
+}
+
+export function shellCommandInvocation(
   command: string,
-  resolved: Pick<ResolvedShellConfiguration, "login" | "shell">,
   context: RunConfigurationProviderContext,
+  options: RunConfigurationShellInvocationOptions = {
+    shell: "automatic",
+    login: true,
+  },
 ): Pick<MaterializedRunCommand, "arguments" | "executable"> {
   const selected =
-    resolved.shell === "automatic"
+    options.shell === "automatic"
       ? context.platform === "win32"
         ? "powershell"
         : context.defaultShell || "/bin/sh"
-      : resolved.shell;
+      : options.shell;
 
   if (selected === "powershell") {
     if (context.platform !== "win32") {
@@ -302,8 +310,16 @@ function shellInvocation(
   }
   return {
     executable: selected,
-    arguments: [resolved.login ? "-lc" : "-c", command],
+    arguments: [options.login ? "-lc" : "-c", command],
   };
+}
+
+function shellInvocation(
+  command: string,
+  resolved: Pick<ResolvedShellConfiguration, "login" | "shell">,
+  context: RunConfigurationProviderContext,
+): Pick<MaterializedRunCommand, "arguments" | "executable"> {
+  return shellCommandInvocation(command, context, resolved);
 }
 
 async function materializeBeforeLaunch(
@@ -377,7 +393,7 @@ export const shellRunConfigurationProvider: RunConfigurationProvider<RunConfigur
         );
       } catch (error) {
         diagnostics.push(
-          diagnostic(
+          runConfigurationProviderDiagnostic(
             "working-directory-invalid",
             error instanceof Error ? error.message : String(error),
             "workingDirectory",
@@ -392,7 +408,7 @@ export const shellRunConfigurationProvider: RunConfigurationProvider<RunConfigur
           await validateRealScript(context.targetRoot, parsed.target.path);
         } catch (error) {
           diagnostics.push(
-            diagnostic(
+            runConfigurationProviderDiagnostic(
               "script-invalid",
               error instanceof Error ? error.message : String(error),
               "target.path",
@@ -404,7 +420,7 @@ export const shellRunConfigurationProvider: RunConfigurationProvider<RunConfigur
         const step = parsed.beforeLaunch[index]!;
         if (step.kind === "providerTask") {
           diagnostics.push(
-            diagnostic(
+            runConfigurationProviderDiagnostic(
               "provider-task-unsupported",
               "Shell Run configurations do not support provider before-launch tasks.",
               "beforeLaunch[" + index + "]",
@@ -416,7 +432,7 @@ export const shellRunConfigurationProvider: RunConfigurationProvider<RunConfigur
           await resolveRealDirectory(context.targetRoot, step.workingDirectory);
         } catch (error) {
           diagnostics.push(
-            diagnostic(
+            runConfigurationProviderDiagnostic(
               "before-launch-directory-invalid",
               error instanceof Error ? error.message : String(error),
               "beforeLaunch[" + index + "].workingDirectory",
@@ -432,7 +448,7 @@ export const shellRunConfigurationProvider: RunConfigurationProvider<RunConfigur
         );
       } catch (error) {
         diagnostics.push(
-          diagnostic(
+          runConfigurationProviderDiagnostic(
             "shell-unavailable",
             error instanceof Error ? error.message : String(error),
             "options.shell",
