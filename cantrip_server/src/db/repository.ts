@@ -10471,15 +10471,16 @@ export class ServerRepository {
   async deleteRunConfigurationRuntimes(
     ownerId: string,
     projectId: string,
-    configurationId: string,
+    runtimeIds: readonly string[],
   ): Promise<number> {
+    if (runtimeIds.length === 0) return 0;
     const rows = await this.database
       .delete(schema.runConfigurationRuntimes)
       .where(
         and(
           eq(schema.runConfigurationRuntimes.ownerId, ownerId),
           eq(schema.runConfigurationRuntimes.projectId, projectId),
-          eq(schema.runConfigurationRuntimes.configurationId, configurationId),
+          inArray(schema.runConfigurationRuntimes.id, [...runtimeIds]),
           sql`${schema.runConfigurationRuntimes.state} NOT IN ('starting', 'running', 'restarting', 'stopping')`,
         ),
       )
@@ -10966,6 +10967,7 @@ export class ServerRepository {
             and(
               eq(schema.terminals.worktreeId, worktreeId),
               eq(schema.terminals.status, "running"),
+              ne(schema.terminals.kind, "run-configuration"),
             ),
           ),
         this.database

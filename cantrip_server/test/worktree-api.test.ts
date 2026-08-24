@@ -129,6 +129,9 @@ const runConfigurationDefinitionCommands: Array<
     { type: "project.run-configuration-definitions.write" }
   >
 > = [];
+const runConfigurationStopCommands: Array<
+  Extract<WorkerCommand, { type: "project.run-configuration-runtime.stop" }>
+> = [];
 const gitPatchPreviewCommands: Array<
   Extract<WorkerCommand, { type: "git.patch.preview" }>
 > = [];
@@ -700,6 +703,20 @@ const workerBridge = {
               document: command.request.document,
               diagnostics: [],
             },
+          },
+        };
+      case "project.run-configuration-runtime.stop":
+        runConfigurationStopCommands.push(command);
+        return {
+          outcome: "accepted",
+          observation: {
+            ...command.identity,
+            state: "idle",
+            startedAt: "2026-08-24T02:00:00.000Z",
+            endedAt: "2026-08-24T02:01:00.000Z",
+            exitCode: null,
+            signal: "SIGTERM",
+            failure: null,
           },
         };
       case "worktree.create": {
@@ -5536,6 +5553,123 @@ describe.sequential("server worktree control plane", () => {
         })
       ).statusCode,
     ).toBe(409);
+  });
+
+  it("retires an active Run instance instead of treating it as a worktree removal blocker", async () => {
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees`,
+      payload: {
+        name: "run-removal",
+        mode: {
+          type: "newBranch",
+          branch: "run-removal",
+          startPoint: "main",
+        },
+      },
+    });
+    expect(createdResponse.statusCode, createdResponse.body).toBe(201);
+    const worktree = projectWorktreeSummarySchema.parse(createdResponse.json());
+    const ordinaryTerminal = await database.repository.createTerminal(
+      LOCAL_USER_ID,
+      projectId,
+      { ...protectedTerminalFields(), worktreeId: worktree.id },
+    );
+    if (!ordinaryTerminal) throw new Error("Expected an ordinary terminal.");
+    await database.repository.setTerminalStatus(ordinaryTerminal.id, "running");
+    expect(
+      await database.repository.getWorktreeRemovalBlockers(
+        LOCAL_USER_ID,
+        projectId,
+        worktree.id,
+      ),
+    ).toMatchObject({ runningTerminalIds: [ordinaryTerminal.id] });
+    await database.repository.setTerminalStatus(ordinaryTerminal.id, "exited");
+    const requested =
+      await database.repository.requestRunConfigurationRuntimeOperation(
+        LOCAL_USER_ID,
+        {
+          operation: "start",
+          operationId: randomUUID(),
+          projectId,
+          configurationId: randomUUID(),
+          worktreeId: worktree.id,
+          workerId: "test-worker",
+          definitionRevision: "f".repeat(64),
+          codexEnvironmentRevision: null,
+        },
+      );
+    if (!requested.runtime) throw new Error("Expected an active runtime.");
+    await database.repository.applyRunConfigurationRuntimeObservation(
+      LOCAL_USER_ID,
+      "test-worker",
+      {
+        runtimeId: requested.runtime.id,
+        projectId,
+        configurationId: requested.runtime.configurationId,
+        worktreeId: worktree.id,
+        workerId: "test-worker",
+        definitionRevision: requested.runtime.definitionRevision,
+        codexEnvironmentRevision: requested.runtime.codexEnvironmentRevision,
+        generation: requested.runtime.generation,
+        operationId: requested.runtime.requestedOperationId,
+        terminalId: requested.runtime.terminalId!,
+        state: "running",
+        startedAt: "2026-08-24T02:00:00.000Z",
+        endedAt: null,
+        exitCode: null,
+        signal: null,
+        failure: null,
+      },
+    );
+    expect(
+      await database.repository.getWorktreeRemovalBlockers(
+        LOCAL_USER_ID,
+        projectId,
+        worktree.id,
+      ),
+    ).toMatchObject({ runningTerminalIds: [] });
+
+    const stopsBefore = runConfigurationStopCommands.length;
+    connected = false;
+    const offlineRemoval = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/worktrees/${worktree.id}`,
+    });
+    expect(offlineRemoval.statusCode).toBe(503);
+    expect(runConfigurationStopCommands).toHaveLength(stopsBefore);
+    expect(
+      await database.repository.getRunConfigurationRuntime(
+        LOCAL_USER_ID,
+        projectId,
+        requested.runtime.configurationId,
+        worktree.id,
+      ),
+    ).toMatchObject({ state: "running" });
+
+    connected = true;
+    const removed = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/worktrees/${worktree.id}`,
+    });
+    expect(removed.statusCode, removed.body).toBe(200);
+    expect(projectWorktreeSummarySchema.parse(removed.json())).toMatchObject({
+      id: worktree.id,
+      lifecycleState: "missing",
+    });
+    expect(runConfigurationStopCommands.slice(stopsBefore)).toEqual([
+      expect.objectContaining({
+        identity: expect.objectContaining({ runtimeId: requested.runtime.id }),
+      }),
+    ]);
+    expect(
+      await database.repository.getRunConfigurationRuntime(
+        LOCAL_USER_ID,
+        projectId,
+        requested.runtime.configurationId,
+        worktree.id,
+      ),
+    ).toBeNull();
   });
 
   it("blocks removal while a chat, lease, or terminal is active", async () => {

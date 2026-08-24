@@ -6181,6 +6181,11 @@ export async function buildApp({
         const removed = await worktreeCoordinator.serialize(
           context.projectId,
           async () => {
+            await retireRunConfigurationRuntimes(
+              applicationOwnerId(),
+              context.projectId,
+              { worktreeId },
+            );
             const result = worktreeRemoveResultSchema.parse(
               await bridge.request(target.workerId, {
                 type: "worktree.remove",
@@ -6413,135 +6418,134 @@ export async function buildApp({
   const retireRunConfigurationRuntimes = async (
     ownerId: string,
     projectId: string,
-    configurationId: string,
+    filter: { configurationId?: string; worktreeId?: string } = {},
   ): Promise<void> => {
-    const runtimes = await repository.listRunConfigurationRuntimes(
-      ownerId,
-      projectId,
-      { configurationId, limit: 256 },
-    );
-    for (const current of runtimes) {
-      if (
-        ["starting", "running", "restarting", "stopping"].includes(
-          current.state,
-        )
-      ) {
-        const target = await resolveRunConfigurationRuntimeTarget(
-          ownerId,
-          projectId,
-          current.worktreeId,
-        );
-        const operationId = randomUUID();
-        const durable =
-          await repository.requestRunConfigurationRuntimeOperation(ownerId, {
-            operationId,
-            projectId,
-            configurationId,
-            worktreeId: target.worktree.id,
-            workerId: target.workerId,
-            operation: "stop",
-            definitionRevision: null,
-            codexEnvironmentRevision: null,
-          });
-        const stopping = durable.runtime;
-        if (!stopping?.terminalId) {
-          throw new ExecutionLaneConflictError(
-            "An active Run configuration instance lost its terminal binding.",
-          );
-        }
-        const identity = {
-          runtimeId: stopping.id,
-          projectId: stopping.projectId,
-          configurationId: stopping.configurationId,
-          worktreeId: stopping.worktreeId,
-          workerId: stopping.workerId,
-          definitionRevision: stopping.definitionRevision,
-          codexEnvironmentRevision: stopping.codexEnvironmentRevision,
-          generation: stopping.generation,
-          operationId: stopping.requestedOperationId,
-          terminalId: stopping.terminalId,
-        };
-        const workerResult =
-          runConfigurationRuntimeWorkerOperationResultSchema.parse(
-            await bridge.request(
-              target.workerId,
-              {
-                type: "project.run-configuration-runtime.stop",
-                identity,
-              },
-              { timeoutMs: 30_000 },
-            ),
-          );
-        if (
-          !["accepted", "replayed"].includes(workerResult.outcome) ||
-          !workerResult.observation
-        ) {
-          throw new ExecutionLaneConflictError(
-            "The worker could not stop a Run configuration instance before deletion.",
-          );
-        }
-        const applied =
-          await repository.applyRunConfigurationRuntimeObservation(
-            ownerId,
-            target.workerId,
-            workerResult.observation,
-          );
-        if (!applied?.applied || applied.reason === "invalid-transition") {
-          throw new ExecutionLaneConflictError(
-            "The stopped Run configuration instance could not be reconciled before deletion.",
-          );
-        }
+    while (true) {
+      const runtimes = await repository.listRunConfigurationRuntimes(
+        ownerId,
+        projectId,
+        { ...filter, limit: 256 },
+      );
+      if (runtimes.length === 0) return;
+      for (const current of runtimes) {
         if (
           ["starting", "running", "restarting", "stopping"].includes(
-            applied.runtime.state,
+            current.state,
           )
         ) {
+          if (!bridge.isConnected(current.workerId)) {
+            throw new WorkerUnavailableError(
+              "Every active Run configuration worker must be online before deletion.",
+            );
+          }
+          const target = await resolveRunConfigurationRuntimeTarget(
+            ownerId,
+            projectId,
+            current.worktreeId,
+          );
+          const operationId = randomUUID();
+          const durable =
+            await repository.requestRunConfigurationRuntimeOperation(ownerId, {
+              operationId,
+              projectId,
+              configurationId: current.configurationId,
+              worktreeId: target.worktree.id,
+              workerId: target.workerId,
+              operation: "stop",
+              definitionRevision: null,
+              codexEnvironmentRevision: null,
+            });
+          const stopping = durable.runtime;
+          if (!stopping?.terminalId) {
+            throw new ExecutionLaneConflictError(
+              "An active Run configuration instance lost its terminal binding.",
+            );
+          }
+          const identity = {
+            runtimeId: stopping.id,
+            projectId: stopping.projectId,
+            configurationId: stopping.configurationId,
+            worktreeId: stopping.worktreeId,
+            workerId: stopping.workerId,
+            definitionRevision: stopping.definitionRevision,
+            codexEnvironmentRevision: stopping.codexEnvironmentRevision,
+            generation: stopping.generation,
+            operationId: stopping.requestedOperationId,
+            terminalId: stopping.terminalId,
+          };
+          const workerResult =
+            runConfigurationRuntimeWorkerOperationResultSchema.parse(
+              await bridge.request(
+                target.workerId,
+                {
+                  type: "project.run-configuration-runtime.stop",
+                  identity,
+                },
+                { timeoutMs: 30_000 },
+              ),
+            );
+          if (
+            !["accepted", "replayed"].includes(workerResult.outcome) ||
+            !workerResult.observation
+          ) {
+            throw new ExecutionLaneConflictError(
+              "The worker could not stop a Run configuration instance before deletion.",
+            );
+          }
+          const applied =
+            await repository.applyRunConfigurationRuntimeObservation(
+              ownerId,
+              target.workerId,
+              workerResult.observation,
+            );
+          if (!applied?.applied || applied.reason === "invalid-transition") {
+            throw new ExecutionLaneConflictError(
+              "The stopped Run configuration instance could not be reconciled before deletion.",
+            );
+          }
+          if (
+            ["starting", "running", "restarting", "stopping"].includes(
+              applied.runtime.state,
+            )
+          ) {
+            throw new ExecutionLaneConflictError(
+              "The Run configuration instance remained active after its stop request.",
+            );
+          }
+          await updateTerminalStatus(applied.runtime.terminalId!, "exited");
+          publishLiveInvalidation("run", {
+            projectId,
+            entityId: applied.runtime.id,
+          });
+        }
+      }
+      for (const runtime of runtimes) {
+        if (!runtime.terminalId) continue;
+        const deleted = await repository.deleteTerminal(
+          ownerId,
+          runtime.terminalId,
+        );
+        if (!deleted) {
           throw new ExecutionLaneConflictError(
-            "The Run configuration instance remained active after its stop request.",
+            "A Run configuration terminal changed before deletion.",
           );
         }
-        await updateTerminalStatus(applied.runtime.terminalId!, "exited");
-        publishLiveInvalidation("run", {
+        publishLiveInvalidation("terminal", {
+          entityId: runtime.terminalId,
           projectId,
-          entityId: applied.runtime.id,
         });
       }
-    }
-    for (const runtime of runtimes) {
-      if (!runtime.terminalId) continue;
-      const deleted = await repository.deleteTerminal(
+      const deleted = await repository.deleteRunConfigurationRuntimes(
         ownerId,
-        runtime.terminalId,
+        projectId,
+        runtimes.map(({ id }) => id),
       );
-      if (!deleted) {
+      if (deleted !== runtimes.length) {
         throw new ExecutionLaneConflictError(
-          "A Run configuration terminal changed before deletion.",
+          "A Run configuration instance became active during deletion.",
         );
       }
-      publishLiveInvalidation("terminal", {
-        entityId: runtime.terminalId,
-        projectId,
-      });
     }
-    const remaining = await repository.listRunConfigurationRuntimes(
-      ownerId,
-      projectId,
-      { configurationId, limit: 1 },
-    );
-    if (
-      remaining.some(({ state }) =>
-        ["starting", "running", "restarting", "stopping"].includes(state),
-      )
-    ) {
-      throw new ExecutionLaneConflictError(
-        "A Run configuration instance became active during deletion.",
-      );
-    }
-    await repository.deleteRunConfigurationRuntimes(
-      ownerId,
-      projectId,
-      configurationId,
-    );
   };
 
   const listRunConfigurationDefinitions = async (
@@ -6739,7 +6743,9 @@ export async function buildApp({
             source,
           };
         }
-        await retireRunConfigurationRuntimes(ownerId, projectId, id);
+        await retireRunConfigurationRuntimes(ownerId, projectId, {
+          configurationId: id,
+        });
         const result = runConfigurationDeleteResponseSchema.parse(
           await bridge.request(source.workerId, {
             type: "project.run-configuration-definitions.delete",
@@ -19331,6 +19337,11 @@ export async function buildApp({
                 "Stop active chats and terminals, release chat and workflow leases, and retarget or delete bound Code tabs before removal.",
               );
             }
+            await retireRunConfigurationRuntimes(
+              applicationOwnerId(),
+              request.params.projectId,
+              { worktreeId: request.params.worktreeId },
+            );
             const previousState = context.worktree.lifecycleState;
             await repository.setProjectWorktreeLifecycle(
               applicationOwnerId(),
@@ -21960,146 +21971,164 @@ export async function buildApp({
         applicationOwnerId(),
       );
       try {
-        if (input.data.deleteLocalFiles) {
-          if (
-            context.originKind === "managed-folder" &&
-            context.folderManagement === "external"
-          ) {
-            return reply.code(409).send({
-              code: "external-folder-delete-forbidden",
-              error:
-                "Cantrip does not own this attached folder. Remove the project without deleting local files.",
-            });
-          }
-          if (context.originKind === "managed-folder") {
-            const workerId =
-              context.replicas[0]?.workerId ?? context.preferredWorkerId;
-            if (!workerId) {
-              return reply.code(409).send({
-                error: "The folder project no longer has an owning worker.",
-              });
-            }
-            const worker = await repository.getWorker(
-              applicationOwnerId(),
-              workerId,
-            );
-            if (!worker?.managedFolders.remove) {
-              return reply.code(409).send({
-                code: "managed-folder-capability-unavailable",
-                error:
-                  "The owning worker does not support safe managed folder deletion.",
-              });
-            }
-            if (!bridge.isConnected(workerId)) {
-              return reply.code(503).send({
-                error:
-                  "The owning worker must be online before deleting local folder files.",
-              });
-            }
-          } else {
-            const managedFolderSource =
-              context.convertedManagedFolderSource?.localFilesDeleted === false
-                ? context.convertedManagedFolderSource
-                : null;
-            if (managedFolderSource) {
-              const worker = await repository.getWorker(
-                applicationOwnerId(),
-                managedFolderSource.workerId,
-              );
-              if (!worker?.managedFolders.remove) {
+        const removed = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          async () => {
+            if (input.data.deleteLocalFiles) {
+              if (
+                context.originKind === "managed-folder" &&
+                context.folderManagement === "external"
+              ) {
                 return reply.code(409).send({
-                  code: "managed-folder-capability-unavailable",
+                  code: "external-folder-delete-forbidden",
                   error:
-                    "The converted folder's worker does not support safe managed folder deletion.",
+                    "Cantrip does not own this attached folder. Remove the project without deleting local files.",
                 });
               }
-              if (!bridge.isConnected(managedFolderSource.workerId)) {
-                return reply.code(503).send({
-                  error:
-                    "The converted folder's worker must be online before deleting its local files.",
-                });
+              if (context.originKind === "managed-folder") {
+                const workerId =
+                  context.replicas[0]?.workerId ?? context.preferredWorkerId;
+                if (!workerId) {
+                  return reply.code(409).send({
+                    error: "The folder project no longer has an owning worker.",
+                  });
+                }
+                const worker = await repository.getWorker(
+                  applicationOwnerId(),
+                  workerId,
+                );
+                if (!worker?.managedFolders.remove) {
+                  return reply.code(409).send({
+                    code: "managed-folder-capability-unavailable",
+                    error:
+                      "The owning worker does not support safe managed folder deletion.",
+                  });
+                }
+                if (!bridge.isConnected(workerId)) {
+                  return reply.code(503).send({
+                    error:
+                      "The owning worker must be online before deleting local folder files.",
+                  });
+                }
+              } else {
+                const managedFolderSource =
+                  context.convertedManagedFolderSource?.localFilesDeleted ===
+                  false
+                    ? context.convertedManagedFolderSource
+                    : null;
+                if (managedFolderSource) {
+                  const worker = await repository.getWorker(
+                    applicationOwnerId(),
+                    managedFolderSource.workerId,
+                  );
+                  if (!worker?.managedFolders.remove) {
+                    return reply.code(409).send({
+                      code: "managed-folder-capability-unavailable",
+                      error:
+                        "The converted folder's worker does not support safe managed folder deletion.",
+                    });
+                  }
+                  if (!bridge.isConnected(managedFolderSource.workerId)) {
+                    return reply.code(503).send({
+                      error:
+                        "The converted folder's worker must be online before deleting its local files.",
+                    });
+                  }
+                }
+                const offlineReplica = context.replicas.find(
+                  ({ id, workerId }) =>
+                    id !== managedFolderSource?.projectSourceId &&
+                    !bridge.isConnected(workerId),
+                );
+                if (offlineReplica) {
+                  return reply.code(503).send({
+                    error:
+                      "Every replica worker must be online before deleting local project files.",
+                  });
+                }
               }
-            }
-            const offlineReplica = context.replicas.find(
-              ({ id, workerId }) =>
-                id !== managedFolderSource?.projectSourceId &&
-                !bridge.isConnected(workerId),
-            );
-            if (offlineReplica) {
-              return reply.code(503).send({
-                error:
-                  "Every replica worker must be online before deleting local project files.",
-              });
-            }
-          }
-          await Promise.all(
-            context.terminals.map(({ id, workerId }) =>
-              bridge.request(workerId, {
-                type: "terminal.close",
-                terminalId: id,
-              }),
-            ),
-          );
-          if (context.originKind === "managed-folder") {
-            const workerId =
-              context.replicas[0]?.workerId ?? context.preferredWorkerId!;
-            managedFolderDeleteResultSchema.parse(
-              await bridge.request(workerId, {
-                type: "project.folder.delete",
-                projectId: request.params.projectId,
-              }),
-            );
-          } else {
-            const managedFolderSource =
-              context.convertedManagedFolderSource?.localFilesDeleted === false
-                ? context.convertedManagedFolderSource
-                : null;
-            if (managedFolderSource) {
-              managedFolderDeleteResultSchema.parse(
-                await bridge.request(managedFolderSource.workerId, {
-                  type: "project.folder.delete",
-                  projectId: request.params.projectId,
-                }),
+              await retireRunConfigurationRuntimes(
+                applicationOwnerId(),
+                request.params.projectId,
               );
+              await Promise.all(
+                context.terminals.map(({ id, workerId }) =>
+                  bridge.request(workerId, {
+                    type: "terminal.close",
+                    terminalId: id,
+                  }),
+                ),
+              );
+              if (context.originKind === "managed-folder") {
+                const workerId =
+                  context.replicas[0]?.workerId ?? context.preferredWorkerId!;
+                managedFolderDeleteResultSchema.parse(
+                  await bridge.request(workerId, {
+                    type: "project.folder.delete",
+                    projectId: request.params.projectId,
+                  }),
+                );
+              } else {
+                const managedFolderSource =
+                  context.convertedManagedFolderSource?.localFilesDeleted ===
+                  false
+                    ? context.convertedManagedFolderSource
+                    : null;
+                if (managedFolderSource) {
+                  managedFolderDeleteResultSchema.parse(
+                    await bridge.request(managedFolderSource.workerId, {
+                      type: "project.folder.delete",
+                      projectId: request.params.projectId,
+                    }),
+                  );
+                }
+                for (const replica of context.replicas) {
+                  if (replica.id === managedFolderSource?.projectSourceId)
+                    continue;
+                  await bridge.request(replica.workerId, {
+                    type: "project.files.delete",
+                    path: replica.cwd,
+                  });
+                }
+              }
+            } else {
+              await retireRunConfigurationRuntimes(
+                applicationOwnerId(),
+                request.params.projectId,
+              );
+              for (const terminal of context.terminals) {
+                if (!bridge.isConnected(terminal.workerId)) continue;
+                void bridge
+                  .request(terminal.workerId, {
+                    type: "terminal.close",
+                    terminalId: terminal.id,
+                  })
+                  .catch(() => undefined);
+              }
             }
-            for (const replica of context.replicas) {
-              if (replica.id === managedFolderSource?.projectSourceId) continue;
-              await bridge.request(replica.workerId, {
-                type: "project.files.delete",
-                path: replica.cwd,
-              });
+            for (const surface of context.remoteSurfaces) {
+              if (!bridge.isConnected(surface.workerId)) continue;
+              await bridge
+                .request(surface.workerId, {
+                  type: "surface.close",
+                  surfaceId: surface.id,
+                })
+                .catch(() => undefined);
             }
-          }
-        } else {
-          for (const terminal of context.terminals) {
-            if (!bridge.isConnected(terminal.workerId)) continue;
-            void bridge
-              .request(terminal.workerId, {
-                type: "terminal.close",
-                terminalId: terminal.id,
-              })
-              .catch(() => undefined);
-          }
-        }
-        for (const surface of context.remoteSurfaces) {
-          if (!bridge.isConnected(surface.workerId)) continue;
-          await bridge
-            .request(surface.workerId, {
-              type: "surface.close",
-              surfaceId: surface.id,
-            })
-            .catch(() => undefined);
-        }
+            return repository.deleteProject(
+              applicationOwnerId(),
+              request.params.projectId,
+            );
+          },
+          { notifyProjectChanged: false },
+        );
+        if (typeof removed !== "boolean") return removed;
+        return removed
+          ? reply.code(204).send()
+          : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
-
-      return (await repository.deleteProject(
-        applicationOwnerId(),
-        request.params.projectId,
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Project not found." });
     },
   );
 
