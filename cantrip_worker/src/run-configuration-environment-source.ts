@@ -28,6 +28,7 @@ import {
   type MaterializedRunCommand,
   shellCommandInvocation,
 } from "./run-configuration-provider.js";
+import { runConfigurationEnvironmentNameIsReserved } from "./run-configuration-environment-policy.js";
 
 const CODEX_ENVIRONMENT_DIRECTORY = ".codex/environments";
 const CODEX_ENVIRONMENT_PATH = `${CODEX_ENVIRONMENT_DIRECTORY}/environment.toml`;
@@ -394,12 +395,9 @@ export async function inspectRunConfigurationCodexEnvironmentSource(input: {
 }
 
 function protectedEnvironmentName(name: string): boolean {
-  const upper = name.toUpperCase();
   return (
-    upper.startsWith("CANTRIP_") ||
-    upper.startsWith("_CANTRIP_") ||
-    upper === "CODEX_WORKTREE_PATH" ||
-    TRANSIENT_ENVIRONMENT_NAMES.has(upper)
+    runConfigurationEnvironmentNameIsReserved(name) ||
+    TRANSIENT_ENVIRONMENT_NAMES.has(name.toUpperCase())
   );
 }
 

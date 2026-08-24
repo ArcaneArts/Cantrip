@@ -44,6 +44,7 @@ import {
   RunConfigurationEnvironmentResolutionError,
   type RunConfigurationEnvironmentExecutionResult,
 } from "./run-configuration-environment-source.js";
+import { runConfigurationEnvironmentNameIsReserved } from "./run-configuration-environment-policy.js";
 
 const MAX_RETAINED_RUNTIMES = RUN_CONFIGURATION_RUNTIME_LIST_LIMIT;
 const MAX_SCROLLBACK_CHARS = 256 * 1_024;
@@ -223,7 +224,11 @@ function boundedEnvironmentLayer(
       false,
     );
   }
-  return Object.fromEntries(entries);
+  return Object.fromEntries(
+    entries.filter(
+      ([name]) => !runConfigurationEnvironmentNameIsReserved(name),
+    ),
+  );
 }
 
 function reservedEnvironment(
@@ -249,14 +254,9 @@ function protectedBaselineEnvironment(
   environment: Record<string, string>,
 ): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(environment).filter(([name]) => {
-      const upper = name.toUpperCase();
-      return (
-        upper.startsWith("CANTRIP_") ||
-        upper.startsWith("_CANTRIP_") ||
-        upper === "CODEX_WORKTREE_PATH"
-      );
-    }),
+    Object.entries(environment).filter(([name]) =>
+      runConfigurationEnvironmentNameIsReserved(name),
+    ),
   );
 }
 
@@ -864,7 +864,7 @@ export class RunConfigurationRuntimeSupervisor {
         ...baseline,
         ...boundedEnvironmentLayer(layers.codex),
         ...boundedEnvironmentLayer(layers.files),
-        ...enabledVariables(materialized.environment),
+        ...boundedEnvironmentLayer(enabledVariables(materialized.environment)),
         ...boundedEnvironmentLayer(layers.secrets),
         ...boundedEnvironmentLayer(materialized.environmentAdditions),
         ...protectedBaselineEnvironment(baseline),

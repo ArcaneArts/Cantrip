@@ -640,7 +640,7 @@ describe.skipIf(process.platform === "win32")(
   () => {
     it("rereads the Primary definition and launches a bounded worker-owned PTY", async () => {
       const input = await fixture(
-        `printf '%s|%s|%s|%s|%s|%s' "$CANTRIP_PROJECT_ROOT" "$CANTRIP_WORKTREE_PATH" "$CANTRIP_RUN_CONFIGURATION_ID" "$CANTRIP_RUN_GENERATION" "$PLAIN_FIXTURE" "$LAYERED_FIXTURE"`,
+        `printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' "$CANTRIP_PROJECT_ROOT" "$CANTRIP_WORKTREE_PATH" "$CANTRIP_RUN_CONFIGURATION_ID" "$CANTRIP_RUN_GENERATION" "$PLAIN_FIXTURE" "$LAYERED_FIXTURE" "\${cantrip_plain_injected-unset}" "\${_cantrip_file_injected-unset}" "\${CANTRIP_CODEX_INJECTED-unset}" "\${CANTRIP_SECRET_INJECTED-unset}" "\${CoDeX_WoRkTrEe_PaTh-unset}"`,
         {
           beforeLaunch: [
             {
@@ -664,6 +664,11 @@ describe.skipIf(process.platform === "win32")(
                 value: "reserved-must-not-win",
                 enabled: true,
               },
+              {
+                name: "cantrip_plain_injected",
+                value: "plain-must-not-exist",
+                enabled: true,
+              },
             ],
             secrets: [],
           },
@@ -673,9 +678,19 @@ describe.skipIf(process.platform === "win32")(
       const notifications: RunConfigurationRuntimeWorkerObservation[] = [];
       const runs = supervisor(notifications, {
         resolveEnvironment: async () => ({
-          codex: { LAYERED_FIXTURE: "codex" },
-          files: { LAYERED_FIXTURE: "file" },
-          secrets: { LAYERED_FIXTURE: "secret" },
+          codex: {
+            LAYERED_FIXTURE: "codex",
+            CANTRIP_CODEX_INJECTED: "codex-must-not-exist",
+          },
+          files: {
+            LAYERED_FIXTURE: "file",
+            _cantrip_file_injected: "file-must-not-exist",
+          },
+          secrets: {
+            LAYERED_FIXTURE: "secret",
+            CANTRIP_SECRET_INJECTED: "secret-must-not-exist",
+            CoDeX_WoRkTrEe_PaTh: "secret-must-not-win",
+          },
           codexEnvironmentRevision: null,
         }),
       });
@@ -697,11 +712,12 @@ describe.skipIf(process.platform === "win32")(
       });
       expect(output.data).toContain("before-launch");
       expect(output.data).toContain(
-        `${input.sourceRoot}|${input.targetRoot}|${input.configurationId}|1|plain|secret`,
+        `${input.sourceRoot}|${input.targetRoot}|${input.configurationId}|1|plain|secret|unset|unset|unset|unset|unset`,
       );
       expect(JSON.stringify(notifications)).not.toContain(
         "reserved-must-not-win",
       );
+      expect(output.data).not.toContain("must-not-exist");
       expect(
         runs.output({
           type: "project.run-configuration-runtime.output",
