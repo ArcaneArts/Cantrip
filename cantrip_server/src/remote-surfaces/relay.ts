@@ -5,6 +5,8 @@ import {
 } from "@cantrip/protocol";
 
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import type { AccountUsageRecorder } from "../account-usage/bandwidth-meter.js";
+import { recordEncodedFrame } from "../account-usage/frame-bandwidth.js";
 import { serverLogger } from "../logger.js";
 
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
@@ -53,6 +55,7 @@ export class RemoteSurfaceRelay {
       workerId: string,
       bytes: number,
     ) => boolean = () => true,
+    private readonly usageRecorder?: AccountUsageRecorder,
   ) {}
 
   bind(
@@ -80,10 +83,21 @@ export class RemoteSurfaceRelay {
     const unsubscribe = this.bridge.subscribeSurfaceFrames(
       binding.workerId,
       (header, payload) => {
+        const encoded = encodeRemoteSurfaceFrame(header, payload);
         if (
           closed ||
           header.surfaceId !== binding.surfaceId ||
-          header.attachmentId !== binding.attachmentId ||
+          header.attachmentId !== binding.attachmentId
+        ) {
+          return;
+        }
+        recordEncodedFrame(this.usageRecorder, {
+          ownerId: binding.ownerId,
+          direction: "ingress",
+          channel: "remote-surface-relay",
+          data: encoded,
+        });
+        if (
           header.sequence <= (lastWorkerSequences.get(header.channel) ?? -1) ||
           socket.readyState !== 1
         ) {
@@ -110,8 +124,14 @@ export class RemoteSurfaceRelay {
           socket.close(1013, "Remote Surface client is too slow");
           return;
         }
-        socket.send(encodeRemoteSurfaceFrame(header, payload), {
+        socket.send(encoded, {
           binary: true,
+        });
+        recordEncodedFrame(this.usageRecorder, {
+          ownerId: binding.ownerId,
+          direction: "egress",
+          channel: "remote-surface-relay",
+          data: encoded,
         });
         framesFromWorker += 1;
         bytesFromWorker += payload.byteLength;
@@ -156,6 +176,12 @@ export class RemoteSurfaceRelay {
 
     socket.on("message", (data, isBinary) => {
       if (closed) return;
+      recordEncodedFrame(this.usageRecorder, {
+        ownerId: binding.ownerId,
+        direction: "ingress",
+        channel: "remote-surface-relay",
+        data,
+      });
       if (!isBinary) {
         closeReasonCode = "non_binary_frame";
         socket.close(1003, "Remote Surface data must be binary");
@@ -217,6 +243,12 @@ export class RemoteSurfaceRelay {
         cleanup();
         return;
       }
+      recordEncodedFrame(this.usageRecorder, {
+        ownerId: binding.ownerId,
+        direction: "egress",
+        channel: "remote-surface-relay",
+        data,
+      });
       framesFromClient += 1;
       bytesFromClient += frame.payload.byteLength;
       lastClientSequences.set(frame.header.channel, frame.header.sequence);

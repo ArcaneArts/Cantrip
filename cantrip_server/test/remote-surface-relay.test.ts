@@ -5,6 +5,10 @@ import {
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
+import type {
+  AccountUsageMeasurement,
+  AccountUsageRecorder,
+} from "../src/account-usage/bandwidth-meter.js";
 import {
   RemoteSurfaceRelay,
   type RemoteSurfaceClientSocket,
@@ -47,6 +51,14 @@ class TestClientSocket implements RemoteSurfaceClientSocket {
   }
 }
 
+class RecordingMeter implements AccountUsageRecorder {
+  readonly measurements: AccountUsageMeasurement[] = [];
+  record(measurement: AccountUsageMeasurement): boolean {
+    this.measurements.push(measurement);
+    return true;
+  }
+}
+
 function header(sequence: number): RemoteSurfaceFrameHeader {
   return {
     protocolVersion: 1,
@@ -58,6 +70,63 @@ function header(sequence: number): RemoteSurfaceFrameHeader {
 }
 
 describe("RemoteSurfaceRelay", () => {
+  it("meters each client and worker boundary exactly once", () => {
+    let workerListener: WorkerSurfaceFrameListener | null = null;
+    const bridge = {
+      attach() {},
+      close() {},
+      isConnected: () => true,
+      request: async () => undefined,
+      sendSurfaceFrame: () => true,
+      subscribeWorkerDisconnect: () => () => undefined,
+      subscribeSurfaceFrames(_workerId, listener) {
+        workerListener = listener;
+        return () => undefined;
+      },
+    } satisfies WorkerCommandBus;
+    const socket = new TestClientSocket();
+    const meter = new RecordingMeter();
+    new RemoteSurfaceRelay(bridge, () => true, meter).bind(socket, {
+      ownerId: "owner-1",
+      workerId: "worker-1",
+      surfaceId: "surface-1",
+      attachmentId: "attachment-1",
+    });
+    const clientFrame = encodeRemoteSurfaceFrame(
+      header(1),
+      new Uint8Array([1, 2, 3]),
+    );
+    const workerPayload = new Uint8Array([4, 5]);
+    const workerFrame = encodeRemoteSurfaceFrame(header(2), workerPayload);
+
+    socket.receive(clientFrame);
+    workerListener?.(header(2), workerPayload);
+
+    expect(meter.measurements).toEqual([
+      expect.objectContaining({
+        ownerId: "owner-1",
+        direction: "ingress",
+        channel: "remote-surface-relay",
+        bytes: clientFrame.byteLength,
+      }),
+      expect.objectContaining({
+        direction: "egress",
+        channel: "remote-surface-relay",
+        bytes: clientFrame.byteLength,
+      }),
+      expect.objectContaining({
+        direction: "ingress",
+        channel: "remote-surface-relay",
+        bytes: workerFrame.byteLength,
+      }),
+      expect.objectContaining({
+        direction: "egress",
+        channel: "remote-surface-relay",
+        bytes: workerFrame.byteLength,
+      }),
+    ]);
+  });
+
   it("relays binary frames in both directions and drops stale sequences", () => {
     let workerListener: WorkerSurfaceFrameListener | null = null;
     const forwarded = vi.fn(() => true);

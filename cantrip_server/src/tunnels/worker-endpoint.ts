@@ -1,5 +1,11 @@
-import type { TunnelDataPlaneFrameHeader } from "@cantrip/protocol";
+import {
+  encodeTunnelDataPlaneFrame,
+  type TunnelDataPlaneFrameHeader,
+} from "@cantrip/protocol";
+import type { AccountBandwidthChannel } from "@cantrip/protocol/resource-usage";
 
+import type { AccountUsageRecorder } from "../account-usage/bandwidth-meter.js";
+import { recordEncodedFrame } from "../account-usage/frame-bandwidth.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
 import type {
   TunnelDataPlaneEndpoint,
@@ -14,16 +20,30 @@ export class WorkerTunnelEndpoint implements TunnelDataPlaneEndpoint {
     private readonly bridge: WorkerCommandBus,
     readonly workerId: string,
     endpointId = `worker:${workerId}`,
+    readonly usage?: {
+      attachmentId: string;
+      channel: AccountBandwidthChannel;
+      ownerId: string;
+      recorder: AccountUsageRecorder;
+    },
   ) {
     this.endpointId = endpointId;
     this.placement = { kind: "worker", workerId };
   }
 
   send(header: TunnelDataPlaneFrameHeader, payload: Uint8Array): boolean {
-    return (
+    const sent =
       this.bridge.sendTunnelDataPlaneFrame?.(this.workerId, header, payload) ??
-      false
-    );
+      false;
+    if (sent) {
+      recordEncodedFrame(this.usage?.recorder, {
+        ownerId: this.usage?.ownerId ?? "",
+        direction: "egress",
+        channel: this.usage?.channel ?? "tunnel-relay",
+        data: encodeTunnelDataPlaneFrame(header, payload),
+      });
+    }
+    return sent;
   }
 
   subscribe(listener: TunnelEndpointFrameListener): () => void {
@@ -31,9 +51,16 @@ export class WorkerTunnelEndpoint implements TunnelDataPlaneEndpoint {
     if (!subscribe) return () => undefined;
     return subscribe.call(this.bridge, this.workerId, (header, payload) => {
       if (
-        header.sourceEndpointId === this.endpointId ||
-        header.destinationEndpointId === this.endpointId
+        (header.sourceEndpointId === this.endpointId ||
+          header.destinationEndpointId === this.endpointId) &&
+        (!this.usage || header.attachmentId === this.usage.attachmentId)
       ) {
+        recordEncodedFrame(this.usage?.recorder, {
+          ownerId: this.usage?.ownerId ?? "",
+          direction: "ingress",
+          channel: this.usage?.channel ?? "tunnel-relay",
+          data: encodeTunnelDataPlaneFrame(header, payload),
+        });
         listener(header, payload);
       }
     });
