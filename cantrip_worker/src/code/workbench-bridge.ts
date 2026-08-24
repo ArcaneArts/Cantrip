@@ -7,6 +7,7 @@ import type {
   CodeAppearance,
   CodeDirtyEditor,
   CodeOpenFileResult,
+  CodeOpenSettingsResult,
   CodePresentation,
   CodeSaveAllResult,
   CodeWorkbenchState,
@@ -14,6 +15,7 @@ import type {
 import {
   codeAgentTurnNotificationResultSchema,
   codeAgentTurnPreparationSessionSchema,
+  codeOpenSettingsResultSchema,
   codeWorkbenchStateSchema,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer } from "ws";
@@ -84,6 +86,7 @@ const DEFAULT_WORKBENCH_STATE: CodeWorkbenchState = {
 };
 const MAX_BRIDGE_PAYLOAD_BYTES = 1024 * 1024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
+const OPEN_SETTINGS_REQUEST_TIMEOUT_MS = 15_000;
 
 export interface CodeWorkbenchBridgeOptions {
   requestTimeoutMs?: number;
@@ -444,6 +447,25 @@ export class CodeWorkbenchBridge {
       throw new Error("Cantrip workbench bridge is not connected.");
     }
     await this.#request(session, "setPresentation", { presentation });
+  }
+
+  async openSettings(sessionId: string): Promise<CodeOpenSettingsResult> {
+    const session = this.#sessions.get(sessionId);
+    if (!session) throw new Error("Cantrip Code session is not registered.");
+    const connected =
+      this.connected(sessionId) ||
+      (await this.waitUntilConnected(sessionId, 30_000));
+    if (!connected) {
+      throw new Error("Cantrip workbench bridge is not connected.");
+    }
+    return codeOpenSettingsResultSchema.parse(
+      await this.#request(
+        session,
+        "openSettings",
+        {},
+        OPEN_SETTINGS_REQUEST_TIMEOUT_MS,
+      ),
+    );
   }
 
   async prepareAgentTurn(
@@ -829,6 +851,7 @@ export class CodeWorkbenchBridge {
     session: BridgeSession,
     method: string,
     params: unknown,
+    timeoutMs = this.#requestTimeoutMs,
   ): Promise<unknown> {
     const connection = this.#authoritativeSocket(session);
     if (!connection) {
@@ -836,7 +859,14 @@ export class CodeWorkbenchBridge {
         new Error("Cantrip workbench bridge is not connected."),
       );
     }
-    return this.#requestOnSocket(session, connection, method, params, true);
+    return this.#requestOnSocket(
+      session,
+      connection,
+      method,
+      params,
+      true,
+      timeoutMs,
+    );
   }
 
   #requestOnSocket(
@@ -845,6 +875,7 @@ export class CodeWorkbenchBridge {
     method: string,
     params: unknown,
     authorityBound: boolean,
+    timeoutMs = this.#requestTimeoutMs,
   ): Promise<unknown> {
     const { socket } = connection;
     if (socket.readyState !== WebSocket.OPEN) {
@@ -871,7 +902,7 @@ export class CodeWorkbenchBridge {
         });
         reject(error);
         this.#retireSocket(session, socket, error.message);
-      }, this.#requestTimeoutMs);
+      }, timeoutMs);
       session.pending.set(id, {
         authorityBound,
         resolve,

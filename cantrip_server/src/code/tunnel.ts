@@ -16,7 +16,7 @@ interface ProtectedCodeAttachmentBinding {
   explorerId: string | null;
   expiresAt: number;
   ownerId: string;
-  projectId: string;
+  projectId: string | null;
   sessionId: string;
   stopSessionOnRelease: boolean;
   tunnelId: string;
@@ -27,7 +27,7 @@ export interface CreateProtectedCodeAttachmentInput {
   authSessionId?: string | null;
   codeTabId: string;
   ownerId: string;
-  projectId: string;
+  projectId: string | null;
   protectedRecord: ProtectedTunnelContentRecord;
   runtime: CodeRuntimeStatus;
   sessionId: string;

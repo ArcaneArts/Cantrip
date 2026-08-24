@@ -91,7 +91,7 @@ describe("protected Cantrip Code attachments", () => {
         authSessionId: "auth-session-1",
         codeTabId: "code-1",
         ownerId: "user-1",
-        projectId: "project-1",
+        projectId: null,
         protectedRecord,
         runtime,
         sessionId: runtime.sessionId,
@@ -116,6 +116,7 @@ describe("protected Cantrip Code attachments", () => {
             resourceId: tunnelId,
           },
           managedBy: { kind: "code", id: tunnelId },
+          projectId: null,
         }),
         { id: tunnelId, protectedRecord },
       );

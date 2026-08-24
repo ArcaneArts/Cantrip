@@ -115,7 +115,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "499e1068b6698d4c02a1bce0d8cece079586bdc8852b406a2b8e261aeee5577a",
   applicationRoutes:
-    "21dd9aeb49b3197384c1c0345e73b504a198e47f6bc51620d610e3e581c15119",
+    "a6fb0f757f0157b3f58bfa1cefe2c1ac275783cfb548e00160613ba623f8734e",
   clientControlCommands:
     "01a782577811c682e042075b47fe39a20b9f0f7e591db99243cbab517b2fca08",
   cliCommands:
@@ -123,7 +123,7 @@ const REVIEWED_CONTRACT_DIGESTS = {
   liveResources:
     "e0d8d028aad8247d7111b25b002989e944cc0df1a006a436fc6978da350524f9",
   workerCommands:
-    "6716ab3a1581e8658fdf782c99708e8b8b4af886832d7c371ecab5fd59d38ba2",
+    "4fca0c1a7d571ebf17e5efb931f2243437f04df9b5c279085c33b84f45e8e7fc",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };

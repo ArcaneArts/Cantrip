@@ -1454,6 +1454,32 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ? synchronizer.resolve(command.resolution)
           : unavailableCodeSettingsStatus();
       }
+      case "code.settings.workbench.open": {
+        const synchronizer = await ensureCodeSettingsSynchronizer();
+        if (!synchronizer || !defaultCodeProfileId) {
+          throw new Error(
+            "Worker encryption is not ready for the Code settings workbench.",
+          );
+        }
+        if (command.profileId !== defaultCodeProfileId) {
+          throw new Error(
+            "Code settings workbench profile binding is invalid.",
+          );
+        }
+        const synchronization = await synchronizer.synchronize({
+          initializeIfMissing: true,
+        });
+        if (!["ready", "conflict"].includes(synchronization.state)) {
+          throw new Error(
+            synchronization.error ??
+              "Global Code settings are not ready on this worker.",
+          );
+        }
+        return {
+          synchronization,
+          runtime: await code.openSettingsWorkbench(command),
+        };
+      }
       case "diagnostics.logs.read":
         return readWorkerLogs(command);
       case "diagnostics.logs.stream.start":
