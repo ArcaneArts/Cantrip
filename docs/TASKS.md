@@ -1,945 +1,703 @@
-# Tasks
-
-## Implementation status
-
-The Cantrip Task experience described here is implemented. It was delivered in
-seven independently merged Manual Change Protocol cycles after the Policy
-system in [POLICIES.md](POLICIES.md) was completed. This document now records
-the product and recovery contract for the shipped feature rather than a future
-proposal.
-
-New Tasks default to direct execution: the saved brief is submitted verbatim as
-one ordinary Agent turn, using the selected Implementation access, without a
-planning review or Goal. The draft's **Plan + Goal** switch opts into the
-original workflow described below. Tasks created before this option shipped are
-migrated with Plan + Goal enabled so their behavior does not change.
-
-The Plan + Goal workflow uses the final Policy APIs: every planning,
-finalization, and Goal turn receives current effective Policy summaries, and
-the generated Goal objective tells the Agent how to inspect full effective
-policies through the Cantrip CLI. Task persistence never snapshots Policy
-bodies.
-
-The initial release deliberately keeps pull-request tracking observational.
-Exact PR URLs in the durable transcript and branches from the Task's current or
-historical execution lanes are combined with bounded GitHub list calls when the
-dashboard loads. Associations and warnings do not mutate GitHub or block Goal
-progress. A separate durable dismissal table remains an optional future
-extension.
-
-Tasks also run as first-class managed-folder workloads. Planning and
-finalization remain read-only; direct turns and Goal implementation run in the
-one worker-bound folder under the selected permission profile. The dashboard
-uses folder/worker/path context, performs no GitHub pull-request lookup, and
-does not offer worktree or relocation controls. Durable Task state remains
-readable while the owning worker is offline and execution resumes after it
-reconnects.
-
-Tasks support two execution modes:
-
-- **Direct** (default): write a prompt and start it as one ordinary Agent turn.
-  There is no review, replanning, finalization, or Goal mode.
-- **Plan + Goal**: opt into the original large-job workflow:
-
-  1. write a broad idea/brief;
-  2. let an Agent investigate and propose a Markdown plan;
-  3. answer material questions;
-  4. continue planning as many times as useful;
-  5. optionally edit the plan directly;
-  6. finalize the plan and generate a Goal prompt;
-  7. automatically submit that prompt to the same Agent in Goal mode;
-  8. observe implementation, PRs, pauses, and completion from one durable tab.
-
-A Task looks like a new project tab type, but it is implemented as a specialized
-Chat experience. Cantrip does not create a second agent runtime or separate
-transcript system.
-
-## Product model
-
-### Task-backed Chat
-
-Add an experience field to Chat:
-
-    agent
-    task
-
-Existing and ordinary chats use agent. A Task creates a normal Chat with
-experience task and an attached Task record.
-
-Internally, project tab layout continues to use:
-
-    chat:<chat-id>
-
-This deliberately avoids adding a second project-tab member kind. Task-backed
-Chats already inherit, subject to the project's capabilities:
-
-- project execution-root/worker placement;
-- model and reasoning selection;
-- implementation permission profile;
-- attachments;
-- Codex thread/runtime;
-- normalized transcript and activity;
-- Agent Inspector data;
-- linked Codex console;
-- prompt pause/resume/stop;
-- Goal mode;
-- relocation and attachment replication for GitHub-backed projects;
-- tab groups, reordering, popout, archive, and deletion.
-
-The UI renders a Task icon/title and Task surface when the backing Chat has
-experience task.
-
-### View toggle
-
-Only Task-backed Chats show a compact **Task / Chat** toggle in the content
-header.
-
-- Task is the default view for a newly created Task.
-- Chat shows the real underlying Agent transcript and activity.
-- Ordinary Chats do not show the toggle.
-- View choice is per Task/per application-window session, like other
-  presentation state; it does not change the Task's durable state.
-- During Draft, Planning, Review, and Finalizing, Chat view is inspect-only.
-  Task actions remain the only way to submit planning turns.
-- During Implementing, Paused, Blocked, and Complete, Chat view exposes the
-  applicable Chat controls, steering, approvals, and console switching. Goal
-  controls appear only for Plan + Goal Tasks.
-
-Restricting the early Chat composer prevents an unrelated prompt from bypassing
-the structured planning state machine.
-
-## State machine
-
-Durable Task states:
-
-| State        | Meaning                                                             |
-| ------------ | ------------------------------------------------------------------- |
-| draft        | User is writing the initial brief and adding attachments.           |
-| planning     | Initial or continued planning turn is active.                       |
-| review       | A valid Markdown plan is available for editing/questions.           |
-| finalizing   | Agent is incorporating final answers and producing the Goal prompt. |
-| implementing | A direct turn or Goal implementation is active.                     |
-| paused       | Goal/Chat automation is cooperatively paused.                       |
-| blocked      | Goal reported a genuine blocker or requires user action.            |
-| complete     | The direct turn or Goal completed.                                  |
-| failed       | The current Task operation failed and is retryable.                 |
-
-The Task stores the last stable state and failed operation kind so Retry can
-return to Direct execution, Planning, or Finalizing correctly.
-
-Main transitions:
-
-    draft --Start Task (direct)--> implementing
-    implementing --direct turn completed--> complete
-    draft --Plan Task--> planning
-    planning --valid result--> review
-    review --Continue Planning--> planning
-    review --Begin Implementation--> finalizing
-    finalizing --valid result and Goal accepted--> implementing
-    implementing <--> paused
-    implementing --> blocked
-    blocked --Resume--> implementing
-    implementing --> complete
-    implementing/planning/finalizing --> failed
-    failed --Retry--> implementing/planning/finalizing
-
-No transition from Finalizing to Implementing is committed until both the final
-Task result and Goal creation are durably accepted. Retrying must never create a
-duplicate Goal.
-
-## Draft experience
-
-### Creation
-
-Add **Task** to desktop and mobile new-tab menus with a task/checklist icon.
-Creating it:
-
-1. resolves ordinary Chat placement;
-2. creates a Chat titled New task with experience task;
-3. creates its one-to-one Task record in draft state;
-4. attaches the Chat to the requested tab group;
-5. opens Task view.
-
-Task creation is atomic. A Chat must not exist without its required Task row, and
-a Task row must not point at a non-Task Chat.
-
-### Editor
-
-Draft view is a full-content Markdown document editor:
-
-- large distraction-free editing area;
-- Markdown syntax support;
-- drag/drop and paste attachments;
-- attachment chips/previews/removal;
-- title rename;
-- autosave status;
-- **Plan + Goal** switch, off by default;
-- primary **Start Task** action when the switch is off, or **Plan Task** when it
-  is on.
-
-The brief autosaves to Cantrip Server using a positive row version. Conflicting
-saves return a conflict that lets the user reload or copy their unsaved text;
-Cantrip never silently applies last-writer-wins.
-
-### Controls
-
-Compact controls appear in the Task header/footer:
-
-- model;
-- reasoning effort;
-- **Implementation access** permission profile;
-- execution-root/worker placement where applicable. Managed folders show their
-  fixed owning worker rather than a worktree or relocation selector.
-
-Model and reasoning apply immediately to either execution mode. Implementation
-access is granted to a direct Task turn and stored for the later Goal in Plan +
-Goal mode, but is never granted to planning/finalization turns.
-
-### Attachments
-
-Reuse normal Chat attachments:
-
-- maximum counts/sizes and preview behavior remain unchanged;
-- bytes stay in the worker's private Cantrip data directory;
-- metadata remains server-owned;
-- relocation uses existing attachment replicas/transfer when the project
-  supports relocation;
-- Task deletion uses Chat attachment cleanup.
-
-The Task record stores the ordered attachment IDs selected for its draft. Start
-Task or Plan Task uses exactly that saved set. An uploaded but removed
-attachment is deleted through the existing attachment lifecycle.
-
-The brief and plan do not live in temporary repository files. Cantrip Server is
-the source of truth.
-
-## Direct execution
-
-With **Plan + Goal** off, Start Task persists the latest brief, attachments, and
-switch value before starting an encrypted `direct` Task operation. The worker
-decrypts the brief only at execution and supplies that exact string as the
-ordinary turn prompt—without a Task planning wrapper, structured response
-schema, or Goal-mode prompt. Mentioned skills, attachments, current policies,
-and the selected Implementation access behave as they do for an ordinary Agent
-turn.
-
-The Task moves from Draft to Implementing while the turn runs and to Complete
-when the assistant response is durably accepted. The user and assistant
-messages use normal/default mode in the backing Chat. The operation still uses
-Task encryption, optimistic row versions, idempotency, activity streaming,
-failure/retry state, and restart recovery. It must produce no plan, questions,
-final plan, Goal prompt, or Goal record.
-
-The implementation dashboard adapts to this mode: it labels the operation as
-Task execution, displays the original Task prompt instead of a final plan, and
-does not require or query Goal state. Stop interrupts the active turn; Goal-only
-pause and resume controls are omitted.
-
-## Planning execution
-
-### Why native Plan mode is not used
-
-Codex Plan mode is designed as a collaboration mode inside an ordinary coding
-conversation. Task planning needs a stricter product contract:
-
-- planning must be read-only;
-- output must replace one durable Markdown artifact;
-- questions must be structured for a dedicated review UI;
-- the same loop may run repeatedly;
-- implementation starts only through Begin Implementation.
-
-Task planning therefore uses an ordinary Codex Chat turn with a Task-specific
-worker prompt and structured response schema. It still runs on the backing Chat
-thread and emits normal activity.
-
-### Read-only guarantee
-
-Every Task planning/finalization turn is hard read-only, regardless of the
-selected Implementation access:
-
-- filesystem writes are unavailable;
-- Git mutations are unavailable;
-- GitHub/external mutations are unavailable;
-- side-effecting MCP or dynamic tools are unavailable;
-- preauthorization is unavailable;
-- shell network is unavailable unless exposed through a dedicated read-only
-  capability;
-- project-file reads, policy reads, attachment reads, and read-only research
-  tools remain available; Git inspection is included only when the project has
-  Git capability.
-
-Planning may inspect the selected execution root without acquiring a new
-worktree because it cannot write. The implementation permission profile is
-activated only when Goal mode begins.
-
-### Policy awareness
-
-Because Policies already exist:
-
-- every planning/finalization turn receives current effective summaries;
-- the planner prefers managed MCP `policy_list`/`policy_read` when available
-  and can use `cantrip policy list/read` as a fallback;
-- a policy summary decides whether its full body must be read;
-- no policy bodies or revision numbers are copied into Task persistence;
-- policy edits become visible the next time the Agent receives summaries or
-  reads the policy;
-- Task does not notify, snapshot, or reconcile policy changes.
-
-The planning prompt says that policies may constrain the implementation plan
-even though planning itself remains read-only.
-
-### Planner contract
-
-Initial planning prompt includes:
-
-- user brief;
-- selected attachments;
-- current effective policy summaries;
-- project/worktree context;
-- instructions to investigate before proposing architecture;
-- instructions not to implement;
-- structured output schema.
-
-The planner must:
-
-- produce one complete replacement Markdown plan;
-- distinguish product behavior, architecture, persistence, APIs, UI, safety,
-  tests, rollout, and independently mergeable milestones where relevant;
-- ask only questions whose answers materially change the plan;
-- include a recommended answer when it has a defensible recommendation;
-- return an empty question list when no clarification remains;
-- avoid claiming files/tests it did not inspect.
-
-### Structured planning result
-
-Conceptual schema:
-
-    {
-      "planMarkdown": "# Plan\n...",
-      "questions": [
-        {
-          "id": "stable-question-id",
-          "header": "Short topic",
-          "question": "Decision to make?",
-          "options": [
-            {
-              "id": "option-id",
-              "label": "Short answer",
-              "description": "Impact or tradeoff"
-            }
-          ],
-          "recommendedOptionId": "option-id",
-          "allowFreeform": true
-        }
-      ]
-    }
-
-Bounds:
-
-- plan Markdown: 1–100,000 characters;
-- 0–12 questions per round;
-- question ID unique within the round;
-- header: 1–80 characters;
-- question: 1–2,000 characters;
-- 0–6 options;
-- option label: 1–120 characters;
-- option description: at most 1,000 characters;
-- recommended option must exist when supplied;
-- freeform answer: at most 10,000 characters.
-
-Questions without useful predefined choices set options empty and allow
-freeform. Questions with options should still permit freeform when the planner
-allows it.
-
-### Runtime integration
-
-Extend Chat turn execution with an internal structured-result mode:
-
-- server supplies a bounded JSON schema;
-- worker passes it to Codex turn/start;
-- live commentary, reasoning summaries, commands, and file-read activity flow
-  normally;
-- raw structured final-answer text is not appended to the visible transcript;
-- server validates the terminal result;
-- server writes Task plan/questions transactionally;
-- server appends a normalized assistant message containing the Markdown plan and
-  a short question summary to the underlying Chat.
-
-An invalid result places the Task in failed state and retains the previous
-stable draft/plan. Raw invalid output may be retained only in bounded diagnostic
-state that is owner-visible and excluded from logs.
-
-## Live planning view
-
-While Planning or Finalizing, Task view becomes a full-width activity display
-reusing the Agent Inspector model:
-
-- latest surfaced commentary/reasoning summary;
-- files inspected/changed events (writes should never occur);
-- running commands after the normal anti-flicker threshold;
-- rolling bounded output;
-- elapsed time;
-- recent completed commands;
-- stop/pause status where supported.
-
-This uses events Codex/worker already emits. It does not expose hidden
-chain-of-thought or introduce filesystem interception.
-
-If a planning turn attempts a write despite the prompt, sandbox denial is shown
-as activity and the planner must recover without mutation.
-
-## Review and questions
-
-### Plan surface
-
-Review state shows:
-
-- rendered Markdown plan filling the available Task surface;
-- compact plan actions;
-- structured questions below the document;
-- Additional direction;
-- Continue Planning;
-- Begin Implementation.
-
-The plan, not the underlying agent response text, is the authoritative review
-artifact.
-
-### Edit Plan
-
-**Edit Plan** switches the rendered document into a full editor:
-
-- Save uses rowVersion optimistic concurrency;
-- Cancel discards local edits;
-- Preview returns to rendered Markdown;
-- unsaved edits block Continue Planning and Begin Implementation;
-- the saved user-edited plan becomes the current authoritative plan;
-- the planning round records agent output separately from the final user-edited
-  document.
-
-The UI clearly identifies that the user edited the plan; it does not imply the
-Agent authored the final text.
-
-### Answer controls
-
-For each question:
-
-- show header and question;
-- show options with descriptions;
-- mark the recommendation;
-- allow selecting one option;
-- show freeform input when allowed;
-- preserve draft answers across tab switches;
-- require an answer before either bottom action when the question is required.
-
-Additional direction is always optional and applies to the whole next action.
-
-### Continue Planning
-
-Continue Planning submits:
-
-- current saved plan, including user edits;
-- answers;
-- Additional direction;
-- prior question context;
-- Task planner contract.
-
-The Agent returns a complete replacement plan and a new question set. Old
-questions/answers remain in round history but no longer render as current.
-
-Continue Planning is allowed with no questions when the user supplied Additional
-direction or directly edited the plan. If neither changed, the UI may still allow
-it after confirming the user wants another independent refinement pass.
-
-## Finalization
-
-### Begin Implementation
-
-Begin Implementation is the user's explicit authorization. It does not show a
-second confirmation after the finalization turn.
-
-It requires:
-
-- saved plan with no dirty editor;
-- all current questions answered;
-- no active Task/Chat turn;
-- an available selected model/runtime;
-- selected Implementation access;
-- a backing Chat that can start Goal mode.
-
-The finalization turn receives the same inputs as Continue Planning but uses a
-different structured contract:
-
-    {
-      "finalPlanMarkdown": "# Final implementation plan\n...",
-      "goalPrompt": "Implement the complete attached plan..."
-    }
-
-The Agent must incorporate the answers and Additional direction, remove open
-questions, make acceptance criteria explicit, and create a prompt intended to
-finish the whole plan rather than only the first milestone.
-
-### Durable final artifacts
-
-On valid finalization, store:
-
-- immutable final plan Markdown;
-- generated Goal prompt;
-- final planning round;
-- associated Chat message/turn IDs;
-- implementation start timestamp.
-
-The editable current plan may continue to mirror the final plan, but the final
-artifact is not modified after Goal startup. Policy contents are not embedded or
-snapshotted.
-
-### Goal objective builder
-
-Cantrip builds the actual Goal input from:
-
-1. a small system-owned Task execution wrapper;
-2. current effective policy summaries already provided through Agent context;
-3. instruction to prefer managed MCP `policy_list`/`policy_read`, fall back to
-   the equivalent CLI commands when needed, and read every policy whose summary
-   requires a full read before acting;
-4. final plan Markdown;
-5. Agent-generated Goal prompt.
-
-The wrapper must not hardcode the Manual Change Protocol. That protocol is
-enabled by default through Policies and may be edited, unmarked, disabled, or
-deleted by the user.
-
-Representative wrapper intent:
-
-    Implement the complete Task plan below. Before making changes, inspect the
-    effective Cantrip policies and read any full policy required by its summary.
-    Continue until every acceptance criterion is satisfied or the Goal is
-    genuinely blocked. Keep progress recoverable and report the result.
+# Tasks and Global Scheduling
 
-### Automatic Goal start
+## Status
 
-Refactor current Goal route logic into a reusable server service, then:
+This document is the implementation plan and product contract for Cantrip
+Tasks. It replaces the earlier immediate-execution Task design.
 
-1. create/set the Goal on the backing Codex thread;
-2. append the Goal user message to the same Chat;
-3. submit it automatically in Goal mode;
-4. commit Task state to implementing;
-5. open the implementation dashboard.
-
-Use one finalization idempotency key and one Goal-start key. Recovery after
-server/worker restart must observe an already-created Goal rather than creating
-another.
-
-## Implementation dashboard
-
-Task view remains the default after Goal startup. It shows:
-
-- immutable final plan;
-- Goal status;
-- elapsed time and token usage;
-- pause/resume/stop;
-- current worker/worktree/branch;
-- latest surfaced thought/activity;
-- detected implementation PRs;
-- advisory protocol warnings;
-- generated Goal prompt in a collapsible/copyable section;
-- link/toggle to full Chat.
-
-Goal states map to Task:
-
-- active → implementing;
-- paused/automation paused → paused;
-- blocked/budget/usage limited → blocked with exact reason;
-- complete → complete;
-- runtime failure → failed without discarding final artifacts.
-
-Normal Chat controls remain available in Chat view during implementation.
-
-## PR detection and advisory warnings
-
-Task does not hard-enforce a one-worktree/one-PR cycle. Effective policies and
-the generated Goal prompt direct the Agent. Cantrip only reports observable
-state and warnings.
-
-### Association sources
-
-Associate a PR with a Task when supported by one or more:
-
-- PR head branch equals a branch used by one of the Task Chat's execution lanes;
-- PR worktree is explicitly checked out by the Task Chat;
-- exact GitHub PR URL appears in a Task message/activity result;
-- server-observed GitHub PR creation is attributed to the Task Chat;
-- repository and branch match after implementation began.
-
-Store explicit associations when available. Inferred associations include a
-confidence/source label and can be dismissed.
-
-### Display
-
-For each associated PR show:
-
-- number/title/link;
-- head/base;
-- open/draft/merged/closed;
-- associated worktree/branch;
-- checks/merge readiness when available;
-- explicit or inferred source.
-
-### Nonblocking warnings
-
-Examples:
-
-- more than one Task-associated PR is open;
-- Agent acquired a new worktree while a prior associated PR remains open;
-- a PR closed without merging while the Goal continued;
-- an implementation worktree is dirty after its PR merged;
-- Task completed while an associated PR remains open.
-
-Warnings never stop Goal continuation and never administratively merge, close,
-or alter a PR.
-
-## Persistence model
-
-### chats extension
-
-Add:
-
-| Field      | Notes                                   |
-| ---------- | --------------------------------------- |
-| experience | agent or task; migration default agent. |
-
-Chat summary protocol exposes the experience so all clients choose the correct
-icon/surface.
-
-### tasks
-
-One row per Task-backed Chat:
-
-| Field                    | Notes                                             |
-| ------------------------ | ------------------------------------------------- |
-| chatId                   | Primary key and Chat foreign key.                 |
-| planGoalEnabled          | False for direct execution; true for Plan + Goal. |
-| state                    | Durable Task state.                               |
-| stableStateBeforeFailure | Nullable retry target.                            |
-| activeOperationId        | Nullable idempotent Task operation.               |
-| activeOperationKind      | direct, initial-plan, continue-plan, or finalize. |
-| briefMarkdown            | Autosaved user brief.                             |
-| draftAttachmentIds       | Ordered existing Chat attachment IDs.             |
-| planMarkdown             | Current saved plan, including user edits.         |
-| planAuthorship           | agent, user-edited, or mixed.                     |
-| currentQuestions         | Current bounded structured questions.             |
-| currentAnswers           | Current answer drafts/saved answers.              |
-| additionalDirection      | Current optional direction.                       |
-| finalPlanMarkdown        | Nullable immutable final plan.                    |
-| goalPrompt               | Nullable generated Goal prompt.                   |
-| planningRound            | Nonnegative ordinal.                              |
-| implementationStartedAt  | Nullable timestamp.                               |
-| lastError                | Bounded owner-visible error metadata.             |
-| rowVersion               | Positive optimistic-concurrency counter.          |
-| createdAt / updatedAt    | Server timestamps.                                |
-
-Large immutable round inputs/outputs should not be duplicated unboundedly in the
-tasks row.
-
-### task_planning_rounds
-
-| Field                              | Notes                                             |
-| ---------------------------------- | ------------------------------------------------- |
-| id                                 | UUID.                                             |
-| chatId                             | Task-backed Chat.                                 |
-| ordinal                            | Unique increasing round number per Task.          |
-| kind                               | direct, initial-plan, continue-plan, or finalize. |
-| status                             | running, completed, failed, interrupted.          |
-| inputBriefMarkdown                 | Snapshot used for this round.                     |
-| inputPlanMarkdown                  | Nullable plan supplied to revision/finalization.  |
-| inputQuestions                     | Questions being answered.                         |
-| inputAnswers                       | User answers.                                     |
-| additionalDirection                | User direction.                                   |
-| outputPlanMarkdown                 | Validated result when available.                  |
-| outputQuestions                    | Validated result when available.                  |
-| outputGoalPrompt                   | Finalization result when available.               |
-| userMessageId / assistantMessageId | Transcript correlation.                           |
-| executionLaneId / turnId           | Runtime correlation.                              |
-| error                              | Bounded failure.                                  |
-| startedAt / completedAt            | Timestamps.                                       |
-
-Round history is owner-visible for recovery/debugging but the initial product
-does not need a complex diff/history editor.
-
-### task_pull_requests
-
-Optional future durable associations (not materialized in the initial release):
-
-| Field                   | Notes                                               |
-| ----------------------- | --------------------------------------------------- |
-| chatId                  | Task Chat.                                          |
-| repository identity     | GitHub repository.                                  |
-| pullRequestNumber       | Stable number.                                      |
-| associationKind         | explicit or inferred.                               |
-| source                  | lane-branch, worktree, message-url, server-created. |
-| dismissedAt             | Nullable user dismissal.                            |
-| firstSeenAt / updatedAt | Timestamps.                                         |
-
-Current PR state may be refreshed from GitHub rather than duplicated as
-authoritative state.
-
-## API surface
-
-Suggested routes:
-
-### Creation and state
-
-    POST  /api/projects/:projectId/tasks
-    GET   /api/tasks/:chatId
-    PATCH /api/tasks/:chatId/draft
-    PATCH /api/tasks/:chatId/plan
-
-### Operations
-
-    POST /api/tasks/:chatId/start
-    POST /api/tasks/:chatId/plan
-    POST /api/tasks/:chatId/continue
-    POST /api/tasks/:chatId/begin-implementation
-    POST /api/tasks/:chatId/retry
-
-### Advisory state
-
-    GET /api/tasks/:chatId/dashboard
-
-The dashboard snapshot combines the durable Task, live Goal state, current
-placement/dirty observation where available, bounded Task-associated PR
-discovery for GitHub projects, and nonblocking warnings. Managed folders report
-folder placement and an empty PR list without contacting GitHub. Separate PR
-dismissal routes are deferred with the optional durable-association table.
-
-Mutations carry rowVersion and idempotency keys. Operation endpoints return
-accepted/current state rather than holding the HTTP request open for the whole
-Agent turn. Existing live-query/chat events invalidate Task state as activity
-arrives.
-
-Task services live outside route handlers so recovery, Goal startup, and tests
-can invoke them without internal HTTP calls.
-
-## Recovery and concurrency
-
-- only one direct/planning/finalization operation may run per Task;
-- the ordinary Chat execution lane provides the underlying exclusive turn;
-- operation IDs make duplicate button submissions idempotent;
-- stale draft/plan edits return conflict;
-- valid previous plan remains visible if a continuation fails;
-- failure records which operation can be retried;
-- restart reconciliation correlates worker turn outcomes to planning rounds;
-- a recovered successful finalization cannot create a second Goal;
-- worker offline preserves every server-owned artifact and shows Retry when
-  placement returns;
-- attachment transfer follows existing Chat relocation when supported;
-- Task relocation is capability-gated and disallowed during an active turn,
-  like ordinary Chat;
-- pause prevents automatic Goal continuation but does not erase planning state;
-- deleting/archiving the backing Chat applies existing cleanup/retention and
-  cascades Task-only rows.
-
-## Fork, duplicate, and console behavior
-
-- Renaming the Task renames the backing Chat/tab.
-- The linked Codex console remains available from Chat view.
-- Forking a message from the hidden Chat creates a normal Agent Chat by default,
-  not a second half-initialized Task.
-- A future explicit Duplicate Task action may copy the brief/current plan into a
-  new draft Task; it is not required initially.
-- Archiving a Task follows Chat archive retention.
-- Restoring it restores Task view/state.
-
-## App structure
-
-Refactor rather than placing the whole experience in App.tsx:
-
-- TaskSurface
-- TaskHeader
-- TaskDraftEditor
-- TaskPlanningActivity
-- TaskPlanReview
-- TaskQuestionList
-- TaskPlanEditor
-- TaskImplementationDashboard
-- TaskPullRequestList
-- pure Task state/transition helpers
-- Task-specific query/mutation hooks
-
-Reuse:
-
-- Chat attachment controls;
-- model/reasoning pickers;
-- permission profile picker relabeled Implementation access;
-- worktree/placement control;
-- Markdown renderer/editor primitives;
-- Agent Inspector content;
-- Goal panel/status logic;
-- Task/Chat header switching;
-- existing responsive/tab/popup shell.
-
-Task surface remains mounted according to normal persistent tab behavior so
-draft answers and local editor state do not disappear during ordinary tab
-switching.
-
-## Logging and telemetry
-
-Operational logs may record:
-
-- Task/chat/project/worker IDs;
-- operation kind and state;
-- duration;
-- round count;
-- question count;
-- plan character count;
-- error class/reason code;
-- Goal/PR association identifiers.
-
-They must not record:
-
-- brief text;
-- plan text;
-- questions/answers;
-- Goal prompt;
-- attachment contents;
-- policy summaries/bodies;
-- command output/source contents.
-
-Model usage continues through existing execution-attempt telemetry with a Task
-operation-kind dimension. Task plan contents are not analytics.
+Tasks already support two execution modes:
+
+- **Direct** sends the user's prompt to an agent as an ordinary Task without
+  planning or Goal mode.
+- **Plan + Goal** performs one planning cycle at a time, lets the user review
+  and answer questions, and can ultimately start Goal-mode implementation.
+
+The fundamental change is that creating or advancing a Task no longer starts
+an agent immediately. Every runnable Task enters a durable, account-global
+queue and waits for an eligible Task Worker with available capacity.
+
+## Product language
+
+Use **Task** for every user-facing unit of work, regardless of whether it is a
+Direct Task or a Plan + Goal Task. Do not introduce user-facing terms such as
+work item, job, dispatch, or workload item.
+
+Use these names in the app:
+
+- **Tasks** for the Project Overview tab.
+- **Tasks** for the global Settings tab that owns Task-related settings.
+- **Task Workers** for the configurable model and concurrency profiles inside
+  Settings > Tasks.
+- **Workers** for the existing physical machines. This feature does not rename
+  or replace them.
+
+Internal scheduling records may use implementation-specific names, but those
+names must not leak into the UI or user-visible errors.
+
+## Product principles
+
+- Direct is the default Task mode.
+- Plan + Goal is opt-in and switched off by default.
+- Creating a Task only queues it.
+- Continuing planning or beginning implementation only requeues the next Task
+  cycle.
+- Task Worker concurrency is enforced globally across every Project in the
+  account.
+- Execution is oldest-eligible-first FIFO and never uses display priority.
+- The Project Tasks tab has one active list and one Completed list.
+- Task prompts, plans, answers, and messages remain end-to-end encrypted.
+- No Task Worker is created automatically. Task execution remains inert until
+  the user explicitly configures at least one.
+
+## Task creation
+
+The new Task surface contains:
+
+- the Task prompt;
+- attachments and the existing implementation access controls;
+- a **Plan + Goal** switch, off by default;
+- a **Task Worker** selector, set to **Auto** by default, with configured Task
+  Workers available as explicit choices; and
+- a priority number, defaulting to `0`.
+
+The primary action is **Add Task**. It persists the encrypted Task and queues
+its first cycle. It does not prepare or start an agent turn synchronously.
+
+For a Direct Task, the first queued cycle is `direct`. For a Plan + Goal Task,
+the first queued cycle is `initial-plan`.
+
+The current Task-level model and reasoning picker is replaced by the Task
+Worker selector. Model, reasoning, subagent model, and subagent reasoning are
+owned by Task Worker configuration.
+
+## Settings > Tasks
+
+Add a new top-level Settings tab named **Tasks**. Task Workers are the first
+settings group in this tab, leaving room for future global Task settings.
+
+### Task Worker configuration
+
+Each Task Worker contains:
+
+- a user-defined name;
+- an enabled state;
+- root model and reasoning effort;
+- optional custom subagent model and reasoning effort;
+- maximum concurrent Task count;
+- whether it may run Plan + Goal Tasks;
+- configured ordering for Auto assignment; and
+- a persisted root-model continuity family.
+
+Every Task Worker can run Direct Tasks. The Plan + Goal setting determines
+whether it can additionally run Plan + Goal Tasks.
+
+Maximum concurrency must be a positive integer. Changing it affects future
+claims immediately. Lowering it below the number of active claims does not
+interrupt Tasks; it prevents new claims until usage falls below the new limit.
+New Task Workers default to a maximum concurrency of `1` and Direct-only
+eligibility; the user may raise concurrency or enable Plan + Goal explicitly.
+
+Task Workers referenced by Tasks or historical executions must be disabled or
+soft-deleted rather than removed destructively.
+
+### Continuity family UX
+
+The continuity family lets compatible versions of the same root-model family,
+such as Grok 4.5 and Grok 4.6, continue an Auto-assigned Task at a safe cycle
+boundary. It prevents incompatible changes such as GPT to Grok or Grok to GLM.
+
+Continuity must not add friction to ordinary setup:
+
+- infer and persist a suggested family from trusted catalog metadata;
+- hide the value under an Advanced control;
+- let the user override it when catalog metadata is missing or incorrect; and
+- fall back conservatively to the exact root model profile when no safe family
+  can be inferred.
+
+The user is never required to type or understand a continuity-family value to
+create a Task Worker.
+
+The root model determines Task continuity. A custom subagent remains governed
+by the existing rule that root and subagent routes must share an enabled
+provider and provider account for that Task Worker.
+
+### No automatic default
+
+Cantrip must not create a default Task Worker from account model defaults.
+
+When no Task Workers exist, Project > Overview > Tasks shows a centered empty
+state explaining that Tasks require a configured Task Worker. Its **Configure
+Task Workers** button opens Settings > Tasks directly at the Task Workers
+section.
+
+If historical Completed Tasks exist, they remain accessible below the
+configuration empty state.
+
+## Project Overview > Tasks
+
+Add **Tasks** to the Project Overview navigation for both Git-backed Projects
+and folder Projects. It must not be hidden merely because Git or GitHub is
+unavailable.
+
+The tab contains a header action for pausing or resuming Project Task work and
+exactly two lists:
+
+1. one active Tasks list containing Needs Attention/Input, Running, and Queued
+   Tasks; and
+2. one Completed list below it.
+
+Avoid separate sections for each active state. Status is expressed by each row
+and by row ordering.
+
+### Active-list ordering
+
+Sort the active list by:
+
+1. status rank: Needs Attention/Input, then Running, then Queued;
+2. priority descending;
+3. Task `createdAt` descending; and
+4. Task ID as a stable final tie-breaker.
+
+Priority is display-only. It does not change scheduling order.
+
+Paused is an overlay on the Task's underlying active status rather than a
+third list. When the Project queue is paused, rows retain their underlying
+ordering and show a Paused badge or queue-level paused treatment.
+
+The Needs Attention/Input display rank includes:
+
+- a Plan + Goal Task waiting for plan review, answers, Continue Planning, or
+  Begin Implementation;
+- a Task waiting for an approval or agent interaction;
+- a blocked Task; and
+- a failed Task that can be retried or needs configuration changes.
+
+A Task waiting for plan review has released its Task Worker slot. A live turn
+waiting for approval still owns its slot unless the Project or Task is
+cooperatively paused.
+
+### Completed-list ordering
+
+Completed Tasks are separated below the active list and ordered by
+`completedAt` descending, with Task ID as a stable tie-breaker. Archived Tasks
+are excluded.
+
+### Task rows
+
+Each Task row shows enough information to understand and act on it without
+opening the Chat:
+
+- decrypted title or prompt summary;
+- Direct or Plan + Goal mode;
+- current status;
+- priority;
+- Auto or explicitly assigned Task Worker;
+- currently claimed Task Worker when running or paused;
+- creation time and relevant running/completion time;
+- the agent's **Steps x of y** progress when the root agent has published a
+  plan; and
+- a compact root-agent trajectory bar for the active or most recent turn.
+
+Do not synthesize Steps x of y when the agent has not published plan steps.
+Reuse the existing plan-progress interpretation so Chat and Tasks show the
+same values.
+
+The trajectory bar is a compact projection of the existing encrypted root
+trajectory. It should not create a separate server-side plaintext activity
+model.
+
+Selecting a row opens the existing Task-backed Chat surface. Queued rows expose
+editing actions. Needs Attention rows expose their relevant review, approval,
+retry, or resume action.
+
+## Task assignment
+
+Every Task stores one of two assignment policies:
+
+- **Auto** allows any eligible Task Worker to make the first claim.
+- **Pinned** allows only the selected Task Worker to claim any cycle of that
+  Task.
+
+An explicitly pinned Task never falls back to another Task Worker.
+
+For an unclaimed Auto Task, if multiple eligible Task Workers have capacity,
+configured Task Worker order is the tie-breaker. The first eligible configured
+profile claims the Task; when it has no capacity, evaluation continues through
+the configured order.
+
+After an Auto Task's first claim, future claims at safe cycle boundaries may
+use another Task Worker only when its persisted continuity family matches the
+Task's claimed continuity family.
+
+## Scheduler contract
+
+The server is the authoritative scheduler. Physical Workers execute claimed
+turns but do not independently decide queue order or capacity.
+
+### Eligibility first, FIFO second
+
+For each available Task Worker slot, the scheduler first filters queued Tasks
+to those eligible for that slot. It then selects the oldest eligible Task by:
+
+1. Task `createdAt` ascending; and
+2. Task ID as a stable tie-breaker.
+
+Eligibility is a filter, not a ranking signal. Priority, the latest requeue
+time, Project identity, and active-list display order must not influence
+execution order.
+
+This prevents head-of-line blocking across incompatible pools. For example, a
+newer Direct Task may run on an idle Direct-only Task Worker while an older
+Plan + Goal Task waits for a Plan + Goal-capable Task Worker.
+
+### Eligibility rules
+
+A Task Worker is eligible only when all of the following are true:
+
+- the Task is queued and has no active claim;
+- the Project Task queue is not paused;
+- the Task Worker is enabled and has free global capacity;
+- the Task assignment is Auto or explicitly names this Task Worker;
+- the Task Worker supports the Task's Direct or Plan + Goal mode;
+- any previously claimed Auto continuity family matches;
+- the root and optional subagent model configuration resolves successfully;
+- the required provider route and account are available on the Project's
+  current physical Worker; and
+- the Project placement, worktree, permissions, attachments, and encryption
+  grants are ready for execution.
+
+Ollama and other worker-local providers are eligible only when available on the
+Project's current physical Worker. The scheduler does not automatically
+relocate a Project, worktree, or Task to satisfy a Task Worker. An ineligible
+Task remains queued and the UI exposes the reason when user action can resolve
+it.
+
+### Global semaphore
+
+Task Worker concurrency is account-global. A Task Worker configured with a
+maximum count of four can own at most four active claims across all Projects,
+not four per Project or four per server process.
+
+Implement capacity with durable database coordination:
+
+- transactional claim selection;
+- row locking or an equivalent database-backed semaphore;
+- `SKIP LOCKED`-style contention handling where supported;
+- lease expiration and heartbeats;
+- fencing tokens on worker completion and mutation calls; and
+- restart reconciliation for expired or orphaned claims.
+
+The scheduler must remain correct with multiple server instances and multiple
+physical Workers connected concurrently.
+
+### Configuration snapshots
+
+Every claim snapshots the Task Worker revision, root/subagent configuration,
+reasoning efforts, provider route, physical Worker placement, worktree, and
+continuity family used for the cycle.
+
+Editing a Task Worker affects future claims only. A running or paused turn must
+continue against its claim snapshot.
+
+## Task and scheduling persistence
+
+Keep the existing Task phase state machine and add an independent scheduling
+lifecycle. Do not overload phase states such as `review` or `implementing` to
+represent queue leases.
+
+### Task fields
+
+Extend durable Tasks with at least:
+
+- `priority`, integer, default `0`;
+- `requestedTaskWorkerId`, nullable for Auto;
+- `continuityFamily`, nullable until the first Auto claim;
+- `lastTaskWorkerId`, nullable until claimed;
+- `completedAt`, nullable;
+- scheduler and optimistic row revisions; and
+- any public encrypted-content classifications needed for eligibility without
+  revealing Task content.
+
+The existing immutable Task `createdAt` is the scheduling timestamp for every
+cycle of that Task.
+
+### Task Worker fields
+
+Persist Task Workers as account-scoped records with:
+
+- identity, name, enabled/deleted state, and configured position;
+- root/subagent model configuration and reasoning;
+- maximum concurrency and Plan + Goal permission;
+- inferred or overridden continuity family;
+- row/configuration revision; and
+- creation and update timestamps.
+
+### Dispatch-cycle fields
+
+Persist one internal dispatch cycle for each queued agent operation. A cycle
+needs:
+
+- Task and operation identity;
+- operation kind: `direct`, `initial-plan`, `continue-plan`, `finalize`, or
+  Goal continuation;
+- queue, claim, running, paused, succeeded, failed, cancelled, and expired
+  state as required;
+- immutable Task FIFO timestamp;
+- requested, selected, and snapshotted Task Worker data;
+- physical Worker and model-route affinity;
+- lease owner, expiration, heartbeat, attempt count, and fencing token;
+- retryable eligibility/failure reason; and
+- queued, claimed, started, paused, completed, and updated timestamps.
+
+These records are not displayed as a second kind of Task.
+
+### Project pause state
+
+Persist Project Task pause state independently from individual Task and Chat
+pause state. Track pause sources so resuming Project Tasks removes only the
+Project-level pause and cannot override a Task the user paused individually.
+
+## Direct Task lifecycle
+
+The Direct lifecycle is:
+
+```text
+Add Task
+  -> queued
+  -> eligible Task Worker claim
+  -> implementing/running
+  -> complete
+```
+
+The claimed worker decrypts the exact current prompt and supplies it as an
+ordinary Task turn. It adds no planning wrapper, planning review, Goal prompt,
+or Goal record.
+
+On successful durable assistant completion, set the Task to `complete`, set
+`completedAt`, finish the dispatch cycle, and release the slot.
+
+Failures release the slot after durable reconciliation and place the Task in
+Needs Attention with a safe Retry action. Retry requeues the Task using its
+original `createdAt`.
+
+## Plan + Goal lifecycle
+
+Plan + Goal is a sequence of separately scheduled cycles over one durable Task
+and one encrypted conversation.
+
+### Initial planning
+
+```text
+Add Task
+  -> initial-plan queued
+  -> eligible Task Worker claim
+  -> planning/running
+  -> plan and questions durably accepted
+  -> review/Needs Attention
+  -> slot released
+```
+
+One claim performs one planning cycle. It does not continue planning
+automatically after producing a plan or questions.
+
+### Continue planning
+
+After the user edits the plan, answers questions, or adds instructions,
+**Continue Planning** creates a new `continue-plan` cycle and returns the Task
+to Queued. It does not start immediately and does not change Task `createdAt`.
+
+The next compatible Task Worker receives the existing encrypted conversation,
+plan, questions, answers, and cycle state. When the cycle finishes, the Task
+returns to Needs Attention and releases capacity again.
+
+### Begin implementation
+
+**Begin Implementation** creates a queued `finalize` cycle. It does not
+immediately finalize the plan or start Goal mode.
+
+When claimed, finalization incorporates the reviewed plan and answers into the
+Goal prompt. Goal creation must remain idempotent. Once the Goal is durably
+accepted, the same claim and Task Worker continue to own implementation until
+the Goal:
+
+- completes;
+- blocks or needs user attention;
+- fails terminally; or
+- is cooperatively paused.
+
+The finalization-to-Goal transition must not release the slot or allow another
+Task Worker to interleave between those operations.
+
+### Conversation continuity
+
+All cycles retain the same Task-backed Chat, encrypted transcript, planning
+rounds, plan state, answers, attachments, and Goal linkage.
+
+At a safe idle cycle boundary, an Auto Task may start a fresh worker-specific
+Codex runtime thread when moving to another Task Worker in the same continuity
+family. The next cycle must include enough durable encrypted context to remain
+self-contained when opaque Codex runtime context cannot be resumed.
+
+Pinned Tasks always use their exact Task Worker. Auto Tasks never cross their
+claimed continuity family.
+
+## Editing queued Tasks
+
+The user may edit a Task prompt and attachments only while the Task is queued
+and unclaimed. Priority and assignment may also be edited while queued.
+
+Use optimistic row versions and the scheduler claim transaction as the final
+authority:
+
+- an edit that commits first updates the encrypted Task snapshot seen by the
+  eventual claimant;
+- a claim that commits first causes the edit to fail with a clear message that
+  the Task has started; and
+- a Task Worker must decrypt and prepare the operation after claiming the
+  latest snapshot, not from a stale envelope created when the Task was added.
+
+Do not change `createdAt` when editing, reprioritizing, retrying, continuing
+planning, or beginning implementation.
+
+## Pause and resume
+
+Project > Overview > Tasks provides **Pause Tasks** and **Resume Tasks**.
+
+### Pausing
+
+Pausing Project Tasks must:
+
+- persist the Project pause before allowing new scheduling decisions;
+- prevent all queued Tasks in that Project from being claimed;
+- cooperatively pause every active Task turn in that Project at a safe Codex
+  boundary;
+- record exact Task Worker, physical Worker, model route, provider account,
+  thread, and turn affinity for each paused live turn; and
+- release each paused Task's logical Task Worker slot after pause is durably
+  acknowledged.
+
+A paused resident Codex turn is not counted against Task Worker concurrency,
+so another Task may use the released logical slot.
+
+### Resuming
+
+Resuming Project Tasks removes only the Project pause source and makes queued
+Tasks eligible again.
+
+A Task paused mid-turn must return to the same Task Worker and the same
+physical Worker, model route, provider account, Codex thread, and turn. Resume
+must:
+
+1. wait until that exact Task Worker has capacity;
+2. reacquire a fenced logical slot;
+3. verify the original physical Worker and runtime affinity are available; and
+4. send native resume to the existing turn.
+
+If the original physical Worker or route is offline, the Task remains paused
+and shows the reason. Same-family switching is allowed only between completed
+cycles, never while moving a paused live turn.
+
+Disabling a Task Worker with paused Tasks does not orphan them. The profile and
+claim snapshot remain durable, and resume waits for the exact profile to become
+available or for a future explicit idle-boundary migration flow.
+
+## Encryption and trust boundaries
+
+The server may know only the public classifications required to schedule a
+Task, including mode, phase, queue state, priority, Task Worker assignment,
+continuity family, timestamps, operation kind, and lease metadata.
+
+The server must not receive plaintext Task prompts, plans, questions, answers,
+Goal prompts, messages, progress explanations, or trajectory content.
+
+At claim time, a trusted authorized physical Worker obtains the latest
+encrypted Task snapshot, verifies its grant, decrypts it, and prepares the
+worker operation. The scheduler must not depend on an interactive app client
+remaining online after Task creation.
+
+Prompt edits re-encrypt content and rotate or refresh any worker-readable
+envelope required by the existing Task encryption design. Authorization must
+remain account- and Task-scoped and must not grant a Worker blanket access to
+unrelated Tasks.
+
+## Live updates and projections
+
+Add a Project Task live resource that invalidates or patches the Tasks tab when
+any of these change:
+
+- Task content classification, phase, priority, assignment, or completion;
+- queue, claim, lease, pause, retry, or eligibility state;
+- Task Worker configuration or capacity;
+- planning rounds, questions, answers, or review state;
+- Chat messages, plan steps, approvals, interactions, or Goal state; and
+- root trajectory activity.
+
+Use a batched Project query rather than one request per row. The response may
+contain opaque Task summaries and the bounded encrypted current-turn material
+needed for client-side Steps x of y and trajectory projection.
+
+Reuse the existing client decryption cache and plan/trajectory derivation.
+Invalidate cached projections when their encrypted source revision changes.
+
+## Failure, recovery, and fairness
+
+- Duplicate scheduler wakeups and worker completions are idempotent.
+- A fencing token prevents an expired claimant from completing a newer cycle.
+- Lease expiry returns safe unstarted work to Queued or reconciles a possibly
+  started turn before retrying.
+- A recovered planning result cannot create two planning rounds.
+- A recovered finalization cannot create two Goals.
+- Worker or provider unavailability leaves the Task queued or paused with an
+  actionable eligibility reason.
+- A failed Task appears in Needs Attention and never silently loses its
+  original FIFO timestamp.
+- Archived or completed Tasks cannot be claimed.
+- Per-profile global FIFO may skip Tasks ineligible for that profile, but must
+  not skip an older eligible Task for a newer eligible Task.
+
+## Migration
+
+The migration must preserve current encrypted Tasks and avoid duplicate turns:
+
+- add Task Worker and scheduling tables without creating a default Task Worker;
+- backfill completed Task `completedAt` from the strongest available durable
+  completion timestamp, falling back to Task `updatedAt` when necessary;
+- map existing Direct and Plan + Goal drafts to Queued cycles;
+- map existing review, blocked, and retryable failed Tasks to Needs Attention;
+- leave all queued work inert until the user creates an eligible Task Worker;
+- allow operations already active during deployment to finish through their
+  existing execution ownership, then reconcile them into the new lifecycle;
+  and
+- never create a second operation for an existing active Task.
+
+Migration and compatibility parsing must accept old clients long enough to
+show an upgrade-required error instead of accidentally launching work through
+the obsolete immediate-execution path.
 
 ## Implementation sequence
 
-Policies were merged first and the Task plan was reconciled with the implemented
-Policy contracts. Every milestone used its own worktree, branch, ready PR,
-squash merge, merge observation, and cleanup.
+Implement this feature in independently reviewable milestones while preserving
+the complete contract:
 
-### Milestone 1: Task domain foundation — complete
+1. **Protocol and persistence:** Task Worker schemas, Task scheduling fields,
+   dispatch cycles, Project pause state, migrations, and compatibility parsing.
+2. **Task Worker settings:** Settings > Tasks navigation, Task Worker CRUD,
+   model/subagent validation, capacity controls, order, and automatic
+   continuity-family inference.
+3. **Scheduler foundation:** global semaphore, eligibility, FIFO claims,
+   leases, fencing, reconciliation, and worker command contracts.
+4. **Queued Task creation:** Direct default, Plan + Goal switch, Auto/pinned
+   assignment, priority, queued prompt editing, and removal of immediate start.
+5. **Plan + Goal cycles:** planning review release, Continue Planning requeue,
+   Begin Implementation requeue, finalization-to-Goal ownership, and continuity
+   boundaries.
+6. **Pause and resume:** Project-wide pause, native active-turn pause, capacity
+   release/reacquisition, exact mid-turn affinity, and pause-source handling.
+7. **Project Tasks UI:** two-list dashboard, empty state, ordering, row actions,
+   progress, trajectory, attention states, and live invalidation.
+8. **Migration and hardening:** legacy active-operation reconciliation,
+   multi-server contention, offline workers, failure recovery, performance, and
+   end-to-end acceptance coverage.
 
-- Chat experience protocol/database migration;
-- Task and planning-round tables;
-- state transition helpers;
-- optimistic revisions/idempotency;
-- atomic Task-backed Chat creation;
-- repository/protocol/server tests;
-- no visible Task menu yet.
+Each milestone must be delivered through an isolated worktree and pull request
+with squash auto-merge, following the repository manual-change protocol.
 
-### Milestone 2: Structured read-only planner — complete
+## Validation matrix
 
-- internal structured Chat-turn mode;
-- Task planner/finalizer schemas;
-- enforced read-only runtime profile;
-- policy-aware planning context;
-- final-answer suppression/normalization;
-- round persistence and restart recovery;
-- worker/server integration tests.
+### Scheduler and persistence
 
-### Milestone 3: Task creation and draft UI — complete
+- global concurrency across at least three Projects sharing one Task Worker;
+- independent concurrency limits across multiple Task Workers;
+- FIFO by original Task creation time;
+- priority affecting display but not execution;
+- direct-only eligibility skipping an older Plan + Goal Task;
+- Auto assignment order and exact pinned assignment;
+- same-family Auto handoff at a safe cycle boundary;
+- incompatible-family handoff rejection;
+- claim/edit races and optimistic conflicts;
+- multi-server claim contention;
+- lease expiry, fencing, and stale completion rejection; and
+- no dispatch when zero Task Workers are configured.
 
-- new-tab Task entries;
-- Task surface/router selection;
-- Markdown brief editor/autosave;
-- attachment integration;
-- model/reasoning/Implementation access/placement controls;
-- Plan Task and live activity;
-- Task/Chat inspect toggle;
-- focused app tests.
+### Task lifecycle
 
-### Milestone 4: Review and iterative planning — complete
+- Direct Task queues, runs once, and completes without planning or Goal state;
+- initial planning consumes one cycle and returns to Needs Attention;
+- Continue Planning requeues without changing `createdAt`;
+- Begin Implementation requeues before finalization;
+- finalization creates at most one Goal and retains its slot into Goal mode;
+- retry preserves the original FIFO timestamp;
+- archived and completed Tasks are never claimed; and
+- queued prompt edits are visible to the eventual claimant.
 
-- Markdown plan renderer;
-- question/recommendation/freeform UI;
-- Additional direction;
-- revision-safe Edit Plan;
-- Continue Planning;
-- failed/retry/offline states;
-- multi-window and accessibility tests.
+### Pause and runtime continuity
 
-### Milestone 5: Finalization and Goal handoff — complete
+- Project pause prevents new claims;
+- all active Project Task turns receive a cooperative pause request;
+- acknowledged pauses release logical capacity;
+- resume waits for exact Task Worker capacity;
+- a mid-turn resume uses the same physical Worker, route, provider account,
+  thread, and turn;
+- offline affinity leaves the Task safely paused;
+- Project resume does not override an individual pause; and
+- another Task may use capacity released by a paused Task.
 
-- Begin Implementation validation;
-- final structured turn;
-- immutable final artifacts;
-- policy-aware Goal objective builder;
-- reusable Goal startup service;
-- automatic same-Chat Goal turn;
-- recovery/duplicate-prevention tests.
+### App
 
-### Milestone 6: Dashboard and PR advisories — complete
+- Tasks tab appears for Git and folder Projects;
+- no-worker empty state routes to Settings > Tasks;
+- active rows sort by status, priority, then newest creation time;
+- Completed sorts by newest completion time and excludes archived Tasks;
+- queued edit actions disappear or conflict cleanly after claim;
+- Needs Attention actions open the correct review or interaction surface;
+- Steps x of y matches the Chat projection;
+- root trajectory updates without per-row request fan-out; and
+- desktop, mobile, and popout Project Overview navigation remain consistent.
 
-- implementing/paused/blocked/complete dashboard;
-- Goal controls and Chat integration;
-- PR association/refetch;
-- nonblocking warnings;
-- worktree/branch display;
-- server/app/GitHub tests.
+### Encryption and authorization
 
-### Milestone 7: Full-system hardening — complete
-
-- relocation and attachment-transfer tests;
-- hosted tenant isolation;
-- popout/mobile behavior;
-- archive/restore/delete lifecycle;
-- logging/redaction review;
-- README/FULL_DESCRIPTION updates;
-- end-to-end and repository-wide validation.
-
-The hardening pass also ensures Task draft attachments that have not yet
-appeared in a transcript message are included in both immediate and
-wait-for-idle Chat relocation snapshots. Archive/restore retains Task identity
-and state, permanent deletion cascades Task-only rows, and forking the hidden
-transcript intentionally creates an ordinary Agent Chat.
-
-### Milestone 8: Direct prompt execution — complete
-
-- Plan + Goal draft switch, off for new Tasks and on for migrated Tasks;
-- direct Start Task action using the saved brief verbatim;
-- normal non-Goal worker execution with Implementation access;
-- direct encrypted operation, transcript, retry, and restart recovery;
-- dashboard behavior without final-plan or Goal requirements;
-- protocol, server, worker, app, migration, and lifecycle tests.
+- the server never receives protected Task or trajectory plaintext;
+- only an authorized claimed Worker can decrypt the latest Task snapshot;
+- editing a queued Task cannot leave a stale executable envelope;
+- assignment and Project ownership are enforced server-side;
+- provider and worker-local route availability are checked at claim time; and
+- cross-account Task Worker capacity or claims are impossible.
 
 ## Acceptance criteria
 
-- Users can create a Task from the normal project new-tab menu.
-- A Task is one durable Chat with a Task experience, not a parallel runtime.
-- Draft Markdown and attachments survive tab/window/client changes.
-- New Tasks default to direct execution; Plan + Goal is an explicit opt-in.
-- Direct execution submits the saved brief verbatim as one ordinary non-Goal
-  turn with Implementation access and creates no planning/Goal artifacts.
-- Existing Tasks retain Plan + Goal behavior after migration.
-- Model/reasoning affect direct execution and planning; Implementation access
-  never grants planning mutation authority.
-- Plan Task produces validated Markdown plus structured questions.
-- Live planning uses existing normalized Agent activity.
-- Users can answer questions, add direction, directly edit/save the plan, and
-  repeat planning indefinitely.
-- Planning/finalization cannot mutate repository, Git, GitHub, or external state.
-- Begin Implementation finalizes once and automatically starts one Goal on the
-  same Chat.
-- Goal instructions rely on current effective Policies rather than hardcoding
-  Manual Change Protocol.
-- Policy changes are naturally observed on later summaries/reads without Task
-  revision messaging.
-- Task view remains useful throughout Goal execution and Chat view remains
-  available.
-- PR associations and protocol warnings are advisory only.
-- retries/restarts cannot duplicate planning rounds or Goals.
-- ordinary Chats never show Task-only controls.
-- server/worker/app boundaries and tenant ownership remain intact.
-- the full lifecycle runs in a managed folder without Git, pull-request, or
-  worktree dashboard failures, and offline state preserves durable progress.
+- Adding any Task queues it and never starts an agent immediately.
+- Direct is the default and Plan + Goal is opt-in.
+- Tasks default to Auto assignment and can be pinned to one Task Worker.
+- Queued Tasks can be edited until an atomic claim succeeds.
+- Task Worker limits are enforced account-wide across all Projects.
+- Scheduler execution is oldest eligible Task first and ignores priority.
+- Display order is Needs Attention/Input, Running, Queued; then priority
+  descending and creation time descending within each status.
+- Completed is the only separate list and is ordered by completion time.
+- Each planning cycle releases capacity for user review.
+- Continue Planning and Begin Implementation requeue using the original Task
+  creation timestamp.
+- Auto Tasks may change Task Workers only within the same persisted continuity
+  family and only at safe cycle boundaries.
+- Pinned Tasks always use their selected Task Worker.
+- Paused Tasks release logical capacity and resume mid-turn on the same Task
+  Worker and physical runtime affinity.
+- Ollama and other local routes never cause automatic Project relocation.
+- Steps x of y and the root trajectory are visible live in Task rows when the
+  underlying agent data exists.
+- Settings has a Tasks tab with Task Workers and creates no automatic default.
+- With no Task Workers, the Tasks tab shows a centered configuration action.
+- Task content remains end-to-end encrypted and the server schedules from
+  public classifications only.
 
-## Explicit non-goals
+## Non-goals
 
-- implementing Policies in the Task milestone series;
-- native Codex Plan mode as the Task planner;
-- temporary plan/question files as authoritative state;
-- hard enforcement of PR sequencing;
-- machine interpretation of arbitrary policy prose;
-- automatic PR merge/close/admin bypass;
-- exposing hidden chain-of-thought;
-- Agent mutation of Policies;
-- organization/server-admin policy hierarchy;
-- Task templates, dependencies, nesting, assignees, due dates, kanban, or a
-  general issue tracker;
-- duplicating/forking a Task orchestration state in the first release.
+- Priority-based execution ordering.
+- Automatic Project, repository, worktree, or active-turn relocation to satisfy
+  a Task Worker.
+- Moving a paused live Codex turn to a different physical Worker or provider
+  route.
+- Requiring users to manually classify model families during normal setup.
+- Creating a default Task Worker from account model settings.
+- Introducing a second user-facing work-item or dispatch abstraction.
+- Decrypting Task content, plan progress, or trajectory data on the server.
