@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   activeChatTurnPrompt,
+  CHAT_TURN_PROMPT_GLITCH_CONFIG,
   chatTurnPromptSummary,
   ChatTurnPromptOverlay,
 } from "./chat-turn-prompt-overlay";
@@ -55,7 +56,7 @@ describe("active chat turn prompt", () => {
     });
   });
 
-  it("fades while the next turn's original prompt is visible", () => {
+  it("hides while the next turn's original prompt is visible", () => {
     expect(activeChatTurnPrompt(anchors, 399)).toEqual({
       messageId: "user-1",
       visible: true,
@@ -78,7 +79,7 @@ describe("chat turn prompt overlay", () => {
     ).toBe("Inspect the project then fix it");
   });
 
-  it("retains the prompt while applying the hidden fade state", () => {
+  it("does not retain a hidden prompt for a fade-out transition", () => {
     const markup = renderToStaticMarkup(
       <ChatTurnPromptOverlay
         message={message("Keep this request in view")}
@@ -86,18 +87,29 @@ describe("chat turn prompt overlay", () => {
       />,
     );
 
-    expect(markup).toContain("Current prompt");
-    expect(markup).toContain("Keep this request in view");
-    expect(markup).toContain("opacity-0");
-    expect(markup).toContain('aria-hidden="true"');
+    expect(markup).toBe("");
   });
 
-  it("renders the visible prompt as an overlay", () => {
+  it("renders the visible prompt as a blurred primary-outlined glitch card", () => {
     const markup = renderToStaticMarkup(
       <ChatTurnPromptOverlay message={message("Original prompt")} visible />,
     );
 
-    expect(markup).toContain("opacity-100");
     expect(markup).toContain("data-chat-turn-prompt-overlay");
+    expect(markup).toContain("data-elite-reveal");
+    expect(markup).toContain("border-primary/35");
+    expect(markup).toContain("bg-background/75");
+    expect(markup).toContain("backdrop-blur-2xl");
+    expect(markup).not.toContain("transition-");
+  });
+
+  it("uses a short box-oriented glitch without staggered delay", () => {
+    expect(CHAT_TURN_PROMPT_GLITCH_CONFIG).toMatchObject({
+      glitchCountMax: 5,
+      glitchCountMin: 3,
+      glitchShowMs: 16,
+      staggerSpreadMs: 0,
+      variants: ["outline", "chromatic", "spatial-shift", "scanline"],
+    });
   });
 });
