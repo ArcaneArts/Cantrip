@@ -4182,7 +4182,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "chat.pause.set": {
         const previouslyPaused = pausedChats.has(command.chatId);
         try {
-          await Promise.all(
+          const activeTurns = await Promise.all(
             [...codexRuntimes.values()].map((runtime) =>
               runtime.setActiveChatPaused(command.chatId, command.paused),
             ),
@@ -4192,6 +4192,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           } else {
             pausedChats.delete(command.chatId);
           }
+          return {
+            paused: command.paused,
+            active: activeTurns.find((active) => active !== null) ?? null,
+          };
         } catch (error) {
           if (previouslyPaused) {
             pausedChats.add(command.chatId);
@@ -4205,7 +4209,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           );
           throw error;
         }
-        return { paused: command.paused };
       }
       case "chat.compact":
         return runtimeFor({

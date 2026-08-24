@@ -538,43 +538,62 @@ export class TaskSchedulingRepository {
     input: ProjectTaskPauseUpdate,
   ): Promise<ProjectTaskPauseState | null> {
     const now = new Date();
-    const updated = (
-      await this.database
-        .update(schema.projects)
-        .set({
-          taskSchedulingPaused: input.paused,
-          taskSchedulingPausedAt: input.paused ? now : null,
-          taskSchedulingRevision: sql`${schema.projects.taskSchedulingRevision} + 1`,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(schema.projects.id, projectId),
-            eq(schema.projects.ownerId, ownerId),
-            eq(schema.projects.taskSchedulingRevision, input.rowVersion),
-          ),
-        )
-        .returning({ id: schema.projects.id })
-    )[0];
-    if (!updated) {
-      const exists = await this.database
-        .select({ id: schema.projects.id })
-        .from(schema.projects)
-        .where(
-          and(
-            eq(schema.projects.id, projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
+    return this.database.transaction(async (transaction) => {
+      const owner = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
         .limit(1);
-      if (exists[0]) {
-        throw new TaskSchedulingConflictError(
-          "The Project Task pause state changed before this update was applied.",
-          "stale-version",
-        );
+      if (!owner[0]) return null;
+      const updated = (
+        await transaction
+          .update(schema.projects)
+          .set({
+            taskSchedulingPaused: input.paused,
+            taskSchedulingPausedAt: input.paused ? now : null,
+            taskSchedulingRevision: sql`${schema.projects.taskSchedulingRevision} + 1`,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.projects.id, projectId),
+              eq(schema.projects.ownerId, ownerId),
+              eq(schema.projects.taskSchedulingRevision, input.rowVersion),
+            ),
+          )
+          .returning({
+            id: schema.projects.id,
+            paused: schema.projects.taskSchedulingPaused,
+            pausedAt: schema.projects.taskSchedulingPausedAt,
+            rowVersion: schema.projects.taskSchedulingRevision,
+          })
+      )[0];
+      if (!updated) {
+        const exists = await transaction
+          .select({ id: schema.projects.id })
+          .from(schema.projects)
+          .where(
+            and(
+              eq(schema.projects.id, projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .limit(1);
+        if (exists[0]) {
+          throw new TaskSchedulingConflictError(
+            "The Project Task pause state changed before this update was applied.",
+            "stale-version",
+          );
+        }
+        return null;
       }
-      return null;
-    }
-    return this.getProjectTaskPauseState(ownerId, projectId);
+      return projectTaskPauseStateSchema.parse({
+        projectId: updated.id,
+        paused: updated.paused,
+        pausedAt: updated.pausedAt ? iso(updated.pausedAt) : null,
+        rowVersion: updated.rowVersion,
+      });
+    });
   }
 }

@@ -3636,7 +3636,10 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
-  async setActiveChatPaused(chatId: string, paused: boolean): Promise<boolean> {
+  async setActiveChatPaused(
+    chatId: string,
+    paused: boolean,
+  ): Promise<{ threadId: string; turnId: string } | null> {
     this.setChatPaused(chatId, paused);
     const active = [...this.#activeTurns.entries()].find(
       ([, turn]) => turn.executionKind === "chat" && turn.chatId === chatId,
@@ -3649,7 +3652,7 @@ export class CodexAppServer implements CodexRuntime {
         status: "deferred",
         chatId,
       });
-      return false;
+      return null;
     }
     try {
       await this.request(
@@ -3662,7 +3665,7 @@ export class CodexAppServer implements CodexRuntime {
         CODEX_PAUSE_BOUNDARY_TIMEOUT_MS,
       );
     } catch (error) {
-      if (!this.#activeTurns.has(active[0])) return false;
+      if (!this.#activeTurns.has(active[0])) return null;
       throw error;
     }
     workerLogger.event("info", `Codex turn ${paused ? "paused" : "resumed"}`, {
@@ -3674,7 +3677,7 @@ export class CodexAppServer implements CodexRuntime {
       turnId: active[0],
       threadId: active[1].threadId,
     });
-    return true;
+    return { threadId: active[1].threadId, turnId: active[0] };
   }
 
   async listChatGptModels(

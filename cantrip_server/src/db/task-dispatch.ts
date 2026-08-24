@@ -66,6 +66,12 @@ export type TaskDispatchEligibilityResolver = (
   input: TaskDispatchEligibilityInput,
 ) => Promise<TaskDispatchEligibilityResult>;
 
+export type TaskDispatchResumeEligibilityResolver = (
+  cycle: TaskDispatchCycleSummary,
+) => Promise<
+  { eligible: true } | { eligible: false; code: TaskDispatchEligibilityCode }
+>;
+
 export interface ClaimedTaskDispatch {
   cycle: TaskDispatchCycleSummary;
   lease: TaskDispatchWorkerLease;
@@ -206,6 +212,7 @@ export class TaskDispatchRepository {
           "queued",
           "claimed",
           "running",
+          "paused",
         ]),
       )
       .orderBy(asc(schema.taskDispatchCycles.ownerId));
@@ -658,6 +665,168 @@ export class TaskDispatchRepository {
     });
   }
 
+  async pause(
+    fence: TaskDispatchFence,
+    affinity: { threadId: string | null; turnId: string | null },
+    options: { now?: Date } = {},
+  ): Promise<TaskDispatchCycleSummary> {
+    const now = options.now ?? new Date();
+    const rows = await this.database
+      .update(schema.taskDispatchCycles)
+      .set({
+        state: "paused",
+        codexThreadId: affinity.threadId,
+        turnId: affinity.turnId,
+        lastHeartbeatAt: now,
+        pausedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          fenceWhere(fence, now),
+          inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+        ),
+      )
+      .returning();
+    if (!rows[0]) throw this.staleLease();
+    return toTaskDispatchCycleSummary(rows[0]);
+  }
+
+  async resumeNextPaused(
+    ownerId: string,
+    leaseOwner: string,
+    resolveEligibility: TaskDispatchResumeEligibilityResolver,
+    options: { now?: Date; leaseMs?: number } = {},
+  ): Promise<ClaimedTaskDispatch | null> {
+    const now = options.now ?? new Date();
+    const leaseMs = options.leaseMs ?? TASK_DISPATCH_LEASE_MS;
+    if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0) {
+      throw new TypeError("Task dispatch lease duration must be positive.");
+    }
+    const leaseExpiresAt = new Date(now.getTime() + leaseMs);
+    return this.database.transaction(async (transaction) => {
+      const owner = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!owner[0]) return null;
+      const [activeCounts, candidates] = await Promise.all([
+        transaction
+          .select({
+            taskWorkerId: schema.taskDispatchCycles.selectedTaskWorkerId,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(schema.taskDispatchCycles)
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.ownerId, ownerId),
+              inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+            ),
+          )
+          .groupBy(schema.taskDispatchCycles.selectedTaskWorkerId),
+        transaction
+          .select({
+            cycle: schema.taskDispatchCycles,
+            projectId: schema.projects.id,
+            projectPaused: schema.projects.taskSchedulingPaused,
+            taskWorker: schema.taskWorkers,
+          })
+          .from(schema.taskDispatchCycles)
+          .innerJoin(
+            schema.chats,
+            eq(schema.chats.id, schema.taskDispatchCycles.chatId),
+          )
+          .innerJoin(
+            schema.projects,
+            and(
+              eq(schema.projects.id, schema.chats.projectId),
+              eq(schema.projects.ownerId, ownerId),
+            ),
+          )
+          .innerJoin(
+            schema.taskWorkers,
+            eq(
+              schema.taskWorkers.id,
+              schema.taskDispatchCycles.selectedTaskWorkerId,
+            ),
+          )
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.ownerId, ownerId),
+              eq(schema.taskDispatchCycles.state, "paused"),
+            ),
+          )
+          .orderBy(
+            asc(schema.taskDispatchCycles.fifoCreatedAt),
+            asc(schema.taskDispatchCycles.id),
+          ),
+      ]);
+      const activeByWorker = new Map(
+        activeCounts.flatMap(({ taskWorkerId, count }) =>
+          taskWorkerId ? [[taskWorkerId, count] as const] : [],
+        ),
+      );
+      for (const candidate of candidates) {
+        const cycle = toTaskDispatchCycleSummary(candidate.cycle);
+        if (candidate.projectPaused) continue;
+        const active = activeByWorker.get(candidate.taskWorker.id) ?? 0;
+        if (active >= candidate.taskWorker.maxConcurrency) {
+          await transaction
+            .update(schema.taskDispatchCycles)
+            .set({ eligibilityCode: "capacity-unavailable", updatedAt: now })
+            .where(eq(schema.taskDispatchCycles.id, cycle.id));
+          continue;
+        }
+        const eligibility = await resolveEligibility(cycle);
+        if (!eligibility.eligible) {
+          await transaction
+            .update(schema.taskDispatchCycles)
+            .set({ eligibilityCode: eligibility.code, updatedAt: now })
+            .where(eq(schema.taskDispatchCycles.id, cycle.id));
+          continue;
+        }
+        const resumed = await transaction
+          .update(schema.taskDispatchCycles)
+          .set({
+            state: "running",
+            leaseOwner: candidate.cycle.leaseOwner ?? leaseOwner,
+            leaseExpiresAt,
+            lastHeartbeatAt: now,
+            attemptCount: sql`${schema.taskDispatchCycles.attemptCount} + 1`,
+            eligibilityCode: null,
+            pausedAt: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.taskDispatchCycles.id, cycle.id),
+              eq(schema.taskDispatchCycles.state, "paused"),
+              eq(schema.taskDispatchCycles.fencingToken, cycle.fencingToken),
+            ),
+          )
+          .returning();
+        if (!resumed[0]) continue;
+        const resumedCycle = toTaskDispatchCycleSummary(resumed[0]);
+        const lease = taskDispatchWorkerLeaseSchema.parse({
+          cycleId: resumedCycle.id,
+          operationId: resumedCycle.operationId,
+          leaseOwner: resumedCycle.leaseOwner,
+          leaseExpiresAt: resumedCycle.leaseExpiresAt,
+          fencingToken: resumedCycle.fencingToken,
+        });
+        return {
+          cycle: resumedCycle,
+          lease,
+          projectId: candidate.projectId,
+          taskWorker: toTaskWorkerSummary(candidate.taskWorker, active + 1),
+        };
+      }
+      return null;
+    });
+  }
+
   async settle(
     fence: TaskDispatchFence,
     state: Extract<
@@ -673,7 +842,11 @@ export class TaskDispatchRepository {
       .where(
         and(
           fenceWhere(fence, now),
-          inArray(schema.taskDispatchCycles.state, ["claimed", "running"]),
+          inArray(schema.taskDispatchCycles.state, [
+            "claimed",
+            "running",
+            "paused",
+          ]),
         ),
       )
       .returning();
