@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   Activity,
   ActivityGroup,
+  CompletedTurnActivityGroup,
   activityGroupSummary,
   activityLabel,
   latestActivityLabel,
@@ -235,6 +236,36 @@ describe("rich Codex activity", () => {
     expect(running.match(/chat-working-shimmer/gu)).toHaveLength(1);
     expect(running).toContain('data-turn-key="legacy:user-1"');
     expect(running).not.toContain("git status --short");
+  });
+
+  it("collapses completed turn work behind its elapsed time", async () => {
+    const completed = (
+      <CompletedTurnActivityGroup
+        endedAt="2026-08-07T12:00:37.000Z"
+        onViewTrajectory={vi.fn()}
+        startedAt="2026-08-07T12:00:00.000Z"
+        turnId="turn-1"
+        turnKey="runtime:turn-1"
+      >
+        <span>Grouped command</span>
+      </CompletedTurnActivityGroup>
+    );
+    const markup = renderToStaticMarkup(completed);
+    expect(markup).toContain("Worked for 37s");
+    expect(markup).not.toContain("Grouped command");
+    expect(markup).toContain('aria-label="View turn trajectory"');
+
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(completed);
+    });
+
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Grouped command");
+    const disclosure = renderer.root.findByProps({ "aria-expanded": false });
+    await act(async () => disclosure.props.onClick());
+    expect(renderer.root.findByProps({ "aria-expanded": true })).toBeDefined();
+    expect(JSON.stringify(renderer.toJSON())).toContain("Grouped command");
+    await act(async () => renderer.unmount());
   });
 
   it("expands a tool group into a bounded scrollable activity list", async () => {
