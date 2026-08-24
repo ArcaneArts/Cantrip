@@ -72,6 +72,11 @@ describe("RunConfigurationDefinitionService", () => {
           available: true,
           supportsDiscovery: true,
         }),
+        expect.objectContaining({
+          provider: "dart",
+          available: true,
+          supportsDiscovery: true,
+        }),
       ]),
     });
 
@@ -94,6 +99,15 @@ describe("RunConfigurationDefinitionService", () => {
     await writeFile(
       path.join(root, "java", "src", "main", "java", "demo", "Main.java"),
       "package demo; public class Main { public static void main(String[] args) {} }\n",
+    );
+    await mkdir(path.join(root, "dart", "bin"), { recursive: true });
+    await writeFile(
+      path.join(root, "dart", "pubspec.yaml"),
+      "name: dart_api\n",
+    );
+    await writeFile(
+      path.join(root, "dart", "bin", "dart_api.dart"),
+      "void main(List<String> arguments) {}\n",
     );
     const detected = await service.execute({
       type: "project.run-configuration-definitions.detect",
@@ -118,6 +132,17 @@ describe("RunConfigurationDefinitionService", () => {
               kind: "gradleMainClass",
               className: "demo.Main",
             }),
+          }),
+        }),
+        expect.objectContaining({
+          provider: "dart",
+          confidence: "high",
+          document: expect.objectContaining({
+            workingDirectory: "dart",
+            target: {
+              kind: "entrypoint",
+              path: "bin/dart_api.dart",
+            },
           }),
         }),
       ]),

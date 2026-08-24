@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { nodeRunConfigurationProvider } from "../src/run-configuration-node-provider.js";
 import { javaRunConfigurationProvider } from "../src/run-configuration-java-provider.js";
+import { dartRunConfigurationProvider } from "../src/run-configuration-dart-provider.js";
 import { shellRunConfigurationProvider } from "../src/run-configuration-provider.js";
 
 const roots: string[] = [];
@@ -958,5 +959,295 @@ describe("javaRunConfigurationProvider", () => {
     ).resolves.toEqual([
       expect.objectContaining({ code: "gradle-task-missing" }),
     ]);
+  });
+});
+
+describe("dartRunConfigurationProvider", () => {
+  it("discovers bounded package entrypoints while excluding tests, Flutter packages, and symlink escapes", async () => {
+    const root = await createRoot();
+    const outside = await createRoot();
+    await mkdir(path.join(root, "workspace", "tool"), { recursive: true });
+    await mkdir(path.join(root, "workspace", "packages", "cli", "bin"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "workspace", "packages", "cli", "tool"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "workspace", "packages", "cli", "test"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "workspace", "packages", "cli", "lib"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, "workspace", "pubspec.yaml"),
+      "name: workspace_root\n",
+    );
+    await writeFile(
+      path.join(root, "workspace", "tool", "root.dart"),
+      "Future<void> main() async {}\n",
+    );
+    await writeFile(
+      path.join(root, "workspace", "packages", "cli", "pubspec.yaml"),
+      "name: 'demo_cli'\n",
+    );
+    await writeFile(
+      path.join(root, "workspace", "packages", "cli", "bin", "demo_cli.dart"),
+      "void main(List<String> arguments) {}\n",
+    );
+    await writeFile(
+      path.join(root, "workspace", "packages", "cli", "tool", "dev.dart"),
+      "dynamic main() {}\n",
+    );
+    await writeFile(
+      path.join(
+        root,
+        "workspace",
+        "packages",
+        "cli",
+        "test",
+        "ignored_test.dart",
+      ),
+      "void main() {}\n",
+    );
+    await writeFile(
+      path.join(
+        root,
+        "workspace",
+        "packages",
+        "cli",
+        "lib",
+        "not_entrypoint.dart",
+      ),
+      "const example = '''void main() {}''';\nclass Helper {\n  void main() {}\n}\n",
+    );
+    await mkdir(path.join(root, "mobile", "lib"), { recursive: true });
+    await writeFile(
+      path.join(root, "mobile", "pubspec.yaml"),
+      "name: mobile\ndependencies:\n  flutter:\n    sdk: flutter\n",
+    );
+    await writeFile(
+      path.join(root, "mobile", "lib", "main.dart"),
+      "void main() {}\n",
+    );
+    await writeFile(path.join(outside, "pubspec.yaml"), "name: escaped\n");
+    await writeFile(path.join(outside, "main.dart"), "void main() {}\n");
+    await symlink(outside, path.join(root, "linked-dart-package"));
+
+    const candidates = await dartRunConfigurationProvider.discover({
+      platform: "linux",
+      targetRoot: root,
+      defaultShell: "/bin/sh",
+    });
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          confidence: "high",
+          document: expect.objectContaining({
+            provider: "dart",
+            workingDirectory: "workspace/packages/cli",
+            target: { kind: "entrypoint", path: "bin/demo_cli.dart" },
+            environment: expect.objectContaining({
+              includeCodexEnvironment: true,
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          confidence: "medium",
+          document: expect.objectContaining({
+            workingDirectory: "workspace/packages/cli",
+            target: { kind: "entrypoint", path: "tool/dev.dart" },
+          }),
+        }),
+        expect.objectContaining({
+          confidence: "high",
+          document: expect.objectContaining({
+            workingDirectory: "workspace",
+            target: { kind: "entrypoint", path: "tool/root.dart" },
+          }),
+        }),
+      ]),
+    );
+    expect(candidates).toHaveLength(3);
+    expect(new Set(candidates.map(({ document }) => document.id)).size).toBe(
+      candidates.length,
+    );
+    expect(
+      candidates.some(
+        ({ document, reason }) =>
+          document.workingDirectory === "mobile" ||
+          document.target.path.includes("test/") ||
+          reason.includes("linked"),
+      ),
+    ).toBe(false);
+  });
+
+  it("materializes SDK, VM, program, environment, and ordered before-launch settings", async () => {
+    const root = await createRoot();
+    const canonicalRoot = await realpath(root);
+    const sdkHome = path.join(root, "dart-sdk");
+    await mkdir(path.join(root, "api", "bin"), { recursive: true });
+    await mkdir(path.join(sdkHome, "bin"), { recursive: true });
+    await writeFile(path.join(root, "api", "pubspec.yaml"), "name: api\n");
+    await writeFile(
+      path.join(root, "api", "bin", "server.dart"),
+      "void main(List<String> arguments) {}\n",
+    );
+    await writeFile(path.join(sdkHome, "bin", "dart"), "#!/bin/sh\nexit 0\n");
+    await chmod(path.join(sdkHome, "bin", "dart"), 0o755);
+    const definition = dartRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Dart API",
+    });
+    const materialized = await dartRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        workingDirectory: "api",
+        target: { kind: "entrypoint", path: "bin/server.dart" },
+        arguments: ["--port", "two words"],
+        beforeLaunch: [
+          { kind: "command", command: "echo prepared", workingDirectory: "." },
+        ],
+        options: {
+          sdkHome,
+          vmArguments: ["--enable-asserts", "--observe=127.0.0.1:0"],
+        },
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/bash" },
+    );
+    expect(materialized).toMatchObject({
+      executable: await realpath(path.join(sdkHome, "bin", "dart")),
+      arguments: [
+        "run",
+        "--enable-asserts",
+        "--observe=127.0.0.1:0",
+        "bin/server.dart",
+        "--port",
+        "two words",
+      ],
+      workingDirectory: path.join(canonicalRoot, "api"),
+      beforeLaunch: [
+        {
+          executable: "/bin/bash",
+          arguments: ["-lc", "echo prepared"],
+          workingDirectory: canonicalRoot,
+        },
+      ],
+      environment: definition.environment,
+    });
+    expect(materialized.effectiveCommand).toContain(
+      "run --enable-asserts --observe=127.0.0.1:0 bin/server.dart --port 'two words'",
+    );
+  });
+
+  it("applies typed Windows argument, SDK, and environment overrides", async () => {
+    const root = await createRoot();
+    await mkdir(path.join(root, "windows", "bin"), { recursive: true });
+    await writeFile(
+      path.join(root, "windows", "pubspec.yaml"),
+      "name: windows_api\n",
+    );
+    await writeFile(
+      path.join(root, "windows", "bin", "main.dart"),
+      "void main() {}\n",
+    );
+    const definition = dartRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Run Windows Dart",
+    });
+    const materialized = await dartRunConfigurationProvider.materialize(
+      {
+        ...definition,
+        arguments: ["--base"],
+        environment: {
+          includeCodexEnvironment: true,
+          files: [".env"],
+          variables: [],
+          secrets: [],
+        },
+        platformOverrides: {
+          win32: {
+            workingDirectory: "windows",
+            arguments: ["two words"],
+            environment: {
+              includeCodexEnvironment: false,
+              files: [".env.windows"],
+            },
+            options: {
+              sdkHome: null,
+              vmArguments: ["--enable-asserts"],
+            },
+          },
+        },
+      },
+      { platform: "win32", targetRoot: root, defaultShell: null },
+    );
+    expect(materialized).toMatchObject({
+      executable: "dart",
+      arguments: ["run", "--enable-asserts", "bin/main.dart", "two words"],
+      environment: {
+        includeCodexEnvironment: false,
+        files: [".env.windows"],
+      },
+      effectiveCommand: 'dart run --enable-asserts bin/main.dart "two words"',
+    });
+  });
+
+  it("fails closed for invalid packages, entrypoints, SDKs, and provider tasks", async () => {
+    const root = await createRoot();
+    await mkdir(path.join(root, "bin"));
+    await writeFile(path.join(root, "bin", "main.dart"), "void main() {}\n");
+    const definition = dartRunConfigurationProvider.createDefault({
+      id: randomUUID(),
+      name: "Invalid Dart",
+    });
+    await expect(
+      dartRunConfigurationProvider.validate(definition, {
+        platform: "linux",
+        targetRoot: root,
+        defaultShell: "/bin/sh",
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "dart-package-invalid" }),
+    ]);
+    await writeFile(path.join(root, "pubspec.yaml"), "name: api\n");
+    await expect(
+      dartRunConfigurationProvider.validate(
+        {
+          ...definition,
+          target: { kind: "entrypoint", path: "bin/missing.dart" },
+        },
+        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({ code: "dart-entrypoint-invalid" }),
+    ]);
+    await writeFile(
+      path.join(root, "pubspec.yaml"),
+      "name: mobile\ndependencies:\n  flutter:\n    sdk: flutter\n",
+    );
+    const flutterDiagnostics = await dartRunConfigurationProvider.validate(
+      {
+        ...definition,
+        beforeLaunch: [{ kind: "providerTask", task: "pub get" }],
+        options: { sdkHome: "relative/sdk", vmArguments: [] },
+      },
+      { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+    );
+    expect(flutterDiagnostics.map(({ code }) => code).sort()).toEqual([
+      "dart-package-is-flutter",
+      "dart-provider-task-unsupported",
+      "dart-sdk-invalid",
+    ]);
+    await expect(
+      dartRunConfigurationProvider.validate(
+        {
+          ...definition,
+          commandOverride: "echo overridden",
+          options: { sdkHome: "relative/sdk", vmArguments: [] },
+        },
+        { platform: "linux", targetRoot: root, defaultShell: "/bin/sh" },
+      ),
+    ).resolves.toEqual([]);
   });
 });

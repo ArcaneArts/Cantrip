@@ -74,6 +74,12 @@ export function runConfigurationTargetLabel(
         return `${tool} ${document.target.module ? `-pl ${document.target.module} ` : ""}${document.target.className}`;
     }
   }
+  if (document.provider === "dart") {
+    const executable = document.options.sdkHome
+      ? `${document.options.sdkHome.replace(/[\\/]+$/u, "")}/bin/dart`
+      : "dart";
+    return `${executable} run ${document.target.path}`;
+  }
   return document.target.kind === "command"
     ? document.target.command
     : `${document.target.interpreter ? `${document.target.interpreter} ` : ""}${document.target.path}`;

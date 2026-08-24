@@ -2,6 +2,7 @@ import {
   RUN_CONFIGURATION_FILE_SCHEMA,
   RUN_CONFIGURATION_FILE_VERSION,
   runConfigurationFileSchema,
+  type RunConfigurationDartDocument,
   type RunConfigurationFile,
   type RunConfigurationJavaDocument,
   type RunConfigurationNodeDocument,
@@ -74,12 +75,27 @@ export function createJavaRunConfigurationDocument(
   };
 }
 
+export function createDartRunConfigurationDocument(
+  id = crypto.randomUUID(),
+): RunConfigurationDartDocument {
+  return {
+    ...commonDocument(id),
+    provider: "dart",
+    target: { kind: "entrypoint", path: "bin/main.dart" },
+    options: { sdkHome: null, vmArguments: [] },
+  };
+}
+
 export function createRunConfigurationDocument(
-  provider: Extract<RunConfigurationProviderKind, "java" | "node" | "shell">,
+  provider: Extract<
+    RunConfigurationProviderKind,
+    "dart" | "java" | "node" | "shell"
+  >,
   id = crypto.randomUUID(),
 ): RunConfigurationFile {
   if (provider === "node") return createNodeRunConfigurationDocument(id);
   if (provider === "java") return createJavaRunConfigurationDocument(id);
+  if (provider === "dart") return createDartRunConfigurationDocument(id);
   return createShellRunConfigurationDocument(id);
 }
 
@@ -265,6 +281,33 @@ export function javaRunConfigurationEffectiveCommand(
   };
 }
 
+export function dartRunConfigurationEffectiveCommand(
+  document: RunConfigurationDartDocument,
+): { command: string; overridden: boolean } {
+  if (document.commandOverride !== null) {
+    return {
+      command: [
+        document.commandOverride,
+        ...document.arguments.map(quoteArgument),
+      ].join(" "),
+      overridden: true,
+    };
+  }
+  const executable = document.options.sdkHome
+    ? `${document.options.sdkHome.replace(/[\\/]+$/u, "")}/bin/dart`
+    : "dart";
+  return {
+    command: [
+      quoteArgument(executable),
+      "run",
+      ...document.options.vmArguments.map(quoteArgument),
+      quoteArgument(document.target.path),
+      ...document.arguments.map(quoteArgument),
+    ].join(" "),
+    overridden: false,
+  };
+}
+
 export function runConfigurationEffectiveCommand(
   document: RunConfigurationFile,
 ): { command: string; overridden: boolean } {
@@ -273,6 +316,9 @@ export function runConfigurationEffectiveCommand(
   }
   if (document.provider === "java") {
     return javaRunConfigurationEffectiveCommand(document);
+  }
+  if (document.provider === "dart") {
+    return dartRunConfigurationEffectiveCommand(document);
   }
   return shellRunConfigurationEffectiveCommand(document);
 }

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createDartRunConfigurationDocument,
   createJavaRunConfigurationDocument,
   createNodeRunConfigurationDocument,
   createShellRunConfigurationDocument,
+  dartRunConfigurationEffectiveCommand,
   javaRunConfigurationEffectiveCommand,
   nodeRunConfigurationEffectiveCommand,
   parseRunConfigurationEditorDocument,
@@ -119,5 +121,29 @@ describe("Shell Run configuration editor model", () => {
     const parsed = parseRunConfigurationEditorDocument(document, "{}");
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.document.provider).toBe("java");
+  });
+
+  it("builds structured Dart entrypoint commands with SDK and VM options", () => {
+    const document = createDartRunConfigurationDocument(
+      "00000000-0000-4000-8000-000000000002",
+    );
+    document.name = "Run Dart API";
+    document.target = { kind: "entrypoint", path: "bin/server.dart" };
+    document.arguments = ["--port", "two words"];
+    document.options.sdkHome = "/opt/dart sdk";
+    document.options.vmArguments = ["--enable-asserts"];
+    expect(dartRunConfigurationEffectiveCommand(document)).toEqual({
+      command:
+        '"/opt/dart sdk/bin/dart" run --enable-asserts bin/server.dart --port "two words"',
+      overridden: false,
+    });
+    document.commandOverride = "dart custom.dart";
+    expect(dartRunConfigurationEffectiveCommand(document)).toEqual({
+      command: 'dart custom.dart --port "two words"',
+      overridden: true,
+    });
+    const parsed = parseRunConfigurationEditorDocument(document, "{}");
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.document.provider).toBe("dart");
   });
 });

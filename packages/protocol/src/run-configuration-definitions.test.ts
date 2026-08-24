@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   RUN_CONFIGURATION_FILE_SCHEMA,
   RUN_CONFIGURATION_REPOSITORY_DIRECTORY,
+  runConfigurationDartEntrypointSchema,
   runConfigurationDetectionCandidateSchema,
   runConfigurationFileSchema,
   runConfigurationGradleProjectPathSchema,
@@ -58,6 +59,18 @@ function javaConfiguration() {
       projectPath: ":app",
       className: "com.example.ApiApplication",
     },
+  };
+}
+
+function dartConfiguration() {
+  return {
+    schema: RUN_CONFIGURATION_FILE_SCHEMA,
+    version: 1 as const,
+    id: configurationId,
+    name: "Run Dart API",
+    provider: "dart" as const,
+    workingDirectory: "services/api",
+    target: { kind: "entrypoint" as const, path: "bin/server.dart" },
   };
 }
 
@@ -129,6 +142,14 @@ describe("run configuration definition protocol", () => {
           buildToolArguments: [],
           vmArguments: [],
         },
+        environment: { includeCodexEnvironment: true },
+      },
+    );
+    expect(runConfigurationFileSchema.parse(dartConfiguration())).toMatchObject(
+      {
+        provider: "dart",
+        target: { kind: "entrypoint", path: "bin/server.dart" },
+        options: { sdkHome: null, vmArguments: [] },
         environment: { includeCodexEnvironment: true },
       },
     );
@@ -248,6 +269,37 @@ describe("run configuration definition protocol", () => {
         document,
       }).document.provider,
     ).toBe("java");
+  });
+
+  it("keeps Dart entrypoints portable, typed, and provider-correlated", () => {
+    expect(runConfigurationDartEntrypointSchema.parse("tool/dev.dart")).toBe(
+      "tool/dev.dart",
+    );
+    for (const path of ["../outside.dart", "bin/server.js", "/tmp/main.dart"]) {
+      expect(
+        runConfigurationFileSchema.safeParse({
+          ...dartConfiguration(),
+          target: { kind: "entrypoint", path },
+        }).success,
+        path,
+      ).toBe(false);
+    }
+    expect(
+      runConfigurationFileSchema.safeParse({
+        ...dartConfiguration(),
+        options: { sdkHome: null, vmArguments: [], unknown: true },
+      }).success,
+    ).toBe(false);
+    const document = runConfigurationFileSchema.parse(dartConfiguration());
+    expect(
+      runConfigurationDetectionCandidateSchema.parse({
+        provider: "dart",
+        confidence: "high",
+        reason: "The package has one Dart entrypoint.",
+        effectiveCommand: "dart run bin/server.dart",
+        document,
+      }).document.provider,
+    ).toBe("dart");
   });
 
   it("rejects traversal, absolute paths, Windows paths, and NULs", () => {

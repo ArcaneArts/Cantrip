@@ -14,6 +14,7 @@ import {
 import { shellRunConfigurationProvider } from "./run-configuration-provider.js";
 import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.js";
 import { javaRunConfigurationProvider } from "./run-configuration-java-provider.js";
+import { dartRunConfigurationProvider } from "./run-configuration-dart-provider.js";
 import {
   RunConfigurationRepository,
   type RunConfigurationRepositoryWatcher,
@@ -84,6 +85,7 @@ export class RunConfigurationDefinitionService {
             shellRunConfigurationProvider.capability,
             nodeRunConfigurationProvider.capability,
             javaRunConfigurationProvider.capability,
+            dartRunConfigurationProvider.capability,
           ],
         });
       case "project.run-configuration-definitions.detect": {
@@ -123,9 +125,24 @@ export class RunConfigurationDefinitionService {
             })),
           );
         }
+        if (command.providerKind === null || command.providerKind === "dart") {
+          candidates.push(
+            ...(
+              await dartRunConfigurationProvider.discover(providerContext)
+            ).map((candidate) => ({
+              ...candidate,
+              provider: "dart" as const,
+              effectiveCommand:
+                dartRunConfigurationProvider.renderEffectiveCommand(
+                  candidate.document,
+                  providerContext.platform,
+                ),
+            })),
+          );
+        }
         const diagnostics =
           command.providerKind &&
-          !["shell", "node", "java"].includes(command.providerKind)
+          !["shell", "node", "java", "dart"].includes(command.providerKind)
             ? [
                 {
                   severity: "warning" as const,
