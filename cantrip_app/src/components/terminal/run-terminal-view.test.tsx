@@ -4,7 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { RunTerminalOutput, RunTerminalView } from "./run-terminal-view";
+import {
+  RunTerminalOutput,
+  runTerminalOutputAvailabilityPending,
+  RunTerminalView,
+} from "./run-terminal-view";
 
 const timestamp = "2026-08-24T12:00:00.000Z";
 const projectId = "92be40dc-a153-42fe-8e7f-253722497dcf";
@@ -67,7 +71,7 @@ function renderView(
   retainedOutput: string | null = "ready\r\n",
 ) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   if (retainedOutput !== null) {
     queryClient.setQueryData(
@@ -144,8 +148,63 @@ describe("Run terminal surface", () => {
     const exited = renderView("exited", true, {}, "");
 
     expect(exited).not.toContain("data-run-terminal-readonly");
+    expect(exited).toContain('data-run-terminal-output-state="empty"');
+    expect(exited).not.toContain('data-run-terminal-output-state="loading"');
     expect(exited).toContain("Exited with code 0");
     expect(exited).toContain("Start");
+  });
+
+  it("shows the compact terminal header while retained output is loading", () => {
+    const loading = renderView("exited", true, {}, null);
+
+    expect(loading).toContain('data-run-terminal-output-state="loading"');
+    expect(loading).not.toContain('data-run-terminal-output-state="empty"');
+    expect(loading).toContain("Loading Run output…");
+    expect(loading).toContain("Exited with code 0");
+    expect(loading).toContain("Start");
+  });
+
+  it("holds the loading state across the active-to-inactive refetch boundary", () => {
+    expect(
+      runTerminalOutputAvailabilityPending({
+        active: false,
+        becameInactive: true,
+        canReadOutput: true,
+        hasOutput: false,
+        queryFetching: false,
+        queryPending: false,
+      }),
+    ).toBe(true);
+    expect(
+      runTerminalOutputAvailabilityPending({
+        active: false,
+        becameInactive: false,
+        canReadOutput: true,
+        hasOutput: false,
+        queryFetching: true,
+        queryPending: false,
+      }),
+    ).toBe(true);
+    expect(
+      runTerminalOutputAvailabilityPending({
+        active: false,
+        becameInactive: false,
+        canReadOutput: true,
+        hasOutput: false,
+        queryFetching: false,
+        queryPending: false,
+      }),
+    ).toBe(false);
+    expect(
+      runTerminalOutputAvailabilityPending({
+        active: true,
+        becameInactive: false,
+        canReadOutput: true,
+        hasOutput: false,
+        queryFetching: true,
+        queryPending: false,
+      }),
+    ).toBe(false);
   });
 
   it("disables restart after external definition deletion but keeps stop", () => {
