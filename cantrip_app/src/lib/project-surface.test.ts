@@ -152,6 +152,56 @@ describe("project surfaces", () => {
     expect(index.unresolvedTabKeys).toEqual(["terminal:console-1"]);
   });
 
+  it("keeps legacy Task chats out of dedicated project surfaces", () => {
+    const index = buildProjectSurfaceIndex(layout, {
+      browsers: [],
+      chats: [
+        {
+          id: "chat-1",
+          projectId: "project-1",
+          title: "Task",
+          experience: "task",
+          position: 0,
+          status: "idle",
+          activeWorkerId: "worker-1",
+          activeWorktreeId: "worktree-1",
+          placementRevision: 1,
+          worktreeMode: "agent-managed",
+          modelId: null,
+          reasoningEffort: null,
+          permissionProfileId: null,
+          planMode: "default",
+          hasPendingPlanQuestion: false,
+          hasUnreadCompletion: false,
+          automationPaused: false,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ],
+      codeTabs: [],
+      explorers: [],
+      projectViews: [
+        {
+          id: "issues-1",
+          projectId: "project-1",
+          title: "Issues",
+          kind: "issues",
+          worktreeId: null,
+          position: 1,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ],
+      terminals: [],
+    });
+
+    expect(index.byTabKey.has("chat:chat-1")).toBe(false);
+    expect(index.byGroupId.get("group-1")?.map(({ kind }) => kind)).toEqual([
+      "issues",
+    ]);
+    expect(index.unresolvedTabKeys).toEqual([]);
+  });
+
   it("normalizes view kinds to stable tab keys", () => {
     expect(projectSurfaceTabKey("remote-desktop", "desktop-1")).toBe(
       "view:desktop-1",

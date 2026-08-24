@@ -145,6 +145,12 @@ export function buildProjectSurfaceIndex(
   for (const group of layout.groups) {
     const surfaces: ProjectSurface[] = [];
     for (const member of group.members) {
+      if (
+        member.tabKind === "chat" &&
+        entities.chats.get(member.tabId)?.experience === "task"
+      ) {
+        continue;
+      }
       const surface = surfaceForMember(member, entities);
       if (!surface) {
         unresolvedTabKeys.push(member.tabKey);

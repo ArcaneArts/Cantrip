@@ -119,7 +119,6 @@ describe("project surface creation menu", () => {
   it("defines every project surface once in display order", () => {
     expect(projectSurfaceCreateDefinitions).toEqual([
       { kind: "chat", label: "Agent" },
-      { kind: "task", label: "Task" },
       { kind: "terminal", label: "Terminal" },
       { kind: "explorer", label: "Explorer" },
       { kind: "code", label: "Code" },
@@ -164,7 +163,6 @@ describe("project surface creation menu", () => {
     expect(options.map(({ kind }) => kind)).not.toContain("history");
     expect(options.map(({ kind }) => kind)).toEqual([
       "chat",
-      "task",
       "terminal",
       "explorer",
       "code",

@@ -19,6 +19,7 @@ import {
   Play,
   RefreshCw,
   WifiOff,
+  X,
 } from "lucide-react";
 import {
   lazy,
@@ -157,11 +158,13 @@ export function taskAutosaveLabel(input: {
 
 export function TaskSurface({
   chat,
+  onClose,
   onRename,
   settings,
   worker,
 }: {
   chat: ChatSummary;
+  onClose?(): void;
   onRename(title: string): void;
   settings: SettingsBundle | undefined;
   worker?: WorkerSummary;
@@ -733,7 +736,24 @@ export function TaskSurface({
       onPaste={handlePaste}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b px-4 py-2.5 sm:px-6">
-        <ListTodo className="size-4 text-violet-500" />
+        {onClose ? (
+          <Button
+            aria-label="Close Task"
+            className="-ml-2 size-7"
+            size="icon"
+            title="Close Task"
+            variant="ghost"
+            onClick={() => {
+              void saveCurrentDraft()
+                .catch(() => undefined)
+                .finally(onClose);
+            }}
+          >
+            <X className="size-4" />
+          </Button>
+        ) : (
+          <ListTodo className="size-4 text-violet-500" />
+        )}
         <input
           aria-label="Task title"
           className="min-w-40 flex-1 bg-transparent text-sm font-medium outline-none"

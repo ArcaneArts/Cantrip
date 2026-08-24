@@ -351,6 +351,15 @@ describe.sequential("opaque encrypted Task persistence", () => {
       state: "draft",
       rowVersion: 1,
     });
+    const tabLayout = await database.repository.tabLayouts.get(
+      LOCAL_USER_ID,
+      projectId,
+    );
+    expect(
+      tabLayout?.groups.flatMap(({ members }) =>
+        members.map(({ tabKey }) => tabKey),
+      ),
+    ).not.toContain(`chat:${chatId}`);
 
     const draftResponse = await app.inject({
       method: "PATCH",
