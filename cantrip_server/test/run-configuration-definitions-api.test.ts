@@ -23,6 +23,7 @@ import {
 import {
   runConfigurationDeleteResponseSchema,
   runConfigurationDetectResponseSchema,
+  runConfigurationFlutterDevicesResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationPathsResponseSchema,
@@ -167,6 +168,7 @@ const bridge: WorkerCommandBus = {
       case "project.run-configuration-definitions.capabilities":
       case "project.run-configuration-definitions.detect":
       case "project.run-configuration-definitions.paths":
+      case "project.run-configuration-definitions.flutter-devices":
       case "project.run-configuration-definitions.validate":
       case "project.run-configuration-definitions.write":
       case "project.run-configuration-definitions.delete":
@@ -649,6 +651,52 @@ describe.sequential("Run configuration definition API", () => {
         options: expect.objectContaining({ flavor: "staging" }),
       },
     });
+    const flutterDevicesOperationId = randomUUID();
+    const flutterDevicesResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/run-configurations/flutter-devices`,
+      payload: {
+        operationId: flutterDevicesOperationId,
+        document: {
+          ...flutterCandidate.document,
+          options: {
+            ...flutterCandidate.document.options,
+            sdkHome: path.join(primaryRoot, "missing-flutter-sdk"),
+          },
+        },
+      },
+    });
+    expect(flutterDevicesResponse.statusCode).toBe(200);
+    expect(
+      runConfigurationFlutterDevicesResponseSchema.parse(
+        flutterDevicesResponse.json(),
+      ),
+    ).toMatchObject({
+      operation: "flutter-devices",
+      operationId: flutterDevicesOperationId,
+      projectId,
+      configurationId: flutterCandidate.document.id,
+      devices: [],
+      diagnostics: [
+        expect.objectContaining({
+          severity: "error",
+          code: "flutter-sdk-invalid",
+          field: "options.sdkHome",
+        }),
+      ],
+    });
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        type: "project.run-configuration-definitions.flutter-devices",
+        operationId: flutterDevicesOperationId,
+        projectId,
+        sourcePath: primaryRoot,
+        document: expect.objectContaining({
+          id: flutterCandidate.document.id,
+          provider: "flutter",
+        }),
+      }),
+    );
     const flutterCreatedResponse = await app.inject({
       method: "PUT",
       url: `/api/projects/${projectId}/run-configurations/${flutterCandidate.document.id}`,

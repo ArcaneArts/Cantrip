@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   mkdtemp,
   mkdir,
+  readFile,
   realpath,
   rm,
   unlink,
@@ -46,6 +47,104 @@ afterEach(async () => {
 });
 
 describe("RunConfigurationDefinitionService", () => {
+  it("inspects Flutter devices only through the explicit bounded worker operation", async () => {
+    if (process.platform === "win32") return;
+    const root = await projectRoot();
+    const toolRoot = await projectRoot();
+    const marker = path.join(toolRoot, "flutter-invocations.log");
+    await mkdir(path.join(root, "lib"), { recursive: true });
+    await writeFile(
+      path.join(root, "pubspec.yaml"),
+      "name: mobile\ndependencies:\n  flutter:\n    sdk: flutter\n",
+    );
+    await writeFile(path.join(root, "lib", "main.dart"), "void main() {}\n");
+    await writeFile(
+      path.join(toolRoot, "flutter"),
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' \"$*\" >> '${marker.replaceAll("'", "'\\''")}'`,
+        'if [ "$1" = "devices" ] && [ "$2" = "--machine" ]; then',
+        `  printf '%s' '${JSON.stringify([
+          {
+            id: "unsupported-device",
+            name: "Old device",
+            isSupported: false,
+            emulator: false,
+            targetPlatform: "android-arm",
+          },
+          {
+            id: "chrome",
+            name: "Chrome",
+            isSupported: true,
+            emulator: false,
+            targetPlatform: "web-javascript",
+          },
+        ])}'`,
+        "  exit 0",
+        "fi",
+        "exit 97",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    const service = new RunConfigurationDefinitionService({
+      emit: () => true,
+      environment: { PATH: toolRoot, SHELL: "/bin/sh" },
+    });
+    const document = {
+      schema: "cantrip.run-configuration" as const,
+      version: 1 as const,
+      id: configurationId,
+      name: "Run mobile",
+      provider: "flutter" as const,
+      target: { kind: "entrypoint" as const, path: "lib/main.dart" },
+      options: { deviceId: "chrome" },
+    };
+
+    await expect(
+      service.execute({
+        type: "project.run-configuration-definitions.validate",
+        operationId: randomUUID(),
+        projectId,
+        sourcePath: root,
+        document,
+      }),
+    ).resolves.toMatchObject({
+      operation: "validate",
+      validation: { valid: true, diagnostics: [] },
+    });
+    await expect(readFile(marker, "utf8")).rejects.toThrow();
+
+    const inspected = await service.execute({
+      type: "project.run-configuration-definitions.flutter-devices",
+      operationId: randomUUID(),
+      projectId,
+      sourcePath: root,
+      document,
+    });
+    expect(inspected).toMatchObject({
+      operation: "flutter-devices",
+      projectId,
+      configurationId,
+      devices: [
+        {
+          id: "chrome",
+          name: "Chrome",
+          supported: true,
+          emulator: false,
+          targetPlatform: "web-javascript",
+        },
+        {
+          id: "unsupported-device",
+          supported: false,
+        },
+      ],
+      diagnostics: [],
+    });
+    await expect(readFile(marker, "utf8")).resolves.toBe("devices --machine\n");
+    service.close();
+  });
+
   it("executes correlated CRUD and capability commands against the shared repository", async () => {
     const root = await projectRoot();
     const toolRoot = await projectRoot();

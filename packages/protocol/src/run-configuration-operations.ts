@@ -7,7 +7,9 @@ import {
   runConfigurationDetectionCandidateSchema,
   runConfigurationDiagnosticSchema,
   runConfigurationFileSchema,
+  runConfigurationFlutterDocumentSchema,
   runConfigurationIdSchema,
+  runConfigurationPlatformSchema,
   runConfigurationPathPurposeSchema,
   runConfigurationPathSuggestionSchema,
   runConfigurationProviderCapabilitySchema,
@@ -77,6 +79,24 @@ export const runConfigurationPathsWorkerCommandSchema = z
   })
   .strict();
 
+export const runConfigurationFlutterDeviceSchema = z
+  .object({
+    id: z.string().trim().min(1).max(256),
+    name: z.string().trim().min(1).max(256),
+    supported: z.boolean(),
+    emulator: z.boolean(),
+    targetPlatform: z.string().trim().min(1).max(256).nullable(),
+  })
+  .strict();
+
+export const runConfigurationFlutterDevicesWorkerCommandSchema = z
+  .object({
+    type: z.literal("project.run-configuration-definitions.flutter-devices"),
+    ...runConfigurationWorkerContextFields,
+    document: runConfigurationFlutterDocumentSchema,
+  })
+  .strict();
+
 export const runConfigurationValidateWorkerCommandSchema = z
   .object({
     type: z.literal("project.run-configuration-definitions.validate"),
@@ -107,6 +127,7 @@ export const runConfigurationDefinitionWorkerCommandSchemas = [
   runConfigurationCapabilitiesWorkerCommandSchema,
   runConfigurationDetectWorkerCommandSchema,
   runConfigurationPathsWorkerCommandSchema,
+  runConfigurationFlutterDevicesWorkerCommandSchema,
   runConfigurationValidateWorkerCommandSchema,
   runConfigurationWriteWorkerCommandSchema,
   runConfigurationDeleteWorkerCommandSchema,
@@ -175,6 +196,17 @@ export const runConfigurationPathsResponseSchema = z
   })
   .strict();
 
+export const runConfigurationFlutterDevicesResponseSchema = z
+  .object({
+    operation: z.literal("flutter-devices"),
+    ...runConfigurationOperationContextFields,
+    configurationId: runConfigurationIdSchema,
+    platform: runConfigurationPlatformSchema,
+    devices: z.array(runConfigurationFlutterDeviceSchema).max(256),
+    diagnostics: z.array(runConfigurationDiagnosticSchema).max(200),
+  })
+  .strict();
+
 export const runConfigurationValidateResponseSchema = z
   .object({
     operation: z.literal("validate"),
@@ -207,6 +239,7 @@ export const runConfigurationOperationResponseSchema = z.discriminatedUnion(
     runConfigurationCapabilitiesResponseSchema,
     runConfigurationDetectResponseSchema,
     runConfigurationPathsResponseSchema,
+    runConfigurationFlutterDevicesResponseSchema,
     runConfigurationValidateResponseSchema,
     runConfigurationWriteResponseSchema,
     runConfigurationDeleteResponseSchema,
@@ -248,6 +281,13 @@ export const runConfigurationApiValidateRequestSchema = z
   })
   .strict();
 
+export const runConfigurationApiFlutterDevicesRequestSchema = z
+  .object({
+    operationId: runConfigurationOperationIdSchema,
+    document: runConfigurationFlutterDocumentSchema,
+  })
+  .strict();
+
 export const runConfigurationApiWriteRequestSchema = z
   .object({
     operationId: runConfigurationOperationIdSchema,
@@ -270,6 +310,12 @@ export type RunConfigurationDefinitionWorkerCommand = z.infer<
 export type RunConfigurationOperationResponse = z.infer<
   typeof runConfigurationOperationResponseSchema
 >;
+export type RunConfigurationFlutterDevice = z.infer<
+  typeof runConfigurationFlutterDeviceSchema
+>;
+export type RunConfigurationFlutterDevicesResponse = z.infer<
+  typeof runConfigurationFlutterDevicesResponseSchema
+>;
 export type RunConfigurationDefinitionChangeNotification = z.infer<
   typeof runConfigurationDefinitionChangeNotificationSchema
 >;
@@ -278,6 +324,9 @@ export type RunConfigurationApiWriteRequest = z.infer<
 >;
 export type RunConfigurationApiValidateRequest = z.infer<
   typeof runConfigurationApiValidateRequestSchema
+>;
+export type RunConfigurationApiFlutterDevicesRequest = z.infer<
+  typeof runConfigurationApiFlutterDevicesRequestSchema
 >;
 export type RunConfigurationApiDeleteRequest = z.infer<
   typeof runConfigurationApiDeleteRequestSchema

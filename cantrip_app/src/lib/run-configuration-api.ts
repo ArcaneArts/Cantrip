@@ -2,6 +2,7 @@ import type {
   RunConfigurationDeleteResult,
   RunConfigurationDetectionCandidate,
   RunConfigurationDiagnostic,
+  RunConfigurationFlutterDocument,
   RunConfigurationProviderKind,
   RunConfigurationProviderValidation,
   RunConfigurationPathPurpose,
@@ -26,6 +27,7 @@ import {
   runConfigurationCapabilitiesResponseSchema,
   runConfigurationDeleteResponseSchema,
   runConfigurationDetectResponseSchema,
+  runConfigurationFlutterDevicesResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationPathsResponseSchema,
@@ -154,6 +156,28 @@ export async function discoverRunConfigurationPaths(
   return {
     suggestions: response.suggestions,
     truncated: response.truncated,
+  };
+}
+
+export async function inspectFlutterRunConfigurationDevices(
+  projectId: string,
+  document: RunConfigurationFlutterDocument,
+  operationId = crypto.randomUUID(),
+) {
+  const response = runConfigurationFlutterDevicesResponseSchema.parse(
+    await request(`${configurationCollectionPath(projectId)}/flutter-devices`, {
+      method: "POST",
+      body: JSON.stringify({ operationId, document }),
+    }),
+  );
+  assertCorrelated(response, projectId, operationId);
+  if (response.configurationId !== document.id) {
+    throw new Error("The Flutter device inspection response was misrouted.");
+  }
+  return {
+    devices: response.devices,
+    diagnostics: response.diagnostics,
+    platform: response.platform,
   };
 }
 

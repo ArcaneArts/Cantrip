@@ -92,6 +92,7 @@ import {
   runConfigurationDetectWorkerCommandSchema,
   runConfigurationDetectResponseSchema,
   runConfigurationDeleteWorkerCommandSchema,
+  runConfigurationFlutterDevicesWorkerCommandSchema,
   runConfigurationGetResponseSchema,
   runConfigurationGetWorkerCommandSchema,
   runConfigurationListResponseSchema,
@@ -12356,6 +12357,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   runConfigurationPathsWorkerCommandSchema.extend({
     type: z.literal("project.run-configuration-definitions.paths"),
+  }),
+  runConfigurationFlutterDevicesWorkerCommandSchema.extend({
+    type: z.literal("project.run-configuration-definitions.flutter-devices"),
   }),
   runConfigurationValidateWorkerCommandSchema.extend({
     type: z.literal("project.run-configuration-definitions.validate"),

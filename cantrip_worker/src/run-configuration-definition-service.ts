@@ -3,6 +3,7 @@ import {
   runConfigurationDefinitionChangeNotificationSchema,
   runConfigurationDeleteResponseSchema,
   runConfigurationDetectResponseSchema,
+  runConfigurationFlutterDevicesResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListResponseSchema,
   runConfigurationPathsResponseSchema,
@@ -21,7 +22,10 @@ import { shellRunConfigurationProvider } from "./run-configuration-provider.js";
 import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.js";
 import { javaRunConfigurationProvider } from "./run-configuration-java-provider.js";
 import { dartRunConfigurationProvider } from "./run-configuration-dart-provider.js";
-import { flutterRunConfigurationProvider } from "./run-configuration-flutter-provider.js";
+import {
+  flutterRunConfigurationProvider,
+  inspectFlutterRunConfigurationDevices,
+} from "./run-configuration-flutter-provider.js";
 import { rustRunConfigurationProvider } from "./run-configuration-rust-provider.js";
 import { discoverRunConfigurationPaths } from "./run-configuration-path-discovery.js";
 import { inspectRunConfigurationCodexEnvironmentSource } from "./run-configuration-environment-source.js";
@@ -328,6 +332,26 @@ export class RunConfigurationDefinitionService {
             sourceRoot: command.sourcePath,
           })),
         });
+      case "project.run-configuration-definitions.flutter-devices": {
+        const platform = workerPlatform();
+        const inspection = await inspectFlutterRunConfigurationDevices(
+          command.document,
+          {
+            allowToolInspection: true,
+            defaultShell: this.#environment.SHELL ?? null,
+            environment: this.#environment,
+            platform,
+            targetRoot: command.sourcePath,
+          },
+        );
+        return runConfigurationFlutterDevicesResponseSchema.parse({
+          operation: "flutter-devices",
+          ...context,
+          configurationId: command.document.id,
+          platform,
+          ...inspection,
+        });
+      }
       case "project.run-configuration-definitions.validate":
         return runConfigurationValidateResponseSchema.parse({
           operation: "validate",

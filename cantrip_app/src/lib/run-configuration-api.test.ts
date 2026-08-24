@@ -29,6 +29,7 @@ import {
   discoverRunConfigurationPaths,
   getRunConfiguration,
   getRunConfigurationCapabilities,
+  inspectFlutterRunConfigurationDevices,
   listRunConfigurationRuntimes,
   listRunConfigurationSecrets,
   listRunConfigurations,
@@ -66,6 +67,21 @@ const document = {
   platformOverrides: {},
   options: { shell: "automatic" as const, login: true },
   stop: { gracePeriodMs: 3_000 },
+};
+const flutterDocument = {
+  ...document,
+  provider: "flutter" as const,
+  name: "Run mobile",
+  target: { kind: "entrypoint" as const, path: "lib/main.dart" },
+  options: {
+    sdkHome: null,
+    deviceId: null,
+    flavor: null,
+    mode: "debug" as const,
+    dartDefines: [],
+    dartDefineFiles: [],
+    usePub: true,
+  },
 };
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -274,6 +290,48 @@ describe("Run configuration app API", () => {
     expect(JSON.parse(String(fetch.mock.calls[0]![1]!.body))).toEqual({
       operationId,
       document,
+    });
+  });
+
+  it("explicitly inspects Flutter devices through Primary with exact correlation", async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        operation: "flutter-devices",
+        operationId,
+        projectId,
+        configurationId,
+        platform: "linux",
+        devices: [
+          {
+            id: "chrome",
+            name: "Chrome",
+            supported: true,
+            emulator: false,
+            targetPlatform: "web-javascript",
+          },
+        ],
+        diagnostics: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      inspectFlutterRunConfigurationDevices(
+        projectId,
+        flutterDocument,
+        operationId,
+      ),
+    ).resolves.toMatchObject({
+      platform: "linux",
+      devices: [{ id: "chrome", name: "Chrome" }],
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/projects/${projectId}/run-configurations/flutter-devices`,
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]!.body))).toEqual({
+      operationId,
+      document: flutterDocument,
     });
   });
 

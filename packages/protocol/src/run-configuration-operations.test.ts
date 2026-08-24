@@ -4,6 +4,7 @@ import { workerCommandSchema, workerNotificationSchema } from "./index.js";
 
 import {
   runConfigurationApiValidateRequestSchema,
+  runConfigurationApiFlutterDevicesRequestSchema,
   runConfigurationApiWriteRequestSchema,
   runConfigurationCapabilitiesResponseSchema,
   runConfigurationCapabilitiesWorkerCommandSchema,
@@ -13,6 +14,8 @@ import {
   runConfigurationDetectWorkerCommandSchema,
   runConfigurationGetWorkerCommandSchema,
   runConfigurationGetResponseSchema,
+  runConfigurationFlutterDevicesResponseSchema,
+  runConfigurationFlutterDevicesWorkerCommandSchema,
   runConfigurationListResponseSchema,
   runConfigurationListWorkerCommandSchema,
   runConfigurationPathsQuerySchema,
@@ -34,6 +37,13 @@ const document = {
   name: "Run API",
   provider: "shell" as const,
   target: { kind: "command" as const, command: "pnpm dev" },
+};
+const flutterDocument = {
+  ...document,
+  name: "Run mobile",
+  provider: "flutter" as const,
+  workingDirectory: "apps/mobile",
+  target: { kind: "entrypoint" as const, path: "lib/main.dart" },
 };
 
 describe("run configuration operation protocol", () => {
@@ -73,6 +83,13 @@ describe("run configuration operation protocol", () => {
       }).purpose,
     ).toBe("shell-script");
     expect(
+      runConfigurationFlutterDevicesWorkerCommandSchema.parse({
+        type: "project.run-configuration-definitions.flutter-devices",
+        ...context,
+        document: flutterDocument,
+      }).document.provider,
+    ).toBe("flutter");
+    expect(
       runConfigurationValidateWorkerCommandSchema.parse({
         type: "project.run-configuration-definitions.validate",
         ...context,
@@ -93,6 +110,13 @@ describe("run configuration operation protocol", () => {
         request: { id: configurationId, expectedRevision: "a".repeat(64) },
       }).request.id,
     ).toBe(configurationId);
+    expect(
+      workerCommandSchema.parse({
+        type: "project.run-configuration-definitions.flutter-devices",
+        ...context,
+        document: flutterDocument,
+      }).type,
+    ).toBe("project.run-configuration-definitions.flutter-devices");
     expect(
       workerCommandSchema.parse({
         type: "project.run-configuration-definitions.list",
@@ -250,6 +274,48 @@ describe("run configuration operation protocol", () => {
             },
           ],
         },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("correlates strict bounded Flutter device inspection", () => {
+    expect(
+      runConfigurationApiFlutterDevicesRequestSchema.parse({
+        operationId,
+        document: flutterDocument,
+      }).document.provider,
+    ).toBe("flutter");
+    const response = runConfigurationFlutterDevicesResponseSchema.parse({
+      operation: "flutter-devices",
+      operationId,
+      projectId,
+      configurationId,
+      platform: "linux",
+      devices: [
+        {
+          id: "emulator-5554",
+          name: "Pixel 9",
+          supported: true,
+          emulator: true,
+          targetPlatform: "android-arm64",
+        },
+      ],
+      diagnostics: [],
+    });
+    expect(response.devices[0]).toMatchObject({
+      id: "emulator-5554",
+      emulator: true,
+    });
+    expect(
+      runConfigurationFlutterDevicesResponseSchema.safeParse({
+        ...response,
+        devices: [{ ...response.devices[0], secret: "not-public" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      runConfigurationApiFlutterDevicesRequestSchema.safeParse({
+        operationId,
+        document,
       }).success,
     ).toBe(false);
   });
