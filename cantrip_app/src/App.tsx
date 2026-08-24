@@ -8812,6 +8812,7 @@ export function App() {
             appearance={codeAppearance}
             graphRequest={explorerGraphRequest}
             gitStatuses={worktreeStatuses}
+            key={selectedProjectId ?? "no-project"}
             onChanged={handleExplorerChanged}
             onHeaderChange={setExplorerHeader}
             onLifecycleChange={handleExplorerLifecycleChange}
