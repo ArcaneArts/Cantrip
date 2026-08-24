@@ -1,9 +1,18 @@
 import { Transform, type Readable } from "node:stream";
 
+import type { AccountBandwidthChannel } from "@cantrip/protocol/resource-usage";
+
 import type { AccountUsageRecorder } from "./bandwidth-meter.js";
 
 interface MeteredTransform extends Transform {
   receivedEncodedLength: number;
+}
+
+export function httpBandwidthChannelForRoute(route: string) {
+  return route === "/api/chats/:chatId/attachments" ||
+    route === "/api/attachments/:attachmentId/content"
+    ? ("attachment-transfer" as const)
+    : ("http" as const);
 }
 
 export function encodedPayloadBytes(payload: unknown): number | null {
@@ -32,6 +41,7 @@ export function meterPayloadStream(
   direction: "egress" | "ingress",
   recorder: AccountUsageRecorder,
   notifyChange = true,
+  channel: AccountBandwidthChannel = "http",
 ): MeteredTransform {
   let completed = false;
   const transform = new Transform({
@@ -43,7 +53,7 @@ export function meterPayloadStream(
       recorder.record({
         ownerId,
         direction,
-        channel: "http",
+        channel,
         bytes,
         operationCount: 0,
         notifyChange,
@@ -55,7 +65,7 @@ export function meterPayloadStream(
       recorder.record({
         ownerId,
         direction,
-        channel: "http",
+        channel,
         bytes: 0,
         operationCount: 1,
         notifyChange,
@@ -68,7 +78,7 @@ export function meterPayloadStream(
         recorder.record({
           ownerId,
           direction,
-          channel: "http",
+          channel,
           bytes: 0,
           operationCount: 1,
           notifyChange,

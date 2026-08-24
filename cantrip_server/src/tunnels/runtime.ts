@@ -2,7 +2,9 @@ import type {
   TunnelAttachmentInitialize,
   TunnelAttachmentReady,
 } from "@cantrip/protocol";
+import type { AccountBandwidthChannel } from "@cantrip/protocol/resource-usage";
 
+import type { AccountUsageRecorder } from "../account-usage/bandwidth-meter.js";
 import type {
   ServerRepository,
   TunnelAttachmentAuthorization,
@@ -42,6 +44,7 @@ export class TunnelRuntimeManager {
     private readonly bridge: WorkerCommandBus,
     private readonly changed: (change: TunnelRuntimeChange) => void,
     broker = new TunnelStreamBroker(),
+    private readonly usageRecorder?: AccountUsageRecorder,
   ) {
     this.#broker = broker;
   }
@@ -73,14 +76,27 @@ export class TunnelRuntimeManager {
       throw new Error("The destination worker is offline.");
     }
     this.closeActive(authorization.attachmentId, "Attachment replaced");
+    const usageChannel = tunnelBandwidthChannel(authorization);
+    const usage = this.usageRecorder
+      ? {
+          channel: usageChannel,
+          ownerId: authorization.ownerId,
+          recorder: this.usageRecorder,
+        }
+      : undefined;
     const source = new DesktopTunnelEndpoint(
       socket,
       authorization.clientId,
       authorization.attachmentId,
+      usage,
     );
     const destination = new WorkerTunnelEndpoint(
       this.bridge,
       authorization.destination.workerId,
+      undefined,
+      usage
+        ? { ...usage, attachmentId: authorization.attachmentId }
+        : undefined,
     );
     const route = this.#broker.registerRoute({
       attachmentId: authorization.attachmentId,
@@ -285,6 +301,24 @@ export class TunnelRuntimeManager {
       tunnelId: authorization.tunnelId,
     };
   }
+}
+
+export function tunnelBandwidthChannel(
+  authorization: TunnelAttachmentAuthorization,
+): AccountBandwidthChannel {
+  if (
+    authorization.destination.kind === "worker-adapter" &&
+    authorization.destination.adapter === "code"
+  ) {
+    return "code-relay";
+  }
+  if (
+    authorization.destination.kind === "worker-adapter" &&
+    authorization.destination.adapter === "project-share"
+  ) {
+    return "project-share-relay";
+  }
+  return "tunnel-relay";
 }
 
 function tunnelCloseReasonCode(reason: string): string {

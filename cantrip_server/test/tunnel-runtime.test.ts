@@ -8,16 +8,31 @@ import {
 import { describe, expect, it } from "vitest";
 
 import type {
+  AccountUsageMeasurement,
+  AccountUsageRecorder,
+} from "../src/account-usage/bandwidth-meter.js";
+import type {
   ServerRepository,
   TunnelAttachmentAuthorization,
 } from "../src/db/repository.js";
-import { TunnelRuntimeManager } from "../src/tunnels/runtime.js";
+import {
+  TunnelRuntimeManager,
+  tunnelBandwidthChannel,
+} from "../src/tunnels/runtime.js";
 import type {
   WorkerCommandBus,
   WorkerTunnelDataPlaneFrameListener,
 } from "../src/workers/bridge.js";
 
 const EMPTY = new Uint8Array();
+
+class RecordingMeter implements AccountUsageRecorder {
+  readonly measurements: AccountUsageMeasurement[] = [];
+  record(measurement: AccountUsageMeasurement): boolean {
+    this.measurements.push(measurement);
+    return true;
+  }
+}
 
 class FakeDesktopSocket extends EventEmitter {
   bufferedAmount = 0;
@@ -171,6 +186,83 @@ function sourceFrame(
 }
 
 describe("desktop tunnel runtime", () => {
+  it("meters both physical tunnel legs without double counting", async () => {
+    const repository = {
+      activateDesktopTunnelAttachment: async () => true,
+      markDesktopTunnelAttachmentOffline: async () => undefined,
+    } as unknown as ServerRepository;
+    const bridge = new EchoWorkerBridge();
+    const meter = new RecordingMeter();
+    const runtime = new TunnelRuntimeManager(
+      repository,
+      bridge,
+      () => {},
+      undefined,
+      meter,
+    );
+    const socket = new FakeDesktopSocket();
+    await runtime.attach(socket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+    });
+    const open = sourceFrame("metered-connection", 0, {
+      kind: "open",
+      initialCreditBytes: 1_024,
+    });
+    const openBytes = encodeTunnelDataPlaneFrame(open, EMPTY).byteLength;
+
+    socket.emitFrame(open);
+
+    expect(meter.measurements).toHaveLength(4);
+    expect(meter.measurements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ownerId: "owner-1",
+          direction: "ingress",
+          channel: "tunnel-relay",
+          bytes: openBytes,
+        }),
+        expect.objectContaining({
+          ownerId: "owner-1",
+          direction: "egress",
+          channel: "tunnel-relay",
+        }),
+      ]),
+    );
+    expect(
+      meter.measurements.filter(({ direction }) => direction === "ingress"),
+    ).toHaveLength(2);
+    expect(
+      meter.measurements.filter(({ direction }) => direction === "egress"),
+    ).toHaveLength(2);
+    runtime.close();
+  });
+
+  it("classifies managed Code and project-share data planes", () => {
+    expect(
+      tunnelBandwidthChannel({
+        ...authorization,
+        destination: {
+          kind: "worker-adapter",
+          workerId: "worker-b",
+          adapter: "code",
+          resourceId: "code-1",
+        },
+      }),
+    ).toBe("code-relay");
+    expect(
+      tunnelBandwidthChannel({
+        ...authorization,
+        destination: {
+          kind: "worker-adapter",
+          workerId: "worker-b",
+          adapter: "project-share",
+          resourceId: "share-1",
+        },
+      }),
+    ).toBe("project-share-relay");
+  });
+
   it("relays concurrent binary streams and half-closes through a worker endpoint", async () => {
     const diagnosticTraceId = "22222222-2222-4222-8222-222222222222";
     const repository = {
