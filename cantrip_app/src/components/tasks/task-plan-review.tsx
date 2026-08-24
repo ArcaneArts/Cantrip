@@ -297,10 +297,14 @@ export function TaskPlanReview({
       ),
     );
   };
+  const warmWorkerEncryption = () => {
+    if (!taskWorkerEncryptionCanAttempt(workerEncryptionReadiness)) return;
+    void prepareWorkerEncryption().catch(() => undefined);
+  };
 
   const continuePlanning = useMutation({
     mutationFn: async (operationId: string) => {
-      await prepareWorkerEncryption();
+      warmWorkerEncryption();
       return continueTaskPlanning(chat.id, {
         operationId,
         rowVersion: rowVersionRef.current,
@@ -346,7 +350,7 @@ export function TaskPlanReview({
   });
   const beginImplementation = useMutation({
     mutationFn: async (operationId: string) => {
-      await prepareWorkerEncryption();
+      warmWorkerEncryption();
       return beginTaskImplementation(chat.id, {
         operationId,
         rowVersion: rowVersionRef.current,
@@ -398,6 +402,10 @@ export function TaskPlanReview({
     task.state === "failed" &&
     task.lastError?.operationKind === "finalize" &&
     Boolean(task.finalPlanMarkdown && task.goalPrompt);
+  const dispatchActive = ["queued", "claimed", "running", "paused"].includes(
+    task.dispatch?.state ?? "",
+  );
+  const dispatchQueued = task.dispatch?.state === "queued";
   const operationallyBlocked =
     conflict ||
     planDirty ||
@@ -408,7 +416,7 @@ export function TaskPlanReview({
     retryPlanning.isPending ||
     chat.status === "running" ||
     immutableFinalizationPending ||
-    !taskWorkerEncryptionCanAttempt(workerEncryptionReadiness);
+    dispatchActive;
   const reviewFieldsDisabled =
     conflict ||
     saveReview.isPending ||
@@ -416,6 +424,7 @@ export function TaskPlanReview({
     beginImplementation.isPending ||
     retryPlanning.isPending ||
     immutableFinalizationPending ||
+    dispatchActive ||
     chat.status === "running";
   const saveLabel = taskReviewSaveLabel({
     conflict,
@@ -438,7 +447,8 @@ export function TaskPlanReview({
               saveReview.isPending ||
               planDirty ||
               inputDirty ||
-              conflict
+              conflict ||
+              dispatchActive
             }
             size="sm"
             variant="outline"
@@ -462,6 +472,15 @@ export function TaskPlanReview({
               rerunning finalization.
             </span>
           ) : null}
+        </div>
+      ) : null}
+      {dispatchQueued ? (
+        <div className="flex shrink-0 items-center gap-3 border-b border-violet-500/25 bg-violet-500/5 px-5 py-3 text-sm">
+          <RefreshCw className="size-4 text-violet-500" />
+          <span>
+            Queued for the next Plan + Goal cycle. Review fields are locked once
+            queued.
+          </span>
         </div>
       ) : null}
       {workerEncryptionMessage ? (

@@ -280,6 +280,7 @@ import {
   taskWorkerOrderUpdateSchema,
   taskWorkerSummarySchema,
   taskWorkerUpdateSchema,
+  taskDispatchWorkerLeaseSchema,
   type TaskDispatchWorkerLease,
   encryptedModelProviderAccountCreateSchema,
   encryptedModelProviderAccountUpdateSchema,
@@ -9828,6 +9829,17 @@ export async function buildApp({
           userMessage: ChatMessage;
         }): Promise<void>;
       };
+      afterTurnCompleted?(input: {
+        attribution: { executionLaneId: string; worktreeId: string };
+        execution: ChatExecutionContext;
+        result: AgentTurnResult;
+        userMessage: ChatMessage;
+      }): Promise<void>;
+      afterTurnFailed?(input: {
+        error: unknown;
+        execution: ChatExecutionContext;
+        userMessage: ChatMessage;
+      }): Promise<void>;
       workerPrompt?: string;
       taskDispatchLease?: TaskDispatchWorkerLease;
     } = {},
@@ -11013,6 +11025,21 @@ export async function buildApp({
                 );
               }
             }
+            if (options.afterTurnCompleted) {
+              try {
+                await options.afterTurnCompleted({
+                  attribution,
+                  execution,
+                  result,
+                  userMessage,
+                });
+              } catch (error) {
+                app.log.error(
+                  { chatId: execution.chatId, err: error },
+                  "Task post-processing failed after its turn completed",
+                );
+              }
+            }
             if (
               finished &&
               !(await continuePendingWorktreeTransition(execution.chatId))
@@ -11212,6 +11239,16 @@ export async function buildApp({
           userMessage.id,
         );
         publishChatTurnBoundary(execution.chatId, execution.projectId);
+        if (options.afterTurnFailed) {
+          try {
+            await options.afterTurnFailed({ error, execution, userMessage });
+          } catch (taskError) {
+            app.log.error(
+              { chatId: execution.chatId, err: taskError },
+              "Task post-processing failed after its turn failed",
+            );
+          }
+        }
         if (
           finished &&
           !(await continuePendingWorktreeTransition(execution.chatId))
@@ -11242,14 +11279,36 @@ export async function buildApp({
     objective: TaskOperationRelayGoal,
     task: TaskOperationRelayResult["task"],
     idempotencyKey: string,
+    options: {
+      afterTurnCompleted?(input: {
+        attribution: { executionLaneId: string; worktreeId: string };
+        execution: ChatExecutionContext;
+        result: AgentTurnResult;
+        userMessage: ChatMessage;
+      }): Promise<void>;
+      afterTurnFailed?(input: {
+        error: unknown;
+        execution: ChatExecutionContext;
+        userMessage: ChatMessage;
+      }): Promise<void>;
+      beforeTurn?(): Promise<void>;
+      modelConfiguration?: ModelConfiguration;
+      runtimes?: ModelRuntime[];
+      taskDispatchLease?: TaskDispatchWorkerLease;
+    } = {},
   ): Promise<void> {
-    const modelId = await resolveModelId(context);
+    const modelId = await resolveModelId(
+      context,
+      options.modelConfiguration?.modelId ?? undefined,
+    );
+    const modelConfiguration = modelConfigurationSchema.parse({
+      ...(options.modelConfiguration ?? context.modelConfiguration),
+      modelId,
+    });
     const routePairs = await routePairsForConfiguration(
       context,
-      modelConfigurationSchema.parse({
-        ...context.modelConfiguration,
-        modelId,
-      }),
+      modelConfiguration,
+      options.runtimes,
     );
     const runtime = routePairs[0]!.root.runtime;
     const result = taskGoalWorkerResultSchema.parse(
@@ -11257,7 +11316,9 @@ export async function buildApp({
         type: "chat.goal.create",
         chatId: context.chatId,
         cwd: context.cwd,
-        threadId: context.threadId,
+        threadId: runtimeCanResumeContext(context, runtime)
+          ? context.threadId
+          : null,
         objective,
         tokenBudget: null,
         model: runtime.model,
@@ -11289,15 +11350,22 @@ export async function buildApp({
       context.chatId,
     );
     if (!updated) throw new Error("Task Chat source not found.");
+    await options.beforeTurn?.();
     await beginTurn(
       updated,
       {
         text: "Begin the active encrypted Task Goal.",
         mode: "goal",
         modelId,
+        reasoningEffort: modelConfiguration.reasoningEffort,
+        customSubagentModel: modelConfiguration.customSubagentModel,
+        subagentModelId: modelConfiguration.subagentModelId,
+        subagentReasoningEffort: modelConfiguration.subagentReasoningEffort,
         idempotencyKey,
       },
       {
+        afterTurnCompleted: options.afterTurnCompleted,
+        afterTurnFailed: options.afterTurnFailed,
         purpose: "Task implementation Goal",
         encryptedTaskMessages: {
           userMessage: objective.startMessage,
@@ -11308,11 +11376,17 @@ export async function buildApp({
         },
         workerPrompt:
           "Begin the active Task Goal and follow its encrypted objective.",
+        runtimes: [runtime],
+        taskDispatchLease: options.taskDispatchLease,
       },
     );
   }
 
-  async function launchPreparedTaskGoal(chatId: string, operationId: string) {
+  async function launchPreparedTaskGoal(
+    chatId: string,
+    operationId: string,
+    options: Parameters<typeof startEncryptedTaskGoal>[4] = {},
+  ) {
     const ownerId = applicationOwnerId();
     const taskOperation = await repository.tasks.getOperationContext(
       ownerId,
@@ -11332,6 +11406,18 @@ export async function buildApp({
       chatId,
       goalStartKey,
     );
+    let completed: Awaited<
+      ReturnType<typeof repository.tasks.completeFinalizationOperation>
+    > = null;
+    const completeFinalization = async () => {
+      completed = await repository.tasks.completeFinalizationOperation(
+        ownerId,
+        chatId,
+        operationId,
+      );
+      if (!completed) throw new Error("Task finalization was not found.");
+      publishChatInvalidation(chatId, "task");
+    };
     if (!existingMessage) {
       const context = await repository.getChatExecutionContext(ownerId, chatId);
       if (!context || context.experience !== "task") {
@@ -11342,16 +11428,17 @@ export async function buildApp({
         taskOperation.relayResult.goal,
         taskOperation.relayResult.task,
         goalStartKey,
+        { ...options, beforeTurn: completeFinalization },
       );
+    } else {
+      await completeFinalization();
     }
-
-    const completed = await repository.tasks.completeFinalizationOperation(
-      ownerId,
-      chatId,
-      operationId,
-    );
+    if (!completed) {
+      completed = await repository.tasks.getOperationContext(ownerId, chatId, {
+        operationId,
+      });
+    }
     if (!completed) throw new Error("Task finalization was not found.");
-    publishChatInvalidation(chatId, "task");
     return completed.task;
   }
 
@@ -11469,6 +11556,93 @@ export async function buildApp({
     protectedContent: task.protectedContent,
   });
 
+  const retainedTaskGoalLeases = new Map<
+    string,
+    { lease: TaskDispatchWorkerLease; timer: ReturnType<typeof setInterval> }
+  >();
+
+  const taskGoalDispatchLease = (
+    task: TaskOpaqueSummary,
+  ): TaskDispatchWorkerLease | null => {
+    const dispatch = task.dispatch;
+    if (
+      !dispatch ||
+      dispatch.operationKind !== "finalize" ||
+      dispatch.state !== "running" ||
+      !dispatch.leaseOwner ||
+      !dispatch.leaseExpiresAt
+    ) {
+      return null;
+    }
+    return taskDispatchWorkerLeaseSchema.parse({
+      cycleId: dispatch.id,
+      operationId: dispatch.operationId,
+      leaseOwner: dispatch.leaseOwner,
+      leaseExpiresAt: dispatch.leaseExpiresAt,
+      fencingToken: dispatch.fencingToken,
+    });
+  };
+
+  const releaseTaskGoalLease = (cycleId: string) => {
+    const retained = retainedTaskGoalLeases.get(cycleId);
+    if (!retained) return;
+    clearInterval(retained.timer);
+    retainedTaskGoalLeases.delete(cycleId);
+  };
+
+  const retainTaskGoalLease = async (lease: TaskDispatchWorkerLease) => {
+    const retained = retainedTaskGoalLeases.get(lease.cycleId);
+    if (
+      retained?.lease.fencingToken === lease.fencingToken &&
+      retained.lease.leaseOwner === lease.leaseOwner
+    ) {
+      return;
+    }
+    releaseTaskGoalLease(lease.cycleId);
+    await repository.taskDispatch.heartbeat(lease);
+    const timer = setInterval(
+      () => {
+        void repository.taskDispatch.heartbeat(lease).catch((error) => {
+          releaseTaskGoalLease(lease.cycleId);
+          if (!(error instanceof TaskDispatchConflictError)) {
+            app.log.warn(
+              { cycleId: lease.cycleId, err: error },
+              "Could not retain the Task Goal dispatch lease",
+            );
+          }
+        });
+      },
+      Math.floor(TASK_DISPATCH_LEASE_MS / 3),
+    );
+    timer.unref();
+    retainedTaskGoalLeases.set(lease.cycleId, { lease, timer });
+  };
+
+  const reconcileTaskGoalDispatch = async (
+    source: TaskOpaqueSummary,
+    state: TaskOpaqueSummary["state"],
+  ) => {
+    const lease = taskGoalDispatchLease(source);
+    if (!lease) return;
+    if (state === "implementing") {
+      await retainTaskGoalLease(lease);
+      return;
+    }
+    if (!["paused", "blocked", "complete", "failed"].includes(state)) return;
+    releaseTaskGoalLease(lease.cycleId);
+    try {
+      await repository.taskDispatch.heartbeat(lease);
+      await repository.taskDispatch.settle(
+        lease,
+        state === "failed" ? "failed" : "succeeded",
+      );
+    } catch (error) {
+      if (!(error instanceof TaskDispatchConflictError)) throw error;
+    }
+    publishChatInvalidation(source.chatId, "task");
+    queueTaskScheduleTick();
+  };
+
   const readEncryptedTaskGoal = async (
     context: ChatExecutionContext,
     task: TaskOpaqueSummary,
@@ -11516,8 +11690,53 @@ export async function buildApp({
     if (synchronized && synchronized.rowVersion !== task.rowVersion) {
       publishChatInvalidation(context.chatId, "task");
     }
-    return { ...result, task: synchronized ?? task };
+    const nextTask = synchronized ?? task;
+    await reconcileTaskGoalDispatch(task, nextTask.state);
+    return { ...result, task: nextTask };
   };
+
+  const synchronizeScheduledTaskGoal = async (
+    chatId: string,
+    lease: TaskDispatchWorkerLease,
+    turnFailed: boolean,
+  ) => {
+    const context = await repository.getChatExecutionContext(
+      applicationOwnerId(),
+      chatId,
+    );
+    const task = await repository.tasks.get(applicationOwnerId(), chatId);
+    if (!context || context.experience !== "task" || !task) return;
+    try {
+      await readEncryptedTaskGoal(context, task);
+    } catch (error) {
+      if (!turnFailed) throw error;
+      releaseTaskGoalLease(lease.cycleId);
+      try {
+        await repository.taskDispatch.heartbeat(lease);
+        await repository.taskDispatch.settle(lease, "failed");
+      } catch (dispatchError) {
+        if (!(dispatchError instanceof TaskDispatchConflictError)) {
+          throw dispatchError;
+        }
+      }
+      publishChatInvalidation(chatId, "task");
+      queueTaskScheduleTick();
+    }
+  };
+
+  const scheduledTaskGoalTurnOptions = (lease: TaskDispatchWorkerLease) => ({
+    async afterTurnCompleted({
+      execution,
+    }: {
+      execution: ChatExecutionContext;
+    }) {
+      await synchronizeScheduledTaskGoal(execution.chatId, lease, false);
+    },
+    async afterTurnFailed({ execution }: { execution: ChatExecutionContext }) {
+      await synchronizeScheduledTaskGoal(execution.chatId, lease, true);
+    },
+    taskDispatchLease: lease,
+  });
 
   const resumeChatAutomation = async (chatId: string): Promise<void> => {
     let context = await repository.getChatExecutionContext(
@@ -11561,13 +11780,22 @@ export async function buildApp({
           kind: "resume",
         });
         if (result.goal?.status === "active" && result.message) {
-          const modelId = await resolveModelId(context);
+          const dispatchLease = taskGoalDispatchLease(task);
+          if (dispatchLease) await retainTaskGoalLease(dispatchLease);
+          const dispatchConfiguration = task.dispatch?.modelConfiguration;
+          const modelId =
+            dispatchConfiguration?.modelId ?? (await resolveModelId(context));
           await beginTurn(
             context,
             {
               text: "Resume the active encrypted Task Goal.",
               mode: "goal",
               modelId,
+              reasoningEffort: dispatchConfiguration?.reasoningEffort,
+              customSubagentModel: dispatchConfiguration?.customSubagentModel,
+              subagentModelId: dispatchConfiguration?.subagentModelId,
+              subagentReasoningEffort:
+                dispatchConfiguration?.subagentReasoningEffort,
               idempotencyKey,
             },
             {
@@ -11582,6 +11810,9 @@ export async function buildApp({
               purpose: "Resume encrypted Task Goal",
               runtimes: [runtime],
               workerPrompt: GOAL_RESUME_PROMPT,
+              ...(dispatchLease
+                ? scheduledTaskGoalTurnOptions(dispatchLease)
+                : {}),
             },
           );
           return;
@@ -23667,23 +23898,56 @@ export async function buildApp({
                   request.operationId,
                   assistantMessage.id,
                 );
-                await repository.taskDispatch.settle(claim.lease, "succeeded");
+                if (request.classification.kind !== "finalize") {
+                  await repository.taskDispatch.settle(
+                    claim.lease,
+                    "succeeded",
+                  );
+                  queueTaskScheduleTick();
+                }
                 publishChatInvalidation(context.chatId, "task");
-                queueTaskScheduleTick();
               },
               async afterCompleted() {
                 if (request.classification.kind !== "finalize") return;
                 try {
+                  await retainTaskGoalLease(claim.lease);
+                  const goalTurnOptions = scheduledTaskGoalTurnOptions(
+                    claim.lease,
+                  );
                   await launchPreparedTaskGoal(
                     context.chatId,
                     request.operationId,
+                    {
+                      ...goalTurnOptions,
+                      modelConfiguration: claim.cycle.modelConfiguration!,
+                      runtimes: [runtime],
+                    },
                   );
                 } catch (error) {
-                  await failTaskGoalLaunch(
-                    context.chatId,
-                    request.operationId,
-                    error,
-                  );
+                  releaseTaskGoalLease(claim.lease.cycleId);
+                  try {
+                    await failTaskGoalLaunch(
+                      context.chatId,
+                      request.operationId,
+                      error,
+                    );
+                  } finally {
+                    try {
+                      await repository.taskDispatch.heartbeat(claim.lease);
+                      await repository.taskDispatch.settle(
+                        claim.lease,
+                        "failed",
+                      );
+                    } catch (dispatchError) {
+                      if (
+                        !(dispatchError instanceof TaskDispatchConflictError)
+                      ) {
+                        throw dispatchError;
+                      }
+                    }
+                    publishChatInvalidation(context.chatId, "task");
+                    queueTaskScheduleTick();
+                  }
                 }
               },
               async onFailed() {
@@ -23728,7 +23992,7 @@ export async function buildApp({
   const queueTaskOperation = async (
     chatId: string,
     input: TaskOperationStart,
-    operationKind: "direct" | "initial-plan",
+    operationKind: "direct" | "initial-plan" | "continue-plan" | "finalize",
   ): Promise<TaskOpaqueSummary | null> => {
     const ownerId = applicationOwnerId();
     await repository.taskDispatch.enqueue(
@@ -24106,7 +24370,7 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId/continue",
     async (request, reply) => {
-      const input = taskEncryptedOperationStartSchema.safeParse(request.body);
+      const input = taskOperationStartSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -24118,12 +24382,11 @@ export async function buildApp({
         return reply.code(404).send({ error: "Task not found." });
       }
       try {
-        if (input.data.operation.classification.kind !== "continue-plan") {
-          return reply
-            .code(400)
-            .send({ error: "Task operation kind is invalid." });
-        }
-        const task = await beginEncryptedTaskOperation(context, input.data);
+        const task = await queueTaskOperation(
+          request.params.chatId,
+          input.data,
+          "continue-plan",
+        );
         return task
           ? reply.code(202).send(taskOpaqueSummarySchema.parse(task))
           : reply.code(404).send({ error: "Task not found." });
@@ -24138,7 +24401,7 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId/begin-implementation",
     async (request, reply) => {
-      const input = taskEncryptedOperationStartSchema.safeParse(request.body);
+      const input = taskOperationStartSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -24150,12 +24413,11 @@ export async function buildApp({
         return reply.code(404).send({ error: "Task not found." });
       }
       try {
-        if (input.data.operation.classification.kind !== "finalize") {
-          return reply
-            .code(400)
-            .send({ error: "Task operation kind is invalid." });
-        }
-        const task = await beginEncryptedTaskOperation(context, input.data);
+        const task = await queueTaskOperation(
+          request.params.chatId,
+          input.data,
+          "finalize",
+        );
         return task
           ? reply.code(202).send(taskOpaqueSummarySchema.parse(task))
           : reply.code(404).send({ error: "Task not found." });
@@ -28871,19 +29133,29 @@ export async function buildApp({
           ) {
             throw new Error("Encrypted Goal metadata is invalid.");
           }
-          await repository.tasks.syncImplementationState(
+          const synchronized = await repository.tasks.syncImplementationState(
             applicationOwnerId(),
             context.chatId,
             { rowVersion: task.rowVersion, task: result.task },
           );
+          await reconcileTaskGoalDispatch(task, (synchronized ?? task).state);
           if (result.goal?.status === "active" && result.message) {
-            const modelId = await resolveModelId(context);
+            const dispatchLease = taskGoalDispatchLease(task);
+            if (dispatchLease) await retainTaskGoalLease(dispatchLease);
+            const dispatchConfiguration = task.dispatch?.modelConfiguration;
+            const modelId =
+              dispatchConfiguration?.modelId ?? (await resolveModelId(context));
             await beginTurn(
               context,
               {
                 text: "Resume the active encrypted Task Goal.",
                 mode: "goal",
                 modelId,
+                reasoningEffort: dispatchConfiguration?.reasoningEffort,
+                customSubagentModel: dispatchConfiguration?.customSubagentModel,
+                subagentModelId: dispatchConfiguration?.subagentModelId,
+                subagentReasoningEffort:
+                  dispatchConfiguration?.subagentReasoningEffort,
                 idempotencyKey: result.message.idempotencyKey,
               },
               {
@@ -28897,6 +29169,9 @@ export async function buildApp({
                 purpose: "Resume encrypted Task Goal",
                 runtimes: [runtime],
                 workerPrompt: GOAL_RESUME_PROMPT,
+                ...(dispatchLease
+                  ? scheduledTaskGoalTurnOptions(dispatchLease)
+                  : {}),
               },
             );
           }
@@ -32458,6 +32733,10 @@ export async function buildApp({
     clearInterval(workflowGateExpiryTimer);
     clearInterval(workflowScheduleTimer);
     clearInterval(taskScheduleTimer);
+    for (const { timer } of retainedTaskGoalLeases.values()) {
+      clearInterval(timer);
+    }
+    retainedTaskGoalLeases.clear();
     clearInterval(workerCatalogRefreshTimer);
     for (const timer of quotaObservationTimers) clearTimeout(timer);
     quotaObservationTimers.clear();

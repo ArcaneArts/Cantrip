@@ -544,6 +544,25 @@ async function waitForTask(
   );
 }
 
+async function waitForTaskCycle(
+  chatId: string,
+  operationId: string,
+  state: TaskOpaqueSummary["state"],
+): Promise<TaskOpaqueSummary> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const task = await taskSummary(chatId);
+    if (
+      task.state === state &&
+      task.dispatch?.operationId === operationId &&
+      task.dispatch.state === "succeeded"
+    ) {
+      return task;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Task cycle ${operationId} did not complete in ${state}.`);
+}
+
 beforeAll(async () => {
   workerTaskKey = deriveComponentKey({
     accountMasterKey: generateAccountMasterKey(),
@@ -701,7 +720,13 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       },
     });
     expect(initialResponse.statusCode).toBe(202);
-    task = await openTask(await waitForTask(chatId, "review"));
+    task = await openTask(
+      await waitForTaskCycle(
+        chatId,
+        initialOperation.operation.operationId,
+        "review",
+      ),
+    );
     expect(task.planMarkdown).toContain(`${sentinel} initial plan`);
     expect(task.currentQuestions[0]?.question).toContain(sentinel);
 
@@ -715,8 +740,9 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     });
     expect(replayResponse.statusCode).toBe(202);
 
-    const continuedOperation = await prepareOperation(task, {
-      answers: [
+    const reviewedContent = contentFromTask({
+      ...task,
+      currentAnswers: [
         {
           questionId,
           optionId,
@@ -724,30 +750,42 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         },
       ],
       additionalDirection: `${sentinel} preserve the security boundary`,
-      kind: "continue-plan",
-      operationId: randomUUID(),
     });
-    expect(JSON.stringify(continuedOperation)).not.toContain(sentinel);
+    const reviewResponse = await app!.inject({
+      method: "PATCH",
+      url: `/api/tasks/${chatId}/plan`,
+      payload: {
+        rowVersion: task.rowVersion,
+        task: await sealTask(chatId, reviewedContent),
+      },
+    });
+    expect(reviewResponse.statusCode).toBe(200);
+    task = await openTask(taskOpaqueSummarySchema.parse(reviewResponse.json()));
+    const continuedOperationId = randomUUID();
     const continuedResponse = await app!.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/continue`,
-      payload: continuedOperation,
+      payload: {
+        operationId: continuedOperationId,
+        rowVersion: task.rowVersion,
+      },
     });
     expect(continuedResponse.statusCode).toBe(202);
-    task = await openTask(await waitForTask(chatId, "review"));
+    task = await openTask(
+      await waitForTaskCycle(chatId, continuedOperationId, "review"),
+    );
     expect(task.planMarkdown).toContain(`${sentinel} continued plan`);
     expect(continuedPromptSawAnswer).toBe(true);
     expect(task.currentQuestions).toEqual([]);
 
-    const finalOperation = await prepareOperation(task, {
-      kind: "finalize",
-      operationId: randomUUID(),
-    });
-    expect(JSON.stringify(finalOperation)).not.toContain(sentinel);
+    const finalOperationId = randomUUID();
     const finalResponse = await app!.inject({
       method: "POST",
       url: `/api/tasks/${chatId}/begin-implementation`,
-      payload: finalOperation,
+      payload: {
+        operationId: finalOperationId,
+        rowVersion: task.rowVersion,
+      },
     });
     expect(finalResponse.statusCode).toBe(202);
     task = await openTask(await waitForTask(chatId, "implementing"));
@@ -758,6 +796,12 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(goalCompleted).toBe(true);
+    const completedTask = await waitForTask(chatId, "complete");
+    expect(completedTask.dispatch).toMatchObject({
+      operationId: finalOperationId,
+      operationKind: "finalize",
+      state: "succeeded",
+    });
     const goalResponse = await app!.inject({
       method: "GET",
       url: `/api/chats/${chatId}/goal`,

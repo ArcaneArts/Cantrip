@@ -430,39 +430,87 @@ export class TaskRepository {
     rawInput: TaskOpaqueMutation,
   ): Promise<TaskOpaqueSummary | null> {
     const input = taskOpaqueMutationSchema.parse(rawInput);
-    const current = await this.get(ownerId, chatId);
-    if (!current) return null;
-    if (
-      current.state !== "review" &&
-      !(
-        current.state === "failed" &&
-        current.stableStateBeforeFailure === "review"
-      )
-    ) {
-      throw new TaskStateTransitionError(current.state, "review");
-    }
-    assertMutationKeepsOperationalState(current, input);
-    const updated = await this.database
-      .update(schema.tasks)
-      .set({
-        ...taskOpaqueColumns(input.task),
-        rowVersion: current.rowVersion + 1,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.tasks.chatId, chatId),
-          eq(schema.tasks.rowVersion, input.rowVersion),
-        ),
-      )
-      .returning();
-    if (!updated[0]) {
-      throw new TaskConflictError(
-        "The Task plan changed in another client.",
-        "stale-version",
-      );
-    }
-    return toTaskOpaqueSummary(updated[0]);
+    return this.database.transaction(async (transaction) => {
+      const ownerRows = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!ownerRows[0]) return null;
+
+      const activeDispatch = await transaction
+        .select({ id: schema.taskDispatchCycles.id })
+        .from(schema.taskDispatchCycles)
+        .where(
+          and(
+            eq(schema.taskDispatchCycles.chatId, chatId),
+            inArray(schema.taskDispatchCycles.state, [
+              "queued",
+              "claimed",
+              "running",
+              "paused",
+            ]),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (activeDispatch[0]) {
+        throw new TaskConflictError(
+          "The next Task cycle is already queued or running.",
+          "operation-active",
+        );
+      }
+
+      const rows = await transaction
+        .select({ task: schema.tasks })
+        .from(schema.tasks)
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = rows[0]?.task;
+      if (!task) return null;
+      const current = toTaskOpaqueSummary(task);
+      if (
+        current.state !== "review" &&
+        !(
+          current.state === "failed" &&
+          current.stableStateBeforeFailure === "review"
+        )
+      ) {
+        throw new TaskStateTransitionError(current.state, "review");
+      }
+      assertMutationKeepsOperationalState(current, input);
+      const updated = await transaction
+        .update(schema.tasks)
+        .set({
+          ...taskOpaqueColumns(input.task),
+          rowVersion: current.rowVersion + 1,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.tasks.chatId, chatId),
+            eq(schema.tasks.rowVersion, input.rowVersion),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new TaskConflictError(
+          "The Task plan changed in another client.",
+          "stale-version",
+        );
+      }
+      return toTaskOpaqueSummary(updated[0]);
+    });
   }
 
   async beginOperation(

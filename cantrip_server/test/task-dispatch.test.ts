@@ -291,6 +291,14 @@ describe("Task dispatch scheduling", () => {
         now: new Date("2026-08-24T10:01:00.500Z"),
         turnId: "turn-1",
       });
+      const continued = await value.repository.taskDispatch.markRunning(
+        claimed!.lease,
+        {
+          now: new Date("2026-08-24T10:01:00.750Z"),
+          turnId: "turn-2",
+        },
+      );
+      expect(continued).toMatchObject({ state: "running", turnId: "turn-2" });
 
       const reconciled =
         await value.repository.taskDispatch.requeueExpiredLeases(
