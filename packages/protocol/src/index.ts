@@ -21,6 +21,7 @@ export * from "./customization-content.js";
 export * from "./tunnel-content.js";
 export * from "./client-control-content.js";
 export * from "./code-settings.js";
+export * from "./resource-usage.js";
 
 import { endpointContentOpaqueSchema } from "./endpoint-content.js";
 import {

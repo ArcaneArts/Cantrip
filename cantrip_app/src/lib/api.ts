@@ -12,6 +12,9 @@ import {
   accountLicenseWhitelistEntrySchema,
   accountRegistrationSchema,
   accountSessionListSchema,
+  accountResourceUsageHistoryQuerySchema,
+  accountResourceUsageHistorySchema,
+  accountResourceUsageSchema,
   authLoginSchema,
   mobileSignInGrantCreateResultSchema,
   mobileSignInGrantExchangeSchema,
@@ -349,6 +352,7 @@ import {
   type RepositoryOperationType,
 } from "@cantrip/protocol/repository-operation";
 import type {
+  AccountResourceUsageHistoryQuery,
   AccountRegistration,
   AuthLogin,
   MobileSignInGrantExchange,
@@ -613,6 +617,23 @@ export async function getAuthSession() {
 
 export async function getAccountSessions() {
   return accountSessionListSchema.parse(await request("/api/account/sessions"));
+}
+
+export async function getAccountResourceUsage() {
+  return accountResourceUsageSchema.parse(
+    await request("/api/account/resource-usage"),
+  );
+}
+
+export async function getAccountResourceUsageHistory(
+  input: AccountResourceUsageHistoryQuery,
+) {
+  const query = accountResourceUsageHistoryQuerySchema.parse(input);
+  return accountResourceUsageHistorySchema.parse(
+    await request(
+      `/api/account/resource-usage/history?${new URLSearchParams(query).toString()}`,
+    ),
+  );
 }
 
 export async function login(input: AuthLogin) {

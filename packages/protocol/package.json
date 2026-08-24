@@ -64,6 +64,10 @@
       "types": "./src/code-settings.ts",
       "import": "./dist/code-settings.js"
     },
+    "./resource-usage": {
+      "types": "./src/resource-usage.ts",
+      "import": "./dist/resource-usage.js"
+    },
     "./tunnel-content": {
       "types": "./src/tunnel-content.ts",
       "import": "./dist/tunnel-content.js"
