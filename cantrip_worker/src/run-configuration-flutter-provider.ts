@@ -12,6 +12,7 @@ import {
   type RunConfigurationFlutterDocument,
   type RunConfigurationPlatform,
 } from "@cantrip/protocol/run-configuration-definitions";
+import type { RunConfigurationFlutterDevice } from "@cantrip/protocol/run-configuration-operations";
 
 import {
   findRunConfigurationExecutable,
@@ -82,12 +83,6 @@ interface FlutterPackage {
   directory: string;
   entrypoints: string[];
   name: string;
-}
-
-interface FlutterDevice {
-  id: string;
-  name: string;
-  supported: boolean;
 }
 
 interface FlutterToolOutcome {
@@ -666,7 +661,23 @@ function boundedFlutterToolOutcome(input: {
   });
 }
 
-function parseFlutterDevices(stdout: string): FlutterDevice[] {
+function boundedDeviceText(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return value;
+  if (typeof value !== "string") {
+    throw new Error("Flutter returned an invalid device record.");
+  }
+  const normalized = value.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length > 256 ||
+    /[\u0000-\u001F\u007F]/u.test(normalized)
+  ) {
+    throw new Error("Flutter returned an invalid device record.");
+  }
+  return normalized;
+}
+
+function parseFlutterDevices(stdout: string): RunConfigurationFlutterDevice[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
@@ -676,29 +687,26 @@ function parseFlutterDevices(stdout: string): FlutterDevice[] {
   if (!Array.isArray(parsed) || parsed.length > MAX_FLUTTER_DEVICES) {
     throw new Error("Flutter returned an invalid device inventory.");
   }
-  const devices: FlutterDevice[] = [];
+  const devices: RunConfigurationFlutterDevice[] = [];
   const ids = new Set<string>();
   for (const value of parsed) {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       throw new Error("Flutter returned an invalid device record.");
     }
     const record = value as Record<string, unknown>;
-    const id = typeof record.id === "string" ? record.id.trim() : "";
-    const name = typeof record.name === "string" ? record.name.trim() : "";
-    if (
-      id.length === 0 ||
-      id.length > 256 ||
-      /[\u0000-\u001F\u007F]/u.test(id) ||
-      name.length === 0 ||
-      name.length > 256 ||
-      /[\u0000-\u001F\u007F]/u.test(name)
-    ) {
+    const id = boundedDeviceText(record.id) ?? "";
+    const name = boundedDeviceText(record.name) ?? "";
+    const targetPlatform = boundedDeviceText(record.targetPlatform) ?? null;
+    if (id.length === 0 || name.length === 0) {
       throw new Error("Flutter returned an invalid device record.");
     }
     if (
       record.isSupported !== undefined &&
       typeof record.isSupported !== "boolean"
     ) {
+      throw new Error("Flutter returned an invalid device record.");
+    }
+    if (record.emulator !== undefined && typeof record.emulator !== "boolean") {
       throw new Error("Flutter returned an invalid device record.");
     }
     const normalizedId = id.toLocaleLowerCase("en-US");
@@ -710,16 +718,23 @@ function parseFlutterDevices(stdout: string): FlutterDevice[] {
       id,
       name,
       supported: record.isSupported !== false,
+      emulator: record.emulator === true,
+      targetPlatform,
     });
   }
-  return devices;
+  return devices.sort(
+    (left, right) =>
+      Number(right.supported) - Number(left.supported) ||
+      left.name.localeCompare(right.name) ||
+      left.id.localeCompare(right.id),
+  );
 }
 
 async function inspectFlutterDevices(input: {
   context: RunConfigurationProviderContext;
   executable: string;
   workingDirectory: string;
-}): Promise<FlutterDevice[]> {
+}): Promise<RunConfigurationFlutterDevice[]> {
   const invocation = await materializedToolInvocation(
     input.executable,
     ["devices", "--machine"],
@@ -737,7 +752,9 @@ async function inspectFlutterDevices(input: {
   return parseFlutterDevices(outcome.stdout);
 }
 
-function flutterDeviceSummary(devices: FlutterDevice[]): string {
+function flutterDeviceSummary(
+  devices: RunConfigurationFlutterDevice[],
+): string {
   const supported = devices.filter((device) => device.supported);
   if (supported.length === 0) return "No supported devices were reported.";
   const display = (value: string): string =>
@@ -749,24 +766,12 @@ function flutterDeviceSummary(devices: FlutterDevice[]): string {
   return `Available devices: ${visible.join(", ")}${remaining > 0 ? `, and ${remaining} more` : ""}.`;
 }
 
-async function flutterDeviceDiagnostic(input: {
-  context: RunConfigurationProviderContext;
+function flutterDeviceDiagnostic(input: {
   deviceId: string;
-  executable: string;
-  workingDirectory: string;
-}): Promise<RunConfigurationDiagnostic | null> {
-  let devices: FlutterDevice[];
-  try {
-    devices = await inspectFlutterDevices(input);
-  } catch {
-    return runConfigurationProviderDiagnostic(
-      "flutter-device-inspection-failed",
-      "Flutter device inspection could not complete safely. Verify the selected SDK and connected-device tooling, then retry.",
-      "options.deviceId",
-    );
-  }
+  devices: RunConfigurationFlutterDevice[];
+}): RunConfigurationDiagnostic | null {
   const selected = input.deviceId.toLocaleLowerCase("en-US");
-  const matches = devices.filter(
+  const matches = input.devices.filter(
     ({ id, name }) =>
       id.toLocaleLowerCase("en-US") === selected ||
       name.toLocaleLowerCase("en-US") === selected,
@@ -781,9 +786,104 @@ async function flutterDeviceDiagnostic(input: {
   }
   return runConfigurationProviderDiagnostic(
     "flutter-device-unavailable",
-    `The selected Flutter device ${JSON.stringify(input.deviceId)} is not available on the target worker. ${flutterDeviceSummary(devices)}`,
+    `The selected Flutter device ${JSON.stringify(input.deviceId)} is not available on the target worker. ${flutterDeviceSummary(input.devices)}`,
     "options.deviceId",
   );
+}
+
+export async function inspectFlutterRunConfigurationDevices(
+  document: RunConfigurationFlutterDocument,
+  context: RunConfigurationProviderContext,
+): Promise<{
+  devices: RunConfigurationFlutterDevice[];
+  diagnostics: RunConfigurationDiagnostic[];
+}> {
+  if (context.allowToolInspection !== true || !context.environment) {
+    return {
+      devices: [],
+      diagnostics: [
+        runConfigurationProviderDiagnostic(
+          "flutter-device-inspection-not-authorized",
+          "Flutter device inspection requires an explicit authorized worker operation.",
+          "options.deviceId",
+        ),
+      ],
+    };
+  }
+  const parsed = runConfigurationFlutterDocumentSchema.parse(document);
+  const resolved = resolveConfiguration(parsed, context.platform);
+  let workingDirectory: string;
+  try {
+    workingDirectory = await resolveRealDirectory(
+      context.targetRoot,
+      resolved.workingDirectory,
+    );
+  } catch (error) {
+    return {
+      devices: [],
+      diagnostics: [
+        runConfigurationProviderDiagnostic(
+          "working-directory-invalid",
+          error instanceof Error ? error.message : String(error),
+          "workingDirectory",
+        ),
+      ],
+    };
+  }
+  let executable: string | null = null;
+  if (resolved.options.sdkHome) {
+    try {
+      executable = await canonicalFlutterExecutable(
+        resolved.options.sdkHome,
+        context.platform,
+      );
+    } catch (error) {
+      return {
+        devices: [],
+        diagnostics: [
+          runConfigurationProviderDiagnostic(
+            "flutter-sdk-invalid",
+            error instanceof Error ? error.message : String(error),
+            "options.sdkHome",
+          ),
+        ],
+      };
+    }
+  } else {
+    executable = await findRunConfigurationExecutable(
+      systemFlutterExecutable(context.platform),
+      context,
+    );
+    if (!executable) {
+      const diagnostic = await runConfigurationExecutableDiagnostic(
+        systemFlutterExecutable(context.platform),
+        context,
+        "options.sdkHome",
+      );
+      return { devices: [], diagnostics: diagnostic ? [diagnostic] : [] };
+    }
+  }
+  try {
+    return {
+      devices: await inspectFlutterDevices({
+        context,
+        executable,
+        workingDirectory,
+      }),
+      diagnostics: [],
+    };
+  } catch {
+    return {
+      devices: [],
+      diagnostics: [
+        runConfigurationProviderDiagnostic(
+          "flutter-device-inspection-failed",
+          "Flutter device inspection could not complete safely. Verify the selected SDK and connected-device tooling, then retry.",
+          "options.deviceId",
+        ),
+      ],
+    };
+  }
 }
 
 function providerTaskArguments(task: string): string[] {
@@ -1049,13 +1149,18 @@ export const flutterRunConfigurationProvider: RunConfigurationProvider<RunConfig
         workingDirectory &&
         diagnostics.every(({ severity }) => severity !== "error")
       ) {
-        const diagnostic = await flutterDeviceDiagnostic({
+        const inspection = await inspectFlutterRunConfigurationDevices(
+          parsed,
           context,
+        );
+        diagnostics.push(...inspection.diagnostics);
+        const diagnostic = flutterDeviceDiagnostic({
           deviceId: resolved.options.deviceId,
-          executable: flutterExecutable,
-          workingDirectory,
+          devices: inspection.devices,
         });
-        if (diagnostic) diagnostics.push(diagnostic);
+        if (diagnostic && inspection.diagnostics.length === 0) {
+          diagnostics.push(diagnostic);
+        }
       }
       for (let index = 0; index < parsed.beforeLaunch.length; index += 1) {
         const step = parsed.beforeLaunch[index]!;

@@ -473,12 +473,14 @@ import {
 } from "@cantrip/protocol/resource-usage";
 import {
   runConfigurationApiDeleteRequestSchema,
+  runConfigurationApiFlutterDevicesRequestSchema,
   runConfigurationApiWriteRequestSchema,
   runConfigurationApiValidateRequestSchema,
   runConfigurationCapabilitiesResponseSchema,
   runConfigurationDeleteResponseSchema,
   runConfigurationDetectQuerySchema,
   runConfigurationDetectResponseSchema,
+  runConfigurationFlutterDevicesResponseSchema,
   runConfigurationGetResponseSchema,
   runConfigurationListQuerySchema,
   runConfigurationListResponseSchema,
@@ -6724,6 +6726,39 @@ export async function buildApp({
       throw new Error(
         "The Run configuration validation response was misrouted.",
       );
+    }
+    return { result, source };
+  };
+
+  const inspectRunConfigurationFlutterDevices = async (
+    ownerId: string,
+    projectId: string,
+    operationId: string,
+    document: unknown,
+  ) => {
+    const input = runConfigurationApiFlutterDevicesRequestSchema.parse({
+      operationId,
+      document,
+    });
+    const source = await resolvePrimaryRunConfigurationSource(
+      ownerId,
+      projectId,
+    );
+    const result = runConfigurationFlutterDevicesResponseSchema.parse(
+      await bridge.request(source.workerId, {
+        type: "project.run-configuration-definitions.flutter-devices",
+        operationId,
+        projectId,
+        sourcePath: source.cwd,
+        document: input.document,
+      }),
+    );
+    if (
+      result.operationId !== operationId ||
+      result.projectId !== projectId ||
+      result.configurationId !== input.document.id
+    ) {
+      throw new Error("The Flutter device inspection response was misrouted.");
     }
     return { result, source };
   };
@@ -23664,6 +23699,38 @@ export async function buildApp({
           input.data.operationId,
           input.data.document,
         );
+        return reply.send(result);
+      } catch (error) {
+        return sendRunApiFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{
+    Body: { document?: unknown; operationId?: string };
+    Params: { projectId: string };
+  }>(
+    "/api/projects/:projectId/run-configurations/flutter-devices",
+    async (request, reply) => {
+      const input = runConfigurationApiFlutterDevicesRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const { result } = await inspectRunConfigurationFlutterDevices(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data.operationId,
+          input.data.document,
+        );
+        await appendAudit(request, {
+          action: "run.configuration.app.flutter-devices-inspected",
+          resourceId: input.data.document.id,
+          resourceType: "run-configuration",
+          result: "succeeded",
+        });
         return reply.send(result);
       } catch (error) {
         return sendRunApiFailure(reply, error);

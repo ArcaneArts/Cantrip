@@ -51,6 +51,7 @@ import {
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { RunConfigurationFlutterDevicePicker } from "@/components/run/run-configuration-flutter-device-picker";
 import { RunConfigurationPathPicker } from "@/components/run/run-configuration-path-picker";
 import { RunConfigurationTargetPicker } from "@/components/run/run-configuration-target-picker";
 import { RunConfigurationValidationStatus } from "@/components/run/run-configuration-validation-status";
@@ -2007,29 +2008,54 @@ export function RunConfigurationEditor({
                       }
                     />
                   </label>
-                  <label className={fieldClassName}>
+                  <div className={fieldClassName}>
                     <span className={labelClassName}>
                       Target device (optional)
                     </span>
-                    <Input
-                      className="font-mono"
-                      placeholder="Device ID or name, such as chrome"
-                      value={document.options.deviceId ?? ""}
-                      onChange={(event) =>
-                        setDocument((current) =>
-                          current.provider === "flutter"
-                            ? {
-                                ...current,
-                                options: {
-                                  ...current.options,
-                                  deviceId: event.target.value || null,
-                                },
-                              }
-                            : current,
-                        )
-                      }
-                    />
-                  </label>
+                    <div className="flex gap-2">
+                      <Input
+                        aria-label="Flutter target device ID"
+                        className="min-w-0 flex-1 font-mono"
+                        placeholder="Device ID or name, such as chrome"
+                        value={document.options.deviceId ?? ""}
+                        onChange={(event) =>
+                          setDocument((current) =>
+                            current.provider === "flutter"
+                              ? {
+                                  ...current,
+                                  options: {
+                                    ...current.options,
+                                    deviceId: event.target.value || null,
+                                  },
+                                }
+                              : current,
+                          )
+                        }
+                      />
+                      <RunConfigurationFlutterDevicePicker
+                        currentDeviceId={document.options.deviceId ?? ""}
+                        document={document}
+                        projectId={projectId}
+                        onChoose={(deviceId) =>
+                          setDocument((current) =>
+                            current.provider === "flutter"
+                              ? {
+                                  ...current,
+                                  options: {
+                                    ...current.options,
+                                    deviceId,
+                                  },
+                                }
+                              : current,
+                          )
+                        }
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      Enter a shared device ID manually or inspect devices on
+                      Primary&apos;s worker.
+                    </span>
+                  </div>
                   <label className={fieldClassName}>
                     <span className={labelClassName}>Flavor (optional)</span>
                     <Input
