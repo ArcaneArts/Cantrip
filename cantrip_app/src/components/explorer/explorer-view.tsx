@@ -32,6 +32,7 @@ import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
 import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
 import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
+import { useRetainedInlineWorkbench } from "@/components/explorer/use-retained-inline-workbench";
 import {
   defaultExplorerFileMode,
   markdownPreviewUsesPlainText,
@@ -353,7 +354,13 @@ export function ExplorerView({
   const [mediaRevision, setMediaRevision] = useState(0);
   const [viewStatePending, setViewStatePending] = useState(0);
   const [viewStateError, setViewStateError] = useState<string | null>(null);
-  const streamEncryption = useExplorerWorkerEncryption(explorer, active);
+  // Inactive Explorer surfaces stay mounted. Keep their authorization gate
+  // open for the same bounded window so the Code iframe stays mounted too.
+  const retainInlineWorkbench = useRetainedInlineWorkbench(active);
+  const streamEncryption = useExplorerWorkerEncryption(
+    explorer,
+    retainInlineWorkbench,
+  );
   const streamEncryptionReady = streamEncryption.ready;
   const streamEncryptionBindingRef = useRef(streamEncryption.bindingKey);
   streamEncryptionBindingRef.current = streamEncryption.bindingKey;
