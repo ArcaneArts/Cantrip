@@ -28,7 +28,10 @@ function componentKey(input: {
 }): { key: Uint8Array; keyRevision: number; ownerId: string } {
   try {
     const context = endpointContentContextSchema.parse(input.context);
-    const material = input.service.componentKey(context.domain);
+    const material = input.service.componentKey(
+      context.domain,
+      input.keyRevision,
+    );
     if (
       input.keyRevision !== undefined &&
       input.keyRevision !== material.keyRevision

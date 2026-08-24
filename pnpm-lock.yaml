@@ -308,6 +308,9 @@ importers:
       "@zavora-ai/computer-use-mcp":
         specifier: 7.0.0
         version: 7.0.0(supports-color@10.2.2)
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
       node-pty:
         specifier: ^1.1.0
         version: 1.1.0
@@ -335,6 +338,9 @@ importers:
       yauzl:
         specifier: ^3.2.0
         version: 3.4.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       "@types/ws":
         specifier: ^8.18.1
@@ -6112,6 +6118,12 @@ packages:
       }
     engines: { node: ">=6" }
     hasBin: true
+
+  jsonc-parser@3.3.1:
+    resolution:
+      {
+        integrity: sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==,
+      }
 
   jsonfile@6.2.1:
     resolution:
@@ -12475,6 +12487,8 @@ snapshots:
   json-schema-typed@8.0.2: {}
 
   json5@2.2.3: {}
+
+  jsonc-parser@3.3.1: {}
 
   jsonfile@6.2.1:
     dependencies:

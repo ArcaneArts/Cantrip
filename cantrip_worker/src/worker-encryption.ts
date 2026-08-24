@@ -274,7 +274,7 @@ export function workerEncryptionKeyPath(dataDirectory: string): string {
 export class WorkerEncryptionService {
   readonly #componentKeys = new Map<
     WorkerEncryptionComponentScope,
-    ComponentKeyEntry
+    Map<number, ComponentKeyEntry>
   >();
   readonly #acceptedRevisions = new Map<
     WorkerEncryptionComponentScope,
@@ -470,12 +470,19 @@ export class WorkerEncryptionService {
     return this.#serverId;
   }
 
-  componentKey(component: WorkerEncryptionComponentScope): {
+  componentKey(
+    component: WorkerEncryptionComponentScope,
+    keyRevision?: number,
+  ): {
     key: Uint8Array;
     keyRevision: number;
   } {
     const scope = workerEncryptionComponentScopeSchema.parse(component);
-    const entry = this.#componentKeys.get(scope);
+    const revisions = this.#componentKeys.get(scope);
+    const selectedRevision =
+      keyRevision ??
+      (revisions ? Math.max(...revisions.keys()) : Number.NEGATIVE_INFINITY);
+    const entry = revisions?.get(selectedRevision);
     if (!entry) {
       throw new WorkerEncryptionError(
         "missing-scope",
@@ -635,9 +642,9 @@ export class WorkerEncryptionService {
       return this.status();
     }
 
-    const latest = new Map<
+    const grantsByComponent = new Map<
       WorkerEncryptionComponentScope,
-      WorkerEncryptionBootstrapResult["grants"][number]
+      Map<number, WorkerEncryptionBootstrapResult["grants"][number]>
     >();
     for (const grant of result.grants) {
       if (
@@ -652,14 +659,14 @@ export class WorkerEncryptionService {
       const component = workerEncryptionComponentScopeSchema.parse(
         grant.component,
       );
-      const current = latest.get(component);
-      if (!current || grant.keyRevision > current.keyRevision) {
-        latest.set(component, grant);
-      }
+      const revisions = grantsByComponent.get(component) ?? new Map();
+      revisions.set(grant.keyRevision, grant);
+      grantsByComponent.set(component, revisions);
     }
-    for (const [component, grant] of latest) {
+    for (const [component, revisions] of grantsByComponent) {
+      const latestRevision = Math.max(...revisions.keys());
       const acceptedRevision = acceptedRevisions.get(component) ?? 0;
-      if (grant.keyRevision < acceptedRevision) {
+      if (latestRevision < acceptedRevision) {
         throw new WorkerEncryptionError(
           "principal-unavailable",
           `The ${component} grant revision was rolled back.`,
@@ -669,29 +676,35 @@ export class WorkerEncryptionService {
 
     const replacement = new Map<
       WorkerEncryptionComponentScope,
-      ComponentKeyEntry
+      Map<number, ComponentKeyEntry>
     >();
     try {
-      for (const [component, grant] of latest) {
-        if (grant.wrappedKey.purpose !== "worker-component-key") continue;
-        replacement.set(component, {
-          key: await unwrapComponentKeyForWorker({
-            ownerId: result.ownerId,
-            grant: grant.wrappedKey,
-            workerKeyPair: this.keyPair,
-          }),
-          keyRevision: grant.keyRevision,
-        });
+      for (const [component, grants] of grantsByComponent) {
+        const revisions = new Map<number, ComponentKeyEntry>();
+        replacement.set(component, revisions);
+        for (const grant of grants.values()) {
+          if (grant.wrappedKey.purpose !== "worker-component-key") continue;
+          revisions.set(grant.keyRevision, {
+            key: await unwrapComponentKeyForWorker({
+              ownerId: result.ownerId,
+              grant: grant.wrappedKey,
+              workerKeyPair: this.keyPair,
+            }),
+            keyRevision: grant.keyRevision,
+          });
+        }
       }
     } catch {
-      for (const entry of replacement.values()) clearSensitiveBytes(entry.key);
+      for (const revisions of replacement.values()) {
+        for (const entry of revisions.values()) clearSensitiveBytes(entry.key);
+      }
       throw new WorkerEncryptionError(
         "principal-unavailable",
         "A worker encryption grant could not be opened.",
       );
     }
-    for (const [component, entry] of replacement) {
-      acceptedRevisions.set(component, entry.keyRevision);
+    for (const [component, revisions] of replacement) {
+      acceptedRevisions.set(component, Math.max(...revisions.keys()));
     }
     try {
       if (
@@ -704,13 +717,17 @@ export class WorkerEncryptionService {
           generation,
         ))
       ) {
-        for (const entry of replacement.values()) {
-          clearSensitiveBytes(entry.key);
+        for (const revisions of replacement.values()) {
+          for (const entry of revisions.values()) {
+            clearSensitiveBytes(entry.key);
+          }
         }
         return this.status();
       }
     } catch (error) {
-      for (const entry of replacement.values()) clearSensitiveBytes(entry.key);
+      for (const revisions of replacement.values()) {
+        for (const entry of revisions.values()) clearSensitiveBytes(entry.key);
+      }
       throw error;
     }
     this.clearComponentKeys();
@@ -718,8 +735,8 @@ export class WorkerEncryptionService {
     for (const [component, revision] of acceptedRevisions) {
       this.#acceptedRevisions.set(component, revision);
     }
-    for (const [component, entry] of replacement) {
-      this.#componentKeys.set(component, entry);
+    for (const [component, revisions] of replacement) {
+      this.#componentKeys.set(component, revisions);
     }
     this.#ownerId = result.ownerId;
     this.#boundServerId = result.serverId;
@@ -728,9 +745,9 @@ export class WorkerEncryptionService {
       supported: true,
       state: "ready",
       principalId: this.principalId,
-      grants: [...this.#componentKeys].map(([component, entry]) => ({
+      grants: [...this.#componentKeys].map(([component, revisions]) => ({
         component,
-        keyRevision: entry.keyRevision,
+        keyRevision: Math.max(...revisions.keys()),
       })),
       lastSyncedAt: new Date().toISOString(),
       error: null,
@@ -784,8 +801,8 @@ export class WorkerEncryptionService {
   }
 
   private clearComponentKeys(): void {
-    for (const entry of this.#componentKeys.values()) {
-      clearSensitiveBytes(entry.key);
+    for (const revisions of this.#componentKeys.values()) {
+      for (const entry of revisions.values()) clearSensitiveBytes(entry.key);
     }
     this.#componentKeys.clear();
   }
@@ -798,9 +815,9 @@ export class WorkerEncryptionService {
       supported: true,
       state: "error",
       principalId: this.principalId,
-      grants: [...this.#componentKeys].map(([component, entry]) => ({
+      grants: [...this.#componentKeys].map(([component, revisions]) => ({
         component,
-        keyRevision: entry.keyRevision,
+        keyRevision: Math.max(...revisions.keys()),
       })),
       lastSyncedAt: this.#status.lastSyncedAt,
       error: message || "Worker encryption refresh failed.",

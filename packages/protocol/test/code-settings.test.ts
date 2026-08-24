@@ -6,6 +6,7 @@ import {
   codeSettingsPayloadSchema,
   codeSettingsPublicStatusSchema,
   codeSettingsUploadSchema,
+  codeSettingsWorkerStatusSchema,
   protectedCodeSettingsRecordSchema,
 } from "../src/code-settings.js";
 
@@ -144,5 +145,25 @@ describe("global Code settings protocol", () => {
         updatedByWorkerId: null,
       }),
     ).toThrow(/revision metadata/u);
+  });
+
+  it("exposes synchronization metadata without settings content", () => {
+    const status = codeSettingsWorkerStatusSchema.parse({
+      profileId: "default",
+      state: "conflict",
+      revision: 4,
+      conflictCount: 2,
+      initializedFromWorker: false,
+      backupCreated: true,
+      lastSynchronizedAt: null,
+      error: null,
+    });
+    expect(status).not.toHaveProperty("settings");
+    expect(() =>
+      codeSettingsWorkerStatusSchema.parse({
+        ...status,
+        state: "ready",
+      }),
+    ).toThrow(/conflict state/u);
   });
 });

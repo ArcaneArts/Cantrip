@@ -131,6 +131,42 @@ export const codeSettingsInvalidationSchema = z
   })
   .strict();
 
+export const codeSettingsSyncStateSchema = z.enum([
+  "unavailable",
+  "uninitialized",
+  "synchronizing",
+  "ready",
+  "offline",
+  "conflict",
+  "error",
+]);
+
+export const codeSettingsWorkerStatusSchema = z
+  .object({
+    profileId: codeSettingsProfileIdSchema,
+    state: codeSettingsSyncStateSchema,
+    revision: z.number().int().positive().safe().nullable(),
+    conflictCount: z.number().int().nonnegative().safe(),
+    initializedFromWorker: z.boolean(),
+    backupCreated: z.boolean(),
+    lastSynchronizedAt: z.string().datetime({ offset: true }).nullable(),
+    error: z.string().min(1).max(500).nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if ((value.state === "conflict") !== value.conflictCount > 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Code settings conflict state requires conflict metadata.",
+      });
+    }
+  });
+
+export const codeSettingsResolutionSchema = z.enum([
+  "accept-canonical",
+  "publish-local",
+]);
+
 export function codeSettingsScopeId(profileId: string): string {
   return JSON.stringify(["global-code-settings", profileId]);
 }
@@ -170,4 +206,10 @@ export type CodeSettingsRevisionConflict = z.infer<
 >;
 export type CodeSettingsInvalidation = z.infer<
   typeof codeSettingsInvalidationSchema
+>;
+export type CodeSettingsWorkerStatus = z.infer<
+  typeof codeSettingsWorkerStatusSchema
+>;
+export type CodeSettingsResolution = z.infer<
+  typeof codeSettingsResolutionSchema
 >;

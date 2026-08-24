@@ -99,6 +99,7 @@ export interface CodeProxyTarget {
 export interface CodeSupervisorOptions {
   capabilities: CodeCapabilities;
   dataDirectory: string;
+  deferRestoredProfilePrewarm?: boolean;
   installation: CantripCodeInstallation | null;
   bridge?: CodeWorkbenchBridge;
   editorIdleTimeoutMs?: number;
@@ -106,6 +107,7 @@ export interface CodeSupervisorOptions {
   idleTimeoutMs?: number;
   profileIdleTimeoutMs?: number;
   profileLogWriter?: (logPath: string, entry: string) => Promise<void>;
+  prepareProfile?: (profileId: string) => Promise<void>;
   readinessTimeoutMs?: number;
   workerId?: string;
   workerName?: string;
@@ -266,6 +268,7 @@ export class CodeSupervisor {
   readonly #capabilities: CodeCapabilities;
   readonly #codeRoot: string;
   readonly #editorIdleTimeoutMs: number;
+  readonly #deferRestoredProfilePrewarm: boolean;
   readonly #installation: CantripCodeInstallation | null;
   readonly #idleSweepIntervalMs: number;
   readonly #idleTimeoutMs: number;
@@ -274,6 +277,7 @@ export class CodeSupervisor {
   readonly #profiles = new Map<string, ProfileProcess>();
   readonly #profileIdleTimeoutMs: number;
   readonly #profileLogWriter: (logPath: string, entry: string) => Promise<void>;
+  readonly #prepareProfile: (profileId: string) => Promise<void>;
   readonly #readinessTimeoutMs: number;
   readonly #sessions = new Map<string, CodeSession>();
   readonly #sessionGenerations = new Map<string, number>();
@@ -283,6 +287,7 @@ export class CodeSupervisor {
   #closed = false;
   #closeOperation: Promise<void> | null = null;
   #idleSweepTimer: ReturnType<typeof setInterval> | null = null;
+  #restoredProfilesPrewarmed = false;
   #stateOperation: Promise<void> = Promise.resolve();
 
   constructor(options: CodeSupervisorOptions) {
@@ -290,6 +295,8 @@ export class CodeSupervisor {
     this.#capabilities = options.capabilities;
     this.#codeRoot = path.join(options.dataDirectory, "code");
     this.#installation = options.installation;
+    this.#deferRestoredProfilePrewarm =
+      options.deferRestoredProfilePrewarm ?? false;
     this.#editorIdleTimeoutMs = Math.max(
       1_000,
       options.editorIdleTimeoutMs ?? DEFAULT_EDITOR_IDLE_TIMEOUT_MS,
@@ -305,6 +312,7 @@ export class CodeSupervisor {
     this.#profileLogWriter =
       options.profileLogWriter ??
       ((logPath, entry) => appendFile(logPath, entry, "utf8"));
+    this.#prepareProfile = options.prepareProfile ?? (() => Promise.resolve());
     this.#idleSweepIntervalMs = Math.max(
       1_000,
       options.idleSweepIntervalMs ??
@@ -332,7 +340,9 @@ export class CodeSupervisor {
       this.#bridge.start(),
     ]);
     await this.#restoreState();
-    await this.#prewarmRestoredProfiles();
+    if (!this.#deferRestoredProfilePrewarm) {
+      await this.prewarmRestoredProfiles();
+    }
     this.#idleSweepTimer = setInterval(() => {
       void this.evictIdleSessions().catch(() => undefined);
     }, this.#idleSweepIntervalMs);
@@ -344,6 +354,35 @@ export class CodeSupervisor {
       capabilities: this.#capabilities,
       editorBuild: this.#installation?.editorBuild ?? null,
     };
+  }
+
+  profileSettingsPath(profileId: string): string {
+    if (
+      profileId.length === 0 ||
+      profileId.length > 200 ||
+      profileId.trim() !== profileId
+    ) {
+      throw new Error("Cantrip Code requires a valid profile id.");
+    }
+    return path.join(
+      this.#codeRoot,
+      "profiles",
+      stableKey(profileId),
+      "user-data",
+      "User",
+      "settings.json",
+    );
+  }
+
+  async prewarmRestoredProfiles(): Promise<void> {
+    if (this.#restoredProfilesPrewarmed) return;
+    this.#restoredProfilesPrewarmed = true;
+    try {
+      await this.#prewarmRestoredProfiles();
+    } catch (error) {
+      this.#restoredProfilesPrewarmed = false;
+      throw error;
+    }
   }
 
   async open(command: CodeOpenCommand): Promise<CodeRuntimeStatus> {
@@ -1322,6 +1361,7 @@ export class CodeSupervisor {
       "profiles",
       profile.profileKey,
     );
+    await this.#prepareProfile(profile.profileId);
     await this.#prepareProfileForBuild(profileDirectory, installation);
     const port = await reserveLoopbackPort();
     const connectionToken = randomBytes(32).toString("hex");

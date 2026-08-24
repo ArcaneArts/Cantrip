@@ -72,6 +72,10 @@ import {
 } from "@cantrip/protocol";
 import { clearSensitiveBytes } from "@cantrip/crypto";
 import {
+  codeSettingsWorkerStatusSchema,
+  type CodeSettingsWorkerStatus,
+} from "@cantrip/protocol/code-settings";
+import {
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,
   surfaceOperationOutcomeContentSchema,
@@ -134,8 +138,12 @@ import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverMcpConfigurations } from "./mcp/discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
-import { prewarmDefaultCodeProfileAfterEncryptionRefresh } from "./code/prewarm.js";
+import {
+  ownerScopedCodeProfileId,
+  prewarmDefaultCodeProfileAfterEncryptionRefresh,
+} from "./code/prewarm.js";
 import { CodeSupervisor } from "./code/supervisor.js";
+import { CodeSettingsSynchronizer } from "./code-settings-sync.js";
 import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import { CodeGraphRuntimeManager } from "./codegraph/runtime.js";
 import { CodeGraphProjectSupervisor } from "./codegraph/supervisor.js";
@@ -579,11 +587,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     () => discoverCantripCode(),
     { workerId: config.workerId },
   );
+  let codeSettingsSynchronizer: CodeSettingsSynchronizer | null = null;
+  let codeSettingsSynchronizerOpening: Promise<CodeSettingsSynchronizer> | null =
+    null;
+  let defaultCodeProfileId: string | null = null;
+  let ensureCodeSettingsSynchronizer: () => Promise<CodeSettingsSynchronizer | null> =
+    async () => null;
   const code = new CodeSupervisor({
     capabilities: codeDiscovery.capabilities,
     dataDirectory: config.dataDirectory,
+    deferRestoredProfilePrewarm: true,
     idleTimeoutMs: config.codeIdleTimeoutMs,
     installation: codeDiscovery.installation,
+    prepareProfile: async (profileId) => {
+      const synchronizer =
+        codeSettingsSynchronizer ?? (await ensureCodeSettingsSynchronizer());
+      if (synchronizer && defaultCodeProfileId === profileId) {
+        await synchronizer.synchronize({
+          initializeIfMissing: false,
+        });
+      }
+    },
     workerId: config.workerId,
     workerName: config.name,
   });
@@ -638,18 +662,70 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     { workerId: config.workerId },
   );
   const refreshWorkerEncryption = async () => {
-    const status = await workerEncryption.refresh({ credential: config.token });
-    if (status.state === "ready") {
-      void prewarmDefaultCodeProfileAfterEncryptionRefresh({
-        identity: {
-          ownerId: workerEncryption.ownerId(),
-          serverId: workerEncryption.serverIdentity(),
-        },
-        prewarmProfile: (profileId) => code.prewarmProfile(profileId),
-        status,
-      });
+    return workerEncryption.refresh({ credential: config.token });
+  };
+  const unavailableCodeSettingsStatus = (): CodeSettingsWorkerStatus =>
+    codeSettingsWorkerStatusSchema.parse({
+      profileId: "default",
+      state: "unavailable",
+      revision: null,
+      conflictCount: 0,
+      initializedFromWorker: false,
+      backupCreated: false,
+      lastSynchronizedAt: null,
+      error:
+        "Worker encryption is not ready for Code settings synchronization.",
+    });
+  ensureCodeSettingsSynchronizer = async () => {
+    if (workerEncryption.status().state !== "ready") return null;
+    if (codeSettingsSynchronizer) return codeSettingsSynchronizer;
+    if (codeSettingsSynchronizerOpening) {
+      return codeSettingsSynchronizerOpening;
     }
-    return status;
+    const opening = (async () => {
+      defaultCodeProfileId = ownerScopedCodeProfileId(
+        workerEncryption.ownerId(),
+        "default",
+      );
+      const synchronizer = new CodeSettingsSynchronizer({
+        credential: () => config.token,
+        serverUrl: config.serverUrl,
+        service: workerEncryption,
+        settingsPath: code.profileSettingsPath(defaultCodeProfileId),
+        statePath: path.join(
+          config.dataDirectory,
+          "code",
+          "settings-sync",
+          "default.json",
+        ),
+        workerId: config.workerId,
+      });
+      await synchronizer.start();
+      codeSettingsSynchronizer = synchronizer;
+      return synchronizer;
+    })();
+    codeSettingsSynchronizerOpening = opening;
+    try {
+      return await opening;
+    } finally {
+      if (codeSettingsSynchronizerOpening === opening) {
+        codeSettingsSynchronizerOpening = null;
+      }
+    }
+  };
+  const synchronizeAndPrewarmCode = async () => {
+    const synchronizer = await ensureCodeSettingsSynchronizer();
+    if (!synchronizer) return;
+    await synchronizer.synchronize({ initializeIfMissing: false });
+    await code.prewarmRestoredProfiles().catch(() => undefined);
+    await prewarmDefaultCodeProfileAfterEncryptionRefresh({
+      identity: {
+        ownerId: workerEncryption.ownerId(),
+        serverId: workerEncryption.serverIdentity(),
+      },
+      prewarmProfile: (profileId) => code.prewarmProfile(profileId),
+      status: workerEncryption.status(),
+    });
   };
   const surfaceStreamReplay = new SurfaceStreamReplayGuard();
   const repositoryOperationReplay = new RepositoryOperationReplayGuard();
@@ -1354,6 +1430,30 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           keyRevision: command.keyRevision,
           status: await refreshWorkerEncryption(),
         });
+      case "code.settings.synchronize": {
+        const synchronizer = await ensureCodeSettingsSynchronizer();
+        return synchronizer
+          ? synchronizer.synchronize({
+              initializeIfMissing: command.initializeIfMissing,
+            })
+          : unavailableCodeSettingsStatus();
+      }
+      case "code.settings.invalidate": {
+        const synchronizer = await ensureCodeSettingsSynchronizer();
+        return synchronizer
+          ? synchronizer.invalidate(command.revision)
+          : unavailableCodeSettingsStatus();
+      }
+      case "code.settings.status":
+        return (
+          codeSettingsSynchronizer?.status() ?? unavailableCodeSettingsStatus()
+        );
+      case "code.settings.resolve": {
+        const synchronizer = await ensureCodeSettingsSynchronizer();
+        return synchronizer
+          ? synchronizer.resolve(command.resolution)
+          : unavailableCodeSettingsStatus();
+      }
       case "diagnostics.logs.read":
         return readWorkerLogs(command);
       case "diagnostics.logs.stream.start":
@@ -4617,7 +4717,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       codeDirectEndpoints.disconnect();
     },
     undefined,
-    () => providerAuthObserver.reemitAll(),
+    () => {
+      providerAuthObserver.reemitAll();
+      if (codeSettingsSynchronizer) {
+        void codeSettingsSynchronizer.synchronize({
+          initializeIfMissing: false,
+        });
+      }
+    },
   );
   directBroker.setTunnelFrameHandler((header, payload, diagnostics) =>
     tunnelDestinations.handleFrame(header, payload, diagnostics),
@@ -4725,6 +4832,30 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           heartbeat.projectReplicas,
         ),
       );
+      if (
+        workerEncryption.status().state === "ready" &&
+        (!codeSettingsSynchronizer || !connected)
+      ) {
+        const synchronizer = await ensureCodeSettingsSynchronizer().catch(
+          (error) => {
+            workerLogger.rateLimited(
+              `code-settings-start-failed:${config.workerId}`,
+              "warn",
+              "Global Code settings synchronization could not start",
+              {
+                event: "code.settings.start-failed",
+                subsystem: "code-settings",
+                operation: "start",
+                reasonCode: "initialization-failed",
+                status: "degraded",
+                error: workerLogError(error),
+              },
+            );
+            return null;
+          },
+        );
+        if (synchronizer) void synchronizeAndPrewarmCode();
+      }
       if (!connected) {
         workerLogger.event("info", "Worker heartbeat connected to server", {
           event: heartbeatFailureStartedAtMs
@@ -4813,6 +4944,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       trigger,
     });
     if (heartbeatTimer) clearInterval(heartbeatTimer);
+    const openingCodeSettingsSynchronizer =
+      await codeSettingsSynchronizerOpening?.catch(() => null);
+    await (
+      codeSettingsSynchronizer ?? openingCodeSettingsSynchronizer
+    )?.close();
     workerEncryption.lock();
     automationScheduler.close();
     codegraphProjects?.close();
