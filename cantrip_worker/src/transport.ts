@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   agentTurnResultSchema,
+  decodeWorkerConnectionEnvelope,
   decodeWorkerRequestEnvelope,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
@@ -43,11 +44,13 @@ const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
 const MAX_BUFFERED_COMMAND_BYTES = 8 * 1_024 * 1_024;
 const TUNNEL_DATA_PLANE_LOW_WATER_BYTES = 256 * 1_024;
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
+const DEFAULT_CONNECTION_NEGOTIATION_WINDOW_MS = 250;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const DEFAULT_TRANSPORT_DISCONNECT_GRACE_MS = 15_000;
 type CommandEnvelopeDelivery = "sent" | "queued" | "dropped";
 
 export interface WorkerConnectionTimingOptions {
+  connectionNegotiationWindowMs?: number;
   reconnectDelayMs?: number;
   transportDisconnectGraceMs?: number;
 }
@@ -180,15 +183,24 @@ export class WorkerConnection {
   #closed = false;
   #authenticationRejected = false;
   readonly #connectionGeneration = randomUUID();
+  readonly #connectionNegotiationWindowMs: number;
+  #connectionNegotiationTimer: ReturnType<typeof setTimeout> | null = null;
+  #connectionReadyDeadlineMs: number | null = null;
+  #connectionReadyTimer: ReturnType<typeof setTimeout> | null = null;
   #connectAttempt = 0;
   #disconnectStartedAtMs: number | null = null;
   #lastConnectionError: string | null = null;
   #keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+  #legacyFallbackAllowed = true;
   #pendingCommandBytes = 0;
   readonly #pendingCommandEnvelopes: string[] = [];
   readonly #reconnectDelayMs: number;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  #readySocket: WebSocket | null = null;
   #socket: WebSocket | null = null;
+  #socketReadiness: "idle" | "negotiating" | "protocol-pending" | "ready" =
+    "idle";
+  #transportDisconnectDeadlineMs: number | null = null;
   readonly #transportDisconnectGraceMs: number;
   #transportDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #transportLossGeneration = 0;
@@ -206,6 +218,11 @@ export class WorkerConnection {
     private readonly handleTransportConnect: () => void = () => undefined,
     timing: WorkerConnectionTimingOptions = {},
   ) {
+    this.#connectionNegotiationWindowMs = Math.max(
+      0,
+      timing.connectionNegotiationWindowMs ??
+        DEFAULT_CONNECTION_NEGOTIATION_WINDOW_MS,
+    );
     this.#reconnectDelayMs = Math.max(
       0,
       timing.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS,
@@ -238,6 +255,7 @@ export class WorkerConnection {
       this.#reconnectTimer = null;
     }
     this.clearKeepalive();
+    this.clearSocketNegotiation();
     this.finalizeTransportDisconnect("worker-stopping");
     this.#pendingCommandEnvelopes.length = 0;
     this.#pendingCommandBytes = 0;
@@ -277,10 +295,12 @@ export class WorkerConnection {
     const socket = new WebSocket(url, {
       headers: { authorization: `Bearer ${this.config.token}` },
     });
+    this.clearSocketNegotiation();
     this.#socket = socket;
+    this.#socketReadiness = "negotiating";
     socket.once("open", () => this.handleSocketOpen(socket));
     socket.on("message", (data, isBinary) => {
-      if (this.#socket === socket) void this.onMessage(data, isBinary);
+      if (this.#socket === socket) void this.onMessage(socket, data, isBinary);
     });
     socket.once("error", (error) => this.handleSocketError(socket, error));
     socket.once("close", (code, reason) =>
@@ -293,29 +313,13 @@ export class WorkerConnection {
       socket.close(1012, "Worker connection was superseded");
       return;
     }
-    const reconnectDurationMs = this.#disconnectStartedAtMs
-      ? Math.max(0, Date.now() - this.#disconnectStartedAtMs)
-      : 0;
     this.#lastConnectionError = null;
-    this.markTransportConnected();
-    this.startKeepalive(socket);
-    this.flushCommandEnvelopes(socket);
-    workerLogger.event("info", "Worker command channel connected", {
-      event: "worker.connection.connected",
-      subsystem: "worker-connection",
-      operation: "connect",
-      status: "completed",
-      attempt: this.#connectAttempt,
-      durationMs: reconnectDurationMs,
-      workerId: this.config.workerId,
-      counts: {
-        queuedCommands: this.#pendingCommandEnvelopes.length,
-        queuedBytes: this.#pendingCommandBytes,
-      },
-    });
-    this.#disconnectStartedAtMs = null;
-    this.#connectAttempt = 0;
-    this.handleTransportConnect();
+    if (this.#legacyFallbackAllowed) {
+      this.startLegacyNegotiationTimer(socket);
+    } else {
+      this.#socketReadiness = "protocol-pending";
+      this.startConnectionReadyTimer(socket);
+    }
   }
 
   private handleSocketError(socket: WebSocket, error: Error): void {
@@ -351,6 +355,7 @@ export class WorkerConnection {
     if (wasCurrent) {
       this.#disconnectStartedAtMs ??= Date.now();
       this.clearKeepalive();
+      this.clearSocketNegotiation();
       this.#socket = null;
     }
     if (wasCurrent && code === 1008) {
@@ -397,6 +402,7 @@ export class WorkerConnection {
 
   private markTransportConnected(): void {
     this.cancelTransportDisconnectTimer();
+    this.#transportDisconnectDeadlineMs = null;
     this.#transportLossGeneration += 1;
     this.#transportState = "connected";
   }
@@ -411,6 +417,8 @@ export class WorkerConnection {
     }
     this.#transportState = "grace";
     const generation = ++this.#transportLossGeneration;
+    this.#transportDisconnectDeadlineMs =
+      Date.now() + this.#transportDisconnectGraceMs;
     if (this.#transportDisconnectGraceMs === 0) {
       this.finalizeTransportDisconnect("reconnect-grace-expired", generation);
       return;
@@ -435,6 +443,7 @@ export class WorkerConnection {
     }
     if (this.#transportState === "disconnected") return;
     this.cancelTransportDisconnectTimer();
+    this.#transportDisconnectDeadlineMs = null;
     this.#transportLossGeneration += 1;
     this.#transportState = "disconnected";
     workerLogger.event(
@@ -459,11 +468,165 @@ export class WorkerConnection {
     this.#transportDisconnectTimer = null;
   }
 
+  private startLegacyNegotiationTimer(socket: WebSocket): void {
+    this.clearConnectionNegotiationTimer();
+    let delayMs = this.#connectionNegotiationWindowMs;
+    if (this.#transportDisconnectDeadlineMs !== null) {
+      const graceRemainingMs = Math.max(
+        0,
+        this.#transportDisconnectDeadlineMs - Date.now(),
+      );
+      if (graceRemainingMs === 0) return;
+      delayMs = Math.min(delayMs, Math.max(0, graceRemainingMs - 1));
+    }
+    this.#connectionNegotiationTimer = setTimeout(() => {
+      this.#connectionNegotiationTimer = null;
+      if (this.#socket !== socket || this.#socketReadiness !== "negotiating") {
+        return;
+      }
+      this.markSocketReady(socket, "legacy-timeout");
+    }, delayMs);
+    this.#connectionNegotiationTimer.unref();
+  }
+
+  private startConnectionReadyTimer(socket: WebSocket): void {
+    this.clearConnectionReadyTimer();
+    const deadlineMs =
+      this.#transportDisconnectDeadlineMs ??
+      this.#connectionReadyDeadlineMs ??
+      Date.now() + this.#transportDisconnectGraceMs;
+    this.#connectionReadyDeadlineMs = deadlineMs;
+    const delayMs = Math.max(0, deadlineMs - Date.now());
+    this.#connectionReadyTimer = setTimeout(() => {
+      this.#connectionReadyTimer = null;
+      if (
+        this.#socket !== socket ||
+        this.#socketReadiness !== "protocol-pending"
+      ) {
+        return;
+      }
+      this.finalizeTransportDisconnect("reconnect-grace-expired");
+      socket.close(1013, "Worker connection did not become ready");
+    }, delayMs);
+    this.#connectionReadyTimer.unref();
+  }
+
+  private markSocketReady(
+    socket: WebSocket,
+    negotiation: "legacy-request" | "legacy-timeout" | "protocol",
+  ): void {
+    if (
+      this.#closed ||
+      this.#socket !== socket ||
+      socket.readyState !== WebSocket.OPEN ||
+      this.#socketReadiness === "ready"
+    ) {
+      return;
+    }
+    const reconnectDurationMs = this.#disconnectStartedAtMs
+      ? Math.max(0, Date.now() - this.#disconnectStartedAtMs)
+      : 0;
+    this.clearSocketNegotiationTimers();
+    this.#connectionReadyDeadlineMs = null;
+    this.#readySocket = socket;
+    this.#socketReadiness = "ready";
+    this.markTransportConnected();
+    this.startKeepalive(socket);
+    this.flushCommandEnvelopes(socket);
+    workerLogger.event("info", "Worker command channel connected", {
+      event: "worker.connection.connected",
+      subsystem: "worker-connection",
+      operation: "connect",
+      status: "completed",
+      attempt: this.#connectAttempt,
+      durationMs: reconnectDurationMs,
+      workerId: this.config.workerId,
+      negotiation,
+      counts: {
+        queuedCommands: this.#pendingCommandEnvelopes.length,
+        queuedBytes: this.#pendingCommandBytes,
+      },
+    });
+    this.#disconnectStartedAtMs = null;
+    this.#connectAttempt = 0;
+    this.handleTransportConnect();
+  }
+
+  private handleConnectionEnvelope(
+    socket: WebSocket,
+    encoded: string,
+  ): boolean {
+    const decoded = decodeWorkerConnectionEnvelope(encoded);
+    if (!decoded.success) {
+      if (
+        decoded.reason === "invalid-message" &&
+        typeof decoded.value === "object" &&
+        decoded.value !== null &&
+        "kind" in decoded.value &&
+        decoded.value.kind === "connection"
+      ) {
+        this.#legacyFallbackAllowed = false;
+        this.clearConnectionNegotiationTimer();
+        this.clearKeepalive();
+        this.#readySocket = null;
+        this.#socketReadiness = "protocol-pending";
+        socket.close(1002, "Invalid worker connection envelope");
+        return true;
+      }
+      return false;
+    }
+    this.#legacyFallbackAllowed = false;
+    this.clearConnectionNegotiationTimer();
+    if (decoded.data.connectionGeneration !== this.#connectionGeneration) {
+      this.clearKeepalive();
+      this.#readySocket = null;
+      this.#socketReadiness = "protocol-pending";
+      socket.close(1002, "Worker connection generation mismatch");
+      return true;
+    }
+    if (decoded.data.state === "pending") {
+      if (this.#socketReadiness !== "ready") {
+        this.#socketReadiness = "protocol-pending";
+        this.startConnectionReadyTimer(socket);
+      }
+      return true;
+    }
+    this.markSocketReady(socket, "protocol");
+    return true;
+  }
+
+  private clearSocketNegotiation(): void {
+    this.clearSocketNegotiationTimers();
+    this.#connectionReadyDeadlineMs = null;
+    this.#readySocket = null;
+    this.#socketReadiness = "idle";
+  }
+
+  private clearSocketNegotiationTimers(): void {
+    this.clearConnectionNegotiationTimer();
+    this.clearConnectionReadyTimer();
+  }
+
+  private clearConnectionNegotiationTimer(): void {
+    if (!this.#connectionNegotiationTimer) return;
+    clearTimeout(this.#connectionNegotiationTimer);
+    this.#connectionNegotiationTimer = null;
+  }
+
+  private clearConnectionReadyTimer(): void {
+    if (!this.#connectionReadyTimer) return;
+    clearTimeout(this.#connectionReadyTimer);
+    this.#connectionReadyTimer = null;
+  }
+
   private startKeepalive(socket: WebSocket): void {
     this.clearKeepalive();
     if (this.keepaliveIntervalMs <= 0) return;
     this.#keepaliveTimer = setInterval(() => {
-      if (this.#socket !== socket || socket.readyState !== WebSocket.OPEN) {
+      if (
+        this.#readySocket !== socket ||
+        socket.readyState !== WebSocket.OPEN
+      ) {
         return;
       }
       try {
@@ -482,7 +645,7 @@ export class WorkerConnection {
   }
 
   private sendCommandEnvelope(envelope: string): CommandEnvelopeDelivery {
-    const socket = this.#socket;
+    const socket = this.#readySocket;
     if (socket?.readyState === WebSocket.OPEN) {
       try {
         socket.send(envelope);
@@ -571,7 +734,7 @@ export class WorkerConnection {
 
   private flushCommandEnvelopes(socket: WebSocket): void {
     while (
-      this.#socket === socket &&
+      this.#readySocket === socket &&
       socket.readyState === WebSocket.OPEN &&
       this.#pendingCommandEnvelopes.length > 0
     ) {
@@ -590,7 +753,7 @@ export class WorkerConnection {
     header: RemoteSurfaceFrameHeader,
     payload: Uint8Array,
   ): boolean {
-    const socket = this.#socket;
+    const socket = this.#readySocket;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return false;
     }
@@ -612,7 +775,7 @@ export class WorkerConnection {
     header: TunnelDataPlaneFrameHeader,
     payload: Uint8Array,
   ): boolean {
-    const socket = this.#socket;
+    const socket = this.#readySocket;
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
     if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
     try {
@@ -626,7 +789,7 @@ export class WorkerConnection {
   }
 
   sendNotification(notification: WorkerNotification): boolean {
-    const socket = this.#socket;
+    const socket = this.#readySocket;
     if (
       !socket ||
       socket.readyState !== WebSocket.OPEN ||
@@ -646,7 +809,7 @@ export class WorkerConnection {
 
   async waitForTunnelDataPlaneCapacity(): Promise<boolean> {
     while (!this.#closed) {
-      const socket = this.#socket;
+      const socket = this.#readySocket;
       if (!socket || socket.readyState !== WebSocket.OPEN) return false;
       if (socket.bufferedAmount <= TUNNEL_DATA_PLANE_LOW_WATER_BYTES)
         return true;
@@ -655,12 +818,20 @@ export class WorkerConnection {
     return false;
   }
 
-  private async onMessage(data: RawData, isBinary: boolean): Promise<void> {
+  private async onMessage(
+    socket: WebSocket,
+    data: RawData,
+    isBinary: boolean,
+  ): Promise<void> {
+    if (this.#socket !== socket) return;
     if (isBinary) {
+      if (this.#readySocket !== socket) return;
       await this.handleBinaryFrame(data);
       return;
     }
-    const request = decodeWorkerRequestEnvelope(data.toString());
+    const encoded = data.toString();
+    if (this.handleConnectionEnvelope(socket, encoded)) return;
+    const request = decodeWorkerRequestEnvelope(encoded);
     if (!request.success) {
       workerLogger.rateLimited(
         `worker-command-invalid-envelope:${this.config.workerId}`,
@@ -677,6 +848,12 @@ export class WorkerConnection {
       );
       return;
     }
+
+    if (this.#readySocket !== socket) {
+      if (this.#socketReadiness === "protocol-pending") return;
+      this.markSocketReady(socket, "legacy-request");
+    }
+    if (this.#readySocket !== socket) return;
 
     await this.handleRequest(request.data);
   }

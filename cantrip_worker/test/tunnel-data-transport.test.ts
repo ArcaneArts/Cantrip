@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import {
   decodeWorkerServerEnvelope,
   decodeTunnelDataPlaneFrame,
+  encodeWorkerConnectionEnvelope,
   encodeWorkerRequestEnvelope,
   encodeTunnelDataPlaneFrame,
   type TunnelDataPlaneFrameHeader,
@@ -34,6 +35,43 @@ const frame: TunnelDataPlaneFrameHeader = {
   direction: "source-to-destination",
 };
 
+const chatTurnCommand = (): WorkerCommand => ({
+  type: "chat.turn",
+  chatId: "chat-1",
+  clientMessageId: "message-1",
+  executionLaneId: "lane-1",
+  worktreeId: "worktree-1",
+  policyProjectId: "project-1",
+  policies: { policies: [] },
+  cwd: "/workspace",
+  isPrimary: true,
+  worktreeMode: "pinned",
+  worktreePolicy: "direct",
+  threadId: null,
+  prompt: "Hello",
+  attachments: [],
+  skillNames: [],
+  model: {
+    id: "model-1",
+    routeId: "route-1",
+    name: "gpt-5.6-sol",
+    reasoningEffort: null,
+  },
+  provider: {
+    id: "provider-1",
+    name: "ChatGPT",
+    kind: "chatgpt",
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: null,
+    accountId: "account-1",
+    credentialHomeKey: "account-home-1",
+  },
+  permissionProfileId: ":workspace",
+  planMode: "default",
+  mcpServers: [],
+  automationPaused: false,
+});
+
 const workerConfig = (port: number): WorkerConfig => ({
   codeIdleTimeoutMs: 1_000,
   codexBinary: "/tmp/codex",
@@ -49,7 +87,34 @@ const workerConfig = (port: number): WorkerConfig => ({
   workerId: "worker-1",
 });
 
-async function commandServer() {
+function workerConnectionGeneration(requestUrl: string): string {
+  return new URL(requestUrl, "http://worker.invalid").searchParams.get(
+    "connectionGeneration",
+  )!;
+}
+
+function sendConnectionState(
+  socket: WebSocket,
+  requestUrl: string,
+  state: "pending" | "ready",
+  connectionGeneration = workerConnectionGeneration(requestUrl),
+): void {
+  socket.send(
+    encodeWorkerConnectionEnvelope({
+      kind: "connection",
+      state,
+      protocolVersion: 1,
+      connectionGeneration,
+    }),
+  );
+}
+
+function sendConnectionReady(socket: WebSocket, requestUrl: string): void {
+  sendConnectionState(socket, requestUrl, "pending");
+  sendConnectionState(socket, requestUrl, "ready");
+}
+
+async function commandServer(options: { autoReady?: boolean } = {}) {
   const server = createServer();
   const webSockets = new WebSocketServer({ noServer: true });
   const pendingSockets: WebSocket[] = [];
@@ -63,10 +128,12 @@ async function commandServer() {
       : new Promise<WebSocket>((resolve) => connected.push(resolve));
   };
   webSockets.on("connection", (socket, request) => {
-    requestUrls.push(request.url ?? "");
+    const requestUrl = request.url ?? "";
+    requestUrls.push(requestUrl);
     const waiter = connected.shift();
     if (waiter) waiter(socket);
     else pendingSockets.push(socket);
+    if (options.autoReady !== false) sendConnectionReady(socket, requestUrl);
   });
   server.on("upgrade", (request, socket, head) => {
     if (!acceptUpgrades) {
@@ -102,9 +169,10 @@ describe("worker generic tunnel data transport", () => {
     const connected: Array<(socket: WebSocket) => void> = [];
     const nextSocket = () =>
       new Promise<WebSocket>((resolve) => connected.push(resolve));
-    webSockets.on("connection", (socket) => {
+    webSockets.on("connection", (socket, request) => {
       sockets.push(socket);
       connected.shift()?.(socket);
+      sendConnectionReady(socket, request.url ?? "");
     });
     server.on("upgrade", (request, socket, head) => {
       webSockets.handleUpgrade(request, socket, head, (client) => {
@@ -163,42 +231,7 @@ describe("worker generic tunnel data transport", () => {
     closers.push(() => connection.close());
 
     const firstSocket = await firstConnected;
-    const command: WorkerCommand = {
-      type: "chat.turn",
-      chatId: "chat-1",
-      clientMessageId: "message-1",
-      executionLaneId: "lane-1",
-      worktreeId: "worktree-1",
-      policyProjectId: "project-1",
-      policies: { policies: [] },
-      cwd: "/workspace",
-      isPrimary: true,
-      worktreeMode: "pinned",
-      worktreePolicy: "direct",
-      threadId: null,
-      prompt: "Hello",
-      attachments: [],
-      skillNames: [],
-      model: {
-        id: "model-1",
-        routeId: "route-1",
-        name: "gpt-5.6-sol",
-        reasoningEffort: null,
-      },
-      provider: {
-        id: "provider-1",
-        name: "ChatGPT",
-        kind: "chatgpt",
-        baseUrl: "https://api.openai.com/v1",
-        apiKey: null,
-        accountId: "account-1",
-        credentialHomeKey: "account-home-1",
-      },
-      permissionProfileId: ":workspace",
-      planMode: "default",
-      mcpServers: [],
-      automationPaused: false,
-    };
+    const command = chatTurnCommand();
     firstSocket.send(
       encodeWorkerRequestEnvelope({
         kind: "request",
@@ -259,10 +292,11 @@ describe("worker generic tunnel data transport", () => {
     const secondConnected = new Promise<WebSocket>((resolve) => {
       resolveSecond = resolve;
     });
-    webSockets.on("connection", (socket) => {
+    webSockets.on("connection", (socket, request) => {
       sockets.push(socket);
       if (sockets.length === 1) resolveFirst?.(socket);
       if (sockets.length === 2) resolveSecond?.(socket);
+      sendConnectionReady(socket, request.url ?? "");
     });
     server.on("upgrade", (request, socket, head) => {
       webSockets.handleUpgrade(request, socket, head, (client) => {
@@ -344,9 +378,12 @@ describe("worker generic tunnel data transport", () => {
   it("multiplexes generic frames and reports transport disconnect", async () => {
     const server = createServer();
     const webSockets = new WebSocketServer({ noServer: true });
-    const connected = new Promise<WebSocket>((resolve) =>
-      webSockets.once("connection", resolve),
-    );
+    const connected = new Promise<WebSocket>((resolve) => {
+      webSockets.once("connection", (socket, request) => {
+        resolve(socket);
+        sendConnectionReady(socket, request.url ?? "");
+      });
+    });
     server.on("upgrade", (request, socket, head) => {
       webSockets.handleUpgrade(request, socket, head, (client) => {
         webSockets.emit("connection", client, request);
@@ -547,7 +584,7 @@ describe("worker generic tunnel data transport", () => {
   });
 
   it("disconnects immediately and does not retry after authentication rejection", async () => {
-    const server = await commandServer();
+    const server = await commandServer({ autoReady: false });
     const disconnected = vi.fn();
     server.webSockets.on("connection", (socket) => {
       socket.close(1008, "Unauthorized");
@@ -572,5 +609,192 @@ describe("worker generic tunnel data transport", () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(server.requestUrls).toHaveLength(1);
     expect(disconnected).toHaveBeenCalledOnce();
+  });
+
+  it("keeps queued outcomes and the original grace while reconnect authentication is pending", async () => {
+    const server = await commandServer({ autoReady: false });
+    const disconnected = vi.fn();
+    const connected = vi.fn();
+    let releaseCommand: (() => void) | undefined;
+    let markCommandStarted: (() => void) | undefined;
+    const commandStarted = new Promise<void>((resolve) => {
+      markCommandStarted = resolve;
+    });
+    const commandGate = new Promise<void>((resolve) => {
+      releaseCommand = resolve;
+    });
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => {
+        markCommandStarted?.();
+        await commandGate;
+        return {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          text: "Authenticated result",
+          status: "completed",
+        };
+      },
+      () => undefined,
+      () => undefined,
+      disconnected,
+      10,
+      connected,
+      { reconnectDelayMs: 5, transportDisconnectGraceMs: 80 },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    const firstSocket = await server.nextSocket();
+    const generation = workerConnectionGeneration(server.requestUrls[0]!);
+    sendConnectionReady(firstSocket, server.requestUrls[0]!);
+    firstSocket.send(
+      encodeWorkerRequestEnvelope({
+        kind: "request",
+        requestId: "chat-request-pending",
+        command: chatTurnCommand(),
+      }),
+    );
+    await commandStarted;
+
+    const secondConnected = server.nextSocket();
+    firstSocket.terminate();
+    const secondSocket = await secondConnected;
+    sendConnectionState(
+      secondSocket,
+      server.requestUrls[1]!,
+      "pending",
+      generation,
+    );
+    const received: unknown[] = [];
+    const pings = vi.fn();
+    secondSocket.on("message", (data) => received.push(data));
+    secondSocket.on("ping", pings);
+    releaseCommand?.();
+
+    await vi.waitFor(() => expect(disconnected).toHaveBeenCalledOnce(), {
+      timeout: 250,
+    });
+    expect(received).toEqual([]);
+    expect(pings).not.toHaveBeenCalled();
+    expect(connected).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a ready envelope for a different process generation", async () => {
+    const server = await commandServer({ autoReady: false });
+    const disconnected = vi.fn();
+    const connected = vi.fn();
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      disconnected,
+      0,
+      connected,
+      { reconnectDelayMs: 5, transportDisconnectGraceMs: 70 },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    const firstSocket = await server.nextSocket();
+    sendConnectionReady(firstSocket, server.requestUrls[0]!);
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledOnce());
+    const secondConnected = server.nextSocket();
+    firstSocket.terminate();
+    const secondSocket = await secondConnected;
+    sendConnectionState(
+      secondSocket,
+      server.requestUrls[1]!,
+      "ready",
+      "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
+    );
+
+    await vi.waitFor(() => expect(disconnected).toHaveBeenCalledOnce(), {
+      timeout: 200,
+    });
+    expect(connected).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to legacy readiness after a bounded negotiation window", async () => {
+    const server = await commandServer({ autoReady: false });
+    const connected = vi.fn();
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      0,
+      connected,
+      {
+        connectionNegotiationWindowMs: 15,
+        reconnectDelayMs: 5,
+        transportDisconnectGraceMs: 80,
+      },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+    const socket = await server.nextSocket();
+
+    expect(
+      connection.sendTunnelDataPlaneFrame(frame, new Uint8Array([1])),
+    ).toBe(false);
+    expect(connected).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledOnce());
+    const outbound = new Promise<Uint8Array>((resolve) => {
+      socket.once("message", (data) =>
+        resolve(Uint8Array.from(data as Buffer)),
+      );
+    });
+    expect(
+      connection.sendTunnelDataPlaneFrame(frame, new Uint8Array([1])),
+    ).toBe(true);
+    await expect(outbound).resolves.toEqual(
+      encodeTunnelDataPlaneFrame(frame, new Uint8Array([1])),
+    );
+  });
+
+  it("treats an old-server request as immediate legacy readiness", async () => {
+    const server = await commandServer({ autoReady: false });
+    const connected = vi.fn();
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => ({ available: true }),
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      0,
+      connected,
+      {
+        connectionNegotiationWindowMs: 200,
+        reconnectDelayMs: 5,
+        transportDisconnectGraceMs: 300,
+      },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+    const socket = await server.nextSocket();
+    const response = new Promise<WorkerServerEnvelope>((resolve) => {
+      socket.once("message", (data) => {
+        const decoded = decodeWorkerServerEnvelope(data.toString());
+        if (decoded.success) resolve(decoded.data);
+      });
+    });
+
+    socket.send(
+      encodeWorkerRequestEnvelope({
+        kind: "request",
+        requestId: "legacy-request",
+        command: { type: "code.probe" },
+      }),
+    );
+
+    await expect(response).resolves.toMatchObject({
+      kind: "response",
+      requestId: "legacy-request",
+      ok: true,
+    });
+    expect(connected).toHaveBeenCalledOnce();
   });
 });

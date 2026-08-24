@@ -13714,6 +13714,15 @@ export const workerRequestEnvelopeSchema = z.object({
   command: workerCommandSchema,
 });
 
+export const workerConnectionEnvelopeSchema = z
+  .object({
+    kind: z.literal("connection"),
+    state: z.enum(["pending", "ready"]),
+    protocolVersion: z.literal(1),
+    connectionGeneration: z.string().uuid(),
+  })
+  .strict();
+
 export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
   z.object({
     kind: z.literal("response"),
@@ -15574,6 +15583,9 @@ export type CodeGraphActionAcknowledgement = z.infer<
 >;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;
 export type WorkerRequestEnvelope = z.infer<typeof workerRequestEnvelopeSchema>;
+export type WorkerConnectionEnvelope = z.infer<
+  typeof workerConnectionEnvelopeSchema
+>;
 export type WorkerResponseEnvelope = z.infer<
   typeof workerResponseEnvelopeSchema
 >;
@@ -15590,6 +15602,12 @@ export function decodeWorkerRequestEnvelope(
   return decodeJsonMessage(encoded, workerRequestEnvelopeSchema);
 }
 
+export function decodeWorkerConnectionEnvelope(
+  encoded: string,
+): JsonMessageDecodeResult<WorkerConnectionEnvelope> {
+  return decodeJsonMessage(encoded, workerConnectionEnvelopeSchema);
+}
+
 export function decodeWorkerServerEnvelope(
   encoded: string,
 ): JsonMessageDecodeResult<WorkerServerEnvelope> {
@@ -15600,6 +15618,12 @@ export function encodeWorkerRequestEnvelope(
   envelope: WorkerRequestEnvelope,
 ): string {
   return encodeJsonMessage(envelope, workerRequestEnvelopeSchema);
+}
+
+export function encodeWorkerConnectionEnvelope(
+  envelope: WorkerConnectionEnvelope,
+): string {
+  return encodeJsonMessage(envelope, workerConnectionEnvelopeSchema);
 }
 
 export function encodeWorkerServerEnvelope(

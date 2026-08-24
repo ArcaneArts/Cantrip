@@ -77,11 +77,13 @@ import {
   codeAttachmentCreateSchema,
   codeRuntimeStatusSchema,
   codeTabSummarySchema,
+  decodeWorkerConnectionEnvelope,
   decodeWorkerRequestEnvelope,
   decodeWorkerServerEnvelope,
   decodeRemoteSurfaceFrame,
   desktopStreamSettingsSchema,
   encodeRemoteSurfaceFrame,
+  encodeWorkerConnectionEnvelope,
   encodeWorkerRequestEnvelope,
   encodeWorkerServerEnvelope,
   executionPlacementSchema,
@@ -407,6 +409,31 @@ describe("worker channel JSON codec", () => {
     expect(
       decodeWorkerServerEnvelope(encodeWorkerServerEnvelope(response)),
     ).toEqual({ data: response, success: true });
+  });
+
+  it("round-trips strict worker connection readiness envelopes", () => {
+    const connection = {
+      kind: "connection" as const,
+      state: "ready" as const,
+      protocolVersion: 1 as const,
+      connectionGeneration: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+    };
+
+    expect(
+      decodeWorkerConnectionEnvelope(
+        encodeWorkerConnectionEnvelope(connection),
+      ),
+    ).toEqual({ data: connection, success: true });
+    expect(
+      decodeWorkerConnectionEnvelope(
+        JSON.stringify({ ...connection, authenticated: true }),
+      ),
+    ).toMatchObject({ reason: "invalid-message", success: false });
+    expect(
+      decodeWorkerConnectionEnvelope(
+        JSON.stringify({ ...connection, protocolVersion: 2 }),
+      ),
+    ).toMatchObject({ reason: "invalid-message", success: false });
   });
 
   it("round-trips durable agent turn outcomes", () => {
