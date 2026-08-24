@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   agentTurnResultSchema,
   decodeWorkerRequestEnvelope,
@@ -41,7 +43,14 @@ const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
 const MAX_BUFFERED_COMMAND_BYTES = 8 * 1_024 * 1_024;
 const TUNNEL_DATA_PLANE_LOW_WATER_BYTES = 256 * 1_024;
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
+const DEFAULT_RECONNECT_DELAY_MS = 1_000;
+const DEFAULT_TRANSPORT_DISCONNECT_GRACE_MS = 15_000;
 type CommandEnvelopeDelivery = "sent" | "queued" | "dropped";
+
+export interface WorkerConnectionTimingOptions {
+  reconnectDelayMs?: number;
+  transportDisconnectGraceMs?: number;
+}
 
 function rawDataBytes(data: RawData): Uint8Array {
   if (Array.isArray(data)) return Buffer.concat(data);
@@ -170,14 +179,21 @@ function commandCompletionLogContext(
 export class WorkerConnection {
   #closed = false;
   #authenticationRejected = false;
+  readonly #connectionGeneration = randomUUID();
   #connectAttempt = 0;
   #disconnectStartedAtMs: number | null = null;
   #lastConnectionError: string | null = null;
   #keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   #pendingCommandBytes = 0;
   readonly #pendingCommandEnvelopes: string[] = [];
+  readonly #reconnectDelayMs: number;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #socket: WebSocket | null = null;
+  readonly #transportDisconnectGraceMs: number;
+  #transportDisconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  #transportLossGeneration = 0;
+  #transportState: "inactive" | "connected" | "grace" | "disconnected" =
+    "inactive";
 
   constructor(
     private readonly config: WorkerConfig,
@@ -188,7 +204,18 @@ export class WorkerConnection {
     private readonly handleTransportDisconnect: () => void = () => undefined,
     private readonly keepaliveIntervalMs = DEFAULT_KEEPALIVE_INTERVAL_MS,
     private readonly handleTransportConnect: () => void = () => undefined,
-  ) {}
+    timing: WorkerConnectionTimingOptions = {},
+  ) {
+    this.#reconnectDelayMs = Math.max(
+      0,
+      timing.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS,
+    );
+    this.#transportDisconnectGraceMs = Math.max(
+      0,
+      timing.transportDisconnectGraceMs ??
+        DEFAULT_TRANSPORT_DISCONNECT_GRACE_MS,
+    );
+  }
 
   start(): void {
     this.#authenticationRejected = false;
@@ -204,12 +231,14 @@ export class WorkerConnection {
   }
 
   close(): void {
+    if (this.#closed) return;
     this.#closed = true;
     if (this.#reconnectTimer) {
       clearTimeout(this.#reconnectTimer);
       this.#reconnectTimer = null;
     }
     this.clearKeepalive();
+    this.finalizeTransportDisconnect("worker-stopping");
     this.#pendingCommandEnvelopes.length = 0;
     this.#pendingCommandBytes = 0;
     this.#socket?.close(1000, "Worker stopping");
@@ -232,6 +261,7 @@ export class WorkerConnection {
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/api/internal/workers/connect";
     url.searchParams.set("workerId", this.config.workerId);
+    url.searchParams.set("connectionGeneration", this.#connectionGeneration);
 
     this.#connectAttempt += 1;
     workerLogger.event("debug", "Worker command connection attempted", {
@@ -250,19 +280,24 @@ export class WorkerConnection {
     this.#socket = socket;
     socket.once("open", () => this.handleSocketOpen(socket));
     socket.on("message", (data, isBinary) => {
-      void this.onMessage(data, isBinary);
+      if (this.#socket === socket) void this.onMessage(data, isBinary);
     });
-    socket.once("error", (error) => this.handleSocketError(error));
+    socket.once("error", (error) => this.handleSocketError(socket, error));
     socket.once("close", (code, reason) =>
       this.handleSocketClose(socket, code, reason.toString()),
     );
   }
 
   private handleSocketOpen(socket: WebSocket): void {
+    if (this.#closed || this.#socket !== socket) {
+      socket.close(1012, "Worker connection was superseded");
+      return;
+    }
     const reconnectDurationMs = this.#disconnectStartedAtMs
       ? Math.max(0, Date.now() - this.#disconnectStartedAtMs)
       : 0;
     this.#lastConnectionError = null;
+    this.markTransportConnected();
     this.startKeepalive(socket);
     this.flushCommandEnvelopes(socket);
     workerLogger.event("info", "Worker command channel connected", {
@@ -283,8 +318,13 @@ export class WorkerConnection {
     this.handleTransportConnect();
   }
 
-  private handleSocketError(error: Error): void {
-    if (this.#closed || error.message === this.#lastConnectionError) return;
+  private handleSocketError(socket: WebSocket, error: Error): void {
+    if (
+      this.#closed ||
+      this.#socket !== socket ||
+      error.message === this.#lastConnectionError
+    )
+      return;
     this.#lastConnectionError = error.message;
     workerLogger.rateLimited(
       `worker-connection-error:${this.config.workerId}`,
@@ -312,10 +352,10 @@ export class WorkerConnection {
       this.#disconnectStartedAtMs ??= Date.now();
       this.clearKeepalive();
       this.#socket = null;
-      this.handleTransportDisconnect();
     }
-    if (code === 1008) {
+    if (wasCurrent && code === 1008) {
       this.#authenticationRejected = true;
+      this.finalizeTransportDisconnect("authentication-rejected");
       const message = reason || "worker authentication rejected";
       if (message !== this.#lastConnectionError) {
         this.#lastConnectionError = message;
@@ -335,6 +375,7 @@ export class WorkerConnection {
       }
     }
     if (wasCurrent && !this.#closed && !this.#authenticationRejected) {
+      this.scheduleTransportDisconnect();
       workerLogger.event("warn", "Worker command channel disconnected", {
         event: "worker.connection.disconnected",
         subsystem: "worker-connection",
@@ -343,10 +384,79 @@ export class WorkerConnection {
         status: "retrying",
         workerId: this.config.workerId,
         closeCode: code,
-        reconnectDelayMs: 1_000,
+        reconnectDelayMs: this.#reconnectDelayMs,
+        transportDisconnectGraceMs: this.#transportDisconnectGraceMs,
       });
-      this.#reconnectTimer = setTimeout(() => this.connect(), 1_000);
+      this.#reconnectTimer = setTimeout(
+        () => this.connect(),
+        this.#reconnectDelayMs,
+      );
+      this.#reconnectTimer.unref();
     }
+  }
+
+  private markTransportConnected(): void {
+    this.cancelTransportDisconnectTimer();
+    this.#transportLossGeneration += 1;
+    this.#transportState = "connected";
+  }
+
+  private scheduleTransportDisconnect(): void {
+    if (
+      this.#transportState === "inactive" ||
+      this.#transportState === "disconnected" ||
+      this.#transportState === "grace"
+    ) {
+      return;
+    }
+    this.#transportState = "grace";
+    const generation = ++this.#transportLossGeneration;
+    if (this.#transportDisconnectGraceMs === 0) {
+      this.finalizeTransportDisconnect("reconnect-grace-expired", generation);
+      return;
+    }
+    this.#transportDisconnectTimer = setTimeout(() => {
+      this.#transportDisconnectTimer = null;
+      this.finalizeTransportDisconnect("reconnect-grace-expired", generation);
+    }, this.#transportDisconnectGraceMs);
+    this.#transportDisconnectTimer.unref();
+  }
+
+  private finalizeTransportDisconnect(
+    reasonCode:
+      "authentication-rejected" | "reconnect-grace-expired" | "worker-stopping",
+    generation?: number,
+  ): void {
+    if (
+      generation !== undefined &&
+      generation !== this.#transportLossGeneration
+    ) {
+      return;
+    }
+    if (this.#transportState === "disconnected") return;
+    this.cancelTransportDisconnectTimer();
+    this.#transportLossGeneration += 1;
+    this.#transportState = "disconnected";
+    workerLogger.event(
+      reasonCode === "reconnect-grace-expired" ? "warn" : "debug",
+      "Worker transport resources disconnected",
+      {
+        event: "worker.transport.disconnected",
+        subsystem: "worker-connection",
+        operation: "disconnect-transport",
+        reasonCode,
+        status:
+          reasonCode === "reconnect-grace-expired" ? "degraded" : "completed",
+        workerId: this.config.workerId,
+      },
+    );
+    this.handleTransportDisconnect();
+  }
+
+  private cancelTransportDisconnectTimer(): void {
+    if (!this.#transportDisconnectTimer) return;
+    clearTimeout(this.#transportDisconnectTimer);
+    this.#transportDisconnectTimer = null;
   }
 
   private startKeepalive(socket: WebSocket): void {

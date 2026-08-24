@@ -4544,6 +4544,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
     (header, payload) => tunnelDestinations.handleFrame(header, payload),
     () => {
+      // WorkerConnection retains already-authorized transport state during its
+      // bounded reconnect grace and invokes this only on terminal loss.
       tunnelDestinations.disconnect();
       directBroker.revokeAll();
       codeDirectEndpoints.disconnect();
