@@ -124,14 +124,22 @@ export function RunTerminalOutput({ output }: { output: string }) {
 export function RunTerminalView({
   definitionAvailable,
   definitionProblem,
+  launchAvailable,
+  launchProblem,
   runtime,
+  stopAvailable,
+  stopProblem,
   targetLabel,
   terminal,
   onEdit,
 }: {
   definitionAvailable: boolean | null;
   definitionProblem?: string | null;
+  launchAvailable: boolean | null;
+  launchProblem?: string | null;
   runtime: RunConfigurationRuntime | null;
+  stopAvailable: boolean | null;
+  stopProblem?: string | null;
   targetLabel: string;
   terminal: TerminalSummary;
   onEdit?(): void;
@@ -191,6 +199,8 @@ export function RunTerminalView({
   });
   const definitionMissing = definitionAvailable === false;
   const status = runtime?.state ?? "idle";
+  const sharedTargetProblem =
+    launchProblem && launchProblem === stopProblem ? launchProblem : null;
 
   if (!active) {
     return (
@@ -221,6 +231,15 @@ export function RunTerminalView({
               Loading the shared Run configuration…
             </p>
           ) : null}
+          {definitionAvailable === true && launchProblem ? (
+            <InlineAlert tone="error">
+              Run is unavailable: {launchProblem}
+            </InlineAlert>
+          ) : definitionAvailable === true && launchAvailable === null ? (
+            <p className="text-sm text-muted-foreground">
+              Checking target availability…
+            </p>
+          ) : null}
           {lifecycle.error ? (
             <InlineAlert tone="error">{lifecycle.error.message}</InlineAlert>
           ) : null}
@@ -231,10 +250,13 @@ export function RunTerminalView({
               </Button>
             ) : null}
             <Button
-              disabled={definitionAvailable !== true}
+              disabled={
+                definitionAvailable !== true || launchAvailable !== true
+              }
               onClick={() => lifecycle.mutate("start")}
               pending={lifecycle.isPending}
               pendingLabel="Starting…"
+              title={launchProblem ?? undefined}
             >
               <Play className="size-4 fill-current" /> Start
             </Button>
@@ -259,11 +281,18 @@ export function RunTerminalView({
         <Button
           disabled={
             definitionAvailable !== true ||
+            launchAvailable !== true ||
             status === "stopping" ||
             lifecycle.isPending
           }
           onClick={() => lifecycle.mutate("restart")}
           size="sm"
+          title={
+            launchProblem ??
+            (launchAvailable === null
+              ? "Checking target availability…"
+              : undefined)
+          }
           variant="outline"
         >
           <RotateCw
@@ -277,9 +306,19 @@ export function RunTerminalView({
           </Button>
         ) : null}
         <Button
-          disabled={status === "stopping" || lifecycle.isPending}
+          disabled={
+            stopAvailable !== true ||
+            status === "stopping" ||
+            lifecycle.isPending
+          }
           onClick={() => lifecycle.mutate("stop")}
           size="sm"
+          title={
+            stopProblem ??
+            (stopAvailable === null
+              ? "Checking target availability…"
+              : undefined)
+          }
           variant="destructive"
         >
           {status === "stopping" ? (
@@ -296,6 +335,24 @@ export function RunTerminalView({
           captured generation can finish or be stopped.
         </InlineAlert>
       ) : null}
+      {sharedTargetProblem ? (
+        <InlineAlert className="m-3 mb-0" tone="error">
+          Restart and Stop are disabled: {sharedTargetProblem}
+        </InlineAlert>
+      ) : (
+        <>
+          {definitionAvailable === true && launchProblem ? (
+            <InlineAlert className="m-3 mb-0" tone="error">
+              Restart is disabled: {launchProblem}
+            </InlineAlert>
+          ) : null}
+          {stopProblem ? (
+            <InlineAlert className="m-3 mb-0" tone="error">
+              Stop is disabled: {stopProblem}
+            </InlineAlert>
+          ) : null}
+        </>
+      )}
       {lifecycle.error ? (
         <InlineAlert className="m-3 mb-0" tone="error">
           {lifecycle.error.message}

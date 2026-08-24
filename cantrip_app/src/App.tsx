@@ -446,6 +446,7 @@ import {
   listRunConfigurations,
   operateRunConfigurationRuntime,
 } from "@/lib/run-configuration-api";
+import { runConfigurationTargetControlForIdentity } from "@/lib/run-configuration-control-model";
 import { installRunConfigurationFocusRecovery } from "@/lib/run-configuration-focus-recovery";
 import {
   createProjectWorkspace,
@@ -6170,6 +6171,60 @@ export function App() {
           ),
         )
       : null;
+  const selectedRunTargetControl =
+    selectedTerminal?.kind === "run-configuration" &&
+    selectedTerminal.runConfigurationId &&
+    workers.isSuccess &&
+    worktrees.isSuccess
+      ? runConfigurationTargetControlForIdentity({
+          configurationId: selectedTerminal.runConfigurationId,
+          inventory: runConfigurations.data,
+          runtimes: runConfigurationRuntimes.data ?? [],
+          workers: workers.data,
+          worktreeId: selectedTerminal.worktreeId,
+          worktrees: worktrees.data,
+        })
+      : null;
+  const selectedRunTargetAvailabilityProblem =
+    selectedTerminal?.kind !== "run-configuration"
+      ? null
+      : workers.isError
+        ? `Could not load the target worker: ${errorText(workers.error)}`
+        : worktrees.isError
+          ? `Could not load the target worktree: ${errorText(worktrees.error)}`
+          : workers.isSuccess &&
+              worktrees.isSuccess &&
+              !selectedRunTargetControl
+            ? "The target worktree is unavailable."
+            : null;
+  const selectedRunLaunchAvailable =
+    selectedTerminal?.kind !== "run-configuration"
+      ? null
+      : selectedRunDefinitionAvailable !== true
+        ? selectedRunDefinitionAvailable
+        : selectedRunTargetAvailabilityProblem
+          ? false
+          : !workers.isSuccess || !worktrees.isSuccess
+            ? null
+            : (selectedRunTargetControl?.available ?? false);
+  const selectedRunLaunchProblem =
+    selectedRunDefinitionAvailable === true
+      ? (selectedRunTargetAvailabilityProblem ??
+        selectedRunTargetControl?.reason ??
+        null)
+      : null;
+  const selectedRunStopAvailable =
+    selectedTerminal?.kind !== "run-configuration"
+      ? null
+      : selectedRunTargetAvailabilityProblem
+        ? false
+        : !workers.isSuccess || !worktrees.isSuccess
+          ? null
+          : (selectedRunTargetControl?.stopAvailable ?? false);
+  const selectedRunStopProblem =
+    selectedRunTargetAvailabilityProblem ??
+    selectedRunTargetControl?.stopReason ??
+    null;
   const selectedRunTargetLabel = selectedTerminal
     ? runTerminalTargetLabel(selectedTerminal, worktrees.data ?? [])
     : "Unavailable worktree";
@@ -9307,7 +9362,11 @@ export function App() {
                     ? errorText(runConfigurations.error)
                     : null
                 }
+                launchAvailable={selectedRunLaunchAvailable}
+                launchProblem={selectedRunLaunchProblem}
                 runtime={selectedRunRuntime}
+                stopAvailable={selectedRunStopAvailable}
+                stopProblem={selectedRunStopProblem}
                 targetLabel={selectedRunTargetLabel}
                 terminal={selectedTerminal}
                 onEdit={
