@@ -293,8 +293,12 @@ server.on("connection", (socket) => {
           prompt: null,
           model: null,
           status: "completed",
-          agentsStates: { [childThreadId]: { status: "interrupted", message: null } }
+          agentsStates: { [childThreadId]: { status: "shutdown", message: null } }
         }
+      });
+      notify(socket, "thread/status/changed", {
+        threadId: childThreadId,
+        status: { type: "notLoaded" }
       });
       notify(socket, "item/completed", {
         threadId: childThreadId,
@@ -557,9 +561,16 @@ describe("native subagent execution ownership", () => {
           "spawned",
           "followupSent",
           "returned",
-          "interrupted",
+          "statusChanged",
         ]),
       );
+      expect(
+        activities.some(
+          (activity) =>
+            activity.agentScope?.agentThreadId === "child-thread" &&
+            activity.status === "failed",
+        ),
+      ).toBe(false);
       expect(
         activities.some(
           (activity) =>

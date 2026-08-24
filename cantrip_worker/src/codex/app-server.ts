@@ -1162,8 +1162,9 @@ function nativeAgentRuntimeStatus(
     case "active":
       return "running";
     case "idle":
-    case "notLoaded":
       return "idle";
+    case "notLoaded":
+      return "completed";
     case "systemError":
       return "failed";
     default:
@@ -5955,9 +5956,7 @@ export class CodexAppServer implements CodexRuntime {
                   ? "returned"
                   : tool === "wait"
                     ? "waiting"
-                    : tool === "closeagent"
-                      ? "interrupted"
-                      : "statusChanged";
+                    : "statusChanged";
           this.emitAgentCommunication({
             diagnosticId,
             itemId: item.id,
