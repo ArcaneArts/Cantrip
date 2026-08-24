@@ -109,9 +109,11 @@ The trajectory has one horizontal track per agent rather than three global bars.
 Ordering is deterministic:
 
 1. Root agent, pinned first.
-2. Active descendants, most recently active first.
-3. Inactive descendants, most recently completed first.
-4. Stable agent path/thread ID as the tie-breaker.
+2. Descendants in first-appearance order for the selected root turn.
+
+Activity and status updates do not move existing rows. This deliberately
+trades active-first grouping for a stable graph that remains readable during
+parallel work.
 
 Nested descendants are flattened and indented by depth. The graph grows through five tracks, then scrolls vertically inside its own viewport. Horizontal zoom, pan, and playhead state remain synchronized across all tracks.
 
@@ -348,7 +350,7 @@ Light checks: projection ordering/deduplication, panel replacement, absence of c
 ### Cycle 8 — Multi-agent trajectory
 
 - Scope trajectory intervals/events to an agent.
-- Render one multicolor track per agent with root pinning and active/inactive ordering.
+- Render one multicolor track per agent with root pinning and stable descendant ordering.
 - Add flattened indentation, dynamic height, five-row internal scrolling, and agent filters.
 - Connect event selection to the child sidebar while retaining existing zoom/playhead behavior.
 
@@ -376,7 +378,7 @@ Light checks: package-focused checks/builds and `git diff --check`; use the repo
 - The main chat shows deduplicated lifecycle/communication cards rather than dumping the child transcript inline.
 - Clicking a child card or trajectory event opens a read-only full-turn sidebar and replaces the prior right panel.
 - The sidebar exposes no chat, stop, steer, or direct-control surface.
-- The trajectory renders one multicolored track per agent, pins root first, sorts active before inactive descendants, indents nested agents, scrolls after five rows, and offers per-agent filters.
+- The trajectory renders one multicolored track per agent, pins root first, preserves descendant first-appearance order, indents nested agents, scrolls after five rows, and offers per-agent filters.
 - Private child prompts, handoffs, reasoning, commands, paths, results, nicknames, and role labels remain encrypted in storage and transport outside the authorized worker/client boundary.
 - Server logs, public event metadata, search indexes, analytics, and root continuation prompts do not leak or misclassify child content.
 - Disconnect/restart recovery reconstructs the best available child view without duplicate activities or server decryption.

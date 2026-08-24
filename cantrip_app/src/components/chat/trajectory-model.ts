@@ -557,17 +557,10 @@ function participantLabel(participant: AgentTurnParticipant): string {
 export function orderTrajectoryAgents(
   agents: readonly TrajectoryAgent[],
 ): TrajectoryAgent[] {
-  return [...agents].sort((left, right) => {
-    if (left.root !== right.root) return left.root ? -1 : 1;
-    if (left.active !== right.active) return left.active ? -1 : 1;
-    if (left.lastActiveAtMs !== right.lastActiveAtMs) {
-      return right.lastActiveAtMs - left.lastActiveAtMs;
-    }
-    return (
-      left.path.join("/").localeCompare(right.path.join("/")) ||
-      (left.threadId ?? left.key).localeCompare(right.threadId ?? right.key)
-    );
-  });
+  return [
+    ...agents.filter((agent) => agent.root),
+    ...agents.filter((agent) => !agent.root),
+  ];
 }
 
 function trajectoryAgents(input: {

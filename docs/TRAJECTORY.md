@@ -30,7 +30,8 @@ is not a whole-conversation analytics view.
   Task's current turn.
 - The graph has one horizontal track per agent. Each track combines Input,
   Model, and Tools segments using the existing semantic colors. The root is
-  pinned first; active descendants precede inactive descendants.
+  pinned first and descendants retain first-appearance order for the entire
+  projection so live status/activity updates cannot reshuffle rows.
 - Nested agents are flattened and path-indented. The graph grows through five
   tracks and then scrolls vertically without desynchronizing the shared time
   axis, playhead, zoom, or pan state.
@@ -225,11 +226,10 @@ It returns a `TrajectoryTurn` containing:
 - the next transition time needed by a running event.
 
 The turn also carries an ordered agent inventory derived from the shared
-decrypted `AgentTurnProjection`. The root is always first. Active descendants
-sort by most recent activity, then inactive descendants by most recent
-completion/activity, with stable agent path and thread ID tie-breakers. The
-projection is recomputed when its source messages change, not on elapsed-time
-clock ticks.
+decrypted `AgentTurnProjection`. The root is always first. Descendants retain
+their first-appearance order for the lifetime of the selected projection;
+activity and terminal-state updates never move an existing row. The projection
+is recomputed when its source messages change, not on elapsed-time clock ticks.
 
 Each `TrajectoryEvent` contains at minimum:
 
@@ -313,13 +313,13 @@ colors rather than three vertical graph lanes:
 | Model    | Overall agent-turn span, reasoning, plans, commentary, final response, compaction, returned child results, usage, rate-limit, and notice markers |
 | Tools    | Commands, file changes, worktree operations, MCP/dynamic tools, collaboration controls, web search, image view, and review-mode activity         |
 
-The root track is pinned first. Active descendants sort by most recent activity
-ahead of inactive descendants, which sort by most recent completion/activity;
-agent path and thread ID break ties. Flatten nested descendants and indent their
-labels by depth. Grow the track viewport through five rows, then apply internal
-vertical scrolling. Usage, rate-limit, warning, and error records are markers
-unless they have a meaningful captured duration. Concurrent records may occupy
-compact sub-rows inside one agent track so one bar does not hide another.
+The root track is pinned first. Descendants keep first-appearance order even as
+their status and last-active timestamp change. Flatten nested descendants and
+indent their labels by depth. Grow the track viewport through five rows, then
+apply internal vertical scrolling. Usage, rate-limit, warning, and error
+records are markers unless they have a meaningful captured duration.
+Concurrent records may occupy compact sub-rows inside one agent track so one
+bar does not hide another.
 
 Use semantic colors consistently between overview bars, history badges, and
 details. Status must also be communicated by icon/pattern/label rather than
@@ -686,8 +686,8 @@ fallbacks.
 - exact, derived, and instant timing;
 - imported/legacy history with missing correlation and timestamps;
 - every activity type mapped to the expected lane;
-- root pinned first, active/inactive descendant ordering, nested indentation,
-  and five-row overflow behavior;
+- root pinned first, stable descendant order through activity/status updates,
+  nested indentation, and five-row overflow behavior;
 - child completion cannot complete the root trajectory;
 - dynamic agent filters and child-event focus routing;
 - filter/search combinations and reset behavior;
@@ -753,9 +753,8 @@ require `git diff --check`.
   that exact historical turn.
 - The graph is a one-root-turn, per-agent time-track visualization, not a
   causal graph. Each agent track combines Input/Model/Tools colors.
-- Root is pinned first; active descendants precede inactive descendants;
-  nested labels are indented; and the graph scrolls internally after five
-  tracks.
+- Root is pinned first; descendants retain first-appearance order; nested
+  labels are indented; and the graph scrolls internally after five tracks.
 - Clicking the graph places a visible playhead and scrolls to the deterministic
   corresponding history event.
 - Clicking any event exposes Summary, Preview, and Raw details inside the same
