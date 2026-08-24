@@ -131,20 +131,30 @@ async function commandServer(
   options: {
     autoReady?: boolean;
     protocol?: "auth-ready" | "legacy" | null;
+    protocolSequence?: ReadonlyArray<"auth-ready" | "legacy" | null>;
   } = {},
 ) {
   const server = createServer();
-  const selectedProtocol =
-    options.protocol === "legacy"
+  let upgradeAttempt = 0;
+  const selectedProtocol = () => {
+    const sequenceIndex = upgradeAttempt - 1;
+    const protocol =
+      options.protocolSequence &&
+      sequenceIndex < options.protocolSequence.length
+        ? options.protocolSequence[sequenceIndex]
+        : options.protocol;
+    return protocol === "legacy"
       ? WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL
-      : options.protocol === null
+      : protocol === null
         ? null
         : WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL;
+  };
   const webSockets = new WebSocketServer({
     noServer: true,
     handleProtocols(protocols) {
-      if (selectedProtocol === null) return false;
-      return protocols.has(selectedProtocol) ? selectedProtocol : false;
+      const selected = selectedProtocol();
+      if (selected === null) return false;
+      return protocols.has(selected) ? selected : false;
     },
   });
   const pendingSockets: WebSocket[] = [];
@@ -166,6 +176,7 @@ async function commandServer(
     if (options.autoReady !== false) sendConnectionReady(socket, requestUrl);
   });
   server.on("upgrade", (request, socket, head) => {
+    upgradeAttempt += 1;
     if (!acceptUpgrades) {
       socket.destroy();
       return;
@@ -868,8 +879,11 @@ describe("worker generic tunnel data transport", () => {
     expect(connected).toHaveBeenCalledOnce();
   });
 
-  it("treats an old-server request as immediate legacy readiness", async () => {
-    const server = await commandServer({ autoReady: false, protocol: null });
+  it("offers authenticated readiness again after a no-protocol fallback", async () => {
+    const server = await commandServer({
+      autoReady: false,
+      protocolSequence: [null, null, "auth-ready"],
+    });
     const connected = vi.fn();
     const connection = new WorkerConnection(
       workerConfig(server.port),
@@ -911,6 +925,18 @@ describe("worker generic tunnel data transport", () => {
       ok: true,
     });
     expect(connected).toHaveBeenCalledOnce();
+    expect(socket.protocol).toBe("");
+
+    const reconnect = server.nextSocket();
+    socket.terminate();
+    const modernSocket = await reconnect;
+    expect(modernSocket.protocol).toBe(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL);
+    expect(connected).toHaveBeenCalledOnce();
+
+    sendConnectionState(modernSocket, server.requestUrls[2]!, "pending");
+    expect(connected).toHaveBeenCalledOnce();
+    sendConnectionState(modernSocket, server.requestUrls[2]!, "ready");
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledTimes(2));
   });
 
   it("flushes queued outcomes on a negotiated legacy reconnect without an inbound request", async () => {

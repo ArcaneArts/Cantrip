@@ -191,7 +191,7 @@ export class WorkerConnection {
   #disconnectStartedAtMs: number | null = null;
   #lastConnectionError: string | null = null;
   #keepaliveTimer: ReturnType<typeof setInterval> | null = null;
-  #offerConnectionSubprotocols = true;
+  #omitConnectionSubprotocolsOnce = false;
   #pendingCommandBytes = 0;
   readonly #pendingCommandEnvelopes: string[] = [];
   readonly #reconnectDelayMs: number;
@@ -290,9 +290,11 @@ export class WorkerConnection {
     const socketOptions = {
       headers: { authorization: `Bearer ${this.config.token}` },
     };
-    const socket = this.#offerConnectionSubprotocols
-      ? new WebSocket(url, [...WORKER_WEBSOCKET_SUBPROTOCOLS], socketOptions)
-      : new WebSocket(url, socketOptions);
+    const omitConnectionSubprotocols = this.#omitConnectionSubprotocolsOnce;
+    this.#omitConnectionSubprotocolsOnce = false;
+    const socket = omitConnectionSubprotocols
+      ? new WebSocket(url, socketOptions)
+      : new WebSocket(url, [...WORKER_WEBSOCKET_SUBPROTOCOLS], socketOptions);
     this.clearSocketNegotiation();
     this.#socket = socket;
     this.#socketReadiness = "negotiating";
@@ -331,7 +333,7 @@ export class WorkerConnection {
       // Some legacy servers accept the offered handshake but omit the selected
       // protocol. Retry without offers and require a real request or a
       // pending/ready envelope before trusting that connection.
-      this.#offerConnectionSubprotocols = false;
+      this.#omitConnectionSubprotocolsOnce = true;
     }
     this.#lastConnectionError = error.message;
     workerLogger.rateLimited(
