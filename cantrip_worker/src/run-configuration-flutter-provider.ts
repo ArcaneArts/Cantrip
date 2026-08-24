@@ -14,6 +14,7 @@ import {
 
 import {
   resolveRealDirectory,
+  runConfigurationExecutableDiagnostic,
   runConfigurationProviderDiagnostic,
   shellCommandInvocation,
   validateRealScript,
@@ -741,6 +742,13 @@ export const flutterRunConfigurationProvider: RunConfigurationProvider<RunConfig
               ),
             );
           }
+        } else {
+          const diagnostic = await runConfigurationExecutableDiagnostic(
+            systemFlutterExecutable(context.platform),
+            context,
+            "options.sdkHome",
+          );
+          if (diagnostic) diagnostics.push(diagnostic);
         }
       }
       if (resolved.commandOverride === null) {
@@ -807,7 +815,13 @@ export const flutterRunConfigurationProvider: RunConfigurationProvider<RunConfig
         }
         try {
           await resolveRealDirectory(context.targetRoot, step.workingDirectory);
-          shellCommandInvocation(step.command, context);
+          const invocation = shellCommandInvocation(step.command, context);
+          const diagnostic = await runConfigurationExecutableDiagnostic(
+            invocation.executable,
+            context,
+            `beforeLaunch[${index}]`,
+          );
+          if (diagnostic) diagnostics.push(diagnostic);
         } catch (error) {
           diagnostics.push(
             runConfigurationProviderDiagnostic(
@@ -820,10 +834,16 @@ export const flutterRunConfigurationProvider: RunConfigurationProvider<RunConfig
       }
       if (resolved.commandOverride !== null) {
         try {
-          shellCommandInvocation(
+          const invocation = shellCommandInvocation(
             effectiveCommand(parsed, resolved, context.platform),
             context,
           );
+          const diagnostic = await runConfigurationExecutableDiagnostic(
+            invocation.executable,
+            context,
+            "commandOverride",
+          );
+          if (diagnostic) diagnostics.push(diagnostic);
         } catch (error) {
           diagnostics.push(
             runConfigurationProviderDiagnostic(

@@ -42,10 +42,12 @@ function workerPlatform(): "darwin" | "linux" | "win32" {
 async function validateProviderDocument(
   document: RunConfigurationFile,
   sourcePath: string,
+  environment: NodeJS.ProcessEnv,
 ) {
   const platform = workerPlatform();
   const providerContext = {
-    defaultShell: process.env.SHELL ?? null,
+    defaultShell: environment.SHELL ?? null,
+    environment,
     platform,
     targetRoot: sourcePath,
   };
@@ -132,6 +134,7 @@ export class RunConfigurationDefinitionService {
   readonly #emit: (
     notification: RunConfigurationDefinitionChangeNotification,
   ) => boolean | void | Promise<boolean | void>;
+  readonly #environment: NodeJS.ProcessEnv;
   readonly #locks = new Map<string, Promise<void>>();
   readonly #repositories = new Map<string, ObservedRepository>();
   #closed = false;
@@ -140,8 +143,10 @@ export class RunConfigurationDefinitionService {
     emit: (
       notification: RunConfigurationDefinitionChangeNotification,
     ) => boolean | void | Promise<boolean | void>;
+    environment?: NodeJS.ProcessEnv;
   }) {
     this.#emit = options.emit;
+    this.#environment = options.environment ?? process.env;
   }
 
   async execute(
@@ -206,7 +211,7 @@ export class RunConfigurationDefinitionService {
         });
       case "project.run-configuration-definitions.detect": {
         const providerContext = {
-          defaultShell: process.env.SHELL ?? null,
+          defaultShell: this.#environment.SHELL ?? null,
           platform: workerPlatform(),
           targetRoot: command.sourcePath,
         };
@@ -330,6 +335,7 @@ export class RunConfigurationDefinitionService {
           validation: await validateProviderDocument(
             command.document,
             command.sourcePath,
+            this.#environment,
           ),
         });
       case "project.run-configuration-definitions.write":

@@ -964,6 +964,58 @@ script = "printf 'setup-started\\n'; while :; do sleep 1; done"
       await runs.closeAll();
     });
 
+    it("fails provider validation before spawn when a required tool is absent", async () => {
+      const input = await rustFixture();
+      const emptyPath = path.join(path.dirname(input.sourceRoot), "empty-bin");
+      await mkdir(emptyPath);
+      const runtimeIdentity = identity(input);
+      const runs = supervisor([], {
+        environment: { PATH: emptyPath },
+      });
+
+      await runs.start(startCommand(input, runtimeIdentity));
+      const failed = await waitForState(runs, runtimeIdentity, "failed");
+      expect(failed.failure).toMatchObject({
+        phase: "provider",
+        code: "executable-unavailable",
+        message: expect.stringContaining("cargo"),
+      });
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).not.toContain("rust-provider");
+      await runs.closeAll();
+    });
+
+    it("preflights required tools against the fully resolved live environment", async () => {
+      const input = await rustFixture();
+      const emptyPath = path.join(path.dirname(input.sourceRoot), "empty-bin");
+      await mkdir(emptyPath);
+      const runtimeIdentity = identity(input);
+      const runs = supervisor([], {
+        environment: { PATH: emptyPath },
+        resolveEnvironment: async () => ({
+          files: { PATH: input.executableDirectory },
+        }),
+      });
+
+      await runs.start(startCommand(input, runtimeIdentity));
+      await waitForState(runs, runtimeIdentity, "exited");
+      expect(
+        runs.output({
+          type: "project.run-configuration-runtime.output",
+          requestOperationId: randomUUID(),
+          identity: runtimeIdentity,
+          tail: 100_000,
+        }).data,
+      ).toContain("rust-provider|run");
+      await runs.closeAll();
+    });
+
     it("replays one generation and fails closed when its revision is stale", async () => {
       const input = await fixture("printf started >> launch-count.txt");
       const runtimeIdentity = identity(input);

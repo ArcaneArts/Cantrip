@@ -18,7 +18,10 @@ import { javaRunConfigurationProvider } from "../src/run-configuration-java-prov
 import { dartRunConfigurationProvider } from "../src/run-configuration-dart-provider.js";
 import { flutterRunConfigurationProvider } from "../src/run-configuration-flutter-provider.js";
 import { rustRunConfigurationProvider } from "../src/run-configuration-rust-provider.js";
-import { shellRunConfigurationProvider } from "../src/run-configuration-provider.js";
+import {
+  findRunConfigurationExecutable,
+  shellRunConfigurationProvider,
+} from "../src/run-configuration-provider.js";
 
 const roots: string[] = [];
 
@@ -34,6 +37,56 @@ afterEach(async () => {
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
+});
+
+describe("findRunConfigurationExecutable", () => {
+  it("requires POSIX execute permission and returns the canonical PATH match", async () => {
+    const root = await createRoot();
+    const executable = path.join(root, "cantrip-tool");
+    await writeFile(executable, "#!/bin/sh\nexit 0\n", { mode: 0o600 });
+    const context = {
+      environment: { PATH: root },
+      platform: "linux" as const,
+      targetRoot: root,
+    };
+
+    await expect(
+      findRunConfigurationExecutable("cantrip-tool", context),
+    ).resolves.toBeNull();
+
+    await chmod(executable, 0o755);
+    await expect(
+      findRunConfigurationExecutable("cantrip-tool", context),
+    ).resolves.toBe(await realpath(executable));
+  });
+
+  it("uses case-insensitive Windows environment keys and PATHEXT", async () => {
+    const root = await createRoot();
+    const executable = path.join(root, "cantrip-tool.CMD");
+    await writeFile(executable, "@exit /b 0\r\n");
+
+    await expect(
+      findRunConfigurationExecutable("cantrip-tool", {
+        environment: {
+          Path: `${path.join(root, "missing")};${root}`,
+          pathext: ".COM;.EXE;.CMD",
+        },
+        platform: "win32",
+        targetRoot: root,
+      }),
+    ).resolves.toBe(await realpath(executable));
+  });
+
+  it("returns null when the launch environment has no matching executable", async () => {
+    const root = await createRoot();
+    await expect(
+      findRunConfigurationExecutable("missing-tool", {
+        environment: { PATH: root },
+        platform: "linux",
+        targetRoot: root,
+      }),
+    ).resolves.toBeNull();
+  });
 });
 
 describe("shellRunConfigurationProvider", () => {

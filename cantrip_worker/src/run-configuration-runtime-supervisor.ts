@@ -32,8 +32,10 @@ import { rustRunConfigurationProvider } from "./run-configuration-rust-provider.
 import { nodeRunConfigurationProvider } from "./run-configuration-node-provider.js";
 import { javaRunConfigurationProvider } from "./run-configuration-java-provider.js";
 import {
+  findRunConfigurationExecutable,
   shellRunConfigurationProvider,
   type MaterializedRunCommand,
+  type RunConfigurationProviderContext,
 } from "./run-configuration-provider.js";
 import { RunConfigurationRepository } from "./run-configuration-repository.js";
 import { RunConfigurationProcessTreeController } from "./run-configuration-process-tree.js";
@@ -270,6 +272,26 @@ function platformForProvider(
     `Run configurations are unavailable on ${platform}.`,
     false,
   );
+}
+
+async function validateRunConfigurationProvider(
+  document: RunConfigurationFile,
+  context: RunConfigurationProviderContext,
+) {
+  switch (document.provider) {
+    case "shell":
+      return shellRunConfigurationProvider.validate(document, context);
+    case "node":
+      return nodeRunConfigurationProvider.validate(document, context);
+    case "java":
+      return javaRunConfigurationProvider.validate(document, context);
+    case "dart":
+      return dartRunConfigurationProvider.validate(document, context);
+    case "flutter":
+      return flutterRunConfigurationProvider.validate(document, context);
+    case "rust":
+      return rustRunConfigurationProvider.validate(document, context);
+  }
 }
 
 function stableIdentityMatches(
@@ -851,6 +873,22 @@ export class RunConfigurationRuntimeSupervisor {
         ...reservedEnvironment(session, roots.sourceRoot, roots.targetRoot),
       };
 
+      const providerDiagnostics = await validateRunConfigurationProvider(
+        document,
+        { ...providerContext, environment },
+      );
+      const providerError = providerDiagnostics.find(
+        ({ severity }) => severity === "error",
+      );
+      if (providerError) {
+        throw new RuntimeLaunchError(
+          "provider",
+          providerError.code,
+          providerError.message,
+          true,
+        );
+      }
+
       for (const step of materialized.beforeLaunch) {
         const result = await this.#runBeforeLaunch(
           session,
@@ -929,6 +967,22 @@ export class RunConfigurationRuntimeSupervisor {
     environment: Record<string, string>,
     timeoutMs?: number,
   ): Promise<ProcessExit> {
+    const executable = await findRunConfigurationExecutable(
+      command.executable,
+      {
+        environment,
+        platform: platformForProvider(this.#platform),
+        targetRoot: command.workingDirectory,
+      },
+    );
+    if (!executable) {
+      throw new RuntimeLaunchError(
+        timeoutMs === undefined ? "before-launch" : "environment",
+        "executable-unavailable",
+        `The required executable ${JSON.stringify(command.executable)} is not available in the target worker launch environment. Install it or add it to PATH.`,
+        true,
+      );
+    }
     const tracked = await this.#withLock(session.runtimeId, async () => {
       if (!generationLaunchIsCurrent(session, identity)) {
         return null;
