@@ -615,11 +615,6 @@ const PersistentCodeViews = lazy(() =>
     default: module.PersistentCodeViews,
   })),
 );
-const PersistentTaskViews = lazy(() =>
-  import("@/components/tasks/persistent-task-views").then((module) => ({
-    default: module.PersistentTaskViews,
-  })),
-);
 const RemoteDesktopView = lazy(() =>
   import("@/components/remote-desktop/remote-desktop-view").then((module) => ({
     default: module.RemoteDesktopView,
@@ -3967,9 +3962,9 @@ export function App() {
   const [agentInspectOpenChats, setAgentInspectOpenChats] = useState<
     ReadonlySet<string>
   >(() => new Set());
-  const [taskChatViewIds, setTaskChatViewIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [projectTaskChatIds, setProjectTaskChatIds] = useState<
+    ReadonlyMap<string, string>
+  >(() => new Map());
   const setAgentInspectOpen = useCallback((chatId: string, open: boolean) => {
     setAgentInspectOpenChats((current) =>
       updateAgentInspectOpenChats(current, chatId, open),
@@ -4239,6 +4234,37 @@ export function App() {
     setShowServerAdmin(false);
     setShowProjectSettings(false);
     setSelectedWorkflowIntentId(null);
+  };
+
+  const openProjectTask = (projectId: string, chatId: string) => {
+    setSidebarFilePreview((current) =>
+      current?.projectId === projectId ? { ...current, active: false } : null,
+    );
+    setProjectTaskChatIds((current) => {
+      const next = new Map(current);
+      next.set(projectId, chatId);
+      return next;
+    });
+    setDesktopSidebarDrawerOpen(false);
+    setSelectedProjectId(projectId);
+    setProjectOverviewSection("tasks");
+    setWorkspaceSelection(emptyWorkspaceSelection(projectId));
+    setPendingSurfaceSelection(null);
+    setMobileTabGridOpen(false);
+    setShowImporter(false);
+    setShowSettings(false);
+    setShowServerAdmin(false);
+    setShowProjectSettings(false);
+    setSelectedWorkflowIntentId(null);
+  };
+
+  const closeProjectTask = (projectId: string) => {
+    setProjectTaskChatIds((current) => {
+      if (!current.has(projectId)) return current;
+      const next = new Map(current);
+      next.delete(projectId);
+      return next;
+    });
   };
 
   const openProjectSettings = (
@@ -4766,16 +4792,11 @@ export function App() {
           ),
       );
       queryClient.setQueryData(["task", chat.id], task);
-      setTaskChatViewIds((current) => {
-        const next = new Set(current);
-        next.delete(chat.id);
-        return next;
-      });
-      openCreatedTab(chat.projectId, "chat", chat.id);
+      openProjectTask(chat.projectId, chat.id);
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
         queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", chat.projectId],
+          queryKey: ["project-task-workload", chat.projectId],
         }),
       ]);
     },
@@ -5477,9 +5498,11 @@ export function App() {
     mutationFn: deleteChat,
     onSuccess: async (_value, deletedId) => {
       setChatConsoleOpen(deletedId, false);
-      setTaskChatViewIds((current) => {
-        const next = new Set(current);
-        next.delete(deletedId);
+      setProjectTaskChatIds((current) => {
+        const next = new Map(
+          [...current].filter(([, chatId]) => chatId !== deletedId),
+        );
+        if (next.size === current.size) return current;
         return next;
       });
       await queryClient.invalidateQueries({
@@ -6136,19 +6159,6 @@ export function App() {
     selectedChat?.id,
     selectedChat?.projectId,
   ]);
-  const selectedTaskView = Boolean(
-    selectedChat?.experience === "task" &&
-    !taskChatViewIds.has(selectedChat.id),
-  );
-  const setSelectedTaskView = (view: "task" | "chat") => {
-    if (selectedChat?.experience !== "task") return;
-    setTaskChatViewIds((current) => {
-      const next = new Set(current);
-      if (view === "chat") next.add(selectedChat.id);
-      else next.delete(selectedChat.id);
-      return next;
-    });
-  };
   const selectedStandaloneTerminal =
     !sidebarFilePreviewVisible && selectedSurface?.kind === "terminal"
       ? selectedSurface.entity
@@ -7253,7 +7263,14 @@ export function App() {
           return { status: "applied" as const };
         case "show-interaction":
           selectProjectFromCommandBar(command.projectId);
-          openCreatedTab(command.projectId, "chat", command.chatId);
+          if (
+            chats.data?.find(({ id }) => id === command.chatId)?.experience ===
+            "task"
+          ) {
+            openProjectTask(command.projectId, command.chatId);
+          } else {
+            openCreatedTab(command.projectId, "chat", command.chatId);
+          }
           void queryClient.invalidateQueries({
             queryKey: ["agent-requests", command.chatId, "pending"],
           });
@@ -7263,6 +7280,7 @@ export function App() {
     [
       activeProjectWorkspace,
       activeProjectWorkspaceStorageKey,
+      chats.data,
       projectWorkspaces.data,
       projects.data,
       queryClient,
@@ -7751,7 +7769,6 @@ export function App() {
     if (tabGroupId) input.tabGroupId = tabGroupId;
     if (target) input.target = target;
     if (kind === "chat") newChat.mutate(input);
-    else if (kind === "task") newTask.mutate(input);
     else if (kind === "terminal") newTerminal.mutate(input);
     else if (kind === "explorer") newExplorer.mutate(input);
     else if (kind === "browser") newBrowser.mutate(input);
@@ -7801,7 +7818,6 @@ export function App() {
   };
   const creatingSurfaceKinds = new Set<ProjectSurfaceCreateKind>([
     ...(newChat.isPending ? (["chat"] as const) : []),
-    ...(newTask.isPending ? (["task"] as const) : []),
     ...(newTerminal.isPending ? (["terminal"] as const) : []),
     ...(newExplorer.isPending ? (["explorer"] as const) : []),
     ...(newBrowser.isPending ? (["browser"] as const) : []),
@@ -7821,39 +7837,37 @@ export function App() {
       : undefined;
   const surfaceCreationFailure = newChat.isError
     ? { label: "Agent", error: newChat.error, dismiss: newChat.reset }
-    : newTask.isError
-      ? { label: "Task", error: newTask.error, dismiss: newTask.reset }
-      : newTerminal.isError
+    : newTerminal.isError
+      ? {
+          label: "terminal",
+          error: newTerminal.error,
+          dismiss: newTerminal.reset,
+        }
+      : newExplorer.isError
         ? {
-            label: "terminal",
-            error: newTerminal.error,
-            dismiss: newTerminal.reset,
+            label: "Explorer",
+            error: newExplorer.error,
+            dismiss: newExplorer.reset,
           }
-        : newExplorer.isError
+        : newBrowser.isError
           ? {
-              label: "Explorer",
-              error: newExplorer.error,
-              dismiss: newExplorer.reset,
+              label: "Browser",
+              error: newBrowser.error,
+              dismiss: newBrowser.reset,
             }
-          : newBrowser.isError
+          : newCodeTab.isError
             ? {
-                label: "Browser",
-                error: newBrowser.error,
-                dismiss: newBrowser.reset,
+                label: "Code tab",
+                error: newCodeTab.error,
+                dismiss: newCodeTab.reset,
               }
-            : newCodeTab.isError
+            : newRemoteDesktop.isError
               ? {
-                  label: "Code tab",
-                  error: newCodeTab.error,
-                  dismiss: newCodeTab.reset,
+                  label: "Remote Desktop",
+                  error: newRemoteDesktop.error,
+                  dismiss: newRemoteDesktop.reset,
                 }
-              : newRemoteDesktop.isError
-                ? {
-                    label: "Remote Desktop",
-                    error: newRemoteDesktop.error,
-                    dismiss: newRemoteDesktop.reset,
-                  }
-                : null;
+              : null;
   const handleWorkspaceDrop = (operation: WorkspaceDropOperation) => {
     setWorkspaceDragError(null);
     if (operation.type === "tab-layout") {
@@ -7935,13 +7949,7 @@ export function App() {
             open: popOutActiveView,
           }
         : null,
-    task:
-      activeChat?.experience === "task"
-        ? {
-            change: setSelectedTaskView,
-            view: selectedTaskView ? ("task" as const) : ("chat" as const),
-          }
-        : null,
+    task: null,
     chat:
       activeChat &&
       !showImporter &&
@@ -7994,17 +8002,6 @@ export function App() {
   );
   const explorerSurfaceVisible = Boolean(
     selectedExplorer &&
-    !mobileProjectSelectorOpen &&
-    !showImporter &&
-    !showSettings &&
-    !showServerAdmin &&
-    !showProjectSettings &&
-    !(compactShell && mobileTabGridOpen) &&
-    !groupOwnedElsewhere,
-  );
-  const taskSurfaceVisible = Boolean(
-    selectedChat?.experience === "task" &&
-    selectedTaskView &&
     !mobileProjectSelectorOpen &&
     !showImporter &&
     !showSettings &&
@@ -8971,29 +8968,7 @@ export function App() {
           />
         </Suspense>
 
-        <Suspense
-          fallback={
-            taskSurfaceVisible ? (
-              <div className="grid flex-1 place-items-center text-muted-foreground">
-                <Loader2 className="size-5 animate-spin" />
-              </div>
-            ) : null
-          }
-        >
-          <PersistentTaskViews
-            activeTask={
-              taskSurfaceVisible && selectedChat
-                ? {
-                    chat: selectedChat,
-                    worker: selectedWorker,
-                  }
-                : null
-            }
-            settings={settings.data}
-            onRename={(chatId, title) =>
-              renameChatMutation.mutate({ chatId, title })
-            }
-          />
+        <Suspense fallback={null}>
           {sidebarFilePreview && sidebarPreviewExplorer ? (
             <ExplorerView
               active={sidebarFilePreviewVisible}
@@ -9098,7 +9073,9 @@ export function App() {
               })
             }
             onRestoreChat={(chat) =>
-              openCreatedTab(chat.projectId, "chat", chat.id)
+              chat.experience === "task"
+                ? openProjectTask(chat.projectId, chat.id)
+                : openCreatedTab(chat.projectId, "chat", chat.id)
             }
             onOpenTunnelOwner={openTunnelOwner}
             onOpenImportedChat={(chatId) =>
@@ -9448,8 +9425,7 @@ export function App() {
               />
             )}
           </Suspense>
-        ) : selectedChat?.experience === "task" &&
-          selectedTaskView ? null : selectedChat ? (
+        ) : selectedChat ? (
           <ChatTranscript
             key={selectedChat.id}
             chat={selectedChat}
@@ -9621,16 +9597,36 @@ export function App() {
                   <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border" />
                 </div>
               ) : null}
-              {activeProjectOverviewSection === "tasks" ? (
+              <div
+                className={cn(
+                  "min-h-0 flex-1 flex-col",
+                  activeProjectOverviewSection === "tasks" ? "flex" : "hidden",
+                )}
+              >
                 <ProjectTasksDashboard
+                  activeTaskChatId={
+                    projectTaskChatIds.get(selectedProject.id) ?? null
+                  }
                   chats={chats.data ?? []}
+                  creatingTask={newTask.isPending}
                   projectId={selectedProject.id}
+                  settings={settings.data}
+                  taskCreationError={newTask.error}
+                  workers={workers.data ?? []}
                   onConfigureWorkers={() => openCompactRootSettings("tasks")}
+                  onCreateTask={() =>
+                    newTask.mutate({ projectId: selectedProject.id })
+                  }
+                  onCloseTask={() => closeProjectTask(selectedProject.id)}
                   onOpenTask={(chatId) =>
-                    openCreatedTab(selectedProject.id, "chat", chatId)
+                    openProjectTask(selectedProject.id, chatId)
+                  }
+                  onRenameTask={(chatId, title) =>
+                    renameChatMutation.mutate({ chatId, title })
                   }
                 />
-              ) : (
+              </div>
+              {activeProjectOverviewSection !== "tasks" ? (
                 <ProjectOverview
                   compact={compactShell}
                   creatingKinds={creatingSurfaceKinds}
@@ -9675,7 +9671,7 @@ export function App() {
                   }
                   revealLabel={projectRevealButtonLabel ?? undefined}
                 />
-              )}
+              ) : null}
             </div>
           ) : (
             <EmptyState>

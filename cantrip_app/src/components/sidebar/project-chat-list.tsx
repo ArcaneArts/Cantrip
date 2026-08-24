@@ -703,11 +703,13 @@ export function ProjectChatList({
         view: ProjectViewSummary;
       };
   const tabs: SidebarTab[] = [
-    ...chats.map((chat) => ({
-      id: chatId(chat.id),
-      kind: "chat" as const,
-      chat,
-    })),
+    ...chats
+      .filter(({ experience }) => experience !== "task")
+      .map((chat) => ({
+        id: chatId(chat.id),
+        kind: "chat" as const,
+        chat,
+      })),
     ...standaloneTerminals.map((terminal) => ({
       id: terminalId(terminal.id),
       kind: "terminal" as const,

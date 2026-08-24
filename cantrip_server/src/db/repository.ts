@@ -12733,12 +12733,14 @@ export class ServerRepository {
         startingHead,
         runtimeSessionId,
       });
-      await attachProjectTab(transaction, {
-        projectId,
-        tabGroupId: input.tabGroupId,
-        tabId: chat.id,
-        tabKind: "chat",
-      });
+      if (experience !== "task") {
+        await attachProjectTab(transaction, {
+          projectId,
+          tabGroupId: input.tabGroupId,
+          tabId: chat.id,
+          tabKind: "chat",
+        });
+      }
       const task =
         experience === "task"
           ? firstOrThrow(
@@ -14838,11 +14840,13 @@ export class ServerRepository {
         .set({ archivedAt: null, position, updatedAt: new Date() })
         .where(eq(schema.chats.id, chatId))
         .returning();
-      await attachProjectTab(transaction, {
-        projectId: chat.projectId,
-        tabId: chatId,
-        tabKind: "chat",
-      });
+      if (chat.experience !== "task") {
+        await attachProjectTab(transaction, {
+          projectId: chat.projectId,
+          tabId: chatId,
+          tabKind: "chat",
+        });
+      }
       return toChatWireSummary(firstOrThrow(restored, "restoring a chat"));
     });
   }

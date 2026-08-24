@@ -1,7 +1,9 @@
 import type {
   ChatSummary,
+  SettingsBundle,
   TaskDetail,
   TaskWorkerSummary,
+  WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,6 +16,7 @@ import {
   Loader2,
   Pause,
   Play,
+  Plus,
   Settings2,
 } from "lucide-react";
 import { useMemo } from "react";
@@ -25,6 +28,7 @@ import {
 } from "@/components/chat/trajectory-model";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
 import {
   EmptyState,
   EmptyStateActions,
@@ -448,15 +452,31 @@ function WorkloadList({
 }
 
 export function ProjectTasksDashboard({
+  activeTaskChatId,
   chats,
+  creatingTask,
   onConfigureWorkers,
+  onCreateTask,
+  onCloseTask,
   onOpenTask,
+  onRenameTask,
   projectId,
+  settings,
+  taskCreationError,
+  workers,
 }: {
+  activeTaskChatId: string | null;
   chats: ChatSummary[];
+  creatingTask: boolean;
   onConfigureWorkers(): void;
+  onCreateTask(): void;
+  onCloseTask(): void;
   onOpenTask(chatId: string): void;
+  onRenameTask(chatId: string, title: string): void;
   projectId: string;
+  settings: SettingsBundle | undefined;
+  taskCreationError: unknown;
+  workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
   const live = useAppLiveStatus() === "live";
@@ -495,6 +515,12 @@ export function ProjectTasksDashboard({
     () => new Map(chats.map((chat) => [chat.id, chat])),
     [chats],
   );
+  const activeTask = activeTaskChatId
+    ? chatMap.get(activeTaskChatId)
+    : undefined;
+  const activeTaskWorker = activeTask
+    ? workers.find(({ workerId }) => workerId === activeTask.activeWorkerId)
+    : undefined;
   const workerMap = useMemo(
     () =>
       new Map((taskWorkers.data ?? []).map((worker) => [worker.id, worker])),
@@ -509,6 +535,19 @@ export function ProjectTasksDashboard({
       ),
     [chatMap, pauseState.data?.paused, workload.data?.items],
   );
+
+  if (activeTask) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <PersistentTaskViews
+          activeTask={{ chat: activeTask, worker: activeTaskWorker }}
+          settings={settings}
+          onClose={onCloseTask}
+          onRename={onRenameTask}
+        />
+      </div>
+    );
+  }
 
   if (taskWorkers.isLoading) {
     return (
@@ -571,7 +610,7 @@ export function ProjectTasksDashboard({
   const error = workload.error ?? pauseState.error ?? taskWorkers.error;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-7">
+      <div className="w-full px-4 py-5 sm:px-6 sm:py-7">
         <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -584,26 +623,34 @@ export function ProjectTasksDashboard({
                 : "Needs-attention Tasks are first; workers claim eligible queued Tasks FIFO."}
             </p>
           </div>
-          <Button
-            pending={pauseMutation.isPending}
-            variant="outline"
-            onClick={() => pauseMutation.mutate(!pauseState.data?.paused)}
-          >
-            {pauseState.data?.paused ? (
-              <Play className="size-4" />
-            ) : (
-              <Pause className="size-4" />
-            )}
-            {pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button pending={creatingTask} onClick={onCreateTask}>
+              <Plus className="size-4" />
+              Add Task
+            </Button>
+            <Button
+              pending={pauseMutation.isPending}
+              variant="outline"
+              onClick={() => pauseMutation.mutate(!pauseState.data?.paused)}
+            >
+              {pauseState.data?.paused ? (
+                <Play className="size-4" />
+              ) : (
+                <Pause className="size-4" />
+              )}
+              {pauseState.data?.paused ? "Resume Tasks" : "Pause Tasks"}
+            </Button>
+          </div>
         </header>
-        {error || pauseMutation.isError ? (
+        {error || pauseMutation.isError || taskCreationError ? (
           <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
             {error instanceof Error
               ? error.message
               : pauseMutation.error instanceof Error
                 ? pauseMutation.error.message
-                : "The Task workload could not be loaded."}
+                : taskCreationError instanceof Error
+                  ? taskCreationError.message
+                  : "The Task workload could not be loaded."}
           </div>
         ) : null}
         <div className="space-y-7">

@@ -29,10 +29,12 @@ export function retainTaskSurfaceTabs(
 
 export function PersistentTaskViews({
   activeTask,
+  onClose,
   onRename,
   settings,
 }: {
   activeTask: ActiveTaskView | null;
+  onClose?(): void;
   onRename(chatId: string, title: string): void;
   settings: SettingsBundle | undefined;
 }) {
@@ -61,6 +63,7 @@ export function PersistentTaskViews({
       >
         <TaskSurface
           chat={retained.chat}
+          onClose={active ? onClose : undefined}
           settings={settings}
           worker={retained.worker}
           onRename={(title) => onRename(retained.chat.id, title)}
