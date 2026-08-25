@@ -1,13 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-import { taskWorkerCreateSchema } from "@cantrip/protocol/task-scheduling";
+import {
+  taskWorkerCreateSchema,
+  type TaskDispatchCycleState,
+} from "@cantrip/protocol/task-scheduling";
 import { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { describe, expect, it } from "vitest";
 
-import { TaskDispatchConflictError } from "../src/db/task-dispatch.js";
+import {
+  TaskDispatchConflictError,
+  taskDispatchSchedulerPlan,
+} from "../src/db/task-dispatch.js";
 import {
   DEFAULT_MODEL_ID,
   DEFAULT_MODEL_ROUTE_ID,
@@ -34,7 +41,15 @@ const encryptedTaskContent = {
 
 async function fixture() {
   const client = new PGlite();
-  const database = drizzle(client, { schema });
+  const queries: string[] = [];
+  const database = drizzle(client, {
+    schema,
+    logger: {
+      logQuery(query) {
+        queries.push(query);
+      },
+    },
+  });
   await migrate(database, { migrationsFolder });
   const repository = new ServerRepository(
     database,
@@ -60,7 +75,7 @@ async function fixture() {
     startedAt: now,
     lastSeenAt: now,
   });
-  return { client, database, physicalWorkerId, repository };
+  return { client, database, physicalWorkerId, queries, repository };
 }
 
 function workerInput(
@@ -140,6 +155,109 @@ const eligible = async () => ({
 });
 
 describe("Task dispatch scheduling", () => {
+  it("summarizes active owner states into scheduler stage gates", async () => {
+    const value = await fixture();
+    try {
+      const task = await addTask(value, {
+        createdAt: new Date("2026-08-24T09:00:00.000Z"),
+      });
+      await value.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        task.chatId,
+        "scheduler-state-operation",
+        "direct",
+        1,
+      );
+
+      const activeStates = [
+        "queued",
+        "claimed",
+        "running",
+        "paused",
+      ] as const satisfies readonly TaskDispatchCycleState[];
+      for (const state of activeStates) {
+        await value.database
+          .update(schema.taskDispatchCycles)
+          .set({ state })
+          .where(eq(schema.taskDispatchCycles.chatId, task.chatId));
+        const owners =
+          await value.repository.taskDispatch.listSchedulerOwners();
+        expect(owners).toEqual([
+          {
+            ownerId: LOCAL_USER_ID,
+            hasQueued: state === "queued",
+            hasClaimed: state === "claimed",
+            hasRunning: state === "running",
+            hasPaused: state === "paused",
+          },
+        ]);
+        expect(taskDispatchSchedulerPlan(owners[0]!)).toEqual({
+          reconcileUnstartedClaims: state === "claimed",
+          reconcileStartedLeases: state === "claimed" || state === "running",
+          resumePaused: state === "paused",
+          claimQueued: state === "queued",
+        });
+      }
+
+      for (const state of [
+        "succeeded",
+        "failed",
+        "cancelled",
+        "expired",
+      ] as const satisfies readonly TaskDispatchCycleState[]) {
+        await value.database
+          .update(schema.taskDispatchCycles)
+          .set({ state })
+          .where(eq(schema.taskDispatchCycles.chatId, task.chatId));
+        expect(
+          await value.repository.taskDispatch.listSchedulerOwners(),
+        ).toEqual([]);
+      }
+
+      const remainingStates = ["claimed", "running", "paused"] as const;
+      await value.database
+        .update(schema.taskDispatchCycles)
+        .set({ state: "queued" })
+        .where(eq(schema.taskDispatchCycles.chatId, task.chatId));
+      for (const [index, state] of remainingStates.entries()) {
+        const extra = await addTask(value, {
+          createdAt: new Date(`2026-08-24T0${index + 6}:00:00.000Z`),
+        });
+        await value.repository.taskDispatch.enqueue(
+          LOCAL_USER_ID,
+          extra.chatId,
+          `scheduler-state-${state}`,
+          "direct",
+          1,
+        );
+        await value.database
+          .update(schema.taskDispatchCycles)
+          .set({ state })
+          .where(eq(schema.taskDispatchCycles.chatId, extra.chatId));
+      }
+      value.queries.length = 0;
+      const mixed = await value.repository.taskDispatch.listSchedulerOwners();
+      expect(value.queries).toHaveLength(1);
+      expect(mixed).toEqual([
+        {
+          ownerId: LOCAL_USER_ID,
+          hasQueued: true,
+          hasClaimed: true,
+          hasRunning: true,
+          hasPaused: true,
+        },
+      ]);
+      expect(taskDispatchSchedulerPlan(mixed[0]!)).toEqual({
+        reconcileUnstartedClaims: true,
+        reconcileStartedLeases: true,
+        resumePaused: true,
+        claimQueued: true,
+      });
+    } finally {
+      await value.client.close();
+    }
+  });
+
   it("enforces account-global capacity and FIFO independently of priority", async () => {
     const value = await fixture();
     try {
