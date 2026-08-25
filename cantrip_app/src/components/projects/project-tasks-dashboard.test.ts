@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   projectTaskDashboardQueriesEnabled,
+  projectTaskIsUnqueuedDraft,
   projectTaskWorkloadPresentation,
   sortProjectTaskWorkload,
   type ProjectTaskWorkloadItem,
@@ -95,6 +96,26 @@ function dispatch(
 }
 
 describe("project Task workload", () => {
+  it("distinguishes an unqueued draft from a queued Task", () => {
+    const draft = task({
+      chatId: "draft",
+      createdAt: "2026-08-24T12:00:00.000Z",
+      state: "draft",
+    });
+    const queued = dispatch(
+      task({
+        chatId: "queued",
+        createdAt: "2026-08-24T12:00:00.000Z",
+        state: "draft",
+      }),
+      "queued",
+    );
+
+    expect(projectTaskIsUnqueuedDraft(draft)).toBe(true);
+    expect(projectTaskIsUnqueuedDraft(queued)).toBe(false);
+    expect(projectTaskIsUnqueuedDraft(undefined)).toBe(false);
+  });
+
   it("loads dashboard-only queries only while the task list is visible", () => {
     expect(projectTaskDashboardQueriesEnabled(true, null)).toBe(true);
     expect(projectTaskDashboardQueriesEnabled(false, null)).toBe(false);

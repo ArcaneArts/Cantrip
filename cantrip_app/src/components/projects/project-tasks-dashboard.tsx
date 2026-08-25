@@ -60,6 +60,12 @@ export interface ProjectTaskWorkloadPresentation {
   tone: "attention" | "completed" | "muted" | "running";
 }
 
+export function projectTaskIsUnqueuedDraft(
+  task: TaskDetail | undefined,
+): boolean {
+  return task?.state === "draft" && task.dispatch === null;
+}
+
 const activeBandOrder: Record<ProjectTaskWorkloadBand, number> = {
   attention: 0,
   running: 1,
@@ -160,7 +166,7 @@ export function projectTaskWorkloadPresentation(
       tone: "attention",
     };
   }
-  if (!dispatch && task.state === "draft") {
+  if (projectTaskIsUnqueuedDraft(task)) {
     return {
       band: "attention",
       label: "Draft",
