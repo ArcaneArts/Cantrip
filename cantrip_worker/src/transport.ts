@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import {
   agentTurnResultSchema,
@@ -47,11 +47,13 @@ const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
 const MAX_BUFFERED_COMMAND_BYTES = 8 * 1_024 * 1_024;
 const TUNNEL_DATA_PLANE_LOW_WATER_BYTES = 256 * 1_024;
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
+const DEFAULT_KEEPALIVE_TIMEOUT_MS = 10_000;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 const DEFAULT_TRANSPORT_DISCONNECT_GRACE_MS = 15_000;
 type CommandEnvelopeDelivery = "sent" | "queued" | "dropped";
 
 export interface WorkerConnectionTimingOptions {
+  keepaliveTimeoutMs?: number;
   reconnectDelayMs?: number;
   transportDisconnectGraceMs?: number;
 }
@@ -189,6 +191,12 @@ export class WorkerConnection {
   #connectionPendingObserved = false;
   #connectAttempt = 0;
   #disconnectStartedAtMs: number | null = null;
+  #keepalivePingSendDeadline: ReturnType<typeof setTimeout> | null = null;
+  #keepalivePongDeadline: ReturnType<typeof setTimeout> | null = null;
+  #keepalivePongListener: ((payload: Buffer) => void) | null = null;
+  #keepalivePongNonce: Buffer | null = null;
+  #keepaliveSocket: WebSocket | null = null;
+  readonly #keepaliveTimeoutMs: number;
   #lastConnectionError: string | null = null;
   #keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   #omitConnectionSubprotocolsOnce = false;
@@ -218,6 +226,10 @@ export class WorkerConnection {
     private readonly handleTransportConnect: () => void = () => undefined,
     timing: WorkerConnectionTimingOptions = {},
   ) {
+    this.#keepaliveTimeoutMs = Math.max(
+      1,
+      timing.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS,
+    );
     this.#reconnectDelayMs = Math.max(
       0,
       timing.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS,
@@ -608,16 +620,62 @@ export class WorkerConnection {
   private startKeepalive(socket: WebSocket): void {
     this.clearKeepalive();
     if (this.keepaliveIntervalMs <= 0) return;
+    this.#keepaliveSocket = socket;
+    this.#keepalivePongListener = (payload) => {
+      const nonce = this.#keepalivePongNonce;
+      if (
+        this.#keepaliveSocket !== socket ||
+        this.#readySocket !== socket ||
+        this.#socket !== socket ||
+        !nonce?.equals(payload)
+      ) {
+        return;
+      }
+      this.clearKeepalivePingSendDeadline();
+      this.clearKeepalivePongDeadline();
+      this.#keepalivePongNonce = null;
+    };
+    socket.on("pong", this.#keepalivePongListener);
     this.#keepaliveTimer = setInterval(() => {
       if (
+        this.#keepaliveSocket !== socket ||
         this.#readySocket !== socket ||
         socket.readyState !== WebSocket.OPEN
       ) {
         return;
       }
+      if (this.#keepalivePongNonce) return;
+      const nonce = randomBytes(16);
+      this.#keepalivePongNonce = nonce;
+      this.#keepalivePingSendDeadline = setTimeout(
+        () => this.expireKeepalive(socket, nonce),
+        this.#keepaliveTimeoutMs,
+      );
+      this.#keepalivePingSendDeadline.unref();
       try {
-        socket.ping();
+        socket.ping(nonce, undefined, (error?: Error) => {
+          if (
+            this.#keepaliveSocket !== socket ||
+            this.#readySocket !== socket ||
+            this.#socket !== socket ||
+            !this.#keepalivePongNonce?.equals(nonce)
+          ) {
+            return;
+          }
+          this.clearKeepalivePingSendDeadline();
+          if (error) {
+            this.clearKeepalive();
+            socket.terminate();
+            return;
+          }
+          this.#keepalivePongDeadline = setTimeout(
+            () => this.expireKeepalive(socket, nonce),
+            this.#keepaliveTimeoutMs,
+          );
+          this.#keepalivePongDeadline.unref();
+        });
       } catch {
+        this.clearKeepalive();
         socket.terminate();
       }
     }, this.keepaliveIntervalMs);
@@ -625,9 +683,44 @@ export class WorkerConnection {
   }
 
   private clearKeepalive(): void {
-    if (!this.#keepaliveTimer) return;
-    clearInterval(this.#keepaliveTimer);
-    this.#keepaliveTimer = null;
+    if (this.#keepaliveTimer) {
+      clearInterval(this.#keepaliveTimer);
+      this.#keepaliveTimer = null;
+    }
+    this.clearKeepalivePingSendDeadline();
+    this.clearKeepalivePongDeadline();
+    this.#keepalivePongNonce = null;
+    const socket = this.#keepaliveSocket;
+    const listener = this.#keepalivePongListener;
+    this.#keepaliveSocket = null;
+    this.#keepalivePongListener = null;
+    if (socket && listener) socket.off("pong", listener);
+  }
+
+  private clearKeepalivePingSendDeadline(): void {
+    if (!this.#keepalivePingSendDeadline) return;
+    clearTimeout(this.#keepalivePingSendDeadline);
+    this.#keepalivePingSendDeadline = null;
+  }
+
+  private clearKeepalivePongDeadline(): void {
+    if (!this.#keepalivePongDeadline) return;
+    clearTimeout(this.#keepalivePongDeadline);
+    this.#keepalivePongDeadline = null;
+  }
+
+  private expireKeepalive(socket: WebSocket, nonce: Buffer): void {
+    if (
+      this.#keepaliveSocket !== socket ||
+      this.#readySocket !== socket ||
+      this.#socket !== socket ||
+      !this.#keepalivePongNonce?.equals(nonce) ||
+      socket.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+    this.clearKeepalive();
+    socket.terminate();
   }
 
   private sendCommandEnvelope(envelope: string): CommandEnvelopeDelivery {

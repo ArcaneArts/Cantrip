@@ -17,24 +17,35 @@ import {
 import { clientLogger } from "@/lib/client-log-relay";
 import {
   forceDesktopTunnelRelay,
+  listDesktopTunnelsWithOptions,
   startDesktopTunnel,
   stopDesktopTunnel,
-  stopDesktopTunnelForward,
   type DesktopTunnelDestinationRejectionCode,
+  type DesktopTunnelForwardIdentity,
+  type DesktopTunnelForwardSummary,
 } from "@/lib/desktop-tunnel";
 
 export interface PreferredCodeAttachment {
   attachment: CodeAttachment;
+  desktopRouteIdentity: DesktopTunnelForwardIdentity | null;
   directTunnelId: string | null;
   transportKind: "local-direct" | "relay";
 }
 
-const protectedAttachmentIds = new Map<string, string>();
+export type CodeAttachmentRouteRecoveryState =
+  "available" | "recovering" | "replace-required";
+
+const protectedAttachmentIdentities = new WeakMap<
+  object,
+  DesktopTunnelForwardIdentity
+>();
 const CODE_ATTACHMENT_HEALTH_ATTEMPTS = 100;
 const CODE_ATTACHMENT_HEALTH_RETRY_MS = 50;
 const CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS = 750;
 const CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS = 8_000;
 const CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS = 2_500;
+const CODE_ATTACHMENT_ROUTE_PROBE_TIMEOUT_MS = 1_000;
+const CODE_ATTACHMENT_ROUTE_RECOVERY_TIMEOUT_MS = 10_000;
 export const CODE_CONTROL_OPERATION_TIMEOUT_MS = 10_000;
 const MAX_CODE_ATTACHMENT_HEALTH_ATTEMPTS = 100;
 const MAX_CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS = 5_000;
@@ -66,6 +77,13 @@ const TRANSPORT_ERROR_CODES = new Set([
   "UND_ERR_HEADERS_TIMEOUT",
   "UND_ERR_SOCKET",
 ]);
+const routeRecoveries = new Map<
+  string,
+  {
+    identityKey: string;
+    operation: Promise<CodeAttachmentRouteRecoveryState>;
+  }
+>();
 
 function transportErrorProperty(error: unknown, key: string): unknown {
   if (!error || typeof error !== "object") return undefined;
@@ -550,6 +568,7 @@ export async function preferProtectedCodeAttachment(
   if (!isTauri()) {
     return {
       attachment: await startBrowserCodeAttachment(wire),
+      desktopRouteIdentity: null,
       directTunnelId: wire.tunnelId,
       transportKind: "relay",
     };
@@ -705,19 +724,158 @@ export async function preferProtectedCodeAttachment(
         throw withDestinationRejection(relayError, relayDestinationRejection);
       }
     }
-    protectedAttachmentIds.set(wire.tunnelId, forward.attachmentId);
+    const desktopRouteIdentity = {
+      attachmentId: forward.attachmentId,
+      directCapabilityId: forward.directCapabilityId,
+    };
+    protectedAttachmentIdentities.set(wire, desktopRouteIdentity);
     return {
       attachment,
+      desktopRouteIdentity,
       directTunnelId: wire.tunnelId,
       transportKind:
         forward.routeState === "local-direct" ? "local-direct" : "relay",
     };
   } catch (error) {
-    await stopDesktopTunnel(wire.tunnelId, forward.attachmentId).catch(
-      () => undefined,
-    );
+    await stopDesktopTunnel(wire.tunnelId, forward.attachmentId, {
+      attachmentId: forward.attachmentId,
+      directCapabilityId: forward.directCapabilityId,
+    }).catch(() => undefined);
     throw error;
   }
+}
+
+async function codeAttachmentRouteResponds(
+  attachment: Pick<CodeAttachment, "url">,
+  signal: AbortSignal,
+): Promise<boolean> {
+  try {
+    await fetchCodeAttachmentHealth(
+      new URL("_cantrip/health", attachment.url),
+      CODE_ATTACHMENT_ROUTE_PROBE_TIMEOUT_MS,
+      signal,
+    );
+    // The route is reachable once the authenticated endpoint responds. A Code
+    // 5xx is an application failure, not evidence that the tunnel is broken.
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function desktopRouteIdentityKey(preferred: PreferredCodeAttachment): string {
+  const identity = preferred.desktopRouteIdentity;
+  return [
+    preferred.attachment.attachmentId,
+    identity?.attachmentId ?? "browser",
+    identity?.directCapabilityId ?? "none",
+  ].join("\0");
+}
+
+function exactDesktopForward(
+  preferred: PreferredCodeAttachment,
+  forwards: readonly DesktopTunnelForwardSummary[],
+): DesktopTunnelForwardSummary | null | "mismatch" {
+  const tunnelId = preferred.directTunnelId;
+  const identity = preferred.desktopRouteIdentity;
+  if (!tunnelId || !identity) return "mismatch";
+  const forward = forwards.find((candidate) => candidate.tunnelId === tunnelId);
+  if (!forward) return null;
+  if (forward.attachmentId !== identity.attachmentId) return "mismatch";
+  const capabilityMatches =
+    forward.directCapabilityId === identity.directCapabilityId;
+  const capabilityRetiredAfterFallback =
+    identity.directCapabilityId !== null &&
+    forward.directCapabilityId === null &&
+    (forward.routeState === "degraded" || forward.routeState === "relayed");
+  if (!capabilityMatches && !capabilityRetiredAfterFallback) {
+    return "mismatch";
+  }
+  // A successful direct-to-relay fallback retires the capability, so a
+  // relayed forward is expected to report directCapabilityId=null.
+  return forward;
+}
+
+async function performPreferredCodeAttachmentRouteRecovery(
+  preferred: PreferredCodeAttachment,
+): Promise<CodeAttachmentRouteRecoveryState> {
+  const tunnelId = preferred.directTunnelId;
+  if (!tunnelId) return "available";
+  if (!isTauri()) {
+    try {
+      return (await browserCodeAttachmentHealthy(tunnelId))
+        ? "available"
+        : "replace-required";
+    } catch {
+      return "recovering";
+    }
+  }
+  if (!preferred.desktopRouteIdentity) return "replace-required";
+
+  const signal = AbortSignal.timeout(CODE_ATTACHMENT_ROUTE_RECOVERY_TIMEOUT_MS);
+  let forwards: DesktopTunnelForwardSummary[];
+  try {
+    forwards = await listDesktopTunnelsWithOptions({ signal });
+  } catch {
+    return "recovering";
+  }
+  const exact = exactDesktopForward(preferred, forwards);
+  if (exact === null || exact === "mismatch") return "replace-required";
+  if (exact.routeState === "degraded") return "recovering";
+  if (await codeAttachmentRouteResponds(preferred.attachment, signal)) {
+    return "available";
+  }
+  if (
+    exact.routeState !== "local-direct" ||
+    !exact.relayFallbackAvailable ||
+    !exact.directCapabilityId
+  ) {
+    return "recovering";
+  }
+  if (await codeAttachmentRouteResponds(preferred.attachment, signal)) {
+    return "available";
+  }
+
+  try {
+    const relayed = await forceDesktopTunnelRelay(exact, { signal });
+    if (
+      relayed.tunnelId !== tunnelId ||
+      relayed.attachmentId !== preferred.desktopRouteIdentity.attachmentId ||
+      relayed.routeState !== "relayed"
+    ) {
+      return "replace-required";
+    }
+    return (await codeAttachmentRouteResponds(preferred.attachment, signal))
+      ? "available"
+      : "recovering";
+  } catch {
+    return "recovering";
+  }
+}
+
+export function recoverPreferredCodeAttachmentRoute(
+  preferred: PreferredCodeAttachment,
+  options: { signal?: AbortSignal } = {},
+): Promise<CodeAttachmentRouteRecoveryState> {
+  options.signal?.throwIfAborted();
+  const tunnelId = preferred.directTunnelId;
+  if (!tunnelId) return Promise.resolve("available");
+  const identityKey = desktopRouteIdentityKey(preferred);
+  const existing = routeRecoveries.get(tunnelId);
+  if (existing) {
+    return existing.identityKey === identityKey
+      ? awaitWithAbort(existing.operation, options.signal)
+      : Promise.resolve("replace-required");
+  }
+  const operation = performPreferredCodeAttachmentRouteRecovery(
+    preferred,
+  ).finally(() => {
+    if (routeRecoveries.get(tunnelId)?.operation === operation) {
+      routeRecoveries.delete(tunnelId);
+    }
+  });
+  routeRecoveries.set(tunnelId, { identityKey, operation });
+  return awaitWithAbort(operation, options.signal);
 }
 
 export async function directCodeAttachmentHealthy(
@@ -837,20 +995,29 @@ export async function setDirectCodeAttachmentPresentation(
 }
 
 export async function stopDirectCodeAttachment(
-  tunnelId: string | null,
+  target: string | null | Pick<CodeProtectedAttachmentWire, "tunnelId">,
+  expectedIdentity?: DesktopTunnelForwardIdentity | null,
 ): Promise<void> {
+  const tunnelId =
+    typeof target === "string" ? target : (target?.tunnelId ?? null);
   if (!tunnelId) return;
   if (!isTauri()) {
     await stopBrowserCodeAttachment(tunnelId).catch(() => undefined);
     return;
   }
-  const protectedAttachmentId = protectedAttachmentIds.get(tunnelId);
-  if (protectedAttachmentId) {
-    protectedAttachmentIds.delete(tunnelId);
-    await stopDesktopTunnel(tunnelId, protectedAttachmentId).catch(
-      () => undefined,
-    );
-    return;
+  const exactIdentity =
+    expectedIdentity !== undefined
+      ? expectedIdentity
+      : typeof target === "object" && target !== null
+        ? (protectedAttachmentIdentities.get(target) ?? null)
+        : null;
+  if (!exactIdentity) return;
+  if (typeof target === "object" && target !== null) {
+    protectedAttachmentIdentities.delete(target);
   }
-  await stopDesktopTunnelForward(tunnelId);
+  await stopDesktopTunnel(
+    tunnelId,
+    exactIdentity.attachmentId,
+    exactIdentity,
+  ).catch(() => undefined);
 }

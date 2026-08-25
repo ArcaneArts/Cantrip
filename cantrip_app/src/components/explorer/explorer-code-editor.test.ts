@@ -65,20 +65,23 @@ describe("Explorer Code editor readiness identity", () => {
 });
 
 describe("Explorer Code editor navigation", () => {
-  it("does not rebuild the attachment after a bounded control timeout retry", () => {
+  it("recovers the existing route after bounded transient control retries", () => {
     const timeout = codeWorkbenchStageError(
       "file",
       new CodeControlOperationTimeoutError(),
     );
 
     expect(explorerCodeEditorOpenRecovery(timeout, 0, 0)).toBe("retry");
-    expect(explorerCodeEditorOpenRecovery(timeout, 1, 0)).toBe("error");
+    expect(explorerCodeEditorOpenRecovery(timeout, 1, 0)).toBe("recover-route");
     expect(
       explorerCodeEditorOpenRecovery(new TypeError("Load failed"), 0, 0),
     ).toBe("retry");
     expect(
       explorerCodeEditorOpenRecovery(new TypeError("Load failed"), 1, 0),
-    ).toBe("reload");
+    ).toBe("recover-route");
+    expect(
+      explorerCodeEditorOpenRecovery(new TypeError("Load failed"), 2, 1),
+    ).toBe("error");
   });
 
   it("caches successful presentation for file switches and file retries", async () => {
