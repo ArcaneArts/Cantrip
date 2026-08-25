@@ -130,6 +130,7 @@ import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
 import { chatGptExternalAuthCapabilityError } from "./codex/external-chatgpt-auth.js";
 import { workerGlobalCodexSkillsRoot } from "./codex/global-skills.js";
+import { interruptChatAcrossRuntimes } from "./codex/runtime.js";
 import { CantripCliBroker } from "./cli-broker.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
@@ -4806,11 +4807,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: command.threadId,
         });
       case "chat.interrupt":
-        return runtimeFor({
-          executionProfile: command.executionProfile,
-          model: command.model,
-          provider: provider(),
-        }).interruptChat(command.chatId, command.threadId);
+        return interruptChatAcrossRuntimes(
+          codexRuntimes.values(),
+          command.chatId,
+          command.threadId,
+        );
       case "chat.turn.rollback":
         return runtimeFor({
           executionProfile: command.executionProfile,
