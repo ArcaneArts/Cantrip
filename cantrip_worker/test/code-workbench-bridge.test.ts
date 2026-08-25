@@ -446,7 +446,7 @@ describe("Cantrip workbench bridge", () => {
     first.close();
   });
 
-  it("reroutes pending RPC to the latest socket and ignores stale responses", async () => {
+  it("uses the latest socket for RPC and ignores superseded responses", async () => {
     const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 250 });
     bridges.push(bridge);
     await bridge.start();
@@ -461,21 +461,14 @@ describe("Cantrip workbench bridge", () => {
       "second.ts",
       "file:///repo",
     );
+    const superseded = expect(pendingOpen).rejects.toThrow("superseded");
     const secondRequest = await nextRequest(second);
     expect(secondRequest.method).toBe("openFile");
 
     const third = await openSocket(url);
     respond(third, await nextRequest(third));
-    const reroutedRequest = await nextRequest(third);
-    expect(reroutedRequest).toMatchObject({
-      id: secondRequest.id,
-      method: "openFile",
-      params: { path: "second.ts" },
-    });
-    respond(second, secondRequest, { relativePath: "stale.ts" });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    respond(third, reroutedRequest, { relativePath: "second.ts" });
-    await expect(pendingOpen).resolves.toEqual({ relativePath: "second.ts" });
+    respond(second, secondRequest, { relativePath: "second.ts" });
+    await superseded;
 
     const currentOpen = bridge.openFile(
       "owned-session",

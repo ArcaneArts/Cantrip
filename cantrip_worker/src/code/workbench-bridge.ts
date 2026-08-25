@@ -38,7 +38,6 @@ interface BridgeSession {
 interface PendingBridgeRequest {
   abortListener: (() => void) | null;
   authorityBound: boolean;
-  request: BridgeRequest;
   reject(error: Error): void;
   resolve(value: unknown): void;
   signal: AbortSignal | null;
@@ -880,6 +879,9 @@ export class CodeWorkbenchBridge {
     session.sockets.set(socket, connection);
     session.authoritativeGeneration = connection.generation;
     session.workbench = { ...DEFAULT_WORKBENCH_STATE };
+    if (previousAuthority !== null) {
+      this.#rejectSupersededAuthority(session, connection.generation);
+    }
     workerLogger.event("info", "Cantrip Code workbench bridge connected", {
       event: "code.bridge.connected",
       subsystem: "code",
@@ -937,9 +939,6 @@ export class CodeWorkbenchBridge {
         },
       );
     });
-    if (previousAuthority !== null) {
-      this.#reroutePendingAuthorityRequests(session, connection);
-    }
   }
 
   async #sweepLiveness(): Promise<void> {
@@ -1125,7 +1124,7 @@ export class CodeWorkbenchBridge {
           sessionId,
         });
         pending.reject(error);
-        this.#retireSocket(session, pending.socket, error.message);
+        this.#retireSocket(session, socket, error.message);
       }, timeoutMs);
       const abortListener = signal
         ? () => {
@@ -1134,18 +1133,16 @@ export class CodeWorkbenchBridge {
             pending.reject(abortReason(signal));
           }
         : null;
-      const pending: PendingBridgeRequest = {
+      session.pending.set(id, {
         abortListener,
         authorityBound,
-        request,
         resolve,
         reject,
         signal: signal ?? null,
         socket,
         socketGeneration: connection.generation,
         timer,
-      };
-      session.pending.set(id, pending);
+      });
       if (signal && abortListener) {
         signal.addEventListener("abort", abortListener, { once: true });
         if (signal.aborted) {
@@ -1153,48 +1150,27 @@ export class CodeWorkbenchBridge {
           return;
         }
       }
-      this.#sendPendingRequest(session, connection, id, pending, sessionId);
-    });
-  }
-
-  #sendPendingRequest(
-    session: BridgeSession,
-    connection: BridgeSocket,
-    id: string,
-    pending: PendingBridgeRequest,
-    sessionId = this.#sessionId(session),
-  ): void {
-    const { socket } = connection;
-    pending.socket = socket;
-    pending.socketGeneration = connection.generation;
-    socket.send(JSON.stringify(pending.request), (error) => {
-      if (!error) return;
-      const current = session.pending.get(id);
-      if (
-        current !== pending ||
-        current.socket !== socket ||
-        current.socketGeneration !== connection.generation
-      ) {
-        return;
-      }
-      const failed = this.#takePending(session, id);
-      if (!failed) return;
-      workerLogger.event("warn", "Cantrip Code bridge request send failed", {
-        event: "code.bridge.request-send-failed",
-        subsystem: "code",
-        operation: pending.request.method,
-        reasonCode: "send-failed",
-        status: "failed",
-        error: workerLogError(error),
-        method: pending.request.method,
-        sessionId,
+      socket.send(JSON.stringify(request), (error) => {
+        if (!error) return;
+        const pending = this.#takePending(session, id);
+        if (!pending) return;
+        workerLogger.event("warn", "Cantrip Code bridge request send failed", {
+          event: "code.bridge.request-send-failed",
+          subsystem: "code",
+          operation: method,
+          reasonCode: "send-failed",
+          status: "failed",
+          error: workerLogError(error),
+          method,
+          sessionId,
+        });
+        pending.reject(error);
+        this.#retireSocket(
+          session,
+          socket,
+          "Cantrip workbench bridge send failed.",
+        );
       });
-      failed.reject(error);
-      this.#retireSocket(
-        session,
-        socket,
-        "Cantrip workbench bridge send failed.",
-      );
     });
   }
 
@@ -1305,30 +1281,21 @@ export class CodeWorkbenchBridge {
     );
   }
 
-  #reroutePendingAuthorityRequests(
+  #rejectSupersededAuthority(
     session: BridgeSession,
-    connection: BridgeSocket,
+    authoritativeGeneration: number,
   ): void {
-    const sessionId = this.#sessionId(session);
     for (const [id, pending] of [...session.pending]) {
       if (
         !pending.authorityBound ||
-        pending.socketGeneration === connection.generation
+        pending.socketGeneration === authoritativeGeneration
       ) {
         continue;
       }
-      const previousGeneration = pending.socketGeneration;
-      this.#sendPendingRequest(session, connection, id, pending, sessionId);
-      workerLogger.event("debug", "Cantrip Code bridge request rerouted", {
-        event: "code.bridge.request-rerouted",
-        subsystem: "code",
-        operation: pending.request.method,
-        status: "completed",
-        method: pending.request.method,
-        sessionId,
-        fromGeneration: previousGeneration,
-        toGeneration: connection.generation,
-      });
+      const superseded = this.#takePending(session, id);
+      superseded?.reject(
+        new Error("Cantrip workbench bridge request was superseded."),
+      );
     }
   }
 

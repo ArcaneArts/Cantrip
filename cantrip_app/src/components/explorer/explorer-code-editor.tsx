@@ -104,7 +104,7 @@ function isCodeControlOperationTimeout(error: unknown): boolean {
 }
 
 function isTransientFileOpenFailure(error: unknown): boolean {
-  return /(?:failed to fetch|load failed|network|not connected|unavailable|timed out|timeout|disconnected|offline|superseded)/iu.test(
+  return /(?:failed to fetch|load failed|network|not connected|unavailable|timed out|timeout|disconnected|offline)/iu.test(
     errorMessage(error, ""),
   );
 }
