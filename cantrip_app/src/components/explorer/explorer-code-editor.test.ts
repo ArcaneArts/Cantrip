@@ -108,6 +108,14 @@ describe("Explorer Code editor navigation", () => {
     expect(
       explorerCodeEditorOpenRecovery(new TypeError("Load failed"), 2, 1),
     ).toBe("error");
+    const superseded = codeWorkbenchStageError(
+      "file",
+      new Error("Cantrip workbench bridge request was superseded."),
+    );
+    expect(explorerCodeEditorOpenRecovery(superseded, 0, 0)).toBe("retry");
+    expect(explorerCodeEditorOpenRecovery(superseded, 1, 0)).toBe(
+      "recover-route",
+    );
   });
 
   it("caches successful presentation for file switches and file retries", async () => {
