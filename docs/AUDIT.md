@@ -23,10 +23,10 @@ work surrounding the live paths:
   backoff;
 - bounded buffers use full sorting, rebuilding, or Array.shift eviction in their hot paths.
 
-P0-01, P0-05, P0-06, P0-09, and P0-12 have since been fixed and are retained below as
-completed historical context. The first implementation wave should target the remaining P0
-items. They are source-evident, high-upside, and can be validated without changing product
-semantics. P1 items should follow with focused benchmarks. P2 items require
+P0-01, P0-05, P0-06, P0-09, P0-11, and P0-12 have since been fixed and are retained below
+as completed historical context. The first implementation wave should target the remaining
+P0 items. They are source-evident, high-upside, and can be validated without changing
+product semantics. P1 items should follow with focused benchmarks. P2 items require
 production-shaped measurement before design work.
 
 | Rank | Opportunity                                                  | Expected gain       | Risk       | Why it should move first                                                  |
@@ -41,7 +41,7 @@ production-shaped measurement before design work.
 | 8    | P0-08 collapse redundant Git status pipelines                | high                | low-medium | removes several child processes from common status/operation refreshes    |
 | 9    | P0-09 [resolved] incremental log ingestion and lazy export   | resolved            | —          | equivalent 10k-buffer benchmarks improved ordered and mixed batches       |
 | 10   | P0-10 make live chat overlay merging incremental             | high                | medium     | avoids O(N log N) history rebuilds on streamed message updates            |
-| 11   | P0-11 parallelize bounded workspace snapshot metadata reads  | high                | low        | removes one filesystem round trip per changed path from turn boundaries   |
+| 11   | P0-11 [resolved] parallel workspace snapshot metadata reads  | resolved            | —          | ordered reads are now capped at 16 with equivalent snapshot bytes         |
 | 12   | P0-12 [resolved] skip proven no-op CodeGraph syncs           | resolved            | —          | clean reconciliation now performs status only                             |
 | 13   | P0-13 add capped jittered reconnect and crash backoff        | high during failure | low        | prevents worker herds and endless five-second service crash loops         |
 | 14   | P0-14 make worker shutdown failure-tolerant                  | high reliability    | low-medium | prevents one failed close from wedging restart and later cleanup          |
@@ -471,29 +471,51 @@ records once refreshed pages contain them.
 Validation: compare exact output for 10k base messages plus 1k same-ID, new-ID, deletion,
 and out-of-order events, including AppLive replay and resync.
 
-### P0-11 — opportunity — Parallelize bounded workspace-snapshot metadata reads
+### P0-11 — resolved — Parallelize bounded workspace-snapshot metadata reads
 
+- Status: resolved 2026-08-24
 - Category: SYNC_IO_HOT_PATH
 - Expected gain: high for large dirty worktrees
-- Risk: low
-- Complexity: low
+- Original risk: low
+- Original complexity: low
 - Confidence: high
 
-Evidence:
+Original evidence:
 
-- cantrip_worker/src/codex/app-server.ts:2690-2717 and 2724-2729 await one lstat per
-  dirty/untracked file sequentially.
-- Snapshot creation sits on turn/workflow baseline and completion paths at lines 3898, 4088,
-  7947, and 8182.
+- cantrip_worker/src/codex/app-server.ts previously awaited one lstat per dirty or untracked
+  file inside the porcelain-record loop.
+- Snapshot collection is on chat/workflow turn baselines, completion reconciliation, and
+  workspace-change activity paths.
 
-Hypothesis: turn start and completion latency grows by one filesystem round trip per changed
-path.
+Original hypothesis: turn start and completion latency grew by one filesystem round trip
+per changed path.
 
-Suggested change: use an ordered concurrency-limited mapper of roughly 16-32 reads; bypass
-lstat for statuses that unambiguously mean deletion.
+Resolution:
 
-Validation: compare snapshot bytes for 1, 100, and 5,000 changed paths with delayed lstat.
-Assert bounded descriptors/concurrency and lower wall time.
+- cantrip_worker/src/codex/app-server.ts:2799-2819 adds an ordered bounded mapper whose
+  result slots retain input order regardless of completion order.
+- cantrip_worker/src/codex/app-server.ts:2821-2857 parses porcelain records before running
+  metadata reads with a hard cap of 16. It skips lstat only for the definite worktree
+  deletion status, retains the missing-file fallback for races, and constructs the Map from
+  ordered results.
+- cantrip_worker/src/codex/app-server.ts:2859-2872 preserves the existing Git command and
+  empty-snapshot failure behavior. The helper remains shared by workspace-change collection
+  and the turn baseline/reconciliation call sites at lines 2879, 4050, 4241, and 8194.
+- cantrip_worker/test/app-server.test.ts:1612-1722 proves byte-equivalent ordered snapshots
+  for 1, 100, and 5,000 delayed reads; a maximum of 16 in-flight operations; stable order
+  under uneven completion; definite-deletion bypass; missing-file fallback; and rename
+  record skipping.
+
+A/B benchmark proof with 5 warmups and 20 measured process-isolated runs per variant:
+
+- 200 delayed metadata reads produced stable equivalent output. Median command time fell
+  from 794.141 ms to 568.144 ms: 1.398x, or 28.46% faster.
+- A direct 1/100/5,000-path equivalence sweep produced identical output hashes at every
+  size. At 5,000 paths, wall time fell from 6.86 seconds to 0.93 seconds.
+
+Regression guardrail: retain the focused snapshot tests and require deterministic Map
+ordering, a maximum of 16 concurrent reads, rename parsing, and missing/deletion semantics
+to remain unchanged.
 
 ### P0-12 — resolved — Skip CodeGraph sync when fresh status proves no work exists
 
@@ -1095,13 +1117,13 @@ Before behavior changes, add or reuse focused counters and deterministic fixture
 - SQL counter fixtures for AppLive scopes, worker fleets, and workflow recovery;
 - child-process counters for idle worktrees and Git status;
 - fake clocks for reconnect, service restart, and guarded recovery;
-- delayed-filesystem fixtures for snapshot, Explorer, and repository stats.
+- retain the workspace-snapshot equivalence/concurrency fixture and add delayed-filesystem
+  fixtures for Explorer and repository stats.
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement the safe slices of P0-02, P0-08, P0-11, P0-13, P1-01, P1-06, P1-07,
-P1-15, P1-16, and P1-18. These mostly remove duplicate work or replace an equivalent data
-structure.
+Implement the safe slices of P0-02, P0-08, P0-13, P1-01, P1-06, P1-07, P1-15, P1-16, and
+P1-18. These mostly remove duplicate work or replace an equivalent data structure.
 
 ### Wave 2 — bounded batching, memoization, and ownership
 

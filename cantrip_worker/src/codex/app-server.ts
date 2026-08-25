@@ -682,8 +682,12 @@ interface WorkspaceFileState {
 }
 
 type WorkspaceSnapshot = Map<string, WorkspaceFileState>;
+type WorkspaceSnapshotMetadataReader = (
+  filePath: string,
+) => Promise<{ mode: number; mtimeMs: number; size: number }>;
 
 const execFileAsync = promisify(execFile);
+const WORKSPACE_SNAPSHOT_METADATA_CONCURRENCY = 16;
 const CODEX_STARTUP_TIMEOUT_MS = 2 * 60_000;
 const CODEX_RPC_TIMEOUT_MS = 2 * 60_000;
 const CODEX_PAUSE_BOUNDARY_TIMEOUT_MS = 24 * 60 * 60_000;
@@ -2792,6 +2796,66 @@ export function changedFiles(
     });
 }
 
+async function mapWithConcurrency<Input, Output>(
+  values: readonly Input[],
+  concurrency: number,
+  mapper: (value: Input, index: number) => Promise<Output>,
+): Promise<Output[]> {
+  if (values.length === 0) return [];
+  const results = new Array<Output>(values.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, values.length) },
+    async () => {
+      while (nextIndex < values.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await mapper(values[index]!, index);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+export async function workspaceSnapshotFromPorcelainRecords(
+  cwd: string,
+  records: readonly string[],
+  readMetadata: WorkspaceSnapshotMetadataReader = lstat,
+): Promise<WorkspaceSnapshot> {
+  const entries: Array<{ filePath: string; status: string }> = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index] ?? "";
+    const status = record.slice(0, 2);
+    const filePath = record.slice(3);
+    if (!filePath) {
+      continue;
+    }
+    if (status.includes("R") || status.includes("C")) {
+      index += 1;
+    }
+    entries.push({ filePath, status });
+  }
+
+  const snapshotEntries = await mapWithConcurrency(
+    entries,
+    WORKSPACE_SNAPSHOT_METADATA_CONCURRENCY,
+    async ({ filePath, status }) => {
+      let fingerprint = "missing";
+      if (status !== " D") {
+        try {
+          const file = await readMetadata(path.join(cwd, filePath));
+          fingerprint = `${file.size}:${file.mtimeMs}:${file.mode}`;
+        } catch {
+          // Deleted or concurrently removed files have no filesystem fingerprint.
+        }
+      }
+      return [filePath, { fingerprint, status }] as const;
+    },
+  );
+  return new Map(snapshotEntries);
+}
+
 async function workspaceSnapshot(cwd: string): Promise<WorkspaceSnapshot> {
   try {
     const { stdout } = await execFileAsync(
@@ -2799,28 +2863,10 @@ async function workspaceSnapshot(cwd: string): Promise<WorkspaceSnapshot> {
       ["-C", cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all"],
       { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
     );
-    const records = stdout.split("\0").filter(Boolean);
-    const snapshot: WorkspaceSnapshot = new Map();
-    for (let index = 0; index < records.length; index += 1) {
-      const record = records[index] ?? "";
-      const status = record.slice(0, 2);
-      const filePath = record.slice(3);
-      if (!filePath) {
-        continue;
-      }
-      if (status.includes("R") || status.includes("C")) {
-        index += 1;
-      }
-      let fingerprint = "missing";
-      try {
-        const file = await lstat(path.join(cwd, filePath));
-        fingerprint = `${file.size}:${file.mtimeMs}:${file.mode}`;
-      } catch {
-        // Deleted files intentionally have no filesystem fingerprint.
-      }
-      snapshot.set(filePath, { fingerprint, status });
-    }
-    return snapshot;
+    return await workspaceSnapshotFromPorcelainRecords(
+      cwd,
+      stdout.split("\0").filter(Boolean),
+    );
   } catch {
     return new Map();
   }
