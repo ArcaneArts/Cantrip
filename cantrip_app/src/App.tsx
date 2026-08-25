@@ -90,11 +90,6 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
-import {
-  Activity,
-  ActivityGroup,
-  CompletedTurnActivityGroup,
-} from "@/components/chat/activity";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
 import { RunConfigurationControl } from "@/components/run/run-configuration-control";
 import { AppCommandBar } from "@/components/app/app-command-bar";
@@ -139,6 +134,10 @@ import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { scheduleChatComposerFocus } from "@/components/chat/chat-composer-focus";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
+import {
+  ChatTranscriptEntries,
+  type EditingSentMessage,
+} from "@/components/chat/chat-transcript-entries";
 import { resolveRunningAgentStartedAtMs } from "@/components/chat/chat-run-duration";
 import {
   ChatComposerNotice,
@@ -177,8 +176,6 @@ import {
   latestChatRelocationJob,
 } from "@/components/chat/chat-relocation-dialog";
 import { PlanPanel } from "@/components/chat/plan-panel";
-import { Markdown } from "@/components/chat/markdown";
-import { SubagentLifecycleCard } from "@/components/chat/subagent-lifecycle-card";
 import { SubagentTranscriptPanel } from "@/components/chat/subagent-transcript-panel";
 import {
   filterCommandPalette,
@@ -201,10 +198,7 @@ import {
   insertSkillMention,
   skillMentionSegments,
 } from "@/components/chat/skill-mentions";
-import {
-  buildChatTimeline,
-  formatTurnMetadata,
-} from "@/components/chat/timeline";
+import { buildChatTimeline } from "@/components/chat/timeline";
 import {
   slashCommandQuery,
   type SlashCommandSuggestion,
@@ -645,63 +639,6 @@ interface ComposerAttachmentState {
   error: string | null;
   localPreview: boolean;
   uploading: boolean;
-}
-
-function MessageContent({
-  message,
-  onOpenFile,
-}: {
-  message: ChatMessage;
-  onOpenFile(path: string): void;
-}) {
-  const [viewingAttachment, setViewingAttachment] =
-    useState<ChatAttachmentSummary | null>(null);
-  return (
-    <>
-      <div
-        className="min-w-0 max-w-full space-y-3"
-        data-elite-global-key={`chat-message:${message.chatId}:${message.id}`}
-      >
-        {message.content.map((item, index) =>
-          item.type === "text" ? (
-            item.phase === "commentary" ? (
-              <div key={`text:${index}`} className="text-muted-foreground">
-                <Markdown onOpenFile={onOpenFile}>{item.text}</Markdown>
-              </div>
-            ) : (
-              <Markdown key={`text:${index}`} onOpenFile={onOpenFile}>
-                {item.text}
-              </Markdown>
-            )
-          ) : item.type === "attachment" ? (
-            <AttachmentPreview
-              key={`attachment:${item.attachment.id}`}
-              attachment={item.attachment}
-              contentUrl={chatAttachmentContentUrl(item.attachment.id)}
-              onOpen={() => setViewingAttachment(item.attachment)}
-            />
-          ) : (
-            <Activity
-              key={`activity:${item.activity.id}`}
-              activity={item.activity}
-            />
-          ),
-        )}
-      </div>
-      <AttachmentViewerDialog
-        attachment={viewingAttachment}
-        contentUrl={
-          viewingAttachment
-            ? chatAttachmentContentUrl(viewingAttachment.id)
-            : null
-        }
-        open={viewingAttachment !== null}
-        onOpenChange={(open) => {
-          if (!open) setViewingAttachment(null);
-        }}
-      />
-    </>
-  );
 }
 
 function StatusDot({ online }: { online: boolean }) {
@@ -1346,11 +1283,8 @@ function ChatTranscript({
     id: string;
     frozen: boolean;
   } | null>(null);
-  const [editingSentMessage, setEditingSentMessage] = useState<{
-    error: string | null;
-    id: string;
-    text: string;
-  } | null>(null);
+  const [editingSentMessage, setEditingSentMessage] =
+    useState<EditingSentMessage | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
@@ -2485,22 +2419,64 @@ function ChatTranscript({
       ?.scrollIntoView({ block: "nearest" });
   }, [githubMenuOpen, selectedGithubIndex]);
 
-  const submitEditedMessage = (message: ChatMessage, event?: FormEvent) => {
-    event?.preventDefault();
-    if (
-      retrySentMessage.isPending ||
-      editingSentMessage?.id !== message.id ||
-      latestEditableMessage?.id !== message.id
-    ) {
-      return;
-    }
-    const text = editingSentMessage.text.trim();
-    if (!text && editableMessageAttachments(message).length === 0) return;
-    setEditingSentMessage((current) =>
-      current ? { ...current, error: null } : current,
-    );
-    retrySentMessage.mutate({ message, text });
-  };
+  const submitEditedMessage = useCallback(
+    (message: ChatMessage, event?: FormEvent) => {
+      event?.preventDefault();
+      if (
+        retrySentMessage.isPending ||
+        editingSentMessage?.id !== message.id ||
+        latestEditableMessage?.id !== message.id
+      ) {
+        return;
+      }
+      const text = editingSentMessage.text.trim();
+      if (!text && editableMessageAttachments(message).length === 0) return;
+      setEditingSentMessage((current) =>
+        current ? { ...current, error: null } : current,
+      );
+      retrySentMessage.mutate({ message, text });
+    },
+    [
+      editingSentMessage,
+      latestEditableMessage?.id,
+      retrySentMessage.isPending,
+      retrySentMessage.mutate,
+    ],
+  );
+  const cancelEditingSentMessage = useCallback(
+    () => setEditingSentMessage(null),
+    [],
+  );
+  const changeEditingSentMessage = useCallback(
+    (messageId: string, text: string) => {
+      setEditingSentMessage((current) =>
+        current?.id === messageId
+          ? {
+              ...current,
+              error: null,
+              text,
+            }
+          : current,
+      );
+    },
+    [],
+  );
+  const copyResponse = useCallback(async (messageId: string, text: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedMessageId(messageId);
+    window.setTimeout(() => setCopiedMessageId(null), 1_500);
+  }, []);
+  const editSentMessage = useCallback((message: ChatMessage) => {
+    setEditingSentMessage({
+      error: null,
+      id: message.id,
+      text: editableMessageText(message),
+    });
+  }, []);
+  const forkFromMessage = useCallback(
+    (messageId: string) => fork.mutate(messageId),
+    [fork.mutate],
+  );
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
@@ -2858,284 +2834,25 @@ function ChatTranscript({
             </EmptyState>
           ) : null}
 
-          {transcriptEntries.map((transcriptEntry) => {
-            if (transcriptEntry.type === "agent") {
-              return (
-                <SubagentLifecycleCard
-                  agent={transcriptEntry.agent}
-                  key={`agent:${transcriptEntry.agent.key}`}
-                  onOpen={viewSubagent}
-                />
-              );
-            }
-            const entry = transcriptEntry.entry;
-            if (entry.type === "activityGroup") {
-              if (entry.kind === "turn") {
-                return (
-                  <CompletedTurnActivityGroup
-                    endedAt={entry.endedAt}
-                    key={entry.key}
-                    onViewTrajectory={viewTurnTrajectory}
-                    startedAt={entry.startedAt}
-                    turnId={entry.turnId}
-                    turnKey={entry.turnKey}
-                  >
-                    {entry.messages.map((message) => (
-                      <MessageContent
-                        key={message.id}
-                        message={message}
-                        onOpenFile={onOpenFile}
-                      />
-                    ))}
-                  </CompletedTurnActivityGroup>
-                );
-              }
-              const groupedActivities = entry.messages.flatMap((message) =>
-                message.content.flatMap((item) =>
-                  item.type === "activity" ? [item.activity] : [],
-                ),
-              );
-              return (
-                <ActivityGroup
-                  activities={groupedActivities}
-                  active={entry.key === latestLiveActivityGroupKey}
-                  key={entry.key}
-                  onViewTrajectory={viewTurnTrajectory}
-                  turnId={entry.turnId}
-                  turnKey={entry.turnKey}
-                />
-              );
-            }
-            const message = entry.message;
-            const turnMetadata = formatTurnMetadata(entry.turnMetadata);
-            const user = message.role === "user";
-            const system = message.role === "system";
-            const workThought =
-              message.role === "assistant" &&
-              message.content.every(
-                (item) =>
-                  (item.type === "text" && item.phase === "commentary") ||
-                  (item.type === "activity" &&
-                    item.activity.type === "reasoning"),
-              );
-            const assistantText =
-              message.role === "assistant"
-                ? message.content
-                    .flatMap((item) =>
-                      item.type === "text" && item.phase !== "commentary"
-                        ? [item.text]
-                        : [],
-                    )
-                    .join("\n\n")
-                : "";
-            const editingThisMessage =
-              user && editingSentMessage?.id === message.id;
-            const messageAttachments = user
-              ? editableMessageAttachments(message)
-              : [];
-            return (
-              <div
-                key={message.id}
-                data-chat-history-anchor={user ? message.id : undefined}
-                className={cn("flex gap-3", user && "justify-end")}
-              >
-                {!user && !workThought ? (
-                  <div
-                    className={cn(
-                      "mt-1 grid size-7 shrink-0 place-items-center rounded-lg border bg-card",
-                      system && "border-destructive/30 text-destructive",
-                    )}
-                  >
-                    <Bot className="size-3.5" />
-                  </div>
-                ) : null}
-                <div
-                  className={cn(
-                    "min-w-0",
-                    user &&
-                      "max-w-[85%] overflow-hidden rounded-2xl bg-muted/80 px-4 py-3 text-foreground sm:max-w-[42rem]",
-                    editingThisMessage && "w-full",
-                    !user && !system && "flex-1 py-1",
-                    system &&
-                      "max-w-[85%] overflow-hidden rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-destructive",
-                  )}
-                >
-                  {user && message.mode !== "default" ? (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "mb-2 h-5 capitalize",
-                        message.mode === "goal"
-                          ? "border-violet-500/30 text-violet-600 dark:text-violet-400"
-                          : "border-sky-500/30 text-sky-600 dark:text-sky-400",
-                      )}
-                    >
-                      {message.mode} mode
-                    </Badge>
-                  ) : null}
-                  {editingThisMessage ? (
-                    <form
-                      className="space-y-3"
-                      onSubmit={(event) => submitEditedMessage(message, event)}
-                    >
-                      <textarea
-                        ref={editedMessageRef}
-                        aria-label="Edit latest message"
-                        className="max-h-[min(60vh,32rem)] min-h-40 w-full field-sizing-content resize-y overflow-y-auto bg-transparent text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
-                        disabled={retrySentMessage.isPending}
-                        onChange={(event) =>
-                          setEditingSentMessage((current) =>
-                            current?.id === message.id
-                              ? {
-                                  ...current,
-                                  error: null,
-                                  text: event.target.value,
-                                }
-                              : current,
-                          )
-                        }
-                        onKeyDown={(event) => {
-                          if (
-                            event.key === "Enter" &&
-                            !event.shiftKey &&
-                            !event.nativeEvent.isComposing
-                          ) {
-                            event.preventDefault();
-                            submitEditedMessage(message);
-                          }
-                        }}
-                        rows={1}
-                        value={editingSentMessage.text}
-                      />
-                      {messageAttachments.length > 0 ? (
-                        <MessageContent
-                          message={{
-                            ...message,
-                            content: messageAttachments.map((attachment) => ({
-                              type: "attachment" as const,
-                              attachment,
-                            })),
-                          }}
-                          onOpenFile={onOpenFile}
-                        />
-                      ) : null}
-                      {editingSentMessage.error ? (
-                        <p className="text-xs text-destructive" role="alert">
-                          {editingSentMessage.error}
-                        </p>
-                      ) : null}
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          disabled={retrySentMessage.isPending}
-                          onClick={() => setEditingSentMessage(null)}
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          disabled={
-                            retrySentMessage.isPending ||
-                            (!editingSentMessage.text.trim() &&
-                              messageAttachments.length === 0)
-                          }
-                          size="sm"
-                          type="submit"
-                        >
-                          {retrySentMessage.isPending ? (
-                            <Loader2 className="animate-spin" />
-                          ) : null}
-                          Send
-                        </Button>
-                      </div>
-                    </form>
-                  ) : (
-                    <MessageContent message={message} onOpenFile={onOpenFile} />
-                  )}
-                  {user && message.providerName ? (
-                    <p className="mt-1.5 truncate text-[10px] text-muted-foreground">
-                      {message.providerName}
-                      {message.providerModelName
-                        ? ` · ${message.providerModelName}`
-                        : ""}
-                    </p>
-                  ) : null}
-                  {assistantText ? (
-                    <div className="mt-2 flex items-center gap-1 text-muted-foreground">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        title="Copy response"
-                        onClick={async () => {
-                          await navigator.clipboard.writeText(assistantText);
-                          setCopiedMessageId(message.id);
-                          window.setTimeout(
-                            () => setCopiedMessageId(null),
-                            1_500,
-                          );
-                        }}
-                      >
-                        {copiedMessageId === message.id ? (
-                          <Check className="size-3.5" />
-                        ) : (
-                          <Copy className="size-3.5" />
-                        )}
-                        <span className="sr-only">Copy response</span>
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        title="Fork agent from this response"
-                        disabled={fork.isPending}
-                        onClick={() => fork.mutate(message.id)}
-                      >
-                        <GitFork className="size-3.5" />
-                        <span className="sr-only">
-                          Fork agent from this response
-                        </span>
-                      </Button>
-                      {turnMetadata ? (
-                        <span className="ml-1 text-[10px] tabular-nums text-muted-foreground/70">
-                          {turnMetadata}
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {user &&
-                  !editingThisMessage &&
-                  latestEditableMessage?.id === message.id ? (
-                    <div className="mt-2 flex justify-end">
-                      <Button
-                        aria-label="Edit and resend latest message"
-                        className="size-7 text-muted-foreground"
-                        onClick={() =>
-                          setEditingSentMessage({
-                            error: null,
-                            id: message.id,
-                            text: editableMessageText(message),
-                          })
-                        }
-                        size="icon"
-                        title="Edit and resend"
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-                {user ? (
-                  <div className="mt-1 grid size-7 shrink-0 place-items-center rounded-lg bg-muted">
-                    <User className="size-3.5" />
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
+          <ChatTranscriptEntries
+            copiedMessageId={copiedMessageId}
+            editedMessageRef={editedMessageRef}
+            editingSentMessage={editingSentMessage}
+            entries={transcriptEntries}
+            forkPending={fork.isPending}
+            latestEditableMessageId={latestEditableMessage?.id ?? null}
+            latestLiveActivityGroupKey={latestLiveActivityGroupKey}
+            retryPending={retrySentMessage.isPending}
+            onCancelEditingMessage={cancelEditingSentMessage}
+            onChangeEditingMessage={changeEditingSentMessage}
+            onCopyResponse={copyResponse}
+            onEditMessage={editSentMessage}
+            onForkMessage={forkFromMessage}
+            onOpenFile={onOpenFile}
+            onSubmitEditedMessage={submitEditedMessage}
+            onViewSubagent={viewSubagent}
+            onViewTrajectory={viewTurnTrajectory}
+          />
 
           <ChatRunStatus
             automationPaused={chat.automationPaused}
