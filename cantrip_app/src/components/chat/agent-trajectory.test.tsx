@@ -2,8 +2,13 @@ import type { AgentScope, ChatMessage } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { AgentTrajectory, trajectorySubagentTarget } from "./agent-trajectory";
+import {
+  AgentTrajectory,
+  TRAJECTORY_FOLLOW_THRESHOLD_PX,
+  trajectorySubagentTarget,
+} from "./agent-trajectory";
 import { projectTrajectory } from "./trajectory-model";
+import { chatScrollIsNearBottom } from "./use-sticky-chat-scroll";
 
 function message(
   id: string,
@@ -34,6 +39,19 @@ function message(
 }
 
 describe("AgentTrajectory", () => {
+  it("keeps following while the viewport remains within the latest event", () => {
+    expect(
+      chatScrollIsNearBottom(
+        {
+          clientHeight: 600,
+          scrollHeight: 1_500,
+          scrollTop: 1_500 - 600 - 96,
+        },
+        TRAJECTORY_FOLLOW_THRESHOLD_PX,
+      ),
+    ).toBe(true);
+  });
+
   it("renders dynamic agent tracks and targets child events at the sidebar", () => {
     const childScope: AgentScope = {
       agentThreadId: "child-thread",

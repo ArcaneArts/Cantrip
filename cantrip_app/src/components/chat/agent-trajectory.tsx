@@ -10,7 +10,14 @@ import {
   RotateCcw,
   Search,
 } from "lucide-react";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +42,7 @@ import {
 import { useStickyChatScroll } from "./use-sticky-chat-scroll";
 
 const TRAJECTORY_CLOCK_INTERVAL_MS = 500;
-const TRAJECTORY_FOLLOW_THRESHOLD_PX = 24;
+export const TRAJECTORY_FOLLOW_THRESHOLD_PX = 128;
 const lanes = ["input", "model", "tools", "changes"] as const;
 const statuses = ["running", "completed", "failed", "declined"] as const;
 const timingQualities = ["exact", "derived", "instant"] as const;
@@ -245,6 +252,7 @@ export function AgentTrajectory({
   const {
     contentRef: eventListContentRef,
     onScroll: updateEventListScrollState,
+    pinToBottomIfFollowing: pinEventsToBottomIfFollowing,
     scrollToBottom: scrollEventsToBottom,
     showScrollToBottom: showScrollToLatestEvent,
     viewportRef: eventListViewportRef,
@@ -306,6 +314,20 @@ export function AgentTrajectory({
         : null,
     [selectedEventId, turn?.events],
   );
+  const latestVisibleEvent = events.at(-1);
+
+  useLayoutEffect(() => {
+    if (selectedEvent) return;
+    pinEventsToBottomIfFollowing();
+  }, [
+    events.length,
+    latestVisibleEvent?.id,
+    latestVisibleEvent?.preview,
+    latestVisibleEvent?.status,
+    latestVisibleEvent?.updatedAtMs,
+    pinEventsToBottomIfFollowing,
+    selectedEvent,
+  ]);
 
   useEffect(() => {
     setPlayheadMs(turn?.timelineStartMs ?? null);
@@ -462,6 +484,7 @@ export function AgentTrajectory({
                 setFollowingLive(true);
                 setSelectedEventId(null);
                 setPlayheadMs(turn.timelineEndMs);
+                scrollEventsToBottom();
               }}
               size="sm"
               type="button"

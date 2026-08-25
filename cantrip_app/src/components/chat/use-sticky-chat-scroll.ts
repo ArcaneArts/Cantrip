@@ -49,6 +49,11 @@ export function useStickyChatScroll(
     setShowScrollToBottom(false);
   }, []);
 
+  const pinToBottomIfFollowing = useCallback(() => {
+    if (!followOutputRef.current) return;
+    scrollToBottom();
+  }, [scrollToBottom]);
+
   const preserveScrollDuringPrepend = useCallback(
     async (action: () => Promise<unknown>) => {
       const viewport = viewportRef.current;
@@ -109,6 +114,7 @@ export function useStickyChatScroll(
   return {
     contentRef,
     onScroll: updateScrollState,
+    pinToBottomIfFollowing,
     preserveScrollDuringPrepend,
     scrollToBottom,
     showScrollToBottom,
