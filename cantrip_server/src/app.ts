@@ -469,6 +469,7 @@ import {
   chatAttachmentOpaqueListSchema,
 } from "@cantrip/protocol/attachment-content";
 import {
+  standaloneChatFileWireRequestSchema,
   surfaceStreamWireRequestSchema,
   surfaceStreamWireResponseSchema,
 } from "@cantrip/protocol/surface-stream";
@@ -1586,6 +1587,7 @@ export async function buildApp({
   const publishLiveInvalidation = (
     resource: AppLiveResource,
     input: {
+      chatId?: string | null;
       entityId?: string | null;
       projectId?: string | null;
     } = {},
@@ -1596,7 +1598,9 @@ export async function buildApp({
         ownerId: applicationOwnerId(),
         scope: input.projectId
           ? { kind: "project", projectId: input.projectId }
-          : { kind: "current-user" },
+          : input.chatId
+            ? { kind: "chat", chatId: input.chatId }
+            : { kind: "current-user" },
         resource,
         action: "invalidated",
         entityId: input.entityId ?? null,
@@ -29636,6 +29640,62 @@ export async function buildApp({
       return chat
         ? reply.send(contextualChatWireSummarySchema.parse(chat))
         : reply.code(404).send({ error: "Chat not found." });
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/files/operation",
+    { bodyLimit: 4 * 1_024 * 1_024 },
+    async (request, reply) => {
+      const input = standaloneChatFileWireRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const context = await repository.getChatExecutionContext(
+        ownerId,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat not found." });
+      }
+      if (context.contextKind !== "standalone" || !context.scratchRootId) {
+        return reply.code(409).send({
+          error: "Chat files are available only for standalone Chats.",
+        });
+      }
+      const worker = await repository.getWorker(ownerId, context.workerId);
+      if (!worker?.standaloneChat.files[input.data.intent]) {
+        return reply.code(409).send({
+          error: `The Chat worker does not support ${input.data.intent} file operations.`,
+        });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Chat worker is offline." });
+      }
+      try {
+        const result = surfaceStreamWireResponseSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "chat.scratch.files.operation",
+            rootId: context.scratchRootId,
+            chatId: context.chatId,
+            serverId,
+            root: context.cwd,
+            intent: input.data.intent,
+            operationId: input.data.operationId,
+            sequence: input.data.sequence,
+            protectedRequest: input.data.protectedRequest,
+          }),
+        );
+        if (input.data.intent === "write" || input.data.intent === "remove") {
+          publishLiveInvalidation("chat-files", {
+            chatId: request.params.chatId,
+          });
+        }
+        return reply.send(result);
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
     },
   );
 

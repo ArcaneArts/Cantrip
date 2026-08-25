@@ -14,8 +14,8 @@ use zeroize::Zeroize;
 
 use crate::{
     desktop_worker::{
-        normalize_server_url, resolve_project_directory, DesktopWorkerProjectStorage,
-        DesktopWorkers,
+        normalize_server_url, resolve_chat_scratch_directory, resolve_project_directory,
+        DesktopWorkerProjectStorage, DesktopWorkers,
     },
     ManagedRuntime,
 };
@@ -43,6 +43,16 @@ pub struct RevealLocalProjectFolderRequest {
     relative_path: String,
     server_url: String,
     source_kind: LocalProjectSourceKind,
+    worker_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevealLocalChatScratchRequest {
+    chat_id: String,
+    #[serde(default)]
+    relative_path: String,
+    server_url: String,
     worker_id: String,
 }
 
@@ -164,6 +174,38 @@ pub async fn reveal_local_project_folder(
     tauri::async_runtime::spawn_blocking(move || open_local_project_target(&reveal_target))
         .await
         .map_err(|error| format!("Could not join the local project reveal task: {error}"))??;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn reveal_local_chat_scratch(
+    runtime: State<'_, ManagedRuntime>,
+    workers: State<'_, DesktopWorkers>,
+    request: RevealLocalChatScratchRequest,
+) -> Result<bool, String> {
+    let Ok(server_url) = normalize_server_url(&request.server_url) else {
+        return Ok(false);
+    };
+    let bundled_scratch = runtime
+        .local_worker_data_directory(&server_url, &request.worker_id)
+        .and_then(|data_directory| {
+            resolve_chat_scratch_directory(data_directory, &request.chat_id)
+        });
+    let scratch_directory = match bundled_scratch {
+        Some(directory) => Some(directory),
+        None => workers.resolve_chat_scratch_directory(
+            &server_url,
+            &request.worker_id,
+            &request.chat_id,
+        )?,
+    };
+    let Some(scratch_directory) = scratch_directory else {
+        return Ok(false);
+    };
+    let reveal_target = resolve_chat_reveal_target(&scratch_directory, &request.relative_path)?;
+    tauri::async_runtime::spawn_blocking(move || open_local_project_target(&reveal_target))
+        .await
+        .map_err(|error| format!("Could not join the local Chat reveal task: {error}"))??;
     Ok(true)
 }
 
@@ -342,6 +384,57 @@ fn resolve_reveal_target(
         return Err("The requested project path is not a file or folder.".into());
     };
     Ok(NativeRevealTarget { kind, path })
+}
+
+fn resolve_chat_reveal_target(
+    root: &std::path::Path,
+    relative_path: &str,
+) -> Result<NativeRevealTarget, String> {
+    let canonical_root = std::fs::canonicalize(root).map_err(|error| {
+        format!(
+            "The Chat scratch folder is unavailable ({}): {error}",
+            root.display()
+        )
+    })?;
+    let mut path = canonical_root.clone();
+    for segment in validate_relative_reveal_path(relative_path)? {
+        path.push(segment);
+        let metadata = std::fs::symlink_metadata(&path).map_err(|error| {
+            format!(
+                "The requested Chat file is unavailable ({}): {error}",
+                path.display()
+            )
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err("Chat file reveal does not follow symbolic links.".into());
+        }
+    }
+    let canonical_path = std::fs::canonicalize(&path).map_err(|error| {
+        format!(
+            "The requested Chat file is unavailable ({}): {error}",
+            path.display()
+        )
+    })?;
+    if canonical_path != canonical_root && !canonical_path.starts_with(&canonical_root) {
+        return Err("The requested Chat file is outside its scratch folder.".into());
+    }
+    let metadata = std::fs::metadata(&canonical_path).map_err(|error| {
+        format!(
+            "The requested Chat file is unavailable ({}): {error}",
+            canonical_path.display()
+        )
+    })?;
+    let kind = if metadata.is_dir() {
+        NativeRevealTargetKind::Directory
+    } else if metadata.is_file() {
+        NativeRevealTargetKind::File
+    } else {
+        return Err("The requested Chat path is not a file or folder.".into());
+    };
+    Ok(NativeRevealTarget {
+        kind,
+        path: canonical_path,
+    })
 }
 
 fn validate_share_url(value: &str) -> Result<Url, String> {
@@ -857,6 +950,59 @@ mod tests {
             .starts_with("/select,"));
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn resolves_chat_reveals_only_inside_the_canonical_scratch_root() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-chat-reveal-target-{}-{nonce}",
+            std::process::id()
+        ));
+        let directory = root.join("results");
+        let file = directory.join("summary.md");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(&file, b"# Summary\n").unwrap();
+
+        assert_eq!(
+            resolve_chat_reveal_target(&root, "results/summary.md").unwrap(),
+            NativeRevealTarget {
+                kind: NativeRevealTargetKind::File,
+                path: std::fs::canonicalize(&file).unwrap(),
+            }
+        );
+        assert!(resolve_chat_reveal_target(&root, "../outside").is_err());
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn chat_reveal_never_follows_symbolic_links() {
+        use std::os::unix::fs::symlink;
+
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!(
+            "cantrip-chat-reveal-symlink-{}-{nonce}",
+            std::process::id()
+        ));
+        let root = base.join("scratch");
+        let outside = base.join("outside.txt");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&outside, b"outside").unwrap();
+        symlink(&outside, root.join("link.txt")).unwrap();
+
+        assert!(resolve_chat_reveal_target(&root, "link.txt")
+            .unwrap_err()
+            .contains("symbolic links"));
+
+        std::fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

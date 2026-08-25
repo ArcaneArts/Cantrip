@@ -71,12 +71,15 @@ import {
 import {
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,
+  standaloneChatFileOperationRequestContentSchema,
   surfaceOperationOutcomeContentSchema,
   surfaceStreamWireResponseSchema,
   terminalInputContentSchema,
   terminalOutputContentSchema,
   terminalSnapshotContentSchema,
   terminalSnapshotRequestContentSchema,
+  type StandaloneChatFileOperationIntent,
+  type StandaloneChatFileOperationRequestContent,
   type SurfaceOperationOutcomeContent,
 } from "@cantrip/protocol/surface-stream";
 import {
@@ -167,6 +170,7 @@ import { GithubClient } from "./github.js";
 import { probeManagedLinkPlacement } from "./project-replica-placement.js";
 import { ManagedFolderManager } from "./managed-folders.js";
 import { ChatScratchManager } from "./chat-scratch.js";
+import { ChatScratchFileManager } from "./chat-scratch-files.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
 import { ProviderAuthObserver } from "./provider-auth-observer.js";
 import { RunConfigurationDefinitionService } from "./run-configuration-definition-service.js";
@@ -496,6 +500,31 @@ async function workerStartupPhase<T>(
       ...context,
     });
     throw error;
+  }
+}
+
+function standaloneChatFileIntentMatches(
+  intent: StandaloneChatFileOperationIntent,
+  request: StandaloneChatFileOperationRequestContent,
+): boolean {
+  switch (request.type) {
+    case "chat-files.directory.list":
+      return intent === "list";
+    case "chat-files.file.read":
+    case "chat-files.path.resolve":
+    case "chat-files.media.read":
+      return intent === "read";
+    case "chat-files.file.write":
+      return intent === "write";
+    case "chat-files.entry.delete":
+      return intent === "remove";
+    case "chat-files.download.prepare":
+      return request.kind === "file"
+        ? intent === "download"
+        : intent === "archive";
+    case "chat-files.download.read":
+    case "chat-files.download.cancel":
+      return intent === "download" || intent === "archive";
   }
 }
 
@@ -830,6 +859,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const github = new GithubClient(config.dataDirectory, config.workerId);
   const managedFolders = new ManagedFolderManager(config.dataDirectory);
   const chatScratch = new ChatScratchManager(config.dataDirectory);
+  const chatScratchFiles = new ChatScratchFileManager(config.dataDirectory);
   const projectGithubConverter = new ProjectGithubConverter(managedFolders);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const grokAuthClients = new Map<string, GrokAuthClient>();
@@ -1848,6 +1878,179 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return chatScratch.delete(command);
       case "chat.scratch.reconcile":
         return chatScratch.reconcile(command.roots);
+      case "chat.scratch.files.operation": {
+        const resolvedRoot = await chatScratch.resolve(command);
+        if (resolvedRoot.path !== command.root) {
+          throw new Error(
+            "Standalone Chat file routing does not match its registered scratch root.",
+          );
+        }
+        const streamContext = {
+          serverId: command.serverId,
+          surfaceKind: "chat-files" as const,
+          surfaceId: command.chatId,
+          operationId: command.operationId,
+          direction: "request" as const,
+          sequence: command.sequence,
+        };
+        surfaceStreamReplay.reserve(streamContext);
+        const request = await openWorkerSurfaceStreamContent({
+          context: streamContext,
+          opaque: command.protectedRequest,
+          schema: standaloneChatFileOperationRequestContentSchema,
+          service: workerEncryption,
+        });
+        let outcome: SurfaceOperationOutcomeContent;
+        let complete = true;
+        try {
+          if (!standaloneChatFileIntentMatches(command.intent, request)) {
+            throw new Error(
+              "Standalone Chat file operation does not match its declared capability.",
+            );
+          }
+          switch (request.type) {
+            case "chat-files.directory.list":
+              outcome = {
+                ok: true,
+                result: {
+                  type: request.type,
+                  value: await chatScratchFiles.list(
+                    command.root,
+                    request.path,
+                  ),
+                },
+              };
+              break;
+            case "chat-files.file.read":
+              outcome = {
+                ok: true,
+                result: {
+                  type: "chat-files.file",
+                  value: await chatScratchFiles.read(
+                    command.root,
+                    request.path,
+                  ),
+                },
+              };
+              break;
+            case "chat-files.path.resolve":
+              outcome = {
+                ok: true,
+                result: {
+                  type: "chat-files.path.resolved",
+                  path: await chatScratchFiles.resolveReference(
+                    command.root,
+                    request.reference,
+                  ),
+                },
+              };
+              break;
+            case "chat-files.media.read": {
+              const value = await chatScratchFiles.readMedia(
+                command.root,
+                request.path,
+                request.offset,
+                request.limit,
+              );
+              complete = value.eof;
+              outcome = {
+                ok: true,
+                result: { type: "chat-files.media", value },
+              };
+              break;
+            }
+            case "chat-files.file.write":
+              outcome = {
+                ok: true,
+                result: {
+                  type: "chat-files.file",
+                  value: await chatScratchFiles.write(
+                    command.root,
+                    request.path,
+                    request.content,
+                    request.version,
+                  ),
+                },
+              };
+              break;
+            case "chat-files.entry.delete":
+              outcome = {
+                ok: true,
+                result: {
+                  type: "chat-files.entry.mutated",
+                  value: await chatScratchFiles.delete(
+                    command.root,
+                    request.path,
+                    request.recursive,
+                  ),
+                },
+              };
+              break;
+            case "chat-files.download.prepare": {
+              complete = false;
+              outcome = {
+                ok: true,
+                result: {
+                  type: "chat-files.download.prepared",
+                  value: await chatScratchFiles.prepareDownload({
+                    root: command.root,
+                    kind: request.kind,
+                    path: request.path,
+                  }),
+                },
+              };
+              break;
+            }
+            case "chat-files.download.read": {
+              const value = await chatScratchFiles.readDownload(
+                command.root,
+                request.downloadId,
+                request.offset,
+                request.limit,
+              );
+              complete = value.eof;
+              outcome = {
+                ok: true,
+                result: { type: "chat-files.download.chunk", value },
+              };
+              break;
+            }
+            case "chat-files.download.cancel":
+              await chatScratchFiles.cancelDownload(
+                request.downloadId,
+                command.root,
+              );
+              outcome = {
+                ok: true,
+                result: {
+                  type: "chat-files.download.cancelled",
+                  downloadId: request.downloadId,
+                },
+              };
+              break;
+          }
+        } catch (error) {
+          outcome = {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message.slice(0, 2_000)
+                : "Chat file operation failed.",
+          };
+        }
+        const protectedResponse = await protectWorkerSurfaceStreamContent({
+          context: { ...streamContext, direction: "response" },
+          content: outcome,
+          schema: surfaceOperationOutcomeContentSchema,
+          service: workerEncryption,
+        });
+        surfaceStreamReplay.accept(streamContext, complete || !outcome.ok);
+        return surfaceStreamWireResponseSchema.parse({
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse,
+        });
+      }
       case "project.folder-conversion.preflight":
         return projectGithubConverter.preflight(command);
       case "project.folder-conversion.execute":
