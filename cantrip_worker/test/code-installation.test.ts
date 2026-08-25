@@ -104,7 +104,7 @@ describe("Cantrip Code installation discovery", () => {
       capabilities: {
         available: true,
         maxSessions: Number.MAX_SAFE_INTEGER,
-        sharedTransportProtocolVersion: 1,
+        sharedTransportProtocolVersion: 2,
       },
     });
   });

@@ -5677,6 +5677,8 @@ export const codeEditorBuildSchema = z.object({
 export const codeProbeResultSchema = z.object({
   capabilities: codeCapabilitiesSchema,
   editorBuild: codeEditorBuildSchema.nullable(),
+  serverControlPlaneGeneration: z.string().uuid().optional(),
+  workerProcessGeneration: z.string().uuid().optional(),
 });
 
 export const codeSessionSummarySchema = z.object({
@@ -5840,6 +5842,55 @@ export function codeSessionRouteBasePath(routeGrant: string): string {
   return `/sessions/${codeSessionRouteGrantSchema.parse(routeGrant)}/code`;
 }
 
+export function parseCodeSessionRoutePath(
+  rawPath: string,
+): { basePath: string; routeGrant: string } | null {
+  const queryIndex = rawPath.indexOf("?");
+  const pathname = queryIndex < 0 ? rawPath : rawPath.slice(0, queryIndex);
+  if (
+    pathname.includes("\\") ||
+    pathname.includes("//") ||
+    /%(?:2f|5c)/iu.test(pathname)
+  ) {
+    return null;
+  }
+  const match = /^\/sessions\/([A-Za-z0-9_-]{43})\/code(?=$|\/)/u.exec(
+    pathname,
+  );
+  const routeGrant = match?.[1];
+  if (
+    !routeGrant ||
+    !codeSessionRouteGrantSchema.safeParse(routeGrant).success
+  ) {
+    return null;
+  }
+  const basePath = codeSessionRouteBasePath(routeGrant);
+  const suffix = pathname.slice(basePath.length);
+  if (
+    suffix !== "" &&
+    (!suffix.startsWith("/") ||
+      suffix
+        .slice(1)
+        .split("/")
+        .some((segment) => {
+          try {
+            const decoded = decodeURIComponent(segment);
+            return (
+              decoded === "." ||
+              decoded === ".." ||
+              decoded.includes("/") ||
+              decoded.includes("\\")
+            );
+          } catch {
+            return true;
+          }
+        }))
+  ) {
+    return null;
+  }
+  return { basePath, routeGrant };
+}
+
 export const codeTransportCandidateSchema = z
   .object({
     formatVersion: z.literal(2),
@@ -5903,10 +5954,21 @@ export const codeSharedAttachmentWireSchema = z
     },
   );
 
+const codeTransportLifecycleIdentitySchema = z
+  .object({
+    ownerId: z.string().min(1).max(2_000),
+    authSessionId: z.string().min(1).max(2_000),
+    serverId: z.string().min(1).max(2_000),
+    serverControlPlaneGeneration: z.string().uuid(),
+    protectedKeyRevision: z.number().int().positive().safe(),
+    workerProcessGeneration: z.string().uuid(),
+  })
+  .strict();
+
 export const codeTransportRouteAuthorizeCommandSchema = z
   .object({
     type: z.literal("code.transport.route.authorize"),
-    serverId: z.string().min(1).max(2_000),
+    ...codeTransportLifecycleIdentitySchema.shape,
     transportId: z.string().uuid(),
     attachmentId: z.string().uuid(),
     sessionId: z.string().uuid(),
@@ -5919,6 +5981,7 @@ export const codeTransportRouteAuthorizeCommandSchema = z
 export const codeTransportRouteRevokeCommandSchema = z
   .object({
     type: z.literal("code.transport.route.revoke"),
+    ...codeTransportLifecycleIdentitySchema.shape,
     transportId: z.string().uuid(),
     attachmentId: z.string().uuid(),
   })
@@ -5927,12 +5990,14 @@ export const codeTransportRouteRevokeCommandSchema = z
 export const codeTransportRevokeCommandSchema = z
   .object({
     type: z.literal("code.transport.revoke"),
+    ...codeTransportLifecycleIdentitySchema.shape,
     transportId: z.string().uuid(),
   })
   .strict();
 
 export const codeTransportRouteAuthorizeResultSchema = z
   .object({
+    ...codeTransportLifecycleIdentitySchema.shape,
     transportId: z.string().uuid(),
     attachmentId: z.string().uuid(),
     sessionId: z.string().uuid(),
@@ -5944,6 +6009,7 @@ export const codeTransportRouteAuthorizeResultSchema = z
 
 export const codeTransportRouteRevokeResultSchema = z
   .object({
+    ...codeTransportLifecycleIdentitySchema.shape,
     transportId: z.string().uuid(),
     attachmentId: z.string().uuid(),
     revoked: z.literal(true),
@@ -5952,6 +6018,7 @@ export const codeTransportRouteRevokeResultSchema = z
 
 export const codeTransportRevokeResultSchema = z
   .object({
+    ...codeTransportLifecycleIdentitySchema.shape,
     transportId: z.string().uuid(),
     revoked: z.literal(true),
   })
@@ -14779,12 +14846,15 @@ export const workerRequestEnvelopeSchema = z.object({
 export const WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL = "cantrip-worker-legacy";
 export const WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL =
   "cantrip-worker-auth-ready-v1";
+export const WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL =
+  "cantrip-worker-auth-ready-v2";
 export const WORKER_WEBSOCKET_SUBPROTOCOLS = [
   WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
 ] as const;
 
-export const workerConnectionEnvelopeSchema = z
+const workerConnectionEnvelopeV1Schema = z
   .object({
     kind: z.literal("connection"),
     state: z.enum(["pending", "ready"]),
@@ -14792,6 +14862,21 @@ export const workerConnectionEnvelopeSchema = z
     connectionGeneration: z.string().uuid(),
   })
   .strict();
+
+const workerConnectionEnvelopeV2Schema = z
+  .object({
+    kind: z.literal("connection"),
+    state: z.enum(["pending", "ready"]),
+    protocolVersion: z.literal(2),
+    connectionGeneration: z.string().uuid(),
+    serverControlPlaneGeneration: z.string().uuid(),
+  })
+  .strict();
+
+export const workerConnectionEnvelopeSchema = z.discriminatedUnion(
+  "protocolVersion",
+  [workerConnectionEnvelopeV1Schema, workerConnectionEnvelopeV2Schema],
+);
 
 export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
   z.object({

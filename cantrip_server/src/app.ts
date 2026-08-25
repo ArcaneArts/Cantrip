@@ -440,6 +440,7 @@ import {
   workerCredentialRotateSchema,
   encodeWorkerConnectionEnvelope,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
   workerEnrollmentCodeCreateSchema,
   workerLogReadQuerySchema,
   workerEnrollmentCodeResultSchema,
@@ -1576,6 +1577,7 @@ export async function buildApp({
   const workerOwnerId = (workerId: string): Promise<string | null> =>
     repository.getWorkerOwnerId(workerId);
   const serverInstanceId = config.serverInstanceId ?? "local-single-instance";
+  const serverControlPlaneGeneration = randomUUID();
   const schedulerLeaseTtlMs = config.schedulerLeaseTtlMs ?? 120_000;
   const liveHub = new AppLiveHub({
     usageRecorder: accountUsageMeter,
@@ -29222,6 +29224,13 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      if (coordinator) {
+        return reply.code(409).send({
+          code: "shared-code-transport-requires-single-server",
+          error:
+            "Shared Cantrip Code transports are disabled while server relay coordination is active.",
+        });
+      }
       const principal = authenticatedPrincipal(request);
       const ownerId = principal.user.id;
       const authSessionId = canonicalCodeAuthSessionId(
@@ -29278,7 +29287,11 @@ export async function buildApp({
               "This worker has no compatible Cantrip Code build.",
           });
         }
-        if (probe.capabilities.sharedTransportProtocolVersion !== 2) {
+        if (
+          probe.capabilities.sharedTransportProtocolVersion !== 2 ||
+          !probe.serverControlPlaneGeneration ||
+          !probe.workerProcessGeneration
+        ) {
           return reply.code(409).send({
             error:
               "This worker does not support shared Cantrip Code transports.",
@@ -29338,10 +29351,12 @@ export async function buildApp({
           registrationLease,
           runtime,
           serverId,
+          serverControlPlaneGeneration: probe.serverControlPlaneGeneration,
           sessionId: input.data.sessionId,
           stopSessionOnRelease: true,
           transport: input.data.transport,
           workerId: context.workerId,
+          workerProcessGeneration: probe.workerProcessGeneration,
           worktreeId: context.worktreeId,
           worktreePath: context.root,
         });
@@ -34266,28 +34281,37 @@ export async function buildApp({
           workerSocket.close(1008, "Unauthorized");
           return;
         }
-        const authenticatedReadyNegotiated =
+        const authenticatedReadyV1Negotiated =
           workerSocket.protocol === WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL;
+        const authenticatedReadyV2Negotiated =
+          workerSocket.protocol === WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL;
+        const authenticatedReadyNegotiated =
+          authenticatedReadyV1Negotiated || authenticatedReadyV2Negotiated;
         if (authenticatedReadyNegotiated && !workerProcessGeneration) {
           workerSocket.close(1002, "Worker connection generation is required");
           return;
         }
         if (authenticatedReadyNegotiated && workerProcessGeneration) {
+          const connectionEnvelope = (state: "pending" | "ready") =>
+            authenticatedReadyV2Negotiated
+              ? ({
+                  kind: "connection" as const,
+                  state,
+                  protocolVersion: 2 as const,
+                  connectionGeneration: workerProcessGeneration,
+                  serverControlPlaneGeneration,
+                } as const)
+              : ({
+                  kind: "connection" as const,
+                  state,
+                  protocolVersion: 1 as const,
+                  connectionGeneration: workerProcessGeneration,
+                } as const);
           workerSocket.send(
-            encodeWorkerConnectionEnvelope({
-              kind: "connection",
-              state: "pending",
-              protocolVersion: 1,
-              connectionGeneration: workerProcessGeneration,
-            }),
+            encodeWorkerConnectionEnvelope(connectionEnvelope("pending")),
           );
           workerSocket.prepareReady(
-            encodeWorkerConnectionEnvelope({
-              kind: "connection",
-              state: "ready",
-              protocolVersion: 1,
-              connectionGeneration: workerProcessGeneration,
-            }),
+            encodeWorkerConnectionEnvelope(connectionEnvelope("ready")),
           );
         }
         const workerAuth = await authenticateWorkerRequest(

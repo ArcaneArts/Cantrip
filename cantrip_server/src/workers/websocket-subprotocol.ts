@@ -1,6 +1,9 @@
 import type { IncomingMessage } from "node:http";
 
-import { WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL } from "@cantrip/protocol";
+import {
+  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
+} from "@cantrip/protocol";
 
 const WORKER_CONNECT_PATH = "/api/internal/workers/connect";
 
@@ -21,6 +24,12 @@ export function selectCantripWebSocketSubprotocol(
   protocols: Set<string>,
   request: IncomingMessage,
 ): string | false {
+  if (
+    requestPath(request) === WORKER_CONNECT_PATH &&
+    protocols.has(WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL)
+  ) {
+    return WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL;
+  }
   if (
     requestPath(request) === WORKER_CONNECT_PATH &&
     protocols.has(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL)

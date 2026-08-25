@@ -109,8 +109,11 @@ function fixture() {
   const codeEndpoints = {
     bindProtectedConnection: vi.fn(),
     prepareProtected: vi.fn(),
+    prepareSharedProtected: vi.fn(),
   } as unknown as CodeDirectEndpointManager;
   const encryption = {
+    componentKey: vi.fn(() => ({ key: new Uint8Array(32), keyRevision: 1 })),
+    ownerId: vi.fn(() => "owner-1"),
     serverIdentity: vi.fn(() => "https://cantrip.test"),
   } as unknown as WorkerEncryptionService;
   const emitted = vi.fn(() => true);
@@ -144,6 +147,17 @@ function codeContent() {
       algorithm: "AES-256-GCM" as const,
       keyRevision: 1,
       key: "A".repeat(43),
+    },
+  };
+}
+
+function sharedCodeContent() {
+  return {
+    ...codeContent(),
+    destination: {
+      kind: "worker-code-transport" as const,
+      workerId: "worker-1",
+      resourceId: "tunnel-1",
     },
   };
 }
@@ -251,6 +265,81 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
         }),
       ]),
     );
+  });
+
+  it("hands an authorized shared Code transport to one session-independent endpoint", async () => {
+    const { codeEndpoints, router, tcp } = fixture();
+    vi.mocked(codeEndpoints.prepareSharedProtected).mockResolvedValue({
+      kind: "tcp",
+      host: "127.0.0.1",
+      port: 43_211,
+    });
+    const header = protectedConnect();
+    if (header.target.kind !== "protected-tunnel") {
+      throw new Error("Expected a protected tunnel target.");
+    }
+    const transportId = header.target.protectedRecord.operationId;
+    header.tunnelId = transportId;
+    header.target.recordId = transportId;
+    tunnelContent.open.mockResolvedValue({
+      ...sharedCodeContent(),
+      destination: {
+        ...sharedCodeContent().destination,
+        resourceId: transportId,
+      },
+    });
+    const diagnosticTraceId = "22222222-2222-4222-8222-222222222222";
+
+    router.handleFrame(header, new Uint8Array(), { diagnosticTraceId });
+
+    await vi.waitFor(() =>
+      expect(codeEndpoints.prepareSharedProtected).toHaveBeenCalledWith(
+        transportId,
+        {
+          ownerId: "owner-1",
+          protectedKeyRevision: 1,
+          serverId: "https://cantrip.test",
+        },
+        {
+          attachmentId: "attachment-1",
+          connectionId: "connection-1",
+          diagnosticTraceId,
+        },
+      ),
+    );
+    expect(codeEndpoints.prepareProtected).not.toHaveBeenCalled();
+    expect(tcp.handleFrame).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "connect",
+        target: { kind: "tcp", host: "127.0.0.1", port: 43_211 },
+      }),
+      new Uint8Array(),
+      expect.any(Function),
+    );
+  });
+
+  it("rejects a shared Code record whose resource escaped its tunnel", async () => {
+    const { codeEndpoints, emitted, router, tcp } = fixture();
+    const header = protectedConnect();
+    if (header.target.kind !== "protected-tunnel") {
+      throw new Error("Expected a protected tunnel target.");
+    }
+    const transportId = header.target.protectedRecord.operationId;
+    header.tunnelId = transportId;
+    header.target.recordId = transportId;
+    tunnelContent.open.mockResolvedValue({
+      ...sharedCodeContent(),
+      destination: {
+        ...sharedCodeContent().destination,
+        resourceId: "another-tunnel",
+      },
+    });
+
+    router.handleFrame(header, new Uint8Array());
+
+    await vi.waitFor(() => expect(emitted).toHaveBeenCalledOnce());
+    expect(codeEndpoints.prepareSharedProtected).not.toHaveBeenCalled();
+    expect(tcp.handleFrame).not.toHaveBeenCalled();
   });
 
   it("routes a Chat share only after its exact root-bound share was prepared", async () => {

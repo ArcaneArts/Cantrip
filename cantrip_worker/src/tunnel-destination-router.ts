@@ -2,6 +2,7 @@ import type {
   TunnelDataPlaneFrameHeader,
   TunnelDataPlaneRejectionCode,
 } from "@cantrip/protocol";
+import { clearSensitiveBytes } from "@cantrip/crypto";
 import type { TunnelDataProtectionConfiguration } from "@cantrip/protocol/tunnel-content";
 
 import type { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
@@ -239,12 +240,68 @@ export class TunnelDestinationRouter {
       }
       if (
         content.destination.kind === "worker-code" &&
-        header.target.targetKind === "code"
+        header.target.targetKind === "code" &&
+        content.destination.resourceId === header.tunnelId
       ) {
         reasonCode = "code-endpoint-preparation-failed";
         const endpoint = await this.codeEndpoints.prepareProtected(
           header.tunnelId,
           content.destination.sessionId,
+          {
+            attachmentId: header.attachmentId,
+            connectionId: header.connectionId,
+            diagnosticTraceId: diagnostics.diagnosticTraceId,
+          },
+        );
+        if (!this.#isPendingProtection(key, generation)) return;
+        reasonCode = "code-endpoint-handoff-failed";
+        this.#handoffProtectedConnect(
+          key,
+          generation,
+          { ...header, target: endpoint },
+          payload,
+          content.dataProtection,
+          diagnostics,
+          (remotePort) =>
+            this.codeEndpoints.bindProtectedConnection(
+              header.tunnelId,
+              endpoint.port,
+              remotePort,
+              {
+                attachmentId: header.attachmentId,
+                connectionId: header.connectionId,
+                diagnosticTraceId: diagnostics.diagnosticTraceId,
+              },
+            ),
+        );
+        return;
+      }
+      if (
+        content.destination.kind === "worker-code-transport" &&
+        header.target.targetKind === "code" &&
+        content.destination.resourceId === header.tunnelId &&
+        header.target.protectedRecord.operationId === header.tunnelId &&
+        header.target.protectedRecord.revision === 1
+      ) {
+        reasonCode = "code-endpoint-preparation-failed";
+        const activeKey = this.encryption.componentKey("tunnel-content");
+        const protectedKeyRevision = activeKey.keyRevision;
+        clearSensitiveBytes(activeKey.key);
+        if (
+          header.target.protectedRecord.protectedContent.keyRevision !==
+          protectedKeyRevision
+        ) {
+          throw new Error(
+            "The protected Code transport key revision is no longer active.",
+          );
+        }
+        const endpoint = await this.codeEndpoints.prepareSharedProtected(
+          header.tunnelId,
+          {
+            ownerId: this.encryption.ownerId(),
+            serverId: this.encryption.serverIdentity(),
+            protectedKeyRevision,
+          },
           {
             attachmentId: header.attachmentId,
             connectionId: header.connectionId,

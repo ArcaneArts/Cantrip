@@ -2,6 +2,7 @@ import type { IncomingMessage } from "node:http";
 
 import {
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
   WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
   WORKER_WEBSOCKET_SUBPROTOCOLS,
 } from "@cantrip/protocol";
@@ -22,10 +23,21 @@ describe("Cantrip WebSocket subprotocol selection", () => {
           "/api/internal/workers/connect?workerId=worker-1&connectionGeneration=11111111-1111-4111-8111-111111111111",
         ),
       ),
-    ).toBe(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL);
+    ).toBe(WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL);
   });
 
   it("preserves legacy worker negotiation when modern readiness is absent", () => {
+    expect(
+      selectCantripWebSocketSubprotocol(
+        new Set([
+          WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
+          WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+        ]),
+        request(
+          "/api/internal/workers/connect?workerId=worker-1&connectionGeneration=11111111-1111-4111-8111-111111111111",
+        ),
+      ),
+    ).toBe(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL);
     expect(
       selectCantripWebSocketSubprotocol(
         new Set([WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL]),

@@ -3,6 +3,7 @@ import {
   request as requestHttp,
   type IncomingMessage,
 } from "node:http";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -354,5 +355,227 @@ describe("CodeDirectEndpointManager", () => {
           "code.direct.websocket-opened",
       ),
     ).toHaveLength(1);
+  });
+
+  it("isolates shared-route HTTP and WebSockets on one physical endpoint", async () => {
+    const observed: Array<{
+      cookie: string | undefined;
+      url: string | undefined;
+    }> = [];
+    let hangingRequestReached!: () => void;
+    const hangingReached = new Promise<void>((resolve) => {
+      hangingRequestReached = resolve;
+    });
+    let hangingRequestClosed!: () => void;
+    const hangingClosed = new Promise<void>((resolve) => {
+      hangingRequestClosed = resolve;
+    });
+    const editor = createServer((request, response) => {
+      observed.push({ cookie: request.headers.cookie, url: request.url });
+      if (request.url === "/hang") {
+        hangingRequestReached();
+        request.once("close", hangingRequestClosed);
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("editor-ready");
+    });
+    const editorWebSockets = new WebSocketServer({ server: editor });
+    await new Promise<void>((resolve) =>
+      editor.listen(0, "127.0.0.1", resolve),
+    );
+    closers.push(
+      () =>
+        new Promise<void>((resolve) => {
+          for (const socket of editorWebSockets.clients) socket.terminate();
+          editorWebSockets.close(() => editor.close(() => resolve()));
+        }),
+    );
+    const port = (editor.address() as AddressInfo).port;
+    const workerProcessGeneration = randomUUID();
+    const serverControlPlaneGeneration = randomUUID();
+    const transportId = randomUUID();
+    const sessions = [
+      {
+        attachmentId: randomUUID(),
+        grant: randomBytes(32).toString("base64url"),
+        incarnationId: randomUUID(),
+        sessionId: randomUUID(),
+        token: "route-a-token",
+        workspace: "/worker/a.code-workspace",
+      },
+      {
+        attachmentId: randomUUID(),
+        grant: randomBytes(32).toString("base64url"),
+        incarnationId: randomUUID(),
+        sessionId: randomUUID(),
+        token: "route-b-token",
+        workspace: "/worker/b.code-workspace",
+      },
+    ];
+    const bySession = new Map(
+      sessions.map((session) => [session.sessionId, session]),
+    );
+    const supervisor = {
+      beginTunnelStream: vi.fn(),
+      endTunnelStream: vi.fn(),
+      status: vi.fn((sessionId: string) => ({
+        status: "running",
+        sessionIncarnationId: bySession.get(sessionId)?.incarnationId,
+      })),
+      proxyTarget: vi.fn((sessionId: string) => {
+        const session = bySession.get(sessionId)!;
+        return {
+          codeTabId: sessionId,
+          connectionToken: session.token,
+          editorOrigin: `http://127.0.0.1:${port}`,
+          processInstanceId: "process-1",
+          workspaceUri: `file://${session.workspace}`,
+        };
+      }),
+    } as unknown as CodeSupervisor;
+    const endpoints = new CodeDirectEndpointManager(supervisor, {
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    });
+    closers.push(() => endpoints.close());
+    const security = {
+      ownerId: "owner-1",
+      protectedKeyRevision: 1,
+      serverId: "server-1",
+    };
+    const lifecycle = {
+      ...security,
+      authSessionId: "auth-session-1",
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    };
+    for (const session of sessions) {
+      await endpoints.authorizeSharedRoute(
+        {
+          type: "code.transport.route.authorize",
+          ...lifecycle,
+          transportId,
+          attachmentId: session.attachmentId,
+          sessionId: session.sessionId,
+          expectedSessionIncarnationId: session.incarnationId,
+          routeGrant: session.grant,
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+        security,
+      );
+    }
+    const target = await endpoints.prepareSharedProtected(
+      transportId,
+      security,
+    );
+    const requestText = (url: string) =>
+      new Promise<string>((resolve, reject) => {
+        const request = requestHttp(url, { agent: false }, (response) => {
+          const chunks: Buffer[] = [];
+          response.on("data", (chunk: Buffer) => chunks.push(chunk));
+          response.once("end", () =>
+            resolve(Buffer.concat(chunks).toString("utf8")),
+          );
+          response.once("error", reject);
+        });
+        request.once("error", reject);
+        request.end();
+      });
+    for (const session of sessions) {
+      const response = await fetch(
+        `http://${target.host}:${target.port}/sessions/${session.grant}/code/`,
+      );
+      expect(await response.text()).toBe("editor-ready");
+    }
+    expect(observed).toEqual([
+      {
+        cookie: "vscode-tkn=route-a-token",
+        url: "/?workspace=%2Fworker%2Fa.code-workspace",
+      },
+      {
+        cookie: "vscode-tkn=route-b-token",
+        url: "/?workspace=%2Fworker%2Fb.code-workspace",
+      },
+    ]);
+    expect(JSON.stringify(observed)).not.toContain(sessions[0]!.grant);
+
+    const partialControl = requestHttp(
+      `http://${target.host}:${target.port}/sessions/${sessions[0]!.grant}/code/_cantrip/open-file`,
+      {
+        headers: {
+          "content-length": "128",
+          "content-type": "application/json",
+        },
+        method: "POST",
+      },
+    );
+    const partialControlClosed = new Promise<void>((resolve) => {
+      let closed = false;
+      const finish = () => {
+        if (closed) return;
+        closed = true;
+        resolve();
+      };
+      partialControl.once("close", finish);
+      partialControl.once("error", finish);
+    });
+    partialControl.write('{"relativePath":"src/partial');
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    const hanging = requestHttp(
+      `http://${target.host}:${target.port}/sessions/${sessions[0]!.grant}/code/hang`,
+    );
+    const hangingDownstreamClosed = new Promise<void>((resolve) => {
+      hanging.once("error", () => resolve());
+    });
+    hanging.end();
+    await hangingReached;
+    const siblingWhileHanging = await requestText(
+      `http://${target.host}:${target.port}/sessions/${sessions[1]!.grant}/code/`,
+    );
+    expect(siblingWhileHanging).toBe("editor-ready");
+
+    const clients = sessions.map(
+      (session) =>
+        new WebSocket(
+          `ws://${target.host}:${target.port}/sessions/${session.grant}/code/`,
+        ),
+    );
+    for (const client of clients) {
+      closers.push(() => client.terminate());
+      await new Promise<void>((resolve, reject) => {
+        client.once("open", resolve);
+        client.once("error", reject);
+      });
+    }
+    const firstClosed = new Promise<number>((resolve) =>
+      clients[0]!.once("close", (code) => resolve(code)),
+    );
+    await endpoints.revokeSharedRoute(
+      {
+        type: "code.transport.route.revoke",
+        ...lifecycle,
+        transportId,
+        attachmentId: sessions[0]!.attachmentId,
+      },
+      security,
+    );
+    await expect(firstClosed).resolves.toBe(1008);
+    await partialControlClosed;
+    await hangingClosed;
+    await hangingDownstreamClosed;
+    await vi.waitFor(() => expect(editorWebSockets.clients.size).toBe(1), {
+      timeout: 2_000,
+    });
+    expect(clients[1]!.readyState).toBe(WebSocket.OPEN);
+    const surviving = await requestText(
+      `http://${target.host}:${target.port}/sessions/${sessions[1]!.grant}/code/`,
+    );
+    expect(surviving).toBe("editor-ready");
+    const unknown = await fetch(
+      `http://${target.host}:${target.port}/sessions/${randomBytes(32).toString("base64url")}/code/`,
+    );
+    expect(unknown.status).toBe(404);
   });
 });

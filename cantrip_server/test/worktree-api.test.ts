@@ -343,6 +343,8 @@ const codeStopCommands: Array<Extract<WorkerCommand, { type: "code.stop" }>> =
   [];
 const codeStopTimeouts: Array<number | null | undefined> = [];
 const codeSessionIncarnationId = "755f30a1-866d-4969-aa91-6e0f28676753";
+const codeWorkerProcessGeneration = "855f30a1-866d-4969-aa91-6e0f28676753";
+const codeServerControlPlaneGeneration = "966f41b2-977e-4a70-bba2-7f1f39787864";
 const codeStatusSessionIds: string[] = [];
 const codeEndpointRevokedTunnelIds: string[] = [];
 const directPrepareCapabilityIds: string[] = [];
@@ -1678,6 +1680,8 @@ const workerBridge = {
             reason: null,
           },
           editorBuild: codeEditorBuild,
+          serverControlPlaneGeneration: codeServerControlPlaneGeneration,
+          workerProcessGeneration: codeWorkerProcessGeneration,
         };
       case "code.open":
         codeOpenCommands.push(command);
@@ -1755,6 +1759,12 @@ const workerBridge = {
       case "code.transport.route.authorize":
         codeTransportRouteAuthorizeCommands.push(command);
         return {
+          ownerId: command.ownerId,
+          authSessionId: command.authSessionId,
+          serverId: command.serverId,
+          serverControlPlaneGeneration: command.serverControlPlaneGeneration,
+          protectedKeyRevision: command.protectedKeyRevision,
+          workerProcessGeneration: command.workerProcessGeneration,
           transportId: command.transportId,
           attachmentId: command.attachmentId,
           authorized: true,
@@ -1765,13 +1775,28 @@ const workerBridge = {
       case "code.transport.route.revoke":
         codeTransportRouteRevokeCommands.push(command);
         return {
+          ownerId: command.ownerId,
+          authSessionId: command.authSessionId,
+          serverId: command.serverId,
+          serverControlPlaneGeneration: command.serverControlPlaneGeneration,
+          protectedKeyRevision: command.protectedKeyRevision,
+          workerProcessGeneration: command.workerProcessGeneration,
           transportId: command.transportId,
           attachmentId: command.attachmentId,
           revoked: true,
         };
       case "code.transport.revoke":
         codeTransportRevokeCommands.push(command);
-        return { transportId: command.transportId, revoked: true };
+        return {
+          ownerId: command.ownerId,
+          authSessionId: command.authSessionId,
+          serverId: command.serverId,
+          serverControlPlaneGeneration: command.serverControlPlaneGeneration,
+          protectedKeyRevision: command.protectedKeyRevision,
+          workerProcessGeneration: command.workerProcessGeneration,
+          transportId: command.transportId,
+          revoked: true,
+        };
       case "direct.capability.prepare":
         directPrepareCapabilityIds.push(command.binding.capabilityId);
         return { accepted: true, capabilityId: command.binding.capabilityId };
@@ -3972,16 +3997,21 @@ describe.sequential("server worktree control plane", () => {
       expect(
         codeTransportRouteAuthorizeCommands.slice(authorizationsBefore),
       ).toEqual([
-        {
+        expect.objectContaining({
           type: "code.transport.route.authorize",
+          ownerId: expect.any(String),
+          authSessionId: expect.any(String),
           serverId: bootstrap.server.id,
+          serverControlPlaneGeneration: codeServerControlPlaneGeneration,
+          protectedKeyRevision: 1,
+          workerProcessGeneration: codeWorkerProcessGeneration,
           transportId: sharedTransportId,
           attachmentId,
           sessionId,
           expectedSessionIncarnationId: codeSessionIncarnationId,
           routeGrant: attachment.session.routeGrant,
           expiresAt: attachment.session.expiresAt,
-        },
+        }),
       ]);
 
       const leaseResponse = await app.inject({
@@ -3997,16 +4027,21 @@ describe.sequential("server worktree control plane", () => {
       expect(
         codeTransportRouteAuthorizeCommands.slice(authorizationsBefore + 1),
       ).toEqual([
-        {
+        expect.objectContaining({
           type: "code.transport.route.authorize",
+          ownerId: expect.any(String),
+          authSessionId: expect.any(String),
           serverId: bootstrap.server.id,
+          serverControlPlaneGeneration: codeServerControlPlaneGeneration,
+          protectedKeyRevision: 1,
+          workerProcessGeneration: codeWorkerProcessGeneration,
           transportId: sharedTransportId,
           attachmentId,
           sessionId,
           expectedSessionIncarnationId: codeSessionIncarnationId,
           routeGrant: attachment.session.routeGrant,
           expiresAt: renewed.session.expiresAt,
-        },
+        }),
       ]);
 
       const revoked = await app.inject({
@@ -4018,6 +4053,12 @@ describe.sequential("server worktree control plane", () => {
         codeTransportRouteRevokeCommands.slice(routeRevocationsBefore),
       ).toContainEqual({
         type: "code.transport.route.revoke",
+        ownerId: expect.any(String),
+        authSessionId: expect.any(String),
+        serverId: bootstrap.server.id,
+        serverControlPlaneGeneration: codeServerControlPlaneGeneration,
+        protectedKeyRevision: 1,
+        workerProcessGeneration: codeWorkerProcessGeneration,
         transportId: sharedTransportId,
         attachmentId,
       });
@@ -4025,6 +4066,12 @@ describe.sequential("server worktree control plane", () => {
         codeTransportRevokeCommands.slice(transportRevocationsBefore),
       ).toContainEqual({
         type: "code.transport.revoke",
+        ownerId: expect.any(String),
+        authSessionId: expect.any(String),
+        serverId: bootstrap.server.id,
+        serverControlPlaneGeneration: codeServerControlPlaneGeneration,
+        protectedKeyRevision: 1,
+        workerProcessGeneration: codeWorkerProcessGeneration,
         transportId: sharedTransportId,
       });
       expect(codeStopCommands.slice(stopsBefore)).toContainEqual({
