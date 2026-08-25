@@ -39,6 +39,7 @@ import type {
   SettingsBundle,
   SkillSummary,
   StandaloneChatSummary,
+  TaskDetail,
   TerminalSummary,
   TunnelSummary,
   WorkerSummary,
@@ -265,7 +266,10 @@ import {
 } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { ProjectOverviewNavigation } from "@/components/projects/project-overview-navigation";
-import { ProjectTasksDashboard } from "@/components/projects/project-tasks-dashboard";
+import {
+  ProjectTasksDashboard,
+  projectTaskIsUnqueuedDraft,
+} from "@/components/projects/project-tasks-dashboard";
 import { WindowsLongPathDialog } from "@/components/projects/windows-long-path-dialog";
 import {
   FolderProjectDialog,
@@ -10356,7 +10360,23 @@ export function App() {
                     activeTab={activeProjectOverviewSection}
                     githubEnabled={Boolean(selectedProject.github)}
                     gitEnabled={selectedProject.capabilities.git}
-                    onTabChange={setProjectOverviewSection}
+                    onTabChange={(section) => {
+                      if (
+                        section === "tasks" &&
+                        activeProjectOverviewSection === "tasks" &&
+                        activeProjectTaskChatId &&
+                        !projectTaskIsUnqueuedDraft(
+                          queryClient.getQueryData<TaskDetail>([
+                            "task",
+                            activeProjectTaskChatId,
+                          ]),
+                        )
+                      ) {
+                        closeProjectTask(selectedProject.id);
+                        return;
+                      }
+                      setProjectOverviewSection(section);
+                    }}
                   />
                   <span className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-border" />
                 </div>
