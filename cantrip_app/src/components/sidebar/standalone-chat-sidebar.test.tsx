@@ -38,8 +38,8 @@ describe("standalone Chat sidebar", () => {
   it("shows standalone navigation without project surfaces", () => {
     const markup = renderToStaticMarkup(
       <StandaloneChatSidebar
-        archived={[]}
-        archivedLoading={false}
+        archivedCount={2}
+        archivedSelected={false}
         chats={[chat]}
         creationDisabled={false}
         creating={false}
@@ -48,10 +48,9 @@ describe("standalone Chat sidebar", () => {
         onArchive={() => undefined}
         onFork={() => undefined}
         onNewChat={() => undefined}
+        onOpenArchived={() => undefined}
         onOpenSettings={() => undefined}
-        onPermanentlyDelete={() => undefined}
         onRename={() => undefined}
-        onRestore={() => undefined}
         onSelect={() => undefined}
         onSwitchIde={() => undefined}
       />,
@@ -62,9 +61,35 @@ describe("standalone Chat sidebar", () => {
     expect(markup).toContain("Research notes");
     expect(markup).toContain("Agent turn finished");
     expect(markup).toContain("Archived");
+    expect(markup).toContain(">2</span>");
     expect(markup).toContain("Settings");
     expect(markup).not.toContain("Project files");
     expect(markup).not.toContain("Worktree");
     expect(markup).not.toContain("Terminal");
+  });
+
+  it("renders Archived as selected navigation without a dialog", () => {
+    const markup = renderToStaticMarkup(
+      <StandaloneChatSidebar
+        archivedCount={1}
+        archivedSelected
+        chats={[chat]}
+        creating={false}
+        selectedChatId={null}
+        workers={[]}
+        onArchive={() => undefined}
+        onFork={() => undefined}
+        onNewChat={() => undefined}
+        onOpenArchived={() => undefined}
+        onOpenSettings={() => undefined}
+        onRename={() => undefined}
+        onSelect={() => undefined}
+        onSwitchIde={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("bg-muted");
+    expect(markup).not.toContain('role="dialog"');
+    expect(markup).not.toContain("No archived chats");
   });
 });
