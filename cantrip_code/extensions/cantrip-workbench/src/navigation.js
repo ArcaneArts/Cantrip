@@ -141,7 +141,13 @@ async function closeUnrelatedEditors(
       );
     }
   }
-  await vscode.commands.executeCommand("workbench.action.joinAllGroups");
+  if (groups.length > 1) {
+    await bounded(
+      () => vscode.commands.executeCommand("workbench.action.joinAllGroups"),
+      operationTimeoutMs,
+      "Cantrip Code timed out while collapsing editor groups.",
+    );
+  }
   if (vscode.window.activeTextEditor?.document.uri.toString() !== selected) {
     throw new Error(
       "Cantrip Code lost the selected file while collapsing editor groups.",

@@ -51,13 +51,22 @@ async function setWorkbenchPresentation(
   if (presentation !== "editor") {
     throw new Error(`Unsupported Cantrip presentation: ${presentation}`);
   }
-  await workspace
-    .getConfiguration("cantrip")
-    .update("presentation", presentation, configurationTarget);
+  const cantripConfiguration = workspace.getConfiguration("cantrip");
+  if (
+    cantripConfiguration.inspect?.("presentation")?.workspaceValue !==
+    presentation
+  ) {
+    await cantripConfiguration.update(
+      "presentation",
+      presentation,
+      configurationTarget,
+    );
+  }
   for (const [section, key, value] of EDITOR_CONFIGURATION) {
-    await workspace
-      .getConfiguration(section)
-      .update(key, value, configurationTarget);
+    const configuration = workspace.getConfiguration(section);
+    if (configuration.inspect?.(key)?.workspaceValue !== value) {
+      await configuration.update(key, value, configurationTarget);
+    }
   }
   await configureWorkbenchPresentation(
     {

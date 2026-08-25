@@ -100,8 +100,20 @@ test("opens and confirms the exact requested workspace file", async () => {
       "file:///repo/src/index.ts",
       { preserveFocus: false, preview: true },
     ],
-    ["command", "workbench.action.joinAllGroups"],
   ]);
+});
+
+test("collapses editor groups only when more than one group exists", async () => {
+  const { calls, rootUri, vscode } = fixture();
+  vscode.window.tabGroups.all.push({
+    activeTab: undefined,
+    isActive: false,
+    tabs: [],
+  });
+
+  await openWorkspaceFile(vscode, rootUri, "src/index.ts");
+
+  assert.deepEqual(calls.at(-1), ["command", "workbench.action.joinAllGroups"]);
 });
 
 test("closes clean restored and unrelated editor tabs", async () => {
@@ -111,12 +123,11 @@ test("closes clean restored and unrelated editor tabs", async () => {
 
   await openWorkspaceFile(vscode, rootUri, "src/index.ts");
 
-  assert.deepEqual(calls.at(-2), [
+  assert.deepEqual(calls.at(-1), [
     "close",
     ["file:///repo/README.md", "file:///repo/src/previous.ts"],
     true,
   ]);
-  assert.deepEqual(calls.at(-1), ["command", "workbench.action.joinAllGroups"]);
 });
 
 test("saves a dirty file-backed editor before switching to the exact new file", async () => {
@@ -139,7 +150,7 @@ test("saves a dirty file-backed editor before switching to the exact new file", 
     openWorkspaceFile(vscode, rootUri, "src/index.ts"),
   );
   assert.equal(saved, 1);
-  assert.deepEqual(calls.at(-2), [
+  assert.deepEqual(calls.at(-1), [
     "close",
     ["file:///repo/src/dirty.ts"],
     true,
@@ -186,8 +197,36 @@ test("bounds a clean-tab close that stops responding", async () => {
   );
 });
 
+test("bounds an editor-group collapse that stops responding", async () => {
+  const { vscode } = fixture();
+  vscode.window.tabGroups.all.push({
+    activeTab: undefined,
+    isActive: false,
+    tabs: [],
+  });
+  vscode.commands.executeCommand = () => new Promise(() => {});
+
+  await assert.rejects(
+    Promise.race([
+      closeUnrelatedEditors(vscode, uri("file:///repo/src/index.ts"), 5),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("navigation test did not settle")),
+          25,
+        ),
+      ),
+    ]),
+    /timed out while collapsing editor groups/u,
+  );
+});
+
 test("fails when collapsing editor groups changes the selected active file", async () => {
   const { rootUri, vscode } = fixture();
+  vscode.window.tabGroups.all.push({
+    activeTab: undefined,
+    isActive: false,
+    tabs: [],
+  });
   vscode.commands.executeCommand = async () => {
     vscode.window.activeTextEditor = {
       document: { uri: uri("file:///repo/src/stale.ts") },
