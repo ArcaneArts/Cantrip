@@ -23,6 +23,14 @@ interface StoredProviderCatalogs {
   version: typeof CACHE_VERSION;
 }
 
+interface HydratedProviderCatalogs {
+  entries: StoredProviderCatalog[];
+  persistedValue: string | null;
+  storageKey: string;
+}
+
+const hydratedCatalogs = new WeakMap<Storage, HydratedProviderCatalogs>();
+
 function storage(): Storage | null {
   try {
     return typeof window === "undefined" ? null : window.localStorage;
@@ -31,13 +39,13 @@ function storage(): Storage | null {
   }
 }
 
-function readEntries(
-  localStorage: Storage,
+function parseEntries(
+  value: string | null,
   now = Date.now(),
 ): StoredProviderCatalog[] {
   try {
     const parsed = JSON.parse(
-      localStorage.getItem(scopedClientStorageKey(STORAGE_KEY)) ?? "null",
+      value ?? "null",
     ) as Partial<StoredProviderCatalogs> | null;
     if (parsed?.version !== CACHE_VERSION || !Array.isArray(parsed.entries)) {
       return [];
@@ -63,6 +71,38 @@ function readEntries(
   }
 }
 
+function hydratedEntries(
+  localStorage: Storage,
+  now = Date.now(),
+): HydratedProviderCatalogs {
+  const storageKey = scopedClientStorageKey(STORAGE_KEY);
+  const existing = hydratedCatalogs.get(localStorage);
+  if (existing?.storageKey === storageKey) return existing;
+
+  let persistedValue: string | null = null;
+  try {
+    persistedValue = localStorage.getItem(storageKey);
+  } catch {
+    // Privacy-mode failures only disable persistence for this hydration.
+  }
+  const hydrated = {
+    entries: parseEntries(persistedValue, now),
+    persistedValue,
+    storageKey,
+  };
+  hydratedCatalogs.set(localStorage, hydrated);
+  return hydrated;
+}
+
+function activeEntries(
+  hydrated: HydratedProviderCatalogs,
+  now = Date.now(),
+): StoredProviderCatalog[] {
+  return hydrated.entries.filter(
+    (entry) => now - entry.cachedAt <= MAX_CACHE_AGE_MS,
+  );
+}
+
 function sameScope(
   entry: Pick<StoredProviderCatalog, "providerId" | "workerId">,
   providerId: string,
@@ -77,7 +117,7 @@ export function cachedProviderModelCatalog(
 ): ProviderModelCatalogResult | undefined {
   const localStorage = storage();
   if (!localStorage) return undefined;
-  return readEntries(localStorage).find((entry) =>
+  return activeEntries(hydratedEntries(localStorage)).find((entry) =>
     sameScope(entry, providerId, workerId),
   )?.catalog;
 }
@@ -93,9 +133,10 @@ export function cacheProviderModelCatalog(
   if (!catalog.success || catalog.data.providerId !== providerId) return;
 
   const now = Date.now();
+  const hydrated = hydratedEntries(localStorage, now);
   const candidates: StoredProviderCatalog[] = [
     { cachedAt: now, catalog: catalog.data, providerId, workerId },
-    ...readEntries(localStorage, now).filter(
+    ...activeEntries(hydrated, now).filter(
       (entry) => !sameScope(entry, providerId, workerId),
     ),
   ];
@@ -108,11 +149,12 @@ export function cacheProviderModelCatalog(
     entries.push(entry);
     storedCharacters += entryCharacters;
   }
+  hydrated.entries = entries;
+  const persistedValue = JSON.stringify({ entries, version: CACHE_VERSION });
+  if (persistedValue === hydrated.persistedValue) return;
   try {
-    localStorage.setItem(
-      scopedClientStorageKey(STORAGE_KEY),
-      JSON.stringify({ entries, version: CACHE_VERSION }),
-    );
+    localStorage.setItem(hydrated.storageKey, persistedValue);
+    hydrated.persistedValue = persistedValue;
   } catch {
     // Quota and privacy-mode failures only disable persistence for this write.
   }

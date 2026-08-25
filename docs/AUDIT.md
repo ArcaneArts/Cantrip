@@ -18,7 +18,7 @@ gains one layer below that architecture:
   quadratically with fragmentation;
 - AppLive now coalesces durable cursor writes and isolates status-only subscribers from
   cursor traffic while preserving immediate in-memory replay state;
-- closed inspection UI, disabled provider queries, and diagnostic capture still build or
+- closed inspection UI and diagnostic capture still build or
   parse expensive data that the user cannot see;
 - project, Task, worker-metadata, session-validation, and attachment-maintenance paths retain
   avoidable N+1 request/query patterns;
@@ -28,31 +28,31 @@ Five completed findings were removed from the active report: former P0-01, P0-05
 P0-11, and P0-12. Their current implementations and focused tests were rechecked before
 removal. P0-06 was marked fixed only by a status-only documentation change; current source
 still contains its original `1 + 2N` query pattern, so this pass restores it as pending.
-N0-02 and N0-04 remain below as completed implementation records with their validation
-evidence.
+N0-02, N0-04, and N0-05 remain below as completed implementation records with their
+validation evidence.
 
 The priority frontier now mixes the strongest new findings with still-valid carryovers:
 
-| Rank | Opportunity                                              | Gain             | Risk       | Dominant avoided work                                   |
-| ---- | -------------------------------------------------------- | ---------------- | ---------- | ------------------------------------------------------- |
-| 1    | N0-01 watcher-first Run-configuration reconciliation     | very high idle   | low        | up to 128 rereads/parses every 500 ms per repository    |
-| 2    | N0-02 [completed] state-gate the durable Task scheduler  | completed        | —          | running-only owners now execute lease expiry only       |
-| 3    | N0-03 linear, low-copy Browser Code tunnel framing       | high interactive | low-medium | cumulative buffer copies and repeated payload copies    |
-| 4    | N0-04 [completed] coalesce AppLive persistence/fanout    | completed        | —          | one bounded write; no cursor-only status fanout         |
-| 5    | N0-05 cache provider catalogs outside transcript renders | high interaction | low        | repeated multi-megabyte storage parse/schema validation |
-| 6    | N0-06 unmount hidden inspection trajectory work          | high long-chat   | low        | invisible projections and thousands of retained rows    |
-| 7    | N0-07 batch project/worker routing metadata hydration    | high fleet-wide  | low-medium | per-project HTTP and per-worker protected commands      |
-| 8    | N0-08 make attachment transfer genuinely ranged          | high transfer    | low-medium | full-file reads for every requested range               |
-| 9    | N0-09 disable routine full-payload diagnostic cloning    | high streaming   | low-medium | recursive clone/redaction of every Codex RPC            |
-| 10   | N0-10 batch Codex stream accumulation at 100 ms          | high streaming   | low-medium | complete-buffer encode/copy on every small delta        |
-| 11   | N0-11 bulk-read Project Task workloads                   | high dashboard   | low-medium | approximately `3 + 3N` SQL plus oversized invalidation  |
-| 12   | N0-12 consolidate authenticated socket validation        | high at scale    | low        | duplicate per-session/per-frame database reads          |
-| 13   | N0-13 add a live-message wire discriminator              | high Task chat   | low-medium | failed wrong-key decrypt and repeated schema passes     |
-| 14   | N0-14 batch retained-attachment maintenance              | high at scale    | low-medium | up to `6N` authenticated heartbeat requests per minute  |
-| 15   | P0-02 remove redundant remote-frame work end to end      | high interactive | low-medium | frame-sized copies and repeated encoding                |
-| 16   | P0-04 batch narrow AppLive authorization                 | high reconnect   | low        | full resource hydration per subscribed scope            |
-| 17   | P0-06 collapse worker-management `1 + 2N` queries        | high fleet-wide  | low        | pool-consuming list and mutation fanout                 |
-| 18   | P0-07 coalesce worktree observation                      | high idle        | low-medium | per-target SQL, Git probes, watchers, and overlap       |
+| Rank | Opportunity                                               | Gain             | Risk       | Dominant avoided work                                  |
+| ---- | --------------------------------------------------------- | ---------------- | ---------- | ------------------------------------------------------ |
+| 1    | N0-01 watcher-first Run-configuration reconciliation      | very high idle   | low        | up to 128 rereads/parses every 500 ms per repository   |
+| 2    | N0-02 [completed] state-gate the durable Task scheduler   | completed        | —          | running-only owners now execute lease expiry only      |
+| 3    | N0-03 linear, low-copy Browser Code tunnel framing        | high interactive | low-medium | cumulative buffer copies and repeated payload copies   |
+| 4    | N0-04 [completed] coalesce AppLive persistence/fanout     | completed        | —          | one bounded write; no cursor-only status fanout        |
+| 5    | N0-05 [completed] cache provider catalogs outside renders | completed        | —          | disabled queries now perform zero storage work         |
+| 6    | N0-06 unmount hidden inspection trajectory work           | high long-chat   | low        | invisible projections and thousands of retained rows   |
+| 7    | N0-07 batch project/worker routing metadata hydration     | high fleet-wide  | low-medium | per-project HTTP and per-worker protected commands     |
+| 8    | N0-08 make attachment transfer genuinely ranged           | high transfer    | low-medium | full-file reads for every requested range              |
+| 9    | N0-09 disable routine full-payload diagnostic cloning     | high streaming   | low-medium | recursive clone/redaction of every Codex RPC           |
+| 10   | N0-10 batch Codex stream accumulation at 100 ms           | high streaming   | low-medium | complete-buffer encode/copy on every small delta       |
+| 11   | N0-11 bulk-read Project Task workloads                    | high dashboard   | low-medium | approximately `3 + 3N` SQL plus oversized invalidation |
+| 12   | N0-12 consolidate authenticated socket validation         | high at scale    | low        | duplicate per-session/per-frame database reads         |
+| 13   | N0-13 add a live-message wire discriminator               | high Task chat   | low-medium | failed wrong-key decrypt and repeated schema passes    |
+| 14   | N0-14 batch retained-attachment maintenance               | high at scale    | low-medium | up to `6N` authenticated heartbeat requests per minute |
+| 15   | P0-02 remove redundant remote-frame work end to end       | high interactive | low-medium | frame-sized copies and repeated encoding               |
+| 16   | P0-04 batch narrow AppLive authorization                  | high reconnect   | low        | full resource hydration per subscribed scope           |
+| 17   | P0-06 collapse worker-management `1 + 2N` queries         | high fleet-wide  | low        | pool-consuming list and mutation fanout                |
+| 18   | P0-07 coalesce worktree observation                       | high idle        | low-medium | per-target SQL, Git probes, watchers, and overlap      |
 
 ## Scope and method
 
@@ -252,15 +252,16 @@ Regression guardrail: retain the 10,000-event work-count test, safe replay asser
 snapshot-barrier assertions, and lifecycle-flush coverage. These establish eliminated work
 and exactness; they do not claim a measured wall-clock speedup.
 
-### N0-05 — opportunity — Remove provider-cache parsing from ordinary transcript renders
+### N0-05 — completed — Remove provider-cache parsing from ordinary transcript renders
 
+- Status: completed 2026-08-24
 - Category: SYNC_IO_HOT_PATH, REGEX_OR_PARSING_HOT_PATH
 - Expected gain: high with a populated catalog cache
-- Risk: low
-- Complexity: low
+- Original risk: low
+- Original complexity: low
 - Confidence: high
 
-Evidence:
+Original evidence:
 
 - cantrip_app/src/components/settings/provider-catalog-cache.ts:8-12 permits eight entries
   and three million stored characters. Lines 34-60 perform localStorage read, JSON parse,
@@ -272,15 +273,33 @@ Evidence:
 - cantrip_app/src/App.tsx:1430-1449 constructs those options during ChatTranscript renders
   while image-attachment state only controls `enabled`.
 
-Hypothesis: ordinary text-chat updates can synchronously parse and validate megabytes of
-catalog data once per provider, directly in the typing/render path.
+Original hypothesis: ordinary text-chat updates can synchronously parse and validate
+megabytes of catalog data once per provider, directly in the typing/render path.
 
-Suggested change: skip placeholder lookup when disabled; hydrate a server/user-scoped
-module/session cache once, update it on writes, and persist only actual changes.
+Resolution:
 
-Validation: seed the maximum three-megabyte cache and simulate 100 keystrokes across
-multiple providers. Require zero reads while image queries are disabled, one hydration on
-first enable, and identical expiry, corrupt-cache, and server/user isolation behavior.
+- cantrip_app/src/components/settings/use-provider-catalog.ts:21-26 now derives one enabled
+  flag and does not request placeholder data until the provider query can actually run.
+- cantrip_app/src/components/settings/provider-catalog-cache.ts:32 and 74-95 retain one
+  hydrated catalog set per Storage object and server/user-scoped storage key. The first
+  enabled lookup performs persistence parsing and schema validation; later renders reuse
+  the validated in-memory entries.
+- cantrip_app/src/components/settings/provider-catalog-cache.ts:97-123 still evaluates the
+  30-day expiry bound on every lookup without rereading storage. Lines 125-160 update the
+  hydrated state on live writes and skip an identical serialized persistence write.
+
+Validation:
+
+- cantrip_app/src/components/settings/provider-catalog-cache.test.ts:203-235 seeds a
+  2.7-3.0 million-character valid catalog, constructs disabled options 100 times for two
+  providers, proves zero storage reads, then proves the first enabled lookup hydrates once
+  and the second performs no additional read.
+- cantrip_app/src/components/settings/provider-catalog-cache.test.ts:172-193 and 237-277
+  preserve user/server isolation, expiry without reread, corrupt-cache fail-closed behavior,
+  and identical-write suppression.
+- The focused provider-cache suite passes all nine tests; the full app suite passes 1,330
+  tests across 290 files with three skipped; and the app TypeScript check and production
+  build pass. The proof is deterministic work elimination rather than a wall-clock claim.
 
 ### N0-06 — opportunity — Do not retain full trajectory UI while Inspect is closed
 
@@ -1514,14 +1533,14 @@ Before behavior changes, add or reuse focused counters and deterministic fixture
   one-byte/realistic streaming deltas;
 - SQL/request counters for Task scheduler states/backlogs, Project Task workloads, AppLive
   scopes/sessions/replay owners, project hydration, worker fleets, and attachment counts;
-- React render/projection/storage spies for closed Inspect, disabled provider catalogs,
-  AppLive status consumers, workflow details, and 10,000 cursor advances;
+- React render/projection/storage spies for closed Inspect, AppLive status consumers,
+  workflow details, and 10,000 cursor advances;
 - child-process counters for idle worktrees and Git status plus fake clocks for reconnect,
   restart, expiration, guarded recovery, watcher degradation, and lifecycle cursor flush.
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement N0-01, N0-05, N0-06, N0-09, N0-19, P0-08, P0-13, P1-01, P1-06, P1-07,
+Implement N0-01, N0-06, N0-09, N0-19, P0-08, P0-13, P1-01, P1-06, P1-07,
 P1-15, P1-16, and P1-18. These gate work that is provably invisible/impossible, add bounded
 coalescing, or replace an equivalent data structure.
 

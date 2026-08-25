@@ -18,10 +18,11 @@ export function providerCatalogQueryOptions(
   workerId: string | null,
   enabled: boolean,
 ) {
+  const queryEnabled = Boolean(enabled && providerId);
   return {
-    enabled: Boolean(enabled && providerId),
-    placeholderData: providerId
-      ? cachedProviderModelCatalog(providerId, workerId)
+    enabled: queryEnabled,
+    placeholderData: queryEnabled
+      ? cachedProviderModelCatalog(providerId!, workerId)
       : undefined,
     queryFn: async () => {
       const catalog = await getProviderModelCatalog(providerId!, workerId);
