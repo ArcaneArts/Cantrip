@@ -4,11 +4,23 @@ import {
   projectTabMemberSummarySchema,
 } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
+import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectSurface } from "@/lib/project-surface";
 
 import { ProjectTabBar, projectTabRemovalDisposition } from "./project-tab-bar";
+
+vi.mock("@/components/ui/confirm-dialog", () => ({
+  ConfirmDialog: () => null,
+}));
+vi.mock("./project-surface-create-menu", () => ({
+  ProjectSurfaceCreateMenu: () => null,
+}));
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const now = "2026-08-23T12:00:00.000Z";
 
@@ -118,7 +130,55 @@ function runSurface(running: boolean): ProjectSurface {
   };
 }
 
-describe("project tab bar chat activity", () => {
+describe("project tab bar", () => {
+  it("closes a File preview tab on middle click", async () => {
+    const onClose = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <DndContext>
+          <ProjectTabBar
+            activeTabKey=""
+            onClose={vi.fn()}
+            onCreate={vi.fn()}
+            onDelete={vi.fn()}
+            onRename={vi.fn()}
+            onSelect={vi.fn()}
+            onStopAndCloseRunTerminal={vi.fn()}
+            previewFile={{
+              active: true,
+              path: "src/file.ts",
+              projectId: "project-1",
+              title: "file.ts",
+              onClose,
+              onPin: vi.fn(),
+              onSelect: vi.fn(),
+            }}
+            surfaces={[]}
+          />
+        </DndContext>,
+      );
+    });
+    const preview = renderer.root.findByProps({
+      "data-preview-file-path": "src/file.ts",
+    });
+    const mouseDown = { button: 1, preventDefault: vi.fn() };
+    const auxiliaryClick = {
+      button: 1,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+
+    preview.props.onMouseDown(mouseDown);
+    preview.props.onAuxClick(auxiliaryClick);
+
+    expect(mouseDown.preventDefault).toHaveBeenCalledOnce();
+    expect(auxiliaryClick.preventDefault).toHaveBeenCalledOnce();
+    expect(auxiliaryClick.stopPropagation).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledOnce();
+    await act(async () => renderer.unmount());
+  });
+
   it("shows the running and unread-completion states on top tabs", () => {
     const running = renderTabs(chatSurface({ running: true }));
     const completed = renderTabs(chatSurface({ unreadCompletion: true }));
