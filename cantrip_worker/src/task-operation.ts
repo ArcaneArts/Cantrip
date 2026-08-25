@@ -22,6 +22,7 @@ import {
   type AgentActivity,
   type AgentTurnResult,
   type ChatRelocationContextPayload,
+  type NormalizedAgentMessage,
 } from "@cantrip/protocol";
 import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
 import {
@@ -120,6 +121,63 @@ export class EncryptedTaskEventSealer {
               ...(agentRuntime ? { agentRuntime } : {}),
             },
     };
+  }
+
+  async message(message: NormalizedAgentMessage) {
+    const turnId = message.correlation?.turnId ?? null;
+    const agentKey = message.agentScope
+      ? `${message.agentScope.rootTurnId}:${message.agentScope.agentThreadId}`
+      : "root";
+    const key = `agent-message:${agentKey}:${turnId ?? "turn"}:${message.id}`;
+    const id = this.#id(key);
+    const component = this.#service.componentKey("task-content");
+    const ownerId = this.#service.ownerId();
+    const classification: TaskMessageProtectedClassification = {
+      role: "assistant",
+      mode: this.#mode,
+      attachmentIds: [],
+    };
+    try {
+      return {
+        type: "agent.protected-task-message" as const,
+        message: taskMessageOpaqueContentSchema.parse({
+          id,
+          classification,
+          protectedContent: await encryptTaskMessageProtectedContent({
+            ownerId,
+            messageId: id,
+            keyRevision: component.keyRevision,
+            componentKey: component.key,
+            content: {
+              version: 1,
+              classification,
+              content: chatMessageContentSchema.parse([
+                {
+                  type: "text",
+                  text: message.text,
+                  phase: message.phase,
+                  ...(message.streaming ? { streaming: true } : {}),
+                  correlation: message.correlation,
+                  ...(message.agentScope
+                    ? { agentScope: message.agentScope }
+                    : {}),
+                },
+              ]),
+            },
+          }),
+          reasoningEffort: null,
+          idempotencyKey: key,
+        }),
+        telemetry: {
+          kind: "message" as const,
+          phase: message.phase,
+          ...(message.streaming ? { streaming: true } : {}),
+          turnId,
+        },
+      };
+    } finally {
+      clearSensitiveBytes(component.key);
+    }
   }
 
   async #protectActivity(

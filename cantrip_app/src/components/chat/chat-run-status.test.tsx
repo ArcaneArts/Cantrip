@@ -9,6 +9,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
+        hasStreamingFinalAnswer={false}
         inferenceProgress={null}
         syncingCodeGraph={false}
         status="running"
@@ -29,6 +30,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
+        hasStreamingFinalAnswer={false}
         inferenceProgress={null}
         syncingCodeGraph
         status="running"
@@ -46,6 +48,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
+        hasStreamingFinalAnswer={false}
         inferenceProgress={null}
         syncingCodeGraph={false}
         status="waiting-for-approval"
@@ -56,6 +59,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused
         hasLiveActivity={false}
+        hasStreamingFinalAnswer={false}
         inferenceProgress={null}
         syncingCodeGraph={false}
         status="running"
@@ -75,6 +79,7 @@ describe("ChatRunStatus", () => {
         <ChatRunStatus
           automationPaused={false}
           hasLiveActivity={false}
+          hasStreamingFinalAnswer={false}
           inferenceProgress={null}
           syncingCodeGraph={false}
           status="idle"
@@ -90,6 +95,7 @@ describe("ChatRunStatus", () => {
         <ChatRunStatus
           automationPaused={false}
           hasLiveActivity
+          hasStreamingFinalAnswer={false}
           inferenceProgress={null}
           syncingCodeGraph={false}
           status="running"
@@ -99,11 +105,30 @@ describe("ChatRunStatus", () => {
     ).toBe("");
   });
 
+  it("shows finishing beneath a streaming final answer", () => {
+    const markup = renderToStaticMarkup(
+      <ChatRunStatus
+        automationPaused={false}
+        hasLiveActivity
+        hasStreamingFinalAnswer
+        inferenceProgress={null}
+        syncingCodeGraph={false}
+        status="running"
+        waitingForPlanAnswer={false}
+      />,
+    );
+
+    expect(markup).toContain("Finishing...");
+    expect(markup).toContain("chat-working-shimmer");
+    expect(markup).not.toContain("Working...");
+  });
+
   it("shows determinate Ollama prefill progress over generic activity", () => {
     const markup = renderToStaticMarkup(
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity
+        hasStreamingFinalAnswer={false}
         inferenceProgress={{
           kind: "progress",
           requestId: "message-one",
@@ -137,6 +162,7 @@ describe("ChatRunStatus", () => {
       <ChatRunStatus
         automationPaused={false}
         hasLiveActivity={false}
+        hasStreamingFinalAnswer={false}
         inferenceProgress={{
           kind: "progress",
           requestId: "message-one",

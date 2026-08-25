@@ -10610,7 +10610,22 @@ export async function buildApp({
                           event.telemetry.turnId,
                         );
                       }
-                      if (event.telemetry.kind === "usage") {
+                      if (event.telemetry.kind === "message") {
+                        const completedFinal =
+                          event.telemetry.phase !== "commentary" &&
+                          !event.telemetry.streaming;
+                        behaviorTracker.markVisibleResponse(
+                          completedFinal,
+                          observedAt,
+                        );
+                        if (completedFinal) {
+                          recordFinal(
+                            finals,
+                            event.telemetry.turnId,
+                            event.message.id,
+                          );
+                        }
+                      } else if (event.telemetry.kind === "usage") {
                         behaviorTracker.observeUsage(
                           {
                             inputTokens: event.telemetry.usage.inputTokens,
@@ -10647,7 +10662,7 @@ export async function buildApp({
                               attributedWorker?.codexVersion ?? null,
                           },
                         );
-                      } else {
+                      } else if (event.telemetry.kind === "activity") {
                         behaviorTracker.markActivity(observedAt);
                       }
                       const saved = await upsertLiveTaskMessage(
@@ -10657,9 +10672,7 @@ export async function buildApp({
                         attribution,
                       );
                       if (!saved) {
-                        throw new Error(
-                          "Encrypted Task activity message was rejected.",
-                        );
+                        throw new Error("Encrypted Task message was rejected.");
                       }
                       return;
                     }
@@ -10672,11 +10685,14 @@ export async function buildApp({
                         );
                       }
                       if (event.telemetry.kind === "message") {
+                        const completedFinal =
+                          event.telemetry.phase !== "commentary" &&
+                          !event.telemetry.streaming;
                         behaviorTracker.markVisibleResponse(
-                          event.telemetry.phase !== "commentary",
+                          completedFinal,
                           observedAt,
                         );
-                        if (event.telemetry.phase !== "commentary") {
+                        if (completedFinal) {
                           recordFinal(
                             finals,
                             event.telemetry.turnId,
@@ -10744,9 +10760,12 @@ export async function buildApp({
                     if (event.type === "agent.message") {
                       const turnId = event.message.correlation?.turnId;
                       behaviorTurnId = turnId ?? behaviorTurnId;
+                      const completedFinal =
+                        event.message.phase !== "commentary" &&
+                        !event.message.streaming;
                       if (event.message.text.trim()) {
                         behaviorTracker.markVisibleResponse(
-                          event.message.phase !== "commentary",
+                          completedFinal,
                           observedAt,
                         );
                       }
@@ -10766,6 +10785,9 @@ export async function buildApp({
                               type: "text",
                               text: event.message.text,
                               phase: event.message.phase,
+                              ...(event.message.streaming
+                                ? { streaming: true }
+                                : {}),
                               correlation: event.message.correlation,
                             },
                           ],
@@ -10773,7 +10795,7 @@ export async function buildApp({
                         },
                         attribution,
                       );
-                      if (event.message.phase !== "commentary") {
+                      if (completedFinal) {
                         recordFinal(finals, turnId, event.message.text);
                       }
                       return;
@@ -11018,21 +11040,23 @@ export async function buildApp({
                   "The encrypted Task message result metadata is invalid.",
                 );
               }
-              const assistant = await appendLiveTaskMessage(
-                ownerId,
-                execution.chatId,
-                encryptedResult.message,
-                attribution,
-              );
-              if (!assistant) {
-                throw new Error("Encrypted Task Chat not found.");
+              if (!hasFinal(finals, result.turnId, result.text)) {
+                const assistant = await appendLiveTaskMessage(
+                  ownerId,
+                  execution.chatId,
+                  encryptedResult.message,
+                  attribution,
+                );
+                if (!assistant) {
+                  throw new Error("Encrypted Task Chat not found.");
+                }
+                await setLiveTaskMessageModelRoute(
+                  ownerId,
+                  assistant.id,
+                  modelId,
+                  runtime,
+                );
               }
-              await setLiveTaskMessageModelRoute(
-                ownerId,
-                assistant.id,
-                modelId,
-                runtime,
-              );
             } else if (encryptedChatMessages) {
               const encryptedResult = chatMessageRelayResultSchema.parse(
                 result.structuredResult,

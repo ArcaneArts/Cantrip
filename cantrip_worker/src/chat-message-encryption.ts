@@ -395,6 +395,7 @@ export class EncryptedChatEventSealer {
               type: "text",
               text: message.text,
               phase: message.phase,
+              ...(message.streaming ? { streaming: true } : {}),
               correlation: message.correlation,
               ...(message.agentScope ? { agentScope: message.agentScope } : {}),
             },
@@ -403,7 +404,12 @@ export class EncryptedChatEventSealer {
         },
         service: this.#service,
       }),
-      telemetry: { kind: "message" as const, phase: message.phase, turnId },
+      telemetry: {
+        kind: "message" as const,
+        phase: message.phase,
+        ...(message.streaming ? { streaming: true } : {}),
+        turnId,
+      },
     };
   }
 

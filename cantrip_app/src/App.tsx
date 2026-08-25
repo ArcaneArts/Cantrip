@@ -1828,6 +1828,20 @@ function ChatTranscript({
     () => mergeAgentCardsIntoTimeline(timeline, agentProjection.agents),
     [agentProjection.agents, timeline],
   );
+  const hasStreamingFinalAnswer = useMemo(
+    () =>
+      agentProjection.rootMessages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content.some(
+            (item) =>
+              item.type === "text" &&
+              item.phase !== "commentary" &&
+              item.streaming === true,
+          ),
+      ),
+    [agentProjection.rootMessages],
+  );
   const latestLiveActivityGroupKey = useMemo(() => {
     for (let index = transcriptEntries.length - 1; index >= 0; index -= 1) {
       const transcriptEntry = transcriptEntries[index];
@@ -3126,6 +3140,7 @@ function ChatTranscript({
           <ChatRunStatus
             automationPaused={chat.automationPaused}
             hasLiveActivity={latestLiveActivityGroupKey !== null}
+            hasStreamingFinalAnswer={hasStreamingFinalAnswer}
             inferenceProgress={inferenceProgress.data}
             syncingCodeGraph={syncingCodeGraph}
             status={chat.status}
