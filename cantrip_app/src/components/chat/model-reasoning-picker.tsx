@@ -58,6 +58,7 @@ export interface ModelReasoningPickerProps {
   reasoningState?: ChatReasoningState;
   loadReasoningState?: (modelId: string) => Promise<ChatReasoningState>;
   subagentCapability?: NativeSubagentRuntimeCapability;
+  subagents?: boolean;
   onSave(configuration: ModelConfiguration): Promise<unknown> | unknown;
 }
 
@@ -372,6 +373,7 @@ export function ModelReasoningPicker({
   readOnly = false,
   reasoningState,
   subagentCapability,
+  subagents = true,
 }: ModelReasoningPickerProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(configuration);
@@ -515,8 +517,9 @@ export function ModelReasoningPicker({
     }
   };
 
-  const subagentSummary =
-    subagentCapability && !subagentsAvailable
+  const subagentSummary = !subagents
+    ? "Conversation model"
+    : subagentCapability && !subagentsAvailable
       ? "Subagents unavailable"
       : configuration.customSubagentModel
         ? (selectedSubagentModel?.name ?? "Custom subagent model")
@@ -567,7 +570,9 @@ export function ModelReasoningPicker({
           <DialogDescription>
             {mode === "settings"
               ? "Applied to newly created agent chats. Existing chats are unchanged."
-              : "Configure the root agent and how native subagents inherit or override it."}
+              : subagents
+                ? "Configure the root agent and how native subagents inherit or override it."
+                : "Configure the model and reasoning used for this conversation."}
           </DialogDescription>
         </DialogHeader>
 
@@ -578,7 +583,7 @@ export function ModelReasoningPicker({
               awaiting input.
             </p>
           ) : null}
-          {subagentCapability && !subagentsAvailable ? (
+          {subagents && subagentCapability && !subagentsAvailable ? (
             <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
               {subagentCapability.reason ??
                 "The selected worker does not support native subagents."}
@@ -628,92 +633,98 @@ export function ModelReasoningPicker({
             />
           </section>
 
-          <section className="space-y-3 border-t pt-4">
-            <label className="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring">
-              <input
-                type="checkbox"
-                className="mt-0.5 size-4 accent-primary"
-                checked={draft.customSubagentModel}
-                disabled={
-                  readOnly ||
-                  effectivePending ||
-                  (!subagentsAvailable && !draft.customSubagentModel)
-                }
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    customSubagentModel: event.target.checked,
-                  }))
-                }
-              />
-              <span>
-                <span className="block text-sm font-medium">
-                  Custom Subagent Model
-                </span>
-                <span className="block text-xs text-muted-foreground">
-                  Off uses the root model and reasoning. Saved custom values are
-                  retained while inactive.
-                </span>
-              </span>
-            </label>
-
-            {draft.customSubagentModel ? (
-              <div className="space-y-2 pl-0 sm:pl-4">
-                <NativeSelect
-                  size="default"
-                  className="w-full"
-                  value={draft.subagentModelId ?? ""}
-                  disabled={readOnly || effectivePending || !subagentsAvailable}
-                  aria-label="Subagent model"
+          {subagents ? (
+            <section className="space-y-3 border-t pt-4">
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 accent-primary"
+                  checked={draft.customSubagentModel}
+                  disabled={
+                    readOnly ||
+                    effectivePending ||
+                    (!subagentsAvailable && !draft.customSubagentModel)
+                  }
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
-                      subagentModelId: event.target.value || null,
-                      subagentReasoningEffort: null,
-                    }))
-                  }
-                >
-                  <option value="" disabled>
-                    Select a subagent model
-                  </option>
-                  {models.map((model) => {
-                    const compatible = modelsShareProvider(
-                      draftRootModel,
-                      model,
-                    );
-                    return (
-                      <option
-                        key={model.id}
-                        value={model.id}
-                        disabled={!compatible}
-                      >
-                        {model.name}
-                        {compatible ? "" : " — different provider"}
-                      </option>
-                    );
-                  })}
-                </NativeSelect>
-                <ReasoningSlider
-                  label="Subagent reasoning effort"
-                  choices={subagentChoices}
-                  value={draft.subagentReasoningEffort}
-                  loading={subagentReasoning.loading}
-                  unavailable={subagentReasoning.failed}
-                  disabled={readOnly || effectivePending || !subagentsAvailable}
-                  onChange={(subagentReasoningEffort) =>
-                    setDraft((current) => ({
-                      ...current,
-                      subagentReasoningEffort,
+                      customSubagentModel: event.target.checked,
                     }))
                   }
                 />
-                <p className="text-[11px] text-muted-foreground">
-                  Custom subagents must resolve through the same provider and
-                  account as the root agent.
-                </p>
-              </div>
-            ) : null}
-          </section>
+                <span>
+                  <span className="block text-sm font-medium">
+                    Custom Subagent Model
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Off uses the root model and reasoning. Saved custom values
+                    are retained while inactive.
+                  </span>
+                </span>
+              </label>
+
+              {draft.customSubagentModel ? (
+                <div className="space-y-2 pl-0 sm:pl-4">
+                  <NativeSelect
+                    size="default"
+                    className="w-full"
+                    value={draft.subagentModelId ?? ""}
+                    disabled={
+                      readOnly || effectivePending || !subagentsAvailable
+                    }
+                    aria-label="Subagent model"
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        subagentModelId: event.target.value || null,
+                        subagentReasoningEffort: null,
+                      }))
+                    }
+                  >
+                    <option value="" disabled>
+                      Select a subagent model
+                    </option>
+                    {models.map((model) => {
+                      const compatible = modelsShareProvider(
+                        draftRootModel,
+                        model,
+                      );
+                      return (
+                        <option
+                          key={model.id}
+                          value={model.id}
+                          disabled={!compatible}
+                        >
+                          {model.name}
+                          {compatible ? "" : " — different provider"}
+                        </option>
+                      );
+                    })}
+                  </NativeSelect>
+                  <ReasoningSlider
+                    label="Subagent reasoning effort"
+                    choices={subagentChoices}
+                    value={draft.subagentReasoningEffort}
+                    loading={subagentReasoning.loading}
+                    unavailable={subagentReasoning.failed}
+                    disabled={
+                      readOnly || effectivePending || !subagentsAvailable
+                    }
+                    onChange={(subagentReasoningEffort) =>
+                      setDraft((current) => ({
+                        ...current,
+                        subagentReasoningEffort,
+                      }))
+                    }
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Custom subagents must resolve through the same provider and
+                    account as the root agent.
+                  </p>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {saveError ? (
             <p className="rounded-lg border border-destructive/50 bg-destructive/5 px-3 py-2 text-xs text-destructive">

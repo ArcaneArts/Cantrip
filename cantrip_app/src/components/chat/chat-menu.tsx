@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 
 interface Actions {
+  deleteLabel?: string;
   deleteDisabled?: boolean;
   onDelete(): void;
   onDuplicate(): void;
@@ -127,6 +128,7 @@ function ContextWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
 }
 
 function ContextItems({
+  deleteLabel = "Delete",
   deleteDisabled,
   onDelete,
   onDuplicate,
@@ -149,7 +151,9 @@ function ContextItems({
         onSelect={onDelete}
       >
         <Trash2 className="size-4" />
-        {deleteDisabled ? "Stop agent before deleting" : "Delete"}
+        {deleteDisabled
+          ? `Stop agent before ${deleteLabel.toLowerCase()}`
+          : deleteLabel}
       </ContextMenuPrimitive.Item>
     </>
   );
@@ -234,6 +238,7 @@ function DropdownWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
 }
 
 function DropdownItems({
+  deleteLabel = "Delete",
   deleteDisabled,
   onDelete,
   onDuplicate,
@@ -256,7 +261,9 @@ function DropdownItems({
         onSelect={onDelete}
       >
         <Trash2 className="size-4" />
-        {deleteDisabled ? "Stop agent before deleting" : "Delete"}
+        {deleteDisabled
+          ? `Stop agent before ${deleteLabel.toLowerCase()}`
+          : deleteLabel}
       </DropdownMenuPrimitive.Item>
     </>
   );

@@ -1,11 +1,26 @@
-import type { ChatSummary } from "@cantrip/protocol";
+import type { ChatSummary, StandaloneChatSummary } from "@cantrip/protocol";
 import { CircleHelp, CirclePause, Loader2 } from "lucide-react";
 
-export function ChatActivityStatus({ chat }: { chat: ChatSummary }) {
+export function ChatActivityStatus({
+  chat,
+}: {
+  chat: Pick<
+    ChatSummary | StandaloneChatSummary,
+    | "automationPaused"
+    | "hasPendingPlanQuestion"
+    | "hasUnreadCompletion"
+    | "status"
+  >;
+}) {
   return chat.hasPendingPlanQuestion ? (
     <CircleHelp
       className="ml-auto size-3.5 text-amber-500"
       aria-label="Codex is waiting for a Plan Mode answer"
+    />
+  ) : chat.status === "waiting-for-approval" ? (
+    <CircleHelp
+      className="ml-auto size-3.5 text-amber-500"
+      aria-label="Agent is waiting for approval"
     />
   ) : chat.automationPaused ? (
     <CirclePause

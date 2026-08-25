@@ -13,7 +13,9 @@ function message(sequence: number): ChatMessage {
   return {
     id: `message-${sequence}`,
     chatId: "chat-one",
+    contextKind: "project",
     worktreeId: "worktree-one",
+    scratchRootId: null,
     executionLaneId: null,
     sequence,
     role: sequence % 2 === 0 ? "assistant" : "user",

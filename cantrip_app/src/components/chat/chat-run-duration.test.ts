@@ -14,7 +14,9 @@ function message(
   return {
     id: `${role}:${createdAt}`,
     chatId: "chat-1",
+    contextKind: "project",
     worktreeId: "worktree-1",
+    scratchRootId: null,
     executionLaneId: null,
     sequence: 1,
     role,

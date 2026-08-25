@@ -39,7 +39,9 @@ const messages = Array.from(
   (_, index): ChatMessage => ({
     id: "message-" + index,
     chatId: "chat-1",
+    contextKind: "project",
     worktreeId: "worktree-1",
+    scratchRootId: null,
     executionLaneId: null,
     sequence: index + 1,
     role: "assistant",

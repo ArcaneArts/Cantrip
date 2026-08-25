@@ -39,7 +39,9 @@ function message(
   return {
     id: `message-${sequence}`,
     chatId: "chat",
+    contextKind: "project",
     worktreeId: "worktree",
+    scratchRootId: null,
     executionLaneId: null,
     sequence,
     role,

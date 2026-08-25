@@ -26,7 +26,9 @@ function childMessage(
   return {
     id,
     chatId: "chat",
+    contextKind: "project",
     worktreeId: "worktree",
+    scratchRootId: null,
     executionLaneId: null,
     sequence,
     role: "assistant",

@@ -128,7 +128,9 @@ export async function openTaskMessageOpaqueSummary(
     return chatMessageSchema.parse({
       id: message.id,
       chatId: message.chatId,
+      contextKind: "project",
       worktreeId: message.worktreeId,
+      scratchRootId: null,
       executionLaneId: message.executionLaneId,
       sequence: message.sequence,
       role: message.role,

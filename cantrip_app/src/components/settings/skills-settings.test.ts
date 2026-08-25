@@ -8,6 +8,8 @@ const skill: SkillSettingsItem = {
   name: "image-tools",
   displayName: "Image Tools",
   description: "Generate and inspect raster assets.",
+  audience: "ide",
+  audienceKey: "project:image-tools",
   scope: "repo",
   location: "project",
   path: "/workspace/.agents/skills/image-tools/SKILL.md",

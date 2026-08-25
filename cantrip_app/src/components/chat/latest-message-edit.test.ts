@@ -15,7 +15,9 @@ function message(
   return {
     id,
     chatId: "chat-1",
+    contextKind: "project",
     worktreeId: "worktree-1",
+    scratchRootId: null,
     executionLaneId: null,
     sequence: Number(id.replace(/\D/gu, "")) || 1,
     role,

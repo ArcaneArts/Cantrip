@@ -3,6 +3,8 @@ import {
   chatSummarySchema,
   executionTargetCatalogSchema,
   projectTabLayoutSummarySchema,
+  standaloneChatSummarySchema,
+  archivedStandaloneChatSummarySchema,
   type ArchivedChatSummary,
   type ArchivedChatWireSummary,
   type ChatSummary,
@@ -11,6 +13,10 @@ import {
   type ExecutionTargetWireCatalog,
   type ProjectTabLayoutSummary,
   type ProjectTabLayoutWireSummary,
+  type StandaloneChatSummary,
+  type StandaloneChatWireSummary,
+  type ArchivedStandaloneChatSummary,
+  type ArchivedStandaloneChatWireSummary,
 } from "@cantrip/protocol";
 import type { PrivateDisplayLabelOpaque } from "@cantrip/protocol/private-labels";
 
@@ -79,11 +85,43 @@ export class ChatTitleEncryptionAdapter {
     });
   }
 
+  async openStandalone(
+    chat: StandaloneChatWireSummary,
+  ): Promise<StandaloneChatSummary> {
+    const { titleProtection, ...publicChat } = chat;
+    return standaloneChatSummarySchema.parse({
+      ...publicChat,
+      title: await decodePrivateDisplayLabelForClient({
+        identity: this.identity(),
+        opaque: titleProtection,
+        recordKind: "chat",
+        rowId: chat.id,
+        service: this.service,
+      }),
+    });
+  }
+
   async openArchived(
     chat: ArchivedChatWireSummary,
   ): Promise<ArchivedChatSummary> {
     const { titleProtection, ...publicChat } = chat;
     return archivedChatSummarySchema.parse({
+      ...publicChat,
+      title: await decodePrivateDisplayLabelForClient({
+        identity: this.identity(),
+        opaque: titleProtection,
+        recordKind: "chat",
+        rowId: chat.id,
+        service: this.service,
+      }),
+    });
+  }
+
+  async openArchivedStandalone(
+    chat: ArchivedStandaloneChatWireSummary,
+  ): Promise<ArchivedStandaloneChatSummary> {
+    const { titleProtection, ...publicChat } = chat;
+    return archivedStandaloneChatSummarySchema.parse({
       ...publicChat,
       title: await decodePrivateDisplayLabelForClient({
         identity: this.identity(),

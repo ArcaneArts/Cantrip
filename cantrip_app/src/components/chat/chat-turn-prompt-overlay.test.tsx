@@ -13,7 +13,9 @@ function message(text: string): ChatMessage {
   return {
     id: "user-1",
     chatId: "chat-1",
+    contextKind: "project",
     worktreeId: "worktree-primary",
+    scratchRootId: null,
     executionLaneId: null,
     sequence: 1,
     role: "user",

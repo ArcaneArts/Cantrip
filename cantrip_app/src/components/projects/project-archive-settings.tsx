@@ -48,6 +48,7 @@ export function ProjectArchiveSettings({
   const restore = useMutation({
     mutationFn: (chatId: string) => restoreArchivedChat(chatId),
     onSuccess: (chat) => {
+      if (chat.contextKind === "standalone") return;
       void queryClient.invalidateQueries({ queryKey: ["chats", projectId] });
       void queryClient.invalidateQueries({
         queryKey: ["archived-chats", projectId],

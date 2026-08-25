@@ -40,8 +40,8 @@ export interface ChatTranscriptEntriesProps {
   onForkMessage(messageId: string): void;
   onOpenFile(path: string): void;
   onSubmitEditedMessage(message: ChatMessage, event?: FormEvent): void;
-  onViewSubagent(agentKey: string): void;
-  onViewTrajectory(turnKey: string): void;
+  onViewSubagent?: (agentKey: string) => void;
+  onViewTrajectory?: (turnKey: string) => void;
 }
 
 export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
@@ -65,6 +65,7 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
 }: ChatTranscriptEntriesProps) {
   return entries.map((transcriptEntry) => {
     if (transcriptEntry.type === "agent") {
+      if (!onViewSubagent) return null;
       return (
         <SubagentLifecycleCard
           agent={transcriptEntry.agent}
