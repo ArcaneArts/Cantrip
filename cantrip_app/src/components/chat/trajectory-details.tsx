@@ -191,6 +191,13 @@ function Summary({ event }: { event: TrajectoryEvent }) {
       {event.diagnosticId ? (
         <DetailField label="Diagnostic" value={event.diagnosticId} />
       ) : null}
+      {event.metrics?.map((field) => (
+        <DetailField
+          key={`${field.label}:${field.value}`}
+          label={field.label}
+          value={field.value}
+        />
+      ))}
       {activitySummaryFields(event).map((field) => (
         <DetailField
           key={`${field.label}:${field.value}`}

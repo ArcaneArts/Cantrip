@@ -174,4 +174,39 @@ describe("AgentTrajectory", () => {
     expect(markup).toContain("Historical turn unavailable");
     expect(markup).toContain("Back to current");
   });
+
+  it("renders inference prefill as a hot-pink trajectory event and timeline bar", () => {
+    const progress = {
+      kind: "progress" as const,
+      requestId: "user-prefill",
+      cycle: 1,
+      sequence: 1,
+      phase: "prefill" as const,
+      fractionComplete: 0.75,
+      completedTokens: 36_000,
+      totalTokens: 48_000,
+      precision: "estimated" as const,
+      source: "provider-observer" as const,
+      startedAt: new Date(1_100).toISOString(),
+      observedAt: new Date(2_000).toISOString(),
+    };
+    const markup = renderToStaticMarkup(
+      <AgentTrajectory
+        active
+        inferenceProgress={progress}
+        inferenceProgressHistory={[{ completedAt: null, progress }]}
+        messages={[
+          message("user-prefill", 1, "user", 1_000, [
+            { type: "text", text: "Prefill this" },
+          ]),
+        ]}
+        visible
+      />,
+    );
+
+    expect(markup).toContain('data-event-kind="inferenceProgress"');
+    expect(markup).toContain("Prefilling prompt 75%");
+    expect(markup).toContain("bg-[#ff168f]");
+    expect(markup).toContain("fill-[#ff168f]");
+  });
 });

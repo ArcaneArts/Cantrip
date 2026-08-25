@@ -762,4 +762,75 @@ describe("trajectory projection", () => {
       }).map((event) => event.kind),
     ).toEqual(["webSearch"]);
   });
+
+  it("replaces the generic running summary with live prefill timing and retains the completed trace", () => {
+    const messages = [
+      message("request-one", 1, "user", 1_000, [
+        { type: "text", text: "Inspect this project" },
+      ]),
+      activityMessage("turn-running", 2, 1_100, {
+        type: "turnSummary",
+        id: "turn-summary",
+        status: "running",
+        durationMs: null,
+        startedAt: 1,
+        completedAt: null,
+      }),
+    ];
+    const progress = {
+      kind: "progress" as const,
+      requestId: "request-one",
+      cycle: 1,
+      sequence: 2,
+      phase: "prefill" as const,
+      fractionComplete: 36_000 / 47_000,
+      completedTokens: 36_000,
+      totalTokens: 47_000,
+      precision: "estimated" as const,
+      source: "provider-observer" as const,
+      startedAt: new Date(1_500).toISOString(),
+      observedAt: new Date(4_500).toISOString(),
+    };
+    const live = projectTrajectory({
+      active: true,
+      inferenceProgress: progress,
+      inferenceProgressHistory: [{ completedAt: null, progress }],
+      messages,
+      nowMs: 5_500,
+    });
+
+    expect(live?.events.some((event) => event.kind === "turnSummary")).toBe(
+      false,
+    );
+    expect(
+      live?.events.find((event) => event.kind === "inferenceProgress"),
+    ).toMatchObject({
+      label: "Prefilling prompt 76%",
+      lane: "model",
+      preview: "36k of 47k prompt tokens · 4s · 12,000 tok/s observed",
+      status: "running",
+      timingQuality: "exact",
+    });
+
+    const completed = projectTrajectory({
+      active: true,
+      inferenceProgress: null,
+      inferenceProgressHistory: [
+        { completedAt: new Date(6_500).toISOString(), progress },
+      ],
+      messages,
+      nowMs: 7_500,
+    });
+    expect(
+      completed?.events.find((event) => event.kind === "turnSummary")?.status,
+    ).toBe("running");
+    expect(
+      completed?.events.find((event) => event.kind === "inferenceProgress"),
+    ).toMatchObject({
+      completedAtMs: 6_500,
+      label: "Prompt prefill completed",
+      status: "completed",
+      updatedAtMs: 6_500,
+    });
+  });
 });

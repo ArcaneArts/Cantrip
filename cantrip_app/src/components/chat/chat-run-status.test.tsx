@@ -107,6 +107,7 @@ describe("ChatRunStatus", () => {
         inferenceProgress={{
           kind: "progress",
           requestId: "message-one",
+          cycle: 1,
           sequence: 2,
           phase: "prefill",
           fractionComplete: 10_240 / 46_492,
@@ -114,6 +115,7 @@ describe("ChatRunStatus", () => {
           totalTokens: 46_492,
           precision: "estimated",
           source: "provider-observer",
+          startedAt: "2026-08-24T11:59:00.000Z",
           observedAt: "2026-08-24T12:00:00.000Z",
         }}
         syncingCodeGraph={false}
@@ -122,7 +124,11 @@ describe("ChatRunStatus", () => {
       />,
     );
 
-    expect(markup).toContain("Prefilling 22%...");
+    expect(markup).toContain("Prefilling 22%");
+    expect(markup).not.toContain("Prefilling 22%...");
+    expect(markup).toContain("10k of 46k prompt tokens");
+    expect(markup).toContain('role="progressbar"');
+    expect(markup).toContain('stroke-dasharray="22 100"');
     expect(markup).toContain("chat-working-shimmer");
   });
 
@@ -134,6 +140,7 @@ describe("ChatRunStatus", () => {
         inferenceProgress={{
           kind: "progress",
           requestId: "message-one",
+          cycle: 1,
           sequence: 0,
           phase: "prefill",
           fractionComplete: null,
@@ -141,6 +148,7 @@ describe("ChatRunStatus", () => {
           totalTokens: null,
           precision: "indeterminate",
           source: "provider-observer",
+          startedAt: "2026-08-24T12:00:00.000Z",
           observedAt: "2026-08-24T12:00:00.000Z",
         }}
         syncingCodeGraph={false}
@@ -149,7 +157,8 @@ describe("ChatRunStatus", () => {
       />,
     );
 
-    expect(markup).toContain("Prefilling...");
+    expect(markup).toContain("Prefilling");
+    expect(markup).not.toContain("Prefilling...");
     expect(markup).not.toContain("%");
   });
 });

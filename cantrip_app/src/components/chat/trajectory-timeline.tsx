@@ -176,7 +176,9 @@ function accessibleDuration(durationMs: number): string {
   return `${(durationMs / 1_000).toFixed(1)} seconds`;
 }
 
-function laneClass(lane: TrajectoryLane): string {
+function laneClass(event: TrajectoryEvent): string {
+  if (event.kind === "inferenceProgress") return "fill-[#ff168f]";
+  const { lane } = event;
   if (lane === "input") return "fill-sky-500";
   if (lane === "model") return "fill-violet-500";
   if (lane === "changes") return "fill-emerald-500";
@@ -305,7 +307,7 @@ export function TrajectoryTimeline({
               <rect
                 aria-label={label}
                 className={cn(
-                  laneClass(event.lane),
+                  laneClass(event),
                   "outline-none focus-visible:stroke-foreground",
                   event.status === "running"
                     ? "opacity-100 motion-safe:animate-pulse"

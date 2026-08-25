@@ -323,6 +323,10 @@ import {
 } from "@/lib/chat-resource-refresh";
 import { scopedChatComposerDraftPersistence } from "@/lib/chat-composer-draft-persistence";
 import { scheduleWhenIdle } from "@/lib/chat-message-history";
+import {
+  inferenceProgressHistoryQueryKey,
+  type InferenceProgressTrace,
+} from "@/lib/inference-progress-history";
 import { useChatMessageHistory } from "@/lib/use-chat-message-history";
 import { codeGraphChatRefreshIntervalMs } from "@/lib/codegraph-refresh";
 import { Badge } from "@/components/ui/badge";
@@ -1565,6 +1569,13 @@ function ChatTranscript({
     initialData: null,
     queryFn: async () => null,
     queryKey: ["inference-progress", chat.id],
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const inferenceProgressHistory = useQuery<InferenceProgressTrace[]>({
+    enabled: false,
+    initialData: [],
+    queryFn: async () => [],
+    queryKey: inferenceProgressHistoryQueryKey(chat.id),
     staleTime: Number.POSITIVE_INFINITY,
   });
   const taskState = useQuery({
@@ -3840,6 +3851,8 @@ function ChatTranscript({
         ) : (
           <AgentInspectContent
             active={inspectActive}
+            inferenceProgress={inferenceProgress.data}
+            inferenceProgressHistory={inferenceProgressHistory.data}
             integratedPanelHeader
             messages={messages.data ?? []}
             onOpenSubagent={viewSubagent}

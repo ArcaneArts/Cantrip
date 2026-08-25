@@ -13805,6 +13805,7 @@ export const inferenceProgressSnapshotSchema = z
   .object({
     kind: z.literal("progress"),
     requestId: z.string().trim().min(1).max(200),
+    cycle: z.number().int().positive().safe(),
     sequence: z.number().int().nonnegative().safe(),
     phase: inferenceProgressPhaseSchema,
     fractionComplete: z.number().min(0).max(1).nullable(),
@@ -13812,6 +13813,7 @@ export const inferenceProgressSnapshotSchema = z
     totalTokens: z.number().int().positive().safe().nullable(),
     precision: inferenceProgressPrecisionSchema,
     source: inferenceProgressSourceSchema,
+    startedAt: z.iso.datetime(),
     observedAt: z.iso.datetime(),
   })
   .strict()
@@ -13854,6 +13856,13 @@ export const inferenceProgressSnapshotSchema = z
         path: ["completedTokens"],
       });
     }
+    if (Date.parse(progress.startedAt) > Date.parse(progress.observedAt)) {
+      context.addIssue({
+        code: "custom",
+        message: "Inference progress cannot be observed before it starts.",
+        path: ["startedAt"],
+      });
+    }
   });
 
 export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
@@ -13862,6 +13871,7 @@ export const inferenceProgressUpdateSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("clear"),
       requestId: z.string().trim().min(1).max(200),
+      cycle: z.number().int().positive().safe(),
       sequence: z.number().int().nonnegative().safe(),
       observedAt: z.iso.datetime(),
     })
