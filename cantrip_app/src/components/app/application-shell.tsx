@@ -10317,6 +10317,7 @@ export function App() {
                 )}
               >
                 <ProjectTasksDashboard
+                  active={activeProjectOverviewSection === "tasks"}
                   activeTaskChatId={
                     projectTaskChatIds.get(selectedProject.id) ?? null
                   }
