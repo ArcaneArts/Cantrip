@@ -17,16 +17,17 @@ work surrounding the live paths:
 - remote-surface frames are copied, decoded, validated, and encoded more than once;
 - common server reads hydrate entire resources or issue per-resource queries when they need
   only ownership or preference fields;
-- healthy workers repeat Git subprocesses, cryptography, filesystem writes, and CodeGraph
-  sync attempts when nothing changed;
+- healthy workers repeat Git subprocesses, cryptography, and filesystem writes when nothing
+  changed;
 - several recovery/reconnect/service loops lack single-flight guards or bounded jittered
   backoff;
 - bounded buffers use full sorting, rebuilding, or Array.shift eviction in their hot paths.
 
-P0-06 has since been fixed and is retained below as completed historical context. The first
-implementation wave should target the remaining P0 items. They are source-evident,
-high-upside, and can be validated without changing product semantics. P1 items should follow
-with focused benchmarks. P2 items require production-shaped measurement before design work.
+P0-06 and P0-12 have since been fixed and are retained below as completed historical
+context. The first implementation wave should target the remaining P0 items. They are
+source-evident, high-upside, and can be validated without changing product semantics. P1
+items should follow with focused benchmarks. P2 items require production-shaped measurement
+before design work.
 
 | Rank | Opportunity                                                  | Expected gain       | Risk       | Why it should move first                                                        |
 | ---- | ------------------------------------------------------------ | ------------------- | ---------- | ------------------------------------------------------------------------------- |
@@ -41,7 +42,7 @@ with focused benchmarks. P2 items require production-shaped measurement before d
 | 9    | P0-09 make log ingestion incremental and export lazy         | high                | low        | removes O(N log N) work per live log batch                                      |
 | 10   | P0-10 make live chat overlay merging incremental             | high                | medium     | avoids O(N log N) history rebuilds on streamed message updates                  |
 | 11   | P0-11 parallelize bounded workspace snapshot metadata reads  | high                | low        | removes one filesystem round trip per changed path from turn boundaries         |
-| 12   | P0-12 skip proven no-op CodeGraph syncs                      | high                | low        | removes periodic external work for idle indexed projects                        |
+| 12   | P0-12 [resolved] skip proven no-op CodeGraph syncs           | resolved            | —          | clean reconciliation now performs status only                                   |
 | 13   | P0-13 add capped jittered reconnect and crash backoff        | high during failure | low        | prevents worker herds and endless five-second service crash loops               |
 | 14   | P0-14 make worker shutdown failure-tolerant                  | high reliability    | low-medium | prevents one failed close from wedging restart and later cleanup                |
 
@@ -431,30 +432,43 @@ lstat for statuses that unambiguously mean deletion.
 Validation: compare snapshot bytes for 1, 100, and 5,000 changed paths with delayed lstat.
 Assert bounded descriptors/concurrency and lower wall time.
 
-### P0-12 — opportunity — Skip CodeGraph sync when fresh status proves no work exists
+### P0-12 — resolved — Skip CodeGraph sync when fresh status proves no work exists
 
+- Status: resolved 2026-08-24
 - Category: REDUNDANT_COMPUTATION
 - Expected gain: high for enabled idle projects
-- Risk: low
-- Complexity: low
+- Original risk: low
+- Original complexity: low
 - Confidence: high
 
-Evidence:
+Original evidence:
 
 - cantrip_worker/src/codegraph/supervisor.ts:29-31 and 479-485 schedule each project every
   two minutes.
 - Lines 798-831 and 896-932 perform status, sync, then status even when the first fresh
   status says pendingChanges is zero; logging recognizes the no-change case.
 
-Hypothesis: idle indexed projects repeatedly invoke an unnecessary external sync.
+Original hypothesis: idle indexed projects repeatedly invoke an unnecessary external sync.
 
-Suggested change: for reconciliation action sync, return successfully after the first
-status when initialized, pendingChanges is zero, and reindex is not recommended. Preserve
-unknown/change/init/reindex behavior.
+Resolution:
 
-Validation: fake-executor tests should show one status and no sync for no-change, with all
-other paths unchanged. Modify a file with watchers disabled and verify reconciliation still
-syncs.
+- cantrip_worker/src/codegraph/supervisor.ts:807-841 now returns through the normal success
+  path after the fresh status when the action is sync, the project is initialized,
+  pendingChanges is zero, and reindex is not recommended.
+- cantrip_worker/test/codegraph-supervisor.test.ts:186-244 proves a clean sync performs only
+  status while unknown pending state retains status/sync/status and a reindex recommendation
+  retains status/index/status.
+- cantrip_worker/test/codegraph-supervisor.test.ts:246-274 disables the filesystem watcher,
+  advances the two-minute reconciliation interval, and proves a pending change still
+  performs status/sync/status.
+
+Deterministic work-count proof: the clean fake-executor path falls from three external
+operations (status, sync, status) to one (status), eliminating the sync and verification
+status calls while preserving the ready state and completed job acknowledgement.
+
+Regression guardrail: retain the focused CodeGraph supervisor test and require unknown,
+changed, uninitialized, rebuild, and reindex paths to continue executing their existing
+fallback commands.
 
 ### P0-13 — opportunity — Add capped jittered backoff to worker reconnects and crashing services
 
@@ -1021,9 +1035,9 @@ Before behavior changes, add or reuse focused counters and deterministic fixture
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement the safe slices of P0-02, P0-05, P0-08, P0-09, P0-11, P0-12, P0-13, P1-01,
-P1-06, P1-07, P1-15, P1-16, and P1-18. These mostly remove duplicate work or replace an
-equivalent data structure.
+Implement the safe slices of P0-02, P0-05, P0-08, P0-09, P0-11, P0-13, P1-01, P1-06,
+P1-07, P1-15, P1-16, and P1-18. These mostly remove duplicate work or replace an equivalent
+data structure.
 
 ### Wave 2 — bounded batching, memoization, and ownership
 

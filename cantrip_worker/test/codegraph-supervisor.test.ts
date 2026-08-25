@@ -18,7 +18,7 @@ import type {
   CodeGraphObservationTarget,
   CodeGraphProjectStatus,
 } from "@cantrip/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CodeGraphProjectSupervisor } from "../src/codegraph/supervisor.js";
 
@@ -26,6 +26,7 @@ const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(
     directories
       .splice(0)
@@ -53,6 +54,8 @@ async function gitProject(prefix: string): Promise<{
 function fakeCodeGraph() {
   const initialized = new Set<string>();
   const calls: Array<{ args: string[]; root: string }> = [];
+  const pendingChanges = new Map<string, number | null>();
+  const reindexRecommended = new Set<string>();
   let active = 0;
   let maximumActive = 0;
   const execute = async (
@@ -68,6 +71,13 @@ function fakeCodeGraph() {
     if (operation === "init" || operation === "index") {
       initialized.add(options.cwd);
     }
+    if (operation === "init" || operation === "index" || operation === "sync") {
+      pendingChanges.set(options.cwd, 0);
+      reindexRecommended.delete(options.cwd);
+    }
+    const pending = pendingChanges.has(options.cwd)
+      ? pendingChanges.get(options.cwd)
+      : 0;
     const stdout =
       operation === "status"
         ? JSON.stringify({
@@ -79,8 +89,14 @@ function fakeCodeGraph() {
             fileCount: initialized.has(options.cwd) ? 4 : undefined,
             nodeCount: initialized.has(options.cwd) ? 12 : undefined,
             edgeCount: initialized.has(options.cwd) ? 18 : undefined,
-            pendingChanges: { added: 0, modified: 0, removed: 0 },
-            index: { reindexRecommended: false, state: "complete" },
+            pendingChanges:
+              pending === null
+                ? undefined
+                : { added: pending, modified: 0, removed: 0 },
+            index: {
+              reindexRecommended: reindexRecommended.has(options.cwd),
+              state: "complete",
+            },
           })
         : "";
     active -= 1;
@@ -91,6 +107,8 @@ function fakeCodeGraph() {
     execute,
     initialized,
     maximumActive: () => maximumActive,
+    pendingChanges,
+    reindexRecommended,
   };
 }
 
@@ -151,6 +169,7 @@ describe("CodeGraph project supervisor", () => {
       readFile(path.join(project.gitCommonDir, "info", "exclude"), "utf8"),
     ).resolves.toContain("/.codegraph-cantrip/");
 
+    fake.pendingChanges.set(project.root, 1);
     supervisor.resync(project.root);
     await supervisor.waitForIdle();
     expect(fake.calls.map(({ args }) => args[0]).slice(-3)).toEqual([
@@ -162,6 +181,96 @@ describe("CodeGraph project supervisor", () => {
     await supervisor.configure([]);
     expect(supervisor.statuses()).toEqual([]);
     supervisor.close();
+  });
+
+  it("skips clean syncs while preserving unknown and reindex fallbacks", async () => {
+    const project = await gitProject("cantrip-codegraph-noop-sync-");
+    const fake = fakeCodeGraph();
+    fake.initialized.add(project.root);
+    const projectId = "00000000-0000-4000-8000-000000000001";
+    const worktreeId = "primary:noop-sync";
+    const supervisor = new CodeGraphProjectSupervisor({
+      authorize: async () => [project],
+      command: "/managed/codegraph",
+      execute: fake.execute,
+    });
+
+    await supervisor.configure([
+      codeGraphTarget(project.root, { projectId, worktreeId }),
+    ]);
+    await supervisor.waitForIdle();
+
+    const cleanStart = fake.calls.length;
+    const acknowledgement = supervisor.requestAction(
+      projectId,
+      worktreeId,
+      "sync",
+    );
+    await supervisor.waitForIdle();
+    expect(fake.calls.slice(cleanStart).map(({ args }) => args[0])).toEqual([
+      "status",
+    ]);
+    expect(supervisor.publicStatus(projectId, worktreeId)).toEqual(
+      expect.objectContaining({
+        state: "ready",
+        pendingChanges: 0,
+        job: expect.objectContaining({
+          id: acknowledgement.jobId,
+          state: "completed",
+        }),
+      }),
+    );
+
+    fake.pendingChanges.set(project.root, null);
+    const unknownStart = fake.calls.length;
+    supervisor.resync(project.root);
+    await supervisor.waitForIdle();
+    expect(fake.calls.slice(unknownStart).map(({ args }) => args[0])).toEqual([
+      "status",
+      "sync",
+      "status",
+    ]);
+
+    fake.reindexRecommended.add(project.root);
+    const reindexStart = fake.calls.length;
+    supervisor.resync(project.root);
+    await supervisor.waitForIdle();
+    expect(fake.calls.slice(reindexStart).map(({ args }) => args[0])).toEqual([
+      "status",
+      "index",
+      "status",
+    ]);
+    supervisor.close();
+  });
+
+  it("reconciles pending changes when the filesystem watcher is unavailable", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const project = await gitProject("cantrip-codegraph-reconcile-fallback-");
+    const fake = fakeCodeGraph();
+    const supervisor = new CodeGraphProjectSupervisor({
+      authorize: async () => [project],
+      command: "/managed/codegraph",
+      execute: fake.execute,
+      watch: () => {
+        throw new Error("watching unavailable");
+      },
+    });
+
+    try {
+      await supervisor.configure([codeGraphTarget(project.root)]);
+      await supervisor.waitForIdle();
+      fake.pendingChanges.set(project.root, 1);
+      const reconcileStart = fake.calls.length;
+
+      vi.advanceTimersByTime(2 * 60_000);
+      await supervisor.waitForIdle();
+
+      expect(
+        fake.calls.slice(reconcileStart).map(({ args }) => args[0]),
+      ).toEqual(["status", "sync", "status"]);
+    } finally {
+      supervisor.close();
+    }
   });
 
   it("rebuilds an initialized worktree and preserves only one exclude marker", async () => {
@@ -298,6 +407,7 @@ describe("CodeGraph project supervisor", () => {
     await supervisor.configure([codeGraphTarget(project.root)]);
     await supervisor.waitForIdle();
     const callsBeforeChange = fake.calls.length;
+    fake.pendingChanges.set(project.root, 2);
     listener?.("change", "src/first.ts");
     listener?.("change", "src/second.ts");
     await new Promise((resolve) => setTimeout(resolve, 15));
