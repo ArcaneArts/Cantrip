@@ -2,6 +2,7 @@ import type { TaskDetail } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
+  projectTaskDashboardQueriesEnabled,
   projectTaskWorkloadPresentation,
   sortProjectTaskWorkload,
   type ProjectTaskWorkloadItem,
@@ -94,6 +95,12 @@ function dispatch(
 }
 
 describe("project Task workload", () => {
+  it("loads dashboard-only queries only while the task list is visible", () => {
+    expect(projectTaskDashboardQueriesEnabled(true, null)).toBe(true);
+    expect(projectTaskDashboardQueriesEnabled(false, null)).toBe(false);
+    expect(projectTaskDashboardQueriesEnabled(true, "active-task")).toBe(false);
+  });
+
   it("puts attention before running and queued while sorting each band by priority then newest creation", () => {
     const items = [
       item(

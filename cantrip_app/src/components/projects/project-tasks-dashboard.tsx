@@ -451,7 +451,15 @@ function WorkloadList({
   );
 }
 
+export function projectTaskDashboardQueriesEnabled(
+  active: boolean,
+  activeTaskChatId: string | null,
+): boolean {
+  return active && activeTaskChatId === null;
+}
+
 export function ProjectTasksDashboard({
+  active,
   activeTaskChatId,
   chats,
   creatingTask,
@@ -465,6 +473,7 @@ export function ProjectTasksDashboard({
   taskCreationError,
   workers,
 }: {
+  active: boolean;
   activeTaskChatId: string | null;
   chats: ChatSummary[];
   creatingTask: boolean;
@@ -480,20 +489,27 @@ export function ProjectTasksDashboard({
 }) {
   const queryClient = useQueryClient();
   const live = useAppLiveStatus() === "live";
+  const dashboardQueriesEnabled = projectTaskDashboardQueriesEnabled(
+    active,
+    activeTaskChatId,
+  );
   const workload = useQuery({
+    enabled: dashboardQueriesEnabled,
     queryKey: ["project-task-workload", projectId],
     queryFn: () => getProjectTaskWorkload(projectId),
-    refetchInterval: live ? false : 3_000,
+    refetchInterval: dashboardQueriesEnabled && !live ? 3_000 : false,
   });
   const taskWorkers = useQuery({
+    enabled: dashboardQueriesEnabled,
     queryKey: ["task-workers"],
     queryFn: getTaskWorkers,
-    refetchInterval: live ? false : 5_000,
+    refetchInterval: dashboardQueriesEnabled && !live ? 5_000 : false,
   });
   const pauseState = useQuery({
+    enabled: dashboardQueriesEnabled,
     queryKey: ["project-task-pause", projectId],
     queryFn: () => getProjectTaskPauseState(projectId),
-    refetchInterval: live ? false : 3_000,
+    refetchInterval: dashboardQueriesEnabled && !live ? 3_000 : false,
   });
   const pauseMutation = useMutation({
     mutationFn: async (paused: boolean) => {
