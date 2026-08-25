@@ -7,12 +7,16 @@ import {
   canReadLocalServerLogs,
   filterServiceLogRecords,
   formatServiceLogRecord,
+  formatServiceLogRecords,
+  MAX_VIEWER_LOG_BYTES,
   MAX_VIEWER_LOG_RECORDS,
+  removeServiceLogRecords,
   restoredLogScrollTop,
   scheduleLogViewportScroll,
   shouldJumpToNewestLogs,
   shouldLoadOlderLogs,
   shouldStopFollowingLogs,
+  type ViewerLogRecord,
 } from "./log-viewer-model";
 
 const localConnection: ServerConnection = {
@@ -39,6 +43,41 @@ function record(
     level,
     message,
   };
+}
+
+function legacyContextText(context: unknown): string {
+  if (context === undefined || context === null) return "";
+  try {
+    return JSON.stringify(context);
+  } catch {
+    return "[context unavailable]";
+  }
+}
+
+function legacyAppendServiceLogRecords(
+  previous: readonly ViewerLogRecord[],
+  incoming: readonly ServiceLogRecord[],
+  transport: string,
+): ViewerLogRecord[] {
+  const byKey = new Map(previous.map((item) => [item.viewerKey, item]));
+  for (const item of incoming) {
+    const viewerKey = `${transport}:${item.cursor}`;
+    const viewerBytes =
+      item.message.length + legacyContextText(item.context).length + 160;
+    byKey.set(viewerKey, { ...item, viewerBytes, viewerKey });
+  }
+  const records = [...byKey.values()].sort((left, right) => {
+    const time = left.timestamp.localeCompare(right.timestamp);
+    return time || left.viewerKey.localeCompare(right.viewerKey);
+  });
+  let bytes = records.reduce((total, item) => total + item.viewerBytes, 0);
+  while (
+    records.length > MAX_VIEWER_LOG_RECORDS ||
+    bytes > MAX_VIEWER_LOG_BYTES
+  ) {
+    bytes -= records.shift()?.viewerBytes ?? 0;
+  }
+  return records;
 }
 
 describe("service log viewer model", () => {
@@ -211,6 +250,50 @@ describe("service log viewer model", () => {
     ]);
   });
 
+  it("matches the legacy ordering and replacement semantics for mixed batches", () => {
+    const batches = [
+      {
+        records: Array.from({ length: 120 }, (_, index) => record(index + 1)),
+        transport: "remote:worker",
+      },
+      {
+        records: Array.from({ length: 30 }, (_, index) => record(index + 121)),
+        transport: "remote:worker",
+      },
+      {
+        records: [
+          record(140, "warn", "replacement"),
+          record(0, "debug", "older backfill"),
+          record(151),
+          record(151, "error", "last duplicate wins"),
+        ],
+        transport: "remote:worker",
+      },
+      {
+        records: [record(1, "fatal", "local fallback"), record(152)],
+        transport: "local:worker",
+      },
+    ] satisfies {
+      records: ServiceLogRecord[];
+      transport: string;
+    }[];
+    let optimized: readonly ViewerLogRecord[] = [];
+    let legacy: readonly ViewerLogRecord[] = [];
+    for (const batch of batches) {
+      optimized = appendServiceLogRecords(
+        optimized,
+        batch.records,
+        batch.transport,
+      );
+      legacy = legacyAppendServiceLogRecords(
+        legacy,
+        batch.records,
+        batch.transport,
+      );
+      expect(optimized).toEqual(legacy);
+    }
+  });
+
   it("bounds the client viewer even when a source returns a large history", () => {
     const records = Array.from(
       { length: MAX_VIEWER_LOG_RECORDS + 10 },
@@ -219,6 +302,18 @@ describe("service log viewer model", () => {
     const retained = appendServiceLogRecords([], records, "remote:worker");
     expect(retained).toHaveLength(MAX_VIEWER_LOG_RECORDS);
     expect(retained[0]?.cursor).toBe(11);
+  });
+
+  it("preserves the byte limit without repeated head removal", () => {
+    const records = Array.from({ length: 8 }, (_, index) =>
+      record(index + 1, "info", "x".repeat(1024 * 1024)),
+    );
+    const optimized = appendServiceLogRecords([], records, "remote:worker");
+    const legacy = legacyAppendServiceLogRecords([], records, "remote:worker");
+    expect(optimized).toEqual(legacy);
+    expect(
+      optimized.reduce((total, item) => total + item.viewerBytes, 0),
+    ).toBeLessThanOrEqual(MAX_VIEWER_LOG_BYTES);
   });
 
   it("filters by severity and formatted text", () => {
@@ -234,6 +329,28 @@ describe("service log viewer model", () => {
     expect(filterServiceLogRecords(records, "", "warn")).toHaveLength(1);
     expect(formatServiceLogRecord(records[1]!)).toContain(
       "ERROR socket failed",
+    );
+    expect(filterServiceLogRecords(records, "", "trace")).toBe(records);
+    expect(formatServiceLogRecords(records)).toBe(
+      records.map(formatServiceLogRecord).join("\n"),
+    );
+  });
+
+  it("removes visible records while preserving incremental append behavior", () => {
+    const records = appendServiceLogRecords(
+      [],
+      [record(1), record(2), record(3)],
+      "remote:worker",
+    );
+    const retained = removeServiceLogRecords(
+      records,
+      new Set(["remote:worker:2"]),
+    );
+    expect(retained.map(({ cursor }) => cursor)).toEqual([1, 3]);
+    expect(
+      appendServiceLogRecords(retained, [record(4)], "remote:worker"),
+    ).toEqual(
+      legacyAppendServiceLogRecords(retained, [record(4)], "remote:worker"),
     );
   });
 });
