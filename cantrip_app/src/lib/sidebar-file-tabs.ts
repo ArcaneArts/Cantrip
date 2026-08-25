@@ -117,6 +117,25 @@ export function preferredSidebarExplorer({
   );
 }
 
+export function dedicatedSidebarExplorer({
+  desiredWorktreeId,
+  explorers,
+  layout,
+}: {
+  desiredWorktreeId: string | null;
+  explorers: readonly ExplorerSummary[];
+  layout: ProjectTabLayoutSummary | null | undefined;
+}): ExplorerSummary | null {
+  const tabbed = tabbedExplorerIds(layout);
+  return (
+    explorers.find(
+      (explorer) =>
+        !tabbed.has(explorer.id) &&
+        (!desiredWorktreeId || explorer.worktreeId === desiredWorktreeId),
+    ) ?? null
+  );
+}
+
 export function primaryWorktreeId(
   worktrees: readonly ProjectWorktreeSummary[],
 ): string | null {

@@ -66,7 +66,6 @@ const explorerEditorPrewarmPath = ".cantrip-editor-prewarm";
 let explorerWindowUnloadCleanupInstalled = false;
 let explorerWindowIdentitySubscriptionInstalled = false;
 let currentExplorerEditorIdentityEpoch: string | null = null;
-let desiredExplorerEditorWarmKey: string | null = null;
 
 type ExplorerEditorWarmSlot = {
   broker: DesktopExplorerWindowBroker;
@@ -406,7 +405,6 @@ function explorerEditorIdentityEpoch(): {
 }
 
 function disposeExplorerEditorIdentityEpoch(): void {
-  desiredExplorerEditorWarmKey = null;
   if (explorerEditorWarmState) {
     retireExplorerEditorWarmState(explorerEditorWarmState);
     explorerEditorWarmState = null;
@@ -467,7 +465,6 @@ function installExplorerWindowUnloadCleanup(): void {
   window.addEventListener(
     "pagehide",
     () => {
-      desiredExplorerEditorWarmKey = null;
       if (explorerEditorWarmState) {
         retireExplorerEditorWarmState(explorerEditorWarmState);
         explorerEditorWarmState = null;
@@ -704,7 +701,6 @@ export async function prewarmDesktopExplorerFile(
     return;
   }
   const key = desktopExplorerEditorWarmKey(context, identity.key);
-  desiredExplorerEditorWarmKey = key;
   if (explorerEditorWarmState?.key === key) {
     await explorerEditorWarmState.promise.catch(() => undefined);
     return;
@@ -741,7 +737,6 @@ export async function prewarmDesktopExplorerFile(
 }
 
 export function clearDesktopExplorerFilePrewarm(): void {
-  desiredExplorerEditorWarmKey = null;
   if (!explorerEditorWarmState) return;
   retireExplorerEditorWarmState(explorerEditorWarmState);
   explorerEditorWarmState = null;
@@ -893,12 +888,6 @@ async function openDesktopExplorerFileOperation(
         subsystem: "explorer",
         surfaceId: target.explorerId,
       });
-      if (
-        desiredExplorerEditorWarmKey ===
-        desktopExplorerEditorWarmKey(context, identityEpoch)
-      ) {
-        void prewarmDesktopExplorerFile(context);
-      }
       return "created";
     } catch {
       await closeExplorerEditorWarmSlot(warmSlot);
@@ -945,12 +934,6 @@ async function openDesktopExplorerFileOperation(
       await closeWindow(label).catch(() => undefined);
       await disposeBroker();
       throw new Error("Explorer editor identity changed while opening.");
-    }
-    if (
-      desiredExplorerEditorWarmKey ===
-      desktopExplorerEditorWarmKey(context, identityEpoch)
-    ) {
-      void prewarmDesktopExplorerFile(context);
     }
     return result;
   } catch (error) {

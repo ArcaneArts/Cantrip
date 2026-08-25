@@ -9,14 +9,18 @@ export function RetainedExplorerCodeEditor({
   activePath,
   appearance,
   explorerId,
+  prewarm,
   retained,
+  workerOnline,
   workerId,
   worktreeId,
 }: {
   activePath: string | null;
   appearance: CodeAppearance;
   explorerId: string;
+  prewarm: boolean;
   retained: boolean;
+  workerOnline: boolean;
   workerId: string;
   worktreeId: string;
 }) {
@@ -41,7 +45,7 @@ export function RetainedExplorerCodeEditor({
   }, [activePath, retained, retainedPath]);
 
   const path = retained ? (activePath ?? retainedPath) : null;
-  if (!path) return null;
+  if (!retained || (!prewarm && !path)) return null;
 
   const visible = activePath !== null;
   return (
@@ -54,6 +58,7 @@ export function RetainedExplorerCodeEditor({
         appearance={appearance}
         explorerId={explorerId}
         path={path}
+        workerOnline={workerOnline}
         workerId={workerId}
         worktreeId={worktreeId}
       />

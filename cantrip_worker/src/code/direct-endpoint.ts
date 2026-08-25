@@ -15,6 +15,7 @@ import {
   codeOpenSettingsRequestSchema,
   codeOpenSettingsResultSchema,
   codePresentationUpdateSchema,
+  codeThemeUpdateSchema,
   isForwardableCodeWebSocketCloseCode,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
@@ -67,6 +68,7 @@ const BASE_PATH = "/code";
 const OPEN_FILE_PATH = `${BASE_PATH}/_cantrip/open-file`;
 const OPEN_SETTINGS_PATH = `${BASE_PATH}/_cantrip/open-settings`;
 const PRESENTATION_PATH = `${BASE_PATH}/_cantrip/presentation`;
+const THEME_PATH = `${BASE_PATH}/_cantrip/theme`;
 const MAX_CONTROL_REQUEST_BYTES = 16 * 1_024;
 const MAX_BUFFERED_BYTES = 8 * 1_024 * 1_024;
 const MAX_ENDPOINT_DIAGNOSTIC_TRACES = 128;
@@ -506,6 +508,10 @@ export class CodeDirectEndpointManager {
       void this.#setPresentation(context, request, response);
       return;
     }
+    if (pathname === THEME_PATH) {
+      void this.#setTheme(context, request, response);
+      return;
+    }
     if (!this.#validPath(request.url)) {
       response.writeHead(404, { "cache-control": "no-store" }).end("Not found");
       return;
@@ -872,6 +878,78 @@ export class CodeDirectEndpointManager {
           error instanceof Error
             ? error.message
             : "Cantrip Code could not enter editor-only mode.",
+      });
+    }
+  }
+
+  async #setTheme(
+    context: CodeEndpointContext,
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    const { sessionId } = context;
+    const sessionGeneration = this.#sessionGenerations.get(sessionId) ?? 0;
+    if (request.method === "OPTIONS") {
+      writeControlResponse(response, 204);
+      return;
+    }
+    if (request.method !== "POST") {
+      writeControlResponse(response, 405, {
+        error: "Cantrip Code theme requests require POST.",
+      });
+      return;
+    }
+    let body: unknown;
+    try {
+      body = await readControlRequest(request);
+    } catch {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code requires a valid JSON request body.",
+      });
+      return;
+    }
+    const input = codeThemeUpdateSchema.safeParse(body);
+    if (!input.success || input.data.themeMode !== "follow-cantrip") {
+      writeControlResponse(response, 400, {
+        error: "Cantrip Code only supports follow-Cantrip theme updates here.",
+      });
+      return;
+    }
+    try {
+      await this.#enqueueControl(sessionId, () =>
+        (this.#sessionGenerations.get(sessionId) ?? 0) === sessionGeneration
+          ? this.supervisor.setTheme(
+              sessionId,
+              input.data.themeMode,
+              input.data.appearance,
+            )
+          : Promise.reject(new Error("Cantrip Code session stopped.")),
+      );
+      writeControlResponse(response, 200, input.data);
+      workerLogger.event("debug", "Cantrip Code direct theme updated", {
+        event: "code.direct.theme-updated",
+        subsystem: "code",
+        operation: "set-theme",
+        status: "completed",
+        themeMode: input.data.themeMode,
+        appearance: input.data.appearance,
+        ...context,
+      });
+    } catch (error) {
+      workerLogger.event("warn", "Cantrip Code direct theme update failed", {
+        event: "code.direct.theme-update-failed",
+        subsystem: "code",
+        operation: "set-theme",
+        reasonCode: "update-failed",
+        status: "failed",
+        ...context,
+        error: workerLogError(error),
+      });
+      writeControlResponse(response, 503, {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Cantrip Code could not update the editor theme.",
       });
     }
   }
