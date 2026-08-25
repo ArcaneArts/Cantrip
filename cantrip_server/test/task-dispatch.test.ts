@@ -131,6 +131,7 @@ async function addTask(
   });
   await database.insert(schema.chats).values({
     id: chatId,
+    ownerId: LOCAL_USER_ID,
     projectId: project.id,
     protectedLabel: project.nameProtection,
     experience: "task",

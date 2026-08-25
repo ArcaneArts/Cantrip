@@ -2,10 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 
 import {
   DEFAULT_PERMISSION_PROFILE_ID,
+  archivedChatWireSummarySchema,
   encryptedAgentInteractionRequestSchema,
   agentInteractionRequestSchema,
   chatMessageOpaqueContentSchema,
   chatMessageOpaqueSummarySchema,
+  chatWireSummarySchema,
   encryptedChatComposerDraftWireStateSchema,
   chatComposerDraftOpaqueStateSchema,
   chatPlanOpaqueStateSchema,
@@ -44,6 +46,8 @@ import {
   type RunConfigurationSecretSummary,
 } from "@cantrip/protocol/run-configuration-secrets";
 import type {
+  AppDestination,
+  AppDestinationUpdate,
   AgentInteractionRequest,
   AgentInteractionRequestCreate,
   AgentInteractionRequestPayload,
@@ -1475,6 +1479,20 @@ function toRunConfigurationProtectedSecret(
   };
 }
 
+function requiredProjectChatProjectId(projectId: string | null): string {
+  if (!projectId) {
+    throw new Error("Project Chat operation received a standalone Chat.");
+  }
+  return projectId;
+}
+
+function requiredProjectChatWorktreeId(worktreeId: string | null): string {
+  if (!worktreeId) {
+    throw new Error("Project Chat operation is missing its worktree.");
+  }
+  return worktreeId;
+}
+
 function runConfigurationSecretValueDigest(
   protectedValue: ProtectedSecretEnvelope,
 ): string {
@@ -1505,10 +1523,14 @@ function replayedRunConfigurationSecretSetResult(
 function toChatExecutionLaneSummary(
   lane: typeof schema.chatExecutionLanes.$inferSelect,
 ): ChatExecutionLaneSummary {
-  return {
+  if (!lane.worktreeId) {
+    throw new Error(
+      "Standalone execution lanes are unavailable until standalone execution is enabled.",
+    );
+  }
+  const common = {
     id: lane.id,
     chatId: lane.chatId,
-    worktreeId: lane.worktreeId,
     workerId: lane.workerId,
     acquiringActor:
       lane.acquiringActor as ChatExecutionLaneSummary["acquiringActor"],
@@ -1526,13 +1548,20 @@ function toChatExecutionLaneSummary(
     releasedAt: lane.releasedAt ? toISOString(lane.releasedAt) : null,
     updatedAt: toISOString(lane.updatedAt),
   };
+  return {
+    ...common,
+    contextKind: "project",
+    worktreeId: lane.worktreeId,
+    scratchRootId: null,
+  };
 }
 
 function toChatWireSummary(
   chat: typeof schema.chats.$inferSelect,
 ): ChatWireSummary {
-  return {
+  return chatWireSummarySchema.parse({
     id: chat.id,
+    contextKind: chat.contextKind,
     projectId: chat.projectId,
     titleProtection: chat.protectedLabel,
     experience: chat.experience as ChatWireSummary["experience"],
@@ -1540,6 +1569,7 @@ function toChatWireSummary(
     status: chat.status as ChatWireSummary["status"],
     activeWorkerId: chat.activeWorkerId,
     activeWorktreeId: chat.activeWorktreeId,
+    activeScratchRootId: chat.activeScratchRootId,
     placementRevision: chat.placementRevision,
     worktreeMode: chat.worktreeMode as ChatWireSummary["worktreeMode"],
     modelId: chat.modelId,
@@ -1554,7 +1584,7 @@ function toChatWireSummary(
     automationPaused: chat.automationPaused,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
-  };
+  });
 }
 
 function chatModelConfiguration(
@@ -1583,8 +1613,9 @@ function toArchivedChatWireSummary(
   if (!chat.archivedAt) {
     throw new Error("Cannot summarize an active chat as archived.");
   }
-  return {
+  return archivedChatWireSummarySchema.parse({
     id: chat.id,
+    contextKind: chat.contextKind,
     projectId: chat.projectId,
     titleProtection: chat.protectedLabel,
     experience: chat.experience as ArchivedChatWireSummary["experience"],
@@ -1595,7 +1626,7 @@ function toArchivedChatWireSummary(
     ).toISOString(),
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
-  };
+  });
 }
 
 function toTerminalWireSummary(
@@ -3680,12 +3711,110 @@ export class ServerRepository {
       defaultSubagentReasoningEffort: settings.defaultSubagentReasoningEffort,
       defaultPermissionProfileId:
         settings.defaultPermissionProfileId as UserSettings["defaultPermissionProfileId"],
+      defaultChatModelId: settings.defaultChatModelId,
+      defaultChatReasoningEffort: settings.defaultChatReasoningEffort,
+      defaultChatPermissionProfileId:
+        settings.defaultChatPermissionProfileId as UserSettings["defaultChatPermissionProfileId"],
       defaultWorkerId: settings.defaultWorkerId,
+      lastAppMode: settings.lastAppMode as UserSettings["lastAppMode"],
+      lastIdeProjectId: settings.lastIdeProjectId,
+      lastIdeWorkspaceId: settings.lastIdeWorkspaceId,
+      lastStandaloneChatId: settings.lastStandaloneChatId,
+      destinationRevision: settings.destinationRevision,
       automaticReplicaProvisioning: settings.automaticReplicaProvisioning,
       automaticReplicaSynchronization:
         settings.automaticReplicaSynchronization as UserSettings["automaticReplicaSynchronization"],
       mobileProjectTabConfigurations: settings.mobileProjectTabConfigurations,
     };
+  }
+
+  async updateAppDestination(
+    ownerId: string,
+    input: AppDestinationUpdate,
+  ): Promise<AppDestination | null> {
+    if (input.lastIdeProjectId) {
+      const projects = await this.database
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.id, input.lastIdeProjectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!projects[0]) return null;
+    }
+    if (input.lastIdeWorkspaceId) {
+      const workspaces = await this.database
+        .select({ id: schema.projectWorkspaces.id })
+        .from(schema.projectWorkspaces)
+        .where(
+          and(
+            eq(schema.projectWorkspaces.id, input.lastIdeWorkspaceId),
+            eq(schema.projectWorkspaces.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!workspaces[0]) return null;
+    }
+    if (input.lastStandaloneChatId) {
+      const chats = await this.database
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, input.lastStandaloneChatId),
+            eq(schema.chats.ownerId, ownerId),
+            eq(schema.chats.contextKind, "standalone"),
+            isNull(schema.chats.archivedAt),
+          ),
+        )
+        .limit(1);
+      if (!chats[0]) return null;
+    }
+
+    const rows = await this.database
+      .update(schema.userSettings)
+      .set({
+        ...(input.lastAppMode !== undefined
+          ? { lastAppMode: input.lastAppMode }
+          : {}),
+        ...(input.lastIdeProjectId !== undefined
+          ? { lastIdeProjectId: input.lastIdeProjectId }
+          : {}),
+        ...(input.lastIdeWorkspaceId !== undefined
+          ? { lastIdeWorkspaceId: input.lastIdeWorkspaceId }
+          : {}),
+        ...(input.lastStandaloneChatId !== undefined
+          ? { lastStandaloneChatId: input.lastStandaloneChatId }
+          : {}),
+        destinationRevision: sql`${schema.userSettings.destinationRevision} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.userSettings.userId, ownerId),
+          eq(schema.userSettings.destinationRevision, input.expectedRevision),
+        ),
+      )
+      .returning({
+        lastAppMode: schema.userSettings.lastAppMode,
+        lastIdeProjectId: schema.userSettings.lastIdeProjectId,
+        lastIdeWorkspaceId: schema.userSettings.lastIdeWorkspaceId,
+        lastStandaloneChatId: schema.userSettings.lastStandaloneChatId,
+        revision: schema.userSettings.destinationRevision,
+      });
+    const destination = rows[0];
+    return destination
+      ? {
+          lastAppMode: destination.lastAppMode as AppDestination["lastAppMode"],
+          lastIdeProjectId: destination.lastIdeProjectId,
+          lastIdeWorkspaceId: destination.lastIdeWorkspaceId,
+          lastStandaloneChatId: destination.lastStandaloneChatId,
+          revision: destination.revision,
+        }
+      : null;
   }
 
   async updateSettings(
@@ -3694,6 +3823,15 @@ export class ServerRepository {
   ): Promise<SettingsBundleWire | null> {
     if (input.defaultModelId) {
       const model = await this.getModelRuntime(ownerId, input.defaultModelId);
+      if (!model) {
+        return null;
+      }
+    }
+    if (input.defaultChatModelId) {
+      const model = await this.getModelRuntime(
+        ownerId,
+        input.defaultChatModelId,
+      );
       if (!model) {
         return null;
       }
@@ -11905,6 +12043,7 @@ export class ServerRepository {
           .limit(1);
         const row = rows[0];
         if (!row) return null;
+        const projectId = requiredProjectChatProjectId(row.chat.projectId);
         if (row.worktree.lifecycleState !== "ready") {
           throw new ExecutionLaneConflictError(
             "The selected worktree is not ready for execution.",
@@ -12047,7 +12186,7 @@ export class ServerRepository {
           chatId,
           detached: row.worktree.detached,
           laneId: lane.id,
-          projectId: row.chat.projectId,
+          projectId,
           workerId: row.worktree.workerId,
           worktreeId: row.worktree.id,
         });
@@ -12070,7 +12209,7 @@ export class ServerRepository {
           providerAccountId: runtime.providerAccountId,
           permissionProfileId: row.chat.permissionProfileId,
           planMode: row.chat.planMode as PlanMode,
-          projectId: row.chat.projectId,
+          projectId,
           rootKind: row.worktree.rootKind,
           threadId: runtime.codexThreadId,
           workerId: row.worktree.workerId,
@@ -12218,14 +12357,16 @@ export class ServerRepository {
       )
       .limit(1);
     const row = rows[0];
-    return row
-      ? {
-          chat: toChatWireSummary(row.chat),
-          lane: toChatExecutionLaneSummary(row.lane),
-          sourcePath: row.sourcePath,
-          worktree: toProjectWorktreeSummary(row.worktree, row.chat.projectId),
-        }
-      : null;
+    if (!row) return null;
+    return {
+      chat: toChatWireSummary(row.chat),
+      lane: toChatExecutionLaneSummary(row.lane),
+      sourcePath: row.sourcePath,
+      worktree: toProjectWorktreeSummary(
+        row.worktree,
+        requiredProjectChatProjectId(row.chat.projectId),
+      ),
+    };
   }
 
   async releaseChatExecutionLane(
@@ -13394,6 +13535,8 @@ export class ServerRepository {
         .insert(schema.chats)
         .values({
           id: chatId,
+          ownerId,
+          contextKind: "project",
           projectId,
           protectedLabel: input.titleProtection,
           experience,
@@ -13556,6 +13699,8 @@ export class ServerRepository {
       .limit(1);
     const row = rows[0];
     if (!row) return null;
+    const projectId = requiredProjectChatProjectId(row.chat.projectId);
+    const worktreeId = requiredProjectChatWorktreeId(row.chat.activeWorktreeId);
 
     const existing = await this.database
       .select()
@@ -13568,13 +13713,13 @@ export class ServerRepository {
       .insert(schema.terminals)
       .values({
         id: input.id,
-        projectId: row.chat.projectId,
+        projectId,
         protectedLabel: input.titleProtection,
         protectedState: input.stateProtection,
         position: row.chat.position,
         status: "running",
         activeWorkerId: row.worktree.workerId,
-        worktreeId: row.chat.activeWorktreeId,
+        worktreeId,
         linkedChatId: row.chat.id,
         kind: "chat-console",
       })
@@ -15296,9 +15441,10 @@ export class ServerRepository {
       .limit(1);
     const chat = rows[0]?.chat;
     if (!chat) return null;
+    const projectId = requiredProjectChatProjectId(chat.projectId);
     const target = await this.getProjectWorktreeContext(
       ownerId,
-      chat.projectId,
+      projectId,
       input.worktreeId,
     );
     if (!target || target.worktree.lifecycleState !== "ready") return null;
@@ -15478,6 +15624,7 @@ export class ServerRepository {
       .limit(1);
     const chat = rows[0]?.chat;
     if (!chat || chat.archivedAt) return false;
+    const projectId = requiredProjectChatProjectId(chat.projectId);
     if (chatIsExecuting(chat.status as ChatWireSummary["status"]))
       return "running";
     return this.database.transaction(async (transaction) => {
@@ -15488,7 +15635,7 @@ export class ServerRepository {
         .limit(1);
       await detachProjectTab(
         transaction,
-        chat.projectId,
+        projectId,
         projectTabKey("chat", chatId),
       );
       if (messages[0]) {
@@ -15528,7 +15675,8 @@ export class ServerRepository {
       .limit(1);
     const chat = rows[0]?.chat;
     if (!chat) return null;
-    const position = await this.nextProjectTabPosition(chat.projectId);
+    const projectId = requiredProjectChatProjectId(chat.projectId);
+    const position = await this.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
       const restored = await transaction
         .update(schema.chats)
@@ -15537,7 +15685,7 @@ export class ServerRepository {
         .returning();
       if (chat.experience !== "task") {
         await attachProjectTab(transaction, {
-          projectId: chat.projectId,
+          projectId,
           tabId: chatId,
           tabKind: "chat",
         });
@@ -15615,6 +15763,10 @@ export class ServerRepository {
         .limit(1);
       const row = rows[0];
       if (!row) return null;
+      const projectId = requiredProjectChatProjectId(row.chat.projectId);
+      const activeWorktreeId = requiredProjectChatWorktreeId(
+        row.chat.activeWorktreeId,
+      );
 
       const targetRows = await transaction
         .select({ worktree: schema.projectWorktrees })
@@ -15626,14 +15778,14 @@ export class ServerRepository {
               schema.projectSources.id,
               schema.projectWorktrees.projectSourceId,
             ),
-            eq(schema.projectSources.projectId, row.chat.projectId),
+            eq(schema.projectSources.projectId, projectId),
           ),
         )
         .where(
           and(
             eq(
               schema.projectWorktrees.id,
-              input.worktreeId ?? row.chat.activeWorktreeId,
+              input.worktreeId ?? activeWorktreeId,
             ),
             isNull(schema.projectSources.removedAt),
           ),
@@ -15709,37 +15861,37 @@ export class ServerRepository {
         transaction
           .select({ position: schema.chats.position })
           .from(schema.chats)
-          .where(eq(schema.chats.projectId, row.chat.projectId))
+          .where(eq(schema.chats.projectId, projectId))
           .orderBy(desc(schema.chats.position))
           .limit(1),
         transaction
           .select({ position: schema.terminals.position })
           .from(schema.terminals)
-          .where(eq(schema.terminals.projectId, row.chat.projectId))
+          .where(eq(schema.terminals.projectId, projectId))
           .orderBy(desc(schema.terminals.position))
           .limit(1),
         transaction
           .select({ position: schema.explorers.position })
           .from(schema.explorers)
-          .where(eq(schema.explorers.projectId, row.chat.projectId))
+          .where(eq(schema.explorers.projectId, projectId))
           .orderBy(desc(schema.explorers.position))
           .limit(1),
         transaction
           .select({ position: schema.codeTabs.position })
           .from(schema.codeTabs)
-          .where(eq(schema.codeTabs.projectId, row.chat.projectId))
+          .where(eq(schema.codeTabs.projectId, projectId))
           .orderBy(desc(schema.codeTabs.position))
           .limit(1),
         transaction
           .select({ position: schema.browsers.position })
           .from(schema.browsers)
-          .where(eq(schema.browsers.projectId, row.chat.projectId))
+          .where(eq(schema.browsers.projectId, projectId))
           .orderBy(desc(schema.browsers.position))
           .limit(1),
         transaction
           .select({ position: schema.projectViews.position })
           .from(schema.projectViews)
-          .where(eq(schema.projectViews.projectId, row.chat.projectId))
+          .where(eq(schema.projectViews.projectId, projectId))
           .orderBy(desc(schema.projectViews.position))
           .limit(1),
       ]);
@@ -15747,7 +15899,9 @@ export class ServerRepository {
         .insert(schema.chats)
         .values({
           id: input.id,
-          projectId: row.chat.projectId,
+          ownerId,
+          contextKind: "project",
+          projectId,
           protectedLabel: input.titleProtection,
           position:
             Math.max(
@@ -15790,7 +15944,7 @@ export class ServerRepository {
         runtimeSessionId,
       });
       await attachProjectTab(transaction, {
-        projectId: row.chat.projectId,
+        projectId,
         tabId: fork.id,
         tabKind: "chat",
       });
@@ -16229,6 +16383,7 @@ export class ServerRepository {
     if (!row) {
       return null;
     }
+    const projectId = requiredProjectChatProjectId(row.chat.projectId);
     return {
       automationPaused: row.chat.automationPaused,
       chatId: row.chat.id,
@@ -16247,7 +16402,7 @@ export class ServerRepository {
       providerAccountId: row.runtime?.providerAccountId ?? null,
       permissionProfileId: row.chat.permissionProfileId,
       planMode: row.chat.planMode as PlanMode,
-      projectId: row.chat.projectId,
+      projectId,
       rootKind: row.worktree.rootKind,
       status: row.chat.status as ChatWireSummary["status"],
       threadId: row.runtime?.codexThreadId ?? null,
@@ -16400,7 +16555,7 @@ export class ServerRepository {
     input: AgentInteractionRequestCreate,
   ): Promise<AgentInteractionRequest> {
     const scopes = await this.database
-      .select({ projectId: schema.projects.id })
+      .select({ ownerId: schema.projects.ownerId })
       .from(schema.projects)
       .innerJoin(
         schema.workers,
@@ -16442,6 +16597,7 @@ export class ServerRepository {
       .values({
         id: randomUUID(),
         requestKey: input.requestKey,
+        ownerId: scopes[0].ownerId,
         projectId: input.projectId,
         chatId: input.provenance.chatId,
         workerId: input.provenance.workerId,
@@ -16497,7 +16653,7 @@ export class ServerRepository {
     input: EncryptedAgentInteractionRequestCreate,
   ): Promise<EncryptedAgentInteractionRequest> {
     const scopes = await this.database
-      .select({ projectId: schema.projects.id })
+      .select({ ownerId: schema.projects.ownerId })
       .from(schema.projects)
       .innerJoin(
         schema.workers,
@@ -16539,6 +16695,7 @@ export class ServerRepository {
       .values({
         id: randomUUID(),
         requestKey: input.requestKey,
+        ownerId: scopes[0].ownerId,
         projectId: input.projectId,
         chatId: input.provenance.chatId,
         workerId: input.provenance.workerId,
@@ -17628,6 +17785,7 @@ export class ServerRepository {
       .where(eq(schema.chats.id, chatId))
       .limit(1);
     if (!chat[0] || chat[0].experience !== "agent") return null;
+    const projectId = requiredProjectChatProjectId(chat[0].projectId);
     if (input.worktreeId) {
       const target = await this.database
         .select({ id: schema.projectWorktrees.id })
@@ -17639,7 +17797,7 @@ export class ServerRepository {
               schema.projectSources.id,
               schema.projectWorktrees.projectSourceId,
             ),
-            eq(schema.projectSources.projectId, chat[0].projectId),
+            eq(schema.projectSources.projectId, projectId),
           ),
         )
         .where(
@@ -17830,6 +17988,7 @@ export class ServerRepository {
     if (!chat[0] || chat[0].experience !== "agent") {
       return null;
     }
+    const worktreeId = requiredProjectChatWorktreeId(chat[0].worktreeId);
 
     const activeLanes = attribution
       ? await this.database
@@ -17855,7 +18014,7 @@ export class ServerRepository {
           .where(
             and(
               eq(schema.chatExecutionLanes.chatId, chatId),
-              eq(schema.chatExecutionLanes.worktreeId, chat[0].worktreeId),
+              eq(schema.chatExecutionLanes.worktreeId, worktreeId),
               eq(schema.chatExecutionLanes.state, "active"),
             ),
           )
@@ -17883,7 +18042,7 @@ export class ServerRepository {
       .values({
         id: randomUUID(),
         chatId,
-        worktreeId: attribution?.worktreeId ?? chat[0].worktreeId,
+        worktreeId: attribution?.worktreeId ?? worktreeId,
         executionLaneId: activeLanes[0]?.id ?? null,
         role: input.role,
         mode: input.mode ?? "default",
@@ -17923,6 +18082,7 @@ export class ServerRepository {
       .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     if (!chat[0] || chat[0].experience !== "agent") return null;
+    const worktreeId = requiredProjectChatWorktreeId(chat[0].worktreeId);
     const activeLanes = attribution
       ? await this.database
           .select({ id: schema.chatExecutionLanes.id })
@@ -17941,7 +18101,7 @@ export class ServerRepository {
           .where(
             and(
               eq(schema.chatExecutionLanes.chatId, chatId),
-              eq(schema.chatExecutionLanes.worktreeId, chat[0].worktreeId),
+              eq(schema.chatExecutionLanes.worktreeId, worktreeId),
               eq(schema.chatExecutionLanes.state, "active"),
             ),
           )
@@ -17979,7 +18139,7 @@ export class ServerRepository {
       .values({
         id: message.id,
         chatId,
-        worktreeId: attribution?.worktreeId ?? chat[0].worktreeId,
+        worktreeId: attribution?.worktreeId ?? worktreeId,
         executionLaneId: activeLanes[0]?.id ?? null,
         role: message.classification.role,
         mode: message.classification.mode,
@@ -18138,6 +18298,7 @@ export class ServerRepository {
       .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     if (!chat[0] || chat[0].experience !== "task") return null;
+    const worktreeId = requiredProjectChatWorktreeId(chat[0].worktreeId);
 
     const activeLanes = attribution
       ? await this.database
@@ -18163,7 +18324,7 @@ export class ServerRepository {
           .where(
             and(
               eq(schema.chatExecutionLanes.chatId, chatId),
-              eq(schema.chatExecutionLanes.worktreeId, chat[0].worktreeId),
+              eq(schema.chatExecutionLanes.worktreeId, worktreeId),
               eq(schema.chatExecutionLanes.state, "active"),
             ),
           )
@@ -18203,7 +18364,7 @@ export class ServerRepository {
       .values({
         id: message.id,
         chatId,
-        worktreeId: attribution?.worktreeId ?? chat[0].worktreeId,
+        worktreeId: attribution?.worktreeId ?? worktreeId,
         executionLaneId: activeLanes[0]?.id ?? null,
         role: message.classification.role,
         mode: message.classification.mode,

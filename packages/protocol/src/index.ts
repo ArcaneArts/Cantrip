@@ -529,6 +529,18 @@ export const serverBootstrapSchema = z.object({
     workerSwitching: z.boolean(),
     gitSync: z.boolean(),
     worktrees: z.boolean(),
+    standaloneChat: z
+      .object({
+        available: z.boolean(),
+        protocolVersion: z.number().int().positive(),
+        reason: z.string().min(1).nullable(),
+      })
+      .strict()
+      .default({
+        available: false,
+        protocolVersion: 1,
+        reason: "Standalone Chat is not enabled by this server.",
+      }),
     remoteSurfaces: z.object({
       enabled: z.boolean(),
       transports: z.array(remoteSurfaceTransportSchema).min(1),
@@ -2322,7 +2334,17 @@ export const userSettingsSchema = z.object({
   defaultPermissionProfileId: configurablePermissionProfileIdSchema.default(
     DEFAULT_PERMISSION_PROFILE_ID,
   ),
+  defaultChatModelId: z.string().min(1).nullable().default(null),
+  defaultChatReasoningEffort: reasoningEffortSchema.nullable().default(null),
+  defaultChatPermissionProfileId: configurablePermissionProfileIdSchema.default(
+    DEFAULT_PERMISSION_PROFILE_ID,
+  ),
   defaultWorkerId: z.string().min(1).nullable().default(null),
+  lastAppMode: z.enum(["ide", "chat"]).nullable().default(null),
+  lastIdeProjectId: z.string().min(1).nullable().default(null),
+  lastIdeWorkspaceId: z.string().min(1).nullable().default(null),
+  lastStandaloneChatId: z.string().min(1).nullable().default(null),
+  destinationRevision: z.number().int().positive().default(1),
   automaticReplicaProvisioning: z.boolean().default(false),
   automaticReplicaSynchronization: z
     .enum(["off", "verify-only", "fast-forward-primary"])
@@ -2332,22 +2354,62 @@ export const userSettingsSchema = z.object({
   ),
 });
 
-export const userSettingsUpdateSchema = userSettingsSchema.partial().extend({
-  eliteMode: z.boolean().optional(),
-  eliteRevealConfig: eliteRevealConfigSchema.optional(),
-  defaultReasoningEffort: reasoningEffortSchema.nullable().optional(),
-  defaultCustomSubagentModel: z.boolean().optional(),
-  defaultSubagentModelId: z.string().min(1).nullable().optional(),
-  defaultSubagentReasoningEffort: reasoningEffortSchema.nullable().optional(),
-  defaultPermissionProfileId: configurablePermissionProfileIdSchema.optional(),
-  defaultWorkerId: z.string().min(1).nullable().optional(),
-  automaticReplicaProvisioning: z.boolean().optional(),
-  automaticReplicaSynchronization: z
-    .enum(["off", "verify-only", "fast-forward-primary"])
-    .optional(),
-  mobileProjectTabConfigurations:
-    mobileProjectTabConfigurationsSchema.optional(),
-});
+export const userSettingsUpdateSchema = userSettingsSchema
+  .partial()
+  .omit({
+    lastAppMode: true,
+    lastIdeProjectId: true,
+    lastIdeWorkspaceId: true,
+    lastStandaloneChatId: true,
+    destinationRevision: true,
+  })
+  .extend({
+    eliteMode: z.boolean().optional(),
+    eliteRevealConfig: eliteRevealConfigSchema.optional(),
+    defaultReasoningEffort: reasoningEffortSchema.nullable().optional(),
+    defaultCustomSubagentModel: z.boolean().optional(),
+    defaultSubagentModelId: z.string().min(1).nullable().optional(),
+    defaultSubagentReasoningEffort: reasoningEffortSchema.nullable().optional(),
+    defaultPermissionProfileId:
+      configurablePermissionProfileIdSchema.optional(),
+    defaultChatModelId: z.string().min(1).nullable().optional(),
+    defaultChatReasoningEffort: reasoningEffortSchema.nullable().optional(),
+    defaultChatPermissionProfileId:
+      configurablePermissionProfileIdSchema.optional(),
+    defaultWorkerId: z.string().min(1).nullable().optional(),
+    automaticReplicaProvisioning: z.boolean().optional(),
+    automaticReplicaSynchronization: z
+      .enum(["off", "verify-only", "fast-forward-primary"])
+      .optional(),
+    mobileProjectTabConfigurations:
+      mobileProjectTabConfigurationsSchema.optional(),
+  });
+
+export const appModeSchema = z.enum(["ide", "chat"]);
+
+export const appDestinationSchema = z
+  .object({
+    lastAppMode: appModeSchema.nullable(),
+    lastIdeProjectId: z.string().min(1).nullable(),
+    lastIdeWorkspaceId: z.string().min(1).nullable(),
+    lastStandaloneChatId: z.string().min(1).nullable(),
+    revision: z.number().int().positive(),
+  })
+  .strict();
+
+export const appDestinationUpdateSchema = appDestinationSchema
+  .omit({ revision: true })
+  .partial()
+  .extend({ expectedRevision: z.number().int().positive() })
+  .strict()
+  .refine(
+    (value) =>
+      value.lastAppMode !== undefined ||
+      value.lastIdeProjectId !== undefined ||
+      value.lastIdeWorkspaceId !== undefined ||
+      value.lastStandaloneChatId !== undefined,
+    { message: "At least one destination field must be updated." },
+  );
 
 export const settingsBundleSchema = z.object({
   preferences: userSettingsSchema,
@@ -4588,9 +4650,53 @@ export const orderedIdsSchema = z.object({
   ids: z.array(z.string().min(1)).min(1),
 });
 
+export const chatContextKindSchema = z.enum(["project", "standalone"]);
+
+export const projectChatExecutionRootSchema = z
+  .object({
+    contextKind: z.literal("project"),
+    worktreeId: z.string().min(1),
+    scratchRootId: z.null(),
+  })
+  .strict();
+
+export const standaloneChatExecutionRootSchema = z
+  .object({
+    contextKind: z.literal("standalone"),
+    worktreeId: z.null(),
+    scratchRootId: z.string().min(1),
+  })
+  .strict();
+
+export const chatExecutionRootSchema = z.discriminatedUnion("contextKind", [
+  projectChatExecutionRootSchema,
+  standaloneChatExecutionRootSchema,
+]);
+
+export const standaloneChatRootStatusSchema = z.enum([
+  "provisioning",
+  "ready",
+  "offline",
+  "failed",
+  "deleting",
+]);
+
+export const standaloneChatRootSummarySchema = z
+  .object({
+    id: z.string().uuid(),
+    chatId: z.string().uuid(),
+    workerId: z.string().min(1),
+    status: standaloneChatRootStatusSchema,
+    provisioningRevision: z.number().int().positive(),
+    archivedAt: z.string().datetime().nullable(),
+    archiveExpiresAt: z.string().datetime().nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
 const chatSummaryBaseSchema = z.object({
   id: z.string().min(1),
-  projectId: z.string().min(1),
   experience: z.enum(["agent", "task"]).default("agent"),
   position: z.number().int().nonnegative(),
   status: z.enum([
@@ -4601,9 +4707,7 @@ const chatSummaryBaseSchema = z.object({
     "failed",
   ]),
   activeWorkerId: z.string().min(1).nullable(),
-  activeWorktreeId: z.string().min(1),
   placementRevision: z.number().int().positive().default(1),
-  worktreeMode: z.enum(["agent-managed", "pinned"]),
   modelId: z.string().min(1).nullable(),
   reasoningEffort: reasoningEffortSchema.nullable().default(null),
   customSubagentModel: z.boolean().optional(),
@@ -4618,12 +4722,95 @@ const chatSummaryBaseSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
-export const chatSummarySchema = chatSummaryBaseSchema
-  .extend({ title: z.string().min(1).max(200) })
+const projectChatContextFields = {
+  contextKind: z.literal("project").default("project"),
+  projectId: z.string().min(1),
+  activeWorktreeId: z.string().min(1),
+  activeScratchRootId: z.null().default(null),
+  worktreeMode: z.enum(["agent-managed", "pinned"]),
+} as const;
+
+const legacyProjectChatContextFields = {
+  contextKind: z.literal("project").optional(),
+  projectId: z.string().min(1),
+  activeWorktreeId: z.string().min(1),
+  activeScratchRootId: z.null().optional(),
+  worktreeMode: z.enum(["agent-managed", "pinned"]),
+} as const;
+
+const standaloneChatContextFields = {
+  contextKind: z.literal("standalone"),
+  projectId: z.null(),
+  activeWorktreeId: z.null(),
+  activeScratchRootId: z.string().min(1),
+  worktreeMode: z.null(),
+  experience: z.literal("agent"),
+  customSubagentModel: z.literal(false).optional(),
+  subagentModelId: z.null().optional(),
+  subagentReasoningEffort: z.null().optional(),
+  planMode: z.literal("default"),
+  hasPendingPlanQuestion: z.literal(false),
+  automationPaused: z.literal(false).default(false),
+} as const;
+
+export const projectChatSummarySchema = chatSummaryBaseSchema
+  .extend({
+    ...projectChatContextFields,
+    title: z.string().min(1).max(200),
+  })
   .strict();
 
+export const standaloneChatSummarySchema = chatSummaryBaseSchema
+  .extend({
+    ...standaloneChatContextFields,
+    title: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const contextualChatSummarySchema = z.union([
+  projectChatSummarySchema,
+  standaloneChatSummarySchema,
+]);
+
+export const chatSummarySchema = chatSummaryBaseSchema
+  .extend({
+    ...legacyProjectChatContextFields,
+    title: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const projectChatWireSummarySchema = chatSummaryBaseSchema
+  .extend({
+    ...projectChatContextFields,
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine((chat) => chat.titleProtection.classification.recordKind === "chat", {
+    message: "Chat title classification must be chat.",
+    path: ["titleProtection", "classification", "recordKind"],
+  });
+
+export const standaloneChatWireSummarySchema = chatSummaryBaseSchema
+  .extend({
+    ...standaloneChatContextFields,
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine((chat) => chat.titleProtection.classification.recordKind === "chat", {
+    message: "Chat title classification must be chat.",
+    path: ["titleProtection", "classification", "recordKind"],
+  });
+
+export const contextualChatWireSummarySchema = z.union([
+  projectChatWireSummarySchema,
+  standaloneChatWireSummarySchema,
+]);
+
 export const chatWireSummarySchema = chatSummaryBaseSchema
-  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .extend({
+    ...legacyProjectChatContextFields,
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
   .strict()
   .refine((chat) => chat.titleProtection.classification.recordKind === "chat", {
     message: "Chat title classification must be chat.",
@@ -4645,7 +4832,6 @@ export const chatWireListSchema = z.array(chatWireSummarySchema);
 
 const archivedChatSummaryBaseSchema = z.object({
   id: z.string().min(1),
-  projectId: z.string().min(1),
   experience: z.enum(["agent", "task"]).default("agent"),
   messageCount: z.number().int().nonnegative(),
   archivedAt: z.string().datetime(),
@@ -4654,12 +4840,80 @@ const archivedChatSummaryBaseSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
-export const archivedChatSummarySchema = archivedChatSummaryBaseSchema
-  .extend({ title: z.string().min(1).max(200) })
+export const archivedProjectChatSummarySchema = archivedChatSummaryBaseSchema
+  .extend({
+    contextKind: z.literal("project").default("project"),
+    projectId: z.string().min(1),
+    title: z.string().min(1).max(200),
+  })
   .strict();
 
+export const archivedStandaloneChatSummarySchema = archivedChatSummaryBaseSchema
+  .extend({
+    contextKind: z.literal("standalone"),
+    projectId: z.null(),
+    experience: z.literal("agent"),
+    title: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const contextualArchivedChatSummarySchema = z.union([
+  archivedProjectChatSummarySchema,
+  archivedStandaloneChatSummarySchema,
+]);
+
+export const archivedChatSummarySchema = archivedChatSummaryBaseSchema
+  .extend({
+    contextKind: z.literal("project").optional(),
+    projectId: z.string().min(1),
+    title: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const archivedProjectChatWireSummarySchema =
+  archivedChatSummaryBaseSchema
+    .extend({
+      contextKind: z.literal("project").default("project"),
+      projectId: z.string().min(1),
+      titleProtection: privateDisplayLabelOpaqueSchema,
+    })
+    .strict()
+    .refine(
+      (chat) => chat.titleProtection.classification.recordKind === "chat",
+      {
+        message: "Archived chat title classification must be chat.",
+        path: ["titleProtection", "classification", "recordKind"],
+      },
+    );
+
+export const archivedStandaloneChatWireSummarySchema =
+  archivedChatSummaryBaseSchema
+    .extend({
+      contextKind: z.literal("standalone"),
+      projectId: z.null(),
+      experience: z.literal("agent"),
+      titleProtection: privateDisplayLabelOpaqueSchema,
+    })
+    .strict()
+    .refine(
+      (chat) => chat.titleProtection.classification.recordKind === "chat",
+      {
+        message: "Archived chat title classification must be chat.",
+        path: ["titleProtection", "classification", "recordKind"],
+      },
+    );
+
+export const contextualArchivedChatWireSummarySchema = z.union([
+  archivedProjectChatWireSummarySchema,
+  archivedStandaloneChatWireSummarySchema,
+]);
+
 export const archivedChatWireSummarySchema = archivedChatSummaryBaseSchema
-  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .extend({
+    contextKind: z.literal("project").optional(),
+    projectId: z.string().min(1),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
   .strict()
   .refine((chat) => chat.titleProtection.classification.recordKind === "chat", {
     message: "Archived chat title classification must be chat.",
@@ -7229,10 +7483,9 @@ export const chatExecutionLaneStateSchema = z.enum([
   "delivering",
   "released",
 ]);
-export const chatExecutionLaneSummarySchema = z.object({
+const chatExecutionLaneSummaryBaseSchema = z.object({
   id: z.string().min(1),
   chatId: z.string().min(1),
-  worktreeId: z.string().min(1),
   workerId: z.string().min(1),
   acquiringActor: chatExecutionLaneActorSchema,
   exclusive: z.boolean(),
@@ -7248,6 +7501,32 @@ export const chatExecutionLaneSummarySchema = z.object({
   releasedAt: z.string().datetime().nullable(),
   updatedAt: z.string().datetime(),
 });
+
+export const projectChatExecutionLaneSummarySchema =
+  chatExecutionLaneSummaryBaseSchema.extend({
+    contextKind: z.literal("project").default("project"),
+    worktreeId: z.string().min(1),
+    scratchRootId: z.null().default(null),
+  });
+
+export const standaloneChatExecutionLaneSummarySchema =
+  chatExecutionLaneSummaryBaseSchema.extend({
+    contextKind: z.literal("standalone"),
+    worktreeId: z.null(),
+    scratchRootId: z.string().min(1),
+  });
+
+export const contextualChatExecutionLaneSummarySchema = z.union([
+  projectChatExecutionLaneSummarySchema,
+  standaloneChatExecutionLaneSummarySchema,
+]);
+
+export const chatExecutionLaneSummarySchema =
+  chatExecutionLaneSummaryBaseSchema.extend({
+    contextKind: z.literal("project").optional(),
+    worktreeId: z.string().min(1),
+    scratchRootId: z.null().optional(),
+  });
 
 export const chatExecutionLaneListSchema = z.array(
   chatExecutionLaneSummarySchema,
@@ -14553,6 +14832,9 @@ export type MobileProjectTabConfigurations = z.infer<
 >;
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
+export type AppMode = z.infer<typeof appModeSchema>;
+export type AppDestination = z.infer<typeof appDestinationSchema>;
+export type AppDestinationUpdate = z.infer<typeof appDestinationUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type SettingsBundleWire = z.infer<typeof settingsBundleWireSchema>;
 export type ProjectOriginKind = z.infer<typeof projectOriginKindSchema>;
@@ -15155,6 +15437,32 @@ export type ChatComposerDraft = z.infer<typeof chatComposerDraftSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
 export type EncryptedChatFork = z.infer<typeof encryptedChatForkSchema>;
 export type OrderedIds = z.infer<typeof orderedIdsSchema>;
+export type ChatContextKind = z.infer<typeof chatContextKindSchema>;
+export type ProjectChatExecutionRoot = z.infer<
+  typeof projectChatExecutionRootSchema
+>;
+export type StandaloneChatExecutionRoot = z.infer<
+  typeof standaloneChatExecutionRootSchema
+>;
+export type ChatExecutionRoot = z.infer<typeof chatExecutionRootSchema>;
+export type StandaloneChatRootStatus = z.infer<
+  typeof standaloneChatRootStatusSchema
+>;
+export type StandaloneChatRootSummary = z.infer<
+  typeof standaloneChatRootSummarySchema
+>;
+export type ProjectChatSummary = z.infer<typeof projectChatSummarySchema>;
+export type StandaloneChatSummary = z.infer<typeof standaloneChatSummarySchema>;
+export type ProjectChatWireSummary = z.infer<
+  typeof projectChatWireSummarySchema
+>;
+export type StandaloneChatWireSummary = z.infer<
+  typeof standaloneChatWireSummarySchema
+>;
+export type ContextualChatSummary = z.infer<typeof contextualChatSummarySchema>;
+export type ContextualChatWireSummary = z.infer<
+  typeof contextualChatWireSummarySchema
+>;
 export type ChatSummary = z.infer<typeof chatSummarySchema>;
 export type ChatWireSummary = z.infer<typeof chatWireSummarySchema>;
 export type ArchivedChatSummary = z.infer<typeof archivedChatSummarySchema>;
@@ -15543,6 +15851,15 @@ export type ChatExecutionLaneActor = z.infer<
 >;
 export type ChatExecutionLaneState = z.infer<
   typeof chatExecutionLaneStateSchema
+>;
+export type ProjectChatExecutionLaneSummary = z.infer<
+  typeof projectChatExecutionLaneSummarySchema
+>;
+export type StandaloneChatExecutionLaneSummary = z.infer<
+  typeof standaloneChatExecutionLaneSummarySchema
+>;
+export type ContextualChatExecutionLaneSummary = z.infer<
+  typeof contextualChatExecutionLaneSummarySchema
 >;
 export type ChatExecutionLaneSummary = z.infer<
   typeof chatExecutionLaneSummarySchema

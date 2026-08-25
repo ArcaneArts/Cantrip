@@ -342,6 +342,7 @@ describe("account resource usage storage accounting", () => {
       const chatId = "usage-attachment-chat";
       await database.insert(schema.chats).values({
         id: chatId,
+        ownerId: LOCAL_USER_ID,
         projectId,
         protectedLabel: protectedChatFields(chatId).titleProtection,
         activeWorkerId: "usage-source-worker",

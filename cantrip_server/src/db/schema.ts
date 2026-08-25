@@ -106,6 +106,7 @@ import type {
 } from "@cantrip/protocol/communication-content";
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -1012,9 +1013,31 @@ export const userSettings = pgTable(
     defaultPermissionProfileId: text("default_permission_profile_id")
       .notNull()
       .default(":workspace"),
+    defaultChatModelId: text("default_chat_model_id").references(
+      () => modelProfiles.id,
+      { onDelete: "set null" },
+    ),
+    defaultChatReasoningEffort: text("default_chat_reasoning_effort"),
+    defaultChatPermissionProfileId: text("default_chat_permission_profile_id")
+      .notNull()
+      .default(":workspace"),
     defaultWorkerId: text("default_worker_id").references(() => workers.id, {
       onDelete: "set null",
     }),
+    lastAppMode: text("last_app_mode"),
+    lastIdeProjectId: text("last_ide_project_id").references(
+      (): AnyPgColumn => projects.id,
+      { onDelete: "set null" },
+    ),
+    lastIdeWorkspaceId: text("last_ide_workspace_id").references(
+      (): AnyPgColumn => projectWorkspaces.id,
+      { onDelete: "set null" },
+    ),
+    lastStandaloneChatId: text("last_standalone_chat_id").references(
+      (): AnyPgColumn => chats.id,
+      { onDelete: "set null" },
+    ),
+    destinationRevision: integer("destination_revision").notNull().default(1),
     automaticReplicaProvisioning: boolean("automatic_replica_provisioning")
       .notNull()
       .default(false),
@@ -1044,6 +1067,18 @@ export const userSettings = pgTable(
     check(
       "user_settings_default_permission_profile_check",
       sql`${table.defaultPermissionProfileId} IN (':read-only', ':workspace', ':danger-full-access', ':yolo')`,
+    ),
+    check(
+      "user_settings_default_chat_permission_profile_check",
+      sql`${table.defaultChatPermissionProfileId} IN (':read-only', ':workspace', ':danger-full-access', ':yolo')`,
+    ),
+    check(
+      "user_settings_last_app_mode_check",
+      sql`${table.lastAppMode} IS NULL OR ${table.lastAppMode} IN ('ide', 'chat')`,
+    ),
+    check(
+      "user_settings_destination_revision_check",
+      sql`${table.destinationRevision} >= 1`,
     ),
     check(
       "user_settings_custom_subagent_model_check",
@@ -1463,6 +1498,7 @@ export const projects = pgTable(
       .defaultNow(),
   },
   (table) => [
+    uniqueIndex("projects_id_owner_unique").on(table.id, table.ownerId),
     uniqueIndex("projects_owner_github_repository_unique").on(
       table.ownerId,
       table.githubRepositoryBlindIndex,
@@ -2632,9 +2668,13 @@ export const chats = pgTable(
   "chats",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id")
+    ownerId: text("owner_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade" }),
+    contextKind: text("context_kind").notNull().default("project"),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
     protectedLabel: jsonb("protected_label")
       .$type<PrivateDisplayLabelOpaque>()
       .notNull(),
@@ -2644,11 +2684,13 @@ export const chats = pgTable(
     activeWorkerId: text("active_worker_id").references(() => workers.id, {
       onDelete: "set null",
     }),
-    activeWorktreeId: text("active_worktree_id")
-      .notNull()
-      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    activeWorktreeId: text("active_worktree_id").references(
+      () => projectWorktrees.id,
+      { onDelete: "restrict" },
+    ),
+    activeScratchRootId: text("active_scratch_root_id"),
     placementRevision: integer("placement_revision").notNull().default(1),
-    worktreeMode: text("worktree_mode").notNull().default("agent-managed"),
+    worktreeMode: text("worktree_mode").default("agent-managed"),
     modelId: text("model_id").references(() => modelProfiles.id, {
       onDelete: "restrict",
     }),
@@ -2686,10 +2728,33 @@ export const chats = pgTable(
       .defaultNow(),
   },
   (table) => [
+    uniqueIndex("chats_id_owner_unique").on(table.id, table.ownerId),
+    uniqueIndex("chats_active_scratch_root_unique")
+      .on(table.activeScratchRootId)
+      .where(sql`${table.activeScratchRootId} IS NOT NULL`),
     index("chats_project_archived_index").on(table.projectId, table.archivedAt),
+    index("chats_owner_context_archived_position_index").on(
+      table.ownerId,
+      table.contextKind,
+      table.archivedAt,
+      table.position,
+    ),
+    foreignKey({
+      columns: [table.projectId, table.ownerId],
+      foreignColumns: [projects.id, projects.ownerId],
+      name: "chats_project_owner_fk",
+    }).onDelete("cascade"),
     check(
       "chats_experience_check",
       sql`${table.experience} IN ('agent', 'task')`,
+    ),
+    check(
+      "chats_context_kind_check",
+      sql`${table.contextKind} IN ('project', 'standalone')`,
+    ),
+    check(
+      "chats_execution_root_check",
+      sql`(${table.contextKind} = 'project' AND ${table.projectId} IS NOT NULL AND ${table.activeWorktreeId} IS NOT NULL AND ${table.activeScratchRootId} IS NULL AND ${table.worktreeMode} IN ('agent-managed', 'pinned')) OR (${table.contextKind} = 'standalone' AND ${table.projectId} IS NULL AND ${table.activeWorkerId} IS NOT NULL AND ${table.activeWorktreeId} IS NULL AND ${table.activeScratchRootId} IS NOT NULL AND ${table.worktreeMode} IS NULL AND ${table.experience} = 'agent' AND ${table.customSubagentModel} = false AND ${table.subagentModelId} IS NULL AND ${table.subagentReasoningEffort} IS NULL AND ${table.planMode} = 'default' AND ${table.protectedPlan} IS NULL AND ${table.hasPendingPlanQuestion} = false AND ${table.automationPaused} = false)`,
     ),
     check(
       "chats_protected_plan_question_check",
@@ -2698,6 +2763,73 @@ export const chats = pgTable(
     check(
       "chats_custom_subagent_model_check",
       sql`NOT ${table.customSubagentModel} OR ${table.subagentModelId} IS NOT NULL`,
+    ),
+  ],
+);
+
+export const standaloneChatRoots = pgTable(
+  "standalone_chat_roots",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id").notNull(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "restrict" }),
+    protectedPathHandle: text("protected_path_handle").notNull(),
+    status: text("status").notNull().default("provisioning"),
+    provisioningRevision: integer("provisioning_revision").notNull().default(1),
+    deletionJobId: text("deletion_job_id"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archiveExpiresAt: timestamp("archive_expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("standalone_chat_roots_chat_unique").on(table.chatId),
+    uniqueIndex("standalone_chat_roots_identity_unique").on(
+      table.id,
+      table.chatId,
+      table.ownerId,
+      table.workerId,
+    ),
+    uniqueIndex("standalone_chat_roots_execution_identity_unique").on(
+      table.id,
+      table.chatId,
+      table.workerId,
+    ),
+    index("standalone_chat_roots_owner_status_index").on(
+      table.ownerId,
+      table.status,
+      table.updatedAt,
+    ),
+    index("standalone_chat_roots_worker_status_index").on(
+      table.workerId,
+      table.status,
+      table.updatedAt,
+    ),
+    foreignKey({
+      columns: [table.chatId, table.ownerId],
+      foreignColumns: [chats.id, chats.ownerId],
+      name: "standalone_chat_roots_chat_owner_fk",
+    }).onDelete("cascade"),
+    check(
+      "standalone_chat_roots_status_check",
+      sql`${table.status} IN ('provisioning', 'ready', 'offline', 'failed', 'deleting')`,
+    ),
+    check(
+      "standalone_chat_roots_revision_check",
+      sql`${table.provisioningRevision} >= 1`,
+    ),
+    check(
+      "standalone_chat_roots_archive_deadline_check",
+      sql`(${table.archivedAt} IS NULL AND ${table.archiveExpiresAt} IS NULL) OR (${table.archivedAt} IS NOT NULL AND ${table.archiveExpiresAt} IS NOT NULL AND ${table.archiveExpiresAt} > ${table.archivedAt})`,
     ),
   ],
 );
@@ -3255,9 +3387,10 @@ export const chatRuntimeSessions = pgTable(
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
-    worktreeId: text("worktree_id")
-      .notNull()
-      .references(() => projectWorktrees.id, { onDelete: "cascade" }),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "cascade",
+    }),
+    scratchRootId: text("scratch_root_id"),
     codexThreadId: text("codex_thread_id"),
     modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
       onDelete: "set null",
@@ -3275,11 +3408,25 @@ export const chatRuntimeSessions = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("chat_runtime_sessions_chat_worker_worktree_unique").on(
-      table.chatId,
-      table.workerId,
-      table.worktreeId,
+    uniqueIndex("chat_runtime_sessions_chat_worker_worktree_unique")
+      .on(table.chatId, table.workerId, table.worktreeId)
+      .where(sql`${table.worktreeId} IS NOT NULL`),
+    uniqueIndex("chat_runtime_sessions_chat_worker_scratch_unique")
+      .on(table.chatId, table.workerId, table.scratchRootId)
+      .where(sql`${table.scratchRootId} IS NOT NULL`),
+    check(
+      "chat_runtime_sessions_execution_root_check",
+      sql`num_nonnulls(${table.worktreeId}, ${table.scratchRootId}) = 1`,
     ),
+    foreignKey({
+      columns: [table.scratchRootId, table.chatId, table.workerId],
+      foreignColumns: [
+        standaloneChatRoots.id,
+        standaloneChatRoots.chatId,
+        standaloneChatRoots.workerId,
+      ],
+      name: "chat_runtime_sessions_scratch_identity_fk",
+    }).onDelete("cascade"),
   ],
 );
 
@@ -3290,9 +3437,10 @@ export const chatExecutionLanes = pgTable(
     chatId: text("chat_id")
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
-    worktreeId: text("worktree_id")
-      .notNull()
-      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "restrict",
+    }),
+    scratchRootId: text("scratch_root_id"),
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
@@ -3326,7 +3474,27 @@ export const chatExecutionLanes = pgTable(
       .where(sql`${table.state} = 'delivering'`),
     uniqueIndex("chat_execution_lanes_worktree_reserved_unique")
       .on(table.worktreeId)
-      .where(sql`${table.exclusive} = true AND ${table.state} <> 'released'`),
+      .where(
+        sql`${table.worktreeId} IS NOT NULL AND ${table.exclusive} = true AND ${table.state} <> 'released'`,
+      ),
+    uniqueIndex("chat_execution_lanes_scratch_reserved_unique")
+      .on(table.scratchRootId)
+      .where(
+        sql`${table.scratchRootId} IS NOT NULL AND ${table.state} <> 'released'`,
+      ),
+    check(
+      "chat_execution_lanes_execution_root_check",
+      sql`num_nonnulls(${table.worktreeId}, ${table.scratchRootId}) = 1`,
+    ),
+    foreignKey({
+      columns: [table.scratchRootId, table.chatId, table.workerId],
+      foreignColumns: [
+        standaloneChatRoots.id,
+        standaloneChatRoots.chatId,
+        standaloneChatRoots.workerId,
+      ],
+      name: "chat_execution_lanes_scratch_identity_fk",
+    }).onDelete("restrict"),
   ],
 );
 
@@ -3335,9 +3503,12 @@ export const agentInteractionRequests = pgTable(
   {
     id: text("id").primaryKey(),
     requestKey: text("request_key").notNull(),
-    projectId: text("project_id")
+    ownerId: text("owner_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
     chatId: text("chat_id").references(() => chats.id, {
       onDelete: "cascade",
     }),
@@ -3386,6 +3557,25 @@ export const agentInteractionRequests = pgTable(
       table.status,
       table.expiresAt,
     ),
+    index("agent_interaction_requests_owner_status_index").on(
+      table.ownerId,
+      table.status,
+      table.createdAt,
+    ),
+    check(
+      "agent_interaction_requests_context_check",
+      sql`${table.projectId} IS NOT NULL OR ${table.chatId} IS NOT NULL`,
+    ),
+    foreignKey({
+      columns: [table.projectId, table.ownerId],
+      foreignColumns: [projects.id, projects.ownerId],
+      name: "agent_interaction_requests_project_owner_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.chatId, table.ownerId],
+      foreignColumns: [chats.id, chats.ownerId],
+      name: "agent_interaction_requests_chat_owner_fk",
+    }).onDelete("cascade"),
   ],
 );
 
