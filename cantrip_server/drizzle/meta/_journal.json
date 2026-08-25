@@ -1170,6 +1170,13 @@
       "when": 1787634000000,
       "tag": "0166_standalone_chat_contracts",
       "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1787700000000,
+      "tag": "0167_standalone_chat_worker_scratch",
+      "breakpoints": true
     }
   ]
 }

@@ -43,6 +43,10 @@ import type {
   ProjectRootKind,
   ProjectSourceKind,
   RemoteSurfaceCapabilities,
+  StandaloneChatCapabilities,
+  StandaloneChatRootJobError,
+  StandaloneChatRootJobKind,
+  StandaloneChatRootJobState,
   RemoteSurfaceConfiguration,
   ExecutionPlacement,
   ExternalChatSourceKind,
@@ -183,6 +187,27 @@ const unavailableProjectReplicaCapabilities = {
   attachExisting: false,
   recursiveParentCreation: false,
 } satisfies ProjectReplicaCapabilities;
+
+const unavailableStandaloneChatCapabilities = {
+  protocolVersion: 1,
+  scratch: {
+    provision: false,
+    resolve: false,
+    archive: false,
+    restore: false,
+    remove: false,
+    reconcile: false,
+    routingHandles: false,
+  },
+  files: {
+    list: false,
+    read: false,
+    write: false,
+    remove: false,
+    download: false,
+    archive: false,
+  },
+} satisfies StandaloneChatCapabilities;
 
 const unavailableManagedFolderCapabilities = {
   create: false,
@@ -1203,6 +1228,10 @@ export const workers = pgTable("workers", {
     .$type<ManagedFolderCapabilities>()
     .notNull()
     .default(unavailableManagedFolderCapabilities),
+  standaloneChatCapabilities: jsonb("standalone_chat_capabilities")
+    .$type<StandaloneChatCapabilities>()
+    .notNull()
+    .default(unavailableStandaloneChatCapabilities),
   chatRelocationCapability: boolean("chat_relocation_capability")
     .notNull()
     .default(false),
@@ -2767,6 +2796,92 @@ export const chats = pgTable(
   ],
 );
 
+export const standaloneChatRootJobs = pgTable(
+  "standalone_chat_root_jobs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    rootId: text("root_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "restrict" }),
+    kind: text("kind").$type<StandaloneChatRootJobKind>().notNull(),
+    state: text("state").$type<StandaloneChatRootJobState>().notNull(),
+    stateRevision: integer("state_revision").notNull().default(1),
+    attempt: integer("attempt").notNull().default(0),
+    commandId: text("command_id"),
+    lastErrorCode:
+      text("last_error_code").$type<StandaloneChatRootJobError["code"]>(),
+    errorRetryable: boolean("error_retryable"),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("standalone_chat_root_jobs_root_kind_unique").on(
+      table.rootId,
+      table.kind,
+    ),
+    uniqueIndex("standalone_chat_root_jobs_command_unique")
+      .on(table.commandId)
+      .where(sql`${table.commandId} IS NOT NULL`),
+    index("standalone_chat_root_jobs_owner_state_index").on(
+      table.ownerId,
+      table.state,
+      table.updatedAt,
+    ),
+    index("standalone_chat_root_jobs_dispatch_index").on(
+      table.state,
+      table.availableAt,
+      table.createdAt,
+    ),
+    index("standalone_chat_root_jobs_worker_state_index").on(
+      table.workerId,
+      table.state,
+    ),
+    check(
+      "standalone_chat_root_jobs_kind_check",
+      sql`${table.kind} IN ('provision', 'delete')`,
+    ),
+    check(
+      "standalone_chat_root_jobs_state_check",
+      sql`${table.state} IN ('queued', 'running', 'blocked', 'succeeded', 'failed')`,
+    ),
+    check(
+      "standalone_chat_root_jobs_revision_check",
+      sql`${table.stateRevision} > 0`,
+    ),
+    check(
+      "standalone_chat_root_jobs_attempt_check",
+      sql`${table.attempt} >= 0`,
+    ),
+    check(
+      "standalone_chat_root_jobs_identity_check",
+      sql`${table.id} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${table.rootId} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' AND ${table.chatId} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "standalone_chat_root_jobs_error_code_check",
+      sql`${table.lastErrorCode} IS NULL OR ${table.lastErrorCode} IN ('worker-offline', 'capability-missing', 'worker-error', 'invalid-result', 'root-conflict')`,
+    ),
+    check(
+      "standalone_chat_root_jobs_error_shape_check",
+      sql`(${table.lastErrorCode} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+    ),
+  ],
+);
+
 export const standaloneChatRoots = pgTable(
   "standalone_chat_roots",
   {
@@ -2778,10 +2893,13 @@ export const standaloneChatRoots = pgTable(
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "restrict" }),
-    protectedPathHandle: text("protected_path_handle").notNull(),
+    protectedPathHandle: text("protected_path_handle"),
     status: text("status").notNull().default("provisioning"),
     provisioningRevision: integer("provisioning_revision").notNull().default(1),
-    deletionJobId: text("deletion_job_id"),
+    deletionJobId: text("deletion_job_id").references(
+      () => standaloneChatRootJobs.id,
+      { onDelete: "set null" },
+    ),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archiveExpiresAt: timestamp("archive_expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -2830,6 +2948,14 @@ export const standaloneChatRoots = pgTable(
     check(
       "standalone_chat_roots_archive_deadline_check",
       sql`(${table.archivedAt} IS NULL AND ${table.archiveExpiresAt} IS NULL) OR (${table.archivedAt} IS NOT NULL AND ${table.archiveExpiresAt} IS NOT NULL AND ${table.archiveExpiresAt} > ${table.archivedAt})`,
+    ),
+    check(
+      "standalone_chat_roots_path_status_check",
+      sql`${table.status} <> 'ready' OR ${table.protectedPathHandle} IS NOT NULL`,
+    ),
+    check(
+      "standalone_chat_roots_path_handle_check",
+      sql`${table.protectedPathHandle} IS NULL OR ${table.protectedPathHandle} ~ '^ctrr_[A-Za-z0-9_-]{43}$'`,
     ),
   ],
 );

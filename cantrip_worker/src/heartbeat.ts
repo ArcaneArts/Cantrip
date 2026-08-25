@@ -62,6 +62,26 @@ export function createHeartbeat(
       convertToGithub: true,
       remove: true,
     },
+    standaloneChat: {
+      protocolVersion: 1,
+      scratch: {
+        provision: true,
+        resolve: true,
+        archive: true,
+        restore: true,
+        remove: true,
+        reconcile: true,
+        routingHandles: true,
+      },
+      files: {
+        list: false,
+        read: false,
+        write: false,
+        remove: false,
+        download: false,
+        archive: false,
+      },
+    },
     chatRelocation: true,
     externalCodexHistory:
       process.platform === "darwin" || process.platform === "win32",

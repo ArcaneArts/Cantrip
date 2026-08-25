@@ -52,6 +52,17 @@ describe("WorkerRoutingRegistry", () => {
     )) as { path: string; linkPath: string };
     expect(protectedRepair.path).toMatch(/^ctrr_/u);
     expect(protectedRepair.linkPath).toMatch(/^ctrr_/u);
+    const protectedScratch = (await registry.protectResult(
+      "chat.scratch.provision",
+      {
+        rootId: "33333333-3333-4333-8333-333333333333",
+        chatId: "22222222-2222-4222-8222-222222222222",
+        path: "/Users/example/worker-data/chat-scratch/chat-id",
+        displayPath: "chat-scratch/chat-id",
+      },
+    )) as { path: string; displayPath: string };
+    expect(protectedScratch.path).toMatch(/^ctrr_/u);
+    expect(protectedScratch.displayPath).toMatch(/^ctrr_/u);
     expect(
       await readFile(
         path.join(dataDirectory, "repository-routing.json"),

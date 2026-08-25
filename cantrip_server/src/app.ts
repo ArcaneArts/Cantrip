@@ -738,6 +738,10 @@ import {
   type ProjectFolderSetupLiveChange,
 } from "./project-folders/executor.js";
 import {
+  StandaloneChatRootJobExecutor,
+  type StandaloneChatRootJobLiveChange,
+} from "./standalone-chats/root-job-executor.js";
+import {
   ProjectGithubConversionJobExecutor,
   type ProjectGithubConversionLiveChange,
 } from "./project-github-conversions/executor.js";
@@ -3372,6 +3376,35 @@ export async function buildApp({
     app.log,
     publishProjectFolderSetupChange,
   );
+  const publishStandaloneChatRootJobChange = (
+    change: StandaloneChatRootJobLiveChange,
+  ): void => {
+    const context = {
+      event: "standalone-chat.scratch.transitioned",
+      subsystem: "standalone-chat-scratch",
+      operation: change.job.kind,
+      status: change.job.state,
+      runId: change.job.id,
+      chatId: change.job.chatId,
+      workerId: change.job.workerId,
+      attempt: change.job.attempt,
+    };
+    if (change.job.state === "failed") {
+      app.log.error(context, "Standalone Chat scratch job failed");
+    } else if (change.job.state === "blocked") {
+      app.log.warn(context, "Standalone Chat scratch job blocked");
+    } else if (change.job.state === "succeeded") {
+      app.log.info(context, "Standalone Chat scratch job completed");
+    } else {
+      app.log.debug(context, "Standalone Chat scratch job transitioned");
+    }
+  };
+  const standaloneChatRootJobExecutor = new StandaloneChatRootJobExecutor(
+    repository,
+    bridge,
+    app.log,
+    publishStandaloneChatRootJobChange,
+  );
   const publishProjectGithubConversionChange = (
     change: ProjectGithubConversionLiveChange,
   ): void => {
@@ -3676,6 +3709,9 @@ export async function buildApp({
   await projectFolderSetupJobExecutor.recoverAfterRestart(!coordinator);
   projectFolderSetupJobExecutor.queueAvailable();
   projectFolderSetupJobExecutor.startRecoverySweep();
+  await standaloneChatRootJobExecutor.recoverAfterRestart(!coordinator);
+  standaloneChatRootJobExecutor.queueAvailable();
+  standaloneChatRootJobExecutor.startRecoverySweep();
   await projectGithubConversionJobExecutor.recoverAfterRestart(!coordinator);
   projectGithubConversionJobExecutor.queueAvailable();
   projectGithubConversionJobExecutor.startRecoverySweep();
@@ -33332,6 +33368,14 @@ export async function buildApp({
               "Could not resume project folder setup jobs",
             );
           });
+        void standaloneChatRootJobExecutor
+          .workerConnected(workerId)
+          .catch((error) => {
+            app.log.error(
+              { err: error, workerId },
+              "Could not resume standalone Chat scratch jobs",
+            );
+          });
         void projectGithubConversionJobExecutor
           .workerConnected(workerId)
           .catch((error) => {
@@ -33815,6 +33859,7 @@ export async function buildApp({
     workerOfflineTimers.clear();
     projectReplicaJobExecutor.stop();
     projectFolderSetupJobExecutor.stop();
+    standaloneChatRootJobExecutor.stop();
     projectGithubConversionJobExecutor.stop();
     chatRelocationJobExecutor.stop();
     chatImportJobExecutor.stop();
@@ -33847,6 +33892,7 @@ export async function buildApp({
     await activeTaskScheduleTick;
     await projectReplicaJobExecutor.drain();
     await projectFolderSetupJobExecutor.drain();
+    await standaloneChatRootJobExecutor.drain();
     await projectGithubConversionJobExecutor.drain();
     await chatRelocationJobExecutor.drain();
     await chatImportJobExecutor.drain();

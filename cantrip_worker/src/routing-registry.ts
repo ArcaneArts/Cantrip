@@ -16,6 +16,12 @@ interface RoutingRegistryFile {
 const protectedResultTypes = new Set([
   "project.clone",
   "project.folder.materialize",
+  "chat.scratch.provision",
+  "chat.scratch.resolve",
+  "chat.scratch.archive",
+  "chat.scratch.restore",
+  "chat.scratch.delete",
+  "chat.scratch.reconcile",
   "project.folder-conversion.preflight",
   "project.folder-conversion.execute",
   "project.replica.provision",
