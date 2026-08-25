@@ -6,33 +6,35 @@ import { INLINE_CODE_WORKBENCH_RETENTION_MS } from "@/components/explorer/use-re
 import { cn } from "@/lib/utils";
 
 export function RetainedExplorerCodeEditor({
-  activePath,
   appearance,
   explorerId,
+  path,
   prewarm,
   retained,
+  visible,
   workerOnline,
   workerId,
   worktreeId,
 }: {
-  activePath: string | null;
   appearance: CodeAppearance;
   explorerId: string;
+  path: string | null;
   prewarm: boolean;
   retained: boolean;
+  visible: boolean;
   workerOnline: boolean;
   workerId: string;
   worktreeId: string;
 }) {
-  const [retainedPath, setRetainedPath] = useState(activePath);
+  const [retainedPath, setRetainedPath] = useState(path);
 
   useEffect(() => {
     if (!retained) {
       setRetainedPath(null);
       return;
     }
-    if (activePath) {
-      setRetainedPath(activePath);
+    if (path) {
+      setRetainedPath(path);
       return;
     }
     if (!retainedPath) return;
@@ -42,12 +44,11 @@ export function RetainedExplorerCodeEditor({
       INLINE_CODE_WORKBENCH_RETENTION_MS,
     );
     return () => clearTimeout(timeout);
-  }, [activePath, retained, retainedPath]);
+  }, [path, retained, retainedPath]);
 
-  const path = retained ? (activePath ?? retainedPath) : null;
-  if (!retained || (!prewarm && !path)) return null;
+  const workbenchPath = retained ? (path ?? retainedPath) : null;
+  if (!retained || (!prewarm && !workbenchPath)) return null;
 
-  const visible = activePath !== null;
   return (
     <div
       aria-hidden={!visible}
@@ -58,7 +59,7 @@ export function RetainedExplorerCodeEditor({
         active={visible}
         appearance={appearance}
         explorerId={explorerId}
-        path={path}
+        path={workbenchPath}
         workerOnline={workerOnline}
         workerId={workerId}
         worktreeId={worktreeId}

@@ -91,6 +91,34 @@ describe("inline Code workbench retention", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("does not expire while an open tab owns the workbench", async () => {
+    vi.useFakeTimers();
+    const observed: boolean[] = [];
+    const Probe = ({ owned }: { owned: boolean }) => {
+      observed.push(
+        useRetainedInlineWorkbench(
+          false,
+          undefined,
+          false,
+          "explorer-one",
+          owned,
+        ),
+      );
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Probe, { owned: true }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(INLINE_CODE_WORKBENCH_RETENTION_MS * 2);
+    });
+    expect(observed.at(-1)).toBe(true);
+
+    await act(async () => renderer.unmount());
+  });
+
   it("cancels retirement when the Explorer becomes active again", async () => {
     vi.useFakeTimers();
     const observed: boolean[] = [];

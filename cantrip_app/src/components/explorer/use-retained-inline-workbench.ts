@@ -13,17 +13,17 @@ export function useRetainedInlineWorkbench(
   retentionMs = INLINE_CODE_WORKBENCH_RETENTION_MS,
   prewarm = false,
   prewarmIdentity = "default",
+  owned = false,
 ): boolean {
-  const [retained, setRetained] = useState(active || prewarm);
+  const [retained, setRetained] = useState(active || prewarm || owned);
   const prewarmToken = prewarm ? prewarmIdentity : null;
   const previousPrewarmTokenRef = useRef(prewarmToken);
 
   useEffect(() => {
     const prewarmActivated =
-      prewarmToken !== null &&
-      prewarmToken !== previousPrewarmTokenRef.current;
+      prewarmToken !== null && prewarmToken !== previousPrewarmTokenRef.current;
     previousPrewarmTokenRef.current = prewarmToken;
-    if (active) {
+    if (active || owned) {
       setRetained(true);
       return;
     }
@@ -35,7 +35,7 @@ export function useRetainedInlineWorkbench(
 
     const timeout = setTimeout(() => setRetained(false), retentionMs);
     return () => clearTimeout(timeout);
-  }, [active, prewarmToken, retained, retentionMs]);
+  }, [active, owned, prewarmToken, retained, retentionMs]);
 
-  return active || retained;
+  return active || owned || retained;
 }

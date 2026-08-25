@@ -504,6 +504,7 @@ import {
   sidebarFilePreviewIsVisible,
   sidebarPathAtOrBelow,
   surfaceWorktreeId,
+  tabbedExplorerIds,
   type SidebarFilePreviewState,
 } from "@/lib/sidebar-file-tabs";
 import { projectScriptCommandDestination } from "@/lib/project-script-command";
@@ -5720,6 +5721,34 @@ export function App() {
     explorers: explorers.data ?? [],
     layout: tabLayout.data,
   });
+  const connectedExplorerGroupIds = useMemo(() => {
+    if (projectOverviewPopoutTarget || explorerFileTarget) {
+      return new Set<string>();
+    }
+    if (popoutTarget) return new Set([popoutTarget.groupId]);
+    return new Set(
+      tabLayout.data?.groups
+        .filter(({ id }) => id !== detachedGroupId)
+        .map(({ id }) => id) ?? [],
+    );
+  }, [
+    detachedGroupId,
+    explorerFileTarget,
+    popoutTarget,
+    projectOverviewPopoutTarget,
+    tabLayout.data,
+  ]);
+  const openExplorerIds = useMemo(
+    () => tabbedExplorerIds(tabLayout.data, connectedExplorerGroupIds),
+    [connectedExplorerGroupIds, tabLayout.data],
+  );
+  const openExplorers = useMemo(
+    () =>
+      (explorers.data ?? []).filter((explorer) =>
+        openExplorerIds.has(explorer.id),
+      ),
+    [explorers.data, openExplorerIds],
+  );
   const sidebarFileWorkerId =
     sidebarExplorer?.activeWorkerId ?? selectedProjectWorkerId;
   const onlineWorkerIds = useMemo(
@@ -8722,6 +8751,7 @@ export function App() {
               });
             }}
             onlineWorkerIds={onlineWorkerIds}
+            openExplorers={openExplorers}
             prewarmExplorer={
               !isPopout
                 ? (sidebarPreviewExplorer ?? sidebarInlineExplorer)

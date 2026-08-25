@@ -280,6 +280,7 @@ export function ExplorerView({
   onChanged,
   onHeaderChange,
   onLifecycleChange,
+  keepInlineCodeWarm = false,
   onOpenFile,
   onRevealFolder,
   revealLabel,
@@ -300,6 +301,7 @@ export function ExplorerView({
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
   ): void;
+  keepInlineCodeWarm?: boolean;
   onOpenFile?(
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
@@ -371,8 +373,8 @@ export function ExplorerView({
   const [mediaRevision, setMediaRevision] = useState(0);
   const [viewStatePending, setViewStatePending] = useState(0);
   const [viewStateError, setViewStateError] = useState<string | null>(null);
-  // Inactive Explorer surfaces stay mounted. Keep their authorization gate
-  // open for the same bounded window so the Code iframe stays mounted too.
+  // Layout-backed tabs own their workbench until the tab closes. A transient
+  // sidebar prewarm remains bounded when no open tab owns the Explorer.
   const retainInlineWorkbench = useRetainedInlineWorkbench(
     active,
     undefined,
@@ -383,6 +385,7 @@ export function ExplorerView({
       explorer.worktreeId,
       explorer.activeWorkerId,
     ].join("\0"),
+    keepInlineCodeWarm,
   );
   const streamEncryption = useExplorerWorkerEncryption(
     explorer,
@@ -505,8 +508,9 @@ export function ExplorerView({
     ? usesCantripCodeEditor(displayedSelectedPath, displayedFileMode)
     : false;
   const graphVisible = graphRootPath !== undefined;
-  const activeCodeEditorPath =
-    active && !graphVisible && codeEditorVisible ? displayedSelectedPath : null;
+  const codeEditorPath =
+    !graphVisible && codeEditorVisible ? displayedSelectedPath : null;
+  const codeEditorVisibleOnSurface = Boolean(active && codeEditorPath);
   const dirty = draftVersion !== null && draft !== baselineContent;
   dirtyRef.current = dirty;
   draftRef.current = draft;
@@ -1122,11 +1126,12 @@ export function ExplorerView({
             </div>
           ) : null}
           <RetainedExplorerCodeEditor
-            activePath={activeCodeEditorPath}
             appearance={appearance}
             explorerId={explorer.id}
+            path={codeEditorPath}
             prewarm={prewarmInlineCode}
             retained={retainInlineWorkbench}
+            visible={codeEditorVisibleOnSurface}
             workerOnline={workerOnline}
             worktreeId={explorer.worktreeId}
             workerId={explorer.activeWorkerId}

@@ -9,12 +9,14 @@ vi.mock("@/components/explorer/explorer-view", () => ({
   ExplorerView: ({
     active,
     explorer,
+    keepInlineCodeWarm,
     onOpenFile,
     prewarmInlineCode,
     transientFile,
   }: {
     active: boolean;
     explorer: ExplorerSummary;
+    keepInlineCodeWarm?: boolean;
     onOpenFile?: () => void;
     prewarmInlineCode?: boolean;
     transientFile?: { path: string };
@@ -26,6 +28,7 @@ vi.mock("@/components/explorer/explorer-view", () => ({
       "data-explorer-id": explorer.id,
       "data-instance": instance.current,
       "data-has-on-open-file": Boolean(onOpenFile),
+      "data-keep-inline-code-warm": keepInlineCodeWarm,
       "data-mock-explorer-view": true,
       "data-prewarm-inline-code": prewarmInlineCode,
       "data-transient-path": transientFile?.path,
@@ -312,6 +315,102 @@ describe("retainExplorerSurfaceTabs", () => {
     ).toHaveLength(1);
     expect(views[0]?.props["data-prewarm-inline-code"]).toBe(true);
     expect(views[0]?.props["data-has-on-open-file"]).toBe(false);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("owns every open Explorer tab across switches and removes only a closed tab", async () => {
+    const first = {
+      ...explorer("first-explorer"),
+      activeWorkerId: "worker-one",
+      projectId: "project-one",
+      selectedPath: "src/first.ts",
+      worktreeId: "worktree-one",
+    } as ExplorerSummary;
+    const second = {
+      ...explorer("second-explorer"),
+      activeWorkerId: "worker-one",
+      projectId: "project-one",
+      selectedPath: "src/second.ts",
+      worktreeId: "worktree-one",
+    } as ExplorerSummary;
+    const preview = {
+      ...explorer("preview-explorer"),
+      activeWorkerId: "worker-one",
+      projectId: "project-one",
+      selectedPath: null,
+      worktreeId: "worktree-one",
+    } as ExplorerSummary;
+    const render = (
+      activeExplorer: ExplorerSummary,
+      openExplorers: ExplorerSummary[],
+    ) =>
+      createElement(PersistentExplorerViews, {
+        activeExplorer,
+        appearance: "dark",
+        gitStatuses: {},
+        openExplorers,
+        prewarmExplorer: preview,
+        repositoryGraphAvailable: false,
+      });
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(render(first, [first, second]));
+    });
+    const initialInstances = new Map(
+      renderer.root
+        .findAllByProps({ "data-mock-explorer-view": true })
+        .map((view) => [
+          view.props["data-explorer-id"] as string,
+          view.props["data-instance"] as number,
+        ]),
+    );
+    expect([...initialInstances.keys()]).toEqual([
+      first.id,
+      second.id,
+      preview.id,
+    ]);
+
+    await act(async () => renderer.update(render(second, [first, second])));
+    for (const explorerId of [first.id, second.id, preview.id]) {
+      const view = renderer.root.findByProps({
+        "data-explorer-id": explorerId,
+      });
+      expect(view.props["data-instance"]).toBe(
+        initialInstances.get(explorerId),
+      );
+    }
+    expect(
+      renderer.root.findByProps({ "data-explorer-id": first.id }).props[
+        "data-keep-inline-code-warm"
+      ],
+    ).toBe(true);
+    expect(
+      renderer.root.findByProps({ "data-explorer-id": second.id }).props[
+        "data-keep-inline-code-warm"
+      ],
+    ).toBe(true);
+    expect(
+      renderer.root.findByProps({ "data-explorer-id": preview.id }).props[
+        "data-keep-inline-code-warm"
+      ],
+    ).toBe(false);
+
+    await act(async () => renderer.update(render(second, [second])));
+    expect(
+      renderer.root.findAllByProps({ "data-explorer-id": first.id }),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findByProps({ "data-explorer-id": second.id }).props[
+        "data-instance"
+      ],
+    ).toBe(initialInstances.get(second.id));
+    expect(
+      renderer.root.findByProps({ "data-explorer-id": preview.id }).props[
+        "data-instance"
+      ],
+    ).toBe(initialInstances.get(preview.id));
 
     await act(async () => renderer.unmount());
   });

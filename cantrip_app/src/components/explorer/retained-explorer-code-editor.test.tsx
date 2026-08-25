@@ -30,6 +30,7 @@ import { INLINE_CODE_WORKBENCH_RETENTION_MS } from "./use-retained-inline-workbe
 const baseProps = {
   appearance: "dark" as const,
   explorerId: "explorer-1",
+  visible: true,
   prewarm: false,
   retained: true,
   workerOnline: true,
@@ -46,7 +47,7 @@ describe("RetainedExplorerCodeEditor", () => {
       renderer = TestRenderer.create(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: "src/one.ts",
+          path: "src/one.ts",
         }),
       );
     });
@@ -58,7 +59,8 @@ describe("RetainedExplorerCodeEditor", () => {
       renderer.update(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: null,
+          path: null,
+          visible: false,
         }),
       );
     });
@@ -83,7 +85,7 @@ describe("RetainedExplorerCodeEditor", () => {
       renderer = TestRenderer.create(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: "src/one.ts",
+          path: "src/one.ts",
         }),
       );
     });
@@ -95,7 +97,7 @@ describe("RetainedExplorerCodeEditor", () => {
       renderer.update(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: "src/two.ts",
+          path: "src/two.ts",
         }),
       );
     });
@@ -114,8 +116,9 @@ describe("RetainedExplorerCodeEditor", () => {
       renderer = TestRenderer.create(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: null,
+          path: null,
           prewarm: true,
+          visible: false,
         }),
       );
     });
@@ -128,7 +131,7 @@ describe("RetainedExplorerCodeEditor", () => {
       renderer.update(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: "src/first.ts",
+          path: "src/first.ts",
           prewarm: true,
         }),
       );
@@ -142,13 +145,34 @@ describe("RetainedExplorerCodeEditor", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("mounts an owned tab's Code path while the tab is inactive", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(RetainedExplorerCodeEditor, {
+          ...baseProps,
+          path: "src/inactive.ts",
+          visible: false,
+        }),
+      );
+    });
+
+    const mountedEditor = renderer.root.findByProps({
+      "data-mock-code-editor": true,
+    });
+    expect(mountedEditor.props["data-editor-path"]).toBe("src/inactive.ts");
+    expect(mountedEditor.props["data-editor-active"]).toBe(false);
+
+    await act(async () => renderer.unmount());
+  });
+
   it("unmounts the workbench when its retention lease expires", async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       renderer = TestRenderer.create(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: "src/one.ts",
+          path: "src/one.ts",
         }),
       );
     });
@@ -157,8 +181,9 @@ describe("RetainedExplorerCodeEditor", () => {
       renderer.update(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: null,
+          path: null,
           retained: false,
+          visible: false,
         }),
       );
     });
@@ -177,7 +202,7 @@ describe("RetainedExplorerCodeEditor", () => {
       renderer = TestRenderer.create(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: "src/one.ts",
+          path: "src/one.ts",
         }),
       );
     });
@@ -185,7 +210,8 @@ describe("RetainedExplorerCodeEditor", () => {
       renderer.update(
         createElement(RetainedExplorerCodeEditor, {
           ...baseProps,
-          activePath: null,
+          path: null,
+          visible: false,
         }),
       );
     });
