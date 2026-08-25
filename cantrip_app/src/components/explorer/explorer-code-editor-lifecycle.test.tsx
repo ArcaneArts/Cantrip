@@ -19,6 +19,7 @@ const desktopCode = vi.hoisted(() => ({
   setDirectCodeAttachmentPresentation: vi.fn(),
   setDirectCodeAttachmentTheme: vi.fn(),
   stopDirectCodeAttachment: vi.fn(),
+  subscribePreferredCodeAttachmentUnavailable: vi.fn(),
 }));
 
 const browserCode = vi.hoisted(() => ({
@@ -245,6 +246,13 @@ beforeEach(() => {
   desktopCode.recoverPreferredCodeAttachmentRoute.mockResolvedValue(
     "available",
   );
+  desktopCode.subscribePreferredCodeAttachmentUnavailable.mockImplementation(
+    (_preferred, listener) => {
+      const wrapped = () => listener();
+      browserCode.unavailableListeners.add(wrapped);
+      return () => browserCode.unavailableListeners.delete(wrapped);
+    },
+  );
   desktopCode.setDirectCodeAttachmentPresentation.mockResolvedValue(undefined);
   desktopCode.setDirectCodeAttachmentTheme.mockResolvedValue(undefined);
   desktopCode.openDirectCodeAttachmentFile.mockImplementation(
@@ -324,6 +332,42 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
     expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("does not create periodic route probes while a desktop editor is idle", async () => {
+    vi.useFakeTimers();
+    desktopCode.preferProtectedCodeAttachment.mockResolvedValue({
+      attachment,
+      desktopRouteIdentity: {
+        attachmentId: "desktop-attachment-1",
+        diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
+        directCapabilityId: "direct-capability-1",
+      },
+      directTunnelId: wire.tunnelId,
+      transportKind: "local-direct",
+    });
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor("src/idle.ts"), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: frameWindow } : null,
+      });
+    });
+    await flushImmediateTimers();
+    await act(async () => testWindow.sendMessage());
+    await flushImmediateTimers();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(
+      desktopCode.recoverPreferredCodeAttachmentRoute,
+    ).not.toHaveBeenCalled();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
 
     await act(async () => renderer.unmount());
   });

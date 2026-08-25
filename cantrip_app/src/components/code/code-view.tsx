@@ -37,8 +37,8 @@ import {
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
   preferProtectedCodeAttachment,
-  recoverPreferredCodeAttachmentRoute,
   stopDirectCodeAttachment,
+  subscribePreferredCodeAttachmentUnavailable,
 } from "@/lib/desktop-code";
 import {
   retireAttachmentBestEffort,
@@ -198,14 +198,15 @@ export function CodeView({
   useEffect(() => {
     const generation = ++connectionGeneration.current;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    let directHealthTimer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribeUnavailable: (() => void) | null = null;
     let cancelled = false;
     let ownedAttachmentId: string | null = null;
     let ownedDirectTunnelId: string | null = null;
     const cancelConnection = () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
-      if (directHealthTimer) clearTimeout(directHealthTimer);
+      unsubscribeUnavailable?.();
+      unsubscribeUnavailable = null;
     };
     cancelConnectionRef.current = cancelConnection;
     stopped.current = false;
@@ -286,21 +287,12 @@ export function CodeView({
           url: codeAttachmentUrlForLog(next.url),
         });
         onChangedRef.current?.();
-        if (preferred.directTunnelId) {
-          const checkDirectRoute = async () => {
-            if (cancelled) return;
-            const recovery =
-              await recoverPreferredCodeAttachmentRoute(preferred);
-            if (cancelled) return;
-            if (recovery === "replace-required") {
-              reload();
-              return;
-            }
-            if (!cancelled)
-              directHealthTimer = setTimeout(checkDirectRoute, 5_000);
-          };
-          directHealthTimer = setTimeout(checkDirectRoute, 5_000);
-        }
+        unsubscribeUnavailable = subscribePreferredCodeAttachmentUnavailable(
+          preferred,
+          () => {
+            if (!cancelled) reload();
+          },
+        );
       } catch (error) {
         ownedAttachmentId = null;
         ownedDirectTunnelId = null;

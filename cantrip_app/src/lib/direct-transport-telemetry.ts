@@ -1,12 +1,14 @@
 import { useEffect } from "react";
 
 import {
+  CantripApiError,
   recordDirectAttachmentTelemetry,
   renewTunnelAttachmentLease,
 } from "@/lib/api";
 import {
   desktopTunnelAvailable,
   forceDesktopTunnelRelay,
+  invalidateDesktopTunnelForward,
   listDesktopTunnelsWithOptions,
   refreshDesktopTunnelRelay,
 } from "@/lib/desktop-tunnel";
@@ -16,6 +18,38 @@ const REPORT_REQUEST_TIMEOUT_MS = 7_500;
 const RELAY_CREDENTIAL_RENEWAL_MARGIN_MS = 30_000;
 const RELAY_CREDENTIAL_RENEWAL_JITTER_MS = 10_000;
 const transportMaintenance = new Map<string, Promise<void>>();
+
+export function isAuthoritativeTunnelAttachmentFailure(
+  error: unknown,
+): boolean {
+  return (
+    error instanceof CantripApiError &&
+    [401, 403, 404, 409, 410].includes(error.status)
+  );
+}
+
+async function invalidateForwardAfterAuthoritativeFailure(
+  forward: Awaited<ReturnType<typeof listDesktopTunnelsWithOptions>>[number],
+  error: unknown,
+): Promise<boolean> {
+  if (!isAuthoritativeTunnelAttachmentFailure(error)) return false;
+  await invalidateDesktopTunnelForward(forward.tunnelId, {
+    attachmentId: forward.attachmentId,
+    diagnosticTraceId: forward.diagnosticTraceId,
+    directCapabilityId: forward.directCapabilityId,
+  });
+  return true;
+}
+
+function forwardGenerationKey(
+  forward: Awaited<ReturnType<typeof listDesktopTunnelsWithOptions>>[number],
+): string {
+  return [
+    forward.tunnelId,
+    forward.attachmentId,
+    forward.diagnosticTraceId ?? "none",
+  ].join("\0");
+}
 
 export function relayCredentialRenewalMarginMs(tunnelId: string): number {
   let hash = 2_166_136_261;
@@ -56,6 +90,7 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
   const directTelemetryAttachments = new Set(
     directTelemetryForwards.map((forward) => forward.attachmentId),
   );
+  const invalidatedForwards = new Set<string>();
   await Promise.all([
     ...directTelemetryForwards.map((forward) =>
       recordDirectAttachmentTelemetry(
@@ -75,7 +110,11 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
         {
           signal: AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
         },
-      ).catch(() => undefined),
+      ).catch(async (error) => {
+        if (await invalidateForwardAfterAuthoritativeFailure(forward, error)) {
+          invalidatedForwards.add(forwardGenerationKey(forward));
+        }
+      }),
     ),
     ...forwards
       .filter(
@@ -84,20 +123,38 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
       .map((forward) =>
         renewTunnelAttachmentLease(forward.attachmentId, {
           signal: AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
-        }).catch(() => undefined),
+        }).catch(async (error) => {
+          if (
+            await invalidateForwardAfterAuthoritativeFailure(forward, error)
+          ) {
+            invalidatedForwards.add(forwardGenerationKey(forward));
+          }
+        }),
       ),
   ]);
-  for (const forward of forwards) scheduleTransportMaintenance(forward);
+  for (const forward of forwards) {
+    if (!invalidatedForwards.has(forwardGenerationKey(forward))) {
+      scheduleTransportMaintenance(forward);
+    }
+  }
 }
 
 async function maintainTransport(
   forward: Awaited<ReturnType<typeof listDesktopTunnelsWithOptions>>[number],
 ): Promise<void> {
+  let invalidated = false;
   if (relayCredentialRefreshDue(forward)) {
     await refreshDesktopTunnelRelay(forward, {
       signal: AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
-    }).catch(() => false);
+    }).catch(async (error) => {
+      invalidated = await invalidateForwardAfterAuthoritativeFailure(
+        forward,
+        error,
+      );
+      return false;
+    });
   }
+  if (invalidated) return;
   if (
     forward.directCapabilityId &&
     forward.routeState !== "local-direct" &&

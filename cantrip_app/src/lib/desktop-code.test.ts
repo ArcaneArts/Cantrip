@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   stopBrowserCodeAttachment: vi.fn(),
   stopDesktopTunnel: vi.fn(),
   stopDesktopTunnelForward: vi.fn(),
+  subscribeBrowserCodeAttachmentUnavailable: vi.fn(),
+  subscribeDesktopTunnelForwardTerminal: vi.fn(),
   fetch: vi.fn(),
   clientLog: vi.fn(),
 }));
@@ -30,12 +32,16 @@ vi.mock("@/lib/desktop-tunnel", () => ({
   startDesktopTunnel: mocks.startDesktopTunnel,
   stopDesktopTunnel: mocks.stopDesktopTunnel,
   stopDesktopTunnelForward: mocks.stopDesktopTunnelForward,
+  subscribeDesktopTunnelForwardTerminal:
+    mocks.subscribeDesktopTunnelForwardTerminal,
 }));
 
 vi.mock("@/lib/browser-code-tunnel", () => ({
   browserCodeAttachmentHealthy: mocks.browserCodeAttachmentHealthy,
   startBrowserCodeAttachment: mocks.startBrowserCodeAttachment,
   stopBrowserCodeAttachment: mocks.stopBrowserCodeAttachment,
+  subscribeBrowserCodeAttachmentUnavailable:
+    mocks.subscribeBrowserCodeAttachmentUnavailable,
 }));
 
 vi.mock("@/lib/client-log-relay", () => ({
@@ -54,6 +60,7 @@ import {
   setDirectCodeAttachmentPresentation,
   setDirectCodeAttachmentTheme,
   stopDirectCodeAttachment,
+  subscribePreferredCodeAttachmentUnavailable,
   transportSafeErrorIdentity,
   waitForDirectCodeAttachmentReady,
 } from "./desktop-code";
@@ -66,6 +73,10 @@ beforeEach(() => {
   mocks.invoke.mockResolvedValue([]);
   mocks.listDesktopTunnelsWithOptions.mockResolvedValue([]);
   mocks.stopDesktopTunnel.mockResolvedValue(undefined);
+  mocks.subscribeBrowserCodeAttachmentUnavailable.mockReturnValue(
+    () => undefined,
+  );
+  mocks.subscribeDesktopTunnelForwardTerminal.mockReturnValue(() => undefined);
   mocks.forceDesktopTunnelRelay.mockResolvedValue({
     attachmentId: "transport-1",
     diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
@@ -92,6 +103,7 @@ describe("recoverPreferredCodeAttachmentRoute", () => {
     } as CodeAttachment,
     desktopRouteIdentity: {
       attachmentId: "transport-1",
+      diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
       directCapabilityId: "capability-1",
     },
     directTunnelId: "11111111-1111-4111-8111-111111111111",
@@ -109,6 +121,46 @@ describe("recoverPreferredCodeAttachmentRoute", () => {
     directFallbackReason: null,
     tunnelId: preferred.directTunnelId,
   };
+
+  it("subscribes with the exact native forward identity", () => {
+    let emitTerminal!: (event: {
+      attachmentId: string;
+      diagnosticTraceId: string | null;
+      reasonCode: "attachment-invalidated" | "replaced" | "route-terminated";
+      tunnelId: string;
+    }) => void;
+    const unlisten = vi.fn();
+    mocks.subscribeDesktopTunnelForwardTerminal.mockImplementation(
+      (_identity, listener) => {
+        emitTerminal = listener;
+        return unlisten;
+      },
+    );
+    const unavailable = vi.fn();
+
+    const unsubscribe = subscribePreferredCodeAttachmentUnavailable(
+      preferred,
+      unavailable,
+    );
+    expect(mocks.subscribeDesktopTunnelForwardTerminal).toHaveBeenCalledWith(
+      {
+        attachmentId: preferred.desktopRouteIdentity.attachmentId,
+        diagnosticTraceId: preferred.desktopRouteIdentity.diagnosticTraceId,
+        tunnelId: preferred.directTunnelId,
+      },
+      expect.any(Function),
+    );
+    emitTerminal({
+      attachmentId: preferred.desktopRouteIdentity.attachmentId,
+      diagnosticTraceId: preferred.desktopRouteIdentity.diagnosticTraceId,
+      reasonCode: "route-terminated",
+      tunnelId: preferred.directTunnelId,
+    });
+
+    expect(unavailable).toHaveBeenCalledOnce();
+    unsubscribe();
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
 
   it("forces an exact connected-but-broken direct route to relay and probes the same attachment URL", async () => {
     mocks.listDesktopTunnelsWithOptions.mockResolvedValue([directForward]);
@@ -292,6 +344,7 @@ describe("stopDirectCodeAttachment", () => {
     } as CodeProtectedAttachmentWire;
     mocks.startDesktopTunnel.mockResolvedValue({
       attachmentId: "transport-1",
+      diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
       localHost: "127.0.0.1",
       localPort: 52345,
       routeState: "local-direct",
@@ -316,6 +369,7 @@ describe("stopDirectCodeAttachment", () => {
       "transport-1",
       {
         attachmentId: "transport-1",
+        diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
         directCapabilityId: "capability-1",
       },
     );
@@ -698,6 +752,7 @@ describe("preferProtectedCodeAttachment", () => {
   });
 
   it("opens the protected generic tunnel at the worker-local Code path", async () => {
+    const drainHealthBody = vi.fn().mockResolvedValue(new ArrayBuffer(0));
     mocks.startDesktopTunnel.mockResolvedValue({
       attachmentId: "transport-1",
       diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
@@ -708,7 +763,11 @@ describe("preferProtectedCodeAttachment", () => {
       directCapabilityId: null,
       tunnelId: "11111111-1111-4111-8111-111111111111",
     });
-    mocks.fetch.mockResolvedValue({ ok: true });
+    mocks.fetch.mockResolvedValue({
+      arrayBuffer: drainHealthBody,
+      body: {},
+      ok: true,
+    });
 
     const preferred = await preferProtectedCodeAttachment({
       attachmentId: "11111111-1111-4111-8111-111111111111",
@@ -739,6 +798,7 @@ describe("preferProtectedCodeAttachment", () => {
         signal: expect.any(AbortSignal),
       },
     );
+    expect(drainHealthBody).toHaveBeenCalledOnce();
     const diagnosticTraceId = mocks.startDesktopTunnel.mock.calls[0]?.[1]
       ?.diagnosticTraceId as string;
     expect(mocks.clientLog).toHaveBeenCalledWith(

@@ -247,6 +247,7 @@ export function sanitizeLogRecordInput(
 const PERSISTED_STRING_CONTEXT_KEYS = new Set([
   "architecture",
   "attemptKind",
+  "connectionScope",
   "errorClass",
   "errorCode",
   "event",
@@ -260,6 +261,7 @@ const PERSISTED_STRING_CONTEXT_KEYS = new Set([
   "reasonCode",
   "status",
   "subsystem",
+  "transportKind",
   "windowKind",
 ]);
 const PERSISTED_DESTINATION_REJECTION_CODES = new Set([

@@ -24,6 +24,10 @@ const desktopCode = vi.hoisted(() => ({
   preferProtectedCodeAttachment: vi.fn(),
   recoverPreferredCodeAttachmentRoute: vi.fn(),
   stopDirectCodeAttachment: vi.fn(),
+  subscribePreferredCodeAttachmentUnavailable: vi.fn(),
+}));
+const availability = vi.hoisted(() => ({
+  listeners: new Set<() => void>(),
 }));
 
 vi.mock("@/lib/api", () => api);
@@ -196,6 +200,7 @@ const originalWindow = globalThis.window;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  availability.listeners.clear();
   const testWindow = fakeWindow();
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -213,6 +218,12 @@ beforeEach(() => {
   });
   desktopCode.recoverPreferredCodeAttachmentRoute.mockResolvedValue(
     "available",
+  );
+  desktopCode.subscribePreferredCodeAttachmentUnavailable.mockImplementation(
+    (_preferred, listener) => {
+      availability.listeners.add(listener);
+      return () => availability.listeners.delete(listener);
+    },
   );
   desktopCode.openDirectCodeAttachmentSettings.mockResolvedValue({
     opened: true,
@@ -289,6 +300,22 @@ describe("CodeSettings retained workbench lifecycle", () => {
     await act(async () => updateActive(renderer, queryClient, true));
     expect(renderer.root.findByType("iframe")).toBe(initialFrame);
     expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("replaces the attachment when its exact transport reports terminal", async () => {
+    const { renderer } = await mount(true);
+    expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      for (const listener of [...availability.listeners]) listener();
+    });
+    await settle();
+
+    expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledTimes(2);
+    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
+    expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
 
     await act(async () => renderer.unmount());
   });

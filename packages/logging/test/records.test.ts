@@ -283,4 +283,21 @@ describe("structured service logs", () => {
       "lastDestinationRejectionCode",
     );
   });
+
+  it("persists transport and logical connection scope diagnostics", () => {
+    const persisted = minimizeServiceLogRecordInput({
+      ...baseRecord,
+      context: {
+        connectionScope: "logical-stream",
+        event: "tunnel.destination.closed",
+        transportKind: "local-direct",
+      },
+    });
+
+    expect(persisted.context).toMatchObject({
+      connectionScope: "logical-stream",
+      event: "tunnel.destination.closed",
+      transportKind: "local-direct",
+    });
+  });
 });

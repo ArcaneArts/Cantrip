@@ -36,8 +36,8 @@ import {
 import {
   openDirectCodeAttachmentSettings,
   preferProtectedCodeAttachment,
-  recoverPreferredCodeAttachmentRoute,
   stopDirectCodeAttachment,
+  subscribePreferredCodeAttachmentUnavailable,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
@@ -49,7 +49,6 @@ import { cn } from "@/lib/utils";
 
 const WORKER_REFRESH_MS = 5_000;
 const SETTINGS_STATUS_REFRESH_MS = 3_000;
-const DIRECT_HEALTH_REFRESH_MS = 5_000;
 
 function workerCanHostCodeSettings(worker: WorkerSummary): boolean {
   return (
@@ -183,7 +182,7 @@ export function CodeSettings({
     const generation = ++connectionGeneration.current;
     let cancelled = false;
     let startTimer: ReturnType<typeof setTimeout> | undefined;
-    let healthTimer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribeUnavailable: (() => void) | null = null;
     setAttachment(null);
     setSynchronization(null);
     setConnectionError(null);
@@ -223,21 +222,12 @@ export function CodeSettings({
         setConnecting(false);
         if (!selected.preferred) return;
         setAttachment(selected.preferred.attachment);
-        if (selected.preferred.directTunnelId) {
-          const checkHealth = async () => {
-            if (cancelled) return;
-            const recovery = await recoverPreferredCodeAttachmentRoute(
-              selected.preferred!,
-            );
-            if (cancelled) return;
-            if (recovery === "replace-required") {
-              setConnectionError("The Code settings connection was lost.");
-              return;
-            }
-            healthTimer = setTimeout(checkHealth, DIRECT_HEALTH_REFRESH_MS);
-          };
-          healthTimer = setTimeout(checkHealth, DIRECT_HEALTH_REFRESH_MS);
-        }
+        unsubscribeUnavailable = subscribePreferredCodeAttachmentUnavailable(
+          selected.preferred,
+          () => {
+            if (!cancelled) setReloadVersion((version) => version + 1);
+          },
+        );
       } catch (error) {
         if (cancelled || generation !== connectionGeneration.current) return;
         setConnecting(false);
@@ -250,7 +240,8 @@ export function CodeSettings({
     return () => {
       cancelled = true;
       if (startTimer) clearTimeout(startTimer);
-      if (healthTimer) clearTimeout(healthTimer);
+      unsubscribeUnavailable?.();
+      unsubscribeUnavailable = null;
       void lifecycleRef.current!.retire("Code settings connection replaced.");
     };
   }, [appearance, reloadVersion, selectedWorkerId]);

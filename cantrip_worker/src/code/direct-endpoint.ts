@@ -345,6 +345,15 @@ export class CodeDirectEndpointManager {
     if (!endpoint) return;
     this.#endpoints.delete(capabilityId);
     this.#closeEndpoint(endpoint, reason);
+    workerLogger.event("info", "Cantrip Code direct endpoint revoked", {
+      event: "code.direct.revoked",
+      subsystem: "code",
+      operation: "revoke-direct-endpoint",
+      reasonCode: "endpoint-revoked",
+      status: "completed",
+      sessionId: endpoint.sessionId,
+      tunnelId: endpoint.tunnelId,
+    });
   }
 
   #closeEndpoint(endpoint: Endpoint, reason: string): void {

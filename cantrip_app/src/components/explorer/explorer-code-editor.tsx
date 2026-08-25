@@ -17,7 +17,6 @@ import {
   isDarkCodeAppearance,
 } from "@/components/code/code-view";
 import { Button } from "@/components/ui/button";
-import { subscribeBrowserCodeAttachmentUnavailable } from "@/lib/browser-code-tunnel";
 import {
   CODE_WORKBENCH_READY_TIMEOUT_MS,
   CodeWorkbenchFrameLoadTracker,
@@ -40,6 +39,7 @@ import {
   setDirectCodeAttachmentPresentation,
   setDirectCodeAttachmentTheme,
   stopDirectCodeAttachment,
+  subscribePreferredCodeAttachmentUnavailable,
   type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
@@ -51,7 +51,6 @@ import {
 
 const FILE_OPEN_RETRY_DELAY_MS = 250;
 const FILE_OPEN_RECONNECT_LIMIT = 1;
-const ATTACHMENT_HEALTH_INTERVAL_MS = 5_000;
 const THEME_UPDATE_RETRY_DELAY_MS = 500;
 const AUTOMATIC_REPLACEMENT_EXHAUSTED_MESSAGE =
   "Cantrip Code could not restore this editor automatically. Retry to reconnect.";
@@ -773,48 +772,12 @@ export function ExplorerCodeEditor({
   }, [path]);
 
   useEffect(() => {
-    if (!preferredAttachment?.directTunnelId) return;
-    let cancelled = false;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const check = async () => {
-      const recovery = await recoverPreferredCodeAttachmentRoute(
-        preferredAttachment,
-        { signal: controller.signal },
-      ).catch(() => "recovering" as const);
-      if (cancelled) return;
-      if (recovery === "replace-required") {
-        requestAutomaticReplacement(bindingKey);
-        return;
-      }
-      timer = setTimeout(check, ATTACHMENT_HEALTH_INTERVAL_MS);
-    };
-    timer = setTimeout(check, ATTACHMENT_HEALTH_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      controller.abort(
-        new DOMException(
-          "Explorer Code health check superseded.",
-          "AbortError",
-        ),
-      );
-      if (timer) clearTimeout(timer);
-    };
+    if (!preferredAttachment) return;
+    return subscribePreferredCodeAttachmentUnavailable(
+      preferredAttachment,
+      () => requestAutomaticReplacement(bindingKey),
+    );
   }, [bindingKey, preferredAttachment, requestAutomaticReplacement]);
-
-  useEffect(() => {
-    const tunnelId = preferredAttachment?.directTunnelId;
-    if (!tunnelId) return;
-    return subscribeBrowserCodeAttachmentUnavailable((event) => {
-      if (event.tunnelId === tunnelId) {
-        requestAutomaticReplacement(bindingKey);
-      }
-    });
-  }, [
-    bindingKey,
-    preferredAttachment?.directTunnelId,
-    requestAutomaticReplacement,
-  ]);
 
   useEffect(() => {
     frameRetryCountRef.current = 0;

@@ -39,6 +39,7 @@ const wire = {
 };
 const desktopRouteIdentity = {
   attachmentId: "transport-1",
+  diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
   directCapabilityId: "capability-1",
 };
 const frameNonce = "mount_nonce_1234567890";
@@ -611,12 +612,8 @@ describe("desktop Explorer window broker", () => {
     await broker.dispose();
   });
 
-  it("retains one attachment and workbench across transient route recovery", async () => {
+  it("retains one attachment and workbench without idle route probes", async () => {
     vi.useFakeTimers();
-    desktopCode.recoverPreferredCodeAttachmentRoute
-      .mockResolvedValueOnce("recovering")
-      .mockResolvedValueOnce("recovering")
-      .mockResolvedValue("available");
     let endpointCount = 0;
     let client!: DesktopExplorerWindowClient;
     const broker = createDesktopExplorerWindowBroker({
@@ -645,6 +642,9 @@ describe("desktop Explorer window broker", () => {
     await broker.ready;
 
     await vi.advanceTimersByTimeAsync(15_000);
+    expect(
+      desktopCode.recoverPreferredCodeAttachmentRoute,
+    ).not.toHaveBeenCalled();
     expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
     expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
     expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
@@ -656,11 +656,10 @@ describe("desktop Explorer window broker", () => {
     vi.useRealTimers();
   });
 
-  it("replaces the editor only after exact route identity is terminal", async () => {
-    vi.useFakeTimers();
+  it("replaces a terminal route only after a control operation fails", async () => {
     desktopCode.recoverPreferredCodeAttachmentRoute
-      .mockResolvedValueOnce("replace-required")
-      .mockResolvedValue("available");
+      .mockReset()
+      .mockResolvedValueOnce("replace-required");
     let endpointCount = 0;
     let client!: DesktopExplorerWindowClient;
     const broker = createDesktopExplorerWindowBroker({
@@ -688,18 +687,77 @@ describe("desktop Explorer window broker", () => {
     client.start();
     await broker.ready;
 
-    await vi.advanceTimersByTimeAsync(5_000);
-    await vi.waitFor(() =>
-      expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
-        2,
-      ),
-    );
+    desktopCode.openDirectCodeAttachmentFile
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockRejectedValueOnce(new TypeError("Load failed"));
+    let openFailure: unknown;
+    await broker.openFile("src/next.ts").catch((error: unknown) => {
+      openFailure = error;
+    });
+
+    expect(
+      desktopCode.recoverPreferredCodeAttachmentRoute,
+    ).toHaveBeenCalledOnce();
+    expect(openFailure).toBeUndefined();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
     expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
     expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
     expect(endpointCount).toBe(2);
 
     client.dispose();
     await broker.dispose();
-    vi.useRealTimers();
   });
+
+  it.each(["available", "recovering"] as const)(
+    "retries the requested file on the retained route after %s recovery",
+    async (recovery) => {
+      vi.useFakeTimers();
+      desktopCode.recoverPreferredCodeAttachmentRoute
+        .mockReset()
+        .mockResolvedValue(recovery);
+      let client!: DesktopExplorerWindowClient;
+      const broker = createDesktopExplorerWindowBroker({
+        appearance: "dark",
+        explorer: {
+          activeWorkerId: "worker-one",
+          id: `explorer-${recovery}-route`,
+          projectId: "project-one",
+          worktreeId: "worktree-one",
+        } as ExplorerSummary,
+        path: "src/current.ts",
+      });
+      client = new DesktopExplorerWindowClient(broker.launchId, {
+        onContext: vi.fn(),
+        onEditorEndpoint: () => {
+          client.editorWorkbenchMounted(frameNonce);
+          client.editorWorkbenchReady(frameNonce);
+        },
+        onEditorError: vi.fn(),
+        onEditorReady: vi.fn(),
+        onLaunchError: vi.fn(),
+      });
+      client.start();
+      await broker.ready;
+
+      desktopCode.openDirectCodeAttachmentFile
+        .mockRejectedValueOnce(new TypeError("Load failed"))
+        .mockRejectedValueOnce(new TypeError("Load failed"))
+        .mockRejectedValueOnce(new TypeError("Load failed"));
+      const opening = broker.openFile("src/next.ts");
+      await vi.advanceTimersByTimeAsync(3_000);
+      await expect(opening).resolves.toBeUndefined();
+
+      expect(
+        desktopCode.recoverPreferredCodeAttachmentRoute,
+      ).toHaveBeenCalledOnce();
+      expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+      expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
+      expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
+
+      client.dispose();
+      await broker.dispose();
+      vi.useRealTimers();
+    },
+  );
 });

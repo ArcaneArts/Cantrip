@@ -9595,11 +9595,7 @@ export function App() {
             }}
             onlineWorkerIds={onlineWorkerIds}
             openExplorers={openExplorers}
-            prewarmExplorer={
-              !isPopout
-                ? (sidebarPreviewExplorer ?? sidebarInlineExplorer)
-                : null
-            }
+            prewarmExplorer={!isPopout ? sidebarPreviewExplorer : null}
           />
         </Suspense>
 

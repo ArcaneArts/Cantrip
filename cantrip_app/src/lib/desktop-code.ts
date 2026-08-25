@@ -16,6 +16,7 @@ import {
   browserCodeAttachmentHealthy,
   startBrowserCodeAttachment,
   stopBrowserCodeAttachment,
+  subscribeBrowserCodeAttachmentUnavailable,
 } from "@/lib/browser-code-tunnel";
 import { clientLogger } from "@/lib/client-log-relay";
 import {
@@ -23,6 +24,7 @@ import {
   listDesktopTunnelsWithOptions,
   startDesktopTunnel,
   stopDesktopTunnel,
+  subscribeDesktopTunnelForwardTerminal,
   type DesktopTunnelDestinationRejectionCode,
   type DesktopTunnelForwardIdentity,
   type DesktopTunnelForwardSummary,
@@ -37,6 +39,29 @@ export interface PreferredCodeAttachment {
 
 export type CodeAttachmentRouteRecoveryState =
   "available" | "recovering" | "replace-required";
+
+export function subscribePreferredCodeAttachmentUnavailable(
+  preferred: PreferredCodeAttachment,
+  listener: () => void,
+): () => void {
+  const tunnelId = preferred.directTunnelId;
+  if (!tunnelId) return () => undefined;
+  if (!isTauri()) {
+    return subscribeBrowserCodeAttachmentUnavailable((event) => {
+      if (event.tunnelId === tunnelId) listener();
+    });
+  }
+  const identity = preferred.desktopRouteIdentity;
+  if (!identity) return () => undefined;
+  return subscribeDesktopTunnelForwardTerminal(
+    {
+      attachmentId: identity.attachmentId,
+      diagnosticTraceId: identity.diagnosticTraceId,
+      tunnelId,
+    },
+    () => listener(),
+  );
+}
 
 const protectedAttachmentIdentities = new WeakMap<
   object,
@@ -316,11 +341,19 @@ async function fetchCodeAttachmentHealth(
   signal?.addEventListener("abort", onCallerAbort, { once: true });
   try {
     return await Promise.race([
-      fetch(endpoint, {
-        cache: "no-store",
-        credentials: "omit",
-        signal: controller.signal,
-      }),
+      (async () => {
+        const response = await fetch(endpoint, {
+          cache: "no-store",
+          credentials: "omit",
+          signal: controller.signal,
+        });
+        // A health request is a complete logical HTTP stream, not merely a
+        // header probe. Draining its bounded response lets the loopback and
+        // protected tunnel close normally instead of leaving WebKit to reset
+        // an unread response body later.
+        if (response.body) await response.arrayBuffer();
+        return response;
+      })(),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {
           reject(new CodeAttachmentAttemptTimeout());
@@ -731,6 +764,7 @@ export async function preferProtectedCodeAttachment(
     }
     const desktopRouteIdentity = {
       attachmentId: forward.attachmentId,
+      diagnosticTraceId: forward.diagnosticTraceId,
       directCapabilityId: forward.directCapabilityId,
     };
     protectedAttachmentIdentities.set(wire, desktopRouteIdentity);
@@ -744,6 +778,7 @@ export async function preferProtectedCodeAttachment(
   } catch (error) {
     await stopDesktopTunnel(wire.tunnelId, forward.attachmentId, {
       attachmentId: forward.attachmentId,
+      diagnosticTraceId: forward.diagnosticTraceId,
       directCapabilityId: forward.directCapabilityId,
     }).catch(() => undefined);
     throw error;

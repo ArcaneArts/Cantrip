@@ -376,6 +376,7 @@ describe("worker TCP tunnel destination", () => {
         record.context.connectionId === connectionId,
     )?.context;
     expect(context).toMatchObject({
+      connectionScope: "logical-stream",
       event: "tunnel.destination.closed-locally",
       reasonCode: "capacity-unavailable",
       status: "failed",
