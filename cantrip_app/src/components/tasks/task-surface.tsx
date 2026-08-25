@@ -76,8 +76,9 @@ import {
 } from "@/lib/task-worker-encryption";
 import { cn } from "@/lib/utils";
 
-import { TaskPlanReview } from "./task-plan-review";
 import { TaskImplementationDashboard } from "./task-implementation-dashboard";
+import { TaskListBackButton } from "./task-list-back-button";
+import { TaskPlanReview } from "./task-plan-review";
 
 const TaskMarkdownEditor = lazy(() =>
   import("./task-markdown-editor").then((module) => ({
@@ -636,6 +637,7 @@ export function TaskSurface({
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex shrink-0 items-center gap-3 border-b px-5 py-3">
+          {onClose ? <TaskListBackButton onBack={onClose} /> : null}
           <Loader2 className="size-4 animate-spin text-violet-500" />
           <div className="min-w-0">
             <p className="text-sm font-medium">
@@ -659,6 +661,7 @@ export function TaskSurface({
     return (
       <TaskPlanReview
         chat={chat}
+        onClose={onClose}
         task={task.data}
         worker={worker}
         onReload={async () => (await task.refetch()).data ?? null}
@@ -671,6 +674,7 @@ export function TaskSurface({
       <TaskImplementationDashboard
         chat={chat}
         initialTask={task.data}
+        onClose={onClose}
         workerName={workerName}
       />
     );

@@ -46,6 +46,7 @@ import {
 } from "@/lib/task-worker-encryption";
 import { cn } from "@/lib/utils";
 
+import { TaskListBackButton } from "./task-list-back-button";
 import { TaskQuestionList } from "./task-question-list";
 import {
   taskReviewInputSignature,
@@ -102,11 +103,13 @@ export function taskReviewSaveLabel(input: {
 
 export function TaskPlanReview({
   chat,
+  onClose,
   onReload,
   task,
   worker,
 }: {
   chat: ChatSummary;
+  onClose?(): void;
   onReload(): Promise<TaskDetail | null>;
   task: TaskDetail;
   worker?: WorkerSummary;
@@ -520,8 +523,9 @@ export function TaskPlanReview({
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-5xl px-5 py-5 sm:px-8 sm:py-7">
+        <div className="w-full px-5 py-5 sm:px-8 sm:py-7">
           <div className="flex flex-wrap items-center gap-2 border-b pb-3">
+            {onClose ? <TaskListBackButton onBack={onClose} /> : null}
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-semibold">Implementation plan</h2>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
