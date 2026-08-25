@@ -43,6 +43,7 @@ import {
 } from "./mobile-terminal-command-bar";
 import { rowsWithoutPartiallyVisibleLastLine } from "./terminal-fit";
 import { installTerminalLinkLayer } from "./terminal-link-layer";
+import { shouldStartDirectTerminalTransport } from "./terminal-transport";
 import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
 import { TerminalServicePanel } from "./terminal-service-panel";
 import { terminalBackground } from "./terminal-theme";
@@ -97,6 +98,7 @@ export function TerminalView({
   onOpenLink?(url: string): void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const directUnavailableTerminalIdRef = useRef<string | null>(null);
   const eliteContentGlitchEnabledRef = useRef(eliteContentGlitchEnabled);
   const eliteRevealConfigRef = useRef(eliteRevealConfig);
   const inputSenderRef = useRef<((data: string) => boolean) | null>(null);
@@ -451,6 +453,7 @@ export function TerminalView({
         ready = false;
         if (direct && !directFallbackStarted) {
           directFallbackStarted = true;
+          directUnavailableTerminalIdRef.current = terminal.id;
           clientLogger.warn("Terminal direct transport fell back to relay", {
             event: "surface.terminal.transport-fallback",
             operation: "select-transport",
@@ -491,6 +494,15 @@ export function TerminalView({
       nextSocket.addEventListener("error", fail);
     };
     const startTransport = () => {
+      if (
+        !shouldStartDirectTerminalTransport(
+          terminal.id,
+          directUnavailableTerminalIdRef.current,
+        )
+      ) {
+        connectSocket(terminalWebSocketUrl(terminal.id, operationId), false);
+        return;
+      }
       void startDirectDesktopTerminal(terminal.id)
         .then((connection) => {
           if (disposed) {
