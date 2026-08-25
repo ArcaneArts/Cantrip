@@ -67,8 +67,13 @@ describe("PlanPanel answers", () => {
       createElement(PlanPanel, {
         active: true,
         error: null,
+        implementDisabled: false,
+        implementPending: false,
         onAnswer: () => undefined,
+        onImplement: () => undefined,
+        onRevise: () => undefined,
         pending: false,
+        ready: false,
         state,
       }),
     );
@@ -81,14 +86,71 @@ describe("PlanPanel answers", () => {
     expect(markup).toContain("shrink-0");
   });
 
-  it("hides an idle plan after its turn completes", async () => {
+  it("offers implementation or continued planning after the turn completes", async () => {
     const { PlanPanel } = await import("./plan-panel");
     const markup = renderToStaticMarkup(
       createElement(PlanPanel, {
         active: false,
         error: null,
+        implementDisabled: false,
+        implementPending: false,
         onAnswer: () => undefined,
+        onImplement: () => undefined,
+        onRevise: () => undefined,
         pending: false,
+        ready: true,
+        state: {
+          mode: "plan",
+          explanation: null,
+          steps: [],
+          question: null,
+        },
+      }),
+    );
+
+    expect(markup).toContain("Plan ready");
+    expect(markup).toContain("Implement plan");
+    expect(markup).toContain("Tell Codex something else");
+  });
+
+  it("stays hidden outside Plan Mode", async () => {
+    const { PlanPanel } = await import("./plan-panel");
+    const markup = renderToStaticMarkup(
+      createElement(PlanPanel, {
+        active: false,
+        error: null,
+        implementDisabled: false,
+        implementPending: false,
+        onAnswer: () => undefined,
+        onImplement: () => undefined,
+        onRevise: () => undefined,
+        pending: false,
+        ready: true,
+        state: {
+          mode: "default",
+          explanation: null,
+          steps: [],
+          question: null,
+        },
+      }),
+    );
+
+    expect(markup).toBe("");
+  });
+
+  it("stays hidden while the user prepares more planning input", async () => {
+    const { PlanPanel } = await import("./plan-panel");
+    const markup = renderToStaticMarkup(
+      createElement(PlanPanel, {
+        active: false,
+        error: null,
+        implementDisabled: false,
+        implementPending: false,
+        onAnswer: () => undefined,
+        onImplement: () => undefined,
+        onRevise: () => undefined,
+        pending: false,
+        ready: false,
         state: {
           mode: "plan",
           explanation: null,
@@ -107,8 +169,13 @@ describe("PlanPanel answers", () => {
       createElement(PlanPanel, {
         active: false,
         error: null,
+        implementDisabled: false,
+        implementPending: false,
         onAnswer: () => undefined,
+        onImplement: () => undefined,
+        onRevise: () => undefined,
         pending: false,
+        ready: false,
         state: {
           mode: "plan",
           explanation: null,

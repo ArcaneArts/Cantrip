@@ -27,14 +27,24 @@ export function buildPlanAnswers(
 export function PlanPanel({
   active,
   error,
+  implementDisabled,
+  implementPending,
   onAnswer,
+  onImplement,
+  onRevise,
   pending,
+  ready,
   state,
 }: {
   active: boolean;
   error?: string | null;
+  implementDisabled: boolean;
+  implementPending: boolean;
   onAnswer(answers: ChatPlanAnswer["answers"]): void;
+  onImplement(): void;
+  onRevise(): void;
   pending: boolean;
+  ready: boolean;
   state: ChatPlanState;
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
@@ -47,7 +57,10 @@ export function PlanPanel({
   const answers = state.question
     ? buildPlanAnswers(state.question, values, otherValues)
     : null;
-  if (!state.question && (state.mode !== "plan" || !active)) return null;
+  if (!state.question && (state.mode !== "plan" || (!active && !ready))) {
+    return null;
+  }
+  const planReady = ready && !state.question;
 
   return (
     <section
@@ -65,14 +78,19 @@ export function PlanPanel({
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-xs font-semibold uppercase tracking-wide text-sky-600 dark:text-sky-400">
-              Plan Mode
+              {planReady ? "Plan ready" : "Plan Mode"}
             </div>
             {state.explanation ? (
               <p className="mt-1 text-sm leading-5 text-muted-foreground">
                 {state.explanation}
               </p>
             ) : null}
-            {state.steps.length === 0 ? (
+            {planReady ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Implement the completed plan now, or tell Codex what you want
+                changed.
+              </p>
+            ) : state.steps.length === 0 ? (
               <p className="mt-1 text-sm text-muted-foreground">
                 Codex is gathering context for a plan.
               </p>
@@ -199,6 +217,29 @@ export function PlanPanel({
           >
             {pending ? <Loader2 className="size-4 animate-spin" /> : null}
             Answer Codex
+          </Button>
+        </div>
+      ) : planReady ? (
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-sky-500/20 bg-[var(--popover-solid)] p-3">
+          <Button
+            disabled={implementPending}
+            onClick={onRevise}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Tell Codex something else
+          </Button>
+          <Button
+            disabled={implementDisabled}
+            onClick={onImplement}
+            size="sm"
+            type="button"
+          >
+            {implementPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : null}
+            Implement plan
           </Button>
         </div>
       ) : null}

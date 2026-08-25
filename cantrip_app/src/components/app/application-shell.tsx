@@ -2431,6 +2431,27 @@ export function ChatTranscript({
       setAnswerPlanPending(false);
     }
   };
+  const planImplementationDisabled =
+    relocationActive ||
+    !selectedModelId ||
+    send.isPending ||
+    selectModelConfiguration.isPending ||
+    selectPermissionProfile.isPending ||
+    updatePrompt.isPending;
+  const startPlanImplementation = () => {
+    if (planImplementationDisabled) return;
+    send.mutate({
+      attachments: [],
+      mode: "default",
+      reasoningEffort: composerReasoningEffort,
+      text: "Implement the plan.",
+    });
+  };
+  const revisePlan = () => {
+    setComposerMode("plan");
+    setCommandNotice("Continue refining the plan in the message box.");
+    window.requestAnimationFrame(() => composerRef.current?.focus());
+  };
   const [respondingRequestId, setRespondingRequestId] = useState<string | null>(
     null,
   );
@@ -3226,11 +3247,23 @@ export function ChatTranscript({
           />
           {capabilities.modes === "agent-modes" && planState.data ? (
             <PlanPanel
-              active={chat.status === "running" && !interrupt.isPending}
+              active={
+                chat.status === "running" ||
+                chat.status === "waiting-for-approval"
+              }
+              implementDisabled={planImplementationDisabled}
+              implementPending={send.isPending}
+              ready={
+                chat.status === "idle" &&
+                !interrupt.isPending &&
+                composerMode !== "plan"
+              }
               state={planState.data}
               pending={answerPlanPending}
               error={answerPlanError}
               onAnswer={(answers) => void submitPlanAnswer(answers)}
+              onImplement={startPlanImplementation}
+              onRevise={revisePlan}
             />
           ) : null}
           <PromptQueue
