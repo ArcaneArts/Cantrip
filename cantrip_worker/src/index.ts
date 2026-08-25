@@ -3151,6 +3151,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           "Code attachment released",
         );
         return { tunnelId: command.tunnelId };
+      case "code.transport.route.authorize":
+      case "code.transport.route.revoke":
+      case "code.transport.revoke":
+        throw new Error(
+          "This worker does not support shared Cantrip Code transports yet.",
+        );
       case "code.saveAll":
         return code.saveAll(command.sessionId);
       case "code.openFile":

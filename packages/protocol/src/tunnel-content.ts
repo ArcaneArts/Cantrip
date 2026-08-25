@@ -60,6 +60,13 @@ export const tunnelContentDestinationEndpointSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({
+        kind: z.literal("worker-code-transport"),
+        workerId: tunnelContentIdSchema,
+        resourceId: tunnelContentIdSchema,
+      })
+      .strict(),
+    z
+      .object({
         kind: z.literal("worker-adapter"),
         workerId: tunnelContentIdSchema,
         adapter: z.literal("code"),
@@ -184,7 +191,10 @@ export function tunnelPublicDestinationEndpoint(
       resourceId: destination.resourceId,
     };
   }
-  if (destination.kind === "worker-code") {
+  if (
+    destination.kind === "worker-code" ||
+    destination.kind === "worker-code-transport"
+  ) {
     return {
       kind: "worker-adapter",
       workerId: destination.workerId,

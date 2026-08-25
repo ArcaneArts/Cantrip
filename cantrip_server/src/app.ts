@@ -75,6 +75,8 @@ import {
   codeTabWireSummarySchema,
   encryptedCodeTabUpdateSchema,
   explorerCodeProtectedAttachmentCreateSchema,
+  explorerCodeSessionAttachmentCreateSchema,
+  codeSharedAttachmentWireSchema,
   codeThemeUpdateSchema,
   desktopUpdateActiveWorkSummarySchema,
   serviceLogReadResultSchema,
@@ -743,6 +745,10 @@ import {
   CodeTunnelBroker,
   ExplorerCodeAttachmentLeaseError,
 } from "./code/tunnel.js";
+import {
+  canonicalCodeAuthSessionId,
+  SharedCodeTransportCapacityError,
+} from "./code/shared-transport.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import {
   ProjectFolderSetupJobExecutor,
@@ -1061,6 +1067,12 @@ const ACCOUNT_RESOURCE_USAGE_LIVE_COALESCE_MS = 5_000;
 const ACCOUNT_RESOURCE_USAGE_LIVE_TIMER_LIMIT = 4_096;
 const TUNNEL_ATTACHMENT_SECRET_TTL_MS = 2 * 60_000;
 const TUNNEL_BROWSER_PROTOCOL_PREFIX = "cantrip-tunnel-v1.";
+const UUID_PATH_PARAMETER_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+function validUuidPathParameter(value: string): boolean {
+  return UUID_PATH_PARAMETER_PATTERN.test(value);
+}
 
 function tunnelAttachmentSocketSecret(headers: {
   authorization?: string;
@@ -13297,6 +13309,12 @@ export async function buildApp({
         request.params.principalId,
         input.data,
       );
+      if (principal?.kind === "worker" && principal.workerId) {
+        await codeTunnel.revokeSharedWorkerSecurity(
+          principal.ownerId,
+          principal.workerId,
+        );
+      }
       return principal
         ? reply
             .header("cache-control", "no-store")
@@ -13337,12 +13355,31 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const ownerId = principalOwnerId(request);
+      const tunnelGrantWorkerId =
+        input.data.component === "tunnel-content"
+          ? (await repository.encryptionRegistry.listPrincipals(ownerId)).find(
+              (candidate) =>
+                candidate.id === request.params.principalId &&
+                candidate.kind === "worker" &&
+                candidate.workerId,
+            )?.workerId
+          : null;
       const result = await repository.encryptionRegistry.createGrant(
-        principalOwnerId(request),
+        ownerId,
         request.params.principalId,
         input.data,
       );
       if (result.status === "created") {
+        if (
+          result.grant.component === "tunnel-content" &&
+          tunnelGrantWorkerId
+        ) {
+          await codeTunnel.revokeSharedWorkerSecurity(
+            ownerId,
+            tunnelGrantWorkerId,
+          );
+        }
         return reply
           .header("cache-control", "no-store")
           .code(201)
@@ -13379,6 +13416,24 @@ export async function buildApp({
         request.params.grantId,
         input.data,
       );
+      if (grant?.component === "tunnel-content") {
+        const principals = await repository.encryptionRegistry.listPrincipals(
+          grant.ownerId,
+        );
+        const workerPrincipal = principals.find(
+          (candidate) =>
+            candidate.id === grant.principalId &&
+            candidate.kind === "worker" &&
+            candidate.workerId,
+        );
+        if (workerPrincipal?.workerId) {
+          await codeTunnel.revokeSharedWorkerSecurity(
+            grant.ownerId,
+            workerPrincipal.workerId,
+            grant.keyRevision,
+          );
+        }
+      }
       return grant
         ? reply
             .header("cache-control", "no-store")
@@ -14696,6 +14751,21 @@ export async function buildApp({
             codeRootIdentity,
           ))
       ) {
+        const stopped = await tunnelRuntime.revoke(
+          ownerId,
+          created.attachmentId,
+          {
+            expected: {
+              activatedAt: null,
+              expiresAt: created.expiresAt,
+              secretExpiresAt: created.secretExpiresAt,
+            },
+            preserveTunnelState: true,
+          },
+        );
+        if (stopped) {
+          codeTunnel.releaseRelayAttachment(created.attachmentId);
+        }
         return reply.code(409).send({
           error: "The protected Code attachment changed while opening.",
         });
@@ -29144,6 +29214,267 @@ export async function buildApp({
   );
 
   app.post<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId/code-session-attachments",
+    async (request, reply) => {
+      const input = explorerCodeSessionAttachmentCreateSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const ownerId = principal.user.id;
+      const authSessionId = canonicalCodeAuthSessionId(
+        ownerId,
+        principal.sessionId,
+      );
+      const registrationLease = codeTunnel.acquireRegistrationLease({
+        authSessionId,
+        explorerId: request.params.explorerId,
+        ownerId,
+        sessionId: input.data.sessionId,
+        tunnelId: input.data.attachmentId,
+      });
+      if (!registrationLease) {
+        return reply.code(409).send({
+          error: "The Explorer changed while its shared editor was opening.",
+        });
+      }
+      let registrationOwnership: "abort" | "binding" | "release" = "release";
+      let registrationRuntime: CodeRuntimeStatus | null = null;
+      let registrationWorkerId: string | null = null;
+      let retainBinding = false;
+      try {
+        const context = await repository.getExplorerExecutionContext(
+          ownerId,
+          request.params.explorerId,
+        );
+        if (!context) {
+          return reply.code(404).send({ error: "Explorer not found." });
+        }
+        if (
+          input.data.expectedWorkerId !== context.workerId ||
+          input.data.expectedWorktreeId !== context.worktreeId
+        ) {
+          return reply.code(409).send({
+            error: "The Explorer changed while its shared editor was opening.",
+          });
+        }
+        if (!bridge.isConnected(context.workerId)) {
+          return reply.code(503).send({ error: "Worker is offline." });
+        }
+        let probe;
+        try {
+          probe = codeProbeResultSchema.parse(
+            await bridge.request(context.workerId, { type: "code.probe" }),
+          );
+        } catch (error) {
+          return reply.code(503).send({ error: errorMessage(error) });
+        }
+        if (!probe.capabilities.available || !probe.editorBuild) {
+          return reply.code(409).send({
+            error:
+              probe.capabilities.reason ??
+              "This worker has no compatible Cantrip Code build.",
+          });
+        }
+        if (probe.capabilities.sharedTransportProtocolVersion !== 2) {
+          return reply.code(409).send({
+            error:
+              "This worker does not support shared Cantrip Code transports.",
+          });
+        }
+        let runtime: CodeRuntimeStatus;
+        try {
+          registrationOwnership = "abort";
+          registrationWorkerId = context.workerId;
+          runtime = codeRuntimeStatusSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "code.open",
+              sessionId: input.data.sessionId,
+              codeTabId: `explorer:${context.explorerId}:${input.data.sessionId}`,
+              projectId: context.projectId,
+              worktreeId: context.worktreeId,
+              cwd: context.root,
+              profileId: scopedCodeProfileId(ownerId, "default"),
+              ...(input.data.path ? { initialFile: input.data.path } : {}),
+              themeMode: "follow-cantrip",
+              appearance: input.data.appearance,
+              presentation: "editor",
+            }),
+          );
+          registrationRuntime = runtime;
+        } catch (error) {
+          return sendWorkerRequestFailure(reply, error);
+        }
+        const freshContext = await repository.getExplorerExecutionContext(
+          ownerId,
+          request.params.explorerId,
+        );
+        if (
+          runtime.sessionId !== input.data.sessionId ||
+          !runtime.sessionIncarnationId ||
+          !freshContext ||
+          freshContext.projectId !== context.projectId ||
+          freshContext.workerId !== context.workerId ||
+          freshContext.worktreeId !== context.worktreeId ||
+          freshContext.root !== context.root ||
+          !codeTunnel.registrationLeaseIsActive(registrationLease)
+        ) {
+          return reply.code(409).send({
+            error: "The Explorer changed while its shared editor was opening.",
+          });
+        }
+        const attachment = await codeTunnel.createSharedSessionAttachment({
+          appearance: input.data.appearance,
+          attachmentId: input.data.attachmentId,
+          authSessionId,
+          codeTabId: `explorer:${context.explorerId}:${input.data.sessionId}`,
+          explorerId: context.explorerId,
+          ownerId,
+          projectId: context.projectId,
+          protectedKeyRevision:
+            input.data.transport.protectedRecord.protectedContent.keyRevision,
+          registrationLease,
+          runtime,
+          serverId,
+          sessionId: input.data.sessionId,
+          stopSessionOnRelease: true,
+          transport: input.data.transport,
+          workerId: context.workerId,
+          worktreeId: context.worktreeId,
+          worktreePath: context.root,
+        });
+        registrationOwnership = "binding";
+        const attachedContext = await repository.getExplorerExecutionContext(
+          ownerId,
+          request.params.explorerId,
+        );
+        if (
+          !attachedContext ||
+          attachedContext.projectId !== context.projectId ||
+          attachedContext.workerId !== context.workerId ||
+          attachedContext.worktreeId !== context.worktreeId ||
+          attachedContext.root !== context.root ||
+          !codeTunnel.registrationLeaseIsActive(registrationLease)
+        ) {
+          return reply.code(409).send({
+            error: "The Explorer changed while its shared editor was opening.",
+          });
+        }
+        const response = reply
+          .code(201)
+          .send(codeSharedAttachmentWireSchema.parse(attachment));
+        retainBinding = true;
+        return response;
+      } catch (error) {
+        return reply
+          .code(
+            error instanceof SharedCodeTransportCapacityError
+              ? 429
+              : error instanceof ExplorerCodeAttachmentLeaseError
+                ? 409
+                : 503,
+          )
+          .send({ error: errorMessage(error) });
+      } finally {
+        if (registrationOwnership === "abort" && registrationWorkerId) {
+          await codeTunnel.abortRegistrationSession({
+            lease: registrationLease,
+            runtime: registrationRuntime,
+            workerId: registrationWorkerId,
+          });
+        } else {
+          codeTunnel.releaseRegistrationLease(registrationLease);
+          if (registrationOwnership === "binding" && !retainBinding) {
+            await codeTunnel.revokeSharedSessionAttachment({
+              attachmentId: input.data.attachmentId,
+              authSessionId,
+              ownerId,
+            });
+          }
+        }
+      }
+    },
+  );
+
+  app.post<{ Params: { attachmentId: string } }>(
+    "/api/code-session-attachments/:attachmentId/lease",
+    async (request, reply) => {
+      if (!validUuidPathParameter(request.params.attachmentId)) {
+        return reply.code(400).send({ error: "Invalid attachment ID." });
+      }
+      const principal = authenticatedPrincipal(request);
+      const ownerId = principal.user.id;
+      const attachment = await codeTunnel.renewSharedSessionAttachment({
+        attachmentId: request.params.attachmentId,
+        authSessionId: canonicalCodeAuthSessionId(ownerId, principal.sessionId),
+        ownerId,
+      });
+      return attachment
+        ? reply.send(codeSharedAttachmentWireSchema.parse(attachment))
+        : reply.code(404).send({ error: "Code session attachment not found." });
+    },
+  );
+
+  app.delete<{ Params: { attachmentId: string } }>(
+    "/api/code-session-attachments/:attachmentId",
+    async (request, reply) => {
+      if (!validUuidPathParameter(request.params.attachmentId)) {
+        return reply.code(400).send({ error: "Invalid attachment ID." });
+      }
+      const principal = authenticatedPrincipal(request);
+      const ownerId = principal.user.id;
+      let revoked: boolean;
+      try {
+        revoked = await codeTunnel.revokeSharedSessionAttachment({
+          attachmentId: request.params.attachmentId,
+          authSessionId: canonicalCodeAuthSessionId(
+            ownerId,
+            principal.sessionId,
+          ),
+          ownerId,
+        });
+      } catch (error) {
+        if (error instanceof SharedCodeTransportCapacityError) {
+          return reply.code(429).send({ error: error.message });
+        }
+        throw error;
+      }
+      return revoked
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Code session attachment not found." });
+    },
+  );
+
+  app.delete<{ Params: { transportId: string } }>(
+    "/api/code-transports/:transportId",
+    async (request, reply) => {
+      if (!validUuidPathParameter(request.params.transportId)) {
+        return reply.code(400).send({ error: "Invalid transport ID." });
+      }
+      const principal = authenticatedPrincipal(request);
+      const ownerId = principal.user.id;
+      let revoked: boolean;
+      try {
+        revoked = await codeTunnel.revokeSharedTransport(
+          ownerId,
+          canonicalCodeAuthSessionId(ownerId, principal.sessionId),
+          request.params.transportId,
+        );
+      } catch (error) {
+        if (error instanceof SharedCodeTransportCapacityError) {
+          return reply.code(429).send({ error: error.message });
+        }
+        throw error;
+      }
+      return revoked
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Code transport not found." });
+    },
+  );
+
+  app.post<{ Params: { explorerId: string } }>(
     "/api/explorers/:explorerId/operation",
     { bodyLimit: 4 * 1_024 * 1_024 },
     async (request, reply) => {
@@ -33725,6 +34056,7 @@ export async function buildApp({
           workerId,
           input.data.principalId,
         );
+      let replacedWorkerPrincipal = false;
       if (!principal) {
         const activePrincipal =
           await repository.encryptionRegistry.findActiveWorkerPrincipal(
@@ -33759,6 +34091,7 @@ export async function buildApp({
                 ? { developmentBootstrapWorkerId: workerId }
                 : undefined,
             );
+        replacedWorkerPrincipal = Boolean(activePrincipal);
         // Another bootstrap request can complete the same rotation while this
         // request is waiting on the registry transaction. Treat that outcome
         // as an idempotent success instead of reporting an identity conflict.
@@ -33782,6 +34115,23 @@ export async function buildApp({
           error:
             "Worker encryption identity conflicts with the registered principal.",
         });
+      }
+      if (replacedWorkerPrincipal) {
+        void codeTunnel
+          .revokeSharedWorkerSecurity(workerAuth.ownerId, workerId)
+          .catch((error) => {
+            serverLogger.warn(
+              "Could not immediately retire shared Code transports after worker encryption identity rotation",
+              {
+                error: errorMessage(error),
+                event: "code.transport.security-retirement-failed",
+                operation: "revoke-worker-security",
+                status: "failed",
+                subsystem: "code",
+                workerId,
+              },
+            );
+          });
       }
       const grantResult =
         principal.state === "approved"

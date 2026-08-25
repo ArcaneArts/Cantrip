@@ -115,15 +115,15 @@ const REVIEWED_CONTRACT_DIGESTS = {
   agentOperations:
     "bd6174828b93ba7a40de3eba885c6c21e1bc15f71c2872c6e537b9520492a505",
   applicationRoutes:
-    "86a928fe69d07e15104a9a3609792acfb4cb7f59c3f62cd6af1e2d98e05b35f4",
+    "24384b1c926c0e4fa45d8efe9fc43d21e97d5c331e18d694018dde49c175324b",
   clientControlCommands:
     "cd4cad8f39d936184828bcdfac69382c639c9eb2b52b5427b811a6c068739269",
   cliCommands:
     "dac89683226ba9ee6f6211eba252fb0b83a5a022aa9150f107315733a4e44251",
   liveResources:
-    "a02279408c3c49838d1b824ae39326f71cfb3f52e9c0ba0f606d478e7832bd15",
+    "50ee8ef086ecd45fe4d0b1e86b57464495b70c0c983717ba322051ecedd27152",
   workerCommands:
-    "39b640f3ba29b3b5cfd5b8672fa9552d27b67e7838cff849cdca1909f8384c48",
+    "2926b80dfb1d9fef3c6e12e59f7d7ee029bd0e169ebc22af6a0bc2877ab758b5",
   tunnelFrameKinds:
     "27d422d79d199318f4c3d662192f7b35dc1b878bc4f13c7dd5c58a5f2e7edae8",
 };
@@ -152,12 +152,14 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   policies: "endpoint-protected",
   workers: "intentionally-public-control-plane",
   workerCredentials: "hashed-validator",
+  skillAudiences: "minimized-operational-metadata",
   accountEncryptionProfiles: "endpoint-protected",
   encryptionPrincipals: "endpoint-protected",
   encryptionKeyGrants: "endpoint-protected",
   projects: "endpoint-protected",
   tunnels: "endpoint-protected",
   tunnelAttachments: "minimized-operational-metadata",
+  tunnelAttachmentDirectLeases: "minimized-operational-metadata",
   mcpServers: "endpoint-protected",
   projectWorkspaces: "endpoint-protected",
   projectWorkspaceMemberships: "intentionally-public-control-plane",
@@ -183,6 +185,8 @@ const DURABLE_TABLE_CLASSIFICATIONS = {
   runConfigurationSecrets: "endpoint-protected",
   runConfigurationSecretOperations: "minimized-operational-metadata",
   chats: "endpoint-protected",
+  standaloneChatRootJobs: "minimized-operational-metadata",
+  standaloneChatRoots: "endpoint-protected",
   tasks: "endpoint-protected",
   // Task Worker definitions contain only owner-scoped scheduling controls and
   // model/profile references; task content remains endpoint-protected.
@@ -244,7 +248,6 @@ const prohibitedTaskProtocolSymbols = new Set([
   "TaskGoalSnapshot",
   "TaskImplementationDashboard",
   "TaskMessageProtectedContent",
-  "TaskOperationStart",
   "TaskPlanUpdate",
   "TaskPlannerResult",
   "TaskPlanningRound",
@@ -262,7 +265,6 @@ const prohibitedTaskProtocolSymbols = new Set([
   "taskImplementationDashboardSchema",
   "taskLastErrorSchema",
   "taskMessageProtectedContentSchema",
-  "taskOperationStartSchema",
   "taskPlanUpdateSchema",
   "taskPlannerOutputJsonSchema",
   "taskPlannerResultSchema",
@@ -1046,27 +1048,33 @@ function taskRouteBoundaryAudit(routes) {
     ],
     [
       "POST",
+      "/api/tasks/:chatId/start",
+      "taskOperationStartSchema",
+      "minimized-operation-control",
+    ],
+    [
+      "POST",
       "/api/tasks/:chatId/plan",
-      "taskEncryptedOperationStartSchema",
-      "encrypted-operation",
+      "taskOperationStartSchema",
+      "minimized-operation-control",
     ],
     [
       "POST",
       "/api/tasks/:chatId/continue",
-      "taskEncryptedOperationStartSchema",
-      "encrypted-operation",
+      "taskOperationStartSchema",
+      "minimized-operation-control",
     ],
     [
       "POST",
       "/api/tasks/:chatId/begin-implementation",
-      "taskEncryptedOperationStartSchema",
-      "encrypted-operation",
+      "taskOperationStartSchema",
+      "minimized-operation-control",
     ],
     [
       "POST",
       "/api/tasks/:chatId/retry",
-      "taskEncryptedOperationStartSchema",
-      "encrypted-operation",
+      "taskOperationStartSchema",
+      "minimized-operation-control",
     ],
     [
       "GET",
@@ -3449,7 +3457,10 @@ async function clientControlNotificationBoundaryAudit() {
       repositoryRoot,
       "cantrip_worker/src/client-control-content-encryption.ts",
     ),
-    client: resolve(repositoryRoot, "cantrip_app/src/App.tsx"),
+    client: resolve(
+      repositoryRoot,
+      "cantrip_app/src/components/app/application-shell.tsx",
+    ),
     clientEncryption: resolve(
       repositoryRoot,
       "cantrip_app/src/lib/client-control-content-encryption.ts",
@@ -3943,6 +3954,35 @@ function literalValuesInInitializer(sourceText, declarationName, opener) {
   ].map((match) => match[1]);
 }
 
+const referencedWorkerCommandSchemas = [
+  "codeTransportRouteAuthorizeCommandSchema",
+  "codeTransportRouteRevokeCommandSchema",
+  "codeTransportRevokeCommandSchema",
+];
+
+function workerCommandLiteralValues(sourceText) {
+  const workerCommandInitializer = declarationInitializer(
+    sourceText,
+    "workerCommandSchema",
+    "[",
+  );
+  for (const schemaName of referencedWorkerCommandSchemas) {
+    if (
+      !new RegExp(`\\b${schemaName}\\b`, "u").test(workerCommandInitializer)
+    ) {
+      throw new Error(
+        `Audited worker command schema ${schemaName} is not in workerCommandSchema.`,
+      );
+    }
+  }
+  return [
+    ...literalValuesInInitializer(sourceText, "workerCommandSchema", "["),
+    ...referencedWorkerCommandSchemas.flatMap((schemaName) =>
+      literalValuesInInitializer(sourceText, schemaName, "("),
+    ),
+  ];
+}
+
 function enumValues(sourceText, declarationName) {
   const declaration = sourceText.indexOf(`export const ${declarationName}`);
   if (declaration < 0) throw new Error(`Missing ${declarationName}.`);
@@ -4086,6 +4126,15 @@ function applicationRouteContentClassification(route) {
       rationale: "opaque tunnel configuration and minimized routing metadata",
     };
   }
+  if (
+    /\/(?:code-session-attachments|code-transports)(?:\/|$)/u.test(route.path)
+  ) {
+    return {
+      classification: "endpoint-protected",
+      rationale:
+        "authenticated shared Code transport and opaque route-grant lifecycle",
+    };
+  }
   if (/^\/api\/auth\//u.test(route.path)) {
     return {
       classification: "hashed-validator",
@@ -4159,6 +4208,12 @@ function workerCommandContentClassification(command) {
     return {
       classification: "endpoint-protected",
       rationale: "worker-owned encrypted global Code settings lifecycle",
+    };
+  }
+  if (/^code\.transport\./u.test(command)) {
+    return {
+      classification: "endpoint-protected",
+      rationale: "server-authorized opaque Code session route-grant lifecycle",
     };
   }
   if (/^project\.script-commands(?:\.inspect)?$/u.test(command)) {
@@ -4876,11 +4931,7 @@ async function buildInventory() {
     `${workerText}\n${workerRoutingText}`,
   );
   const routeKeys = parsedRoutes.map(({ method, path }) => `${method} ${path}`);
-  const workerCommands = literalValuesInInitializer(
-    protocolText,
-    "workerCommandSchema",
-    "[",
-  ).sort();
+  const workerCommands = workerCommandLiteralValues(protocolText).sort();
   const liveResources = enumValues(
     liveProtocolText,
     "appLiveResourceSchema",

@@ -1,4 +1,5 @@
 import {
+  codeRuntimeStatusSchema,
   type CodeProtectedAttachmentWire,
   type CodeRuntimeStatus,
   type ProtectedTunnelContentRecord,
@@ -7,6 +8,15 @@ import {
 import type { ServerRepository } from "../db/repository.js";
 import { serverLogger } from "../logger.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import {
+  canonicalCodeAuthSessionId,
+  type CreateSharedCodeSessionAttachmentInput,
+  type SharedCodeSessionAttachmentAuthorization,
+  type SharedCodeSessionOwnershipIdentity,
+  type SharedCodeSessionRevocationIdentity,
+  SharedCodeTransportRegistry,
+  type SharedCodeTransportRootIdentity,
+} from "./shared-transport.js";
 
 interface ProtectedCodeAttachmentBinding {
   attachmentId: string;
@@ -51,6 +61,7 @@ export interface CreateProtectedCodeAttachmentInput {
 export interface CodeTunnelBrokerOptions {
   idleTtlMs?: number;
   maxAttachments?: number;
+  maxLifecycleTombstones?: number;
   maxLifetimeMs?: number;
   now?: () => number;
 }
@@ -174,6 +185,10 @@ export class CodeTunnelBroker {
     Promise<void>,
     CreateProtectedCodeAttachmentInput
   >();
+  readonly #pendingSharedRegistrations = new Map<
+    Promise<void>,
+    CreateSharedCodeSessionAttachmentInput
+  >();
   readonly #removals = new Map<string, Promise<boolean>>();
   readonly #registrationLeases = new Map<
     CodeAttachmentRegistrationLease,
@@ -186,12 +201,19 @@ export class CodeTunnelBroker {
   readonly #sessionStopFences = new Map<string, number>();
   readonly #sessionStopIncarnations = new Map<string, string>();
   readonly #sessionStopOperations = new Map<string, Promise<void>>();
-  readonly #releasedSessionOwnership =
-    new WeakSet<ProtectedCodeAttachmentBinding>();
+  readonly #deferredSessionStops = new Map<string, Promise<void>>();
+  readonly #failedDeferredSessionStops = new Map<
+    string,
+    CodeSessionOwnershipIdentity
+  >();
   readonly #sessionRevocations = new Map<string, number>();
+  readonly #sharedAttachmentRevocations = new Map<string, number>();
+  readonly #sharedTransportRevocations = new Map<string, number>();
+  readonly #sharedTransports: SharedCodeTransportRegistry;
   readonly #explorerLifecycles = new Map<string, ExplorerCodeLifecycle>();
   readonly #sweepTimer: ReturnType<typeof setInterval>;
   readonly #workerDisconnectSubscriptions = new Map<string, () => void>();
+  readonly #workerSecurityRevocations = new Map<string, number>();
   #changed: CodeTunnelChange | null = null;
   #closed = false;
   #closePromise: Promise<void> | null = null;
@@ -206,6 +228,22 @@ export class CodeTunnelBroker {
     this.#maxLifetimeMs = options.maxLifetimeMs ?? 12 * 60 * 60_000;
     this.#maxAttachments = options.maxAttachments ?? 128;
     this.#now = options.now ?? Date.now;
+    this.#sharedTransports = new SharedCodeTransportRegistry(bridge, {
+      idleTtlMs: this.#idleTtlMs,
+      maxLifetimeMs: this.#maxLifetimeMs,
+      maxSessionAttachments: this.#maxAttachments * 4,
+      maxTombstones: options.maxLifecycleTombstones,
+      maxTransports: this.#maxAttachments,
+      now: this.#now,
+      sessionOwnership: {
+        runAcquisition: (identity, operation) =>
+          this.#enqueueSessionStopOperation(identity, operation),
+        release: (identity) =>
+          this.#enqueueSessionStopOperation(identity, () =>
+            this.#stopSharedSessionIfUnowned(identity),
+          ),
+      },
+    });
     this.#sweepTimer = setInterval(
       () => this.#prune(),
       Math.max(1_000, Math.min(60_000, this.#idleTtlMs)),
@@ -224,6 +262,176 @@ export class CodeTunnelBroker {
     this.#repository = repository;
     this.#changed = changed;
     this.#cleanupTunnelResources = cleanupTunnelResources ?? null;
+    this.#sharedTransports.configureControlPlane(
+      repository,
+      changed,
+      cleanupTunnelResources,
+    );
+  }
+
+  async createSharedSessionAttachment(
+    input: CreateSharedCodeSessionAttachmentInput & {
+      registrationLease?: CodeAttachmentRegistrationLease;
+    },
+  ) {
+    const lease = input.registrationLease;
+    if (
+      lease &&
+      (lease.ownerId !== input.ownerId ||
+        lease.authSessionId !== input.authSessionId ||
+        lease.sessionId !== input.sessionId ||
+        lease.tunnelId !== input.attachmentId ||
+        !this.registrationLeaseIsActive(lease))
+    ) {
+      throw new ExplorerCodeAttachmentLeaseError(
+        "The Explorer changed while its shared editor was opening.",
+      );
+    }
+    this.#assertSharedSecurityRegistrationAllowed(input);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.#pendingSharedRegistrations.set(pending, input);
+    try {
+      const attachment =
+        await this.#sharedTransports.createSessionAttachment(input);
+      if (
+        this.#sharedSecurityRegistrationIsFenced(input) ||
+        (lease && !this.registrationLeaseIsActive(lease))
+      ) {
+        await this.#sharedTransports.revokeSessionAttachment({
+          attachmentId: input.attachmentId,
+          authSessionId: input.authSessionId,
+          ownerId: input.ownerId,
+        });
+        this.#assertSharedSecurityRegistrationAllowed(input);
+        throw new ExplorerCodeAttachmentLeaseError(
+          "The Explorer changed while its shared editor was opening.",
+        );
+      }
+      return attachment;
+    } finally {
+      this.#pendingSharedRegistrations.delete(pending);
+      finish();
+    }
+  }
+
+  renewSharedSessionAttachment(
+    authorization: SharedCodeSessionAttachmentAuthorization,
+  ) {
+    return this.#sharedTransports.renewSessionAttachment(authorization);
+  }
+
+  async revokeSharedSessionAttachment(
+    authorization: SharedCodeSessionAttachmentAuthorization,
+  ): Promise<boolean> {
+    const key = this.#sharedAttachmentKey(
+      authorization.ownerId,
+      authorization.authSessionId,
+      authorization.attachmentId,
+    );
+    this.#beginFence(this.#sharedAttachmentRevocations, key);
+    const matchingLeases = [...this.#registrationLeases].filter(
+      ([lease]) =>
+        lease.ownerId === authorization.ownerId &&
+        lease.authSessionId === authorization.authSessionId &&
+        lease.tunnelId === authorization.attachmentId,
+    );
+    const matchingRegistrations = [...this.#pendingSharedRegistrations].filter(
+      ([, input]) =>
+        input.ownerId === authorization.ownerId &&
+        input.authSessionId === authorization.authSessionId &&
+        input.attachmentId === authorization.attachmentId,
+    );
+    const observedPending =
+      matchingLeases.length > 0 || matchingRegistrations.length > 0;
+    try {
+      await Promise.allSettled([
+        ...matchingLeases.map(([, state]) => state.released),
+        ...matchingRegistrations.map(([pending]) => pending),
+      ]);
+      return (
+        (await this.#sharedTransports.revokeSessionAttachment(authorization)) ||
+        observedPending
+      );
+    } finally {
+      this.#endFence(this.#sharedAttachmentRevocations, key);
+    }
+  }
+
+  revokeSharedSession(identity: SharedCodeSessionRevocationIdentity) {
+    return this.#sharedTransports.revokeSession(identity);
+  }
+
+  async revokeSharedWorkerSecurity(
+    ownerId: string,
+    workerId: string,
+    protectedKeyRevision?: number,
+  ): Promise<void> {
+    const key = this.#workerSecurityKey(
+      ownerId,
+      workerId,
+      protectedKeyRevision ?? "all",
+    );
+    this.#beginFence(this.#workerSecurityRevocations, key);
+    const initialRevocation = this.#sharedTransports.revokeWorkerSecurity(
+      ownerId,
+      workerId,
+      protectedKeyRevision,
+    );
+    void initialRevocation.catch(() => undefined);
+    try {
+      await this.#waitForSharedRegistrations(
+        (input) =>
+          input.ownerId === ownerId &&
+          input.workerId === workerId &&
+          (protectedKeyRevision === undefined ||
+            input.protectedKeyRevision === protectedKeyRevision),
+      );
+      const finalRevocation = this.#sharedTransports.revokeWorkerSecurity(
+        ownerId,
+        workerId,
+        protectedKeyRevision,
+      );
+      await Promise.all([initialRevocation, finalRevocation]);
+    } finally {
+      this.#endFence(this.#workerSecurityRevocations, key);
+    }
+  }
+
+  async revokeSharedTransport(
+    ownerId: string,
+    authSessionId: string,
+    transportId: string,
+  ): Promise<boolean> {
+    const key = this.#sharedTransportKey(ownerId, authSessionId, transportId);
+    this.#beginFence(this.#sharedTransportRevocations, key);
+    const matchingRegistrations = [...this.#pendingSharedRegistrations].filter(
+      ([, input]) =>
+        input.ownerId === ownerId &&
+        input.authSessionId === authSessionId &&
+        input.transport.transportId === transportId,
+    );
+    const observedPending = matchingRegistrations.length > 0;
+    try {
+      await Promise.allSettled(
+        matchingRegistrations.map(([pending]) => pending),
+      );
+      return (
+        (await this.#sharedTransports.revokeTransport(
+          ownerId,
+          authSessionId,
+          transportId,
+        )) || observedPending
+      );
+    } finally {
+      this.#endFence(this.#sharedTransportRevocations, key);
+    }
+  }
+
+  sharedTransportStats() {
+    return this.#sharedTransports.stats();
   }
 
   async createProtectedAttachment(
@@ -280,6 +488,7 @@ export class CodeTunnelBroker {
       this.#sessionStopFences.has(
         this.#sessionOwnershipKey(input.ownerId, input.sessionId),
       ) ||
+      this.#deferredStopCapacityReached(input.ownerId) ||
       this.#attachments.size + this.#registrationLeases.size >=
         this.#maxAttachments
     ) {
@@ -428,10 +637,13 @@ export class CodeTunnelBroker {
       );
       const result = await mutation();
       if (didMutate(result)) {
-        await this.#revokeWhere(
-          (binding) =>
-            binding.ownerId === ownerId && binding.explorerId === explorerId,
-        );
+        await Promise.all([
+          this.#revokeWhere(
+            (binding) =>
+              binding.ownerId === ownerId && binding.explorerId === explorerId,
+          ),
+          this.#sharedTransports.revokeExplorer(ownerId, explorerId),
+        ]);
       }
       return result;
     } finally {
@@ -466,7 +678,15 @@ export class CodeTunnelBroker {
     identity: CodeAttachmentRootIdentity,
   ): CodeAttachmentRootLeaseResult {
     const binding = this.#attachments.get(identity.tunnelId);
-    if (!binding) return { lease: null, managed: false };
+    if (!binding) {
+      return this.#sharedTransports.acquireRootLease({
+        ...identity,
+        authSessionId: canonicalCodeAuthSessionId(
+          identity.ownerId,
+          identity.authSessionId,
+        ),
+      } as SharedCodeTransportRootIdentity);
+    }
     if (
       binding.attachmentId !== identity.rootAttachmentId ||
       binding.authSessionId !== identity.authSessionId ||
@@ -497,6 +717,15 @@ export class CodeTunnelBroker {
     identity: CodeAttachmentRootIdentity,
   ): boolean {
     const binding = this.#attachments.get(identity.tunnelId);
+    if (!binding) {
+      return this.#sharedTransports.bindRelayAttachment(relayAttachmentId, {
+        ...identity,
+        authSessionId: canonicalCodeAuthSessionId(
+          identity.ownerId,
+          identity.authSessionId,
+        ),
+      } as SharedCodeTransportRootIdentity);
+    }
     if (
       !binding ||
       binding.attachmentId !== identity.rootAttachmentId ||
@@ -519,6 +748,14 @@ export class CodeTunnelBroker {
     tunnelId: string,
   ): boolean {
     const binding = this.#relayAttachments.get(relayAttachmentId);
+    if (!binding) {
+      return (
+        this.#sharedTransports.allowRelayAttachmentActivity(
+          relayAttachmentId,
+          tunnelId,
+        ) ?? false
+      );
+    }
     if (
       !binding ||
       binding.tunnelId !== tunnelId ||
@@ -534,6 +771,7 @@ export class CodeTunnelBroker {
 
   releaseRelayAttachment(relayAttachmentId: string): void {
     this.#relayAttachments.delete(relayAttachmentId);
+    this.#sharedTransports.releaseRelayAttachment(relayAttachmentId);
   }
 
   async #createProtectedAttachment(
@@ -671,6 +909,9 @@ export class CodeTunnelBroker {
 
   async revokeAuthSession(authSessionId: string): Promise<void> {
     this.#beginFence(this.#authSessionRevocations, authSessionId);
+    const sharedRevocation =
+      this.#sharedTransports.revokeAuthSession(authSessionId);
+    void sharedRevocation.catch(() => undefined);
     try {
       await Promise.all([
         this.#waitForRegistrationLeases(
@@ -680,9 +921,13 @@ export class CodeTunnelBroker {
           (input) => input.authSessionId === authSessionId,
         ),
       ]);
-      await this.#revokeWhere(
-        (binding) => binding.authSessionId === authSessionId,
-      );
+      const finalSharedRevocation =
+        this.#sharedTransports.revokeAuthSession(authSessionId);
+      await Promise.all([
+        this.#revokeWhere((binding) => binding.authSessionId === authSessionId),
+        sharedRevocation,
+        finalSharedRevocation,
+      ]);
     } finally {
       this.#endFence(this.#authSessionRevocations, authSessionId);
     }
@@ -690,12 +935,19 @@ export class CodeTunnelBroker {
 
   async revokeOwner(ownerId: string): Promise<void> {
     this.#beginFence(this.#ownerRevocations, ownerId);
+    const sharedRevocation = this.#sharedTransports.revokeOwner(ownerId);
+    void sharedRevocation.catch(() => undefined);
     try {
       await Promise.all([
         this.#waitForRegistrationLeases((lease) => lease.ownerId === ownerId),
         this.#waitForRegistrations((input) => input.ownerId === ownerId),
       ]);
-      await this.#revokeWhere((binding) => binding.ownerId === ownerId);
+      const finalSharedRevocation = this.#sharedTransports.revokeOwner(ownerId);
+      await Promise.all([
+        this.#revokeWhere((binding) => binding.ownerId === ownerId),
+        sharedRevocation,
+        finalSharedRevocation,
+      ]);
     } finally {
       this.#endFence(this.#ownerRevocations, ownerId);
     }
@@ -707,12 +959,23 @@ export class CodeTunnelBroker {
     clearInterval(this.#sweepTimer);
     this.#closePromise = (async () => {
       await this.#waitForRegistrationLeases(() => true);
-      await Promise.allSettled([...this.#pendingRegistrations.keys()]);
+      await Promise.allSettled([
+        ...this.#pendingRegistrations.keys(),
+        ...this.#pendingSharedRegistrations.keys(),
+      ]);
       const bindings = [...this.#attachments.values()];
-      const removals = await Promise.allSettled(
-        bindings.map((binding) => this.#removeAttachment(binding)),
-      );
-      removals.forEach((result, index) => {
+      const removals = await Promise.allSettled([
+        ...bindings.map((binding) => this.#removeAttachment(binding)),
+        this.#sharedTransports.close(),
+      ]);
+      while (this.#deferredSessionStops.size > 0) {
+        await Promise.allSettled([...this.#deferredSessionStops.values()]);
+      }
+      this.#retryFailedDeferredSessionStops();
+      while (this.#deferredSessionStops.size > 0) {
+        await Promise.allSettled([...this.#deferredSessionStops.values()]);
+      }
+      removals.slice(0, bindings.length).forEach((result, index) => {
         if (result.status === "rejected") {
           this.#reportCleanupFailure(bindings[index]!, result.reason);
         }
@@ -724,6 +987,13 @@ export class CodeTunnelBroker {
       const failures = removals
         .filter((result) => result.status === "rejected")
         .map((result) => result.reason);
+      if (this.#failedDeferredSessionStops.size > 0) {
+        failures.push(
+          new Error(
+            `${this.#failedDeferredSessionStops.size} deferred Code session stop(s) remain incomplete.`,
+          ),
+        );
+      }
       if (failures.length > 0) {
         throw new AggregateError(
           failures,
@@ -736,12 +1006,22 @@ export class CodeTunnelBroker {
 
   #prune(): void {
     const now = this.#now();
+    this.#retryFailedDeferredSessionStops();
     for (const binding of this.#attachments.values()) {
       if (binding.expiresAt <= now || binding.hardExpiresAt <= now) {
         void this.#removeAttachment(binding).catch((error) =>
           this.#reportCleanupFailure(binding, error),
         );
       }
+    }
+  }
+
+  #retryFailedDeferredSessionStops(): void {
+    for (const identity of this.#failedDeferredSessionStops.values()) {
+      this.#scheduleDeferredSessionStop(
+        identity,
+        this.#sessionRegistrationWaits(identity),
+      );
     }
   }
 
@@ -892,10 +1172,10 @@ export class CodeTunnelBroker {
     );
   }
 
-  async #enqueueSessionStopOperation(
+  async #enqueueSessionStopOperation<T>(
     identity: CodeSessionOwnershipIdentity,
-    stopIfUnowned: () => Promise<void>,
-  ): Promise<void> {
+    stopIfUnowned: () => Promise<T>,
+  ): Promise<T> {
     const ownershipKey = this.#workerSessionOwnershipKey(identity);
     const previous = this.#sessionStopOperations.get(ownershipKey);
     const operation = (previous ?? Promise.resolve())
@@ -907,7 +1187,7 @@ export class CodeTunnelBroker {
     );
     this.#sessionStopOperations.set(ownershipKey, tail);
     try {
-      await operation;
+      return await operation;
     } finally {
       if (this.#sessionStopOperations.get(ownershipKey) === tail) {
         this.#sessionStopOperations.delete(ownershipKey);
@@ -919,86 +1199,120 @@ export class CodeTunnelBroker {
   async #stopSessionIfUnowned(
     binding: ProtectedCodeAttachmentBinding,
   ): Promise<void> {
-    if (this.#releasedSessionOwnership.has(binding)) return;
-    const sessionKey = this.#sessionOwnershipKey(
-      binding.ownerId,
-      binding.sessionId,
-    );
-    this.#beginFence(this.#sessionStopFences, sessionKey);
-    try {
-      await Promise.all([
-        this.#waitForRegistrationLeases(
-          (lease) =>
-            lease !== binding.registrationLease &&
-            lease.ownerId === binding.ownerId &&
-            lease.sessionId === binding.sessionId,
-        ),
-        this.#waitForRegistrations(
-          (input) =>
-            input.tunnelId !== binding.tunnelId &&
-            input.ownerId === binding.ownerId &&
-            input.workerId === binding.workerId &&
-            input.sessionId === binding.sessionId,
-        ),
-      ]);
-      if (
-        [...this.#attachments.values()].some(
-          (candidate) =>
-            candidate !== binding &&
-            !this.#removals.has(candidate.attachmentId) &&
-            candidate.ownerId === binding.ownerId &&
-            candidate.workerId === binding.workerId &&
-            candidate.sessionId === binding.sessionId,
-        )
-      ) {
-        return;
-      }
-      if (this.#releasedSessionOwnership.has(binding)) return;
-      for (const candidate of this.#attachments.values()) {
-        if (
-          (candidate === binding ||
-            this.#removals.has(candidate.attachmentId)) &&
-          candidate.ownerId === binding.ownerId &&
-          candidate.workerId === binding.workerId &&
-          candidate.sessionId === binding.sessionId
-        ) {
-          this.#releasedSessionOwnership.add(candidate);
-        }
-      }
-      await this.#requestConditionalSessionStop(binding);
-    } finally {
-      this.#endFence(this.#sessionStopFences, sessionKey);
-    }
+    await this.#stopUnifiedSessionIfUnowned(binding);
   }
 
   async #stopAbortedRegistrationIfUnowned(
     identity: CodeSessionOwnershipIdentity,
   ): Promise<void> {
-    await Promise.all([
-      this.#waitForRegistrationLeases(
-        (lease) =>
-          lease.ownerId === identity.ownerId &&
-          lease.sessionId === identity.sessionId,
-      ),
-      this.#waitForRegistrations(
-        (input) =>
-          input.ownerId === identity.ownerId &&
-          input.workerId === identity.workerId &&
-          input.sessionId === identity.sessionId,
-      ),
-    ]);
+    await this.#stopUnifiedSessionIfUnowned(identity);
+  }
+
+  async #stopSharedSessionIfUnowned(
+    identity: SharedCodeSessionOwnershipIdentity,
+  ): Promise<void> {
+    await this.#stopUnifiedSessionIfUnowned(identity);
+  }
+
+  async #stopUnifiedSessionIfUnowned(
+    identity: CodeSessionOwnershipIdentity,
+  ): Promise<void> {
+    if (!identity.sessionIncarnationId) return;
+    const sessionKey = this.#sessionOwnershipKey(
+      identity.ownerId,
+      identity.sessionId,
+    );
+    this.#beginFence(this.#sessionStopFences, sessionKey);
+    try {
+      const registrationWaits = await this.#stopSessionOrReturnWaits(identity);
+      if (registrationWaits.length > 0) {
+        this.#scheduleDeferredSessionStop(identity, registrationWaits);
+      }
+    } finally {
+      this.#endFence(this.#sessionStopFences, sessionKey);
+    }
+  }
+
+  async #stopSessionOrReturnWaits(
+    identity: CodeSessionOwnershipIdentity,
+  ): Promise<readonly Promise<void>[]> {
+    const sessionIncarnationId = identity.sessionIncarnationId;
+    if (!sessionIncarnationId) return [];
+    const registrationWaits = this.#sessionRegistrationWaits(identity);
+    if (registrationWaits.length > 0) return registrationWaits;
     if (
       [...this.#attachments.values()].some(
         (binding) =>
           !this.#removals.has(binding.attachmentId) &&
           binding.ownerId === identity.ownerId &&
           binding.workerId === identity.workerId &&
-          binding.sessionId === identity.sessionId,
-      )
+          binding.sessionId === identity.sessionId &&
+          binding.sessionIncarnationId === identity.sessionIncarnationId,
+      ) ||
+      this.#sharedTransports.hasSessionOwnership({
+        ownerId: identity.ownerId,
+        sessionId: identity.sessionId,
+        sessionIncarnationId,
+        workerId: identity.workerId,
+      })
     ) {
-      return;
+      return [];
     }
     await this.#requestConditionalSessionStop(identity);
+    return [];
+  }
+
+  #scheduleDeferredSessionStop(
+    identity: CodeSessionOwnershipIdentity,
+    waits: readonly Promise<void>[],
+  ): void {
+    const deferredKey = `${this.#workerSessionOwnershipKey(identity)}:${identity.sessionIncarnationId ?? "none"}`;
+    if (this.#deferredSessionStops.has(deferredKey)) return;
+    const operation = (async () => {
+      let currentWaits = waits;
+      do {
+        await Promise.allSettled(currentWaits);
+        currentWaits = await this.#enqueueSessionStopOperation(
+          identity,
+          async () => {
+            const sessionKey = this.#sessionOwnershipKey(
+              identity.ownerId,
+              identity.sessionId,
+            );
+            this.#beginFence(this.#sessionStopFences, sessionKey);
+            try {
+              return await this.#stopSessionOrReturnWaits(identity);
+            } finally {
+              this.#endFence(this.#sessionStopFences, sessionKey);
+            }
+          },
+        );
+      } while (currentWaits.length > 0);
+      this.#failedDeferredSessionStops.delete(deferredKey);
+    })()
+      .catch((error) => {
+        const firstFailure = !this.#failedDeferredSessionStops.has(deferredKey);
+        this.#failedDeferredSessionStops.set(deferredKey, identity);
+        if (firstFailure) {
+          serverLogger.warn("Deferred Cantrip Code session stop failed", {
+            event: "code.session.deferred-stop-failed",
+            operation: "stop-session",
+            reasonCode: "session-stop-failed",
+            sessionId: identity.sessionId,
+            status: "failed",
+            subsystem: "code",
+            workerId: identity.workerId,
+          });
+        }
+        throw error;
+      })
+      .finally(() => {
+        if (this.#deferredSessionStops.get(deferredKey) === operation) {
+          this.#deferredSessionStops.delete(deferredKey);
+        }
+      });
+    this.#deferredSessionStops.set(deferredKey, operation);
+    void operation.catch(() => undefined);
   }
 
   async #requestConditionalSessionStop(
@@ -1012,12 +1326,8 @@ export class CodeTunnelBroker {
     ) {
       return;
     }
-    this.#sessionStopIncarnations.set(
-      ownershipKey,
-      identity.sessionIncarnationId,
-    );
-    await this.bridge
-      .request(
+    const status = codeRuntimeStatusSchema.parse(
+      await this.bridge.request(
         identity.workerId,
         {
           type: "code.stop",
@@ -1025,8 +1335,27 @@ export class CodeTunnelBroker {
           expectedSessionIncarnationId: identity.sessionIncarnationId,
         },
         { timeoutMs: 5_000 },
-      )
-      .catch(() => undefined);
+      ),
+    );
+    if (status.sessionId !== identity.sessionId) {
+      throw new Error(
+        "Worker acknowledged a conditional Code session stop for the wrong session.",
+      );
+    }
+    if (status.sessionIncarnationId === identity.sessionIncarnationId) {
+      throw new Error(
+        "Worker acknowledged a conditional Code session stop while the stopped incarnation remained current.",
+      );
+    }
+    if (status.sessionIncarnationId == null && status.status !== "stopped") {
+      throw new Error(
+        "Worker acknowledged a conditional Code session stop with an invalid terminal status.",
+      );
+    }
+    this.#sessionStopIncarnations.set(
+      ownershipKey,
+      identity.sessionIncarnationId,
+    );
   }
 
   async #revokeWhere(
@@ -1148,6 +1477,118 @@ export class CodeTunnelBroker {
     return `${this.#sessionOwnershipKey(binding.ownerId, binding.sessionId)}${binding.workerId.length}:${binding.workerId}`;
   }
 
+  #deferredStopCapacityReached(ownerId: string): boolean {
+    if (this.#failedDeferredSessionStops.size >= this.#maxAttachments * 8) {
+      return true;
+    }
+    let ownerStops = 0;
+    for (const identity of this.#failedDeferredSessionStops.values()) {
+      if (identity.ownerId === ownerId) ownerStops += 1;
+    }
+    return ownerStops >= this.#maxAttachments;
+  }
+
+  #workerSecurityKey(
+    ownerId: string,
+    workerId: string,
+    protectedKeyRevision: number | "all",
+  ): string {
+    return `${ownerId.length}:${ownerId}${workerId.length}:${workerId}:${protectedKeyRevision}`;
+  }
+
+  #sharedTransportKey(
+    ownerId: string,
+    authSessionId: string,
+    transportId: string,
+  ): string {
+    return `${ownerId.length}:${ownerId}${authSessionId.length}:${authSessionId}${transportId}`;
+  }
+
+  #sharedAttachmentKey(
+    ownerId: string,
+    authSessionId: string,
+    attachmentId: string,
+  ): string {
+    return `${ownerId.length}:${ownerId}${authSessionId.length}:${authSessionId}${attachmentId}`;
+  }
+
+  #sharedSecurityRegistrationIsFenced(
+    input: CreateSharedCodeSessionAttachmentInput,
+  ): boolean {
+    return Boolean(
+      this.#closed ||
+      this.#ownerRevocations.has(input.ownerId) ||
+      this.#authSessionRevocations.has(input.authSessionId) ||
+      this.#sharedAttachmentRevocations.has(
+        this.#sharedAttachmentKey(
+          input.ownerId,
+          input.authSessionId,
+          input.attachmentId,
+        ),
+      ) ||
+      this.#sharedTransportRevocations.has(
+        this.#sharedTransportKey(
+          input.ownerId,
+          input.authSessionId,
+          input.transport.transportId,
+        ),
+      ) ||
+      this.#sessionStopFences.has(
+        this.#sessionOwnershipKey(input.ownerId, input.sessionId),
+      ) ||
+      this.#workerSecurityRevocations.has(
+        this.#workerSecurityKey(input.ownerId, input.workerId, "all"),
+      ) ||
+      this.#workerSecurityRevocations.has(
+        this.#workerSecurityKey(
+          input.ownerId,
+          input.workerId,
+          input.protectedKeyRevision,
+        ),
+      ),
+    );
+  }
+
+  #assertSharedSecurityRegistrationAllowed(
+    input: CreateSharedCodeSessionAttachmentInput,
+  ): void {
+    if (!this.#sharedSecurityRegistrationIsFenced(input)) return;
+    throw new Error(
+      this.#closed
+        ? "The Cantrip Code tunnel broker is shutting down."
+        : "The shared Cantrip Code security identity is being revoked.",
+    );
+  }
+
+  #sessionRegistrationWaits(
+    identity: CodeSessionOwnershipIdentity,
+  ): Promise<void>[] {
+    return [
+      ...[...this.#registrationLeases].flatMap(([lease, state]) =>
+        lease.ownerId === identity.ownerId &&
+        lease.sessionId === identity.sessionId
+          ? [state.released]
+          : [],
+      ),
+      ...[...this.#pendingRegistrations].flatMap(([pending, input]) =>
+        input.ownerId === identity.ownerId &&
+        input.workerId === identity.workerId &&
+        input.sessionId === identity.sessionId &&
+        input.runtime.sessionIncarnationId === identity.sessionIncarnationId
+          ? [pending]
+          : [],
+      ),
+      ...[...this.#pendingSharedRegistrations].flatMap(([pending, input]) =>
+        input.ownerId === identity.ownerId &&
+        input.workerId === identity.workerId &&
+        input.sessionId === identity.sessionId &&
+        input.runtime.sessionIncarnationId === identity.sessionIncarnationId
+          ? [pending]
+          : [],
+      ),
+    ];
+  }
+
   #assertRegistrationAllowed(input: CreateProtectedCodeAttachmentInput): void {
     const lease = input.registrationLease;
     if (
@@ -1166,6 +1607,7 @@ export class CodeTunnelBroker {
     );
     if (
       !this.#registrationIsFenced(input) &&
+      !this.#deferredStopCapacityReached(input.ownerId) &&
       (!sessionStopFenced || Boolean(lease)) &&
       (!lease || this.registrationLeaseIsActive(lease))
     ) {
@@ -1213,6 +1655,16 @@ export class CodeTunnelBroker {
   ): Promise<void> {
     await Promise.allSettled(
       [...this.#pendingRegistrations]
+        .filter(([, input]) => predicate(input))
+        .map(([pending]) => pending),
+    );
+  }
+
+  async #waitForSharedRegistrations(
+    predicate: (input: CreateSharedCodeSessionAttachmentInput) => boolean,
+  ): Promise<void> {
+    await Promise.allSettled(
+      [...this.#pendingSharedRegistrations]
         .filter(([, input]) => predicate(input))
         .map(([pending]) => pending),
     );
