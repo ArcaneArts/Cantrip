@@ -59,6 +59,7 @@ import {
   stageAgentMessage,
   workflowMeasuredUsage,
   workflowDeveloperInstructions,
+  workspaceSnapshotFromPorcelainRecords,
   workspaceHasGitMetadata,
 } from "../src/codex/app-server.js";
 
@@ -1605,6 +1606,118 @@ describe("changedFiles", () => {
       { path: "src/new.ts", kind: "add" },
       { path: "old.ts", kind: "delete" },
     ]);
+  });
+});
+
+describe("workspace snapshot metadata", () => {
+  it.each([1, 100, 5_000])(
+    "preserves ordered snapshot bytes for %i changed paths",
+    async (count) => {
+      let active = 0;
+      let maxActive = 0;
+      const records = Array.from({ length: count }, (_, index) => {
+        const status = index % 2 === 0 ? "??" : " M";
+        return `${status} file-${index.toString().padStart(4, "0")}.ts`;
+      });
+
+      const snapshot = await workspaceSnapshotFromPorcelainRecords(
+        "/workspace",
+        records,
+        async (filePath) => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          await new Promise((resolve) => setImmediate(resolve));
+          active -= 1;
+          const index = Number.parseInt(
+            path.basename(filePath).slice("file-".length),
+            10,
+          );
+          return { size: index + 1, mtimeMs: index + 2, mode: 0o100644 };
+        },
+      );
+
+      expect(JSON.stringify([...snapshot])).toBe(
+        JSON.stringify(
+          records.map((record, index) => [
+            record.slice(3),
+            {
+              fingerprint: `${index + 1}:${index + 2}:${0o100644}`,
+              status: record.slice(0, 2),
+            },
+          ]),
+        ),
+      );
+      expect(maxActive).toBe(Math.min(count, 16));
+    },
+  );
+
+  it("bounds metadata reads while preserving input order across uneven delays", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const records = Array.from(
+      { length: 64 },
+      (_, index) => `?? file-${index.toString().padStart(2, "0")}.ts`,
+    );
+
+    const snapshot = await workspaceSnapshotFromPorcelainRecords(
+      "/workspace",
+      records,
+      async (filePath) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        const index = Number.parseInt(
+          path.basename(filePath).slice("file-".length),
+          10,
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, (3 - (index % 4)) * 2),
+        );
+        active -= 1;
+        return { size: index, mtimeMs: index * 2, mode: 0o100644 };
+      },
+    );
+
+    expect(maxActive).toBe(16);
+    expect([...snapshot.keys()]).toEqual(
+      records.map((record) => record.slice(3)),
+    );
+  });
+
+  it("skips only definite worktree deletions and retains missing-file fallback", async () => {
+    const reads: string[] = [];
+    const snapshot = await workspaceSnapshotFromPorcelainRecords(
+      "/workspace",
+      [" D deleted.ts", " M raced.ts", "?? present.ts"],
+      async (filePath) => {
+        reads.push(path.basename(filePath));
+        if (filePath.endsWith("raced.ts")) {
+          throw new Error("removed during snapshot");
+        }
+        return { size: 7, mtimeMs: 11, mode: 0o100644 };
+      },
+    );
+
+    expect(reads).toEqual(["raced.ts", "present.ts"]);
+    expect([...snapshot]).toEqual([
+      ["deleted.ts", { fingerprint: "missing", status: " D" }],
+      ["raced.ts", { fingerprint: "missing", status: " M" }],
+      ["present.ts", { fingerprint: `7:11:${0o100644}`, status: "??" }],
+    ]);
+  });
+
+  it("preserves porcelain rename record skipping", async () => {
+    const reads: string[] = [];
+    const snapshot = await workspaceSnapshotFromPorcelainRecords(
+      "/workspace",
+      ["R  renamed.ts", "original.ts", "?? loose.ts"],
+      async (filePath) => {
+        reads.push(path.basename(filePath));
+        return { size: 1, mtimeMs: 2, mode: 0o100644 };
+      },
+    );
+
+    expect(reads).toEqual(["renamed.ts", "loose.ts"]);
+    expect([...snapshot.keys()]).toEqual(["renamed.ts", "loose.ts"]);
   });
 });
 
