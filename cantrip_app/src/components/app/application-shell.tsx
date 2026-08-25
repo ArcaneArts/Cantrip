@@ -208,7 +208,10 @@ import {
   insertSkillMention,
   skillMentionSegments,
 } from "@/components/chat/skill-mentions";
-import { buildChatTimeline } from "@/components/chat/timeline";
+import {
+  buildChatTimeline,
+  findLatestLiveActivityGroupKey,
+} from "@/components/chat/timeline";
 import {
   slashCommandQuery,
   type SlashCommandSuggestion,
@@ -1871,19 +1874,10 @@ export function ChatTranscript({
       ),
     [agentProjection.rootMessages],
   );
-  const latestLiveActivityGroupKey = useMemo(() => {
-    for (let index = transcriptEntries.length - 1; index >= 0; index -= 1) {
-      const transcriptEntry = transcriptEntries[index];
-      if (
-        transcriptEntry?.type === "timeline" &&
-        transcriptEntry.entry.type === "activityGroup" &&
-        transcriptEntry.entry.endedAt === null
-      ) {
-        return transcriptEntry.entry.key;
-      }
-    }
-    return null;
-  }, [transcriptEntries]);
+  const latestLiveActivityGroupKey = useMemo(
+    () => findLatestLiveActivityGroupKey(timeline),
+    [timeline],
+  );
   const latestEditableMessage = useMemo(
     () =>
       effectiveInspectOnly ||

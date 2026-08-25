@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildChatTimeline,
+  findLatestLiveActivityGroupKey,
   formatElapsedTime,
   formatTurnMetadata,
 } from "./timeline";
@@ -115,6 +116,63 @@ describe("chat activity timeline", () => {
       kind: "tool",
       endedAt: null,
     });
+    expect(findLatestLiveActivityGroupKey(timeline)).toBe(
+      timeline[1]?.type === "activityGroup" ? timeline[1].key : null,
+    );
+  });
+
+  it("does not keep completed trailing plan and file changes live", () => {
+    const planTimeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Make a plan" },
+      ]),
+      message("answer", "assistant", "2026-08-07T12:00:01.000Z", [
+        { type: "text", text: "The plan is ready.", phase: "final_answer" },
+      ]),
+      message("plan", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "plan",
+            id: "plan-1",
+            status: "completed",
+            text: "Implement the change",
+            explanation: null,
+            steps: [],
+          },
+        },
+      ]),
+    ]);
+    const fileTimeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Edit the file" },
+      ]),
+      message("answer", "assistant", "2026-08-07T12:00:01.000Z", [
+        { type: "text", text: "The edit is complete.", phase: "final_answer" },
+      ]),
+      message("files", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "fileChange",
+            id: "files-1",
+            status: "completed",
+            changes: [{ path: "src/App.tsx", kind: "update" }],
+          },
+        },
+      ]),
+    ]);
+
+    expect(planTimeline.at(-1)).toMatchObject({
+      type: "activityGroup",
+      endedAt: null,
+    });
+    expect(fileTimeline.at(-1)).toMatchObject({
+      type: "activityGroup",
+      endedAt: null,
+    });
+    expect(findLatestLiveActivityGroupKey(planTimeline)).toBeNull();
+    expect(findLatestLiveActivityGroupKey(fileTimeline)).toBeNull();
   });
 
   it("settles stale running tools after a terminal response", () => {
