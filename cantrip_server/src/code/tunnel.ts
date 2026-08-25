@@ -190,10 +190,6 @@ export class CodeTunnelBroker {
     new WeakSet<ProtectedCodeAttachmentBinding>();
   readonly #sessionRevocations = new Map<string, number>();
   readonly #explorerLifecycles = new Map<string, ExplorerCodeLifecycle>();
-  readonly #retainedExplorerSessions = new Map<
-    string,
-    CodeSessionOwnershipIdentity
-  >();
   readonly #sweepTimer: ReturnType<typeof setInterval>;
   readonly #workerDisconnectSubscriptions = new Map<string, () => void>();
   #changed: CodeTunnelChange | null = null;
@@ -430,21 +426,12 @@ export class CodeTunnelBroker {
       await this.#waitForRegistrationLeases(
         (lease) => lease.ownerId === ownerId && lease.explorerId === explorerId,
       );
-      const retainedSessionOwnership =
-        this.#retainedExplorerSessions.get(key) ?? null;
       const result = await mutation();
       if (didMutate(result)) {
         await this.#revokeWhere(
           (binding) =>
             binding.ownerId === ownerId && binding.explorerId === explorerId,
         );
-        if (retainedSessionOwnership) {
-          await this.#enqueueSessionStopOperation(
-            retainedSessionOwnership,
-            () => this.#requestConditionalSessionStop(retainedSessionOwnership),
-          );
-        }
-        this.#retainedExplorerSessions.delete(key);
       }
       return result;
     } finally {
@@ -617,22 +604,6 @@ export class CodeTunnelBroker {
       worktreePath: input.worktreePath ?? null,
     };
     this.#attachments.set(binding.attachmentId, binding);
-    if (
-      binding.explorerId &&
-      binding.sessionId === binding.explorerId &&
-      !binding.stopSessionOnRelease &&
-      binding.sessionIncarnationId
-    ) {
-      this.#retainedExplorerSessions.set(
-        this.#explorerKey(binding.ownerId, binding.explorerId),
-        {
-          ownerId: binding.ownerId,
-          sessionId: binding.sessionId,
-          sessionIncarnationId: binding.sessionIncarnationId,
-          workerId: binding.workerId,
-        },
-      );
-    }
     this.#trackWorkerDisconnect(binding.workerId);
     this.#changed?.({
       attachmentId: binding.attachmentId,
@@ -720,20 +691,7 @@ export class CodeTunnelBroker {
         this.#waitForRegistrationLeases((lease) => lease.ownerId === ownerId),
         this.#waitForRegistrations((input) => input.ownerId === ownerId),
       ]);
-      const retainedSessions = [
-        ...this.#retainedExplorerSessions.entries(),
-      ].filter(([, session]) => session.ownerId === ownerId);
       await this.#revokeWhere((binding) => binding.ownerId === ownerId);
-      await Promise.all(
-        retainedSessions.map(([, session]) =>
-          this.#enqueueSessionStopOperation(session, () =>
-            this.#requestConditionalSessionStop(session),
-          ),
-        ),
-      );
-      for (const [key] of retainedSessions) {
-        this.#retainedExplorerSessions.delete(key);
-      }
     } finally {
       this.#endFence(this.#ownerRevocations, ownerId);
     }
