@@ -2471,6 +2471,24 @@ describe("Cantrip Code supervisor", () => {
     expect(supervisor.status("durable").status).toBe("running");
   });
 
+  it("keeps a detached editor session available through normal tab reconnects", async () => {
+    const { repository, supervisor } = await fixture({
+      idleSweepIntervalMs: 60_000,
+    });
+    await supervisor.open({
+      ...openCommand("retained-editor", repository, "primary"),
+      presentation: "editor",
+    });
+
+    await expect(
+      supervisor.evictIdleSessions(Date.now() + 10 * 60_000),
+    ).resolves.toEqual([]);
+    expect(supervisor.status("retained-editor").status).toBe("running");
+    await expect(
+      supervisor.evictIdleSessions(Date.now() + 31 * 60_000),
+    ).resolves.toEqual(["retained-editor"]);
+  });
+
   it("evicts unattached idle sessions but preserves active tunnel streams", async () => {
     const { repository, supervisor } = await fixture({
       idleSweepIntervalMs: 60_000,

@@ -5559,7 +5559,10 @@ export async function createProtectedExplorerCodeAttachment(
   appearance: CodeAppearance,
 ) {
   const tunnelId = crypto.randomUUID();
-  const sessionId = crypto.randomUUID();
+  // Explorer ids are UUIDs and outlive any individual React surface or viewer
+  // attachment. Reusing that identity lets a remounted Explorer attach to the
+  // worker-owned Code session instead of creating a replacement session.
+  const sessionId = explorerId;
   return createBoundedResource({
     create: async (signal) => {
       const input = await protectedCodeAttachmentInput({

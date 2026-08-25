@@ -3800,6 +3800,78 @@ describe.sequential("server worktree control plane", () => {
     }
   });
 
+  it("reuses the worker-owned Explorer session after its viewer is released", async () => {
+    const explorerResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...protectedExplorerFields(),
+        worktreeId: primaryId,
+      },
+    });
+    expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
+    const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
+    const firstTunnelId = randomUUID();
+    const secondTunnelId = randomUUID();
+    const stopsBefore = codeStopCommands.length;
+    const opensBefore = codeOpenCommands.length;
+
+    try {
+      const firstAttachment = await app.inject({
+        method: "POST",
+        url: `/api/explorers/${explorer.id}/protected-code-attachments`,
+        payload: {
+          appearance: "dark",
+          expectedWorkerId: explorer.activeWorkerId,
+          expectedWorktreeId: explorer.worktreeId,
+          path: "src/first.ts",
+          protectedRecord: protectedTunnelRecord(firstTunnelId),
+          sessionId: explorer.id,
+          tunnelId: firstTunnelId,
+        },
+      });
+      expect(firstAttachment.statusCode, firstAttachment.body).toBe(201);
+
+      const released = await app.inject({
+        method: "DELETE",
+        url: `/api/code-attachments/${firstTunnelId}`,
+      });
+      expect(released.statusCode, released.body).toBe(204);
+      expect(codeStopCommands).toHaveLength(stopsBefore);
+
+      const secondAttachment = await app.inject({
+        method: "POST",
+        url: `/api/explorers/${explorer.id}/protected-code-attachments`,
+        payload: {
+          appearance: "dark",
+          expectedWorkerId: explorer.activeWorkerId,
+          expectedWorktreeId: explorer.worktreeId,
+          path: "src/second.ts",
+          protectedRecord: protectedTunnelRecord(secondTunnelId),
+          sessionId: explorer.id,
+          tunnelId: secondTunnelId,
+        },
+      });
+      expect(secondAttachment.statusCode, secondAttachment.body).toBe(201);
+      expect(codeStopCommands).toHaveLength(stopsBefore);
+      expect(codeOpenCommands.slice(opensBefore)).toEqual([
+        expect.objectContaining({
+          initialFile: "src/first.ts",
+          sessionId: explorer.id,
+        }),
+        expect.objectContaining({
+          initialFile: "src/second.ts",
+          sessionId: explorer.id,
+        }),
+      ]);
+    } finally {
+      await app.inject({
+        method: "DELETE",
+        url: `/api/explorers/${explorer.id}`,
+      });
+    }
+  });
+
   it("synchronously revokes an existing Explorer Code attachment on delete", async () => {
     const explorerResponse = await app.inject({
       method: "POST",
@@ -3811,7 +3883,7 @@ describe.sequential("server worktree control plane", () => {
     });
     expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
     const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
-    const sessionId = randomUUID();
+    const sessionId = explorer.id;
     const tunnelId = randomUUID();
     const attachmentResponse = await app.inject({
       method: "POST",
@@ -3952,7 +4024,7 @@ describe.sequential("server worktree control plane", () => {
     });
     expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
     const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
-    const sessionId = randomUUID();
+    const sessionId = explorer.id;
     const tunnelId = randomUUID();
     const attachmentResponse = await app.inject({
       method: "POST",
