@@ -4140,8 +4140,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (standalone) {
           await runtime.reloadSkills({
             cwd: command.cwd,
+            executionProfile: command.executionProfile,
             model: command.model,
             provider: provider(),
+            subagentDefaults,
           });
         }
         runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));

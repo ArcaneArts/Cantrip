@@ -4498,10 +4498,18 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async reloadSkills(
-    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+    options: Pick<
+      RunAgentTurnOptions,
+      "cwd" | "executionProfile" | "model" | "provider" | "subagentDefaults"
+    >,
   ): Promise<void> {
     if (!this.methodAvailable("skills/list")) return;
-    await this.ensureStarted(options.model, options.provider);
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      options.subagentDefaults,
+      options.executionProfile,
+    );
     await this.request("skills/list", {
       cwds: [options.cwd],
       forceReload: true,

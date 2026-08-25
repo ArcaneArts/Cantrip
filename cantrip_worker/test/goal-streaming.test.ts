@@ -369,6 +369,62 @@ async function fixture(
 }
 
 describe("Codex goal streaming", () => {
+  it("keeps the standalone runtime identity while reloading skills", async () => {
+    const standaloneCompatibility = {
+      ...compatibility,
+      methods: {
+        ...compatibility.methods,
+        "skills/extraRoots/set": "available" as const,
+        "skills/list": "available" as const,
+      },
+    };
+    const { root, runtime } = await fixture("turn-id-race", {
+      compatibility: standaloneCompatibility,
+      registerGlobalSkills: true,
+    });
+    try {
+      await runtime.reloadSkills({
+        cwd: root,
+        executionProfile: "standalone-chat",
+        model,
+        provider,
+        subagentDefaults: null,
+      });
+
+      await expect(
+        runtime.runTurn({
+          attachments: [],
+          automationPaused: false,
+          captureProtectedDiagnostics: false,
+          chatId: "standalone-chat",
+          clientMessageId: "standalone-message",
+          cwd: root,
+          executionProfile: "standalone-chat",
+          isPrimary: true,
+          mcpServers: [],
+          model,
+          permissionProfileId: null,
+          planMode: "default",
+          policyContext: null,
+          prompt: "Complete the standalone turn.",
+          provider,
+          rootKind: null,
+          skillNames: [],
+          subagentDefaults: null,
+          subagentProtocolVersion: undefined,
+          threadId: "goal-thread",
+          worktreeMode: null,
+          worktreePolicy: null,
+        }),
+      ).resolves.toMatchObject({
+        status: "completed",
+        text: "Goal work is visible.",
+      });
+    } finally {
+      runtime.close();
+    }
+  });
+
   it("registers worker-global skill roots before serving the native skill catalog", async () => {
     const globalSkillCompatibility = {
       ...compatibility,
