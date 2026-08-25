@@ -331,6 +331,10 @@ export function ProjectTabBar({
 
           {previewFile ? (
             <div
+              onAuxClick={(event) =>
+                closeTabOnMiddleClick(event, previewFile.onClose)
+              }
+              onMouseDown={preventMiddleMouseDefault}
               className={cn(
                 "group relative flex min-w-0 max-w-56 shrink-0 self-start items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                 previewFile.active && "bg-muted text-foreground",
