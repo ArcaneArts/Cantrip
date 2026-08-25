@@ -394,6 +394,8 @@ import {
   encryptedRemoteSurfaceUpdateSchema,
   remoteSurfaceViewportSchema,
   serverBootstrapSchema,
+  appDestinationSchema,
+  appDestinationUpdateSchema,
   settingsBundleWireSchema,
   protectedScriptCommandListSchema,
   skillSettingsContextSchema,
@@ -13319,6 +13321,12 @@ export async function buildApp({
           workerSwitching: true,
           gitSync: true,
           worktrees: true,
+          standaloneChat: {
+            available: false,
+            protocolVersion: 1,
+            reason:
+              "Standalone Chat contracts are installed, but creation is not enabled yet.",
+          },
           remoteSurfaces: {
             enabled: true,
             transports: config.remoteSurfaceWebRtc
@@ -16770,6 +16778,35 @@ export async function buildApp({
         throw error;
       }
     }
+    if (
+      "defaultChatModelId" in input.data ||
+      "defaultChatReasoningEffort" in input.data
+    ) {
+      const current = await repository.getUserSettings(applicationOwnerId());
+      const configuration = modelConfigurationSchema.safeParse({
+        modelId:
+          input.data.defaultChatModelId !== undefined
+            ? input.data.defaultChatModelId
+            : current.defaultChatModelId,
+        reasoningEffort:
+          input.data.defaultChatReasoningEffort !== undefined
+            ? input.data.defaultChatReasoningEffort
+            : current.defaultChatReasoningEffort,
+        customSubagentModel: false,
+        subagentModelId: null,
+        subagentReasoningEffort: null,
+      });
+      if (!configuration.success) {
+        return reply.code(400).send(invalidBody(configuration.error.issues));
+      }
+      try {
+        await configuredRoutePairsForDefaults(configuration.data);
+      } catch (error) {
+        const response = sendModelConfigurationResolutionFailure(reply, error);
+        if (response) return response;
+        throw error;
+      }
+    }
     const settings = await repository.updateSettings(
       applicationOwnerId(),
       input.data,
@@ -16780,6 +16817,23 @@ export async function buildApp({
         .send({ error: "Default model or worker was not found." });
     }
     return reply.send(settingsBundleWireSchema.parse(settings));
+  });
+
+  app.patch("/api/settings/destination", async (request, reply) => {
+    const input = appDestinationUpdateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const destination = await repository.updateAppDestination(
+      applicationOwnerId(),
+      input.data,
+    );
+    return destination
+      ? reply.send(appDestinationSchema.parse(destination))
+      : reply.code(409).send({
+          error:
+            "The saved destination changed or the requested destination is unavailable.",
+        });
   });
 
   app.post("/api/settings/providers", async (request, reply) => {

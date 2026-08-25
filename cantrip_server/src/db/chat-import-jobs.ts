@@ -871,6 +871,8 @@ export class ChatImportJobRepository {
         .insert(schema.chats)
         .values({
           id: chatId,
+          ownerId: job.ownerId,
+          contextKind: "project",
           projectId: job.projectId,
           protectedLabel: transcript.titleProtection,
           position: (positions[0]?.position ?? -1) + 1,

@@ -1163,6 +1163,13 @@
       "when": 1787620800000,
       "tag": "0165_tunnel_attachment_direct_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1787634000000,
+      "tag": "0166_standalone_chat_contracts",
+      "breakpoints": true
     }
   ]
 }
