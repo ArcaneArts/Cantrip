@@ -6990,6 +6990,7 @@ export const chatMessageContentSchema = z.array(
       type: z.literal("text"),
       text: z.string().min(1),
       phase: agentMessagePhaseSchema.nullable().optional(),
+      streaming: z.boolean().optional(),
       correlation: codexEventCorrelationSchema.nullable().optional(),
       agentScope: agentScopeSchema.optional(),
     }),
@@ -11306,6 +11307,7 @@ export const normalizedAgentMessageSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1),
   phase: agentMessagePhaseSchema.nullable(),
+  streaming: z.boolean().optional(),
   correlation: codexEventCorrelationSchema.nullable().optional(),
   agentScope: agentScopeSchema.optional(),
 });
@@ -13750,6 +13752,7 @@ const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("message"),
     phase: agentMessagePhaseSchema.nullable(),
+    streaming: z.boolean().optional(),
     turnId: z.string().min(1).nullable(),
   }),
   z.object({

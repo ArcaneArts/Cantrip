@@ -217,6 +217,7 @@ interface ActiveTurn {
   reject(error: Error): void;
   resolve(result: AgentTurnResult | WorkflowNodeExecutionResult): void;
   startedAtMs: number;
+  streamingAgentMessage: StreamingAgentMessage | null;
   structuredChat: boolean;
   threadId: string;
   timeout: ReturnType<typeof setTimeout> | null;
@@ -246,6 +247,7 @@ type AgentEventState = Pick<
   | "pendingAgentMessage"
   | "reasoningSummaries"
   | "startedAtMs"
+  | "streamingAgentMessage"
   | "structuredChat"
 >;
 
@@ -309,6 +311,16 @@ interface ActiveCommandTelemetry extends CommandTelemetryValue {
   item: CommandExecutionItem | null;
 }
 
+interface StreamingAgentMessage {
+  correlation: CodexEventCorrelation;
+  flushTimer: ReturnType<typeof setTimeout> | null;
+  id: string;
+  lastEmittedText: string;
+  phase: NormalizedAgentMessage["phase"];
+  text: string;
+}
+
+const AGENT_MESSAGE_DELTA_COALESCE_MS = 100;
 const COMMAND_OUTPUT_COALESCE_MS = 100;
 const MAX_TURN_COMMAND_TELEMETRY = 200;
 const MAX_COMPLETED_COMMAND_IDS = 1_000;
@@ -503,7 +515,100 @@ function scheduleCommandTelemetry(
   telemetry.flushTimer.unref();
 }
 
+function clearStreamingAgentMessage(active: AgentEventState): void {
+  const streaming = active.streamingAgentMessage;
+  if (streaming?.flushTimer) clearTimeout(streaming.flushTimer);
+  active.streamingAgentMessage = null;
+}
+
+function emitStreamingAgentMessage(active: AgentEventState): void {
+  const streaming = active.streamingAgentMessage;
+  if (!streaming) return;
+  if (streaming.flushTimer) {
+    clearTimeout(streaming.flushTimer);
+    streaming.flushTimer = null;
+  }
+  const text = streaming.text.trim();
+  if (
+    !text ||
+    text === streaming.lastEmittedText ||
+    streaming.phase === "commentary" ||
+    active.structuredChat
+  ) {
+    return;
+  }
+  streaming.lastEmittedText = text;
+  active.onMessage?.(
+    normalizedAgentMessageSchema.parse({
+      id: streaming.id,
+      text,
+      phase: "final_answer",
+      streaming: true,
+      correlation: streaming.correlation,
+      ...(active.agentScope ? { agentScope: active.agentScope } : {}),
+    }),
+  );
+}
+
+function scheduleStreamingAgentMessage(active: AgentEventState): void {
+  const streaming = active.streamingAgentMessage;
+  if (!streaming || streaming.flushTimer) return;
+  streaming.flushTimer = setTimeout(() => {
+    if (active.streamingAgentMessage !== streaming) return;
+    streaming.flushTimer = null;
+    emitStreamingAgentMessage(active);
+  }, AGENT_MESSAGE_DELTA_COALESCE_MS);
+  streaming.flushTimer.unref();
+}
+
+function settleStreamingAgentMessage(
+  active: AgentEventState,
+  completed: boolean,
+): void {
+  const streaming = active.streamingAgentMessage;
+  if (!streaming) return;
+  emitStreamingAgentMessage(active);
+  const text = streaming.text.trim();
+  clearStreamingAgentMessage(active);
+  if (!text || active.structuredChat) return;
+  active.onMessage?.(
+    normalizedAgentMessageSchema.parse({
+      id: streaming.id,
+      text,
+      phase:
+        streaming.phase === "commentary" || !completed
+          ? "commentary"
+          : "final_answer",
+      correlation: streaming.correlation,
+      ...(active.agentScope ? { agentScope: active.agentScope } : {}),
+    }),
+  );
+}
+
+function appendStreamingAgentMessageDelta(
+  active: AgentEventState,
+  itemId: string,
+  delta: string,
+  correlation: CodexEventCorrelation,
+): void {
+  if (active.streamingAgentMessage?.id !== itemId) {
+    settleStreamingAgentMessage(active, false);
+    active.streamingAgentMessage = {
+      correlation,
+      flushTimer: null,
+      id: itemId,
+      lastEmittedText: "",
+      phase: null,
+      text: "",
+    };
+  }
+  active.streamingAgentMessage.text += delta;
+  active.streamingAgentMessage.correlation = correlation;
+  scheduleStreamingAgentMessage(active);
+}
+
 function clearTurnInspectionTelemetry(active: AgentEventState): void {
+  clearStreamingAgentMessage(active);
   for (const telemetry of active.commandTelemetry.values()) {
     clearCommandFlush(telemetry);
   }
@@ -3246,6 +3351,7 @@ function flushActiveAgentMessage(
   active: AgentEventState,
   completed: boolean,
 ): void {
+  settleStreamingAgentMessage(active, completed);
   publishStagedAgentMessages(
     active,
     flushStagedAgentMessage(active.pendingAgentMessage, completed),
@@ -3968,6 +4074,7 @@ export class CodexAppServer implements CodexRuntime {
         reject,
         resolve,
         startedAtMs: Date.now(),
+        streamingAgentMessage: null,
         structuredChat: resultMode.kind === "structured",
         threadId,
         timeout: null,
@@ -4131,6 +4238,7 @@ export class CodexAppServer implements CodexRuntime {
         reject,
         resolve,
         startedAtMs: Date.now(),
+        streamingAgentMessage: null,
         structuredChat: false,
         threadId,
         timeout: null,
@@ -5793,6 +5901,7 @@ export class CodexAppServer implements CodexRuntime {
       segmentTurnIds: new Set(),
       startedAtMs: now,
       status: "starting",
+      streamingAgentMessage: null,
       structuredChat: false,
       threadId: metadata.threadId,
     };
@@ -7178,6 +7287,18 @@ export class CodexAppServer implements CodexRuntime {
       )?.state;
       if (state) {
         state.delta += params.delta;
+        appendStreamingAgentMessageDelta(
+          state,
+          params.itemId,
+          params.delta,
+          eventCorrelation(
+            message.method,
+            diagnosticId,
+            params.threadId,
+            params.turnId,
+            params.itemId,
+          ),
+        );
       }
       return;
     }
@@ -7354,6 +7475,36 @@ export class CodexAppServer implements CodexRuntime {
         params.threadId,
         params.turnId,
       )?.state;
+      if (
+        state &&
+        params.item.type === "agentMessage" &&
+        state.streamingAgentMessage &&
+        state.streamingAgentMessage.id !== params.item.id
+      ) {
+        settleStreamingAgentMessage(state, false);
+      }
+      if (state && params.item.type === "agentMessage") {
+        const correlation = eventCorrelation(
+          message.method,
+          diagnosticId,
+          params.threadId,
+          params.turnId,
+          params.item.id,
+        );
+        if (state.streamingAgentMessage?.id === params.item.id) {
+          state.streamingAgentMessage.correlation = correlation;
+          state.streamingAgentMessage.phase = params.item.phase ?? null;
+        } else {
+          state.streamingAgentMessage = {
+            correlation,
+            flushTimer: null,
+            id: params.item.id,
+            lastEmittedText: "",
+            phase: params.item.phase ?? null,
+            text: "",
+          };
+        }
+      }
       if (state && params.item.type !== "agentMessage") {
         flushActiveAgentMessage(state, false);
         const observedAtMs = Date.now();
@@ -7457,6 +7608,12 @@ export class CodexAppServer implements CodexRuntime {
         state.finalText = params.item.text;
       }
       if (state && params.item.type === "agentMessage") {
+        if (state.streamingAgentMessage?.id === params.item.id) {
+          state.streamingAgentMessage.phase = params.item.phase ?? null;
+          emitStreamingAgentMessage(state);
+        } else if (state.streamingAgentMessage) {
+          settleStreamingAgentMessage(state, false);
+        }
         const normalized = normalizeAgentMessage(
           params.item,
           eventCorrelation(
@@ -7472,6 +7629,9 @@ export class CodexAppServer implements CodexRuntime {
             state,
             stageAgentMessage(state.pendingAgentMessage, normalized),
           );
+          if (normalized.phase === "commentary") {
+            clearStreamingAgentMessage(state);
+          }
         }
       } else if (state && params.item.type === "commandExecution") {
         flushActiveAgentMessage(state, false);
@@ -8593,11 +8753,13 @@ export class CodexAppServer implements CodexRuntime {
     this.#pendingPlanQuestions.clear();
     for (const active of this.#activeTurnsByThread.values()) {
       if (active.timeout) clearTimeout(active.timeout);
+      flushActiveAgentMessage(active, false);
       clearTurnInspectionTelemetry(active);
       active.reject(error);
     }
     for (const execution of this.#rootExecutionsByActive.values()) {
       for (const state of execution.agents.values()) {
+        flushActiveAgentMessage(state, false);
         clearTurnInspectionTelemetry(state);
       }
     }

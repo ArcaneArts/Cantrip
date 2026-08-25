@@ -274,6 +274,83 @@ describe("worker encrypted Task operations", () => {
     });
   });
 
+  it("upserts streaming Task answers through one protected message", async () => {
+    const componentKey = randomBytes(32);
+    const service = {
+      ownerId: () => ownerId,
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const sealer = new EncryptedTaskEventSealer(service, "default");
+    const correlation = {
+      sourceMethod: "item/agentMessage/delta",
+      diagnosticId: null,
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "message-1",
+    };
+    const first = await sealer.message({
+      id: "message-1",
+      text: "The answer is",
+      phase: "final_answer",
+      streaming: true,
+      correlation,
+    });
+    const second = await sealer.message({
+      id: "message-1",
+      text: "The answer is complete.",
+      phase: "final_answer",
+      correlation,
+    });
+
+    expect(first.message.id).toBe(second.message.id);
+    expect(first.message.idempotencyKey).toBe(second.message.idempotencyKey);
+    expect(first.telemetry).toMatchObject({
+      kind: "message",
+      streaming: true,
+      turnId: "turn-1",
+    });
+    await expect(
+      decryptTaskMessageProtectedContent({
+        ownerId,
+        messageId: first.message.id,
+        keyRevision,
+        componentKey,
+        encrypted: first.message.protectedContent,
+        publicClassification: first.message.classification,
+      }),
+    ).resolves.toMatchObject({
+      content: [
+        {
+          type: "text",
+          text: "The answer is",
+          phase: "final_answer",
+          streaming: true,
+        },
+      ],
+    });
+    await expect(
+      decryptTaskMessageProtectedContent({
+        ownerId,
+        messageId: second.message.id,
+        keyRevision,
+        componentKey,
+        encrypted: second.message.protectedContent,
+        publicClassification: second.message.classification,
+      }),
+    ).resolves.toMatchObject({
+      content: [
+        {
+          type: "text",
+          text: "The answer is complete.",
+          phase: "final_answer",
+        },
+      ],
+    });
+  });
+
   it("decrypts only at execution and returns an opaque validated planner result", async () => {
     const componentKey = randomBytes(32);
     const request = await createTaskOperationRelayRequest({

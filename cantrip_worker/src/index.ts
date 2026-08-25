@@ -4021,6 +4021,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                             emitProtectedAgentEvent(() =>
                               encryptedTaskSealer.activity(activity),
                             ),
+                          onMessage: (message) =>
+                            emitProtectedAgentEvent(() =>
+                              encryptedTaskSealer.message(message),
+                            ),
                         }
                       : encryptedChatSealer
                         ? {

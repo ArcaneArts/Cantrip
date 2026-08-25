@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 interface ChatRunStatusProps {
   automationPaused: boolean;
   hasLiveActivity: boolean;
+  hasStreamingFinalAnswer: boolean;
   inferenceProgress: InferenceProgressSnapshot | null;
   syncingCodeGraph: boolean;
   status: ChatSummary["status"];
@@ -198,6 +199,7 @@ function PrefillProgressStatus({
 export function ChatRunStatus({
   automationPaused,
   hasLiveActivity,
+  hasStreamingFinalAnswer,
   inferenceProgress,
   syncingCodeGraph,
   status,
@@ -206,7 +208,21 @@ export function ChatRunStatus({
   if (status !== "running" && status !== "waiting-for-approval") return null;
 
   if (status === "running" && !automationPaused && !waitingForPlanAnswer) {
-    if (hasLiveActivity && !inferenceProgress) return null;
+    if (hasLiveActivity && !hasStreamingFinalAnswer && !inferenceProgress) {
+      return null;
+    }
+    if (hasStreamingFinalAnswer) {
+      return (
+        <div
+          aria-live="polite"
+          className="text-sm"
+          data-elite-ignore=""
+          role="status"
+        >
+          <span className="chat-working-shimmer">Finishing...</span>
+        </div>
+      );
+    }
     if (inferenceProgress?.phase === "prefill") {
       return (
         <div
