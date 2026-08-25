@@ -1,14 +1,38 @@
 import type { AgentScope, ChatMessage } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import TestRenderer, { act } from "react-test-renderer";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   AgentTrajectory,
   TRAJECTORY_FOLLOW_THRESHOLD_PX,
   trajectorySubagentTarget,
 } from "./agent-trajectory";
+import { buildAgentTurnProjection } from "./agent-turn-projection";
 import { projectTrajectory } from "./trajectory-model";
 import { chatScrollIsNearBottom } from "./use-sticky-chat-scroll";
+
+const { buildAgentTurnProjectionSpy } = vi.hoisted(() => ({
+  buildAgentTurnProjectionSpy: vi.fn(),
+}));
+
+vi.mock("./agent-turn-projection", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./agent-turn-projection")>();
+  return {
+    ...actual,
+    buildAgentTurnProjection: (
+      ...args: Parameters<typeof actual.buildAgentTurnProjection>
+    ) => {
+      buildAgentTurnProjectionSpy();
+      return actual.buildAgentTurnProjection(...args);
+    },
+  };
+});
+
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 function message(
   id: string,
@@ -39,6 +63,116 @@ function message(
 }
 
 describe("AgentTrajectory", () => {
+  it("skips hidden trajectory work across parent and live updates while preserving filters", async () => {
+    const messages: ChatMessage[] = [
+      message("user-1", 1, "user", 1_000, [
+        { type: "text", text: "Trace this turn" },
+      ]),
+      ...Array.from({ length: 1_000 }, (_, index) =>
+        message(`command-${index}`, index + 2, "assistant", 1_200 + index, [
+          {
+            type: "activity",
+            activity: {
+              type: "command",
+              id: `command-${index}`,
+              command: `git status ${index}`,
+              cwd: "/workspace",
+              status: "completed",
+              exitCode: 0,
+              output: null,
+            },
+          },
+        ]),
+      ),
+    ];
+    vi.stubGlobal("window", {
+      cancelAnimationFrame: vi.fn(),
+      clearInterval: vi.fn(),
+      requestAnimationFrame: vi.fn(() => 1),
+      setInterval: vi.fn(() => 1),
+    });
+
+    let renderer!: TestRenderer.ReactTestRenderer;
+    try {
+      await act(async () => {
+        renderer = TestRenderer.create(
+          <AgentTrajectory active={false} messages={messages} visible />,
+        );
+      });
+      const search = renderer.root.findByProps({
+        "aria-label": "Search trajectory events",
+      });
+      await act(async () =>
+        search.props.onChange({ target: { value: "git status 999" } }),
+      );
+      buildAgentTurnProjectionSpy.mockClear();
+
+      for (let revision = 0; revision < 100; revision += 1) {
+        await act(async () => {
+          renderer.update(
+            <AgentTrajectory
+              active={false}
+              messages={messages}
+              visible={false}
+            />,
+          );
+        });
+        expect(renderer.toJSON()).toBeNull();
+      }
+      expect(buildAgentTurnProjectionSpy).not.toHaveBeenCalled();
+
+      for (let revision = 0; revision < 100; revision += 1) {
+        const updatedMessages = messages.map((current) =>
+          current.id === "command-999"
+            ? {
+                ...current,
+                content: current.content.map((item) =>
+                  item.type === "activity" && item.activity.type === "command"
+                    ? {
+                        ...item,
+                        activity: {
+                          ...item.activity,
+                          output: `live output ${revision}`,
+                        },
+                      }
+                    : item,
+                ),
+              }
+            : current,
+        );
+        await act(async () => {
+          renderer.update(
+            <AgentTrajectory
+              active={false}
+              messages={updatedMessages}
+              visible={false}
+            />,
+          );
+        });
+        expect(renderer.toJSON()).toBeNull();
+      }
+      expect(buildAgentTurnProjectionSpy).not.toHaveBeenCalled();
+
+      await act(async () => {
+        renderer.update(
+          <AgentTrajectory active={false} messages={messages} visible />,
+        );
+      });
+      expect(
+        renderer.root.findByProps({
+          "aria-label": "Search trajectory events",
+        }).props.value,
+      ).toBe("git status 999");
+      expect(buildAgentTurnProjectionSpy).toHaveBeenCalledTimes(1);
+      expect(
+        renderer.root.findAllByProps({ "data-event-kind": "command" }),
+      ).toHaveLength(1);
+      await act(async () => renderer.unmount());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("keeps following while the viewport remains within the latest event", () => {
     expect(
       chatScrollIsNearBottom(
@@ -85,7 +219,12 @@ describe("AgentTrajectory", () => {
       ]),
     ];
     const markup = renderToStaticMarkup(
-      <AgentTrajectory active messages={messages} visible />,
+      <AgentTrajectory
+        active
+        agentProjection={buildAgentTurnProjection(messages)}
+        messages={messages}
+        visible
+      />,
     );
     expect(markup).toContain("2 agents");
     expect(markup).toContain("Root agent");

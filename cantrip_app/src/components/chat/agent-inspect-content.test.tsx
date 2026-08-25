@@ -251,6 +251,17 @@ describe("AgentInspectPresentation", () => {
 });
 
 describe("AgentInspectContent", () => {
+  it("keeps only the lightweight state shell mounted while hidden", () => {
+    const markup = renderToStaticMarkup(
+      <AgentInspectContent active messages={[]} visible={false} />,
+    );
+    expect(markup).toContain('data-slot="agent-observation-content"');
+    expect(markup).not.toContain('aria-label="Inspect view"');
+    expect(markup).not.toContain('data-slot="agent-trajectory-empty"');
+    expect(markup).not.toContain('data-slot="agent-trajectory-content"');
+    expect(markup).not.toContain('data-slot="agent-inspect-inactive"');
+  });
+
   it("renders Trajectory first and selects it by default", () => {
     const markup = renderToStaticMarkup(
       <AgentInspectContent active={false} messages={[]} visible />,

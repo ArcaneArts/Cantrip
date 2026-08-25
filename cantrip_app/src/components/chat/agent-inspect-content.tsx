@@ -21,6 +21,7 @@ import type { InferenceProgressTrace } from "@/lib/inference-progress-history";
 import { cn } from "@/lib/utils";
 
 import { AgentTrajectory } from "./agent-trajectory";
+import type { AgentTurnProjection } from "./agent-turn-projection";
 import { displayCommand } from "./command-display";
 import {
   buildAgentInspectorProjectionSource,
@@ -478,12 +479,14 @@ export function AgentInspectStateContent({
   messages: ChatMessage[];
   visible: boolean;
 }) {
+  if (!visible) return null;
   if (!active) return <AgentInspectInactive />;
   return <AgentInspectLiveContent messages={messages} visible={visible} />;
 }
 
 export function AgentInspectContent({
   active,
+  agentProjection,
   inferenceProgress,
   inferenceProgressHistory,
   integratedPanelHeader = false,
@@ -497,6 +500,7 @@ export function AgentInspectContent({
   visible,
 }: {
   active: boolean;
+  agentProjection?: AgentTurnProjection;
   inferenceProgress?: InferenceProgressSnapshot | null;
   inferenceProgressHistory?: readonly InferenceProgressTrace[];
   integratedPanelHeader?: boolean;
@@ -521,16 +525,18 @@ export function AgentInspectContent({
       className="flex h-full min-h-0 flex-col"
       data-slot="agent-observation-content"
     >
-      <NavigationTabBar
-        activeTab={activeTab}
-        ariaLabel="Inspect view"
-        className={cn(
-          "border-b px-3",
-          integratedPanelHeader && "h-11 pl-24 pr-10",
-        )}
-        onTabChange={selectTab}
-        tabs={AGENT_INSPECT_TABS}
-      />
+      {visible ? (
+        <NavigationTabBar
+          activeTab={activeTab}
+          ariaLabel="Inspect view"
+          className={cn(
+            "border-b px-3",
+            integratedPanelHeader && "h-11 pl-24 pr-10",
+          )}
+          onTabChange={selectTab}
+          tabs={AGENT_INSPECT_TABS}
+        />
+      ) : null}
       <div
         aria-label={`${activeTab === "trajectory" ? "Trajectory" : "State"} view`}
         className="min-h-0 flex-1 overflow-hidden"
@@ -539,6 +545,7 @@ export function AgentInspectContent({
         {activeTab === "trajectory" ? (
           <AgentTrajectory
             active={active}
+            agentProjection={agentProjection}
             inferenceProgress={inferenceProgress}
             inferenceProgressHistory={inferenceProgressHistory}
             messages={messages}

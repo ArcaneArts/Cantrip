@@ -3580,6 +3580,7 @@ function ChatTranscript({
         ) : (
           <AgentInspectContent
             active={inspectActive}
+            agentProjection={agentProjection}
             inferenceProgress={inferenceProgress.data}
             inferenceProgressHistory={inferenceProgressHistory.data}
             integratedPanelHeader

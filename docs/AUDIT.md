@@ -18,8 +18,9 @@ gains one layer below that architecture:
   quadratically with fragmentation;
 - AppLive now coalesces durable cursor writes and isolates status-only subscribers from
   cursor traffic while preserving immediate in-memory replay state;
-- closed inspection UI and diagnostic capture still build or
-  parse expensive data that the user cannot see;
+- closed Inspect now retains only lightweight controller state and reuses the transcript's
+  shared agent projection when open; diagnostic capture still builds and parses expensive
+  data that the user cannot see;
 - project, Task, worker-metadata, session-validation, and attachment-maintenance paths retain
   avoidable N+1 request/query patterns;
 - attachment ranges and command streams reread or recopy data already in memory or on disk.
@@ -28,7 +29,7 @@ Five completed findings were removed from the active report: former P0-01, P0-05
 P0-11, and P0-12. Their current implementations and focused tests were rechecked before
 removal. P0-06 was marked fixed only by a status-only documentation change; current source
 still contains its original `1 + 2N` query pattern, so this pass restores it as pending.
-N0-02, N0-04, and N0-05 remain below as completed implementation records with their
+N0-02, N0-04, N0-05, and N0-06 remain below as completed implementation records with their
 validation evidence.
 
 The priority frontier now mixes the strongest new findings with still-valid carryovers:
@@ -40,7 +41,7 @@ The priority frontier now mixes the strongest new findings with still-valid carr
 | 3    | N0-03 linear, low-copy Browser Code tunnel framing        | high interactive | low-medium | cumulative buffer copies and repeated payload copies   |
 | 4    | N0-04 [completed] coalesce AppLive persistence/fanout     | completed        | —          | one bounded write; no cursor-only status fanout        |
 | 5    | N0-05 [completed] cache provider catalogs outside renders | completed        | —          | disabled queries now perform zero storage work         |
-| 6    | N0-06 unmount hidden inspection trajectory work           | high long-chat   | low        | invisible projections and thousands of retained rows   |
+| 6    | N0-06 [completed] skip hidden Inspect trajectory work     | completed        | —          | closed panels retain no projection or trajectory rows  |
 | 7    | N0-07 batch project/worker routing metadata hydration     | high fleet-wide  | low-medium | per-project HTTP and per-worker protected commands     |
 | 8    | N0-08 make attachment transfer genuinely ranged           | high transfer    | low-medium | full-file reads for every requested range              |
 | 9    | N0-09 disable routine full-payload diagnostic cloning     | high streaming   | low-medium | recursive clone/redaction of every Codex RPC           |
@@ -301,35 +302,45 @@ Validation:
   tests across 290 files with three skipped; and the app TypeScript check and production
   build pass. The proof is deterministic work elimination rather than a wall-clock claim.
 
-### N0-06 — opportunity — Do not retain full trajectory UI while Inspect is closed
+### N0-06 — completed — Do not retain full trajectory UI while Inspect is closed
 
+- Status: completed 2026-08-24
 - Category: REDUNDANT_COMPUTATION
-- Expected gain: high for long chats
-- Risk: low
-- Complexity: low-medium
-- Confidence: high
+- Original expected gain: high for long chats
+- Implementation risk: low
+- Confidence: high, supported by deterministic render-isolation tests
 
-Evidence:
+Resolution:
 
-- cantrip_app/src/App.tsx:3544-3595 always renders the Inspect shell and content.
-- cantrip_app/src/components/ui/resizable-panel.tsx:345-379 closes via width, inert, and
-  opacity but leaves children mounted.
-- cantrip_app/src/components/chat/agent-inspect-content.tsx:438-559 has no hidden
-  short-circuit for expensive content.
-- cantrip_app/src/components/chat/agent-trajectory.tsx:237-268 rebuilds projections,
-  and lines 730-755 map the full trajectory into DOM rows.
+- cantrip_app/src/components/chat/agent-trajectory.tsx:205-290 separates lightweight
+  search/filter/selection state from the visible renderer. A closed trajectory returns null
+  before message deferral, projection, timeline layout, sticky-scroll hooks, or row mapping,
+  while the controller remains mounted so user filters survive reopening.
+- cantrip_app/src/components/chat/agent-trajectory.tsx:324-361 accepts the existing parent
+  projection and defers it with its matching message revision. The fallback builder remains
+  for isolated consumers and tests.
+- cantrip_app/src/components/chat/agent-inspect-content.tsx:473-564 suppresses hidden State
+  projection and the tab bar while retaining the controlled content boundary.
+- cantrip_app/src/App.tsx:3581-3594 passes the transcript's memoized agent projection into
+  Inspect instead of rebuilding it after the panel opens.
 
-Hypothesis: a closed panel retains/reconciles a large invisible event tree and duplicates
-agent projection work during composer/live updates. This is distinct from the completed
-transcript-row memoization.
+Deterministic work-count and correctness proof:
 
-Suggested change: lazily mount or short-circuit expensive content while closed, preserve
-intentional controlled tab/filter state, and reuse the parent's computed projection when
-open. Windowing visible rows can remain a measured follow-up.
+- cantrip_app/src/components/chat/agent-trajectory.test.tsx:66-174 performs 100 closed
+  parent updates and 100 closed live-message revisions over a 1,000-event fixture. Every
+  update renders no trajectory tree and records zero fallback projection calls; reopening
+  restores the prior search filter and exactly one matching command row.
+- cantrip_app/src/components/chat/agent-inspect-content.test.tsx:254-263 verifies a hidden
+  Inspect retains its lightweight state shell but contains no tab bar, empty trajectory,
+  trajectory rows, or State presentation.
+- Existing trajectory tests preserve agent ordering, child targeting, historical selection,
+  lane/filter controls, inference progress, and event-row output. The focused Inspect suite
+  passes 29 tests; the complete app suite passes 1,332 tests across 290 files with three
+  skipped; and the app TypeScript check and production build pass.
 
-Validation: with 1,000 events and the panel closed, projection calls and trajectory rows
-must remain zero across 100 draft and 100 live updates. Opening must preserve exact order,
-selection, filtering, and the explicitly chosen reopen-state policy.
+Regression guardrail: keep the 200-update hidden-render test, reopen-state assertion, and
+shared-projection render coverage. Window visible rows only after a separate profile; this
+change makes no wall-clock speedup claim.
 
 ### N0-07 — opportunity — Batch project and worker routing-metadata hydration
 
@@ -1540,9 +1551,9 @@ Before behavior changes, add or reuse focused counters and deterministic fixture
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement N0-01, N0-06, N0-09, N0-19, P0-08, P0-13, P1-01, P1-06, P1-07,
-P1-15, P1-16, and P1-18. These gate work that is provably invisible/impossible, add bounded
-coalescing, or replace an equivalent data structure.
+Implement N0-01, N0-09, N0-19, P0-08, P0-13, P1-01, P1-06, P1-07, P1-15, P1-16, and
+P1-18. These gate work that is provably invisible/impossible, add bounded coalescing, or
+replace an equivalent data structure.
 
 ### Wave 2 — bounded batching, memoization, and ownership
 

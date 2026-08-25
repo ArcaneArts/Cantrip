@@ -17,6 +17,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
 } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -24,7 +27,10 @@ import { Input } from "@/components/ui/input";
 import type { InferenceProgressTrace } from "@/lib/inference-progress-history";
 import { cn } from "@/lib/utils";
 
-import { buildAgentTurnProjection } from "./agent-turn-projection";
+import {
+  buildAgentTurnProjection,
+  type AgentTurnProjection,
+} from "./agent-turn-projection";
 import {
   filterTrajectoryEvents,
   projectTrajectory,
@@ -196,17 +202,9 @@ function TrajectoryEventRow({
   );
 }
 
-export function AgentTrajectory({
-  active,
-  inferenceProgress,
-  inferenceProgressHistory,
-  messages,
-  onBackToCurrent,
-  onOpenSubagent,
-  targetTurnKey,
-  visible,
-}: {
+interface AgentTrajectoryProps {
   active: boolean;
+  agentProjection?: AgentTurnProjection;
   inferenceProgress?: InferenceProgressSnapshot | null;
   inferenceProgressHistory?: readonly InferenceProgressTrace[];
   messages: ChatMessage[];
@@ -214,13 +212,40 @@ export function AgentTrajectory({
   onOpenSubagent?(agentKey: string, focusItemKey: string | null): void;
   targetTurnKey?: string | null;
   visible: boolean;
-}) {
-  const [clockMs, setClockMs] = useState(() => Date.now());
+}
+
+interface AgentTrajectoryVisibleProps extends AgentTrajectoryProps {
+  followingLive: boolean;
+  hiddenAgents: Set<string>;
+  hiddenKinds: Set<string>;
+  hiddenLanes: Set<TrajectoryLane>;
+  hiddenStatuses: Set<TrajectoryEvent["status"]>;
+  hiddenTimingQualities: Set<TrajectoryTimingQuality>;
+  playheadMs: number | null;
+  query: string;
+  rowRefs: MutableRefObject<Map<string, HTMLLIElement>>;
+  selectedEventId: string | null;
+  setFollowingLive: Dispatch<SetStateAction<boolean>>;
+  setHiddenAgents: Dispatch<SetStateAction<Set<string>>>;
+  setHiddenKinds: Dispatch<SetStateAction<Set<string>>>;
+  setHiddenLanes: Dispatch<SetStateAction<Set<TrajectoryLane>>>;
+  setHiddenStatuses: Dispatch<SetStateAction<Set<TrajectoryEvent["status"]>>>;
+  setHiddenTimingQualities: Dispatch<
+    SetStateAction<Set<TrajectoryTimingQuality>>
+  >;
+  setPlayheadMs: Dispatch<SetStateAction<number | null>>;
+  setQuery: Dispatch<SetStateAction<string>>;
+  setSelectedEventId: Dispatch<SetStateAction<string | null>>;
+  turnKeyRef: MutableRefObject<string | null | undefined>;
+}
+
+export function AgentTrajectory(props: AgentTrajectoryProps) {
   const [query, setQuery] = useState("");
   const [playheadMs, setPlayheadMs] = useState<number | null>(null);
   const [followingLive, setFollowingLive] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
+  const turnKeyRef = useRef<string | null | undefined>(undefined);
   const [hiddenAgents, setHiddenAgents] = useState<Set<string>>(
     () => new Set(),
   );
@@ -234,22 +259,91 @@ export function AgentTrajectory({
   const [hiddenTimingQualities, setHiddenTimingQualities] = useState<
     Set<TrajectoryTimingQuality>
   >(() => new Set());
-  const deferredMessages = useDeferredValue(messages);
+
+  if (!props.visible) return null;
+
+  return (
+    <AgentTrajectoryVisible
+      {...props}
+      followingLive={followingLive}
+      hiddenAgents={hiddenAgents}
+      hiddenKinds={hiddenKinds}
+      hiddenLanes={hiddenLanes}
+      hiddenStatuses={hiddenStatuses}
+      hiddenTimingQualities={hiddenTimingQualities}
+      playheadMs={playheadMs}
+      query={query}
+      rowRefs={rowRefs}
+      selectedEventId={selectedEventId}
+      setFollowingLive={setFollowingLive}
+      setHiddenAgents={setHiddenAgents}
+      setHiddenKinds={setHiddenKinds}
+      setHiddenLanes={setHiddenLanes}
+      setHiddenStatuses={setHiddenStatuses}
+      setHiddenTimingQualities={setHiddenTimingQualities}
+      setPlayheadMs={setPlayheadMs}
+      setQuery={setQuery}
+      setSelectedEventId={setSelectedEventId}
+      turnKeyRef={turnKeyRef}
+    />
+  );
+}
+
+function AgentTrajectoryVisible({
+  active,
+  agentProjection,
+  followingLive,
+  hiddenAgents,
+  hiddenKinds,
+  hiddenLanes,
+  hiddenStatuses,
+  hiddenTimingQualities,
+  inferenceProgress,
+  inferenceProgressHistory,
+  messages,
+  onBackToCurrent,
+  onOpenSubagent,
+  playheadMs,
+  query,
+  rowRefs,
+  selectedEventId,
+  setFollowingLive,
+  setHiddenAgents,
+  setHiddenKinds,
+  setHiddenLanes,
+  setHiddenStatuses,
+  setHiddenTimingQualities,
+  setPlayheadMs,
+  setQuery,
+  setSelectedEventId,
+  targetTurnKey,
+  turnKeyRef,
+  visible,
+}: AgentTrajectoryVisibleProps) {
+  const [clockMs, setClockMs] = useState(() => Date.now());
+  const projectionInput = useMemo(
+    () => ({ agentProjection, messages }),
+    [agentProjection, messages],
+  );
+  const deferredInput = useDeferredValue(projectionInput);
+  const deferredMessages = deferredInput.messages;
 
   useEffect(() => {
     setClockMs(Date.now());
   }, [active, messages, targetTurnKey, visible]);
 
   const nowMs = visible ? Math.max(clockMs, Date.now()) : clockMs;
-  const agentProjection = useMemo(
-    () => buildAgentTurnProjection(deferredMessages),
-    [deferredMessages],
+  const projectedAgents = useMemo(
+    () =>
+      deferredInput.agentProjection ??
+      buildAgentTurnProjection(deferredInput.messages),
+    [deferredInput],
   );
   const turn = useMemo(
     () =>
       projectTrajectory({
         active,
-        agentProjection,
+        agentProjection: projectedAgents,
         inferenceProgress,
         inferenceProgressHistory,
         messages: deferredMessages,
@@ -258,7 +352,7 @@ export function AgentTrajectory({
       }),
     [
       active,
-      agentProjection,
+      projectedAgents,
       deferredMessages,
       inferenceProgress,
       inferenceProgressHistory,
@@ -347,11 +441,20 @@ export function AgentTrajectory({
   ]);
 
   useEffect(() => {
+    if (turnKeyRef.current === turn?.key) return;
+    turnKeyRef.current = turn?.key;
     setPlayheadMs(turn?.timelineStartMs ?? null);
     setFollowingLive(false);
     setSelectedEventId(null);
     setHiddenAgents(new Set());
-  }, [turn?.key]);
+  }, [
+    setFollowingLive,
+    setHiddenAgents,
+    setPlayheadMs,
+    setSelectedEventId,
+    turn?.key,
+    turnKeyRef,
+  ]);
 
   useEffect(() => {
     if (!selectedEventId || !turn) return;
