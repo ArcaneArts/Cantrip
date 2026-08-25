@@ -227,6 +227,8 @@ describe("project overview", () => {
     expect(markup).toContain('tabindex="0"');
     expect(markup).toContain("Running");
     expect(markup).toContain("Worker online");
+    expect(markup).toContain('class="w-full space-y-5 p-4 sm:p-6 lg:p-8"');
+    expect(markup).not.toContain("max-w-6xl");
     expect(markup).toContain("Open in Finder");
     expect(markup).not.toContain("Reveal in Finder");
     expect(markup.indexOf("Open in Finder")).toBeLessThan(
