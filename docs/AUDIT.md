@@ -23,15 +23,15 @@ work surrounding the live paths:
   backoff;
 - bounded buffers use full sorting, rebuilding, or Array.shift eviction in their hot paths.
 
-P0-05, P0-06, P0-09, and P0-12 have since been fixed and are retained below as completed
-historical context. The first implementation wave should target the remaining P0 items.
-They are source-evident, high-upside, and can be validated without changing product
+P0-01, P0-05, P0-06, P0-09, and P0-12 have since been fixed and are retained below as
+completed historical context. The first implementation wave should target the remaining P0
+items. They are source-evident, high-upside, and can be validated without changing product
 semantics. P1 items should follow with focused benchmarks. P2 items require
 production-shaped measurement before design work.
 
 | Rank | Opportunity                                                  | Expected gain       | Risk       | Why it should move first                                                  |
 | ---- | ------------------------------------------------------------ | ------------------- | ---------- | ------------------------------------------------------------------------- |
-| 1    | P0-01 isolate chat composer and memoize transcript rows      | high                | low        | directly improves every keystroke in long chats                           |
+| 1    | P0-01 [fixed] isolate composer updates from transcript rows  | fixed               | —          | historical rows now skip draft, caret, and composer-scroll updates        |
 | 2    | P0-02 remove redundant remote-frame work end to end          | high                | low-medium | removes frame-sized copies and repeated validation at interactive rates   |
 | 3    | P0-03 no-op unchanged encryption bootstraps                  | high                | low        | removes synchronous disk and crypto work every five seconds               |
 | 4    | P0-04 batch narrow AppLive authorization                     | high                | low        | turns reconnect hydration from potentially hundreds of queries into a few |
@@ -89,15 +89,16 @@ migrations.
 
 ## P0: high-upside candidates and completed work
 
-### P0-01 — opportunity — Isolate composer updates from the full chat transcript
+### P0-01 — fixed — Isolate composer updates from the full chat transcript
 
+- Status: fixed 2026-08-24
 - Category: REDUNDANT_COMPUTATION
 - Expected gain: high
-- Risk: low
-- Complexity: low-medium
+- Original risk: low
+- Original complexity: low-medium
 - Confidence: high
 
-Evidence:
+Original evidence on the audited baseline:
 
 - cantrip_app/src/App.tsx:1245 and 1322-1377 keep transcript, composer draft, caret,
   attachment, scroll, and other UI state in ChatTranscript.
@@ -108,17 +109,37 @@ Evidence:
   cantrip_app/src/components/chat/markdown.tsx:29-52 show non-memoized message/Markdown
   rendering and recreated Markdown configuration.
 
-Hypothesis: a composer keystroke or textarea scroll can reconcile historical messages and
-re-enter Markdown components. The cost grows with conversation length and is paid on the
-IDE's most frequent interaction.
+Original hypothesis: a composer keystroke or textarea scroll can reconcile historical
+messages and re-enter Markdown components. The cost grows with conversation length and is
+paid on the IDE's most frequent interaction.
 
-Suggested change: extract the composer into a state-owning child. Extract immutable
-transcript rows, MessageContent, and Markdown into memoized components; hoist stable plugin
-and component tables; keep only the active streaming row mutable.
+Resolution:
 
-Validation: React Profiler on a 500-message chat while typing 100 characters, resizing the
-composer, and scrolling it. Historical Markdown render count should remain zero and commit
-time should no longer grow materially with transcript length.
+- cantrip_app/src/components/chat/chat-transcript-entries.tsx now owns the extracted
+  historical transcript rows behind one memoized component boundary. Its props deliberately
+  exclude composer draft, caret, attachment, menu, and scroll state.
+- cantrip_app/src/components/chat/message-content.tsx memoizes each immutable message, so a
+  live transcript update re-enters only message objects whose identity changed.
+- cantrip_app/src/components/chat/markdown.tsx memoizes Markdown output and hoists the
+  stable remark plugin list; its component table is rebuilt only when inverse/link behavior
+  changes.
+- cantrip_app/src/App.tsx passes stable callbacks for edit, copy, fork, and resend actions
+  while preserving existing draft persistence, upload, command-menu, queue-edit, mutation,
+  and live-history behavior.
+
+Deterministic render-count proof:
+
+- cantrip_app/src/components/chat/chat-transcript-entries.test.tsx mounts 500 historical
+  messages, performs 100 separate draft updates and 100 composer-scroll updates, and
+  verifies that historical message render count remains exactly 500.
+- The same test changes the active streaming message and verifies exactly one additional
+  message render, proving the memo boundary still admits live content changes.
+- Validation completed with the app typecheck, all 287 app test files (1,283 passing tests;
+  3 skipped), and the production app build.
+
+Regression guardrail: retain the 500-message render-count test and keep composer-only state
+out of ChatTranscriptEntries props. Any new transcript-row callback must be referentially
+stable across draft, caret, attachment, and composer-scroll updates.
 
 ### P0-02 — opportunity — Remove redundant remote-surface frame work end to end
 
@@ -1068,7 +1089,8 @@ Each primitive should stay small, locally testable, and tied to the listed calle
 
 Before behavior changes, add or reuse focused counters and deterministic fixtures:
 
-- React Profiler harness for 500-message typing and 1,000-turn anchor layout;
+- retain the 500-message composer render-count regression and add a 1,000-turn anchor-layout
+  profiler harness;
 - prerecorded remote-frame replay for browser/server allocation and encode counts;
 - SQL counter fixtures for AppLive scopes, worker fleets, and workflow recovery;
 - child-process counters for idle worktrees and Git status;
@@ -1083,8 +1105,8 @@ structure.
 
 ### Wave 2 — bounded batching, memoization, and ownership
 
-Implement P0-01, P0-03, P0-04, P0-07, P0-10, P0-14, P1-02 through P1-05, P1-08 through
-P1-13, and P1-17. Land each behind equivalence tests and bounded cache/queue policies.
+Implement P0-03, P0-04, P0-07, P0-10, P0-14, P1-02 through P1-05, P1-08 through P1-13,
+and P1-17. Land each behind equivalence tests and bounded cache/queue policies.
 
 ### Wave 3 — conditional tuning
 
