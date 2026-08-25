@@ -22,8 +22,8 @@ import {
 } from "../db/chat-relocation-jobs.js";
 import { ProjectReplicaJobConflictError } from "../db/project-replica-jobs.js";
 import type {
-  ChatExecutionContext,
   ModelRuntime,
+  ProjectChatExecutionContext,
   ProjectWorktreeExecutionContext,
   ServerRepository,
 } from "../db/repository.js";
@@ -433,7 +433,7 @@ export class ChatRelocationJobExecutor {
   }
 
   async #validate(claimed: ClaimedChatRelocationJob): Promise<{
-    source: ChatExecutionContext;
+    source: ProjectChatExecutionContext;
     target: ProjectWorktreeExecutionContext;
   }> {
     const [source, target, sourceWorker, targetWorker] = await Promise.all([
@@ -457,6 +457,7 @@ export class ChatRelocationJobExecutor {
     ]);
     if (
       !source ||
+      source.contextKind !== "project" ||
       source.workerId !== claimed.job.sourcePlacement.workerId ||
       source.worktreeId !== claimed.job.sourcePlacement.worktreeId ||
       source.status !== "idle"
@@ -873,11 +874,11 @@ export class ChatRelocationJobExecutor {
 
   async #hydrateTarget(
     claimed: ClaimedChatRelocationJob,
-    source: ChatExecutionContext,
+    source: ProjectChatExecutionContext,
     target: ProjectWorktreeExecutionContext,
     runtime: ModelRuntime,
   ): Promise<string> {
-    const targetContext: ChatExecutionContext = {
+    const targetContext: ProjectChatExecutionContext = {
       ...source,
       cwd: target.worktree.path,
       isPrimary: target.worktree.isPrimary,
@@ -920,7 +921,7 @@ export class ChatRelocationJobExecutor {
 
   async #releaseSource(
     claimed: ClaimedChatRelocationJob,
-    source: ChatExecutionContext,
+    source: ProjectChatExecutionContext,
   ): Promise<void> {
     if (!source.threadId) return;
     const routeId = claimed.snapshot.summary.modelRouteId;

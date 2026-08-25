@@ -4,6 +4,7 @@ import {
   unavailableStandaloneChatCapabilities,
   workerCommandSchema,
   workerHeartbeatSchema,
+  workerNotificationSchema,
 } from "./index.js";
 
 const rootId = "33333333-3333-4333-8333-333333333333";
@@ -81,6 +82,88 @@ describe("standalone Chat scratch protocol", () => {
             archiveExpiresAt: "2026-01-01T00:00:00.000Z",
           },
         ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires an exact standalone execution profile and scratch root", () => {
+    const turn = {
+      type: "chat.turn" as const,
+      executionProfile: "standalone-chat" as const,
+      contextKind: "standalone" as const,
+      chatId,
+      clientMessageId: "message-one",
+      executionLaneId: "lane-one",
+      worktreeId: null,
+      scratchRootId: rootId,
+      rootKind: null,
+      cwd: "ctrr_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      isPrimary: true,
+      worktreeMode: null,
+      worktreePolicy: null,
+      policyProjectId: null,
+      threadId: null,
+      prompt: "Analyze the data in this scratch folder.",
+      model: {
+        id: "model-one",
+        routeId: "route-one",
+        name: "gpt-test",
+        reasoningEffort: null,
+      },
+      provider: {
+        id: "provider-one",
+        name: "ChatGPT",
+        kind: "chatgpt" as const,
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: null,
+      },
+      permissionProfileId: ":workspace",
+      planMode: "default" as const,
+    };
+    expect(workerCommandSchema.parse(turn)).toMatchObject({
+      executionProfile: "standalone-chat",
+      contextKind: "standalone",
+      worktreeId: null,
+      scratchRootId: rootId,
+    });
+    expect(
+      workerCommandSchema.safeParse({
+        ...turn,
+        subagentDefaults: { model: turn.model, provider: turn.provider },
+      }).success,
+    ).toBe(false);
+    expect(
+      workerCommandSchema.safeParse({
+        ...turn,
+        executionProfile: "ide",
+      }).success,
+    ).toBe(false);
+
+    const outcome = {
+      type: "chat.turn.outcome" as const,
+      chatId,
+      clientMessageId: turn.clientMessageId,
+      executionLaneId: turn.executionLaneId,
+      contextKind: "standalone" as const,
+      worktreeId: null,
+      scratchRootId: rootId,
+      outcome: {
+        ok: true as const,
+        result: {
+          threadId: "thread-one",
+          text: "Done",
+          status: "completed" as const,
+        },
+      },
+    };
+    expect(workerNotificationSchema.parse(outcome)).toMatchObject({
+      contextKind: "standalone",
+      scratchRootId: rootId,
+    });
+    expect(
+      workerNotificationSchema.safeParse({
+        ...outcome,
+        worktreeId: "worktree-one",
       }).success,
     ).toBe(false);
   });

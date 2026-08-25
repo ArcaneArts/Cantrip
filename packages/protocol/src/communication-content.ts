@@ -132,7 +132,9 @@ export const chatMessageOpaqueSummarySchema =
     .extend({
       id: z.string().min(1).max(200),
       chatId: z.string().min(1).max(200),
-      worktreeId: z.string().min(1).max(200),
+      contextKind: z.enum(["project", "standalone"]).default("project"),
+      worktreeId: z.string().min(1).max(200).nullable(),
+      scratchRootId: z.string().min(1).max(200).nullable().default(null),
       executionLaneId: z.string().min(1).max(200).nullable(),
       sequence: z.number().int().positive(),
       protectedContent: encryptedChatMessageProtectedContentSchema,
@@ -147,7 +149,24 @@ export const chatMessageOpaqueSummarySchema =
       idempotencyKey: z.string().min(1).max(200).nullable(),
       createdAt: z.iso.datetime(),
     })
-    .strict();
+    .strict()
+    .superRefine((message, context) => {
+      if (
+        (message.contextKind === "project" &&
+          message.worktreeId !== null &&
+          message.scratchRootId === null) ||
+        (message.contextKind === "standalone" &&
+          message.worktreeId === null &&
+          message.scratchRootId !== null)
+      ) {
+        return;
+      }
+      context.addIssue({
+        code: "custom",
+        message: "Chat message execution root is invalid.",
+        path: ["contextKind"],
+      });
+    });
 
 export const chatMessageOpaqueContentListSchema = z
   .array(chatMessageOpaqueContentSchema)

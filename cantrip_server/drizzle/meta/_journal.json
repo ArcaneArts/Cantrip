@@ -1177,6 +1177,13 @@
       "when": 1787700000000,
       "tag": "0167_standalone_chat_worker_scratch",
       "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1787710800000,
+      "tag": "0168_standalone_chat_execution",
+      "breakpoints": true
     }
   ]
 }

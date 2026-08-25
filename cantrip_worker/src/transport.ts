@@ -783,7 +783,9 @@ export class WorkerConnection {
         chatId: command.chatId,
         clientMessageId: command.clientMessageId,
         executionLaneId: command.executionLaneId,
+        contextKind: command.contextKind,
         worktreeId: command.worktreeId,
+        scratchRootId: command.scratchRootId,
         taskDispatchFence: command.taskDispatchLease
           ? {
               cycleId: command.taskDispatchLease.cycleId,

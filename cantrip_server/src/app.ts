@@ -113,6 +113,7 @@ import {
   chatPauseRuntimeStateSchema,
   chatPauseUpdateSchema,
   encryptedChatCreateSchema,
+  encryptedStandaloneChatCreateSchema,
   chatExecutionLaneListSchema,
   chatExecutionLaneReleaseSchema,
   encryptedChatForkSchema,
@@ -144,6 +145,10 @@ import {
   encryptedQueuedPromptSchema,
   encryptedQueuedPromptUpdateSchema,
   chatWireSummarySchema,
+  contextualChatWireSummarySchema,
+  standaloneChatWireSummarySchema,
+  archivedStandaloneChatWireSummarySchema,
+  standaloneChatScratchArchiveResultSchema,
   taskWireCreateResultSchema,
   encryptedTaskCreateSchema,
   chatTurnCreateSchema,
@@ -790,6 +795,7 @@ import {
   CodeCapabilityUnavailableError,
   ExecutionLaneConflictError,
   ExecutionPlacementUnavailableError,
+  StandaloneChatPlacementUnavailableError,
   SurfacePrivateStateConflictError,
   ARCHIVED_CHAT_RETENTION_MS,
   LOCAL_USER_ID,
@@ -799,6 +805,7 @@ import {
   WorkerEnrollmentError,
   WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
+  type ChatExecutionAttribution,
   type ModelRuntime,
   type TunnelAttachmentAuthorization,
   toChatAttachmentOpaqueSummary,
@@ -2903,7 +2910,7 @@ export async function buildApp({
     ownerId: string,
     chatId: string,
     message: TaskMessageOpaqueContent,
-    attribution?: { executionLaneId: string; worktreeId: string },
+    attribution?: ChatExecutionAttribution,
   ) => {
     const saved = await repository.appendTaskMessage(
       ownerId,
@@ -2918,7 +2925,7 @@ export async function buildApp({
     ownerId: string,
     chatId: string,
     message: TaskMessageOpaqueContent,
-    attribution?: { executionLaneId: string; worktreeId: string },
+    attribution?: ChatExecutionAttribution,
   ) => {
     const saved = await repository.upsertTaskMessage(
       ownerId,
@@ -2940,7 +2947,7 @@ export async function buildApp({
     ownerId: string,
     chatId: string,
     message: ChatMessageOpaqueContent,
-    attribution?: { executionLaneId: string; worktreeId: string },
+    attribution?: ChatExecutionAttribution,
   ) => {
     const saved = await repository.appendEncryptedMessage(
       ownerId,
@@ -2955,7 +2962,7 @@ export async function buildApp({
     ownerId: string,
     chatId: string,
     message: ChatMessageOpaqueContent,
-    attribution?: { executionLaneId: string; worktreeId: string },
+    attribution?: ChatExecutionAttribution,
   ) => {
     const saved = await repository.upsertEncryptedMessage(
       ownerId,
@@ -2978,7 +2985,9 @@ export async function buildApp({
   ): ChatMessage => ({
     id: message.id,
     chatId: message.chatId,
+    contextKind: "scratchRootId" in message ? message.contextKind : "project",
     worktreeId: message.worktreeId,
+    scratchRootId: "scratchRootId" in message ? message.scratchRootId : null,
     executionLaneId: message.executionLaneId,
     sequence: message.sequence,
     role: message.role,
@@ -2994,10 +3003,18 @@ export async function buildApp({
     reasoningAdjusted: message.reasoningAdjusted,
     createdAt: message.createdAt,
   });
-  const publishChatSummary = (chatId: string, projectId: string): void => {
-    publishLiveInvalidation("chat", { entityId: chatId, projectId });
+  const publishChatSummary = (
+    chatId: string,
+    projectId: string | null,
+  ): void => {
+    if (projectId) {
+      publishLiveInvalidation("chat", { entityId: chatId, projectId });
+    }
   };
-  const publishChatTurnBoundary = (chatId: string, projectId: string): void => {
+  const publishChatTurnBoundary = (
+    chatId: string,
+    projectId: string | null,
+  ): void => {
     publishChatSummary(chatId, projectId);
     publishChatInvalidation(chatId, "chat");
     publishChatInvalidation(chatId, "chat-goal");
@@ -3123,13 +3140,14 @@ export async function buildApp({
     const interactions = await repository.expireAgentInteractionRequests(
       ...input,
     );
-    const chats = new Map<string, string>();
+    const chats = new Map<string, string | null>();
     const workflowRuns = new Map<string, string>();
     for (const interaction of interactions) {
       if (interaction.provenance.chatId) {
         chats.set(interaction.provenance.chatId, interaction.projectId);
       }
       if (interaction.provenance.workflowRunId) {
+        if (!interaction.projectId) continue;
         workflowRuns.set(
           interaction.provenance.workflowRunId,
           interaction.projectId,
@@ -4317,6 +4335,39 @@ export async function buildApp({
       projectId,
     );
     if (project) requireProjectCapability(project, capability);
+  });
+
+  app.addHook("preHandler", async (request, reply) => {
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    const standaloneForbidden =
+      route === "/api/chats/:chatId/console" ||
+      route === "/api/chats/:chatId/goal" ||
+      route === "/api/chats/:chatId/plan" ||
+      route === "/api/chats/:chatId/relocations" ||
+      route === "/api/chats/:chatId/skills" ||
+      route === "/api/chats/:chatId/sync" ||
+      route === "/api/chats/:chatId/workflow-generation" ||
+      route === "/api/chats/:chatId/worktree" ||
+      route.startsWith("/api/chats/:chatId/customizations") ||
+      route.startsWith("/api/chats/:chatId/execution-lanes");
+    if (
+      !standaloneForbidden ||
+      !request.params ||
+      typeof request.params !== "object"
+    ) {
+      return;
+    }
+    const chatId = (request.params as Record<string, unknown>).chatId;
+    if (typeof chatId !== "string" || chatId.length === 0) return;
+    const context = await repository.getChatExecutionContext(
+      applicationOwnerId(),
+      chatId,
+    );
+    if (context?.contextKind === "standalone") {
+      return reply.code(409).send({
+        error: "This IDE-only Chat feature is unavailable in standalone Chat.",
+      });
+    }
   });
 
   app.setErrorHandler((error, request, reply) => {
@@ -6492,17 +6543,26 @@ export async function buildApp({
 
   const chatOperationContext = (
     context: ChatExecutionContext,
-  ): ExecutionOperationContext => ({
-    chatId: context.chatId,
-    executionLaneId: context.executionLaneId,
-    permissionProfileId: effectivePermissionProfile(context).effectiveId,
-    projectId: context.projectId,
-    rootKind: context.rootKind,
-    terminalId: null,
-    workerId: context.workerId,
-    worktreeId: context.worktreeId,
-    worktreeMode: context.worktreeMode,
-  });
+  ): ExecutionOperationContext => {
+    if (context.contextKind !== "project") {
+      throw new CliCommandRequestError(
+        "unsupported-capability",
+        409,
+        "Standalone Chats do not support IDE execution operations.",
+      );
+    }
+    return {
+      chatId: context.chatId,
+      executionLaneId: context.executionLaneId,
+      permissionProfileId: effectivePermissionProfile(context).effectiveId,
+      projectId: context.projectId,
+      rootKind: context.rootKind,
+      terminalId: null,
+      workerId: context.workerId,
+      worktreeId: context.worktreeId,
+      worktreeMode: context.worktreeMode,
+    };
+  };
 
   const resolveAppRunContext = async (
     projectId: string,
@@ -9345,6 +9405,7 @@ export async function buildApp({
         chatId,
       );
       if (!current || chatIsExecuting(current.status)) return true;
+      if (current.contextKind !== "project") return false;
       if (current.automationPaused) return true;
       if (!bridge.isConnected(pending.worktree.workerId)) return true;
 
@@ -9586,7 +9647,11 @@ export async function buildApp({
         },
         "Queued prompt is being dispatched",
       );
-      if (prompt.worktreeId && prompt.worktreeId !== context.worktreeId) {
+      if (
+        context.contextKind === "project" &&
+        prompt.worktreeId &&
+        prompt.worktreeId !== context.worktreeId
+      ) {
         await repository.updateChatWorktree(applicationOwnerId(), chatId, {
           worktreeId: prompt.worktreeId,
           mode: context.worktreeMode,
@@ -9647,7 +9712,7 @@ export async function buildApp({
     workerId: string,
     notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
   ): Promise<void> {
-    const laneContext = await repository.getChatExecutionLaneContext(
+    const laneContext = await repository.getChatExecutionRecoveryContext(
       ownerId,
       notification.chatId,
       notification.executionLaneId,
@@ -9655,9 +9720,13 @@ export async function buildApp({
     if (
       !laneContext ||
       !shouldRecoverChatTurnOutcome(
-        laneContext.lane,
+        {
+          ...laneContext.lane,
+          scratchRootId: laneContext.lane.scratchRootId ?? null,
+        },
         workerId,
         notification.worktreeId,
+        notification.scratchRootId,
       )
     ) {
       app.log.warn(
@@ -9695,18 +9764,31 @@ export async function buildApp({
       return;
     }
 
-    const attribution = {
-      executionLaneId: notification.executionLaneId,
-      worktreeId: notification.worktreeId,
-    };
-    const taskOperation = await repository.tasks.getOperationContext(
-      ownerId,
-      notification.chatId,
-      {
-        executionLaneId: notification.executionLaneId,
-        userMessageId: notification.clientMessageId,
-      },
-    );
+    const attribution: ChatExecutionAttribution =
+      notification.contextKind === "standalone"
+        ? {
+            contextKind: "standalone",
+            executionLaneId: notification.executionLaneId,
+            worktreeId: null,
+            scratchRootId: notification.scratchRootId!,
+          }
+        : {
+            contextKind: "project",
+            executionLaneId: notification.executionLaneId,
+            worktreeId: notification.worktreeId!,
+            scratchRootId: null,
+          };
+    const taskOperation =
+      notification.contextKind === "project"
+        ? await repository.tasks.getOperationContext(
+            ownerId,
+            notification.chatId,
+            {
+              executionLaneId: notification.executionLaneId,
+              userMessageId: notification.clientMessageId,
+            },
+          )
+        : null;
     const taskDispatchFence = notification.taskDispatchFence;
     if (taskDispatchFence) {
       if (
@@ -9807,7 +9889,9 @@ export async function buildApp({
     }
     const assistantKey = `assistant:${notification.clientMessageId}`;
     const errorKey = `error:${notification.clientMessageId}`;
-    const taskChat = laneContext.chat.experience === "task";
+    const taskChat =
+      notification.contextKind === "project" &&
+      laneContext.chat.experience === "task";
     const existingAssistant = taskChat
       ? null
       : await repository.getEncryptedMessageByIdempotencyKey(
@@ -9844,6 +9928,22 @@ export async function buildApp({
         } catch {
           recoveredOutcomeOk = false;
         }
+      } else if (
+        notification.contextKind === "standalone" &&
+        !existingAssistant
+      ) {
+        const encrypted = chatMessageRelayResultSchema.parse(
+          notification.outcome.result.structuredResult,
+        );
+        if (!encrypted.message) {
+          throw new Error("Standalone Chat outcome omitted protected content.");
+        }
+        await appendLiveEncryptedChatMessage(
+          ownerId,
+          notification.chatId,
+          encrypted.message,
+          attribution,
+        );
       } else if (!taskOperation && !existingAssistant) {
         await upsertLiveChatMessage(
           ownerId,
@@ -9864,7 +9964,12 @@ export async function buildApp({
           attribution,
         );
       }
-    } else if (!taskChat && !taskOperation && !existingAssistant) {
+    } else if (
+      notification.contextKind === "project" &&
+      !taskChat &&
+      !taskOperation &&
+      !existingAssistant
+    ) {
       await repository.updateChatExecutionLaneRuntime(
         notification.chatId,
         notification.executionLaneId,
@@ -9905,14 +10010,16 @@ export async function buildApp({
         recoveredFailedStatus = true;
       }
     }
-    await notifyCodeAgentState(
-      {
-        chatId: notification.chatId,
-        cwd: laneContext.worktree.path,
-        workerId,
-      },
-      recoveredOutcomeOk ? "completed" : "failed",
-    );
+    if (notification.contextKind === "project" && "worktree" in laneContext) {
+      await notifyCodeAgentState(
+        {
+          chatId: notification.chatId,
+          cwd: laneContext.worktree.path,
+          workerId,
+        },
+        recoveredOutcomeOk ? "completed" : "failed",
+      );
+    }
     publishChatTurnBoundary(notification.chatId, laneContext.chat.projectId);
     if (recoveredFinalizationOperationId && recoveredOutcomeOk) {
       try {
@@ -9950,7 +10057,10 @@ export async function buildApp({
       "Recovered agent turn outcome from worker",
     );
     if (finished || recoveredFailedStatus) {
-      if (!(await continuePendingWorktreeTransition(notification.chatId))) {
+      if (
+        notification.contextKind === "standalone" ||
+        !(await continuePendingWorktreeTransition(notification.chatId))
+      ) {
         void dispatchNextQueuedPrompt(notification.chatId);
       }
     }
@@ -9983,13 +10093,13 @@ export async function buildApp({
         outputSchema?: WorkflowJsonObject;
         taskOperation?: TaskOperationRelayRequest;
         afterCompleted?(input: {
-          attribution: { executionLaneId: string; worktreeId: string };
+          attribution: ChatExecutionAttribution;
           execution: ChatExecutionContext;
           result: AgentTurnResult;
           userMessage: ChatMessage;
         }): Promise<void>;
         onCompleted(input: {
-          attribution: { executionLaneId: string; worktreeId: string };
+          attribution: ChatExecutionAttribution;
           execution: ChatExecutionContext;
           result: AgentTurnResult;
           userMessage: ChatMessage;
@@ -10001,7 +10111,7 @@ export async function buildApp({
         }): Promise<void>;
       };
       afterTurnCompleted?(input: {
-        attribution: { executionLaneId: string; worktreeId: string };
+        attribution: ChatExecutionAttribution;
         execution: ChatExecutionContext;
         result: AgentTurnResult;
         userMessage: ChatMessage;
@@ -10017,6 +10127,17 @@ export async function buildApp({
   ): Promise<ChatMessage> {
     const turnStartedAtMs = Date.now();
     const ownerId = applicationOwnerId();
+    if (
+      context.contextKind === "standalone" &&
+      ((input.mode !== undefined && input.mode !== "default") ||
+        options.structuredResult ||
+        options.encryptedTaskMessages ||
+        options.taskDispatchLease)
+    ) {
+      throw new Error(
+        "Standalone Chat supports only ordinary default-mode conversation turns.",
+      );
+    }
     if (
       options.structuredResult &&
       Boolean(options.structuredResult.outputSchema) ===
@@ -10040,16 +10161,22 @@ export async function buildApp({
       modelId,
       reasoningEffort: requestedReasoningEffort,
       customSubagentModel:
-        input.customSubagentModel ??
-        context.modelConfiguration.customSubagentModel,
+        context.contextKind === "standalone"
+          ? false
+          : (input.customSubagentModel ??
+            context.modelConfiguration.customSubagentModel),
       subagentModelId:
-        input.subagentModelId !== undefined
-          ? input.subagentModelId
-          : context.modelConfiguration.subagentModelId,
+        context.contextKind === "standalone"
+          ? null
+          : input.subagentModelId !== undefined
+            ? input.subagentModelId
+            : context.modelConfiguration.subagentModelId,
       subagentReasoningEffort:
-        input.subagentReasoningEffort !== undefined
-          ? input.subagentReasoningEffort
-          : context.modelConfiguration.subagentReasoningEffort,
+        context.contextKind === "standalone"
+          ? null
+          : input.subagentReasoningEffort !== undefined
+            ? input.subagentReasoningEffort
+            : context.modelConfiguration.subagentReasoningEffort,
     });
     const routePairs = await routePairsForConfiguration(
       context,
@@ -10112,18 +10239,22 @@ export async function buildApp({
         },
       };
     }
-    const effectivePolicies = await repository.policies.resolveEffective(
-      ownerId,
-      context.projectId,
-    );
-    if (!effectivePolicies) {
+    const effectivePolicies =
+      context.contextKind === "project"
+        ? await repository.policies.resolveEffective(ownerId, context.projectId)
+        : { policies: [] };
+    if (context.contextKind === "project" && !effectivePolicies) {
       throw new Error("The chat project is no longer available.");
     }
-    if (!options.structuredResult || directTaskOperation) {
+    if (
+      context.contextKind === "project" &&
+      (!options.structuredResult || directTaskOperation)
+    ) {
       await prepareCodeEditorsForTurn(context);
     }
     const mcpServers =
-      options.structuredResult && !directTaskOperation
+      context.contextKind === "standalone" ||
+      (options.structuredResult && !directTaskOperation)
         ? []
         : await repository.listEffectiveMcpServers(
             ownerId,
@@ -10141,10 +10272,20 @@ export async function buildApp({
     }
     publishChatSummary(execution.chatId, execution.projectId);
     const executionLaneId = execution.executionLaneId;
-    const attribution = {
-      executionLaneId,
-      worktreeId: execution.worktreeId,
-    };
+    const attribution: ChatExecutionAttribution =
+      execution.contextKind === "project"
+        ? {
+            contextKind: "project",
+            executionLaneId,
+            worktreeId: execution.worktreeId,
+            scratchRootId: null,
+          }
+        : {
+            contextKind: "standalone",
+            executionLaneId,
+            worktreeId: null,
+            scratchRootId: execution.scratchRootId,
+          };
     let priorMessages: ChatMessage[] = [];
     let protectedHistory: ChatMessageOpaqueSummary[] = [];
     let protectedPlan = null;
@@ -10164,6 +10305,10 @@ export async function buildApp({
         const rollback = chatTurnRollbackAcceptedSchema.parse(
           await bridge.request(execution.workerId, {
             type: "chat.turn.rollback",
+            executionProfile:
+              execution.contextKind === "standalone"
+                ? "standalone-chat"
+                : "ide",
             chatId: execution.chatId,
             clientMessageId: options.retryMessageId,
             cwd: execution.cwd,
@@ -10305,7 +10450,9 @@ export async function buildApp({
         : null;
       taskDispatchHeartbeat?.unref();
       try {
-        await notifyCodeAgentState(execution, "started");
+        if (execution.contextKind === "project") {
+          await notifyCodeAgentState(execution, "started");
+        }
         for (const [index, runtime] of runtimes.entries()) {
           const executionAttemptId = `${userMessage.id}:${runtime.routeId}:${index}`;
           const tokenUsageSourceKey = `chat-attempt:${executionAttemptId}`;
@@ -10424,6 +10571,7 @@ export async function buildApp({
             runtime.routeId,
             "starting",
             runtime.provider.accountId,
+            execution.scratchRootId,
           );
           captureRuntimeQuota(
             runtime,
@@ -10490,18 +10638,24 @@ export async function buildApp({
               execution.workerId,
               {
                 type: "chat.turn",
+                executionProfile:
+                  execution.contextKind === "standalone"
+                    ? "standalone-chat"
+                    : "ide",
+                contextKind: execution.contextKind,
                 chatId: execution.chatId,
                 clientMessageId: userMessage.id,
                 cwd: execution.cwd,
                 executionLaneId,
                 worktreeId: execution.worktreeId,
+                scratchRootId: execution.scratchRootId,
                 rootKind: execution.rootKind,
                 threadId,
                 isPrimary: execution.isPrimary,
                 worktreeMode: execution.worktreeMode,
                 worktreePolicy: execution.worktreePolicy,
                 policyProjectId: execution.projectId,
-                policies: effectivePolicies,
+                policies: effectivePolicies ?? { policies: [] },
                 ...(encryptedChatMessages
                   ? {
                       protectedPrompt: encryptedChatMessages.userMessage,
@@ -10517,18 +10671,22 @@ export async function buildApp({
                   toChatAttachmentOpaqueSummary(attachment),
                 ),
                 skillNames:
-                  options.structuredResult || encryptedChatMessages
+                  execution.contextKind === "standalone" ||
+                  options.structuredResult ||
+                  encryptedChatMessages
                     ? []
                     : mentionedSkillNames(input.text),
                 model: runtime.model,
                 provider: runtime.provider,
-                subagentDefaults: subagentRuntime
-                  ? {
-                      model: subagentRuntime.model,
-                      provider: subagentRuntime.provider,
-                    }
-                  : null,
-                ...(attributedWorker &&
+                subagentDefaults:
+                  execution.contextKind === "project" && subagentRuntime
+                    ? {
+                        model: subagentRuntime.model,
+                        provider: subagentRuntime.provider,
+                      }
+                    : null,
+                ...(execution.contextKind === "project" &&
+                attributedWorker &&
                 nativeSubagentCapabilityCompatible(
                   attributedWorker.codexRuntime.nativeSubagents,
                 )
@@ -10571,6 +10729,27 @@ export async function buildApp({
                     behaviorTracker.markActivity(observedAt);
                     attemptActivity = true;
                     anyActivity = true;
+                    if (execution.contextKind === "standalone") {
+                      const protectedAgentRuntime =
+                        (event.type === "agent.protected-message" ||
+                          event.type === "agent.protected-task-message") &&
+                        event.telemetry.kind === "activity"
+                          ? event.telemetry.agentRuntime
+                          : null;
+                      const visibleAgentScope =
+                        event.type === "agent.activity"
+                          ? event.activity.agentScope
+                          : null;
+                      if (
+                        (protectedAgentRuntime &&
+                          !protectedAgentRuntime.isRoot) ||
+                        (visibleAgentScope && !visibleAgentScope.isRoot)
+                      ) {
+                        throw new Error(
+                          "Standalone Chat runtime emitted child-agent lifecycle activity.",
+                        );
+                      }
+                    }
                     if (event.type === "agent.inference-progress") {
                       if (event.progress.requestId !== userMessage.id) return;
                       publishInferenceProgress(
@@ -10584,6 +10763,10 @@ export async function buildApp({
                         try {
                           await bridge.request(execution.workerId, {
                             type: "agent.interaction.cancel",
+                            executionProfile:
+                              execution.contextKind === "standalone"
+                                ? "standalone-chat"
+                                : "ide",
                             requestKey: event.request.requestKey,
                             reason:
                               "Encrypted chat interactions must use the protected contract.",
@@ -10623,6 +10806,10 @@ export async function buildApp({
                         try {
                           await bridge.request(execution.workerId, {
                             type: "agent.interaction.cancel",
+                            executionProfile:
+                              execution.contextKind === "standalone"
+                                ? "standalone-chat"
+                                : "ide",
                             requestKey: event.request.requestKey,
                             reason:
                               "Cantrip could not persist the interaction safely.",
@@ -10666,6 +10853,10 @@ export async function buildApp({
                         try {
                           await bridge.request(execution.workerId, {
                             type: "agent.interaction.cancel",
+                            executionProfile:
+                              execution.contextKind === "standalone"
+                                ? "standalone-chat"
+                                : "ide",
                             requestKey: event.request.requestKey,
                             reason:
                               "Cantrip could not persist the protected interaction safely.",
@@ -11104,7 +11295,9 @@ export async function buildApp({
               result.turnId ?? null,
             );
             quotaFollowupsScheduled = true;
-            await notifyCodeAgentState(execution, "completed", changedPaths);
+            if (execution.contextKind === "project") {
+              await notifyCodeAgentState(execution, "completed", changedPaths);
+            }
             routeCooldowns.delete(runtimeCooldownKey(runtime));
             await repository.updateChatRuntime(
               execution.chatId,
@@ -11114,6 +11307,7 @@ export async function buildApp({
               runtime.routeId,
               "ready",
               runtime.provider.accountId,
+              execution.scratchRootId,
             );
             if (options.structuredResult) {
               await options.structuredResult.onCompleted({
@@ -11246,7 +11440,8 @@ export async function buildApp({
             }
             if (
               finished &&
-              !(await continuePendingWorktreeTransition(execution.chatId))
+              (execution.contextKind === "standalone" ||
+                !(await continuePendingWorktreeTransition(execution.chatId)))
             ) {
               void dispatchNextQueuedPrompt(execution.chatId);
             }
@@ -11380,7 +11575,9 @@ export async function buildApp({
             );
           }
         }
-        await notifyCodeAgentState(execution, "failed", changedPaths);
+        if (execution.contextKind === "project") {
+          await notifyCodeAgentState(execution, "failed", changedPaths);
+        }
         if (!anyActivity && execution.modelRouteId) {
           await repository.updateChatRuntime(
             execution.chatId,
@@ -11390,6 +11587,7 @@ export async function buildApp({
             execution.modelRouteId,
             "ready",
             execution.providerAccountId,
+            execution.scratchRootId,
           );
         }
         const interrupted = /interrupted/i.test(errorMessage(error));
@@ -11455,7 +11653,8 @@ export async function buildApp({
         }
         if (
           finished &&
-          !(await continuePendingWorktreeTransition(execution.chatId))
+          (execution.contextKind === "standalone" ||
+            !(await continuePendingWorktreeTransition(execution.chatId)))
         ) {
           void dispatchNextQueuedPrompt(execution.chatId);
         }
@@ -11485,7 +11684,7 @@ export async function buildApp({
     idempotencyKey: string,
     options: {
       afterTurnCompleted?(input: {
-        attribution: { executionLaneId: string; worktreeId: string };
+        attribution: ChatExecutionAttribution;
         execution: ChatExecutionContext;
         result: AgentTurnResult;
         userMessage: ChatMessage;
@@ -13358,10 +13557,9 @@ export async function buildApp({
           gitSync: true,
           worktrees: true,
           standaloneChat: {
-            available: false,
+            available: true,
             protocolVersion: 1,
-            reason:
-              "Standalone Chat contracts are installed, but creation is not enabled yet.",
+            reason: null,
           },
           remoteSurfaces: {
             enabled: true,
@@ -14239,6 +14437,68 @@ export async function buildApp({
   app.get("/api/tunnels", { logLevel: "warn" }, async (request, reply) => {
     const tunnels = await repository.listTunnels(principalOwnerId(request));
     return reply.send(tunnelWireListSchema.parse(tunnels));
+  });
+
+  app.get<{ Querystring: { context?: string } }>(
+    "/api/chats",
+    async (request, reply) => {
+      if (request.query.context !== "standalone") {
+        return reply.code(400).send({
+          error: "Standalone Chat lists require context=standalone.",
+        });
+      }
+      const chats = await repository.listStandaloneChats(applicationOwnerId());
+      return reply.send(
+        chats.map((chat) => standaloneChatWireSummarySchema.parse(chat)),
+      );
+    },
+  );
+
+  app.get<{ Querystring: { context?: string } }>(
+    "/api/chats/archived",
+    async (request, reply) => {
+      if (request.query.context !== "standalone") {
+        return reply.code(400).send({
+          error: "Archived standalone Chat lists require context=standalone.",
+        });
+      }
+      const chats =
+        await repository.listArchivedStandaloneChats(applicationOwnerId());
+      return reply.send(
+        chats.map((chat) =>
+          archivedStandaloneChatWireSummarySchema.parse(chat),
+        ),
+      );
+    },
+  );
+
+  app.post("/api/chats", async (request, reply) => {
+    const input = encryptedStandaloneChatCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const created = await repository.createStandaloneChat(
+        applicationOwnerId(),
+        input.data,
+        (workerId) => bridge.isConnected(workerId),
+      );
+      standaloneChatRootJobExecutor.queueAvailable();
+      return reply
+        .code(202)
+        .send(standaloneChatWireSummarySchema.parse(created.chat));
+    } catch (error) {
+      if (error instanceof StandaloneChatPlacementUnavailableError) {
+        return reply.code(409).send({
+          code: "standalone-worker-unavailable",
+          error: error.message,
+        });
+      }
+      if (/unique|duplicate/i.test(errorMessage(error))) {
+        return reply.code(409).send({ error: "Chat already exists." });
+      }
+      throw error;
+    }
   });
 
   app.get<{ Params: { projectId: string } }>(
@@ -15424,6 +15684,10 @@ export async function buildApp({
               protectedInput
                 ? {
                     type: "agent.interaction.respond.protected",
+                    executionProfile:
+                      context.contextKind === "standalone"
+                        ? "standalone-chat"
+                        : "ide",
                     requestKey: existing.requestKey,
                     response: {
                       classification: protectedInput.classification,
@@ -15434,6 +15698,10 @@ export async function buildApp({
                   }
                 : {
                     type: "agent.interaction.respond",
+                    executionProfile:
+                      context.contextKind === "standalone"
+                        ? "standalone-chat"
+                        : "ide",
                     requestKey: existing.requestKey,
                     response: visibleInput!.response,
                     model: runtime.model,
@@ -18089,6 +18357,11 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Chat not found." });
       }
+      if (context.contextKind !== "project") {
+        return reply.code(409).send({
+          error: "Standalone Chats do not support durable project relocation.",
+        });
+      }
       const project = await requireProjectRelocation(context.projectId);
       if (!project) {
         return reply.code(404).send({ error: "Project not found." });
@@ -18150,6 +18423,11 @@ export async function buildApp({
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat not found." });
+      }
+      if (context.contextKind !== "project") {
+        return reply.code(409).send({
+          error: "Standalone Chats do not support durable project relocation.",
+        });
       }
       await requireProjectRelocation(context.projectId);
       return reply.send(
@@ -23945,7 +24223,13 @@ export async function buildApp({
         ownerId,
         cycle.chatId,
       );
-      if (!context || context.experience !== "task") continue;
+      if (
+        !context ||
+        context.contextKind !== "project" ||
+        context.experience !== "task"
+      ) {
+        continue;
+      }
       const physicalWorker = await repository.getWorker(
         ownerId,
         context.workerId,
@@ -24743,7 +25027,12 @@ export async function buildApp({
         ownerId,
         request.params.chatId,
       );
-      if (!task || !context || context.experience !== "task") {
+      if (
+        !task ||
+        !context ||
+        context.contextKind !== "project" ||
+        context.experience !== "task"
+      ) {
         return reply.code(404).send({ error: "Task not found." });
       }
       if (
@@ -24990,7 +25279,7 @@ export async function buildApp({
         input.data,
       );
       return result
-        ? reply.send(chatWireSummarySchema.parse(result))
+        ? reply.send(contextualChatWireSummarySchema.parse(result))
         : reply.code(404).send({ error: "Chat or model not found." });
     },
   );
@@ -29293,7 +29582,7 @@ export async function buildApp({
         input.data,
       );
       return chat
-        ? reply.send(chatWireSummarySchema.parse(chat))
+        ? reply.send(contextualChatWireSummarySchema.parse(chat))
         : reply.code(404).send({ error: "Chat not found." });
     },
   );
@@ -29309,7 +29598,7 @@ export async function buildApp({
         return reply.code(404).send({ error: "Chat not found." });
       }
       publishChatSummary(chat.id, chat.projectId);
-      return reply.send(chatWireSummarySchema.parse(chat));
+      return reply.send(contextualChatWireSummarySchema.parse(chat));
     },
   );
 
@@ -29357,6 +29646,11 @@ export async function buildApp({
         applicationOwnerId(),
         request.params.chatId,
       );
+      if (context?.contextKind === "standalone") {
+        return reply.code(409).send({
+          error: "Standalone Chats do not have project worktrees.",
+        });
+      }
       if (context) await requireProjectWorktrees(context.projectId);
       try {
         const chat = await repository.updateChatWorktree(
@@ -29464,6 +29758,43 @@ export async function buildApp({
   app.delete<{ Params: { chatId: string } }>(
     "/api/chats/:chatId",
     async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (context?.contextKind === "standalone") {
+        const archived = await repository.archiveStandaloneChat(
+          applicationOwnerId(),
+          request.params.chatId,
+        );
+        if (archived === "running") {
+          return reply
+            .code(409)
+            .send({ error: "Stop the running Chat first." });
+        }
+        if (!archived) {
+          return reply.code(404).send({ error: "Chat not found." });
+        }
+        if (bridge.isConnected(archived.workerId)) {
+          try {
+            standaloneChatScratchArchiveResultSchema.parse(
+              await bridge.request(archived.workerId, {
+                type: "chat.scratch.archive",
+                rootId: archived.rootId,
+                chatId: request.params.chatId,
+                archivedAt: archived.archivedAt,
+                archiveExpiresAt: archived.archiveExpiresAt,
+              }),
+            );
+          } catch (error) {
+            request.log.warn(
+              { chatId: request.params.chatId, err: error },
+              "Standalone Chat scratch archive will be reconciled later",
+            );
+          }
+        }
+        return reply.code(204).send();
+      }
       const result = await repository.deleteChat(
         applicationOwnerId(),
         request.params.chatId,
@@ -29480,6 +29811,31 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/restore",
     async (request, reply) => {
+      const standalone = await repository.restoreStandaloneChat(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (standalone) {
+        if (bridge.isConnected(standalone.workerId)) {
+          try {
+            standaloneChatScratchArchiveResultSchema.parse(
+              await bridge.request(standalone.workerId, {
+                type: "chat.scratch.restore",
+                rootId: standalone.rootId,
+                chatId: request.params.chatId,
+              }),
+            );
+          } catch (error) {
+            request.log.warn(
+              { chatId: request.params.chatId, err: error },
+              "Standalone Chat scratch restore will be reconciled later",
+            );
+          }
+        }
+        return reply.send(
+          standaloneChatWireSummarySchema.parse(standalone.chat),
+        );
+      }
       const chat = await repository.restoreArchivedChat(
         applicationOwnerId(),
         request.params.chatId,
@@ -29493,6 +29849,17 @@ export async function buildApp({
   app.delete<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/permanent",
     async (request, reply) => {
+      const root = await repository.getStandaloneChatRootForDeletion(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (root) {
+        await repository.standaloneChatRootJobs.createDeletionTombstoneAndPurge(
+          { id: randomUUID(), ...root },
+        );
+        standaloneChatRootJobExecutor.queueAvailable();
+        return reply.code(204).send();
+      }
       const deleted = await repository.permanentlyDeleteArchivedChat(
         applicationOwnerId(),
         request.params.chatId,
@@ -29520,34 +29887,53 @@ export async function buildApp({
             "Encrypted Task chats must be relocated rather than forked so message row bindings remain valid.",
         });
       }
+      if (!source) {
+        return reply.code(404).send({ error: "Chat not found." });
+      }
       if (source && !bridge.isConnected(source.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
+        return reply.code(503).send({ error: "Chat worker is offline." });
       }
       try {
+        const reprotect = async (messages: ChatMessageOpaqueSummary[]) => {
+          const protectedMessages: unknown[] = [];
+          for (let offset = 0; offset < messages.length; offset += 100) {
+            protectedMessages.push(
+              ...chatMessageOpaqueContentListSchema.parse(
+                await bridge.request(source!.workerId, {
+                  type: "chat.messages.reprotect",
+                  messages: messages
+                    .slice(offset, offset + 100)
+                    .map((message) => ({
+                      source: message,
+                      id: randomUUID(),
+                      idempotencyKey: `fork:${message.id}`,
+                    })),
+                }),
+              ),
+            );
+          }
+          return chatMessageOpaqueContentListSchema.parse(protectedMessages);
+        };
+        if (source?.contextKind === "standalone") {
+          const created = await repository.forkStandaloneChat(
+            applicationOwnerId(),
+            request.params.chatId,
+            input.data,
+            (workerId) => bridge.isConnected(workerId),
+            reprotect,
+          );
+          if (created) standaloneChatRootJobExecutor.queueAvailable();
+          return created
+            ? reply
+                .code(202)
+                .send(standaloneChatWireSummarySchema.parse(created.chat))
+            : reply.code(404).send({ error: "Chat or message not found." });
+        }
         const chat = await repository.forkChat(
           applicationOwnerId(),
           request.params.chatId,
           input.data,
-          async (messages) => {
-            const protectedMessages: unknown[] = [];
-            for (let offset = 0; offset < messages.length; offset += 100) {
-              protectedMessages.push(
-                ...chatMessageOpaqueContentListSchema.parse(
-                  await bridge.request(source!.workerId, {
-                    type: "chat.messages.reprotect",
-                    messages: messages
-                      .slice(offset, offset + 100)
-                      .map((message) => ({
-                        source: message,
-                        id: randomUUID(),
-                        idempotencyKey: `fork:${message.id}`,
-                      })),
-                  }),
-                ),
-              );
-            }
-            return chatMessageOpaqueContentListSchema.parse(protectedMessages);
-          },
+          reprotect,
         );
         return chat
           ? reply.code(201).send(chatWireSummarySchema.parse(chat))
@@ -29605,6 +29991,8 @@ export async function buildApp({
       );
       const result = await bridge.request(context.workerId, {
         type: "chat.compact",
+        executionProfile:
+          context.contextKind === "standalone" ? "standalone-chat" : "ide",
         chatId: context.chatId,
         cwd: context.cwd,
         threadId: context.threadId,
@@ -29653,6 +30041,8 @@ export async function buildApp({
       }
       const result = await bridge.request(context.workerId, {
         type: "chat.interrupt",
+        executionProfile:
+          context.contextKind === "standalone" ? "standalone-chat" : "ide",
         chatId: context.chatId,
         threadId: context.threadId,
         model: runtime.model,
@@ -30261,6 +30651,11 @@ export async function buildApp({
     context: ChatExecutionContext,
     resolvedRuntime?: ModelRuntime,
   ) => {
+    if (context.contextKind !== "project") {
+      throw new Error(
+        "Standalone Chats cannot synchronize with an external Codex console.",
+      );
+    }
     if (!context.threadId) {
       return agentThreadSyncSchema.parse({
         threadId: "unavailable",
@@ -30276,6 +30671,7 @@ export async function buildApp({
     const sync = agentThreadSyncSchema.parse(
       await bridge.request(context.workerId, {
         type: "chat.sync",
+        executionProfile: "ide",
         chatId: context.chatId,
         cwd: context.cwd,
         threadId: context.threadId,
@@ -30291,17 +30687,20 @@ export async function buildApp({
         "agent",
         "Linked Codex console turn",
       );
-      if (acquired) {
+      if (acquired?.contextKind === "project") {
         syncExecution = acquired;
         publishChatSummary(acquired.chatId, acquired.projectId);
       }
     }
-    const syncAttribution = syncExecution.executionLaneId
-      ? {
-          executionLaneId: syncExecution.executionLaneId,
-          worktreeId: syncExecution.worktreeId,
-        }
-      : undefined;
+    const syncAttribution: ChatExecutionAttribution | undefined =
+      syncExecution.executionLaneId
+        ? {
+            contextKind: "project",
+            executionLaneId: syncExecution.executionLaneId,
+            worktreeId: syncExecution.worktreeId,
+            scratchRootId: null,
+          }
+        : undefined;
     const canonicalMessages = canonicalMessagesFromThreadSync(sync, {
       idempotencyPrefix: "codex-sync",
       interruptedMessage: "Turn interrupted in the Codex console.",
@@ -31387,7 +31786,7 @@ export async function buildApp({
       if (!result) {
         return reply.code(404).send({ error: "Chat or model not found." });
       }
-      return reply.send(chatWireSummarySchema.parse(result));
+      return reply.send(contextualChatWireSummarySchema.parse(result));
     },
   );
 
@@ -31786,6 +32185,8 @@ export async function buildApp({
           );
           await bridge.request(context.workerId, {
             type: "chat.steer",
+            executionProfile:
+              context.contextKind === "standalone" ? "standalone-chat" : "ide",
             chatId: context.chatId,
             threadId: context.threadId,
             protectedPrompt: queued.pendingMessage,
@@ -31800,16 +32201,30 @@ export async function buildApp({
             context.chatId,
             queued.pendingMessage,
             context.executionLaneId
-              ? {
-                  executionLaneId: context.executionLaneId,
-                  worktreeId: context.worktreeId,
-                }
+              ? context.contextKind === "standalone"
+                ? {
+                    contextKind: "standalone",
+                    executionLaneId: context.executionLaneId,
+                    worktreeId: null,
+                    scratchRootId: context.scratchRootId,
+                  }
+                : {
+                    contextKind: "project",
+                    executionLaneId: context.executionLaneId,
+                    worktreeId: context.worktreeId,
+                    scratchRootId: null,
+                  }
               : undefined,
           );
           if (!appended) throw new Error("Chat not found.");
           message = appended;
         } else {
           if (queued.worktreeId && queued.worktreeId !== context.worktreeId) {
+            if (context.contextKind !== "project") {
+              throw new Error(
+                "Standalone Chat prompts cannot target project worktrees.",
+              );
+            }
             await repository.updateChatWorktree(
               applicationOwnerId(),
               context.chatId,
@@ -31917,6 +32332,27 @@ export async function buildApp({
             message: existing,
           }),
         );
+      }
+      if (
+        context.contextKind === "standalone" &&
+        !bridge.isConnected(context.workerId)
+      ) {
+        return reply.code(503).send({
+          code: "standalone-worker-offline",
+          error: "This Chat's worker is offline. History remains available.",
+        });
+      }
+      if (
+        context.contextKind === "standalone" &&
+        (context.status === "offline" || context.status === "failed")
+      ) {
+        return reply.code(409).send({
+          code: "standalone-scratch-unavailable",
+          error:
+            context.status === "failed"
+              ? "This Chat's scratch folder could not be prepared. Retry provisioning before sending."
+              : "This Chat's scratch folder is still being prepared.",
+        });
       }
       if (context.automationPaused || chatIsExecuting(context.status)) {
         let modelId: string;

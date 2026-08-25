@@ -45,6 +45,7 @@ import {
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
   type AgentTurnResultMode,
+  type AgentActivity,
   type CodeGraphObservationTarget,
   type GitManagedOperationContext,
   type GitManagedOperationRecord,
@@ -1034,9 +1035,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       workerId: string;
       worktreeId: string;
     },
+    includeManaged = true,
   ): Promise<McpServerConfiguration[]> => {
     let managedCodeGraph: McpServerConfiguration | null = null;
-    if (codegraphProjects && codegraphInvocation) {
+    if (includeManaged && codegraphProjects && codegraphInvocation) {
       try {
         let canonicalRoot = await codegraphProjects.prepareForAgent(cwd);
         if (!canonicalRoot && attachment) {
@@ -1084,20 +1086,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
     }
-    const serverCompatibility = attachment
+    const effectiveAttachment = includeManaged ? attachment : undefined;
+    const serverCompatibility = effectiveAttachment
       ? await mcpBroker.serverCompatibility()
       : null;
     const serverOperations = new Set(serverCompatibility?.operations ?? []);
-    const cantripAllowedOperations = attachment
+    const cantripAllowedOperations = effectiveAttachment
       ? cantripMcpOperationsForPermissionProfile(
-          attachment.permissionProfileId,
+          effectiveAttachment.permissionProfileId,
         ).filter(
           (operation) =>
             operation === "tool.help" || serverOperations.has(operation),
         )
       : [];
     let protectedLegacyRoot: string | null = null;
-    if (attachment && serverCompatibility?.bindingProtocolVersion === 1) {
+    if (
+      effectiveAttachment &&
+      serverCompatibility?.bindingProtocolVersion === 1
+    ) {
       const protectedPath = (
         await routingRegistry.protectMetadata({ path: cwd })
       ).path;
@@ -1106,16 +1112,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       protectedLegacyRoot = protectedPath;
     }
-    const cantripAttachment = attachment
+    const cantripAttachment = effectiveAttachment
       ? mcpBroker.createBinding({
           ownerId: workerEncryption.ownerId(),
-          projectId: attachment.projectId,
-          chatId: attachment.chatId,
-          executionLaneId: attachment.executionLaneId,
-          workerId: attachment.workerId,
-          worktreeId: attachment.worktreeId,
-          rootKind: attachment.rootKind,
-          permissionProfileId: attachment.permissionProfileId,
+          projectId: effectiveAttachment.projectId,
+          chatId: effectiveAttachment.chatId,
+          executionLaneId: effectiveAttachment.executionLaneId,
+          workerId: effectiveAttachment.workerId,
+          worktreeId: effectiveAttachment.worktreeId,
+          rootKind: effectiveAttachment.rootKind,
+          permissionProfileId: effectiveAttachment.permissionProfileId,
           allowedOperations: [...cantripAllowedOperations],
           legacyCanonicalRoot: protectedLegacyRoot,
           serverCompatibility: serverCompatibility!,
@@ -1134,8 +1140,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         subsystem: "mcp-broker",
         operation: "prepare-agent-mcp",
         status: "completed",
-        projectId: attachment!.projectId,
-        chatId: attachment!.chatId,
+        projectId: effectiveAttachment!.projectId,
+        chatId: effectiveAttachment!.chatId,
         worktreePath: cwd,
       });
     }
@@ -1268,6 +1274,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     kind === "chatgpt" || kind === "grok";
 
   const runtimeFor = (command: {
+    executionProfile?: "ide" | "standalone-chat";
     model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
     provider: RuntimeProvider;
     subagentDefaults?: RuntimeSubagentDefaults | null;
@@ -1276,6 +1283,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       command.model,
       command.provider,
       command.subagentDefaults ?? null,
+      command.executionProfile ?? "ide",
     );
     let runtime = codexRuntimes.get(runtimeId);
     if (!runtime) {
@@ -1312,7 +1320,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             : provider,
         providerAccessTokens,
         undefined,
-        globalCodexSkillRoots,
+        command.executionProfile === "standalone-chat"
+          ? []
+          : globalCodexSkillRoots,
       );
       runtime.setExternalThreadChangeObserver((change) => {
         workerNotificationEmitter?.({
@@ -3484,6 +3494,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 : undefined;
               await runtime.prepareExternalSync({
                 cwd,
+                executionProfile: "ide",
                 mcpServers,
                 model: command.launch.model,
                 permissionProfileId:
@@ -3805,6 +3816,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
         });
       case "chat.turn": {
+        const standalone = command.executionProfile === "standalone-chat";
+        if (
+          standalone &&
+          (command.contextKind !== "standalone" ||
+            command.scratchRootId === null ||
+            command.worktreeId !== null ||
+            command.policyProjectId !== null ||
+            command.planMode !== "default" ||
+            command.subagentDefaults != null ||
+            command.subagentProtocolVersion !== undefined)
+        ) {
+          throw new Error(
+            "Standalone Chat turn capabilities do not match the execution profile.",
+          );
+        }
         if (command.automationPaused) pausedChats.add(command.chatId);
         const subagentDefaults = command.subagentDefaults
           ? {
@@ -3828,6 +3854,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           );
         }
         const runtime = runtimeFor({
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
           subagentDefaults,
@@ -3864,11 +3891,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   : "goal",
             )
           : null;
-        const policyContext = await buildEncryptedAgentPolicyContext({
-          policies: command.policies,
-          projectId: command.policyProjectId,
-          service: workerEncryption,
-        });
+        const policyContext = command.policyProjectId
+          ? await buildEncryptedAgentPolicyContext({
+              policies: command.policies,
+              projectId: command.policyProjectId,
+              service: workerEncryption,
+            })
+          : null;
         let protectedEventQueue = Promise.resolve();
         let protectedEventFailure: unknown = null;
         const emitProtected = (create: () => Promise<WorkerEvent>): void => {
@@ -3883,17 +3912,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         const resolvedMcpServers = await agentMcpServers(
           command.cwd,
           command.mcpServers,
-          encryptedTaskOperation && !directTaskOperation
+          standalone || (encryptedTaskOperation && !directTaskOperation)
             ? undefined
             : {
                 chatId: command.chatId,
                 executionLaneId: command.executionLaneId,
                 permissionProfileId: command.permissionProfileId,
-                projectId: command.policyProjectId,
-                rootKind: command.rootKind,
+                projectId: command.policyProjectId!,
+                rootKind: command.rootKind!,
                 workerId: config.workerId,
-                worktreeId: command.worktreeId,
+                worktreeId: command.worktreeId!,
               },
+          !standalone,
         );
         const openedAttachments = await openWorkerAttachments(
           command.attachments,
@@ -3927,6 +3957,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         ): void => {
           clearInferenceProgress();
           emitProtected(create);
+        };
+        const requireRootAgentActivity = <T extends AgentActivity>(
+          activity: T,
+        ): T => {
+          if (
+            standalone &&
+            activity.agentScope &&
+            !activity.agentScope.isRoot
+          ) {
+            throw new Error(
+              "Standalone Chat runtime emitted child-agent activity.",
+            );
+          }
+          return activity;
         };
         const runTurn = async (
           prompt: string,
@@ -3990,6 +4034,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               captureProtectedDiagnostics: encryptedChat || encryptedTask,
               clientMessageId: command.clientMessageId,
               cwd: command.cwd,
+              executionProfile: command.executionProfile,
               isPrimary: command.isPrimary,
               mcpServers: resolvedMcpServers,
               model: command.model,
@@ -4004,9 +4049,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 ? directTaskOperation
                   ? mentionedSkillNames(prompt)
                   : []
-                : encryptedChat
-                  ? mentionedSkillNames(prompt)
-                  : command.skillNames,
+                : standalone
+                  ? []
+                  : encryptedChat
+                    ? mentionedSkillNames(prompt)
+                    : command.skillNames,
               subagentDefaults,
               subagentProtocolVersion: command.subagentProtocolVersion,
               threadId: command.threadId,
@@ -4017,7 +4064,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   ? {
                       onActivity: (activity) =>
                         emitProtectedAgentEvent(() =>
-                          encryptedTaskSealer.activity(activity),
+                          encryptedTaskSealer.activity(
+                            requireRootAgentActivity(activity),
+                          ),
                         ),
                     }
                   : {}
@@ -4059,7 +4108,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                       ? {
                           onActivity: (activity) =>
                             emitProtectedAgentEvent(() =>
-                              encryptedTaskSealer.activity(activity),
+                              encryptedTaskSealer.activity(
+                                requireRootAgentActivity(activity),
+                              ),
                             ),
                           onMessage: (message) =>
                             emitProtectedAgentEvent(() =>
@@ -4070,7 +4121,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                         ? {
                             onActivity: (activity) =>
                               emitProtectedAgentEvent(() =>
-                                encryptedChatSealer.activity(activity),
+                                encryptedChatSealer.activity(
+                                  requireRootAgentActivity(activity),
+                                ),
                               ),
                             onMessage: (message) =>
                               emitProtectedAgentEvent(() =>
@@ -4106,7 +4159,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                             onActivity: (activity) =>
                               emitAgentEvent({
                                 type: "agent.activity",
-                                activity,
+                                activity: requireRootAgentActivity(activity),
                               }),
                             onMessage: (message) =>
                               emitAgentEvent({
@@ -4388,10 +4441,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "chat.compact":
         return runtimeFor({
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
         }).compactThread({
           cwd: command.cwd,
+          executionProfile: command.executionProfile,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           provider: provider(),
@@ -4399,16 +4454,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       case "chat.interrupt":
         return runtimeFor({
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
         }).interruptChat(command.chatId, command.threadId);
       case "chat.turn.rollback":
         return runtimeFor({
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
         }).rollbackLatestChatTurn({
           clientMessageId: command.clientMessageId,
           cwd: command.cwd,
+          executionProfile: command.executionProfile,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           provider: provider(),
@@ -4640,11 +4698,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       case "agent.interaction.respond":
         return runtimeFor({
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
         }).answerAgentInteraction(command.requestKey, command.response);
       case "agent.interaction.respond.protected":
         return runtimeFor({
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
         }).answerAgentInteraction(
@@ -4657,6 +4717,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       case "agent.interaction.cancel":
         return runtimeFor({
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
         }).cancelAgentInteraction(command.requestKey, command.reason);
@@ -4674,6 +4735,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           workerEncryption,
         );
         return runtimeFor({
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
         }).steerThread(
@@ -4694,10 +4756,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "chat.sync":
         return runtimeFor({
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
         }).syncThread({
           cwd: command.cwd,
+          executionProfile: command.executionProfile,
           model: command.model,
           provider: provider(),
           threadId: command.threadId,

@@ -3,11 +3,14 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DEFAULT_PERMISSION_PROFILE_ID,
   archivedChatWireSummarySchema,
+  archivedStandaloneChatWireSummarySchema,
   encryptedAgentInteractionRequestSchema,
   agentInteractionRequestSchema,
   chatMessageOpaqueContentSchema,
   chatMessageOpaqueSummarySchema,
   chatWireSummarySchema,
+  contextualChatWireSummarySchema,
+  standaloneChatWireSummarySchema,
   encryptedChatComposerDraftWireStateSchema,
   chatComposerDraftOpaqueStateSchema,
   chatPlanOpaqueStateSchema,
@@ -69,8 +72,10 @@ import type {
   EncryptedBrowserCreate,
   EncryptedBrowserUpdate,
   EncryptedChatCreate,
+  EncryptedStandaloneChatCreate,
   ChatExperience,
   ChatExecutionLaneSummary,
+  ContextualChatExecutionLaneSummary,
   EncryptedChatFork,
   ChatModelUpdate,
   ChatPlanOpaqueState,
@@ -79,6 +84,10 @@ import type {
   ChatMessagePageInfo,
   ChatMessagePageQuery,
   ChatWireSummary,
+  ContextualChatWireSummary,
+  StandaloneChatWireSummary,
+  ArchivedStandaloneChatWireSummary,
+  StandaloneChatRootJobSummary,
   ChatModelConfigurationUpdate,
   EncryptedChatUpdate,
   ChatWorktreeUpdate,
@@ -476,7 +485,7 @@ export interface WorkerManagementRecord {
   worker: WorkerSummary;
 }
 
-export interface ChatExecutionContext {
+interface ChatExecutionContextBase {
   automationPaused: boolean;
   chatId: string;
   cwd: string;
@@ -492,14 +501,32 @@ export interface ChatExecutionContext {
   providerAccountId: string | null;
   permissionProfileId: string | null;
   planMode: PlanMode;
-  projectId: string;
-  rootKind: ProjectWorktreeSummary["rootKind"];
   threadId: string | null;
   workerId: string;
+}
+
+export interface ProjectChatExecutionContext extends ChatExecutionContextBase {
+  contextKind: "project";
+  projectId: string;
+  rootKind: ProjectWorktreeSummary["rootKind"];
+  scratchRootId: null;
   worktreeId: string;
   worktreeMode: ChatWireSummary["worktreeMode"];
   worktreePolicy: WorktreePolicy;
 }
+
+export interface StandaloneChatExecutionContext extends ChatExecutionContextBase {
+  contextKind: "standalone";
+  projectId: null;
+  rootKind: null;
+  scratchRootId: string;
+  worktreeId: null;
+  worktreeMode: null;
+  worktreePolicy: null;
+}
+
+export type ChatExecutionContext =
+  ProjectChatExecutionContext | StandaloneChatExecutionContext;
 
 export interface ChatAttachmentRecord extends ChatAttachmentOpaqueSummary {
   workerId: string;
@@ -519,6 +546,7 @@ export function toChatAttachmentOpaqueSummary(
 }
 
 export class ExecutionLaneConflictError extends Error {}
+export class StandaloneChatPlacementUnavailableError extends Error {}
 export class SurfacePrivateStateConflictError extends Error {}
 export class ExecutionPlacementUnavailableError extends Error {
   constructor(
@@ -651,10 +679,33 @@ export interface WorktreeRemovalBlockers {
   workflowLeaseIds: string[];
 }
 
-export interface ChatExecutionAttribution {
-  executionLaneId: string;
-  worktreeId: string;
-}
+export type ChatExecutionAttribution =
+  | {
+      contextKind?: "project";
+      executionLaneId: string;
+      scratchRootId?: null;
+      worktreeId: string;
+    }
+  | {
+      contextKind: "standalone";
+      executionLaneId: string;
+      scratchRootId: string;
+      worktreeId: null;
+    };
+
+export type ChatExecutionRecoveryContext =
+  | ChatExecutionLaneContext
+  | {
+      chat: StandaloneChatWireSummary;
+      lane: ContextualChatExecutionLaneSummary & {
+        contextKind: "standalone";
+      };
+      root: {
+        id: string;
+        pathHandle: string;
+        workerId: string;
+      };
+    };
 
 export interface ChatExecutionLaneContext {
   chat: ChatWireSummary;
@@ -1558,6 +1609,44 @@ function toChatExecutionLaneSummary(
   };
 }
 
+function toContextualChatExecutionLaneSummary(
+  lane: typeof schema.chatExecutionLanes.$inferSelect,
+): ContextualChatExecutionLaneSummary {
+  if (lane.worktreeId) {
+    return {
+      ...toChatExecutionLaneSummary(lane),
+      contextKind: "project",
+      scratchRootId: null,
+    };
+  }
+  if (!lane.scratchRootId) {
+    throw new Error("Execution lane has no execution root.");
+  }
+  return {
+    id: lane.id,
+    chatId: lane.chatId,
+    workerId: lane.workerId,
+    acquiringActor:
+      lane.acquiringActor as ContextualChatExecutionLaneSummary["acquiringActor"],
+    exclusive: lane.exclusive,
+    purpose: lane.purpose,
+    state: lane.state as ContextualChatExecutionLaneSummary["state"],
+    baseRevision: lane.baseRevision,
+    startingHead: lane.startingHead,
+    runtimeSessionId: lane.runtimeSessionId,
+    codexThreadId: lane.codexThreadId,
+    transitionKind:
+      lane.transitionKind as ContextualChatExecutionLaneSummary["transitionKind"],
+    createdAt: toISOString(lane.createdAt),
+    activatedAt: lane.activatedAt ? toISOString(lane.activatedAt) : null,
+    releasedAt: lane.releasedAt ? toISOString(lane.releasedAt) : null,
+    updatedAt: toISOString(lane.updatedAt),
+    contextKind: "standalone",
+    worktreeId: null,
+    scratchRootId: lane.scratchRootId,
+  };
+}
+
 function toChatWireSummary(
   chat: typeof schema.chats.$inferSelect,
 ): ChatWireSummary {
@@ -1587,6 +1676,47 @@ function toChatWireSummary(
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
   });
+}
+
+function toStandaloneChatWireSummary(
+  chat: typeof schema.chats.$inferSelect,
+): StandaloneChatWireSummary {
+  return standaloneChatWireSummarySchema.parse({
+    id: chat.id,
+    contextKind: "standalone",
+    projectId: null,
+    titleProtection: chat.protectedLabel,
+    experience: "agent",
+    position: chat.position,
+    status: chat.status,
+    activeWorkerId: chat.activeWorkerId,
+    activeWorktreeId: null,
+    activeScratchRootId: chat.activeScratchRootId,
+    placementRevision: chat.placementRevision,
+    worktreeMode: null,
+    modelId: chat.modelId,
+    reasoningEffort: chat.reasoningEffort,
+    customSubagentModel: false,
+    subagentModelId: null,
+    subagentReasoningEffort: null,
+    permissionProfileId: chat.permissionProfileId,
+    planMode: "default",
+    hasPendingPlanQuestion: false,
+    hasUnreadCompletion: chat.hasUnreadCompletion,
+    automationPaused: false,
+    createdAt: toISOString(chat.createdAt),
+    updatedAt: toISOString(chat.updatedAt),
+  });
+}
+
+function toContextualChatWireSummary(
+  chat: typeof schema.chats.$inferSelect,
+): ContextualChatWireSummary {
+  return contextualChatWireSummarySchema.parse(
+    chat.contextKind === "standalone"
+      ? toStandaloneChatWireSummary(chat)
+      : toChatWireSummary(chat),
+  );
 }
 
 function chatModelConfiguration(
@@ -1621,6 +1751,29 @@ function toArchivedChatWireSummary(
     projectId: chat.projectId,
     titleProtection: chat.protectedLabel,
     experience: chat.experience as ArchivedChatWireSummary["experience"],
+    messageCount,
+    archivedAt: toISOString(chat.archivedAt),
+    expiresAt: new Date(
+      chat.archivedAt.getTime() + ARCHIVED_CHAT_RETENTION_MS,
+    ).toISOString(),
+    createdAt: toISOString(chat.createdAt),
+    updatedAt: toISOString(chat.updatedAt),
+  });
+}
+
+function toArchivedStandaloneChatWireSummary(
+  chat: typeof schema.chats.$inferSelect,
+  messageCount: number,
+): ArchivedStandaloneChatWireSummary {
+  if (!chat.archivedAt) {
+    throw new Error("Cannot summarize an active Chat as archived.");
+  }
+  return archivedStandaloneChatWireSummarySchema.parse({
+    id: chat.id,
+    contextKind: "standalone",
+    projectId: null,
+    titleProtection: chat.protectedLabel,
+    experience: "agent",
     messageCount,
     archivedAt: toISOString(chat.archivedAt),
     expiresAt: new Date(
@@ -2209,7 +2362,9 @@ function toChatMessage(
   return {
     id: message.id,
     chatId: message.chatId,
+    contextKind: message.scratchRootId ? "standalone" : "project",
     worktreeId: message.worktreeId,
+    scratchRootId: message.scratchRootId,
     executionLaneId: message.executionLaneId,
     sequence: message.sequence,
     role: message.role as ChatMessage["role"],
@@ -2240,7 +2395,9 @@ function toEncryptedChatMessage(
   return chatMessageOpaqueSummarySchema.parse({
     id: message.id,
     chatId: message.chatId,
+    contextKind: message.scratchRootId ? "standalone" : "project",
     worktreeId: message.worktreeId,
+    scratchRootId: message.scratchRootId,
     executionLaneId: message.executionLaneId,
     sequence: message.sequence,
     role: message.role,
@@ -2265,6 +2422,9 @@ function toTaskMessage(
 ): TaskMessageOpaqueSummary {
   if (!message.taskProtectedContent || message.content) {
     throw new Error("Visible chat messages require the plaintext mapper.");
+  }
+  if (!message.worktreeId || message.scratchRootId) {
+    throw new Error("Task messages require a project worktree.");
   }
   return taskMessageOpaqueSummarySchema.parse({
     id: message.id,
@@ -11997,6 +12157,21 @@ export class ServerRepository {
     acquiringActor: ChatExecutionLaneSummary["acquiringActor"],
     purpose: string,
   ): Promise<ChatExecutionContext | null> {
+    const identities = await this.database
+      .select({ contextKind: schema.chats.contextKind })
+      .from(schema.chats)
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+      )
+      .limit(1);
+    if (identities[0]?.contextKind === "standalone") {
+      return this.startStandaloneChatExecutionLane(
+        ownerId,
+        chatId,
+        acquiringActor,
+        purpose,
+      );
+    }
     try {
       return await this.database.transaction(async (transaction) => {
         await transaction
@@ -12201,6 +12376,7 @@ export class ServerRepository {
           worktreeId: row.worktree.id,
         });
         return {
+          contextKind: "project",
           automationPaused: row.chat.automationPaused,
           chatId,
           cwd: row.worktree.absolutePath,
@@ -12221,6 +12397,7 @@ export class ServerRepository {
           planMode: row.chat.planMode as PlanMode,
           projectId,
           rootKind: row.worktree.rootKind,
+          scratchRootId: null,
           threadId: runtime.codexThreadId,
           workerId: row.worktree.workerId,
           worktreeId: row.worktree.id,
@@ -12245,6 +12422,199 @@ export class ServerRepository {
     }
   }
 
+  private async startStandaloneChatExecutionLane(
+    ownerId: string,
+    chatId: string,
+    acquiringActor: ChatExecutionLaneSummary["acquiringActor"],
+    purpose: string,
+  ): Promise<StandaloneChatExecutionContext | null> {
+    return this.database.transaction(async (transaction) => {
+      const locked = await transaction
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            eq(schema.chats.ownerId, ownerId),
+            eq(schema.chats.contextKind, "standalone"),
+            isNull(schema.chats.archivedAt),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!locked[0]) return null;
+      const rows = await transaction
+        .select({
+          chat: schema.chats,
+          root: schema.standaloneChatRoots,
+          runtime: schema.chatRuntimeSessions,
+          settings: schema.userSettings,
+        })
+        .from(schema.chats)
+        .innerJoin(
+          schema.standaloneChatRoots,
+          and(
+            eq(schema.standaloneChatRoots.id, schema.chats.activeScratchRootId),
+            eq(schema.standaloneChatRoots.chatId, schema.chats.id),
+            eq(schema.standaloneChatRoots.ownerId, schema.chats.ownerId),
+            eq(
+              schema.standaloneChatRoots.workerId,
+              schema.chats.activeWorkerId,
+            ),
+          ),
+        )
+        .leftJoin(
+          schema.chatRuntimeSessions,
+          and(
+            eq(schema.chatRuntimeSessions.chatId, schema.chats.id),
+            eq(
+              schema.chatRuntimeSessions.workerId,
+              schema.standaloneChatRoots.workerId,
+            ),
+            eq(
+              schema.chatRuntimeSessions.scratchRootId,
+              schema.standaloneChatRoots.id,
+            ),
+          ),
+        )
+        .leftJoin(
+          schema.userSettings,
+          eq(schema.userSettings.userId, schema.chats.ownerId),
+        )
+        .where(eq(schema.chats.id, chatId))
+        .limit(1);
+      const row = rows[0];
+      if (!row) return null;
+      if (row.root.status !== "ready" || !row.root.protectedPathHandle) {
+        throw new ExecutionLaneConflictError(
+          row.root.status === "provisioning"
+            ? "The standalone Chat scratch root is still provisioning."
+            : "The standalone Chat scratch root is unavailable.",
+        );
+      }
+      if (chatIsExecuting(row.chat.status as ChatWireSummary["status"])) {
+        throw new ExecutionLaneConflictError(
+          "This Chat already has an active execution.",
+        );
+      }
+      const claimed = await transaction
+        .update(schema.chats)
+        .set({ status: "running", updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            notInArray(schema.chats.status, [
+              "running",
+              "waiting-for-approval",
+            ]),
+          ),
+        )
+        .returning({ id: schema.chats.id });
+      if (!claimed[0]) {
+        throw new ExecutionLaneConflictError(
+          "This Chat already has an active execution.",
+        );
+      }
+      let runtime = row.runtime;
+      if (!runtime) {
+        runtime = firstOrThrow(
+          await transaction
+            .insert(schema.chatRuntimeSessions)
+            .values({
+              id: randomUUID(),
+              chatId,
+              workerId: row.root.workerId,
+              worktreeId: null,
+              scratchRootId: row.root.id,
+            })
+            .returning(),
+          "creating a standalone Chat runtime",
+        );
+      }
+      const existing = await transaction
+        .select()
+        .from(schema.chatExecutionLanes)
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.chatId, chatId),
+            eq(schema.chatExecutionLanes.scratchRootId, row.root.id),
+            ne(schema.chatExecutionLanes.state, "released"),
+          ),
+        )
+        .orderBy(desc(schema.chatExecutionLanes.createdAt))
+        .limit(1);
+      const now = new Date();
+      const lane = existing[0]
+        ? firstOrThrow(
+            await transaction
+              .update(schema.chatExecutionLanes)
+              .set({
+                acquiringActor,
+                exclusive: false,
+                purpose,
+                state: "active",
+                activatedAt: now,
+                releasedAt: null,
+                runtimeSessionId: runtime.id,
+                codexThreadId: runtime.codexThreadId,
+                updatedAt: now,
+              })
+              .where(eq(schema.chatExecutionLanes.id, existing[0].id))
+              .returning(),
+            "activating a standalone Chat execution lane",
+          )
+        : firstOrThrow(
+            await transaction
+              .insert(schema.chatExecutionLanes)
+              .values({
+                id: randomUUID(),
+                chatId,
+                worktreeId: null,
+                scratchRootId: row.root.id,
+                workerId: row.root.workerId,
+                acquiringActor,
+                exclusive: false,
+                purpose,
+                state: "active",
+                runtimeSessionId: runtime.id,
+                codexThreadId: runtime.codexThreadId,
+                activatedAt: now,
+              })
+              .returning(),
+            "creating a standalone Chat execution lane",
+          );
+      return {
+        contextKind: "standalone",
+        automationPaused: false,
+        chatId,
+        cwd: row.root.protectedPathHandle,
+        experience: "agent",
+        defaultPermissionProfileId:
+          (row.settings?.defaultChatPermissionProfileId as
+            UserSettings["defaultChatPermissionProfileId"] | undefined) ??
+          DEFAULT_PERMISSION_PROFILE_ID,
+        executionLaneId: lane.id,
+        isPrimary: true,
+        status: "running",
+        modelId: row.chat.modelId,
+        reasoningEffort: row.chat.reasoningEffort,
+        modelConfiguration: chatModelConfiguration(row.chat),
+        modelRouteId: runtime.modelRouteId,
+        providerAccountId: runtime.providerAccountId,
+        permissionProfileId: row.chat.permissionProfileId,
+        planMode: "default",
+        projectId: null,
+        rootKind: null,
+        scratchRootId: row.root.id,
+        threadId: runtime.codexThreadId,
+        workerId: row.root.workerId,
+        worktreeId: null,
+        worktreeMode: null,
+        worktreePolicy: null,
+      };
+    });
+  }
+
   async finishChatExecutionLane(
     chatId: string,
     laneId: string,
@@ -12258,7 +12628,7 @@ export class ServerRepository {
           isPrimary: schema.projectWorktrees.isPrimary,
         })
         .from(schema.chatExecutionLanes)
-        .innerJoin(
+        .leftJoin(
           schema.projectWorktrees,
           eq(schema.projectWorktrees.id, schema.chatExecutionLanes.worktreeId),
         )
@@ -12376,6 +12746,59 @@ export class ServerRepository {
         row.worktree,
         requiredProjectChatProjectId(row.chat.projectId),
       ),
+    };
+  }
+
+  async getChatExecutionRecoveryContext(
+    ownerId: string,
+    chatId: string,
+    laneId: string,
+  ): Promise<ChatExecutionRecoveryContext | null> {
+    const project = await this.getChatExecutionLaneContext(
+      ownerId,
+      chatId,
+      laneId,
+    );
+    if (project) return project;
+    const rows = await this.database
+      .select({
+        chat: schema.chats,
+        lane: schema.chatExecutionLanes,
+        root: schema.standaloneChatRoots,
+      })
+      .from(schema.chatExecutionLanes)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.chatExecutionLanes.chatId),
+      )
+      .innerJoin(
+        schema.standaloneChatRoots,
+        eq(
+          schema.standaloneChatRoots.id,
+          schema.chatExecutionLanes.scratchRootId,
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatExecutionLanes.id, laneId),
+          eq(schema.chatExecutionLanes.chatId, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          eq(schema.chats.contextKind, "standalone"),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row?.root.protectedPathHandle) return null;
+    const lane = toContextualChatExecutionLaneSummary(row.lane);
+    if (lane.contextKind !== "standalone") return null;
+    return {
+      chat: toStandaloneChatWireSummary(row.chat),
+      lane,
+      root: {
+        id: row.root.id,
+        pathHandle: row.root.protectedPathHandle,
+        workerId: row.root.workerId,
+      },
     };
   }
 
@@ -12565,6 +12988,11 @@ export class ServerRepository {
   ): Promise<ChatExecutionLaneContext | null> {
     const current = await this.getChatExecutionContext(ownerId, chatId);
     if (!current) return null;
+    if (current.contextKind !== "project") {
+      throw new ExecutionLaneConflictError(
+        "Standalone Chats do not support worktree transitions.",
+      );
+    }
     if (current.worktreeMode === "pinned") {
       throw new ExecutionLaneConflictError(
         "This chat is pinned. Return it to Agent managed before allowing autonomous worktree transitions.",
@@ -13448,6 +13876,199 @@ export class ServerRepository {
     return rows.map(({ chat, messageCount }) =>
       toArchivedChatWireSummary(chat, messageCount),
     );
+  }
+
+  async listStandaloneChats(
+    ownerId: string,
+  ): Promise<StandaloneChatWireSummary[]> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.ownerId, ownerId),
+          eq(schema.chats.contextKind, "standalone"),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .orderBy(asc(schema.chats.position), asc(schema.chats.createdAt));
+    return rows.map(({ chat }) => toStandaloneChatWireSummary(chat));
+  }
+
+  async listArchivedStandaloneChats(
+    ownerId: string,
+  ): Promise<ArchivedStandaloneChatWireSummary[]> {
+    const rows = await this.database
+      .select({
+        chat: schema.chats,
+        messageCount: sql<number>`(
+          select count(*)::int
+          from ${schema.chatMessages}
+          where ${schema.chatMessages.chatId} = ${schema.chats.id}
+        )`,
+      })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.ownerId, ownerId),
+          eq(schema.chats.contextKind, "standalone"),
+          isNotNull(schema.chats.archivedAt),
+        ),
+      )
+      .orderBy(desc(schema.chats.archivedAt));
+    return rows.map(({ chat, messageCount }) =>
+      toArchivedStandaloneChatWireSummary(chat, messageCount),
+    );
+  }
+
+  async createStandaloneChat(
+    ownerId: string,
+    input: EncryptedStandaloneChatCreate,
+    isWorkerConnected: (workerId: string) => boolean,
+  ): Promise<{
+    chat: StandaloneChatWireSummary;
+    provisionJob: StandaloneChatRootJobSummary;
+  }> {
+    const settings = firstOrThrow(
+      await this.database
+        .select()
+        .from(schema.userSettings)
+        .where(eq(schema.userSettings.userId, ownerId))
+        .limit(1),
+      "loading standalone Chat defaults",
+    );
+    const workers = await this.listWorkers(ownerId);
+    const compatible = workers
+      .filter(
+        (worker) =>
+          isWorkerConnected(worker.workerId) &&
+          worker.standaloneChat.scratch.provision &&
+          worker.standaloneChat.scratch.resolve &&
+          worker.standaloneChat.scratch.archive &&
+          worker.standaloneChat.scratch.restore &&
+          worker.standaloneChat.scratch.remove &&
+          worker.standaloneChat.scratch.reconcile &&
+          worker.standaloneChat.scratch.routingHandles,
+      )
+      .sort((left, right) => left.workerId.localeCompare(right.workerId));
+    const worker =
+      compatible.find(
+        (candidate) => candidate.workerId === settings.defaultWorkerId,
+      ) ?? compatible[0];
+    if (!worker) {
+      throw new StandaloneChatPlacementUnavailableError(
+        "New Chat requires a compatible online worker with standalone scratch support.",
+      );
+    }
+    const inheritedModelId =
+      settings.defaultChatModelId ?? settings.defaultModelId;
+    const inheritedReasoningEffort =
+      settings.defaultChatReasoningEffort ?? settings.defaultReasoningEffort;
+    const last = await this.database
+      .select({ position: schema.chats.position })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.ownerId, ownerId),
+          eq(schema.chats.contextKind, "standalone"),
+        ),
+      )
+      .orderBy(desc(schema.chats.position))
+      .limit(1);
+    const rootId = randomUUID();
+    const runtimeSessionId = randomUUID();
+    const provisionJobId = randomUUID();
+    return this.database.transaction(async (transaction) => {
+      const chat = firstOrThrow(
+        await transaction
+          .insert(schema.chats)
+          .values({
+            id: input.id,
+            ownerId,
+            contextKind: "standalone",
+            projectId: null,
+            protectedLabel: input.titleProtection,
+            experience: "agent",
+            position: (last[0]?.position ?? -1) + 1,
+            activeWorkerId: worker.workerId,
+            activeWorktreeId: null,
+            activeScratchRootId: rootId,
+            worktreeMode: null,
+            modelId: inheritedModelId,
+            reasoningEffort: inheritedReasoningEffort,
+            customSubagentModel: false,
+            subagentModelId: null,
+            subagentReasoningEffort: null,
+            permissionProfileId: settings.defaultChatPermissionProfileId,
+            automationPaused: false,
+            planMode: "default",
+            protectedPlan: null,
+            hasPendingPlanQuestion: false,
+          })
+          .returning(),
+        "creating a standalone Chat",
+      );
+      await transaction.insert(schema.standaloneChatRoots).values({
+        id: rootId,
+        chatId: chat.id,
+        ownerId,
+        workerId: worker.workerId,
+        protectedPathHandle: null,
+        status: "provisioning",
+      });
+      await transaction.insert(schema.chatRuntimeSessions).values({
+        id: runtimeSessionId,
+        chatId: chat.id,
+        workerId: worker.workerId,
+        worktreeId: null,
+        scratchRootId: rootId,
+      });
+      await transaction.insert(schema.chatExecutionLanes).values({
+        id: randomUUID(),
+        chatId: chat.id,
+        worktreeId: null,
+        scratchRootId: rootId,
+        workerId: worker.workerId,
+        acquiringActor: "user",
+        exclusive: false,
+        purpose: "Initial standalone Chat scratch root",
+        state: "suspended",
+        runtimeSessionId,
+      });
+      const provisionJob = firstOrThrow(
+        await transaction
+          .insert(schema.standaloneChatRootJobs)
+          .values({
+            id: provisionJobId,
+            ownerId,
+            rootId,
+            chatId: chat.id,
+            workerId: worker.workerId,
+            kind: "provision",
+            state: "queued",
+          })
+          .returning(),
+        "queueing standalone Chat scratch provisioning",
+      );
+      return {
+        chat: toStandaloneChatWireSummary(chat),
+        provisionJob: {
+          id: provisionJob.id,
+          rootId: provisionJob.rootId,
+          chatId: provisionJob.chatId,
+          workerId: provisionJob.workerId,
+          kind: provisionJob.kind,
+          state: provisionJob.state,
+          stateRevision: provisionJob.stateRevision,
+          attempt: provisionJob.attempt,
+          error: null,
+          createdAt: toISOString(provisionJob.createdAt),
+          updatedAt: toISOString(provisionJob.updatedAt),
+          startedAt: null,
+          completedAt: null,
+        },
+      };
+    });
   }
 
   async createChat(
@@ -15320,18 +15941,17 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     input: EncryptedChatUpdate,
-  ): Promise<ChatWireSummary | null> {
+  ): Promise<ContextualChatWireSummary | null> {
     const owned = await this.database
       .select({ id: schema.chats.id })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          isNull(schema.chats.archivedAt),
         ),
       )
-      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     if (!owned[0]) return null;
     const result = await this.database
@@ -15339,7 +15959,7 @@ export class ServerRepository {
       .set({ protectedLabel: input.titleProtection, updatedAt: new Date() })
       .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .returning();
-    return result[0] ? toChatWireSummary(result[0]) : null;
+    return result[0] ? toContextualChatWireSummary(result[0]) : null;
   }
 
   async getChatComposerDraftWireState(
@@ -15349,14 +15969,13 @@ export class ServerRepository {
     const rows = await this.database
       .select({ chat: schema.chats })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          isNull(schema.chats.archivedAt),
         ),
       )
-      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     const chat = rows[0]?.chat;
     return chat
@@ -15389,13 +16008,7 @@ export class ServerRepository {
         and(
           eq(schema.chats.id, chatId),
           isNull(schema.chats.archivedAt),
-          inArray(
-            schema.chats.projectId,
-            this.database
-              .select({ id: schema.projects.id })
-              .from(schema.projects)
-              .where(eq(schema.projects.ownerId, ownerId)),
-          ),
+          eq(schema.chats.ownerId, ownerId),
         ),
       )
       .returning({ id: schema.chats.id });
@@ -15663,6 +16276,165 @@ export class ServerRepository {
       await transaction.delete(schema.chats).where(eq(schema.chats.id, chatId));
       return "deleted";
     });
+  }
+
+  async archiveStandaloneChat(
+    ownerId: string,
+    chatId: string,
+  ): Promise<
+    | false
+    | "running"
+    | {
+        archivedAt: string;
+        archiveExpiresAt: string;
+        chat: ArchivedStandaloneChatWireSummary;
+        rootId: string;
+        workerId: string;
+      }
+  > {
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({ chat: schema.chats, root: schema.standaloneChatRoots })
+        .from(schema.chats)
+        .innerJoin(
+          schema.standaloneChatRoots,
+          and(
+            eq(schema.standaloneChatRoots.id, schema.chats.activeScratchRootId),
+            eq(schema.standaloneChatRoots.chatId, schema.chats.id),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            eq(schema.chats.ownerId, ownerId),
+            eq(schema.chats.contextKind, "standalone"),
+            isNull(schema.chats.archivedAt),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return false;
+      if (chatIsExecuting(row.chat.status as ChatWireSummary["status"])) {
+        return "running";
+      }
+      const archivedAt = new Date();
+      const archiveExpiresAt = new Date(
+        archivedAt.getTime() + ARCHIVED_CHAT_RETENTION_MS,
+      );
+      const chat = firstOrThrow(
+        await transaction
+          .update(schema.chats)
+          .set({ archivedAt, status: "idle", updatedAt: archivedAt })
+          .where(eq(schema.chats.id, chatId))
+          .returning(),
+        "archiving a standalone Chat",
+      );
+      await transaction
+        .update(schema.standaloneChatRoots)
+        .set({ archivedAt, archiveExpiresAt, updatedAt: archivedAt })
+        .where(eq(schema.standaloneChatRoots.id, row.root.id));
+      const messageCount = Number(
+        (
+          await transaction
+            .select({ count: sql<number>`count(*)::int` })
+            .from(schema.chatMessages)
+            .where(eq(schema.chatMessages.chatId, chatId))
+        )[0]?.count ?? 0,
+      );
+      return {
+        archivedAt: toISOString(archivedAt),
+        archiveExpiresAt: toISOString(archiveExpiresAt),
+        chat: toArchivedStandaloneChatWireSummary(chat, messageCount),
+        rootId: row.root.id,
+        workerId: row.root.workerId,
+      };
+    });
+  }
+
+  async restoreStandaloneChat(
+    ownerId: string,
+    chatId: string,
+  ): Promise<null | {
+    chat: StandaloneChatWireSummary;
+    rootId: string;
+    workerId: string;
+  }> {
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({ chat: schema.chats, root: schema.standaloneChatRoots })
+        .from(schema.chats)
+        .innerJoin(
+          schema.standaloneChatRoots,
+          eq(schema.standaloneChatRoots.id, schema.chats.activeScratchRootId),
+        )
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            eq(schema.chats.ownerId, ownerId),
+            eq(schema.chats.contextKind, "standalone"),
+            isNotNull(schema.chats.archivedAt),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return null;
+      const restored = firstOrThrow(
+        await transaction
+          .update(schema.chats)
+          .set({ archivedAt: null, updatedAt: new Date() })
+          .where(eq(schema.chats.id, chatId))
+          .returning(),
+        "restoring a standalone Chat",
+      );
+      await transaction
+        .update(schema.standaloneChatRoots)
+        .set({
+          archivedAt: null,
+          archiveExpiresAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.standaloneChatRoots.id, row.root.id));
+      return {
+        chat: toStandaloneChatWireSummary(restored),
+        rootId: row.root.id,
+        workerId: row.root.workerId,
+      };
+    });
+  }
+
+  async getStandaloneChatRootForDeletion(
+    ownerId: string,
+    chatId: string,
+  ): Promise<{
+    chatId: string;
+    ownerId: string;
+    rootId: string;
+    workerId: string;
+  } | null> {
+    const rows = await this.database
+      .select({
+        chatId: schema.standaloneChatRoots.chatId,
+        ownerId: schema.standaloneChatRoots.ownerId,
+        rootId: schema.standaloneChatRoots.id,
+        workerId: schema.standaloneChatRoots.workerId,
+      })
+      .from(schema.standaloneChatRoots)
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.standaloneChatRoots.chatId),
+      )
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          eq(schema.chats.contextKind, "standalone"),
+          isNotNull(schema.chats.archivedAt),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
   }
 
   async restoreArchivedChat(
@@ -16012,6 +16784,154 @@ export class ServerRepository {
     });
   }
 
+  async forkStandaloneChat(
+    ownerId: string,
+    chatId: string,
+    input: EncryptedChatFork,
+    isWorkerConnected: (workerId: string) => boolean,
+    protectMessages: (
+      messages: ChatMessageOpaqueSummary[],
+    ) => Promise<ChatMessageOpaqueContent[]>,
+  ): Promise<null | {
+    chat: StandaloneChatWireSummary;
+    provisionJob: StandaloneChatRootJobSummary;
+  }> {
+    if (input.worktreeId || input.worktreeMode) {
+      throw new ExecutionLaneConflictError(
+        "Standalone Chat forks do not accept worktree settings.",
+      );
+    }
+    const sources = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          eq(schema.chats.contextKind, "standalone"),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .limit(1);
+    if (!sources[0]) return null;
+    let throughSequence: number | null = null;
+    if (input.messageId) {
+      const selected = await this.database
+        .select({ sequence: schema.chatMessages.sequence })
+        .from(schema.chatMessages)
+        .where(
+          and(
+            eq(schema.chatMessages.id, input.messageId),
+            eq(schema.chatMessages.chatId, chatId),
+          ),
+        )
+        .limit(1);
+      if (!selected[0]) return null;
+      throughSequence = selected[0].sequence;
+    }
+    const sourceMessages = await this.database
+      .select()
+      .from(schema.chatMessages)
+      .where(
+        throughSequence === null
+          ? eq(schema.chatMessages.chatId, chatId)
+          : and(
+              eq(schema.chatMessages.chatId, chatId),
+              lte(schema.chatMessages.sequence, throughSequence),
+            ),
+      )
+      .orderBy(asc(schema.chatMessages.sequence));
+    if (
+      sourceMessages.some(
+        (source) =>
+          !source.protectedContent ||
+          source.content !== null ||
+          source.taskProtectedContent !== null,
+      )
+    ) {
+      return null;
+    }
+    const protectedCopies = await protectMessages(
+      sourceMessages.map(toEncryptedChatMessage),
+    );
+    if (protectedCopies.length !== sourceMessages.length) {
+      throw new Error("The worker returned an incomplete encrypted fork.");
+    }
+    const created = await this.createStandaloneChat(
+      ownerId,
+      { id: input.id, titleProtection: input.titleProtection },
+      isWorkerConnected,
+    );
+    try {
+      const forkRows = await this.database
+        .update(schema.chats)
+        .set({
+          modelId: sources[0].chat.modelId,
+          reasoningEffort: sources[0].chat.reasoningEffort,
+          permissionProfileId: sources[0].chat.permissionProfileId,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.chats.id, created.chat.id),
+            eq(schema.chats.ownerId, ownerId),
+          ),
+        )
+        .returning();
+      const fork = firstOrThrow(forkRows, "copying standalone Chat settings");
+      if (sourceMessages.length > 0) {
+        await this.database.insert(schema.chatMessages).values(
+          sourceMessages.map((source, index) => {
+            const message = protectedCopies[index]!;
+            if (
+              message.classification.role !== source.role ||
+              message.classification.mode !== source.mode ||
+              JSON.stringify(message.classification.attachmentIds) !==
+                JSON.stringify(source.attachmentIds)
+            ) {
+              throw new Error(
+                "The worker returned inconsistent encrypted fork messages.",
+              );
+            }
+            return {
+              id: message.id,
+              chatId: created.chat.id,
+              worktreeId: null,
+              scratchRootId: created.chat.activeScratchRootId,
+              executionLaneId: null,
+              role: message.classification.role,
+              mode: message.classification.mode,
+              content: null,
+              protectedContent: message.protectedContent,
+              attachmentIds: message.classification.attachmentIds,
+              modelId: source.modelId,
+              modelRouteId: source.modelRouteId,
+              providerId: source.providerId,
+              providerName: source.providerName,
+              providerModelName: source.providerModelName,
+              reasoningEffort: message.reasoningEffort,
+              appliedReasoningEffort: source.appliedReasoningEffort,
+              reasoningAdjusted: source.reasoningAdjusted,
+              idempotencyKey: message.idempotencyKey,
+              createdAt: source.createdAt,
+            };
+          }),
+        );
+      }
+      return { ...created, chat: toStandaloneChatWireSummary(fork) };
+    } catch (error) {
+      await this.database
+        .delete(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, created.chat.id),
+            eq(schema.chats.ownerId, ownerId),
+          ),
+        );
+      throw error;
+    }
+  }
+
   async reorderProjects(ownerId: string, input: OrderedIds): Promise<boolean> {
     const rows = await this.database
       .select({ id: schema.projects.id })
@@ -16038,7 +16958,7 @@ export class ServerRepository {
     chatId: string,
     input: ChatModelUpdate,
     reasoningEffort?: ReasoningEffort | null,
-  ): Promise<ChatWireSummary | null> {
+  ): Promise<ContextualChatWireSummary | null> {
     const model = await this.getModelRuntime(ownerId, input.modelId);
     if (!model) {
       return null;
@@ -16046,14 +16966,9 @@ export class ServerRepository {
     const chats = await this.database
       .select({ chat: schema.chats })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
-      .where(eq(schema.chats.id, chatId))
       .limit(1);
     const chat = chats[0]?.chat;
     if (!chat) {
@@ -16068,7 +16983,9 @@ export class ServerRepository {
       })
       .where(eq(schema.chats.id, chatId))
       .returning();
-    return toChatWireSummary(firstOrThrow(result, "selecting a chat model"));
+    return toContextualChatWireSummary(
+      firstOrThrow(result, "selecting a chat model"),
+    );
   }
 
   async getChatModelConfiguration(
@@ -16078,14 +16995,9 @@ export class ServerRepository {
     const rows = await this.database
       .select({ chat: schema.chats })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
-      .where(eq(schema.chats.id, chatId))
       .limit(1);
     return rows[0] ? chatModelConfiguration(rows[0].chat) : null;
   }
@@ -16094,7 +17006,7 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     input: ChatModelConfigurationUpdate,
-  ): Promise<ChatWireSummary | null> {
+  ): Promise<ContextualChatWireSummary | null> {
     if (!input.modelId) return null;
 
     const modelIds = [
@@ -16114,6 +17026,24 @@ export class ServerRepository {
       new Set(ownedModels.map(({ id }) => id)).size !== new Set(modelIds).size
     )
       return null;
+    const chats = await this.database
+      .select({ contextKind: schema.chats.contextKind })
+      .from(schema.chats)
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+      )
+      .limit(1);
+    if (!chats[0]) return null;
+    if (
+      chats[0].contextKind === "standalone" &&
+      (input.customSubagentModel ||
+        input.subagentModelId !== null ||
+        input.subagentReasoningEffort !== null)
+    ) {
+      throw new ExecutionLaneConflictError(
+        "Standalone Chat does not support subagent configuration.",
+      );
+    }
 
     const result = await this.database
       .update(schema.chats)
@@ -16126,43 +17056,25 @@ export class ServerRepository {
         updatedAt: new Date(),
       })
       .where(
-        and(
-          eq(schema.chats.id, chatId),
-          inArray(
-            schema.chats.projectId,
-            this.database
-              .select({ id: schema.projects.id })
-              .from(schema.projects)
-              .where(eq(schema.projects.ownerId, ownerId)),
-          ),
-        ),
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
       .returning();
-    return result[0] ? toChatWireSummary(result[0]) : null;
+    return result[0] ? toContextualChatWireSummary(result[0]) : null;
   }
 
   async setChatReasoningEffort(
     ownerId: string,
     chatId: string,
     reasoningEffort: ReasoningEffort | null,
-  ): Promise<ChatWireSummary | null> {
+  ): Promise<ContextualChatWireSummary | null> {
     const result = await this.database
       .update(schema.chats)
       .set({ reasoningEffort, updatedAt: new Date() })
       .where(
-        and(
-          eq(schema.chats.id, chatId),
-          inArray(
-            schema.chats.projectId,
-            this.database
-              .select({ id: schema.projects.id })
-              .from(schema.projects)
-              .where(eq(schema.projects.ownerId, ownerId)),
-          ),
-        ),
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
       .returning();
-    return result[0] ? toChatWireSummary(result[0]) : null;
+    return result[0] ? toContextualChatWireSummary(result[0]) : null;
   }
 
   async getModelReasoningDefault(
@@ -16189,7 +17101,7 @@ export class ServerRepository {
     chatId: string,
     modelId: string,
     reasoningEffort: ReasoningEffort | null,
-  ): Promise<ChatWireSummary | null> {
+  ): Promise<ContextualChatWireSummary | null> {
     return this.database.transaction(async (transaction) => {
       const ownedModels = await transaction
         .select({ id: schema.modelProfiles.id })
@@ -16211,21 +17123,12 @@ export class ServerRepository {
           updatedAt: new Date(),
         })
         .where(
-          and(
-            eq(schema.chats.id, chatId),
-            inArray(
-              schema.chats.projectId,
-              transaction
-                .select({ id: schema.projects.id })
-                .from(schema.projects)
-                .where(eq(schema.projects.ownerId, ownerId)),
-            ),
-          ),
+          and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
         )
         .returning();
       if (!result[0]) return null;
 
-      return toChatWireSummary(result[0]);
+      return toContextualChatWireSummary(result[0]);
     });
   }
 
@@ -16233,18 +17136,13 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     permissionProfileId: string | null,
-  ): Promise<ChatWireSummary | null> {
+  ): Promise<ContextualChatWireSummary | null> {
     const chats = await this.database
       .select({ chat: schema.chats })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
-      .where(eq(schema.chats.id, chatId))
       .limit(1);
     if (!chats[0]) return null;
     const result = await this.database
@@ -16252,7 +17150,7 @@ export class ServerRepository {
       .set({ permissionProfileId, updatedAt: new Date() })
       .where(eq(schema.chats.id, chatId))
       .returning();
-    return result[0] ? toChatWireSummary(result[0]) : null;
+    return result[0] ? toContextualChatWireSummary(result[0]) : null;
   }
 
   async getEncryptedChatPlanState(
@@ -16262,14 +17160,9 @@ export class ServerRepository {
     const rows = await this.database
       .select({ chat: schema.chats })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
-      .where(eq(schema.chats.id, chatId))
       .limit(1);
     const chat = rows[0]?.chat;
     return chat?.protectedPlan
@@ -16284,14 +17177,9 @@ export class ServerRepository {
     const rows = await this.database
       .select({ chat: schema.chats })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
-      .where(eq(schema.chats.id, chatId))
       .limit(1);
     const chat = rows[0]?.chat;
     return chat
@@ -16312,6 +17200,18 @@ export class ServerRepository {
   ): Promise<EncryptedChatPlanWireState | null> {
     const current = await this.getChatPlanWireState(ownerId, chatId);
     if (!current) return null;
+    const contexts = await this.database
+      .select({ contextKind: schema.chats.contextKind })
+      .from(schema.chats)
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+      )
+      .limit(1);
+    if (contexts[0]?.contextKind === "standalone" && mode !== "default") {
+      throw new ExecutionLaneConflictError(
+        "Standalone Chat supports only default conversation mode.",
+      );
+    }
     await this.database
       .update(schema.chats)
       .set({
@@ -16344,6 +17244,16 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
   ): Promise<ChatExecutionContext | null> {
+    const identities = await this.database
+      .select({ contextKind: schema.chats.contextKind })
+      .from(schema.chats)
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
+      )
+      .limit(1);
+    if (identities[0]?.contextKind === "standalone") {
+      return this.getStandaloneChatExecutionContext(ownerId, chatId);
+    }
     const rows = await this.database
       .select({
         chat: schema.chats,
@@ -16395,6 +17305,7 @@ export class ServerRepository {
     }
     const projectId = requiredProjectChatProjectId(row.chat.projectId);
     return {
+      contextKind: "project",
       automationPaused: row.chat.automationPaused,
       chatId: row.chat.id,
       cwd: row.worktree.absolutePath,
@@ -16414,12 +17325,107 @@ export class ServerRepository {
       planMode: row.chat.planMode as PlanMode,
       projectId,
       rootKind: row.worktree.rootKind,
+      scratchRootId: null,
       status: row.chat.status as ChatWireSummary["status"],
       threadId: row.runtime?.codexThreadId ?? null,
       workerId: row.worktree.workerId,
       worktreeId: row.worktree.id,
       worktreeMode: row.chat.worktreeMode as ChatWireSummary["worktreeMode"],
       worktreePolicy: row.project.worktreePolicy as WorktreePolicy,
+    };
+  }
+
+  private async getStandaloneChatExecutionContext(
+    ownerId: string,
+    chatId: string,
+  ): Promise<StandaloneChatExecutionContext | null> {
+    const rows = await this.database
+      .select({
+        chat: schema.chats,
+        lane: schema.chatExecutionLanes,
+        root: schema.standaloneChatRoots,
+        runtime: schema.chatRuntimeSessions,
+        settings: schema.userSettings,
+      })
+      .from(schema.chats)
+      .innerJoin(
+        schema.standaloneChatRoots,
+        and(
+          eq(schema.standaloneChatRoots.id, schema.chats.activeScratchRootId),
+          eq(schema.standaloneChatRoots.chatId, schema.chats.id),
+          eq(schema.standaloneChatRoots.ownerId, schema.chats.ownerId),
+          eq(schema.standaloneChatRoots.workerId, schema.chats.activeWorkerId),
+        ),
+      )
+      .leftJoin(
+        schema.chatRuntimeSessions,
+        and(
+          eq(schema.chatRuntimeSessions.chatId, schema.chats.id),
+          eq(
+            schema.chatRuntimeSessions.workerId,
+            schema.standaloneChatRoots.workerId,
+          ),
+          eq(
+            schema.chatRuntimeSessions.scratchRootId,
+            schema.standaloneChatRoots.id,
+          ),
+        ),
+      )
+      .leftJoin(
+        schema.chatExecutionLanes,
+        and(
+          eq(schema.chatExecutionLanes.chatId, schema.chats.id),
+          eq(schema.chatExecutionLanes.state, "active"),
+        ),
+      )
+      .leftJoin(
+        schema.userSettings,
+        eq(schema.userSettings.userId, schema.chats.ownerId),
+      )
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          eq(schema.chats.contextKind, "standalone"),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      contextKind: "standalone",
+      automationPaused: false,
+      chatId,
+      cwd: row.root.protectedPathHandle ?? "standalone-root-unavailable",
+      experience: "agent",
+      defaultPermissionProfileId:
+        (row.settings?.defaultChatPermissionProfileId as
+          UserSettings["defaultChatPermissionProfileId"] | undefined) ??
+        DEFAULT_PERMISSION_PROFILE_ID,
+      executionLaneId: row.lane?.id ?? null,
+      isPrimary: true,
+      status:
+        row.root.status === "ready"
+          ? (row.chat.status as ChatWireSummary["status"])
+          : row.root.status === "failed"
+            ? "failed"
+            : "offline",
+      modelId: row.chat.modelId,
+      reasoningEffort: row.chat.reasoningEffort,
+      modelConfiguration: chatModelConfiguration(row.chat),
+      modelRouteId: row.runtime?.modelRouteId ?? null,
+      providerAccountId: row.runtime?.providerAccountId ?? null,
+      permissionProfileId: row.chat.permissionProfileId,
+      planMode: "default",
+      projectId: null,
+      rootKind: null,
+      scratchRootId: row.root.id,
+      threadId: row.runtime?.codexThreadId ?? null,
+      workerId: row.root.workerId,
+      worktreeId: null,
+      worktreeMode: null,
+      worktreePolicy: null,
     };
   }
 
@@ -16435,15 +17441,9 @@ export class ServerRepository {
         schema.chats,
         eq(schema.chats.id, schema.chatRuntimeSessions.chatId),
       )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
       .where(
         and(
+          eq(schema.chats.ownerId, ownerId),
           eq(schema.chatRuntimeSessions.workerId, workerId),
           eq(schema.chatRuntimeSessions.codexThreadId, threadId),
           isNull(schema.chats.archivedAt),
@@ -16465,12 +17465,16 @@ export class ServerRepository {
   async updateChatRuntime(
     chatId: string,
     workerId: string,
-    worktreeId: string,
+    worktreeId: string | null,
     threadId: string | null,
     modelRouteId: string,
     status = "ready",
     providerAccountId?: string | null,
+    scratchRootId: string | null = null,
   ): Promise<void> {
+    if ((worktreeId === null) === (scratchRootId === null)) {
+      throw new Error("Chat runtime requires exactly one execution root.");
+    }
     const rows = await this.database
       .insert(schema.chatRuntimeSessions)
       .values({
@@ -16478,17 +17482,27 @@ export class ServerRepository {
         chatId,
         workerId,
         worktreeId,
+        scratchRootId,
         codexThreadId: threadId,
         modelRouteId,
         providerAccountId: providerAccountId ?? null,
         status,
       })
       .onConflictDoUpdate({
-        target: [
-          schema.chatRuntimeSessions.chatId,
-          schema.chatRuntimeSessions.workerId,
-          schema.chatRuntimeSessions.worktreeId,
-        ],
+        target: worktreeId
+          ? [
+              schema.chatRuntimeSessions.chatId,
+              schema.chatRuntimeSessions.workerId,
+              schema.chatRuntimeSessions.worktreeId,
+            ]
+          : [
+              schema.chatRuntimeSessions.chatId,
+              schema.chatRuntimeSessions.workerId,
+              schema.chatRuntimeSessions.scratchRootId,
+            ],
+        targetWhere: worktreeId
+          ? isNotNull(schema.chatRuntimeSessions.worktreeId)
+          : isNotNull(schema.chatRuntimeSessions.scratchRootId),
         set: {
           codexThreadId: threadId,
           modelRouteId,
@@ -16510,7 +17524,9 @@ export class ServerRepository {
         and(
           eq(schema.chatExecutionLanes.chatId, chatId),
           eq(schema.chatExecutionLanes.workerId, workerId),
-          eq(schema.chatExecutionLanes.worktreeId, worktreeId),
+          worktreeId
+            ? eq(schema.chatExecutionLanes.worktreeId, worktreeId)
+            : eq(schema.chatExecutionLanes.scratchRootId, scratchRootId!),
           eq(schema.chatExecutionLanes.state, "active"),
         ),
       );
@@ -16541,58 +17557,71 @@ export class ServerRepository {
   async acknowledgeChatCompletion(
     ownerId: string,
     chatId: string,
-  ): Promise<ChatWireSummary | null> {
+  ): Promise<ContextualChatWireSummary | null> {
     const rows = await this.database
       .update(schema.chats)
       .set({ hasUnreadCompletion: false })
       .where(
-        and(
-          eq(schema.chats.id, chatId),
-          inArray(
-            schema.chats.projectId,
-            this.database
-              .select({ id: schema.projects.id })
-              .from(schema.projects)
-              .where(eq(schema.projects.ownerId, ownerId)),
-          ),
-        ),
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
       .returning();
-    return rows[0] ? toChatWireSummary(rows[0]) : null;
+    return rows[0] ? toContextualChatWireSummary(rows[0]) : null;
+  }
+
+  private async resolveAgentInteractionOwner(input: {
+    projectId: string | null;
+    provenance: { chatId: string | null; workerId: string };
+  }): Promise<string> {
+    if (input.provenance.chatId) {
+      const rows = await this.database
+        .select({ ownerId: schema.chats.ownerId })
+        .from(schema.chats)
+        .innerJoin(
+          schema.workers,
+          and(
+            eq(schema.workers.id, input.provenance.workerId),
+            eq(schema.workers.ownerId, schema.chats.ownerId),
+          ),
+        )
+        .where(eq(schema.chats.id, input.provenance.chatId))
+        .limit(1);
+      if (rows[0]) return rows[0].ownerId;
+    } else if (input.projectId) {
+      const rows = await this.database
+        .select({ ownerId: schema.projects.ownerId })
+        .from(schema.projects)
+        .innerJoin(
+          schema.workers,
+          and(
+            eq(schema.workers.id, input.provenance.workerId),
+            eq(schema.workers.ownerId, schema.projects.ownerId),
+          ),
+        )
+        .where(eq(schema.projects.id, input.projectId))
+        .limit(1);
+      if (rows[0]) return rows[0].ownerId;
+    }
+    throw new AgentInteractionConflictError(
+      "Interaction worker does not belong to the owning Chat or project.",
+    );
   }
 
   async recordAgentInteractionRequest(
     input: AgentInteractionRequestCreate,
   ): Promise<AgentInteractionRequest> {
-    const scopes = await this.database
-      .select({ ownerId: schema.projects.ownerId })
-      .from(schema.projects)
-      .innerJoin(
-        schema.workers,
-        and(
-          eq(schema.workers.id, input.provenance.workerId),
-          eq(schema.workers.ownerId, schema.projects.ownerId),
-        ),
-      )
-      .where(eq(schema.projects.id, input.projectId))
-      .limit(1);
-    if (!scopes[0]) {
-      throw new AgentInteractionConflictError(
-        "Interaction worker does not belong to the project owner.",
-      );
-    }
+    const ownerId = await this.resolveAgentInteractionOwner(input);
     if (input.provenance.chatId) {
       const chats = await this.database
-        .select({ id: schema.chats.id })
+        .select({ id: schema.chats.id, projectId: schema.chats.projectId })
         .from(schema.chats)
         .where(
           and(
             eq(schema.chats.id, input.provenance.chatId),
-            eq(schema.chats.projectId, input.projectId),
+            eq(schema.chats.ownerId, ownerId),
           ),
         )
         .limit(1);
-      if (!chats[0]) {
+      if (!chats[0] || chats[0].projectId !== input.projectId) {
         throw new AgentInteractionConflictError(
           "Interaction provenance does not match the project chat.",
         );
@@ -16607,7 +17636,7 @@ export class ServerRepository {
       .values({
         id: randomUUID(),
         requestKey: input.requestKey,
-        ownerId: scopes[0].ownerId,
+        ownerId,
         projectId: input.projectId,
         chatId: input.provenance.chatId,
         workerId: input.provenance.workerId,
@@ -16662,35 +17691,19 @@ export class ServerRepository {
   async recordEncryptedAgentInteractionRequest(
     input: EncryptedAgentInteractionRequestCreate,
   ): Promise<EncryptedAgentInteractionRequest> {
-    const scopes = await this.database
-      .select({ ownerId: schema.projects.ownerId })
-      .from(schema.projects)
-      .innerJoin(
-        schema.workers,
-        and(
-          eq(schema.workers.id, input.provenance.workerId),
-          eq(schema.workers.ownerId, schema.projects.ownerId),
-        ),
-      )
-      .where(eq(schema.projects.id, input.projectId))
-      .limit(1);
-    if (!scopes[0]) {
-      throw new AgentInteractionConflictError(
-        "Interaction worker does not belong to the project owner.",
-      );
-    }
+    const ownerId = await this.resolveAgentInteractionOwner(input);
     if (input.provenance.chatId) {
       const chats = await this.database
-        .select({ id: schema.chats.id })
+        .select({ id: schema.chats.id, projectId: schema.chats.projectId })
         .from(schema.chats)
         .where(
           and(
             eq(schema.chats.id, input.provenance.chatId),
-            eq(schema.chats.projectId, input.projectId),
+            eq(schema.chats.ownerId, ownerId),
           ),
         )
         .limit(1);
-      if (!chats[0]) {
+      if (!chats[0] || chats[0].projectId !== input.projectId) {
         throw new AgentInteractionConflictError(
           "Interaction provenance does not match the project chat.",
         );
@@ -16705,7 +17718,7 @@ export class ServerRepository {
       .values({
         id: randomUUID(),
         requestKey: input.requestKey,
-        ownerId: scopes[0].ownerId,
+        ownerId,
         projectId: input.projectId,
         chatId: input.provenance.chatId,
         workerId: input.provenance.workerId,
@@ -16768,7 +17781,7 @@ export class ServerRepository {
     query: AgentInteractionRequestQuery,
   ): Promise<AgentInteractionRequestWire[]> {
     await this.expireAgentInteractionRequests();
-    const conditions = [eq(schema.projects.ownerId, ownerId)];
+    const conditions = [eq(schema.agentInteractionRequests.ownerId, ownerId)];
     if (query.chatId) {
       conditions.push(eq(schema.agentInteractionRequests.chatId, query.chatId));
     }
@@ -16783,10 +17796,6 @@ export class ServerRepository {
     const rows = await this.database
       .select({ request: schema.agentInteractionRequests })
       .from(schema.agentInteractionRequests)
-      .innerJoin(
-        schema.projects,
-        eq(schema.projects.id, schema.agentInteractionRequests.projectId),
-      )
       .where(and(...conditions))
       .orderBy(desc(schema.agentInteractionRequests.createdAt))
       .limit(query.limit);
@@ -16801,14 +17810,12 @@ export class ServerRepository {
     const rows = await this.database
       .select({ request: schema.agentInteractionRequests })
       .from(schema.agentInteractionRequests)
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.agentInteractionRequests.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.agentInteractionRequests.id, requestId),
+          eq(schema.agentInteractionRequests.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.agentInteractionRequests.id, requestId))
       .limit(1);
     return rows[0] ? toAgentInteractionRequestWire(rows[0].request) : null;
   }
@@ -16821,14 +17828,12 @@ export class ServerRepository {
     const rows = await this.database
       .select({ request: schema.agentInteractionRequests })
       .from(schema.agentInteractionRequests)
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.agentInteractionRequests.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.agentInteractionRequests.requestKey, requestKey),
+          eq(schema.agentInteractionRequests.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.agentInteractionRequests.requestKey, requestKey))
       .limit(1);
     return rows[0] ? toAgentInteractionRequestWire(rows[0].request) : null;
   }
@@ -17077,14 +18082,13 @@ export class ServerRepository {
     const owned = await this.database
       .select({ id: schema.chats.id })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          isNull(schema.chats.archivedAt),
         ),
       )
-      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     if (!owned[0]) return null;
     return this.database.transaction(async (transaction) => {
@@ -17117,14 +18121,12 @@ export class ServerRepository {
         schema.chats,
         eq(schema.chats.id, schema.chatAttachments.chatId),
       )
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.chatAttachments.id, attachmentId),
+          eq(schema.chats.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.chatAttachments.id, attachmentId))
       .limit(1);
     return rows[0] ? toChatAttachment(rows[0].attachment) : null;
   }
@@ -17145,14 +18147,12 @@ export class ServerRepository {
           eq(schema.chats.id, chatId),
         ),
       )
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.chats.ownerId, ownerId),
+          inArray(schema.chatAttachments.id, attachmentIds),
         ),
-      )
-      .where(inArray(schema.chatAttachments.id, attachmentIds));
+      );
     const byId = new Map(
       rows.map(({ attachment }) => [
         attachment.id,
@@ -17183,15 +18183,9 @@ export class ServerRepository {
         schema.chats,
         eq(schema.chats.id, schema.chatAttachments.chatId),
       )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
       .where(
         and(
+          eq(schema.chats.ownerId, ownerId),
           eq(schema.chatAttachmentReplicas.attachmentId, attachmentId),
           eq(schema.chatAttachmentReplicas.status, "ready"),
         ),
@@ -17248,15 +18242,9 @@ export class ServerRepository {
           eq(schema.chats.experience, "agent"),
         ),
       )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
       .where(
         and(
+          eq(schema.chats.ownerId, ownerId),
           eq(schema.chatMessages.chatId, chatId),
           isNotNull(schema.chatMessages.protectedContent),
         ),
@@ -17280,15 +18268,9 @@ export class ServerRepository {
           isNull(schema.chats.archivedAt),
         ),
       )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
       .where(
         and(
+          eq(schema.chats.ownerId, ownerId),
           eq(schema.chatMessages.chatId, chatId),
           eq(schema.chatMessages.role, "user"),
           isNotNull(schema.chatMessages.protectedContent),
@@ -17308,16 +18290,10 @@ export class ServerRepository {
       const chats = await transaction
         .select({ id: schema.chats.id })
         .from(schema.chats)
-        .innerJoin(
-          schema.projects,
-          and(
-            eq(schema.projects.id, schema.chats.projectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
         .where(
           and(
             eq(schema.chats.id, chatId),
+            eq(schema.chats.ownerId, ownerId),
             eq(schema.chats.experience, "agent"),
             isNull(schema.chats.archivedAt),
           ),
@@ -17391,15 +18367,9 @@ export class ServerRepository {
           eq(schema.chats.experience, experience),
         ),
       )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
       .where(
         and(
+          eq(schema.chats.ownerId, ownerId),
           eq(schema.chatMessages.chatId, chatId),
           isNotNull(protectedColumn),
           cursorCondition,
@@ -17434,15 +18404,9 @@ export class ServerRepository {
           eq(schema.chats.experience, experience),
         ),
       )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
       .where(
         and(
+          eq(schema.chats.ownerId, ownerId),
           eq(schema.chatMessages.chatId, chatId),
           isNotNull(protectedColumn),
           inArray(schema.chatMessages.sequence, selectedSequences),
@@ -17565,14 +18529,12 @@ export class ServerRepository {
       })
       .from(schema.chatMessages)
       .innerJoin(schema.chats, eq(schema.chats.id, schema.chatMessages.chatId))
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.chatMessages.chatId, chatId),
+          eq(schema.chats.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.chatMessages.chatId, chatId))
       .orderBy(asc(schema.chatMessages.sequence));
     return rows.map((row) => ({
       ...row,
@@ -17612,14 +18574,12 @@ export class ServerRepository {
       .select({ prompt: schema.queuedPrompts })
       .from(schema.queuedPrompts)
       .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.queuedPrompts.chatId, chatId),
+          eq(schema.chats.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.queuedPrompts.chatId, chatId))
       .orderBy(
         asc(schema.queuedPrompts.position),
         asc(schema.queuedPrompts.createdAt),
@@ -17635,14 +18595,12 @@ export class ServerRepository {
       .select({ prompt: schema.queuedPrompts })
       .from(schema.queuedPrompts)
       .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.queuedPrompts.id, promptId),
+          eq(schema.chats.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.queuedPrompts.id, promptId))
       .limit(1);
     return rows[0] ? toEncryptedQueuedPrompt(rows[0].prompt) : null;
   }
@@ -17655,18 +18613,28 @@ export class ServerRepository {
   ): Promise<EncryptedQueuedPrompt | null> {
     const prompt = queuedPromptOpaqueContentSchema.parse(input);
     const chat = await this.database
-      .select({ experience: schema.chats.experience })
+      .select({
+        contextKind: schema.chats.contextKind,
+        experience: schema.chats.experience,
+      })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
+      .where(
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
-      .where(eq(schema.chats.id, chatId))
       .limit(1);
     if (!chat[0] || chat[0].experience !== "agent") return null;
+    if (
+      chat[0].contextKind === "standalone" &&
+      (prompt.classification.mode !== "default" ||
+        prompt.worktreeId !== null ||
+        prompt.customSubagentModel ||
+        prompt.subagentModelId !== null ||
+        prompt.subagentReasoningEffort !== null)
+    ) {
+      throw new ExecutionLaneConflictError(
+        "Standalone Chat queued prompts must use default mode without worktree or subagent settings.",
+      );
+    }
     const existing = await this.database
       .select()
       .from(schema.queuedPrompts)
@@ -17715,6 +18683,30 @@ export class ServerRepository {
   ): Promise<EncryptedQueuedPrompt | null> {
     const prompt = queuedPromptOpaqueContentSchema.parse(input);
     if (prompt.id !== promptId) return null;
+    const contexts = await this.database
+      .select({ contextKind: schema.chats.contextKind })
+      .from(schema.queuedPrompts)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+      .where(
+        and(
+          eq(schema.queuedPrompts.id, promptId),
+          eq(schema.chats.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    if (!contexts[0]) return null;
+    if (
+      contexts[0].contextKind === "standalone" &&
+      (prompt.classification.mode !== "default" ||
+        prompt.worktreeId !== null ||
+        prompt.customSubagentModel ||
+        prompt.subagentModelId !== null ||
+        prompt.subagentReasoningEffort !== null)
+    ) {
+      throw new ExecutionLaneConflictError(
+        "Standalone Chat queued prompts must use default mode without worktree or subagent settings.",
+      );
+    }
     const result = await this.database
       .update(schema.queuedPrompts)
       .set({
@@ -17736,14 +18728,12 @@ export class ServerRepository {
             this.database
               .select({ id: schema.chats.id })
               .from(schema.chats)
-              .innerJoin(
-                schema.projects,
+              .where(
                 and(
-                  eq(schema.projects.id, schema.chats.projectId),
-                  eq(schema.projects.ownerId, ownerId),
+                  eq(schema.chats.id, schema.queuedPrompts.chatId),
+                  eq(schema.chats.ownerId, ownerId),
                 ),
-              )
-              .where(eq(schema.chats.id, schema.queuedPrompts.chatId)),
+              ),
           ),
         ),
       )
@@ -17932,14 +18922,12 @@ export class ServerRepository {
       .select({ prompt: schema.queuedPrompts })
       .from(schema.queuedPrompts)
       .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.queuedPrompts.id, promptId),
+          eq(schema.chats.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.queuedPrompts.id, promptId))
       .limit(1);
     if (!owned[0]) return null;
     await this.database
@@ -17955,7 +18943,16 @@ export class ServerRepository {
     chatId: string,
     input: QueuedPromptOrder,
   ): Promise<boolean> {
-    const prompts = await this.listQueuedPrompts(ownerId, chatId);
+    const prompts = await this.database
+      .select({ id: schema.queuedPrompts.id })
+      .from(schema.queuedPrompts)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+      .where(
+        and(
+          eq(schema.queuedPrompts.chatId, chatId),
+          eq(schema.chats.ownerId, ownerId),
+        ),
+      );
     if (
       prompts.length !== input.ids.length ||
       prompts.some(({ id }) => !input.ids.includes(id))
@@ -17979,6 +18976,9 @@ export class ServerRepository {
     input: ChatMessageCreate,
     attribution?: ChatExecutionAttribution,
   ): Promise<ChatMessage | null> {
+    if (attribution?.contextKind === "standalone") {
+      throw new Error("Standalone Chat messages must use protected content.");
+    }
     const chat = await this.database
       .select({
         id: schema.chats.id,
@@ -18078,21 +19078,26 @@ export class ServerRepository {
     const message = chatMessageOpaqueContentSchema.parse(input);
     const chat = await this.database
       .select({
+        contextKind: schema.chats.contextKind,
         experience: schema.chats.experience,
         worktreeId: schema.chats.activeWorktreeId,
+        scratchRootId: schema.chats.activeScratchRootId,
       })
       .from(schema.chats)
-      .innerJoin(
-        schema.projects,
+      .where(
         and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.ownerId, ownerId),
+          isNull(schema.chats.archivedAt),
         ),
       )
-      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     if (!chat[0] || chat[0].experience !== "agent") return null;
-    const worktreeId = requiredProjectChatWorktreeId(chat[0].worktreeId);
+    const worktreeId = chat[0].worktreeId;
+    const scratchRootId = chat[0].scratchRootId;
+    if ((worktreeId === null) === (scratchRootId === null)) {
+      throw new Error("Chat has an invalid execution root.");
+    }
     const activeLanes = attribution
       ? await this.database
           .select({ id: schema.chatExecutionLanes.id })
@@ -18101,7 +19106,15 @@ export class ServerRepository {
             and(
               eq(schema.chatExecutionLanes.id, attribution.executionLaneId),
               eq(schema.chatExecutionLanes.chatId, chatId),
-              eq(schema.chatExecutionLanes.worktreeId, attribution.worktreeId),
+              attribution.contextKind === "standalone"
+                ? eq(
+                    schema.chatExecutionLanes.scratchRootId,
+                    attribution.scratchRootId,
+                  )
+                : eq(
+                    schema.chatExecutionLanes.worktreeId,
+                    attribution.worktreeId,
+                  ),
             ),
           )
           .limit(1)
@@ -18111,7 +19124,9 @@ export class ServerRepository {
           .where(
             and(
               eq(schema.chatExecutionLanes.chatId, chatId),
-              eq(schema.chatExecutionLanes.worktreeId, worktreeId),
+              worktreeId
+                ? eq(schema.chatExecutionLanes.worktreeId, worktreeId)
+                : eq(schema.chatExecutionLanes.scratchRootId, scratchRootId!),
               eq(schema.chatExecutionLanes.state, "active"),
             ),
           )
@@ -18150,6 +19165,9 @@ export class ServerRepository {
         id: message.id,
         chatId,
         worktreeId: attribution?.worktreeId ?? worktreeId,
+        scratchRootId: attribution
+          ? (attribution.scratchRootId ?? null)
+          : scratchRootId,
         executionLaneId: activeLanes[0]?.id ?? null,
         role: message.classification.role,
         mode: message.classification.mode,
@@ -18223,15 +19241,9 @@ export class ServerRepository {
           eq(schema.chats.experience, "agent"),
         ),
       )
-      .innerJoin(
-        schema.projects,
-        and(
-          eq(schema.projects.id, schema.chats.projectId),
-          eq(schema.projects.ownerId, ownerId),
-        ),
-      )
       .where(
         and(
+          eq(schema.chats.ownerId, ownerId),
           eq(schema.chatMessages.chatId, chatId),
           eq(schema.chatMessages.idempotencyKey, idempotencyKey),
         ),
@@ -18269,14 +19281,12 @@ export class ServerRepository {
             this.database
               .select({ id: schema.chats.id })
               .from(schema.chats)
-              .innerJoin(
-                schema.projects,
+              .where(
                 and(
-                  eq(schema.projects.id, schema.chats.projectId),
-                  eq(schema.projects.ownerId, ownerId),
+                  eq(schema.chats.id, schema.chatMessages.chatId),
+                  eq(schema.chats.ownerId, ownerId),
                 ),
-              )
-              .where(eq(schema.chats.id, schema.chatMessages.chatId)),
+              ),
           ),
         ),
       )
@@ -18290,6 +19300,9 @@ export class ServerRepository {
     input: TaskMessageOpaqueContent,
     attribution?: ChatExecutionAttribution,
   ): Promise<TaskMessageOpaqueSummary | null> {
+    if (attribution?.contextKind === "standalone") {
+      throw new Error("Standalone Chats do not support Task messages.");
+    }
     const message = taskMessageOpaqueContentSchema.parse(input);
     const chat = await this.database
       .select({

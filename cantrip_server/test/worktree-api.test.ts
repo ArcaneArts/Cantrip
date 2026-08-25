@@ -8,6 +8,8 @@ import {
   chatPauseStateSchema,
   chatSummarySchema,
   chatMessageListSchema,
+  chatMessageWireListSchema,
+  encryptedChatTurnCreateSchema,
   codeProtectedAttachmentIntentSchema,
   codeSessionListSchema,
   codeSessionSummarySchema,
@@ -61,6 +63,7 @@ import {
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
   queuedPromptSchema,
+  standaloneChatWireSummarySchema,
   terminalSummarySchema,
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
@@ -283,6 +286,9 @@ const gitRefsCommands: Array<
 > = [];
 const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
   [];
+const standaloneChatTurnCommands: Array<
+  Extract<WorkerCommand, { type: "chat.turn" }>
+> = [];
 const chatPauseCommands: Array<
   Extract<WorkerCommand, { type: "chat.pause.set" }> & {
     timeoutMs: number | null | undefined;
@@ -410,6 +416,53 @@ function status(branch = "main") {
       },
     ],
   };
+}
+
+function protectedStandaloneTurn(
+  modelId: string,
+  mode: "default" | "plan" = "default",
+) {
+  const idempotencyKey = `standalone-turn-${randomUUID()}`;
+  const protectedContent = {
+    formatVersion: 1 as const,
+    keyRevision: 1,
+    envelope: {
+      version: 1 as const,
+      algorithm: "AES-256-GCM" as const,
+      keyRevision: 1,
+      nonce: "AAAAAAAAAAAAAAAA",
+      ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+    },
+  };
+  const message = {
+    id: randomUUID(),
+    classification: {
+      role: "user" as const,
+      mode,
+      attachmentIds: [] as string[],
+    },
+    protectedContent,
+    reasoningEffort: null,
+    idempotencyKey,
+  };
+  return encryptedChatTurnCreateSchema.parse({
+    message,
+    modelId,
+    queuedPrompt: {
+      id: randomUUID(),
+      classification: { mode, attachmentIds: [] },
+      protectedContent,
+      modelId,
+      reasoningEffort: null,
+      customSubagentModel: false,
+      subagentModelId: null,
+      subagentReasoningEffort: null,
+      worktreeId: null,
+      frozen: false,
+      idempotencyKey,
+      pendingMessage: message,
+    },
+  });
 }
 
 const stashFixture = {
@@ -1707,6 +1760,38 @@ const workerBridge = {
         return { prepared: true, sessions: [] };
       case "code.agentTurnState":
         return { notifiedSessions: 0, refreshed: [], conflicts: [] };
+      case "chat.scratch.provision":
+        return {
+          status: "ready",
+          jobId: command.jobId,
+          attempt: command.attempt,
+          rootId: command.rootId,
+          chatId: command.chatId,
+          path: `ctrr_${"a".repeat(43)}`,
+          displayPath: `ctrr_${"b".repeat(43)}`,
+          reused: false,
+        };
+      case "chat.scratch.reconcile":
+        return {
+          retainedRootIds: command.roots.map(({ rootId }) => rootId),
+          missingRootIds: [],
+          orphanedRootIds: [],
+          dueRootIds: [],
+        };
+      case "chat.scratch.archive":
+        return {
+          rootId: command.rootId,
+          chatId: command.chatId,
+          archivedAt: command.archivedAt,
+          archiveExpiresAt: command.archiveExpiresAt,
+        };
+      case "chat.scratch.restore":
+        return {
+          rootId: command.rootId,
+          chatId: command.chatId,
+          archivedAt: null,
+          archiveExpiresAt: null,
+        };
       case "chat.plan.set":
         return {
           mode: command.mode,
@@ -1741,10 +1826,47 @@ const workerBridge = {
           reasoningEffort: command.message.reasoningEffort ?? null,
           idempotencyKey: command.message.idempotencyKey,
         };
+      case "chat.messages.reprotect":
+        return command.messages.map(({ source, id, idempotencyKey }) => ({
+          id,
+          classification: {
+            role: source.role,
+            mode: source.mode,
+            attachmentIds: source.attachmentIds,
+          },
+          protectedContent: source.protectedContent,
+          reasoningEffort: source.reasoningEffort,
+          idempotencyKey,
+        }));
       case "chat.goal.get":
         return { goal: activeChatGoal };
       case "chat.turn":
         chatTurnCommands.push(command);
+        if (command.executionProfile === "standalone-chat") {
+          standaloneChatTurnCommands.push(command);
+          if (command.resultMode.kind !== "chat-message-encrypted") {
+            throw new Error(
+              "Standalone Chat did not request an encrypted result.",
+            );
+          }
+          return {
+            threadId: `thread-${command.scratchRootId}`,
+            text: "",
+            status: "completed",
+            structuredResult: {
+              message: {
+                ...command.protectedPrompt,
+                id: command.resultMode.messageId,
+                classification: {
+                  role: "assistant",
+                  mode: "default",
+                  attachmentIds: [],
+                },
+                idempotencyKey: command.resultMode.idempotencyKey,
+              },
+            },
+          };
+        }
         if (
           command.prompt.startsWith("Continue working toward the active goal")
         ) {
@@ -1863,6 +1985,26 @@ beforeAll(async () => {
       publicKey: "a".repeat(43),
       fingerprint: "b".repeat(64),
     },
+    standaloneChat: {
+      protocolVersion: 1,
+      scratch: {
+        provision: true,
+        resolve: true,
+        archive: true,
+        restore: true,
+        remove: true,
+        reconcile: true,
+        routingHandles: true,
+      },
+      files: {
+        list: false,
+        read: false,
+        write: false,
+        remove: false,
+        download: false,
+        archive: false,
+      },
+    },
     startedAt: new Date().toISOString(),
   });
   expect(recordedWorker.code.available).toBe(true);
@@ -1904,6 +2046,200 @@ afterAll(async () => {
 });
 
 describe.sequential("server worktree control plane", () => {
+  it("runs standalone Chats through a scratch-root-only runtime profile", async () => {
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/chats",
+      payload: protectedChatFields(),
+    });
+    expect(create.statusCode, create.body).toBe(202);
+    const chat = standaloneChatWireSummarySchema.parse(create.json());
+
+    await expect
+      .poll(async () => {
+        const context = await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chat.id,
+        );
+        return context?.contextKind === "standalone" ? context : null;
+      })
+      .toMatchObject({ contextKind: "standalone", status: "idle" });
+    const context = await database.repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chat.id,
+    );
+    expect(context?.contextKind).toBe("standalone");
+    if (context?.contextKind !== "standalone" || !context.modelId) {
+      throw new Error("Standalone Chat execution context was not ready.");
+    }
+
+    const before = standaloneChatTurnCommands.length;
+    const allTurnsBefore = chatTurnCommands.length;
+    const started = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/turns`,
+      payload: protectedStandaloneTurn(context.modelId),
+    });
+    expect(started.statusCode, started.body).toBe(202);
+    expect(started.json()).toMatchObject({ status: "started" });
+    await expect
+      .poll(() => chatTurnCommands.length, { timeout: 4_000 })
+      .toBe(allTurnsBefore + 1);
+    expect(
+      chatTurnCommands.at(-1),
+      JSON.stringify(chatTurnCommands.at(-1)),
+    ).toMatchObject({ executionProfile: "standalone-chat" });
+    expect(standaloneChatTurnCommands.length).toBe(before + 1);
+    await expect
+      .poll(async () => {
+        const current = await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          chat.id,
+        );
+        return current?.status;
+      })
+      .toBe("idle");
+
+    const command = standaloneChatTurnCommands.at(-1)!;
+    expect(command).toMatchObject({
+      executionProfile: "standalone-chat",
+      contextKind: "standalone",
+      chatId: chat.id,
+      cwd: `ctrr_${"a".repeat(43)}`,
+      worktreeId: null,
+      scratchRootId: context.scratchRootId,
+      rootKind: null,
+      isPrimary: true,
+      worktreeMode: null,
+      worktreePolicy: null,
+      policyProjectId: null,
+      policies: { policies: [] },
+      mcpServers: [],
+      skillNames: [],
+      subagentDefaults: null,
+      planMode: "default",
+      automationPaused: false,
+    });
+    expect(command).not.toHaveProperty("subagentProtocolVersion");
+
+    const messages = chatMessageWireListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/chats/${chat.id}/messages`,
+        })
+      ).json(),
+    ).messages;
+    expect(messages).toHaveLength(2);
+    expect(
+      messages.every(
+        (message) =>
+          message.contextKind === "standalone" &&
+          message.worktreeId === null &&
+          message.scratchRootId === context.scratchRootId,
+      ),
+    ).toBe(true);
+
+    await database.repository.setChatPermissionProfile(
+      LOCAL_USER_ID,
+      chat.id,
+      ":read-only",
+    );
+    const forkFields = protectedChatFields();
+    const forkResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/fork`,
+      payload: forkFields,
+    });
+    expect(forkResponse.statusCode, forkResponse.body).toBe(202);
+    const fork = standaloneChatWireSummarySchema.parse(forkResponse.json());
+    expect(fork).toMatchObject({
+      contextKind: "standalone",
+      modelId: context.modelId,
+      reasoningEffort: context.reasoningEffort,
+      permissionProfileId: ":read-only",
+    });
+    expect(fork.activeScratchRootId).not.toBe(chat.activeScratchRootId);
+    await expect
+      .poll(async () => {
+        const forkContext = await database.repository.getChatExecutionContext(
+          LOCAL_USER_ID,
+          fork.id,
+        );
+        return forkContext?.status;
+      })
+      .toBe("idle");
+    const forkMessages = chatMessageWireListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/chats/${fork.id}/messages`,
+        })
+      ).json(),
+    ).messages;
+    expect(forkMessages).toHaveLength(messages.length);
+    expect(
+      forkMessages.every(
+        (message) =>
+          message.contextKind === "standalone" &&
+          message.scratchRootId === fork.activeScratchRootId,
+      ),
+    ).toBe(true);
+
+    connected = false;
+    try {
+      const offlineSend = await app.inject({
+        method: "POST",
+        url: `/api/chats/${chat.id}/turns`,
+        payload: protectedStandaloneTurn(context.modelId),
+      });
+      expect(offlineSend.statusCode, offlineSend.body).toBe(503);
+      expect(offlineSend.json()).toMatchObject({
+        code: "standalone-worker-offline",
+      });
+    } finally {
+      connected = true;
+    }
+
+    const forbiddenMode = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/turns`,
+      payload: protectedStandaloneTurn(context.modelId, "plan"),
+    });
+    expect(forbiddenMode.statusCode, forbiddenMode.body).toBe(400);
+    expect(forbiddenMode.json().error).toContain("default-mode");
+
+    const forbiddenGoal = await app.inject({
+      method: "GET",
+      url: `/api/chats/${chat.id}/goal`,
+    });
+    expect(forbiddenGoal.statusCode, forbiddenGoal.body).toBe(409);
+
+    const archive = await app.inject({
+      method: "DELETE",
+      url: `/api/chats/${chat.id}`,
+    });
+    expect(archive.statusCode, archive.body).toBe(204);
+    const archived = await app.inject({
+      method: "GET",
+      url: "/api/chats/archived?context=standalone",
+    });
+    expect(archived.statusCode, archived.body).toBe(200);
+    expect(archived.json()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: chat.id })]),
+    );
+
+    const restored = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/restore`,
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    expect(restored.json()).toMatchObject({
+      id: chat.id,
+      contextKind: "standalone",
+    });
+  });
+
   it("relays protected repository operations without inspecting content", async () => {
     const protectedRequest = {
       formatVersion: 1 as const,

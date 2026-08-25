@@ -2911,6 +2911,10 @@ export const standaloneChatRoots = pgTable(
   },
   (table) => [
     uniqueIndex("standalone_chat_roots_chat_unique").on(table.chatId),
+    uniqueIndex("standalone_chat_roots_id_chat_unique").on(
+      table.id,
+      table.chatId,
+    ),
     uniqueIndex("standalone_chat_roots_identity_unique").on(
       table.id,
       table.chatId,
@@ -3712,9 +3716,10 @@ export const chatMessages = pgTable(
     chatId: text("chat_id")
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
-    worktreeId: text("worktree_id")
-      .notNull()
-      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
+      onDelete: "restrict",
+    }),
+    scratchRootId: text("scratch_root_id"),
     executionLaneId: text("execution_lane_id").references(
       () => chatExecutionLanes.id,
       { onDelete: "set null" },
@@ -3764,6 +3769,15 @@ export const chatMessages = pgTable(
       table.chatId,
       table.sequence.desc(),
     ),
+    check(
+      "chat_messages_execution_root_check",
+      sql`num_nonnulls(${table.worktreeId}, ${table.scratchRootId}) = 1`,
+    ),
+    foreignKey({
+      columns: [table.scratchRootId, table.chatId],
+      foreignColumns: [standaloneChatRoots.id, standaloneChatRoots.chatId],
+      name: "chat_messages_scratch_identity_fk",
+    }).onDelete("restrict"),
     check(
       "chat_messages_content_shape_check",
       sql`(CASE WHEN ${table.content} IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN ${table.protectedContent} IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN ${table.taskProtectedContent} IS NOT NULL THEN 1 ELSE 0 END) = 1`,
