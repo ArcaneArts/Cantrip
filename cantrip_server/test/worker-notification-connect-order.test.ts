@@ -6,6 +6,7 @@ import {
   decodeWorkerConnectionEnvelope,
   unprobedCodexRuntimeReport,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
   WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
   WORKER_WEBSOCKET_SUBPROTOCOLS,
   workerListSchema,
@@ -138,7 +139,7 @@ describe("worker notification connection order", () => {
       ownerId: LOCAL_USER_ID,
       workerProcessGeneration,
     });
-    expect(attachedProtocol).toBe(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL);
+    expect(attachedProtocol).toBe(WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL);
     const worker = await database.repository.getWorker(
       LOCAL_USER_ID,
       "notification-order-worker",
@@ -196,6 +197,58 @@ describe("worker notification connection order", () => {
       expect(lifecycle).toEqual(["attach"]);
     } finally {
       connectionLifecycle = null;
+      socket.terminate();
+    }
+  });
+
+  it("keeps auth-ready-v1 envelopes byte-compatible for older workers", async () => {
+    const workerProcessGeneration = "33333333-3333-4333-8333-333333333333";
+    const envelopes: Array<{
+      protocolVersion: number;
+      serverControlPlaneGeneration?: string;
+      state: string;
+    }> = [];
+    attachedProtocol = undefined;
+    const socket = await app.injectWS(
+      `/api/internal/workers/connect?workerId=notification-order-worker&connectionGeneration=${workerProcessGeneration}`,
+      {
+        headers: {
+          authorization: "Bearer test-worker-token",
+          "sec-websocket-protocol": WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+        },
+      },
+      {
+        onInit(client) {
+          client.on("message", (data) => {
+            const envelope = decodeWorkerConnectionEnvelope(data.toString());
+            if (envelope.success) envelopes.push(envelope.data);
+          });
+        },
+      },
+    );
+
+    try {
+      await expect
+        .poll(() => attachedProtocol)
+        .toBe(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL);
+      await expect
+        .poll(() => envelopes.map(({ state }) => state))
+        .toEqual(["pending", "ready"]);
+      expect(envelopes).toEqual([
+        {
+          connectionGeneration: workerProcessGeneration,
+          kind: "connection",
+          protocolVersion: 1,
+          state: "pending",
+        },
+        {
+          connectionGeneration: workerProcessGeneration,
+          kind: "connection",
+          protocolVersion: 1,
+          state: "ready",
+        },
+      ]);
+    } finally {
       socket.terminate();
     }
   });

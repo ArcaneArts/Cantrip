@@ -11,7 +11,9 @@ import type { WorkerCommandBus } from "../src/workers/bridge.js";
 const ownerId = "owner-1";
 const authSessionId = "auth-session-1";
 const serverId = "server-1";
+const serverControlPlaneGeneration = "88888888-8888-4888-8888-888888888888";
 const workerId = "worker-1";
+const workerProcessGeneration = "99999999-9999-4999-8999-999999999999";
 const transportId = "11111111-1111-4111-8111-111111111111";
 
 function protectedRecord(id: string, keyRevision = 7) {
@@ -88,6 +90,12 @@ function workerCommandResult(command: WorkerCommand): unknown {
       };
     case "code.transport.route.authorize":
       return {
+        ownerId: command.ownerId,
+        authSessionId: command.authSessionId,
+        serverId: command.serverId,
+        serverControlPlaneGeneration: command.serverControlPlaneGeneration,
+        protectedKeyRevision: command.protectedKeyRevision,
+        workerProcessGeneration: command.workerProcessGeneration,
         attachmentId: command.attachmentId,
         authorized: true,
         expiresAt: command.expiresAt,
@@ -97,12 +105,27 @@ function workerCommandResult(command: WorkerCommand): unknown {
       };
     case "code.transport.route.revoke":
       return {
+        ownerId: command.ownerId,
+        authSessionId: command.authSessionId,
+        serverId: command.serverId,
+        serverControlPlaneGeneration: command.serverControlPlaneGeneration,
+        protectedKeyRevision: command.protectedKeyRevision,
+        workerProcessGeneration: command.workerProcessGeneration,
         attachmentId: command.attachmentId,
         revoked: true,
         transportId: command.transportId,
       };
     case "code.transport.revoke":
-      return { revoked: true, transportId: command.transportId };
+      return {
+        ownerId: command.ownerId,
+        authSessionId: command.authSessionId,
+        serverId: command.serverId,
+        serverControlPlaneGeneration: command.serverControlPlaneGeneration,
+        protectedKeyRevision: command.protectedKeyRevision,
+        workerProcessGeneration: command.workerProcessGeneration,
+        revoked: true,
+        transportId: command.transportId,
+      };
     default:
       return {};
   }
@@ -164,6 +187,10 @@ function harness(
     addTransportGrantRevision(keyRevision: number) {
       transportGrantRevisions.add(keyRevision);
     },
+    setTransportGrantRevision(keyRevision: number) {
+      transportGrantRevisions.clear();
+      transportGrantRevisions.add(keyRevision);
+    },
   };
 }
 
@@ -188,6 +215,7 @@ function sharedInput(
     protectedKeyRevision: 7,
     runtime: runtime(sessionId, incarnationId),
     serverId,
+    serverControlPlaneGeneration,
     sessionId,
     stopSessionOnRelease: true,
     transport: {
@@ -196,6 +224,7 @@ function sharedInput(
       protectedRecord: protectedRecord(transportId),
     },
     workerId,
+    workerProcessGeneration,
     worktreeId: `worktree-${index}`,
     worktreePath: `/workspace/project-${index}`,
     ...overrides,
@@ -358,6 +387,163 @@ describe("shared Cantrip Code transport ownership", () => {
           rootIdentity({ authSessionId: "auth-session-2" }),
         ).lease,
       ).toBeNull();
+    } finally {
+      await context.broker.close();
+    }
+  });
+
+  it("replaces a prior worker-process generation before exposing the new root", async () => {
+    const context = harness();
+    const secondTransportId = "55555555-5555-4555-8555-555555555555";
+    const secondGeneration = "66666666-6666-4666-8666-666666666666";
+    let activeGeneration = workerProcessGeneration;
+    context.request.mockImplementation(async (_workerId, command) => {
+      if (
+        command.type.startsWith("code.transport.") &&
+        command.workerProcessGeneration !== activeGeneration
+      ) {
+        throw new Error("stale worker process generation");
+      }
+      return workerCommandResult(command);
+    });
+    try {
+      const first = await context.broker.createSharedSessionAttachment(
+        sharedInput(1),
+      );
+      const replacementCallIndex = context.request.mock.calls.length;
+      activeGeneration = secondGeneration;
+      const second = await context.broker.createSharedSessionAttachment(
+        sharedInput(2, {
+          transport: {
+            formatVersion: 2,
+            transportId: secondTransportId,
+            protectedRecord: protectedRecord(secondTransportId),
+          },
+          workerProcessGeneration: secondGeneration,
+        }),
+      );
+
+      expect(second.transport.transportId).toBe(secondTransportId);
+      expect(context.registerManagedTunnel).toHaveBeenCalledTimes(2);
+      expect(context.removeManagedTunnel).toHaveBeenCalledWith(
+        ownerId,
+        expect.objectContaining({ id: first.transport.transportId }),
+      );
+      expect(
+        context.request.mock.calls
+          .slice(replacementCallIndex)
+          .some(
+            ([, command]) =>
+              command.type.startsWith("code.transport.") &&
+              command.workerProcessGeneration === workerProcessGeneration,
+          ),
+      ).toBe(false);
+      expect(context.broker.sharedTransportStats()).toEqual({
+        sessionAttachments: 1,
+        transports: 1,
+      });
+    } finally {
+      await context.broker.close();
+    }
+  });
+
+  it("finishes an old-generation retirement before retrying a replacement root", async () => {
+    const context = harness();
+    const replacementTransportId = "55555555-5555-4555-8555-555555555555";
+    const replacementGeneration = "66666666-6666-4666-8666-666666666666";
+    context.cleanup.mockRejectedValueOnce(
+      new Error("relay cleanup temporarily unavailable"),
+    );
+    try {
+      await context.broker.createSharedSessionAttachment(sharedInput(1));
+      const replacementInput = sharedInput(2, {
+        transport: {
+          formatVersion: 2,
+          transportId: replacementTransportId,
+          protectedRecord: protectedRecord(replacementTransportId),
+        },
+        workerProcessGeneration: replacementGeneration,
+      });
+
+      await expect(
+        context.broker.createSharedSessionAttachment(replacementInput),
+      ).rejects.toThrow("Could not clean up every shared Cantrip Code");
+      expect(context.registerManagedTunnel).toHaveBeenCalledOnce();
+      expect(context.broker.sharedTransportStats()).toEqual({
+        sessionAttachments: 0,
+        transports: 0,
+      });
+
+      const retryCallIndex = context.request.mock.calls.length;
+      const replacement =
+        await context.broker.createSharedSessionAttachment(replacementInput);
+
+      expect(replacement.transport.transportId).toBe(replacementTransportId);
+      expect(context.registerManagedTunnel).toHaveBeenCalledTimes(2);
+      expect(
+        context.request.mock.calls
+          .slice(retryCallIndex)
+          .some(
+            ([, command]) =>
+              command.type.startsWith("code.transport.") &&
+              command.workerProcessGeneration === workerProcessGeneration,
+          ),
+      ).toBe(false);
+    } finally {
+      await context.broker.close();
+    }
+  });
+
+  it("replaces a key-revision root without sending stale lifecycle commands", async () => {
+    const context = harness();
+    const secondTransportId = "55555555-5555-4555-8555-555555555555";
+    let activeRevision = 7;
+    context.request.mockImplementation(async (_workerId, command) => {
+      if (
+        command.type.startsWith("code.transport.") &&
+        command.protectedKeyRevision !== activeRevision
+      ) {
+        throw new Error("stale protected key revision");
+      }
+      return workerCommandResult(command);
+    });
+    try {
+      const first = await context.broker.createSharedSessionAttachment(
+        sharedInput(1),
+      );
+      const replacementCallIndex = context.request.mock.calls.length;
+      activeRevision = 8;
+      context.setTransportGrantRevision(8);
+
+      const second = await context.broker.createSharedSessionAttachment(
+        sharedInput(2, {
+          protectedKeyRevision: 8,
+          transport: {
+            formatVersion: 2,
+            transportId: secondTransportId,
+            protectedRecord: protectedRecord(secondTransportId, 8),
+          },
+        }),
+      );
+
+      expect(second.transport.transportId).toBe(secondTransportId);
+      expect(context.removeManagedTunnel).toHaveBeenCalledWith(
+        ownerId,
+        expect.objectContaining({ id: first.transport.transportId }),
+      );
+      expect(
+        context.request.mock.calls
+          .slice(replacementCallIndex)
+          .some(
+            ([, command]) =>
+              command.type.startsWith("code.transport.") &&
+              command.protectedKeyRevision === 7,
+          ),
+      ).toBe(false);
+      expect(context.broker.sharedTransportStats()).toEqual({
+        sessionAttachments: 1,
+        transports: 1,
+      });
     } finally {
       await context.broker.close();
     }
@@ -1738,7 +1924,7 @@ describe("shared Cantrip Code transport ownership", () => {
     }
   });
 
-  it("fences an incomplete retirement past its TTL and fails shutdown closed", async () => {
+  it("retries an incomplete retirement past its TTL and fails shutdown closed", async () => {
     let now = 1_000;
     const context = harness({
       idleTtlMs: 100,
@@ -1763,11 +1949,11 @@ describe("shared Cantrip Code transport ownership", () => {
       now = 1_101;
       await expect(
         context.broker.createSharedSessionAttachment(sharedInput(2)),
-      ).rejects.toThrow("already retired");
+      ).rejects.toThrow("Could not clean up every shared Cantrip Code");
       await expect(context.broker.close()).rejects.toThrow(
         "Could not revoke every protected Cantrip Code attachment during shutdown",
       );
-      expect(context.cleanup).toHaveBeenCalledTimes(2);
+      expect(context.cleanup).toHaveBeenCalledTimes(3);
     } finally {
       await context.broker.close().catch(() => undefined);
     }
@@ -1790,6 +1976,45 @@ describe("shared Cantrip Code transport ownership", () => {
       expect(context.removeManagedTunnel).toHaveBeenCalledOnce();
     } finally {
       await context.broker.close();
+    }
+  });
+
+  it("treats a pending worker retirement as complete after terminal offline", async () => {
+    const context = harness();
+    let closed = false;
+    context.request.mockImplementation(async (_workerId, command) => {
+      if (command.type === "code.transport.revoke") {
+        throw new Error("worker transport cleanup unavailable");
+      }
+      return workerCommandResult(command);
+    });
+    try {
+      const attached = await context.broker.createSharedSessionAttachment(
+        sharedInput(1),
+      );
+      await expect(
+        context.broker.revokeSharedSessionAttachment({
+          attachmentId: attached.session.attachmentId,
+          authSessionId,
+          ownerId,
+        }),
+      ).rejects.toThrow("Could not clean up every shared Cantrip Code");
+      expect(context.offlineListeners.has(workerId)).toBe(true);
+
+      context.offlineListeners.get(workerId)?.();
+
+      await vi.waitFor(() =>
+        expect(context.offlineListeners.has(workerId)).toBe(false),
+      );
+      await expect(context.broker.close()).resolves.toBeUndefined();
+      closed = true;
+      expect(
+        context.request.mock.calls.filter(
+          ([, command]) => command.type === "code.transport.revoke",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      if (!closed) await context.broker.close().catch(() => undefined);
     }
   });
 });

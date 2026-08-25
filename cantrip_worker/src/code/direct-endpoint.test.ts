@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import {
   CodeDirectEndpointManager,
@@ -225,6 +226,644 @@ describe("CodeDirectEndpointManager file-open control", () => {
         "POST, OPTIONS",
       );
       expect(openFile).not.toHaveBeenCalled();
+    } finally {
+      manager.close();
+    }
+  });
+});
+
+describe("CodeDirectEndpointManager shared transport routes", () => {
+  const workerProcessGeneration = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const serverControlPlaneGeneration = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const security = {
+    ownerId: "owner-1",
+    serverId: "server-1",
+    protectedKeyRevision: 7,
+  };
+  const lifecycle = {
+    ...security,
+    authSessionId: "auth-session-1",
+    serverControlPlaneGeneration,
+    workerProcessGeneration,
+  };
+
+  function routeCommand(
+    transportId: string,
+    attachmentId: string,
+    sessionId: string,
+    sessionIncarnationId: string,
+    routeGrant = randomBytes(32).toString("base64url"),
+    expiresAt = new Date(Date.now() + 60_000).toISOString(),
+  ) {
+    return {
+      type: "code.transport.route.authorize" as const,
+      ...lifecycle,
+      transportId,
+      attachmentId,
+      sessionId,
+      expectedSessionIncarnationId: sessionIncarnationId,
+      routeGrant,
+      expiresAt,
+    };
+  }
+
+  it("routes four sessions through one listener and revokes only the selected tab", async () => {
+    const runtimes = new Map<string, string>();
+    const openFile = vi.fn(
+      async (_sessionId: string, relativePath: string) => ({ relativePath }),
+    );
+    const supervisor = {
+      openFile,
+      status: vi.fn((sessionId: string) => ({
+        status: "running",
+        sessionIncarnationId: runtimes.get(sessionId),
+      })),
+    } as unknown as CodeSupervisor;
+    const manager = new CodeDirectEndpointManager(supervisor, {
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    });
+    const transportId = randomUUID();
+    const routes = Array.from({ length: 4 }, () => {
+      const sessionId = randomUUID();
+      const sessionIncarnationId = randomUUID();
+      runtimes.set(sessionId, sessionIncarnationId);
+      return routeCommand(
+        transportId,
+        randomUUID(),
+        sessionId,
+        sessionIncarnationId,
+      );
+    });
+    try {
+      for (const route of routes) {
+        await manager.authorizeSharedRoute(route, security);
+      }
+      const addresses = await Promise.all(
+        routes.map(() => manager.prepareSharedProtected(transportId, security)),
+      );
+      expect(new Set(addresses.map(({ port }) => port)).size).toBe(1);
+      const address = addresses[0]!;
+      for (const route of routes) {
+        const base = `http://${address.host}:${address.port}/sessions/${route.routeGrant}/code`;
+        await expect(fetch(`${base}/_cantrip/health`)).resolves.toMatchObject({
+          status: 200,
+        });
+        const opened = await fetch(`${base}/_cantrip/open-file`, {
+          body: JSON.stringify({ relativePath: "src/index.ts" }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+        expect(opened.status).toBe(200);
+        await expect(opened.json()).resolves.toEqual({
+          relativePath: "src/index.ts",
+        });
+        expect(openFile).toHaveBeenLastCalledWith(
+          route.sessionId,
+          "src/index.ts",
+        );
+      }
+      await manager.revokeSharedRoute(
+        {
+          type: "code.transport.route.revoke",
+          ...lifecycle,
+          transportId,
+          attachmentId: routes[0]!.attachmentId,
+        },
+        security,
+      );
+      const revoked = await fetch(
+        `http://${address.host}:${address.port}/sessions/${routes[0]!.routeGrant}/code/_cantrip/health`,
+      );
+      expect(revoked.status).toBe(404);
+      for (const route of routes.slice(1)) {
+        const sibling = await fetch(
+          `http://${address.host}:${address.port}/sessions/${route.routeGrant}/code/_cantrip/health`,
+        );
+        expect(sibling.status).toBe(200);
+      }
+      await manager.revokeSharedTransport(
+        {
+          type: "code.transport.revoke",
+          ...lifecycle,
+          transportId,
+        },
+        security,
+      );
+      await expect(
+        fetch(
+          `http://${address.host}:${address.port}/sessions/${routes[1]!.routeGrant}/code/_cantrip/health`,
+        ),
+      ).rejects.toThrow();
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("fails closed across identity, expiry, incarnation, and revoke-before-authorize races", async () => {
+    let now = Date.now();
+    const sessionId = randomUUID();
+    const sessionIncarnationId = randomUUID();
+    let currentIncarnation = sessionIncarnationId;
+    const manager = new CodeDirectEndpointManager(
+      {
+        status: vi.fn(() => ({
+          status: "running",
+          sessionIncarnationId: currentIncarnation,
+        })),
+      } as unknown as CodeSupervisor,
+      {
+        now: () => now,
+        serverControlPlaneGeneration,
+        workerProcessGeneration,
+      },
+    );
+    const transportId = randomUUID();
+    const attachmentId = randomUUID();
+    const command = routeCommand(
+      transportId,
+      attachmentId,
+      sessionId,
+      sessionIncarnationId,
+      randomBytes(32).toString("base64url"),
+      new Date(now + 60_000).toISOString(),
+    );
+    try {
+      await expect(
+        manager.authorizeSharedRoute(
+          { ...command, serverId: "other-server" },
+          security,
+        ),
+      ).rejects.toThrow(/security identity/u);
+      await expect(
+        manager.authorizeSharedRoute(
+          { ...command, workerProcessGeneration: randomUUID() },
+          security,
+        ),
+      ).rejects.toThrow(/security identity/u);
+      await expect(
+        manager.authorizeSharedRoute(
+          { ...command, expiresAt: new Date(now - 1).toISOString() },
+          security,
+        ),
+      ).rejects.toThrow(/expired/u);
+      await expect(
+        manager.authorizeSharedRoute(
+          {
+            ...command,
+            expiresAt: new Date(now + 13 * 60 * 60_000 + 1).toISOString(),
+          },
+          security,
+        ),
+      ).rejects.toThrow(/maximum lease/u);
+
+      await manager.revokeSharedRoute(
+        {
+          type: "code.transport.route.revoke",
+          ...lifecycle,
+          transportId,
+          attachmentId,
+        },
+        security,
+      );
+      await expect(
+        manager.authorizeSharedRoute(command, security),
+      ).rejects.toThrow(/already been revoked/u);
+
+      const active = routeCommand(
+        transportId,
+        randomUUID(),
+        sessionId,
+        sessionIncarnationId,
+      );
+      await manager.authorizeSharedRoute(active, security);
+      const address = await manager.prepareSharedProtected(
+        transportId,
+        security,
+      );
+      currentIncarnation = randomUUID();
+      const stale = await fetch(
+        `http://${address.host}:${address.port}/sessions/${active.routeGrant}/code/_cantrip/health`,
+      );
+      expect(stale.status).toBe(404);
+      await expect(
+        manager.authorizeSharedRoute(active, security),
+      ).rejects.toThrow(/already been revoked/u);
+
+      const expiring = routeCommand(
+        transportId,
+        randomUUID(),
+        sessionId,
+        currentIncarnation,
+        randomBytes(32).toString("base64url"),
+        new Date(now + 10).toISOString(),
+      );
+      await manager.authorizeSharedRoute(expiring, security);
+      now += 11;
+      const expired = await fetch(
+        `http://${address.host}:${address.port}/sessions/${expiring.routeGrant}/code/_cantrip/health`,
+      );
+      expect(expired.status).toBe(404);
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("ignores a stale expiry timer after a route lease is renewed", async () => {
+    vi.useFakeTimers();
+    let now = 1_000;
+    const runtimes = new Map<string, string>();
+    const supervisor = {
+      status: vi.fn((sessionId: string) => ({
+        status: "running",
+        sessionIncarnationId: runtimes.get(sessionId),
+      })),
+    } as unknown as CodeSupervisor;
+    const manager = new CodeDirectEndpointManager(supervisor, {
+      now: () => now,
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    });
+    const transportId = randomUUID();
+    const renewedSessionId = randomUUID();
+    const renewedIncarnationId = randomUUID();
+    const siblingSessionId = randomUUID();
+    const siblingIncarnationId = randomUUID();
+    runtimes.set(renewedSessionId, renewedIncarnationId);
+    runtimes.set(siblingSessionId, siblingIncarnationId);
+    const renewed = routeCommand(
+      transportId,
+      randomUUID(),
+      renewedSessionId,
+      renewedIncarnationId,
+      randomBytes(32).toString("base64url"),
+      new Date(now + 100).toISOString(),
+    );
+    const sibling = routeCommand(
+      transportId,
+      randomUUID(),
+      siblingSessionId,
+      siblingIncarnationId,
+      randomBytes(32).toString("base64url"),
+      new Date(now + 1_000).toISOString(),
+    );
+    try {
+      await manager.authorizeSharedRoute(renewed, security);
+      await manager.authorizeSharedRoute(sibling, security);
+
+      now = 1_050;
+      await vi.advanceTimersByTimeAsync(50);
+      await manager.authorizeSharedRoute(
+        { ...renewed, expiresAt: new Date(1_300).toISOString() },
+        security,
+      );
+
+      now = 1_101;
+      await vi.advanceTimersByTimeAsync(51);
+      await expect(
+        manager.authorizeSharedRoute(
+          { ...renewed, expiresAt: new Date(1_300).toISOString() },
+          security,
+        ),
+      ).resolves.toMatchObject({ authorized: true });
+
+      now = 1_301;
+      await vi.advanceTimersByTimeAsync(200);
+      await expect(
+        manager.authorizeSharedRoute(
+          { ...renewed, expiresAt: new Date(1_400).toISOString() },
+          security,
+        ),
+      ).rejects.toThrow(/already been revoked/u);
+      await expect(
+        manager.authorizeSharedRoute(sibling, security),
+      ).resolves.toMatchObject({ authorized: true });
+    } finally {
+      manager.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("retires shared transports across a terminal control disconnect", async () => {
+    const runtimes = new Map<string, string>();
+    const supervisor = {
+      status: vi.fn((sessionId: string) => ({
+        status: "running",
+        sessionIncarnationId: runtimes.get(sessionId),
+      })),
+    } as unknown as CodeSupervisor;
+    const manager = new CodeDirectEndpointManager(supervisor, {
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    });
+    const oldTransportId = randomUUID();
+    const oldSessionId = randomUUID();
+    const oldIncarnationId = randomUUID();
+    runtimes.set(oldSessionId, oldIncarnationId);
+    const oldRoute = routeCommand(
+      oldTransportId,
+      randomUUID(),
+      oldSessionId,
+      oldIncarnationId,
+    );
+    try {
+      await manager.authorizeSharedRoute(oldRoute, security);
+      const oldAddress = await manager.prepareSharedProtected(
+        oldTransportId,
+        security,
+      );
+
+      manager.disconnect();
+      manager.reconnect();
+
+      await expect(
+        fetch(
+          `http://${oldAddress.host}:${oldAddress.port}/sessions/${oldRoute.routeGrant}/code/_cantrip/health`,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        manager.authorizeSharedRoute(
+          routeCommand(
+            oldTransportId,
+            randomUUID(),
+            oldSessionId,
+            oldIncarnationId,
+          ),
+          security,
+        ),
+      ).rejects.toThrow(/already been revoked/u);
+
+      const newTransportId = randomUUID();
+      const newRoute = routeCommand(
+        newTransportId,
+        randomUUID(),
+        oldSessionId,
+        oldIncarnationId,
+      );
+      await manager.authorizeSharedRoute(newRoute, security);
+      const newAddress = await manager.prepareSharedProtected(
+        newTransportId,
+        security,
+      );
+      await expect(
+        fetch(
+          `http://${newAddress.host}:${newAddress.port}/sessions/${newRoute.routeGrant}/code/_cantrip/health`,
+        ),
+      ).resolves.toMatchObject({ status: 200 });
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("rejects a lifecycle command received before a terminal reconnect", async () => {
+    const sessionId = randomUUID();
+    const incarnationId = randomUUID();
+    const supervisor = {
+      status: vi.fn(() => ({
+        status: "running",
+        sessionIncarnationId: incarnationId,
+      })),
+    } as unknown as CodeSupervisor;
+    const manager = new CodeDirectEndpointManager(supervisor, {
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    });
+    try {
+      const receivedGeneration = manager.lifecycleGeneration();
+      manager.disconnect();
+      manager.reconnect();
+
+      await expect(
+        manager.authorizeSharedRoute(
+          routeCommand(randomUUID(), randomUUID(), sessionId, incarnationId),
+          security,
+          receivedGeneration,
+        ),
+      ).rejects.toThrow(/not accepting/u);
+
+      await expect(
+        manager.authorizeSharedRoute(
+          routeCommand(randomUUID(), randomUUID(), sessionId, incarnationId),
+          security,
+          manager.lifecycleGeneration(),
+        ),
+      ).resolves.toMatchObject({ authorized: true });
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("retires shared transports when encryption authority becomes unavailable", async () => {
+    const sessionId = randomUUID();
+    const incarnationId = randomUUID();
+    const supervisor = {
+      status: vi.fn(() => ({
+        status: "running",
+        sessionIncarnationId: incarnationId,
+      })),
+    } as unknown as CodeSupervisor;
+    const manager = new CodeDirectEndpointManager(supervisor, {
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    });
+    const transportId = randomUUID();
+    const route = routeCommand(
+      transportId,
+      randomUUID(),
+      sessionId,
+      incarnationId,
+    );
+    try {
+      manager.synchronizeSecurityIdentity(security);
+      await manager.authorizeSharedRoute(route, security);
+      const address = await manager.prepareSharedProtected(
+        transportId,
+        security,
+      );
+
+      manager.invalidateSecurityIdentity();
+
+      await expect(
+        fetch(
+          `http://${address.host}:${address.port}/sessions/${route.routeGrant}/code/_cantrip/health`,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        manager.authorizeSharedRoute(
+          routeCommand(randomUUID(), randomUUID(), sessionId, incarnationId),
+          security,
+        ),
+      ).rejects.toThrow(/security identity/u);
+
+      manager.synchronizeSecurityIdentity(security);
+      const replacement = routeCommand(
+        randomUUID(),
+        randomUUID(),
+        sessionId,
+        incarnationId,
+      );
+      await expect(
+        manager.authorizeSharedRoute(replacement, security),
+      ).resolves.toMatchObject({ authorized: true });
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("rejects an authorization that races an encryption identity rotation", async () => {
+    let authorizationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      authorizationStarted = resolve;
+    });
+    const sessionId = randomUUID();
+    const incarnationId = randomUUID();
+    const supervisor = {
+      status: vi.fn(() => {
+        authorizationStarted();
+        return {
+          status: "running",
+          sessionIncarnationId: incarnationId,
+        };
+      }),
+    } as unknown as CodeSupervisor;
+    const manager = new CodeDirectEndpointManager(supervisor, {
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    });
+    const transportId = randomUUID();
+    const route = routeCommand(
+      transportId,
+      randomUUID(),
+      sessionId,
+      incarnationId,
+    );
+    const rotatedSecurity = { ...security, protectedKeyRevision: 8 };
+    try {
+      manager.synchronizeSecurityIdentity(security);
+      const pending = manager.authorizeSharedRoute(route, security);
+      await started;
+
+      manager.synchronizeSecurityIdentity(rotatedSecurity);
+
+      await expect(pending).rejects.toThrow(/not accepting|superseded/u);
+      await expect(
+        manager.authorizeSharedRoute(
+          {
+            ...route,
+            attachmentId: randomUUID(),
+            protectedKeyRevision: 8,
+            routeGrant: randomBytes(32).toString("base64url"),
+          },
+          rotatedSecurity,
+        ),
+      ).rejects.toThrow(/already been revoked/u);
+      const replacement = {
+        ...routeCommand(randomUUID(), randomUUID(), sessionId, incarnationId),
+        protectedKeyRevision: 8,
+      };
+      await expect(
+        manager.authorizeSharedRoute(replacement, rotatedSecurity),
+      ).resolves.toMatchObject({ authorized: true });
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("retains a same-epoch reconnect and retires routes on a new server epoch", async () => {
+    const sessionId = randomUUID();
+    const incarnationId = randomUUID();
+    const supervisor = {
+      status: vi.fn(() => ({
+        status: "running",
+        sessionIncarnationId: incarnationId,
+      })),
+    } as unknown as CodeSupervisor;
+    const manager = new CodeDirectEndpointManager(supervisor, {
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    });
+    const transportId = randomUUID();
+    const route = routeCommand(
+      transportId,
+      randomUUID(),
+      sessionId,
+      incarnationId,
+    );
+    const nextControlPlaneGeneration = randomUUID();
+    try {
+      manager.synchronizeSecurityIdentity(security);
+      await manager.authorizeSharedRoute(route, security);
+      const address = await manager.prepareSharedProtected(
+        transportId,
+        security,
+      );
+
+      manager.synchronizeControlPlaneGeneration(serverControlPlaneGeneration);
+      await expect(
+        fetch(
+          `http://${address.host}:${address.port}/sessions/${route.routeGrant}/code/_cantrip/health`,
+        ),
+      ).resolves.toMatchObject({ status: 200 });
+
+      manager.synchronizeControlPlaneGeneration(nextControlPlaneGeneration);
+
+      await expect(
+        fetch(
+          `http://${address.host}:${address.port}/sessions/${route.routeGrant}/code/_cantrip/health`,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        manager.authorizeSharedRoute(route, security),
+      ).rejects.toThrow(/security identity/u);
+      const replacement = {
+        ...routeCommand(randomUUID(), randomUUID(), sessionId, incarnationId),
+        serverControlPlaneGeneration: nextControlPlaneGeneration,
+      };
+      await expect(
+        manager.authorizeSharedRoute(replacement, security),
+      ).resolves.toMatchObject({ authorized: true });
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("retains a route while its same-incarnation Code profile recovers", async () => {
+    const sessionId = randomUUID();
+    const incarnationId = randomUUID();
+    let status: "offline" | "running" = "running";
+    const supervisor = {
+      status: vi.fn(() => ({
+        status,
+        sessionIncarnationId: incarnationId,
+      })),
+    } as unknown as CodeSupervisor;
+    const manager = new CodeDirectEndpointManager(supervisor, {
+      serverControlPlaneGeneration,
+      workerProcessGeneration,
+    });
+    const transportId = randomUUID();
+    const route = routeCommand(
+      transportId,
+      randomUUID(),
+      sessionId,
+      incarnationId,
+    );
+    try {
+      manager.synchronizeSecurityIdentity(security);
+      await manager.authorizeSharedRoute(route, security);
+      const address = await manager.prepareSharedProtected(
+        transportId,
+        security,
+      );
+      const healthUrl = `http://${address.host}:${address.port}/sessions/${route.routeGrant}/code/_cantrip/health`;
+
+      status = "offline";
+      await expect(fetch(healthUrl)).resolves.toMatchObject({ status: 404 });
+      status = "running";
+      await expect(fetch(healthUrl)).resolves.toMatchObject({ status: 200 });
+      await expect(
+        manager.authorizeSharedRoute(route, security),
+      ).resolves.toMatchObject({ authorized: true });
     } finally {
       manager.close();
     }

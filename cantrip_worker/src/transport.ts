@@ -18,6 +18,7 @@ import {
   type WorkerRequestEnvelope,
   type WorkerServerEnvelope,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
   WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
   WORKER_WEBSOCKET_SUBPROTOCOLS,
 } from "@cantrip/protocol";
@@ -53,6 +54,7 @@ const DEFAULT_TRANSPORT_DISCONNECT_GRACE_MS = 15_000;
 type CommandEnvelopeDelivery = "sent" | "queued" | "dropped";
 
 export interface WorkerConnectionTimingOptions {
+  connectionGeneration?: string;
   keepaliveTimeoutMs?: number;
   reconnectDelayMs?: number;
   transportDisconnectGraceMs?: number;
@@ -185,10 +187,11 @@ function commandCompletionLogContext(
 export class WorkerConnection {
   #closed = false;
   #authenticationRejected = false;
-  readonly #connectionGeneration = randomUUID();
+  readonly #connectionGeneration: string;
   #connectionReadyDeadlineMs: number | null = null;
   #connectionReadyTimer: ReturnType<typeof setTimeout> | null = null;
   #connectionPendingObserved = false;
+  #pendingServerControlPlaneGeneration: string | null = null;
   #connectAttempt = 0;
   #disconnectStartedAtMs: number | null = null;
   #keepalivePingSendDeadline: ReturnType<typeof setTimeout> | null = null;
@@ -223,9 +226,12 @@ export class WorkerConnection {
       undefined,
     private readonly handleTransportDisconnect: () => void = () => undefined,
     private readonly keepaliveIntervalMs = DEFAULT_KEEPALIVE_INTERVAL_MS,
-    private readonly handleTransportConnect: () => void = () => undefined,
+    private readonly handleTransportConnect: (
+      serverControlPlaneGeneration: string | null,
+    ) => void = () => undefined,
     timing: WorkerConnectionTimingOptions = {},
   ) {
+    this.#connectionGeneration = timing.connectionGeneration ?? randomUUID();
     this.#keepaliveTimeoutMs = Math.max(
       1,
       timing.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS,
@@ -239,6 +245,10 @@ export class WorkerConnection {
       timing.transportDisconnectGraceMs ??
         DEFAULT_TRANSPORT_DISCONNECT_GRACE_MS,
     );
+  }
+
+  connectionGeneration(): string {
+    return this.#connectionGeneration;
   }
 
   start(): void {
@@ -328,7 +338,10 @@ export class WorkerConnection {
     this.#lastConnectionError = null;
     if (socket.protocol === WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL) {
       this.markSocketReady(socket, "legacy-subprotocol");
-    } else if (socket.protocol === WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL) {
+    } else if (
+      socket.protocol === WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL ||
+      socket.protocol === WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL
+    ) {
       this.#socketReadiness = "protocol-pending";
       this.startConnectionReadyTimer(socket);
     }
@@ -511,6 +524,7 @@ export class WorkerConnection {
   private markSocketReady(
     socket: WebSocket,
     negotiation: "legacy-request" | "legacy-subprotocol" | "protocol",
+    serverControlPlaneGeneration: string | null = null,
   ): void {
     if (
       this.#closed ||
@@ -546,7 +560,7 @@ export class WorkerConnection {
     });
     this.#disconnectStartedAtMs = null;
     this.#connectAttempt = 0;
-    this.handleTransportConnect();
+    this.handleTransportConnect(serverControlPlaneGeneration);
   }
 
   private handleConnectionEnvelope(
@@ -579,6 +593,10 @@ export class WorkerConnection {
     }
     if (decoded.data.state === "pending") {
       this.#connectionPendingObserved = true;
+      this.#pendingServerControlPlaneGeneration =
+        decoded.data.protocolVersion === 2
+          ? decoded.data.serverControlPlaneGeneration
+          : null;
       if (this.#socketReadiness !== "ready") {
         this.#socketReadiness = "protocol-pending";
         this.startConnectionReadyTimer(socket);
@@ -587,7 +605,11 @@ export class WorkerConnection {
     }
     if (
       this.#socketReadiness !== "protocol-pending" ||
-      !this.#connectionPendingObserved
+      !this.#connectionPendingObserved ||
+      this.#pendingServerControlPlaneGeneration !==
+        (decoded.data.protocolVersion === 2
+          ? decoded.data.serverControlPlaneGeneration
+          : null)
     ) {
       this.clearKeepalive();
       this.#readySocket = null;
@@ -595,7 +617,13 @@ export class WorkerConnection {
       socket.close(1002, "Worker connection became ready before pending");
       return true;
     }
-    this.markSocketReady(socket, "protocol");
+    this.markSocketReady(
+      socket,
+      "protocol",
+      decoded.data.protocolVersion === 2
+        ? decoded.data.serverControlPlaneGeneration
+        : null,
+    );
     return true;
   }
 
@@ -603,6 +631,7 @@ export class WorkerConnection {
     this.clearSocketNegotiationTimers();
     this.#connectionReadyDeadlineMs = null;
     this.#connectionPendingObserved = false;
+    this.#pendingServerControlPlaneGeneration = null;
     this.#readySocket = null;
     this.#socketReadiness = "idle";
   }

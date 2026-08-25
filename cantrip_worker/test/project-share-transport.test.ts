@@ -6,7 +6,7 @@ import {
   encodeTunnelDataPlaneFrame,
   encodeWorkerConnectionEnvelope,
   type TunnelDataPlaneFrameHeader,
-  WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket, { WebSocketServer } from "ws";
@@ -28,8 +28,8 @@ describe("worker project share transport", () => {
     const webSockets = new WebSocketServer({
       noServer: true,
       handleProtocols(protocols) {
-        return protocols.has(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL)
-          ? WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL
+        return protocols.has(WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL)
+          ? WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL
           : false;
       },
     });
@@ -44,8 +44,10 @@ describe("worker project share transport", () => {
             encodeWorkerConnectionEnvelope({
               kind: "connection",
               state,
-              protocolVersion: 1,
+              protocolVersion: 2,
               connectionGeneration,
+              serverControlPlaneGeneration:
+                "77777777-7777-4777-8777-777777777777",
             }),
           );
         }

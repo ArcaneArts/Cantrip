@@ -58,6 +58,7 @@ import {
   CANTRIP_MCP_OPERATIONS,
   CANTRIP_MCP_TOOL_NAMES,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
   WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
   WORKER_WEBSOCKET_SUBPROTOCOLS,
   cantripMcpOperationsForPermissionProfile,
@@ -399,9 +400,13 @@ describe("worker channel JSON codec", () => {
     expect(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL).toBe(
       "cantrip-worker-auth-ready-v1",
     );
+    expect(WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL).toBe(
+      "cantrip-worker-auth-ready-v2",
+    );
     expect(WORKER_WEBSOCKET_SUBPROTOCOLS).toEqual([
       "cantrip-worker-legacy",
       "cantrip-worker-auth-ready-v1",
+      "cantrip-worker-auth-ready-v2",
     ]);
   });
 
@@ -427,13 +432,23 @@ describe("worker channel JSON codec", () => {
   });
 
   it("round-trips strict worker connection readiness envelopes", () => {
-    const connection = {
+    const legacyConnection = {
       kind: "connection" as const,
       state: "ready" as const,
       protocolVersion: 1 as const,
       connectionGeneration: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
     };
+    const connection = {
+      ...legacyConnection,
+      protocolVersion: 2 as const,
+      serverControlPlaneGeneration: "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
+    };
 
+    expect(
+      decodeWorkerConnectionEnvelope(
+        encodeWorkerConnectionEnvelope(legacyConnection),
+      ),
+    ).toEqual({ data: legacyConnection, success: true });
     expect(
       decodeWorkerConnectionEnvelope(
         encodeWorkerConnectionEnvelope(connection),
@@ -446,7 +461,20 @@ describe("worker channel JSON codec", () => {
     ).toMatchObject({ reason: "invalid-message", success: false });
     expect(
       decodeWorkerConnectionEnvelope(
-        JSON.stringify({ ...connection, protocolVersion: 2 }),
+        JSON.stringify({
+          ...legacyConnection,
+          serverControlPlaneGeneration: "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
+        }),
+      ),
+    ).toMatchObject({ reason: "invalid-message", success: false });
+    expect(
+      decodeWorkerConnectionEnvelope(
+        JSON.stringify({ ...legacyConnection, protocolVersion: 2 }),
+      ),
+    ).toMatchObject({ reason: "invalid-message", success: false });
+    expect(
+      decodeWorkerConnectionEnvelope(
+        JSON.stringify({ ...connection, protocolVersion: 3 }),
       ),
     ).toMatchObject({ reason: "invalid-message", success: false });
   });

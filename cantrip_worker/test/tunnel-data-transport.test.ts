@@ -11,6 +11,7 @@ import {
   type WorkerCommand,
   type WorkerServerEnvelope,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
+  WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
   WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -105,8 +106,9 @@ function sendConnectionState(
     encodeWorkerConnectionEnvelope({
       kind: "connection",
       state,
-      protocolVersion: 1,
+      protocolVersion: 2,
       connectionGeneration,
+      serverControlPlaneGeneration: "77777777-7777-4777-8777-777777777777",
     }),
   );
 }
@@ -116,12 +118,26 @@ function sendConnectionReady(socket: WebSocket, requestUrl: string): void {
   sendConnectionState(socket, requestUrl, "ready");
 }
 
+function sendConnectionReadyV1(socket: WebSocket, requestUrl: string): void {
+  const connectionGeneration = workerConnectionGeneration(requestUrl);
+  for (const state of ["pending", "ready"] as const) {
+    socket.send(
+      encodeWorkerConnectionEnvelope({
+        kind: "connection",
+        state,
+        protocolVersion: 1,
+        connectionGeneration,
+      }),
+    );
+  }
+}
+
 function authenticatedReadyWebSocketServer(): WebSocketServer {
   return new WebSocketServer({
     noServer: true,
     handleProtocols(protocols) {
-      return protocols.has(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL)
-        ? WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL
+      return protocols.has(WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL)
+        ? WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL
         : false;
     },
   });
@@ -131,8 +147,10 @@ async function commandServer(
   options: {
     autoPong?: boolean;
     autoReady?: boolean;
-    protocol?: "auth-ready" | "legacy" | null;
-    protocolSequence?: ReadonlyArray<"auth-ready" | "legacy" | null>;
+    protocol?: "auth-ready" | "auth-ready-v1" | "legacy" | null;
+    protocolSequence?: ReadonlyArray<
+      "auth-ready" | "auth-ready-v1" | "legacy" | null
+    >;
   } = {},
 ) {
   const server = createServer();
@@ -146,9 +164,11 @@ async function commandServer(
         : options.protocol;
     return protocol === "legacy"
       ? WORKER_WEBSOCKET_LEGACY_SUBPROTOCOL
-      : protocol === null
-        ? null
-        : WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL;
+      : protocol === "auth-ready-v1"
+        ? WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL
+        : protocol === null
+          ? null
+          : WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL;
   };
   const webSockets = new WebSocketServer({
     ...(options.autoPong === undefined ? {} : { autoPong: options.autoPong }),
@@ -175,7 +195,13 @@ async function commandServer(
     const waiter = connected.shift();
     if (waiter) waiter(socket);
     else pendingSockets.push(socket);
-    if (options.autoReady !== false) sendConnectionReady(socket, requestUrl);
+    if (options.autoReady !== false) {
+      if (socket.protocol === WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL) {
+        sendConnectionReadyV1(socket, requestUrl);
+      } else {
+        sendConnectionReady(socket, requestUrl);
+      }
+    }
   });
   server.on("upgrade", (request, socket, head) => {
     upgradeAttempt += 1;
@@ -205,6 +231,26 @@ async function commandServer(
 }
 
 describe("worker generic tunnel data transport", () => {
+  it("accepts strict auth-ready-v1 envelopes from an older server", async () => {
+    const server = await commandServer({ protocol: "auth-ready-v1" });
+    const connected = vi.fn();
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      10,
+      connected,
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    const socket = await server.nextSocket();
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledWith(null));
+    expect(socket.protocol).toBe(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL);
+  });
+
   it("delivers a durable chat outcome after the command channel reconnects", async () => {
     const server = createServer();
     const webSockets = authenticatedReadyWebSocketServer();
@@ -1106,7 +1152,9 @@ describe("worker generic tunnel data transport", () => {
     const reconnect = server.nextSocket();
     socket.terminate();
     const modernSocket = await reconnect;
-    expect(modernSocket.protocol).toBe(WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL);
+    expect(modernSocket.protocol).toBe(
+      WORKER_WEBSOCKET_AUTH_READY_V2_SUBPROTOCOL,
+    );
     expect(connected).toHaveBeenCalledOnce();
 
     sendConnectionState(modernSocket, server.requestUrls[2]!, "pending");

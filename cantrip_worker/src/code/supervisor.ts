@@ -128,6 +128,7 @@ export interface CodeSupervisorOptions {
   readinessTimeoutMs?: number;
   workerId?: string;
   workerName?: string;
+  workerProcessGeneration?: string;
 }
 
 const DEFAULT_MAX_CRASHES_PER_WINDOW = 5;
@@ -323,6 +324,7 @@ export class CodeSupervisor {
   readonly #sessionOperations = new Map<string, Promise<void>>();
   readonly #workerId: string;
   readonly #workerName: string;
+  readonly #workerProcessGeneration: string;
   #closed = false;
   #closeOperation: Promise<void> | null = null;
   #idleSweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -386,6 +388,8 @@ export class CodeSupervisor {
     this.#readinessTimeoutMs = options.readinessTimeoutMs ?? 15_000;
     this.#workerId = options.workerId ?? "unknown-worker";
     this.#workerName = options.workerName ?? "Cantrip Worker";
+    this.#workerProcessGeneration =
+      options.workerProcessGeneration ?? randomUUID();
   }
 
   async start(): Promise<void> {
@@ -411,6 +415,7 @@ export class CodeSupervisor {
     return {
       capabilities: this.#capabilities,
       editorBuild: this.#installation?.editorBuild ?? null,
+      workerProcessGeneration: this.#workerProcessGeneration,
     };
   }
 

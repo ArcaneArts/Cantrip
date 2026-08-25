@@ -20,12 +20,19 @@ export interface SharedCodeTransportIdentity {
   readonly ownerId: string;
   readonly protectedKeyRevision: number;
   readonly serverId: string;
+  readonly serverControlPlaneGeneration: string;
   readonly workerId: string;
+  readonly workerProcessGeneration: string;
 }
 
-export interface SharedCodeTransportRootIdentity extends SharedCodeTransportIdentity {
+export interface SharedCodeTransportRootIdentity extends Omit<
+  SharedCodeTransportIdentity,
+  "serverControlPlaneGeneration" | "workerProcessGeneration"
+> {
   readonly rootAttachmentId: string;
   readonly tunnelId: string;
+  readonly serverControlPlaneGeneration?: string;
+  readonly workerProcessGeneration?: string;
 }
 
 export interface SharedCodeTransportRootLeaseState {
@@ -127,6 +134,8 @@ interface SharedCodeTransportRoot {
   state: "active" | "retiring";
   readonly transportId: string;
   readonly workerId: string;
+  readonly serverControlPlaneGeneration: string;
+  readonly workerProcessGeneration: string;
 }
 
 interface SharedCodeSessionAttachment {
@@ -181,6 +190,20 @@ function keyPart(value: string): string {
 export function sharedCodeTransportBaseIdentityKey(
   identity: Pick<
     SharedCodeTransportIdentity,
+    | "authSessionId"
+    | "ownerId"
+    | "serverId"
+    | "serverControlPlaneGeneration"
+    | "workerId"
+    | "workerProcessGeneration"
+  >,
+): string {
+  return `${sharedCodeTransportContinuityIdentityKey(identity)}${keyPart(identity.serverControlPlaneGeneration)}${keyPart(identity.workerProcessGeneration)}`;
+}
+
+export function sharedCodeTransportContinuityIdentityKey(
+  identity: Pick<
+    SharedCodeTransportIdentity,
     "authSessionId" | "ownerId" | "serverId" | "workerId"
   >,
 ): string {
@@ -220,7 +243,7 @@ export class SharedCodeTransportRegistry {
   readonly #maxTransports: number;
   readonly #now: () => number;
   readonly #identityQueues = new Map<string, Promise<void>>();
-  readonly #latestKeyRevisions = new Map<string, number>();
+  readonly #pendingAcquisitionsByRevocationKey = new Map<string, number>();
   // Transport UUIDs are one-shot for at least the maximum resource lifetime.
   // Keeping cancelled candidates fenced for that retry horizon prevents a
   // delayed request from resurrecting a transport after DELETE completed.
@@ -331,15 +354,19 @@ export class SharedCodeTransportRegistry {
     const releaseLifecycleReservation = this.#reserveLifecycleCapacity(input);
     const transportCandidateKey = this.#transportCandidateKey(input);
     this.#beginPendingTransportCandidate(transportCandidateKey);
+    const releaseRevocationObservation =
+      this.#beginAcquisitionRevocationObservation(input);
     const revocationGeneration = this.#revocationGeneration(input);
-    const baseKey = sharedCodeTransportBaseIdentityKey(input);
+    const continuityKey = sharedCodeTransportContinuityIdentityKey(input);
     return this.#serialize(this.#attachmentQueueKey(input.attachmentId), () =>
-      this.#serialize(this.#identityQueueKey(baseKey), async () => {
+      this.#serialize(this.#identityQueueKey(continuityKey), async () => {
         this.#assertTransportCandidateCurrent(transportCandidateKey);
         this.#assertAcquisitionCurrent(input, revocationGeneration);
         await this.#assertActiveTransportGrant(input);
         this.#assertTransportCandidateCurrent(transportCandidateKey);
         this.#assertAcquisitionCurrent(input, revocationGeneration);
+        const identityKey = sharedCodeTransportIdentityKey(input);
+        await this.#reconcilePendingContinuityRetirements(input, identityKey);
         const existingSession = this.#sessions.get(input.attachmentId);
         if (existingSession) {
           if (!this.#sessionMatchesCreate(existingSession, input)) {
@@ -363,17 +390,6 @@ export class SharedCodeTransportRegistry {
         }
         const releaseSessionReservation = this.#reserveSessionCapacity();
         try {
-          const latestKeyRevision = this.#latestKeyRevisions.get(baseKey);
-          if (
-            latestKeyRevision !== undefined &&
-            input.protectedKeyRevision < latestKeyRevision
-          ) {
-            throw new Error(
-              "This shared Code transport key revision has been superseded.",
-            );
-          }
-
-          const identityKey = sharedCodeTransportIdentityKey(input);
           let root = this.#rootsByIdentity.get(identityKey);
           if (root && !this.#validateRoot(root)) {
             await this.#retireRoot(root, "Code transport lease expired");
@@ -383,29 +399,29 @@ export class SharedCodeTransportRegistry {
             const obsolete = [...this.#rootsByTransportId.values()].filter(
               (candidate) =>
                 candidate.state === "active" &&
-                sharedCodeTransportBaseIdentityKey(candidate) === baseKey &&
-                candidate.protectedKeyRevision !== input.protectedKeyRevision,
+                sharedCodeTransportContinuityIdentityKey(candidate) ===
+                  continuityKey &&
+                candidate.identityKey !== identityKey,
             );
-            root = await this.#createRoot(input, identityKey);
             try {
               for (const candidate of obsolete) {
                 await this.#retireRoot(
                   candidate,
                   "Code security identity changed",
+                  { workerTransportAlreadyGone: true },
                 );
               }
+              root = await this.#createRoot(input, identityKey);
             } catch (error) {
-              await this.#retireRoot(
-                root,
-                "Code security identity replacement failed",
-              ).catch(() => undefined);
+              if (root) {
+                await this.#retireRoot(
+                  root,
+                  "Code security identity replacement failed",
+                ).catch(() => undefined);
+              }
               throw error;
             }
           }
-          this.#latestKeyRevisions.set(
-            baseKey,
-            Math.max(latestKeyRevision ?? 0, input.protectedKeyRevision),
-          );
           try {
             this.#assertAcquisitionCurrent(input, revocationGeneration);
           } catch (error) {
@@ -496,6 +512,7 @@ export class SharedCodeTransportRegistry {
       }),
     ).finally(() => {
       this.#endPendingTransportCandidate(transportCandidateKey);
+      releaseRevocationObservation();
       releaseLifecycleReservation();
     });
   }
@@ -505,11 +522,13 @@ export class SharedCodeTransportRegistry {
   ): Promise<CodeSharedAttachmentWire | null> {
     const current = this.#sessions.get(authorization.attachmentId);
     if (!current) return null;
-    const baseKey = sharedCodeTransportBaseIdentityKey(current.transport);
+    const continuityKey = sharedCodeTransportContinuityIdentityKey(
+      current.transport,
+    );
     return this.#serialize(
       this.#attachmentQueueKey(authorization.attachmentId),
       () =>
-        this.#serialize(this.#identityQueueKey(baseKey), async () => {
+        this.#serialize(this.#identityQueueKey(continuityKey), async () => {
           const session = this.#sessions.get(authorization.attachmentId);
           if (!session || !this.#authorizedSession(session, authorization)) {
             return null;
@@ -567,18 +586,23 @@ export class SharedCodeTransportRegistry {
       async () => {
         const current = this.#sessions.get(authorization.attachmentId);
         if (!current) return false;
-        const baseKey = sharedCodeTransportBaseIdentityKey(current.transport);
-        return this.#serialize(this.#identityQueueKey(baseKey), async () => {
-          const session = this.#sessions.get(authorization.attachmentId);
-          if (!session || !this.#authorizedSession(session, authorization)) {
-            return false;
-          }
-          await this.#removeSession(
-            session,
-            "Code session attachment released",
-          );
-          return true;
-        });
+        const continuityKey = sharedCodeTransportContinuityIdentityKey(
+          current.transport,
+        );
+        return this.#serialize(
+          this.#identityQueueKey(continuityKey),
+          async () => {
+            const session = this.#sessions.get(authorization.attachmentId);
+            if (!session || !this.#authorizedSession(session, authorization)) {
+              return false;
+            }
+            await this.#removeSession(
+              session,
+              "Code session attachment released",
+            );
+            return true;
+          },
+        );
       },
     );
   }
@@ -649,10 +673,29 @@ export class SharedCodeTransportRegistry {
     const key = `worker:${keyPart(workerId)}`;
     this.#beginRevocation(key);
     try {
+      const failures: unknown[] = [];
+      for (const retirement of this.#pendingRetirements.values()) {
+        if (retirement.root.workerId !== workerId) continue;
+        if (retirement.operation) {
+          await retirement.operation.catch(() => undefined);
+        }
+        retirement.routeAttachmentIds.clear();
+        retirement.workerTransportPending = false;
+        await this.#runRetirementCleanup(retirement).catch((error) =>
+          failures.push(error),
+        );
+      }
       await this.#retireRootsWhere(
         (root) => root.workerId === workerId,
         "Code worker disconnected",
-      );
+        { workerTransportAlreadyGone: true },
+      ).catch((error) => failures.push(error));
+      if (failures.length > 0) {
+        throw new AggregateError(
+          failures,
+          "Could not clean up every disconnected worker Code transport.",
+        );
+      }
     } finally {
       this.#endRevocation(key);
     }
@@ -708,8 +751,8 @@ export class SharedCodeTransportRegistry {
     ) {
       return pending;
     }
-    const baseKey = sharedCodeTransportBaseIdentityKey(root);
-    return this.#serialize(this.#identityQueueKey(baseKey), async () => {
+    const continuityKey = sharedCodeTransportContinuityIdentityKey(root);
+    return this.#serialize(this.#identityQueueKey(continuityKey), async () => {
       if (this.#rootsByTransportId.get(transportId) !== root) return false;
       await this.#retireRoot(root, "Shared Code transport released");
       return true;
@@ -727,7 +770,12 @@ export class SharedCodeTransportRegistry {
       root.ownerId !== identity.ownerId ||
       root.protectedKeyRevision !== identity.protectedKeyRevision ||
       root.serverId !== identity.serverId ||
-      root.workerId !== identity.workerId
+      root.workerId !== identity.workerId ||
+      (identity.serverControlPlaneGeneration !== undefined &&
+        root.serverControlPlaneGeneration !==
+          identity.serverControlPlaneGeneration) ||
+      (identity.workerProcessGeneration !== undefined &&
+        root.workerProcessGeneration !== identity.workerProcessGeneration)
     ) {
       return { lease: null, managed: true };
     }
@@ -1095,6 +1143,33 @@ export class SharedCodeTransportRegistry {
       .join(":");
   }
 
+  #beginAcquisitionRevocationObservation(
+    input: SharedCodeTransportIdentity,
+  ): () => void {
+    const keys = this.#revocationKeys(input);
+    for (const key of keys) {
+      this.#pendingAcquisitionsByRevocationKey.set(
+        key,
+        (this.#pendingAcquisitionsByRevocationKey.get(key) ?? 0) + 1,
+      );
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      for (const key of keys) {
+        const remaining =
+          (this.#pendingAcquisitionsByRevocationKey.get(key) ?? 0) - 1;
+        if (remaining <= 0) {
+          this.#pendingAcquisitionsByRevocationKey.delete(key);
+          this.#discardUnusedRevocationGeneration(key);
+        } else {
+          this.#pendingAcquisitionsByRevocationKey.set(key, remaining);
+        }
+      }
+    };
+  }
+
   #beginRevocation(key: string): void {
     this.#revocationGenerations.set(
       key,
@@ -1112,6 +1187,16 @@ export class SharedCodeTransportRegistry {
       this.#activeRevocations.delete(key);
     } else {
       this.#activeRevocations.set(key, count - 1);
+    }
+    this.#discardUnusedRevocationGeneration(key);
+  }
+
+  #discardUnusedRevocationGeneration(key: string): void {
+    if (
+      !this.#activeRevocations.has(key) &&
+      !this.#pendingAcquisitionsByRevocationKey.has(key)
+    ) {
+      this.#revocationGenerations.delete(key);
     }
   }
 
@@ -1269,6 +1354,8 @@ export class SharedCodeTransportRegistry {
         state: "active",
         transportId: tunnel.id,
         workerId: input.workerId,
+        serverControlPlaneGeneration: input.serverControlPlaneGeneration,
+        workerProcessGeneration: input.workerProcessGeneration,
       };
       this.#rootsByIdentity.set(identityKey, root);
       this.#rootsByTransportId.set(root.transportId, root);
@@ -1303,7 +1390,12 @@ export class SharedCodeTransportRegistry {
         root.workerId,
         {
           type: "code.transport.route.authorize",
+          ownerId: root.ownerId,
+          authSessionId: root.authSessionId,
           serverId: root.serverId,
+          serverControlPlaneGeneration: root.serverControlPlaneGeneration,
+          protectedKeyRevision: root.protectedKeyRevision,
+          workerProcessGeneration: root.workerProcessGeneration,
           transportId: root.transportId,
           attachmentId: session.attachmentId,
           sessionId: session.sessionId,
@@ -1311,11 +1403,18 @@ export class SharedCodeTransportRegistry {
           routeGrant: session.routeGrant,
           expiresAt,
         },
-        { timeoutMs: 5_000 },
+        { ownerId: root.ownerId, timeoutMs: 5_000 },
       ),
     );
     if (
       result.transportId !== root.transportId ||
+      result.ownerId !== root.ownerId ||
+      result.authSessionId !== root.authSessionId ||
+      result.serverId !== root.serverId ||
+      result.serverControlPlaneGeneration !==
+        root.serverControlPlaneGeneration ||
+      result.protectedKeyRevision !== root.protectedKeyRevision ||
+      result.workerProcessGeneration !== root.workerProcessGeneration ||
       result.attachmentId !== session.attachmentId ||
       result.sessionId !== session.sessionId ||
       result.sessionIncarnationId !== session.sessionIncarnationId ||
@@ -1336,14 +1435,27 @@ export class SharedCodeTransportRegistry {
         root.workerId,
         {
           type: "code.transport.route.revoke",
+          ownerId: root.ownerId,
+          authSessionId: root.authSessionId,
+          serverId: root.serverId,
+          serverControlPlaneGeneration: root.serverControlPlaneGeneration,
+          protectedKeyRevision: root.protectedKeyRevision,
+          workerProcessGeneration: root.workerProcessGeneration,
           transportId: root.transportId,
           attachmentId,
         },
-        { timeoutMs: 5_000 },
+        { ownerId: root.ownerId, timeoutMs: 5_000 },
       ),
     );
     if (
       result.transportId !== root.transportId ||
+      result.ownerId !== root.ownerId ||
+      result.authSessionId !== root.authSessionId ||
+      result.serverId !== root.serverId ||
+      result.serverControlPlaneGeneration !==
+        root.serverControlPlaneGeneration ||
+      result.protectedKeyRevision !== root.protectedKeyRevision ||
+      result.workerProcessGeneration !== root.workerProcessGeneration ||
       result.attachmentId !== attachmentId
     ) {
       throw new Error(
@@ -1356,11 +1468,29 @@ export class SharedCodeTransportRegistry {
     const result = codeTransportRevokeResultSchema.parse(
       await this.#bridge.request(
         root.workerId,
-        { type: "code.transport.revoke", transportId: root.transportId },
-        { timeoutMs: 5_000 },
+        {
+          type: "code.transport.revoke",
+          ownerId: root.ownerId,
+          authSessionId: root.authSessionId,
+          serverId: root.serverId,
+          serverControlPlaneGeneration: root.serverControlPlaneGeneration,
+          protectedKeyRevision: root.protectedKeyRevision,
+          workerProcessGeneration: root.workerProcessGeneration,
+          transportId: root.transportId,
+        },
+        { ownerId: root.ownerId, timeoutMs: 5_000 },
       ),
     );
-    if (result.transportId !== root.transportId) {
+    if (
+      result.transportId !== root.transportId ||
+      result.ownerId !== root.ownerId ||
+      result.authSessionId !== root.authSessionId ||
+      result.serverId !== root.serverId ||
+      result.serverControlPlaneGeneration !==
+        root.serverControlPlaneGeneration ||
+      result.protectedKeyRevision !== root.protectedKeyRevision ||
+      result.workerProcessGeneration !== root.workerProcessGeneration
+    ) {
       throw new Error(
         "The worker acknowledged a different shared Code transport revocation.",
       );
@@ -1447,6 +1577,7 @@ export class SharedCodeTransportRegistry {
   async #retireRoot(
     root: SharedCodeTransportRoot,
     reason: string,
+    options: { workerTransportAlreadyGone?: boolean } = {},
   ): Promise<void> {
     if (root.state === "retiring") {
       const pending = this.#pendingRetirements.get(root.transportId);
@@ -1501,10 +1632,12 @@ export class SharedCodeTransportRegistry {
       reason,
       root,
       routeAttachmentIds: new Set(
-        sessions.map((session) => session.attachmentId),
+        options.workerTransportAlreadyGone
+          ? []
+          : sessions.map((session) => session.attachmentId),
       ),
       sessionStops,
-      workerTransportPending: true,
+      workerTransportPending: !options.workerTransportAlreadyGone,
     };
     this.#pendingRetirements.set(root.transportId, retirement);
     this.#changed?.({
@@ -1629,6 +1762,7 @@ export class SharedCodeTransportRegistry {
       ) {
         this.#pendingRetirements.delete(retirement.root.transportId);
       }
+      this.#stopTrackingWorkerIfUnused(retirement.root.workerId);
       serverLogger.info("Shared Cantrip Code transport revoked", {
         event: "code.transport.revoked",
         operation: "revoke-transport",
@@ -1666,6 +1800,29 @@ export class SharedCodeTransportRegistry {
         this.#runRetirementCleanup(retirement),
       ),
     );
+  }
+
+  async #reconcilePendingContinuityRetirements(
+    input: CreateSharedCodeSessionAttachmentInput,
+    identityKey: string,
+  ): Promise<void> {
+    const continuityKey = sharedCodeTransportContinuityIdentityKey(input);
+    for (const retirement of this.#pendingRetirements.values()) {
+      if (
+        sharedCodeTransportContinuityIdentityKey(retirement.root) !==
+        continuityKey
+      ) {
+        continue;
+      }
+      if (retirement.operation) {
+        await retirement.operation.catch(() => undefined);
+      }
+      if (retirement.root.identityKey !== identityKey) {
+        retirement.routeAttachmentIds.clear();
+        retirement.workerTransportPending = false;
+      }
+      await this.#runRetirementCleanup(retirement);
+    }
   }
 
   async #runPendingSessionStop(
@@ -1730,13 +1887,14 @@ export class SharedCodeTransportRegistry {
   async #retireRootsWhere(
     predicate: (root: SharedCodeTransportRoot) => boolean,
     reason: string,
+    options: { workerTransportAlreadyGone?: boolean } = {},
   ): Promise<void> {
     const roots = [...this.#rootsByTransportId.values()].filter(predicate);
     const results = await Promise.allSettled(
       roots.map((root) => {
-        const baseKey = sharedCodeTransportBaseIdentityKey(root);
-        return this.#serialize(this.#identityQueueKey(baseKey), () =>
-          this.#retireRoot(root, reason),
+        const continuityKey = sharedCodeTransportContinuityIdentityKey(root);
+        return this.#serialize(this.#identityQueueKey(continuityKey), () =>
+          this.#retireRoot(root, reason, options),
         );
       }),
     );
@@ -1861,8 +2019,10 @@ export class SharedCodeTransportRegistry {
     void this.#retryPendingSessionStops();
     for (const session of [...this.#sessions.values()]) {
       if (session.expiresAt > now && session.hardExpiresAt > now) continue;
-      const baseKey = sharedCodeTransportBaseIdentityKey(session.transport);
-      void this.#serialize(this.#identityQueueKey(baseKey), async () => {
+      const continuityKey = sharedCodeTransportContinuityIdentityKey(
+        session.transport,
+      );
+      void this.#serialize(this.#identityQueueKey(continuityKey), async () => {
         const current = this.#sessions.get(session.attachmentId);
         const currentNow = this.#now();
         if (
@@ -1876,8 +2036,8 @@ export class SharedCodeTransportRegistry {
     }
     for (const root of [...this.#rootsByTransportId.values()]) {
       if (root.expiresAt > now && root.hardExpiresAt > now) continue;
-      const baseKey = sharedCodeTransportBaseIdentityKey(root);
-      void this.#serialize(this.#identityQueueKey(baseKey), async () => {
+      const continuityKey = sharedCodeTransportContinuityIdentityKey(root);
+      void this.#serialize(this.#identityQueueKey(continuityKey), async () => {
         const currentNow = this.#now();
         if (
           this.#rootsByTransportId.get(root.transportId) !== root ||
@@ -1956,6 +2116,9 @@ export class SharedCodeTransportRegistry {
     if (
       [...this.#rootsByTransportId.values()].some(
         (root) => root.workerId === workerId,
+      ) ||
+      [...this.#pendingRetirements.values()].some(
+        (retirement) => retirement.root.workerId === workerId,
       )
     ) {
       return;

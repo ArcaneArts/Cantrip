@@ -534,6 +534,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const startupStartedAtMs = Date.now();
   await initializeWorkerLogArchive(resolveWorkerDataDirectory());
   const config = readWorkerConfig();
+  const workerProcessGeneration = randomUUID();
   workerLogger.event("info", "Cantrip Worker startup began", {
     event: "worker.startup.started",
     subsystem: "worker-startup",
@@ -642,11 +643,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     workerId: config.workerId,
     workerName: config.name,
+    workerProcessGeneration,
   });
   await workerStartupPhase("start-code-supervisor", () => code.start(), {
     workerId: config.workerId,
   });
-  const codeDirectEndpoints = new CodeDirectEndpointManager(code);
+  const codeDirectEndpoints = new CodeDirectEndpointManager(code, {
+    workerProcessGeneration,
+  });
   const cliBroker = new CantripCliBroker(config);
   const mcpBroker = new CantripMcpBroker(config);
   const mcpHost = cantripMcpHostInvocation();
@@ -690,8 +694,35 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }),
     { workerId: config.workerId },
   );
+  const activeCodeTransportSecurityIdentity = () => {
+    const tunnelContentKey = workerEncryption.componentKey("tunnel-content");
+    const protectedKeyRevision = tunnelContentKey.keyRevision;
+    clearSensitiveBytes(tunnelContentKey.key);
+    return {
+      ownerId: workerEncryption.ownerId(),
+      serverId: workerEncryption.serverIdentity(),
+      protectedKeyRevision,
+    };
+  };
+  const reconcileCodeTransportSecurityIdentity = () => {
+    try {
+      codeDirectEndpoints.synchronizeSecurityIdentity(
+        activeCodeTransportSecurityIdentity(),
+      );
+    } catch {
+      codeDirectEndpoints.invalidateSecurityIdentity();
+    }
+  };
   const refreshWorkerEncryption = async () => {
-    return workerEncryption.refresh({ credential: config.token });
+    try {
+      return await workerEncryption.refresh({ credential: config.token });
+    } finally {
+      // A transient refresh failure retains the prior in-memory key and keeps
+      // existing routes valid. Authoritative revocation, malformed bootstrap,
+      // or a missing tunnel grant clears that key and must retire every shared
+      // route immediately.
+      reconcileCodeTransportSecurityIdentity();
+    }
   };
   const unavailableCodeSettingsStatus = (): CodeSettingsWorkerStatus =>
     codeSettingsWorkerStatusSchema.parse({
@@ -1469,6 +1500,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
+    context: { codeTransportLifecycleGeneration?: number } = {},
   ): Promise<unknown> => {
     const protectedRuntimeProvider =
       "provider" in command
@@ -2617,7 +2649,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   "Nested repository operations are not allowed.",
                 );
               }
-              let result = await handleCommand(trustedCommand, emit);
+              let result = await handleCommand(trustedCommand, emit, context);
               if (
                 [
                   "git.operation.start",
@@ -3131,7 +3163,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
       case "code.probe":
-        return code.probe();
+        return {
+          ...code.probe(),
+          ...(codeDirectEndpoints.serverControlPlaneGeneration()
+            ? {
+                serverControlPlaneGeneration:
+                  codeDirectEndpoints.serverControlPlaneGeneration()!,
+              }
+            : {}),
+        };
       case "code.open":
         return code.open(command);
       case "code.status":
@@ -3142,7 +3182,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.expectedSessionIncarnationId,
         );
         if (!claim.accepted) return claim.status;
-        await codeDirectEndpoints.closeSession(command.sessionId);
+        await codeDirectEndpoints.closeSession(
+          command.sessionId,
+          command.expectedSessionIncarnationId,
+        );
         return claim.retire();
       }
       case "code.endpoint.revoke":
@@ -3152,10 +3195,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
         return { tunnelId: command.tunnelId };
       case "code.transport.route.authorize":
+        return codeDirectEndpoints.authorizeSharedRoute(
+          command,
+          activeCodeTransportSecurityIdentity(),
+          context.codeTransportLifecycleGeneration,
+        );
       case "code.transport.route.revoke":
+        return codeDirectEndpoints.revokeSharedRoute(
+          command,
+          activeCodeTransportSecurityIdentity(),
+          context.codeTransportLifecycleGeneration,
+        );
       case "code.transport.revoke":
-        throw new Error(
-          "This worker does not support shared Cantrip Code transports yet.",
+        return codeDirectEndpoints.revokeSharedTransport(
+          command,
+          activeCodeTransportSecurityIdentity(),
+          context.codeTransportLifecycleGeneration,
         );
       case "code.saveAll":
         return code.saveAll(command.sessionId);
@@ -5069,11 +5124,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const commandConnection = new WorkerConnection(
     config,
     async (command, emit) => {
+      const codeTransportLifecycleGeneration =
+        codeDirectEndpoints.lifecycleGeneration();
       try {
         const resolved = await routingRegistry.resolveCommand(command);
         return await routingRegistry.protectResult(
           command.type,
-          await handleCommand(resolved, emit),
+          await handleCommand(resolved, emit, {
+            codeTransportLifecycleGeneration,
+          }),
         );
       } catch (error) {
         throw routingRegistry.protectError(command.type, error);
@@ -5089,7 +5148,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       codeDirectEndpoints.disconnect();
     },
     undefined,
-    () => {
+    (serverControlPlaneGeneration) => {
+      if (serverControlPlaneGeneration) {
+        codeDirectEndpoints.synchronizeControlPlaneGeneration(
+          serverControlPlaneGeneration,
+        );
+      } else {
+        codeDirectEndpoints.invalidateControlPlaneGeneration();
+      }
+      codeDirectEndpoints.reconnect();
       providerAuthObserver.reemitAll();
       if (codeSettingsSynchronizer) {
         void codeSettingsSynchronizer.synchronize({
@@ -5097,6 +5164,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
     },
+    { connectionGeneration: workerProcessGeneration },
   );
   directBroker.setTunnelFrameHandler((header, payload, diagnostics) =>
     tunnelDestinations.handleFrame(header, payload, diagnostics),

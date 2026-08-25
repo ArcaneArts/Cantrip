@@ -217,6 +217,46 @@ describe("worker TCP tunnel destination", () => {
     adapter.close();
   });
 
+  it("does not let one backpressured stream block a sibling stream", async () => {
+    const port = await listenPayload(Buffer.from("ready"));
+    const adapter = new TunnelTcpDestinationAdapter();
+    const output: Array<{
+      header: TunnelDataPlaneFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    let capacityWaits = 0;
+    let releaseFirstCapacity!: (available: boolean) => void;
+    const firstCapacity = new Promise<boolean>((resolve) => {
+      releaseFirstCapacity = resolve;
+    });
+    adapter.setFrameEmitter(
+      (header, payload) => {
+        output.push({ header, payload: payload.slice() });
+        return true;
+      },
+      async () => {
+        capacityWaits += 1;
+        return capacityWaits === 1 ? firstCapacity : true;
+      },
+    );
+
+    adapter.handleFrame(connectHeader("connection-a", port), EMPTY_PAYLOAD);
+    await waitFor(() => capacityWaits === 1);
+    adapter.handleFrame(connectHeader("connection-b", port), EMPTY_PAYLOAD);
+    await waitFor(() =>
+      output.some(
+        ({ header, payload }) =>
+          header.kind === "data" &&
+          header.connectionId === "connection-b" &&
+          new TextDecoder().decode(payload) === "ready",
+      ),
+    );
+
+    expect(capacityWaits).toBeGreaterThanOrEqual(2);
+    releaseFirstCapacity(true);
+    adapter.close();
+  });
+
   it("pauses destination reads until the source grants more byte credit", async () => {
     const size = 320 * 1_024;
     const initialCredit = 64 * 1_024;

@@ -6,6 +6,7 @@ import {
   codeSessionAttachmentCreateSchema,
   codeSessionRouteBasePath,
   codeSessionRouteGrantSchema,
+  parseCodeSessionRoutePath,
   codeSharedAttachmentWireSchema,
   codeTransportCandidateSchema,
   codeTransportRouteAuthorizeCommandSchema,
@@ -28,6 +29,14 @@ const sessionIncarnationId = "44444444-4444-4444-8444-444444444444";
 const transportId = "11111111-1111-4111-8111-111111111111";
 const routeGrant = "A".repeat(43);
 const now = "2026-08-25T12:00:00.000Z";
+const lifecycleIdentity = {
+  ownerId: "owner-1",
+  authSessionId: "auth-session-1",
+  serverId: "server-1",
+  serverControlPlaneGeneration: "44444444-4444-4444-8444-444444444444",
+  protectedKeyRevision: 7,
+  workerProcessGeneration: "55555555-5555-4555-8555-555555555555",
+};
 
 const protectedRecord = {
   operationId: transportId,
@@ -218,6 +227,21 @@ describe("shared Code transport protocol", () => {
     );
     expect(() => codeSessionRouteGrantSchema.parse(sessionId)).toThrow();
     expect(() => codeSessionRouteBasePath("_".repeat(43))).toThrow();
+    expect(
+      parseCodeSessionRoutePath(`/sessions/${routeGrant}/code/editor.js?q=1`),
+    ).toEqual({
+      basePath: `/sessions/${routeGrant}/code`,
+      routeGrant,
+    });
+    for (const invalid of [
+      `/sessions/${routeGrant}/codeevil`,
+      `/sessions/${routeGrant}//code`,
+      `/sessions/${routeGrant}/code/%2e%2e/secret`,
+      `/sessions/${routeGrant}%2fcode`,
+      `/sessions/${sessionId}/code`,
+    ]) {
+      expect(parseCodeSessionRoutePath(invalid)).toBeNull();
+    }
   });
 
   it("projects the shared encrypted destination to the existing public adapter", () => {
@@ -250,7 +274,7 @@ describe("shared Code transport protocol", () => {
   it("integrates strict route lifecycle commands into the worker union", () => {
     const authorize = {
       type: "code.transport.route.authorize" as const,
-      serverId: "server-1",
+      ...lifecycleIdentity,
       transportId,
       attachmentId,
       sessionId,
@@ -265,12 +289,14 @@ describe("shared Code transport protocol", () => {
     expect(
       workerCommandSchema.parse({
         type: "code.transport.route.revoke",
+        ...lifecycleIdentity,
         transportId,
         attachmentId,
       }),
     ).toEqual(
       codeTransportRouteRevokeCommandSchema.parse({
         type: "code.transport.route.revoke",
+        ...lifecycleIdentity,
         transportId,
         attachmentId,
       }),
@@ -278,11 +304,13 @@ describe("shared Code transport protocol", () => {
     expect(
       workerCommandSchema.parse({
         type: "code.transport.revoke",
+        ...lifecycleIdentity,
         transportId,
       }),
     ).toEqual(
       codeTransportRevokeCommandSchema.parse({
         type: "code.transport.revoke",
+        ...lifecycleIdentity,
         transportId,
       }),
     );
@@ -297,6 +325,7 @@ describe("shared Code transport protocol", () => {
     ).toThrow();
     expect(
       codeTransportRouteAuthorizeResultSchema.parse({
+        ...lifecycleIdentity,
         transportId,
         attachmentId,
         sessionId,
@@ -305,6 +334,7 @@ describe("shared Code transport protocol", () => {
         expiresAt: now,
       }),
     ).toEqual({
+      ...lifecycleIdentity,
       transportId,
       attachmentId,
       sessionId,
@@ -314,17 +344,24 @@ describe("shared Code transport protocol", () => {
     });
     expect(
       codeTransportRouteRevokeResultSchema.parse({
+        ...lifecycleIdentity,
         transportId,
         attachmentId,
         revoked: true,
       }),
-    ).toEqual({ transportId, attachmentId, revoked: true });
+    ).toEqual({
+      ...lifecycleIdentity,
+      transportId,
+      attachmentId,
+      revoked: true,
+    });
     expect(
       codeTransportRevokeResultSchema.parse({
+        ...lifecycleIdentity,
         transportId,
         revoked: true,
       }),
-    ).toEqual({ transportId, revoked: true });
+    ).toEqual({ ...lifecycleIdentity, transportId, revoked: true });
     expect(() =>
       codeTransportRouteAuthorizeResultSchema.parse({
         transportId,
