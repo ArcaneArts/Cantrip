@@ -20,7 +20,9 @@ interface ProtectedCodeAttachmentBinding {
   ownerId: string;
   projectId: string | null;
   protectedKeyRevision: number;
+  registrationLease: CodeAttachmentRegistrationLease | null;
   serverId: string | null;
+  sessionIncarnationId: string | null;
   sessionId: string;
   stopSessionOnRelease: boolean;
   tunnelId: string;
@@ -63,6 +65,19 @@ export interface CodeAttachmentRegistrationLeaseInput {
 
 export interface CodeAttachmentRegistrationLease extends CodeAttachmentRegistrationLeaseInput {
   readonly explorerGeneration: symbol | null;
+}
+
+export interface AbortCodeAttachmentRegistrationSessionInput {
+  readonly lease: CodeAttachmentRegistrationLease;
+  readonly runtime: CodeRuntimeStatus | null;
+  readonly workerId: string;
+}
+
+interface CodeSessionOwnershipIdentity {
+  readonly ownerId: string;
+  readonly sessionId: string;
+  readonly sessionIncarnationId: string | null;
+  readonly workerId: string;
 }
 
 interface ExplorerCodeLifecycle {
@@ -168,6 +183,11 @@ export class CodeTunnelBroker {
     CodeAttachmentRegistrationLease,
     CodeAttachmentRegistrationLeaseState
   >();
+  readonly #sessionStopFences = new Map<string, number>();
+  readonly #sessionStopIncarnations = new Map<string, string>();
+  readonly #sessionStopOperations = new Map<string, Promise<void>>();
+  readonly #releasedSessionOwnership =
+    new WeakSet<ProtectedCodeAttachmentBinding>();
   readonly #sessionRevocations = new Map<string, number>();
   readonly #explorerLifecycles = new Map<string, ExplorerCodeLifecycle>();
   readonly #sweepTimer: ReturnType<typeof setInterval>;
@@ -209,6 +229,11 @@ export class CodeTunnelBroker {
   async createProtectedAttachment(
     input: CreateProtectedCodeAttachmentInput,
   ): Promise<CodeProtectedAttachmentWire> {
+    if (input.runtime.sessionId !== input.sessionId) {
+      throw new Error(
+        "The live Cantrip Code runtime does not match this attachment.",
+      );
+    }
     this.#assertRegistrationAllowed(input);
     if (
       this.#attachments.has(input.tunnelId) ||
@@ -252,6 +277,9 @@ export class CodeTunnelBroker {
   ): CodeAttachmentRegistrationLease | null {
     if (
       this.#registrationIdentityIsFenced(input) ||
+      this.#sessionStopFences.has(
+        this.#sessionOwnershipKey(input.ownerId, input.sessionId),
+      ) ||
       this.#attachments.size + this.#registrationLeases.size >=
         this.#maxAttachments
     ) {
@@ -292,6 +320,50 @@ export class CodeTunnelBroker {
   releaseRegistrationLease(lease: CodeAttachmentRegistrationLease): void {
     const state = this.#registrationLeaseStates.get(lease);
     if (!state) return;
+    this.#consumeRegistrationLease(lease, state);
+  }
+
+  abortRegistrationSession(
+    input: AbortCodeAttachmentRegistrationSessionInput,
+  ): Promise<boolean> {
+    const state = this.#registrationLeaseStates.get(input.lease);
+    if (!state || this.#registrationLeases.get(input.lease) !== state) {
+      return Promise.resolve(false);
+    }
+    const sessionKey = this.#sessionOwnershipKey(
+      input.lease.ownerId,
+      input.lease.sessionId,
+    );
+    const sessionIncarnationId =
+      input.runtime?.sessionId === input.lease.sessionId
+        ? (input.runtime.sessionIncarnationId ?? null)
+        : null;
+    this.#beginFence(this.#sessionStopFences, sessionKey);
+    this.#consumeRegistrationLease(input.lease, state);
+    const operation = this.#enqueueSessionStopOperation(
+      {
+        ownerId: input.lease.ownerId,
+        sessionId: input.lease.sessionId,
+        sessionIncarnationId,
+        workerId: input.workerId,
+      },
+      () =>
+        this.#stopAbortedRegistrationIfUnowned({
+          ownerId: input.lease.ownerId,
+          sessionId: input.lease.sessionId,
+          sessionIncarnationId,
+          workerId: input.workerId,
+        }),
+    );
+    return operation
+      .then(() => true)
+      .finally(() => this.#endFence(this.#sessionStopFences, sessionKey));
+  }
+
+  #consumeRegistrationLease(
+    lease: CodeAttachmentRegistrationLease,
+    state: CodeAttachmentRegistrationLeaseState,
+  ): void {
     this.#registrationLeaseStates.delete(lease);
     this.#registrationLeases.delete(lease);
     state.release();
@@ -313,6 +385,19 @@ export class CodeTunnelBroker {
     return this.#explorerLeaseIsActive(
       state.explorerLifecycle ?? undefined,
       lease,
+    );
+  }
+
+  attachmentRegistrationLeaseIsActive(
+    attachmentId: string,
+    lease: CodeAttachmentRegistrationLease,
+  ): boolean {
+    const binding = this.#attachments.get(attachmentId);
+    return Boolean(
+      binding &&
+      binding.registrationLease === lease &&
+      !this.#removals.has(attachmentId) &&
+      this.registrationLeaseIsActive(lease),
     );
   }
 
@@ -508,7 +593,9 @@ export class CodeTunnelBroker {
       ownerId: input.ownerId,
       projectId: input.projectId,
       protectedKeyRevision: input.protectedRecord.protectedContent.keyRevision,
+      registrationLease: input.registrationLease ?? null,
       serverId: input.serverId ?? null,
+      sessionIncarnationId: input.runtime.sessionIncarnationId ?? null,
       sessionId: input.sessionId,
       stopSessionOnRelease: input.stopSessionOnRelease ?? false,
       tunnelId: tunnel.id,
@@ -695,6 +782,17 @@ export class CodeTunnelBroker {
     if (this.#attachments.get(binding.attachmentId) !== binding) return false;
     const pending = this.#removals.get(binding.attachmentId);
     if (pending) return pending;
+    const registrationLease = binding.registrationLease;
+    if (registrationLease) {
+      const registrationState =
+        this.#registrationLeaseStates.get(registrationLease);
+      if (
+        registrationState &&
+        this.#registrationLeases.get(registrationLease) === registrationState
+      ) {
+        this.#consumeRegistrationLease(registrationLease, registrationState);
+      }
+    }
     const removal = this.#removeOwnedAttachment(binding).finally(() => {
       if (this.#removals.get(binding.attachmentId) === removal) {
         this.#removals.delete(binding.attachmentId);
@@ -732,22 +830,11 @@ export class CodeTunnelBroker {
             )
             .catch(() => undefined)
         : Promise.resolve(),
-      binding.stopSessionOnRelease
-        ? this.bridge
-            .request(
-              binding.workerId,
-              {
-                type: "code.stop",
-                sessionId: binding.sessionId,
-              },
-              { timeoutMs: 5_000 },
-            )
-            .catch(() => undefined)
-        : Promise.resolve(),
     ]);
     const resourceFailures = [...tunnelRemoval, ...resourceCleanup]
       .filter((result) => result.status === "rejected")
       .map((result) => result.reason);
+    await this.#releaseSessionOwnership(binding);
     if (resourceFailures.length > 0) {
       throw new AggregateError(
         resourceFailures,
@@ -779,6 +866,152 @@ export class CodeTunnelBroker {
       }
     }
     return true;
+  }
+
+  async #releaseSessionOwnership(
+    binding: ProtectedCodeAttachmentBinding,
+  ): Promise<void> {
+    if (!binding.stopSessionOnRelease) return;
+    await this.#enqueueSessionStopOperation(binding, () =>
+      this.#stopSessionIfUnowned(binding),
+    );
+  }
+
+  async #enqueueSessionStopOperation(
+    identity: CodeSessionOwnershipIdentity,
+    stopIfUnowned: () => Promise<void>,
+  ): Promise<void> {
+    const ownershipKey = this.#workerSessionOwnershipKey(identity);
+    const previous = this.#sessionStopOperations.get(ownershipKey);
+    const operation = (previous ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(stopIfUnowned);
+    const tail = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#sessionStopOperations.set(ownershipKey, tail);
+    try {
+      await operation;
+    } finally {
+      if (this.#sessionStopOperations.get(ownershipKey) === tail) {
+        this.#sessionStopOperations.delete(ownershipKey);
+        this.#sessionStopIncarnations.delete(ownershipKey);
+      }
+    }
+  }
+
+  async #stopSessionIfUnowned(
+    binding: ProtectedCodeAttachmentBinding,
+  ): Promise<void> {
+    if (this.#releasedSessionOwnership.has(binding)) return;
+    const sessionKey = this.#sessionOwnershipKey(
+      binding.ownerId,
+      binding.sessionId,
+    );
+    this.#beginFence(this.#sessionStopFences, sessionKey);
+    try {
+      await Promise.all([
+        this.#waitForRegistrationLeases(
+          (lease) =>
+            lease !== binding.registrationLease &&
+            lease.ownerId === binding.ownerId &&
+            lease.sessionId === binding.sessionId,
+        ),
+        this.#waitForRegistrations(
+          (input) =>
+            input.tunnelId !== binding.tunnelId &&
+            input.ownerId === binding.ownerId &&
+            input.workerId === binding.workerId &&
+            input.sessionId === binding.sessionId,
+        ),
+      ]);
+      if (
+        [...this.#attachments.values()].some(
+          (candidate) =>
+            candidate !== binding &&
+            !this.#removals.has(candidate.attachmentId) &&
+            candidate.ownerId === binding.ownerId &&
+            candidate.workerId === binding.workerId &&
+            candidate.sessionId === binding.sessionId,
+        )
+      ) {
+        return;
+      }
+      if (this.#releasedSessionOwnership.has(binding)) return;
+      for (const candidate of this.#attachments.values()) {
+        if (
+          (candidate === binding ||
+            this.#removals.has(candidate.attachmentId)) &&
+          candidate.ownerId === binding.ownerId &&
+          candidate.workerId === binding.workerId &&
+          candidate.sessionId === binding.sessionId
+        ) {
+          this.#releasedSessionOwnership.add(candidate);
+        }
+      }
+      await this.#requestConditionalSessionStop(binding);
+    } finally {
+      this.#endFence(this.#sessionStopFences, sessionKey);
+    }
+  }
+
+  async #stopAbortedRegistrationIfUnowned(
+    identity: CodeSessionOwnershipIdentity,
+  ): Promise<void> {
+    await Promise.all([
+      this.#waitForRegistrationLeases(
+        (lease) =>
+          lease.ownerId === identity.ownerId &&
+          lease.sessionId === identity.sessionId,
+      ),
+      this.#waitForRegistrations(
+        (input) =>
+          input.ownerId === identity.ownerId &&
+          input.workerId === identity.workerId &&
+          input.sessionId === identity.sessionId,
+      ),
+    ]);
+    if (
+      [...this.#attachments.values()].some(
+        (binding) =>
+          !this.#removals.has(binding.attachmentId) &&
+          binding.ownerId === identity.ownerId &&
+          binding.workerId === identity.workerId &&
+          binding.sessionId === identity.sessionId,
+      )
+    ) {
+      return;
+    }
+    await this.#requestConditionalSessionStop(identity);
+  }
+
+  async #requestConditionalSessionStop(
+    identity: CodeSessionOwnershipIdentity,
+  ): Promise<void> {
+    if (!identity.sessionIncarnationId) return;
+    const ownershipKey = this.#workerSessionOwnershipKey(identity);
+    if (
+      this.#sessionStopIncarnations.get(ownershipKey) ===
+      identity.sessionIncarnationId
+    ) {
+      return;
+    }
+    this.#sessionStopIncarnations.set(
+      ownershipKey,
+      identity.sessionIncarnationId,
+    );
+    await this.bridge
+      .request(
+        identity.workerId,
+        {
+          type: "code.stop",
+          sessionId: identity.sessionId,
+          expectedSessionIncarnationId: identity.sessionIncarnationId,
+        },
+        { timeoutMs: 5_000 },
+      )
+      .catch(() => undefined);
   }
 
   async #revokeWhere(
@@ -887,6 +1120,19 @@ export class CodeTunnelBroker {
     return `${ownerId.length}:${ownerId}${attachmentId}`;
   }
 
+  #sessionOwnershipKey(ownerId: string, sessionId: string): string {
+    return `${ownerId.length}:${ownerId}${sessionId.length}:${sessionId}`;
+  }
+
+  #workerSessionOwnershipKey(
+    binding: Pick<
+      CodeSessionOwnershipIdentity,
+      "ownerId" | "sessionId" | "workerId"
+    >,
+  ): string {
+    return `${this.#sessionOwnershipKey(binding.ownerId, binding.sessionId)}${binding.workerId.length}:${binding.workerId}`;
+  }
+
   #assertRegistrationAllowed(input: CreateProtectedCodeAttachmentInput): void {
     const lease = input.registrationLease;
     if (
@@ -900,8 +1146,12 @@ export class CodeTunnelBroker {
         "The protected Cantrip Code registration lease does not match this attachment.",
       );
     }
+    const sessionStopFenced = this.#sessionStopFences.has(
+      this.#sessionOwnershipKey(input.ownerId, input.sessionId),
+    );
     if (
       !this.#registrationIsFenced(input) &&
+      (!sessionStopFenced || Boolean(lease)) &&
       (!lease || this.registrationLeaseIsActive(lease))
     ) {
       return;

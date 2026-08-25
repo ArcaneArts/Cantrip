@@ -224,6 +224,19 @@ describe("Cantrip workbench bridge", () => {
     });
   });
 
+  it("bounds disconnected control waits below the client deadline", async () => {
+    const bridge = new CodeWorkbenchBridge({ controlConnectTimeoutMs: 25 });
+    bridges.push(bridge);
+    await bridge.start();
+    bridge.register("bounded-session", "bounded-secret");
+
+    const startedAt = Date.now();
+    await expect(
+      bridge.setPresentation("bounded-session", "editor"),
+    ).rejects.toThrow("not connected");
+    expect(Date.now() - startedAt).toBeLessThan(250);
+  });
+
   it("retires an unresponsive surface and replays its theme on reconnect", async () => {
     const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 25 });
     bridges.push(bridge);
@@ -473,6 +486,48 @@ describe("Cantrip workbench bridge", () => {
     first.close();
     second.close();
     third.close();
+  });
+
+  it("cancels only the exact pending RPC without retiring its socket", async () => {
+    const bridge = new CodeWorkbenchBridge({ requestTimeoutMs: 5_000 });
+    bridges.push(bridge);
+    await bridge.start();
+    const url = bridge.register("cancel-session", "cancel-secret");
+    const socket = await openSocket(url);
+    respond(socket, await nextRequest(socket));
+    const controller = new AbortController();
+
+    const pending = bridge.openFile(
+      "cancel-session",
+      "cancelled.ts",
+      "file:///repo",
+      controller.signal,
+    );
+    expect((await nextRequest(socket)).method).toBe("openFile");
+    controller.abort(new Error("Cantrip Code operation was superseded."));
+
+    await expect(
+      Promise.race([
+        pending,
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () => reject(new Error("Bridge cancellation was not prompt.")),
+            250,
+          ),
+        ),
+      ]),
+    ).rejects.toThrow("superseded");
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+
+    const current = bridge.openFile(
+      "cancel-session",
+      "current.ts",
+      "file:///repo",
+    );
+    const currentRequest = await nextRequest(socket);
+    respond(socket, currentRequest, { relativePath: "current.ts" });
+    await expect(current).resolves.toEqual({ relativePath: "current.ts" });
+    socket.close();
   });
 
   it("unions per-socket dirty state while only the authority owns workbench state", async () => {

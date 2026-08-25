@@ -5,8 +5,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/components/explorer/explorer-code-editor", async () => {
   const { createElement: createMockElement } = await import("react");
   return {
-    ExplorerCodeEditor: ({ path }: { path: string | null }) =>
+    ExplorerCodeEditor: ({
+      active,
+      path,
+    }: {
+      active: boolean;
+      path: string | null;
+    }) =>
       createMockElement("div", {
+        "data-editor-active": active,
         "data-editor-path": path,
         "data-mock-code-editor": true,
       }),
@@ -60,6 +67,7 @@ describe("RetainedExplorerCodeEditor", () => {
       mountedEditor,
     );
     expect(mountedEditor.props["data-editor-path"]).toBe("src/one.ts");
+    expect(mountedEditor.props["data-editor-active"]).toBe(false);
     expect(
       renderer.root.findByProps({
         "data-slot": "retained-explorer-code-editor",

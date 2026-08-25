@@ -23,6 +23,7 @@ import type {
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
+import { CodeTunnelBroker } from "../src/code/tunnel.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
@@ -65,6 +66,14 @@ const connectedWorkers = new Set([
   unauthorizedWorkerId,
   crossAccountWorkerId,
 ]);
+const codeEditorBuild = {
+  version: "1.109.5",
+  upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+  patchset: 1,
+  fingerprint: "a".repeat(64),
+};
+const codeSessionIncarnationId = "5258059e-208d-4b20-a31d-396d3eb8fda8";
+let mismatchSettingsWorkbenchSession = false;
 
 const workerStatus = {
   profileId: "default" as const,
@@ -94,6 +103,67 @@ const bridge: WorkerCommandBus = {
   },
   async request(id, command) {
     workerCommands.push({ command, workerId: id });
+    if (command.type === "code.probe") {
+      return {
+        capabilities: {
+          available: true,
+          version: codeEditorBuild.version,
+          upstreamRevision: codeEditorBuild.upstreamRevision,
+          patchset: codeEditorBuild.patchset,
+          transport: "web-proxy",
+          maxSessions: 4,
+          reason: null,
+        },
+        editorBuild: codeEditorBuild,
+      };
+    }
+    if (command.type === "code.settings.workbench.open") {
+      return {
+        synchronization: workerStatus,
+        runtime: {
+          sessionId: mismatchSettingsWorkbenchSession
+            ? randomUUID()
+            : command.sessionId,
+          sessionIncarnationId: codeSessionIncarnationId,
+          status: "running",
+          editorBuild: codeEditorBuild,
+          processInstanceId: "code-settings-process",
+          bridgeConnected: true,
+          dirtyEditors: [],
+          workbench: {
+            activeEditor: null,
+            git: null,
+            conflicts: [],
+            savePolicy: "always",
+            agentStatus: "idle",
+          },
+          startedAt: "2026-08-23T12:00:00.000Z",
+          lastActivityAt: "2026-08-23T12:00:01.000Z",
+          lastError: null,
+        },
+      };
+    }
+    if (command.type === "code.stop") {
+      return {
+        sessionId: command.sessionId,
+        sessionIncarnationId: codeSessionIncarnationId,
+        status: "stopped",
+        editorBuild: codeEditorBuild,
+        processInstanceId: null,
+        bridgeConnected: false,
+        dirtyEditors: [],
+        workbench: {
+          activeEditor: null,
+          git: null,
+          conflicts: [],
+          savePolicy: "always",
+          agentStatus: "idle",
+        },
+        startedAt: null,
+        lastActivityAt: "2026-08-23T12:00:02.000Z",
+        lastError: null,
+      };
+    }
     if (
       command.type === "code.settings.status" ||
       command.type === "code.settings.synchronize" ||
@@ -157,6 +227,25 @@ function upload(
           nonce: randomBytes(12).toString("base64url"),
           ciphertext: randomBytes(32).toString("base64url"),
         },
+      },
+    },
+  };
+}
+
+function protectedTunnelRecord(operationId: string) {
+  return {
+    operationId,
+    revision: 1,
+    protectedContent: {
+      formatVersion: 1,
+      domain: "tunnel-content" as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: randomBytes(12).toString("base64url"),
+        ciphertext: randomBytes(32).toString("base64url"),
       },
     },
   };
@@ -385,6 +474,47 @@ describe.sequential("global Code settings API", () => {
       expect(response.body).not.toContain("record");
       expect(response.body).not.toContain("protectedContent");
       expect(response.body).not.toContain("ciphertext");
+    }
+  });
+
+  it("aborts a mismatched protected settings registration without an unfenced stop", async () => {
+    const abortSpy = vi.spyOn(
+      CodeTunnelBroker.prototype,
+      "abortRegistrationSession",
+    );
+    const sessionId = randomUUID();
+    const tunnelId = randomUUID();
+    workerCommands.length = 0;
+    mismatchSettingsWorkbenchSession = true;
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/settings/code/protected-code-attachments",
+        payload: {
+          appearance: "dark",
+          expectedWorkerId: workerId,
+          protectedRecord: protectedTunnelRecord(tunnelId),
+          sessionId,
+          tunnelId,
+        },
+      });
+
+      expect(response.statusCode, response.body).toBe(409);
+      expect(abortSpy).toHaveBeenCalledOnce();
+      expect(abortSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workerId,
+          runtime: expect.objectContaining({
+            sessionIncarnationId: codeSessionIncarnationId,
+          }),
+        }),
+      );
+      expect(
+        workerCommands.filter(({ command }) => command.type === "code.stop"),
+      ).toEqual([]);
+    } finally {
+      mismatchSettingsWorkbenchSession = false;
+      abortSpy.mockRestore();
     }
   });
 

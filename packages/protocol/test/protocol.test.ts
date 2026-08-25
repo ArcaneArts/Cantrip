@@ -5297,6 +5297,16 @@ describe("Cantrip protocol", () => {
     ).toBe("code.endpoint.revoke");
     expect(
       workerCommandSchema.parse({
+        type: "code.stop",
+        sessionId: "session-1",
+        expectedSessionIncarnationId: "11111111-1111-4111-8111-111111111111",
+      }),
+    ).toMatchObject({
+      type: "code.stop",
+      expectedSessionIncarnationId: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(
+      workerCommandSchema.parse({
         type: "code.prepareAgentTurn",
         cwd: "/workspace/Cantrip",
       }).type,
@@ -5312,6 +5322,7 @@ describe("Cantrip protocol", () => {
     expect(
       codeRuntimeStatusSchema.parse({
         sessionId: "session-1",
+        sessionIncarnationId: "11111111-1111-4111-8111-111111111111",
         status: "running",
         editorBuild: {
           version: "1.109.5",
@@ -5332,8 +5343,36 @@ describe("Cantrip protocol", () => {
         startedAt: "2026-08-07T12:00:00.000Z",
         lastActivityAt: "2026-08-07T12:00:00.000Z",
         lastError: null,
-      }).workbench.savePolicy,
-    ).toBe("always");
+      }),
+    ).toMatchObject({
+      sessionIncarnationId: "11111111-1111-4111-8111-111111111111",
+      workbench: { savePolicy: "always" },
+    });
+    expect(
+      codeRuntimeStatusSchema.parse({
+        sessionId: "legacy-session",
+        status: "stopped",
+        editorBuild: {
+          version: "1.109.5",
+          upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+          patchset: 1,
+          fingerprint: "a".repeat(64),
+        },
+        processInstanceId: null,
+        bridgeConnected: false,
+        dirtyEditors: [],
+        workbench: {
+          activeEditor: null,
+          git: null,
+          conflicts: [],
+          savePolicy: "always",
+          agentStatus: "idle",
+        },
+        startedAt: null,
+        lastActivityAt: null,
+        lastError: null,
+      }),
+    ).not.toHaveProperty("sessionIncarnationId");
     expect(
       codeRuntimeStatusSchema.safeParse({
         sessionId: "session-1",

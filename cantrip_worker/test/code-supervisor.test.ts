@@ -24,6 +24,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { verifyCantripCodeInstallation } from "../src/code/installation.js";
+import { CodeDirectEndpointManager } from "../src/code/direct-endpoint.js";
 import { CodeWorkbenchBridge } from "../src/code/workbench-bridge.js";
 import {
   CodeSupervisor,
@@ -33,10 +34,12 @@ import {
 } from "../src/code/supervisor.js";
 
 const directories: string[] = [];
+const endpointManagers: CodeDirectEndpointManager[] = [];
 const supervisors: CodeSupervisor[] = [];
 const healthServers: NetServer[] = [];
 
 afterEach(async () => {
+  for (const endpoints of endpointManagers.splice(0)) endpoints.close();
   await Promise.all(
     supervisors.splice(0).map((supervisor) => supervisor.close()),
   );
@@ -80,6 +83,10 @@ type FixtureOptions = Pick<
   | "idleTimeoutMs"
   | "profileIdleTimeoutMs"
   | "profileLogWriter"
+  | "profileCrashWindowMs"
+  | "profileMaxCrashesPerWindow"
+  | "profileRestartBaseDelayMs"
+  | "profileRestartMaxDelayMs"
   | "prepareProfile"
   | "readinessTimeoutMs"
 > & {
@@ -610,6 +617,234 @@ describe("Cantrip Code supervisor", () => {
     },
   );
 
+  it("cancels a disconnected open-file wait when stop arrives", async () => {
+    const { repository, supervisor } = await fixture();
+    const sessionId = "disconnected-open-file-stop";
+    await writeFile(path.join(repository, "next.ts"), "export {};\n");
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+    const target = supervisor.proxyTarget(sessionId);
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, string> };
+    const mutation = supervisor.openFile(sessionId, "next.ts");
+    const mutationFailure = expect(mutation).rejects.toThrow("superseded");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const stopping = supervisor.stop(sessionId);
+    let remainedRoutable = true;
+    try {
+      supervisor.proxyTarget(sessionId);
+    } catch {
+      remainedRoutable = false;
+    }
+    const completed = Promise.all([mutationFailure, stopping]);
+    const completedPromptly = await Promise.race([
+      completed.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 250)),
+    ]);
+    if (!completedPromptly) {
+      const bridge = await openControlledBridge(
+        workspace.settings["cantrip.bridgeUrl"]!,
+      );
+      const request = await bridge.nextRequest();
+      bridge.respond(request);
+      await completed;
+      bridge.socket.close();
+    }
+
+    expect(remainedRoutable).toBe(false);
+    expect(completedPromptly).toBe(true);
+  });
+
+  it("does not let an old claimed stop retire a replacement incarnation", async () => {
+    const { repository, supervisor } = await fixture();
+    const sessionId = "claimed-stop-replacement";
+    const replacement = path.join(path.dirname(repository), "replacement");
+    await mkdir(replacement);
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+    const firstIncarnation = supervisor.status(sessionId).sessionIncarnationId;
+
+    const claim = supervisor.claimStop(sessionId, firstIncarnation!);
+    expect(claim.accepted).toBe(true);
+    expect(() => supervisor.proxyTarget(sessionId)).toThrow("not running");
+    const reopened = await supervisor.open({
+      ...openCommand(sessionId, replacement, "replacement"),
+      cwd: replacement,
+    });
+    expect(reopened.sessionIncarnationId).not.toBe(firstIncarnation);
+
+    if (!claim.accepted) throw new Error("Expected the stop claim to succeed.");
+    await claim.retire();
+
+    expect(supervisor.status(sessionId)).toMatchObject({
+      sessionIncarnationId: reopened.sessionIncarnationId,
+      status: "running",
+    });
+    expect(supervisor.proxyTarget(sessionId).processInstanceId).toBe(
+      reopened.processInstanceId,
+    );
+  });
+
+  it("rejects a mismatched stop claim without changing the current session", async () => {
+    const { repository, supervisor } = await fixture();
+    const sessionId = "mismatched-stop-claim";
+    const opened = await supervisor.open(
+      openCommand(sessionId, repository, "primary"),
+    );
+    const target = supervisor.proxyTarget(sessionId);
+
+    const claim = supervisor.claimStop(sessionId, crypto.randomUUID());
+
+    expect(claim).toMatchObject({ accepted: false });
+    if (claim.accepted)
+      throw new Error("Expected the stop claim to be rejected.");
+    expect(claim.status).toMatchObject({
+      sessionIncarnationId: opened.sessionIncarnationId,
+      status: "running",
+    });
+    expect(supervisor.proxyTarget(sessionId)).toEqual(target);
+  });
+
+  it("keeps missing-incarnation legacy stop claims unconditional", async () => {
+    const { repository, supervisor } = await fixture();
+    const sessionId = "legacy-stop-claim";
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+
+    const claim = supervisor.claimStop(sessionId);
+
+    expect(claim.accepted).toBe(true);
+    if (!claim.accepted) throw new Error("Expected the stop claim to succeed.");
+    await expect(claim.retire()).resolves.toMatchObject({
+      sessionIncarnationId: null,
+      status: "stopped",
+    });
+    expect(() => supervisor.status(sessionId)).toThrow("is not open");
+  });
+
+  it("claims stop before draining a held direct control tail", async () => {
+    const { repository, supervisor } = await fixture();
+    const endpoints = new CodeDirectEndpointManager(supervisor);
+    endpointManagers.push(endpoints);
+    const sessionId = "claimed-direct-control-tail";
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+    const runtime = supervisor.status(sessionId);
+    const workspace = JSON.parse(
+      await readFile(
+        new URL(supervisor.proxyTarget(sessionId).workspaceUri),
+        "utf8",
+      ),
+    ) as { settings: Record<string, string> };
+    const bridge = await openControlledBridge(
+      workspace.settings["cantrip.bridgeUrl"]!,
+    );
+    const tunnelId = crypto.randomUUID();
+    const endpoint = await endpoints.prepareProtected(tunnelId, sessionId);
+    const blockedRequest = bridge.nextRequest();
+    const control = fetch(
+      `http://${endpoint.host}:${endpoint.port}/code/_cantrip/presentation`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ presentation: "editor" }),
+      },
+    ).catch(() => null);
+    expect((await blockedRequest).method).toBe("setPresentation");
+
+    const claim = supervisor.claimStop(
+      sessionId,
+      runtime.sessionIncarnationId!,
+    );
+    expect(claim.accepted).toBe(true);
+    if (!claim.accepted) throw new Error("Expected the stop claim to succeed.");
+    const completed = (async () => {
+      await endpoints.closeSession(sessionId);
+      return claim.retire();
+    })();
+
+    await expect(
+      Promise.race([
+        completed,
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () => reject(new Error("Claimed direct stop did not complete.")),
+            250,
+          ),
+        ),
+      ]),
+    ).resolves.toMatchObject({ status: "stopped" });
+    expect(() => supervisor.status(sessionId)).toThrow("is not open");
+    await control;
+    bridge.socket.close();
+  });
+
+  it("keeps a direct endpoint alive when its stop claim mismatches", async () => {
+    const { repository, supervisor } = await fixture();
+    const endpoints = new CodeDirectEndpointManager(supervisor);
+    endpointManagers.push(endpoints);
+    const sessionId = "mismatched-direct-stop";
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+    const endpoint = await endpoints.prepareProtected(
+      crypto.randomUUID(),
+      sessionId,
+    );
+
+    const claim = supervisor.claimStop(sessionId, crypto.randomUUID());
+    if (claim.accepted) {
+      await endpoints.closeSession(sessionId);
+      await claim.retire();
+    }
+
+    expect(claim.accepted).toBe(false);
+    await expect(
+      fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/health`,
+      ).then((response) => response.status),
+    ).resolves.toBe(200);
+    expect(supervisor.proxyTarget(sessionId)).toBeDefined();
+  });
+
+  it.each(["openFile", "setPresentation"] as const)(
+    "cancels a deferred %s bridge RPC when stop arrives",
+    async (mutationKind) => {
+      const { repository, supervisor } = await fixture();
+      const sessionId = `deferred-${mutationKind}-stop`;
+      await writeFile(path.join(repository, "next.ts"), "export {};\n");
+      await supervisor.open(openCommand(sessionId, repository, "primary"));
+      const target = supervisor.proxyTarget(sessionId);
+      const workspace = JSON.parse(
+        await readFile(new URL(target.workspaceUri), "utf8"),
+      ) as { settings: Record<string, string> };
+      const bridge = await openControlledBridge(
+        workspace.settings["cantrip.bridgeUrl"]!,
+      );
+      const blockedRequest = bridge.nextRequest();
+      const mutation =
+        mutationKind === "openFile"
+          ? supervisor.openFile(sessionId, "next.ts")
+          : supervisor.setPresentation(sessionId, "editor");
+      const mutationFailure = expect(mutation).rejects.toThrow("superseded");
+      const request = await blockedRequest;
+      expect(request.method).toBe(mutationKind);
+
+      const stopping = supervisor.stop(sessionId);
+      const completed = Promise.all([mutationFailure, stopping]);
+      const completedPromptly = await Promise.race([
+        completed.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 250)),
+      ]);
+      if (!completedPromptly) {
+        bridge.respond(
+          request,
+          mutationKind === "openFile" ? { relativePath: "next.ts" } : {},
+        );
+        await completed;
+      }
+
+      expect(completedPromptly).toBe(true);
+      bridge.socket.close();
+    },
+  );
+
   it("rolls back every newly registered resource when profile startup fails", async () => {
     const bridge = new CodeWorkbenchBridge();
     const unregister = vi.spyOn(bridge, "unregister");
@@ -657,6 +892,51 @@ describe("Cantrip Code supervisor", () => {
     );
   });
 
+  it("keeps an incomplete new-open rollback owned and retryable", async () => {
+    const { dataDirectory, repository, startupGate, supervisor } =
+      await fixture({ gateStartup: true });
+    const sessionId = "retryable-open-rollback";
+    const profileDirectory = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+    );
+    const opening = supervisor.open(
+      openCommand(sessionId, repository, "primary"),
+    );
+    await waitForFile(path.join(profileDirectory, "launch-args.json"));
+    const provisional = supervisor.status(sessionId);
+    const workspace = new URL(provisional.workspaceUri);
+    await rm(workspace, { force: true });
+    await mkdir(workspace);
+
+    const stopping = supervisor.stop(sessionId);
+    await writeFile(startupGate!, "ready\n");
+
+    await expect(opening).rejects.toThrow("rollback was incomplete");
+    await expect(stopping).rejects.toThrow("retirement cleanup failed");
+    expect(() => supervisor.proxyTarget(sessionId)).toThrow("not running");
+    expect(supervisor.status(sessionId)).toMatchObject({
+      sessionIncarnationId: provisional.sessionIncarnationId,
+      status: "stopping",
+    });
+
+    await rm(workspace, { recursive: true, force: true });
+    await expect(supervisor.stop(sessionId)).resolves.toMatchObject({
+      sessionIncarnationId: null,
+      status: "stopped",
+    });
+    const replacement = await supervisor.open(
+      openCommand(sessionId, repository, "primary"),
+    );
+    expect(replacement).toMatchObject({ status: "running" });
+    expect(replacement.sessionIncarnationId).not.toBe(
+      provisional.sessionIncarnationId,
+    );
+  });
+
   it("observes failed startup process exit before allowing a retry", async () => {
     const { dataDirectory, entrypoint, repository, supervisor } = await fixture(
       {
@@ -692,6 +972,53 @@ describe("Cantrip Code supervisor", () => {
         openCommand("healthy-startup-retry", repository, "secondary"),
       ),
     ).resolves.toMatchObject({ status: "running" });
+  });
+
+  it("keeps a new session non-routable until open commits", async () => {
+    let enterReadyLog: (() => void) | null = null;
+    const readyLogEntered = new Promise<void>((resolve) => {
+      enterReadyLog = resolve;
+    });
+    let releaseReadyLog: (() => void) | null = null;
+    const readyLogRelease = new Promise<void>((resolve) => {
+      releaseReadyLog = resolve;
+    });
+    const { repository, supervisor } = await fixture({
+      profileLogWriter: async (_logPath, entry) => {
+        if (!entry.includes(" ready on loopback port ")) return;
+        enterReadyLog?.();
+        await readyLogRelease;
+      },
+      readinessTimeoutMs: 1_000,
+    });
+    const sessionId = "provisional-open";
+    const opening = supervisor.open(
+      openCommand(sessionId, repository, "primary"),
+    );
+    const openingFailure = expect(opening).rejects.toThrow("superseded");
+
+    await readyLogEntered;
+    const statusBeforeCommit = supervisor.status(sessionId).status;
+    let routableBeforeCommit = true;
+    try {
+      supervisor.proxyTarget(sessionId);
+    } catch {
+      routableBeforeCommit = false;
+    }
+    const stopping = supervisor.stop(sessionId);
+    let routableAfterStop = true;
+    try {
+      supervisor.proxyTarget(sessionId);
+    } catch {
+      routableAfterStop = false;
+    }
+    releaseReadyLog?.();
+
+    await openingFailure;
+    await expect(stopping).resolves.toMatchObject({ status: "stopped" });
+    expect(statusBeforeCommit).toBe("starting");
+    expect(routableBeforeCommit).toBe(false);
+    expect(routableAfterStop).toBe(false);
   });
 
   it("does not report running when the process exits during the ready log", async () => {
@@ -740,6 +1067,51 @@ describe("Cantrip Code supervisor", () => {
 
     await openingFailure;
     expect(() => supervisor.status(sessionId)).toThrow("is not open");
+  });
+
+  it("does not let a stale process-exit continuation overwrite a healthy replacement", async () => {
+    let observeExitLog: (() => void) | null = null;
+    const exitLogObserved = new Promise<void>((resolve) => {
+      observeExitLog = resolve;
+    });
+    let releaseExitLog: (() => void) | null = null;
+    const exitLogRelease = new Promise<void>((resolve) => {
+      releaseExitLog = resolve;
+    });
+    let holdFirstExitLog = true;
+    const { dataDirectory, repository, supervisor } = await fixture({
+      profileLogWriter: async (_logPath, entry) => {
+        if (!holdFirstExitLog || !entry.includes("process exited")) return;
+        holdFirstExitLog = false;
+        observeExitLog?.();
+        await exitLogRelease;
+      },
+      profileRestartBaseDelayMs: 10_000,
+      profileRestartMaxDelayMs: 10_000,
+    });
+    const sessionId = "stale-process-exit";
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+    const processFile = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+      "process.pid",
+    );
+    const firstPid = await readFile(processFile, "utf8");
+
+    process.kill(Number(firstPid), "SIGKILL");
+    await exitLogObserved;
+    await supervisor.prewarmProfile("default");
+    const replacementPid = await readFile(processFile, "utf8");
+    expect(replacementPid).not.toBe(firstPid);
+
+    releaseExitLog?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(supervisor.status(sessionId)).toMatchObject({ status: "running" });
+    expect(supervisor.proxyTarget(sessionId).processInstanceId).not.toBeNull();
   });
 
   it("serializes a fired crash restart with last-session stop and idle eviction", async () => {
@@ -1082,6 +1454,184 @@ describe("Cantrip Code supervisor", () => {
     expect(restartedPid).not.toBe(firstPid);
   });
 
+  it("retries a retained prewarm when its first automatic restart fails", async () => {
+    const { dataDirectory, entrypoint, supervisor } = await fixture({
+      readinessTimeoutMs: 500,
+    });
+    const processFile = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+      "process.pid",
+    );
+    await supervisor.prewarmProfile("default");
+    const firstPid = await readFile(processFile, "utf8");
+    await writeFile(entrypoint, codeServerSource({ unhealthyStartup: true }));
+
+    process.kill(Number(firstPid), "SIGKILL");
+    const failedRestartPid = await waitForFileChange(processFile, firstPid);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await writeFile(entrypoint, codeServerSource());
+
+    const recoveredPid = await waitForFileChange(
+      processFile,
+      failedRestartPid,
+      2_000,
+    );
+    expect(recoveredPid).not.toBe(firstPid);
+    expect(recoveredPid).not.toBe(failedRestartPid);
+  });
+
+  it("wakes a retained prewarm after its crash-breaker cooldown", async () => {
+    const { dataDirectory, supervisor } = await fixture({
+      profileCrashWindowMs: 400,
+      profileMaxCrashesPerWindow: 1,
+      profileRestartBaseDelayMs: 10,
+      profileRestartMaxDelayMs: 10,
+      readinessTimeoutMs: 1_000,
+    });
+    const processFile = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+      "process.pid",
+    );
+    await supervisor.prewarmProfile("default");
+    const firstPid = await readFile(processFile, "utf8");
+
+    process.kill(Number(firstPid), "SIGKILL");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(await readFile(processFile, "utf8")).toBe(firstPid);
+
+    const recoveredPid = await waitForFileChange(processFile, firstPid, 1_500);
+    expect(recoveredPid).not.toBe(firstPid);
+  });
+
+  it("functionally verifies an explicitly repeated retained prewarm", async () => {
+    const { dataDirectory, supervisor } = await fixture({
+      readinessTimeoutMs: 500,
+    });
+    const profileDirectory = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+    );
+    const processFile = path.join(profileDirectory, "process.pid");
+    await supervisor.prewarmProfile("default");
+    const firstPid = await readFile(processFile, "utf8");
+    await writeFile(path.join(profileDirectory, "unhealthy.pid"), firstPid);
+
+    await supervisor.prewarmProfile("default");
+
+    expect(await readFile(processFile, "utf8")).not.toBe(firstPid);
+  });
+
+  it("retries restored profile prewarm after a transient startup failure", async () => {
+    const {
+      capabilities,
+      dataDirectory,
+      entrypoint,
+      installation,
+      repository,
+      supervisor,
+    } = await fixture({ deferRestoredProfilePrewarm: true });
+    await supervisor.open(
+      openCommand("restored-prewarm-retry", repository, "primary"),
+    );
+    await supervisor.close();
+    await writeFile(entrypoint, codeServerSource({ unhealthyStartup: true }));
+    const restored = new CodeSupervisor({
+      capabilities,
+      dataDirectory,
+      deferRestoredProfilePrewarm: true,
+      installation,
+      readinessTimeoutMs: 100,
+    });
+    supervisors.push(restored);
+    await restored.start();
+    const processFile = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+      "process.pid",
+    );
+
+    await restored.prewarmRestoredProfiles();
+    const failedPid = await readFile(processFile, "utf8");
+    await writeFile(entrypoint, codeServerSource());
+    await restored.prewarmRestoredProfiles();
+
+    expect(await waitForFileChange(processFile, failedPid, 2_000)).not.toBe(
+      failedPid,
+    );
+  });
+
+  it("serializes restored prewarm with retirement of its final session", async () => {
+    const {
+      capabilities,
+      dataDirectory,
+      installation,
+      repository,
+      supervisor,
+    } = await fixture({ deferRestoredProfilePrewarm: true });
+    const sessionId = "restored-prewarm-retirement";
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+    await supervisor.close();
+    let releasePreparation: (() => void) | null = null;
+    const preparationGate = new Promise<void>((resolve) => {
+      releasePreparation = resolve;
+    });
+    let observePreparation: (() => void) | null = null;
+    const preparationObserved = new Promise<void>((resolve) => {
+      observePreparation = resolve;
+    });
+    const restored = new CodeSupervisor({
+      capabilities,
+      dataDirectory,
+      deferRestoredProfilePrewarm: true,
+      installation,
+      prepareProfile: async () => {
+        observePreparation?.();
+        await preparationGate;
+      },
+      profileIdleTimeoutMs: 1_000,
+      readinessTimeoutMs: 1_000,
+    });
+    supervisors.push(restored);
+    await restored.start();
+
+    const prewarm = restored.prewarmRestoredProfiles();
+    await preparationObserved;
+    let stopped = false;
+    const stopping = restored.stop(sessionId).then(() => {
+      stopped = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(stopped).toBe(false);
+
+    releasePreparation?.();
+    await Promise.all([prewarm, stopping]);
+    const processFile = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("default").digest("hex"),
+      "user-data",
+      "process.pid",
+    );
+    const pid = Number(await readFile(processFile, "utf8"));
+    await restored.evictIdleSessions(Date.now() + 2_000);
+    expect(() => process.kill(pid, 0)).toThrow();
+  });
+
   it("restarts a cached profile that no longer serves authenticated HTTP", async () => {
     const { dataDirectory, repository, supervisor } = await fixture({
       readinessTimeoutMs: 500,
@@ -1131,6 +1681,77 @@ describe("Cantrip Code supervisor", () => {
     for (const workspaceUri of workspaceUris) {
       await expect(readFile(new URL(workspaceUri), "utf8")).rejects.toThrow();
     }
+  });
+
+  it("removes the final per-session artifact directory on stop", async () => {
+    const { dataDirectory, repository, supervisor } = await fixture();
+    const sessionId = "session-artifact-cleanup";
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+    const sessionDirectory = path.join(
+      dataDirectory,
+      "code",
+      "sessions",
+      createHash("sha256").update(sessionId).digest("hex"),
+    );
+    await writeFile(path.join(sessionDirectory, "owned.tmp"), "owned\n");
+
+    await supervisor.stop(sessionId);
+
+    await expect(readdir(sessionDirectory)).rejects.toThrow();
+  });
+
+  it("keeps failed retirement cleanup non-routable and retryable", async () => {
+    const { dataDirectory, repository, supervisor } = await fixture();
+    const sessionId = "retryable-retirement-cleanup";
+    const opened = await supervisor.open(
+      openCommand(sessionId, repository, "primary"),
+    );
+    const workspace = new URL(supervisor.proxyTarget(sessionId).workspaceUri);
+    await rm(workspace, { force: true });
+    await mkdir(workspace);
+
+    await expect(supervisor.stop(sessionId)).rejects.toThrow();
+    expect(() => supervisor.proxyTarget(sessionId)).toThrow("not running");
+    expect(supervisor.status(sessionId)).toMatchObject({
+      sessionIncarnationId: opened.sessionIncarnationId,
+      status: "stopping",
+    });
+    const stateFile = path.join(dataDirectory, "code", "state", "runtime.json");
+    expect(await readFile(stateFile, "utf8")).not.toContain(sessionId);
+
+    await rm(workspace, { recursive: true, force: true });
+    await expect(supervisor.stop(sessionId)).resolves.toMatchObject({
+      sessionIncarnationId: null,
+      status: "stopped",
+    });
+    expect(() => supervisor.status(sessionId)).toThrow("is not open");
+
+    const replacement = await supervisor.open(
+      openCommand(sessionId, repository, "primary"),
+    );
+    expect(replacement.sessionIncarnationId).not.toBe(
+      opened.sessionIncarnationId,
+    );
+    expect(await readFile(stateFile, "utf8")).toContain(sessionId);
+  });
+
+  it("removes failed runtime state temporary files", async () => {
+    const { dataDirectory, repository, supervisor } = await fixture();
+    const sessionId = "state-temp-cleanup";
+    await supervisor.open(openCommand(sessionId, repository, "primary"));
+    const stateDirectory = path.join(dataDirectory, "code", "state");
+    const stateFile = path.join(stateDirectory, "runtime.json");
+    await rm(stateFile, { force: true });
+    await mkdir(stateFile);
+
+    await expect(supervisor.stop(sessionId)).rejects.toThrow();
+    const temporaryFiles = (await readdir(stateDirectory)).filter(
+      (entry) => entry.startsWith("runtime.json.") && entry.endsWith(".tmp"),
+    );
+
+    await rm(stateFile, { recursive: true, force: true });
+    await supervisor.stop(sessionId);
+    expect(temporaryFiles).toEqual([]);
   });
 
   it("evicts a warm profile after its idle timeout", async () => {
@@ -1506,6 +2127,99 @@ describe("Cantrip Code supervisor", () => {
     expect(reopened.processInstanceId).toBe(
       restored.status("restored").processInstanceId,
     );
+  });
+
+  it("rolls back a restored record whose workspace cannot be hydrated", async () => {
+    const {
+      capabilities,
+      dataDirectory,
+      installation,
+      repository,
+      supervisor,
+    } = await fixture();
+    const sessionId = "failed-restored-hydration";
+    const survivingSessionId = "surviving-restored-hydration";
+    await supervisor.open({
+      ...openCommand(sessionId, repository, "primary"),
+      profileId: "broken-profile",
+    });
+    await supervisor.open(
+      openCommand(survivingSessionId, repository, "secondary"),
+    );
+    await supervisor.close();
+    const stateFile = path.join(dataDirectory, "code", "state", "runtime.json");
+    const persisted = JSON.parse(await readFile(stateFile, "utf8")) as {
+      sessions: Array<{ sessionId: string; workspacePath: string }>;
+    };
+    const workspacePath = persisted.sessions.find(
+      (session) => session.sessionId === sessionId,
+    )!.workspacePath;
+    await mkdir(workspacePath);
+    const sessionDirectory = path.join(
+      dataDirectory,
+      "code",
+      "sessions",
+      createHash("sha256").update(sessionId).digest("hex"),
+    );
+    const processFile = path.join(
+      dataDirectory,
+      "code",
+      "profiles",
+      createHash("sha256").update("broken-profile").digest("hex"),
+      "user-data",
+      "process.pid",
+    );
+    const bridge = new CodeWorkbenchBridge();
+    const unregister = vi.spyOn(bridge, "unregister");
+    const restored = new CodeSupervisor({
+      bridge,
+      capabilities,
+      dataDirectory,
+      installation,
+      readinessTimeoutMs: 3_000,
+    });
+    supervisors.push(restored);
+
+    const startError = await restored.start().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    const retainedSession = (() => {
+      try {
+        return restored.status(sessionId);
+      } catch {
+        return null;
+      }
+    })();
+    const survivingSession = restored.status(survivingSessionId);
+    const persistedAfterRestore = await readFile(stateFile, "utf8");
+    const sessionArtifactsRemain = await readdir(sessionDirectory)
+      .then(() => true)
+      .catch(() => false);
+    const processStarted = await readFile(processFile, "utf8")
+      .then((value) => {
+        try {
+          process.kill(Number(value), 0);
+          return true;
+        } catch {
+          return false;
+        }
+      })
+      .catch(() => false);
+    const obstructionPreserved = await readdir(workspacePath)
+      .then(() => true)
+      .catch(() => false);
+    await rm(workspacePath, { recursive: true, force: true });
+    await restored.close().catch(() => undefined);
+
+    expect(startError).toBeNull();
+    expect(unregister).toHaveBeenCalledWith(sessionId);
+    expect(retainedSession).toBeNull();
+    expect(survivingSession.status).toBe("running");
+    expect(persistedAfterRestore).not.toContain(sessionId);
+    expect(sessionArtifactsRemain).toBe(false);
+    expect(processStarted).toBe(false);
+    expect(obstructionPreserved).toBe(true);
   });
 
   it("does not persist temporary editor-only sessions", async () => {

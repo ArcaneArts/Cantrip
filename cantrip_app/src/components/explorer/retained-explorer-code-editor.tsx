@@ -55,6 +55,7 @@ export function RetainedExplorerCodeEditor({
       data-slot="retained-explorer-code-editor"
     >
       <ExplorerCodeEditor
+        active={visible}
         appearance={appearance}
         explorerId={explorerId}
         path={path}

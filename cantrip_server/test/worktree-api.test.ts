@@ -315,6 +315,10 @@ function protectedTunnelRecord(operationId: string) {
 const codeOpenCommands: Array<Extract<WorkerCommand, { type: "code.open" }>> =
   [];
 const codeStopSessionIds: string[] = [];
+const codeStopCommands: Array<Extract<WorkerCommand, { type: "code.stop" }>> =
+  [];
+const codeStopTimeouts: Array<number | null | undefined> = [];
+const codeSessionIncarnationId = "755f30a1-866d-4969-aa91-6e0f28676753";
 const codeStatusSessionIds: string[] = [];
 const codeEndpointRevokedTunnelIds: string[] = [];
 const directPrepareCapabilityIds: string[] = [];
@@ -1609,6 +1613,7 @@ const workerBridge = {
         }
         return {
           sessionId: command.sessionId,
+          sessionIncarnationId: codeSessionIncarnationId,
           status: "running",
           editorBuild: codeEditorBuild,
           processInstanceId: "code-process-1",
@@ -1629,6 +1634,7 @@ const workerBridge = {
         codeStatusSessionIds.push(command.sessionId);
         return {
           sessionId: command.sessionId,
+          sessionIncarnationId: codeSessionIncarnationId,
           status: "running",
           editorBuild: codeEditorBuild,
           processInstanceId: "code-process-1",
@@ -1646,9 +1652,12 @@ const workerBridge = {
           lastError: null,
         };
       case "code.stop":
+        codeStopCommands.push(command);
+        codeStopTimeouts.push(options?.timeoutMs);
         codeStopSessionIds.push(command.sessionId);
         return {
           sessionId: command.sessionId,
+          sessionIncarnationId: codeSessionIncarnationId,
           status: "stopped",
           editorBuild: codeEditorBuild,
           processInstanceId: null,
@@ -3035,7 +3044,11 @@ describe.sequential("server worktree control plane", () => {
       worktreeId: createdWorktree.id,
       cwd: createdWorktree.path,
     });
-    expect(codeStopSessionIds).toContain(session!.id);
+    expect(codeStopCommands).toContainEqual({
+      type: "code.stop",
+      sessionId: session!.id,
+      expectedSessionIncarnationId: codeSessionIncarnationId,
+    });
     expect(
       await database.repository.updateCodeSessionRuntime(
         LOCAL_USER_ID,
@@ -3734,6 +3747,59 @@ describe.sequential("server worktree control plane", () => {
     }
   });
 
+  it("retains a valid same-session Explorer attachment when duplicate registration fails", async () => {
+    const explorerResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...protectedExplorerFields(),
+        worktreeId: primaryId,
+      },
+    });
+    expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
+    const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
+    const sessionId = randomUUID();
+    const tunnelId = randomUUID();
+    const payload = {
+      appearance: "dark",
+      expectedWorkerId: explorer.activeWorkerId,
+      expectedWorktreeId: explorer.worktreeId,
+      path: "src/duplicate.ts",
+      protectedRecord: protectedTunnelRecord(tunnelId),
+      sessionId,
+      tunnelId,
+    };
+
+    try {
+      const created = await app.inject({
+        method: "POST",
+        url: `/api/explorers/${explorer.id}/protected-code-attachments`,
+        payload,
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      const stopsBeforeDuplicate = codeStopCommands.length;
+
+      const duplicate = await app.inject({
+        method: "POST",
+        url: `/api/explorers/${explorer.id}/protected-code-attachments`,
+        payload,
+      });
+      expect(duplicate.statusCode, duplicate.body).toBe(503);
+      expect(duplicate.json()).toMatchObject({
+        error: "This protected Cantrip Code attachment already exists.",
+      });
+      expect(codeStopCommands).toHaveLength(stopsBeforeDuplicate);
+      expect(
+        await app.inject({ method: "GET", url: `/api/tunnels/${tunnelId}` }),
+      ).toMatchObject({ statusCode: 200 });
+    } finally {
+      await app.inject({
+        method: "DELETE",
+        url: `/api/explorers/${explorer.id}`,
+      });
+    }
+  });
+
   it("synchronously revokes an existing Explorer Code attachment on delete", async () => {
     const explorerResponse = await app.inject({
       method: "POST",
@@ -3815,6 +3881,7 @@ describe.sequential("server worktree control plane", () => {
     }
     const endpointRevocationsBefore = codeEndpointRevokedTunnelIds.length;
     const sessionStopsBefore = codeStopSessionIds.length;
+    const stopCommandsBefore = codeStopCommands.length;
 
     const deletionResponse = await app.inject({
       method: "DELETE",
@@ -3825,6 +3892,13 @@ describe.sequential("server worktree control plane", () => {
       codeEndpointRevokedTunnelIds.slice(endpointRevocationsBefore),
     ).toEqual([tunnelId]);
     expect(codeStopSessionIds.slice(sessionStopsBefore)).toEqual([sessionId]);
+    expect(codeStopCommands.slice(stopCommandsBefore)).toEqual([
+      {
+        type: "code.stop",
+        sessionId,
+        expectedSessionIncarnationId: codeSessionIncarnationId,
+      },
+    ]);
     expect(
       await app.inject({ method: "GET", url: `/api/tunnels/${tunnelId}` }),
     ).toMatchObject({ statusCode: 404 });
@@ -3896,6 +3970,7 @@ describe.sequential("server worktree control plane", () => {
     expect(attachmentResponse.statusCode, attachmentResponse.body).toBe(201);
     const endpointRevocationsBefore = codeEndpointRevokedTunnelIds.length;
     const sessionStopsBefore = codeStopSessionIds.length;
+    const stopCommandsBefore = codeStopCommands.length;
 
     const retargetResponse = await app.inject({
       method: "PATCH",
@@ -3913,6 +3988,13 @@ describe.sequential("server worktree control plane", () => {
       codeEndpointRevokedTunnelIds.slice(endpointRevocationsBefore),
     ).toEqual([tunnelId]);
     expect(codeStopSessionIds.slice(sessionStopsBefore)).toEqual([sessionId]);
+    expect(codeStopCommands.slice(stopCommandsBefore)).toEqual([
+      {
+        type: "code.stop",
+        sessionId,
+        expectedSessionIncarnationId: codeSessionIncarnationId,
+      },
+    ]);
     expect(
       await app.inject({ method: "GET", url: `/api/tunnels/${tunnelId}` }),
     ).toMatchObject({ statusCode: 404 });
@@ -4029,6 +4111,132 @@ describe.sequential("server worktree control plane", () => {
       heldCreation.restore();
       revokeSpy.mockRestore();
       revokeSessionSpy.mockRestore();
+    }
+  });
+
+  it("bounds a conditional Code intent rollback stop to five seconds", async () => {
+    const codeTabResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/code-tabs`,
+      payload: {
+        ...protectedDisplayLabelFields("code-tab"),
+        worktreeId: primaryId,
+        profileId: "bounded-rollback-profile",
+      },
+    });
+    expect(codeTabResponse.statusCode, codeTabResponse.body).toBe(201);
+    const codeTab = codeTabWireSummarySchema.parse(codeTabResponse.json());
+    let signalCodeOpenStarted!: () => void;
+    let releaseCodeOpen!: () => void;
+    const codeOpenStarted = new Promise<void>((resolve) => {
+      signalCodeOpenStarted = resolve;
+    });
+    const codeOpenRelease = new Promise<void>((resolve) => {
+      releaseCodeOpen = resolve;
+    });
+    heldCodeOpen = {
+      release: codeOpenRelease,
+      started: signalCodeOpenStarted,
+    };
+    const timeoutCountBefore = codeStopTimeouts.length;
+    let contextSpy: { mockRestore(): void } | null = null;
+
+    try {
+      const responsePromise = app.inject({
+        method: "POST",
+        url: `/api/code-tabs/${codeTab.id}/protected-attachment-intents`,
+        payload: {
+          appearance: "dark",
+          expectedWorkerId: codeTab.activeWorkerId,
+          expectedWorktreeId: codeTab.worktreeId,
+        },
+      });
+      await codeOpenStarted;
+      contextSpy = vi
+        .spyOn(database.repository, "getCodeTabExecutionContext")
+        .mockRejectedValueOnce(new Error("database unavailable"));
+      releaseCodeOpen();
+      const response = await responsePromise;
+      expect(response.statusCode).toBeGreaterThanOrEqual(500);
+      await vi.waitFor(() =>
+        expect(codeStopTimeouts).toHaveLength(timeoutCountBefore + 1),
+      );
+      expect(codeStopTimeouts.at(-1)).toBe(5_000);
+    } finally {
+      releaseCodeOpen();
+      heldCodeOpen = undefined;
+      contextSpy?.mockRestore();
+      await app.inject({
+        method: "DELETE",
+        url: `/api/code-tabs/${codeTab.id}`,
+      });
+    }
+  });
+
+  it("revokes a generic Code attachment when its post-create context read fails", async () => {
+    const codeTabResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/code-tabs`,
+      payload: {
+        ...protectedDisplayLabelFields("code-tab"),
+        worktreeId: primaryId,
+        profileId: "post-create-cleanup-profile",
+      },
+    });
+    expect(codeTabResponse.statusCode, codeTabResponse.body).toBe(201);
+    const codeTab = codeTabWireSummarySchema.parse(codeTabResponse.json());
+    const intentResponse = await app.inject({
+      method: "POST",
+      url: `/api/code-tabs/${codeTab.id}/protected-attachment-intents`,
+      payload: {
+        appearance: "dark",
+        expectedWorkerId: codeTab.activeWorkerId,
+        expectedWorktreeId: codeTab.worktreeId,
+      },
+    });
+    expect(intentResponse.statusCode, intentResponse.body).toBe(201);
+    const intent = codeProtectedAttachmentIntentSchema.parse(
+      intentResponse.json(),
+    );
+    const tunnelId = randomUUID();
+    const heldCreation = holdNextProtectedAttachmentCreation();
+    let contextSpy: { mockRestore(): void } | null = null;
+    const endpointRevocationsBefore = codeEndpointRevokedTunnelIds.length;
+
+    try {
+      const responsePromise = app.inject({
+        method: "POST",
+        url: `/api/code-tabs/${codeTab.id}/protected-attachments`,
+        payload: {
+          appearance: "dark",
+          expectedWorkerId: codeTab.activeWorkerId,
+          expectedWorktreeId: codeTab.worktreeId,
+          protectedRecord: protectedTunnelRecord(tunnelId),
+          sessionId: intent.sessionId,
+          tunnelId,
+        },
+      });
+      await heldCreation.started;
+      contextSpy = vi
+        .spyOn(database.repository, "getCodeTabExecutionContext")
+        .mockRejectedValueOnce(new Error("database unavailable"));
+      heldCreation.release();
+      const response = await responsePromise;
+      expect(response.statusCode, response.body).toBe(503);
+      expect(
+        await app.inject({ method: "GET", url: `/api/tunnels/${tunnelId}` }),
+      ).toMatchObject({ statusCode: 404 });
+      expect(
+        codeEndpointRevokedTunnelIds.slice(endpointRevocationsBefore),
+      ).toEqual([tunnelId]);
+    } finally {
+      heldCreation.release();
+      heldCreation.restore();
+      contextSpy?.mockRestore();
+      await app.inject({
+        method: "DELETE",
+        url: `/api/code-tabs/${codeTab.id}`,
+      });
     }
   });
 
@@ -4149,6 +4357,7 @@ describe.sequential("server worktree control plane", () => {
     const tunnelId = randomUUID();
     const initialFile = "src/current.ts";
     const openCommandCount = codeOpenCommands.length;
+    const stopCommandCount = codeStopCommands.length;
 
     let signalCodeOpenStarted!: () => void;
     let releaseCodeOpen!: () => void;
@@ -4202,7 +4411,13 @@ describe.sequential("server worktree control plane", () => {
         initialFile,
       }),
     ]);
-    expect(codeStopSessionIds).toContain(sessionId);
+    expect(codeStopCommands.slice(stopCommandCount)).toEqual([
+      {
+        type: "code.stop",
+        sessionId,
+        expectedSessionIncarnationId: codeSessionIncarnationId,
+      },
+    ]);
     const tunnelResponse = await app.inject({
       method: "GET",
       url: `/api/tunnels/${tunnelId}`,
