@@ -1,6 +1,6 @@
 # Cantrip Code Integration Plan
 
-- Status: implementation complete; multi-platform QA remains
+- Status: warm continuity implemented and locally accepted; multi-platform QA remains
 - Scope: browser-native Code OSS workbench hosted by `cantrip_worker`
 - Source location: `cantrip_code/` in the Cantrip monorepo
 - Immediate upstream: OpenVSCode Server
@@ -232,6 +232,11 @@ pnpm code:verify
 2. Reuse a matching cached build when present.
 3. Build the required distribution automatically when it is missing or stale.
 4. Print build progress while preparing a new distribution.
+
+`pnpm devtop` is a deliberately local-only validation stack. It sets
+`CANTRIP_LOCAL_ONLY=true` for the debug desktop shell, which prevents retained
+linked-worker profiles from autostarting beside the local development worker.
+This guard does not change packaged builds or ordinary non-local debug launches.
 
 The implemented cache lives under ignored `.cantrip-code/cache/builds/`, shared
 through Git's common repository directory so sequential worktrees reuse the
@@ -597,6 +602,61 @@ overflowing socket is rejected before it can activate, reset grace, or commit a
 relay claim. Exact claim rollback and socket/attachment-generation fences make
 late async completions harmless. No credential, token, payload, or protected
 path is added to lifecycle telemetry.
+
+### Retained workbench and route continuity
+
+Explorer owns one inline workbench for each exact Explorer/worktree security
+identity. The identity includes the logical server, owner/account,
+authentication and encryption revision, worker, Explorer, and worktree. The
+client prewarms this actual sidebar workbench without selecting a file, retains
+its attachment and iframe when the sidebar is hidden, and reveals the same
+frame for later file selections. The idle retention deadline is 30 minutes;
+explicit close, bounded expiry, or any identity change retires it. Online worker
+transitions wake bounded recovery automatically. Pop-outs and durable Code tabs
+remain separate renderer owners and do not create a competing hidden prewarm
+for the inline Explorer surface.
+
+The workbench bridge carries a generation and uses bounded ping/ack liveness.
+A stale bridge reconnects beneath the retained profile, session, attachment,
+route, and iframe when those owners are still valid. File-open, presentation,
+theme, and recovery operations have bounded deadlines and cancellation. Theme
+updates are sent in-band, and presentation is only changed when the requested
+state differs.
+
+Native route health probes the protected data plane. A connected-but-broken
+direct route can yield to the already-authorized managed relay on the same
+native listener without changing the protected attachment, worker Code session,
+workbench URL, or iframe. Native and worker command WebSockets require Pong
+within a deadline. Multiplexed streams use bounded queues, explicit credit and
+backpressure, and per-stream cancellation so one congested connection does not
+retire healthy siblings.
+
+Direct-to-relay is the currently supported non-destructive transition.
+Relay-to-direct promotion is intentionally not attempted after a direct
+capability has failed because that capability is consumed and retired. A future
+implementation requires a server-authorized replacement capability and an
+additive native control path that can install it into the existing forward;
+reusing the retired credential would violate the lifecycle boundary.
+
+Browser Code uses the same protected surface identity through its same-origin
+service worker and WebSocket shim. Open/readiness, heartbeat/Pong, reconnect,
+send queue, and buffered-byte accounting are bounded. A valid reconnect keeps
+the existing surface; lease or security-identity expiry ends it cleanly.
+
+Editor-only file navigation is transient and does not rewrite workspace or
+runtime persistence that is excluded from restoration. Durable workbench
+navigation and genuine presentation changes remain persisted. Generated
+workspace/session artifacts are removed only at final retirement, never while
+owned by a live or reconnecting session.
+
+Local macOS functional acceptance confirmed warm file switching in the retained
+editor-only workbench. Deterministic tests cover 2/5/10/16-minute retention,
+14.5/15.1-second readiness fencing, one-second worker reconnect, reconnect-grace
+cleanup, identity retirement, hidden/selected inline ownership, pop-out
+ownership, direct-to-relay fallback, browser relay recovery, and sidebar online
+retry. The user waived a fresh real-time long-idle UI soak, so no measured
+sub-second 2/5/10/16-minute result is claimed. Multi-platform and multi-replica
+real-environment QA remain open.
 
 Concurrent views share the editor process, persistent profile, generated
 workspace, and filesystem state without transferring control between windows.

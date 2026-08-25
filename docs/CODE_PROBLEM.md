@@ -1,9 +1,12 @@
 # Cantrip Code Explorer Connection Problem
 
-Status: current-source root causes remediated and accepted with fresh local-only
-desktop, direct-route, and forced-relay evidence on 2026-08-23. The historical
-sections remain below to preserve how the incident was narrowed; this addendum
-is the authoritative final state.
+Status: the original connection failures and the confirmed warm-continuity
+defects are remediated in current source. Local desktop use was accepted on
+2026-08-25, with deterministic coverage for retained identity, bounded
+readiness, reconnect, cleanup, bridge liveness, browser relay, and route
+fallback. The historical sections remain below to preserve how the incident
+was narrowed. The remaining availability limits and the validation that was
+explicitly waived are recorded in the Cycle 10 result rather than hidden.
 
 Investigation baseline: `origin/main` at `169aee45` (`fix(explorer): reuse
 shared Code editor process (#913)`).
@@ -154,6 +157,108 @@ attempts, shared-claim replacement, dead refresh/claim races, authenticated
 readiness, pre-authentication ordering, and aggregate budget release. This
 cycle does not add a Pong deadline or make process-local Code-root authority
 multi-replica; those remain later-cycle work.
+
+## Warm continuity implementation result (2026-08-25)
+
+Cycles 4 through 9 completed the bounded continuity layers above the renewable
+surface root:
+
+1. The workbench bridge now uses generation-fenced ping/ack liveness instead of
+   waiting for the next file operation to discover a stale socket. File-open
+   and presentation operations have bounded deadlines and cancellation, and an
+   already-selected editor presentation is not written again.
+2. Native and worker transports have Pong deadlines, bounded sends, per-stream
+   backpressure, and fault isolation. Native route health requires useful
+   data-plane probes. A broken direct route can switch to the ready managed
+   relay while keeping the same attachment, listener, session, iframe, and
+   workbench.
+3. Explorer owns one dedicated, non-tabbed inline workbench per exact
+   Explorer/worktree security identity. Prewarm creates that real workbench;
+   file selection reveals and controls it instead of replacing it. Hiding the
+   sidebar keeps it alive for a 30-minute bounded retention period. Account,
+   server, encryption revision, worker, Explorer, or worktree changes retire it.
+   Theme changes are applied in-band, and worker-online transitions wake its
+   bounded retry path.
+4. Client startup, attachment recovery, profile restart, bridge registration,
+   and partial open/stop races have bounded retries and generation-fenced
+   cleanup. Final retirement removes only artifacts no longer owned by a live
+   or reconnecting session.
+5. The browser relay and its service-worker/WebSocket edges now have bounded
+   readiness, heartbeat/Pong detection, reconnect, send queues, and truthful
+   buffered-byte accounting. Expired or changed security identity remains a
+   terminal failure.
+6. Editor-only file navigation no longer rewrites workspace/runtime persistence
+   that is deliberately excluded from restoration. Unchanged presentation and
+   pinned configuration writes are also skipped.
+
+The delivery history is:
+
+| Cycle | Pull request | Squash merge | Result                                   |
+| ----- | ------------ | ------------ | ---------------------------------------- |
+| 1     | #1041        | `a95e3e898`  | Correlated continuity evidence           |
+| 2     | #1050        | `0f6faa702`  | Renewable authoritative surface lease    |
+| 3     | #1060        | `0f97ac010`  | Worker reconnect grace                   |
+| 4     | #1062        | `02d39bb68`  | Proactive bridge liveness                |
+| 5     | #1067        | `20c7fae9a`  | Non-destructive direct-to-relay recovery |
+| 6     | #1074        | `77216a022`  | Retained inline Explorer workbench       |
+| 7     | #1076        | `f66546d51`  | Lifecycle retry and race hardening       |
+| 8     | #1081        | `299fe306c`  | Browser relay continuity                 |
+| 9     | #1084        | `559fad02f`  | Persistence hot-path cleanup             |
+
+### Cycle 10 acceptance evidence and limits
+
+The focused automated acceptance matrix passed 207 app tests, 117 worker tests,
+and 140 server tests. It includes deterministic retained-workbench checkpoints
+at 2, 5, 10, and 16 minutes; exact readiness at 14.5 seconds; rejection of a
+stale 15.1-second nonce followed by acceptance of the replacement frame; a real
+one-second command-channel reconnect whose original grace timer cannot clean up
+the replacement connection; terminal worker endpoint cleanup; direct and
+relay lifecycle ownership; browser relay/shim/service-worker recovery; and
+security-identity retirement. App and worker typechecks also passed.
+
+A local `devtop` desktop run opened the requested files in editor-only
+presentation and reused the same warm local surface. Its correlated local trace
+used Code process `2a5ead08-eeed-498b-8fa8-37679fa23ea1`, Code session
+`410900de-e063-430e-bd25-7357d28f86dc`, protected attachment/tunnel
+`8640f171-cb0a-41ec-951a-aa23da9ce59e`, and native direct attachment
+`c4db3185-eaed-4497-9e46-8a0d187d70a1`; the direct health request completed in
+11 ms. Repeated file-open events retained those surface identities. This is
+evidence of functional local reuse, not a measured click-to-ready latency at
+each idle checkpoint.
+
+That run also exposed a validation-environment defect: the debug desktop shell
+autostarted a retained linked worker for Winterhold alongside the intended local
+worker. The tested Explorer selected the local worker, but the extra process
+made the run unsuitable as clean local-only acceptance. `pnpm devtop` now marks
+the debug shell `CANTRIP_LOCAL_ONLY=true`, and that mode skips linked-worker
+autostart. Packaged builds and ordinary non-local debug launches retain the
+existing linked-worker behavior.
+
+The user accepted the working local result and explicitly waived further
+manual/UI testing. Therefore this report does **not** claim a fresh real-time
+2/5/10/16-minute soak or measured sub-second latency at those four checkpoints;
+the values above are deterministic lifecycle tests plus the accepted functional
+local run. Two existing Rust/Node real-socket harness cases were also attempted
+on this checkout but timed out waiting for loopback HTTP EOF after exercising
+their rejection/route-transition paths, so no new pass is claimed for those
+cases. The previously accepted 16 MiB + 137 byte direct/fallback result below
+remains historical evidence, not a result silently attributed to this run.
+
+Two architectural availability limits intentionally remain:
+
+- Direct-to-relay recovery is non-destructive. Relay-to-direct promotion on the
+  same attachment is not currently authorized because the failed direct
+  capability is consumed and retired. Safe promotion requires an additive
+  reauthorization/capability-delivery contract that can install a replacement
+  capability into the existing native forward. Current source prefers a stable
+  protected relay over reusing a failed credential.
+- Code-root authority remains process-local across server replicas. Hosted Code
+  still needs request affinity until durable fenced ownership and bounded
+  owner-instance coordination are implemented and tested with two servers.
+
+Cross-platform real UI soak testing also remains release QA; this acceptance
+used the local macOS development stack only and did not use Winterhold for Code
+traffic.
 
 ## Final remediation and acceptance addendum (2026-08-23)
 

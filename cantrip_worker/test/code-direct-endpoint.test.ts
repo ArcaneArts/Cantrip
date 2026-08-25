@@ -19,6 +19,31 @@ afterEach(async () => {
 });
 
 describe("CodeDirectEndpointManager", () => {
+  it("retires protected endpoints on terminal command-channel loss", async () => {
+    const supervisor = {
+      beginTunnelStream: vi.fn(),
+      endTunnelStream: vi.fn(),
+      proxyTarget: vi.fn(() => {
+        throw new Error("The editor upstream should not be needed for health.");
+      }),
+    } as unknown as CodeSupervisor;
+    const endpoints = new CodeDirectEndpointManager(supervisor);
+    closers.push(() => endpoints.close());
+    const target = await endpoints.prepareProtected(
+      crypto.randomUUID(),
+      "session-terminal-loss",
+    );
+    const healthUrl = `http://${target.host}:${target.port}/code/_cantrip/health`;
+
+    await expect(fetch(healthUrl)).resolves.toMatchObject({ status: 200 });
+
+    endpoints.disconnect();
+
+    await vi.waitFor(async () => {
+      await expect(fetch(healthUrl)).rejects.toThrow();
+    });
+  });
+
   it("proxies HTTP without exposing the editor credential", async () => {
     let observed: IncomingMessage | null = null;
     const editor = createServer((request, response) => {

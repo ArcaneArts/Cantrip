@@ -29,6 +29,13 @@ const browserCode = vi.hoisted(() => ({
 
 const frameRuntime = vi.hoisted(() => ({
   mountSequence: 0,
+  readyPredicate: null as
+    | null
+    | ((
+        event: MessageEvent<unknown>,
+        frameWindow: Window | null,
+        mount: { nonce: string; origin: string },
+      ) => boolean),
 }));
 
 vi.mock("@/components/code/code-view", () => ({
@@ -85,7 +92,11 @@ vi.mock("@/lib/code-workbench-frame", () => ({
     url.searchParams.set("cantripFrameNonce", nonce);
     return { nonce, origin: url.origin, url: url.toString() };
   },
-  isCodeWorkbenchReadyEvent: () => true,
+  isCodeWorkbenchReadyEvent: (
+    event: MessageEvent<unknown>,
+    frameWindow: Window | null,
+    mount: { nonce: string; origin: string },
+  ) => frameRuntime.readyPredicate?.(event, frameWindow, mount) ?? true,
 }));
 vi.mock("@/lib/desktop-code", () => ({
   ...desktopCode,
@@ -211,6 +222,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   browserCode.unavailableListeners.clear();
   frameRuntime.mountSequence = 0;
+  frameRuntime.readyPredicate = null;
   testWindow = fakeWindow();
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -544,6 +556,117 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     expect(
       desktopCode.setDirectCodeAttachmentPresentation,
     ).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("accepts exact workbench readiness at 14.5 seconds on the original frame", async () => {
+    vi.useFakeTimers();
+    frameRuntime.readyPredicate = (event, frameWindow, mount) =>
+      frameWindow !== null &&
+      event.source === frameWindow &&
+      event.origin === mount.origin &&
+      (event.data as { nonce?: string } | null)?.nonce === mount.nonce;
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor(null), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: frameWindow } : null,
+      });
+    });
+    await flushImmediateTimers();
+    const initialFrameUrl = renderer.root.findByType("iframe").props
+      .src as string;
+    const initialMount = new URL(initialFrameUrl);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(14_500);
+      testWindow.sendMessage({
+        data: { nonce: initialMount.searchParams.get("cantripFrameNonce") },
+        origin: initialMount.origin,
+        source: frameWindow,
+      });
+      await Promise.resolve();
+    });
+    await flushImmediateTimers();
+
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledOnce();
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("ignores readiness at 15.1 seconds and accepts only the replacement nonce", async () => {
+    vi.useFakeTimers();
+    frameRuntime.readyPredicate = (event, frameWindow, mount) =>
+      frameWindow !== null &&
+      event.source === frameWindow &&
+      event.origin === mount.origin &&
+      (event.data as { nonce?: string } | null)?.nonce === mount.nonce;
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor(null), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: frameWindow } : null,
+      });
+    });
+    await flushImmediateTimers();
+    const initialFrameUrl = renderer.root.findByType("iframe").props
+      .src as string;
+    const initialMount = new URL(initialFrameUrl);
+    const staleReadyEvent = {
+      data: { nonce: initialMount.searchParams.get("cantripFrameNonce") },
+      origin: initialMount.origin,
+      source: frameWindow,
+    };
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_100);
+      testWindow.sendMessage(staleReadyEvent);
+      await Promise.resolve();
+    });
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+      await Promise.resolve();
+    });
+    const replacementFrameUrl = renderer.root.findByType("iframe").props
+      .src as string;
+    const replacementMount = new URL(replacementFrameUrl);
+    expect(replacementFrameUrl).not.toBe(initialFrameUrl);
+
+    await act(async () => {
+      testWindow.sendMessage(staleReadyEvent);
+      await Promise.resolve();
+    });
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).not.toHaveBeenCalled();
+
+    await act(async () => {
+      testWindow.sendMessage({
+        data: {
+          nonce: replacementMount.searchParams.get("cantripFrameNonce"),
+        },
+        origin: replacementMount.origin,
+        source: frameWindow,
+      });
+      await Promise.resolve();
+    });
+    await flushImmediateTimers();
+
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledOnce();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
 
     await act(async () => renderer.unmount());
   });
