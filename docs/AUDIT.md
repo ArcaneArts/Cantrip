@@ -2,7 +2,7 @@
 
 - Date: 2026-08-24
 - Baseline: origin/main at 77216a0224b354b9e4b7f94495b94ba5c1254980
-- Status: second independent audit complete; pending inventory reconciled to current source
+- Status: second independent audit complete; implementation status tracked inline
 
 ## Executive result
 
@@ -12,12 +12,12 @@ polling protects degraded and restart paths. The deeper second pass found the la
 gains one layer below that architecture:
 
 - healthy Run-configuration watchers still accompany a 500 ms full repository rescan;
-- the durable one-second Task scheduler executes logically impossible resume/claim work for
-  running-only owners;
+- the durable Task scheduler now gates resume/claim work by owner state while preserving
+  lease expiry for running-only owners;
 - Browser Code tunnel framing repeatedly copies accumulated byte streams and can grow
   quadratically with fragmentation;
-- every accepted AppLive event synchronously persists its cursor and wakes status-only React
-  subscribers;
+- AppLive now coalesces durable cursor writes and isolates status-only subscribers from
+  cursor traffic while preserving immediate in-memory replay state;
 - closed inspection UI, disabled provider queries, and diagnostic capture still build or
   parse expensive data that the user cannot see;
 - project, Task, worker-metadata, session-validation, and attachment-maintenance paths retain
@@ -28,6 +28,8 @@ Five completed findings were removed from the active report: former P0-01, P0-05
 P0-11, and P0-12. Their current implementations and focused tests were rechecked before
 removal. P0-06 was marked fixed only by a status-only documentation change; current source
 still contains its original `1 + 2N` query pattern, so this pass restores it as pending.
+N0-02 and N0-04 remain below as completed implementation records with their validation
+evidence.
 
 The priority frontier now mixes the strongest new findings with still-valid carryovers:
 
@@ -36,7 +38,7 @@ The priority frontier now mixes the strongest new findings with still-valid carr
 | 1    | N0-01 watcher-first Run-configuration reconciliation     | very high idle   | low        | up to 128 rereads/parses every 500 ms per repository    |
 | 2    | N0-02 [completed] state-gate the durable Task scheduler  | completed        | —          | running-only owners now execute lease expiry only       |
 | 3    | N0-03 linear, low-copy Browser Code tunnel framing       | high interactive | low-medium | cumulative buffer copies and repeated payload copies    |
-| 4    | N0-04 coalesce AppLive cursor persistence/subscriptions  | high during live | low-medium | synchronous storage plus React fanout per event         |
+| 4    | N0-04 [completed] coalesce AppLive persistence/fanout    | completed        | —          | one bounded write; no cursor-only status fanout         |
 | 5    | N0-05 cache provider catalogs outside transcript renders | high interaction | low        | repeated multi-megabyte storage parse/schema validation |
 | 6    | N0-06 unmount hidden inspection trajectory work          | high long-chat   | low        | invisible projections and thousands of retained rows    |
 | 7    | N0-07 batch project/worker routing metadata hydration    | high fleet-wide  | low-medium | per-project HTTP and per-worker protected commands      |
@@ -64,10 +66,12 @@ project hydration, AppLive, attachment, and command-stream paths. Automated stat
 was used only to locate candidates; generated/minified matches were discarded and every
 retained finding was manually re-read at the cited current-source lines.
 
-This is a static audit, not a production profile. Every item is therefore labeled
-opportunity rather than confirmed bottleneck. Expected gain estimates combine call
-frequency, bounded worst-case work, and user-facing position in the critical path. The
-validation plan is part of each finding and must precede any claim of measured improvement.
+This began as a static audit, not a production profile. Pending items are therefore labeled
+opportunity rather than confirmed bottleneck; completed records include deterministic
+validation evidence without claiming wall-clock improvement. Expected gain estimates
+combine call frequency, bounded worst-case work, and user-facing position in the critical
+path. The validation plan is part of each pending finding and must precede any claim of
+measured improvement.
 
 Taxonomy categories are ALGORITHM_COMPLEXITY, HOT_PATH_ALLOCATION, SYNC_IO_HOT_PATH,
 REGEX_OR_PARSING_HOT_PATH, N_PLUS_ONE_OR_CHATTER, REDUNDANT_COMPUTATION, and
@@ -203,34 +207,50 @@ Validation: replay 1 KiB, 64 KiB, 1 MiB, and 8 MiB fragmented traffic both direc
 Measure bytes copied, allocations, GC, throughput, and latency; require exact framing,
 sequence/credit behavior, bounds, malformed rejection, and linear scaling.
 
-### N0-04 — opportunity — Coalesce AppLive cursor persistence and split status subscriptions
+### N0-04 — completed — Coalesce AppLive cursor persistence and split status subscriptions
 
+- Status: completed 2026-08-24
 - Category: SYNC_IO_HOT_PATH, REDUNDANT_COMPUTATION
-- Expected gain: high during live bursts
-- Risk: low-medium
-- Complexity: low-medium
-- Confidence: high
+- Original expected gain: high during live bursts
+- Implementation risk: low-medium
+- Confidence: high, supported by deterministic work-count and replay tests
 
-Evidence:
+Resolution:
 
-- cantrip_app/src/lib/app-live-client.ts:732-735 advances the cursor for every accepted
-  event; lines 1041-1059 emit a new snapshot and synchronously call
-  `storage.setItem(JSON.stringify(...))` on every advance.
-- cantrip_app/src/lib/app-live-react.tsx:36-48 makes status-only consumers subscribe to the
-  full snapshot and set React state on every emit. Status is consumed throughout App, chat,
-  settings, Tasks, Git, workflows, and projects.
+- cantrip_app/src/lib/app-live-client.ts:1064-1118 still advances the safe in-memory cursor
+  immediately, but persists only the latest safe `(serverEpoch, cursor)` on one bounded
+  200 ms timer. The remembered durable tuple prevents duplicate writes, and lines 235-259
+  plus 339-342 provide stop and explicit lifecycle flushes.
+- cantrip_app/src/lib/app-live-client.ts:323-337 and 1125-1133 add a status-only subscription
+  that emits initially and then only on actual status transitions. The existing full
+  diagnostic snapshot subscription remains unchanged.
+- cantrip_app/src/lib/app-live-react.tsx:36-45 moves status consumers to that transition-only
+  API. cantrip_app/src/components/auth/application-session.tsx:696-718 flushes on pagehide,
+  hidden visibility, and provider shutdown.
 
-Hypothesis: streaming traffic performs synchronous localStorage I/O, snapshot allocation,
-listener fanout, and status-only React updates on the main thread for every live event.
+Deterministic work-count and correctness proof:
 
-Suggested change: keep the in-memory cursor immediate, persist the latest cursor on a
-bounded 100-250 ms trailing schedule, and flush on stop/pagehide/visibility/shutdown. Add a
-status selector/subscription that emits only on status transitions while retaining the full
-diagnostic snapshot API.
+- cantrip_app/src/lib/app-live-client.test.ts:438-495 injects 10,000 sequential events. All
+  10,000 are delivered, the live cursor reaches 10,004 immediately, storage performs zero
+  additional writes during the burst and exactly one at the 200 ms boundary, and the final
+  persisted cursor is exact.
+- The same test leaves durable storage intentionally at cursor 4 and proves an immediate
+  reconnect resumes from the safe in-memory cursor 10,004. Cursor-only traffic produces
+  zero additional status callbacks.
+- Lines 497-516 prove stop flushes the latest safe cursor exactly once and cancels the
+  delayed duplicate. Snapshot-barrier coverage additionally proves unsafe cursor state is
+  never persisted and resumes coalescing only after recovery completes.
 
-Validation: inject 10,000 sequential events and count storage writes/status callbacks.
-Require exact final cursor after every explicit lifecycle flush, safe replay from an
-intentionally lagged persisted cursor, no event loss, and identical status transitions.
+Validation completed:
+
+- Focused AppLive client suite: 11 tests passed.
+- Full cantrip_app suite: 290 files passed; 1,325 tests passed and 3 skipped.
+- cantrip_app TypeScript typecheck passed.
+- cantrip_app production build passed.
+
+Regression guardrail: retain the 10,000-event work-count test, safe replay assertions,
+snapshot-barrier assertions, and lifecycle-flush coverage. These establish eliminated work
+and exactness; they do not claim a measured wall-clock speedup.
 
 ### N0-05 — opportunity — Remove provider-cache parsing from ordinary transcript renders
 
@@ -1501,7 +1521,7 @@ Before behavior changes, add or reuse focused counters and deterministic fixture
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement N0-01, N0-04 through N0-06, N0-09, N0-19, P0-08, P0-13, P1-01, P1-06, P1-07,
+Implement N0-01, N0-05, N0-06, N0-09, N0-19, P0-08, P0-13, P1-01, P1-06, P1-07,
 P1-15, P1-16, and P1-18. These gate work that is provably invisible/impossible, add bounded
 coalescing, or replace an equivalent data structure.
 

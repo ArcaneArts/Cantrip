@@ -36,15 +36,11 @@ export function useAppLiveScope(scope: AppLiveScope | null): void {
 export function useAppLiveStatus(): AppLiveClientStatus {
   const client = useContext(AppLiveContext);
   const [status, setStatus] = useState<AppLiveClientStatus>(
-    () => client?.snapshot().status ?? "stopped",
+    () => client?.status() ?? "stopped",
   );
   useEffect(() => {
     if (!client) return;
-    return client.subscribe((snapshot) => {
-      setStatus((current) =>
-        current === snapshot.status ? current : snapshot.status,
-      );
-    });
+    return client.subscribeStatus(setStatus);
   }, [client]);
   return status;
 }

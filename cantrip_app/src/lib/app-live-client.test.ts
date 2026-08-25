@@ -19,6 +19,7 @@ import {
 
 class MemoryStorage implements AppLiveClientStorage {
   readonly values = new Map<string, string>();
+  writes = 0;
   getItem(key: string) {
     return this.values.get(key) ?? null;
   }
@@ -26,6 +27,7 @@ class MemoryStorage implements AppLiveClientStorage {
     this.values.delete(key);
   }
   setItem(key: string, value: string) {
+    this.writes += 1;
     this.values.set(key, value);
   }
 }
@@ -93,6 +95,19 @@ const ready = (
 });
 
 const currentUserScope: AppLiveScope = { kind: "current-user" };
+const workerStatusEvent = (
+  cursor: number,
+): Extract<AppLiveServerMessage, { type: "event" }> => ({
+  type: "event",
+  cursor,
+  scope: currentUserScope,
+  resource: "worker",
+  action: "status",
+  entityId: "worker-one",
+  revision: null,
+  payload: { online: true },
+  occurredAt: "2026-08-09T12:00:00.000Z",
+});
 const settle = async () => {
   await Promise.resolve();
   await Promise.resolve();
@@ -223,29 +238,10 @@ describe("application live client", () => {
       reason: "scope-changed",
     });
 
-    socket.receive({
-      type: "event",
-      cursor: 5,
-      scope: currentUserScope,
-      resource: "worker",
-      action: "status",
-      entityId: "worker-one",
-      revision: null,
-      payload: { online: true },
-      occurredAt: "2026-08-09T12:00:00.000Z",
-    });
-    socket.receive({
-      type: "event",
-      cursor: 5,
-      scope: currentUserScope,
-      resource: "worker",
-      action: "status",
-      entityId: "worker-one",
-      revision: null,
-      payload: { online: true },
-      occurredAt: "2026-08-09T12:00:00.000Z",
-    });
+    socket.receive(workerStatusEvent(5));
+    socket.receive(workerStatusEvent(5));
     expect(events).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(200);
     expect(JSON.parse(storage.getItem("live-resume")!)).toEqual({
       version: 1,
       serverEpoch: "epoch-one",
@@ -323,6 +319,7 @@ describe("application live client", () => {
   });
 
   it("does not checkpoint a new scope before its snapshot barrier finishes", async () => {
+    vi.useFakeTimers();
     let finishRecovery!: () => void;
     const recoveryGate = new Promise<void>((resolve) => {
       finishRecovery = resolve;
@@ -349,6 +346,10 @@ describe("application live client", () => {
     expect(storage.getItem("live-resume")).toBeNull();
     finishRecovery();
     await settle();
+    expect(storage.getItem("live-resume")).toBeNull();
+    await vi.advanceTimersByTimeAsync(199);
+    expect(storage.getItem("live-resume")).toBeNull();
+    await vi.advanceTimersByTimeAsync(1);
     expect(JSON.parse(storage.getItem("live-resume")!)).toMatchObject({
       cursor: 4,
       serverEpoch: "epoch-one",
@@ -426,11 +427,92 @@ describe("application live client", () => {
       serverEpoch: "new-epoch",
       lastCursor: 2,
     });
+    client.flushCursorPersistence();
     expect(JSON.parse(storage.getItem("live-resume")!)).toMatchObject({
       serverEpoch: "new-epoch",
       cursor: 2,
     });
     client.stop();
+  });
+
+  it("coalesces cursor persistence and notifies status subscribers only on transitions", async () => {
+    vi.useFakeTimers();
+    const { client, events, sockets, storage } = createHarness();
+    const statuses: string[] = [];
+    const releaseStatus = client.subscribeStatus((status) => {
+      statuses.push(status);
+    });
+    client.retainScope(currentUserScope);
+    client.start();
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive(ready("not-requested"));
+    const subscription = socket.sent.at(-1);
+    if (subscription?.type !== "subscribe") {
+      throw new Error("Client did not subscribe before the cursor burst.");
+    }
+    socket.receive({
+      type: "subscribed",
+      requestId: subscription.requestId,
+      scopes: subscription.scopes,
+      cursor: 4,
+    });
+    await settle();
+    await vi.advanceTimersByTimeAsync(200);
+
+    const writesBeforeBurst = storage.writes;
+    const statusesBeforeBurst = statuses.length;
+    for (let cursor = 5; cursor < 10_005; cursor += 1) {
+      socket.receive(workerStatusEvent(cursor));
+    }
+
+    expect(events).toHaveLength(10_000);
+    expect(client.snapshot().lastCursor).toBe(10_004);
+    expect(storage.writes).toBe(writesBeforeBurst);
+    expect(statuses).toHaveLength(statusesBeforeBurst);
+    expect(JSON.parse(storage.getItem("live-resume")!)).toMatchObject({
+      cursor: 4,
+    });
+
+    client.reconnectNow();
+    const reconnectSocket = sockets[1]!;
+    reconnectSocket.open();
+    expect(reconnectSocket.sent[0]).toMatchObject({
+      type: "initialize",
+      resume: { serverEpoch: "epoch-one", cursor: 10_004 },
+    });
+    await vi.advanceTimersByTimeAsync(199);
+    expect(storage.writes).toBe(writesBeforeBurst);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(storage.writes).toBe(writesBeforeBurst + 1);
+    expect(JSON.parse(storage.getItem("live-resume")!)).toMatchObject({
+      serverEpoch: "epoch-one",
+      cursor: 10_004,
+    });
+
+    releaseStatus();
+    client.stop();
+  });
+
+  it("flushes the latest safe cursor exactly once during stop", async () => {
+    vi.useFakeTimers();
+    const { client, sockets, storage } = createHarness();
+    client.start();
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive(ready("not-requested"));
+    socket.receive(workerStatusEvent(5));
+    socket.receive(workerStatusEvent(6));
+
+    expect(storage.writes).toBe(0);
+    client.stop();
+    expect(storage.writes).toBe(1);
+    expect(JSON.parse(storage.getItem("live-resume")!)).toMatchObject({
+      serverEpoch: "epoch-one",
+      cursor: 6,
+    });
+    await vi.runAllTimersAsync();
+    expect(storage.writes).toBe(1);
   });
 
   it("backs off after protocol failure and reconnects on demand", async () => {
