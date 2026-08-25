@@ -1476,7 +1476,42 @@ export async function buildApp({
       logger: app.log,
     },
   );
-  const directAttachments = new DirectAttachmentCoordinator(bridge);
+  let publishDirectTunnelLeaseChange: (change: {
+    attachmentId: string;
+    ownerId: string;
+    projectId: string | null;
+    tunnelId: string;
+  }) => void = () => undefined;
+  const directAttachments = new DirectAttachmentCoordinator(
+    bridge,
+    serverLogger,
+    {
+      onLeaseFinalized: async (event) => {
+        if (event.mode !== "direct-tunnel" || event.resourceKind !== "tunnel") {
+          return;
+        }
+        const changed = await repository.finalizeDesktopTunnelDirectLease(
+          event.ownerId,
+          event.attachmentId,
+          event.capabilityId,
+          new Date(event.leaseExpiresAt),
+        );
+        if (changed) publishDirectTunnelLeaseChange(changed);
+      },
+      onLeaseRenewed: async (event) => {
+        if (event.mode !== "direct-tunnel" || event.resourceKind !== "tunnel") {
+          return;
+        }
+        const changed = await repository.renewDesktopTunnelDirectLease(
+          event.ownerId,
+          event.attachmentId,
+          event.capabilityId,
+          new Date(event.leaseExpiresAt),
+        );
+        if (changed) publishDirectTunnelLeaseChange(changed);
+      },
+    },
+  );
   const revokedWorkerCredentialIds = new Set<string>();
   const codeTunnel = providedCodeTunnel ?? new CodeTunnelBroker(bridge);
   const projectShareTunnel =
@@ -1626,6 +1661,7 @@ export async function buildApp({
       });
     });
   };
+  publishDirectTunnelLeaseChange = publishTunnelRuntimeChange;
   const tunnelStreamBroker = new TunnelStreamBroker({
     consumeRelayBytes: (ownerId, workerId, bytes) =>
       relayQuotas.consumeRelay(ownerId, workerId, bytes),
@@ -1654,6 +1690,19 @@ export async function buildApp({
     },
   );
   const tunnelAttachmentExpiryTimer = setInterval(() => {
+    void repository
+      .expireDesktopTunnelDirectLeases()
+      .then((expired) => {
+        for (const attachment of expired) {
+          publishTunnelRuntimeChange(attachment);
+        }
+      })
+      .catch((error) => {
+        app.log.error(
+          { err: error },
+          "Could not expire direct tunnel attachment leases",
+        );
+      });
     void repository
       .expireDesktopTunnelAttachments()
       .then((expired) => {
@@ -14310,14 +14359,13 @@ export async function buildApp({
     "/api/tunnel-attachments/:attachmentId",
     async (request, reply) => {
       const ownerId = principalOwnerId(request);
-      const revoked = await tunnelRuntime.revoke(
-        ownerId,
+      const revoked = await directAttachments.mutateAttachment(
         request.params.attachmentId,
+        () => tunnelRuntime.revoke(ownerId, request.params.attachmentId),
       );
       if (!revoked) {
         return reply.code(404).send({ error: "Tunnel attachment not found." });
       }
-      await directAttachments.revokeAttachment(request.params.attachmentId);
       codeTunnel.releaseRelayAttachment(request.params.attachmentId);
       return reply.code(204).send();
     },
@@ -14567,12 +14615,15 @@ export async function buildApp({
           .code(409)
           .send({ error: "The protected Code attachment has expired." });
       }
-      if (
-        !(await repository.activateDesktopTunnelAttachment(
-          authorization.attachmentId,
-          authorization.clientId,
-        ))
-      ) {
+      const directLease = directAttachments.getTunnelLeaseForActivation(
+        input.data.capabilityId,
+        {
+          attachmentId: authorization.attachmentId,
+          authSessionId,
+          ownerId: principal.user.id,
+        },
+      );
+      if (!directLease) {
         directAttachments.recordActivationOutcome(
           input.data.capabilityId,
           {
@@ -14584,15 +14635,46 @@ export async function buildApp({
         );
         return reply.code(409).send({ error: "Tunnel attachment is stale." });
       }
-      directAttachments.recordActivationOutcome(
+      const activated = await repository.activateDesktopTunnelDirectLease(
+        authorization.ownerId,
+        authorization.attachmentId,
         input.data.capabilityId,
-        {
-          attachmentId: authorization.attachmentId,
-          authSessionId,
-          ownerId: principal.user.id,
-        },
-        "completed",
+        new Date(directLease.leaseExpiresAt),
+        authorization.secretExpiresAt,
       );
+      if (!activated) {
+        directAttachments.recordActivationOutcome(
+          input.data.capabilityId,
+          {
+            attachmentId: authorization.attachmentId,
+            authSessionId,
+            ownerId: principal.user.id,
+          },
+          "attachment_stale",
+        );
+        return reply.code(409).send({ error: "Tunnel attachment is stale." });
+      }
+      if (
+        !directAttachments.recordActivationOutcome(
+          input.data.capabilityId,
+          {
+            attachmentId: authorization.attachmentId,
+            authSessionId,
+            ownerId: principal.user.id,
+          },
+          "completed",
+        )
+      ) {
+        await repository.finalizeDesktopTunnelDirectLease(
+          authorization.ownerId,
+          authorization.attachmentId,
+          input.data.capabilityId,
+          new Date(directLease.leaseExpiresAt),
+        );
+        return reply
+          .code(409)
+          .send({ error: "Direct attachment changed while activating." });
+      }
       publishTunnelRuntimeChange({
         attachmentId: authorization.attachmentId,
         ownerId: authorization.ownerId,

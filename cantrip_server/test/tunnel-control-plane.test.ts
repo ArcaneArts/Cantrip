@@ -125,6 +125,16 @@ function protectedRecord(operationId: string, revision: number) {
   };
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 async function recordWorker(ownerId: string, workerId: string): Promise<void> {
   await database.repository.recordWorker(ownerId, {
     workerId,
@@ -260,6 +270,141 @@ describe.sequential("tunnel control plane", () => {
       },
     });
     expect(missing.statusCode).toBe(404);
+  });
+
+  it("does not activate an old authorization after same-client credential rotation", async () => {
+    const clientId = "credential-rotation-race";
+    const raceTunnelId = randomUUID();
+    const tunnelResponse = await app.inject({
+      method: "POST",
+      url: "/api/tunnels",
+      payload: {
+        id: raceTunnelId,
+        protocolHint: "http-websocket",
+        destination: {
+          kind: "worker-tcp",
+          workerId: "worker-b",
+        },
+        protectedRecord: protectedRecord(raceTunnelId, 1),
+      },
+    });
+    expect(tunnelResponse.statusCode, tunnelResponse.body).toBe(201);
+    const create = async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/tunnels/${raceTunnelId}/attachments`,
+        payload: { clientId },
+      });
+      expect(response.statusCode, response.body).toBe(201);
+      return tunnelAttachmentCreateResultSchema.parse(response.json());
+    };
+    const first = await create();
+    const authorizationEntered = deferred();
+    const releaseAuthorization = deferred();
+    const repository = database.repository;
+    const originalAuthorize =
+      repository.authorizeDesktopTunnelAttachment.bind(repository);
+    const originalActivate =
+      repository.activateDesktopTunnelAttachment.bind(repository);
+    let staleAuthorization: unknown = null;
+    const activationCalls: unknown[][] = [];
+    let gateAuthorization = true;
+    repository.authorizeDesktopTunnelAttachment = (async (
+      attachmentId,
+      secretHash,
+    ) => {
+      const authorized = await originalAuthorize(attachmentId, secretHash);
+      if (gateAuthorization && attachmentId === first.attachmentId) {
+        gateAuthorization = false;
+        staleAuthorization = authorized;
+        authorizationEntered.resolve();
+        await releaseAuthorization.promise;
+      }
+      return authorized;
+    }) as typeof repository.authorizeDesktopTunnelAttachment;
+    repository.activateDesktopTunnelAttachment = (async (
+      attachmentId,
+      clientId,
+      secretExpiresAt,
+    ) => {
+      activationCalls.push([attachmentId, clientId, secretExpiresAt]);
+      return originalActivate(attachmentId, clientId, secretExpiresAt);
+    }) as typeof repository.activateDesktopTunnelAttachment;
+
+    let staleClient: WebSocket | null = null;
+    let staleSocket: WebSocket | null = null;
+    let second: ReturnType<typeof tunnelAttachmentCreateResultSchema.parse> =
+      first;
+    let outcome: { kind: "close"; code: number } | { kind: "ready" } | null =
+      null;
+    let currentStatus: string | null = null;
+    try {
+      let resolveOutcome!: (
+        value: { kind: "close"; code: number } | { kind: "ready" },
+      ) => void;
+      const outcomePromise = new Promise<
+        { kind: "close"; code: number } | { kind: "ready" }
+      >((resolve) => {
+        resolveOutcome = resolve;
+      });
+      staleSocket = await app.injectWS(
+        first.connectPath,
+        { headers: { authorization: `Bearer ${first.secret}` } },
+        {
+          onInit(client) {
+            staleClient = client;
+            client.once("close", (code) =>
+              resolveOutcome({ kind: "close", code }),
+            );
+            client.once("message", (_data, isBinary) => {
+              if (!isBinary) resolveOutcome({ kind: "ready" });
+            });
+          },
+        },
+      );
+      if (!staleClient) throw new Error("Stale tunnel client did not open.");
+      staleClient.send(JSON.stringify({ type: "initialize", clientId }));
+      await authorizationEntered.promise;
+      second = await create();
+      expect(second.attachmentId).toBe(first.attachmentId);
+      expect(Date.parse(second.secretExpiresAt)).toBeGreaterThan(
+        Date.parse(first.secretExpiresAt),
+      );
+      releaseAuthorization.resolve();
+      outcome = await outcomePromise;
+      currentStatus =
+        (
+          await repository.getTunnel(LOCAL_USER_ID, raceTunnelId)
+        )?.attachments.find(
+          (attachment) => attachment.id === second.attachmentId,
+        )?.status ?? null;
+    } finally {
+      releaseAuthorization.resolve();
+      repository.authorizeDesktopTunnelAttachment = originalAuthorize;
+      repository.activateDesktopTunnelAttachment =
+        originalActivate as typeof repository.activateDesktopTunnelAttachment;
+      staleClient?.terminate();
+      staleSocket?.terminate();
+      await repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        second.attachmentId,
+      );
+      await app.inject({
+        method: "DELETE",
+        url: `/api/tunnels/${raceTunnelId}`,
+      });
+    }
+
+    expect.soft(staleAuthorization).toMatchObject({
+      secretExpiresAt: new Date(first.secretExpiresAt),
+    });
+    expect
+      .soft(activationCalls)
+      .toEqual([
+        [first.attachmentId, clientId, new Date(first.secretExpiresAt)],
+      ]);
+    expect(outcome).toEqual({ kind: "close", code: 1008 });
+    expect(currentStatus).toBe("starting");
   });
 
   it("authenticates, rotates, and revokes short-lived desktop attachments", async () => {
@@ -515,6 +660,630 @@ describe.sequential("tunnel control plane", () => {
       LOCAL_USER_ID,
       second!.attachmentId,
     );
+  });
+
+  it("does not let an old socket incarnation mark its reconnect offline", async () => {
+    const clientId = "relay-incarnation-fence";
+    const secretHash = "relay-incarnation-fence-secret";
+    const attachment = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt: new Date(Date.now() + 600_000),
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash,
+      },
+    );
+    expect(attachment).not.toBeNull();
+    try {
+      const firstActivatedAt =
+        await database.repository.activateDesktopTunnelAttachment(
+          attachment!.attachmentId,
+          clientId,
+          attachment!.secretExpiresAt,
+        );
+      const secondActivatedAt =
+        await database.repository.activateDesktopTunnelAttachment(
+          attachment!.attachmentId,
+          clientId,
+          attachment!.secretExpiresAt,
+        );
+      expect(firstActivatedAt).toBeInstanceOf(Date);
+      expect(secondActivatedAt).toBeInstanceOf(Date);
+      expect((secondActivatedAt as Date).getTime()).toBeGreaterThan(
+        (firstActivatedAt as Date).getTime(),
+      );
+
+      expect(
+        await database.repository.markDesktopTunnelAttachmentOffline(
+          attachment!.attachmentId,
+          attachment!.secretExpiresAt,
+          firstActivatedAt as Date,
+        ),
+      ).toBe(false);
+      expect(
+        (
+          await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+        )?.attachments.find(({ id }) => id === attachment!.attachmentId)
+          ?.status,
+      ).toBe("active");
+      expect(
+        await database.repository.markDesktopTunnelAttachmentOffline(
+          attachment!.attachmentId,
+          attachment!.secretExpiresAt,
+          secondActivatedAt as Date,
+        ),
+      ).toBe(true);
+    } finally {
+      await database.repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        attachment!.attachmentId,
+      );
+    }
+  });
+
+  it.each(["direct-first", "relay-first"] as const)(
+    "keeps exact direct and relay ownership independent when %s retires",
+    async (retirementOrder) => {
+      const clientId = `transport-ownership-${retirementOrder}`;
+      const attachment =
+        await database.repository.createDesktopTunnelAttachment(
+          LOCAL_USER_ID,
+          userTunnelId,
+          {
+            clientId,
+            expiresAt: new Date(Date.now() + 600_000),
+            secretExpiresAt: new Date(Date.now() + 120_000),
+            secretHash: `transport-ownership-${retirementOrder}`,
+          },
+        );
+      expect(attachment).not.toBeNull();
+      const capabilityId = randomUUID();
+      const relayActivatedAt =
+        await database.repository.activateDesktopTunnelAttachment(
+          attachment!.attachmentId,
+          clientId,
+          attachment!.secretExpiresAt,
+        );
+      expect(relayActivatedAt).toBeInstanceOf(Date);
+
+      try {
+        await expect(
+          database.repository.activateDesktopTunnelDirectLease(
+            LOCAL_USER_ID,
+            attachment!.attachmentId,
+            capabilityId,
+            new Date(Date.now() + 60_000),
+            attachment!.secretExpiresAt,
+          ),
+        ).resolves.not.toBeNull();
+
+        const retireDirect = () =>
+          database.repository.finalizeDesktopTunnelDirectLease(
+            LOCAL_USER_ID,
+            attachment!.attachmentId,
+            capabilityId,
+            new Date(Date.now() + 60_000),
+          );
+        const retireRelay = () =>
+          database.repository.markDesktopTunnelAttachmentOffline(
+            attachment!.attachmentId,
+            attachment!.secretExpiresAt,
+            relayActivatedAt as Date,
+          );
+        if (retirementOrder === "direct-first") {
+          await expect(retireDirect()).resolves.not.toBeNull();
+        } else {
+          await expect(retireRelay()).resolves.toBe(true);
+        }
+        expect(
+          (
+            await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+          )?.attachments.find(({ id }) => id === attachment!.attachmentId)
+            ?.status,
+        ).toBe("active");
+
+        if (retirementOrder === "direct-first") {
+          await expect(retireRelay()).resolves.toBe(true);
+        } else {
+          await expect(retireDirect()).resolves.not.toBeNull();
+        }
+        expect(
+          (
+            await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+          )?.attachments.find(({ id }) => id === attachment!.attachmentId)
+            ?.status,
+        ).toBe("offline");
+
+        await expect(retireDirect()).resolves.not.toBeNull();
+        expect(
+          (
+            await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+          )?.attachments.find(({ id }) => id === attachment!.attachmentId)
+            ?.status,
+        ).toBe("offline");
+      } finally {
+        await database.repository.stopDesktopTunnelAttachment(
+          LOCAL_USER_ID,
+          attachment!.attachmentId,
+        );
+      }
+    },
+  );
+
+  it("expires an orphaned direct lease and keeps finalized leases terminal", async () => {
+    const clientId = "direct-lease-expiry";
+    const attachment = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt: new Date(Date.now() + 600_000),
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash: "direct-lease-expiry",
+      },
+    );
+    expect(attachment).not.toBeNull();
+    const finalizedCapabilityId = randomUUID();
+    const expiredCapabilityId = randomUUID();
+    const leaseExpiresAt = new Date(Date.now() + 1_000);
+
+    try {
+      await expect(
+        database.repository.activateDesktopTunnelDirectLease(
+          LOCAL_USER_ID,
+          attachment!.attachmentId,
+          finalizedCapabilityId,
+          leaseExpiresAt,
+          attachment!.secretExpiresAt,
+        ),
+      ).resolves.not.toBeNull();
+      await expect(
+        database.repository.finalizeDesktopTunnelDirectLease(
+          LOCAL_USER_ID,
+          attachment!.attachmentId,
+          finalizedCapabilityId,
+          leaseExpiresAt,
+        ),
+      ).resolves.not.toBeNull();
+      await expect(
+        database.repository.activateDesktopTunnelDirectLease(
+          LOCAL_USER_ID,
+          attachment!.attachmentId,
+          finalizedCapabilityId,
+          new Date(Date.now() + 60_000),
+          attachment!.secretExpiresAt,
+        ),
+      ).resolves.toBeNull();
+
+      await expect(
+        database.repository.activateDesktopTunnelDirectLease(
+          LOCAL_USER_ID,
+          attachment!.attachmentId,
+          expiredCapabilityId,
+          leaseExpiresAt,
+          attachment!.secretExpiresAt,
+        ),
+      ).resolves.not.toBeNull();
+      expect(
+        (
+          await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+        )?.attachments.find(({ id }) => id === attachment!.attachmentId)
+          ?.status,
+      ).toBe("active");
+
+      await expect(
+        database.repository.expireDesktopTunnelDirectLeases(
+          new Date(leaseExpiresAt.getTime() + 1),
+        ),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ attachmentId: attachment!.attachmentId }),
+        ]),
+      );
+      expect(
+        (
+          await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+        )?.attachments.find(({ id }) => id === attachment!.attachmentId)
+          ?.status,
+      ).toBe("offline");
+    } finally {
+      await database.repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        attachment!.attachmentId,
+      );
+    }
+  });
+
+  it("preserves another server instance's unexpired direct lease during startup recovery", async () => {
+    const secretHash = "direct-lease-startup-recovery";
+    const capabilityId = randomUUID();
+    const leaseExpiresAt = new Date(Date.now() + 60_000);
+    const attachment = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId: "direct-lease-startup-recovery",
+        expiresAt: new Date(Date.now() + 600_000),
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash,
+      },
+    );
+    expect(attachment).not.toBeNull();
+    try {
+      await expect(
+        database.repository.activateDesktopTunnelDirectLease(
+          LOCAL_USER_ID,
+          attachment!.attachmentId,
+          capabilityId,
+          leaseExpiresAt,
+          attachment!.secretExpiresAt,
+        ),
+      ).resolves.not.toBeNull();
+      await expect(
+        database.repository.activateDesktopTunnelAttachment(
+          attachment!.attachmentId,
+          "direct-lease-startup-recovery",
+          attachment!.secretExpiresAt,
+        ),
+      ).resolves.toBeInstanceOf(Date);
+
+      await database.repository.resetTransientTunnelAttachments();
+
+      await expect(
+        database.repository.authorizeDesktopTunnelAttachment(
+          attachment!.attachmentId,
+          secretHash,
+        ),
+      ).resolves.toBeNull();
+      expect(
+        (
+          await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+        )?.attachments.find(({ id }) => id === attachment!.attachmentId)
+          ?.status,
+      ).toBe("active");
+      expect(
+        (await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId))
+          ?.status,
+      ).toBe("active");
+      await database.repository.finalizeDesktopTunnelDirectLease(
+        LOCAL_USER_ID,
+        attachment!.attachmentId,
+        capabilityId,
+        leaseExpiresAt,
+      );
+      expect(
+        (
+          await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+        )?.attachments.find(({ id }) => id === attachment!.attachmentId)
+          ?.status,
+      ).toBe("offline");
+    } finally {
+      await database.repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        attachment!.attachmentId,
+      );
+    }
+  });
+
+  it("preserves direct ownership across relay rotation but not across stop", async () => {
+    const clientId = "direct-lease-relay-rotation";
+    const capabilityId = randomUUID();
+    const leaseExpiresAt = new Date(Date.now() + 60_000);
+    const first = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt: new Date(Date.now() + 600_000),
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash: "direct-lease-relay-rotation-first",
+      },
+    );
+    expect(first).not.toBeNull();
+    await database.repository.activateDesktopTunnelDirectLease(
+      LOCAL_USER_ID,
+      first!.attachmentId,
+      capabilityId,
+      leaseExpiresAt,
+      first!.secretExpiresAt,
+    );
+    const rotated = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt: new Date(Date.now() + 600_000),
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash: "direct-lease-relay-rotation-second",
+      },
+    );
+    expect(rotated?.attachmentId).toBe(first!.attachmentId);
+    expect(
+      (
+        await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+      )?.attachments.find(({ id }) => id === first!.attachmentId)?.status,
+    ).toBe("active");
+
+    await database.repository.stopDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      first!.attachmentId,
+    );
+    const restarted = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt: new Date(Date.now() + 600_000),
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash: "direct-lease-relay-rotation-third",
+      },
+    );
+    expect(restarted).not.toBeNull();
+    try {
+      expect(
+        (
+          await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+        )?.attachments.find(({ id }) => id === first!.attachmentId)?.status,
+      ).toBe("starting");
+      await expect(
+        database.repository.renewDesktopTunnelDirectLease(
+          LOCAL_USER_ID,
+          restarted!.attachmentId,
+          capabilityId,
+          new Date(Date.now() + 120_000),
+        ),
+      ).resolves.toBeNull();
+    } finally {
+      await database.repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        restarted!.attachmentId,
+      );
+    }
+  });
+
+  it("clamps a preserved direct lease when rotation shortens the attachment lifetime", async () => {
+    const startedAt = Date.now();
+    const clientId = "direct-lease-shorter-rotation";
+    const capabilityId = randomUUID();
+    const first = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt: new Date(startedAt + 600_000),
+        secretExpiresAt: new Date(startedAt + 120_000),
+        secretHash: "direct-lease-shorter-rotation-first",
+      },
+    );
+    expect(first).not.toBeNull();
+    await database.repository.activateDesktopTunnelDirectLease(
+      LOCAL_USER_ID,
+      first!.attachmentId,
+      capabilityId,
+      new Date(startedAt + 120_000),
+      first!.secretExpiresAt,
+    );
+    const shortened = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt: new Date(startedAt + 30_000),
+        secretExpiresAt: new Date(startedAt + 15_000),
+        secretHash: "direct-lease-shorter-rotation-second",
+      },
+    );
+    expect(shortened?.attachmentId).toBe(first!.attachmentId);
+    try {
+      expect(
+        await database.repository.expireDesktopTunnelDirectLeases(
+          new Date(startedAt + 30_001),
+        ),
+      ).toEqual([
+        expect.objectContaining({ attachmentId: first!.attachmentId }),
+      ]);
+      expect(
+        (
+          await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId)
+        )?.attachments.find(({ id }) => id === first!.attachmentId)?.status,
+      ).toBe("offline");
+    } finally {
+      await database.repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        first!.attachmentId,
+      );
+    }
+  });
+
+  it("derives tunnel state from every attachment instead of the last writer", async () => {
+    const first = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId: "aggregate-client-a",
+        expiresAt: new Date(Date.now() + 600_000),
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash: "aggregate-client-a",
+      },
+    );
+    expect(first).not.toBeNull();
+    const firstActivatedAt =
+      await database.repository.activateDesktopTunnelAttachment(
+        first!.attachmentId,
+        "aggregate-client-a",
+        first!.secretExpiresAt,
+      );
+    expect(firstActivatedAt).toBeInstanceOf(Date);
+
+    const second = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId: "aggregate-client-b",
+        expiresAt: new Date(Date.now() + 600_000),
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash: "aggregate-client-b",
+      },
+    );
+    expect(second).not.toBeNull();
+    try {
+      expect(
+        (await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId))
+          ?.status,
+      ).toBe("active");
+      const secondActivatedAt =
+        await database.repository.activateDesktopTunnelAttachment(
+          second!.attachmentId,
+          "aggregate-client-b",
+          second!.secretExpiresAt,
+        );
+      expect(secondActivatedAt).toBeInstanceOf(Date);
+      await database.repository.markDesktopTunnelAttachmentOffline(
+        second!.attachmentId,
+        second!.secretExpiresAt,
+        secondActivatedAt as Date,
+      );
+      expect(
+        (await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId))
+          ?.status,
+      ).toBe("active");
+
+      await database.repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        first!.attachmentId,
+      );
+      expect(
+        (await database.repository.getTunnel(LOCAL_USER_ID, userTunnelId))
+          ?.status,
+      ).toBe("offline");
+    } finally {
+      await database.repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        first!.attachmentId,
+      );
+      await database.repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        second!.attachmentId,
+      );
+    }
+  });
+
+  it("does not let a stale automatic stop revoke a rotated generation", async () => {
+    const clientId = "stale-automatic-stop";
+    const expiresAt = new Date(Date.now() + 600_000);
+    const first = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt,
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash: "stale-automatic-stop-first",
+      },
+    );
+    const replacement = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt,
+        secretExpiresAt: new Date(Date.now() + 120_000),
+        secretHash: "stale-automatic-stop-replacement",
+      },
+    );
+    expect(first).not.toBeNull();
+    expect(replacement).not.toBeNull();
+    try {
+      expect(
+        await database.repository.stopDesktopTunnelAttachment(
+          LOCAL_USER_ID,
+          replacement!.attachmentId,
+          "attachment-expired",
+          false,
+          {
+            activatedAt: null,
+            expiresAt: first!.expiresAt,
+            secretExpiresAt: first!.secretExpiresAt,
+          },
+        ),
+      ).toBeNull();
+      expect(
+        await database.repository.authorizeDesktopTunnelAttachment(
+          replacement!.attachmentId,
+          "stale-automatic-stop-replacement",
+        ),
+      ).not.toBeNull();
+    } finally {
+      await database.repository.stopDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        replacement!.attachmentId,
+      );
+    }
+  });
+
+  it("rechecks an expiry-sweep generation after observation", async () => {
+    const clientId = "expiry-sweep-generation";
+    const expired = await database.repository.createDesktopTunnelAttachment(
+      LOCAL_USER_ID,
+      userTunnelId,
+      {
+        clientId,
+        expiresAt: new Date(Date.now() - 1_000),
+        secretExpiresAt: new Date(Date.now() - 1_000),
+        secretHash: "expiry-sweep-old-secret",
+      },
+    );
+    expect(expired).not.toBeNull();
+    const repository = database.repository;
+    type StopAttachment = typeof repository.stopDesktopTunnelAttachment;
+    const originalStop: StopAttachment =
+      repository.stopDesktopTunnelAttachment.bind(repository);
+    let replacement:
+      | Awaited<ReturnType<typeof repository.createDesktopTunnelAttachment>>
+      | undefined;
+    repository.stopDesktopTunnelAttachment = (async (
+      ...args: Parameters<StopAttachment>
+    ) => {
+      replacement = await repository.createDesktopTunnelAttachment(
+        LOCAL_USER_ID,
+        userTunnelId,
+        {
+          clientId,
+          expiresAt: new Date(Date.now() + 600_000),
+          secretExpiresAt: new Date(Date.now() + 120_000),
+          secretHash: "expiry-sweep-new-secret",
+        },
+      );
+      return originalStop(...args);
+    }) as typeof repository.stopDesktopTunnelAttachment;
+    let swept: Awaited<
+      ReturnType<typeof repository.expireDesktopTunnelAttachments>
+    > = [];
+    try {
+      swept = await repository.expireDesktopTunnelAttachments();
+    } finally {
+      repository.stopDesktopTunnelAttachment =
+        originalStop as typeof repository.stopDesktopTunnelAttachment;
+    }
+    try {
+      expect(swept).toEqual([]);
+      expect(replacement).not.toBeNull();
+      expect(
+        await repository.authorizeDesktopTunnelAttachment(
+          replacement!.attachmentId,
+          "expiry-sweep-new-secret",
+        ),
+      ).not.toBeNull();
+    } finally {
+      if (replacement) {
+        await repository.stopDesktopTunnelAttachment(
+          LOCAL_USER_ID,
+          replacement.attachmentId,
+        );
+      }
+    }
   });
 
   it("fails closed for an orphaned Code tunnel without its broker root", async () => {

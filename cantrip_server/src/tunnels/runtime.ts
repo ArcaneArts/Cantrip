@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import type {
   TunnelAttachmentInitialize,
   TunnelAttachmentReady,
@@ -22,13 +24,27 @@ import {
 } from "./worker-endpoint.js";
 
 interface ActiveAttachment {
+  activatedAt: Date | null;
+  activated: boolean;
   authorization: TunnelAttachmentAuthorization;
   diagnosticTraceId?: string;
   endpoint: DesktopTunnelEndpoint;
   expires: ReturnType<typeof setTimeout>;
+  heartbeatTimeout: ReturnType<typeof setTimeout> | null;
+  heartbeatToken: Uint8Array | null;
   route: TunnelRouteHandle;
+  socket: DesktopTunnelSocket;
+  unsubscribePong: () => void;
   unsubscribeWorker: () => void;
 }
+
+export interface TunnelRuntimeOptions {
+  heartbeatIntervalMs?: number;
+  heartbeatTimeoutMs?: number;
+}
+
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 25_000;
+const DEFAULT_HEARTBEAT_TIMEOUT_MS = 10_000;
 
 export interface TunnelRuntimeChange {
   attachmentId: string;
@@ -38,8 +54,11 @@ export interface TunnelRuntimeChange {
 }
 
 export class TunnelRuntimeManager {
+  readonly #activationTails = new Map<string, Promise<void>>();
   readonly #active = new Map<string, ActiveAttachment>();
   readonly #broker: TunnelStreamBroker;
+  readonly #heartbeatTimeoutMs: number;
+  readonly #heartbeatTimer: ReturnType<typeof setInterval>;
   #closed = false;
 
   constructor(
@@ -48,8 +67,26 @@ export class TunnelRuntimeManager {
     private readonly changed: (change: TunnelRuntimeChange) => void,
     broker = new TunnelStreamBroker(),
     private readonly usageRecorder?: AccountUsageRecorder,
+    options: TunnelRuntimeOptions = {},
   ) {
     this.#broker = broker;
+    const heartbeatIntervalMs =
+      options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+    this.#heartbeatTimeoutMs =
+      options.heartbeatTimeoutMs ?? DEFAULT_HEARTBEAT_TIMEOUT_MS;
+    if (
+      !Number.isSafeInteger(heartbeatIntervalMs) ||
+      heartbeatIntervalMs <= 0 ||
+      !Number.isSafeInteger(this.#heartbeatTimeoutMs) ||
+      this.#heartbeatTimeoutMs <= 0
+    ) {
+      throw new Error("Tunnel heartbeat intervals must be positive integers.");
+    }
+    this.#heartbeatTimer = setInterval(
+      () => this.#heartbeatSweep(),
+      heartbeatIntervalMs,
+    );
+    this.#heartbeatTimer.unref();
   }
 
   async attach(
@@ -122,76 +159,47 @@ export class TunnelRuntimeManager {
       ownerId: authorization.ownerId,
       workerId: authorization.destination.workerId,
     });
+    let active!: ActiveAttachment;
     const expiresIn = Math.max(
       1,
       authorization.expiresAt.getTime() - Date.now(),
     );
     const expires = setTimeout(() => {
-      this.closeActive(authorization.attachmentId, "Attachment expired", 1008);
-      void this.repository
-        .stopDesktopTunnelAttachment(
-          authorization.ownerId,
-          authorization.attachmentId,
-          "attachment-expired",
-        )
-        .then(() => this.changed(this.#change(authorization)))
-        .catch(() => undefined);
+      if (!this.#closeExact(active, "Attachment expired", 1008)) return;
+      void this.#expire(active).catch(() => undefined);
     }, expiresIn);
     expires.unref();
     const unsubscribeWorker = subscribeWorkerTerminalOffline(
       this.bridge,
       authorization.destination.workerId,
       () => {
-        if (!this.#active.has(authorization.attachmentId)) return;
-        this.closeActive(
-          authorization.attachmentId,
-          "Destination worker disconnected",
-          1012,
-        );
-        void this.repository
-          .markDesktopTunnelAttachmentOffline(authorization.attachmentId)
-          .then(() => this.changed(this.#change(authorization)))
-          .catch(() => undefined);
+        if (this.#active.get(authorization.attachmentId) !== active) return;
+        this.#retireOffline(active, "Destination worker disconnected", 1012);
       },
     );
-    const active = {
+    const pong = (data: unknown): void => this.#pong(active, data);
+    active = {
+      activatedAt: null,
+      activated: false,
       authorization,
       diagnosticTraceId: initialize.diagnosticTraceId,
       endpoint: source,
       expires,
+      heartbeatTimeout: null,
+      heartbeatToken: null,
       route,
+      socket,
+      unsubscribePong: () => socket.off("pong", pong),
       unsubscribeWorker,
     };
+    socket.on("pong", pong);
     this.#active.set(authorization.attachmentId, active);
-    socket.on("close", () => {
-      if (this.#active.get(authorization.attachmentId) !== active) return;
-      this.#active.delete(authorization.attachmentId);
-      clearTimeout(expires);
-      unsubscribeWorker();
-      route.close();
-      void this.repository
-        .markDesktopTunnelAttachmentOffline(authorization.attachmentId)
-        .then(() => this.changed(this.#change(authorization)))
-        .catch(() => undefined);
-    });
-    let activated: boolean;
-    try {
-      activated = await this.repository.activateDesktopTunnelAttachment(
-        authorization.attachmentId,
-        authorization.clientId,
-      );
-    } catch (error) {
-      this.closeActive(
-        authorization.attachmentId,
-        "Could not activate attachment",
-        1011,
-      );
-      throw error;
-    }
-    if (!activated) {
-      this.closeActive(authorization.attachmentId, "Attachment is stale", 1008);
-      throw new Error("Tunnel attachment is stale or expired.");
-    }
+    const disconnected = (): void => {
+      this.#retireOffline(active, "Attachment disconnected", 1012);
+    };
+    socket.on("close", disconnected);
+    socket.on("error", disconnected);
+    await this.#activate(active, source);
     this.changed(this.#change(authorization));
     serverLogger.info("Tunnel attachment active", {
       event: "tunnel.attachment.active",
@@ -220,8 +228,16 @@ export class TunnelRuntimeManager {
   closeActive(attachmentId: string, reason: string, code = 1012): void {
     const active = this.#active.get(attachmentId);
     if (!active) return;
+    this.#closeExact(active, reason, code);
+  }
+
+  #closeExact(active: ActiveAttachment, reason: string, code: number): boolean {
+    const attachmentId = active.authorization.attachmentId;
+    if (this.#active.get(attachmentId) !== active) return false;
     this.#active.delete(attachmentId);
     clearTimeout(active.expires);
+    this.#clearHeartbeat(active);
+    active.unsubscribePong();
     active.unsubscribeWorker();
     active.route.close();
     active.endpoint.close(code, reason);
@@ -239,6 +255,7 @@ export class TunnelRuntimeManager {
         ? { diagnosticTraceId: active.diagnosticTraceId }
         : {}),
     });
+    return true;
   }
 
   closeTunnel(tunnelId: string, reason: string, code = 1012): number {
@@ -276,6 +293,7 @@ export class TunnelRuntimeManager {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
+    clearInterval(this.#heartbeatTimer);
     const activeCount = this.#active.size;
     const aggregate = this.#broker.stats();
     for (const attachmentId of [...this.#active.keys()]) {
@@ -306,6 +324,193 @@ export class TunnelRuntimeManager {
       tunnelId: authorization.tunnelId,
     };
   }
+
+  async #activate(
+    active: ActiveAttachment,
+    source: DesktopTunnelEndpoint,
+  ): Promise<void> {
+    const authorization = active.authorization;
+    const release = await this.#acquireActivation(authorization.attachmentId);
+    try {
+      const before = this.#active.get(authorization.attachmentId);
+      if (before !== active || active.socket.readyState !== 1) {
+        this.#closeExact(
+          active,
+          "Attachment disconnected while activating",
+          1012,
+        );
+        throw new Error(
+          before && before !== active
+            ? "Tunnel attachment was replaced while activating."
+            : "Tunnel attachment disconnected while activating.",
+        );
+      }
+      let activatedAt: Date | null;
+      try {
+        activatedAt = await this.repository.activateDesktopTunnelAttachment(
+          authorization.attachmentId,
+          authorization.clientId,
+          authorization.secretExpiresAt,
+        );
+      } catch (error) {
+        this.#closeExact(active, "Could not activate attachment", 1011);
+        throw error;
+      }
+      if (!activatedAt) {
+        this.#closeExact(active, "Attachment is stale", 1008);
+        throw new Error("Tunnel attachment is stale or expired.");
+      }
+      active.activatedAt = activatedAt;
+      const current = this.#active.get(authorization.attachmentId);
+      if (current !== active || active.socket.readyState !== 1) {
+        this.#closeExact(
+          active,
+          "Attachment disconnected while activating",
+          1012,
+        );
+        if (!current || current === active) await this.#markOffline(active);
+        throw new Error(
+          current && current !== active
+            ? "Tunnel attachment was replaced while activating."
+            : "Tunnel attachment disconnected while activating.",
+        );
+      }
+      if (!source.activate()) {
+        this.#closeExact(
+          active,
+          "Attachment disconnected while activating",
+          1012,
+        );
+        await this.#markOffline(active);
+        throw new Error("Tunnel attachment disconnected while activating.");
+      }
+      active.activated = true;
+    } finally {
+      release();
+    }
+  }
+
+  async #expire(active: ActiveAttachment): Promise<void> {
+    const authorization = active.authorization;
+    // If expiry fires while activation is in flight, wait for that exact DB
+    // incarnation to settle before constructing the automatic-stop fence.
+    const release = await this.#acquireActivation(authorization.attachmentId);
+    try {
+      const stopped = await this.repository.stopDesktopTunnelAttachment(
+        authorization.ownerId,
+        authorization.attachmentId,
+        "attachment-expired",
+        false,
+        {
+          activatedAt: active.activatedAt,
+          expiresAt: authorization.expiresAt,
+          secretExpiresAt: authorization.secretExpiresAt,
+        },
+      );
+      if (stopped) this.changed(this.#change(authorization));
+    } finally {
+      release();
+    }
+  }
+
+  async #acquireActivation(attachmentId: string): Promise<() => void> {
+    const previous = this.#activationTails.get(attachmentId);
+    let releaseCurrent!: () => void;
+    const current = new Promise<void>((resolve) => {
+      releaseCurrent = resolve;
+    });
+    const tail = (previous ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(() => current);
+    this.#activationTails.set(attachmentId, tail);
+    if (previous) await previous.catch(() => undefined);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      releaseCurrent();
+      if (this.#activationTails.get(attachmentId) === tail) {
+        this.#activationTails.delete(attachmentId);
+      }
+    };
+  }
+
+  #heartbeatSweep(): void {
+    for (const active of this.#active.values()) {
+      if (!active.activated || active.heartbeatToken) continue;
+      if (active.socket.readyState !== 1) {
+        this.#retireOffline(active, "Attachment disconnected", 1012);
+        continue;
+      }
+      const token = randomBytes(16);
+      active.heartbeatToken = token;
+      try {
+        active.socket.ping(token);
+      } catch {
+        active.heartbeatToken = null;
+        this.#retireOffline(active, "Attachment heartbeat failed", 1012);
+        continue;
+      }
+      if (active.heartbeatToken !== token) continue;
+      const timeout = setTimeout(() => {
+        if (
+          this.#active.get(active.authorization.attachmentId) !== active ||
+          active.heartbeatToken !== token ||
+          active.heartbeatTimeout !== timeout
+        ) {
+          return;
+        }
+        active.heartbeatTimeout = null;
+        active.heartbeatToken = null;
+        this.#retireOffline(active, "Attachment heartbeat timed out", 1012);
+      }, this.#heartbeatTimeoutMs);
+      timeout.unref();
+      active.heartbeatTimeout = timeout;
+    }
+  }
+
+  #pong(active: ActiveAttachment, data: unknown): void {
+    const token = active.heartbeatToken;
+    if (
+      this.#active.get(active.authorization.attachmentId) !== active ||
+      !token ||
+      !equalBytes(token, data)
+    ) {
+      return;
+    }
+    this.#clearHeartbeat(active);
+    if (
+      !this.#broker.recordRouteActivity(
+        active.authorization.tunnelId,
+        active.authorization.attachmentId,
+        active.authorization.origin === "code",
+      )
+    ) {
+      this.#retireOffline(active, "Attachment authority expired", 1008);
+    }
+  }
+
+  #clearHeartbeat(active: ActiveAttachment): void {
+    if (active.heartbeatTimeout) clearTimeout(active.heartbeatTimeout);
+    active.heartbeatTimeout = null;
+    active.heartbeatToken = null;
+  }
+
+  #retireOffline(active: ActiveAttachment, reason: string, code: number): void {
+    if (!this.#closeExact(active, reason, code)) return;
+    void this.#markOffline(active).catch(() => undefined);
+  }
+
+  async #markOffline(active: ActiveAttachment): Promise<void> {
+    if (!active.activatedAt) return;
+    const authorization = active.authorization;
+    const updated = await this.repository.markDesktopTunnelAttachmentOffline(
+      authorization.attachmentId,
+      authorization.secretExpiresAt,
+      active.activatedAt,
+    );
+    if (updated) this.changed(this.#change(authorization));
+  }
 }
 
 export function tunnelBandwidthChannel(
@@ -327,6 +532,9 @@ export function tunnelBandwidthChannel(
 }
 
 function tunnelCloseReasonCode(reason: string): string {
+  if (reason.includes("heartbeat timed out")) return "heartbeat_timeout";
+  if (reason.includes("heartbeat failed")) return "heartbeat_failed";
+  if (reason.includes("authority expired")) return "authority_expired";
   if (reason.includes("expired")) return "expired";
   if (reason.includes("replaced")) return "replaced";
   if (reason.includes("disconnected")) return "worker_disconnected";
@@ -335,4 +543,13 @@ function tunnelCloseReasonCode(reason: string): string {
   if (reason.includes("stale")) return "stale";
   if (reason.includes("activate")) return "activation_failed";
   return "closed";
+}
+
+function equalBytes(left: Uint8Array, right: unknown): boolean {
+  if (!(right instanceof Uint8Array)) return false;
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
 }

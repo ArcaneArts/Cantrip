@@ -225,6 +225,12 @@ function ownerSql(resolution: StorageOwnerResolution): OwnerSql {
         expression: 'tunnel."owner_id"',
         joins: 'inner join "tunnels" tunnel on tunnel."id" = t."tunnel_id"',
       };
+    case "tunnel-attachment":
+      return {
+        expression: 'tunnel."owner_id"',
+        joins:
+          'inner join "tunnel_attachments" attachment on attachment."id" = t."attachment_id" inner join "tunnels" tunnel on tunnel."id" = attachment."tunnel_id"',
+      };
     case "chat":
       return {
         expression: 'project."owner_id"',

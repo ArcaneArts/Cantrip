@@ -570,7 +570,9 @@ export async function preferProtectedCodeAttachment(
   options.signal?.throwIfAborted();
   if (!isTauri()) {
     return {
-      attachment: await startBrowserCodeAttachment(wire),
+      attachment: await (options.signal
+        ? startBrowserCodeAttachment(wire, { signal: options.signal })
+        : startBrowserCodeAttachment(wire)),
       desktopRouteIdentity: null,
       directTunnelId: wire.tunnelId,
       transportKind: "relay",

@@ -159,6 +159,15 @@ describe("generic tunnel stream broker", () => {
       [identity.tunnelId, identity.attachmentId, true],
     ]);
     expect(destination.sent).toHaveLength(0);
+    expect(source.sent).toEqual([
+      expect.objectContaining({
+        header: expect.objectContaining({
+          connectionId: "missing-root",
+          kind: "rejected",
+          code: "unauthorized",
+        }),
+      }),
+    ]);
     expect(broker.stats().activeConnections).toBe(0);
     broker.close();
   });
