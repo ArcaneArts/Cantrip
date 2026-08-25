@@ -45,6 +45,7 @@ import {
   type ModelProviderAccountUpdate,
   type ModelProviderSummary,
   type ModelProviderUpdate,
+  type ResourceAudience,
   type SettingsBundle,
 } from "@cantrip/protocol";
 import {
@@ -374,10 +375,12 @@ export async function protectMcpServerCreate(
   raw: McpServerConfiguration,
   workerId: string | null = null,
   options: TrustedOptions = {},
+  audience: ResourceAudience = "ide",
 ): Promise<EncryptedMcpServerCreate> {
   const id = crypto.randomUUID();
   return encryptedMcpServerCreateSchema.parse({
     id,
+    audience,
     workerId,
     ...(await protectMcpConfiguration(id, raw, options)),
   });
@@ -443,9 +446,11 @@ export async function protectMcpServerUpdate(
   raw: McpServerConfiguration,
   workerId: string | null = null,
   options: TrustedOptions = {},
+  audience?: ResourceAudience,
 ): Promise<EncryptedMcpServerUpdate> {
   return encryptedMcpServerUpdateSchema.parse({
     workerId,
+    ...(audience === undefined ? {} : { audience }),
     ...(await protectMcpConfiguration(id, raw, options)),
   });
 }
@@ -479,6 +484,7 @@ export async function openMcpServerWireSummary(
       ...configuration,
       enabled: wire.enabled,
       id: wire.id,
+      audience: wire.audience,
       scope: wire.scope,
       projectId: wire.projectId,
       workerId: wire.workerId,

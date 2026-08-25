@@ -5,6 +5,7 @@ import {
   encryptionKeyBytesSchema,
   encryptionKeyRevisionSchema,
 } from "./encryption.js";
+import { resourceAudienceSchema } from "./audiences.js";
 
 export const POLICY_LIMIT = 500;
 export const EFFECTIVE_POLICY_LIMIT = 64;
@@ -61,6 +62,7 @@ export const policySummarySchema = z.object({
   key: policyKeySchema,
   name: policyNameSchema,
   summary: policySummaryTextSchema,
+  audience: resourceAudienceSchema.default("ide"),
   enabled: z.boolean(),
   mandatory: z.boolean(),
   position: z.number().int().nonnegative(),
@@ -132,6 +134,7 @@ const policyOperationalFieldsSchema = z.object({
 export const encryptedPolicyCreateSchema = policyOperationalFieldsSchema
   .extend({
     id: z.uuid(),
+    audience: resourceAudienceSchema.default("ide"),
     content: policyOpaqueDetailContentSchema,
     templateKey: policyKeySchema.nullable().default(null),
   })
@@ -140,6 +143,7 @@ export const encryptedPolicyCreateSchema = policyOperationalFieldsSchema
 export const encryptedPolicyUpdateSchema = policyOperationalFieldsSchema
   .partial()
   .extend({
+    audience: resourceAudienceSchema.optional(),
     rowVersion: z.number().int().positive(),
     content: z
       .object({
@@ -154,7 +158,8 @@ export const encryptedPolicyUpdateSchema = policyOperationalFieldsSchema
     (value) =>
       value.content !== undefined ||
       value.enabled !== undefined ||
-      value.mandatory !== undefined,
+      value.mandatory !== undefined ||
+      value.audience !== undefined,
     { message: "At least one encrypted policy field is required." },
   );
 
@@ -169,6 +174,7 @@ export const policyWireSummarySchema = z
   .object({
     id: z.string().min(1),
     content: policyOpaqueSummaryContentSchema,
+    audience: resourceAudienceSchema.default("ide"),
     enabled: z.boolean(),
     mandatory: z.boolean(),
     position: z.number().int().nonnegative(),
@@ -205,6 +211,7 @@ export const policyCreateSchema = z.object({
   bodyMarkdown: policyBodyMarkdownSchema,
   enabled: z.boolean().default(true),
   mandatory: z.boolean().default(false),
+  audience: resourceAudienceSchema.default("ide"),
 });
 
 export const policyUpdateSchema = z
@@ -215,6 +222,7 @@ export const policyUpdateSchema = z
     bodyMarkdown: policyBodyMarkdownSchema.optional(),
     enabled: z.boolean().optional(),
     mandatory: z.boolean().optional(),
+    audience: resourceAudienceSchema.optional(),
   })
   .refine(
     (value) =>
@@ -222,7 +230,8 @@ export const policyUpdateSchema = z
       value.summary !== undefined ||
       value.bodyMarkdown !== undefined ||
       value.enabled !== undefined ||
-      value.mandatory !== undefined,
+      value.mandatory !== undefined ||
+      value.audience !== undefined,
     { message: "At least one policy field is required." },
   );
 
@@ -308,6 +317,7 @@ export const policyFromTemplateCreateSchema = z
     bodyMarkdown: policyBodyMarkdownSchema.optional(),
     enabled: z.boolean().optional(),
     mandatory: z.boolean().optional(),
+    audience: resourceAudienceSchema.optional(),
   })
   .strict();
 
@@ -372,6 +382,22 @@ export const effectivePolicyWireListSchema = z
   .object({
     policies: z
       .array(effectivePolicyWireSummarySchema)
+      .max(EFFECTIVE_POLICY_LIMIT),
+  })
+  .strict();
+
+export const standalonePolicyWireSummarySchema = z
+  .object({
+    id: z.string().min(1),
+    protectedSummary: encryptedPolicySummaryContentSchema,
+    protectedBody: encryptedPolicyBodyContentSchema,
+  })
+  .strict();
+
+export const standalonePolicyWireListSchema = z
+  .object({
+    policies: z
+      .array(standalonePolicyWireSummarySchema)
       .max(EFFECTIVE_POLICY_LIMIT),
   })
   .strict();
@@ -457,6 +483,9 @@ export type EffectivePolicyWireSummary = z.infer<
 >;
 export type EffectivePolicyWireList = z.infer<
   typeof effectivePolicyWireListSchema
+>;
+export type StandalonePolicyWireList = z.infer<
+  typeof standalonePolicyWireListSchema
 >;
 export type PolicyCliListResult = z.infer<typeof policyCliListResultSchema>;
 export type PolicyCliReadResult = z.infer<typeof policyCliReadResultSchema>;

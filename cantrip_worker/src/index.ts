@@ -197,7 +197,10 @@ import {
   reprotectChatMessages,
 } from "./chat-message-encryption.js";
 import { openChatPlanState } from "./chat-plan-encryption.js";
-import { buildEncryptedAgentPolicyContext } from "./policy-encryption.js";
+import {
+  buildEncryptedAgentPolicyContext,
+  buildStandalonePolicyContext,
+} from "./policy-encryption.js";
 import {
   openWorkerRepositoryOperationContent,
   protectWorkerRepositoryOperationContent,
@@ -1275,6 +1278,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
 
   const runtimeFor = (command: {
     executionProfile?: "ide" | "standalone-chat";
+    standaloneSkillRoot?: string | null;
     model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
     provider: RuntimeProvider;
     subagentDefaults?: RuntimeSubagentDefaults | null;
@@ -1293,11 +1297,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       runtime = new CodexAppServer(
         config.codexBinary,
         path.join(config.dataDirectory, "codex-runtimes", directoryName),
-        accountBackedProvider(command.provider.kind)
-          ? accountHomeFor(
-              command.provider.credentialHomeKey ?? command.provider.id,
+        command.executionProfile === "standalone-chat"
+          ? path.join(
+              config.dataDirectory,
+              "codex-standalone-homes",
+              directoryName,
             )
-          : codexHome,
+          : accountBackedProvider(command.provider.kind)
+            ? accountHomeFor(
+                command.provider.credentialHomeKey ?? command.provider.id,
+              )
+            : codexHome,
         codexRuntime,
         undefined,
         async (provider) =>
@@ -1321,7 +1331,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         providerAccessTokens,
         undefined,
         command.executionProfile === "standalone-chat"
-          ? []
+          ? command.standaloneSkillRoot
+            ? [command.standaloneSkillRoot]
+            : []
           : globalCodexSkillRoots,
       );
       runtime.setExternalThreadChangeObserver((change) => {
@@ -3853,12 +3865,29 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             "Custom subagents must use the root model's provider identity.",
           );
         }
+        const standaloneSkillRoot = standalone
+          ? await skillManager.materializeChatSkills(
+              {
+                providerId: provider().id,
+                providerKind: provider().kind,
+              },
+              command.chatSkillAudienceKeys,
+            )
+          : null;
         const runtime = runtimeFor({
           executionProfile: command.executionProfile,
+          standaloneSkillRoot,
           model: command.model,
           provider: provider(),
           subagentDefaults,
         });
+        if (standalone) {
+          await runtime.reloadSkills({
+            cwd: command.cwd,
+            model: command.model,
+            provider: provider(),
+          });
+        }
         runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));
         const encryptedTask =
           command.resultMode.kind === "task-encrypted" ||
@@ -3897,7 +3926,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               projectId: command.policyProjectId,
               service: workerEncryption,
             })
-          : null;
+          : standalone
+            ? await buildStandalonePolicyContext({
+                policies: command.standalonePolicies,
+                service: workerEncryption,
+              })
+            : null;
         let protectedEventQueue = Promise.resolve();
         let protectedEventFailure: unknown = null;
         const emitProtected = (create: () => Promise<WorkerEvent>): void => {

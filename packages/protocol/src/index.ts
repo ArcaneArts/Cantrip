@@ -150,6 +150,8 @@ export * from "./tasks.js";
 
 export * from "./task-scheduling.js";
 
+export * from "./audiences.js";
+
 export * from "./encryption.js";
 export * from "./protected-secrets.js";
 export * from "./run-configuration-secrets.js";
@@ -162,6 +164,7 @@ import {
   policyCliListResultSchema,
   policyCliReadResultSchema,
   policyKeySchema,
+  standalonePolicyWireListSchema,
 } from "./policies.js";
 import {
   taskGoalSyncContextSchema,
@@ -194,6 +197,7 @@ import {
   protectedProviderCredentialSchema,
   protectedSecretEnvelopeSchema,
 } from "./protected-secrets.js";
+import { resourceAudienceSchema } from "./audiences.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import {
   browserPrivateStateOpaqueSchema,
@@ -1229,6 +1233,8 @@ export const skillSettingsLocationSchema = z.enum([
 
 export const skillSettingsItemSchema = skillSummarySchema.extend({
   id: z.string().min(1).max(8_192),
+  audienceKey: encryptionKeyBytesSchema,
+  audience: resourceAudienceSchema.default("ide"),
   scope: z.enum(["repo", "user", "system", "admin"]),
   location: skillSettingsLocationSchema,
   path: z.string().min(1).max(8_192),
@@ -1264,6 +1270,28 @@ export const skillSettingsContextSchema = z.object({
   providerId: z.string().min(1).max(200),
   projectId: z.string().min(1).max(200).nullable().default(null),
 });
+
+export const skillAudienceSummarySchema = z
+  .object({
+    audienceKey: encryptionKeyBytesSchema,
+    audience: resourceAudienceSchema.default("ide"),
+  })
+  .strict();
+
+export const skillAudienceListSchema = z
+  .array(skillAudienceSummarySchema)
+  .max(5_000);
+
+export const skillAudienceContextSchema = skillSettingsContextSchema
+  .omit({ projectId: true })
+  .strict();
+
+export const skillAudienceUpdateSchema = skillAudienceContextSchema
+  .extend({
+    audienceKey: encryptionKeyBytesSchema,
+    audience: resourceAudienceSchema.default("ide"),
+  })
+  .strict();
 
 export const skillSettingsFileRequestSchema = skillSettingsContextSchema.extend(
   {
@@ -2188,6 +2216,7 @@ export const mcpServerConfigurationSchema = z.discriminatedUnion("transport", [
 export const encryptedMcpServerCreateSchema = z
   .object({
     id: z.string().uuid(),
+    audience: resourceAudienceSchema.default("ide"),
     enabled: z.boolean(),
     workerId: z.string().min(1).max(255).nullable().default(null),
     nameBlindIndex: encryptionKeyBytesSchema,
@@ -2196,7 +2225,8 @@ export const encryptedMcpServerCreateSchema = z
   .strict();
 
 export const encryptedMcpServerUpdateSchema = encryptedMcpServerCreateSchema
-  .omit({ id: true })
+  .omit({ id: true, audience: true })
+  .extend({ audience: resourceAudienceSchema.optional() })
   .strict();
 
 export const mcpServerDiscoverySourceSchema = z.enum([
@@ -2246,6 +2276,7 @@ export const mcpServerScopeSchema = z.enum(["global", "project"]);
 export const mcpServerSummarySchema = mcpServerConfigurationSchema.and(
   z.object({
     id: z.string().min(1),
+    audience: resourceAudienceSchema.default("ide"),
     scope: mcpServerScopeSchema,
     projectId: z.string().min(1).nullable(),
     workerId: z.string().min(1).max(255).nullable(),
@@ -2258,6 +2289,7 @@ export const mcpServerListSchema = z.array(mcpServerSummarySchema).max(200);
 
 export const mcpServerWireSummarySchema = mcpServerOpaqueRuntimeSchema.and(
   z.object({
+    audience: resourceAudienceSchema.default("ide"),
     scope: mcpServerScopeSchema,
     projectId: z.string().min(1).nullable(),
     workerId: z.string().min(1).max(255).nullable(),
@@ -14168,6 +14200,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       worktreePolicy: worktreePolicySchema.nullable(),
       policyProjectId: z.string().min(1).max(200).nullable(),
       policies: effectivePolicyWireListSchema.default({ policies: [] }),
+      standalonePolicies: standalonePolicyWireListSchema.default({
+        policies: [],
+      }),
       threadId: z.string().min(1).nullable(),
       prompt: z.string().min(1).optional(),
       protectedPrompt: chatMessageOpaqueContentSchema.optional(),
@@ -14178,6 +14213,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       protectedPlan: chatPlanOpaqueStateSchema.nullable().default(null),
       attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
       skillNames: z.array(z.string().min(1)).max(64).default([]),
+      chatSkillAudienceKeys: z
+        .array(encryptionKeyBytesSchema)
+        .max(5_000)
+        .default([]),
       model: workerRuntimeModelSchema,
       provider: workerRuntimeProviderSchema,
       subagentDefaults: z
@@ -14229,6 +14268,18 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
           message:
             "Chat turn execution profile does not match its execution root and capabilities.",
           path: ["executionProfile"],
+        });
+      }
+      if (
+        command.executionProfile === "ide" &&
+        (command.standalonePolicies.policies.length > 0 ||
+          command.chatSkillAudienceKeys.length > 0)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "IDE chat turns cannot receive standalone Policy bodies or Chat Skill audiences.",
+          path: ["standalonePolicies"],
         });
       }
       if (Boolean(command.prompt) === Boolean(command.protectedPrompt)) {
@@ -16542,6 +16593,9 @@ export type SkillSettingsDeleteRequest = z.infer<
 export type SkillSettingsMutationResult = z.infer<
   typeof skillSettingsMutationResultSchema
 >;
+export type SkillAudienceSummary = z.infer<typeof skillAudienceSummarySchema>;
+export type SkillAudienceContext = z.infer<typeof skillAudienceContextSchema>;
+export type SkillAudienceUpdate = z.infer<typeof skillAudienceUpdateSchema>;
 export type CodexMcpOauthStart = z.infer<typeof codexMcpOauthStartSchema>;
 export type CodexMcpOauthStartResult = z.infer<
   typeof codexMcpOauthStartResultSchema

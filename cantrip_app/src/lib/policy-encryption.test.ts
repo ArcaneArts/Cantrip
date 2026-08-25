@@ -42,6 +42,7 @@ describe("client policy encryption", () => {
         bodyMarkdown: "# Sentinel policy\n\nDo not send this plaintext.",
         enabled: true,
         mandatory: false,
+        audience: "both",
       },
       null,
       options,
@@ -49,6 +50,7 @@ describe("client policy encryption", () => {
     const wire = {
       id: created.id,
       content: created.content,
+      audience: created.audience,
       enabled: created.enabled,
       mandatory: created.mandatory,
       position: 0,
@@ -66,14 +68,20 @@ describe("client policy encryption", () => {
       key: "sentinel-policy",
       name: "Sentinel policy",
       bodyMarkdown: "# Sentinel policy\n\nDo not send this plaintext.",
+      audience: "both",
     });
 
     const updated = await protectPolicyUpdate(
       created.id,
       opened,
-      { rowVersion: 1, summary: "Updated private summary." },
+      {
+        rowVersion: 1,
+        summary: "Updated private summary.",
+        audience: "chat",
+      },
       options,
     );
+    expect(updated.audience).toBe("chat");
     expect(JSON.stringify(updated)).not.toContain("Updated private summary.");
     await expect(
       openPolicyWireDetail(

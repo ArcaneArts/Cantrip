@@ -12,6 +12,7 @@ import {
   policyWireDetailSchema,
   policyWireListSchema,
   policyWireSummarySchema,
+  standalonePolicyWireListSchema,
   type EffectivePolicyWireList,
   type EffectivePolicySource,
   type EncryptedPolicyBootstrap,
@@ -23,6 +24,7 @@ import {
   type PolicyWireDetail,
   type PolicyWireList,
   type PolicyWireSummary,
+  type StandalonePolicyWireList,
 } from "@cantrip/protocol/policies";
 import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -89,6 +91,7 @@ function toPolicySummary(
       keyBlindIndex: row.keyBlindIndex,
       protectedSummary: row.protectedSummary,
     },
+    audience: row.audience,
     enabled: row.enabled,
     mandatory: row.mandatory,
     position: row.position,
@@ -186,6 +189,7 @@ export class PolicyRepository {
           protectedBody: policy.content.protectedBody,
           enabled: policy.enabled,
           mandatory: policy.mandatory,
+          audience: policy.audience,
           position,
           templateKey: policy.templateKey,
           rowVersion: 1,
@@ -319,6 +323,7 @@ export class PolicyRepository {
             protectedBody: input.content.protectedBody,
             enabled: input.enabled,
             mandatory: input.mandatory,
+            audience: input.audience,
             position: (positions[0]?.position ?? -1) + 1,
             templateKey: input.templateKey,
             rowVersion: 1,
@@ -522,6 +527,7 @@ export class PolicyRepository {
           and(
             eq(schema.policies.ownerId, ownerId),
             eq(schema.policies.enabled, true),
+            inArray(schema.policies.audience, ["ide", "both"]),
           ),
         )
         .orderBy(asc(schema.policies.position), asc(schema.policies.id)),
@@ -602,6 +608,34 @@ export class PolicyRepository {
       );
     }
     return effectivePolicyWireListSchema.parse({ policies: effective });
+  }
+
+  async resolveStandalone(ownerId: string): Promise<StandalonePolicyWireList> {
+    await this.ensureOwnerState(ownerId);
+    const rows = await this.database
+      .select()
+      .from(schema.policies)
+      .where(
+        and(
+          eq(schema.policies.ownerId, ownerId),
+          eq(schema.policies.enabled, true),
+          inArray(schema.policies.audience, ["chat", "both"]),
+        ),
+      )
+      .orderBy(asc(schema.policies.position), asc(schema.policies.id));
+    if (rows.length > EFFECTIVE_POLICY_LIMIT) {
+      throw new PolicyConflictError(
+        `Standalone Chat has more than ${EFFECTIVE_POLICY_LIMIT} effective policies. Reduce or consolidate Chat policies before starting another turn.`,
+        "limit-exceeded",
+      );
+    }
+    return standalonePolicyWireListSchema.parse({
+      policies: rows.map((policy) => ({
+        id: policy.id,
+        protectedSummary: policy.protectedSummary,
+        protectedBody: policy.protectedBody,
+      })),
+    });
   }
 
   private async detail(row: PolicyRow): Promise<PolicyWireDetail> {

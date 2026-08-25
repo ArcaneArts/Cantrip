@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   chatModelConfiguration,
   defaultModelConfiguration,
+  defaultStandaloneChatModelConfiguration,
   filterConfiguredModels,
   ModelReasoningPicker,
   modelConfigurationReasoningChoices,
@@ -17,6 +18,7 @@ import {
   modelReasoningChoices,
   modelsShareProvider,
   normalizeReasoningSelection,
+  standaloneChatModelConfigurationSettingsUpdate,
 } from "./model-reasoning-picker";
 
 const now = "2026-08-15T12:00:00.000Z";
@@ -155,6 +157,30 @@ describe("model reasoning picker", () => {
       defaultCustomSubagentModel: false,
       defaultSubagentModelId: "gemma",
       defaultSubagentReasoningEffort: "low",
+    });
+  });
+
+  it("keeps standalone Chat defaults separate while supporting IDE inheritance", () => {
+    const inherited = defaultStandaloneChatModelConfiguration({
+      defaultModelId: "sol",
+      defaultReasoningEffort: "high",
+      defaultChatModelId: null,
+      defaultChatReasoningEffort: null,
+    });
+    expect(inherited).toMatchObject({
+      modelId: "sol",
+      reasoningEffort: "high",
+      customSubagentModel: false,
+    });
+    expect(
+      standaloneChatModelConfigurationSettingsUpdate({
+        ...inherited,
+        modelId: "gemma",
+        reasoningEffort: "low",
+      }),
+    ).toEqual({
+      defaultChatModelId: "gemma",
+      defaultChatReasoningEffort: "low",
     });
   });
 

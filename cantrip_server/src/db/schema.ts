@@ -43,6 +43,7 @@ import type {
   ProjectRootKind,
   ProjectSourceKind,
   RemoteSurfaceCapabilities,
+  ResourceAudience,
   StandaloneChatCapabilities,
   StandaloneChatRootJobError,
   StandaloneChatRootJobKind,
@@ -1155,6 +1156,10 @@ export const policies = pgTable(
       .notNull(),
     enabled: boolean("enabled").notNull().default(true),
     mandatory: boolean("mandatory").notNull().default(false),
+    audience: text("audience")
+      .$type<ResourceAudience>()
+      .notNull()
+      .default("ide"),
     position: integer("position").notNull().default(0),
     templateKey: text("template_key"),
     rowVersion: integer("row_version").notNull().default(1),
@@ -1177,6 +1182,10 @@ export const policies = pgTable(
     ),
     check("policies_position_check", sql`${table.position} >= 0`),
     check("policies_row_version_check", sql`${table.rowVersion} >= 1`),
+    check(
+      "policies_audience_check",
+      sql`${table.audience} IN ('ide', 'chat', 'both')`,
+    ),
   ],
 );
 
@@ -1248,6 +1257,56 @@ export const workers = pgTable("workers", {
     .notNull()
     .defaultNow(),
 });
+
+export const skillAudiences = pgTable(
+  "skill_audiences",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => modelProviders.id, { onDelete: "cascade" }),
+    audienceKey: text("audience_key").notNull(),
+    audience: text("audience")
+      .$type<ResourceAudience>()
+      .notNull()
+      .default("ide"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.ownerId,
+        table.workerId,
+        table.providerId,
+        table.audienceKey,
+      ],
+    }),
+    index("skill_audiences_chat_lookup_index").on(
+      table.ownerId,
+      table.workerId,
+      table.providerId,
+      table.audience,
+    ),
+    check(
+      "skill_audiences_key_length_check",
+      sql`length(${table.audienceKey}) = 43`,
+    ),
+    check(
+      "skill_audiences_audience_check",
+      sql`${table.audience} IN ('ide', 'chat', 'both')`,
+    ),
+  ],
+);
 
 export const codeSettingsProfiles = pgTable(
   "code_settings_profiles",
@@ -1790,6 +1849,10 @@ export const mcpServers = pgTable(
       .$type<ProtectedSecretEnvelope>()
       .notNull(),
     enabled: boolean("enabled").notNull().default(true),
+    audience: text("audience")
+      .$type<ResourceAudience>()
+      .notNull()
+      .default("ide"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1820,6 +1883,10 @@ export const mcpServers = pgTable(
     check(
       "mcp_servers_name_blind_index_length_check",
       sql`length(${table.nameBlindIndex}) = 43`,
+    ),
+    check(
+      "mcp_servers_audience_check",
+      sql`${table.audience} IN ('ide', 'chat', 'both')`,
     ),
   ],
 );

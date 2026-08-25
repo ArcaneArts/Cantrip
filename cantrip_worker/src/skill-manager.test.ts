@@ -226,4 +226,55 @@ describe("skill manager", () => {
       await readFile(path.join(result.recoveryPath!, "SKILL.md"), "utf8"),
     ).toContain("name: personal-release");
   });
+
+  it("materializes only audience-eligible global skills for Chat", async () => {
+    await createSkill(
+      path.join(projectDirectory, ".agents", "skills"),
+      "project-only",
+      "project-only",
+      "Never load this into standalone Chat.",
+    );
+    await createSkill(
+      path.join(codexAccountHome(dataDirectory, context.providerId), "skills"),
+      "chat-account",
+      "chat-account",
+      "Load this account skill.",
+    );
+    await createSkill(
+      path.join(homeDirectory, ".agents", "skills"),
+      "ide-user",
+      "ide-user",
+      "Keep this worker user skill in IDE.",
+    );
+    const inventory = await manager.list(context);
+    const account = inventory.global.find(
+      ({ name }) => name === "chat-account",
+    )!;
+    const project = inventory.project[0]!;
+    expect(account.audienceKey).toHaveLength(43);
+    expect(account.audience).toBe("ide");
+
+    const materialized = await manager.materializeChatSkills(
+      {
+        providerId: context.providerId,
+        providerKind: context.providerKind,
+      },
+      [account.audienceKey, project.audienceKey],
+    );
+
+    expect(
+      await readFile(
+        path.join(materialized, account.audienceKey, "SKILL.md"),
+        "utf8",
+      ),
+    ).toContain("name: chat-account");
+    await expect(
+      access(path.join(materialized, project.audienceKey)),
+    ).rejects.toThrow();
+    expect(
+      (await manager.list(context)).global.find(
+        ({ name }) => name === "chat-account",
+      )?.audienceKey,
+    ).toBe(account.audienceKey);
+  });
 });

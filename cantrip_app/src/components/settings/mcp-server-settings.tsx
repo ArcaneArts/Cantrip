@@ -2,6 +2,7 @@ import type {
   McpServerConfiguration,
   McpServerSummary,
   ProjectSummary,
+  ResourceAudience,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -54,6 +55,7 @@ import { errorMessage as errorText } from "@/lib/error-message";
 type McpScope = { kind: "global" } | { kind: "project"; projectId: string };
 
 interface ServerDraft {
+  audience: ResourceAudience;
   name: string;
   transport: "stdio" | "http";
   command: string;
@@ -68,6 +70,7 @@ interface ServerDraft {
 }
 
 const emptyDraft: ServerDraft = {
+  audience: "ide",
   name: "",
   transport: "stdio",
   command: "",
@@ -132,6 +135,7 @@ function draftFor(server: McpServerSummary | null): ServerDraft {
     return {
       ...emptyDraft,
       name: server.name,
+      audience: server.audience,
       transport: "stdio",
       command: server.command,
       args: server.args.join("\n"),
@@ -143,6 +147,7 @@ function draftFor(server: McpServerSummary | null): ServerDraft {
   return {
     ...emptyDraft,
     name: server.name,
+    audience: server.audience,
     transport: "http",
     url: server.url,
     bearerTokenEnvironmentVariable: server.bearerTokenEnvironmentVariable ?? "",
@@ -232,6 +237,13 @@ function ServerRow({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <p className="truncate text-sm font-medium">{server.name}</p>
             <Badge variant="secondary">{server.transport}</Badge>
+            <Badge variant="outline">
+              {server.audience === "both"
+                ? "Both"
+                : server.audience === "chat"
+                  ? "Chat"
+                  : "IDE"}
+            </Badge>
             {!server.enabled ? <Badge variant="outline">Disabled</Badge> : null}
           </div>
           <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
@@ -326,6 +338,8 @@ export function McpServerSettings({
   const [sourceProjectId, setSourceProjectId] = useState("");
   const [sourceServerId, setSourceServerId] = useState("");
   const [scanWorkerId, setScanWorkerId] = useState("");
+  const [discoveryAudience, setDiscoveryAudience] =
+    useState<ResourceAudience>("ide");
   const sourceServers = useQuery({
     enabled: Boolean(copyOpen && sourceProjectId),
     queryKey: ["mcp-servers", "project", sourceProjectId],
@@ -339,9 +353,11 @@ export function McpServerSettings({
     mutationFn: ({
       configuration,
       workerId,
+      audience,
     }: {
       configuration: McpServerConfiguration;
       workerId: string | null;
+      audience: ResourceAudience;
     }) => {
       if (projectId) {
         return editing
@@ -350,12 +366,18 @@ export function McpServerSettings({
               editing.id,
               configuration,
               workerId,
+              audience,
             )
-          : createProjectMcpServer(projectId, configuration, workerId);
+          : createProjectMcpServer(
+              projectId,
+              configuration,
+              workerId,
+              audience,
+            );
       }
       return editing
-        ? updateGlobalMcpServer(editing.id, configuration, workerId)
-        : createGlobalMcpServer(configuration, workerId);
+        ? updateGlobalMcpServer(editing.id, configuration, workerId, audience)
+        : createGlobalMcpServer(configuration, workerId, audience);
     },
     onSuccess: async () => {
       setDialogOpen(false);
@@ -384,8 +406,14 @@ export function McpServerSettings({
             server.id,
             configuration,
             server.workerId,
+            server.audience,
           )
-        : updateGlobalMcpServer(server.id, configuration, server.workerId);
+        : updateGlobalMcpServer(
+            server.id,
+            configuration,
+            server.workerId,
+            server.audience,
+          );
     },
     onSuccess: refresh,
   });
@@ -411,8 +439,14 @@ export function McpServerSettings({
   >["candidates"][number];
   const addCandidate = (candidate: DiscoveredCandidate) =>
     projectId
-      ? addProjectDiscoveredMcpServer(projectId, candidate.encrypted)
-      : addGlobalDiscoveredMcpServer(candidate.encrypted);
+      ? addProjectDiscoveredMcpServer(projectId, {
+          ...candidate.encrypted,
+          audience: discoveryAudience,
+        })
+      : addGlobalDiscoveredMcpServer({
+          ...candidate.encrypted,
+          audience: discoveryAudience,
+        });
   const addDiscovered = useMutation({
     mutationFn: addCandidate,
     onSuccess: refresh,
@@ -510,6 +544,7 @@ export function McpServerSettings({
       save.mutate({
         configuration: configurationFor(draft),
         workerId: draft.workerId || null,
+        audience: draft.audience,
       });
     } catch (error) {
       setDraftError(errorText(error));
@@ -559,6 +594,7 @@ export function McpServerSettings({
           {inherited.data.map((server) => (
             <Badge key={server.id} variant="outline">
               {server.name}
+              {` · ${server.audience === "both" ? "Both" : server.audience === "chat" ? "Chat" : "IDE"}`}
               {servers.data?.some((local) => local.name === server.name)
                 ? " · overridden"
                 : ""}
@@ -581,6 +617,7 @@ export function McpServerSettings({
               <p className="truncate text-sm font-medium">Cantrip</p>
               <Badge variant="secondary">Managed by Cantrip</Badge>
               <Badge variant="outline">Required</Badge>
+              <Badge variant="outline">IDE</Badge>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               Injected securely for each Cantrip chat; it cannot be edited,
@@ -599,6 +636,7 @@ export function McpServerSettings({
               <p className="truncate text-sm font-medium">CodeGraph</p>
               <Badge variant="secondary">Managed by Cantrip</Badge>
               <Badge variant="outline">Read only</Badge>
+              <Badge variant="outline">IDE</Badge>
             </div>
             <p className="mt-1 truncate text-xs text-muted-foreground">
               {codeGraphWorkerDetail}
@@ -688,6 +726,19 @@ export function McpServerSettings({
                   {worker.name}
                 </option>
               ))}
+            </NativeSelect>
+            <NativeSelect
+              aria-label="Discovered MCP server audience"
+              className="min-w-24"
+              value={discoveryAudience}
+              disabled={discovery.isPending || addAllDiscovered.isPending}
+              onChange={(event) =>
+                setDiscoveryAudience(event.target.value as ResourceAudience)
+              }
+            >
+              <option value="ide">IDE</option>
+              <option value="chat">Chat</option>
+              <option value="both">Both</option>
             </NativeSelect>
             <Button
               type="button"
@@ -869,6 +920,22 @@ export function McpServerSettings({
                 >
                   <option value="stdio">Local command (stdio)</option>
                   <option value="http">Streamable HTTP</option>
+                </NativeSelect>
+              </Field>
+              <Field label="Audience">
+                <NativeSelect
+                  className="w-full"
+                  value={draft.audience}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      audience: event.target.value as ResourceAudience,
+                    }))
+                  }
+                >
+                  <option value="ide">IDE</option>
+                  <option value="chat">Chat</option>
+                  <option value="both">Both</option>
                 </NativeSelect>
               </Field>
               <Field

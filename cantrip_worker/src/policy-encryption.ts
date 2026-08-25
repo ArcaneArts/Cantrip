@@ -10,6 +10,7 @@ import {
   policyCliListResultSchema,
   policyCliReadResultSchema,
   policyWireDetailSchema,
+  standalonePolicyWireListSchema,
   POLICY_CONTEXT_BYTES_LIMIT,
   type EffectivePolicyList,
   type PolicyCliReadResult,
@@ -78,6 +79,50 @@ export async function buildEncryptedAgentPolicyContext(input: {
   if (bytes > POLICY_CONTEXT_BYTES_LIMIT) {
     throw new Error(
       `Project ${input.projectId} has ${policies.length} effective policies requiring ${bytes} context bytes, above the ${POLICY_CONTEXT_BYTES_LIMIT}-byte limit. Reduce or consolidate its effective policies before starting another Agent turn.`,
+    );
+  }
+  return agentPolicyContextSchema.parse(context);
+}
+
+export async function buildStandalonePolicyContext(input: {
+  policies: unknown;
+  service: WorkerEncryptionService;
+}): Promise<string | null> {
+  const wire = standalonePolicyWireListSchema.parse(input.policies);
+  if (!wire.policies.length) return null;
+  const policies = await Promise.all(
+    wire.policies.map(async (policy) => {
+      const summary = await openSummary({
+        policyId: policy.id,
+        protectedSummary: policy.protectedSummary,
+        service: input.service,
+      });
+      const component = input.service.componentKey("policy-content");
+      try {
+        const body = await decryptPolicyBodyContent({
+          ownerId: input.service.ownerId(),
+          policyId: policy.id,
+          keyRevision: policy.protectedBody.keyRevision,
+          componentKey: component.key,
+          encrypted: policy.protectedBody,
+        });
+        return { ...summary, bodyMarkdown: body.bodyMarkdown };
+      } finally {
+        clearSensitiveBytes(component.key);
+      }
+    }),
+  );
+  const context = [
+    "The following enabled Cantrip Policies apply to this standalone Chat. Follow each full Policy body directly; managed Cantrip policy tools are unavailable in this context.",
+    ...policies.map(
+      ({ bodyMarkdown, key, name }) =>
+        `## Policy: ${name} (${key})\n\n${bodyMarkdown}`,
+    ),
+  ].join("\n\n");
+  const bytes = Buffer.byteLength(context, "utf8");
+  if (bytes > POLICY_CONTEXT_BYTES_LIMIT) {
+    throw new Error(
+      `Standalone Chat has ${policies.length} effective policies requiring ${bytes} context bytes, above the ${POLICY_CONTEXT_BYTES_LIMIT}-byte limit. Reduce or consolidate Chat policies before starting another turn.`,
     );
   }
   return agentPolicyContextSchema.parse(context);

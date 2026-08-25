@@ -283,6 +283,9 @@ import {
   scriptCommandListSchema,
   protectedScriptCommandListSchema,
   skillListSchema,
+  skillAudienceListSchema,
+  skillAudienceSummarySchema,
+  skillAudienceUpdateSchema,
   skillSettingsContextSchema,
   skillSettingsDeleteRequestSchema,
   skillSettingsDocumentSchema,
@@ -467,10 +470,12 @@ import type {
   RemoteDesktopSummary,
   RemoteDesktopTarget,
   ReasoningEffort,
+  ResourceAudience,
   SkillSettingsContext,
   SkillSettingsDeleteRequest,
   SkillSettingsFileRequest,
   SkillSettingsFileUpdate,
+  SkillAudienceUpdate,
   TerminalServiceConfiguration,
   TerminalSummary,
   TaskDraftUpdate,
@@ -1337,6 +1342,7 @@ export async function getPolicies() {
             bodyMarkdown: template.bodyMarkdown,
             enabled: template.suggestedEnabled,
             mandatory: template.suggestedMandatory,
+            audience: "ide",
           },
           template.templateKey,
         ),
@@ -1390,6 +1396,7 @@ export async function createPolicyFromTemplate(
             bodyMarkdown: overrides.bodyMarkdown ?? template.bodyMarkdown,
             enabled: overrides.enabled ?? template.suggestedEnabled,
             mandatory: overrides.mandatory ?? template.suggestedMandatory,
+            audience: overrides.audience ?? "ide",
           }),
           templateKey,
         ),
@@ -1537,11 +1544,12 @@ export async function addGlobalDiscoveredMcpServer(
 export async function createGlobalMcpServer(
   input: McpServerConfiguration,
   workerId: string | null = null,
+  audience: ResourceAudience = "ide",
 ) {
   return openMcpServerWireSummary(
     await post(
       "/api/settings/mcp-servers",
-      await protectMcpServerCreate(input, workerId),
+      await protectMcpServerCreate(input, workerId, {}, audience),
     ),
   );
 }
@@ -1550,12 +1558,13 @@ export async function updateGlobalMcpServer(
   serverId: string,
   input: McpServerConfiguration,
   workerId: string | null = null,
+  audience?: ResourceAudience,
 ) {
   return openMcpServerWireSummary(
     await request(`/api/settings/mcp-servers/${encodeURIComponent(serverId)}`, {
       method: "PUT",
       body: JSON.stringify(
-        await protectMcpServerUpdate(serverId, input, workerId),
+        await protectMcpServerUpdate(serverId, input, workerId, {}, audience),
       ),
     }),
   );
@@ -1828,11 +1837,12 @@ export async function createProjectMcpServer(
   projectId: string,
   input: McpServerConfiguration,
   workerId: string | null = null,
+  audience: ResourceAudience = "ide",
 ) {
   return openMcpServerWireSummary(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/mcp-servers`,
-      await protectMcpServerCreate(input, workerId),
+      await protectMcpServerCreate(input, workerId, {}, audience),
     ),
   );
 }
@@ -1842,6 +1852,7 @@ export async function updateProjectMcpServer(
   serverId: string,
   input: McpServerConfiguration,
   workerId: string | null = null,
+  audience?: ResourceAudience,
 ) {
   return openMcpServerWireSummary(
     await request(
@@ -1849,7 +1860,7 @@ export async function updateProjectMcpServer(
       {
         method: "PUT",
         body: JSON.stringify(
-          await protectMcpServerUpdate(serverId, input, workerId),
+          await protectMcpServerUpdate(serverId, input, workerId, {}, audience),
         ),
       },
     ),
@@ -1880,11 +1891,17 @@ export async function copyProjectMcpServer(
     scope: _scope,
     projectId: _projectId,
     workerId: _workerId,
+    audience,
     createdAt: _createdAt,
     updatedAt: _updatedAt,
     ...configuration
   } = source;
-  return createProjectMcpServer(projectId, configuration, source.workerId);
+  return createProjectMcpServer(
+    projectId,
+    configuration,
+    source.workerId,
+    audience,
+  );
 }
 
 export async function createProjectNetworkShare(project: ProjectSummary) {
@@ -6356,20 +6373,51 @@ export async function getSettingsSkills(input: SkillSettingsContext) {
     providerId: parsed.providerId,
   });
   const operationId = crypto.randomUUID();
-  return openCustomizationResponse({
-    raw: await request(
-      withQuery("/api/skills", {
-        operationId,
+  const [inventory, audiences] = await Promise.all([
+    openCustomizationResponse({
+      raw: await request(
+        withQuery("/api/skills", {
+          operationId,
+          workerId: parsed.workerId,
+          providerId: parsed.providerId,
+          projectId: parsed.projectId ?? undefined,
+        }),
+      ),
+      operationId,
+      operation: "skills.settings.list",
+      expectedScope: scope,
+      schema: skillSettingsInventorySchema,
+    }),
+    request(
+      withQuery("/api/skill-audiences", {
         workerId: parsed.workerId,
         providerId: parsed.providerId,
-        projectId: parsed.projectId ?? undefined,
       }),
-    ),
-    operationId,
-    operation: "skills.settings.list",
-    expectedScope: scope,
-    schema: skillSettingsInventorySchema,
-  });
+    ).then((value) => skillAudienceListSchema.parse(value)),
+  ]);
+  const byKey = new Map(
+    audiences.map(({ audienceKey, audience }) => [audienceKey, audience]),
+  );
+  return {
+    ...inventory,
+    project: inventory.project.map((skill) => ({
+      ...skill,
+      audience: byKey.get(skill.audienceKey) ?? "ide",
+    })),
+    global: inventory.global.map((skill) => ({
+      ...skill,
+      audience: byKey.get(skill.audienceKey) ?? "ide",
+    })),
+  };
+}
+
+export async function updateSettingsSkillAudience(input: SkillAudienceUpdate) {
+  return skillAudienceSummarySchema.parse(
+    await request("/api/skill-audiences", {
+      method: "PATCH",
+      body: JSON.stringify(skillAudienceUpdateSchema.parse(input)),
+    }),
+  );
 }
 
 export async function readSettingsSkill(input: SkillSettingsFileRequest) {
