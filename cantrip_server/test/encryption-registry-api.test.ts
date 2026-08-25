@@ -20,10 +20,11 @@ import {
   unprobedCodexRuntimeReport,
   type WorkerHeartbeat,
 } from "@cantrip/protocol";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
 import { hashPassword, hashSecret } from "../src/auth/service.js";
+import { CodeTunnelBroker } from "../src/code/tunnel.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 
@@ -152,13 +153,17 @@ function workerHeartbeat(workerId: string): WorkerHeartbeat {
   };
 }
 
-function workerGrant(workerId: string): WorkerComponentKeyGrant {
+function workerGrant(
+  workerId: string,
+  component: WorkerComponentKeyGrant["component"] = "chat-content",
+  keyRevision = 1,
+): WorkerComponentKeyGrant {
   return {
     version: 1,
     purpose: "worker-component-key",
     workerId,
-    component: "chat-content",
-    keyRevision: 1,
+    component,
+    keyRevision,
     envelope: {
       version: 1,
       algorithm: "HPKE-RFC9180",
@@ -314,10 +319,27 @@ describe("opaque encryption registry", () => {
             publicKey: replacementPublicKey,
           },
         });
-      const replacementResponses = await Promise.all([
-        replacementRequest(),
-        replacementRequest(),
-      ]);
+      let releaseRetirement!: () => void;
+      const heldRetirement = new Promise<void>((resolve) => {
+        releaseRetirement = resolve;
+      });
+      const retirement = vi
+        .spyOn(CodeTunnelBroker.prototype, "revokeSharedWorkerSecurity")
+        .mockReturnValue(heldRetirement);
+      let replacementResponses;
+      try {
+        replacementResponses = await Promise.all([
+          replacementRequest(),
+          replacementRequest(),
+        ]);
+        expect(retirement).toHaveBeenCalledWith(
+          initialBootstrap.ownerId,
+          workerId,
+        );
+      } finally {
+        releaseRetirement();
+        retirement.mockRestore();
+      }
       for (const replacementResponse of replacementResponses) {
         expect(replacementResponse.statusCode).toBe(200);
         expect(
@@ -688,6 +710,46 @@ describe("opaque encryption registry", () => {
       expect(
         encryptionKeyGrantSchema.parse(grantResponse.json()).wrappedKey,
       ).toEqual(opaqueGrant);
+
+      const tunnelGrant = workerGrant(workerId, "tunnel-content", 2);
+      let releaseSecurityRetirement!: () => void;
+      const securityRetirementHeld = new Promise<void>((resolve) => {
+        releaseSecurityRetirement = resolve;
+      });
+      const securityRetirement = vi
+        .spyOn(CodeTunnelBroker.prototype, "revokeSharedWorkerSecurity")
+        .mockReturnValue(securityRetirementHeld);
+      try {
+        const tunnelGrantRequest = app.inject({
+          method: "POST",
+          url: `/api/encryption/principals/${workerPrincipalId}/grants`,
+          headers: ownerHeaders,
+          payload: {
+            component: "tunnel-content",
+            keyRevision: 2,
+            wrappedKey: tunnelGrant,
+          },
+        });
+        await vi.waitFor(() =>
+          expect(securityRetirement).toHaveBeenCalledWith(owner.id, workerId),
+        );
+        let settled = false;
+        void tunnelGrantRequest.then(() => {
+          settled = true;
+        });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        releaseSecurityRetirement();
+        const tunnelGrantResponse = await tunnelGrantRequest;
+        expect(tunnelGrantResponse.statusCode).toBe(201);
+        expect(
+          encryptionKeyGrantSchema.parse(tunnelGrantResponse.json()).wrappedKey,
+        ).toEqual(tunnelGrant);
+      } finally {
+        releaseSecurityRetirement();
+        securityRetirement.mockRestore();
+      }
+
       const workerBootstrap = workerEncryptionBootstrapResultSchema.parse(
         (
           await app.inject({
@@ -702,8 +764,9 @@ describe("opaque encryption registry", () => {
         ).json(),
       );
       expect(workerBootstrap.ownerId).toBe(owner.id);
-      expect(workerBootstrap.grants).toHaveLength(1);
+      expect(workerBootstrap.grants).toHaveLength(2);
       expect(workerBootstrap.grants[0]?.wrappedKey).toEqual(opaqueGrant);
+      expect(workerBootstrap.grants[1]?.wrappedKey).toEqual(tunnelGrant);
 
       const revokedResponse = await app.inject({
         method: "POST",

@@ -12,6 +12,7 @@ import {
   chatMessageWireListSchema,
   encryptedChatTurnCreateSchema,
   codeProtectedAttachmentIntentSchema,
+  codeSharedAttachmentWireSchema,
   codeSessionListSchema,
   codeSessionSummarySchema,
   codeTabSummarySchema,
@@ -327,6 +328,16 @@ function protectedTunnelRecord(operationId: string) {
 }
 const codeOpenCommands: Array<Extract<WorkerCommand, { type: "code.open" }>> =
   [];
+const codeTransportRouteAuthorizeCommands: Array<
+  Extract<WorkerCommand, { type: "code.transport.route.authorize" }>
+> = [];
+const codeTransportRouteRevokeCommands: Array<
+  Extract<WorkerCommand, { type: "code.transport.route.revoke" }>
+> = [];
+const codeTransportRevokeCommands: Array<
+  Extract<WorkerCommand, { type: "code.transport.revoke" }>
+> = [];
+let codeSharedTransportProtocolVersion: 1 | 2 = 1;
 const codeStopSessionIds: string[] = [];
 const codeStopCommands: Array<Extract<WorkerCommand, { type: "code.stop" }>> =
   [];
@@ -1662,6 +1673,7 @@ const workerBridge = {
             upstreamRevision: codeEditorBuild.upstreamRevision,
             patchset: codeEditorBuild.patchset,
             transport: "web-proxy",
+            sharedTransportProtocolVersion: codeSharedTransportProtocolVersion,
             maxSessions: 4,
             reason: null,
           },
@@ -1720,7 +1732,7 @@ const workerBridge = {
         codeStopSessionIds.push(command.sessionId);
         return {
           sessionId: command.sessionId,
-          sessionIncarnationId: codeSessionIncarnationId,
+          sessionIncarnationId: null,
           status: "stopped",
           editorBuild: codeEditorBuild,
           processInstanceId: null,
@@ -1740,6 +1752,26 @@ const workerBridge = {
       case "code.endpoint.revoke":
         codeEndpointRevokedTunnelIds.push(command.tunnelId);
         return { revoked: true };
+      case "code.transport.route.authorize":
+        codeTransportRouteAuthorizeCommands.push(command);
+        return {
+          transportId: command.transportId,
+          attachmentId: command.attachmentId,
+          authorized: true,
+          expiresAt: command.expiresAt,
+          sessionId: command.sessionId,
+          sessionIncarnationId: command.expectedSessionIncarnationId,
+        };
+      case "code.transport.route.revoke":
+        codeTransportRouteRevokeCommands.push(command);
+        return {
+          transportId: command.transportId,
+          attachmentId: command.attachmentId,
+          revoked: true,
+        };
+      case "code.transport.revoke":
+        codeTransportRevokeCommands.push(command);
+        return { transportId: command.transportId, revoked: true };
       case "direct.capability.prepare":
         directPrepareCapabilityIds.push(command.binding.capabilityId);
         return { accepted: true, capabilityId: command.binding.capabilityId };
@@ -3776,6 +3808,257 @@ describe.sequential("server worktree control plane", () => {
       await app.inject({
         method: "DELETE",
         url: `/api/project-shares/${tunnelId}`,
+      });
+    }
+  });
+
+  it("keeps the additive shared Code endpoint disabled for a v1 worker", async () => {
+    const explorerResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...protectedExplorerFields(),
+        worktreeId: primaryId,
+      },
+    });
+    expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
+    const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
+    const attachmentId = randomUUID();
+    const sessionId = randomUUID();
+    const sharedTransportId = randomUUID();
+    const opensBefore = codeOpenCommands.length;
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/explorers/${explorer.id}/code-session-attachments`,
+        payload: {
+          appearance: "dark",
+          attachmentId,
+          expectedWorkerId: explorer.activeWorkerId,
+          expectedWorktreeId: explorer.worktreeId,
+          formatVersion: 2,
+          path: "src/shared-v2.ts",
+          sessionId,
+          transport: {
+            formatVersion: 2,
+            transportId: sharedTransportId,
+            protectedRecord: protectedTunnelRecord(sharedTransportId),
+          },
+        },
+      });
+
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toEqual({
+        error: "This worker does not support shared Cantrip Code transports.",
+      });
+      expect(codeOpenCommands).toHaveLength(opensBefore);
+      expect(
+        await app.inject({
+          method: "DELETE",
+          url: `/api/code-session-attachments/${attachmentId}`,
+        }),
+      ).toMatchObject({ statusCode: 404 });
+    } finally {
+      await app.inject({
+        method: "DELETE",
+        url: `/api/explorers/${explorer.id}`,
+      });
+    }
+  });
+
+  it("creates, renews, and tears down a v2 shared Code session attachment", async () => {
+    for (const request of [
+      {
+        method: "POST" as const,
+        url: "/api/code-session-attachments/not-a-uuid/lease",
+      },
+      {
+        method: "DELETE" as const,
+        url: "/api/code-session-attachments/not-a-uuid",
+      },
+      {
+        method: "DELETE" as const,
+        url: "/api/code-transports/not-a-uuid",
+      },
+    ]) {
+      expect((await app.inject(request)).statusCode).toBe(400);
+    }
+    const explorerResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...protectedExplorerFields(),
+        worktreeId: primaryId,
+      },
+    });
+    expect(explorerResponse.statusCode, explorerResponse.body).toBe(201);
+    const explorer = explorerWireSummarySchema.parse(explorerResponse.json());
+    const attachmentId = randomUUID();
+    const sessionId = randomUUID();
+    const sharedTransportId = randomUUID();
+    const opensBefore = codeOpenCommands.length;
+    const authorizationsBefore = codeTransportRouteAuthorizeCommands.length;
+    const routeRevocationsBefore = codeTransportRouteRevokeCommands.length;
+    const transportRevocationsBefore = codeTransportRevokeCommands.length;
+    const stopsBefore = codeStopCommands.length;
+    const bootstrap = (
+      await app.inject({ method: "GET", url: "/api/bootstrap" })
+    ).json() as { server: { id: string } };
+    const findPrincipal = vi
+      .spyOn(
+        database.repository.encryptionRegistry,
+        "findActiveWorkerPrincipal",
+      )
+      .mockResolvedValue({ id: "shared-code-worker-principal" } as never);
+    const listGrants = vi
+      .spyOn(database.repository.encryptionRegistry, "listActiveGrants")
+      .mockResolvedValue({
+        status: "ok",
+        grants: [{ component: "tunnel-content", keyRevision: 1 }],
+      } as never);
+    codeSharedTransportProtocolVersion = 2;
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/explorers/${explorer.id}/code-session-attachments`,
+        payload: {
+          appearance: "dark",
+          attachmentId,
+          expectedWorkerId: explorer.activeWorkerId,
+          expectedWorktreeId: explorer.worktreeId,
+          formatVersion: 2,
+          path: "src/shared-v2.ts",
+          sessionId,
+          transport: {
+            formatVersion: 2,
+            transportId: sharedTransportId,
+            protectedRecord: protectedTunnelRecord(sharedTransportId),
+          },
+        },
+      });
+
+      expect(response.statusCode, response.body).toBe(201);
+      const attachment = codeSharedAttachmentWireSchema.parse(response.json());
+      expect(attachment).toMatchObject({
+        formatVersion: 2,
+        transport: {
+          formatVersion: 2,
+          transportId: sharedTransportId,
+          tunnelId: sharedTransportId,
+          workerId: explorer.activeWorkerId,
+        },
+        session: {
+          formatVersion: 2,
+          attachmentId,
+          transportId: sharedTransportId,
+          sessionId,
+          runtime: {
+            sessionId,
+            sessionIncarnationId: codeSessionIncarnationId,
+          },
+        },
+      });
+      expect(codeOpenCommands.slice(opensBefore)).toEqual([
+        expect.objectContaining({
+          type: "code.open",
+          sessionId,
+          initialFile: "src/shared-v2.ts",
+          projectId,
+          worktreeId: explorer.worktreeId,
+        }),
+      ]);
+      expect(
+        codeTransportRouteAuthorizeCommands.slice(authorizationsBefore),
+      ).toEqual([
+        {
+          type: "code.transport.route.authorize",
+          serverId: bootstrap.server.id,
+          transportId: sharedTransportId,
+          attachmentId,
+          sessionId,
+          expectedSessionIncarnationId: codeSessionIncarnationId,
+          routeGrant: attachment.session.routeGrant,
+          expiresAt: attachment.session.expiresAt,
+        },
+      ]);
+
+      const leaseResponse = await app.inject({
+        method: "POST",
+        url: `/api/code-session-attachments/${attachmentId}/lease`,
+      });
+      expect(leaseResponse.statusCode, leaseResponse.body).toBe(200);
+      const renewed = codeSharedAttachmentWireSchema.parse(
+        leaseResponse.json(),
+      );
+      expect(renewed.session.routeGrant).toBe(attachment.session.routeGrant);
+      expect(renewed.transport.transportId).toBe(sharedTransportId);
+      expect(
+        codeTransportRouteAuthorizeCommands.slice(authorizationsBefore + 1),
+      ).toEqual([
+        {
+          type: "code.transport.route.authorize",
+          serverId: bootstrap.server.id,
+          transportId: sharedTransportId,
+          attachmentId,
+          sessionId,
+          expectedSessionIncarnationId: codeSessionIncarnationId,
+          routeGrant: attachment.session.routeGrant,
+          expiresAt: renewed.session.expiresAt,
+        },
+      ]);
+
+      const revoked = await app.inject({
+        method: "DELETE",
+        url: `/api/code-session-attachments/${attachmentId}`,
+      });
+      expect(revoked.statusCode, revoked.body).toBe(204);
+      expect(
+        codeTransportRouteRevokeCommands.slice(routeRevocationsBefore),
+      ).toContainEqual({
+        type: "code.transport.route.revoke",
+        transportId: sharedTransportId,
+        attachmentId,
+      });
+      expect(
+        codeTransportRevokeCommands.slice(transportRevocationsBefore),
+      ).toContainEqual({
+        type: "code.transport.revoke",
+        transportId: sharedTransportId,
+      });
+      expect(codeStopCommands.slice(stopsBefore)).toContainEqual({
+        type: "code.stop",
+        sessionId,
+        expectedSessionIncarnationId: codeSessionIncarnationId,
+      });
+      expect(
+        await app.inject({
+          method: "GET",
+          url: `/api/tunnels/${sharedTransportId}`,
+        }),
+      ).toMatchObject({ statusCode: 404 });
+      expect(
+        await app.inject({
+          method: "POST",
+          url: `/api/code-session-attachments/${attachmentId}/lease`,
+        }),
+      ).toMatchObject({ statusCode: 404 });
+    } finally {
+      codeSharedTransportProtocolVersion = 1;
+      findPrincipal.mockRestore();
+      listGrants.mockRestore();
+      await app.inject({
+        method: "DELETE",
+        url: `/api/code-session-attachments/${attachmentId}`,
+      });
+      await app.inject({
+        method: "DELETE",
+        url: `/api/code-transports/${sharedTransportId}`,
+      });
+      await app.inject({
+        method: "DELETE",
+        url: `/api/explorers/${explorer.id}`,
       });
     }
   });

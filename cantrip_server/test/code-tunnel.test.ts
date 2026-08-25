@@ -1,4 +1,4 @@
-import type { CodeRuntimeStatus } from "@cantrip/protocol";
+import type { CodeRuntimeStatus, WorkerCommand } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -35,6 +35,18 @@ const runtime: CodeRuntimeStatus = {
   lastError: null,
 };
 
+function workerCommandResult(command: WorkerCommand): unknown {
+  if (command.type !== "code.stop") return null;
+  return {
+    ...runtime,
+    bridgeConnected: false,
+    processInstanceId: null,
+    sessionId: command.sessionId,
+    sessionIncarnationId: null,
+    status: "stopped",
+  } satisfies CodeRuntimeStatus;
+}
+
 function protectedRecord(tunnelId: string) {
   return {
     operationId: tunnelId,
@@ -66,7 +78,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: (_workerId: string, listener: () => void) => {
         reconnecting = listener;
         return () => undefined;
@@ -135,7 +149,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: (workerId: string) => workerId === "worker-1",
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker);
@@ -211,7 +227,9 @@ describe("protected Cantrip Code attachments", () => {
   it("revokes a legacy attachment without issuing an unfenced automatic stop", async () => {
     const tunnelId = "11111111-1111-4111-8111-111111111111";
     const { sessionIncarnationId: _ignored, ...legacyRuntime } = runtime;
-    const request = vi.fn(async () => null);
+    const request = vi.fn(async (_workerId, command: WorkerCommand) =>
+      workerCommandResult(command),
+    );
     const broker = new CodeTunnelBroker({
       isConnected: () => true,
       request,
@@ -274,7 +292,7 @@ describe("protected Cantrip Code attachments", () => {
     let holdStop = false;
     const request = vi.fn(async (_workerId, command) => {
       if (command.type === "code.stop" && holdStop) await stopFinished;
-      return null;
+      return workerCommandResult(command);
     });
     const worker = {
       isConnected: () => true,
@@ -395,7 +413,7 @@ describe("protected Cantrip Code attachments", () => {
     });
     const request = vi.fn(async (_workerId, command) => {
       if (command.type === "code.stop") await stopFinished;
-      return null;
+      return workerCommandResult(command);
     });
     const broker = new CodeTunnelBroker({
       isConnected: () => true,
@@ -459,7 +477,9 @@ describe("protected Cantrip Code attachments", () => {
     let terminalOffline!: () => void;
     const broker = new CodeTunnelBroker({
       isConnected: () => connected,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
       subscribeWorkerOffline: (_workerId, listener) => {
         terminalOffline = listener;
@@ -519,7 +539,9 @@ describe("protected Cantrip Code attachments", () => {
       })),
       removeManagedTunnel: vi.fn(async () => true),
     } as unknown as ServerRepository;
-    const request = vi.fn(async () => null);
+    const request = vi.fn(async (_workerId, command: WorkerCommand) =>
+      workerCommandResult(command),
+    );
     const broker = new CodeTunnelBroker({
       isConnected: () => true,
       request,
@@ -574,7 +596,9 @@ describe("protected Cantrip Code attachments", () => {
   });
 
   it("deduplicates simultaneous aborted registrations without deadlocking", async () => {
-    const request = vi.fn(async () => null);
+    const request = vi.fn(async (_workerId, command: WorkerCommand) =>
+      workerCommandResult(command),
+    );
     const broker = new CodeTunnelBroker({
       isConnected: () => true,
       request,
@@ -637,7 +661,9 @@ describe("protected Cantrip Code attachments", () => {
   ] as const)(
     "consumes an aborted registration but skips an unproven %s runtime stop",
     async (_kind, abortRuntime) => {
-      const request = vi.fn(async () => null);
+      const request = vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      );
       const broker = new CodeTunnelBroker({
         isConnected: () => true,
         request,
@@ -673,7 +699,9 @@ describe("protected Cantrip Code attachments", () => {
     }));
     const broker = new CodeTunnelBroker({
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus);
     broker.configureControlPlane(
@@ -718,7 +746,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker);
@@ -787,7 +817,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const cleanupTunnelResources = vi.fn(async () => undefined);
@@ -851,7 +883,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const cleanupTunnelResources = vi.fn(async () => undefined);
@@ -953,7 +987,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker);
@@ -1005,7 +1041,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker);
@@ -1069,7 +1107,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const cleanupTunnelResources = vi.fn(async () => undefined);
@@ -1148,7 +1188,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker);
@@ -1224,7 +1266,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const cleanupTunnelResources = vi.fn(async () => undefined);
@@ -1310,7 +1354,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker);
@@ -1383,7 +1429,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker, { maxAttachments: 1 });
@@ -1430,7 +1478,9 @@ describe("protected Cantrip Code attachments", () => {
     const broker = new CodeTunnelBroker(
       {
         isConnected: () => true,
-        request: vi.fn(async () => null),
+        request: vi.fn(async (_workerId, command: WorkerCommand) =>
+          workerCommandResult(command),
+        ),
         subscribeWorkerDisconnect: vi.fn(() => () => undefined),
       } as unknown as WorkerCommandBus,
       { maxAttachments: 1 },
@@ -1492,7 +1542,9 @@ describe("protected Cantrip Code attachments", () => {
       } as unknown as ServerRepository;
       const worker = {
         isConnected: () => true,
-        request: vi.fn(async () => null),
+        request: vi.fn(async (_workerId, command: WorkerCommand) =>
+          workerCommandResult(command),
+        ),
         subscribeWorkerDisconnect: vi.fn(() => () => undefined),
       } as unknown as WorkerCommandBus;
       const cleanupTunnelResources = vi.fn(async () => undefined);
@@ -1580,7 +1632,9 @@ describe("protected Cantrip Code attachments", () => {
       } as unknown as ServerRepository;
       const worker = {
         isConnected: () => true,
-        request: vi.fn(async () => null),
+        request: vi.fn(async (_workerId, command: WorkerCommand) =>
+          workerCommandResult(command),
+        ),
         subscribeWorkerDisconnect: vi.fn(() => () => undefined),
       } as unknown as WorkerCommandBus;
       const broker = new CodeTunnelBroker(worker);
@@ -1667,7 +1721,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker);
@@ -1749,7 +1805,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker);
@@ -1828,7 +1886,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker, {
@@ -1881,7 +1941,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker, {
@@ -1930,7 +1992,9 @@ describe("protected Cantrip Code attachments", () => {
     } as unknown as ServerRepository;
     const worker = {
       isConnected: () => true,
-      request: vi.fn(async () => null),
+      request: vi.fn(async (_workerId, command: WorkerCommand) =>
+        workerCommandResult(command),
+      ),
       subscribeWorkerDisconnect: vi.fn(() => () => undefined),
     } as unknown as WorkerCommandBus;
     const broker = new CodeTunnelBroker(worker, {

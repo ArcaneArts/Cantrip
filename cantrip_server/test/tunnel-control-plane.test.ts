@@ -1427,7 +1427,7 @@ describe.sequential("tunnel control plane", () => {
         LOCAL_USER_ID,
         codeAttachment.attachmentId,
       ),
-    ).resolves.not.toBeNull();
+    ).resolves.toBeNull();
 
     const recovered = await app.inject({
       method: "POST",
@@ -1436,6 +1436,77 @@ describe.sequential("tunnel control plane", () => {
     });
     expect(recovered.statusCode, recovered.body).toBe(201);
     codeAttachment = tunnelAttachmentCreateResultSchema.parse(recovered.json());
+  });
+
+  it("does not stop or unbind a newer credential generation after an older root-bind failure", async () => {
+    const bind = vi
+      .spyOn(codeTunnel, "bindRelayAttachment")
+      .mockReturnValueOnce(false);
+    const originalStop = database.repository.stopDesktopTunnelAttachment.bind(
+      database.repository,
+    );
+    const stopStarted = deferred();
+    const releaseStop = deferred();
+    let heldStop = true;
+    const stop = vi
+      .spyOn(database.repository, "stopDesktopTunnelAttachment")
+      .mockImplementation(async (...args) => {
+        if (heldStop && args[1] === codeAttachment.attachmentId) {
+          heldStop = false;
+          stopStarted.resolve();
+          await releaseStop.promise;
+        }
+        return originalStop(...args);
+      });
+
+    try {
+      const staleFailure = app.inject({
+        method: "POST",
+        url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
+        payload: { clientId: "desktop-code-test" },
+      });
+      await stopStarted.promise;
+
+      const newerResponse = await app.inject({
+        method: "POST",
+        url: `/api/tunnels/${codeAttachment.tunnelId}/attachments`,
+        payload: { clientId: "desktop-code-test" },
+      });
+      expect(newerResponse.statusCode, newerResponse.body).toBe(201);
+      const newerAttachment = tunnelAttachmentCreateResultSchema.parse(
+        newerResponse.json(),
+      );
+
+      releaseStop.resolve();
+      const failedResponse = await staleFailure;
+      expect(failedResponse.statusCode, failedResponse.body).toBe(409);
+      await expect(
+        database.repository.getDesktopTunnelAttachment(
+          LOCAL_USER_ID,
+          newerAttachment.attachmentId,
+        ),
+      ).resolves.toMatchObject({
+        attachmentId: newerAttachment.attachmentId,
+        secretExpiresAt: new Date(newerAttachment.secretExpiresAt),
+      });
+      expect(
+        codeTunnel.allowRelayAttachmentActivity(
+          newerAttachment.attachmentId,
+          newerAttachment.tunnelId,
+        ),
+      ).toBe(true);
+      expect(
+        await app.inject({
+          method: "POST",
+          url: `/api/tunnel-attachments/${newerAttachment.attachmentId}/lease`,
+        }),
+      ).toMatchObject({ statusCode: 204 });
+      codeAttachment = newerAttachment;
+    } finally {
+      releaseStop.resolve();
+      stop.mockRestore();
+      bind.mockRestore();
+    }
   });
 
   it("preserves the relay credential after direct route activation", async () => {

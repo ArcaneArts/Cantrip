@@ -8,6 +8,7 @@ import type { AccountBandwidthChannel } from "@cantrip/protocol/resource-usage";
 
 import type { AccountUsageRecorder } from "../account-usage/bandwidth-meter.js";
 import type {
+  DesktopTunnelAttachmentStopFence,
   ServerRepository,
   TunnelAttachmentAuthorization,
 } from "../db/repository.js";
@@ -271,13 +272,17 @@ export class TunnelRuntimeManager {
   async revoke(
     ownerId: string,
     attachmentId: string,
-    options: { preserveTunnelState?: boolean } = {},
+    options: {
+      expected?: DesktopTunnelAttachmentStopFence;
+      preserveTunnelState?: boolean;
+    } = {},
   ): Promise<boolean> {
     const stopped = await this.repository.stopDesktopTunnelAttachment(
       ownerId,
       attachmentId,
       null,
       options.preserveTunnelState ?? false,
+      options.expected,
     );
     if (!stopped) return false;
     this.closeActive(attachmentId, "Attachment revoked", 1008);

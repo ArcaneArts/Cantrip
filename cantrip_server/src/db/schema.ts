@@ -149,6 +149,7 @@ const unavailableCodeCapabilities = {
   upstreamRevision: null,
   patchset: 0,
   transport: "web-proxy",
+  sharedTransportProtocolVersion: 1,
   maxSessions: 1,
   reason: "This worker has not reported Cantrip Code capability.",
 } satisfies CodeCapabilities;

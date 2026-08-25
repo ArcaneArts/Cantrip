@@ -282,6 +282,10 @@ export const remoteSurfaceCapabilitiesSchema = z.object({
 });
 
 export const codeTransportSchema = z.literal("web-proxy");
+export const codeSharedTransportProtocolVersionSchema = z.union([
+  z.literal(1),
+  z.literal(2),
+]);
 export const codeCapabilitiesSchema = z.object({
   available: z.boolean(),
   version: z.string().min(1).nullable(),
@@ -291,6 +295,8 @@ export const codeCapabilitiesSchema = z.object({
     .nullable(),
   patchset: z.number().int().nonnegative(),
   transport: codeTransportSchema,
+  sharedTransportProtocolVersion:
+    codeSharedTransportProtocolVersionSchema.default(1),
   maxSessions: z.number().int().positive(),
   reason: z.string().min(1).nullable(),
 });
@@ -301,6 +307,7 @@ export const unavailableCodeCapabilities = codeCapabilitiesSchema.parse({
   upstreamRevision: null,
   patchset: 0,
   transport: "web-proxy",
+  sharedTransportProtocolVersion: 1,
   maxSessions: 1,
   reason: "This worker has not reported a Cantrip Code runtime.",
 });
@@ -5827,6 +5834,129 @@ export const codeProtectedAttachmentIntentSchema = z
     path: ["runtime", "sessionId"],
   });
 
+export const codeSessionRouteGrantSchema = encryptionKeyBytesSchema;
+
+export function codeSessionRouteBasePath(routeGrant: string): string {
+  return `/sessions/${codeSessionRouteGrantSchema.parse(routeGrant)}/code`;
+}
+
+export const codeTransportCandidateSchema = z
+  .object({
+    formatVersion: z.literal(2),
+    transportId: z.string().uuid(),
+    protectedRecord: protectedTunnelContentRecordSchema,
+  })
+  .strict()
+  .refine(
+    ({ protectedRecord, transportId }) =>
+      protectedRecord.operationId === transportId &&
+      protectedRecord.revision === 1,
+    {
+      message:
+        "A shared Code transport must begin with its transport-bound record.",
+      path: ["protectedRecord"],
+    },
+  );
+
+export const codeTransportWireSchema = z
+  .object({
+    formatVersion: z.literal(2),
+    transportId: tunnelResourceIdSchema,
+    tunnelId: tunnelResourceIdSchema,
+    workerId: executionResourceIdSchema,
+    expiresAt: z.string().datetime(),
+  })
+  .strict()
+  .refine(({ transportId, tunnelId }) => transportId === tunnelId, {
+    message: "A shared Code transport must reuse its tunnel identity.",
+    path: ["tunnelId"],
+  });
+
+export const codeSessionAttachmentWireSchema = z
+  .object({
+    formatVersion: z.literal(2),
+    attachmentId: tunnelResourceIdSchema,
+    transportId: tunnelResourceIdSchema,
+    sessionId: tunnelResourceIdSchema,
+    routeGrant: codeSessionRouteGrantSchema,
+    expiresAt: z.string().datetime(),
+    runtime: codeRuntimeStatusSchema,
+  })
+  .strict()
+  .refine(({ runtime, sessionId }) => runtime.sessionId === sessionId, {
+    message: "A shared Code attachment must bind its runtime session.",
+    path: ["runtime", "sessionId"],
+  });
+
+export const codeSharedAttachmentWireSchema = z
+  .object({
+    formatVersion: z.literal(2),
+    transport: codeTransportWireSchema,
+    session: codeSessionAttachmentWireSchema,
+  })
+  .strict()
+  .refine(
+    ({ session, transport }) => session.transportId === transport.transportId,
+    {
+      message: "A shared Code attachment must reference its transport.",
+      path: ["session", "transportId"],
+    },
+  );
+
+export const codeTransportRouteAuthorizeCommandSchema = z
+  .object({
+    type: z.literal("code.transport.route.authorize"),
+    serverId: z.string().min(1).max(2_000),
+    transportId: z.string().uuid(),
+    attachmentId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    expectedSessionIncarnationId: z.string().uuid(),
+    routeGrant: codeSessionRouteGrantSchema,
+    expiresAt: z.string().datetime(),
+  })
+  .strict();
+
+export const codeTransportRouteRevokeCommandSchema = z
+  .object({
+    type: z.literal("code.transport.route.revoke"),
+    transportId: z.string().uuid(),
+    attachmentId: z.string().uuid(),
+  })
+  .strict();
+
+export const codeTransportRevokeCommandSchema = z
+  .object({
+    type: z.literal("code.transport.revoke"),
+    transportId: z.string().uuid(),
+  })
+  .strict();
+
+export const codeTransportRouteAuthorizeResultSchema = z
+  .object({
+    transportId: z.string().uuid(),
+    attachmentId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    sessionIncarnationId: z.string().uuid(),
+    authorized: z.literal(true),
+    expiresAt: z.string().datetime(),
+  })
+  .strict();
+
+export const codeTransportRouteRevokeResultSchema = z
+  .object({
+    transportId: z.string().uuid(),
+    attachmentId: z.string().uuid(),
+    revoked: z.literal(true),
+  })
+  .strict();
+
+export const codeTransportRevokeResultSchema = z
+  .object({
+    transportId: z.string().uuid(),
+    revoked: z.literal(true),
+  })
+  .strict();
+
 export const projectShareAttachmentSchema = z.object({
   attachmentId: z.string().min(1).max(200),
   projectId: z.string().min(1).max(200),
@@ -5947,6 +6077,31 @@ export const codeProtectedAttachmentCreateSchema = codeAttachmentCreateSchema
       path: ["protectedRecord"],
     },
   );
+
+export const codeSessionAttachmentCreateSchema = codeAttachmentCreateSchema
+  .extend({
+    formatVersion: z.literal(2),
+    attachmentId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    transport: codeTransportCandidateSchema,
+  })
+  .strict();
+
+export const explorerCodeSessionAttachmentCreateSchema =
+  codeSessionAttachmentCreateSchema.extend({
+    path: repositoryRelativePathSchema.optional(),
+  });
+
+export const codeSettingsWorkbenchSessionAttachmentCreateSchema =
+  codeSessionAttachmentCreateSchema.omit({ expectedWorktreeId: true });
+
+export const codeSettingsWorkbenchSharedAttachmentWireSchema = z
+  .object({
+    workerId: executionResourceIdSchema,
+    synchronization: codeSettingsWorkerStatusSchema,
+    attachment: codeSharedAttachmentWireSchema,
+  })
+  .strict();
 
 export const explorerCodeProtectedAttachmentCreateSchema =
   codeProtectedAttachmentCreateSchema.extend({
@@ -13763,6 +13918,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     .extend(surfaceStreamWireRequestSchema.shape)
     .strict(),
   z.object({ type: z.literal("code.probe") }),
+  codeTransportRouteAuthorizeCommandSchema,
+  codeTransportRouteRevokeCommandSchema,
+  codeTransportRevokeCommandSchema,
   z.object({
     type: z.literal("code.settings.workbench.open"),
     sessionId: z.string().uuid(),
@@ -15047,6 +15205,9 @@ export type RemoteSurfaceCapabilities = z.infer<
   typeof remoteSurfaceCapabilitiesSchema
 >;
 export type CodeTransport = z.infer<typeof codeTransportSchema>;
+export type CodeSharedTransportProtocolVersion = z.infer<
+  typeof codeSharedTransportProtocolVersionSchema
+>;
 export type CodeCapabilities = z.infer<typeof codeCapabilitiesSchema>;
 export type UserSummary = z.infer<typeof userSummarySchema>;
 export type AccountSessionSummary = z.infer<typeof accountSessionSummarySchema>;
@@ -16122,6 +16283,46 @@ export type CodeProtectedAttachmentIntent = z.infer<
 >;
 export type CodeProtectedAttachmentCreate = z.infer<
   typeof codeProtectedAttachmentCreateSchema
+>;
+export type CodeTransportCandidate = z.infer<
+  typeof codeTransportCandidateSchema
+>;
+export type CodeTransportWire = z.infer<typeof codeTransportWireSchema>;
+export type CodeSessionAttachmentCreate = z.infer<
+  typeof codeSessionAttachmentCreateSchema
+>;
+export type ExplorerCodeSessionAttachmentCreate = z.infer<
+  typeof explorerCodeSessionAttachmentCreateSchema
+>;
+export type CodeSettingsWorkbenchSessionAttachmentCreate = z.infer<
+  typeof codeSettingsWorkbenchSessionAttachmentCreateSchema
+>;
+export type CodeSessionAttachmentWire = z.infer<
+  typeof codeSessionAttachmentWireSchema
+>;
+export type CodeSharedAttachmentWire = z.infer<
+  typeof codeSharedAttachmentWireSchema
+>;
+export type CodeSettingsWorkbenchSharedAttachmentWire = z.infer<
+  typeof codeSettingsWorkbenchSharedAttachmentWireSchema
+>;
+export type CodeTransportRouteAuthorizeCommand = z.infer<
+  typeof codeTransportRouteAuthorizeCommandSchema
+>;
+export type CodeTransportRouteRevokeCommand = z.infer<
+  typeof codeTransportRouteRevokeCommandSchema
+>;
+export type CodeTransportRevokeCommand = z.infer<
+  typeof codeTransportRevokeCommandSchema
+>;
+export type CodeTransportRouteAuthorizeResult = z.infer<
+  typeof codeTransportRouteAuthorizeResultSchema
+>;
+export type CodeTransportRouteRevokeResult = z.infer<
+  typeof codeTransportRouteRevokeResultSchema
+>;
+export type CodeTransportRevokeResult = z.infer<
+  typeof codeTransportRevokeResultSchema
 >;
 export type CodeSettingsWorkbenchAttachmentCreate = z.infer<
   typeof codeSettingsWorkbenchAttachmentCreateSchema
