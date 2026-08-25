@@ -694,8 +694,8 @@ export class ChatImportJobExecutor {
     claimed: ClaimedChatImportJob,
     context: ChatExecutionContext,
   ): Promise<{ modelId: string; runtime: ModelRuntime }> {
-    const settings = await this.repository.getSettings(claimed.ownerId);
-    const modelId = context.modelId ?? settings.preferences.defaultModelId;
+    const preferences = await this.repository.getUserSettings(claimed.ownerId);
+    const modelId = context.modelId ?? preferences.defaultModelId;
     if (!modelId) {
       throw new Error(
         "The imported chat has no selected model and no default model is configured.",

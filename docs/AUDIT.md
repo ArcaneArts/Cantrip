@@ -2,7 +2,7 @@
 
 - Date: 2026-08-24
 - Baseline: origin/main at 02d39bb6898a498a0dd30121af1758a6b1c2bfb5
-- Status: inspection complete; this report makes no product-source changes
+- Status: inspection complete; implementation fixes are tracked inline
 
 ## Executive result
 
@@ -23,28 +23,28 @@ work surrounding the live paths:
   backoff;
 - bounded buffers use full sorting, rebuilding, or Array.shift eviction in their hot paths.
 
-P0-06 and P0-12 have since been fixed and are retained below as completed historical
-context. The first implementation wave should target the remaining P0 items. They are
-source-evident, high-upside, and can be validated without changing product semantics. P1
-items should follow with focused benchmarks. P2 items require production-shaped measurement
-before design work.
+P0-05, P0-06, and P0-12 have since been fixed and are retained below as completed
+historical context. The first implementation wave should target the remaining P0 items.
+They are source-evident, high-upside, and can be validated without changing product
+semantics. P1 items should follow with focused benchmarks. P2 items require
+production-shaped measurement before design work.
 
-| Rank | Opportunity                                                  | Expected gain       | Risk       | Why it should move first                                                        |
-| ---- | ------------------------------------------------------------ | ------------------- | ---------- | ------------------------------------------------------------------------------- |
-| 1    | P0-01 isolate chat composer and memoize transcript rows      | high                | low        | directly improves every keystroke in long chats                                 |
-| 2    | P0-02 remove redundant remote-frame work end to end          | high                | low-medium | removes frame-sized copies and repeated validation at interactive rates         |
-| 3    | P0-03 no-op unchanged encryption bootstraps                  | high                | low        | removes synchronous disk and crypto work every five seconds                     |
-| 4    | P0-04 batch narrow AppLive authorization                     | high                | low        | turns reconnect hydration from potentially hundreds of queries into a few       |
-| 5    | P0-05 use focused settings loaders                           | high                | low        | avoids unrelated analytics and provider queries on normal model/runtime choices |
-| 6    | P0-06 [fixed] collapse worker-management 1+2N queries        | fixed               | —          | reported fixed after the audit; retained for traceability                       |
-| 7    | P0-07 coalesce worktree observation across server and worker | high                | low-medium | removes per-target DB calls, Git probes, duplicate watchers, and overlap        |
-| 8    | P0-08 collapse redundant Git status pipelines                | high                | low-medium | removes several child processes from common status/operation refreshes          |
-| 9    | P0-09 make log ingestion incremental and export lazy         | high                | low        | removes O(N log N) work per live log batch                                      |
-| 10   | P0-10 make live chat overlay merging incremental             | high                | medium     | avoids O(N log N) history rebuilds on streamed message updates                  |
-| 11   | P0-11 parallelize bounded workspace snapshot metadata reads  | high                | low        | removes one filesystem round trip per changed path from turn boundaries         |
-| 12   | P0-12 [resolved] skip proven no-op CodeGraph syncs           | resolved            | —          | clean reconciliation now performs status only                                   |
-| 13   | P0-13 add capped jittered reconnect and crash backoff        | high during failure | low        | prevents worker herds and endless five-second service crash loops               |
-| 14   | P0-14 make worker shutdown failure-tolerant                  | high reliability    | low-medium | prevents one failed close from wedging restart and later cleanup                |
+| Rank | Opportunity                                                  | Expected gain       | Risk       | Why it should move first                                                  |
+| ---- | ------------------------------------------------------------ | ------------------- | ---------- | ------------------------------------------------------------------------- |
+| 1    | P0-01 isolate chat composer and memoize transcript rows      | high                | low        | directly improves every keystroke in long chats                           |
+| 2    | P0-02 remove redundant remote-frame work end to end          | high                | low-medium | removes frame-sized copies and repeated validation at interactive rates   |
+| 3    | P0-03 no-op unchanged encryption bootstraps                  | high                | low        | removes synchronous disk and crypto work every five seconds               |
+| 4    | P0-04 batch narrow AppLive authorization                     | high                | low        | turns reconnect hydration from potentially hundreds of queries into a few |
+| 5    | P0-05 [fixed] use focused settings loaders                   | fixed               | —          | preference decisions now use one history-independent query                |
+| 6    | P0-06 [fixed] collapse worker-management 1+2N queries        | fixed               | —          | reported fixed after the audit; retained for traceability                 |
+| 7    | P0-07 coalesce worktree observation across server and worker | high                | low-medium | removes per-target DB calls, Git probes, duplicate watchers, and overlap  |
+| 8    | P0-08 collapse redundant Git status pipelines                | high                | low-medium | removes several child processes from common status/operation refreshes    |
+| 9    | P0-09 make log ingestion incremental and export lazy         | high                | low        | removes O(N log N) work per live log batch                                |
+| 10   | P0-10 make live chat overlay merging incremental             | high                | medium     | avoids O(N log N) history rebuilds on streamed message updates            |
+| 11   | P0-11 parallelize bounded workspace snapshot metadata reads  | high                | low        | removes one filesystem round trip per changed path from turn boundaries   |
+| 12   | P0-12 [resolved] skip proven no-op CodeGraph syncs           | resolved            | —          | clean reconciliation now performs status only                             |
+| 13   | P0-13 add capped jittered reconnect and crash backoff        | high during failure | low        | prevents worker herds and endless five-second service crash loops         |
+| 14   | P0-14 make worker shutdown failure-tolerant                  | high reliability    | low-medium | prevents one failed close from wedging restart and later cleanup          |
 
 ## Scope and method
 
@@ -225,15 +225,16 @@ three ownership/existence IN queries, preserving owner, archival, and lifecycle 
 Validation: assert identical decisions and count SQL plus subscribe/resync p50/p95 at 1, 16,
 and 128 scopes against large fixtures.
 
-### P0-05 — opportunity — Stop using aggregate settings hydration for preference decisions
+### P0-05 — fixed — Stop using aggregate settings hydration for preference decisions
 
+- Status: fixed 2026-08-24
 - Category: REDUNDANT_COMPUTATION
 - Expected gain: high
-- Risk: low
-- Complexity: low-medium
+- Original risk: low
+- Original complexity: low-medium
 - Confidence: high
 
-Evidence:
+Original evidence on the audited baseline:
 
 - cantrip_server/src/db/repository.ts:3023-3131 performs roughly nine settings-related
   queries, including token and agent-time analytics.
@@ -247,15 +248,37 @@ Evidence:
   cantrip_server/src/chat-relocations/executor.ts:612-620 and 825-843, and
   cantrip_server/src/workflows/executor.ts:1325-1338.
 
-Hypothesis: routine model/runtime resolution pays for unrelated provider, credential,
-routing, and lifetime-analytics work, with cost growing alongside telemetry history.
+Original hypothesis: routine model/runtime resolution pays for unrelated provider,
+credential, routing, and lifetime-analytics work, with cost growing alongside telemetry
+history.
 
-Suggested change: route preference-only consumers through getUserSettings and add narrow
-provider/model loaders for consumers that need one additional area. Reserve the aggregate
-loader for the settings UI.
+Resolution:
 
-Validation: compare query counts and exact runtime/model outcomes with 10, 10,000, and
-1,000,000 token-interval rows.
+- Preference-only decisions in the app, chat import/relocation, and workflow executors now
+  call `getUserSettings`, which selects only the preference row.
+- Provider catalog reconciliation and worker-scoped catalog refresh use dedicated provider
+  projections. Provider deletion checks route existence with a bounded joined lookup rather
+  than hydrating and scanning every model.
+- `getSettings` now composes the same focused preference loader and remains available for
+  settings UI responses that intentionally need provider, model, credential, routing, and
+  analytics data.
+
+Validation:
+
+- A PGlite query-count regression test verifies exact preference parity, one query for the
+  focused preference loader, nine queries for the aggregate loader, and one query for each
+  provider projection and route-existence lookup.
+- With 10, 10,000, and 1,000,000 token-interval rows, focused and aggregate preference
+  results, selected model IDs, and resolved model runtimes were identical. Focused hydration
+  remained one query and measured 0.39 ms, 0.47 ms, and 0.67 ms respectively; aggregate
+  hydration remained nine queries and measured 4.73 ms, 57.46 ms, and 4,707.38 ms in the
+  same local PGlite validation run. These timings are directional local measurements; the
+  query counts and output-equivalence assertions are the regression contract.
+
+Regression guardrail: keep routine preference and provider decisions off `getSettings`.
+Require exact result-parity tests when adding a focused projection, retain the one-query
+regression test, and rerun the history-scale comparison when changing settings or analytics
+hydration.
 
 ### P0-06 — fixed — Collapse worker-management 1+2N queries
 
@@ -1035,9 +1058,9 @@ Before behavior changes, add or reuse focused counters and deterministic fixture
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement the safe slices of P0-02, P0-05, P0-08, P0-09, P0-11, P0-13, P1-01, P1-06,
-P1-07, P1-15, P1-16, and P1-18. These mostly remove duplicate work or replace an equivalent
-data structure.
+Implement the safe slices of P0-02, P0-08, P0-09, P0-11, P0-13, P1-01, P1-06, P1-07,
+P1-15, P1-16, and P1-18. These mostly remove duplicate work or replace an equivalent data
+structure.
 
 ### Wave 2 — bounded batching, memoization, and ownership
 

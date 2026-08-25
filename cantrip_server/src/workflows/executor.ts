@@ -1331,8 +1331,8 @@ export class WorkflowExecutor {
         candidate.node.modelRouteId,
       );
     }
-    const settings = await this.repository.getSettings(this.#ownerId());
-    const modelId = settings.preferences.defaultModelId;
+    const preferences = await this.repository.getUserSettings(this.#ownerId());
+    const modelId = preferences.defaultModelId;
     return modelId
       ? this.repository.getModelRuntime(this.#ownerId(), modelId)
       : null;

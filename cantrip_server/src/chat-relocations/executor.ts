@@ -609,10 +609,9 @@ export class ChatRelocationJobExecutor {
         false,
       );
     }
-    const settings = await this.repository.getSettings(claimed.ownerId);
+    const preferences = await this.repository.getUserSettings(claimed.ownerId);
     if (
-      settings.preferences.automaticReplicaSynchronization !==
-      "fast-forward-primary"
+      preferences.automaticReplicaSynchronization !== "fast-forward-primary"
     ) {
       throw executionError(
         "revision-diverged",
@@ -827,9 +826,9 @@ export class ChatRelocationJobExecutor {
     workerId: string,
     preferredAccountId: string | null,
   ): Promise<ModelRuntime> {
-    const settings = await this.repository.getSettings(claimed.ownerId);
+    const preferences = await this.repository.getUserSettings(claimed.ownerId);
     const modelId =
-      claimed.snapshot.summary.modelId ?? settings.preferences.defaultModelId;
+      claimed.snapshot.summary.modelId ?? preferences.defaultModelId;
     if (!modelId) {
       throw executionError(
         "runtime-incompatible",
