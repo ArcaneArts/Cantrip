@@ -60,6 +60,7 @@ import {
   ExternalLink,
   FilePlus2,
   Folder,
+  FolderOpen,
   FolderGit2,
   FolderTree,
   GitFork,
@@ -144,6 +145,7 @@ import {
   ChatTranscriptEntries,
   type EditingSentMessage,
 } from "@/components/chat/chat-transcript-entries";
+import { StandaloneChatFilesPanel } from "@/components/chat/standalone-chat-files-panel";
 import { resolveRunningAgentStartedAtMs } from "@/components/chat/chat-run-duration";
 import {
   ChatComposerNotice,
@@ -429,6 +431,7 @@ import {
   renameExplorerEntry,
   renameProjectView,
   renameTerminal,
+  resolveStandaloneChatFilePath,
   removeProject,
   retryProjectReplicaJob,
   retryProjectFolderSetup,
@@ -1211,6 +1214,9 @@ function RepositoryImporter({
 export function ChatTranscript({
   capabilities,
   chat,
+  desktopRuntime = false,
+  filesOpen = false,
+  filesRequestedPath = null,
   githubEnabled,
   inspectOnly = false,
   inspectOpen,
@@ -1218,6 +1224,7 @@ export function ChatTranscript({
   onCreateChat,
   onDelete,
   onForked,
+  onFilesOpenChange = () => undefined,
   onInspectOpenChange,
   onOpenFile,
   onOpenWorkflow,
@@ -1231,6 +1238,9 @@ export function ChatTranscript({
 }: {
   capabilities: ChatSurfaceCapabilities;
   chat: ChatSummary | StandaloneChatSummary;
+  desktopRuntime?: boolean;
+  filesOpen?: boolean;
+  filesRequestedPath?: string | null;
   githubEnabled: boolean;
   inspectOnly?: boolean;
   inspectOpen: boolean;
@@ -1238,6 +1248,7 @@ export function ChatTranscript({
   onCreateChat(): void;
   onDelete(): void;
   onForked(chat: ChatSummary | StandaloneChatSummary): void;
+  onFilesOpenChange?(open: boolean): void;
   onInspectOpenChange(open: boolean): void;
   onOpenFile(path: string): void;
   onOpenWorkflow(workflowId: string): void;
@@ -1340,6 +1351,7 @@ export function ChatTranscript({
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [inspectWidth, setInspectWidth] = useState(readAgentInspectWidth);
+  const [filesWidth, setFilesWidth] = useState(readAgentInspectWidth);
   const [inspectTab, setInspectTab] = useState<AgentInspectTab>("trajectory");
   const [sidePanelView, setSidePanelView] = useState<ChatSidePanelView>(
     DEFAULT_CHAT_SIDE_PANEL_VIEW,
@@ -1355,6 +1367,14 @@ export function ChatTranscript({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const editedMessageRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const standaloneFilesVisible =
+    capabilities.scratchFiles && chat.contextKind === "standalone";
+  const sidePanelWidth =
+    !inspectOverlay && standaloneFilesVisible && filesOpen
+      ? filesWidth
+      : !inspectOverlay && inspectOpen
+        ? inspectWidth
+        : 0;
   const idleHistoryPrefetchChatRef = useRef<string | null>(null);
   const {
     contentRef: transcriptContentRef,
@@ -2828,7 +2848,7 @@ export function ChatTranscript({
     <div
       className="relative flex min-h-0 flex-1 flex-col overflow-visible transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
       style={{
-        paddingRight: inspectOpen && !inspectOverlay ? inspectWidth : 0,
+        paddingRight: sidePanelWidth,
       }}
       onDragEnter={(event) => {
         if (
@@ -2976,7 +2996,7 @@ export function ChatTranscript({
           "chat-composer-fade pointer-events-none absolute bottom-0 left-0 z-10 h-48 transition-[right] duration-150 ease-out motion-reduce:transition-none",
           effectiveInspectOnly && "hidden",
         )}
-        style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
+        style={{ right: sidePanelWidth }}
       />
       <form
         onSubmit={submit}
@@ -2984,7 +3004,7 @@ export function ChatTranscript({
           "pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4 md:px-10",
           effectiveInspectOnly && "hidden",
         )}
-        style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
+        style={{ right: sidePanelWidth }}
       >
         <div className="pointer-events-auto relative w-full">
           {composerNotice ? <ChatComposerNotice {...composerNotice} /> : null}
@@ -3710,6 +3730,24 @@ export function ChatTranscript({
           )}
         </AgentInspectPanelShell>
       ) : null}
+      {standaloneFilesVisible && chat.contextKind === "standalone" ? (
+        <AgentInspectPanelShell
+          ariaLabel="Chat scratch files"
+          className="absolute inset-y-0 right-0 z-30"
+          headerIcon={<FolderOpen className="size-4 text-muted-foreground" />}
+          onOpenChange={onFilesOpenChange}
+          onWidthChange={setFilesWidth}
+          open={filesOpen}
+          overlay={inspectOverlay}
+          panelTitle="Files"
+        >
+          <StandaloneChatFilesPanel
+            chat={chat}
+            desktopRuntime={desktopRuntime}
+            requestedPath={filesRequestedPath}
+          />
+        </AgentInspectPanelShell>
+      ) : null}
     </div>
   );
 }
@@ -3776,6 +3814,14 @@ export function App() {
   const [selectedStandaloneChatId, setSelectedStandaloneChatId] = useState<
     string | null
   >(null);
+  const [standaloneFilesOpen, setStandaloneFilesOpen] = useState(false);
+  const [standaloneFilePath, setStandaloneFilePath] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    setStandaloneFilesOpen(false);
+    setStandaloneFilePath(null);
+  }, [selectedStandaloneChatId]);
   const startupNavigationResolvedRef = useRef(isPopout);
   const destinationWriteRef = useRef<Promise<void>>(Promise.resolve());
   const narrowViewport = useNarrowViewport();
@@ -9291,6 +9337,18 @@ export function App() {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
+              {appMode === "chat" && selectedStandaloneChat ? (
+                <Button
+                  aria-pressed={standaloneFilesOpen}
+                  onClick={() => setStandaloneFilesOpen((open) => !open)}
+                  size="sm"
+                  title="Open Chat files"
+                  variant={standaloneFilesOpen ? "outline" : "ghost"}
+                >
+                  <FolderOpen className="size-4" />
+                  Files
+                </Button>
+              ) : null}
               {appMode === "ide" &&
               narrowViewport &&
               !showImporter &&
@@ -9334,6 +9392,18 @@ export function App() {
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
             >
+              {appMode === "chat" && selectedStandaloneChat ? (
+                <Button
+                  aria-pressed={standaloneFilesOpen}
+                  onClick={() => setStandaloneFilesOpen((open) => !open)}
+                  size="sm"
+                  title="Open Chat files"
+                  variant={standaloneFilesOpen ? "outline" : "ghost"}
+                >
+                  <FolderOpen className="size-4" />
+                  Files
+                </Button>
+              ) : null}
               {appMode === "ide" ? (
                 <ContentHeaderActions {...contentHeaderActions} />
               ) : null}
@@ -9589,6 +9659,9 @@ export function App() {
               key={selectedStandaloneChat.id}
               capabilities={STANDALONE_CHAT_SURFACE_CAPABILITIES}
               chat={selectedStandaloneChat}
+              desktopRuntime={desktopRuntime}
+              filesOpen={standaloneFilesOpen}
+              filesRequestedPath={standaloneFilePath}
               githubEnabled={false}
               inspectOpen={false}
               inspectOverlay={narrowViewport}
@@ -9603,14 +9676,25 @@ export function App() {
                   selectStandaloneChat(forked);
                 }
               }}
+              onFilesOpenChange={setStandaloneFilesOpen}
               onInspectOpenChange={() => undefined}
-              onOpenFile={(path) =>
-                showAppToast({
-                  message: path,
-                  title: "Chat file",
-                  tone: "info",
-                })
-              }
+              onOpenFile={(reference) => {
+                void resolveStandaloneChatFilePath(
+                  selectedStandaloneChat.id,
+                  reference,
+                )
+                  .then((path) => {
+                    setStandaloneFilePath(path);
+                    setStandaloneFilesOpen(true);
+                  })
+                  .catch((error: unknown) =>
+                    showAppToast({
+                      message: errorText(error),
+                      title: "Could not open Chat file",
+                      tone: "error",
+                    }),
+                  );
+              }}
               onOpenWorkflow={() => undefined}
               onOpenRelocation={() => undefined}
               onToast={showAppToast}

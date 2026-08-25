@@ -156,6 +156,14 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "chat-files",
+          scope: { kind: "chat", chatId: "chat-one" },
+        }),
+      ),
+    ).toEqual([["standalone-chat-files", "chat-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           resource: "chat",
           scope: { kind: "chat", chatId: "chat-one" },
         }),

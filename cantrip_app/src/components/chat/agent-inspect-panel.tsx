@@ -97,11 +97,13 @@ export function updateAgentInspectOpenChats(
 export function AgentInspectPanel({
   ariaLabel = "Agent activity inspector",
   children,
+  icon,
   onClose,
   title = "Inspect",
 }: {
   ariaLabel?: string;
   children?: ReactNode;
+  icon?: ReactNode;
   onClose(): void;
   title?: string;
 }) {
@@ -115,7 +117,7 @@ export function AgentInspectPanel({
         className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-11 items-center gap-2 px-3"
         data-slot="agent-inspect-header"
       >
-        <Info className="size-4 text-muted-foreground" />
+        {icon ?? <Info className="size-4 text-muted-foreground" />}
         <h2 className="truncate text-sm font-medium">{title}</h2>
         <Button
           aria-label={`Close ${title}`}
@@ -136,12 +138,14 @@ export function AgentInspectPanel({
 function AgentInspectMobilePanel({
   ariaLabel,
   children,
+  icon,
   onOpenChange,
   open,
   panelTitle,
 }: {
   ariaLabel: string;
   children?: ReactNode;
+  icon?: ReactNode;
   onOpenChange(open: boolean): void;
   open: boolean;
   panelTitle: string;
@@ -160,6 +164,7 @@ function AgentInspectMobilePanel({
           </DialogPrimitive.Title>
           <AgentInspectPanel
             ariaLabel={ariaLabel}
+            icon={icon}
             onClose={() => onOpenChange(false)}
             title={panelTitle}
           >
@@ -176,6 +181,7 @@ export function AgentInspectPanelShell({
   children,
   className,
   extendIntoProjectTabBar = false,
+  headerIcon,
   onOpenChange,
   onWidthChange,
   open,
@@ -186,6 +192,7 @@ export function AgentInspectPanelShell({
   children?: ReactNode;
   className?: string;
   extendIntoProjectTabBar?: boolean;
+  headerIcon?: ReactNode;
   onOpenChange(open: boolean): void;
   onWidthChange?(width: number): void;
   open: boolean;
@@ -196,6 +203,7 @@ export function AgentInspectPanelShell({
     return (
       <AgentInspectMobilePanel
         ariaLabel={ariaLabel}
+        icon={headerIcon}
         onOpenChange={onOpenChange}
         open={open}
         panelTitle={panelTitle}
@@ -231,6 +239,7 @@ export function AgentInspectPanelShell({
     >
       <AgentInspectPanel
         ariaLabel={ariaLabel}
+        icon={headerIcon}
         onClose={() => onOpenChange(false)}
         title={panelTitle}
       >

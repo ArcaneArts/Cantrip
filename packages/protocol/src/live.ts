@@ -184,6 +184,7 @@ export const appLiveResourceSchema = z.enum([
   "chat-import-job",
   "chat-relocation-job",
   "chat-message",
+  "chat-files",
   "chat-queue",
   "chat-goal",
   "chat-plan",

@@ -289,6 +289,9 @@ const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
 const standaloneChatTurnCommands: Array<
   Extract<WorkerCommand, { type: "chat.turn" }>
 > = [];
+const standaloneChatFileOperationCommands: Array<
+  Extract<WorkerCommand, { type: "chat.scratch.files.operation" }>
+> = [];
 const chatPauseCommands: Array<
   Extract<WorkerCommand, { type: "chat.pause.set" }> & {
     timeoutMs: number | null | undefined;
@@ -1778,6 +1781,13 @@ const workerBridge = {
           orphanedRootIds: [],
           dueRootIds: [],
         };
+      case "chat.scratch.files.operation":
+        standaloneChatFileOperationCommands.push(command);
+        return {
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse: command.protectedRequest,
+        };
       case "chat.scratch.archive":
         return {
           rootId: command.rootId,
@@ -1997,12 +2007,12 @@ beforeAll(async () => {
         routingHandles: true,
       },
       files: {
-        list: false,
-        read: false,
-        write: false,
-        remove: false,
-        download: false,
-        archive: false,
+        list: true,
+        read: true,
+        write: true,
+        remove: true,
+        download: true,
+        archive: true,
       },
     },
     startedAt: new Date().toISOString(),
@@ -2072,6 +2082,42 @@ describe.sequential("server worktree control plane", () => {
     if (context?.contextKind !== "standalone" || !context.modelId) {
       throw new Error("Standalone Chat execution context was not ready.");
     }
+
+    const fileOperationId = randomUUID();
+    const fileOperation = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/files/operation`,
+      payload: {
+        intent: "list",
+        operationId: fileOperationId,
+        sequence: 0,
+        protectedRequest: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "AAAAAAAAAAAAAAAA",
+            ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+          },
+        },
+      },
+    });
+    expect(fileOperation.statusCode, fileOperation.body).toBe(200);
+    expect(fileOperation.json()).toMatchObject({
+      operationId: fileOperationId,
+      sequence: 0,
+    });
+    expect(standaloneChatFileOperationCommands.at(-1)).toMatchObject({
+      type: "chat.scratch.files.operation",
+      chatId: chat.id,
+      rootId: context.scratchRootId,
+      root: context.cwd,
+      intent: "list",
+      operationId: fileOperationId,
+      sequence: 0,
+    });
 
     const before = standaloneChatTurnCommands.length;
     const allTurnsBefore = chatTurnCommands.length;

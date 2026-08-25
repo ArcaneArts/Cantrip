@@ -77,6 +77,7 @@ import {
   explorerMediaKindSchema,
 } from "./explorer.js";
 import {
+  standaloneChatFileOperationIntentSchema,
   surfaceStreamOpaqueSchema,
   surfaceStreamWireRequestSchema,
 } from "./surface-stream.js";
@@ -12738,6 +12739,18 @@ export const standaloneChatScratchReconcileCommandSchema = z
   })
   .strict();
 
+export const standaloneChatFileOperationCommandSchema = z
+  .object({
+    type: z.literal("chat.scratch.files.operation"),
+    rootId: standaloneChatIdentitySchema,
+    chatId: standaloneChatIdentitySchema,
+    serverId: z.string().min(1).max(2_000),
+    root: z.string().min(1).max(32_768),
+    intent: standaloneChatFileOperationIntentSchema,
+  })
+  .extend(surfaceStreamWireRequestSchema.shape)
+  .strict();
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
@@ -12748,6 +12761,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   standaloneChatScratchRestoreCommandSchema,
   standaloneChatScratchDeleteCommandSchema,
   standaloneChatScratchReconcileCommandSchema,
+  standaloneChatFileOperationCommandSchema,
   z.object({ type: z.literal("worker.version") }),
   z.object({ type: z.literal("worker.restart") }),
   workerEncryptionRefreshRequestSchema.extend({

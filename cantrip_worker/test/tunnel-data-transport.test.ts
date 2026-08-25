@@ -308,7 +308,9 @@ describe("worker generic tunnel data transport", () => {
         type: "chat.turn.outcome",
         chatId: "chat-1",
         clientMessageId: "message-1",
+        contextKind: "project",
         executionLaneId: "lane-1",
+        scratchRootId: null,
         worktreeId: "worktree-1",
         outcome: {
           ok: true,

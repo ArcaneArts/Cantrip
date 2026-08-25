@@ -126,7 +126,7 @@ describe("RemoteSurfaceManager", () => {
     );
     expect(record).toMatchObject({
       level: "warn",
-      message: "Rejected Remote Surface WebRTC frame",
+      message: "surface.transport.frame-rejected",
       context: {
         reasonCode: "invalid-frame",
         surfaceId: "surface-1",

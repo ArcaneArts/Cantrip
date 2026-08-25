@@ -4,8 +4,14 @@ import {
   contextualChatSummarySchema,
   contextualChatExecutionLaneSummarySchema,
   serverBootstrapSchema,
+  standaloneChatFileOperationCommandSchema,
   userSettingsSchema,
 } from "../src/index.js";
+import {
+  standaloneChatFileOperationRequestContentSchema,
+  standaloneChatFileWireRequestSchema,
+  surfaceStreamContextSchema,
+} from "../src/surface-stream.js";
 import { describe, expect, it } from "vitest";
 
 const commonChat = {
@@ -166,5 +172,72 @@ describe("standalone Chat contracts", () => {
       protocolVersion: 1,
       reason: "Standalone Chat is not enabled by this server.",
     });
+  });
+
+  it("bounds protected Chat file operations and declares their capability intent", () => {
+    expect(
+      standaloneChatFileOperationRequestContentSchema.parse({
+        type: "chat-files.entry.delete",
+        path: "results/output.json",
+      }),
+    ).toEqual({
+      type: "chat-files.entry.delete",
+      path: "results/output.json",
+      recursive: false,
+    });
+    expect(
+      standaloneChatFileOperationRequestContentSchema.safeParse({
+        type: "chat-files.download.prepare",
+        kind: "all",
+        path: "results",
+      }).success,
+    ).toBe(false);
+    expect(
+      standaloneChatFileOperationRequestContentSchema.safeParse({
+        type: "chat-files.media.read",
+        path: "image.png",
+        offset: 0,
+        limit: 256 * 1_024 + 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      surfaceStreamContextSchema.parse({
+        serverId: "server-1",
+        surfaceKind: "chat-files",
+        surfaceId: "00000000-0000-4000-8000-000000000001",
+        operationId: "operation-1",
+        direction: "request",
+        sequence: 0,
+      }).surfaceKind,
+    ).toBe("chat-files");
+
+    const protectedRequest = {
+      formatVersion: 1 as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1 as const,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    };
+    const wire = standaloneChatFileWireRequestSchema.parse({
+      intent: "write",
+      operationId: "operation-1",
+      sequence: 0,
+      protectedRequest,
+    });
+    expect(wire.intent).toBe("write");
+    expect(
+      standaloneChatFileOperationCommandSchema.parse({
+        type: "chat.scratch.files.operation",
+        rootId: "00000000-0000-4000-8000-000000000001",
+        chatId: "00000000-0000-4000-8000-000000000002",
+        serverId: "server-1",
+        root: "ctrr_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        ...wire,
+      }).type,
+    ).toBe("chat.scratch.files.operation");
   });
 });

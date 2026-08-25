@@ -332,6 +332,28 @@ impl DesktopWorkers {
         ))
     }
 
+    pub(crate) fn resolve_chat_scratch_directory(
+        &self,
+        server_url: &str,
+        worker_id: &str,
+        chat_id: &str,
+    ) -> Result<Option<PathBuf>, String> {
+        let server_url = normalize_server_url(server_url)?;
+        let local_worker = self
+            .profiles
+            .lock()
+            .map_err(|_| "The desktop worker registry is unavailable.".to_string())?
+            .iter()
+            .any(|profile| profile.worker_id == worker_id && profile.server_url == server_url);
+        if !local_worker {
+            return Ok(None);
+        }
+        Ok(resolve_chat_scratch_directory(
+            &self.profile_directory(worker_id),
+            chat_id,
+        ))
+    }
+
     fn persist_profile(&self, profile: &DesktopWorkerProfile) -> Result<(), String> {
         let directory = self.profile_directory(&profile.worker_id);
         fs::create_dir_all(&directory)
@@ -586,6 +608,32 @@ pub(crate) fn resolve_project_directory(
     }
     let project_directory = fs::canonicalize(requested_path).ok()?;
     project_directory.is_dir().then_some(project_directory)
+}
+
+pub(crate) fn resolve_chat_scratch_directory(
+    worker_data_directory: &Path,
+    chat_id: &str,
+) -> Option<PathBuf> {
+    if chat_id.len() != 36
+        || !chat_id.is_ascii()
+        || chat_id.chars().enumerate().any(|(index, character)| {
+            matches!(index, 8 | 13 | 18 | 23)
+                .then_some(character != '-')
+                .unwrap_or(!character.is_ascii_hexdigit() || character.is_ascii_uppercase())
+        })
+    {
+        return None;
+    }
+    let profile_root = fs::canonicalize(worker_data_directory).ok()?;
+    let scratch_root = fs::canonicalize(profile_root.join("chat-scratch")).ok()?;
+    if scratch_root == profile_root || !scratch_root.starts_with(&profile_root) {
+        return None;
+    }
+    let chat_root = fs::canonicalize(scratch_root.join(chat_id)).ok()?;
+    if chat_root.parent() != Some(scratch_root.as_path()) || !chat_root.is_dir() {
+        return None;
+    }
+    Some(chat_root)
 }
 
 pub fn build(app: &App, active_local_server_url: &str) -> Result<DesktopWorkers, String> {
@@ -884,8 +932,9 @@ mod tests {
     use super::{
         linked_worker_autostart_enabled, normalize_server_url, read_retained_profiles,
         recover_profiles, replacement_credential_required, replacement_profile, repository_count,
-        should_autostart_profile, sort_worker_candidates, DesktopWorkerCandidate,
-        DesktopWorkerProfile, DesktopWorkerProjectStorage, DesktopWorkers, WorkerLaunch,
+        resolve_chat_scratch_directory, should_autostart_profile, sort_worker_candidates,
+        DesktopWorkerCandidate, DesktopWorkerProfile, DesktopWorkerProjectStorage, DesktopWorkers,
+        WorkerLaunch,
     };
 
     fn test_manager(root: &Path) -> DesktopWorkers {
@@ -1175,6 +1224,31 @@ mod tests {
                 .unwrap(),
             None
         );
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn resolves_only_direct_lowercase_chat_scratch_roots() {
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-worker-chat-reveal-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let worker_data = root.join("worker");
+        let chat_id = "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2";
+        let scratch = worker_data.join("chat-scratch").join(chat_id);
+        fs::create_dir_all(&scratch).unwrap();
+
+        assert_eq!(
+            resolve_chat_scratch_directory(&worker_data, chat_id),
+            Some(fs::canonicalize(&scratch).unwrap())
+        );
+        assert!(resolve_chat_scratch_directory(
+            &worker_data,
+            "019FDC2C-E848-7552-B2EA-6FC7EF09E9F2"
+        )
+        .is_none());
+        assert!(resolve_chat_scratch_directory(&worker_data, "../outside").is_none());
 
         fs::remove_dir_all(root).unwrap();
     }

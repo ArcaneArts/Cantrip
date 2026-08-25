@@ -246,6 +246,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
               ["project-task-workload"],
             ]
           : [];
+    case "chat-files":
+      return event.scope.kind === "chat"
+        ? [["standalone-chat-files", event.scope.chatId]]
+        : [];
     case "chat-queue":
       return event.scope.kind === "chat"
         ? [["prompt-queue", event.scope.chatId]]

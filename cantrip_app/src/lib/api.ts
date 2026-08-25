@@ -358,10 +358,16 @@ import {
 import {
   explorerOperationRequestContentSchema,
   explorerOperationResultContentSchema,
+  standaloneChatFileOperationRequestContentSchema,
+  standaloneChatFileOperationResultContentSchema,
   surfaceOperationOutcomeContentSchema,
   surfaceStreamWireResponseSchema,
   type ExplorerOperationRequestContent,
   type ExplorerOperationResultContent,
+  type StandaloneChatFileDownloadKind,
+  type StandaloneChatFileOperationIntent,
+  type StandaloneChatFileOperationRequestContent,
+  type StandaloneChatFileOperationResultContent,
 } from "@cantrip/protocol/surface-stream";
 import {
   repositoryOperationAccess,
@@ -5772,6 +5778,262 @@ export async function deleteProjectView(viewId: string) {
   await request(`/api/project-views/${encodeURIComponent(viewId)}`, {
     method: "DELETE",
   });
+}
+
+async function executeStandaloneChatFileOperation(
+  chatId: string,
+  intent: StandaloneChatFileOperationIntent,
+  content: StandaloneChatFileOperationRequestContent,
+  operationId = crypto.randomUUID(),
+  sequence = 0,
+): Promise<StandaloneChatFileOperationResultContent> {
+  const protectedRequest = await protectSurfaceStreamContent({
+    context: {
+      surfaceKind: "chat-files",
+      surfaceId: chatId,
+      operationId,
+      direction: "request",
+      sequence,
+    },
+    content: standaloneChatFileOperationRequestContentSchema.parse(content),
+    schema: standaloneChatFileOperationRequestContentSchema,
+  });
+  const wire = surfaceStreamWireResponseSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/files/operation`, {
+      method: "POST",
+      body: JSON.stringify({
+        intent,
+        operationId,
+        sequence,
+        protectedRequest,
+      }),
+    }),
+  );
+  if (wire.operationId !== operationId || wire.sequence !== sequence) {
+    throw new Error("Chat files returned a stale protected operation.");
+  }
+  const outcome = await openSurfaceStreamContent({
+    context: {
+      surfaceKind: "chat-files",
+      surfaceId: chatId,
+      operationId,
+      direction: "response",
+      sequence,
+    },
+    opaque: wire.protectedResponse,
+    schema: surfaceOperationOutcomeContentSchema,
+  });
+  if (!outcome.ok) throw new Error(outcome.error);
+  return standaloneChatFileOperationResultContentSchema.parse(outcome.result);
+}
+
+export async function getStandaloneChatFileDirectory(
+  chatId: string,
+  path: string,
+) {
+  const result = await executeStandaloneChatFileOperation(chatId, "list", {
+    type: "chat-files.directory.list",
+    path,
+  });
+  if (result.type !== "chat-files.directory.list") {
+    throw new Error("Chat files returned an unexpected directory result.");
+  }
+  return explorerDirectorySchema.parse(result.value);
+}
+
+export async function getStandaloneChatFile(chatId: string, path: string) {
+  const result = await executeStandaloneChatFileOperation(chatId, "read", {
+    type: "chat-files.file.read",
+    path,
+  });
+  if (result.type !== "chat-files.file") {
+    throw new Error("Chat files returned an unexpected file result.");
+  }
+  return explorerFileSchema.parse(result.value);
+}
+
+export async function resolveStandaloneChatFilePath(
+  chatId: string,
+  reference: string,
+) {
+  const result = await executeStandaloneChatFileOperation(chatId, "read", {
+    type: "chat-files.path.resolve",
+    reference,
+  });
+  if (result.type !== "chat-files.path.resolved") {
+    throw new Error("Chat files returned an unexpected path result.");
+  }
+  return result.path;
+}
+
+export async function loadStandaloneChatFileMedia(
+  chatId: string,
+  path: string,
+): Promise<Blob> {
+  const operationId = crypto.randomUUID();
+  const parts: BlobPart[] = [];
+  let offset = 0;
+  let sequence = 0;
+  let expected:
+    | { kind: string; mimeType: string; modifiedAt: string; size: number }
+    | undefined;
+  for (;;) {
+    const result = await executeStandaloneChatFileOperation(
+      chatId,
+      "read",
+      {
+        type: "chat-files.media.read",
+        path,
+        offset,
+        limit: 256 * 1_024,
+      },
+      operationId,
+      sequence,
+    );
+    if (result.type !== "chat-files.media") {
+      throw new Error("Chat files returned an unexpected media result.");
+    }
+    const chunk = result.value;
+    if (chunk.path !== path || chunk.offset !== offset) {
+      throw new Error("Chat files returned stale protected media content.");
+    }
+    const metadata = {
+      kind: chunk.kind,
+      mimeType: chunk.mimeType,
+      modifiedAt: chunk.modifiedAt,
+      size: chunk.size,
+    };
+    if (expected && JSON.stringify(expected) !== JSON.stringify(metadata)) {
+      throw new Error("Chat media changed while it was loading.");
+    }
+    expected ??= metadata;
+    const bytes = decodeExplorerMediaBytes(chunk.data);
+    if (offset + bytes.byteLength > chunk.size) {
+      throw new Error("Chat files returned oversized protected media content.");
+    }
+    parts.push(new Uint8Array(bytes).buffer as ArrayBuffer);
+    offset += bytes.byteLength;
+    sequence += 1;
+    if (chunk.eof) {
+      if (offset !== chunk.size) {
+        throw new Error(
+          "Chat files returned incomplete protected media content.",
+        );
+      }
+      return new Blob(parts, { type: chunk.mimeType });
+    }
+    if (bytes.byteLength === 0) {
+      throw new Error("Chat media stream stopped progressing.");
+    }
+  }
+}
+
+export async function saveStandaloneChatFile(
+  chatId: string,
+  input: { path: string; content: string; version: string },
+) {
+  const result = await executeStandaloneChatFileOperation(chatId, "write", {
+    type: "chat-files.file.write",
+    ...explorerFileWriteSchema.parse(input),
+  });
+  if (result.type !== "chat-files.file") {
+    throw new Error("Chat files returned an unexpected saved file result.");
+  }
+  return explorerFileSchema.parse(result.value);
+}
+
+export async function deleteStandaloneChatFileEntry(
+  chatId: string,
+  input: { path: string; recursive: boolean },
+) {
+  const result = await executeStandaloneChatFileOperation(chatId, "remove", {
+    type: "chat-files.entry.delete",
+    ...input,
+  });
+  if (result.type !== "chat-files.entry.mutated") {
+    throw new Error("Chat files returned an unexpected delete result.");
+  }
+  return explorerEntryMutationResultSchema.parse(result.value);
+}
+
+export async function downloadStandaloneChatFiles(
+  chatId: string,
+  input: { kind: StandaloneChatFileDownloadKind; path: string },
+): Promise<{ blob: Blob; fileName: string }> {
+  const operationId = crypto.randomUUID();
+  const intent = input.kind === "file" ? "download" : "archive";
+  let sequence = 0;
+  const preparedResult = await executeStandaloneChatFileOperation(
+    chatId,
+    intent,
+    { type: "chat-files.download.prepare", ...input },
+    operationId,
+    sequence,
+  );
+  if (preparedResult.type !== "chat-files.download.prepared") {
+    throw new Error("Chat files returned an unexpected download result.");
+  }
+  const prepared = preparedResult.value;
+  const parts: BlobPart[] = [];
+  let offset = 0;
+  try {
+    for (;;) {
+      sequence += 1;
+      const result = await executeStandaloneChatFileOperation(
+        chatId,
+        intent,
+        {
+          type: "chat-files.download.read",
+          downloadId: prepared.downloadId,
+          offset,
+          limit: 256 * 1_024,
+        },
+        operationId,
+        sequence,
+      );
+      if (result.type !== "chat-files.download.chunk") {
+        throw new Error("Chat files returned an unexpected download chunk.");
+      }
+      const chunk = result.value;
+      if (chunk.downloadId !== prepared.downloadId || chunk.offset !== offset) {
+        throw new Error(
+          "Chat files returned a stale protected download chunk.",
+        );
+      }
+      const bytes = decodeExplorerMediaBytes(chunk.data);
+      if (offset + bytes.byteLength > prepared.size) {
+        throw new Error("Chat files returned an oversized protected download.");
+      }
+      parts.push(new Uint8Array(bytes).buffer as ArrayBuffer);
+      offset += bytes.byteLength;
+      if (chunk.eof) {
+        if (offset !== prepared.size) {
+          throw new Error(
+            "Chat files returned an incomplete protected download.",
+          );
+        }
+        return {
+          blob: new Blob(parts, { type: prepared.mimeType }),
+          fileName: prepared.fileName,
+        };
+      }
+      if (bytes.byteLength === 0) {
+        throw new Error("Chat file download stopped progressing.");
+      }
+    }
+  } catch (error) {
+    await executeStandaloneChatFileOperation(
+      chatId,
+      intent,
+      {
+        type: "chat-files.download.cancel",
+        downloadId: prepared.downloadId,
+      },
+      operationId,
+      sequence + 1,
+    ).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function executeExplorerOperation(
