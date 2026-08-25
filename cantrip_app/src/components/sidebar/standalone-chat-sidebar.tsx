@@ -1,19 +1,12 @@
-import type {
-  ArchivedStandaloneChatSummary,
-  StandaloneChatSummary,
-  WorkerSummary,
-} from "@cantrip/protocol";
+import type { StandaloneChatSummary, WorkerSummary } from "@cantrip/protocol";
 import {
   Archive,
-  ArchiveRestore,
   Bot,
-  Clock3,
   Code2,
   Loader2,
   MessageSquare,
   Plus,
   Settings,
-  Trash2,
   WifiOff,
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -21,7 +14,6 @@ import { useState, type FormEvent } from "react";
 import { ChatContextMenu, ChatDropdownMenu } from "@/components/chat/chat-menu";
 import { ChatActivityStatus } from "@/components/chat/chat-activity-status";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -31,17 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { cn } from "@/lib/utils";
-
-const archiveDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
-
-function recoveryLabel(expiresAt: string): string {
-  const days = Math.max(
-    0,
-    Math.ceil((Date.parse(expiresAt) - Date.now()) / 86_400_000),
-  );
-  if (days === 0) return "Deletes today";
-  return `Deletes in ${days} ${days === 1 ? "day" : "days"}`;
-}
 
 function workerAvailable(
   chat: StandaloneChatSummary,
@@ -54,8 +35,8 @@ function workerAvailable(
 }
 
 export interface StandaloneChatSidebarProps {
-  archived: readonly ArchivedStandaloneChatSummary[];
-  archivedLoading: boolean;
+  archivedCount: number;
+  archivedSelected: boolean;
   chats: readonly StandaloneChatSummary[];
   creationDisabled?: boolean;
   creationUnavailableReason?: string | null;
@@ -66,17 +47,16 @@ export interface StandaloneChatSidebarProps {
   onArchive(chat: StandaloneChatSummary): void;
   onFork(chat: StandaloneChatSummary): void;
   onNewChat(): void;
+  onOpenArchived(): void;
   onOpenSettings(): void;
-  onPermanentlyDelete(chat: ArchivedStandaloneChatSummary): void;
   onRename(chat: StandaloneChatSummary, title: string): void;
-  onRestore(chat: ArchivedStandaloneChatSummary): void;
   onSelect(chat: StandaloneChatSummary): void;
   onSwitchIde(): void;
 }
 
 export function StandaloneChatSidebar({
-  archived,
-  archivedLoading,
+  archivedCount,
+  archivedSelected,
   chats,
   creationDisabled = false,
   creationUnavailableReason = null,
@@ -87,19 +67,15 @@ export function StandaloneChatSidebar({
   onArchive,
   onFork,
   onNewChat,
+  onOpenArchived,
   onOpenSettings,
-  onPermanentlyDelete,
   onRename,
-  onRestore,
   onSelect,
   onSwitchIde,
 }: StandaloneChatSidebarProps) {
-  const [archiveOpen, setArchiveOpen] = useState(false);
   const [renameTarget, setRenameTarget] =
     useState<StandaloneChatSummary | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [deleteTarget, setDeleteTarget] =
-    useState<ArchivedStandaloneChatSummary | null>(null);
 
   const beginRename = (chat: StandaloneChatSummary) => {
     setRenameTarget(chat);
@@ -212,14 +188,14 @@ export function StandaloneChatSidebar({
 
       <div className="space-y-1 border-t p-3">
         <Button
-          className="w-full justify-start"
+          className={cn("w-full justify-start", archivedSelected && "bg-muted")}
           variant="ghost"
-          onClick={() => setArchiveOpen(true)}
+          onClick={onOpenArchived}
         >
           <Archive className="size-4" /> Archived
-          {archived.length > 0 ? (
+          {archivedCount > 0 ? (
             <span className="ml-auto text-xs text-muted-foreground">
-              {archived.length}
+              {archivedCount}
             </span>
           ) : null}
         </Button>
@@ -231,65 +207,6 @@ export function StandaloneChatSidebar({
           <Settings className="size-4" /> Settings
         </Button>
       </div>
-
-      <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Archived chats</DialogTitle>
-            <DialogDescription>
-              Archived conversations and scratch files remain recoverable until
-              their deletion date.
-            </DialogDescription>
-          </DialogHeader>
-          {archivedLoading ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Loading archive…
-            </div>
-          ) : archived.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">
-              <ArchiveRestore className="mx-auto mb-3 size-5" /> No archived
-              chats
-            </div>
-          ) : (
-            <div className="divide-y border-y">
-              {archived.map((chat) => (
-                <div className="flex items-center gap-3 py-3" key={chat.id}>
-                  <MessageSquare className="size-4 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{chat.title}</p>
-                    <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                      <span>{chat.messageCount} messages</span>
-                      <span className="inline-flex items-center gap-1">
-                        <Clock3 className="size-3" />{" "}
-                        {recoveryLabel(chat.expiresAt)}
-                      </span>
-                      <span>
-                        {archiveDate.format(new Date(chat.expiresAt))}
-                      </span>
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onRestore(chat)}
-                  >
-                    <ArchiveRestore className="size-4" /> Restore
-                  </Button>
-                  <Button
-                    aria-label={`Permanently delete ${chat.title}`}
-                    className="size-8"
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setDeleteTarget(chat)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={Boolean(renameTarget)}
@@ -325,23 +242,6 @@ export function StandaloneChatSidebar({
           </form>
         </DialogContent>
       </Dialog>
-
-      <ConfirmDialog
-        confirmLabel={
-          <>
-            <Trash2 className="size-4" /> Delete permanently
-          </>
-        }
-        description={`${deleteTarget?.title ?? "This chat"}, its messages, and its scratch files will be permanently deleted. This cannot be undone.`}
-        onConfirm={() => {
-          if (!deleteTarget) return;
-          onPermanentlyDelete(deleteTarget);
-          setDeleteTarget(null);
-        }}
-        open={Boolean(deleteTarget)}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="Permanently delete this chat?"
-      />
     </>
   );
 }

@@ -98,6 +98,7 @@ import { flushSync } from "react-dom";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
 import { RunConfigurationControl } from "@/components/run/run-configuration-control";
 import { AppCommandBar } from "@/components/app/app-command-bar";
+import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
 import {
   AttachmentPreview,
   AttachmentViewerDialog,
@@ -164,6 +165,7 @@ import {
   latestEditableUserMessage,
 } from "@/components/chat/latest-message-edit";
 import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
+import { shouldSyncChatWithExternalConsole } from "@/lib/chat-transcript-sync";
 import {
   imageInputCapabilityMessage,
   resolveImageInputCapability,
@@ -1628,7 +1630,10 @@ export function ChatTranscript({
     staleTime: Number.POSITIVE_INFINITY,
   });
   useQuery({
-    enabled: syncEnabled,
+    enabled: shouldSyncChatWithExternalConsole(
+      capabilities.context,
+      syncEnabled,
+    ),
     queryFn: async () => {
       const result = await syncChat(chat.id);
       if (result.turns.length > 0) {
@@ -3881,6 +3886,8 @@ export function App() {
   const [folderProjectDialogMode, setFolderProjectDialogMode] =
     useState<FolderSourceMode>("create");
   const [showSettings, setShowSettings] = useState(false);
+  const [showArchivedStandaloneChats, setShowArchivedStandaloneChats] =
+    useState(false);
   const [showServerAdmin, setShowServerAdmin] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
@@ -3897,6 +3904,7 @@ export function App() {
     !sidebarFilePreview?.active &&
     !showImporter &&
     !showSettings &&
+    !showArchivedStandaloneChats &&
     !showServerAdmin &&
     !showProjectSettings &&
     (projectOverviewPopoutTarget !== null ||
@@ -4483,6 +4491,7 @@ export function App() {
       resetMobileBottomTabs();
       setShowImporter(false);
       setShowSettings(false);
+      setShowArchivedStandaloneChats(false);
       setShowServerAdmin(false);
       setShowProjectSettings(false);
     },
@@ -4779,6 +4788,7 @@ export function App() {
           ),
       );
       setSelectedStandaloneChatId(chat.id);
+      setShowArchivedStandaloneChats(false);
       void persistAppDestination({
         lastAppMode: "chat",
         lastStandaloneChatId: chat.id,
@@ -4836,6 +4846,7 @@ export function App() {
         }),
       ]);
       setSelectedStandaloneChatId(restored.id);
+      setShowArchivedStandaloneChats(false);
       void persistAppDestination({
         lastAppMode: "chat",
         lastStandaloneChatId: restored.id,
@@ -7519,6 +7530,7 @@ export function App() {
     setShowProjectSettings(false);
     setShowServerAdmin(false);
     setShowSettings(false);
+    setShowArchivedStandaloneChats(false);
     setCommandBarOpen(false);
     void persistAppDestination({
       lastAppMode: "chat",
@@ -7549,6 +7561,7 @@ export function App() {
     }
     setShowImporter(false);
     setShowSettings(false);
+    setShowArchivedStandaloneChats(false);
     setShowServerAdmin(false);
     setShowProjectSettings(false);
     void persistAppDestination({
@@ -7561,6 +7574,7 @@ export function App() {
     setDesktopSidebarDrawerOpen(false);
     setSelectedStandaloneChatId(chat.id);
     setShowSettings(false);
+    setShowArchivedStandaloneChats(false);
     setShowServerAdmin(false);
     void persistAppDestination({
       lastAppMode: "chat",
@@ -7716,6 +7730,7 @@ export function App() {
     setDetachedGroupId(null);
     setShowImporter(false);
     setShowSettings(false);
+    setShowArchivedStandaloneChats(false);
     setShowServerAdmin(false);
     setShowProjectSettings(false);
     setSelectedWorkflowIntentId(null);
@@ -7727,6 +7742,7 @@ export function App() {
     setPendingSurfaceSelection(null);
     setSettingsSection(section);
     setShowSettings(true);
+    setShowArchivedStandaloneChats(false);
     setShowServerAdmin(false);
     setShowImporter(false);
     setShowProjectSettings(false);
@@ -7736,6 +7752,7 @@ export function App() {
     setShowServerAdmin(true);
     setShowImporter(false);
     setShowSettings(false);
+    setShowArchivedStandaloneChats(false);
     setShowProjectSettings(false);
     setMobileTabGridOpen(false);
   };
@@ -8652,8 +8669,8 @@ export function App() {
 
             {appMode === "chat" ? (
               <StandaloneChatSidebar
-                archived={archivedStandaloneChats.data ?? []}
-                archivedLoading={archivedStandaloneChats.isLoading}
+                archivedCount={archivedStandaloneChats.data?.length ?? 0}
+                archivedSelected={showArchivedStandaloneChats}
                 chats={standaloneChats.data ?? []}
                 creationDisabled={!standaloneChatCreationAvailable}
                 creationUnavailableReason={
@@ -8669,24 +8686,29 @@ export function App() {
                   restoreStandaloneChat.error ??
                   permanentlyDeleteStandaloneChat.error
                 }
-                selectedChatId={selectedStandaloneChatId}
+                selectedChatId={
+                  showArchivedStandaloneChats ? null : selectedStandaloneChatId
+                }
                 workers={workers.data ?? []}
                 onArchive={(chat) => archiveStandaloneChat.mutate(chat)}
                 onFork={(chat) => forkStandaloneChat.mutate(chat)}
                 onNewChat={() => newStandaloneChat.mutate()}
+                onOpenArchived={() => {
+                  setDesktopSidebarDrawerOpen(false);
+                  setShowArchivedStandaloneChats(true);
+                  setShowSettings(false);
+                  setShowServerAdmin(false);
+                }}
                 onOpenSettings={() => {
                   setDesktopSidebarDrawerOpen(false);
                   setSettingsSection("general");
                   setShowSettings(true);
+                  setShowArchivedStandaloneChats(false);
                   setShowServerAdmin(false);
                 }}
-                onPermanentlyDelete={(chat) =>
-                  permanentlyDeleteStandaloneChat.mutate(chat)
-                }
                 onRename={(chat, title) =>
                   renameStandaloneChat.mutate({ chatId: chat.id, title })
                 }
-                onRestore={(chat) => restoreStandaloneChat.mutate(chat)}
                 onSelect={selectStandaloneChat}
                 onSwitchIde={switchToIde}
               />
@@ -8951,6 +8973,12 @@ export function App() {
             onBack={closeCompactProject}
             title="Settings"
           />
+        ) : compactShell && showArchivedStandaloneChats ? (
+          <MobileProjectHeader
+            context="Recover or permanently delete conversations"
+            onBack={() => setShowArchivedStandaloneChats(false)}
+            title="Archived chats"
+          />
         ) : compactShell && showServerAdmin ? (
           <MobileProjectHeader
             context="Account access and server policy"
@@ -9061,38 +9089,41 @@ export function App() {
                     ? "GitHub repositories"
                     : showSettings
                       ? "Settings"
-                      : showServerAdmin
-                        ? "Server administration"
-                        : appMode === "chat"
-                          ? (selectedStandaloneChat?.title ?? "Chat")
-                          : showProjectSettings
-                            ? "Project settings"
-                            : projectOverviewSelected && selectedProject
-                              ? selectedProject.name
-                              : gitHistoryProject
-                                ? (selectedProjectView?.title ?? "Git")
-                                : selectedProjectView?.kind === "remote-desktop"
-                                  ? selectedProjectView.title
-                                  : selectedCodeTab
-                                    ? selectedCodeTab.title
-                                    : selectedBrowser
-                                      ? selectedBrowser.title
-                                      : selectedExplorer
-                                        ? sidebarFilePreviewVisible &&
-                                          sidebarFilePreview
-                                          ? sidebarFileName(
-                                              sidebarFilePreview.path,
-                                            )
-                                          : selectedExplorer.title
-                                        : selectedTerminal
-                                          ? selectedTerminal.linkedChatId
-                                            ? (linkedConsoleChat?.title ??
-                                              "Agent")
-                                            : selectedTerminal.title
-                                          : selectedChat
-                                            ? selectedChat.title
-                                            : (selectedProject?.github
-                                                ?.nameWithOwner ?? "Cantrip")}
+                      : showArchivedStandaloneChats
+                        ? "Archived chats"
+                        : showServerAdmin
+                          ? "Server administration"
+                          : appMode === "chat"
+                            ? (selectedStandaloneChat?.title ?? "Chat")
+                            : showProjectSettings
+                              ? "Project settings"
+                              : projectOverviewSelected && selectedProject
+                                ? selectedProject.name
+                                : gitHistoryProject
+                                  ? (selectedProjectView?.title ?? "Git")
+                                  : selectedProjectView?.kind ===
+                                      "remote-desktop"
+                                    ? selectedProjectView.title
+                                    : selectedCodeTab
+                                      ? selectedCodeTab.title
+                                      : selectedBrowser
+                                        ? selectedBrowser.title
+                                        : selectedExplorer
+                                          ? sidebarFilePreviewVisible &&
+                                            sidebarFilePreview
+                                            ? sidebarFileName(
+                                                sidebarFilePreview.path,
+                                              )
+                                            : selectedExplorer.title
+                                          : selectedTerminal
+                                            ? selectedTerminal.linkedChatId
+                                              ? (linkedConsoleChat?.title ??
+                                                "Agent")
+                                              : selectedTerminal.title
+                                            : selectedChat
+                                              ? selectedChat.title
+                                              : (selectedProject?.github
+                                                  ?.nameWithOwner ?? "Cantrip")}
                 </span>
                 {appMode === "ide" &&
                 !showImporter &&
@@ -9186,6 +9217,8 @@ export function App() {
                   "Add a worker-owned source"
                 ) : showSettings ? (
                   "Account preferences"
+                ) : showArchivedStandaloneChats ? (
+                  "Recover or permanently delete conversations"
                 ) : showServerAdmin ? (
                   "Account access and server policy"
                 ) : appMode === "chat" ? (
@@ -9329,6 +9362,7 @@ export function App() {
         (!compactShell || !mobileTabGridOpen) &&
         !showImporter &&
         !showSettings &&
+        !showArchivedStandaloneChats &&
         !showServerAdmin &&
         !showProjectSettings &&
         !groupOwnedElsewhere &&
@@ -9531,6 +9565,22 @@ export function App() {
             onPolicyOpenHandled={() => setSettingsPolicyId(null)}
             onOpenTunnelOwner={openTunnelOwner}
           />
+        ) : showArchivedStandaloneChats ? (
+          <ArchivedStandaloneChatsPage
+            chats={archivedStandaloneChats.data ?? []}
+            deleting={permanentlyDeleteStandaloneChat.isPending}
+            error={
+              archivedStandaloneChats.error ??
+              restoreStandaloneChat.error ??
+              permanentlyDeleteStandaloneChat.error
+            }
+            loading={archivedStandaloneChats.isLoading}
+            restoring={restoreStandaloneChat.isPending}
+            onPermanentlyDelete={(chat) =>
+              permanentlyDeleteStandaloneChat.mutate(chat)
+            }
+            onRestore={(chat) => restoreStandaloneChat.mutate(chat)}
+          />
         ) : showServerAdmin ? (
           <ServerAdminPage />
         ) : appMode === "chat" ? (
@@ -9543,7 +9593,7 @@ export function App() {
               inspectOpen={false}
               inspectOverlay={narrowViewport}
               settings={settings.data}
-              syncEnabled
+              syncEnabled={false}
               onCreateChat={() => newStandaloneChat.mutate()}
               onDelete={() =>
                 archiveStandaloneChat.mutate(selectedStandaloneChat)
