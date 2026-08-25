@@ -29,12 +29,16 @@ export function retainTaskSurfaceTabs(
 
 export function PersistentTaskViews({
   activeTask,
+  deleting,
   onClose,
+  onDelete,
   onRename,
   settings,
 }: {
   activeTask: ActiveTaskView | null;
+  deleting?: boolean;
   onClose?(): void;
+  onDelete?(): void;
   onRename(chatId: string, title: string): void;
   settings: SettingsBundle | undefined;
 }) {
@@ -63,7 +67,9 @@ export function PersistentTaskViews({
       >
         <TaskSurface
           chat={retained.chat}
+          deleting={active ? deleting : false}
           onClose={active ? onClose : undefined}
+          onDelete={active ? onDelete : undefined}
           settings={settings}
           worker={retained.worker}
           onRename={(title) => onRename(retained.chat.id, title)}

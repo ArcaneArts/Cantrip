@@ -25,6 +25,7 @@ import {
 } from "../tasks/state.js";
 import * as schema from "./schema.js";
 import { toTaskDispatchCycleSummary } from "./task-dispatch.js";
+import { detachProjectTab, projectTabKey } from "./tab-layouts.js";
 
 type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type TaskRow = typeof schema.tasks.$inferSelect;
@@ -297,6 +298,68 @@ export class TaskRepository {
       )
       .limit(1);
     return toTaskOpaqueSummary(rows[0].task, dispatchRows[0] ?? null);
+  }
+
+  async deleteDraft(
+    ownerId: string,
+    chatId: string,
+  ): Promise<{ projectId: string } | null> {
+    return this.database.transaction(async (transaction) => {
+      const ownerRows = await transaction
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(eq(schema.users.id, ownerId))
+        .for("update")
+        .limit(1);
+      if (!ownerRows[0]) return null;
+
+      const rows = await transaction
+        .select({ projectId: schema.projects.id, task: schema.tasks })
+        .from(schema.tasks)
+        .innerJoin(schema.chats, eq(schema.chats.id, schema.tasks.chatId))
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.chats.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(
+          and(eq(schema.tasks.chatId, chatId), isNull(schema.chats.archivedAt)),
+        )
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return null;
+
+      const dispatchRows = await transaction
+        .select({ id: schema.taskDispatchCycles.id })
+        .from(schema.taskDispatchCycles)
+        .where(eq(schema.taskDispatchCycles.chatId, chatId))
+        .limit(1);
+      if (row.task.state !== "draft" || dispatchRows[0]) {
+        throw new TaskConflictError(
+          "Only an unqueued Task draft can be deleted.",
+          "operation-active",
+        );
+      }
+
+      await detachProjectTab(
+        transaction,
+        row.projectId,
+        projectTabKey("chat", chatId),
+      );
+      await transaction
+        .delete(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            eq(schema.chats.ownerId, ownerId),
+            eq(schema.chats.experience, "task"),
+          ),
+        );
+      return { projectId: row.projectId };
+    });
   }
 
   async listRounds(ownerId: string, chatId: string): Promise<any[]> {

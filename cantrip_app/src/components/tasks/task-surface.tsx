@@ -18,6 +18,7 @@ import {
   Paperclip,
   Play,
   RefreshCw,
+  Trash2,
   WifiOff,
   X,
 } from "lucide-react";
@@ -158,13 +159,17 @@ export function taskAutosaveLabel(input: {
 
 export function TaskSurface({
   chat,
+  deleting = false,
   onClose,
+  onDelete,
   onRename,
   settings,
   worker,
 }: {
   chat: ChatSummary;
+  deleting?: boolean;
   onClose?(): void;
+  onDelete?(): void;
   onRename(title: string): void;
   settings: SettingsBundle | undefined;
   worker?: WorkerSummary;
@@ -778,6 +783,25 @@ export function TaskSurface({
         >
           {autosaveLabel}
         </span>
+        {task.data.state === "draft" &&
+        task.data.dispatch === null &&
+        onDelete ? (
+          <Button
+            aria-label="Delete draft Task"
+            className="size-7"
+            disabled={deleting}
+            size="icon"
+            title="Delete draft Task"
+            variant="ghost"
+            onClick={onDelete}
+          >
+            {deleting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Trash2 className="size-4" />
+            )}
+          </Button>
+        ) : null}
       </div>
 
       {mode === "failed" && task.data.lastError ? (

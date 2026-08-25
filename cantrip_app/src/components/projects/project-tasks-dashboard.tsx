@@ -18,8 +18,9 @@ import {
   Play,
   Plus,
   Settings2,
+  Trash2,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { summarizePlanProgress } from "@/components/chat/chat-plan-progress";
 import {
@@ -28,6 +29,7 @@ import {
 } from "@/components/chat/trajectory-model";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PersistentTaskViews } from "@/components/tasks/persistent-task-views";
 import {
   EmptyState,
@@ -39,11 +41,13 @@ import {
 } from "@/components/ui/empty-state";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import {
+  deleteTaskDraft,
   getProjectTaskPauseState,
   getProjectTaskWorkload,
   getTaskWorkers,
   setProjectTaskPauseState,
 } from "@/lib/api";
+import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 
 export type ProjectTaskWorkloadItem = Awaited<
@@ -286,12 +290,14 @@ function TaskTrajectoryBar({ item }: { item: ProjectTaskWorkloadItem }) {
 function TaskWorkloadRow({
   chat,
   item,
+  onDeleteDraft,
   onOpen,
   paused,
   taskWorkers,
 }: {
   chat: ChatSummary | undefined;
   item: ProjectTaskWorkloadItem;
+  onDeleteDraft?(): void;
   onOpen(): void;
   paused: boolean;
   taskWorkers: ReadonlyMap<string, TaskWorkerSummary>;
@@ -390,6 +396,21 @@ function TaskWorkloadRow({
         </div>
       </div>
       <div className="flex items-center gap-1 self-center">
+        {projectTaskIsUnqueuedDraft(task) && onDeleteDraft ? (
+          <Button
+            aria-label={`Delete draft ${chat?.title ?? "Task"}`}
+            className="size-8 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+            size="icon"
+            title="Delete draft Task"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDeleteDraft();
+            }}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        ) : null}
         <Button
           aria-label={`${actionLabel} ${chat?.title ?? "Task"}`}
           className="sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
@@ -412,6 +433,7 @@ function WorkloadList({
   chats,
   items,
   label,
+  onDeleteTask,
   onOpenTask,
   paused,
   taskWorkers,
@@ -419,6 +441,7 @@ function WorkloadList({
   chats: ReadonlyMap<string, ChatSummary>;
   items: ProjectTaskWorkloadItem[];
   label: string;
+  onDeleteTask(chatId: string, title: string): void;
   onOpenTask(chatId: string): void;
   paused: boolean;
   taskWorkers: ReadonlyMap<string, TaskWorkerSummary>;
@@ -442,6 +465,12 @@ function WorkloadList({
               item={item}
               paused={paused}
               taskWorkers={taskWorkers}
+              onDeleteDraft={() =>
+                onDeleteTask(
+                  item.task.chatId,
+                  chats.get(item.task.chatId)?.title ?? "Task",
+                )
+              }
               onOpen={() => onOpenTask(item.task.chatId)}
             />
           ))
@@ -494,6 +523,10 @@ export function ProjectTasksDashboard({
   workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
+  const [deleteTarget, setDeleteTarget] = useState<{
+    chatId: string;
+    title: string;
+  } | null>(null);
   const live = useAppLiveStatus() === "live";
   const dashboardQueriesEnabled = projectTaskDashboardQueriesEnabled(
     active,
@@ -533,6 +566,20 @@ export function ProjectTasksDashboard({
       });
     },
   });
+  const deleteDraftMutation = useMutation({
+    mutationFn: deleteTaskDraft,
+    onSuccess: async (_result, chatId) => {
+      queryClient.removeQueries({ exact: true, queryKey: ["task", chatId] });
+      if (activeTaskChatId === chatId) onCloseTask();
+      setDeleteTarget(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["chats", projectId] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-task-workload", projectId],
+        }),
+      ]);
+    },
+  });
   const chatMap = useMemo(
     () => new Map(chats.map((chat) => [chat.id, chat])),
     [chats],
@@ -557,16 +604,52 @@ export function ProjectTasksDashboard({
       ),
     [chatMap, pauseState.data?.paused, workload.data?.items],
   );
+  const requestDeleteDraft = (chatId: string, title: string) => {
+    deleteDraftMutation.reset();
+    setDeleteTarget({ chatId, title });
+  };
+  const deleteDraftDialog = (
+    <ConfirmDialog
+      confirmDisabled={!deleteTarget}
+      confirmLabel={
+        <>
+          <Trash2 className="size-4" /> Delete draft
+        </>
+      }
+      confirmPendingLabel="Deleting…"
+      description={`${deleteTarget?.title ?? "This Task"} and its draft attachments will be permanently deleted. This cannot be undone.`}
+      error={
+        deleteDraftMutation.isError
+          ? errorMessage(deleteDraftMutation.error)
+          : undefined
+      }
+      onConfirm={() =>
+        deleteTarget && deleteDraftMutation.mutate(deleteTarget.chatId)
+      }
+      open={Boolean(deleteTarget)}
+      onOpenChange={(open) => {
+        if (!open) {
+          setDeleteTarget(null);
+          deleteDraftMutation.reset();
+        }
+      }}
+      pending={deleteDraftMutation.isPending}
+      title="Delete draft Task?"
+    />
+  );
 
   if (activeTask) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         <PersistentTaskViews
           activeTask={{ chat: activeTask, worker: activeTaskWorker }}
+          deleting={deleteDraftMutation.isPending}
           settings={settings}
           onClose={onCloseTask}
+          onDelete={() => requestDeleteDraft(activeTask.id, activeTask.title)}
           onRename={onRenameTask}
         />
+        {deleteDraftDialog}
       </div>
     );
   }
@@ -680,6 +763,7 @@ export function ProjectTasksDashboard({
             chats={chatMap}
             items={sorted.active}
             label="Active"
+            onDeleteTask={requestDeleteDraft}
             paused={pauseState.data?.paused ?? false}
             taskWorkers={workerMap}
             onOpenTask={onOpenTask}
@@ -688,12 +772,14 @@ export function ProjectTasksDashboard({
             chats={chatMap}
             items={sorted.completed}
             label="Completed"
+            onDeleteTask={requestDeleteDraft}
             paused={false}
             taskWorkers={workerMap}
             onOpenTask={onOpenTask}
           />
         </div>
       </div>
+      {deleteDraftDialog}
     </div>
   );
 }
