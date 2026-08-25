@@ -23,7 +23,7 @@ work surrounding the live paths:
   backoff;
 - bounded buffers use full sorting, rebuilding, or Array.shift eviction in their hot paths.
 
-P0-05, P0-06, and P0-12 have since been fixed and are retained below as completed
+P0-05, P0-06, P0-09, and P0-12 have since been fixed and are retained below as completed
 historical context. The first implementation wave should target the remaining P0 items.
 They are source-evident, high-upside, and can be validated without changing product
 semantics. P1 items should follow with focused benchmarks. P2 items require
@@ -39,7 +39,7 @@ production-shaped measurement before design work.
 | 6    | P0-06 [fixed] collapse worker-management 1+2N queries        | fixed               | —          | reported fixed after the audit; retained for traceability                 |
 | 7    | P0-07 coalesce worktree observation across server and worker | high                | low-medium | removes per-target DB calls, Git probes, duplicate watchers, and overlap  |
 | 8    | P0-08 collapse redundant Git status pipelines                | high                | low-medium | removes several child processes from common status/operation refreshes    |
-| 9    | P0-09 make log ingestion incremental and export lazy         | high                | low        | removes O(N log N) work per live log batch                                |
+| 9    | P0-09 [resolved] incremental log ingestion and lazy export   | resolved            | —          | equivalent 10k-buffer benchmarks improved ordered and mixed batches       |
 | 10   | P0-10 make live chat overlay merging incremental             | high                | medium     | avoids O(N log N) history rebuilds on streamed message updates            |
 | 11   | P0-11 parallelize bounded workspace snapshot metadata reads  | high                | low        | removes one filesystem round trip per changed path from turn boundaries   |
 | 12   | P0-12 [resolved] skip proven no-op CodeGraph syncs           | resolved            | —          | clean reconciliation now performs status only                             |
@@ -372,36 +372,55 @@ or expose an index-only conflict helper.
 Validation: golden-compare results and invocation counts for attached with/without upstream,
 detached, unborn, dirty, renamed, many-ref, merge, rebase, cherry-pick, and revert cases.
 
-### P0-09 — opportunity — Make log ingestion incremental and export formatting lazy
+### P0-09 — resolved — Make log ingestion incremental and export formatting lazy
 
+- Status: resolved 2026-08-24
 - Category: ALGORITHM_COMPLEXITY
 - Expected gain: high
-- Risk: low
-- Complexity: low-medium
+- Original risk: low
+- Original complexity: low-medium
 - Confidence: high
 
-Evidence:
+Original evidence:
 
-- cantrip_app/src/components/settings/log-viewer-model.ts:18-19 allows 10,000 records or
-  5 MiB.
-- Lines 155-178 rebuild a Map, spread and fully sort values, reduce the entire collection,
-  and repeatedly shift on every append.
-- Lines 141-152 rescan and reformat records for filtering/search.
-- cantrip_app/src/components/settings/log-settings.tsx:623-661 runs the rebuild for every
-  WebSocket message.
-- Lines 868-871 eagerly rebuild the complete newline-delimited export although it is used
-  only at 999-1027. Rendering itself is already virtualized at 303-435.
+- cantrip_app/src/components/settings/log-viewer-model.ts previously rebuilt and fully
+  sorted the complete bounded collection, recomputed all bytes, and repeatedly shifted the
+  head on every append.
+- cantrip_app/src/components/settings/log-settings.tsx previously memoized the complete
+  newline-delimited export string on every visible-record update.
 
-Hypothesis: high-volume logs pay O(N log N) plus several O(N) passes per batch and retain a
-large derived string even when the user is only viewing.
+Original hypothesis: high-volume logs paid O(N log N) plus several O(N) passes per batch and
+retained a large derived string even when the user was only viewing.
 
-Suggested change: implement an ordered append fast path and linear merge for backfill,
-track bytes incrementally, trim by head index/slice rather than shift, return the existing
-collection for an empty filter, and build export text only on copy/export.
+Resolution:
 
-Validation: benchmark a full 10k buffer receiving 20-50 record ordered, duplicate, and
-out-of-order batches. Preserve ordering, deduplication, byte/record limits, filters, and
-export bytes.
+- cantrip_app/src/components/settings/log-viewer-model.ts:192-251 now associates immutable
+  record snapshots with incremental byte/cursor metadata and trims through one head index
+  and slice.
+- cantrip_app/src/components/settings/log-viewer-model.ts:254-383 takes a direct ordered
+  append path for normal stream batches and a linear merge path for backfill or replacement,
+  while retaining a defensive normalization fallback for noncanonical input.
+- cantrip_app/src/components/settings/log-viewer-model.ts:162-175 returns the original
+  collection for an inactive filter; lines 385-405 preserve incremental metadata when
+  visible records are cleared.
+- cantrip_app/src/components/settings/log-settings.tsx:870-887 uses the metadata-preserving
+  removal path, while lines 990-1026 build visible text only inside copy/export actions.
+- cantrip_app/src/components/settings/log-viewer-model.test.ts:232-355 covers cross-transport
+  deduplication, last-write replacement, ordered and out-of-order merging, record and byte
+  limits, inactive-filter identity, export equivalence, and clear-then-append behavior.
+
+A/B benchmark proof on a full 10,000-record buffer, with 5 warmups and 20 measured
+process-isolated runs per variant:
+
+- 150 ordered 50-record batches produced stable equivalent output. Median command time fell
+  from 425.096 ms to 301.382 ms: 1.410x, or 29.10% faster.
+- 100 mixed 50-record batches containing ordered records, an existing-key replacement, and
+  an out-of-order backfill produced stable equivalent output. Median command time fell from
+  381.534 ms to 337.270 ms: 1.131x, or 11.60% faster.
+
+Regression guardrail: retain focused model/UI tests and the baseline-equivalence helper.
+Require exact ordering, transport/cursor deduplication, last-write replacement, byte and
+record limits, filtered/exported text, and clear behavior to remain unchanged.
 
 ### P0-10 — opportunity — Make live chat overlay merging incremental
 
@@ -1058,7 +1077,7 @@ Before behavior changes, add or reuse focused counters and deterministic fixture
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement the safe slices of P0-02, P0-08, P0-09, P0-11, P0-13, P1-01, P1-06, P1-07,
+Implement the safe slices of P0-02, P0-08, P0-11, P0-13, P1-01, P1-06, P1-07,
 P1-15, P1-16, and P1-18. These mostly remove duplicate work or replace an equivalent data
 structure.
 

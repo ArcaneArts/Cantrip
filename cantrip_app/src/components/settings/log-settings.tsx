@@ -75,6 +75,8 @@ import {
   canReadLocalServerLogs,
   filterServiceLogRecords,
   formatServiceLogRecord,
+  formatServiceLogRecords,
+  removeServiceLogRecords,
   restoredLogScrollTop,
   scheduleLogViewportScroll,
   SERVICE_LOG_LEVELS,
@@ -107,7 +109,7 @@ type LogSourceState = {
   cursors: Record<string, number>;
   error: string | null;
   history: Record<string, { beforeCursor: number; hasMore: boolean }>;
-  records: ViewerLogRecord[];
+  records: readonly ViewerLogRecord[];
   status: "connecting" | "live" | "local" | "offline" | "reconnecting";
   truncated: boolean;
 };
@@ -865,16 +867,12 @@ export function LogSettings() {
     }
   }, [selectedSource]);
 
-  const visibleText = useMemo(
-    () => filteredRecords.map(formatServiceLogRecord).join("\n"),
-    [filteredRecords],
-  );
   const clearVisible = useCallback(() => {
     const removed = new Set(filteredRecords.map(({ viewerKey }) => viewerKey));
     const state = states.current.get(selectedSource.id) ?? emptySourceState();
     states.current.set(selectedSource.id, {
       ...state,
-      records: state.records.filter((record) => !removed.has(record.viewerKey)),
+      records: removeServiceLogRecords(state.records, removed),
     });
     if (paused) {
       setPausedAt((current) => ({
@@ -994,11 +992,11 @@ export function LogSettings() {
           size="icon"
           variant="ghost"
           className="size-9"
-          disabled={!visibleText}
+          disabled={!filteredRecords.length}
           title="Copy visible output"
           onClick={() => {
             void navigator.clipboard
-              .writeText(visibleText)
+              .writeText(formatServiceLogRecords(filteredRecords))
               .then(() => {
                 setCopied(true);
                 window.setTimeout(() => setCopied(false), 1_500);
@@ -1018,12 +1016,12 @@ export function LogSettings() {
           size="icon"
           variant="ghost"
           className="size-9"
-          disabled={!visibleText}
+          disabled={!filteredRecords.length}
           title="Export visible output"
           onClick={() =>
             downloadText(
               `cantrip-${selectedSource.id.replaceAll(":", "-")}-${new Date().toISOString().replaceAll(":", "-")}.log`,
-              visibleText,
+              formatServiceLogRecords(filteredRecords),
             )
           }
         >
