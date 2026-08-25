@@ -3893,6 +3893,9 @@ export function App() {
   const [projectTaskChatIds, setProjectTaskChatIds] = useState<
     ReadonlyMap<string, string>
   >(() => new Map());
+  const [taskChatViewIds, setTaskChatViewIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const setAgentInspectOpen = useCallback((chatId: string, open: boolean) => {
     setAgentInspectOpenChats((current) =>
       updateAgentInspectOpenChats(current, chatId, open),
@@ -3957,6 +3960,17 @@ export function App() {
       (!isPopout && workspaceSelection.destination === "overview"));
   const activeProjectOverviewSection =
     projectOverviewPopoutTarget?.section ?? projectOverviewSection;
+  const activeProjectTaskChatId =
+    projectOverviewSelected &&
+    activeProjectOverviewSection === "tasks" &&
+    selectedProjectId
+      ? (projectTaskChatIds.get(selectedProjectId) ?? null)
+      : null;
+  useAppLiveScope(
+    activeProjectTaskChatId
+      ? { kind: "chat", chatId: activeProjectTaskChatId }
+      : null,
+  );
   const [activeProjectWorkspaceId, setActiveProjectWorkspaceId] = useState<
     string | null
   >(() => window.localStorage.getItem(activeProjectWorkspaceStorageKey));
@@ -5680,6 +5694,12 @@ export function App() {
     mutationFn: deleteChat,
     onSuccess: async (_value, deletedId) => {
       setChatConsoleOpen(deletedId, false);
+      setTaskChatViewIds((current) => {
+        if (!current.has(deletedId)) return current;
+        const next = new Set(current);
+        next.delete(deletedId);
+        return next;
+      });
       setProjectTaskChatIds((current) => {
         const next = new Map(
           [...current].filter(([, chatId]) => chatId !== deletedId),
@@ -6428,6 +6448,23 @@ export function App() {
     !sidebarFilePreviewVisible && selectedSurface?.kind === "chat"
       ? selectedSurface.entity
       : undefined;
+  const activeProjectTaskChat = activeProjectTaskChatId
+    ? chats.data?.find(({ id }) => id === activeProjectTaskChatId)
+    : undefined;
+  const activeProjectTaskView =
+    activeProjectTaskChat && taskChatViewIds.has(activeProjectTaskChat.id)
+      ? ("chat" as const)
+      : ("task" as const);
+  const setActiveProjectTaskView = (view: "task" | "chat") => {
+    if (!activeProjectTaskChat) return;
+    setTaskChatViewIds((current) => {
+      const next = new Set(current);
+      if (view === "chat") next.add(activeProjectTaskChat.id);
+      else next.delete(activeProjectTaskChat.id);
+      return next;
+    });
+  };
+  const activeChat = activeProjectTaskChat ?? selectedChat;
   const completionAcknowledgementAttemptRef = useRef<string | null>(null);
   useEffect(() => {
     completionAcknowledgementAttemptRef.current = null;
@@ -6506,13 +6543,13 @@ export function App() {
       ? selectedSurface.entity
       : undefined;
   const linkedConsoleTerminal =
-    selectedChat && chatConsoleOpenChats.has(selectedChat.id)
+    activeChat && chatConsoleOpenChats.has(activeChat.id)
       ? terminals.data?.find(
-          (terminal) => terminal.linkedChatId === selectedChat.id,
+          (terminal) => terminal.linkedChatId === activeChat.id,
         )
       : undefined;
   const selectedTerminal = selectedStandaloneTerminal ?? linkedConsoleTerminal;
-  const linkedConsoleChat = linkedConsoleTerminal ? selectedChat : undefined;
+  const linkedConsoleChat = linkedConsoleTerminal ? activeChat : undefined;
   const selectedRunRuntime: RunConfigurationRuntime | null = selectedTerminal
     ? runtimeForRunTerminal(
         selectedTerminal,
@@ -6606,7 +6643,6 @@ export function App() {
       setPopoutError(errorText(error)),
     );
   };
-  const activeChat = selectedChat;
   const chatRelocations = useQuery({
     enabled: Boolean(
       activeChat &&
@@ -8434,7 +8470,12 @@ export function App() {
             open: popOutActiveView,
           }
         : null,
-    task: null,
+    task: activeProjectTaskChat
+      ? {
+          change: setActiveProjectTaskView,
+          view: activeProjectTaskView,
+        }
+      : null,
     chat:
       appMode === "ide" &&
       activeChat &&
@@ -9053,7 +9094,17 @@ export function App() {
           />
         ) : compactShell && projectOverviewSelected && selectedProject ? (
           <MobileProjectHeader
-            actions={renderProjectRunConfigurationControl(true)}
+            actions={
+              <>
+                {activeProjectTaskChat ? (
+                  <ContentHeaderActions
+                    compact
+                    task={contentHeaderActions.task}
+                  />
+                ) : null}
+                {renderProjectRunConfigurationControl(true)}
+              </>
+            }
             context={
               selectedProject.github?.nameWithOwner ??
               selectedProject.source?.displayPath
@@ -10313,11 +10364,17 @@ export function App() {
               <div
                 className={cn(
                   "min-h-0 flex-1 flex-col",
-                  activeProjectOverviewSection === "tasks" ? "flex" : "hidden",
+                  activeProjectOverviewSection === "tasks" &&
+                    activeProjectTaskView === "task"
+                    ? "flex"
+                    : "hidden",
                 )}
               >
                 <ProjectTasksDashboard
-                  active={activeProjectOverviewSection === "tasks"}
+                  active={
+                    activeProjectOverviewSection === "tasks" &&
+                    activeProjectTaskView === "task"
+                  }
                   activeTaskChatId={
                     projectTaskChatIds.get(selectedProject.id) ?? null
                   }
@@ -10340,6 +10397,63 @@ export function App() {
                   }
                 />
               </div>
+              {activeProjectOverviewSection === "tasks" &&
+              activeProjectTaskView === "chat" &&
+              activeProjectTaskChat ? (
+                <ChatTranscript
+                  key={`task-chat-${activeProjectTaskChat.id}`}
+                  capabilities={IDE_CHAT_SURFACE_CAPABILITIES}
+                  chat={activeProjectTaskChat}
+                  githubEnabled={selectedProject?.capabilities.github ?? false}
+                  inspectOnly
+                  inspectOpen={agentInspectOpenChats.has(
+                    activeProjectTaskChat.id,
+                  )}
+                  inspectOverlay={narrowViewport}
+                  settings={settings.data}
+                  syncEnabled
+                  onCreateChat={() =>
+                    newChat.mutate({
+                      projectId: activeProjectTaskChat.projectId,
+                    })
+                  }
+                  onDelete={() => {
+                    setAgentInspectOpen(activeProjectTaskChat.id, false);
+                    deleteChatMutation.mutate(activeProjectTaskChat.id);
+                  }}
+                  onForked={(forked) => {
+                    if (forked.contextKind !== "standalone") {
+                      openCreatedTab(forked.projectId, "chat", forked.id);
+                    }
+                  }}
+                  onInspectOpenChange={(open) =>
+                    setAgentInspectOpen(activeProjectTaskChat.id, open)
+                  }
+                  onOpenFile={(reference) =>
+                    openChatFileLink(activeProjectTaskChat, reference)
+                  }
+                  onOpenWorkflow={(workflowId) =>
+                    openProjectSettings(
+                      activeProjectTaskChat.projectId,
+                      workflowId,
+                    )
+                  }
+                  onOpenRelocation={() => setChatRelocationOpen(true)}
+                  onToast={showAppToast}
+                  onRename={(title) =>
+                    renameChatMutation.mutate({
+                      chatId: activeProjectTaskChat.id,
+                      title,
+                    })
+                  }
+                  relocationJob={
+                    selectedProject?.capabilities.relocation
+                      ? currentRelocation
+                      : null
+                  }
+                  refocusOnWindowActivation={desktopRuntime}
+                />
+              ) : null}
               {activeProjectOverviewSection !== "tasks" ? (
                 <ProjectOverview
                   compact={compactShell}
