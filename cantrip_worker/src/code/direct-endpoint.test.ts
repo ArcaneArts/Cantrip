@@ -260,6 +260,186 @@ describe("CodeDirectEndpointManager presentation control", () => {
   });
 });
 
+describe("CodeDirectEndpointManager theme control", () => {
+  it("updates the bound session theme through an authenticated follow-cantrip POST", async () => {
+    const setTheme = vi.fn().mockResolvedValue({ status: "running" });
+    const manager = new CodeDirectEndpointManager({
+      setTheme,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "theme-tunnel",
+        "theme-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/theme`,
+        {
+          body: JSON.stringify({
+            themeMode: "follow-cantrip",
+            appearance: "pro-high-contrast-dark",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      await expect(response.json()).resolves.toEqual({
+        themeMode: "follow-cantrip",
+        appearance: "pro-high-contrast-dark",
+      });
+      expect(setTheme).toHaveBeenCalledWith(
+        "theme-session",
+        "follow-cantrip",
+        "pro-high-contrast-dark",
+      );
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("serializes accepted theme updates so a delayed older request cannot win", async () => {
+    let releaseFirst: (() => void) | undefined;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const setTheme = vi.fn(
+      async (_sessionId: string, _themeMode: string, appearance: string) => {
+        if (appearance === "dark") await firstGate;
+        return { status: "running" };
+      },
+    );
+    const manager = new CodeDirectEndpointManager({
+      setTheme,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "theme-serial-tunnel",
+        "theme-serial-session",
+      );
+      const url = `http://${endpoint.host}:${endpoint.port}/code/_cantrip/theme`;
+      const first = fetch(url, {
+        body: JSON.stringify({
+          themeMode: "follow-cantrip",
+          appearance: "dark",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      await vi.waitFor(() => expect(setTheme).toHaveBeenCalledTimes(1));
+      const second = fetch(url, {
+        body: JSON.stringify({
+          themeMode: "follow-cantrip",
+          appearance: "light",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(setTheme).toHaveBeenCalledTimes(1);
+
+      releaseFirst?.();
+      const responses = await Promise.all([first, second]);
+
+      expect(responses.map((response) => response.status)).toEqual([200, 200]);
+      expect(setTheme.mock.calls.map((call) => call.slice(1))).toEqual([
+        ["follow-cantrip", "dark"],
+        ["follow-cantrip", "light"],
+      ]);
+    } finally {
+      manager.close();
+    }
+  });
+
+  it("generation-fences a queued theme update when its session stops", async () => {
+    let releaseFirst: (() => void) | undefined;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const setTheme = vi.fn(async () => {
+      await firstGate;
+      return { status: "running" };
+    });
+    const manager = new CodeDirectEndpointManager({
+      setTheme,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "theme-generation-tunnel",
+        "theme-generation-session",
+      );
+      const url = `http://${endpoint.host}:${endpoint.port}/code/_cantrip/theme`;
+      const first = fetch(url, {
+        body: JSON.stringify({
+          themeMode: "follow-cantrip",
+          appearance: "dark",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }).catch(() => undefined);
+      await vi.waitFor(() => expect(setTheme).toHaveBeenCalledOnce());
+      const queued = fetch(url, {
+        body: JSON.stringify({
+          themeMode: "follow-cantrip",
+          appearance: "light",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }).catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      expect(setTheme).toHaveBeenCalledOnce();
+
+      const stopped = manager.closeSession("theme-generation-session");
+      releaseFirst?.();
+      await Promise.all([first, queued, stopped]);
+
+      expect(setTheme).toHaveBeenCalledOnce();
+    } finally {
+      manager.close();
+    }
+  });
+
+  it.each([
+    {
+      name: "an independent theme mode",
+      body: { themeMode: "independent", appearance: "dark" },
+    },
+    {
+      name: "an unknown appearance",
+      body: { themeMode: "follow-cantrip", appearance: "sepia" },
+    },
+  ])("rejects $name without calling the supervisor", async ({ body }) => {
+    const setTheme = vi.fn();
+    const manager = new CodeDirectEndpointManager({
+      setTheme,
+    } as unknown as CodeSupervisor);
+
+    try {
+      const endpoint = await manager.prepareProtected(
+        "theme-invalid-tunnel",
+        "theme-invalid-session",
+      );
+      const response = await fetch(
+        `http://${endpoint.host}:${endpoint.port}/code/_cantrip/theme`,
+        {
+          body: JSON.stringify(body),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(setTheme).not.toHaveBeenCalled();
+    } finally {
+      manager.close();
+    }
+  });
+});
+
 describe("CodeDirectEndpointManager graphical settings control", () => {
   it("opens graphical settings for the bound session from an empty POST body", async () => {
     const openSettings = vi.fn().mockResolvedValue({ opened: true });

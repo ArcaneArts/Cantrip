@@ -14,7 +14,6 @@ function binding(
   overrides: Partial<Parameters<typeof explorerCodeEditorBindingKey>[0]> = {},
 ) {
   return explorerCodeEditorBindingKey({
-    appearance: "dark",
     explorerId: "explorer-one",
     reloadVersion: 0,
     workerId: "worker-one",

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/components/explorer/explorer-code-editor", async () => {
   const { createElement: createMockElement } = await import("react");
   return {
-    ExplorerCodeEditor: ({ path }: { path: string }) =>
+    ExplorerCodeEditor: ({ path }: { path: string | null }) =>
       createMockElement("div", {
         "data-editor-path": path,
         "data-mock-code-editor": true,
@@ -23,7 +23,9 @@ import { INLINE_CODE_WORKBENCH_RETENTION_MS } from "./use-retained-inline-workbe
 const baseProps = {
   appearance: "dark" as const,
   explorerId: "explorer-1",
+  prewarm: false,
   retained: true,
+  workerOnline: true,
   workerId: "worker-1",
   worktreeId: "worktree-1",
 };
@@ -98,6 +100,40 @@ describe("RetainedExplorerCodeEditor", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("mounts one hidden pathless workbench and reuses it on first click", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(RetainedExplorerCodeEditor, {
+          ...baseProps,
+          activePath: null,
+          prewarm: true,
+        }),
+      );
+    });
+    const mountedEditor = renderer.root.findByProps({
+      "data-mock-code-editor": true,
+    });
+    expect(mountedEditor.props["data-editor-path"]).toBeNull();
+
+    await act(async () => {
+      renderer.update(
+        createElement(RetainedExplorerCodeEditor, {
+          ...baseProps,
+          activePath: "src/first.ts",
+          prewarm: true,
+        }),
+      );
+    });
+
+    expect(renderer.root.findByProps({ "data-mock-code-editor": true })).toBe(
+      mountedEditor,
+    );
+    expect(mountedEditor.props["data-editor-path"]).toBe("src/first.ts");
+
+    await act(async () => renderer.unmount());
+  });
+
   it("unmounts the workbench when its retention lease expires", async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
@@ -126,7 +162,7 @@ describe("RetainedExplorerCodeEditor", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("bounds a hidden workbench while preserving the 2, 5, and 10 minute windows", async () => {
+  it("bounds a hidden workbench while preserving the 2, 5, 10, and 16 minute windows", async () => {
     vi.useFakeTimers();
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => {
@@ -147,7 +183,7 @@ describe("RetainedExplorerCodeEditor", () => {
     });
 
     let previousElapsedMinutes = 0;
-    for (const elapsedMinutes of [2, 5, 10]) {
+    for (const elapsedMinutes of [2, 5, 10, 16]) {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(
           (elapsedMinutes - previousElapsedMinutes) * 60 * 1_000,
@@ -161,7 +197,7 @@ describe("RetainedExplorerCodeEditor", () => {
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(
-        INLINE_CODE_WORKBENCH_RETENTION_MS - 10 * 60 * 1_000,
+        INLINE_CODE_WORKBENCH_RETENTION_MS - 16 * 60 * 1_000,
       );
     });
     expect(

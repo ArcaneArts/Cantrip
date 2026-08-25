@@ -219,7 +219,6 @@ import type {
   ExplorerHeaderState,
   ExplorerLifecycleActions,
 } from "@/components/explorer/explorer-view";
-import { ExplorerView } from "@/components/explorer/explorer-view";
 import {
   confirmExplorerDiscard,
   prepareExplorerPopout as prepareExplorerPopoutLifecycle,
@@ -454,7 +453,6 @@ import {
 } from "@/lib/workspace-encryption";
 import { createGithubProject, getProjects } from "@/lib/project-encryption";
 import {
-  clearDesktopExplorerFilePrewarm,
   closeCurrentDesktopWindow,
   desktopPopoutTitlebarLeftInset,
   desktopWindowThemeOverride,
@@ -467,7 +465,6 @@ import {
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
   parseDesktopProjectOverviewTarget,
-  prewarmDesktopExplorerFile,
   shouldUseOverlayTitlebar,
   updateDesktopWindowTheme,
   updateMacosProMode,
@@ -498,13 +495,13 @@ import {
   runTerminalTargetLabel,
 } from "@/lib/run-terminal-model";
 import {
+  dedicatedSidebarExplorer,
   pinnedExplorerForPath,
   preferredSidebarExplorer,
   primaryWorktreeId,
   moveSidebarPath,
   sidebarFileName,
   sidebarFilePreviewIsVisible,
-  sidebarFilePreviewViewKey,
   sidebarPathAtOrBelow,
   surfaceWorktreeId,
   type SidebarFilePreviewState,
@@ -3891,7 +3888,6 @@ export function App() {
     },
     [],
   );
-
   const handleExplorerChanged = useCallback(
     (updated: ExplorerSummary) => {
       queryClient.setQueryData<ExplorerSummary[]>(
@@ -5718,12 +5714,24 @@ export function App() {
       ? sidebarFilePreview.explorerId
       : null,
   });
+  const sidebarInlineExplorer = dedicatedSidebarExplorer({
+    desiredWorktreeId: sidebarDesiredWorktreeId,
+    explorers: explorers.data ?? [],
+    layout: tabLayout.data,
+  });
   const sidebarFileWorkerId =
     sidebarExplorer?.activeWorkerId ?? selectedProjectWorkerId;
+  const onlineWorkerIds = useMemo(
+    () =>
+      new Set(
+        (workers.data ?? [])
+          .filter(({ online }) => online)
+          .map(({ workerId }) => workerId),
+      ),
+    [workers.data],
+  );
   const sidebarFileWorkerOnline = Boolean(
-    sidebarFileWorkerId &&
-    workers.data?.find(({ workerId }) => workerId === sidebarFileWorkerId)
-      ?.online,
+    sidebarFileWorkerId && onlineWorkerIds.has(sidebarFileWorkerId),
   );
   const sidebarExplorerCreationInput =
     selectedProject?.setupStatus === "ready" &&
@@ -5740,12 +5748,7 @@ export function App() {
     ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}`
     : null;
   const sidebarHasDesiredExplorer = Boolean(
-    sidebarExplorerCreationInput &&
-    (explorers.data ?? []).some(
-      (explorer) =>
-        !sidebarExplorerCreationInput.worktreeId ||
-        explorer.worktreeId === sidebarExplorerCreationInput.worktreeId,
-    ),
+    sidebarExplorerCreationInput && sidebarInlineExplorer,
   );
   useEffect(() => {
     if (
@@ -6043,28 +6046,6 @@ export function App() {
     : selectedSurface?.kind === "explorer"
       ? selectedSurface.entity
       : undefined;
-  const explorerToPrewarm = selectedExplorer ?? explorers.data?.[0];
-  useEffect(() => {
-    if (
-      !desktopRuntime ||
-      isPopout ||
-      sidebarFilePreviewVisible ||
-      !explorerToPrewarm
-    ) {
-      if (!isPopout) clearDesktopExplorerFilePrewarm();
-      return;
-    }
-    void prewarmDesktopExplorerFile({
-      appearance: codeAppearance,
-      explorer: explorerToPrewarm,
-    });
-  }, [
-    codeAppearance,
-    desktopRuntime,
-    explorerToPrewarm,
-    isPopout,
-    sidebarFilePreviewVisible,
-  ]);
   const selectedBrowser =
     !sidebarFilePreviewVisible && selectedSurface?.kind === "browser"
       ? selectedSurface.entity
@@ -7161,7 +7142,9 @@ export function App() {
       focusPinnedSidebarFile(pinned);
       return;
     }
-    const previewLifecycle = sidebarFilePreviewLifecycleRef.current;
+    const previewLifecycle = sidebarFilePreview
+      ? sidebarFilePreviewLifecycleRef.current
+      : (explorerLifecycleRef.current.get(explorer.id) ?? null);
     if (
       sidebarFilePreview?.path !== entry.path &&
       !confirmExplorerDiscard(previewLifecycle, () =>
@@ -8672,17 +8655,35 @@ export function App() {
         >
           <PersistentExplorerViews
             activeExplorer={
-              explorerSurfaceVisible && !sidebarFilePreviewVisible
-                ? (selectedExplorer ?? null)
-                : null
+              sidebarFilePreviewVisible
+                ? (sidebarPreviewExplorer ?? null)
+                : explorerSurfaceVisible
+                  ? (selectedExplorer ?? null)
+                  : null
+            }
+            transientFile={
+              sidebarFilePreview
+                ? {
+                    explorerId: sidebarFilePreview.explorerId,
+                    file: {
+                      close: closeSidebarFilePreview,
+                      path: sidebarFilePreview.path,
+                    },
+                  }
+                : undefined
             }
             appearance={codeAppearance}
             graphRequest={explorerGraphRequest}
             gitStatuses={worktreeStatuses}
             key={selectedProjectId ?? "no-project"}
             onChanged={handleExplorerChanged}
-            onHeaderChange={setExplorerHeader}
+            onHeaderChange={
+              sidebarFilePreviewVisible
+                ? setSidebarFilePreviewHeader
+                : setExplorerHeader
+            }
             onLifecycleChange={handleExplorerLifecycleChange}
+            onTransientLifecycleChange={handleSidebarFilePreviewLifecycleChange}
             onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
             onRevealFolder={
               folderRevealLabel && selectedProject?.source
@@ -8719,31 +8720,13 @@ export function App() {
                 },
               });
             }}
+            onlineWorkerIds={onlineWorkerIds}
+            prewarmExplorer={
+              !isPopout
+                ? (sidebarPreviewExplorer ?? sidebarInlineExplorer)
+                : null
+            }
           />
-        </Suspense>
-
-        <Suspense fallback={null}>
-          {sidebarFilePreview && sidebarPreviewExplorer ? (
-            <ExplorerView
-              active={sidebarFilePreviewVisible}
-              appearance={codeAppearance}
-              explorer={sidebarPreviewExplorer}
-              gitStatus={worktreeStatuses[sidebarPreviewExplorer.worktreeId]}
-              key={sidebarFilePreviewViewKey(sidebarFilePreview)}
-              onChanged={handleExplorerChanged}
-              onHeaderChange={
-                sidebarFilePreviewVisible
-                  ? setSidebarFilePreviewHeader
-                  : undefined
-              }
-              onLifecycleChange={handleSidebarFilePreviewLifecycleChange}
-              repositoryGraphAvailable={false}
-              transientFile={{
-                close: closeSidebarFilePreview,
-                path: sidebarFilePreview.path,
-              }}
-            />
-          ) : null}
         </Suspense>
 
         {mobileProjectSelectorOpen ? (

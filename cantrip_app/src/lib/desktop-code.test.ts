@@ -52,6 +52,7 @@ import {
   preferProtectedCodeAttachment,
   recoverPreferredCodeAttachmentRoute,
   setDirectCodeAttachmentPresentation,
+  setDirectCodeAttachmentTheme,
   stopDirectCodeAttachment,
   transportSafeErrorIdentity,
   waitForDirectCodeAttachmentReady,
@@ -573,6 +574,62 @@ describe("setDirectCodeAttachmentPresentation", () => {
     expect(mocks.fetch).toHaveBeenCalledWith(
       expect.any(URL),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+});
+
+describe("setDirectCodeAttachmentTheme", () => {
+  it("bounds a noncooperative theme control request", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.fetch.mockReturnValue(new Promise(() => undefined));
+      const request = setDirectCodeAttachmentTheme(
+        { url: "http://127.0.0.1:52345/code/" } as CodeAttachment,
+        "pro-high-contrast-dark",
+      );
+      const rejected = expect(request).rejects.toBeInstanceOf(
+        CodeControlOperationTimeoutError,
+      );
+
+      await vi.advanceTimersByTimeAsync(CODE_CONTROL_OPERATION_TIMEOUT_MS);
+
+      await rejected;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("updates the existing attachment through follow-Cantrip mode", async () => {
+    const attachment = {
+      url: "http://127.0.0.1:52345/code/?workspace=%2Fworker%2Fproject.code-workspace",
+    } as CodeAttachment;
+    mocks.fetch.mockResolvedValue({
+      json: async () => ({
+        appearance: "pro-high-contrast-dark",
+        themeMode: "follow-cantrip",
+      }),
+      ok: true,
+    });
+
+    await expect(
+      setDirectCodeAttachmentTheme(attachment, "pro-high-contrast-dark"),
+    ).resolves.toEqual({
+      appearance: "pro-high-contrast-dark",
+      themeMode: "follow-cantrip",
+    });
+
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:52345/code/_cantrip/theme"),
+      {
+        body: JSON.stringify({
+          appearance: "pro-high-contrast-dark",
+          themeMode: "follow-cantrip",
+        }),
+        credentials: "omit",
+        headers: { "content-type": "application/json" },
+        method: "POST",
+        signal: expect.any(AbortSignal),
+      },
     );
   });
 });

@@ -5,6 +5,7 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import {
+  dedicatedSidebarExplorer,
   pinnedExplorerForPath,
   preferredSidebarExplorer,
   moveSidebarPath,
@@ -78,6 +79,26 @@ describe("sidebar file tabs", () => {
 
     expect(
       preferredSidebarExplorer({
+        desiredWorktreeId: "worktree-1",
+        explorers: [visible, hidden],
+        layout: layout("visible"),
+      }),
+    ).toBe(hidden);
+  });
+
+  it("requires a non-tabbed Explorer for inline sidebar prewarm", () => {
+    const visible = explorer("visible", "worktree-1");
+    const hidden = explorer("hidden", "worktree-1");
+
+    expect(
+      dedicatedSidebarExplorer({
+        desiredWorktreeId: "worktree-1",
+        explorers: [visible],
+        layout: layout("visible"),
+      }),
+    ).toBeNull();
+    expect(
+      dedicatedSidebarExplorer({
         desiredWorktreeId: "worktree-1",
         explorers: [visible, hidden],
         layout: layout("visible"),

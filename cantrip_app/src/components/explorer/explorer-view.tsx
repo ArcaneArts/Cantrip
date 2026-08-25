@@ -284,8 +284,10 @@ export function ExplorerView({
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
+  prewarmInlineCode = false,
   repositoryGraphAvailable,
   transientFile,
+  workerOnline = true,
 }: {
   active?: boolean;
   appearance: CodeAppearance;
@@ -309,8 +311,10 @@ export function ExplorerView({
   ): void | Promise<void>;
   revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  prewarmInlineCode?: boolean;
   repositoryGraphAvailable: boolean;
   transientFile?: TransientExplorerFile;
+  workerOnline?: boolean;
 }) {
   const transientFilePath = transientFile?.path;
   const transientFileCloseRef = useRef(transientFile?.close);
@@ -323,6 +327,21 @@ export function ExplorerView({
       persistedPath: explorer.selectedPath,
       transientPath: transientFilePath,
     }),
+  );
+  const previousTransientPathRef = useRef(transientFilePath);
+  const transientRestoreRef = useRef<{
+    fileMode: ExplorerFileMode;
+    selectedPath: string | null;
+  } | null>(
+    transientFilePath
+      ? {
+          fileMode: explorer.fileMode,
+          selectedPath: explorerSurfaceSelectedPath({
+            openFilesExternally: Boolean(onOpenFile),
+            persistedPath: explorer.selectedPath,
+          }),
+        }
+      : null,
   );
 
   useEffect(() => {
@@ -354,12 +373,49 @@ export function ExplorerView({
   const [viewStateError, setViewStateError] = useState<string | null>(null);
   // Inactive Explorer surfaces stay mounted. Keep their authorization gate
   // open for the same bounded window so the Code iframe stays mounted too.
-  const retainInlineWorkbench = useRetainedInlineWorkbench(active);
+  const retainInlineWorkbench = useRetainedInlineWorkbench(
+    active,
+    undefined,
+    prewarmInlineCode,
+    [
+      explorer.id,
+      explorer.projectId,
+      explorer.worktreeId,
+      explorer.activeWorkerId,
+    ].join("\0"),
+  );
   const streamEncryption = useExplorerWorkerEncryption(
     explorer,
     retainInlineWorkbench,
   );
   const streamEncryptionReady = streamEncryption.ready;
+  const workerWasOnlineRef = useRef(workerOnline);
+  const onlineEncryptionRecoveryRef = useRef(false);
+  useEffect(() => {
+    if (!workerOnline) {
+      workerWasOnlineRef.current = false;
+      return;
+    }
+    if (!workerWasOnlineRef.current) {
+      onlineEncryptionRecoveryRef.current = true;
+    }
+    workerWasOnlineRef.current = true;
+  }, [workerOnline]);
+  useEffect(() => {
+    if (!onlineEncryptionRecoveryRef.current || !workerOnline) return;
+    if (streamEncryptionReady) {
+      onlineEncryptionRecoveryRef.current = false;
+      return;
+    }
+    if (!streamEncryption.error) return;
+    onlineEncryptionRecoveryRef.current = false;
+    streamEncryption.retry();
+  }, [
+    streamEncryption.error,
+    streamEncryption.retry,
+    streamEncryptionReady,
+    workerOnline,
+  ]);
   const streamEncryptionBindingRef = useRef(streamEncryption.bindingKey);
   streamEncryptionBindingRef.current = streamEncryption.bindingKey;
   const streamEncryptionReadyRef = useRef(streamEncryptionReady);
@@ -428,25 +484,29 @@ export function ExplorerView({
   const saveFilePending = saveFile.isPending;
   const mutateSaveFile = saveFile.mutateAsync;
   const resetSaveFile = saveFile.reset;
-  const editableLanguage = selectedPath
-    ? explorerMediaTypeForPath(selectedPath) === null
-      ? monacoLanguageForPath(selectedPath)
+  const displayedSelectedPath = transientFilePath ?? selectedPath;
+  const displayedFileMode = transientFilePath
+    ? defaultExplorerFileMode(transientFilePath)
+    : fileMode;
+  const editableLanguage = displayedSelectedPath
+    ? explorerMediaTypeForPath(displayedSelectedPath) === null
+      ? monacoLanguageForPath(displayedSelectedPath)
       : null
     : null;
-  const structuredFormat = selectedPath
-    ? explorerMediaTypeForPath(selectedPath) === null
-      ? structuredFileFormatForPath(selectedPath)
+  const structuredFormat = displayedSelectedPath
+    ? explorerMediaTypeForPath(displayedSelectedPath) === null
+      ? structuredFileFormatForPath(displayedSelectedPath)
       : null
     : null;
-  const mediaType = selectedPath
-    ? explorerMediaTypeForPath(selectedPath)
+  const mediaType = displayedSelectedPath
+    ? explorerMediaTypeForPath(displayedSelectedPath)
     : null;
-  const codeEditorVisible = selectedPath
-    ? usesCantripCodeEditor(selectedPath, fileMode)
+  const codeEditorVisible = displayedSelectedPath
+    ? usesCantripCodeEditor(displayedSelectedPath, displayedFileMode)
     : false;
   const graphVisible = graphRootPath !== undefined;
   const activeCodeEditorPath =
-    active && !graphVisible && codeEditorVisible ? selectedPath : null;
+    active && !graphVisible && codeEditorVisible ? displayedSelectedPath : null;
   const dirty = draftVersion !== null && draft !== baselineContent;
   dirtyRef.current = dirty;
   draftRef.current = draft;
@@ -587,7 +647,32 @@ export function ExplorerView({
   );
 
   useEffect(() => {
-    if (!transientFilePath || transientFilePath === selectedPathRef.current) {
+    const previousTransientPath = previousTransientPathRef.current;
+    previousTransientPathRef.current = transientFilePath;
+    if (!transientFilePath && !previousTransientPath) return;
+    if (transientFilePath && !previousTransientPath) {
+      transientRestoreRef.current = {
+        fileMode: fileModeRef.current,
+        selectedPath: selectedPathRef.current,
+      };
+    }
+    const nextViewState = transientFilePath
+      ? {
+          fileMode: defaultExplorerFileMode(transientFilePath),
+          selectedPath: transientFilePath,
+        }
+      : (transientRestoreRef.current ?? {
+          fileMode: explorer.fileMode,
+          selectedPath: explorerSurfaceSelectedPath({
+            openFilesExternally: Boolean(onOpenFile),
+            persistedPath: explorer.selectedPath,
+          }),
+        });
+    if (!transientFilePath) transientRestoreRef.current = null;
+    if (
+      nextViewState.selectedPath === selectedPathRef.current &&
+      nextViewState.fileMode === fileModeRef.current
+    ) {
       return;
     }
     setGraphRootPath(undefined);
@@ -597,14 +682,21 @@ export function ExplorerView({
     setBaselineContent("");
     setDraftVersion(null);
     resetSaveFile();
-    applyViewState({
-      selectedPath: transientFilePath,
-      fileMode: defaultExplorerFileMode(transientFilePath),
-    });
-    if (explorerMediaTypeForPath(transientFilePath)) {
+    applyViewState(nextViewState);
+    if (
+      nextViewState.selectedPath &&
+      explorerMediaTypeForPath(nextViewState.selectedPath)
+    ) {
       setMediaRevision((revision) => revision + 1);
     }
-  }, [applyViewState, resetSaveFile, transientFilePath]);
+  }, [
+    applyViewState,
+    explorer.fileMode,
+    explorer.selectedPath,
+    onOpenFile,
+    resetSaveFile,
+    transientFilePath,
+  ]);
 
   const saveDraft = useCallback(async (): Promise<boolean> => {
     const bindingKey = streamEncryptionBindingRef.current;
@@ -1033,7 +1125,9 @@ export function ExplorerView({
             activePath={activeCodeEditorPath}
             appearance={appearance}
             explorerId={explorer.id}
+            prewarm={prewarmInlineCode}
             retained={retainInlineWorkbench}
+            workerOnline={workerOnline}
             worktreeId={explorer.worktreeId}
             workerId={explorer.activeWorkerId}
           />

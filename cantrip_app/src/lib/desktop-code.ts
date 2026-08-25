@@ -3,10 +3,13 @@ import {
   codeOpenFileResultSchema,
   codeOpenSettingsResultSchema,
   codePresentationUpdateSchema,
+  codeThemeUpdateSchema,
+  type CodeAppearance,
   type CodeAttachment,
   type CodeProtectedAttachmentWire,
   type CodeOpenFileResult,
   type CodePresentationUpdate,
+  type CodeThemeUpdate,
 } from "@cantrip/protocol";
 
 import {
@@ -991,6 +994,38 @@ export async function setDirectCodeAttachmentPresentation(
       throw new Error(message);
     }
     return codePresentationUpdateSchema.parse(body);
+  }, options);
+}
+
+export async function setDirectCodeAttachmentTheme(
+  attachment: CodeAttachment,
+  appearance: CodeAppearance,
+  options: { signal?: AbortSignal } = {},
+): Promise<CodeThemeUpdate> {
+  const endpoint = new URL("_cantrip/theme", attachment.url);
+  return boundedCodeControlOperation(async (signal) => {
+    const response = await fetch(endpoint, {
+      body: JSON.stringify({
+        appearance,
+        themeMode: "follow-cantrip",
+      }),
+      credentials: "omit",
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal,
+    });
+    const body = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      const message =
+        body &&
+        typeof body === "object" &&
+        "error" in body &&
+        typeof body.error === "string"
+          ? body.error
+          : "Cantrip Code could not update the editor theme.";
+      throw new Error(message);
+    }
+    return codeThemeUpdateSchema.parse(body);
   }, options);
 }
 

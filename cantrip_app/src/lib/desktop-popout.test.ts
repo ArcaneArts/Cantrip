@@ -525,6 +525,67 @@ describe("desktop window theme", () => {
 });
 
 describe("desktop Explorer editor prewarm", () => {
+  it("does not replenish a hidden warm slot while the opened editor remains reusable", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    brokerModule.createDesktopExplorerWindowBroker.mockReset();
+    const openedBroker = {
+      dispose: vi.fn(async () => undefined),
+      failed: false,
+      launchId: "opened-from-warm-slot",
+      openFile: vi.fn(async () => undefined),
+      ready: Promise.resolve(),
+    };
+    const automaticWarmBroker = {
+      dispose: vi.fn(async () => undefined),
+      failed: false,
+      launchId: "unexpected-automatic-warm-slot",
+      openFile: vi.fn(async () => undefined),
+      ready: Promise.resolve(),
+    };
+    brokerModule.createDesktopExplorerWindowBroker
+      .mockReturnValueOnce(openedBroker)
+      .mockReturnValueOnce(automaticWarmBroker);
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn(),
+      location: { pathname: "/" },
+    });
+    const context = {
+      appearance: "dark" as const,
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-one",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+    };
+    const target = {
+      explorerId: context.explorer.id,
+      path: "src/opened.ts",
+      projectId: context.explorer.projectId,
+    };
+
+    try {
+      await prewarmDesktopExplorerFile(context);
+      await expect(
+        openDesktopExplorerFile(target, "opened.ts", context),
+      ).resolves.toBe("created");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(openedBroker.openFile).toHaveBeenCalledOnce();
+      expect(
+        brokerModule.createDesktopExplorerWindowBroker,
+      ).toHaveBeenCalledOnce();
+      expect(webviews.windows.size).toBe(1);
+      expect(automaticWarmBroker.dispose).not.toHaveBeenCalled();
+    } finally {
+      clearDesktopExplorerFilePrewarm();
+      for (const window of [...webviews.windows.values()]) await window.close();
+      tauri.isTauri.mockReturnValue(false);
+      webviews.windows.clear();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("waits for current surface encryption readiness before creating a protected editor broker", async () => {
     const readiness = deferred();
     tauri.isTauri.mockReturnValue(true);

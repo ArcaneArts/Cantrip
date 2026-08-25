@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-export const INLINE_CODE_WORKBENCH_RETENTION_MS = 15 * 60 * 1_000;
+export const INLINE_CODE_WORKBENCH_RETENTION_MS = 30 * 60 * 1_000;
 
 /**
  * Keeps an already-mounted inline workbench authorized while its Explorer is
@@ -11,11 +11,23 @@ export const INLINE_CODE_WORKBENCH_RETENTION_MS = 15 * 60 * 1_000;
 export function useRetainedInlineWorkbench(
   active: boolean,
   retentionMs = INLINE_CODE_WORKBENCH_RETENTION_MS,
+  prewarm = false,
+  prewarmIdentity = "default",
 ): boolean {
-  const [retained, setRetained] = useState(active);
+  const [retained, setRetained] = useState(active || prewarm);
+  const prewarmToken = prewarm ? prewarmIdentity : null;
+  const previousPrewarmTokenRef = useRef(prewarmToken);
 
   useEffect(() => {
+    const prewarmActivated =
+      prewarmToken !== null &&
+      prewarmToken !== previousPrewarmTokenRef.current;
+    previousPrewarmTokenRef.current = prewarmToken;
     if (active) {
+      setRetained(true);
+      return;
+    }
+    if (prewarmActivated && !retained) {
       setRetained(true);
       return;
     }
@@ -23,7 +35,7 @@ export function useRetainedInlineWorkbench(
 
     const timeout = setTimeout(() => setRetained(false), retentionMs);
     return () => clearTimeout(timeout);
-  }, [active, retained, retentionMs]);
+  }, [active, prewarmToken, retained, retentionMs]);
 
   return active || retained;
 }

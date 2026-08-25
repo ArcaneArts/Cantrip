@@ -11,6 +11,7 @@ import {
   type ExplorerGraphRequest,
   type ExplorerHeaderState,
   type ExplorerLifecycleActions,
+  type TransientExplorerFile,
 } from "@/components/explorer/explorer-view";
 
 export const MAX_RETAINED_EXPLORER_VIEWS = 8;
@@ -36,27 +37,76 @@ export function retainExplorerSurfaceTabs(
   });
 }
 
+export function retainRequestedExplorerSurfaceTabs(
+  retained: ExplorerSummary[],
+  active: ExplorerSummary | null,
+  prewarm: ExplorerSummary | null | undefined,
+  dirtyIds: ReadonlySet<string>,
+  protectedIds: ReadonlySet<string> = new Set(),
+): ExplorerSummary[] {
+  const requested = [prewarm, active].filter(
+    (explorer): explorer is ExplorerSummary =>
+      explorer !== null && explorer !== undefined,
+  );
+  const requestedIds = new Set(requested.map((explorer) => explorer.id));
+  const retainedProtectionIds = new Set([...protectedIds, ...requestedIds]);
+  const next = [
+    ...retained.filter((explorer) => !requestedIds.has(explorer.id)),
+    ...requested.filter(
+      (explorer, index) =>
+        requested.findIndex((candidate) => candidate.id === explorer.id) ===
+        index,
+    ),
+  ];
+  let excess = next.length - MAX_RETAINED_EXPLORER_VIEWS;
+  if (excess <= 0) return next;
+  return next.filter((explorer) => {
+    if (
+      excess > 0 &&
+      !retainedProtectionIds.has(explorer.id) &&
+      !dirtyIds.has(explorer.id)
+    ) {
+      excess -= 1;
+      return false;
+    }
+    return true;
+  });
+}
+
 export function PersistentExplorerViews({
   activeExplorer,
+  transientFile,
   appearance,
   graphRequest,
   gitStatuses,
+  onlineWorkerIds,
   onChanged,
   onHeaderChange,
   onLifecycleChange,
+  onTransientLifecycleChange,
   onOpenFile,
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
+  prewarmExplorer,
   repositoryGraphAvailable,
 }: {
   activeExplorer: ExplorerSummary | null;
+  transientFile?: {
+    explorerId: string;
+    file: TransientExplorerFile;
+  };
   appearance: CodeAppearance;
   graphRequest?: ExplorerGraphRequest | null;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
+  onlineWorkerIds?: ReadonlySet<string>;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
   onLifecycleChange?(
+    explorerId: string,
+    actions: ExplorerLifecycleActions | null,
+  ): void;
+  onTransientLifecycleChange?(
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
   ): void;
@@ -71,6 +121,7 @@ export function PersistentExplorerViews({
   ): void | Promise<void>;
   revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  prewarmExplorer?: ExplorerSummary | null;
   repositoryGraphAvailable: boolean;
 }) {
   const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(
@@ -81,18 +132,34 @@ export function PersistentExplorerViews({
   );
 
   useEffect(() => {
-    if (!activeExplorer) return;
+    if (!activeExplorer && !prewarmExplorer) return;
     setRetainedExplorers((current) =>
-      retainExplorerSurfaceTabs(current, activeExplorer, dirtyIds),
+      retainRequestedExplorerSurfaceTabs(
+        current,
+        activeExplorer,
+        prewarmExplorer,
+        dirtyIds,
+        transientFile ? new Set([transientFile.explorerId]) : undefined,
+      ),
     );
-  }, [activeExplorer, dirtyIds]);
+  }, [activeExplorer, dirtyIds, prewarmExplorer, transientFile?.explorerId]);
 
   const renderedExplorers = useMemo(
     () =>
-      activeExplorer
-        ? retainExplorerSurfaceTabs(retainedExplorers, activeExplorer, dirtyIds)
-        : retainedExplorers,
-    [activeExplorer, dirtyIds, retainedExplorers],
+      retainRequestedExplorerSurfaceTabs(
+        retainedExplorers,
+        activeExplorer,
+        prewarmExplorer,
+        dirtyIds,
+        transientFile ? new Set([transientFile.explorerId]) : undefined,
+      ),
+    [
+      activeExplorer,
+      dirtyIds,
+      prewarmExplorer,
+      retainedExplorers,
+      transientFile?.explorerId,
+    ],
   );
 
   const handleLifecycleChange = useCallback(
@@ -106,30 +173,50 @@ export function PersistentExplorerViews({
         return next;
       });
       onLifecycleChange?.(explorerId, actions);
+      if (transientFile?.explorerId === explorerId) {
+        onTransientLifecycleChange?.(explorerId, actions);
+      }
     },
-    [onLifecycleChange],
+    [onLifecycleChange, onTransientLifecycleChange, transientFile?.explorerId],
   );
 
   return renderedExplorers.map((explorer) => {
     const active = activeExplorer?.id === explorer.id;
+    const explorerTransientFile =
+      transientFile?.explorerId === explorer.id
+        ? transientFile.file
+        : undefined;
+    const transient = Boolean(explorerTransientFile);
+    const prewarm = prewarmExplorer?.id === explorer.id;
     return (
       <ExplorerView
         active={active}
         appearance={appearance}
         explorer={explorer}
         graphRequest={
-          graphRequest?.explorerId === explorer.id ? graphRequest : null
+          !transient && graphRequest?.explorerId === explorer.id
+            ? graphRequest
+            : null
         }
         gitStatus={gitStatuses[explorer.worktreeId]}
         key={explorer.id}
         onChanged={onChanged}
         onHeaderChange={active ? onHeaderChange : undefined}
         onLifecycleChange={handleLifecycleChange}
-        onOpenFile={explorer.selectedPath ? undefined : onOpenFile}
+        onOpenFile={
+          transient || prewarm || explorer.selectedPath ? undefined : onOpenFile
+        }
         onRevealFolder={onRevealFolder}
         revealLabel={revealLabel}
         onOpenTerminal={onOpenTerminal}
-        repositoryGraphAvailable={repositoryGraphAvailable}
+        prewarmInlineCode={prewarm}
+        repositoryGraphAvailable={transient ? false : repositoryGraphAvailable}
+        transientFile={explorerTransientFile}
+        workerOnline={
+          onlineWorkerIds
+            ? onlineWorkerIds.has(explorer.activeWorkerId)
+            : undefined
+        }
       />
     );
   });
