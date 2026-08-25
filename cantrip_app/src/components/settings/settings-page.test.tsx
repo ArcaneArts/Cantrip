@@ -112,6 +112,7 @@ describe("account settings", () => {
     const general = renderSettings("general");
     expect(general).toContain("System follows the operating system.");
     expect(general).toContain("Default agent permissions");
+    expect(general).toContain("Standalone Chat permissions");
     expect(general).toContain("YOLO mode");
     expect(general).toContain("Search general settings");
     expect(general).not.toContain("Cantrip updates");
@@ -180,8 +181,9 @@ describe("account settings", () => {
     expect(markup).toContain('aria-label="Edit Ollama"');
     expect(markup).toContain('aria-label="Edit gemma4:26b"');
     expect(markup).toContain("Default model configuration");
+    expect(markup).toContain("Standalone Chat defaults");
     expect(markup).toContain(
-      "Root and subagent defaults for newly created chats.",
+      "Root and subagent defaults for newly created IDE Agent chats.",
     );
     expect(markup).toContain('aria-label="Configure default models"');
     expect(markup).toContain("Subagents inherit root");

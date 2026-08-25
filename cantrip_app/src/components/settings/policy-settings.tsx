@@ -24,6 +24,7 @@ import {
   type PolicyList,
   type PolicySummary,
 } from "@cantrip/protocol/policies";
+import type { ResourceAudience } from "@cantrip/protocol/audiences";
 import { Capacitor } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -56,6 +57,7 @@ import { Markdown } from "@/components/chat/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogClose,
@@ -89,7 +91,13 @@ import { SettingsSearchField } from "./settings-controls";
 
 type PolicyDraft = Pick<
   PolicyCreate,
-  "bodyMarkdown" | "enabled" | "key" | "mandatory" | "name" | "summary"
+  | "audience"
+  | "bodyMarkdown"
+  | "enabled"
+  | "key"
+  | "mandatory"
+  | "name"
+  | "summary"
 >;
 
 const emptyDraft: PolicyDraft = {
@@ -99,6 +107,7 @@ const emptyDraft: PolicyDraft = {
   bodyMarkdown: "",
   enabled: true,
   mandatory: false,
+  audience: "ide",
 };
 
 export function nextAvailablePolicyKey(
@@ -228,6 +237,13 @@ function SortablePolicyRow({
           <Badge variant={policy.enabled ? "secondary" : "outline"}>
             {policy.enabled ? "Enabled" : "Disabled"}
           </Badge>
+          <Badge variant="outline">
+            {policy.audience === "both"
+              ? "Both"
+              : policy.audience === "chat"
+                ? "Chat"
+                : "IDE"}
+          </Badge>
           {policy.mandatory ? (
             <Badge variant="secondary">
               <ShieldCheck className="size-3" /> Mandatory
@@ -242,6 +258,13 @@ function SortablePolicyRow({
       <div className="hidden items-center gap-1 sm:flex">
         <Badge variant={policy.enabled ? "secondary" : "outline"}>
           {policy.enabled ? "Enabled" : "Disabled"}
+        </Badge>
+        <Badge variant="outline">
+          {policy.audience === "both"
+            ? "Both"
+            : policy.audience === "chat"
+              ? "Chat"
+              : "IDE"}
         </Badge>
         {policy.mandatory ? (
           <Badge variant="secondary">
@@ -297,6 +320,7 @@ function draftFromPolicy(policy: PolicyDetail): PolicyDraft {
     bodyMarkdown: policy.bodyMarkdown,
     enabled: policy.enabled,
     mandatory: policy.mandatory,
+    audience: policy.audience,
   };
 }
 
@@ -395,6 +419,7 @@ export function PolicySettings({
   const [deleteTarget, setDeleteTarget] = useState<PolicySummary | null>(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
+  const [importAudience, setImportAudience] = useState<ResourceAudience>("ide");
   const importInputRef = useRef<HTMLInputElement>(null);
   const policies = useQuery({ queryFn: getPolicies, queryKey: ["policies"] });
   const templates = useQuery({
@@ -453,6 +478,7 @@ export function PolicySettings({
             bodyMarkdown: draft.bodyMarkdown,
             enabled: draft.enabled,
             mandatory: draft.mandatory,
+            audience: draft.audience,
           })
         : creatingTemplateKey
           ? createPolicyFromTemplate(creatingTemplateKey, draft)
@@ -500,6 +526,7 @@ export function PolicySettings({
         bodyMarkdown: template.bodyMarkdown,
         enabled: template.suggestedEnabled,
         mandatory: template.suggestedMandatory,
+        audience: "ide",
       });
       setEditingPolicyId(null);
       setCreatingTemplateKey(template.templateKey);
@@ -575,7 +602,10 @@ export function PolicySettings({
           );
         }
       }
-      const prepared = preparePolicyImports(decoded, currentPolicies);
+      const prepared = preparePolicyImports(
+        decoded.map((policy) => ({ ...policy, audience: importAudience })),
+        currentPolicies,
+      );
       let importedCount = 0;
       try {
         for (const policy of prepared.policies) {
@@ -658,6 +688,7 @@ export function PolicySettings({
       bodyMarkdown: "",
       enabled: policy.enabled,
       mandatory: policy.mandatory,
+      audience: policy.audience,
     });
     setEditorOpen(true);
   };
@@ -715,6 +746,19 @@ export function PolicySettings({
             )}
             Import
           </Button>
+          <NativeSelect
+            aria-label="Imported policy audience"
+            className="h-8"
+            value={importAudience}
+            disabled={importFiles.isPending}
+            onChange={(event) =>
+              setImportAudience(event.target.value as ResourceAudience)
+            }
+          >
+            <option value="ide">IDE</option>
+            <option value="chat">Chat</option>
+            <option value="both">Both</option>
+          </NativeSelect>
           <Button
             size="sm"
             variant="outline"
@@ -909,6 +953,22 @@ export function PolicySettings({
                       }))
                     }
                   />
+                </Field>
+                <Field label="Audience">
+                  <NativeSelect
+                    className="w-full"
+                    value={draft.audience}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        audience: event.target.value as ResourceAudience,
+                      }))
+                    }
+                  >
+                    <option value="ide">IDE</option>
+                    <option value="chat">Chat</option>
+                    <option value="both">Both</option>
+                  </NativeSelect>
                 </Field>
                 <Field label="Stable key">
                   <input

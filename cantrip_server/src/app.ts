@@ -404,6 +404,10 @@ import {
   settingsBundleWireSchema,
   protectedScriptCommandListSchema,
   skillSettingsContextSchema,
+  skillAudienceContextSchema,
+  skillAudienceListSchema,
+  skillAudienceSummarySchema,
+  skillAudienceUpdateSchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
@@ -10243,6 +10247,10 @@ export async function buildApp({
       context.contextKind === "project"
         ? await repository.policies.resolveEffective(ownerId, context.projectId)
         : { policies: [] };
+    const standalonePolicies =
+      context.contextKind === "standalone"
+        ? await repository.policies.resolveStandalone(ownerId)
+        : { policies: [] };
     if (context.contextKind === "project" && !effectivePolicies) {
       throw new Error("The chat project is no longer available.");
     }
@@ -10253,13 +10261,13 @@ export async function buildApp({
       await prepareCodeEditorsForTurn(context);
     }
     const mcpServers =
-      context.contextKind === "standalone" ||
-      (options.structuredResult && !directTaskOperation)
+      options.structuredResult && !directTaskOperation
         ? []
         : await repository.listEffectiveMcpServers(
             ownerId,
-            context.projectId,
+            context.contextKind === "project" ? context.projectId : null,
             context.workerId,
+            context.contextKind === "project" ? "ide" : "chat",
           );
     const execution = await repository.startChatExecutionLane(
       ownerId,
@@ -10656,6 +10664,7 @@ export async function buildApp({
                 worktreePolicy: execution.worktreePolicy,
                 policyProjectId: execution.projectId,
                 policies: effectivePolicies ?? { policies: [] },
+                standalonePolicies,
                 ...(encryptedChatMessages
                   ? {
                       protectedPrompt: encryptedChatMessages.userMessage,
@@ -10676,6 +10685,14 @@ export async function buildApp({
                   encryptedChatMessages
                     ? []
                     : mentionedSkillNames(input.text),
+                chatSkillAudienceKeys:
+                  execution.contextKind === "standalone"
+                    ? await repository.listChatSkillAudienceKeys(
+                        ownerId,
+                        execution.workerId,
+                        runtime.provider.id,
+                      )
+                    : [],
                 model: runtime.model,
                 provider: runtime.provider,
                 subagentDefaults:
@@ -16811,6 +16828,41 @@ export async function buildApp({
             : 502;
       return reply.code(status).send({ error: errorMessage(error) });
     }
+  });
+
+  app.get<{
+    Querystring: { providerId?: string; workerId?: string };
+  }>("/api/skill-audiences", async (request, reply) => {
+    const input = skillAudienceContextSchema.safeParse(request.query);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const audiences = await repository.listSkillAudiences(
+      applicationOwnerId(),
+      input.data.workerId,
+      input.data.providerId,
+    );
+    return audiences
+      ? reply.send(skillAudienceListSchema.parse(audiences))
+      : reply.code(404).send({ error: "Worker or model provider not found." });
+  });
+
+  app.patch("/api/skill-audiences", async (request, reply) => {
+    const input = skillAudienceUpdateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const audience = await repository.updateSkillAudience(
+      applicationOwnerId(),
+      input.data,
+    );
+    if (!audience) {
+      return reply
+        .code(404)
+        .send({ error: "Worker or model provider not found." });
+    }
+    publishLiveInvalidation("customization", { projectId: null });
+    return reply.send(skillAudienceSummarySchema.parse(audience));
   });
 
   app.post("/api/skills/read", async (request, reply) => {

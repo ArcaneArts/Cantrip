@@ -146,6 +146,34 @@ export function defaultModelConfiguration(
   });
 }
 
+export function defaultStandaloneChatModelConfiguration(
+  settings: Pick<
+    UserSettings,
+    | "defaultChatModelId"
+    | "defaultChatReasoningEffort"
+    | "defaultModelId"
+    | "defaultReasoningEffort"
+  >,
+): ModelConfiguration {
+  return modelConfigurationSchema.parse({
+    modelId: settings.defaultChatModelId ?? settings.defaultModelId,
+    reasoningEffort:
+      settings.defaultChatReasoningEffort ?? settings.defaultReasoningEffort,
+    customSubagentModel: false,
+    subagentModelId: null,
+    subagentReasoningEffort: null,
+  });
+}
+
+export function standaloneChatModelConfigurationSettingsUpdate(
+  configuration: ModelConfiguration,
+): UserSettingsUpdate {
+  return {
+    defaultChatModelId: configuration.modelId,
+    defaultChatReasoningEffort: configuration.reasoningEffort,
+  };
+}
+
 export function modelConfigurationSettingsUpdate(
   configuration: ModelConfiguration,
 ): UserSettingsUpdate {

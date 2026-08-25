@@ -1397,11 +1397,16 @@ function ChatTranscript({
       stopWatching?.();
     };
   }, [chat.id, refocusOnWindowActivation]);
-  const selectedModelId =
-    chat.modelId ?? settings?.preferences.defaultModelId ?? "";
+  const fallbackModelId =
+    chat.contextKind === "standalone"
+      ? (settings?.preferences.defaultChatModelId ??
+        settings?.preferences.defaultModelId ??
+        null)
+      : (settings?.preferences.defaultModelId ?? null);
+  const selectedModelId = chat.modelId ?? fallbackModelId ?? "";
   const currentModelConfiguration = chatModelConfiguration(
     chat,
-    settings?.preferences.defaultModelId ?? null,
+    fallbackModelId,
   );
   const activeChatWorker = workers.data?.find(
     ({ workerId }) => workerId === chat.activeWorkerId,

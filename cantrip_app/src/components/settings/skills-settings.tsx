@@ -37,6 +37,7 @@ import {
   getWorkers,
   readSettingsSkill,
   updateSettingsSkillFile,
+  updateSettingsSkillAudience,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { errorMessage as errorText } from "@/lib/error-message";
@@ -154,6 +155,13 @@ function SkillRows({
                 {!item.editable ? (
                   <Badge variant="outline">Read only</Badge>
                 ) : null}
+                <Badge variant="outline">
+                  {item.audience === "both"
+                    ? "Both"
+                    : item.audience === "chat"
+                      ? "Chat"
+                      : "IDE"}
+                </Badge>
               </span>
               <span className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
                 {item.editable ? (
@@ -289,10 +297,28 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
       await refreshInventory();
     },
   });
+  const audience = useMutation({
+    mutationFn: (next: SkillSettingsItem["audience"]) =>
+      updateSettingsSkillAudience({
+        workerId: context!.workerId,
+        providerId: context!.providerId,
+        audienceKey: selectedSkill!.audienceKey,
+        audience: next,
+      }),
+    onSuccess: async (result) => {
+      setSelectedSkill((current) =>
+        current?.audienceKey === result.audienceKey
+          ? { ...current, audience: result.audience }
+          : current,
+      );
+      await refreshInventory();
+    },
+  });
 
   const openSkill = (skill: SkillSettingsItem) => {
     save.reset();
     remove.reset();
+    audience.reset();
     setSelectedFile("SKILL.md");
     setDraft("");
     setSelectedSkill(skill);
@@ -308,6 +334,13 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
     document.data &&
     draft !== document.data.content &&
     !save.isPending,
+  );
+  const audienceEditable = Boolean(
+    selectedSkill &&
+    (selectedSkill.location === "account" ||
+      selectedSkill.location === "user" ||
+      selectedSkill.location === "codexUser" ||
+      selectedSkill.location === "project"),
   );
   const search = searchQuery.trim().toLowerCase();
   const visibleProjectSkills = (inventory.data?.project ?? []).filter((item) =>
@@ -531,11 +564,34 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
               <div className="grid min-h-0 gap-2">
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="font-mono">{selectedFile}</span>
-                  <Badge
-                    variant={selectedSkill?.editable ? "secondary" : "outline"}
-                  >
-                    {selectedSkill?.editable ? "Editable" : "Read only"}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {audienceEditable ? (
+                      <NativeSelect
+                        aria-label="Skill audience"
+                        className="h-7"
+                        value={selectedSkill?.audience ?? "ide"}
+                        disabled={audience.isPending}
+                        onChange={(event) =>
+                          audience.mutate(
+                            event.target.value as SkillSettingsItem["audience"],
+                          )
+                        }
+                      >
+                        <option value="ide">IDE</option>
+                        <option value="chat">Chat</option>
+                        <option value="both">Both</option>
+                      </NativeSelect>
+                    ) : (
+                      <Badge variant="outline">IDE only</Badge>
+                    )}
+                    <Badge
+                      variant={
+                        selectedSkill?.editable ? "secondary" : "outline"
+                      }
+                    >
+                      {selectedSkill?.editable ? "Editable" : "Read only"}
+                    </Badge>
+                  </div>
                 </div>
                 <textarea
                   aria-label={`Contents of ${selectedFile}`}
@@ -546,6 +602,11 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
                 />
               </div>
             </div>
+          ) : null}
+          {audience.isError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {errorText(audience.error)}
+            </p>
           ) : null}
           {save.isError || remove.isError ? (
             <p className="text-sm text-destructive">

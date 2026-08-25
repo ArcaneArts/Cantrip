@@ -164,6 +164,43 @@ afterAll(async () => {
 });
 
 describe.sequential("skills settings API", () => {
+  it("stores opaque Skill audiences separately from protected inventory", async () => {
+    const audienceKey = Buffer.alloc(32, 31).toString("base64url");
+    const empty = await app.inject({
+      method: "GET",
+      url: `/api/skill-audiences?workerId=test-worker&providerId=${providerId}`,
+    });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json()).toEqual([]);
+
+    const update = await app.inject({
+      method: "PATCH",
+      url: "/api/skill-audiences",
+      payload: {
+        workerId: "test-worker",
+        providerId,
+        audienceKey,
+        audience: "chat",
+      },
+    });
+    expect(update.statusCode).toBe(200);
+    expect(update.json()).toEqual({ audienceKey, audience: "chat" });
+
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/skill-audiences?workerId=test-worker&providerId=${providerId}`,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual([{ audienceKey, audience: "chat" }]);
+    expect(
+      await database.repository.listChatSkillAudienceKeys(
+        LOCAL_USER_ID,
+        "test-worker",
+        providerId,
+      ),
+    ).toEqual([audienceKey]);
+  });
+
   it("lists project and global skills through the owning worker", async () => {
     const operationId = crypto.randomUUID();
     const response = await app.inject({

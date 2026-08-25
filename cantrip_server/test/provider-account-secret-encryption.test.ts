@@ -189,7 +189,64 @@ describe("opaque provider and MCP persistence", () => {
       });
       await expect(
         repository.listEffectiveMcpServers(LOCAL_USER_ID, null, workerId),
-      ).resolves.toEqual([]);
+      ).resolves.toEqual([
+        expect.objectContaining({
+          id: mcpId,
+          enabled: true,
+          protectedConfiguration,
+        }),
+      ]);
+
+      await repository.updateMcpServer(LOCAL_USER_ID, null, mcpId, {
+        audience: "chat",
+        enabled: true,
+        workerId: null,
+        nameBlindIndex: "C".repeat(43),
+        protectedConfiguration,
+      });
+      await repository.updateMcpServer(LOCAL_USER_ID, null, workerMcpId, {
+        audience: "ide",
+        enabled: true,
+        workerId,
+        nameBlindIndex: "C".repeat(43),
+        protectedConfiguration: workerProtectedConfiguration,
+      });
+      await expect(
+        repository.listEffectiveMcpServers(
+          LOCAL_USER_ID,
+          null,
+          workerId,
+          "ide",
+        ),
+      ).resolves.toEqual([expect.objectContaining({ id: workerMcpId })]);
+      await expect(
+        repository.listEffectiveMcpServers(
+          LOCAL_USER_ID,
+          null,
+          workerId,
+          "chat",
+        ),
+      ).resolves.toEqual([expect.objectContaining({ id: mcpId })]);
+
+      const audienceKey = "S".repeat(43);
+      await expect(
+        repository.updateSkillAudience(LOCAL_USER_ID, {
+          workerId,
+          providerId,
+          audienceKey,
+          audience: "both",
+        }),
+      ).resolves.toEqual({ audienceKey, audience: "both" });
+      await expect(
+        repository.listSkillAudiences(LOCAL_USER_ID, workerId, providerId),
+      ).resolves.toEqual([{ audienceKey, audience: "both" }]);
+      await expect(
+        repository.listChatSkillAudienceKeys(
+          LOCAL_USER_ID,
+          workerId,
+          providerId,
+        ),
+      ).resolves.toEqual([audienceKey]);
 
       const raw = await client.query<{
         plan_type: string | null;

@@ -10,6 +10,7 @@ import {
   policyWireDetailSchema,
   policyWireListSchema,
 } from "@cantrip/protocol/policies";
+import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -148,11 +149,21 @@ describe.sequential("opaque policy API", () => {
       policyWireListSchema.parse(order.json()).policies.map(({ id }) => id),
     ).toEqual(reversed);
 
+    await database.repository.recordWorker(LOCAL_USER_ID, {
+      workerId: "policy-api-worker",
+      name: "Policy API worker",
+      platform: "linux",
+      architecture: "x64",
+      codexVersion: "0.149.0",
+      codexRuntime: unprobedCodexRuntimeReport,
+      startedAt: new Date().toISOString(),
+    });
     const project = await database.repository.createGithubProject(
       LOCAL_USER_ID,
       {
         workerId: "policy-api-worker",
         ...protectedProjectFields(),
+        repositoryBlindIndex: Buffer.alloc(32, 29).toString("base64url"),
         repositoryId: "policy-api-project",
         nameWithOwner: "ArcaneArts/PolicyApiProject",
         url: "https://github.com/ArcaneArts/PolicyApiProject",

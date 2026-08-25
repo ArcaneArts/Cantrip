@@ -232,6 +232,7 @@ export async function protectPolicyCreate(
       }),
       enabled: input.enabled,
       mandatory: input.mandatory,
+      audience: input.audience,
       templateKey,
     });
   } finally {
@@ -287,6 +288,7 @@ export async function protectPolicyUpdate(
         : {}),
       ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
       ...(input.mandatory === undefined ? {} : { mandatory: input.mandatory }),
+      ...(input.audience === undefined ? {} : { audience: input.audience }),
     });
   } finally {
     clearSensitiveBytes(componentKey);

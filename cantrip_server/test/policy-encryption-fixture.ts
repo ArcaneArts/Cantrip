@@ -30,7 +30,10 @@ function protectedContent(seed: string) {
 export function opaquePolicyCreate(
   seed: string,
   options: Partial<
-    Pick<EncryptedPolicyCreate, "enabled" | "id" | "mandatory" | "templateKey">
+    Pick<
+      EncryptedPolicyCreate,
+      "audience" | "enabled" | "id" | "mandatory" | "templateKey"
+    >
   > = {},
 ): EncryptedPolicyCreate {
   return encryptedPolicyCreateSchema.parse({
@@ -42,6 +45,7 @@ export function opaquePolicyCreate(
     },
     enabled: options.enabled ?? true,
     mandatory: options.mandatory ?? false,
+    audience: options.audience ?? "ide",
     templateKey: options.templateKey ?? null,
   });
 }

@@ -61,10 +61,12 @@ describe("protected MCP adapter", () => {
       },
       "worker-1",
       options,
+      "both",
     );
 
     const opened = await openDiscoveredMcpServerCreate(encrypted, options);
     expect(opened.encrypted).toEqual(encrypted);
+    expect(opened.encrypted.audience).toBe("both");
     expect(opened.configuration).toMatchObject({
       name: "discovered_private",
       transport: "http",

@@ -148,6 +148,7 @@ import type {
   ReasoningEffort,
   RemoteDesktopWireSummary,
   RemoteSurfaceCapabilities,
+  ResourceAudience,
   EncryptedRemoteSurfaceCreate,
   RemoteSurfaceStatus,
   RemoteSurfaceWireSummary,
@@ -1325,6 +1326,7 @@ function toProjectReplicaSummary(
 function toMcpServerWireSummary(server: McpServerRow): McpServerWireSummary {
   return {
     id: server.id,
+    audience: server.audience,
     scope: server.projectId ? "project" : "global",
     projectId: server.projectId,
     workerId: server.workerId,
@@ -9055,6 +9057,7 @@ export class ServerRepository {
     ownerId: string,
     projectId: string | null,
     workerId: string,
+    audience: Exclude<ResourceAudience, "both"> = "ide",
   ): Promise<McpServerOpaqueRuntime[]> {
     const rows = await this.database
       .select()
@@ -9062,6 +9065,8 @@ export class ServerRepository {
       .where(
         and(
           eq(schema.mcpServers.ownerId, ownerId),
+          eq(schema.mcpServers.enabled, true),
+          inArray(schema.mcpServers.audience, [audience, "both"]),
           or(
             isNull(schema.mcpServers.projectId),
             ...(projectId ? [eq(schema.mcpServers.projectId, projectId)] : []),
@@ -9090,9 +9095,7 @@ export class ServerRepository {
         effective.set(row.nameBlindIndex, row);
       }
     }
-    return [...effective.values()]
-      .filter(({ enabled }) => enabled)
-      .map(toMcpServerOpaqueRuntime);
+    return [...effective.values()].map(toMcpServerOpaqueRuntime);
   }
 
   async createMcpServer(
@@ -9126,6 +9129,7 @@ export class ServerRepository {
         projectId,
         workerId: input.workerId,
         enabled: input.enabled,
+        audience: input.audience,
         nameBlindIndex: input.nameBlindIndex,
         protectedConfiguration: input.protectedConfiguration,
       })
@@ -9149,6 +9153,7 @@ export class ServerRepository {
       .set({
         workerId: input.workerId,
         enabled: input.enabled,
+        audience: input.audience,
         nameBlindIndex: input.nameBlindIndex,
         protectedConfiguration: input.protectedConfiguration,
         updatedAt: new Date(),
@@ -9184,6 +9189,88 @@ export class ServerRepository {
       )
       .returning({ id: schema.mcpServers.id });
     return rows.length > 0;
+  }
+
+  async listSkillAudiences(
+    ownerId: string,
+    workerId: string,
+    providerId: string,
+  ): Promise<Array<{
+    audienceKey: string;
+    audience: ResourceAudience;
+  }> | null> {
+    const [worker, provider] = await Promise.all([
+      this.getWorker(ownerId, workerId),
+      this.getModelProvider(ownerId, providerId),
+    ]);
+    if (!worker || !provider) return null;
+    return this.database
+      .select({
+        audienceKey: schema.skillAudiences.audienceKey,
+        audience: schema.skillAudiences.audience,
+      })
+      .from(schema.skillAudiences)
+      .where(
+        and(
+          eq(schema.skillAudiences.ownerId, ownerId),
+          eq(schema.skillAudiences.workerId, workerId),
+          eq(schema.skillAudiences.providerId, providerId),
+        ),
+      )
+      .orderBy(asc(schema.skillAudiences.audienceKey));
+  }
+
+  async updateSkillAudience(
+    ownerId: string,
+    input: {
+      audienceKey: string;
+      audience: ResourceAudience;
+      providerId: string;
+      workerId: string;
+    },
+  ): Promise<{ audienceKey: string; audience: ResourceAudience } | null> {
+    const [worker, provider] = await Promise.all([
+      this.getWorker(ownerId, input.workerId),
+      this.getModelProvider(ownerId, input.providerId),
+    ]);
+    if (!worker || !provider) return null;
+    const rows = await this.database
+      .insert(schema.skillAudiences)
+      .values({ ownerId, ...input })
+      .onConflictDoUpdate({
+        target: [
+          schema.skillAudiences.ownerId,
+          schema.skillAudiences.workerId,
+          schema.skillAudiences.providerId,
+          schema.skillAudiences.audienceKey,
+        ],
+        set: { audience: input.audience, updatedAt: new Date() },
+      })
+      .returning({
+        audienceKey: schema.skillAudiences.audienceKey,
+        audience: schema.skillAudiences.audience,
+      });
+    return rows[0] ?? null;
+  }
+
+  async listChatSkillAudienceKeys(
+    ownerId: string,
+    workerId: string,
+    providerId: string,
+  ): Promise<string[]> {
+    const rows = await this.database
+      .select({ audienceKey: schema.skillAudiences.audienceKey })
+      .from(schema.skillAudiences)
+      .where(
+        and(
+          eq(schema.skillAudiences.ownerId, ownerId),
+          eq(schema.skillAudiences.workerId, workerId),
+          eq(schema.skillAudiences.providerId, providerId),
+          inArray(schema.skillAudiences.audience, ["chat", "both"]),
+        ),
+      )
+      .orderBy(asc(schema.skillAudiences.audienceKey));
+    return rows.map(({ audienceKey }) => audienceKey);
   }
 
   async ensureDefaultProjectWorkspace(

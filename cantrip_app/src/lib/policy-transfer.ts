@@ -16,6 +16,7 @@ const POLICY_TRANSFER_VERSION = 1;
 const POLICY_FILE_KEYS = new Set(["format", "version", "policy"]);
 const POLICY_FIELDS = [
   "bodyMarkdown",
+  "audience",
   "enabled",
   "key",
   "mandatory",

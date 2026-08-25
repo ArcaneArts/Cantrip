@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   cp,
   lstat,
@@ -9,6 +9,7 @@ import {
   rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -114,6 +115,17 @@ function validateSkillDocument(content: string): void {
 
 function encodeSkillId(location: SkillSettingsLocation, relativePath: string) {
   return `${location}:${Buffer.from(relativePath, "utf8").toString("base64url")}`;
+}
+
+function skillAudienceKey(root: SkillRoot, relativePath: string): string {
+  return createHash("sha256")
+    .update("cantrip-skill-audience:v1\0")
+    .update(root.location)
+    .update("\0")
+    .update(path.resolve(root.path))
+    .update("\0")
+    .update(relativePath.split(path.sep).join("/"))
+    .digest("base64url");
 }
 
 function decodeSkillId(id: string): {
@@ -227,6 +239,55 @@ export class SkillManager {
       );
     });
     return skillSettingsInventorySchema.parse(inventory);
+  }
+
+  async materializeChatSkills(
+    context: Omit<SkillContext, "cwd">,
+    eligibleAudienceKeys: readonly string[],
+  ): Promise<string> {
+    const targetRoot = path.join(
+      this.#dataDirectory,
+      "chat-skill-roots",
+      createHash("sha256")
+        .update(`${context.providerKind}\0${context.providerId}`)
+        .digest("hex"),
+    );
+    await mkdir(targetRoot, { recursive: true, mode: 0o700 });
+    const targetInfo = await lstat(targetRoot);
+    if (!targetInfo.isDirectory() || targetInfo.isSymbolicLink()) {
+      throw new Error("The managed Chat Skill root is not a safe directory.");
+    }
+    const eligible = new Set(eligibleAudienceKeys);
+    const desired = new Map<string, string>();
+    const roots = (await this.#roots({ ...context, cwd: null })).filter(
+      ({ location }) =>
+        location === "account" ||
+        location === "user" ||
+        location === "codexUser",
+    );
+    for (const root of roots) {
+      for (const item of await this.#scanRoot(root)) {
+        if (!eligible.has(item.audienceKey)) continue;
+        desired.set(item.audienceKey, await realpath(path.dirname(item.path)));
+      }
+    }
+    const existing = await readdir(targetRoot, { withFileTypes: true });
+    for (const entry of existing) {
+      const expected = desired.get(entry.name);
+      const entryPath = path.join(targetRoot, entry.name);
+      if (expected && entry.isSymbolicLink()) {
+        const current = await realpath(entryPath).catch(() => null);
+        if (current === expected) {
+          desired.delete(entry.name);
+          continue;
+        }
+      }
+      await rm(entryPath, { force: true, recursive: true });
+    }
+    for (const [audienceKey, source] of desired) {
+      await symlink(source, path.join(targetRoot, audienceKey), "dir");
+    }
+    return targetRoot;
   }
 
   async read(
@@ -420,6 +481,8 @@ export class SkillManager {
               root.location,
               relativePath.split(path.sep).join("/"),
             ),
+            audienceKey: skillAudienceKey(root, relativePath),
+            audience: "ide",
             name: frontmatter.name ?? path.basename(current.directory),
             description: frontmatter.description ?? "No description provided.",
             displayName: await displayNameForSkill(current.directory),

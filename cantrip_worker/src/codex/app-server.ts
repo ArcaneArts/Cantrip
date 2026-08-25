@@ -4459,6 +4459,17 @@ export class CodexAppServer implements CodexRuntime {
     return parseCodexSkills(response, options.cwd);
   }
 
+  async reloadSkills(
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+  ): Promise<void> {
+    if (!this.methodAvailable("skills/list")) return;
+    await this.ensureStarted(options.model, options.provider);
+    await this.request("skills/list", {
+      cwds: [options.cwd],
+      forceReload: true,
+    });
+  }
+
   async readCustomizationInventory(
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
       threadId: string | null;

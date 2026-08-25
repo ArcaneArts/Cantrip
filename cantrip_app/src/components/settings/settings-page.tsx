@@ -59,8 +59,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   defaultModelConfiguration,
+  defaultStandaloneChatModelConfiguration,
   ModelReasoningPicker,
   modelConfigurationSettingsUpdate,
+  standaloneChatModelConfigurationSettingsUpdate,
 } from "@/components/chat/model-reasoning-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { InlineAlert } from "@/components/ui/inline-alert";
@@ -770,7 +772,10 @@ export function SettingsPage({
     mutationFn: updateSettings,
     onSuccess: (value, input) => {
       queryClient.setQueryData(["settings"], value);
-      if (input.defaultPermissionProfileId !== undefined) {
+      if (
+        input.defaultPermissionProfileId !== undefined ||
+        input.defaultChatPermissionProfileId !== undefined
+      ) {
         void queryClient.invalidateQueries({
           queryKey: ["permission-profiles"],
         });
@@ -1095,7 +1100,7 @@ export function SettingsPage({
     !generalSearch ||
     matchesSearch(
       generalSearch,
-      "default new agent chat permissions sandbox read only workspace full access yolo approvals",
+      "default new agent standalone chat ide permissions sandbox read only workspace full access yolo approvals",
     );
   const desktopUpdateMatches =
     desktopUpdatesAvailable &&
@@ -1325,6 +1330,41 @@ export function SettingsPage({
                       ))}
                     </div>
                   </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-3">
+                    <div className="min-w-0 pl-7">
+                      <h3 className="text-xs font-medium">
+                        Standalone Chat permissions
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground">
+                        Applied only to each Chat&apos;s worker scratch folder.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
+                      {BUILTIN_PERMISSION_PROFILES.map((profile) => (
+                        <Button
+                          key={profile.id}
+                          type="button"
+                          size="sm"
+                          className="h-7 px-2.5 text-xs"
+                          variant={
+                            settings.data?.preferences
+                              .defaultChatPermissionProfileId === profile.id
+                              ? "default"
+                              : "ghost"
+                          }
+                          disabled={preferences.isPending}
+                          title={profile.description}
+                          onClick={() =>
+                            preferences.mutate({
+                              defaultChatPermissionProfileId: profile.id,
+                            })
+                          }
+                        >
+                          {permissionProfileLabel(profile.id)}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                 </section>
               ) : null}
 
@@ -1506,7 +1546,8 @@ export function SettingsPage({
                           Default model configuration
                         </p>
                         <p className="text-[11px] text-muted-foreground">
-                          Root and subagent defaults for newly created chats.
+                          Root and subagent defaults for newly created IDE Agent
+                          chats.
                         </p>
                       </div>
                       <ModelReasoningPicker
@@ -1524,6 +1565,66 @@ export function SettingsPage({
                           )
                         }
                       />
+                    </div>
+                  ) : null}
+
+                  {settings.data ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t px-3 py-2.5">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-medium">
+                            Standalone Chat defaults
+                          </p>
+                          {settings.data.preferences.defaultChatModelId ===
+                            null &&
+                          settings.data.preferences
+                            .defaultChatReasoningEffort === null ? (
+                            <Badge variant="outline">Inherits IDE</Badge>
+                          ) : null}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Model and reasoning for newly created standalone
+                          Chats.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {settings.data.preferences.defaultChatModelId !==
+                          null ||
+                        settings.data.preferences.defaultChatReasoningEffort !==
+                          null ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={preferences.isPending}
+                            onClick={() =>
+                              preferences.mutate({
+                                defaultChatModelId: null,
+                                defaultChatReasoningEffort: null,
+                              })
+                            }
+                          >
+                            Use IDE defaults
+                          </Button>
+                        ) : null}
+                        <ModelReasoningPicker
+                          configuration={defaultStandaloneChatModelConfiguration(
+                            settings.data.preferences,
+                          )}
+                          disabled={preferences.isPending}
+                          loadReasoningState={getModelReasoningOptions}
+                          mode="settings"
+                          models={models}
+                          pending={preferences.isPending}
+                          onSave={(configuration) =>
+                            preferences.mutateAsync(
+                              standaloneChatModelConfigurationSettingsUpdate(
+                                configuration,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
                     </div>
                   ) : null}
 

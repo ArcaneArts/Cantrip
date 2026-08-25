@@ -164,9 +164,17 @@ describe("opaque policy persistence", () => {
   it("resolves public assignment sources while returning opaque summaries", async () => {
     const { client, repository } = await fixture();
     try {
+      await client.exec(`
+        INSERT INTO workers (
+          id, owner_id, name, platform, architecture, started_at, last_seen_at
+        ) VALUES (
+          'policy-worker', '${LOCAL_USER_ID}', 'Policy worker', 'linux', 'x64', now(), now()
+        )
+      `);
       const project = await repository.createGithubProject(LOCAL_USER_ID, {
         workerId: "policy-worker",
         ...protectedProjectFields(),
+        repositoryBlindIndex: Buffer.alloc(32, 23).toString("base64url"),
         repositoryId: "opaque-policy-project",
         nameWithOwner: "ArcaneArts/OpaquePolicyProject",
         url: "https://github.com/ArcaneArts/OpaquePolicyProject",
@@ -182,6 +190,13 @@ describe("opaque policy persistence", () => {
       const disabled = await repository.policies.create(
         LOCAL_USER_ID,
         opaquePolicyCreate("disabled", { enabled: false, mandatory: true }),
+      );
+      const chatMandatory = await repository.policies.create(
+        LOCAL_USER_ID,
+        opaquePolicyCreate("chat-mandatory", {
+          audience: "chat",
+          mandatory: true,
+        }),
       );
       const list = await repository.policies.list(LOCAL_USER_ID);
       await repository.policies.replaceProjectAssignments(
@@ -200,6 +215,15 @@ describe("opaque policy persistence", () => {
       expect(effective?.policies.map(({ id }) => id)).toEqual([
         mandatory.id,
         assigned.id,
+      ]);
+      const standalone =
+        await repository.policies.resolveStandalone(LOCAL_USER_ID);
+      expect(standalone.policies).toEqual([
+        expect.objectContaining({
+          id: chatMandatory.id,
+          protectedBody: expect.any(Object),
+          protectedSummary: expect.any(Object),
+        }),
       ]);
       expect(
         effective?.policies.find(({ id }) => id === assigned.id)?.sources,
