@@ -32,4 +32,11 @@ describe("live mutation invalidation", () => {
       [],
     );
   });
+
+  it("invalidates Task and chat views when deleting a draft", () => {
+    expect(mutationLiveResources("/api/tasks/:chatId")).toEqual([
+      "task",
+      "chat",
+    ]);
+  });
 });

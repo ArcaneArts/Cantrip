@@ -331,6 +331,96 @@ async function waitForState(chatId: string, state: string) {
 }
 
 describe.sequential("opaque encrypted Task persistence", () => {
+  it("deletes only unqueued Task drafts", async () => {
+    const draftChatId = randomUUID();
+    const createdDraftResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/tasks`,
+      payload: {
+        chatId: draftChatId,
+        titleProtection: protectedChatFields(draftChatId).titleProtection,
+        task: taskContent("draft", 0, null),
+      },
+    });
+    expect(createdDraftResponse.statusCode).toBe(201);
+
+    const deletedResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/tasks/${draftChatId}`,
+    });
+    expect(deletedResponse.statusCode).toBe(204);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/tasks/${draftChatId}`,
+        })
+      ).statusCode,
+    ).toBe(404);
+
+    const pauseState =
+      await database.repository.taskScheduling.getProjectTaskPauseState(
+        LOCAL_USER_ID,
+        projectId,
+      );
+    if (!pauseState) throw new Error("Expected a Project Task pause state.");
+    const paused =
+      await database.repository.taskScheduling.setProjectTaskPauseState(
+        LOCAL_USER_ID,
+        projectId,
+        { paused: true, rowVersion: pauseState.rowVersion },
+      );
+    if (!paused) throw new Error("Expected the Project Tasks to pause.");
+
+    const queuedChatId = randomUUID();
+    try {
+      const createdQueuedResponse = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/tasks`,
+        payload: {
+          chatId: queuedChatId,
+          titleProtection: protectedChatFields(queuedChatId).titleProtection,
+          task: taskContent("draft", 0, null),
+        },
+      });
+      const queuedTask = taskWireCreateResultSchema.parse(
+        createdQueuedResponse.json(),
+      ).task;
+      await database.repository.taskDispatch.enqueue(
+        LOCAL_USER_ID,
+        queuedChatId,
+        randomUUID(),
+        "direct",
+        queuedTask.rowVersion,
+      );
+
+      const rejectedResponse = await app.inject({
+        method: "DELETE",
+        url: `/api/tasks/${queuedChatId}`,
+      });
+      expect(rejectedResponse.statusCode).toBe(409);
+      expect(rejectedResponse.json()).toMatchObject({
+        code: "operation-active",
+        error: "Only an unqueued Task draft can be deleted.",
+      });
+      expect(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/tasks/${queuedChatId}`,
+          })
+        ).statusCode,
+      ).toBe(200);
+    } finally {
+      await database.repository.deleteChat(LOCAL_USER_ID, queuedChatId);
+      await database.repository.taskScheduling.setProjectTaskPauseState(
+        LOCAL_USER_ID,
+        projectId,
+        { paused: false, rowVersion: paused.rowVersion },
+      );
+    }
+  });
+
   it("creates, updates, executes, and retries without storing Task prose", async () => {
     const chatId = randomUUID();
     const createdResponse = await app.inject({

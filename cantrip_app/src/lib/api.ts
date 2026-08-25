@@ -4717,6 +4717,12 @@ export async function getTask(chatId: string) {
   );
 }
 
+export async function deleteTaskDraft(chatId: string) {
+  await request(`/api/tasks/${encodeURIComponent(chatId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function getTaskImplementationDashboard(chatId: string) {
   const opaque = taskImplementationOpaqueDashboardSchema.parse(
     await request(`/api/tasks/${encodeURIComponent(chatId)}/dashboard`),

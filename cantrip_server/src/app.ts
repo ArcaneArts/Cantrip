@@ -1210,6 +1210,7 @@ export function mutationLiveResources(
   }
   if (
     route === "/api/projects/:projectId/tasks" ||
+    route === "/api/tasks/:chatId" ||
     route.startsWith("/api/tasks/:chatId/")
   ) {
     return ["task", "chat"];
@@ -25491,6 +25492,28 @@ export async function buildApp({
     }
     return null;
   };
+
+  app.delete<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId",
+    async (request, reply) => {
+      try {
+        const deleted = await repository.tasks.deleteDraft(
+          applicationOwnerId(),
+          request.params.chatId,
+        );
+        if (!deleted) {
+          return reply.code(404).send({ error: "Task not found." });
+        }
+        publishChatSummary(request.params.chatId, deleted.projectId);
+        publishChatInvalidation(request.params.chatId, "task");
+        return reply.code(204).send();
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        throw error;
+      }
+    },
+  );
 
   app.patch<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId/draft",
