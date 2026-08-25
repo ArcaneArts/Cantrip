@@ -28489,6 +28489,8 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const retainedExplorerSession =
+        input.data.sessionId === request.params.explorerId;
       const ownerId = applicationOwnerId();
       const registrationLease = codeTunnel.acquireRegistrationLease({
         authSessionId: authenticatedPrincipal(request).sessionId,
@@ -28592,7 +28594,10 @@ export async function buildApp({
             runtime,
             serverId,
             sessionId,
-            stopSessionOnRelease: true,
+            // The Explorer UUID is its worker-owned Code session identity.
+            // Viewer attachment release must only revoke transport resources.
+            // Keep legacy random-session clients ephemeral during rollout.
+            stopSessionOnRelease: !retainedExplorerSession,
             tunnelId: input.data.tunnelId,
             workerId: context.workerId,
             worktreeId: context.worktreeId,
@@ -28631,7 +28636,11 @@ export async function buildApp({
             .send({ error: errorMessage(error) });
         }
       } finally {
-        if (registrationOwnership === "abort" && registrationWorkerId) {
+        if (
+          registrationOwnership === "abort" &&
+          registrationWorkerId &&
+          !retainedExplorerSession
+        ) {
           await codeTunnel.abortRegistrationSession({
             lease: registrationLease,
             runtime: registrationRuntime,

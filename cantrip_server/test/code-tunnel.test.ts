@@ -256,6 +256,79 @@ describe("protected Cantrip Code attachments", () => {
     }
   });
 
+  it("releases an Explorer viewer without stopping its retained session", async () => {
+    const explorerId = "explorer-session";
+    const tunnelId = "11111111-1111-4111-8111-111111111111";
+    const request = vi.fn(async () => null);
+    const broker = new CodeTunnelBroker({
+      isConnected: () => true,
+      request,
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus);
+    broker.configureControlPlane(
+      {
+        registerManagedTunnel: vi.fn(async () => ({ id: tunnelId })),
+        removeManagedTunnel: vi.fn(async () => true),
+      } as unknown as ServerRepository,
+      vi.fn(),
+      vi.fn(),
+    );
+    const lease = broker.acquireRegistrationLease({
+      authSessionId: null,
+      explorerId,
+      ownerId: "user-1",
+      sessionId: explorerId,
+      tunnelId,
+    })!;
+
+    try {
+      await broker.createProtectedAttachment({
+        codeTabId: `explorer:${explorerId}:${explorerId}`,
+        registrationLease: lease,
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord: protectedRecord(tunnelId),
+        runtime: { ...runtime, sessionId: explorerId },
+        sessionId: explorerId,
+        stopSessionOnRelease: false,
+        tunnelId,
+        workerId: "worker-1",
+      });
+      broker.releaseRegistrationLease(lease);
+
+      await expect(broker.revokeAttachment(tunnelId, "user-1")).resolves.toBe(
+        true,
+      );
+      expect(
+        request.mock.calls.filter(
+          ([, command]) => command.type === "code.stop",
+        ),
+      ).toHaveLength(0);
+
+      request.mockClear();
+      await expect(
+        broker.mutateExplorer(
+          "user-1",
+          explorerId,
+          async () => "deleted",
+          () => true,
+        ),
+      ).resolves.toBe("deleted");
+      expect(request).toHaveBeenCalledWith(
+        "worker-1",
+        {
+          type: "code.stop",
+          sessionId: explorerId,
+          expectedSessionIncarnationId: sessionIncarnationId,
+        },
+        { timeoutMs: 5_000 },
+      );
+    } finally {
+      broker.releaseRegistrationLease(lease);
+      await broker.close();
+    }
+  });
+
   it("stops an ephemeral session only after its final attachment lease is released", async () => {
     const firstTunnelId = "11111111-1111-4111-8111-111111111111";
     const secondTunnelId = "22222222-2222-4222-8222-222222222222";
