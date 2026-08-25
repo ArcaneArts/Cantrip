@@ -75,7 +75,7 @@ interface SourcePage {
   nextCursor: string | null;
 }
 
-interface CandidateHome {
+export interface ExternalCodexHome {
   label: string;
   path: string;
 }
@@ -342,7 +342,7 @@ export function normalizeGitOrigin(origin: string | null): string | null {
   }
 }
 
-function sourceFingerprint(
+export function externalCodexHomeFingerprint(
   candidate: string,
   platform: NodeJS.Platform,
 ): string {
@@ -386,14 +386,14 @@ async function defaultResolveGitOrigin(
   }
 }
 
-function sourceHomes(
+export function externalCodexHomes(
   environment: NodeJS.ProcessEnv,
   homeDirectory: string,
   managedDataDirectory: string,
   platform: NodeJS.Platform,
-): CandidateHome[] {
+): ExternalCodexHome[] {
   const api = pathApi(platform);
-  const candidates: CandidateHome[] = [];
+  const candidates: ExternalCodexHome[] = [];
   if (environment.CODEX_HOME?.trim()) {
     candidates.push({ label: "$CODEX_HOME", path: environment.CODEX_HOME });
   }
@@ -622,7 +622,7 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
       this.#resolvePath,
       this.#resolveGitOrigin,
     );
-    const homes = sourceHomes(
+    const homes = externalCodexHomes(
       this.#environment,
       this.#homeDirectory,
       this.#managedDataDirectory,
@@ -662,16 +662,19 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
         "The bundled Codex reader is outside Cantrip's tested range.",
       );
     }
-    const homes = sourceHomes(
+    const homes = externalCodexHomes(
       this.#environment,
       this.#homeDirectory,
       this.#managedDataDirectory,
       this.#platform,
     );
-    let selected: CandidateHome | null = null;
+    let selected: ExternalCodexHome | null = null;
     for (const home of homes) {
       const canonicalHome = await this.#resolvePath(home.path);
-      if (sourceFingerprint(canonicalHome, this.#platform) === input.sourceId) {
+      if (
+        externalCodexHomeFingerprint(canonicalHome, this.#platform) ===
+        input.sourceId
+      ) {
         selected = home;
         break;
       }
@@ -716,7 +719,10 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
         );
       }
       const canonicalHome = await this.#resolvePath(selected.path);
-      const resolvedSourceId = sourceFingerprint(canonicalHome, this.#platform);
+      const resolvedSourceId = externalCodexHomeFingerprint(
+        canonicalHome,
+        this.#platform,
+      );
       await this.#attachments.cleanupExpired();
       await this.#attachments.release(resolvedSourceId, sourceThread.id);
       const descriptors: ExternalChatAttachment[] = [];
@@ -812,7 +818,7 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
   }
 
   private async discoverHome(
-    home: CandidateHome,
+    home: ExternalCodexHome,
     targets: MatchedTarget[],
     includeArchived: boolean,
     runtimeVersion: string | null,
@@ -821,7 +827,7 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
     const canonicalHome = await this.#resolvePath(home.path);
     const base = {
       kind: "chatgpt-codex" as const,
-      sourceId: sourceFingerprint(canonicalHome, this.#platform),
+      sourceId: externalCodexHomeFingerprint(canonicalHome, this.#platform),
       name: "ChatGPT Codex",
       platform: this.#platform as "darwin" | "win32",
       homeLabel: home.label,

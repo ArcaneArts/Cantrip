@@ -167,6 +167,15 @@ Destination hydration additionally requires `thread/start`, `thread/read`, and
 `thread/inject_items`; missing methods produce a durable, explicit import
 compatibility state. See [the import contract](CODEX_CHAT_IMPORT.md).
 
+Project export uses another separate App Server process, but writes only fresh
+threads in the external Codex home. It anchors each thread to the selected
+existing Cantrip worktree and requires `thread/start`, `thread/inject_items`,
+`thread/name/set`, `thread/read`, `thread/unsubscribe`, and `thread/delete` for
+interrupted-attempt cleanup. It does not use Cantrip-managed runtime
+instructions, MCP configuration, providers, or authentication, and never
+modifies an existing external thread. See
+[the export contract](CODEX_CHAT_EXPORT.md).
+
 ## Server-managed ChatGPT authentication
 
 Portable ChatGPT accounts depend on an experimental Codex 0.149 App Server

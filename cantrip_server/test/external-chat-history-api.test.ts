@@ -11,6 +11,8 @@ import {
   externalChatDiscoveryWorkerResultSchema,
   externalChatReadWorkerResultSchema,
   projectExternalChatDiscoverySchema,
+  projectExportPreviewSchema,
+  projectExportResultSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -56,6 +58,7 @@ const connectedWorkers = new Set(["local-worker"]);
 const requests: Array<{ workerId: string; command: WorkerCommand }> = [];
 const hydrationDigests = new Map<string, string>();
 const hydrationChunks = new Map<string, Buffer[]>();
+const exportChunks = new Map<string, Buffer[]>();
 const attachmentUploads = new Map<
   string,
   {
@@ -87,6 +90,34 @@ const workerBridge: WorkerCommandBus = {
   },
   async request(workerId, command) {
     requests.push({ workerId, command });
+    if (command.type === "project.export.target.inspect") {
+      return {
+        target: command.target,
+        available: true,
+        destinationLabel: "~/.codex",
+        message: null,
+        platform: "darwin",
+      };
+    }
+    if (command.type === "project.export.chat.begin") {
+      exportChunks.set(`${command.operationId}:${command.chatId}`, []);
+      return { status: "upload" };
+    }
+    if (command.type === "project.export.chat.chunk") {
+      exportChunks.get(`${command.operationId}:${command.chatId}`)![
+        command.chunkIndex
+      ] = Buffer.from(command.data, "base64");
+      return { accepted: true };
+    }
+    if (command.type === "project.export.chat.complete") {
+      return {
+        chatId: command.chatId,
+        threadId: `exported-${command.chatId}`,
+        destinationLabel: "~/.codex",
+        messageCount: 2,
+        reused: false,
+      };
+    }
     if (command.type === "attachment.upload.begin") {
       attachmentUploads.set(command.attachmentId, {
         chunks: [],
@@ -398,6 +429,7 @@ beforeAll(async () => {
   await recordWorker("unrelated-worker", "Unrelated Worker", true);
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     ...protectedProjectFields(),
+    repositoryBlindIndex: Buffer.alloc(32, 7).toString("base64url"),
     workerId: "local-worker",
     repositoryId: "external-chat-history-api",
     nameWithOwner: "ArcaneArts/Cantrip",
@@ -665,6 +697,82 @@ describe.sequential("external Codex chat history discovery API", () => {
         ({ command }) => command.type === "external.chat-history.read",
       ),
     ).toHaveLength(1);
+  });
+
+  it("previews and relays selected encrypted chats to the owning worker", async () => {
+    requests.length = 0;
+    const chats = chatWireListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/chats`,
+        })
+      ).json(),
+    );
+    const chat = chats.find(({ experience }) => experience === "agent")!;
+    const previewResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/exports/preview`,
+      payload: {
+        target: { kind: "codex-local" },
+        worktreeId: primaryWorktreeId,
+      },
+    });
+
+    expect(previewResponse.statusCode).toBe(200);
+    expect(
+      projectExportPreviewSchema.parse(previewResponse.json()),
+    ).toMatchObject({
+      available: true,
+      destinationLabel: "~/.codex",
+      supportedChatExperiences: ["agent"],
+      worktree: { worktreeId: primaryWorktreeId },
+      worker: { workerId: "local-worker" },
+    });
+
+    const operationId = "00000000-0000-4000-8000-000000000091";
+    const exportResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/exports`,
+      payload: {
+        operationId,
+        target: { kind: "codex-local" },
+        worktreeId: primaryWorktreeId,
+        chatIds: [chat.id],
+      },
+    });
+
+    expect(exportResponse.statusCode).toBe(200);
+    expect(
+      projectExportResultSchema.parse(exportResponse.json()),
+    ).toMatchObject({
+      operationId,
+      workerId: "local-worker",
+      worktreeId: primaryWorktreeId,
+      outcomes: [
+        {
+          status: "exported",
+          chatId: chat.id,
+          threadId: `exported-${chat.id}`,
+        },
+      ],
+    });
+    const begin = requests.find(
+      ({ command }) => command.type === "project.export.chat.begin",
+    );
+    expect(begin).toMatchObject({
+      workerId: "local-worker",
+      command: {
+        chatId: chat.id,
+        cwd: expect.stringContaining("local-worker"),
+        titleProtection: chat.titleProtection,
+      },
+    });
+    const relayed = Buffer.concat(
+      exportChunks.get(`${operationId}:${chat.id}`) ?? [],
+    ).toString("utf8");
+    expect(relayed).toContain('"kind":"chat-encrypted"');
+    expect(relayed).not.toContain("The canonical transcript is ready.");
   });
 
   it("annotates metadata with durable already-imported state", async () => {

@@ -1756,7 +1756,7 @@ export function relocationResponseItems(
   });
 }
 
-function relocationItemBatches(
+export function relocationItemBatches(
   items: Array<Record<string, unknown>>,
 ): Array<Array<Record<string, unknown>>> {
   const batches: Array<Array<Record<string, unknown>>> = [];

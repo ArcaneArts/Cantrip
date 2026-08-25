@@ -103,6 +103,7 @@ import {
 } from "./attachment-encryption.js";
 import { ExternalChatAttachmentStagingStore } from "./external-chat-attachments.js";
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
+import { ProjectExportManager } from "./project-export-manager.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { protectProjectAutomationDispatch } from "./automation-encryption.js";
 import {
@@ -816,6 +817,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const chatRelocations = new ChatRelocationHydrationStore(
     config.dataDirectory,
   );
+  const projectExports = new ProjectExportManager({
+    binary: config.codexBinary,
+    dataDirectory: config.dataDirectory,
+    encryptionService: workerEncryption,
+  });
   const github = new GithubClient(config.dataDirectory, config.workerId);
   const managedFolders = new ManagedFolderManager(config.dataDirectory);
   const projectGithubConverter = new ProjectGithubConverter(managedFolders);
@@ -1969,6 +1975,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return readProjectRepositoryStats(command.cwd);
       case "project.folder-stats":
         return readProjectFolderStats(command.root);
+      case "project.export.target.inspect":
+        return projectExports.inspect(command.target, command.cwd);
+      case "project.export.chat.begin":
+        return projectExports.begin(command);
+      case "project.export.chat.chunk":
+        await projectExports.append(
+          command.operationId,
+          command.chatId,
+          command.chunkIndex,
+          Buffer.from(command.data, "base64"),
+        );
+        return { accepted: true };
+      case "project.export.chat.complete":
+        return projectExports.complete(command.operationId, command.chatId);
       case "external.chat-history.discover":
         return discoverExternalChatHistory(
           {
