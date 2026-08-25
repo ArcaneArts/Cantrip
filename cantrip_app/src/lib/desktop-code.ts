@@ -3,10 +3,12 @@ import {
   codeOpenFileResultSchema,
   codeOpenSettingsResultSchema,
   codePresentationUpdateSchema,
+  codeSessionRouteBasePath,
   codeThemeUpdateSchema,
   type CodeAppearance,
   type CodeAttachment,
   type CodeProtectedAttachmentWire,
+  type CodeSharedAttachmentWire,
   type CodeOpenFileResult,
   type CodePresentationUpdate,
   type CodeThemeUpdate,
@@ -21,20 +23,30 @@ import {
 import { clientLogger } from "@/lib/client-log-relay";
 import {
   forceDesktopTunnelRelay,
+  acquireDesktopCodeTransport,
   listDesktopTunnelsWithOptions,
+  releaseDesktopCodeTransport,
   startDesktopTunnel,
   stopDesktopTunnel,
   subscribeDesktopTunnelForwardTerminal,
   type DesktopTunnelDestinationRejectionCode,
   type DesktopTunnelForwardIdentity,
   type DesktopTunnelForwardSummary,
+  type DesktopCodeTransportLease,
 } from "@/lib/desktop-tunnel";
+import {
+  explorerCodeSessionBindingCurrent,
+  type BoundExplorerCodeSessionAttachment,
+} from "@/lib/api";
 
 export interface PreferredCodeAttachment {
   attachment: CodeAttachment;
   desktopRouteIdentity: DesktopTunnelForwardIdentity | null;
   directTunnelId: string | null;
   transportKind: "local-direct" | "relay";
+  sharedTransportGeneration?: string;
+  sharedTransportLeaseId?: string;
+  sharedOwnedAttachment?: BoundExplorerCodeSessionAttachment;
 }
 
 export type CodeAttachmentRouteRecoveryState =
@@ -63,10 +75,41 @@ export function subscribePreferredCodeAttachmentUnavailable(
   );
 }
 
-const protectedAttachmentIdentities = new WeakMap<
-  object,
-  DesktopTunnelForwardIdentity
->();
+type DesktopCodeRuntimeState = {
+  protectedAttachmentIdentities: WeakMap<
+    object,
+    DesktopTunnelForwardIdentity
+  >;
+  sharedProtectedAttachmentLeases: WeakMap<
+    BoundExplorerCodeSessionAttachment,
+    Map<string, DesktopCodeTransportLease>
+  >;
+};
+type DesktopCodeHotState = { desktopCodeRuntime?: DesktopCodeRuntimeState };
+export function desktopCodeStateForRuntime(
+  hotState?: DesktopCodeHotState,
+): DesktopCodeRuntimeState {
+  const created = () => ({
+    protectedAttachmentIdentities: new WeakMap<
+      object,
+      DesktopTunnelForwardIdentity
+    >(),
+    sharedProtectedAttachmentLeases: new WeakMap<
+      BoundExplorerCodeSessionAttachment,
+      Map<string, DesktopCodeTransportLease>
+    >(),
+  });
+  if (!hotState) return created();
+  hotState.desktopCodeRuntime ??= created();
+  return hotState.desktopCodeRuntime;
+}
+const desktopCodeRuntime = desktopCodeStateForRuntime(
+  import.meta.hot?.data as DesktopCodeHotState | undefined,
+);
+const protectedAttachmentIdentities =
+  desktopCodeRuntime.protectedAttachmentIdentities;
+const sharedProtectedAttachmentLeases =
+  desktopCodeRuntime.sharedProtectedAttachmentLeases;
 const CODE_ATTACHMENT_HEALTH_ATTEMPTS = 100;
 const CODE_ATTACHMENT_HEALTH_RETRY_MS = 50;
 const CODE_ATTACHMENT_HEALTH_ATTEMPT_TIMEOUT_MS = 750;
@@ -785,6 +828,192 @@ export async function preferProtectedCodeAttachment(
   }
 }
 
+export async function preferSharedProtectedCodeAttachment(
+  owned: BoundExplorerCodeSessionAttachment,
+  options: { signal?: AbortSignal } = {},
+): Promise<PreferredCodeAttachment> {
+  if (!isTauri()) {
+    throw new Error(
+      "Shared Cantrip Code browser transports are not enabled yet.",
+    );
+  }
+  options.signal?.throwIfAborted();
+  const wire = owned.attachment;
+  const lease = await acquireDesktopCodeTransport(owned, options);
+  let forward = lease.forward;
+  const readinessStartedAtMs = monotonicNow();
+  try {
+    const assertCurrent = () => {
+      options.signal?.throwIfAborted();
+      if (!explorerCodeSessionBindingCurrent(owned.binding)) {
+        throw new Error(
+          "The Cantrip Code server or authentication identity changed while connecting.",
+        );
+      }
+    };
+    assertCurrent();
+    const basePath = `${codeSessionRouteBasePath(wire.session.routeGrant)}/`;
+    const url = new URL(
+      basePath,
+      `http://${forward.localHost}:${forward.localPort}`,
+    );
+    if (wire.session.runtime.workspaceUri) {
+      const workspace = new URL(wire.session.runtime.workspaceUri);
+      if (workspace.protocol !== "file:") {
+        throw new Error("Cantrip Code supplied an invalid workspace URI.");
+      }
+      url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
+    }
+    const attachment = {
+      attachmentId: wire.session.attachmentId,
+      sessionId: wire.session.sessionId,
+      url: url.toString(),
+      expiresAt: wire.session.expiresAt,
+      runtime: wire.session.runtime,
+    } satisfies CodeAttachment;
+    const health = async (phase: "direct" | "relay", timeoutMs: number) =>
+      waitForDirectCodeAttachmentReady(attachment, {
+        attachmentId: wire.session.attachmentId,
+        ...(forward.diagnosticTraceId
+          ? { diagnosticTraceId: forward.diagnosticTraceId }
+          : {}),
+        destinationRejectionBaseline: forward.destinationRejectedCount ?? 0,
+        healthPhase: phase,
+        sessionId: wire.session.sessionId,
+        signal: options.signal,
+        totalTimeoutMs: timeoutMs,
+        tunnelId: wire.transport.transportId,
+      });
+    try {
+      await health(
+        forward.routeState === "local-direct" ? "direct" : "relay",
+        forward.routeState === "local-direct"
+          ? CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS
+          : CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS,
+      );
+    } catch (error) {
+      if (
+        !(error instanceof CodeAttachmentHealthError) ||
+        !error.relayFallbackEligible ||
+        forward.routeState !== "local-direct" ||
+        !forward.relayFallbackAvailable
+      ) {
+        throw error;
+      }
+      forward = await forceDesktopTunnelRelay(forward, {
+        binding: owned.binding,
+        serverUrl: owned.binding.serverUrl,
+        signal: options.signal,
+      });
+      assertCurrent();
+      const remainingHealthMs = Math.floor(
+        CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS -
+          (monotonicNow() - readinessStartedAtMs),
+      );
+      if (remainingHealthMs <= 0) {
+        throw new CodeAttachmentHealthError({
+          attemptCount: 0,
+          cause: error,
+          failureKind: "total-timeout",
+        });
+      }
+      await health("relay", remainingHealthMs);
+    }
+    assertCurrent();
+    const desktopRouteIdentity = {
+      attachmentId: forward.attachmentId,
+      diagnosticTraceId: forward.diagnosticTraceId,
+      directCapabilityId: forward.directCapabilityId,
+    };
+    const ownedLeases =
+      sharedProtectedAttachmentLeases.get(owned) ??
+      new Map<string, DesktopCodeTransportLease>();
+    lease.forward = forward;
+    ownedLeases.set(lease.leaseId, lease);
+    sharedProtectedAttachmentLeases.set(owned, ownedLeases);
+    return {
+      attachment,
+      desktopRouteIdentity,
+      directTunnelId: wire.transport.transportId,
+      sharedTransportGeneration: lease.generation,
+      sharedTransportLeaseId: lease.leaseId,
+      sharedOwnedAttachment: owned,
+      transportKind:
+        forward.routeState === "local-direct" ? "local-direct" : "relay",
+    };
+  } catch (error) {
+    await releaseDesktopCodeTransport(lease).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function stopSharedProtectedCodeAttachment(
+  owned: BoundExplorerCodeSessionAttachment,
+  leaseId?: string,
+): Promise<void> {
+  const leases = sharedProtectedAttachmentLeases.get(owned);
+  if (!leases) return;
+  if (leaseId) {
+    const lease = leases.get(leaseId);
+    if (!lease) return;
+    const released = await releaseDesktopCodeTransport(lease);
+    if (!released) {
+      throw new Error("The shared Code transport lease could not be released.");
+    }
+    if (leases.get(leaseId) === lease) leases.delete(leaseId);
+    if (leases.size === 0) sharedProtectedAttachmentLeases.delete(owned);
+    return;
+  }
+  const releases = await Promise.all(
+    [...leases.entries()].map(async ([candidateId, lease]) => ({
+      candidateId,
+      lease,
+      released: await releaseDesktopCodeTransport(lease),
+    })),
+  );
+  for (const release of releases) {
+    if (release.released && leases.get(release.candidateId) === release.lease) {
+      leases.delete(release.candidateId);
+    }
+  }
+  if (leases.size === 0) sharedProtectedAttachmentLeases.delete(owned);
+  if (releases.some((release) => !release.released)) {
+    throw new Error(
+      "One or more shared Code transport leases could not be released.",
+    );
+  }
+}
+
+export async function retainSharedProtectedCodeAttachmentLease(
+  owned: BoundExplorerCodeSessionAttachment,
+  leaseId: string,
+): Promise<void> {
+  const leases = sharedProtectedAttachmentLeases.get(owned);
+  if (!leases?.has(leaseId)) return;
+  const retired: Array<[string, DesktopCodeTransportLease]> = [];
+  for (const [candidateId, candidate] of leases) {
+    if (candidateId === leaseId) continue;
+    retired.push([candidateId, candidate]);
+  }
+  const releases = await Promise.all(
+    retired.map(async ([candidateId, lease]) => ({
+      candidateId,
+      lease,
+      released: await releaseDesktopCodeTransport(lease),
+    })),
+  );
+  for (const release of releases) {
+    if (release.released && leases.get(release.candidateId) === release.lease) {
+      leases.delete(release.candidateId);
+    }
+  }
+  if (releases.some((release) => !release.released)) {
+    throw new Error(
+      "A superseded shared Code transport lease could not be released.",
+    );
+  }
+}
+
 async function codeAttachmentRouteResponds(
   attachment: Pick<CodeAttachment, "url">,
   signal: AbortSignal,
@@ -806,8 +1035,9 @@ async function codeAttachmentRouteResponds(
 function desktopRouteIdentityKey(preferred: PreferredCodeAttachment): string {
   const identity = preferred.desktopRouteIdentity;
   return [
-    preferred.attachment.attachmentId,
+    preferred.directTunnelId ?? "browser",
     identity?.attachmentId ?? "browser",
+    identity?.diagnosticTraceId ?? "none",
     identity?.directCapabilityId ?? "none",
   ].join("\0");
 }
@@ -877,7 +1107,19 @@ async function performPreferredCodeAttachmentRouteRecovery(
   }
 
   try {
-    const relayed = await forceDesktopTunnelRelay(exact, { signal });
+    const sharedOwned = preferred.sharedOwnedAttachment;
+    if (sharedOwned && !explorerCodeSessionBindingCurrent(sharedOwned.binding)) {
+      return "replace-required";
+    }
+    const relayed = await forceDesktopTunnelRelay(exact, {
+      ...(sharedOwned
+        ? {
+            binding: sharedOwned.binding,
+            serverUrl: sharedOwned.binding.serverUrl,
+          }
+        : {}),
+      signal,
+    });
     if (
       relayed.tunnelId !== tunnelId ||
       relayed.attachmentId !== preferred.desktopRouteIdentity.attachmentId ||

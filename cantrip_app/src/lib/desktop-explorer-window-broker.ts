@@ -1,16 +1,21 @@
 import {
-  createProtectedExplorerCodeAttachment,
+  CantripApiError,
+  createProtectedExplorerCodeSessionAttachment,
   getExplorerFile,
   loadExplorerMedia,
-  releaseCodeAttachment,
+  releaseProtectedExplorerCodeSessionAttachment,
+  renewProtectedExplorerCodeSessionAttachment,
   saveExplorerFile,
+  type BoundExplorerCodeSessionAttachment,
 } from "@/lib/api";
 import {
   openDirectCodeAttachmentFile,
-  preferProtectedCodeAttachment,
+  preferSharedProtectedCodeAttachment,
   recoverPreferredCodeAttachmentRoute,
+  retainSharedProtectedCodeAttachmentLease,
   setDirectCodeAttachmentPresentation,
-  stopDirectCodeAttachment,
+  stopSharedProtectedCodeAttachment,
+  subscribePreferredCodeAttachmentUnavailable,
   type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
 import {
@@ -45,6 +50,8 @@ export interface DesktopExplorerWindowBrokerOptions {
 
 const editorControlRetryDelaysMs = [250, 750] as const;
 const editorRouteRecoveryRetryLimit = 2;
+const sharedSessionRenewalMaxDelayMs = 5 * 60_000;
+const sharedSessionRenewalMinDelayMs = 30_000;
 
 function isTransientEditorControlError(error: unknown): boolean {
   return /(?:failed to fetch|load failed|network|not connected|unavailable)/iu.test(
@@ -128,16 +135,11 @@ async function retryEditorControl<T>(
 }
 
 async function releasePreparedEditor(
-  attachmentId: string,
-  directTunnelId: string,
-  desktopRouteIdentity: PreferredCodeAttachment["desktopRouteIdentity"] = null,
+  owned: BoundExplorerCodeSessionAttachment,
 ): Promise<void> {
   await retireAttachmentBestEffort(
-    () =>
-      desktopRouteIdentity
-        ? stopDirectCodeAttachment(directTunnelId, desktopRouteIdentity)
-        : Promise.resolve(),
-    () => releaseCodeAttachment(attachmentId),
+    () => stopSharedProtectedCodeAttachment(owned),
+    () => releaseProtectedExplorerCodeSessionAttachment(owned),
   );
 }
 
@@ -160,13 +162,15 @@ export function createDesktopExplorerWindowBroker(
   }
   let disposed = false;
   let prepared: PreparedEditorAttachment | null = null;
-  let ownedAttachmentId: string | null = null;
-  let ownedDesktopRouteIdentity: PreferredCodeAttachment["desktopRouteIdentity"] =
-    null;
-  let ownedDirectTunnelId: string | null = null;
-  let releasedDesktopRouteIdentity: PreferredCodeAttachment["desktopRouteIdentity"] =
-    null;
+  let ownedAttachment: BoundExplorerCodeSessionAttachment | null = null;
   let releasePromise: Promise<void> | null = null;
+  let renewalCursor: BoundExplorerCodeSessionAttachment | null = null;
+  let renewalTimer: ReturnType<typeof setTimeout> | null = null;
+  let renewalGeneration = 0;
+  let recoverEditorAttachment: (reason: unknown) => Promise<void> = () =>
+    Promise.resolve();
+  let recoverSharedTransport: (reason: unknown) => Promise<void> = () =>
+    Promise.resolve();
   let preparedAtMs: number | null = null;
   let configuredAtMs: number | null = null;
   let configuredWorkbenchNonce: string | null = null;
@@ -179,6 +183,8 @@ export function createDesktopExplorerWindowBroker(
   let navigationRevision = 0;
   let navigationController: AbortController | null = null;
   let recoveryPromise: Promise<void> | null = null;
+  let transportRecoveryPromise: Promise<void> | null = null;
+  let unsubscribePreparedTerminal: (() => void) | null = null;
   const workbenchWaiters = new Set<{
     reject(error: Error): void;
     resolve(nonce: string): void;
@@ -186,6 +192,23 @@ export function createDesktopExplorerWindowBroker(
 
   const send = (response: DesktopExplorerWindowResponse) => {
     if (!disposed) channel.postMessage(response);
+  };
+  const unbindPreparedTerminal = (): void => {
+    unsubscribePreparedTerminal?.();
+    unsubscribePreparedTerminal = null;
+  };
+  const bindPreparedTerminal = (candidate: PreparedEditorAttachment): void => {
+    unbindPreparedTerminal();
+    unsubscribePreparedTerminal = subscribePreferredCodeAttachmentUnavailable(
+      candidate,
+      () => {
+        if (!disposed && prepared === candidate) {
+          void recoverSharedTransport(
+            new Error("The shared Cantrip Code transport closed."),
+          );
+        }
+      },
+    );
   };
   const reportEditorError = (
     error: unknown,
@@ -203,28 +226,77 @@ export function createDesktopExplorerWindowBroker(
     editorErrorStage = stage;
     send({ error: message, launchId, stage, type: "editor.failed" });
   };
-  const releaseOwnedEditor = (): Promise<void> => {
-    if (!ownedAttachmentId || !ownedDirectTunnelId) {
-      return Promise.resolve();
-    }
+  const releaseOwnedEditor = async (): Promise<void> => {
+    renewalGeneration += 1;
+    renewalCursor = null;
+    if (renewalTimer) clearTimeout(renewalTimer);
+    renewalTimer = null;
+    const owned = ownedAttachment;
+    if (!owned) return;
+    // Stopping the local lease must be retried even after the logical session
+    // release has completed. A leader can finish native acquisition after its
+    // caller was aborted; the second stop observes and releases that late
+    // exact-generation lease without issuing a second session DELETE.
+    await stopSharedProtectedCodeAttachment(owned).catch(() => undefined);
     if (!releasePromise) {
-      releasedDesktopRouteIdentity = ownedDesktopRouteIdentity;
-      releasePromise = releasePreparedEditor(
-        ownedAttachmentId,
-        ownedDirectTunnelId,
-        ownedDesktopRouteIdentity,
+      releasePromise = releaseProtectedExplorerCodeSessionAttachment(owned);
+    }
+    await releasePromise;
+  };
+  const scheduleSessionRenewal = (
+    generation: number,
+    delayMs?: number,
+  ): void => {
+    const current = renewalCursor;
+    if (disposed || !current || generation !== renewalGeneration) return;
+    if (renewalTimer) clearTimeout(renewalTimer);
+    const expiresInMs =
+      Date.parse(current.attachment.session.expiresAt) - Date.now();
+    const delay =
+      delayMs ??
+      Math.min(
+        sharedSessionRenewalMaxDelayMs,
+        Math.max(sharedSessionRenewalMinDelayMs, Math.floor(expiresInMs / 2)),
       );
-    } else if (
-      ownedDesktopRouteIdentity &&
-      ownedDesktopRouteIdentity !== releasedDesktopRouteIdentity
-    ) {
-      const identity = ownedDesktopRouteIdentity;
-      releasedDesktopRouteIdentity = identity;
-      releasePromise = releasePromise.then(() =>
-        stopDirectCodeAttachment(ownedDirectTunnelId, identity),
+    renewalTimer = setTimeout(() => {
+      renewalTimer = null;
+      void renewSessionLease(generation);
+    }, delay);
+  };
+  const renewSessionLease = async (generation: number): Promise<void> => {
+    const current = renewalCursor;
+    if (disposed || !current || generation !== renewalGeneration) return;
+    try {
+      const renewed = await renewProtectedExplorerCodeSessionAttachment(
+        current,
+        { signal: AbortSignal.timeout(10_000) },
+      );
+      if (disposed || generation !== renewalGeneration) return;
+      renewalCursor = renewed;
+      scheduleSessionRenewal(generation);
+    } catch (error) {
+      if (disposed || generation !== renewalGeneration) return;
+      const authoritative =
+        error instanceof CantripApiError &&
+        [401, 403, 404, 409, 410].includes(error.status);
+      const expiresInMs =
+        Date.parse(current.attachment.session.expiresAt) - Date.now();
+      if (authoritative || expiresInMs <= sharedSessionRenewalMinDelayMs) {
+        await recoverEditorAttachment(error).catch(() => undefined);
+        return;
+      }
+      scheduleSessionRenewal(
+        generation,
+        Math.min(sharedSessionRenewalMinDelayMs, expiresInMs / 2),
       );
     }
-    return releasePromise;
+  };
+  const beginSessionRenewal = (
+    owned: BoundExplorerCodeSessionAttachment,
+  ): void => {
+    renewalGeneration += 1;
+    renewalCursor = owned;
+    scheduleSessionRenewal(renewalGeneration);
   };
   let endpointGeneration = 0;
   let editorPromise: Promise<PreparedEditorAttachment>;
@@ -232,7 +304,7 @@ export function createDesktopExplorerWindowBroker(
     const generation = ++endpointGeneration;
     const raw = (async (): Promise<PreparedEditorAttachment> => {
       preparationController.signal.throwIfAborted();
-      const wire = await createProtectedExplorerCodeAttachment(
+      const owned = await createProtectedExplorerCodeSessionAttachment(
         context.explorer.id,
         hasFileTarget ? context.path : null,
         context.explorer.activeWorkerId,
@@ -240,20 +312,19 @@ export function createDesktopExplorerWindowBroker(
         context.appearance,
       );
       if (generation !== endpointGeneration) {
-        await releasePreparedEditor(wire.attachmentId, wire.tunnelId);
+        await releasePreparedEditor(owned);
         throw new DOMException(
           "Explorer Code endpoint was superseded.",
           "AbortError",
         );
       }
-      ownedAttachmentId = wire.attachmentId;
-      ownedDirectTunnelId = wire.tunnelId;
+      ownedAttachment = owned;
       preparationController.signal.throwIfAborted();
-      const preferred = await preferProtectedCodeAttachment(wire, {
+      const preferred = await preferSharedProtectedCodeAttachment(owned, {
         signal: preparationController.signal,
       });
-      ownedDesktopRouteIdentity = preferred.desktopRouteIdentity;
       preparationController.signal.throwIfAborted();
+      beginSessionRenewal(owned);
       return preferred;
     })().catch(async (error: unknown) => {
       await releaseOwnedEditor();
@@ -269,6 +340,7 @@ export function createDesktopExplorerWindowBroker(
           );
         }
         prepared = result;
+        bindPreparedTerminal(result);
         preparedAtMs = Date.now();
         send({
           attachment: result.attachment,
@@ -430,7 +502,7 @@ export function createDesktopExplorerWindowBroker(
     send({ context, launchId, type: "launch.ready" });
     return scheduleConfiguration(path, requestedAtMs);
   };
-  const recoverEditorAttachment = (reason: unknown): Promise<void> => {
+  recoverEditorAttachment = (reason: unknown): Promise<void> => {
     if (disposed || preparationController.signal.aborted) {
       return Promise.resolve();
     }
@@ -444,22 +516,14 @@ export function createDesktopExplorerWindowBroker(
     presentationNonce = null;
     configuredAtMs = null;
     configuredWorkbenchNonce = null;
+    unbindPreparedTerminal();
     prepared = null;
-    const staleAttachmentId = ownedAttachmentId;
-    const staleDesktopRouteIdentity = ownedDesktopRouteIdentity;
-    const staleDirectTunnelId = ownedDirectTunnelId;
+    const staleAttachment = ownedAttachment;
     const replacement = (async () => {
       await releaseOwnedEditor();
       preparationController.signal.throwIfAborted();
-      if (ownedAttachmentId === staleAttachmentId) ownedAttachmentId = null;
-      if (ownedDesktopRouteIdentity === staleDesktopRouteIdentity) {
-        ownedDesktopRouteIdentity = null;
-      }
-      if (ownedDirectTunnelId === staleDirectTunnelId) {
-        ownedDirectTunnelId = null;
-      }
+      if (ownedAttachment === staleAttachment) ownedAttachment = null;
       releasePromise = null;
-      releasedDesktopRouteIdentity = null;
       return prepareEditor();
     })();
     editorPromise = replacement;
@@ -474,6 +538,71 @@ export function createDesktopExplorerWindowBroker(
         recoveryPromise = null;
       });
     return recoveryPromise;
+  };
+  recoverSharedTransport = (reason: unknown): Promise<void> => {
+    if (disposed || preparationController.signal.aborted) {
+      return Promise.resolve();
+    }
+    if (transportRecoveryPromise) return transportRecoveryPromise;
+    const owned = ownedAttachment;
+    const stale = prepared;
+    if (!owned || !stale) return recoverEditorAttachment(reason);
+    reportEditorError(codeWorkbenchStageError("endpoint", reason), "endpoint");
+    navigationController?.abort(
+      new DOMException("Explorer Code transport is recovering.", "AbortError"),
+    );
+    unbindPreparedTerminal();
+    const recovery = (async () => {
+      const replacement = await preferSharedProtectedCodeAttachment(owned, {
+        signal: preparationController.signal,
+      });
+      if (
+        disposed ||
+        preparationController.signal.aborted ||
+        ownedAttachment !== owned ||
+        prepared !== stale
+      ) {
+        await stopSharedProtectedCodeAttachment(
+          owned,
+          replacement.sharedTransportLeaseId,
+        ).catch(() => undefined);
+        return;
+      }
+      if (replacement.sharedTransportLeaseId) {
+        await retainSharedProtectedCodeAttachmentLease(
+          owned,
+          replacement.sharedTransportLeaseId,
+        );
+      }
+      prepared = replacement;
+      preparedAtMs = Date.now();
+      activeWorkbenchNonce = null;
+      expectedWorkbenchNonce = null;
+      presentationNonce = null;
+      configuredAtMs = null;
+      configuredWorkbenchNonce = null;
+      bindPreparedTerminal(replacement);
+      send({
+        attachment: replacement.attachment,
+        launchId,
+        preparedAtMs,
+        type: "editor.endpoint-ready",
+      });
+      await scheduleConfiguration(
+        hasFileTarget ? context.path : null,
+        context.requestedAtMs,
+      );
+    })();
+    transportRecoveryPromise = recovery
+      .catch(async (error) => {
+        if (!disposed && !preparationController.signal.aborted) {
+          await recoverEditorAttachment(error);
+        }
+      })
+      .finally(() => {
+        transportRecoveryPromise = null;
+      });
+    return transportRecoveryPromise;
   };
   const ready = configureInitialFile
     ? openFile(context.path, context.requestedAtMs)
@@ -491,6 +620,7 @@ export function createDesktopExplorerWindowBroker(
       );
       preparationController.abort(options.signal?.reason);
       options.signal?.removeEventListener("abort", abortFromOwner);
+      unbindPreparedTerminal();
       channel.close();
     }
     return releaseOwnedEditor();

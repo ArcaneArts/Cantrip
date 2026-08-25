@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import {
   type CodeAppearance,
@@ -129,6 +129,7 @@ interface SharedCodeTransportRoot {
   readonly identityKey: string;
   readonly ownerId: string;
   readonly protectedKeyRevision: number;
+  readonly securityScopeId: string;
   readonly serverId: string;
   readonly sessionAttachmentIds: Set<string>;
   state: "active" | "retiring";
@@ -560,8 +561,11 @@ export class SharedCodeTransportRegistry {
               );
             }
           } catch (error) {
-            await this.#retireRoot(
-              session.transport,
+            // A route/session failure is not proof that the shared transport
+            // identity is invalid. Detach only this logical session; healthy
+            // siblings keep their grants and physical transport.
+            await this.#removeSession(
+              session,
               "Code route lease renewal failed",
             ).catch(() => undefined);
             throw error;
@@ -1349,6 +1353,7 @@ export class SharedCodeTransportRegistry {
         identityKey,
         ownerId: input.ownerId,
         protectedKeyRevision: input.protectedKeyRevision,
+        securityScopeId: randomUUID(),
         serverId: input.serverId,
         sessionAttachmentIds: new Set(),
         state: "active",
@@ -1509,39 +1514,67 @@ export class SharedCodeTransportRegistry {
       true,
     );
     const root = session.transport;
-    try {
-      await this.#revokeRoute(root, session.attachmentId);
-    } catch (error) {
-      await this.#retireRoot(root, "Code route revocation failed");
-      throw error;
-    }
+    // Remove server authority before asynchronous worker cleanup. If a route
+    // revoke acknowledgement is lost, stopping the exact Code session makes
+    // the stale worker route unusable without destroying sibling routes.
     this.#sessions.delete(session.attachmentId);
     root.sessionAttachmentIds.delete(session.attachmentId);
     const failures: unknown[] = [];
-    if (session.stopSessionOnRelease) {
-      try {
-        await this.#sessionOwnership.release(
-          this.#sessionOwnershipIdentity(session),
-        );
-      } catch (error) {
-        this.#retainPendingSessionStop(session);
-        failures.push(error);
-      }
+    const cleanup = await Promise.allSettled([
+      this.#revokeRoute(root, session.attachmentId),
+      ...(session.stopSessionOnRelease
+        ? [
+            Promise.resolve().then(() =>
+              this.#sessionOwnership.release(
+                this.#sessionOwnershipIdentity(session),
+              ),
+            ),
+          ]
+        : []),
+    ]);
+    const routeRevocationFailed = cleanup[0]?.status === "rejected";
+    if (cleanup[0]?.status === "rejected") {
+      failures.push(cleanup[0].reason);
+    }
+    if (session.stopSessionOnRelease && cleanup[1]?.status === "rejected") {
+      this.#retainPendingSessionStop(session);
+      failures.push(cleanup[1].reason);
     }
     serverLogger.info("Shared Cantrip Code session detached", {
       attachmentId: session.attachmentId,
-      event: "code.session-attachment.revoked",
+      event: "code.session-attachment.detached",
       operation: "revoke-session-attachment",
-      reasonCode: "session-attachment-released",
+      reasonCode: "server-authority-removed",
       sessionId: session.sessionId,
       status: "completed",
       subsystem: "code",
       transportId: root.transportId,
       workerId: root.workerId,
     });
-    if (root.sessionAttachmentIds.size === 0) {
+    if (routeRevocationFailed) {
+      serverLogger.warn(
+        "Shared Cantrip Code route revocation was not acknowledged; retiring its transport fail-closed",
+        {
+          attachmentId: session.attachmentId,
+          event: "code.session-route.revocation-ambiguous",
+          operation: "revoke-session-attachment",
+          reasonCode: "worker-route-revoke-unacknowledged",
+          sessionId: session.sessionId,
+          status: "failed",
+          subsystem: "code",
+          transportId: root.transportId,
+          workerId: root.workerId,
+        },
+      );
+    }
+    if (routeRevocationFailed || root.sessionAttachmentIds.size === 0) {
       try {
-        await this.#retireRoot(root, reason);
+        await this.#retireRoot(
+          root,
+          routeRevocationFailed
+            ? "Code session route revocation was ambiguous"
+            : reason,
+        );
       } catch (error) {
         failures.push(error);
       }
@@ -2072,6 +2105,11 @@ export class SharedCodeTransportRegistry {
       transportId: root.transportId,
       tunnelId: root.transportId,
       workerId: root.workerId,
+      securityScopeId: root.securityScopeId,
+      serverId: root.serverId,
+      serverControlPlaneGeneration: root.serverControlPlaneGeneration,
+      protectedKeyRevision: root.protectedKeyRevision,
+      workerProcessGeneration: root.workerProcessGeneration,
       expiresAt: new Date(root.expiresAt).toISOString(),
     };
   }

@@ -81,7 +81,13 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
   const forwards = await listDesktopTunnelsWithOptions({
     signal: AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
   });
-  const directTelemetryForwards = forwards.filter(
+  // Shared Code forwards are maintained by an exact native generation/lease
+  // owner carrying the bound server identity. A renderer-wide poll must never
+  // apply its current account credentials to another window/server's pool.
+  const genericForwards = forwards.filter(
+    (forward) => !forward.codePoolGeneration,
+  );
+  const directTelemetryForwards = genericForwards.filter(
     (forward) =>
       Boolean(forward.directCapabilityId) &&
       (forward.routeState === "local-direct" ||
@@ -116,7 +122,7 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
         }
       }),
     ),
-    ...forwards
+    ...genericForwards
       .filter(
         (forward) => !directTelemetryAttachments.has(forward.attachmentId),
       )
@@ -132,7 +138,7 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
         }),
       ),
   ]);
-  for (const forward of forwards) {
+  for (const forward of genericForwards) {
     if (!invalidatedForwards.has(forwardGenerationKey(forward))) {
       scheduleTransportMaintenance(forward);
     }

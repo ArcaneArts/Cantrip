@@ -5915,6 +5915,11 @@ export const codeTransportWireSchema = z
     transportId: tunnelResourceIdSchema,
     tunnelId: tunnelResourceIdSchema,
     workerId: executionResourceIdSchema,
+    securityScopeId: z.string().uuid(),
+    serverId: executionResourceIdSchema,
+    serverControlPlaneGeneration: z.string().uuid(),
+    protectedKeyRevision: z.number().int().positive().safe(),
+    workerProcessGeneration: z.string().uuid(),
     expiresAt: z.string().datetime(),
   })
   .strict()
