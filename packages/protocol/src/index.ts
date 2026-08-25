@@ -683,6 +683,59 @@ export const unavailableManagedFolderCapabilities =
     remove: false,
   });
 
+export const standaloneChatScratchCapabilitiesSchema = z
+  .object({
+    provision: z.boolean(),
+    resolve: z.boolean(),
+    archive: z.boolean(),
+    restore: z.boolean(),
+    remove: z.boolean(),
+    reconcile: z.boolean(),
+    routingHandles: z.boolean(),
+  })
+  .strict();
+
+export const standaloneChatFileCapabilitiesSchema = z
+  .object({
+    list: z.boolean(),
+    read: z.boolean(),
+    write: z.boolean(),
+    remove: z.boolean(),
+    download: z.boolean(),
+    archive: z.boolean(),
+  })
+  .strict();
+
+export const standaloneChatCapabilitiesSchema = z
+  .object({
+    protocolVersion: z.number().int().positive(),
+    scratch: standaloneChatScratchCapabilitiesSchema,
+    files: standaloneChatFileCapabilitiesSchema,
+  })
+  .strict();
+
+export const unavailableStandaloneChatCapabilities =
+  standaloneChatCapabilitiesSchema.parse({
+    protocolVersion: 1,
+    scratch: {
+      provision: false,
+      resolve: false,
+      archive: false,
+      restore: false,
+      remove: false,
+      reconcile: false,
+      routingHandles: false,
+    },
+    files: {
+      list: false,
+      read: false,
+      write: false,
+      remove: false,
+      download: false,
+      archive: false,
+    },
+  });
+
 export const codeGraphRuntimeStateSchema = z.enum([
   "checking",
   "degraded",
@@ -790,6 +843,9 @@ export const workerHeartbeatSchema = z.object({
   ),
   managedFolders: managedFolderCapabilitiesSchema.default(
     unavailableManagedFolderCapabilities,
+  ),
+  standaloneChat: standaloneChatCapabilitiesSchema.default(
+    unavailableStandaloneChatCapabilities,
   ),
   chatRelocation: z.boolean().default(false),
   externalCodexHistory: z.boolean().default(false),
@@ -4692,6 +4748,146 @@ export const standaloneChatRootSummarySchema = z
     archiveExpiresAt: z.string().datetime().nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export const standaloneChatIdentitySchema = z
+  .string()
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+    "Standalone Chat identities must be canonical lowercase UUIDs.",
+  );
+
+export const standaloneChatRootJobKindSchema = z.enum(["provision", "delete"]);
+
+export const standaloneChatRootJobStateSchema = z.enum([
+  "queued",
+  "running",
+  "blocked",
+  "succeeded",
+  "failed",
+]);
+
+export const standaloneChatRootJobErrorSchema = z
+  .object({
+    code: z.enum([
+      "worker-offline",
+      "capability-missing",
+      "worker-error",
+      "invalid-result",
+      "root-conflict",
+    ]),
+    retryable: z.boolean(),
+  })
+  .strict();
+
+export const standaloneChatRootJobSummarySchema = z
+  .object({
+    id: standaloneChatIdentitySchema,
+    rootId: standaloneChatIdentitySchema,
+    chatId: standaloneChatIdentitySchema,
+    workerId: z.string().min(1).max(500),
+    kind: standaloneChatRootJobKindSchema,
+    state: standaloneChatRootJobStateSchema,
+    stateRevision: z.number().int().positive(),
+    attempt: z.number().int().nonnegative(),
+    error: standaloneChatRootJobErrorSchema.nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    startedAt: z.string().datetime().nullable(),
+    completedAt: z.string().datetime().nullable(),
+  })
+  .strict();
+
+const standaloneChatScratchIdentityFields = {
+  rootId: standaloneChatIdentitySchema,
+  chatId: standaloneChatIdentitySchema,
+};
+
+export const standaloneChatScratchProvisionResultSchema = z
+  .object({
+    status: z.literal("ready"),
+    jobId: standaloneChatIdentitySchema,
+    attempt: z.number().int().positive(),
+    ...standaloneChatScratchIdentityFields,
+    path: z.string().min(1).max(32_768),
+    displayPath: z.string().min(1).max(32_768),
+    reused: z.boolean(),
+  })
+  .strict();
+
+export const standaloneChatScratchResolveResultSchema = z
+  .object({
+    ...standaloneChatScratchIdentityFields,
+    path: z.string().min(1).max(32_768),
+    displayPath: z.string().min(1).max(32_768),
+  })
+  .strict();
+
+export const standaloneChatScratchDeleteResultSchema = z
+  .object({
+    jobId: standaloneChatIdentitySchema,
+    attempt: z.number().int().positive(),
+    ...standaloneChatScratchIdentityFields,
+    deleted: z.boolean(),
+  })
+  .strict();
+
+export const standaloneChatScratchArchiveResultSchema = z
+  .object({
+    ...standaloneChatScratchIdentityFields,
+    archivedAt: z.string().datetime().nullable(),
+    archiveExpiresAt: z.string().datetime().nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if ((value.archivedAt === null) !== (value.archiveExpiresAt === null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Archive timestamps must both be present or both be absent.",
+      });
+    } else if (
+      value.archivedAt &&
+      value.archiveExpiresAt &&
+      Date.parse(value.archiveExpiresAt) <= Date.parse(value.archivedAt)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Archive expiry must be later than the archive timestamp.",
+      });
+    }
+  });
+
+export const standaloneChatScratchReconciliationTargetSchema = z
+  .object({
+    ...standaloneChatScratchIdentityFields,
+    archivedAt: z.string().datetime().nullable(),
+    archiveExpiresAt: z.string().datetime().nullable(),
+  })
+  .strict()
+  .refine(
+    (target) =>
+      (target.archivedAt === null) === (target.archiveExpiresAt === null) &&
+      (!target.archivedAt ||
+        !target.archiveExpiresAt ||
+        Date.parse(target.archiveExpiresAt) > Date.parse(target.archivedAt)),
+    {
+      message: "Archive timestamps and expiry are invalid.",
+    },
+  );
+
+export const standaloneChatScratchReconciliationInventorySchema = z
+  .object({
+    roots: z.array(standaloneChatScratchReconciliationTargetSchema).max(10_000),
+  })
+  .strict();
+
+export const standaloneChatScratchReconciliationResultSchema = z
+  .object({
+    retainedRootIds: z.array(standaloneChatIdentitySchema).max(10_000),
+    missingRootIds: z.array(standaloneChatIdentitySchema).max(10_000),
+    orphanedRootIds: z.array(standaloneChatIdentitySchema).max(10_000),
+    dueRootIds: z.array(standaloneChatIdentitySchema).max(10_000),
   })
   .strict();
 
@@ -12413,10 +12609,74 @@ const protectedCustomizationWorkerRequestFields = {
   protectedRequest: protectedCustomizationRequestSchema.shape.protectedRequest,
 };
 
+export const standaloneChatScratchProvisionCommandSchema = z
+  .object({
+    type: z.literal("chat.scratch.provision"),
+    jobId: standaloneChatIdentitySchema,
+    attempt: z.number().int().positive(),
+    rootId: standaloneChatIdentitySchema,
+    chatId: standaloneChatIdentitySchema,
+  })
+  .strict();
+
+export const standaloneChatScratchResolveCommandSchema = z
+  .object({
+    type: z.literal("chat.scratch.resolve"),
+    rootId: standaloneChatIdentitySchema,
+    chatId: standaloneChatIdentitySchema,
+  })
+  .strict();
+
+export const standaloneChatScratchArchiveCommandSchema = z
+  .object({
+    type: z.literal("chat.scratch.archive"),
+    rootId: standaloneChatIdentitySchema,
+    chatId: standaloneChatIdentitySchema,
+    archivedAt: z.string().datetime(),
+    archiveExpiresAt: z.string().datetime(),
+  })
+  .strict()
+  .refine(
+    (command) =>
+      Date.parse(command.archiveExpiresAt) > Date.parse(command.archivedAt),
+    { message: "Archive expiry must be later than the archive timestamp." },
+  );
+
+export const standaloneChatScratchRestoreCommandSchema = z
+  .object({
+    type: z.literal("chat.scratch.restore"),
+    rootId: standaloneChatIdentitySchema,
+    chatId: standaloneChatIdentitySchema,
+  })
+  .strict();
+
+export const standaloneChatScratchDeleteCommandSchema = z
+  .object({
+    type: z.literal("chat.scratch.delete"),
+    jobId: standaloneChatIdentitySchema,
+    attempt: z.number().int().positive(),
+    rootId: standaloneChatIdentitySchema,
+    chatId: standaloneChatIdentitySchema,
+  })
+  .strict();
+
+export const standaloneChatScratchReconcileCommandSchema = z
+  .object({
+    type: z.literal("chat.scratch.reconcile"),
+    roots: z.array(standaloneChatScratchReconciliationTargetSchema).max(10_000),
+  })
+  .strict();
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
   directCapabilityRenewCommandSchema,
+  standaloneChatScratchProvisionCommandSchema,
+  standaloneChatScratchResolveCommandSchema,
+  standaloneChatScratchArchiveCommandSchema,
+  standaloneChatScratchRestoreCommandSchema,
+  standaloneChatScratchDeleteCommandSchema,
+  standaloneChatScratchReconcileCommandSchema,
   z.object({ type: z.literal("worker.version") }),
   z.object({ type: z.literal("worker.restart") }),
   workerEncryptionRefreshRequestSchema.extend({
@@ -14651,6 +14911,15 @@ export type ProjectReplicaPlacementResult = z.infer<
 export type ManagedFolderCapabilities = z.infer<
   typeof managedFolderCapabilitiesSchema
 >;
+export type StandaloneChatScratchCapabilities = z.infer<
+  typeof standaloneChatScratchCapabilitiesSchema
+>;
+export type StandaloneChatFileCapabilities = z.infer<
+  typeof standaloneChatFileCapabilitiesSchema
+>;
+export type StandaloneChatCapabilities = z.infer<
+  typeof standaloneChatCapabilitiesSchema
+>;
 export type WorkerManagementSource = z.infer<
   typeof workerManagementSourceSchema
 >;
@@ -15130,6 +15399,36 @@ export type ManagedFolderMaterializeReady = z.infer<
 >;
 export type ManagedFolderDeleteResult = z.infer<
   typeof managedFolderDeleteResultSchema
+>;
+export type StandaloneChatRootJobKind = z.infer<
+  typeof standaloneChatRootJobKindSchema
+>;
+export type StandaloneChatRootJobState = z.infer<
+  typeof standaloneChatRootJobStateSchema
+>;
+export type StandaloneChatRootJobError = z.infer<
+  typeof standaloneChatRootJobErrorSchema
+>;
+export type StandaloneChatRootJobSummary = z.infer<
+  typeof standaloneChatRootJobSummarySchema
+>;
+export type StandaloneChatScratchProvisionResult = z.infer<
+  typeof standaloneChatScratchProvisionResultSchema
+>;
+export type StandaloneChatScratchResolveResult = z.infer<
+  typeof standaloneChatScratchResolveResultSchema
+>;
+export type StandaloneChatScratchDeleteResult = z.infer<
+  typeof standaloneChatScratchDeleteResultSchema
+>;
+export type StandaloneChatScratchArchiveResult = z.infer<
+  typeof standaloneChatScratchArchiveResultSchema
+>;
+export type StandaloneChatScratchReconciliationTarget = z.infer<
+  typeof standaloneChatScratchReconciliationTargetSchema
+>;
+export type StandaloneChatScratchReconciliationResult = z.infer<
+  typeof standaloneChatScratchReconciliationResultSchema
 >;
 export type ProjectFolderSetupJobState = z.infer<
   typeof projectFolderSetupJobStateSchema

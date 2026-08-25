@@ -165,6 +165,7 @@ import {
 import { GithubClient } from "./github.js";
 import { probeManagedLinkPlacement } from "./project-replica-placement.js";
 import { ManagedFolderManager } from "./managed-folders.js";
+import { ChatScratchManager } from "./chat-scratch.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
 import { ProviderAuthObserver } from "./provider-auth-observer.js";
 import { RunConfigurationDefinitionService } from "./run-configuration-definition-service.js";
@@ -824,6 +825,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   const github = new GithubClient(config.dataDirectory, config.workerId);
   const managedFolders = new ManagedFolderManager(config.dataDirectory);
+  const chatScratch = new ChatScratchManager(config.dataDirectory);
   const projectGithubConverter = new ProjectGithubConverter(managedFolders);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const grokAuthClients = new Map<string, GrokAuthClient>();
@@ -1812,6 +1814,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         await runConfigurationRuntimes.stopProject(command.projectId);
         return managedFolders.delete(command.projectId);
       }
+      case "chat.scratch.provision":
+        return chatScratch.provision(command);
+      case "chat.scratch.resolve":
+        return chatScratch.resolve(command);
+      case "chat.scratch.archive":
+        return chatScratch.archive(command);
+      case "chat.scratch.restore":
+        return chatScratch.restore(command);
+      case "chat.scratch.delete":
+        return chatScratch.delete(command);
+      case "chat.scratch.reconcile":
+        return chatScratch.reconcile(command.roots);
       case "project.folder-conversion.preflight":
         return projectGithubConverter.preflight(command);
       case "project.folder-conversion.execute":

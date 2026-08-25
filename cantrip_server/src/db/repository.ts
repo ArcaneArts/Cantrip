@@ -24,6 +24,7 @@ import {
   unavailableCodeGraphWorkerStatus,
   unavailableManagedFolderCapabilities,
   unavailableProjectReplicaCapabilities,
+  unavailableStandaloneChatCapabilities,
   unavailableWorkerEncryptionStatus,
 } from "@cantrip/protocol";
 import type {
@@ -281,6 +282,7 @@ import {
 } from "./logical-branch-leases.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
 import { ProjectFolderSetupJobRepository } from "./project-folder-setup-jobs.js";
+import { StandaloneChatRootJobRepository } from "./standalone-chat-root-jobs.js";
 import { ProjectGithubConversionJobRepository } from "./project-github-conversion-jobs.js";
 import { EncryptionRegistryRepository } from "./encryption-registry.js";
 import { PolicyRepository } from "./policies.js";
@@ -1767,6 +1769,7 @@ function toWorkerSummary(
     encryption: worker.encryptionStatus,
     projectReplicas: worker.projectReplicaCapabilities,
     managedFolders: worker.managedFolderCapabilities,
+    standaloneChat: worker.standaloneChatCapabilities,
     chatRelocation: worker.chatRelocationCapability,
     externalCodexHistory: worker.externalCodexHistoryCapability,
     startedAt: toISOString(worker.startedAt),
@@ -2356,6 +2359,7 @@ export class ServerRepository {
   readonly taskScheduling: TaskSchedulingRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
+  readonly standaloneChatRootJobs: StandaloneChatRootJobRepository;
   readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
@@ -2382,6 +2386,7 @@ export class ServerRepository {
     this.taskScheduling = new TaskSchedulingRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);
+    this.standaloneChatRootJobs = new StandaloneChatRootJobRepository(database);
     this.projectGithubConversionJobs = new ProjectGithubConversionJobRepository(
       database,
     );
@@ -6761,6 +6766,9 @@ export class ServerRepository {
         managedFolderCapabilities:
           input.heartbeat.managedFolders ??
           unavailableManagedFolderCapabilities,
+        standaloneChatCapabilities:
+          input.heartbeat.standaloneChat ??
+          unavailableStandaloneChatCapabilities,
         chatRelocationCapability: input.heartbeat.chatRelocation ?? false,
         externalCodexHistoryCapability:
           input.heartbeat.externalCodexHistory ?? false,
@@ -6985,6 +6993,8 @@ export class ServerRepository {
         heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,
       managedFolderCapabilities:
         heartbeat.managedFolders ?? unavailableManagedFolderCapabilities,
+      standaloneChatCapabilities:
+        heartbeat.standaloneChat ?? unavailableStandaloneChatCapabilities,
       chatRelocationCapability: heartbeat.chatRelocation ?? false,
       externalCodexHistoryCapability: heartbeat.externalCodexHistory ?? false,
       startedAt: new Date(heartbeat.startedAt),

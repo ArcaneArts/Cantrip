@@ -199,6 +199,7 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     accountOwned(schema.runConfigurationSecretOperations, "projects"),
     accountOwned(schema.chats, "conversations"),
     accountOwned(schema.standaloneChatRoots, "conversations"),
+    accountOwned(schema.standaloneChatRootJobs, "conversations"),
     chatOwned(schema.tasks),
     accountOwned(schema.taskDispatchCycles, "workflows"),
     chatOwned(schema.taskPlanningRounds),
