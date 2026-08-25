@@ -34,6 +34,27 @@ export type ChatTimelineEntry =
     }
   | ChatTimelineActivityGroup;
 
+export function findLatestLiveActivityGroupKey(
+  entries: readonly ChatTimelineEntry[],
+): string | null {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (
+      entry?.type === "activityGroup" &&
+      entry.endedAt === null &&
+      entry.messages.some((message) =>
+        message.content.some(
+          (item) =>
+            item.type === "activity" && item.activity.status === "running",
+        ),
+      )
+    ) {
+      return entry.key;
+    }
+  }
+  return null;
+}
+
 function activities(message: ChatMessage): AgentActivity[] | null {
   if (
     message.role !== "assistant" ||
