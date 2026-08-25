@@ -84,6 +84,7 @@ import { ProjectAutomationsSettings } from "./project-automations-settings";
 import { ProjectArchiveSettings } from "./project-archive-settings";
 import { ProjectReplicaSettings } from "./project-replica-settings";
 import { ExternalChatImportSettings } from "./external-chat-import";
+import { ProjectExportSettings } from "./project-export-settings";
 import { ProjectGithubConversion } from "./project-github-conversion";
 import { SkillsSettings } from "@/components/settings/skills-settings";
 import { TunnelSettings } from "@/components/settings/tunnel-settings";
@@ -681,6 +682,16 @@ export function ProjectSettingsPage({
             workers={workers}
             worktrees={worktrees}
             onOpenChat={onOpenImportedChat}
+          />
+        ) : null}
+
+        {section === "general" ? (
+          <ProjectExportSettings
+            chats={chats}
+            desktopRuntime={desktopRuntime}
+            project={project}
+            workers={workers}
+            worktrees={worktrees}
           />
         ) : null}
 

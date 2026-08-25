@@ -222,6 +222,10 @@ import {
   POLICY_BOOTSTRAP_VERSION,
   projectWireListSchema,
   projectExternalChatDiscoverySchema,
+  projectExportCreateSchema,
+  projectExportPreviewRequestSchema,
+  projectExportPreviewSchema,
+  projectExportResultSchema,
   projectFolderSetupJobSummarySchema,
   projectFolderSetupRetrySchema,
   projectGithubConversionJobSummarySchema,
@@ -450,6 +454,8 @@ import type {
   ExecutionTarget,
   ExecutionTargetResolveRequest,
   ProjectPreferredWorkerUpdate,
+  ProjectExportCreate,
+  ProjectExportPreviewRequest,
   ProjectGithubConversionRepository,
   ProjectGithubRoutingRepository,
   ProjectGithubConversionPreflightRequest,
@@ -4243,6 +4249,30 @@ export async function getExternalChatHistory(
   return projectExternalChatDiscoverySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/external-chat-history${query}`,
+    ),
+  );
+}
+
+export async function previewProjectExport(
+  projectId: string,
+  input: ProjectExportPreviewRequest,
+) {
+  return projectExportPreviewSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/exports/preview`,
+      projectExportPreviewRequestSchema.parse(input),
+    ),
+  );
+}
+
+export async function createProjectExport(
+  projectId: string,
+  input: ProjectExportCreate,
+) {
+  return projectExportResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/exports`,
+      projectExportCreateSchema.parse(input),
     ),
   );
 }

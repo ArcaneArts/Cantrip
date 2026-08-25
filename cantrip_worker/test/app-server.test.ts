@@ -624,7 +624,10 @@ describe("Codex rich event normalization", () => {
         ...correlation,
         itemId: "collab-1",
       }),
-    ).toMatchObject({ type: "collabToolCall", prompt: null });
+    ).toMatchObject({
+      type: "collabToolCall",
+      prompt: "Inspect the worker bridge.",
+    });
     expect(
       normalizeCodexThreadItem(items[0]!, "/workspace", "completed", {
         ...correlation,
