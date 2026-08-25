@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const connections = vi.hoisted(() => ({
   created: [] as string[],
+  ready: new Map<string, () => void>(),
   released: [] as string[],
 }));
 
@@ -16,10 +17,12 @@ vi.mock("@/components/explorer/explorer-code-editor", () => ({
   ExplorerCodeEditor: ({
     active,
     explorerId,
+    onReady,
     path,
   }: {
     active: boolean;
     explorerId: string;
+    onReady?: () => void;
     path: string | null;
   }) => {
     useEffect(() => {
@@ -28,6 +31,15 @@ vi.mock("@/components/explorer/explorer-code-editor", () => ({
         connections.released.push(explorerId);
       };
     }, [explorerId]);
+    useEffect(() => {
+      if (!onReady) return;
+      connections.ready.set(explorerId, onReady);
+      return () => {
+        if (connections.ready.get(explorerId) === onReady) {
+          connections.ready.delete(explorerId);
+        }
+      };
+    }, [explorerId, onReady]);
     return createElement("div", {
       "data-active": active,
       "data-code-owner": explorerId,
@@ -86,6 +98,7 @@ function explorer(id: string, selectedPath: string | null): ExplorerSummary {
 describe("Persistent Explorer Code ownership", () => {
   beforeEach(() => {
     connections.created.length = 0;
+    connections.ready.clear();
     connections.released.length = 0;
   });
 
@@ -137,6 +150,105 @@ describe("Persistent Explorer Code ownership", () => {
     await act(async () => renderer.update(render(second, [second])));
     expect(connections.created).toEqual([first.id, second.id, preview.id]);
     expect(connections.released).toEqual([first.id]);
+
+    await act(async () => renderer.unmount());
+    client.clear();
+  });
+
+  it("warms a pinned handoff behind the active preview without replacing either connection", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const preview = explorer("preview-explorer", null);
+    const pinned = explorer("pinned-explorer", "src/pinned.ts");
+    const ready = vi.fn();
+    const render = ({
+      activeExplorer,
+      handoffExplorer,
+      openExplorers,
+      transient,
+    }: {
+      activeExplorer: ExplorerSummary;
+      handoffExplorer?: ExplorerSummary;
+      openExplorers: ExplorerSummary[];
+      transient: boolean;
+    }) =>
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(PersistentExplorerViews, {
+          activeExplorer,
+          appearance: "dark",
+          gitStatuses: {},
+          handoffExplorer,
+          onInlineCodeReady: ready,
+          openExplorers,
+          prewarmExplorer: preview,
+          repositoryGraphAvailable: false,
+          transientFile: transient
+            ? {
+                explorerId: preview.id,
+                file: { close: vi.fn(), path: "src/pinned.ts" },
+              }
+            : undefined,
+        }),
+      );
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        render({
+          activeExplorer: preview,
+          openExplorers: [],
+          transient: true,
+        }),
+      );
+    });
+    expect(connections.created).toEqual([preview.id]);
+
+    await act(async () => {
+      renderer.update(
+        render({
+          activeExplorer: preview,
+          handoffExplorer: pinned,
+          openExplorers: [],
+          transient: true,
+        }),
+      );
+    });
+    expect(connections.created).toEqual([preview.id, pinned.id]);
+    expect(connections.released).toEqual([]);
+    expect(
+      renderer.root.findByProps({ "data-code-owner": preview.id }).props[
+        "data-active"
+      ],
+    ).toBe(true);
+    expect(
+      renderer.root.findByProps({ "data-code-owner": pinned.id }).props[
+        "data-active"
+      ],
+    ).toBe(false);
+
+    await act(async () => connections.ready.get(pinned.id)?.());
+    expect(ready).toHaveBeenCalledWith(pinned.id);
+
+    await act(async () => {
+      renderer.update(
+        render({
+          activeExplorer: pinned,
+          handoffExplorer: pinned,
+          openExplorers: [pinned],
+          transient: false,
+        }),
+      );
+    });
+    expect(connections.created).toEqual([preview.id, pinned.id]);
+    expect(connections.released).toEqual([]);
+    expect(
+      renderer.root.findByProps({ "data-code-owner": pinned.id }).props[
+        "data-active"
+      ],
+    ).toBe(true);
 
     await act(async () => renderer.unmount());
     client.clear();

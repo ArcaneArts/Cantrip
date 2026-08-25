@@ -184,6 +184,7 @@ export function ExplorerCodeEditor({
   active = true,
   appearance,
   explorerId,
+  onReady,
   path,
   worktreeId,
   workerId,
@@ -192,6 +193,7 @@ export function ExplorerCodeEditor({
   active?: boolean;
   appearance: CodeAppearance;
   explorerId: string;
+  onReady?: () => void;
   path: string | null;
   worktreeId: string;
   workerId: string;
@@ -248,6 +250,8 @@ export function ExplorerCodeEditor({
   const previousWorkerOnlineRef = useRef(workerOnline);
   const previousActiveRef = useRef(active);
   const previousPathRef = useRef(path);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const workerOnlineRef = useRef(workerOnline);
   workerOnlineRef.current = workerOnline;
   const attachmentLifecycleRef =
@@ -312,6 +316,10 @@ export function ExplorerCodeEditor({
     readyKey !== null &&
     readyKey === requestedReadyKey,
   );
+
+  useEffect(() => {
+    if (ready) onReadyRef.current?.();
+  }, [ready]);
 
   const reload = useCallback(() => {
     automaticReplacementCountRef.current = 0;
