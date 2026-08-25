@@ -615,6 +615,50 @@ describe("shared Cantrip Code transport ownership", () => {
     }
   });
 
+  it("isolates a session-specific renewal failure from sibling routes", async () => {
+    const context = harness();
+    try {
+      const first = await context.broker.createSharedSessionAttachment(
+        sharedInput(1),
+      );
+      const second = await context.broker.createSharedSessionAttachment(
+        sharedInput(2),
+      );
+      context.request.mockImplementation(async (_workerId, command) => {
+        if (
+          command.type === "code.transport.route.authorize" &&
+          command.attachmentId === first.session.attachmentId
+        ) {
+          throw new Error("session route disappeared");
+        }
+        return workerCommandResult(command);
+      });
+
+      await expect(
+        context.broker.renewSharedSessionAttachment({
+          attachmentId: first.session.attachmentId,
+          authSessionId,
+          ownerId,
+        }),
+      ).rejects.toThrow("session route disappeared");
+      expect(context.broker.sharedTransportStats()).toEqual({
+        sessionAttachments: 1,
+        transports: 1,
+      });
+      expect(
+        await context.broker.renewSharedSessionAttachment({
+          attachmentId: second.session.attachmentId,
+          authSessionId,
+          ownerId,
+        }),
+      ).not.toBeNull();
+      expect(context.removeManagedTunnel).not.toHaveBeenCalled();
+      expect(context.cleanup).not.toHaveBeenCalled();
+    } finally {
+      await context.broker.close();
+    }
+  });
+
   it("shares session ownership across legacy and v2 attachments", async () => {
     const context = harness();
     const legacy = legacyInput(1);
@@ -985,13 +1029,15 @@ describe("shared Cantrip Code transport ownership", () => {
     }
   });
 
-  it("fails closed by retiring the root when route revocation fails", async () => {
+  it("retires the shared transport fail-closed when route revocation is ambiguous", async () => {
     const context = harness();
     try {
       const first = await context.broker.createSharedSessionAttachment(
         sharedInput(1),
       );
-      await context.broker.createSharedSessionAttachment(sharedInput(2));
+      const second = await context.broker.createSharedSessionAttachment(
+        sharedInput(2),
+      );
       context.request.mockImplementation(async (_workerId, command) => {
         if (command.type === "code.transport.route.revoke") {
           throw new Error("route control unavailable");
@@ -1013,6 +1059,103 @@ describe("shared Cantrip Code transport ownership", () => {
         sessionAttachments: 0,
         transports: 0,
       });
+      expect(
+        await context.broker.renewSharedSessionAttachment({
+          attachmentId: second.session.attachmentId,
+          authSessionId,
+          ownerId,
+        }),
+      ).toBeNull();
+    } finally {
+      await context.broker.close().catch(() => undefined);
+    }
+  });
+
+  it("retires the transport when both route revocation and session stop fail", async () => {
+    const context = harness();
+    try {
+      const first = await context.broker.createSharedSessionAttachment(
+        sharedInput(1),
+      );
+      await context.broker.createSharedSessionAttachment(sharedInput(2));
+      context.request.mockImplementation(async (_workerId, command) => {
+        if (
+          command.type === "code.transport.route.revoke" ||
+          (command.type === "code.stop" &&
+            command.sessionId === first.session.sessionId)
+        ) {
+          throw new Error("worker control unavailable");
+        }
+        return workerCommandResult(command);
+      });
+
+      await expect(
+        context.broker.revokeSharedSessionAttachment({
+          attachmentId: first.session.attachmentId,
+          authSessionId,
+          ownerId,
+        }),
+      ).rejects.toThrow();
+
+      expect(context.broker.sharedTransportStats()).toEqual({
+        sessionAttachments: 0,
+        transports: 0,
+      });
+      expect(context.removeManagedTunnel).toHaveBeenCalledOnce();
+      expect(context.cleanup).toHaveBeenCalledOnce();
+    } finally {
+      await context.broker.close().catch(() => undefined);
+    }
+  });
+
+  it("retires an ambiguous route even when another owner keeps its Code session live", async () => {
+    const context = harness();
+    const legacy = legacyInput(1);
+    const sharedTransportId = "55555555-5555-4555-8555-555555555555";
+    try {
+      const legacyAttachment =
+        await context.broker.createProtectedAttachment(legacy);
+      const shared = await context.broker.createSharedSessionAttachment(
+        sharedInput(2, {
+          authSessionId: "auth-session-2",
+          runtime: legacy.runtime,
+          sessionId: legacy.sessionId,
+          transport: {
+            formatVersion: 2,
+            transportId: sharedTransportId,
+            protectedRecord: protectedRecord(sharedTransportId),
+          },
+        }),
+      );
+      context.request.mockImplementation(async (_workerId, command) => {
+        if (command.type === "code.transport.route.revoke") {
+          throw new Error("route control unavailable");
+        }
+        return workerCommandResult(command);
+      });
+
+      await expect(
+        context.broker.revokeSharedSessionAttachment({
+          attachmentId: shared.session.attachmentId,
+          authSessionId: "auth-session-2",
+          ownerId,
+        }),
+      ).rejects.toThrow();
+
+      expect(context.broker.sharedTransportStats()).toEqual({
+        sessionAttachments: 0,
+        transports: 0,
+      });
+      expect(
+        context.request.mock.calls.filter(
+          ([, command]) => command.type === "code.stop",
+        ),
+      ).toHaveLength(0);
+
+      await context.broker.revokeAttachment(
+        legacyAttachment.attachmentId,
+        ownerId,
+      );
     } finally {
       await context.broker.close().catch(() => undefined);
     }

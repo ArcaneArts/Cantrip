@@ -86,6 +86,8 @@ import {
   codeProtectedAttachmentCreateSchema,
   codeProtectedAttachmentIntentSchema,
   codeProtectedAttachmentWireSchema,
+  codeSharedAttachmentWireSchema,
+  explorerCodeSessionAttachmentCreateSchema,
   codeSettingsResolveRequestSchema,
   codeSettingsSynchronizeRequestSchema,
   codeSettingsWorkbenchAttachmentCreateSchema,
@@ -406,6 +408,7 @@ import type {
   ChatTurnMode,
   EncryptedQueuedPrompt,
   CodeAppearance,
+  CodeSharedAttachmentWire,
   CodeSettingsResolution,
   CodeThemeMode,
   CodexExternalImportApply,
@@ -597,7 +600,12 @@ import {
   protectModelProviderUpdate,
 } from "@/lib/protected-secrets";
 import { openProviderTelemetryWireAnalytics } from "@/lib/provider-telemetry";
-import { getClientSession } from "@/lib/client-session";
+import {
+  clientSessionIdentityMatches,
+  getClientSession,
+  getClientSessionIdentitySnapshot,
+  type ClientSessionIdentitySnapshot,
+} from "@/lib/client-session";
 import { clientEncryption } from "@/lib/client-encryption";
 import { authorizeWorkerEncryption } from "@/lib/worker-encryption-grants";
 import {
@@ -811,26 +819,31 @@ export async function createDirectWorkerProbe(workerId: string) {
 
 export async function deleteDirectAttachment(
   capabilityId: string,
-  options: { signal?: AbortSignal } = {},
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
 ): Promise<void> {
-  await request(`/api/direct-attachments/${encodeURIComponent(capabilityId)}`, {
-    method: "DELETE",
-    signal: options.signal,
-  });
+  await request(
+    `${options.serverUrl ?? ""}/api/direct-attachments/${encodeURIComponent(capabilityId)}`,
+    {
+      method: "DELETE",
+      signal: options.signal,
+    },
+    options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
+  );
 }
 
 export async function recordDirectAttachmentTelemetry(
   capabilityId: string,
   telemetry: Parameters<typeof directTransportTelemetrySchema.parse>[0],
-  options: { signal?: AbortSignal } = {},
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
 ): Promise<void> {
   await request(
-    `/api/direct-attachments/${encodeURIComponent(capabilityId)}/telemetry`,
+    `${options.serverUrl ?? ""}/api/direct-attachments/${encodeURIComponent(capabilityId)}/telemetry`,
     {
       body: JSON.stringify(directTransportTelemetrySchema.parse(telemetry)),
       method: "POST",
       signal: options.signal,
     },
+    options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
   );
 }
 
@@ -847,12 +860,16 @@ export async function getTunnels(projectId?: string) {
 
 export async function getTunnelDataProtection(
   tunnelId: string,
-  options: { signal?: AbortSignal } = {},
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
 ) {
   const wire = tunnelWireSummarySchema.parse(
-    await request(`/api/tunnels/${encodeURIComponent(tunnelId)}`, {
-      signal: options.signal,
-    }),
+    await request(
+      `${options.serverUrl ?? ""}/api/tunnels/${encodeURIComponent(tunnelId)}`,
+      {
+        signal: options.signal,
+      },
+      options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
+    ),
   );
   if (!wire.protectedRecord) {
     throw new Error("This tunnel does not have protected data-plane keys.");
@@ -972,48 +989,63 @@ export async function deleteTunnel(tunnelId: string): Promise<void> {
 export async function createTunnelAttachment(
   tunnelId: string,
   input: TunnelAttachmentCreate,
-  options: { signal?: AbortSignal } = {},
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
 ) {
   return tunnelAttachmentCreateResultSchema.parse(
-    await request(`/api/tunnels/${encodeURIComponent(tunnelId)}/attachments`, {
-      body: JSON.stringify(tunnelAttachmentCreateSchema.parse(input)),
-      method: "POST",
-      signal: options.signal,
-    }),
+    await request(
+      `${options.serverUrl ?? ""}/api/tunnels/${encodeURIComponent(tunnelId)}/attachments`,
+      {
+        body: JSON.stringify(tunnelAttachmentCreateSchema.parse(input)),
+        method: "POST",
+        signal: options.signal,
+      },
+      options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
+    ),
   );
 }
 
 export async function deleteTunnelAttachment(
   attachmentId: string,
-  options: { signal?: AbortSignal } = {},
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
 ): Promise<void> {
-  await request(`/api/tunnel-attachments/${encodeURIComponent(attachmentId)}`, {
-    method: "DELETE",
-    signal: options.signal,
-  });
+  await request(
+    `${options.serverUrl ?? ""}/api/tunnel-attachments/${encodeURIComponent(attachmentId)}`,
+    {
+      method: "DELETE",
+      signal: options.signal,
+    },
+    options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
+  );
 }
 
 export async function renewTunnelAttachmentLease(
   attachmentId: string,
-  options: { signal?: AbortSignal } = {},
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
 ): Promise<void> {
   await request(
-    `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/lease`,
+    `${options.serverUrl ?? ""}/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/lease`,
     {
       method: "POST",
       signal: options.signal,
     },
+    options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
   );
 }
 
 export async function createDirectTunnelAttachment(
   attachmentId: string,
   input: DirectTunnelPrepareRequest = {},
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
 ) {
   return directTunnelTicketSchema.parse(
-    await post(
-      `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct`,
-      directTunnelPrepareRequestSchema.parse(input),
+    await request(
+      `${options.serverUrl ?? ""}/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct`,
+      {
+        body: JSON.stringify(directTunnelPrepareRequestSchema.parse(input)),
+        method: "POST",
+        signal: options.signal,
+      },
+      options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
     ),
   );
 }
@@ -1021,10 +1053,16 @@ export async function createDirectTunnelAttachment(
 export async function activateDirectTunnelAttachment(
   attachmentId: string,
   input: { capabilityId: string },
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
 ): Promise<void> {
-  await post(
-    `/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct-activate`,
-    tunnelDirectActivationSchema.parse(input),
+  await request(
+    `${options.serverUrl ?? ""}/api/tunnel-attachments/${encodeURIComponent(attachmentId)}/direct-activate`,
+    {
+      body: JSON.stringify(tunnelDirectActivationSchema.parse(input)),
+      method: "POST",
+      signal: options.signal,
+    },
+    options.serverUrl ? BOUND_API_REQUEST_BEHAVIOR : undefined,
   );
 }
 
@@ -5572,6 +5610,98 @@ export async function deleteCodeTab(codeTabId: string) {
 
 const PROTECTED_CODE_ATTACHMENT_CREATE_TIMEOUT_MS = 10_000;
 const PROTECTED_CODE_ATTACHMENT_ROLLBACK_TIMEOUT_MS = 5_000;
+const BOUND_API_REQUEST_BEHAVIOR = { allowCsrfRecovery: false } as const;
+
+export interface BoundExplorerCodeSessionAttachment {
+  attachment: CodeSharedAttachmentWire;
+  binding: {
+    identity: ClientSessionIdentitySnapshot;
+    serverUrl: string;
+  };
+}
+
+function captureCodeSessionApiBinding(): BoundExplorerCodeSessionAttachment["binding"] {
+  const identity = getClientSessionIdentitySnapshot();
+  if (!identity) {
+    throw new Error("Cantrip Code requires an authenticated client session.");
+  }
+  const serverUrl = getActiveServerUrl();
+  if (identity.serverUrl !== serverUrl) {
+    throw new Error(
+      "The Cantrip Code server identity changed while it was being captured.",
+    );
+  }
+  return { identity, serverUrl };
+}
+
+export function explorerCodeSessionBindingCurrent(
+  binding: BoundExplorerCodeSessionAttachment["binding"],
+): boolean {
+  return (
+    getActiveServerUrl() === binding.serverUrl &&
+    clientSessionIdentityMatches(binding.identity)
+  );
+}
+
+export function assertCreatedExplorerCodeSessionIdentity(
+  attachment: CodeSharedAttachmentWire,
+  expected: {
+    attachmentId: string;
+    serverId: string;
+    sessionId: string;
+    workerId: string;
+  },
+): void {
+  if (
+    attachment.session.attachmentId !== expected.attachmentId ||
+    attachment.session.sessionId !== expected.sessionId ||
+    attachment.transport.workerId !== expected.workerId ||
+    attachment.transport.serverId !== expected.serverId
+  ) {
+    throw new Error(
+      "The shared Cantrip Code attachment changed logical identity.",
+    );
+  }
+}
+
+function assertExplorerCodeSessionBindingCurrent(
+  binding: BoundExplorerCodeSessionAttachment["binding"],
+): void {
+  if (!explorerCodeSessionBindingCurrent(binding)) {
+    throw new Error(
+      "The Cantrip Code server or authentication identity changed while connecting.",
+    );
+  }
+}
+
+async function protectedSharedCodeTransportCandidate(input: {
+  transportId: string;
+  workerId: string;
+}) {
+  await ensureTunnelWorker(input.workerId);
+  return {
+    formatVersion: 2 as const,
+    transportId: input.transportId,
+    protectedRecord: await protectTunnelContentRecord({
+      content: {
+        name: "Cantrip Code",
+        description: "Shared protected editor transport.",
+        source: { kind: "desktop-loopback" },
+        destination: {
+          kind: "worker-adapter",
+          workerId: input.workerId,
+          adapter: "code",
+          resourceId: input.transportId,
+        },
+        dataProtection: createTunnelDataProtection(),
+      },
+      operationId: input.transportId,
+      revision: 1,
+      tunnelId: input.transportId,
+      workerId: input.workerId,
+    }),
+  };
+}
 
 async function protectedCodeAttachmentInput(input: {
   appearance: CodeAppearance;
@@ -5773,6 +5903,155 @@ export async function createProtectedExplorerCodeAttachment(
       releaseCodeAttachment(attachmentId, { signal }),
     rollbackTimeoutMs: PROTECTED_CODE_ATTACHMENT_ROLLBACK_TIMEOUT_MS,
   });
+}
+
+export async function createProtectedExplorerCodeSessionAttachment(
+  explorerId: string,
+  relativePath: string | null,
+  workerId: string,
+  worktreeId: string,
+  appearance: CodeAppearance,
+): Promise<BoundExplorerCodeSessionAttachment> {
+  const binding = captureCodeSessionApiBinding();
+  const attachmentId = crypto.randomUUID();
+  const sessionId = crypto.randomUUID();
+  const transportId = crypto.randomUUID();
+  return createBoundedResource({
+    create: async (signal) => {
+      assertExplorerCodeSessionBindingCurrent(binding);
+      const transport = await protectedSharedCodeTransportCandidate({
+        transportId,
+        workerId,
+      });
+      assertExplorerCodeSessionBindingCurrent(binding);
+      const attachment = codeSharedAttachmentWireSchema.parse(
+        await request(
+          `${binding.serverUrl}/api/explorers/${encodeURIComponent(explorerId)}/code-session-attachments`,
+          {
+            body: JSON.stringify(
+              explorerCodeSessionAttachmentCreateSchema.parse({
+                appearance,
+                attachmentId,
+                expectedWorkerId: workerId,
+                expectedWorktreeId: worktreeId,
+                formatVersion: 2,
+                ...(relativePath ? { path: relativePath } : {}),
+                sessionId,
+                transport,
+              }),
+            ),
+            method: "POST",
+            signal,
+          },
+          BOUND_API_REQUEST_BEHAVIOR,
+        ),
+      );
+      // The candidate transport id is intentionally not an expected response
+      // identity. The server returns the already-active root when another tab
+      // wins acquisition for the same security identity.
+      assertCreatedExplorerCodeSessionIdentity(attachment, {
+        attachmentId,
+        serverId: binding.identity.serverId,
+        sessionId,
+        workerId,
+      });
+      assertExplorerCodeSessionBindingCurrent(binding);
+      return { attachment, binding };
+    },
+    createTimeoutMs: PROTECTED_CODE_ATTACHMENT_CREATE_TIMEOUT_MS,
+    resourceId: attachmentId,
+    rollback: (resourceId, signal) =>
+      releaseProtectedExplorerCodeSessionAttachmentId(resourceId, binding, {
+        signal,
+      }),
+    rollbackTimeoutMs: PROTECTED_CODE_ATTACHMENT_ROLLBACK_TIMEOUT_MS,
+  });
+}
+
+async function releaseProtectedExplorerCodeSessionAttachmentId(
+  attachmentId: string,
+  binding: BoundExplorerCodeSessionAttachment["binding"],
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  if (!explorerCodeSessionBindingCurrent(binding)) return;
+  await request(
+    `${binding.serverUrl}/api/code-session-attachments/${encodeURIComponent(attachmentId)}`,
+    {
+      keepalive: true,
+      method: "DELETE",
+      signal:
+        options.signal ??
+        AbortSignal.timeout(PROTECTED_CODE_ATTACHMENT_ROLLBACK_TIMEOUT_MS),
+    },
+    BOUND_API_REQUEST_BEHAVIOR,
+  );
+}
+
+export async function releaseProtectedExplorerCodeSessionAttachment(
+  owned: BoundExplorerCodeSessionAttachment,
+  options: { signal?: AbortSignal } = {},
+): Promise<void> {
+  await releaseProtectedExplorerCodeSessionAttachmentId(
+    owned.attachment.session.attachmentId,
+    owned.binding,
+    options,
+  );
+}
+
+export function assertRenewedExplorerCodeSessionIdentity(
+  previous: CodeSharedAttachmentWire,
+  renewed: CodeSharedAttachmentWire,
+  bindingServerId: string,
+): void {
+  if (
+    renewed.session.attachmentId !== previous.session.attachmentId ||
+    renewed.session.sessionId !== previous.session.sessionId ||
+    renewed.session.routeGrant !== previous.session.routeGrant ||
+    renewed.session.runtime.sessionIncarnationId !==
+      previous.session.runtime.sessionIncarnationId ||
+    renewed.transport.transportId !== previous.transport.transportId ||
+    renewed.transport.tunnelId !== previous.transport.tunnelId ||
+    renewed.transport.workerId !== previous.transport.workerId ||
+    renewed.transport.securityScopeId !== previous.transport.securityScopeId ||
+    renewed.transport.serverId !== previous.transport.serverId ||
+    renewed.transport.serverId !== bindingServerId ||
+    renewed.transport.serverControlPlaneGeneration !==
+      previous.transport.serverControlPlaneGeneration ||
+    renewed.transport.protectedKeyRevision !==
+      previous.transport.protectedKeyRevision ||
+    renewed.transport.workerProcessGeneration !==
+      previous.transport.workerProcessGeneration
+  ) {
+    throw new Error("The shared Cantrip Code session lease changed identity.");
+  }
+}
+
+export async function renewProtectedExplorerCodeSessionAttachment(
+  owned: BoundExplorerCodeSessionAttachment,
+  options: { signal?: AbortSignal } = {},
+): Promise<BoundExplorerCodeSessionAttachment> {
+  assertExplorerCodeSessionBindingCurrent(owned.binding);
+  const attachment = codeSharedAttachmentWireSchema.parse(
+    await request(
+      `${owned.binding.serverUrl}/api/code-session-attachments/${encodeURIComponent(owned.attachment.session.attachmentId)}/lease`,
+      {
+        method: "POST",
+        signal: options.signal,
+      },
+      BOUND_API_REQUEST_BEHAVIOR,
+    ),
+  );
+  assertRenewedExplorerCodeSessionIdentity(
+    owned.attachment,
+    attachment,
+    owned.binding.identity.serverId,
+  );
+  assertExplorerCodeSessionBindingCurrent(owned.binding);
+  // The bound object is the local ownership key used by the native lease
+  // registry. Refresh it in place so renewal cannot orphan that exact lease
+  // behind a structurally equivalent replacement object.
+  owned.attachment = attachment;
+  return owned;
 }
 
 export async function getCodeRuntime(codeTabId: string, sessionId: string) {

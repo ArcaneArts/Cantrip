@@ -6,10 +6,12 @@ const mocks = vi.hoisted(() => ({
   createTunnelAttachment: vi.fn(),
   deleteDirectAttachment: vi.fn(),
   deleteTunnelAttachment: vi.fn(),
+  explorerCodeSessionBindingCurrent: vi.fn(),
   invoke: vi.fn(),
   isTauri: vi.fn(),
   getTunnelDataProtection: vi.fn(),
   recordDirectAttachmentTelemetry: vi.fn(),
+  renewTunnelAttachmentLease: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -22,17 +24,24 @@ vi.mock("@/lib/api", () => ({
   createTunnelAttachment: mocks.createTunnelAttachment,
   deleteDirectAttachment: mocks.deleteDirectAttachment,
   deleteTunnelAttachment: mocks.deleteTunnelAttachment,
+  explorerCodeSessionBindingCurrent: mocks.explorerCodeSessionBindingCurrent,
   getTunnelDataProtection: mocks.getTunnelDataProtection,
   recordDirectAttachmentTelemetry: mocks.recordDirectAttachmentTelemetry,
+  renewTunnelAttachmentLease: mocks.renewTunnelAttachmentLease,
 }));
 vi.mock("@/lib/server-connections", () => ({
   getActiveServerUrl: () => "https://cantrip.example",
+  onServerConnectionIdentityChanged: () => () => undefined,
 }));
 
 import {
+  acquireDesktopCodeTransport,
+  desktopCodeTransportRuntime,
   forceDesktopTunnelRelay,
   invalidateDesktopTunnelForward,
+  maintainDesktopCodeTransportsOnce,
   refreshDesktopTunnelRelay,
+  releaseDesktopCodeTransport,
   startDesktopTunnel,
   startDirectDesktopTunnel,
   stopDesktopTunnel,
@@ -40,6 +49,19 @@ import {
 
 const capabilityId = "1c4066d8-5798-4330-82e2-f5634c6176b7";
 const expiresAt = "2099-01-01T00:00:00.000Z";
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolve!: (value: T) => void;
+  return {
+    promise: new Promise<T>((settle) => {
+      resolve = settle;
+    }),
+    resolve,
+  };
+}
 
 function directTicket() {
   return {
@@ -75,9 +97,73 @@ function directTicket() {
   };
 }
 
+function sharedOwnedAttachment() {
+  return {
+    attachment: {
+      formatVersion: 2 as const,
+      transport: {
+        formatVersion: 2 as const,
+        transportId: "tunnel-1",
+        tunnelId: "tunnel-1",
+        workerId: "worker-1",
+        securityScopeId: "11111111-1111-4111-8111-111111111111",
+        serverId: "server-one",
+        serverControlPlaneGeneration: "22222222-2222-4222-8222-222222222222",
+        protectedKeyRevision: 1,
+        workerProcessGeneration: "33333333-3333-4333-8333-333333333333",
+        expiresAt,
+      },
+      session: {
+        formatVersion: 2 as const,
+        attachmentId: "code-session-attachment-one",
+        transportId: "tunnel-1",
+        sessionId: "code-session-one",
+        routeGrant: "route_grant_123456789012345678901234",
+        expiresAt,
+        runtime: {
+          sessionId: "code-session-one",
+          status: "running" as const,
+          editorBuild: {
+            version: "1.109.5",
+            upstreamRevision: "a".repeat(40),
+            patchset: 1,
+            fingerprint: "b".repeat(64),
+          },
+          processInstanceId: "process-one",
+          bridgeConnected: true,
+          dirtyEditors: [],
+          workbench: {
+            activeEditor: null,
+            git: null,
+            conflicts: [],
+            savePolicy: "always" as const,
+            agentStatus: "idle" as const,
+          },
+          startedAt: "2026-08-25T00:00:00.000Z",
+          lastActivityAt: "2026-08-25T00:00:00.000Z",
+          lastError: null,
+        },
+      },
+    },
+    binding: {
+      identity: {
+        accountId: "account-one",
+        connectionId: "connection-one",
+        generation: 7,
+        incarnationId: "44444444-4444-4444-8444-444444444444",
+        serverId: "server-one",
+        serverUrl: "https://bound-server.example",
+        userId: "user-one",
+      },
+      serverUrl: "https://bound-server.example",
+    },
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.isTauri.mockReturnValue(true);
+  mocks.explorerCodeSessionBindingCurrent.mockReturnValue(true);
   mocks.createTunnelAttachment.mockResolvedValue({
     attachmentId: "attachment-1",
     tunnelId: "tunnel-1",
@@ -96,12 +182,416 @@ beforeEach(() => {
     key: "k".repeat(43),
   });
   mocks.recordDirectAttachmentTelemetry.mockResolvedValue(undefined);
+  mocks.renewTunnelAttachmentLease.mockResolvedValue(undefined);
   const values = new Map<string, string>();
   vi.stubGlobal("window", {
     localStorage: {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => values.set(key, value),
     },
+  });
+});
+
+describe("shared desktop Code transport", () => {
+  const forward = {
+    attachmentId: "attachment-1",
+    diagnosticTraceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    expiresAt,
+    localHost: "127.0.0.1" as const,
+    localPort: 41_234,
+    routeState: "local-direct" as const,
+    directCapabilityId: capabilityId,
+    directFallbackReason: null,
+    tunnelId: "tunnel-1",
+  };
+
+  it("retains the exact native lease registry across hot module replacement", () => {
+    const hotState = {};
+    const first = desktopCodeTransportRuntime(hotState);
+    const lease = {
+      binding: sharedOwnedAttachment().binding,
+      forward,
+      generation: "generation-hot",
+      leaseId: "lease-hot",
+      serverUrl: "https://bound-server.example",
+    };
+    first.maintenanceLeases.set(lease.leaseId, lease);
+    first.pendingRetirementLeases.add(lease.leaseId);
+    first.identitySubscriptionsInstalled = true;
+    first.terminalForwardListenerReady = Promise.resolve();
+
+    const reloaded = desktopCodeTransportRuntime(hotState);
+
+    expect(reloaded).toBe(first);
+    expect(reloaded.windowInstanceId).toBe(first.windowInstanceId);
+    expect(reloaded.maintenanceLeases.get(lease.leaseId)).toBe(lease);
+    expect(reloaded.pendingRetirementLeases.has(lease.leaseId)).toBe(true);
+    expect(reloaded.identitySubscriptionsInstalled).toBe(true);
+    expect(reloaded.recentTerminalForwards).toBe(first.recentTerminalForwards);
+    expect(reloaded.terminalForwardSubscribers).toBe(
+      first.terminalForwardSubscribers,
+    );
+    expect(reloaded.terminalForwardListenerReady).toBe(
+      first.terminalForwardListenerReady,
+    );
+  });
+
+  it("elects before creating credentials and publishes one exact leader lease", async () => {
+    mocks.createDirectTunnelAttachment.mockResolvedValue(directTicket());
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "register_code_transport_window_instance") return;
+      if (command === "acquire_code_transport_forward") {
+        return {
+          generation: "generation-one",
+          reservationId: "reservation-one",
+          state: "leader",
+        };
+      }
+      if (command === "complete_code_transport_forward") {
+        return { forward, generation: "generation-one" };
+      }
+      if (command === "publish_code_transport_forward") {
+        return {
+          forward,
+          generation: "generation-one",
+          leaseId: "lease-one",
+          state: "ready",
+        };
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    const owned = sharedOwnedAttachment();
+    await expect(acquireDesktopCodeTransport(owned)).resolves.toMatchObject({
+      forward,
+      generation: "generation-one",
+      leaseId: "lease-one",
+      serverUrl: owned.binding.serverUrl,
+    });
+
+    expect(
+      mocks.invoke.mock.calls.find(
+        ([command]) => command === "acquire_code_transport_forward",
+      ),
+    ).toEqual([
+      "acquire_code_transport_forward",
+      {
+        request: {
+          acquisitionId: expect.any(String),
+          consumerId: owned.attachment.session.attachmentId,
+          identity: {
+            accountId: "account-one",
+            clientIdentityGeneration: 7,
+            clientIdentityIncarnationId:
+              owned.binding.identity.incarnationId,
+            connectionId: "connection-one",
+            protectedKeyRevision: 1,
+            securityScopeId: owned.attachment.transport.securityScopeId,
+            serverControlPlaneGeneration:
+              owned.attachment.transport.serverControlPlaneGeneration,
+            serverId: "server-one",
+            serverUrl: owned.binding.serverUrl,
+            transportId: "tunnel-1",
+            userId: "user-one",
+            workerId: "worker-1",
+            workerProcessGeneration:
+              owned.attachment.transport.workerProcessGeneration,
+          },
+          windowInstanceId: expect.any(String),
+        },
+      },
+    ]);
+    expect(mocks.createTunnelAttachment).toHaveBeenCalledOnce();
+    expect(mocks.createTunnelAttachment).toHaveBeenCalledWith(
+      "tunnel-1",
+      { clientId: "generation-one" },
+      expect.objectContaining({ serverUrl: owned.binding.serverUrl }),
+    );
+    expect(mocks.createDirectTunnelAttachment).toHaveBeenCalledOnce();
+    expect(mocks.activateDirectTunnelAttachment).toHaveBeenCalledOnce();
+    expect(
+      mocks.invoke.mock.calls
+        .map(([command]) => command)
+        .filter(
+          (command) => command !== "register_code_transport_window_instance",
+        ),
+    ).toEqual([
+      "acquire_code_transport_forward",
+      "complete_code_transport_forward",
+      "publish_code_transport_forward",
+    ]);
+  });
+
+  it("waits as a follower without creating relay or direct credentials", async () => {
+    let acquisition = 0;
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "register_code_transport_window_instance") return;
+      if (command === "acquire_code_transport_forward") {
+        acquisition += 1;
+        return acquisition === 1
+          ? { generation: "generation-one", state: "waiting" }
+          : {
+              forward,
+              generation: "generation-one",
+              leaseId: "lease-two",
+              state: "ready",
+            };
+      }
+      if (command === "wait_code_transport_forward") return true;
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    await expect(
+      acquireDesktopCodeTransport(sharedOwnedAttachment()),
+    ).resolves.toMatchObject({ leaseId: "lease-two" });
+
+    expect(mocks.getTunnelDataProtection).not.toHaveBeenCalled();
+    expect(mocks.createTunnelAttachment).not.toHaveBeenCalled();
+    expect(mocks.createDirectTunnelAttachment).not.toHaveBeenCalled();
+    expect(
+      mocks.invoke.mock.calls
+        .map(([command]) => command)
+        .filter(
+          (command) => command !== "register_code_transport_window_instance",
+        ),
+    ).toEqual([
+      "acquire_code_transport_forward",
+      "wait_code_transport_forward",
+      "acquire_code_transport_forward",
+    ]);
+  });
+
+  it("releases an exact ready lease when abort wins after native commit", async () => {
+    const committed = deferred<unknown>();
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "register_code_transport_window_instance") return;
+      if (command === "acquire_code_transport_forward") {
+        return committed.promise;
+      }
+      if (command === "release_code_transport_forward") {
+        return { released: true, remainingLeases: 0, stopped: null };
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    const controller = new AbortController();
+    const operation = acquireDesktopCodeTransport(sharedOwnedAttachment(), {
+      signal: controller.signal,
+    });
+    await vi.waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith(
+        "acquire_code_transport_forward",
+        expect.any(Object),
+      ),
+    );
+    controller.abort(new DOMException("closed", "AbortError"));
+    committed.resolve({
+      forward,
+      generation: "generation-one",
+      leaseId: "lease-after-abort",
+      state: "ready",
+    });
+
+    await expect(operation).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "release_code_transport_forward",
+      expect.objectContaining({
+        generation: "generation-one",
+        leaseId: "lease-after-abort",
+        transportId: "tunnel-1",
+        windowInstanceId: expect.any(String),
+      }),
+    );
+  });
+
+  it("fails an exact leader reservation when abort wins after election", async () => {
+    const elected = deferred<unknown>();
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "register_code_transport_window_instance") return;
+      if (command === "acquire_code_transport_forward") return elected.promise;
+      if (command === "fail_code_transport_forward") return;
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    const controller = new AbortController();
+    const operation = acquireDesktopCodeTransport(sharedOwnedAttachment(), {
+      signal: controller.signal,
+    });
+    await vi.waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith(
+        "acquire_code_transport_forward",
+        expect.any(Object),
+      ),
+    );
+    controller.abort(new DOMException("closed", "AbortError"));
+    elected.resolve({
+      generation: "generation-one",
+      reservationId: "reservation-after-abort",
+      state: "leader",
+    });
+
+    await expect(operation).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "fail_code_transport_forward",
+      expect.objectContaining({
+        generation: "generation-one",
+        reservationId: "reservation-after-abort",
+        transportId: "tunnel-1",
+        windowInstanceId: expect.any(String),
+      }),
+    );
+  });
+
+  it("deletes physical credentials only when the exact last lease stops", async () => {
+    mocks.invoke
+      .mockResolvedValueOnce({
+        released: true,
+        remainingLeases: 1,
+        stopped: null,
+      })
+      .mockResolvedValueOnce({
+        released: true,
+        remainingLeases: 0,
+        stopped: {
+          attachmentId: "attachment-1",
+          bytesFromLocal: 0,
+          bytesToLocal: 0,
+          connectionsClosed: 0,
+          connectionsOpened: 0,
+          directCapabilityId: capabilityId,
+          tunnelId: "tunnel-1",
+        },
+      });
+    const first = {
+      binding: sharedOwnedAttachment().binding,
+      forward,
+      generation: "generation-one",
+      leaseId: "lease-one",
+      serverUrl: "https://bound-server.example",
+    };
+
+    await releaseDesktopCodeTransport(first);
+    expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
+
+    await releaseDesktopCodeTransport({ ...first, leaseId: "lease-two" });
+    expect(mocks.deleteTunnelAttachment).toHaveBeenCalledOnce();
+    expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1", {
+      serverUrl: "https://bound-server.example",
+    });
+  });
+
+  it("retries a transient native release failure without maintaining the retired lease", async () => {
+    const lease = {
+      binding: sharedOwnedAttachment().binding,
+      forward,
+      generation: "generation-retry",
+      leaseId: "lease-retry",
+      serverUrl: "https://bound-server.example",
+    };
+    let targetReleaseAttempts = 0;
+    mocks.invoke.mockImplementation(async (command: string, input: unknown) => {
+      if (
+        command === "release_code_transport_forward" &&
+        (input as { leaseId?: string }).leaseId === lease.leaseId
+      ) {
+        targetReleaseAttempts += 1;
+        if (targetReleaseAttempts === 1) throw new Error("transient IPC loss");
+        return { released: true, remainingLeases: 0, stopped: null };
+      }
+      if (command === "claim_code_transport_maintenance") return null;
+      if (command === "release_code_transport_forward") {
+        return { released: true, remainingLeases: 1, stopped: null };
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    await expect(releaseDesktopCodeTransport(lease)).resolves.toBe(false);
+    await maintainDesktopCodeTransportsOnce();
+
+    expect(targetReleaseAttempts).toBe(2);
+    expect(
+      mocks.invoke.mock.calls.filter(
+        ([command, input]) =>
+          command === "claim_code_transport_maintenance" &&
+          (input as { leaseId?: string }).leaseId === lease.leaseId,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("reconciles a publication response lost after native commit", async () => {
+    mocks.createDirectTunnelAttachment.mockResolvedValue(directTicket());
+    let acquisitions = 0;
+    let publications = 0;
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "register_code_transport_window_instance") return;
+      if (command === "acquire_code_transport_forward") {
+        acquisitions += 1;
+        return {
+          generation: "generation-one",
+          reservationId: "reservation-one",
+          state: "leader",
+        };
+      }
+      if (command === "complete_code_transport_forward") {
+        return { forward, generation: "generation-one" };
+      }
+      if (command === "publish_code_transport_forward") {
+        publications += 1;
+        throw new Error("response lost after commit");
+      }
+      if (command === "reconcile_code_transport_forward") {
+        return {
+          forward,
+          generation: "generation-one",
+          leaseId: "lease-one",
+          state: "ready",
+        };
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    await expect(
+      acquireDesktopCodeTransport(sharedOwnedAttachment()),
+    ).resolves.toMatchObject({ leaseId: "lease-one" });
+
+    expect(publications).toBe(2);
+    expect(acquisitions).toBe(1);
+    expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
+    expect(mocks.deleteDirectAttachment).not.toHaveBeenCalled();
+  });
+
+  it("does not elect an abandoned leader when publication reconciliation is empty", async () => {
+    mocks.createDirectTunnelAttachment.mockResolvedValue(directTicket());
+    let acquisitions = 0;
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "register_code_transport_window_instance") return;
+      if (command === "acquire_code_transport_forward") {
+        acquisitions += 1;
+        return {
+          generation: "generation-one",
+          reservationId: "reservation-one",
+          state: "leader",
+        };
+      }
+      if (command === "complete_code_transport_forward") {
+        return { forward, generation: "generation-one" };
+      }
+      if (command === "publish_code_transport_forward") {
+        throw new Error("publication unavailable");
+      }
+      if (command === "reconcile_code_transport_forward") return null;
+      if (command === "fail_code_transport_forward") return;
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    await expect(
+      acquireDesktopCodeTransport(sharedOwnedAttachment()),
+    ).rejects.toThrow("publication unavailable");
+
+    expect(acquisitions).toBe(1);
+    expect(
+      mocks.invoke.mock.calls.filter(
+        ([command]) => command === "fail_code_transport_forward",
+      ),
+    ).toHaveLength(1);
   });
 });
 

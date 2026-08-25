@@ -9,18 +9,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   createProtectedExplorerCodeAttachment: vi.fn(),
+  createProtectedExplorerCodeSessionAttachment: vi.fn(),
   releaseCodeAttachment: vi.fn(),
+  releaseProtectedExplorerCodeSessionAttachment: vi.fn(),
+  renewProtectedExplorerCodeSessionAttachment: vi.fn(),
 }));
 
 const desktopCode = vi.hoisted(() => ({
   openDirectCodeAttachmentFile: vi.fn(),
   preferProtectedCodeAttachment: vi.fn(),
+  preferSharedProtectedCodeAttachment: vi.fn(),
   recoverPreferredCodeAttachmentRoute: vi.fn(),
+  retainSharedProtectedCodeAttachmentLease: vi.fn(),
   setDirectCodeAttachmentPresentation: vi.fn(),
   setDirectCodeAttachmentTheme: vi.fn(),
   stopDirectCodeAttachment: vi.fn(),
+  stopSharedProtectedCodeAttachment: vi.fn(),
   subscribePreferredCodeAttachmentUnavailable: vi.fn(),
 }));
+
+const tauri = vi.hoisted(() => ({ enabled: false }));
 
 const browserCode = vi.hoisted(() => ({
   unavailableListeners: new Set<
@@ -64,6 +72,10 @@ vi.mock("@/lib/api", () => ({
       super(message);
     }
   },
+}));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  isTauri: () => tauri.enabled,
 }));
 vi.mock("@/lib/browser-code-tunnel", () => ({
   subscribeBrowserCodeAttachmentUnavailable: (
@@ -150,6 +162,66 @@ const attachment = {
   sessionId: wire.sessionId,
   url: "http://127.0.0.1:43123/code/attachment-1/",
 } as CodeAttachment;
+const sharedTransportId = "44444444-4444-4444-8444-444444444444";
+const sharedOwned = {
+  attachment: {
+    formatVersion: 2,
+    transport: {
+      formatVersion: 2,
+      transportId: sharedTransportId,
+      tunnelId: sharedTransportId,
+      workerId: "worker-1",
+      securityScopeId: "55555555-5555-4555-8555-555555555555",
+      serverId: "server-one",
+      serverControlPlaneGeneration: "66666666-6666-4666-8666-666666666666",
+      protectedKeyRevision: 1,
+      workerProcessGeneration: "77777777-7777-4777-8777-777777777777",
+      expiresAt: "2026-08-26T12:00:00.000Z",
+    },
+    session: {
+      formatVersion: 2,
+      attachmentId: "88888888-8888-4888-8888-888888888888",
+      transportId: sharedTransportId,
+      sessionId: "99999999-9999-4999-8999-999999999999",
+      routeGrant: "route_grant_123456789012345678901234",
+      expiresAt: "2026-08-26T12:00:00.000Z",
+      runtime: {},
+    },
+  },
+  binding: {
+    identity: {
+      generation: 1,
+      incarnationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      serverId: "server-one",
+      serverUrl: "https://server.example.test",
+      userId: "user-one",
+    },
+    serverUrl: "https://server.example.test",
+  },
+};
+const sharedAttachment = {
+  ...attachment,
+  attachmentId: sharedOwned.attachment.session.attachmentId,
+  expiresAt: sharedOwned.attachment.session.expiresAt,
+  sessionId: sharedOwned.attachment.session.sessionId,
+  url: "http://127.0.0.1:43123/sessions/route_grant_123456789012345678901234/code/",
+} as CodeAttachment;
+
+function sharedPreferred(leaseId: string) {
+  return {
+    attachment: sharedAttachment,
+    desktopRouteIdentity: {
+      attachmentId: "desktop-forward-one",
+      diagnosticTraceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      directCapabilityId: "capability-one",
+    },
+    directTunnelId: sharedTransportId,
+    sharedOwnedAttachment: sharedOwned,
+    sharedTransportGeneration: "transport-generation-one",
+    sharedTransportLeaseId: leaseId,
+    transportKind: "local-direct" as const,
+  };
+}
 
 type FutureEditorProps = Omit<
   ComponentProps<typeof ExplorerCodeEditor>,
@@ -227,6 +299,7 @@ function emitBrowserUnavailable(tunnelId: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  tauri.enabled = false;
   browserCode.unavailableListeners.clear();
   frameRuntime.mountSequence = 0;
   frameRuntime.readyPredicate = null;
@@ -236,13 +309,28 @@ beforeEach(() => {
     value: testWindow,
   });
   api.createProtectedExplorerCodeAttachment.mockResolvedValue(wire);
+  api.createProtectedExplorerCodeSessionAttachment.mockResolvedValue(
+    sharedOwned,
+  );
   api.releaseCodeAttachment.mockResolvedValue(undefined);
+  api.releaseProtectedExplorerCodeSessionAttachment.mockResolvedValue(
+    undefined,
+  );
+  api.renewProtectedExplorerCodeSessionAttachment.mockResolvedValue(
+    sharedOwned,
+  );
   desktopCode.preferProtectedCodeAttachment.mockResolvedValue({
     attachment,
     desktopRouteIdentity: null,
     directTunnelId: null,
     transportKind: "relay",
   });
+  desktopCode.preferSharedProtectedCodeAttachment.mockResolvedValue(
+    sharedPreferred("lease-one"),
+  );
+  desktopCode.retainSharedProtectedCodeAttachmentLease.mockResolvedValue(
+    undefined,
+  );
   desktopCode.recoverPreferredCodeAttachmentRoute.mockResolvedValue(
     "available",
   );
@@ -261,6 +349,7 @@ beforeEach(() => {
     }),
   );
   desktopCode.stopDirectCodeAttachment.mockResolvedValue(undefined);
+  desktopCode.stopSharedProtectedCodeAttachment.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -272,6 +361,51 @@ afterEach(() => {
 });
 
 describe("ExplorerCodeEditor warm lifecycle", () => {
+  it("retains the logical session while replacing only an exact failed desktop lease", async () => {
+    tauri.enabled = true;
+    desktopCode.preferSharedProtectedCodeAttachment
+      .mockResolvedValueOnce(sharedPreferred("lease-one"))
+      .mockResolvedValueOnce(sharedPreferred("lease-two"));
+
+    const { renderer } = await mount("src/shared.ts");
+
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledWith(sharedOwned, { signal: expect.any(AbortSignal) });
+
+    await act(async () => emitBrowserUnavailable(sharedTransportId));
+    await settle();
+
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      desktopCode.retainSharedProtectedCodeAttachmentLease,
+    ).toHaveBeenCalledWith(sharedOwned, "lease-two");
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+
+    await act(async () => renderer.unmount());
+    await settle();
+
+    expect(desktopCode.stopSharedProtectedCodeAttachment).toHaveBeenCalledWith(
+      sharedOwned,
+    );
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledWith(sharedOwned);
+    expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
+    expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
+  });
+
   it("reports readiness only after the exact pinned path is open", async () => {
     const onReady = vi.fn();
     const { renderer } = await mount("src/pinned.ts", true, onReady);

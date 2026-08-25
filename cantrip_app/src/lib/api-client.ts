@@ -176,8 +176,9 @@ function sendRequest(
 export async function request(
   path: string,
   init?: RequestInit,
+  behavior: { allowCsrfRecovery?: boolean } = {},
 ): Promise<unknown> {
-  const response = await requestResponse(path, init);
+  const response = await requestResponse(path, init, [], behavior);
   return response.status === 204 ? null : response.json();
 }
 
@@ -185,6 +186,7 @@ export async function requestResponse(
   path: string,
   init?: RequestInit,
   allowedStatuses: readonly number[] = [],
+  behavior: { allowCsrfRecovery?: boolean } = {},
 ): Promise<Response> {
   const method = (init?.method ?? "GET").toUpperCase();
   const url = /^https?:\/\//u.test(path)
@@ -225,6 +227,7 @@ export async function requestResponse(
       body?.error === "CSRF validation failed." &&
       !SAFE_METHODS.has(method) &&
       !path.endsWith("/api/auth/session") &&
+      behavior.allowCsrfRecovery !== false &&
       (await recoverCsrfSession())
     ) {
       clientLogger.info("Retrying Cantrip API request after CSRF recovery", {

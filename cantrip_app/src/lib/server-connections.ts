@@ -42,6 +42,36 @@ let state: StoredServerConnections = {
   updatedAt: 0,
   version: 1,
 };
+export interface ServerConnectionIdentityChange {
+  current: ServerConnection | null;
+  previous: ServerConnection | null;
+}
+type ServerConnectionsHotState = {
+  serverIdentityListeners?: Set<
+    (change: ServerConnectionIdentityChange) => void
+  >;
+};
+const serverConnectionsHotState = import.meta.hot?.data as
+  | ServerConnectionsHotState
+  | undefined;
+const serverIdentityListeners =
+  serverConnectionsHotState?.serverIdentityListeners ??
+  new Set<(change: ServerConnectionIdentityChange) => void>();
+if (serverConnectionsHotState) {
+  serverConnectionsHotState.serverIdentityListeners = serverIdentityListeners;
+}
+
+function notifyServerIdentityChanged(previous: ServerConnection | null): void {
+  const change = { current: getActiveServerConnection(), previous };
+  for (const listener of serverIdentityListeners) listener(change);
+}
+
+export function onServerConnectionIdentityChanged(
+  listener: (change: ServerConnectionIdentityChange) => void,
+): () => void {
+  serverIdentityListeners.add(listener);
+  return () => serverIdentityListeners.delete(listener);
+}
 
 export function suggestedServerUrlForName(name: string): string | null {
   return name === "Winterhold" ? "https://winterhold.cantrip.art/" : null;
@@ -313,7 +343,8 @@ export async function selectServerConnection(id: string): Promise<void> {
   const selected = state.connections.find(
     (connection) => connection.id === id,
   )!;
-  const previousActiveId = getActiveServerConnection()?.id;
+  const previousActive = getActiveServerConnection();
+  const previousActiveId = previousActive?.id;
   if (previousActiveId && previousActiveId !== id) {
     clearClientEncryptionMemory();
   }
@@ -341,6 +372,7 @@ export async function selectServerConnection(id: string): Promise<void> {
     status: "completed",
     subsystem: "server-connections",
   });
+  if (previousActiveId !== id) notifyServerIdentityChanged(previousActive);
 }
 
 export async function rememberActiveServerAccount(
@@ -356,6 +388,7 @@ export async function rememberActiveServerAccount(
     return false;
   }
   if (active.accountId === normalized) return true;
+  const previousActive = active;
   const previousState = state;
   state = {
     ...state,
@@ -372,6 +405,7 @@ export async function rememberActiveServerAccount(
     state = previousState;
     throw error;
   }
+  notifyServerIdentityChanged(previousActive);
   return true;
 }
 
@@ -379,6 +413,7 @@ export async function forgetActiveServerAccount(): Promise<void> {
   await refreshServerConnections();
   const active = getActiveServerConnection();
   if (!active || active.kind === "local" || !active.accountId) return;
+  const previousActive = active;
   const previousState = state;
   state = {
     ...state,
@@ -395,6 +430,7 @@ export async function forgetActiveServerAccount(): Promise<void> {
     state = previousState;
     throw error;
   }
+  notifyServerIdentityChanged(previousActive);
 }
 
 export async function removeServerConnection(id: string): Promise<void> {
@@ -402,6 +438,8 @@ export async function removeServerConnection(id: string): Promise<void> {
     throw new Error("The bundled local server cannot be removed.");
   await refreshServerConnections();
   const previousState = state;
+  const previousActiveId = state.activeId;
+  const previousActive = getActiveServerConnection();
   const connections = state.connections.filter(
     (connection) => connection.id !== id,
   );
@@ -441,6 +479,9 @@ export async function removeServerConnection(id: string): Promise<void> {
     status: "completed",
     subsystem: "server-connections",
   });
+  if (state.activeId !== previousActiveId) {
+    notifyServerIdentityChanged(previousActive);
+  }
 }
 
 export async function testServerConnection(

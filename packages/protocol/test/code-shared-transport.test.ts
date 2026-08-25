@@ -162,6 +162,11 @@ describe("shared Code transport protocol", () => {
       transportId,
       tunnelId: transportId,
       workerId: "worker-1",
+      securityScopeId: "66666666-6666-4666-8666-666666666666",
+      serverId: "server-1",
+      serverControlPlaneGeneration: "77777777-7777-4777-8777-777777777777",
+      protectedKeyRevision: 1,
+      workerProcessGeneration: "88888888-8888-4888-8888-888888888888",
       expiresAt: now,
     });
     const attachment = codeSharedAttachmentWireSchema.parse({

@@ -5,11 +5,14 @@ import type {
 } from "@cantrip/protocol";
 
 const mocks = vi.hoisted(() => ({
+  acquireDesktopCodeTransport: vi.fn(),
   browserCodeAttachmentHealthy: vi.fn(),
   invoke: vi.fn(),
   isTauri: vi.fn(),
   forceDesktopTunnelRelay: vi.fn(),
+  explorerCodeSessionBindingCurrent: vi.fn(),
   listDesktopTunnelsWithOptions: vi.fn(),
+  releaseDesktopCodeTransport: vi.fn(),
   startBrowserCodeAttachment: vi.fn(),
   startDesktopTunnel: vi.fn(),
   stopBrowserCodeAttachment: vi.fn(),
@@ -27,8 +30,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@/lib/desktop-tunnel", () => ({
+  acquireDesktopCodeTransport: mocks.acquireDesktopCodeTransport,
   forceDesktopTunnelRelay: mocks.forceDesktopTunnelRelay,
   listDesktopTunnelsWithOptions: mocks.listDesktopTunnelsWithOptions,
+  releaseDesktopCodeTransport: mocks.releaseDesktopCodeTransport,
   startDesktopTunnel: mocks.startDesktopTunnel,
   stopDesktopTunnel: mocks.stopDesktopTunnel,
   stopDesktopTunnelForward: mocks.stopDesktopTunnelForward,
@@ -48,18 +53,26 @@ vi.mock("@/lib/client-log-relay", () => ({
   clientLogger: { event: mocks.clientLog },
 }));
 
+vi.mock("@/lib/api", () => ({
+  explorerCodeSessionBindingCurrent: mocks.explorerCodeSessionBindingCurrent,
+}));
+
 import {
   CODE_CONTROL_OPERATION_TIMEOUT_MS,
   CodeControlOperationTimeoutError,
   directCodeAttachmentHealthy,
   directCodeAttachmentHealthyWithin,
+  desktopCodeStateForRuntime,
   openDirectCodeAttachmentFile,
   openDirectCodeAttachmentSettings,
   preferProtectedCodeAttachment,
+  preferSharedProtectedCodeAttachment,
   recoverPreferredCodeAttachmentRoute,
   setDirectCodeAttachmentPresentation,
   setDirectCodeAttachmentTheme,
+  retainSharedProtectedCodeAttachmentLease,
   stopDirectCodeAttachment,
+  stopSharedProtectedCodeAttachment,
   subscribePreferredCodeAttachmentUnavailable,
   transportSafeErrorIdentity,
   waitForDirectCodeAttachmentReady,
@@ -70,8 +83,11 @@ beforeEach(() => {
   vi.stubGlobal("fetch", mocks.fetch);
   vi.stubGlobal("window", { localStorage: {} as Storage });
   mocks.isTauri.mockReturnValue(true);
+  mocks.explorerCodeSessionBindingCurrent.mockReturnValue(true);
+  mocks.releaseDesktopCodeTransport.mockResolvedValue(true);
   mocks.invoke.mockResolvedValue([]);
   mocks.listDesktopTunnelsWithOptions.mockResolvedValue([]);
+  mocks.releaseDesktopCodeTransport.mockResolvedValue(true);
   mocks.stopDesktopTunnel.mockResolvedValue(undefined);
   mocks.subscribeBrowserCodeAttachmentUnavailable.mockReturnValue(
     () => undefined,
@@ -89,6 +105,140 @@ beforeEach(() => {
     destinationRejectedCount: 1,
     lastDestinationRejectionCode: "protected-record-unavailable",
     tunnelId: "11111111-1111-4111-8111-111111111111",
+  });
+});
+
+describe("shared desktop Code attachment", () => {
+  function ownedAttachment() {
+    const transportId = "11111111-1111-4111-8111-111111111111";
+    return {
+      attachment: {
+        formatVersion: 2 as const,
+        transport: {
+          formatVersion: 2 as const,
+          transportId,
+          tunnelId: transportId,
+          workerId: "worker-one",
+          securityScopeId: "33333333-3333-4333-8333-333333333333",
+          serverId: "server-one",
+          serverControlPlaneGeneration: "44444444-4444-4444-8444-444444444444",
+          protectedKeyRevision: 1,
+          workerProcessGeneration: "55555555-5555-4555-8555-555555555555",
+          expiresAt: "2099-01-01T00:00:00.000Z",
+        },
+        session: {
+          formatVersion: 2 as const,
+          attachmentId: "66666666-6666-4666-8666-666666666666",
+          transportId,
+          sessionId: "22222222-2222-4222-8222-222222222222",
+          routeGrant: "A".repeat(43),
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          runtime: {
+            sessionId: "22222222-2222-4222-8222-222222222222",
+            status: "running" as const,
+            editorBuild: {
+              version: "1.109.5",
+              upstreamRevision: "a".repeat(40),
+              patchset: 1,
+              fingerprint: "b".repeat(64),
+            },
+            processInstanceId: "process-one",
+            bridgeConnected: true,
+            dirtyEditors: [],
+            workbench: {
+              activeEditor: null,
+              git: null,
+              conflicts: [],
+              savePolicy: "always" as const,
+              agentStatus: "idle" as const,
+            },
+            startedAt: "2026-08-25T00:00:00.000Z",
+            lastActivityAt: "2026-08-25T00:00:00.000Z",
+            lastError: null,
+          },
+        },
+      },
+      binding: {
+        identity: {
+          accountId: "account-one",
+          connectionId: "connection-one",
+          generation: 1,
+          incarnationId: "88888888-8888-4888-8888-888888888888",
+          serverId: "server-one",
+          serverUrl: "https://server.example.test",
+          userId: "user-one",
+        },
+        serverUrl: "https://server.example.test",
+      },
+    };
+  }
+
+  function lease(leaseId: string) {
+    return {
+      forward: {
+        attachmentId: "physical-attachment-one",
+        diagnosticTraceId: "77777777-7777-4777-8777-777777777777",
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        localHost: "127.0.0.1" as const,
+        localPort: 52_345,
+        routeState: "local-direct" as const,
+        relayFallbackAvailable: true,
+        directCapabilityId: "capability-one",
+        directFallbackReason: null,
+        destinationRejectedCount: 0,
+        tunnelId: "11111111-1111-4111-8111-111111111111",
+      },
+      generation: "generation-one",
+      leaseId,
+      serverUrl: "https://server.example.test",
+    };
+  }
+
+  it("retains attachment-to-lease ownership across hot module replacement", () => {
+    const hotState = {};
+    const first = desktopCodeStateForRuntime(hotState);
+    const owned = ownedAttachment();
+    const ownedLease = { ...lease("lease-hot"), binding: owned.binding };
+    const leases = new Map([[ownedLease.leaseId, ownedLease]]);
+    first.sharedProtectedAttachmentLeases.set(owned, leases);
+
+    const reloaded = desktopCodeStateForRuntime(hotState);
+
+    expect(reloaded).toBe(first);
+    expect(reloaded.sharedProtectedAttachmentLeases.get(owned)).toBe(leases);
+  });
+
+  it("uses one session-specific route and fences overlapping lease cleanup", async () => {
+    const owned = ownedAttachment();
+    const firstLease = lease("lease-one");
+    const secondLease = lease("lease-two");
+    mocks.acquireDesktopCodeTransport
+      .mockResolvedValueOnce(firstLease)
+      .mockResolvedValueOnce(secondLease);
+    mocks.fetch.mockResolvedValue({ ok: true });
+
+    const first = await preferSharedProtectedCodeAttachment(owned);
+    const second = await preferSharedProtectedCodeAttachment(owned);
+
+    expect(first.attachment.url).toBe(
+      `http://127.0.0.1:52345/sessions/${"A".repeat(43)}/code/`,
+    );
+    expect(first.sharedTransportLeaseId).toBe("lease-one");
+    expect(second.sharedTransportLeaseId).toBe("lease-two");
+    expect(mocks.acquireDesktopCodeTransport).toHaveBeenCalledTimes(2);
+
+    await retainSharedProtectedCodeAttachmentLease(owned, "lease-two");
+    expect(mocks.releaseDesktopCodeTransport).toHaveBeenCalledOnce();
+    expect(mocks.releaseDesktopCodeTransport).toHaveBeenCalledWith(firstLease);
+
+    await stopSharedProtectedCodeAttachment(owned, "lease-one");
+    expect(mocks.releaseDesktopCodeTransport).toHaveBeenCalledOnce();
+
+    await stopSharedProtectedCodeAttachment(owned, "lease-two");
+    expect(mocks.releaseDesktopCodeTransport).toHaveBeenCalledTimes(2);
+    expect(mocks.releaseDesktopCodeTransport).toHaveBeenLastCalledWith(
+      secondLease,
+    );
   });
 });
 

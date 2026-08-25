@@ -2,6 +2,7 @@ import type {
   CodeAppearance,
   CodeProtectedAttachmentWire,
 } from "@cantrip/protocol";
+import { isTauri } from "@tauri-apps/api/core";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import {
   useCallback,
@@ -27,7 +28,11 @@ import {
 import {
   CantripApiError,
   createProtectedExplorerCodeAttachment,
+  createProtectedExplorerCodeSessionAttachment,
+  releaseProtectedExplorerCodeSessionAttachment,
+  renewProtectedExplorerCodeSessionAttachment,
   releaseCodeAttachment,
+  type BoundExplorerCodeSessionAttachment,
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
 import {
@@ -35,10 +40,13 @@ import {
   CodeAttachmentHealthError,
   openDirectCodeAttachmentFile,
   preferProtectedCodeAttachment,
+  preferSharedProtectedCodeAttachment,
   recoverPreferredCodeAttachmentRoute,
+  retainSharedProtectedCodeAttachmentLease,
   setDirectCodeAttachmentPresentation,
   setDirectCodeAttachmentTheme,
   stopDirectCodeAttachment,
+  stopSharedProtectedCodeAttachment,
   subscribePreferredCodeAttachmentUnavailable,
   type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
@@ -52,6 +60,8 @@ import {
 const FILE_OPEN_RETRY_DELAY_MS = 250;
 const FILE_OPEN_RECONNECT_LIMIT = 1;
 const THEME_UPDATE_RETRY_DELAY_MS = 500;
+const SHARED_SESSION_RENEWAL_MAX_DELAY_MS = 5 * 60_000;
+const SHARED_SESSION_RENEWAL_MIN_DELAY_MS = 30_000;
 const AUTOMATIC_REPLACEMENT_EXHAUSTED_MESSAGE =
   "Cantrip Code could not restore this editor automatically. Retry to reconnect.";
 export const EXPLORER_CODE_RETRY_BASE_DELAY_MS = 500;
@@ -179,6 +189,31 @@ export function explorerCodeEditorReadyKey(
   return `${bindingKey}\0${attachmentId}\0${path}`;
 }
 
+type ExplorerCodeAttachmentOwnership =
+  CodeProtectedAttachmentWire | BoundExplorerCodeSessionAttachment;
+
+function sharedExplorerCodeAttachment(
+  owned: ExplorerCodeAttachmentOwnership,
+): owned is BoundExplorerCodeSessionAttachment {
+  return "attachment" in owned;
+}
+
+async function retireExplorerCodeAttachment(
+  owned: ExplorerCodeAttachmentOwnership,
+): Promise<void> {
+  if (sharedExplorerCodeAttachment(owned)) {
+    await retireAttachmentBestEffort(
+      () => stopSharedProtectedCodeAttachment(owned),
+      () => releaseProtectedExplorerCodeSessionAttachment(owned),
+    );
+    return;
+  }
+  await retireAttachmentBestEffort(
+    () => stopDirectCodeAttachment(owned),
+    () => releaseCodeAttachment(owned.attachmentId),
+  );
+}
+
 export function ExplorerCodeEditor({
   active = true,
   appearance,
@@ -211,6 +246,8 @@ export function ExplorerCodeEditor({
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [navigationRecoveryAttempt, setNavigationRecoveryAttempt] = useState(0);
   const [themeRecoveryAttempt, setThemeRecoveryAttempt] = useState(0);
+  const [sharedTransportRecoveryAttempt, setSharedTransportRecoveryAttempt] =
+    useState(0);
   const automaticReconnectsRef = useRef(0);
   const automaticReplacementCountRef = useRef(0);
   const automaticReplacementPendingRef = useRef(false);
@@ -236,6 +273,7 @@ export function ExplorerCodeEditor({
   const navigationRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const lastSharedRecoveryAttemptRef = useRef(0);
   const pendingConnectionWakeRef = useRef(false);
   const pendingThemeRef = useRef<{
     appearance: CodeAppearance;
@@ -254,15 +292,12 @@ export function ExplorerCodeEditor({
   const workerOnlineRef = useRef(workerOnline);
   workerOnlineRef.current = workerOnline;
   const attachmentLifecycleRef =
-    useRef<SerializedAttachmentLifecycle<CodeProtectedAttachmentWire> | null>(
+    useRef<SerializedAttachmentLifecycle<ExplorerCodeAttachmentOwnership> | null>(
       null,
     );
   attachmentLifecycleRef.current ??=
-    new SerializedAttachmentLifecycle<CodeProtectedAttachmentWire>((wire) =>
-      retireAttachmentBestEffort(
-        () => stopDirectCodeAttachment(wire),
-        () => releaseCodeAttachment(wire.attachmentId),
-      ),
+    new SerializedAttachmentLifecycle<ExplorerCodeAttachmentOwnership>(
+      retireExplorerCodeAttachment,
     );
   const pathRef = useRef(path);
   pathRef.current = path;
@@ -543,17 +578,25 @@ export function ExplorerCodeEditor({
       try {
         const preferred = await attachmentLifecycleRef.current!.replace(
           () =>
-            createProtectedExplorerCodeAttachment(
-              explorerId,
-              pathRef.current,
-              workerId,
-              worktreeId,
-              connectionAppearance,
-            ),
-          (wire, signal) =>
-            preferProtectedCodeAttachment(wire, {
-              signal,
-            }),
+            isTauri()
+              ? createProtectedExplorerCodeSessionAttachment(
+                  explorerId,
+                  pathRef.current,
+                  workerId,
+                  worktreeId,
+                  connectionAppearance,
+                )
+              : createProtectedExplorerCodeAttachment(
+                  explorerId,
+                  pathRef.current,
+                  workerId,
+                  worktreeId,
+                  connectionAppearance,
+                ),
+          (owned, signal) =>
+            sharedExplorerCodeAttachment(owned)
+              ? preferSharedProtectedCodeAttachment(owned, { signal })
+              : preferProtectedCodeAttachment(owned, { signal }),
         );
         if (!cancelled && preferred) {
           connectionInFlightRef.current = false;
@@ -775,8 +818,128 @@ export function ExplorerCodeEditor({
     if (!preferredAttachment) return;
     return subscribePreferredCodeAttachmentUnavailable(
       preferredAttachment,
-      () => requestAutomaticReplacement(bindingKey),
+      () => {
+        if (preferredAttachment.sharedOwnedAttachment) {
+          setSharedTransportRecoveryAttempt((attempt) => attempt + 1);
+          return;
+        }
+        requestAutomaticReplacement(bindingKey);
+      },
     );
+  }, [bindingKey, preferredAttachment, requestAutomaticReplacement]);
+
+  useEffect(() => {
+    if (
+      sharedTransportRecoveryAttempt === 0 ||
+      sharedTransportRecoveryAttempt <= lastSharedRecoveryAttemptRef.current
+    ) {
+      return;
+    }
+    const owned = preferredAttachment?.sharedOwnedAttachment;
+    if (!owned) return;
+    lastSharedRecoveryAttemptRef.current = sharedTransportRecoveryAttempt;
+    const expectedBindingKey = bindingKey;
+    const controller = new AbortController();
+    let cancelled = false;
+    void preferSharedProtectedCodeAttachment(owned, {
+      signal: controller.signal,
+    })
+      .then(async (recovered) => {
+        if (cancelled || bindingKeyRef.current !== expectedBindingKey) {
+          return stopSharedProtectedCodeAttachment(
+            owned,
+            recovered.sharedTransportLeaseId,
+          );
+        }
+        if (!recovered.sharedTransportLeaseId) {
+          throw new Error(
+            "Shared Cantrip Code recovery omitted its exact native lease.",
+          );
+        }
+        await retainSharedProtectedCodeAttachmentLease(
+          owned,
+          recovered.sharedTransportLeaseId,
+        );
+        if (cancelled || bindingKeyRef.current !== expectedBindingKey) {
+          return stopSharedProtectedCodeAttachment(
+            owned,
+            recovered.sharedTransportLeaseId,
+          );
+        }
+        setPreferredAttachment(recovered);
+        setError(null);
+      })
+      .catch(() => {
+        if (!cancelled) requestAutomaticReplacement(expectedBindingKey);
+      });
+    return () => {
+      cancelled = true;
+      controller.abort(
+        new DOMException(
+          "Shared Cantrip Code recovery superseded.",
+          "AbortError",
+        ),
+      );
+    };
+  }, [
+    bindingKey,
+    preferredAttachment,
+    requestAutomaticReplacement,
+    sharedTransportRecoveryAttempt,
+  ]);
+
+  useEffect(() => {
+    const initial = preferredAttachment?.sharedOwnedAttachment;
+    if (!initial) return;
+    let current = initial;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = (delayMs?: number) => {
+      if (cancelled) return;
+      const expiresInMs =
+        Date.parse(current.attachment.session.expiresAt) - Date.now();
+      const delay =
+        delayMs ??
+        Math.min(
+          SHARED_SESSION_RENEWAL_MAX_DELAY_MS,
+          Math.max(
+            SHARED_SESSION_RENEWAL_MIN_DELAY_MS,
+            Math.floor(expiresInMs / 2),
+          ),
+        );
+      timer = setTimeout(() => void renew(), delay);
+    };
+    const renew = async () => {
+      try {
+        current = await renewProtectedExplorerCodeSessionAttachment(current, {
+          signal: AbortSignal.timeout(10_000),
+        });
+        schedule();
+      } catch (renewalError) {
+        if (cancelled) return;
+        if (
+          renewalError instanceof CantripApiError &&
+          [401, 403, 404, 409, 410].includes(renewalError.status)
+        ) {
+          requestAutomaticReplacement(bindingKey);
+          return;
+        }
+        const expiresInMs =
+          Date.parse(current.attachment.session.expiresAt) - Date.now();
+        if (expiresInMs <= SHARED_SESSION_RENEWAL_MIN_DELAY_MS) {
+          requestAutomaticReplacement(bindingKey);
+          return;
+        }
+        schedule(
+          Math.min(SHARED_SESSION_RENEWAL_MIN_DELAY_MS, expiresInMs / 2),
+        );
+      }
+    };
+    schedule();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [bindingKey, preferredAttachment, requestAutomaticReplacement]);
 
   useEffect(() => {
