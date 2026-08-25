@@ -614,7 +614,11 @@ export class CodeTunnelBroker {
     serverLogger.info("Protected Cantrip Code attachment created", {
       attachmentId: binding.attachmentId,
       codeTabId: binding.codeTabId,
+      event: "code.attachment.created",
+      operation: "create-attachment",
       sessionId: binding.sessionId,
+      status: "completed",
+      subsystem: "code",
       tunnelId: binding.tunnelId,
       workerId: binding.workerId,
     });
@@ -865,6 +869,17 @@ export class CodeTunnelBroker {
         );
       }
     }
+    serverLogger.info("Protected Cantrip Code attachment revoked", {
+      attachmentId: binding.attachmentId,
+      codeTabId: binding.codeTabId,
+      event: "code.attachment.revoked",
+      operation: "revoke-attachment",
+      sessionId: binding.sessionId,
+      status: "completed",
+      subsystem: "code",
+      tunnelId: binding.tunnelId,
+      workerId: binding.workerId,
+    });
     return true;
   }
 

@@ -31,6 +31,7 @@ vi.mock("@/lib/server-connections", () => ({
 
 import {
   forceDesktopTunnelRelay,
+  invalidateDesktopTunnelForward,
   refreshDesktopTunnelRelay,
   startDesktopTunnel,
   startDirectDesktopTunnel,
@@ -192,15 +193,35 @@ describe("stopDesktopTunnel", () => {
 
     await stopDesktopTunnel("tunnel-1", "attachment-1", {
       attachmentId: "attachment-1",
+      diagnosticTraceId: null,
       directCapabilityId: capabilityId,
     });
 
     expect(mocks.invoke).toHaveBeenCalledWith("stop_tunnel_forward", {
       expectedAttachmentId: "attachment-1",
+      expectedDiagnosticTraceId: null,
       expectedDirectCapabilityId: capabilityId,
       tunnelId: "tunnel-1",
     });
     expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1");
+  });
+
+  it("emits a terminal signal only for an authoritatively invalidated forward", async () => {
+    mocks.invoke.mockResolvedValue(null);
+
+    await invalidateDesktopTunnelForward("tunnel-1", {
+      attachmentId: "attachment-1",
+      diagnosticTraceId: "trace-1",
+      directCapabilityId: capabilityId,
+    });
+
+    expect(mocks.invoke).toHaveBeenCalledWith("stop_tunnel_forward", {
+      expectedAttachmentId: "attachment-1",
+      expectedDiagnosticTraceId: "trace-1",
+      expectedDirectCapabilityId: capabilityId,
+      terminalReasonCode: "attachment-invalidated",
+      tunnelId: "tunnel-1",
+    });
   });
 
   it("stops locally before posting the exact terminal snapshot and deleting", async () => {

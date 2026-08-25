@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  CantripApiError: class extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+    ) {
+      super(message);
+    }
+  },
   forceDesktopTunnelRelay: vi.fn(),
+  invalidateDesktopTunnelForward: vi.fn(),
   listDesktopTunnelsWithOptions: vi.fn(),
   recordDirectAttachmentTelemetry: vi.fn(),
   refreshDesktopTunnelRelay: vi.fn(),
@@ -9,12 +18,14 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api", () => ({
+  CantripApiError: mocks.CantripApiError,
   recordDirectAttachmentTelemetry: mocks.recordDirectAttachmentTelemetry,
   renewTunnelAttachmentLease: mocks.renewTunnelAttachmentLease,
 }));
 vi.mock("@/lib/desktop-tunnel", () => ({
   desktopTunnelAvailable: () => true,
   forceDesktopTunnelRelay: mocks.forceDesktopTunnelRelay,
+  invalidateDesktopTunnelForward: mocks.invalidateDesktopTunnelForward,
   listDesktopTunnelsWithOptions: mocks.listDesktopTunnelsWithOptions,
   refreshDesktopTunnelRelay: mocks.refreshDesktopTunnelRelay,
 }));
@@ -29,6 +40,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(Date, "now").mockReturnValue(1_000_000);
   mocks.forceDesktopTunnelRelay.mockResolvedValue(undefined);
+  mocks.invalidateDesktopTunnelForward.mockResolvedValue(undefined);
   mocks.recordDirectAttachmentTelemetry.mockResolvedValue(undefined);
   mocks.refreshDesktopTunnelRelay.mockResolvedValue(true);
   mocks.renewTunnelAttachmentLease.mockResolvedValue(undefined);
@@ -153,6 +165,81 @@ describe("reportDesktopDirectTransportTelemetry", () => {
       "attachment-1",
       { signal: expect.any(AbortSignal) },
     );
+  });
+
+  it("invalidates the exact native forward after authoritative lease loss", async () => {
+    const forward = {
+      attachmentId: "attachment-1",
+      diagnosticTraceId: "trace-1",
+      routeState: "relayed",
+      relayFallbackAvailable: true,
+      directCapabilityId: null,
+      tunnelId: "tunnel-1",
+    } as const;
+    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([forward]);
+    mocks.renewTunnelAttachmentLease.mockRejectedValue(
+      new mocks.CantripApiError("Attachment not found.", 404),
+    );
+
+    await reportDesktopDirectTransportTelemetry();
+
+    expect(mocks.invalidateDesktopTunnelForward).toHaveBeenCalledWith(
+      "tunnel-1",
+      {
+        attachmentId: "attachment-1",
+        diagnosticTraceId: "trace-1",
+        directCapabilityId: null,
+      },
+    );
+  });
+
+  it("does not maintain a due direct route after authoritative invalidation", async () => {
+    const forward = {
+      attachmentId: "attachment-1",
+      diagnosticTraceId: "trace-1",
+      routeState: "local-direct",
+      relayFallbackAvailable: true,
+      relayCredentialExpiresAtEpochMs: Date.now() + 1,
+      directCapabilityId: "capability-1",
+      tunnelId: "tunnel-1",
+    } as const;
+    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([forward]);
+    mocks.recordDirectAttachmentTelemetry.mockRejectedValue(
+      new mocks.CantripApiError("Attachment not found.", 404),
+    );
+
+    await reportDesktopDirectTransportTelemetry();
+    await Promise.resolve();
+
+    expect(mocks.invalidateDesktopTunnelForward).toHaveBeenCalledWith(
+      "tunnel-1",
+      {
+        attachmentId: "attachment-1",
+        diagnosticTraceId: "trace-1",
+        directCapabilityId: "capability-1",
+      },
+    );
+    expect(mocks.refreshDesktopTunnelRelay).not.toHaveBeenCalled();
+    expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
+  });
+
+  it("keeps retryable network failures non-terminal", async () => {
+    const forward = {
+      attachmentId: "attachment-1",
+      diagnosticTraceId: "trace-1",
+      routeState: "relayed",
+      relayFallbackAvailable: true,
+      directCapabilityId: null,
+      tunnelId: "tunnel-1",
+    } as const;
+    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([forward]);
+    mocks.renewTunnelAttachmentLease.mockRejectedValue(
+      new TypeError("Failed to fetch"),
+    );
+
+    await reportDesktopDirectTransportTelemetry();
+
+    expect(mocks.invalidateDesktopTunnelForward).not.toHaveBeenCalled();
   });
 
   it("isolates stalled per-tunnel maintenance from later lease reports", async () => {

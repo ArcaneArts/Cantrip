@@ -218,7 +218,8 @@ export class TunnelTcpDestinationAdapter {
       startedAtMs: Date.now(),
     };
     this.#streams.set(streamKey, stream);
-    workerLogger.event("debug", "Tunnel destination connection opening", {
+    workerLogger.event("debug", "Tunnel destination logical stream opening", {
+      connectionScope: "logical-stream",
       event: "tunnel.destination.opening",
       subsystem: "tunnel",
       operation: "connect",
@@ -240,16 +241,21 @@ export class TunnelTcpDestinationAdapter {
           // Diagnostic correlation must not affect tunnel connectivity.
         }
       }
-      workerLogger.event("info", "Tunnel destination connected", {
-        event: "tunnel.destination.connected",
-        subsystem: "tunnel",
-        operation: "connect",
-        status: "completed",
-        tunnelId: header.tunnelId,
-        attachmentId: header.attachmentId,
-        connectionId: header.connectionId,
-        durationMs: Date.now() - stream.startedAtMs,
-      });
+      workerLogger.event(
+        "info",
+        "Tunnel destination logical stream connected",
+        {
+          connectionScope: "logical-stream",
+          event: "tunnel.destination.connected",
+          subsystem: "tunnel",
+          operation: "connect",
+          status: "completed",
+          tunnelId: header.tunnelId,
+          attachmentId: header.attachmentId,
+          connectionId: header.connectionId,
+          durationMs: Date.now() - stream.startedAtMs,
+        },
+      );
       if (
         !this.#emit(
           {
@@ -302,7 +308,8 @@ export class TunnelTcpDestinationAdapter {
     });
     socket.once("close", () => {
       if (!this.#remove(stream)) return;
-      workerLogger.event("debug", "Tunnel destination connection closed", {
+      workerLogger.event("debug", "Tunnel destination logical stream closed", {
+        connectionScope: "logical-stream",
         event: "tunnel.destination.closed",
         subsystem: "tunnel",
         operation: "connect",
@@ -452,8 +459,9 @@ export class TunnelTcpDestinationAdapter {
     workerLogger.rateLimited(
       `tunnel-destination-close:${reasonCode}`,
       code === "normal" ? "debug" : "warn",
-      "Tunnel destination connection closed locally",
+      "Tunnel destination logical stream closed locally",
       {
+        connectionScope: "logical-stream",
         event: "tunnel.destination.closed-locally",
         subsystem: "tunnel",
         operation: "close",
@@ -495,8 +503,9 @@ export class TunnelTcpDestinationAdapter {
     workerLogger.rateLimited(
       `tunnel-connect-rejected:${reasonCode}`,
       "warn",
-      "Tunnel destination connection rejected",
+      "Tunnel destination logical stream rejected",
       {
+        connectionScope: "logical-stream",
         event: "tunnel.destination.rejected",
         subsystem: "tunnel",
         operation: "connect",
@@ -510,7 +519,8 @@ export class TunnelTcpDestinationAdapter {
   }
 
   #logFailure(stream: TcpStream, reasonCode: string, code: string): void {
-    workerLogger.event("warn", "Tunnel destination connection failed", {
+    workerLogger.event("warn", "Tunnel destination logical stream failed", {
+      connectionScope: "logical-stream",
       event: "tunnel.destination.failed",
       subsystem: "tunnel",
       operation: "connect",

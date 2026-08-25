@@ -102,6 +102,38 @@ describe("Persistent Explorer Code ownership", () => {
     connections.released.length = 0;
   });
 
+  it("connects only actual open tabs when there is no preview owner", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const first = explorer("first-explorer", "src/first.ts");
+    const second = explorer("second-explorer", "src/second.ts");
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(PersistentExplorerViews, {
+            activeExplorer: first,
+            appearance: "dark",
+            gitStatuses: {},
+            openExplorers: [first, second],
+            prewarmExplorer: null,
+            repositoryGraphAvailable: false,
+          }),
+        ),
+      );
+    });
+
+    expect(connections.created).toEqual([first.id, second.id]);
+    expect(connections.released).toEqual([]);
+
+    await act(async () => renderer.unmount());
+    client.clear();
+  });
+
   it("connects restored tabs once, preserves them across switches, and releases only a closed tab", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

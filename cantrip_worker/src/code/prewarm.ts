@@ -7,6 +7,39 @@ export interface VerifiedCodePrewarmIdentity {
   serverId: string;
 }
 
+export function createCoalescingCodePrewarmScheduler<TTrigger>(input: {
+  onError: (error: unknown, trigger: TTrigger) => void;
+  run: (trigger: TTrigger) => Promise<void>;
+}): (trigger: TTrigger) => void {
+  let active: Promise<void> | null = null;
+  let hasQueuedTrigger = false;
+  let queuedTrigger: TTrigger | undefined;
+
+  const schedule = (trigger: TTrigger) => {
+    if (active) {
+      queuedTrigger = trigger;
+      hasQueuedTrigger = true;
+      return;
+    }
+
+    const task = input
+      .run(trigger)
+      .catch((error) => input.onError(error, trigger))
+      .finally(() => {
+        if (active !== task) return;
+        active = null;
+        if (!hasQueuedTrigger) return;
+        const nextTrigger = queuedTrigger as TTrigger;
+        queuedTrigger = undefined;
+        hasQueuedTrigger = false;
+        schedule(nextTrigger);
+      });
+    active = task;
+  };
+
+  return schedule;
+}
+
 export function ownerScopedCodeProfileId(
   ownerId: string,
   profileId: string,

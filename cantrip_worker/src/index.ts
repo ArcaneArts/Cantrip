@@ -133,6 +133,7 @@ import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverMcpConfigurations } from "./mcp/discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
 import {
+  createCoalescingCodePrewarmScheduler,
   ownerScopedCodeProfileId,
   prewarmDefaultCodeProfileAfterEncryptionRefresh,
 } from "./code/prewarm.js";
@@ -725,6 +726,38 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       status: workerEncryption.status(),
     });
   };
+  const scheduleCodePrewarm = createCoalescingCodePrewarmScheduler<
+    "startup-refresh" | "command-refresh" | "heartbeat"
+  >({
+    onError: (error, trigger) => {
+      workerLogger.rateLimited(
+        `code-profile-prewarm-schedule-failed:${config.workerId}`,
+        "warn",
+        "Cantrip Code profile prewarm scheduling failed",
+        {
+          event: "code.profile.prewarm-schedule-failed",
+          subsystem: "code",
+          operation: "prewarm-profile",
+          reasonCode: "synchronization-failed",
+          status: "retrying",
+          observationTrigger: trigger,
+          workerId: config.workerId,
+          error: workerLogError(error),
+        },
+      );
+    },
+    run: async (trigger) => {
+      workerLogger.event("debug", "Cantrip Code profile prewarm scheduled", {
+        event: "code.profile.prewarm-scheduled",
+        subsystem: "code",
+        operation: "prewarm-profile",
+        status: "started",
+        observationTrigger: trigger,
+        workerId: config.workerId,
+      });
+      await synchronizeAndPrewarmCode();
+    },
+  });
   const surfaceStreamReplay = new SurfaceStreamReplayGuard();
   const repositoryOperationReplay = new RepositoryOperationReplayGuard();
   const customizationContentReplay = new CustomizationContentReplayGuard();
@@ -796,6 +829,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       },
     );
   });
+  if (workerEncryption.status().state === "ready") {
+    scheduleCodePrewarm("startup-refresh");
+  }
   cliBroker.setSurfacePrivateStateService(workerEncryption);
   cliBroker.setPolicyEncryptionService(workerEncryption);
   cliBroker.setRunEncryptionService(workerEncryption);
@@ -1449,12 +1485,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
         scheduleWorkerRuntimeRestart(requestRuntimeRestart);
         return workerRestartAcknowledgementSchema.parse({ restarting: true });
-      case "worker.encryption.refresh":
+      case "worker.encryption.refresh": {
+        const status = await refreshWorkerEncryption();
+        if (status.state === "ready") {
+          scheduleCodePrewarm("command-refresh");
+        }
         return workerEncryptionRefreshResultSchema.parse({
           component: command.component,
           keyRevision: command.keyRevision,
-          status: await refreshWorkerEncryption(),
+          status,
         });
+      }
       case "code.settings.synchronize": {
         const synchronizer = await ensureCodeSettingsSynchronizer();
         return synchronizer
@@ -4962,7 +5003,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             return null;
           },
         );
-        if (synchronizer) void synchronizeAndPrewarmCode();
+        if (synchronizer) scheduleCodePrewarm("heartbeat");
       }
       if (!connected) {
         workerLogger.event("info", "Worker heartbeat connected to server", {

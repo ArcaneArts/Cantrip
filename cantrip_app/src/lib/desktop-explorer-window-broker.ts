@@ -44,6 +44,7 @@ export interface DesktopExplorerWindowBrokerOptions {
 }
 
 const editorControlRetryDelaysMs = [250, 750] as const;
+const editorRouteRecoveryRetryLimit = 2;
 
 function isTransientEditorControlError(error: unknown): boolean {
   return /(?:failed to fetch|load failed|network|not connected|unavailable)/iu.test(
@@ -177,7 +178,6 @@ export function createDesktopExplorerWindowBroker(
   let hasFileTarget = configureInitialFile;
   let navigationRevision = 0;
   let navigationController: AbortController | null = null;
-  let healthTimer: ReturnType<typeof setTimeout> | null = null;
   let recoveryPromise: Promise<void> | null = null;
   const workbenchWaiters = new Set<{
     reject(error: Error): void;
@@ -270,31 +270,6 @@ export function createDesktopExplorerWindowBroker(
         }
         prepared = result;
         preparedAtMs = Date.now();
-        const checkHealth = async () => {
-          if (
-            disposed ||
-            generation !== endpointGeneration ||
-            !result.directTunnelId
-          ) {
-            return;
-          }
-          const recovery = await recoverPreferredCodeAttachmentRoute(result, {
-            signal: preparationController.signal,
-          }).catch(() => "recovering" as const);
-          if (disposed || generation !== endpointGeneration) return;
-          if (recovery === "replace-required") {
-            void recoverEditorAttachment(
-              new Error("The protected editor route was replaced."),
-            ).catch((recoveryError: unknown) =>
-              reportEditorError(recoveryError, "endpoint"),
-            );
-            return;
-          }
-          healthTimer = setTimeout(checkHealth, 5_000);
-        };
-        if (result.directTunnelId) {
-          healthTimer = setTimeout(checkHealth, 5_000);
-        }
         send({
           attachment: result.attachment,
           launchId,
@@ -400,6 +375,7 @@ export function createDesktopExplorerWindowBroker(
   const scheduleConfiguration = (
     path: string | null,
     requestedAtMs: number,
+    routeRecoveryAttempt = 0,
   ): Promise<void> => {
     navigationRevision += 1;
     const revision = navigationRevision;
@@ -416,9 +392,28 @@ export function createDesktopExplorerWindowBroker(
       configureEditor(path, requestedAtMs, revision, signal),
     );
     navigationQueue = navigate.catch(() => undefined);
-    return navigate.catch((error: unknown) => {
+    return navigate.catch(async (error: unknown) => {
       if (controller.signal.aborted && !preparationController.signal.aborted) {
         return;
+      }
+      if (prepared && isTransientEditorControlError(error)) {
+        const recovery = await recoverPreferredCodeAttachmentRoute(prepared, {
+          signal,
+        }).catch(() => "recovering" as const);
+        if (recovery === "replace-required") {
+          await recoverEditorAttachment(error);
+          return;
+        }
+        if (routeRecoveryAttempt < editorRouteRecoveryRetryLimit) {
+          await abortableDelay(recovery === "available" ? 250 : 1_000, signal);
+          if (revision !== navigationRevision) return;
+          await scheduleConfiguration(
+            path,
+            requestedAtMs,
+            routeRecoveryAttempt + 1,
+          );
+          return;
+        }
       }
       reportEditorError(error, path === null ? "presentation" : "file");
       throw error;
@@ -440,13 +435,10 @@ export function createDesktopExplorerWindowBroker(
       return Promise.resolve();
     }
     if (recoveryPromise) return recoveryPromise;
-    const failure = codeWorkbenchStageError("endpoint", reason);
-    reportEditorError(failure, "endpoint");
+    reportEditorError(codeWorkbenchStageError("endpoint", reason), "endpoint");
     navigationController?.abort(
       new DOMException("Explorer Code attachment is recovering.", "AbortError"),
     );
-    if (healthTimer) clearTimeout(healthTimer);
-    healthTimer = null;
     activeWorkbenchNonce = null;
     expectedWorkbenchNonce = null;
     presentationNonce = null;
@@ -498,8 +490,6 @@ export function createDesktopExplorerWindowBroker(
         new DOMException("Explorer editor closed.", "AbortError"),
       );
       preparationController.abort(options.signal?.reason);
-      if (healthTimer) clearTimeout(healthTimer);
-      healthTimer = null;
       options.signal?.removeEventListener("abort", abortFromOwner);
       channel.close();
     }

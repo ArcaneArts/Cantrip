@@ -43,7 +43,136 @@ export interface DesktopTunnelForwardSummary {
 
 export interface DesktopTunnelForwardIdentity {
   attachmentId: string;
+  diagnosticTraceId: string | null;
   directCapabilityId: string | null;
+}
+
+export interface DesktopTunnelForwardTerminalEvent {
+  attachmentId: string;
+  diagnosticTraceId: string | null;
+  reasonCode: "attachment-invalidated" | "replaced" | "route-terminated";
+  tunnelId: string;
+}
+
+const DESKTOP_TUNNEL_FORWARD_TERMINAL_EVENT = "cantrip-tunnel-forward-terminal";
+const MAX_RECENT_TERMINAL_FORWARDS = 256;
+const recentTerminalForwards = new Map<
+  string,
+  DesktopTunnelForwardTerminalEvent
+>();
+const terminalForwardSubscribers = new Set<{
+  identity: Pick<
+    DesktopTunnelForwardTerminalEvent,
+    "attachmentId" | "diagnosticTraceId" | "tunnelId"
+  >;
+  listener: (event: DesktopTunnelForwardTerminalEvent) => void;
+  notified: boolean;
+}>();
+let terminalForwardListenerReady: Promise<void> | null = null;
+
+function terminalForwardKey(
+  identity: Pick<
+    DesktopTunnelForwardTerminalEvent,
+    "attachmentId" | "diagnosticTraceId" | "tunnelId"
+  >,
+): string {
+  return [
+    identity.tunnelId,
+    identity.attachmentId,
+    identity.diagnosticTraceId ?? "none",
+  ].join("\0");
+}
+
+function publishDesktopTunnelForwardTerminal(
+  event: DesktopTunnelForwardTerminalEvent,
+): void {
+  const key = terminalForwardKey(event);
+  recentTerminalForwards.delete(key);
+  recentTerminalForwards.set(key, event);
+  while (recentTerminalForwards.size > MAX_RECENT_TERMINAL_FORWARDS) {
+    const oldest = recentTerminalForwards.keys().next().value;
+    if (oldest === undefined) break;
+    recentTerminalForwards.delete(oldest);
+  }
+  for (const subscription of terminalForwardSubscribers) {
+    if (
+      !subscription.notified &&
+      terminalForwardKey(subscription.identity) === key
+    ) {
+      subscription.notified = true;
+      subscription.listener(event);
+    }
+  }
+}
+
+function ensureDesktopTunnelForwardTerminalListener(): Promise<void> {
+  if (terminalForwardListenerReady) return terminalForwardListenerReady;
+  const opening = import("@tauri-apps/api/event")
+    .then(({ listen }) =>
+      listen<DesktopTunnelForwardTerminalEvent>(
+        DESKTOP_TUNNEL_FORWARD_TERMINAL_EVENT,
+        ({ payload }) => publishDesktopTunnelForwardTerminal(payload),
+      ),
+    )
+    .then(() => undefined)
+    .catch((error) => {
+      if (terminalForwardListenerReady === opening) {
+        terminalForwardListenerReady = null;
+      }
+      throw error;
+    });
+  terminalForwardListenerReady = opening;
+  return opening;
+}
+
+if (isTauri()) {
+  void ensureDesktopTunnelForwardTerminalListener().catch(() => undefined);
+}
+
+export function subscribeDesktopTunnelForwardTerminal(
+  identity: Pick<
+    DesktopTunnelForwardTerminalEvent,
+    "attachmentId" | "diagnosticTraceId" | "tunnelId"
+  >,
+  listener: (event: DesktopTunnelForwardTerminalEvent) => void,
+): () => void {
+  if (!isTauri()) return () => undefined;
+  const subscription = { identity, listener, notified: false };
+  terminalForwardSubscribers.add(subscription);
+  const replay = recentTerminalForwards.get(terminalForwardKey(identity));
+  if (replay) {
+    queueMicrotask(() => {
+      if (terminalForwardSubscribers.has(subscription)) {
+        publishDesktopTunnelForwardTerminal(replay);
+      }
+    });
+  }
+  void ensureDesktopTunnelForwardTerminalListener()
+    .then(() => listDesktopTunnelsWithOptions())
+    .then((forwards) => {
+      if (
+        subscription.notified ||
+        !terminalForwardSubscribers.has(subscription)
+      ) {
+        return;
+      }
+      const exact = forwards.some(
+        (forward) =>
+          forward.tunnelId === identity.tunnelId &&
+          forward.attachmentId === identity.attachmentId &&
+          forward.diagnosticTraceId === identity.diagnosticTraceId,
+      );
+      if (!exact) {
+        publishDesktopTunnelForwardTerminal({
+          ...identity,
+          reasonCode: "route-terminated",
+        });
+      }
+    })
+    .catch(() => undefined);
+  return () => {
+    terminalForwardSubscribers.delete(subscription);
+  };
 }
 
 interface DesktopTunnelTerminalSnapshot {
@@ -170,6 +299,8 @@ export async function startDesktopTunnel(
     attachment.secret = "";
     await stopDesktopTunnelForward(tunnelId, {
       attachmentId: started?.attachmentId ?? attachment.attachmentId,
+      diagnosticTraceId:
+        started?.diagnosticTraceId ?? options.diagnosticTraceId ?? null,
       directCapabilityId: started?.directCapabilityId ?? null,
     }).catch(() => {
       // Server revocation below remains authoritative.
@@ -235,6 +366,7 @@ export async function stopDesktopTunnelForward(
       ...(expectedForward
         ? {
             expectedAttachmentId: expectedForward.attachmentId,
+            expectedDiagnosticTraceId: expectedForward.diagnosticTraceId,
             expectedDirectCapabilityId: expectedForward.directCapabilityId,
           }
         : {}),
@@ -244,6 +376,24 @@ export async function stopDesktopTunnelForward(
     // Server revocation remains authoritative if the local listener is gone.
     return null;
   });
+  await reportFinalDesktopTunnelTelemetry(snapshot).catch(() => undefined);
+}
+
+export async function invalidateDesktopTunnelForward(
+  tunnelId: string,
+  expectedForward: DesktopTunnelForwardIdentity,
+): Promise<void> {
+  if (!isTauri()) return;
+  const snapshot = await invoke<DesktopTunnelTerminalSnapshot | null>(
+    "stop_tunnel_forward",
+    {
+      expectedAttachmentId: expectedForward.attachmentId,
+      expectedDiagnosticTraceId: expectedForward.diagnosticTraceId,
+      expectedDirectCapabilityId: expectedForward.directCapabilityId,
+      terminalReasonCode: "attachment-invalidated",
+      tunnelId,
+    },
+  ).catch(() => null);
   await reportFinalDesktopTunnelTelemetry(snapshot).catch(() => undefined);
 }
 

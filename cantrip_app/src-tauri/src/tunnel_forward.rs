@@ -111,6 +111,17 @@ pub struct TunnelForwardTerminalSnapshot {
     pub route_selection_count: u64,
 }
 
+const TUNNEL_FORWARD_TERMINAL_EVENT: &str = "cantrip-tunnel-forward-terminal";
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TunnelForwardTerminalEvent {
+    attachment_id: String,
+    diagnostic_trace_id: Option<String>,
+    reason_code: &'static str,
+    tunnel_id: String,
+}
+
 pub struct TunnelForwards {
     #[cfg(desktop)]
     forwards: Mutex<HashMap<String, desktop::ForwardHandle>>,
@@ -162,16 +173,24 @@ pub async fn stop_tunnel_forward(
     state: State<'_, TunnelForwards>,
     tunnel_id: String,
     expected_attachment_id: Option<String>,
+    expected_diagnostic_trace_id: Option<String>,
     expected_direct_capability_id: Option<String>,
+    terminal_reason_code: Option<String>,
 ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
+    #[cfg(desktop)]
+    let reason = match terminal_reason_code.as_deref() {
+        Some("attachment-invalidated") => "attachment-invalidated",
+        _ => "requested",
+    };
     #[cfg(desktop)]
     return desktop::stop(
         &app,
         &state,
         &tunnel_id,
         expected_attachment_id.as_deref(),
+        expected_diagnostic_trace_id.as_deref(),
         expected_direct_capability_id.as_deref(),
-        "requested",
+        reason,
     )
     .await;
     #[cfg(mobile)]
@@ -181,7 +200,9 @@ pub async fn stop_tunnel_forward(
             state,
             tunnel_id,
             expected_attachment_id,
+            expected_diagnostic_trace_id,
             expected_direct_capability_id,
+            terminal_reason_code,
         );
         Err("Local tunnel attachments are only available in the desktop app.".into())
     }
@@ -256,8 +277,9 @@ pub fn refresh_tunnel_forward_relay(
 mod desktop {
     use super::{
         RelayTunnelRequest, StartTunnelForwardRequest, TunnelDataProtectionRequest,
-        TunnelForwardSummary, TunnelForwardTerminalSnapshot, TunnelForwards,
-        TunnelRelayRefreshOutcome, TunnelRelayRefreshResult,
+        TunnelForwardSummary, TunnelForwardTerminalEvent, TunnelForwardTerminalSnapshot,
+        TunnelForwards, TunnelRelayRefreshOutcome, TunnelRelayRefreshResult,
+        TUNNEL_FORWARD_TERMINAL_EVENT,
     };
     use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
     use aes_gcm::{Aes256Gcm, Nonce};
@@ -276,7 +298,7 @@ mod desktop {
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::async_runtime::JoinHandle as TauriJoinHandle;
-    use tauri::{AppHandle, Manager, State};
+    use tauri::{AppHandle, Emitter, Manager, State};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::{mpsc, oneshot, watch, Notify};
@@ -530,9 +552,10 @@ mod desktop {
                 diagnostic_event(
                     self.app.as_ref(),
                     "info",
-                    "Desktop tunnel connection closed",
+                    "Desktop tunnel logical stream closed",
                     json!({
                         "attachmentId": self.attachment_id,
+                        "connectionScope": "logical-stream",
                         "connectionId": self.connection_id,
                         "diagnosticTraceId": self.diagnostic_trace_id,
                         "event": "desktop.tunnel.connection.closed",
@@ -827,7 +850,7 @@ mod desktop {
     ) -> Result<TunnelForwardSummary, String> {
         validate_identifiers(&request)?;
         let relay_fallback_available = request.relay.is_some();
-        let _ = stop(app, state, &request.tunnel_id, None, None, "replaced").await?;
+        let _ = stop(app, state, &request.tunnel_id, None, None, None, "replaced").await?;
         let listener = match bind_listener(request.preferred_local_port).await {
             Ok(listener) => listener,
             Err(error) => {
@@ -883,16 +906,48 @@ mod desktop {
         let (ready_sender, ready_receiver) = oneshot::channel();
         let (relay_refresh_sender, relay_refresh_receiver) = watch::channel(None);
         let (route_control_sender, route_control_receiver) = mpsc::channel(1);
-        let task = tauri::async_runtime::spawn(run_forward(
-            Some(app.clone()),
-            listener,
-            request,
-            counters.clone(),
-            stop_receiver,
-            ready_sender,
-            relay_refresh_receiver,
-            route_control_receiver,
-        ));
+        let terminal_event = TunnelForwardTerminalEvent {
+            attachment_id: request.attachment_id.clone(),
+            diagnostic_trace_id: request.diagnostic_trace_id.clone(),
+            reason_code: "route-terminated",
+            tunnel_id: request.tunnel_id.clone(),
+        };
+        let task_app = app.clone();
+        let task_counters = counters.clone();
+        let task = tauri::async_runtime::spawn(async move {
+            run_forward(
+                Some(task_app.clone()),
+                listener,
+                request,
+                task_counters,
+                stop_receiver,
+                ready_sender,
+                relay_refresh_receiver,
+                route_control_receiver,
+            )
+            .await;
+            let removed = task_app
+                .state::<TunnelForwards>()
+                .forwards
+                .lock()
+                .ok()
+                .is_some_and(|mut forwards| {
+                    let exact = forwards
+                        .get(&terminal_event.tunnel_id)
+                        .is_some_and(|forward| {
+                            forward.summary.attachment_id == terminal_event.attachment_id
+                                && forward.summary.diagnostic_trace_id
+                                    == terminal_event.diagnostic_trace_id
+                        });
+                    if exact {
+                        forwards.remove(&terminal_event.tunnel_id);
+                    }
+                    exact
+                });
+            if removed {
+                emit_forward_terminal(&task_app, &terminal_event);
+            }
+        });
         let startup = match timeout(Duration::from_secs(15), ready_receiver).await {
             Ok(Ok(Ok(startup))) => startup,
             Ok(Ok(Err(error))) => {
@@ -1152,6 +1207,7 @@ mod desktop {
         state: &State<'_, TunnelForwards>,
         tunnel_id: &str,
         expected_attachment_id: Option<&str>,
+        expected_diagnostic_trace_id: Option<&str>,
         expected_direct_capability_id: Option<&str>,
         reason: &'static str,
     ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
@@ -1164,6 +1220,7 @@ mod desktop {
                 &mut forwards,
                 tunnel_id,
                 expected_attachment_id,
+                expected_diagnostic_trace_id,
                 expected_direct_capability_id,
             )
         };
@@ -1177,19 +1234,36 @@ mod desktop {
         let snapshot = forward.counters.terminal_snapshot(&forward.summary);
         log_forward_snapshot(app, &forward, &snapshot, reason);
         log_forward_stopped(app, &forward, reason);
+        if matches!(reason, "attachment-invalidated" | "replaced") {
+            emit_forward_terminal(
+                app,
+                &TunnelForwardTerminalEvent {
+                    attachment_id: forward.summary.attachment_id.clone(),
+                    diagnostic_trace_id: forward.summary.diagnostic_trace_id.clone(),
+                    reason_code: reason,
+                    tunnel_id: forward.summary.tunnel_id.clone(),
+                },
+            );
+        }
         Ok(Some(snapshot))
+    }
+
+    fn emit_forward_terminal(app: &AppHandle, event: &TunnelForwardTerminalEvent) {
+        let _ = app.emit(TUNNEL_FORWARD_TERMINAL_EVENT, event);
     }
 
     fn take_forward_for_stop(
         forwards: &mut HashMap<String, ForwardHandle>,
         tunnel_id: &str,
         expected_attachment_id: Option<&str>,
+        expected_diagnostic_trace_id: Option<&str>,
         expected_direct_capability_id: Option<&str>,
     ) -> Option<ForwardHandle> {
         let candidate = forwards.get(tunnel_id)?;
         if !stop_fence_matches(
             &candidate.summary,
             expected_attachment_id,
+            expected_diagnostic_trace_id,
             expected_direct_capability_id,
         ) {
             return None;
@@ -1200,12 +1274,18 @@ mod desktop {
     fn stop_fence_matches(
         summary: &TunnelForwardSummary,
         expected_attachment_id: Option<&str>,
+        expected_diagnostic_trace_id: Option<&str>,
         expected_direct_capability_id: Option<&str>,
     ) -> bool {
         let Some(expected_attachment_id) = expected_attachment_id else {
             return true;
         };
         if expected_attachment_id != summary.attachment_id {
+            return false;
+        }
+        if expected_diagnostic_trace_id
+            .is_some_and(|expected| summary.diagnostic_trace_id.as_deref() != Some(expected))
+        {
             return false;
         }
         match summary.direct_capability_id.as_deref() {
@@ -2507,8 +2587,15 @@ mod desktop {
                     }
                     source_sequence += 1;
                 }
-                ConnectionEvent::Local(Err(_)) => {
-                    open_connection.set_close_reason("local-read-failed");
+                ConnectionEvent::Local(Err(error)) => {
+                    open_connection.set_close_reason(match error.kind() {
+                        std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::ConnectionAborted
+                        | std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::NotConnected
+                        | std::io::ErrorKind::UnexpectedEof => "local-reset",
+                        _ => "local-read-failed",
+                    });
                     break;
                 }
                 ConnectionEvent::Remote(None) => {
@@ -4213,6 +4300,27 @@ mod desktop {
         }
 
         #[test]
+        fn terminal_forward_event_carries_only_exact_route_identity() {
+            let payload = serde_json::to_value(TunnelForwardTerminalEvent {
+                attachment_id: "attachment-one".into(),
+                diagnostic_trace_id: Some("trace-one".into()),
+                reason_code: "route-terminated",
+                tunnel_id: "tunnel-one".into(),
+            })
+            .unwrap();
+
+            assert_eq!(
+                payload,
+                json!({
+                    "attachmentId": "attachment-one",
+                    "diagnosticTraceId": "trace-one",
+                    "reasonCode": "route-terminated",
+                    "tunnelId": "tunnel-one",
+                })
+            );
+        }
+
+        #[test]
         fn route_connect_failure_diagnostics_are_bounded_and_secret_free() {
             assert_eq!(
                 route_connect_failure_reason_code("The tunnel attachment credential expired."),
@@ -4579,39 +4687,51 @@ mod desktop {
             assert!(stop_fence_matches(
                 &summary,
                 Some("current-attachment"),
+                None,
                 Some("current-capability")
             ));
             assert!(!stop_fence_matches(
                 &summary,
                 Some("stale-attachment"),
+                None,
                 Some("current-capability")
             ));
             assert!(!stop_fence_matches(
                 &summary,
                 Some("current-attachment"),
+                None,
                 Some("stale-capability")
             ));
             assert!(!stop_fence_matches(
                 &summary,
                 Some("current-attachment"),
+                None,
                 None
             ));
 
             summary.route_state = "relayed";
             summary.direct_capability_id = None;
+            summary.diagnostic_trace_id = Some("replacement-trace".into());
+            assert!(!stop_fence_matches(
+                &summary,
+                Some("current-attachment"),
+                Some("stale-trace"),
+                None
+            ));
             assert!(stop_fence_matches(
                 &summary,
                 Some("current-attachment"),
+                Some("replacement-trace"),
                 Some("stale-capability")
             ));
-            assert!(stop_fence_matches(&summary, None, None));
+            assert!(stop_fence_matches(&summary, None, None, None));
         }
 
         #[tokio::test]
         async fn stale_stop_leaves_the_replacement_forward_installed() {
             let summary = TunnelForwardSummary {
                 attachment_id: "replacement-attachment".into(),
-                diagnostic_trace_id: None,
+                diagnostic_trace_id: Some("replacement-trace".into()),
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 local_host: "127.0.0.1",
                 local_port: 43_123,
@@ -4649,6 +4769,7 @@ mod desktop {
                 &mut forwards,
                 "tunnel",
                 Some("stale-attachment"),
+                Some("replacement-trace"),
                 Some("replacement-capability"),
             )
             .is_none());
@@ -4663,6 +4784,17 @@ mod desktop {
                 &mut forwards,
                 "tunnel",
                 Some("replacement-attachment"),
+                Some("stale-trace"),
+                Some("replacement-capability"),
+            )
+            .is_none());
+            assert!(forwards.contains_key("tunnel"));
+
+            assert!(take_forward_for_stop(
+                &mut forwards,
+                "tunnel",
+                Some("replacement-attachment"),
+                Some("replacement-trace"),
                 Some("stale-capability"),
             )
             .is_none());
@@ -4672,6 +4804,7 @@ mod desktop {
                 &mut forwards,
                 "tunnel",
                 Some("replacement-attachment"),
+                Some("replacement-trace"),
                 Some("replacement-capability"),
             )
             .expect("the exact replacement identity should remove the forward");
