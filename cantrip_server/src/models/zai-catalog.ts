@@ -115,8 +115,9 @@ export class ZaiCatalogService {
    * ordering while adding only missing discovery-managed records.
    */
   async reconcileOwnerProviders(ownerId: string): Promise<string[]> {
-    const settings = await this.#repository.getSettings(ownerId);
-    const providerIds = settings.providers
+    const providers =
+      await this.#repository.listModelProviderCatalogTargets(ownerId);
+    const providerIds = providers
       .filter(isZaiCodingPlanProvider)
       .map(({ id }) => id);
     for (const providerId of providerIds) {

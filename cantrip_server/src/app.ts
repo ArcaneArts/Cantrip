@@ -8517,8 +8517,7 @@ export async function buildApp({
   ): Promise<string> => {
     const defaultModelId = context.modelId
       ? null
-      : (await repository.getSettings(applicationOwnerId())).preferences
-          .defaultModelId;
+      : (await repository.getUserSettings(applicationOwnerId())).defaultModelId;
     const modelId = requestedModelId ?? context.modelId ?? defaultModelId;
     if (!modelId) {
       throw new Error(
@@ -13656,7 +13655,7 @@ export async function buildApp({
       try {
         const agentModelId = input.data.agent
           ? (input.data.modelId ??
-            (await repository.getSettings(ownerId)).preferences.defaultModelId)
+            (await repository.getUserSettings(ownerId)).defaultModelId)
           : null;
         if (input.data.agent && !agentModelId) {
           return reply.code(409).send({
@@ -16724,12 +16723,10 @@ export async function buildApp({
           return reply.code(404).send({ error: "Provider not found." });
         }
         if (isAccountProviderKind(provider.kind)) {
-          const settings = await repository.getSettings(ownerId);
           if (
-            settings.models.some((model) =>
-              model.routes.some(
-                ({ providerId }) => providerId === request.params.providerId,
-              ),
+            await repository.hasModelRoutesForProvider(
+              ownerId,
+              request.params.providerId,
             )
           ) {
             return reply.code(409).send({
@@ -16841,11 +16838,11 @@ export async function buildApp({
     }
     let selectedWorkerId = workerId;
     if (!selectedWorkerId) {
-      const [settings, workers] = await Promise.all([
-        repository.getSettings(ownerId),
+      const [preferences, workers] = await Promise.all([
+        repository.getUserSettings(ownerId),
         repository.listWorkers(ownerId),
       ]);
-      const defaultWorkerId = settings.preferences.defaultWorkerId;
+      const defaultWorkerId = preferences.defaultWorkerId;
       selectedWorkerId =
         (defaultWorkerId && bridge.isConnected(defaultWorkerId)
           ? defaultWorkerId
@@ -16951,19 +16948,19 @@ export async function buildApp({
     workerId: string,
     quotaTrigger: "periodic-refresh" | "worker-reconnected",
   ) => {
-    const [settings, worker] = await Promise.all([
-      repository.getSettings(ownerId),
+    const [providers, worker] = await Promise.all([
+      repository.listModelProviderRefreshTargets(ownerId),
       repository.getWorker(ownerId, workerId),
     ]);
     await Promise.allSettled(
-      settings.providers
+      providers
         .filter((provider) => canRefreshProviderOnWorker(provider.kind, worker))
         .map((provider) =>
           loadProviderCatalog(ownerId, provider.id, workerId, false),
         ),
     );
     await Promise.allSettled(
-      settings.providers.flatMap((provider) => {
+      providers.flatMap((provider) => {
         if (
           !isAccountProviderKind(provider.kind) ||
           !canRefreshProviderOnWorker(provider.kind, worker)
@@ -17120,15 +17117,15 @@ export async function buildApp({
       );
     }
 
-    const [settings, workers] = await Promise.all([
-      repository.getSettings(ownerId),
+    const [preferences, workers] = await Promise.all([
+      repository.getUserSettings(ownerId),
       repository.listWorkers(ownerId),
     ]);
     const requestedWorkerId = request.query.workerId;
     const requestedWorker = requestedWorkerId
       ? workers.find(({ workerId }) => workerId === requestedWorkerId)
       : null;
-    const defaultWorkerId = settings.preferences.defaultWorkerId;
+    const defaultWorkerId = preferences.defaultWorkerId;
     const workerId = requestedWorkerId
       ? (requestedWorker?.workerId ?? null)
       : defaultWorkerId && bridge.isConnected(defaultWorkerId)

@@ -330,6 +330,23 @@ export interface ModelProviderCatalogRuntime {
   protectedApiKey: ProtectedSecretEnvelope | null;
 }
 
+export type ModelProviderCatalogTarget = Pick<
+  ModelProviderCatalogRuntime,
+  "baseUrl" | "id" | "kind"
+>;
+
+export interface ModelProviderRefreshTarget {
+  accounts: Array<{
+    enabled: boolean;
+    id: string;
+    planType: ModelProviderAccountWireSummary["planType"];
+  }>;
+  baseUrl: string;
+  id: string;
+  kind: ModelProviderSummary["kind"];
+  name: string;
+}
+
 export interface ProviderModelCatalogWrite {
   nativeModelId: string;
   canonicalModelId: string | null;
@@ -3022,7 +3039,7 @@ export class ServerRepository {
 
   async getSettings(ownerId: string): Promise<SettingsBundleWire> {
     const [
-      settingsRows,
+      preferences,
       providerRows,
       providerAccountRows,
       providerAccountWorkerRows,
@@ -3032,11 +3049,7 @@ export class ServerRepository {
       modelUsageRows,
       agentTime,
     ] = await Promise.all([
-      this.database
-        .select()
-        .from(schema.userSettings)
-        .where(eq(schema.userSettings.userId, ownerId))
-        .limit(1),
+      this.getUserSettings(ownerId),
       this.database
         .select()
         .from(schema.modelProviders)
@@ -3129,7 +3142,6 @@ export class ServerRepository {
         .groupBy(schema.tokenUsageRecords.modelId),
       this.getAgentTimeAnalytics(ownerId),
     ]);
-    const settings = firstOrThrow(settingsRows, "loading user settings");
     const providerUsage = new Map(
       providerUsageRows.flatMap((row) =>
         row.id
@@ -3145,31 +3157,7 @@ export class ServerRepository {
       ),
     );
     return {
-      preferences: {
-        theme: settings.theme as ThemePreference,
-        highContrast: settings.highContrast,
-        proMode: settings.proMode,
-        proModeOpacity: settings.proModeOpacity,
-        eliteMode: settings.eliteMode,
-        eliteRevealConfig: settings.eliteRevealConfig,
-        sidebarWidth: settings.sidebarWidth,
-        desktopFrameRate:
-          settings.desktopFrameRate as UserSettings["desktopFrameRate"],
-        desktopStreamQuality:
-          settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
-        defaultModelId: settings.defaultModelId,
-        defaultReasoningEffort: settings.defaultReasoningEffort,
-        defaultCustomSubagentModel: settings.defaultCustomSubagentModel,
-        defaultSubagentModelId: settings.defaultSubagentModelId,
-        defaultSubagentReasoningEffort: settings.defaultSubagentReasoningEffort,
-        defaultPermissionProfileId:
-          settings.defaultPermissionProfileId as UserSettings["defaultPermissionProfileId"],
-        defaultWorkerId: settings.defaultWorkerId,
-        automaticReplicaProvisioning: settings.automaticReplicaProvisioning,
-        automaticReplicaSynchronization:
-          settings.automaticReplicaSynchronization as UserSettings["automaticReplicaSynchronization"],
-        mobileProjectTabConfigurations: settings.mobileProjectTabConfigurations,
-      },
+      preferences,
       providers: providerRows.map((provider) =>
         toProviderSummary(
           provider,
@@ -3817,6 +3805,25 @@ export class ServerRepository {
       )
       .limit(1);
     return rows[0] ? toProviderSummary(rows[0]) : null;
+  }
+
+  async hasModelRoutesForProvider(
+    ownerId: string,
+    providerId: string,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .select({ id: schema.modelRoutes.id })
+      .from(schema.modelRoutes)
+      .innerJoin(
+        schema.modelProfiles,
+        and(
+          eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+          eq(schema.modelProfiles.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.modelRoutes.providerId, providerId))
+      .limit(1);
+    return Boolean(rows[0]);
   }
 
   async listModelProviderAccounts(
@@ -5411,6 +5418,72 @@ export class ServerRepository {
       baseUrl: provider.baseUrl,
       protectedApiKey: provider.protectedApiKey,
     };
+  }
+
+  async listModelProviderCatalogTargets(
+    ownerId: string,
+  ): Promise<ModelProviderCatalogTarget[]> {
+    const rows = await this.database
+      .select({
+        baseUrl: schema.modelProviders.baseUrl,
+        id: schema.modelProviders.id,
+        kind: schema.modelProviders.kind,
+      })
+      .from(schema.modelProviders)
+      .where(eq(schema.modelProviders.ownerId, ownerId))
+      .orderBy(asc(schema.modelProviders.createdAt));
+    return rows.map((provider) => ({
+      id: provider.id,
+      kind: provider.kind as ModelProviderSummary["kind"],
+      baseUrl: provider.baseUrl,
+    }));
+  }
+
+  async listModelProviderRefreshTargets(
+    ownerId: string,
+  ): Promise<ModelProviderRefreshTarget[]> {
+    const rows = await this.database
+      .select({
+        accountEnabled: schema.modelProviderAccounts.enabled,
+        accountId: schema.modelProviderAccounts.id,
+        accountPlanType: schema.modelProviderAccounts.planType,
+        providerBaseUrl: schema.modelProviders.baseUrl,
+        providerId: schema.modelProviders.id,
+        providerKind: schema.modelProviders.kind,
+        providerName: schema.modelProviders.name,
+      })
+      .from(schema.modelProviders)
+      .leftJoin(
+        schema.modelProviderAccounts,
+        eq(schema.modelProviderAccounts.providerId, schema.modelProviders.id),
+      )
+      .where(eq(schema.modelProviders.ownerId, ownerId))
+      .orderBy(
+        asc(schema.modelProviders.createdAt),
+        asc(schema.modelProviderAccounts.position),
+      );
+    const targets = new Map<string, ModelProviderRefreshTarget>();
+    for (const row of rows) {
+      let target = targets.get(row.providerId);
+      if (!target) {
+        target = {
+          accounts: [],
+          baseUrl: row.providerBaseUrl,
+          id: row.providerId,
+          kind: row.providerKind as ModelProviderSummary["kind"],
+          name: row.providerName,
+        };
+        targets.set(row.providerId, target);
+      }
+      if (row.accountId) {
+        target.accounts.push({
+          enabled: row.accountEnabled!,
+          id: row.accountId,
+          planType: row.accountPlanType,
+        });
+      }
+    }
+    return [...targets.values()];
   }
 
   async setProviderCatalogSyncState(
