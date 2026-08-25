@@ -625,6 +625,258 @@ describe("shared relay coordination", () => {
     await Promise.all([coordinatorA.close(), coordinatorB.close()]);
   });
 
+  it("does not dispatch a relayed command after its absolute deadline", async () => {
+    let now = 1_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
+    const coordinatorB = new InMemoryRelayCoordinator("instance-b", backend);
+    await Promise.all([coordinatorA.start(), coordinatorB.start()]);
+    let releaseOwnerLookup!: () => void;
+    let signalOwnerLookup!: () => void;
+    const ownerLookupStarted = new Promise<void>((resolve) => {
+      signalOwnerLookup = resolve;
+    });
+    const ownerLookupRelease = new Promise<void>((resolve) => {
+      releaseOwnerLookup = resolve;
+    });
+    const bridgeA = new CoordinatedWorkerBridge({
+      coordinator: coordinatorA,
+      resolveOwnerId: async () => "owner-1",
+    });
+    const bridgeB = new CoordinatedWorkerBridge({
+      coordinator: coordinatorB,
+      resolveOwnerId: async () => {
+        signalOwnerLookup();
+        await ownerLookupRelease;
+        return "owner-1";
+      },
+    });
+    const workerSocket = new TestWorkerSocket();
+    await bridgeB.attach("worker-1", workerSocket, "owner-1");
+    const response = bridgeA.request(
+      "worker-1",
+      { type: "code.probe" },
+      { ownerId: "owner-1", timeoutMs: 1_000 },
+    );
+    void response.catch(() => undefined);
+
+    try {
+      await ownerLookupStarted;
+      now = 2_001;
+      releaseOwnerLookup();
+      await settle();
+      expect(workerSocket.sent).toHaveLength(0);
+    } finally {
+      releaseOwnerLookup();
+      await Promise.all([bridgeA.close(), bridgeB.close()]);
+      await Promise.all([coordinatorA.close(), coordinatorB.close()]);
+      await response.catch(() => undefined);
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("forwards only the remaining relayed command deadline", async () => {
+    let now = 1_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
+    const coordinatorB = new InMemoryRelayCoordinator("instance-b", backend);
+    await Promise.all([coordinatorA.start(), coordinatorB.start()]);
+    let releaseOwnerLookup!: () => void;
+    let signalOwnerLookup!: () => void;
+    const ownerLookupStarted = new Promise<void>((resolve) => {
+      signalOwnerLookup = resolve;
+    });
+    const ownerLookupRelease = new Promise<void>((resolve) => {
+      releaseOwnerLookup = resolve;
+    });
+    const bridgeA = new CoordinatedWorkerBridge({
+      coordinator: coordinatorA,
+      resolveOwnerId: async () => "owner-1",
+    });
+    const bridgeB = new CoordinatedWorkerBridge({
+      coordinator: coordinatorB,
+      resolveOwnerId: async () => {
+        signalOwnerLookup();
+        await ownerLookupRelease;
+        return "owner-1";
+      },
+    });
+    const workerSocket = new TestWorkerSocket();
+    await bridgeB.attach("worker-1", workerSocket, "owner-1");
+    const response = bridgeA.request(
+      "worker-1",
+      { type: "code.probe" },
+      { ownerId: "owner-1", timeoutMs: 1_000 },
+    );
+    void response.catch(() => undefined);
+
+    try {
+      await ownerLookupStarted;
+      timeoutSpy.mockClear();
+      now = 1_400;
+      releaseOwnerLookup();
+      await vi.waitFor(() => expect(workerSocket.sent).toHaveLength(1));
+      expect(timeoutSpy.mock.calls.some(([, delay]) => delay === 600)).toBe(
+        true,
+      );
+      const workerRequest = workerRequestEnvelopeSchema.parse(
+        JSON.parse(String(workerSocket.sent[0])),
+      );
+      workerSocket.emit(
+        "message",
+        JSON.stringify({
+          kind: "response",
+          requestId: workerRequest.requestId,
+          ok: true,
+          result: { available: true },
+        }),
+        false,
+      );
+      await expect(response).resolves.toEqual({ available: true });
+    } finally {
+      releaseOwnerLookup();
+      await Promise.all([bridgeA.close(), bridgeB.close()]);
+      await Promise.all([coordinatorA.close(), coordinatorB.close()]);
+      timeoutSpy.mockRestore();
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("never extends a relayed command beyond its original deadline under negative clock skew", async () => {
+    let now = 1_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
+    const coordinatorB = new InMemoryRelayCoordinator("instance-b", backend);
+    await Promise.all([coordinatorA.start(), coordinatorB.start()]);
+    let releaseOwnerLookup!: () => void;
+    let signalOwnerLookup!: () => void;
+    const ownerLookupStarted = new Promise<void>((resolve) => {
+      signalOwnerLookup = resolve;
+    });
+    const ownerLookupRelease = new Promise<void>((resolve) => {
+      releaseOwnerLookup = resolve;
+    });
+    const bridgeA = new CoordinatedWorkerBridge({
+      coordinator: coordinatorA,
+      resolveOwnerId: async () => "owner-1",
+    });
+    const bridgeB = new CoordinatedWorkerBridge({
+      coordinator: coordinatorB,
+      resolveOwnerId: async () => {
+        signalOwnerLookup();
+        await ownerLookupRelease;
+        return "owner-1";
+      },
+    });
+    const workerSocket = new TestWorkerSocket();
+    await bridgeB.attach("worker-1", workerSocket, "owner-1");
+    const response = bridgeA.request(
+      "worker-1",
+      { type: "code.probe" },
+      { ownerId: "owner-1", timeoutMs: 1_000 },
+    );
+    void response.catch(() => undefined);
+
+    try {
+      await ownerLookupStarted;
+      timeoutSpy.mockClear();
+      now = 500;
+      releaseOwnerLookup();
+      await vi.waitFor(() => expect(workerSocket.sent).toHaveLength(1));
+      expect(timeoutSpy.mock.calls.some(([, delay]) => delay === 1_500)).toBe(
+        false,
+      );
+      expect(timeoutSpy.mock.calls.some(([, delay]) => delay === 1_000)).toBe(
+        true,
+      );
+      const workerRequest = workerRequestEnvelopeSchema.parse(
+        JSON.parse(String(workerSocket.sent[0])),
+      );
+      workerSocket.emit(
+        "message",
+        JSON.stringify({
+          kind: "response",
+          requestId: workerRequest.requestId,
+          ok: true,
+          result: { available: true },
+        }),
+        false,
+      );
+      await expect(response).resolves.toEqual({ available: true });
+    } finally {
+      releaseOwnerLookup();
+      await Promise.all([bridgeA.close(), bridgeB.close()]);
+      await Promise.all([coordinatorA.close(), coordinatorB.close()]);
+      timeoutSpy.mockRestore();
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("does not dispatch an authenticated command through a replacement connection", async () => {
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
+    const coordinatorB = new InMemoryRelayCoordinator("instance-b", backend);
+    await Promise.all([coordinatorA.start(), coordinatorB.start()]);
+    let releaseOwnerLookup!: () => void;
+    let signalOwnerLookup!: () => void;
+    const ownerLookupStarted = new Promise<void>((resolve) => {
+      signalOwnerLookup = resolve;
+    });
+    const ownerLookupRelease = new Promise<void>((resolve) => {
+      releaseOwnerLookup = resolve;
+    });
+    const bridgeA = new CoordinatedWorkerBridge({
+      coordinator: coordinatorA,
+      resolveOwnerId: async () => "owner-1",
+    });
+    const bridgeB = new CoordinatedWorkerBridge({
+      coordinator: coordinatorB,
+      resolveOwnerId: async () => {
+        signalOwnerLookup();
+        await ownerLookupRelease;
+        return "owner-1";
+      },
+    });
+    const originalSocket = new TestWorkerSocket();
+    await bridgeB.attach(
+      "worker-1",
+      originalSocket,
+      "owner-1",
+      continuityIdentity,
+    );
+    const response = bridgeA.request(
+      "worker-1",
+      { type: "code.probe" },
+      { ownerId: "owner-1", timeoutMs: 100 },
+    );
+    void response.catch(() => undefined);
+
+    try {
+      await ownerLookupStarted;
+      const replacementSocket = new TestWorkerSocket();
+      await bridgeB.attach(
+        "worker-1",
+        replacementSocket,
+        "owner-1",
+        continuityIdentity,
+      );
+      releaseOwnerLookup();
+      await settle();
+      expect(replacementSocket.sent).toHaveLength(0);
+      await expect(response).rejects.toThrow("Worker is unavailable");
+    } finally {
+      releaseOwnerLookup();
+      await Promise.all([bridgeA.close(), bridgeB.close()]);
+      await Promise.all([coordinatorA.close(), coordinatorB.close()]);
+      await response.catch(() => undefined);
+    }
+  });
+
   it("fans live invalidations out to clients on another instance", async () => {
     const backend = createInMemoryRelayCoordinatorBackend();
     const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);

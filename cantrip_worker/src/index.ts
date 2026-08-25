@@ -2824,9 +2824,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return code.open(command);
       case "code.status":
         return code.status(command.sessionId);
-      case "code.stop":
+      case "code.stop": {
+        const claim = code.claimStop(
+          command.sessionId,
+          command.expectedSessionIncarnationId,
+        );
+        if (!claim.accepted) return claim.status;
         await codeDirectEndpoints.closeSession(command.sessionId);
-        return code.stop(command.sessionId);
+        return claim.retire();
+      }
       case "code.endpoint.revoke":
         codeDirectEndpoints.revoke(
           `protected:${command.tunnelId}`,

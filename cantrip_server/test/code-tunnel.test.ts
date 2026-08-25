@@ -8,8 +8,10 @@ import {
 import type { ServerRepository } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
+const sessionIncarnationId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const runtime: CodeRuntimeStatus = {
   sessionId: "session-1",
+  sessionIncarnationId,
   workspaceUri: "file:///worker/state/project.code-workspace",
   status: "running",
   editorBuild: {
@@ -194,9 +196,511 @@ describe("protected Cantrip Code attachments", () => {
       );
       expect(worker.request).toHaveBeenCalledWith(
         "worker-1",
-        { type: "code.stop", sessionId: runtime.sessionId },
+        {
+          type: "code.stop",
+          sessionId: runtime.sessionId,
+          expectedSessionIncarnationId: sessionIncarnationId,
+        },
         { timeoutMs: 5_000 },
       );
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("revokes a legacy attachment without issuing an unfenced automatic stop", async () => {
+    const tunnelId = "11111111-1111-4111-8111-111111111111";
+    const { sessionIncarnationId: _ignored, ...legacyRuntime } = runtime;
+    const request = vi.fn(async () => null);
+    const broker = new CodeTunnelBroker({
+      isConnected: () => true,
+      request,
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus);
+    broker.configureControlPlane(
+      {
+        registerManagedTunnel: vi.fn(async () => ({ id: tunnelId })),
+        removeManagedTunnel: vi.fn(async () => true),
+      } as unknown as ServerRepository,
+      vi.fn(),
+      vi.fn(),
+    );
+
+    try {
+      await broker.createProtectedAttachment({
+        codeTabId: "code-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord: protectedRecord(tunnelId),
+        runtime: legacyRuntime,
+        sessionId: legacyRuntime.sessionId,
+        stopSessionOnRelease: true,
+        tunnelId,
+        workerId: "worker-1",
+      });
+      await expect(broker.revokeAttachment(tunnelId, "user-1")).resolves.toBe(
+        true,
+      );
+      expect(request).toHaveBeenCalledWith(
+        "worker-1",
+        { type: "code.endpoint.revoke", tunnelId },
+        { timeoutMs: 5_000 },
+      );
+      expect(
+        request.mock.calls.filter(
+          ([, command]) => command.type === "code.stop",
+        ),
+      ).toHaveLength(0);
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("stops an ephemeral session only after its final attachment lease is released", async () => {
+    const firstTunnelId = "11111111-1111-4111-8111-111111111111";
+    const secondTunnelId = "22222222-2222-4222-8222-222222222222";
+    const replacementTunnelId = "33333333-3333-4333-8333-333333333333";
+    const removeManagedTunnel = vi.fn(async () => true);
+    const repository = {
+      registerManagedTunnel: vi.fn(async (_ownerId, _input, identity) => ({
+        id: identity.id,
+      })),
+      removeManagedTunnel,
+    } as unknown as ServerRepository;
+    let finishStop!: () => void;
+    const stopFinished = new Promise<void>((resolve) => {
+      finishStop = resolve;
+    });
+    let holdStop = false;
+    const request = vi.fn(async (_workerId, command) => {
+      if (command.type === "code.stop" && holdStop) await stopFinished;
+      return null;
+    });
+    const worker = {
+      isConnected: () => true,
+      request,
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus;
+    const broker = new CodeTunnelBroker(worker);
+    broker.configureControlPlane(repository, vi.fn(), vi.fn());
+    const stopRequests = () =>
+      request.mock.calls.filter(([, command]) => command.type === "code.stop");
+    let pendingSecondLease: ReturnType<typeof broker.acquireRegistrationLease> =
+      null;
+
+    try {
+      const firstLease = broker.acquireRegistrationLease({
+        authSessionId: "auth-session-1",
+        ownerId: "user-1",
+        sessionId: runtime.sessionId,
+        tunnelId: firstTunnelId,
+      })!;
+      await broker.createProtectedAttachment({
+        authSessionId: "auth-session-1",
+        codeTabId: "code-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord: protectedRecord(firstTunnelId),
+        registrationLease: firstLease,
+        runtime,
+        sessionId: runtime.sessionId,
+        stopSessionOnRelease: true,
+        tunnelId: firstTunnelId,
+        workerId: "worker-1",
+      });
+      broker.releaseRegistrationLease(firstLease);
+
+      const secondLease = broker.acquireRegistrationLease({
+        authSessionId: "auth-session-1",
+        ownerId: "user-1",
+        sessionId: runtime.sessionId,
+        tunnelId: secondTunnelId,
+      })!;
+      pendingSecondLease = secondLease;
+      const firstRevocation = broker.revokeAttachment(firstTunnelId, "user-1");
+      await vi.waitFor(() =>
+        expect(removeManagedTunnel).toHaveBeenCalledWith("user-1", {
+          kind: "code",
+          id: firstTunnelId,
+        }),
+      );
+      expect(stopRequests()).toHaveLength(0);
+
+      await broker.createProtectedAttachment({
+        authSessionId: "auth-session-1",
+        codeTabId: "code-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord: protectedRecord(secondTunnelId),
+        registrationLease: secondLease,
+        runtime,
+        sessionId: runtime.sessionId,
+        stopSessionOnRelease: true,
+        tunnelId: secondTunnelId,
+        workerId: "worker-1",
+      });
+      broker.releaseRegistrationLease(secondLease);
+      pendingSecondLease = null;
+      await expect(firstRevocation).resolves.toBe(true);
+      expect(stopRequests()).toHaveLength(0);
+
+      holdStop = true;
+      const finalRevocation = broker.revokeAttachment(secondTunnelId, "user-1");
+      await vi.waitFor(() => expect(stopRequests()).toHaveLength(1));
+      const duringStop = broker.acquireRegistrationLease({
+        authSessionId: "auth-session-1",
+        ownerId: "user-1",
+        sessionId: runtime.sessionId,
+        tunnelId: replacementTunnelId,
+      });
+      if (duringStop) broker.releaseRegistrationLease(duringStop);
+      expect(duringStop).toBeNull();
+
+      finishStop();
+      await expect(finalRevocation).resolves.toBe(true);
+      expect(stopRequests()).toEqual([
+        [
+          "worker-1",
+          {
+            type: "code.stop",
+            sessionId: runtime.sessionId,
+            expectedSessionIncarnationId: sessionIncarnationId,
+          },
+          { timeoutMs: 5_000 },
+        ],
+      ]);
+
+      const replacementLease = broker.acquireRegistrationLease({
+        authSessionId: "auth-session-1",
+        ownerId: "user-1",
+        sessionId: runtime.sessionId,
+        tunnelId: replacementTunnelId,
+      });
+      expect(replacementLease).not.toBeNull();
+      if (replacementLease) broker.releaseRegistrationLease(replacementLease);
+    } finally {
+      if (pendingSecondLease) {
+        broker.releaseRegistrationLease(pendingSecondLease);
+      }
+      finishStop();
+      await broker.close();
+    }
+  });
+
+  it("consumes and fences an aborted registration before conditionally stopping its session", async () => {
+    const tunnelId = "44444444-4444-4444-8444-444444444444";
+    let finishStop!: () => void;
+    const stopFinished = new Promise<void>((resolve) => {
+      finishStop = resolve;
+    });
+    const request = vi.fn(async (_workerId, command) => {
+      if (command.type === "code.stop") await stopFinished;
+      return null;
+    });
+    const broker = new CodeTunnelBroker({
+      isConnected: () => true,
+      request,
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus);
+    const lease = broker.acquireRegistrationLease({
+      authSessionId: "auth-session-1",
+      ownerId: "user-1",
+      sessionId: runtime.sessionId,
+      tunnelId,
+    })!;
+
+    try {
+      const abort = broker.abortRegistrationSession({
+        lease,
+        runtime,
+        workerId: "worker-1",
+      });
+      expect(broker.registrationLeaseIsActive(lease)).toBe(false);
+      expect(
+        broker.acquireRegistrationLease({
+          authSessionId: "auth-session-1",
+          ownerId: "user-1",
+          sessionId: runtime.sessionId,
+          tunnelId: "55555555-5555-4555-8555-555555555555",
+        }),
+      ).toBeNull();
+      await vi.waitFor(() =>
+        expect(request).toHaveBeenCalledWith(
+          "worker-1",
+          {
+            type: "code.stop",
+            sessionId: runtime.sessionId,
+            expectedSessionIncarnationId: sessionIncarnationId,
+          },
+          { timeoutMs: 5_000 },
+        ),
+      );
+
+      finishStop();
+      await expect(abort).resolves.toBe(true);
+      const replacement = broker.acquireRegistrationLease({
+        authSessionId: "auth-session-1",
+        ownerId: "user-1",
+        sessionId: runtime.sessionId,
+        tunnelId: "55555555-5555-4555-8555-555555555555",
+      });
+      expect(replacement).not.toBeNull();
+      if (replacement) broker.releaseRegistrationLease(replacement);
+    } finally {
+      finishStop();
+      broker.releaseRegistrationLease(lease);
+      await broker.close();
+    }
+  });
+
+  it("invalidates an exact held registration lease when its binding starts removal", async () => {
+    const tunnelId = "44444444-4444-4444-8444-444444444444";
+    let connected = true;
+    let terminalOffline!: () => void;
+    const broker = new CodeTunnelBroker({
+      isConnected: () => connected,
+      request: vi.fn(async () => null),
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+      subscribeWorkerOffline: (_workerId, listener) => {
+        terminalOffline = listener;
+        return () => undefined;
+      },
+    } as unknown as WorkerCommandBus);
+    broker.configureControlPlane(
+      {
+        registerManagedTunnel: vi.fn(async () => ({ id: tunnelId })),
+        removeManagedTunnel: vi.fn(async () => true),
+      } as unknown as ServerRepository,
+      vi.fn(),
+      vi.fn(),
+    );
+    const lease = broker.acquireRegistrationLease({
+      authSessionId: "auth-session-1",
+      explorerId: "explorer-1",
+      ownerId: "user-1",
+      sessionId: runtime.sessionId,
+      tunnelId,
+    })!;
+
+    try {
+      await broker.createProtectedAttachment({
+        authSessionId: "auth-session-1",
+        codeTabId: "explorer:explorer-1:session-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord: protectedRecord(tunnelId),
+        registrationLease: lease,
+        runtime,
+        sessionId: runtime.sessionId,
+        stopSessionOnRelease: true,
+        tunnelId,
+        workerId: "worker-1",
+      });
+      expect(broker.registrationLeaseIsActive(lease)).toBe(true);
+
+      connected = false;
+      terminalOffline();
+      expect(broker.registrationLeaseIsActive(lease)).toBe(false);
+      await vi.waitFor(() =>
+        expect(broker.recordTunnelActivity(tunnelId)).toBeNull(),
+      );
+    } finally {
+      broker.releaseRegistrationLease(lease);
+      await broker.close();
+    }
+  });
+
+  it("keeps an aborted registration from stopping an active sibling session", async () => {
+    const firstTunnelId = "44444444-4444-4444-8444-444444444444";
+    const secondTunnelId = "55555555-5555-4555-8555-555555555555";
+    const repository = {
+      registerManagedTunnel: vi.fn(async (_ownerId, _input, identity) => ({
+        id: identity.id,
+      })),
+      removeManagedTunnel: vi.fn(async () => true),
+    } as unknown as ServerRepository;
+    const request = vi.fn(async () => null);
+    const broker = new CodeTunnelBroker({
+      isConnected: () => true,
+      request,
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus);
+    broker.configureControlPlane(repository, vi.fn(), vi.fn());
+    const firstLease = broker.acquireRegistrationLease({
+      authSessionId: "auth-session-1",
+      ownerId: "user-1",
+      sessionId: runtime.sessionId,
+      tunnelId: firstTunnelId,
+    })!;
+    const siblingLease = broker.acquireRegistrationLease({
+      authSessionId: "auth-session-1",
+      ownerId: "user-1",
+      sessionId: runtime.sessionId,
+      tunnelId: secondTunnelId,
+    })!;
+
+    try {
+      const abort = broker.abortRegistrationSession({
+        lease: firstLease,
+        runtime,
+        workerId: "worker-1",
+      });
+      await broker.createProtectedAttachment({
+        authSessionId: "auth-session-1",
+        codeTabId: "explorer:explorer-1:session-1",
+        ownerId: "user-1",
+        projectId: "project-1",
+        protectedRecord: protectedRecord(secondTunnelId),
+        registrationLease: siblingLease,
+        runtime,
+        sessionId: runtime.sessionId,
+        stopSessionOnRelease: true,
+        tunnelId: secondTunnelId,
+        workerId: "worker-1",
+      });
+      broker.releaseRegistrationLease(siblingLease);
+
+      await expect(abort).resolves.toBe(true);
+      expect(
+        request.mock.calls.filter(
+          ([, command]) => command.type === "code.stop",
+        ),
+      ).toHaveLength(0);
+    } finally {
+      broker.releaseRegistrationLease(firstLease);
+      broker.releaseRegistrationLease(siblingLease);
+      await broker.close();
+    }
+  });
+
+  it("deduplicates simultaneous aborted registrations without deadlocking", async () => {
+    const request = vi.fn(async () => null);
+    const broker = new CodeTunnelBroker({
+      isConnected: () => true,
+      request,
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus);
+    const leases = [
+      "44444444-4444-4444-8444-444444444444",
+      "55555555-5555-4555-8555-555555555555",
+    ].map((tunnelId) =>
+      broker.acquireRegistrationLease({
+        authSessionId: "auth-session-1",
+        ownerId: "user-1",
+        sessionId: runtime.sessionId,
+        tunnelId,
+      })!,
+    );
+
+    try {
+      const aborts = leases.map((lease) =>
+        broker.abortRegistrationSession({
+          lease,
+          runtime,
+          workerId: "worker-1",
+        }),
+      );
+      expect(
+        leases.every((lease) => !broker.registrationLeaseIsActive(lease)),
+      ).toBe(true);
+      await expect(Promise.all(aborts)).resolves.toEqual([true, true]);
+      expect(
+        request.mock.calls.filter(
+          ([, command]) => command.type === "code.stop",
+        ),
+      ).toEqual([
+        [
+          "worker-1",
+          {
+            type: "code.stop",
+            sessionId: runtime.sessionId,
+            expectedSessionIncarnationId: sessionIncarnationId,
+          },
+          { timeoutMs: 5_000 },
+        ],
+      ]);
+    } finally {
+      for (const lease of leases) broker.releaseRegistrationLease(lease);
+      await broker.close();
+    }
+  });
+
+  it.each([
+    ["missing", null],
+    ["mismatched", { ...runtime, sessionId: "other-session" }],
+    [
+      "legacy",
+      (({ sessionIncarnationId: _ignored, ...legacyRuntime }) => legacyRuntime)(
+        runtime,
+      ),
+    ],
+  ] as const)(
+    "consumes an aborted registration but skips an unproven %s runtime stop",
+    async (_kind, abortRuntime) => {
+      const request = vi.fn(async () => null);
+      const broker = new CodeTunnelBroker({
+        isConnected: () => true,
+        request,
+        subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+      } as unknown as WorkerCommandBus);
+      const lease = broker.acquireRegistrationLease({
+        authSessionId: "auth-session-1",
+        ownerId: "user-1",
+        sessionId: runtime.sessionId,
+        tunnelId: "44444444-4444-4444-8444-444444444444",
+      })!;
+
+      try {
+        await expect(
+          broker.abortRegistrationSession({
+            lease,
+            runtime: abortRuntime,
+            workerId: "worker-1",
+          }),
+        ).resolves.toBe(true);
+        expect(broker.registrationLeaseIsActive(lease)).toBe(false);
+        expect(request).not.toHaveBeenCalled();
+      } finally {
+        broker.releaseRegistrationLease(lease);
+        await broker.close();
+      }
+    },
+  );
+
+  it("rejects a mismatched live runtime before registering a protected tunnel", async () => {
+    const registerManagedTunnel = vi.fn(async () => ({
+      id: "44444444-4444-4444-8444-444444444444",
+    }));
+    const broker = new CodeTunnelBroker({
+      isConnected: () => true,
+      request: vi.fn(async () => null),
+      subscribeWorkerDisconnect: vi.fn(() => () => undefined),
+    } as unknown as WorkerCommandBus);
+    broker.configureControlPlane(
+      {
+        registerManagedTunnel,
+        removeManagedTunnel: vi.fn(async () => true),
+      } as unknown as ServerRepository,
+      vi.fn(),
+      vi.fn(),
+    );
+
+    try {
+      await expect(
+        broker.createProtectedAttachment({
+          codeTabId: "code-1",
+          ownerId: "user-1",
+          projectId: "project-1",
+          protectedRecord: protectedRecord(
+            "44444444-4444-4444-8444-444444444444",
+          ),
+          runtime,
+          sessionId: "other-session",
+          tunnelId: "44444444-4444-4444-8444-444444444444",
+          workerId: "worker-1",
+        }),
+      ).rejects.toThrow("runtime does not match");
+      expect(registerManagedTunnel).not.toHaveBeenCalled();
     } finally {
       await broker.close();
     }
@@ -410,12 +914,20 @@ describe("protected Cantrip Code attachments", () => {
       );
       expect(worker.request).toHaveBeenCalledWith(
         "worker-1",
-        { type: "code.stop", sessionId: sessionIds[0] },
+        {
+          type: "code.stop",
+          sessionId: sessionIds[0],
+          expectedSessionIncarnationId: sessionIncarnationId,
+        },
         { timeoutMs: 5_000 },
       );
       expect(worker.request).toHaveBeenCalledWith(
         "worker-1",
-        { type: "code.stop", sessionId: sessionIds[1] },
+        {
+          type: "code.stop",
+          sessionId: sessionIds[1],
+          expectedSessionIncarnationId: sessionIncarnationId,
+        },
         { timeoutMs: 5_000 },
       );
 
@@ -614,7 +1126,11 @@ describe("protected Cantrip Code attachments", () => {
       );
       expect(worker.request).toHaveBeenCalledWith(
         "worker-1",
-        { type: "code.stop", sessionId: runtime.sessionId },
+        {
+          type: "code.stop",
+          sessionId: runtime.sessionId,
+          expectedSessionIncarnationId: sessionIncarnationId,
+        },
         { timeoutMs: 5_000 },
       );
     } finally {
@@ -739,7 +1255,7 @@ describe("protected Cantrip Code attachments", () => {
           ownerId: "user-1",
           projectId: "project-1",
           protectedRecord: protectedRecord(rejectedTunnelId),
-          runtime,
+          runtime: { ...runtime, sessionId: "session-rejected" },
           sessionId: "session-rejected",
           tunnelId: rejectedTunnelId,
           workerId: "worker-1",
@@ -770,7 +1286,11 @@ describe("protected Cantrip Code attachments", () => {
       );
       expect(worker.request).toHaveBeenCalledWith(
         "worker-1",
-        { type: "code.stop", sessionId: runtime.sessionId },
+        {
+          type: "code.stop",
+          sessionId: runtime.sessionId,
+          expectedSessionIncarnationId: sessionIncarnationId,
+        },
         { timeoutMs: 5_000 },
       );
       await expect(broker.close()).resolves.toBeUndefined();
@@ -888,7 +1408,7 @@ describe("protected Cantrip Code attachments", () => {
           ownerId: "user-1",
           projectId: "project-1",
           protectedRecord: protectedRecord(rejectedTunnelId),
-          runtime,
+          runtime: { ...runtime, sessionId: "session-2" },
           sessionId: "session-2",
           tunnelId: rejectedTunnelId,
           workerId: "worker-1",
@@ -1035,7 +1555,11 @@ describe("protected Cantrip Code attachments", () => {
         );
         expect(worker.request).toHaveBeenCalledWith(
           "worker-1",
-          { type: "code.stop", sessionId: runtime.sessionId },
+          {
+            type: "code.stop",
+            sessionId: runtime.sessionId,
+            expectedSessionIncarnationId: sessionIncarnationId,
+          },
           { timeoutMs: 5_000 },
         );
       } finally {
@@ -1155,7 +1679,7 @@ describe("protected Cantrip Code attachments", () => {
         ownerId: "user-1",
         projectId: "project-1",
         protectedRecord: protectedRecord(tunnelId),
-        runtime,
+        runtime: { ...runtime, sessionId: `session-${index}` },
         sessionId: `session-${index}`,
         stopSessionOnRelease: true,
         tunnelId,
@@ -1182,12 +1706,20 @@ describe("protected Cantrip Code attachments", () => {
       });
       expect(worker.request).toHaveBeenCalledWith(
         "worker-1",
-        { type: "code.stop", sessionId: "session-0" },
+        {
+          type: "code.stop",
+          sessionId: "session-0",
+          expectedSessionIncarnationId: sessionIncarnationId,
+        },
         { timeoutMs: 5_000 },
       );
       expect(worker.request).toHaveBeenCalledWith(
         "worker-1",
-        { type: "code.stop", sessionId: "session-1" },
+        {
+          type: "code.stop",
+          sessionId: "session-1",
+          expectedSessionIncarnationId: sessionIncarnationId,
+        },
         { timeoutMs: 5_000 },
       );
     } finally {

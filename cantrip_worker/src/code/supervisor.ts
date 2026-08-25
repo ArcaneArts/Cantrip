@@ -86,6 +86,7 @@ interface ProfileProcess {
   port: number | null;
   profileId: string;
   profileKey: string;
+  processGeneration: number;
   ready: boolean;
   retainWarm: boolean;
   restartTimer: ReturnType<typeof setTimeout> | null;
@@ -101,8 +102,16 @@ export interface CodeProxyTarget {
   workspaceUri: string;
 }
 
+export type CodeStopClaim =
+  | { accepted: false; status: CodeRuntimeStatus }
+  | {
+      accepted: true;
+      retire(): Promise<CodeRuntimeStatus>;
+    };
+
 export interface CodeSupervisorOptions {
   capabilities: CodeCapabilities;
+  profileCrashWindowMs?: number;
   dataDirectory: string;
   deferRestoredProfilePrewarm?: boolean;
   installation: CantripCodeInstallation | null;
@@ -112,14 +121,19 @@ export interface CodeSupervisorOptions {
   idleTimeoutMs?: number;
   profileIdleTimeoutMs?: number;
   profileLogWriter?: (logPath: string, entry: string) => Promise<void>;
+  profileMaxCrashesPerWindow?: number;
+  profileRestartBaseDelayMs?: number;
+  profileRestartMaxDelayMs?: number;
   prepareProfile?: (profileId: string) => Promise<void>;
   readinessTimeoutMs?: number;
   workerId?: string;
   workerName?: string;
 }
 
-const MAX_CRASHES_PER_WINDOW = 5;
-const CRASH_WINDOW_MS = 5 * 60_000;
+const DEFAULT_MAX_CRASHES_PER_WINDOW = 5;
+const DEFAULT_CRASH_WINDOW_MS = 5 * 60_000;
+const DEFAULT_PROFILE_RESTART_BASE_DELAY_MS = 250;
+const DEFAULT_PROFILE_RESTART_MAX_DELAY_MS = 10_000;
 const PROCESS_STOP_TIMEOUT_MS = 2_000;
 const PROCESS_KILL_TIMEOUT_MS = 2_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60_000;
@@ -173,6 +187,16 @@ export async function terminateCodeProcess(
 
 function stableKey(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+async function pathExists(candidatePath: string): Promise<boolean> {
+  try {
+    await stat(candidatePath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 function isoNow(): string {
@@ -272,6 +296,7 @@ export class CodeSupervisor {
   readonly #bridge: CodeWorkbenchBridge;
   readonly #capabilities: CodeCapabilities;
   readonly #codeRoot: string;
+  readonly #crashWindowMs: number;
   readonly #editorIdleTimeoutMs: number;
   readonly #deferRestoredProfilePrewarm: boolean;
   readonly #installation: CantripCodeInstallation | null;
@@ -282,9 +307,18 @@ export class CodeSupervisor {
   readonly #profiles = new Map<string, ProfileProcess>();
   readonly #profileIdleTimeoutMs: number;
   readonly #profileLogWriter: (logPath: string, entry: string) => Promise<void>;
+  readonly #profileMaxCrashesPerWindow: number;
+  readonly #profilePrewarmOperations = new Map<string, Promise<void>>();
+  readonly #profileRestartBaseDelayMs: number;
+  readonly #profileRestartMaxDelayMs: number;
   readonly #prepareProfile: (profileId: string) => Promise<void>;
   readonly #readinessTimeoutMs: number;
+  readonly #retiringSessions = new WeakSet<CodeSession>();
   readonly #sessions = new Map<string, CodeSession>();
+  readonly #sessionCancellations = new Map<
+    string,
+    { controller: AbortController; generation: number }
+  >();
   readonly #sessionGenerations = new Map<string, number>();
   readonly #sessionOperations = new Map<string, Promise<void>>();
   readonly #workerId: string;
@@ -299,6 +333,10 @@ export class CodeSupervisor {
     this.#bridge = options.bridge ?? new CodeWorkbenchBridge();
     this.#capabilities = options.capabilities;
     this.#codeRoot = path.join(options.dataDirectory, "code");
+    this.#crashWindowMs = Math.max(
+      1,
+      options.profileCrashWindowMs ?? DEFAULT_CRASH_WINDOW_MS,
+    );
     this.#installation = options.installation;
     this.#deferRestoredProfilePrewarm =
       options.deferRestoredProfilePrewarm ?? false;
@@ -317,6 +355,21 @@ export class CodeSupervisor {
     this.#profileLogWriter =
       options.profileLogWriter ??
       ((logPath, entry) => appendFile(logPath, entry, "utf8"));
+    this.#profileMaxCrashesPerWindow = Math.max(
+      1,
+      Math.floor(
+        options.profileMaxCrashesPerWindow ?? DEFAULT_MAX_CRASHES_PER_WINDOW,
+      ),
+    );
+    this.#profileRestartBaseDelayMs = Math.max(
+      1,
+      options.profileRestartBaseDelayMs ??
+        DEFAULT_PROFILE_RESTART_BASE_DELAY_MS,
+    );
+    this.#profileRestartMaxDelayMs = Math.max(
+      this.#profileRestartBaseDelayMs,
+      options.profileRestartMaxDelayMs ?? DEFAULT_PROFILE_RESTART_MAX_DELAY_MS,
+    );
     this.#prepareProfile = options.prepareProfile ?? (() => Promise.resolve());
     this.#idleSweepIntervalMs = Math.max(
       1_000,
@@ -383,7 +436,8 @@ export class CodeSupervisor {
     if (this.#restoredProfilesPrewarmed) return;
     this.#restoredProfilesPrewarmed = true;
     try {
-      await this.#prewarmRestoredProfiles();
+      const completed = await this.#prewarmRestoredProfiles();
+      if (!completed) this.#restoredProfilesPrewarmed = false;
     } catch (error) {
       this.#restoredProfilesPrewarmed = false;
       throw error;
@@ -441,21 +495,10 @@ export class CodeSupervisor {
       throw new Error("Cantrip Code prewarm requires a valid profile id.");
     }
     const profileKey = stableKey(profileId);
-    const existing = this.#profiles.get(profileKey);
-    if (existing?.retainWarm) {
-      if (
-        existing.child &&
-        existing.ready &&
-        !existing.stopping &&
-        existing.child.exitCode === null &&
-        existing.child.signalCode === null
-      ) {
-        return;
-      }
-      if (existing.launchPromise) return existing.launchPromise;
-    }
+    const pending = this.#profilePrewarmOperations.get(profileKey);
+    if (pending) return pending;
 
-    return this.#enqueueProfileLifecycle(profileKey, async () => {
+    const operation = this.#enqueueProfileLifecycle(profileKey, async () => {
       if (this.#closed) {
         throw new Error("Cantrip Code supervisor is stopped.");
       }
@@ -464,21 +507,21 @@ export class CodeSupervisor {
       profile.idleSinceMs = null;
       const now = Date.now();
       profile.crashTimes = profile.crashTimes.filter(
-        (crash) => now - crash < CRASH_WINDOW_MS,
+        (crash) => now - crash < this.#crashWindowMs,
       );
-      if (profile.crashTimes.length >= MAX_CRASHES_PER_WINDOW) {
-        throw new Error(
-          "Cantrip Code prewarm is paused after repeatedly crashing.",
-        );
-      }
-      if (
-        profile.child &&
+      const hasReadyCandidate =
+        profile.child !== null &&
         profile.ready &&
         !profile.stopping &&
         profile.child.exitCode === null &&
-        profile.child.signalCode === null
+        profile.child.signalCode === null;
+      if (
+        !hasReadyCandidate &&
+        profile.crashTimes.length >= this.#profileMaxCrashesPerWindow
       ) {
-        return;
+        throw new Error(
+          "Cantrip Code prewarm is paused after repeatedly crashing.",
+        );
       }
       const startedAtMs = Date.now();
       workerLogger.event("info", "Cantrip Code profile prewarm requested", {
@@ -521,6 +564,14 @@ export class CodeSupervisor {
         throw error;
       }
     });
+    this.#profilePrewarmOperations.set(profileKey, operation);
+    try {
+      return await operation;
+    } finally {
+      if (this.#profilePrewarmOperations.get(profileKey) === operation) {
+        this.#profilePrewarmOperations.delete(profileKey);
+      }
+    }
   }
 
   async #open(
@@ -561,7 +612,8 @@ export class CodeSupervisor {
     const current = this.#sessions.get(command.sessionId);
     if (
       current &&
-      (current.kind !== kind ||
+      (current.status === "stopping" ||
+        current.kind !== kind ||
         !sameBinding(current, command, workspaceRootPath))
     ) {
       await this.#retireSession(current);
@@ -771,6 +823,7 @@ export class CodeSupervisor {
     requestedPath: string,
   ): Promise<CodeOpenFileResult> {
     const generation = this.#sessionGeneration(sessionId);
+    const signal = this.#sessionOperationSignal(sessionId, generation);
     return this.#enqueueSessionOperation(sessionId, async () => {
       this.#assertCurrentOperation(sessionId, generation);
       const session = this.#requireSession(sessionId);
@@ -792,6 +845,7 @@ export class CodeSupervisor {
         sessionId,
         relativePath,
         session.workspaceRootUri,
+        signal,
       );
       this.#assertCurrentOperation(sessionId, generation, session);
       return result;
@@ -803,6 +857,7 @@ export class CodeSupervisor {
     presentation: CodePresentation,
   ): Promise<CodeRuntimeStatus> {
     const generation = this.#sessionGeneration(sessionId);
+    const signal = this.#sessionOperationSignal(sessionId, generation);
     return this.#enqueueSessionOperation(sessionId, async () => {
       this.#assertCurrentOperation(sessionId, generation);
       const session = this.#requireSession(sessionId);
@@ -812,7 +867,7 @@ export class CodeSupervisor {
       this.#assertCurrentOperation(sessionId, generation, session);
       await this.#persistState();
       this.#assertCurrentOperation(sessionId, generation, session);
-      await this.#bridge.setPresentation(sessionId, presentation);
+      await this.#bridge.setPresentation(sessionId, presentation, signal);
       this.#assertCurrentOperation(sessionId, generation, session);
       return this.#status(session);
     });
@@ -820,6 +875,7 @@ export class CodeSupervisor {
 
   async openSettings(sessionId: string) {
     const generation = this.#sessionGeneration(sessionId);
+    const signal = this.#sessionOperationSignal(sessionId, generation);
     return this.#enqueueSessionOperation(sessionId, async () => {
       this.#assertCurrentOperation(sessionId, generation);
       const session = this.#requireSession(sessionId);
@@ -829,7 +885,7 @@ export class CodeSupervisor {
         );
       }
       this.#touch(session);
-      const result = await this.#bridge.openSettings(sessionId);
+      const result = await this.#bridge.openSettings(sessionId, signal);
       this.#assertCurrentOperation(sessionId, generation, session);
       return result;
     });
@@ -841,6 +897,7 @@ export class CodeSupervisor {
     appearance: CodeAppearance,
   ): Promise<CodeRuntimeStatus> {
     const generation = this.#sessionGeneration(sessionId);
+    const signal = this.#sessionOperationSignal(sessionId, generation);
     return this.#enqueueSessionOperation(sessionId, async () => {
       this.#assertCurrentOperation(sessionId, generation);
       const session = this.#requireSession(sessionId);
@@ -857,7 +914,7 @@ export class CodeSupervisor {
       });
       await this.#writeWorkspace(session);
       this.#assertCurrentOperation(sessionId, generation, session);
-      await this.#bridge.setTheme(sessionId, appearance);
+      await this.#bridge.setTheme(sessionId, appearance, signal);
       this.#assertCurrentOperation(sessionId, generation, session);
       await this.#persistState();
       this.#assertCurrentOperation(sessionId, generation, session);
@@ -914,35 +971,99 @@ export class CodeSupervisor {
   }
 
   async stop(sessionId: string): Promise<CodeRuntimeStatus> {
+    const claim = this.claimStop(sessionId);
+    return claim.accepted ? claim.retire() : claim.status;
+  }
+
+  claimStop(
+    sessionId: string,
+    expectedSessionIncarnationId?: string,
+  ): CodeStopClaim {
     this.#assertAvailable();
-    if (this.#closed) return this.#stoppedStatus(sessionId);
+    const current = this.#sessions.get(sessionId);
+    if (
+      expectedSessionIncarnationId !== undefined &&
+      current?.workspaceIncarnation !== expectedSessionIncarnationId
+    ) {
+      return {
+        accepted: false,
+        status: current
+          ? this.#status(current)
+          : this.#stoppedStatus(sessionId),
+      };
+    }
+    if (this.#closed) {
+      return {
+        accepted: true,
+        retire: () => Promise.resolve(this.#stoppedStatus(sessionId)),
+      };
+    }
+    if (current) {
+      current.status = "stopping";
+      this.#touch(current);
+    }
     this.#invalidateSession(sessionId);
-    return this.#enqueueSessionOperation(sessionId, async () => {
-      if (this.#closed) return this.#stoppedStatus(sessionId);
-      const session = this.#sessions.get(sessionId);
-      if (!session) return this.#stoppedStatus(sessionId);
-      await this.#retireSession(session);
-      return this.#stoppedStatus(sessionId);
-    });
+    const claimedGeneration = this.#sessionGeneration(sessionId);
+    let retirement: Promise<CodeRuntimeStatus> | null = null;
+    return {
+      accepted: true,
+      retire: () => {
+        retirement ??= this.#enqueueSessionOperation(sessionId, async () => {
+          if (this.#closed) return this.#stoppedStatus(sessionId);
+          const session = this.#sessions.get(sessionId);
+          if (
+            this.#sessionGeneration(sessionId) !== claimedGeneration ||
+            session !== current
+          ) {
+            return session
+              ? this.#status(session)
+              : this.#stoppedStatus(sessionId);
+          }
+          if (session) await this.#retireSession(session);
+          return this.#stoppedStatus(sessionId);
+        });
+        return retirement;
+      },
+    };
   }
 
   async #retireSession(session: CodeSession): Promise<void> {
     const sessionId = session.sessionId;
     if (this.#sessions.get(sessionId) !== session) return;
+    this.#retiringSessions.add(session);
     session.status = "stopping";
     this.#touch(session);
     this.#bridge.unregister(sessionId);
-    session.status = "stopped";
-    this.#sessions.delete(sessionId);
-    await Promise.all([
+    const cleanup = await Promise.allSettled([
       this.#detachProfile(session),
       this.#persistState(),
       rm(session.workspacePath, { force: true }),
+      rm(path.join(this.#codeRoot, "sessions", stableKey(sessionId)), {
+        recursive: true,
+        force: true,
+      }),
     ]);
+    const failures = cleanup.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        "Cantrip Code session retirement cleanup failed.",
+      );
+    }
+    if (this.#sessions.get(sessionId) === session) {
+      session.status = "stopped";
+      this.#sessions.delete(sessionId);
+    }
+    this.#retiringSessions.delete(session);
   }
 
   proxyTarget(sessionId: string): CodeProxyTarget {
     const session = this.#requireSession(sessionId);
+    if (this.#closed || session.status !== "running") {
+      throw new Error("Cantrip Code session is not running.");
+    }
     this.#touch(session);
     const profile = this.#profiles.get(session.profileKey);
     if (
@@ -1078,12 +1199,17 @@ export class CodeSupervisor {
       );
       const cleanupResults = await Promise.allSettled([
         this.#persistState(),
-        ...[...this.#sessions.values()].map((session) =>
+        ...[...this.#sessions.values()].flatMap((session) => [
           rm(session.workspacePath, { force: true }),
-        ),
+          rm(
+            path.join(this.#codeRoot, "sessions", stableKey(session.sessionId)),
+            { recursive: true, force: true },
+          ),
+        ]),
       ]);
       this.#sessions.clear();
       this.#profiles.clear();
+      this.#sessionCancellations.clear();
       this.#sessionGenerations.clear();
       await this.#bridge.close();
       const cleanupFailures = cleanupResults.flatMap((result) =>
@@ -1118,6 +1244,7 @@ export class CodeSupervisor {
       if (this.#sessionOperations.get(sessionId) === tail) {
         this.#sessionOperations.delete(sessionId);
         if (!this.#sessions.has(sessionId)) {
+          this.#sessionCancellations.delete(sessionId);
           this.#sessionGenerations.delete(sessionId);
         }
       }
@@ -1154,11 +1281,34 @@ export class CodeSupervisor {
     return generation;
   }
 
+  #sessionOperationSignal(sessionId: string, generation: number): AbortSignal {
+    const current = this.#sessionCancellations.get(sessionId);
+    if (current?.generation === generation) return current.controller.signal;
+    const controller = new AbortController();
+    if (!this.#isCurrentOperation(sessionId, generation)) {
+      controller.abort(
+        new Error(
+          `Cantrip Code session ${sessionId} was superseded by a newer lifecycle request.`,
+        ),
+      );
+      return controller.signal;
+    }
+    this.#sessionCancellations.set(sessionId, { controller, generation });
+    return controller.signal;
+  }
+
   #invalidateSession(sessionId: string): void {
-    this.#sessionGenerations.set(
-      sessionId,
-      this.#sessionGeneration(sessionId) + 1,
-    );
+    const generation = this.#sessionGeneration(sessionId);
+    const cancellation = this.#sessionCancellations.get(sessionId);
+    if (cancellation?.generation === generation) {
+      cancellation.controller.abort(
+        new Error(
+          `Cantrip Code session ${sessionId} was superseded by a newer lifecycle request.`,
+        ),
+      );
+      this.#sessionCancellations.delete(sessionId);
+    }
+    this.#sessionGenerations.set(sessionId, generation + 1);
   }
 
   #isCurrentOperation(sessionId: string, generation: number): boolean {
@@ -1256,11 +1406,13 @@ export class CodeSupervisor {
       createdSessionDirectory,
       sessionId,
     } = input;
-    if (
-      createdSession &&
-      this.#sessions.get(createdSession.sessionId) === createdSession
-    ) {
-      this.#sessions.delete(createdSession.sessionId);
+    const ownsCreatedSession =
+      createdSession !== null &&
+      this.#sessions.get(createdSession.sessionId) === createdSession;
+    if (ownsCreatedSession) {
+      this.#retiringSessions.add(createdSession);
+      createdSession.status = "stopping";
+      this.#touch(createdSession);
     }
     if (bridgeRegistered) {
       this.#bridge.unregister(sessionId);
@@ -1277,9 +1429,17 @@ export class CodeSupervisor {
         : []),
       this.#persistState(),
     ]);
-    return cleanup.flatMap((result) =>
+    const failures = cleanup.flatMap((result) =>
       result.status === "rejected" ? [result.reason] : [],
     );
+    if (createdSession && failures.length === 0) {
+      if (this.#sessions.get(createdSession.sessionId) === createdSession) {
+        createdSession.status = "stopped";
+        this.#sessions.delete(createdSession.sessionId);
+      }
+      this.#retiringSessions.delete(createdSession);
+    }
+    return failures;
   }
 
   async #profile(
@@ -1313,6 +1473,7 @@ export class CodeSupervisor {
         port: null,
         profileId,
         profileKey,
+        processGeneration: 0,
         ready: false,
         retainWarm: false,
         restartTimer: null,
@@ -1334,7 +1495,7 @@ export class CodeSupervisor {
 
   async #ensureProfile(profile: ProfileProcess): Promise<void> {
     if (profile.launchPromise) return profile.launchPromise;
-    profile.launchPromise = (async () => {
+    const operation = (async () => {
       const child = profile.child;
       const port = profile.port;
       const connectionToken = profile.connectionToken;
@@ -1375,36 +1536,57 @@ export class CodeSupervisor {
         }
       }
       await this.#launchProfile(profile);
-    })().finally(() => {
-      profile.launchPromise = null;
-    });
-    return profile.launchPromise;
+    })();
+    profile.launchPromise = operation;
+    try {
+      await operation;
+      this.#clearProfileRestartTimer(profile);
+    } catch (error) {
+      this.#scheduleProfileRecovery(profile);
+      throw error;
+    } finally {
+      if (profile.launchPromise === operation) {
+        profile.launchPromise = null;
+      }
+    }
   }
 
-  async #prewarmRestoredProfiles(): Promise<void> {
-    if (!this.#installation || this.#profiles.size === 0) return;
-    await Promise.all(
-      [...this.#profiles.values()].map(async (profile) => {
-        try {
-          await this.#ensureProfile(profile);
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          await this.#log(
-            profile.logPath,
-            `profile prewarm failed: ${message}`,
-          );
-          for (const sessionId of profile.sessions) {
-            const session = this.#sessions.get(sessionId);
-            if (!session) continue;
-            session.status = "offline";
-            session.lastError = message;
-            this.#touch(session);
+  async #prewarmRestoredProfiles(): Promise<boolean> {
+    if (!this.#installation || this.#profiles.size === 0) return true;
+    const results = await Promise.all(
+      [...this.#profiles.values()].map((profile) =>
+        this.#enqueueProfileLifecycle(profile.profileKey, async () => {
+          if (
+            this.#closed ||
+            this.#profiles.get(profile.profileKey) !== profile ||
+            (profile.sessions.size === 0 && !profile.retainWarm)
+          ) {
+            return true;
           }
-        }
-      }),
+          try {
+            await this.#ensureProfile(profile);
+            return true;
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            await this.#log(
+              profile.logPath,
+              `profile prewarm failed: ${message}`,
+            );
+            for (const sessionId of profile.sessions) {
+              const session = this.#sessions.get(sessionId);
+              if (!session) continue;
+              session.status = "offline";
+              session.lastError = message;
+              this.#touch(session);
+            }
+            return false;
+          }
+        }),
+      ),
     );
     await this.#persistState();
+    return results.every(Boolean);
   }
 
   async #launchProfile(profile: ProfileProcess): Promise<void> {
@@ -1464,6 +1646,8 @@ export class CodeSupervisor {
         CANTRIP_CODE_PROFILE_ID: profile.profileId,
       },
     });
+    const processGeneration = profile.processGeneration + 1;
+    profile.processGeneration = processGeneration;
     profile.child = child;
     this.#captureOutput(
       profile.logPath,
@@ -1478,7 +1662,7 @@ export class CodeSupervisor {
       "stderr",
     );
     child.once("exit", (code, signal) => {
-      void this.#onProcessExit(profile, child, code, signal);
+      void this.#onProcessExit(profile, child, processGeneration, code, signal);
     });
     try {
       await waitForAuthenticatedCodeHttp(
@@ -1512,6 +1696,9 @@ export class CodeSupervisor {
     for (const sessionId of profile.sessions) {
       const session = this.#sessions.get(sessionId);
       if (!session) continue;
+      if (session.status === "starting" || session.status === "stopping") {
+        continue;
+      }
       session.status = "running";
       session.startedAt ??= now;
       session.lastActivityAt = now;
@@ -1567,13 +1754,81 @@ export class CodeSupervisor {
     await writeFile(fingerprintPath, `${fingerprint}\n`);
   }
 
+  #clearProfileRestartTimer(profile: ProfileProcess): void {
+    if (!profile.restartTimer) return;
+    clearTimeout(profile.restartTimer);
+    profile.restartTimer = null;
+  }
+
+  #scheduleProfileRecovery(profile: ProfileProcess): boolean {
+    if (
+      profile.restartTimer ||
+      this.#closed ||
+      this.#profiles.get(profile.profileKey) !== profile ||
+      (profile.sessions.size === 0 && !profile.retainWarm)
+    ) {
+      return false;
+    }
+    const now = Date.now();
+    profile.crashTimes = profile.crashTimes.filter(
+      (crash) => now - crash < this.#crashWindowMs,
+    );
+    profile.crashTimes.push(now);
+    const circuitOpen =
+      profile.crashTimes.length >= this.#profileMaxCrashesPerWindow;
+    const delay = circuitOpen
+      ? Math.max(1, this.#crashWindowMs - (now - profile.crashTimes[0]!) + 1)
+      : Math.min(
+          this.#profileRestartMaxDelayMs,
+          this.#profileRestartBaseDelayMs *
+            2 ** Math.max(0, profile.crashTimes.length - 1),
+        );
+    profile.restartTimer = setTimeout(() => {
+      profile.restartTimer = null;
+      void this.#enqueueProfileLifecycle(profile.profileKey, async () => {
+        if (
+          this.#closed ||
+          this.#profiles.get(profile.profileKey) !== profile ||
+          (profile.sessions.size === 0 && !profile.retainWarm)
+        ) {
+          return;
+        }
+        const retryAt = Date.now();
+        profile.crashTimes = profile.crashTimes.filter(
+          (crash) => retryAt - crash < this.#crashWindowMs,
+        );
+        try {
+          await this.#ensureProfile(profile);
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          for (const sessionId of profile.sessions) {
+            const session = this.#sessions.get(sessionId);
+            if (!session) continue;
+            session.status = "failed";
+            session.lastError = errorMessage;
+          }
+          await this.#persistState();
+        }
+      }).catch(() => undefined);
+    }, delay);
+    profile.restartTimer.unref?.();
+    return circuitOpen;
+  }
+
   async #onProcessExit(
     profile: ProfileProcess,
     child: ChildProcess,
+    processGeneration: number,
     code: number | null,
     signal: NodeJS.Signals | null,
   ): Promise<void> {
-    if (profile.child !== child) return;
+    if (
+      profile.child !== child ||
+      profile.processGeneration !== processGeneration
+    ) {
+      return;
+    }
     if (!profile.stopping && !this.#closed) {
       this.#signalProcessTree(child, "SIGTERM");
     }
@@ -1590,6 +1845,13 @@ export class CodeSupervisor {
       profile.logPath,
       `process exited (${signal ?? code ?? "unknown"})${intentional ? " intentionally" : ""}`,
     );
+    if (
+      this.#profiles.get(profile.profileKey) !== profile ||
+      profile.processGeneration !== processGeneration ||
+      profile.child !== null
+    ) {
+      return;
+    }
     const processExitContext = {
       event: intentional ? "code.profile.stopped" : "code.profile.crashed",
       subsystem: "code",
@@ -1616,11 +1878,6 @@ export class CodeSupervisor {
     if (intentional || (profile.sessions.size === 0 && !profile.retainWarm)) {
       return;
     }
-    const now = Date.now();
-    profile.crashTimes = profile.crashTimes.filter(
-      (crash) => now - crash < CRASH_WINDOW_MS,
-    );
-    profile.crashTimes.push(now);
     for (const sessionId of profile.sessions) {
       const session = this.#sessions.get(sessionId);
       if (!session) continue;
@@ -1628,52 +1885,21 @@ export class CodeSupervisor {
       session.lastError = message;
       this.#touch(session);
     }
-    if (profile.crashTimes.length >= MAX_CRASHES_PER_WINDOW) {
+    if (this.#scheduleProfileRecovery(profile)) {
       for (const sessionId of profile.sessions) {
         const session = this.#sessions.get(sessionId);
         if (!session) continue;
         session.status = "failed";
         session.lastError =
-          "Cantrip Code stopped after repeatedly crashing. Restart it explicitly to try again.";
+          "Cantrip Code paused after repeatedly crashing and will retry after its recovery cooldown.";
       }
-      await this.#persistState();
-      return;
     }
-    const delay = Math.min(10_000, 250 * 2 ** (profile.crashTimes.length - 1));
-    profile.restartTimer = setTimeout(() => {
-      profile.restartTimer = null;
-      void this.#enqueueProfileLifecycle(profile.profileKey, async () => {
-        if (
-          this.#closed ||
-          this.#profiles.get(profile.profileKey) !== profile ||
-          (profile.sessions.size === 0 && !profile.retainWarm)
-        ) {
-          return;
-        }
-        try {
-          await this.#ensureProfile(profile);
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          for (const sessionId of profile.sessions) {
-            const session = this.#sessions.get(sessionId);
-            if (!session) continue;
-            session.status = "failed";
-            session.lastError = errorMessage;
-          }
-          await this.#persistState();
-        }
-      }).catch(() => undefined);
-    }, delay);
     await this.#persistState();
   }
 
   async #terminateProfile(profile: ProfileProcess): Promise<void> {
     profile.stopping = true;
-    if (profile.restartTimer) {
-      clearTimeout(profile.restartTimer);
-      profile.restartTimer = null;
-    }
+    this.#clearProfileRestartTimer(profile);
     const child = profile.child;
     if (!child) return;
     await terminateCodeProcess(child, (signal) =>
@@ -1770,6 +1996,7 @@ export class CodeSupervisor {
     const profile = this.#profiles.get(session.profileKey);
     return {
       sessionId: session.sessionId,
+      sessionIncarnationId: session.workspaceIncarnation,
       workspaceUri: session.workspaceUri,
       status: session.status,
       editorBuild: this.#installation!.editorBuild,
@@ -1786,6 +2013,7 @@ export class CodeSupervisor {
   #stoppedStatus(sessionId: string): CodeRuntimeStatus {
     return {
       sessionId,
+      sessionIncarnationId: null,
       status: "stopped",
       editorBuild: this.#installation!.editorBuild,
       processInstanceId: null,
@@ -1947,59 +2175,140 @@ export class CodeSupervisor {
         "workspaces",
         stableKey(projectId),
       );
-      await Promise.all([
-        mkdir(workspaceDirectory, { recursive: true }),
-        mkdir(path.join(this.#codeRoot, "sessions", sessionKey), {
-          recursive: true,
-        }),
-      ]);
-      const bridgeToken = randomBytes(32).toString("hex");
-      const session: CodeSession = {
-        activeTunnelStreams: new Set(),
-        activityRevision: 0,
-        appearance: appearance.data,
-        bridgeToken,
-        bridgeUrl: this.#bridge.register(
+      const sessionDirectory = path.join(
+        this.#codeRoot,
+        "sessions",
+        sessionKey,
+      );
+      const profileDirectory = path.join(
+        this.#codeRoot,
+        "profiles",
+        profileKey,
+      );
+      const workspacePath = path.join(
+        workspaceDirectory,
+        `${stableKey(worktreeId)}-${sessionKey}-${workspaceIncarnation}.code-workspace`,
+      );
+      const profileWasLoaded = this.#profiles.has(profileKey);
+      let workspaceDirectoryExisted = true;
+      let sessionDirectoryExisted = true;
+      let profileDirectoryExisted = true;
+      let workspacePathExisted = true;
+      let bridgeRegistered = false;
+      let session: CodeSession | null = null;
+      let hydratedProfile: ProfileProcess | null = null;
+      try {
+        [
+          workspaceDirectoryExisted,
+          sessionDirectoryExisted,
+          profileDirectoryExisted,
+          workspacePathExisted,
+        ] = await Promise.all([
+          pathExists(workspaceDirectory),
+          pathExists(sessionDirectory),
+          pathExists(profileDirectory),
+          pathExists(workspacePath),
+        ]);
+        await Promise.all([
+          mkdir(workspaceDirectory, { recursive: true }),
+          mkdir(sessionDirectory, { recursive: true }),
+        ]);
+        const bridgeToken = randomBytes(32).toString("hex");
+        const bridgeUrl = this.#bridge.register(
           sessionId,
           bridgeToken,
           appearance.data,
-        ),
-        codeTabId: candidate.codeTabId as string,
-        cwd,
-        initialFile,
-        kind: "workspace",
-        lastActivityAt: isoNow(),
-        lastError: null,
-        profileId,
-        profileKey,
-        presentation:
-          candidate.presentation === "editor" ? "editor" : "workbench",
-        projectId,
-        projectName: candidate.projectName as string,
-        sessionId,
-        startedAt:
-          typeof candidate.startedAt === "string" &&
-          Number.isFinite(Date.parse(candidate.startedAt))
-            ? candidate.startedAt
-            : null,
-        status: "offline",
-        themeMode: "follow-cantrip",
-        workspaceIncarnation,
-        workspacePath: path.join(
-          workspaceDirectory,
-          `${stableKey(worktreeId)}-${sessionKey}-${workspaceIncarnation}.code-workspace`,
-        ),
-        workspaceRootPath,
-        workspaceRootUri,
-        workspaceUri: "",
-        worktreeId,
-        worktreeName: candidate.worktreeName as string,
-      };
-      session.workspaceUri = pathToFileURL(session.workspacePath).href;
-      this.#sessions.set(sessionId, session);
-      const profile = await this.#profile(profileId, profileKey);
-      profile.sessions.add(sessionId);
-      await this.#writeWorkspace(session);
+        );
+        bridgeRegistered = true;
+        session = {
+          activeTunnelStreams: new Set(),
+          activityRevision: 0,
+          appearance: appearance.data,
+          bridgeToken,
+          bridgeUrl,
+          codeTabId: candidate.codeTabId as string,
+          cwd,
+          initialFile,
+          kind: "workspace",
+          lastActivityAt: isoNow(),
+          lastError: null,
+          profileId,
+          profileKey,
+          presentation: "workbench",
+          projectId,
+          projectName: candidate.projectName as string,
+          sessionId,
+          startedAt:
+            typeof candidate.startedAt === "string" &&
+            Number.isFinite(Date.parse(candidate.startedAt))
+              ? candidate.startedAt
+              : null,
+          status: "offline",
+          themeMode: "follow-cantrip",
+          workspaceIncarnation,
+          workspacePath,
+          workspaceRootPath,
+          workspaceRootUri,
+          workspaceUri: pathToFileURL(workspacePath).href,
+          worktreeId,
+          worktreeName: candidate.worktreeName as string,
+        };
+        this.#sessions.set(sessionId, session);
+        hydratedProfile = await this.#profile(profileId, profileKey);
+        hydratedProfile.sessions.add(sessionId);
+        await this.#writeWorkspace(session);
+      } catch (error) {
+        if (session && this.#sessions.get(sessionId) === session) {
+          this.#sessions.delete(sessionId);
+        }
+        if (bridgeRegistered) this.#bridge.unregister(sessionId);
+        if (hydratedProfile) {
+          hydratedProfile.sessions.delete(sessionId);
+          if (hydratedProfile.sessions.size === 0) {
+            hydratedProfile.idleSinceMs = Date.now();
+            if (
+              !profileWasLoaded &&
+              this.#profiles.get(profileKey) === hydratedProfile &&
+              !hydratedProfile.retainWarm &&
+              !hydratedProfile.child &&
+              !hydratedProfile.launchPromise
+            ) {
+              this.#profiles.delete(profileKey);
+            }
+          }
+        }
+        const cleanup = await Promise.allSettled([
+          ...(!workspaceDirectoryExisted
+            ? [rm(workspaceDirectory, { recursive: true, force: true })]
+            : !workspacePathExisted
+              ? [rm(workspacePath, { force: true })]
+              : []),
+          ...(!sessionDirectoryExisted
+            ? [rm(sessionDirectory, { recursive: true, force: true })]
+            : []),
+          ...(!profileWasLoaded && !profileDirectoryExisted
+            ? [rm(profileDirectory, { recursive: true, force: true })]
+            : []),
+        ]);
+        workerLogger.event(
+          "warn",
+          "Cantrip Code restored session hydration was skipped",
+          {
+            event: "code.session.restore-skipped",
+            subsystem: "code",
+            operation: "restore-session",
+            reasonCode: "workspace-hydration-failed",
+            status: "degraded",
+            counts: {
+              cleanupFailures: cleanup.filter(
+                (result) => result.status === "rejected",
+              ).length,
+            },
+            error: workerLogError(error),
+            sessionId,
+          },
+        );
+      }
     }
     await this.#persistState();
   }
@@ -2064,7 +2373,11 @@ export class CodeSupervisor {
     const file = path.join(this.#codeRoot, "state", "runtime.json");
     const temporary = `${file}.${randomUUID()}.tmp`;
     const sessions = [...this.#sessions.values()]
-      .filter((session) => session.presentation === "workbench")
+      .filter(
+        (session) =>
+          session.presentation === "workbench" &&
+          !this.#retiringSessions.has(session),
+      )
       .map((session) => ({
         appearance: session.appearance,
         codeTabId: session.codeTabId,
@@ -2087,11 +2400,15 @@ export class CodeSupervisor {
         worktreeId: session.worktreeId,
         worktreeName: session.worktreeName,
       }));
-    await writeFile(
-      temporary,
-      `${JSON.stringify({ schemaVersion: RUNTIME_STATE_SCHEMA_VERSION, sessions }, null, 2)}\n`,
-      { encoding: "utf8", mode: 0o600 },
-    );
-    await rename(temporary, file);
+    try {
+      await writeFile(
+        temporary,
+        `${JSON.stringify({ schemaVersion: RUNTIME_STATE_SCHEMA_VERSION, sessions }, null, 2)}\n`,
+        { encoding: "utf8", mode: 0o600 },
+      );
+      await rename(temporary, file);
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
   }
 }

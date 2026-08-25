@@ -27,22 +27,23 @@ interface BridgeSession {
   authoritativeGeneration: number | null;
   dirtyEditors: CodeDirtyEditor[];
   nextGeneration: number;
-  pending: Map<
-    string,
-    {
-      authorityBound: boolean;
-      reject(error: Error): void;
-      resolve(value: unknown): void;
-      socket: WebSocket;
-      socketGeneration: number;
-      timer: ReturnType<typeof setTimeout>;
-    }
-  >;
+  pending: Map<string, PendingBridgeRequest>;
   sockets: Map<WebSocket, BridgeSocket>;
   token: string;
   unresolvedDirtyEditors: CodeDirtyEditor[];
   unresolvedDirtyGeneration: number | null;
   workbench: CodeWorkbenchState;
+}
+
+interface PendingBridgeRequest {
+  abortListener: (() => void) | null;
+  authorityBound: boolean;
+  reject(error: Error): void;
+  resolve(value: unknown): void;
+  signal: AbortSignal | null;
+  socket: WebSocket;
+  socketGeneration: number;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 interface BridgeSocket {
@@ -86,6 +87,8 @@ const DEFAULT_WORKBENCH_STATE: CodeWorkbenchState = {
   agentStatus: "idle",
 };
 const MAX_BRIDGE_PAYLOAD_BYTES = 1024 * 1024;
+const DEFAULT_CONTROL_CONNECT_TIMEOUT_MS = 8_000;
+const MAX_CONTROL_CONNECT_TIMEOUT_MS = 9_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
 const DEFAULT_LIVENESS_INTERVAL_MS = 10_000;
 const DEFAULT_LIVENESS_TIMEOUT_MS = 3_000;
@@ -94,6 +97,7 @@ const MAX_LIVENESS_TIMEOUT_MS = 5_000;
 const OPEN_SETTINGS_REQUEST_TIMEOUT_MS = 15_000;
 
 export interface CodeWorkbenchBridgeOptions {
+  controlConnectTimeoutMs?: number;
   livenessIntervalMs?: number;
   livenessTimeoutMs?: number;
   requestTimeoutMs?: number;
@@ -144,6 +148,31 @@ function secureTokenEqual(left: string, right: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Cantrip workbench bridge request was aborted.");
+}
+
+function waitForAbortableDelay(
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortReason(signal));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, timeoutMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(abortReason(signal!));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function parseDirtyEditors(value: unknown): CodeDirtyEditor[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -191,6 +220,7 @@ function mergeFailures(
 }
 
 export class CodeWorkbenchBridge {
+  readonly #controlConnectTimeoutMs: number;
   #disposeLiveness: (() => void) | null = null;
   #http: Server | null = null;
   readonly #livenessIntervalMs: number;
@@ -204,6 +234,12 @@ export class CodeWorkbenchBridge {
   #webSockets: WebSocketServer | null = null;
 
   constructor(options: CodeWorkbenchBridgeOptions = {}) {
+    this.#controlConnectTimeoutMs = boundedDuration(
+      options.controlConnectTimeoutMs,
+      DEFAULT_CONTROL_CONNECT_TIMEOUT_MS,
+      10,
+      MAX_CONTROL_CONNECT_TIMEOUT_MS,
+    );
     this.#livenessIntervalMs = boundedDuration(
       options.livenessIntervalMs,
       DEFAULT_LIVENESS_INTERVAL_MS,
@@ -282,7 +318,7 @@ export class CodeWorkbenchBridge {
         return;
       }
       webSockets.handleUpgrade(request, socket, head, (webSocket) => {
-        this.#attach(sessionId, webSocket);
+        this.#attach(sessionId, session, webSocket);
       });
     });
     await new Promise<void>((resolve, reject) => {
@@ -321,22 +357,27 @@ export class CodeWorkbenchBridge {
       throw new Error("Cantrip workbench bridge is not ready.");
     const current = this.#sessions.get(sessionId);
     if (current) {
-      current.token = token;
-      current.appearance = appearance;
-    } else {
-      this.#sessions.set(sessionId, {
-        appearance,
-        authoritativeGeneration: null,
-        dirtyEditors: [],
-        nextGeneration: 1,
-        pending: new Map(),
-        sockets: new Map(),
-        token,
-        unresolvedDirtyEditors: [],
-        unresolvedDirtyGeneration: null,
-        workbench: { ...DEFAULT_WORKBENCH_STATE },
-      });
+      this.#rejectPending(
+        current,
+        "Cantrip workbench bridge session was superseded.",
+      );
+      for (const socket of current.sockets.keys()) {
+        socket.close(1000, "Code session superseded");
+      }
+      current.sockets.clear();
     }
+    this.#sessions.set(sessionId, {
+      appearance,
+      authoritativeGeneration: null,
+      dirtyEditors: [],
+      nextGeneration: 1,
+      pending: new Map(),
+      sockets: new Map(),
+      token,
+      unresolvedDirtyEditors: [],
+      unresolvedDirtyGeneration: null,
+      workbench: { ...DEFAULT_WORKBENCH_STATE },
+    });
     const url = new URL(
       `/sessions/${encodeURIComponent(sessionId)}`,
       this.#origin,
@@ -401,14 +442,24 @@ export class CodeWorkbenchBridge {
   async waitUntilConnected(
     sessionId: string,
     timeoutMs = 3_000,
+    signal?: AbortSignal,
   ): Promise<boolean> {
+    const session = this.#sessions.get(sessionId);
+    if (!session) return false;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (this.connected(sessionId)) return true;
-      if (!this.#sessions.has(sessionId)) return false;
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      if (signal?.aborted) throw abortReason(signal);
+      if (this.#sessions.get(sessionId) !== session) {
+        throw new Error("Cantrip workbench bridge session was superseded.");
+      }
+      if (this.#authoritativeSocket(session)) return true;
+      await waitForAbortableDelay(50, signal);
     }
-    return this.connected(sessionId);
+    if (this.#sessions.get(sessionId) !== session) {
+      throw new Error("Cantrip workbench bridge session was superseded.");
+    }
+    if (signal?.aborted) throw abortReason(signal);
+    return Boolean(this.#authoritativeSocket(session));
   }
 
   async saveAll(sessionId: string): Promise<CodeSaveAllResult> {
@@ -484,19 +535,33 @@ export class CodeWorkbenchBridge {
     sessionId: string,
     relativePath: string,
     expectedWorkspaceRootUri: string,
+    signal?: AbortSignal,
   ): Promise<CodeOpenFileResult> {
     const session = this.#sessions.get(sessionId);
     if (!session) throw new Error("Cantrip Code session is not registered.");
     const connected =
-      this.connected(sessionId) ||
-      (await this.waitUntilConnected(sessionId, 30_000));
+      Boolean(this.#authoritativeSocket(session)) ||
+      (await this.waitUntilConnected(
+        sessionId,
+        this.#controlConnectTimeoutMs,
+        signal,
+      ));
     if (!connected) {
       throw new Error("Cantrip workbench bridge is not connected.");
     }
-    const result = (await this.#request(session, "openFile", {
-      expectedWorkspaceRootUri,
-      path: relativePath,
-    })) as Partial<CodeOpenFileResult>;
+    if (this.#sessions.get(sessionId) !== session) {
+      throw new Error("Cantrip workbench bridge session was superseded.");
+    }
+    const result = (await this.#request(
+      session,
+      "openFile",
+      {
+        expectedWorkspaceRootUri,
+        path: relativePath,
+      },
+      this.#requestTimeoutMs,
+      signal,
+    )) as Partial<CodeOpenFileResult>;
     if (result.relativePath !== relativePath) {
       throw new Error("Cantrip Code opened an unexpected file.");
     }
@@ -506,26 +571,50 @@ export class CodeWorkbenchBridge {
   async setPresentation(
     sessionId: string,
     presentation: CodePresentation,
+    signal?: AbortSignal,
   ): Promise<void> {
     const session = this.#sessions.get(sessionId);
     if (!session) throw new Error("Cantrip Code session is not registered.");
     const connected =
-      this.connected(sessionId) ||
-      (await this.waitUntilConnected(sessionId, 30_000));
+      Boolean(this.#authoritativeSocket(session)) ||
+      (await this.waitUntilConnected(
+        sessionId,
+        this.#controlConnectTimeoutMs,
+        signal,
+      ));
     if (!connected) {
       throw new Error("Cantrip workbench bridge is not connected.");
     }
-    await this.#request(session, "setPresentation", { presentation });
+    if (this.#sessions.get(sessionId) !== session) {
+      throw new Error("Cantrip workbench bridge session was superseded.");
+    }
+    await this.#request(
+      session,
+      "setPresentation",
+      { presentation },
+      this.#requestTimeoutMs,
+      signal,
+    );
   }
 
-  async openSettings(sessionId: string): Promise<CodeOpenSettingsResult> {
+  async openSettings(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<CodeOpenSettingsResult> {
     const session = this.#sessions.get(sessionId);
     if (!session) throw new Error("Cantrip Code session is not registered.");
     const connected =
-      this.connected(sessionId) ||
-      (await this.waitUntilConnected(sessionId, 30_000));
+      Boolean(this.#authoritativeSocket(session)) ||
+      (await this.waitUntilConnected(
+        sessionId,
+        this.#controlConnectTimeoutMs,
+        signal,
+      ));
     if (!connected) {
       throw new Error("Cantrip workbench bridge is not connected.");
+    }
+    if (this.#sessions.get(sessionId) !== session) {
+      throw new Error("Cantrip workbench bridge session was superseded.");
     }
     return codeOpenSettingsResultSchema.parse(
       await this.#request(
@@ -533,6 +622,7 @@ export class CodeWorkbenchBridge {
         "openSettings",
         {},
         OPEN_SETTINGS_REQUEST_TIMEOUT_MS,
+        signal,
       ),
     );
   }
@@ -655,7 +745,11 @@ export class CodeWorkbenchBridge {
     });
   }
 
-  async setTheme(sessionId: string, appearance: CodeAppearance): Promise<void> {
+  async setTheme(
+    sessionId: string,
+    appearance: CodeAppearance,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const session = this.#sessions.get(sessionId);
     if (!session) return;
     session.appearance = appearance;
@@ -668,6 +762,8 @@ export class CodeWorkbenchBridge {
           "setTheme",
           { appearance },
           false,
+          this.#requestTimeoutMs,
+          signal,
         ),
       );
     if (requests.length === 0) {
@@ -767,10 +863,9 @@ export class CodeWorkbenchBridge {
     }
   }
 
-  #attach(sessionId: string, socket: WebSocket): void {
-    const session = this.#sessions.get(sessionId);
-    if (!session) {
-      socket.close(1008, "Unknown Code session");
+  #attach(sessionId: string, session: BridgeSession, socket: WebSocket): void {
+    if (this.#sessions.get(sessionId) !== session) {
+      socket.close(1008, "Superseded Code session");
       return;
     }
     const connection: BridgeSocket = {
@@ -951,11 +1046,11 @@ export class CodeWorkbenchBridge {
     ) {
       return;
     }
-    clearTimeout(pending.timer);
-    session.pending.delete(message.id);
-    if (message.ok) pending.resolve(message.result);
+    const settled = this.#takePending(session, message.id);
+    if (!settled) return;
+    if (message.ok) settled.resolve(message.result);
     else
-      pending.reject(new Error(message.error ?? "Workbench request failed."));
+      settled.reject(new Error(message.error ?? "Workbench request failed."));
   }
 
   #request(
@@ -963,7 +1058,14 @@ export class CodeWorkbenchBridge {
     method: string,
     params: unknown,
     timeoutMs = this.#requestTimeoutMs,
+    signal?: AbortSignal,
   ): Promise<unknown> {
+    if (signal?.aborted) return Promise.reject(abortReason(signal));
+    if (this.#sessionId(session) === null) {
+      return Promise.reject(
+        new Error("Cantrip workbench bridge session was superseded."),
+      );
+    }
     const connection = this.#authoritativeSocket(session);
     if (!connection) {
       return Promise.reject(
@@ -977,6 +1079,7 @@ export class CodeWorkbenchBridge {
       params,
       true,
       timeoutMs,
+      signal,
     );
   }
 
@@ -987,18 +1090,27 @@ export class CodeWorkbenchBridge {
     params: unknown,
     authorityBound: boolean,
     timeoutMs = this.#requestTimeoutMs,
+    signal?: AbortSignal,
   ): Promise<unknown> {
+    if (signal?.aborted) return Promise.reject(abortReason(signal));
     const { socket } = connection;
     if (socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(
         new Error("Cantrip workbench bridge is not connected."),
       );
     }
+    const sessionId = this.#sessionId(session);
+    if (sessionId === null) {
+      return Promise.reject(
+        new Error("Cantrip workbench bridge session was superseded."),
+      );
+    }
     const id = randomUUID();
     const request: BridgeRequest = { type: "request", id, method, params };
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        session.pending.delete(id);
+        const pending = this.#takePending(session, id);
+        if (!pending) return;
         const error = new Error(
           `Cantrip workbench ${method} request timed out.`,
         );
@@ -1009,23 +1121,39 @@ export class CodeWorkbenchBridge {
           reasonCode: "timeout",
           status: "failed",
           method,
-          sessionId: this.#sessionId(session),
+          sessionId,
         });
-        reject(error);
+        pending.reject(error);
         this.#retireSocket(session, socket, error.message);
       }, timeoutMs);
+      const abortListener = signal
+        ? () => {
+            const pending = this.#takePending(session, id);
+            if (!pending) return;
+            pending.reject(abortReason(signal));
+          }
+        : null;
       session.pending.set(id, {
+        abortListener,
         authorityBound,
         resolve,
         reject,
+        signal: signal ?? null,
         socket,
         socketGeneration: connection.generation,
         timer,
       });
+      if (signal && abortListener) {
+        signal.addEventListener("abort", abortListener, { once: true });
+        if (signal.aborted) {
+          abortListener();
+          return;
+        }
+      }
       socket.send(JSON.stringify(request), (error) => {
         if (!error) return;
-        clearTimeout(timer);
-        session.pending.delete(id);
+        const pending = this.#takePending(session, id);
+        if (!pending) return;
         workerLogger.event("warn", "Cantrip Code bridge request send failed", {
           event: "code.bridge.request-send-failed",
           subsystem: "code",
@@ -1034,9 +1162,9 @@ export class CodeWorkbenchBridge {
           status: "failed",
           error: workerLogError(error),
           method,
-          sessionId: this.#sessionId(session),
+          sessionId,
         });
-        reject(error);
+        pending.reject(error);
         this.#retireSocket(
           session,
           socket,
@@ -1070,12 +1198,25 @@ export class CodeWorkbenchBridge {
     message: string,
     socket?: WebSocket,
   ): void {
-    for (const [id, pending] of session.pending) {
+    for (const [id, pending] of [...session.pending]) {
       if (socket && pending.socket !== socket) continue;
-      clearTimeout(pending.timer);
-      pending.reject(new Error(message));
-      session.pending.delete(id);
+      const rejected = this.#takePending(session, id);
+      rejected?.reject(new Error(message));
     }
+  }
+
+  #takePending(
+    session: BridgeSession,
+    id: string,
+  ): PendingBridgeRequest | null {
+    const pending = session.pending.get(id);
+    if (!pending) return null;
+    session.pending.delete(id);
+    clearTimeout(pending.timer);
+    if (pending.signal && pending.abortListener) {
+      pending.signal.removeEventListener("abort", pending.abortListener);
+    }
+    return pending;
   }
 
   #sessionId(target: BridgeSession): string | null {
@@ -1144,18 +1285,17 @@ export class CodeWorkbenchBridge {
     session: BridgeSession,
     authoritativeGeneration: number,
   ): void {
-    for (const [id, pending] of session.pending) {
+    for (const [id, pending] of [...session.pending]) {
       if (
         !pending.authorityBound ||
         pending.socketGeneration === authoritativeGeneration
       ) {
         continue;
       }
-      clearTimeout(pending.timer);
-      pending.reject(
+      const superseded = this.#takePending(session, id);
+      superseded?.reject(
         new Error("Cantrip workbench bridge request was superseded."),
       );
-      session.pending.delete(id);
     }
   }
 

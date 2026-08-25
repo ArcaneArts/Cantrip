@@ -21,6 +21,12 @@ const desktopCode = vi.hoisted(() => ({
   stopDirectCodeAttachment: vi.fn(),
 }));
 
+const browserCode = vi.hoisted(() => ({
+  unavailableListeners: new Set<
+    (event: { reason: string; tunnelId: string }) => void
+  >(),
+}));
+
 const frameRuntime = vi.hoisted(() => ({
   mountSequence: 0,
 }));
@@ -40,9 +46,24 @@ vi.mock("@/components/ui/button", async () => {
   };
 });
 
-vi.mock("@/lib/api", () => api);
+vi.mock("@/lib/api", () => ({
+  ...api,
+  CantripApiError: class extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+    ) {
+      super(message);
+    }
+  },
+}));
 vi.mock("@/lib/browser-code-tunnel", () => ({
-  subscribeBrowserCodeAttachmentUnavailable: () => () => undefined,
+  subscribeBrowserCodeAttachmentUnavailable: (
+    listener: (event: { reason: string; tunnelId: string }) => void,
+  ) => {
+    browserCode.unavailableListeners.add(listener);
+    return () => browserCode.unavailableListeners.delete(listener);
+  },
 }));
 vi.mock("@/lib/code-workbench-frame", () => ({
   CODE_WORKBENCH_READY_TIMEOUT_MS: 15_000,
@@ -68,10 +89,14 @@ vi.mock("@/lib/code-workbench-frame", () => ({
 }));
 vi.mock("@/lib/desktop-code", () => ({
   ...desktopCode,
+  CodeAttachmentHealthError: class extends Error {},
   CodeControlOperationTimeoutError: class extends Error {},
 }));
 
-import { ExplorerCodeEditor } from "./explorer-code-editor";
+import {
+  EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT,
+  ExplorerCodeEditor,
+} from "./explorer-code-editor";
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -130,11 +155,13 @@ let testWindow: FakeWindow;
 function editor(
   path: string | null,
   options: {
+    active?: boolean;
     appearance?: CodeAppearance;
     workerOnline?: boolean;
   } = {},
 ) {
   return createElement(TestExplorerCodeEditor, {
+    active: options.active ?? true,
     appearance: options.appearance ?? "dark",
     explorerId: "explorer-1",
     path,
@@ -165,8 +192,24 @@ async function mount(path: string | null, workerOnline = true) {
   return { frameWindow, renderer };
 }
 
+async function flushImmediateTimers() {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await Promise.resolve();
+    });
+  }
+}
+
+function emitBrowserUnavailable(tunnelId: string) {
+  for (const listener of [...browserCode.unavailableListeners]) {
+    listener({ reason: "Relay disconnected.", tunnelId });
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  browserCode.unavailableListeners.clear();
   frameRuntime.mountSequence = 0;
   testWindow = fakeWindow();
   Object.defineProperty(globalThis, "window", {
@@ -195,6 +238,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: originalWindow,
@@ -401,6 +445,416 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("retries a transient initial attachment failure while the worker stays online", async () => {
+    api.createProtectedExplorerCodeAttachment
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce(wire);
+    const { renderer } = await mount(null, true);
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    });
+    await settle();
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findByType("iframe")).toBeDefined();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("consumes a pending attachment cooldown on the first path activation", async () => {
+    api.createProtectedExplorerCodeAttachment
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce(wire);
+    const { renderer } = await mount(null, true);
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    await act(async () => renderer.update(editor("src/first.ts")));
+    await settle();
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
+    expect(renderer.root.findByType("iframe")).toBeDefined();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("retries pathless presentation on the same attachment and frame", async () => {
+    desktopCode.setDirectCodeAttachmentPresentation
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce(undefined);
+    const { renderer } = await mount(null, true);
+    const initialFrame = renderer.root.findByType("iframe");
+    const initialFrameUrl = initialFrame.props.src;
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    });
+    await settle();
+
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledTimes(2);
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+    expect(renderer.root.findByType("iframe").props.src).toBe(initialFrameUrl);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("retries workbench document readiness with a new nonce on the same attachment", async () => {
+    vi.useFakeTimers();
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor(null), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: frameWindow } : null,
+      });
+    });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+        await Promise.resolve();
+      });
+    }
+    const initialFrame = renderer.root.findByType("iframe");
+    const initialFrameUrl = initialFrame.props.src;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_500);
+      await Promise.resolve();
+    });
+
+    const retriedFrame = renderer.root.findByType("iframe");
+    expect(retriedFrame.props.src).not.toBe(initialFrameUrl);
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+
+    await act(async () => testWindow.sendMessage());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await Promise.resolve();
+    });
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("caps workbench document retries across timer and visibility wakes", async () => {
+    vi.useFakeTimers();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor(null), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: {} as Window } : null,
+      });
+    });
+    await flushImmediateTimers();
+
+    await act(async () => renderer.root.findByType("iframe").props.onError());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    await flushImmediateTimers();
+    for (
+      let attempt = 1;
+      attempt < EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
+      attempt += 1
+    ) {
+      await act(async () => renderer.root.findByType("iframe").props.onError());
+      await act(async () => renderer.update(editor(null, { active: false })));
+      await act(async () => renderer.update(editor(null, { active: true })));
+      await flushImmediateTimers();
+    }
+
+    const exhaustedFrameUrl = renderer.root.findByType("iframe").props.src;
+    await act(async () => renderer.root.findByType("iframe").props.onError());
+    await act(async () => renderer.update(editor(null, { active: false })));
+    await act(async () => renderer.update(editor(null, { active: true })));
+    await flushImmediateTimers();
+
+    expect(renderer.root.findByType("iframe").props.src).toBe(
+      exhaustedFrameUrl,
+    );
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("caps navigation retries across timer and worker-online wakes", async () => {
+    vi.useFakeTimers();
+    desktopCode.setDirectCodeAttachmentPresentation.mockRejectedValue(
+      new TypeError("Load failed"),
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor(null), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: {} as Window } : null,
+      });
+    });
+    await flushImmediateTimers();
+    await act(async () => testWindow.sendMessage());
+    await flushImmediateTimers();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    await flushImmediateTimers();
+    for (
+      let attempt = 1;
+      attempt < EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
+      attempt += 1
+    ) {
+      await act(async () =>
+        renderer.update(editor(null, { workerOnline: false })),
+      );
+      await act(async () =>
+        renderer.update(editor(null, { workerOnline: true })),
+      );
+      await flushImmediateTimers();
+    }
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledTimes(EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1);
+
+    await act(async () =>
+      renderer.update(editor(null, { workerOnline: false })),
+    );
+    await act(async () =>
+      renderer.update(editor(null, { workerOnline: true })),
+    );
+    await flushImmediateTimers();
+    expect(
+      desktopCode.setDirectCodeAttachmentPresentation,
+    ).toHaveBeenCalledTimes(EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1);
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("retries file open after the bridge reconnects without replacing the attachment", async () => {
+    desktopCode.openDirectCodeAttachmentFile
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockImplementationOnce(
+        async (_attachment: CodeAttachment, relativePath: string) => ({
+          relativePath,
+        }),
+      );
+    const { renderer } = await mount("src/first.ts", true);
+    const initialFrame = renderer.root.findByType("iframe");
+
+    await act(async () => testWindow.sendMessage());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+    });
+    await settle();
+
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(4);
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    expect(renderer.root.findByType("iframe")).toBe(initialFrame);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("recovers a failed unavailable replacement after its cooldown", async () => {
+    api.createProtectedExplorerCodeAttachment
+      .mockResolvedValueOnce(wire)
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce(wire);
+    desktopCode.preferProtectedCodeAttachment.mockResolvedValue({
+      attachment,
+      desktopRouteIdentity: null,
+      directTunnelId: wire.tunnelId,
+      transportKind: "relay",
+    });
+    const { renderer } = await mount(null, true);
+
+    await act(async () => emitBrowserUnavailable(wire.tunnelId));
+    await settle();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    });
+    await settle();
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(3);
+    expect(renderer.root.findByType("iframe")).toBeDefined();
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("caps automatic attachment replacement until the workbench is ready", async () => {
+    vi.useFakeTimers();
+    const createdWires: CodeProtectedAttachmentWire[] = [];
+    api.createProtectedExplorerCodeAttachment.mockImplementation(async () => {
+      const sequence = createdWires.length + 1;
+      const createdWire = {
+        ...wire,
+        attachmentId: `attachment-wire-${sequence}`,
+        tunnelId: `tunnel-${sequence}`,
+      } as CodeProtectedAttachmentWire;
+      createdWires.push(createdWire);
+      return createdWire;
+    });
+    desktopCode.preferProtectedCodeAttachment.mockImplementation(
+      async (createdWire: CodeProtectedAttachmentWire) => ({
+        attachment: {
+          ...attachment,
+          attachmentId: createdWire.attachmentId,
+          url: `http://127.0.0.1:43123/code/${createdWire.attachmentId}/`,
+        },
+        desktopRouteIdentity: null,
+        directTunnelId: createdWire.tunnelId,
+        transportKind: "relay",
+      }),
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor(null), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: {} as Window } : null,
+      });
+    });
+    await flushImmediateTimers();
+
+    for (
+      let attempt = 0;
+      attempt < EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
+      attempt += 1
+    ) {
+      await act(async () =>
+        emitBrowserUnavailable(createdWires.at(-1)!.tunnelId),
+      );
+      await flushImmediateTimers();
+    }
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
+    );
+
+    await act(async () =>
+      emitBrowserUnavailable(createdWires.at(-1)!.tunnelId),
+    );
+    await flushImmediateTimers();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
+    );
+
+    await act(async () => testWindow.sendMessage());
+    await flushImmediateTimers();
+    await act(async () =>
+      emitBrowserUnavailable(createdWires.at(-1)!.tunnelId),
+    );
+    await flushImmediateTimers();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 2,
+    );
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("lets explicit Retry reset an exhausted attachment replacement budget", async () => {
+    vi.useFakeTimers();
+    const createdWires: CodeProtectedAttachmentWire[] = [];
+    api.createProtectedExplorerCodeAttachment.mockImplementation(async () => {
+      const sequence = createdWires.length + 1;
+      const createdWire = {
+        ...wire,
+        attachmentId: `manual-attachment-wire-${sequence}`,
+        tunnelId: `manual-tunnel-${sequence}`,
+      } as CodeProtectedAttachmentWire;
+      createdWires.push(createdWire);
+      return createdWire;
+    });
+    desktopCode.preferProtectedCodeAttachment.mockImplementation(
+      async (createdWire: CodeProtectedAttachmentWire) => ({
+        attachment: {
+          ...attachment,
+          attachmentId: createdWire.attachmentId,
+          url: `http://127.0.0.1:43123/code/${createdWire.attachmentId}/`,
+        },
+        desktopRouteIdentity: null,
+        directTunnelId: createdWire.tunnelId,
+        transportKind: "relay",
+      }),
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor(null), {
+        createNodeMock: (element) =>
+          element.type === "iframe" ? { contentWindow: {} as Window } : null,
+      });
+    });
+    await flushImmediateTimers();
+
+    for (
+      let attempt = 0;
+      attempt <= EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
+      attempt += 1
+    ) {
+      await act(async () =>
+        emitBrowserUnavailable(createdWires.at(-1)!.tunnelId),
+      );
+      await flushImmediateTimers();
+    }
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
+    );
+
+    await act(async () => renderer.root.findByType("button").props.onClick());
+    await flushImmediateTimers();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 2,
+    );
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("consumes a failed hidden replacement cooldown on visibility", async () => {
+    api.createProtectedExplorerCodeAttachment
+      .mockResolvedValueOnce(wire)
+      .mockRejectedValueOnce(new TypeError("Load failed"))
+      .mockResolvedValueOnce(wire);
+    desktopCode.preferProtectedCodeAttachment.mockResolvedValue({
+      attachment,
+      desktopRouteIdentity: null,
+      directTunnelId: wire.tunnelId,
+      transportKind: "relay",
+    });
+    const { renderer } = await mount("src/first.ts", true);
+
+    await act(async () =>
+      renderer.update(editor("src/first.ts", { active: false })),
+    );
+    await act(async () => emitBrowserUnavailable(wire.tunnelId));
+    await settle();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
+
+    await act(async () =>
+      renderer.update(editor("src/first.ts", { active: true })),
+    );
+    await settle();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    });
+    await settle();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(3);
+
+    await act(async () => renderer.unmount());
+  });
+
   it("connects once when an initially offline worker first comes online", async () => {
     const { renderer } = await mount("src/first.ts", false);
 
@@ -459,6 +913,153 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     );
     await settle();
     expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(2);
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("caps pending in-flight retries across repeated worker-online flaps", async () => {
+    vi.useFakeTimers();
+    const rejectConnections: Array<(error: Error) => void> = [];
+    api.createProtectedExplorerCodeAttachment.mockImplementation(
+      () =>
+        new Promise<CodeProtectedAttachmentWire>((_resolve, reject) => {
+          rejectConnections.push(reject);
+        }),
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor("src/first.ts"));
+    });
+    await flushImmediateTimers();
+
+    for (
+      let attempt = 0;
+      attempt <= EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
+      attempt += 1
+    ) {
+      expect(rejectConnections[attempt]).toBeDefined();
+      await act(async () =>
+        renderer.update(
+          editor("src/first.ts", {
+            workerOnline: false,
+          }),
+        ),
+      );
+      await act(async () =>
+        renderer.update(
+          editor("src/first.ts", {
+            workerOnline: true,
+          }),
+        ),
+      );
+      await act(async () => {
+        rejectConnections[attempt]!(new TypeError("Load failed"));
+        await Promise.resolve();
+      });
+      await flushImmediateTimers();
+    }
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
+    );
+    for (let flap = 0; flap < 3; flap += 1) {
+      await act(async () =>
+        renderer.update(
+          editor("src/first.ts", {
+            workerOnline: false,
+          }),
+        ),
+      );
+      await act(async () =>
+        renderer.update(
+          editor("src/first.ts", {
+            workerOnline: true,
+          }),
+        ),
+      );
+      await flushImmediateTimers();
+    }
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
+    );
+
+    await act(async () => renderer.unmount());
+  });
+
+  it("shares one retry budget across timers and activation edges until manual reload", async () => {
+    vi.useFakeTimers();
+    api.createProtectedExplorerCodeAttachment.mockRejectedValue(
+      new TypeError("Load failed"),
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(editor(null));
+    });
+    await flushImmediateTimers();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    await flushImmediateTimers();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    await flushImmediateTimers();
+    for (
+      let attempt = 2;
+      attempt < EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT;
+      attempt += 1
+    ) {
+      await act(async () => renderer.update(editor(null, { active: false })));
+      await act(async () => renderer.update(editor(null, { active: true })));
+      await flushImmediateTimers();
+    }
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
+    );
+
+    await act(async () => renderer.update(editor("src/first.ts")));
+    await act(async () =>
+      renderer.update(
+        editor("src/first.ts", {
+          active: false,
+        }),
+      ),
+    );
+    await act(async () =>
+      renderer.update(
+        editor("src/first.ts", {
+          active: true,
+        }),
+      ),
+    );
+    await act(async () =>
+      renderer.update(
+        editor("src/first.ts", {
+          workerOnline: false,
+        }),
+      ),
+    );
+    await act(async () =>
+      renderer.update(
+        editor("src/first.ts", {
+          workerOnline: true,
+        }),
+      ),
+    );
+    await flushImmediateTimers();
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 1,
+    );
+
+    api.createProtectedExplorerCodeAttachment.mockResolvedValueOnce(wire);
+    await act(async () => renderer.root.findByType("button").props.onClick());
+    await flushImmediateTimers();
+
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
+      EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT + 2,
+    );
+    expect(renderer.root.findByType("iframe")).toBeDefined();
 
     await act(async () => renderer.unmount());
   });

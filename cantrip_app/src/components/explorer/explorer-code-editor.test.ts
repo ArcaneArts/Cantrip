@@ -6,7 +6,9 @@ import {
   explorerCodeEditorBindingKey,
   explorerCodeEditorOpenRecovery,
   explorerCodeEditorReadyKey,
+  isRetryableExplorerCodeConnectionError,
 } from "./explorer-code-editor";
+import { CantripApiError } from "@/lib/api";
 import { codeWorkbenchStageError } from "@/lib/code-workbench-frame";
 import { CodeControlOperationTimeoutError } from "@/lib/desktop-code";
 
@@ -60,6 +62,31 @@ describe("Explorer Code editor readiness identity", () => {
     expect(binding({ worktreeId: "worktree-two" })).not.toBe(current);
     expect(binding({ workerId: "worker-two" })).not.toBe(current);
     expect(binding({ reloadVersion: 1 })).not.toBe(current);
+  });
+});
+
+describe("Explorer Code connection retry classification", () => {
+  it("retries transport and server failures but not identity, auth, or limit responses", () => {
+    expect(
+      isRetryableExplorerCodeConnectionError(new TypeError("Load failed")),
+    ).toBe(true);
+    expect(
+      isRetryableExplorerCodeConnectionError(
+        new CantripApiError("Worker is offline.", 503),
+      ),
+    ).toBe(true);
+    for (const status of [401, 404, 409, 429]) {
+      expect(
+        isRetryableExplorerCodeConnectionError(
+          new CantripApiError("Do not retry.", status),
+        ),
+      ).toBe(false);
+    }
+    expect(
+      isRetryableExplorerCodeConnectionError(
+        new Error("This browser cannot host protected Code attachments."),
+      ),
+    ).toBe(false);
   });
 });
 

@@ -801,10 +801,22 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     }
     const command = workerCommandSchema.safeParse(message.command);
     const local = this.#connections.get(message.workerId);
+    const attachmentGeneration = this.#attachmentGenerations.get(
+      message.workerId,
+    );
     const ownerId = await this.#resolveOwnerId(message.workerId);
+    const remainingTimeoutMs = Math.min(
+      message.timeoutMs,
+      message.expiresAt - Date.now(),
+      MAX_REMOTE_COMMAND_LIFETIME_MS,
+    );
+    if (remainingTimeoutMs <= 0) return;
     if (
       !command.success ||
       !local ||
+      this.#connections.get(message.workerId) !== local ||
+      this.#attachmentGenerations.get(message.workerId) !==
+        attachmentGeneration ||
       !this.#local.isConnected(message.workerId) ||
       local.ownerId !== message.ownerId ||
       ownerId !== message.ownerId
@@ -816,7 +828,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     try {
       const result = await this.#local.request(message.workerId, command.data, {
         ownerId: message.ownerId,
-        timeoutMs: Math.min(message.timeoutMs, MAX_REMOTE_COMMAND_LIFETIME_MS),
+        timeoutMs: remainingTimeoutMs,
         onEvent: async (event) => {
           await this.#coordinator.publish(
             {

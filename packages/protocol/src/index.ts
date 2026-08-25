@@ -5236,6 +5236,7 @@ export const codeWorkbenchStateSchema = z.object({
 
 export const codeRuntimeStatusSchema = z.object({
   sessionId: z.string().min(1),
+  sessionIncarnationId: z.string().uuid().nullable().optional(),
   workspaceUri: z.string().min(1).max(16_384).optional(),
   status: codeSessionStatusSchema,
   editorBuild: codeEditorBuildSchema,
@@ -12951,6 +12952,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("code.stop"),
     sessionId: z.string().min(1),
+    expectedSessionIncarnationId: z.string().uuid().optional(),
   }),
   z.object({
     type: z.literal("code.endpoint.revoke"),

@@ -16247,7 +16247,10 @@ export async function buildApp({
           error: "Code settings changed while the workbench was opening.",
         });
       }
-      let sessionNeedsCleanup = false;
+      let registrationOwnership: "abort" | "binding" | "release" = "release";
+      let registrationRuntime: CodeRuntimeStatus | null = null;
+      let bindingAttachmentId: string | null = null;
+      let retainBinding = false;
       try {
         const worker = await repository.getWorker(ownerId, workerId);
         if (!worker) {
@@ -16273,7 +16276,7 @@ export async function buildApp({
         }
         let workbench;
         try {
-          sessionNeedsCleanup = true;
+          registrationOwnership = "abort";
           workbench = codeSettingsWorkbenchOpenResultSchema.parse(
             await bridge.request(workerId, {
               type: "code.settings.workbench.open",
@@ -16282,6 +16285,7 @@ export async function buildApp({
               appearance: input.data.appearance,
             }),
           );
+          registrationRuntime = workbench.runtime;
         } catch (error) {
           return sendWorkerRequestFailure(reply, error);
         }
@@ -16293,44 +16297,53 @@ export async function buildApp({
             error: "Code settings changed while the workbench was opening.",
           });
         }
-        const attachment = codeProtectedAttachmentWireSchema.parse(
-          await codeTunnel.createProtectedAttachment({
-            authSessionId: authenticatedPrincipal(request).sessionId,
-            codeTabId: "global-code-settings",
-            ownerId,
-            projectId: null,
-            protectedRecord: input.data.protectedRecord,
-            runtime: workbench.runtime,
-            serverId,
-            sessionId,
-            stopSessionOnRelease: true,
-            tunnelId: input.data.tunnelId,
-            workerId,
-            worktreeId: null,
-            worktreePath: null,
-            registrationLease,
-          }),
-        );
-        sessionNeedsCleanup = false;
-        return reply.code(201).send(
+        const createdAttachment = await codeTunnel.createProtectedAttachment({
+          authSessionId: authenticatedPrincipal(request).sessionId,
+          codeTabId: "global-code-settings",
+          ownerId,
+          projectId: null,
+          protectedRecord: input.data.protectedRecord,
+          runtime: workbench.runtime,
+          serverId,
+          sessionId,
+          stopSessionOnRelease: true,
+          tunnelId: input.data.tunnelId,
+          workerId,
+          worktreeId: null,
+          worktreePath: null,
+          registrationLease,
+        });
+        bindingAttachmentId = createdAttachment.attachmentId;
+        registrationOwnership = "binding";
+        const attachment =
+          codeProtectedAttachmentWireSchema.parse(createdAttachment);
+        const response = reply.code(201).send(
           codeSettingsWorkbenchAttachmentWireSchema.parse({
             workerId,
             synchronization: workbench.synchronization,
             attachment,
           }),
         );
+        retainBinding = true;
+        return response;
       } catch (error) {
         return reply.code(503).send({ error: errorMessage(error) });
       } finally {
-        codeTunnel.releaseRegistrationLease(registrationLease);
-        if (sessionNeedsCleanup) {
-          await bridge
-            .request(
-              workerId,
-              { type: "code.stop", sessionId },
-              { timeoutMs: 5_000 },
-            )
-            .catch(() => undefined);
+        if (registrationOwnership === "abort") {
+          await codeTunnel.abortRegistrationSession({
+            lease: registrationLease,
+            runtime: registrationRuntime,
+            workerId,
+          });
+        } else {
+          codeTunnel.releaseRegistrationLease(registrationLease);
+          if (
+            registrationOwnership === "binding" &&
+            !retainBinding &&
+            bindingAttachmentId
+          ) {
+            await codeTunnel.revokeAttachment(bindingAttachmentId, ownerId);
+          }
         }
       }
     },
@@ -26123,17 +26136,23 @@ export async function buildApp({
             true,
           ))
         ) {
+          const rollbackStop =
+            runtime.sessionId === session.id && runtime.sessionIncarnationId
+              ? bridge
+                  .request(
+                    openingContext.workerId,
+                    {
+                      type: "code.stop",
+                      sessionId: session.id,
+                      expectedSessionIncarnationId:
+                        runtime.sessionIncarnationId,
+                    },
+                    { timeoutMs: 5_000 },
+                  )
+                  .catch(() => undefined)
+              : Promise.resolve();
           await Promise.all([
-            bridge
-              .request(
-                openingContext.workerId,
-                {
-                  type: "code.stop",
-                  sessionId: session.id,
-                },
-                { timeoutMs: 5_000 },
-              )
-              .catch(() => undefined),
+            rollbackStop,
             directAttachments.revokeResource(ownerId, "code", session.id),
           ]);
           return reply.code(409).send({
@@ -26142,12 +26161,17 @@ export async function buildApp({
         }
       } catch (error) {
         const message = errorMessage(error);
-        if (runtime) {
+        if (runtime?.sessionId === session.id && runtime.sessionIncarnationId) {
           void bridge
-            .request(openingContext.workerId, {
-              type: "code.stop",
-              sessionId: session.id,
-            })
+            .request(
+              openingContext.workerId,
+              {
+                type: "code.stop",
+                sessionId: session.id,
+                expectedSessionIncarnationId: runtime.sessionIncarnationId,
+              },
+              { timeoutMs: 5_000 },
+            )
             .catch(() => undefined);
         }
         const failedRuntime = codeRuntimeStatusSchema.parse({
@@ -26209,6 +26233,11 @@ export async function buildApp({
           error: "The Code attachment lifecycle changed while attaching.",
         });
       }
+      let registrationOwnership: "abort" | "binding" | "release" = "release";
+      let registrationRuntime: CodeRuntimeStatus | null = null;
+      let registrationWorkerId: string | null = null;
+      let bindingAttachmentId: string | null = null;
+      let retainBinding = false;
       try {
         const context = await repository.getCodeTabExecutionContext(
           ownerId,
@@ -26245,12 +26274,15 @@ export async function buildApp({
         }
         let runtime: CodeRuntimeStatus;
         try {
+          registrationOwnership = "abort";
+          registrationWorkerId = context.workerId;
           runtime = codeRuntimeStatusSchema.parse(
             await bridge.request(context.workerId, {
               type: "code.status",
               sessionId: session.id,
             }),
           );
+          registrationRuntime = runtime;
         } catch (error) {
           return sendWorkerRequestFailure(reply, error);
         }
@@ -26271,23 +26303,25 @@ export async function buildApp({
             error: "The Code tab changed while its editor was attaching.",
           });
         }
-        const attachment = codeProtectedAttachmentWireSchema.parse(
-          await codeTunnel.createProtectedAttachment({
-            authSessionId,
-            codeTabId: context.codeTab.id,
-            ownerId,
-            projectId: context.codeTab.projectId,
-            protectedRecord: input.data.protectedRecord,
-            runtime,
-            serverId,
-            sessionId: session.id,
-            tunnelId: input.data.tunnelId,
-            workerId: context.workerId,
-            worktreeId: context.worktreeId,
-            worktreePath: context.cwd,
-            registrationLease,
-          }),
-        );
+        const createdAttachment = await codeTunnel.createProtectedAttachment({
+          authSessionId,
+          codeTabId: context.codeTab.id,
+          ownerId,
+          projectId: context.codeTab.projectId,
+          protectedRecord: input.data.protectedRecord,
+          runtime,
+          serverId,
+          sessionId: session.id,
+          tunnelId: input.data.tunnelId,
+          workerId: context.workerId,
+          worktreeId: context.worktreeId,
+          worktreePath: context.cwd,
+          registrationLease,
+        });
+        bindingAttachmentId = createdAttachment.attachmentId;
+        registrationOwnership = "binding";
+        const attachment =
+          codeProtectedAttachmentWireSchema.parse(createdAttachment);
         const attachedContext = await repository.getCodeTabExecutionContext(
           ownerId,
           request.params.codeTabId,
@@ -26298,15 +26332,18 @@ export async function buildApp({
           attachedContext.worktreeId !== context.worktreeId ||
           attachedContext.cwd !== context.cwd ||
           attachedContext.codeTab.profileId !== context.codeTab.profileId ||
-          !codeTunnel.registrationLeaseIsActive(registrationLease)
+          !codeTunnel.attachmentRegistrationLeaseIsActive(
+            attachment.attachmentId,
+            registrationLease,
+          )
         ) {
-          codeTunnel.releaseRegistrationLease(registrationLease);
-          await codeTunnel.revokeAttachment(attachment.attachmentId, ownerId);
           return reply.code(409).send({
             error: "The Code tab changed while its editor was attaching.",
           });
         }
-        return reply.code(201).send(attachment);
+        const response = reply.code(201).send(attachment);
+        retainBinding = true;
+        return response;
       } catch (error) {
         return reply
           .code(
@@ -26314,7 +26351,22 @@ export async function buildApp({
           )
           .send({ error: errorMessage(error) });
       } finally {
-        codeTunnel.releaseRegistrationLease(registrationLease);
+        if (registrationOwnership === "abort" && registrationWorkerId) {
+          await codeTunnel.abortRegistrationSession({
+            lease: registrationLease,
+            runtime: registrationRuntime,
+            workerId: registrationWorkerId,
+          });
+        } else {
+          codeTunnel.releaseRegistrationLease(registrationLease);
+          if (
+            registrationOwnership === "binding" &&
+            !retainBinding &&
+            bindingAttachmentId
+          ) {
+            await codeTunnel.revokeAttachment(bindingAttachmentId, ownerId);
+          }
+        }
       }
     },
   );
@@ -28036,6 +28088,11 @@ export async function buildApp({
           error: "The Explorer changed while its editor was opening.",
         });
       }
+      let registrationOwnership: "abort" | "binding" | "release" = "release";
+      let registrationRuntime: CodeRuntimeStatus | null = null;
+      let registrationWorkerId: string | null = null;
+      let bindingAttachmentId: string | null = null;
+      let retainBinding = false;
       try {
         const context = await repository.getExplorerExecutionContext(
           ownerId,
@@ -28074,6 +28131,8 @@ export async function buildApp({
         const surfaceId = `explorer:${context.explorerId}:${sessionId}`;
         let runtime: CodeRuntimeStatus;
         try {
+          registrationOwnership = "abort";
+          registrationWorkerId = context.workerId;
           runtime = codeRuntimeStatusSchema.parse(
             await bridge.request(context.workerId, {
               type: "code.open",
@@ -28089,6 +28148,7 @@ export async function buildApp({
               presentation: "editor",
             }),
           );
+          registrationRuntime = runtime;
         } catch (error) {
           return sendWorkerRequestFailure(reply, error);
         }
@@ -28104,36 +28164,31 @@ export async function buildApp({
           freshContext.worktreeId !== context.worktreeId ||
           freshContext.root !== context.root
         ) {
-          await bridge
-            .request(
-              context.workerId,
-              { type: "code.stop", sessionId },
-              { timeoutMs: 5_000 },
-            )
-            .catch(() => undefined);
           return reply.code(409).send({
             error: "The Explorer changed while its editor was opening.",
           });
         }
         try {
-          const attachment = codeProtectedAttachmentWireSchema.parse(
-            await codeTunnel.createProtectedAttachment({
-              authSessionId: authenticatedPrincipal(request).sessionId,
-              codeTabId: surfaceId,
-              ownerId,
-              projectId: context.projectId,
-              protectedRecord: input.data.protectedRecord,
-              runtime,
-              serverId,
-              sessionId,
-              stopSessionOnRelease: true,
-              tunnelId: input.data.tunnelId,
-              workerId: context.workerId,
-              worktreeId: context.worktreeId,
-              worktreePath: context.root,
-              registrationLease,
-            }),
-          );
+          const createdAttachment = await codeTunnel.createProtectedAttachment({
+            authSessionId: authenticatedPrincipal(request).sessionId,
+            codeTabId: surfaceId,
+            ownerId,
+            projectId: context.projectId,
+            protectedRecord: input.data.protectedRecord,
+            runtime,
+            serverId,
+            sessionId,
+            stopSessionOnRelease: true,
+            tunnelId: input.data.tunnelId,
+            workerId: context.workerId,
+            worktreeId: context.worktreeId,
+            worktreePath: context.root,
+            registrationLease,
+          });
+          bindingAttachmentId = createdAttachment.attachmentId;
+          registrationOwnership = "binding";
+          const attachment =
+            codeProtectedAttachmentWireSchema.parse(createdAttachment);
           const attachedContext = await repository.getExplorerExecutionContext(
             ownerId,
             request.params.explorerId,
@@ -28144,29 +28199,40 @@ export async function buildApp({
             attachedContext.workerId !== context.workerId ||
             attachedContext.worktreeId !== context.worktreeId ||
             attachedContext.root !== context.root ||
-            !codeTunnel.registrationLeaseIsActive(registrationLease)
+            !codeTunnel.attachmentRegistrationLeaseIsActive(
+              attachment.attachmentId,
+              registrationLease,
+            )
           ) {
-            codeTunnel.releaseRegistrationLease(registrationLease);
-            await codeTunnel.revokeAttachment(attachment.attachmentId, ownerId);
             return reply.code(409).send({
               error: "The Explorer changed while its editor was opening.",
             });
           }
-          return reply.code(201).send(attachment);
+          const response = reply.code(201).send(attachment);
+          retainBinding = true;
+          return response;
         } catch (error) {
-          await bridge
-            .request(
-              context.workerId,
-              { type: "code.stop", sessionId },
-              { timeoutMs: 5_000 },
-            )
-            .catch(() => undefined);
           return reply
             .code(error instanceof ExplorerCodeAttachmentLeaseError ? 409 : 503)
             .send({ error: errorMessage(error) });
         }
       } finally {
-        codeTunnel.releaseRegistrationLease(registrationLease);
+        if (registrationOwnership === "abort" && registrationWorkerId) {
+          await codeTunnel.abortRegistrationSession({
+            lease: registrationLease,
+            runtime: registrationRuntime,
+            workerId: registrationWorkerId,
+          });
+        } else {
+          codeTunnel.releaseRegistrationLease(registrationLease);
+          if (
+            registrationOwnership === "binding" &&
+            !retainBinding &&
+            bindingAttachmentId
+          ) {
+            await codeTunnel.revokeAttachment(bindingAttachmentId, ownerId);
+          }
+        }
       }
     },
   );

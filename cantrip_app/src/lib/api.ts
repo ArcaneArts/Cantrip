@@ -596,6 +596,7 @@ import {
   openTunnelSummary,
   protectTunnelContentRecord,
 } from "@/lib/tunnel-content-encryption";
+import { createBoundedResource } from "@/lib/bounded-resource-creation";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -5350,6 +5351,9 @@ export async function deleteCodeTab(codeTabId: string) {
   });
 }
 
+const PROTECTED_CODE_ATTACHMENT_CREATE_TIMEOUT_MS = 10_000;
+const PROTECTED_CODE_ATTACHMENT_ROLLBACK_TIMEOUT_MS = 5_000;
+
 async function protectedCodeAttachmentInput(input: {
   appearance: CodeAppearance;
   expectedWorktreeId?: string;
@@ -5392,25 +5396,36 @@ export async function createProtectedCodeSettingsAttachment(
   workerId: string,
   appearance: CodeAppearance,
 ) {
-  // A fresh worker can register its encryption principal before it has any
-  // account component grants. Settings is a global surface, so authorize the
-  // customization payload domain on demand just like the other settings
-  // customization flows do instead of leaving the user at a dead end.
-  await ensureCustomizationWorker(workerId);
   const tunnelId = crypto.randomUUID();
   const sessionId = crypto.randomUUID();
-  const input = await protectedCodeAttachmentInput({
-    appearance,
-    sessionId,
-    tunnelId,
-    workerId,
+  return createBoundedResource({
+    create: async (signal) => {
+      // A fresh worker can register its encryption principal before it has any
+      // account component grants. Settings is a global surface, so authorize
+      // customization on demand like the other settings flows do.
+      await ensureCustomizationWorker(workerId);
+      const input = await protectedCodeAttachmentInput({
+        appearance,
+        sessionId,
+        tunnelId,
+        workerId,
+      });
+      return codeSettingsWorkbenchAttachmentWireSchema.parse(
+        await request("/api/settings/code/protected-code-attachments", {
+          body: JSON.stringify(
+            codeSettingsWorkbenchAttachmentCreateSchema.parse(input),
+          ),
+          method: "POST",
+          signal,
+        }),
+      );
+    },
+    createTimeoutMs: PROTECTED_CODE_ATTACHMENT_CREATE_TIMEOUT_MS,
+    resourceId: tunnelId,
+    rollback: (attachmentId, signal) =>
+      releaseCodeAttachment(attachmentId, { signal }),
+    rollbackTimeoutMs: PROTECTED_CODE_ATTACHMENT_ROLLBACK_TIMEOUT_MS,
   });
-  return codeSettingsWorkbenchAttachmentWireSchema.parse(
-    await post(
-      "/api/settings/code/protected-code-attachments",
-      codeSettingsWorkbenchAttachmentCreateSchema.parse(input),
-    ),
-  );
 }
 
 export async function getCodeSettingsWorkerStatus(workerId: string) {
@@ -5451,34 +5466,52 @@ export async function createProtectedCodeAttachment(
   appearance: CodeAppearance,
 ) {
   const tunnelId = crypto.randomUUID();
-  const intent = codeProtectedAttachmentIntentSchema.parse(
-    await post(
-      `/api/code-tabs/${encodeURIComponent(codeTabId)}/protected-attachment-intents`,
-      {
+  return createBoundedResource({
+    create: async (signal) => {
+      const intent = codeProtectedAttachmentIntentSchema.parse(
+        await request(
+          `/api/code-tabs/${encodeURIComponent(codeTabId)}/protected-attachment-intents`,
+          {
+            body: JSON.stringify({
+              appearance,
+              expectedWorkerId: workerId,
+              expectedWorktreeId: worktreeId,
+            }),
+            method: "POST",
+            signal,
+          },
+        ),
+      );
+      const input = await protectedCodeAttachmentInput({
         appearance,
-        expectedWorkerId: workerId,
         expectedWorktreeId: worktreeId,
-      },
-    ),
-  );
-  const sessionId = intent.sessionId;
-  const input = await protectedCodeAttachmentInput({
-    appearance,
-    expectedWorktreeId: worktreeId,
-    sessionId,
-    tunnelId,
-    workerId,
+        sessionId: intent.sessionId,
+        tunnelId,
+        workerId,
+      });
+      const wire = codeProtectedAttachmentWireSchema.parse(
+        await request(
+          `/api/code-tabs/${encodeURIComponent(codeTabId)}/protected-attachments`,
+          {
+            body: JSON.stringify(
+              codeProtectedAttachmentCreateSchema.parse(input),
+            ),
+            method: "POST",
+            signal,
+          },
+        ),
+      );
+      if (wire.sessionId !== intent.sessionId) {
+        throw new Error("Protected Code attachment changed runtime sessions.");
+      }
+      return wire;
+    },
+    createTimeoutMs: PROTECTED_CODE_ATTACHMENT_CREATE_TIMEOUT_MS,
+    resourceId: tunnelId,
+    rollback: (attachmentId, signal) =>
+      releaseCodeAttachment(attachmentId, { signal }),
+    rollbackTimeoutMs: PROTECTED_CODE_ATTACHMENT_ROLLBACK_TIMEOUT_MS,
   });
-  const wire = codeProtectedAttachmentWireSchema.parse(
-    await post(
-      `/api/code-tabs/${encodeURIComponent(codeTabId)}/protected-attachments`,
-      codeProtectedAttachmentCreateSchema.parse(input),
-    ),
-  );
-  if (wire.sessionId !== intent.sessionId) {
-    throw new Error("Protected Code attachment changed runtime sessions.");
-  }
-  return wire;
 }
 
 export async function createProtectedExplorerCodeAttachment(
@@ -5490,22 +5523,37 @@ export async function createProtectedExplorerCodeAttachment(
 ) {
   const tunnelId = crypto.randomUUID();
   const sessionId = crypto.randomUUID();
-  const input = await protectedCodeAttachmentInput({
-    appearance,
-    expectedWorktreeId: worktreeId,
-    sessionId,
-    tunnelId,
-    workerId,
+  return createBoundedResource({
+    create: async (signal) => {
+      const input = await protectedCodeAttachmentInput({
+        appearance,
+        expectedWorktreeId: worktreeId,
+        sessionId,
+        tunnelId,
+        workerId,
+      });
+      return codeProtectedAttachmentWireSchema.parse(
+        await request(
+          `/api/explorers/${encodeURIComponent(explorerId)}/protected-code-attachments`,
+          {
+            body: JSON.stringify(
+              explorerCodeProtectedAttachmentCreateSchema.parse({
+                ...input,
+                ...(relativePath ? { path: relativePath } : {}),
+              }),
+            ),
+            method: "POST",
+            signal,
+          },
+        ),
+      );
+    },
+    createTimeoutMs: PROTECTED_CODE_ATTACHMENT_CREATE_TIMEOUT_MS,
+    resourceId: tunnelId,
+    rollback: (attachmentId, signal) =>
+      releaseCodeAttachment(attachmentId, { signal }),
+    rollbackTimeoutMs: PROTECTED_CODE_ATTACHMENT_ROLLBACK_TIMEOUT_MS,
   });
-  return codeProtectedAttachmentWireSchema.parse(
-    await post(
-      `/api/explorers/${encodeURIComponent(explorerId)}/protected-code-attachments`,
-      explorerCodeProtectedAttachmentCreateSchema.parse({
-        ...input,
-        ...(relativePath ? { path: relativePath } : {}),
-      }),
-    ),
-  );
 }
 
 export async function getCodeRuntime(codeTabId: string, sessionId: string) {
@@ -5516,10 +5564,16 @@ export async function getCodeRuntime(codeTabId: string, sessionId: string) {
   );
 }
 
-export async function releaseCodeAttachment(attachmentId: string) {
+export async function releaseCodeAttachment(
+  attachmentId: string,
+  options: { signal?: AbortSignal } = {},
+) {
   await request(`/api/code-attachments/${encodeURIComponent(attachmentId)}`, {
     keepalive: true,
     method: "DELETE",
+    signal:
+      options.signal ??
+      AbortSignal.timeout(PROTECTED_CODE_ATTACHMENT_ROLLBACK_TIMEOUT_MS),
   });
 }
 
