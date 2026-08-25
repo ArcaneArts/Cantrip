@@ -22,6 +22,7 @@ const MIN_RECONNECT_DELAY_MS = 500;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const CONNECT_TIMEOUT_MS = 15_000;
 const MAX_CONTROL_ACKNOWLEDGEMENTS = 256;
+const CURSOR_PERSIST_INTERVAL_MS = 200;
 
 type AppLiveEvent = Extract<AppLiveServerMessage, { type: "event" }>;
 type AppLiveReadyMessage = Extract<AppLiveServerMessage, { type: "ready" }>;
@@ -177,16 +178,20 @@ export class AppLiveClient {
   readonly #options: AppLiveClientOptions;
   readonly #pendingRequests = new Map<string, PendingRequest>();
   readonly #scopeReferences = new Map<string, ScopeReference>();
+  readonly #statusListeners = new Set<(status: AppLiveClientStatus) => void>();
   readonly #webSocketFactory: (url: string) => AppLiveClientSocket;
   #heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   #connectTimer: ReturnType<typeof setTimeout> | null = null;
   #connectStartedAt = 0;
   #controlHandler: ClientControlHandler | null = null;
+  #cursorPersistenceTimer: ReturnType<typeof setTimeout> | null = null;
   #lastCursor: number | null = null;
   #lastError: string | null = null;
   #reconnectAttempt = 0;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #requestSequence = 0;
+  #persistedCursor: number | null = null;
+  #persistedServerEpoch: string | null = null;
   #resyncGeneration = 0;
   #resyncRunning = false;
   #resumeMode: AppLiveReadyMessage["resume"] | null = null;
@@ -208,6 +213,8 @@ export class AppLiveClient {
       this.#serverEpoch = stored.serverEpoch;
       this.#lastCursor = stored.cursor;
       this.#safeCursor = stored.cursor;
+      this.#persistedCursor = stored.cursor;
+      this.#persistedServerEpoch = stored.serverEpoch;
     } else if (options.storage?.getItem(options.storageKey)) {
       options.storage.removeItem(options.storageKey);
     }
@@ -226,6 +233,7 @@ export class AppLiveClient {
   }
 
   stop(): void {
+    this.flushCursorPersistence();
     if (!this.#running && this.#status === "stopped") return;
     this.#running = false;
     this.#resyncGeneration += 1;
@@ -312,10 +320,25 @@ export class AppLiveClient {
     };
   }
 
+  status(): AppLiveClientStatus {
+    return this.#status;
+  }
+
   subscribe(listener: (snapshot: AppLiveClientSnapshot) => void): () => void {
     this.#listeners.add(listener);
     listener(this.snapshot());
     return () => this.#listeners.delete(listener);
+  }
+
+  subscribeStatus(listener: (status: AppLiveClientStatus) => void): () => void {
+    this.#statusListeners.add(listener);
+    listener(this.#status);
+    return () => this.#statusListeners.delete(listener);
+  }
+
+  flushCursorPersistence(): void {
+    this.#clearCursorPersistenceTimer();
+    this.#persistCursor();
   }
 
   #connect(): void {
@@ -1048,16 +1071,50 @@ export class AppLiveClient {
   #commitCursor(): void {
     if (this.#lastCursor === null) return;
     this.#safeCursor = this.#lastCursor;
-    if (this.#serverEpoch && this.#options.storage) {
-      this.#options.storage.setItem(
-        this.#options.storageKey,
-        JSON.stringify({
-          version: RESUME_STORAGE_VERSION,
-          serverEpoch: this.#serverEpoch,
-          cursor: this.#lastCursor,
-        } satisfies StoredResumePoint),
-      );
+    if (
+      !this.#serverEpoch ||
+      !this.#options.storage ||
+      (this.#persistedCursor === this.#safeCursor &&
+        this.#persistedServerEpoch === this.#serverEpoch) ||
+      this.#cursorPersistenceTimer
+    ) {
+      return;
     }
+    this.#cursorPersistenceTimer = setTimeout(() => {
+      this.#cursorPersistenceTimer = null;
+      this.#persistCursor();
+    }, CURSOR_PERSIST_INTERVAL_MS);
+  }
+
+  #clearCursorPersistenceTimer(): void {
+    if (!this.#cursorPersistenceTimer) return;
+    clearTimeout(this.#cursorPersistenceTimer);
+    this.#cursorPersistenceTimer = null;
+  }
+
+  #persistCursor(): void {
+    const cursor = this.#safeCursor;
+    const serverEpoch = this.#serverEpoch;
+    const storage = this.#options.storage;
+    if (
+      cursor === null ||
+      !serverEpoch ||
+      !storage ||
+      (this.#persistedCursor === cursor &&
+        this.#persistedServerEpoch === serverEpoch)
+    ) {
+      return;
+    }
+    storage.setItem(
+      this.#options.storageKey,
+      JSON.stringify({
+        version: RESUME_STORAGE_VERSION,
+        serverEpoch,
+        cursor,
+      } satisfies StoredResumePoint),
+    );
+    this.#persistedCursor = cursor;
+    this.#persistedServerEpoch = serverEpoch;
   }
 
   #nextRequestId(): string {
@@ -1072,6 +1129,7 @@ export class AppLiveClient {
     }
     this.#status = status;
     this.#emit();
+    for (const listener of this.#statusListeners) listener(status);
   }
 
   #emit(): void {

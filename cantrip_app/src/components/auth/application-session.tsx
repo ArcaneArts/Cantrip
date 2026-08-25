@@ -697,9 +697,20 @@ function AuthenticatedApplication({
     const releaseScope = liveClient.retainScope({ kind: "current-user" });
     liveClient.start();
     const reconnect = () => liveClient.reconnectNow();
+    const flushLiveCursor = () => liveClient.flushCursorPersistence();
+    const flushLiveCursorWhenHidden = () => {
+      if (document.visibilityState === "hidden") flushLiveCursor();
+    };
     window.addEventListener("online", reconnect);
+    window.addEventListener("pagehide", flushLiveCursor);
+    document.addEventListener("visibilitychange", flushLiveCursorWhenHidden);
     return () => {
       window.removeEventListener("online", reconnect);
+      window.removeEventListener("pagehide", flushLiveCursor);
+      document.removeEventListener(
+        "visibilitychange",
+        flushLiveCursorWhenHidden,
+      );
       releaseScope();
       liveClient.stop();
       queryClient.clear();
