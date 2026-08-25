@@ -77,10 +77,11 @@ export function ownedExplorerSurfaceTabs(
   openExplorers: readonly ExplorerSummary[],
   active: ExplorerSummary | null,
   prewarm: ExplorerSummary | null | undefined,
+  handoff?: ExplorerSummary | null,
 ): ExplorerSummary[] {
   const owned: ExplorerSummary[] = [];
   const indexById = new Map<string, number>();
-  for (const explorer of [...openExplorers, prewarm, active]) {
+  for (const explorer of [...openExplorers, prewarm, handoff, active]) {
     if (!explorer) continue;
     const existingIndex = indexById.get(explorer.id);
     if (existingIndex === undefined) {
@@ -99,9 +100,11 @@ export function PersistentExplorerViews({
   appearance,
   graphRequest,
   gitStatuses,
+  handoffExplorer,
   onlineWorkerIds,
   onChanged,
   onHeaderChange,
+  onInlineCodeReady,
   onLifecycleChange,
   onTransientLifecycleChange,
   onOpenFile,
@@ -120,9 +123,11 @@ export function PersistentExplorerViews({
   appearance: CodeAppearance;
   graphRequest?: ExplorerGraphRequest | null;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
+  handoffExplorer?: ExplorerSummary | null;
   onlineWorkerIds?: ReadonlySet<string>;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
+  onInlineCodeReady?(explorerId: string): void;
   onLifecycleChange?(
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
@@ -180,26 +185,39 @@ export function PersistentExplorerViews({
             openExplorers,
             activeExplorer,
             prewarmExplorer,
+            handoffExplorer,
           )
-        : retainRequestedExplorerSurfaceTabs(
-            retainedExplorers,
+        : ownedExplorerSurfaceTabs(
+            retainRequestedExplorerSurfaceTabs(
+              retainedExplorers,
+              activeExplorer,
+              prewarmExplorer,
+              dirtyIds,
+              transientFile ? new Set([transientFile.explorerId]) : undefined,
+            ),
             activeExplorer,
             prewarmExplorer,
-            dirtyIds,
-            transientFile ? new Set([transientFile.explorerId]) : undefined,
+            handoffExplorer,
           ),
     [
       activeExplorer,
       dirtyIds,
+      handoffExplorer,
       openExplorers,
       prewarmExplorer,
       retainedExplorers,
       transientFile?.explorerId,
     ],
   );
-  const openExplorerIds = useMemo(
-    () => new Set(openExplorers?.map(({ id }) => id) ?? []),
-    [openExplorers],
+  const inlineCodeOwnerIds = useMemo(
+    () =>
+      new Set([
+        ...(openExplorers?.map(({ id }) => id) ?? []),
+        // A pin handoff becomes an ordinary open owner after the layout
+        // refresh, without changing the keyed ExplorerView instance.
+        ...(handoffExplorer ? [handoffExplorer.id] : []),
+      ]),
+    [handoffExplorer, openExplorers],
   );
 
   const handleLifecycleChange = useCallback(
@@ -239,10 +257,13 @@ export function PersistentExplorerViews({
             : null
         }
         gitStatus={gitStatuses[explorer.worktreeId]}
-        keepInlineCodeWarm={openExplorerIds.has(explorer.id)}
+        keepInlineCodeWarm={inlineCodeOwnerIds.has(explorer.id)}
         key={explorer.id}
         onChanged={onChanged}
         onHeaderChange={active ? onHeaderChange : undefined}
+        onInlineCodeReady={
+          onInlineCodeReady ? () => onInlineCodeReady(explorer.id) : undefined
+        }
         onLifecycleChange={handleLifecycleChange}
         onOpenFile={
           transient || prewarm || explorer.selectedPath ? undefined : onOpenFile

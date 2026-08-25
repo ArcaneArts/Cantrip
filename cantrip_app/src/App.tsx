@@ -209,7 +209,10 @@ import {
   type GitViewSection,
 } from "@/components/git/git-history";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
-import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
+import {
+  defaultExplorerFileMode,
+  usesCantripCodeEditor,
+} from "@/components/explorer/explorer-file-language";
 import {
   explorerGraphRootForEntry,
   explorerRepositoryGraphAvailable,
@@ -586,6 +589,8 @@ function codeAppearanceFor(
   }
   return dark ? "dark" : "light";
 }
+
+const SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS = 20_000;
 
 const TerminalView = lazy(() =>
   import("@/components/terminal/terminal-view").then((module) => ({
@@ -3707,6 +3712,12 @@ export function App() {
   );
   const [sidebarFilePreview, setSidebarFilePreview] =
     useState<SidebarFilePreviewState | null>(null);
+  const [sidebarFilePinHandoff, setSidebarFilePinHandoff] = useState<{
+    explorer: ExplorerSummary;
+    ready: boolean;
+    sourceExplorerId: string;
+    sourcePath: string;
+  } | null>(null);
   const [explorerGraphRequest, setExplorerGraphRequest] =
     useState<ExplorerGraphRequest | null>(null);
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
@@ -4799,7 +4810,7 @@ export function App() {
         throw error;
       }
     },
-    onSuccess: (explorer) => {
+    onSuccess: (explorer, input) => {
       queryClient.setQueryData<ExplorerSummary[]>(
         ["explorers", explorer.projectId],
         (current = []) =>
@@ -4807,11 +4818,28 @@ export function App() {
             (left, right) => left.position - right.position,
           ),
       );
-      setSidebarFilePreview(null);
-      openCreatedTab(explorer.projectId, "explorer", explorer.id);
       void queryClient.invalidateQueries({
         queryKey: ["explorers", explorer.projectId],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", explorer.projectId],
+      });
+      if (
+        explorer.selectedPath &&
+        usesCantripCodeEditor(explorer.selectedPath, explorer.fileMode)
+      ) {
+        // The pinned tab needs its own Code owner. Keep the existing preview
+        // visible while that new owner connects behind it.
+        setSidebarFilePinHandoff({
+          explorer,
+          ready: false,
+          sourceExplorerId: input.explorer.id,
+          sourcePath: input.path,
+        });
+        return;
+      }
+      setSidebarFilePreview(null);
+      openCreatedTab(explorer.projectId, "explorer", explorer.id);
     },
     onError: (error) => setPopoutError(errorText(error)),
   });
@@ -5754,6 +5782,92 @@ export function App() {
       ),
     [explorers.data, openExplorerIds],
   );
+  const sidebarFilePreviewRef = useRef(sidebarFilePreview);
+  sidebarFilePreviewRef.current = sidebarFilePreview;
+  const sidebarFilePinHandoffRef = useRef(sidebarFilePinHandoff);
+  sidebarFilePinHandoffRef.current = sidebarFilePinHandoff;
+  const selectedProjectIdRef = useRef(selectedProjectId);
+  selectedProjectIdRef.current = selectedProjectId;
+  const openCreatedTabRef = useRef(openCreatedTab);
+  openCreatedTabRef.current = openCreatedTab;
+  const completeSidebarFilePinHandoff = useCallback(
+    (explorerId: string) => {
+      const handoff = sidebarFilePinHandoffRef.current;
+      if (!handoff || handoff.ready || handoff.explorer.id !== explorerId) {
+        return;
+      }
+      const readyHandoff = { ...handoff, ready: true };
+      sidebarFilePinHandoffRef.current = readyHandoff;
+      setSidebarFilePinHandoff(readyHandoff);
+      const preview = sidebarFilePreviewRef.current;
+      if (
+        preview?.active &&
+        selectedProjectIdRef.current === handoff.explorer.projectId &&
+        preview.explorerId === handoff.sourceExplorerId &&
+        preview.path === handoff.sourcePath
+      ) {
+        sidebarFilePreviewLifecycleRef.current = null;
+        sidebarFilePreviewRef.current = null;
+        setSidebarFilePreview(null);
+        openCreatedTabRef.current(
+          handoff.explorer.projectId,
+          "explorer",
+          handoff.explorer.id,
+        );
+        return;
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", handoff.explorer.projectId],
+      });
+    },
+    [queryClient],
+  );
+  useEffect(() => {
+    if (!sidebarFilePinHandoff) return;
+    const handoffStillExists =
+      !explorers.isSuccess ||
+      Boolean(
+        explorers.data?.some(
+          ({ id }) => id === sidebarFilePinHandoff.explorer.id,
+        ),
+      );
+    if (
+      sidebarFilePinHandoff.explorer.projectId === selectedProjectId &&
+      handoffStillExists
+    ) {
+      return;
+    }
+    sidebarFilePinHandoffRef.current = null;
+    setSidebarFilePinHandoff(null);
+  }, [
+    explorers.data,
+    explorers.isSuccess,
+    selectedProjectId,
+    sidebarFilePinHandoff,
+  ]);
+  useEffect(() => {
+    if (!sidebarFilePinHandoff || sidebarFilePinHandoff.ready) return;
+    const explorerId = sidebarFilePinHandoff.explorer.id;
+    const timeout = setTimeout(
+      () => completeSidebarFilePinHandoff(explorerId),
+      SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timeout);
+  }, [
+    completeSidebarFilePinHandoff,
+    sidebarFilePinHandoff?.explorer.id,
+    sidebarFilePinHandoff?.ready,
+  ]);
+  useEffect(() => {
+    if (
+      !sidebarFilePinHandoff?.ready ||
+      !openExplorerIds.has(sidebarFilePinHandoff.explorer.id)
+    ) {
+      return;
+    }
+    sidebarFilePinHandoffRef.current = null;
+    setSidebarFilePinHandoff(null);
+  }, [openExplorerIds, sidebarFilePinHandoff]);
   const sidebarFileWorkerId =
     sidebarExplorer?.activeWorkerId ?? selectedProjectWorkerId;
   const onlineWorkerIds = useMemo(
@@ -8710,6 +8824,11 @@ export function App() {
             appearance={codeAppearance}
             graphRequest={explorerGraphRequest}
             gitStatuses={worktreeStatuses}
+            handoffExplorer={
+              sidebarFilePinHandoff?.explorer.projectId === selectedProjectId
+                ? sidebarFilePinHandoff.explorer
+                : null
+            }
             key={selectedProjectId ?? "no-project"}
             onChanged={handleExplorerChanged}
             onHeaderChange={
@@ -8717,6 +8836,7 @@ export function App() {
                 ? setSidebarFilePreviewHeader
                 : setExplorerHeader
             }
+            onInlineCodeReady={completeSidebarFilePinHandoff}
             onLifecycleChange={handleExplorerLifecycleChange}
             onTransientLifecycleChange={handleSidebarFilePreviewLifecycleChange}
             onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}

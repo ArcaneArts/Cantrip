@@ -279,6 +279,7 @@ export function ExplorerView({
   gitStatus,
   onChanged,
   onHeaderChange,
+  onInlineCodeReady,
   onLifecycleChange,
   keepInlineCodeWarm = false,
   onOpenFile,
@@ -297,6 +298,7 @@ export function ExplorerView({
   gitStatus?: GitStatus;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
+  onInlineCodeReady?(): void;
   onLifecycleChange?(
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
@@ -1128,6 +1130,7 @@ export function ExplorerView({
           <RetainedExplorerCodeEditor
             appearance={appearance}
             explorerId={explorer.id}
+            onReady={onInlineCodeReady}
             path={codeEditorPath}
             prewarm={prewarmInlineCode}
             retained={retainInlineWorkbench}

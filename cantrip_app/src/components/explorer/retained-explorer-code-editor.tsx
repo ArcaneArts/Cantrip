@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 export function RetainedExplorerCodeEditor({
   appearance,
   explorerId,
+  onReady,
   path,
   prewarm,
   retained,
@@ -18,6 +19,7 @@ export function RetainedExplorerCodeEditor({
 }: {
   appearance: CodeAppearance;
   explorerId: string;
+  onReady?: () => void;
   path: string | null;
   prewarm: boolean;
   retained: boolean;
@@ -59,6 +61,7 @@ export function RetainedExplorerCodeEditor({
         active={visible}
         appearance={appearance}
         explorerId={explorerId}
+        onReady={onReady}
         path={workbenchPath}
         workerOnline={workerOnline}
         workerId={workerId}

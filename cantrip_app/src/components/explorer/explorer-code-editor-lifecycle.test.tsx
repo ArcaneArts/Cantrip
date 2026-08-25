@@ -168,6 +168,7 @@ function editor(
   options: {
     active?: boolean;
     appearance?: CodeAppearance;
+    onReady?: () => void;
     workerOnline?: boolean;
   } = {},
 ) {
@@ -175,6 +176,7 @@ function editor(
     active: options.active ?? true,
     appearance: options.appearance ?? "dark",
     explorerId: "explorer-1",
+    onReady: options.onReady,
     path,
     workerId: "worker-1",
     workerOnline: options.workerOnline ?? true,
@@ -190,11 +192,15 @@ async function settle() {
   }
 }
 
-async function mount(path: string | null, workerOnline = true) {
+async function mount(
+  path: string | null,
+  workerOnline = true,
+  onReady?: () => void,
+) {
   const frameWindow = {} as Window;
   let renderer!: TestRenderer.ReactTestRenderer;
   await act(async () => {
-    renderer = TestRenderer.create(editor(path, { workerOnline }), {
+    renderer = TestRenderer.create(editor(path, { onReady, workerOnline }), {
       createNodeMock: (element) =>
         element.type === "iframe" ? { contentWindow: frameWindow } : null,
     });
@@ -258,6 +264,24 @@ afterEach(() => {
 });
 
 describe("ExplorerCodeEditor warm lifecycle", () => {
+  it("reports readiness only after the exact pinned path is open", async () => {
+    const onReady = vi.fn();
+    const { renderer } = await mount("src/pinned.ts", true, onReady);
+    expect(onReady).not.toHaveBeenCalled();
+
+    await act(async () => testWindow.sendMessage());
+    await settle();
+
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledWith(
+      attachment,
+      "src/pinned.ts",
+      expect.any(Object),
+    );
+    expect(onReady).toHaveBeenCalledOnce();
+
+    await act(async () => renderer.unmount());
+  });
+
   it("prewarms without a path, then reuses the attachment and frame for two files", async () => {
     const { renderer } = await mount(null);
     const initialFrame = renderer.root.findByType("iframe");
