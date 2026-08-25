@@ -34,9 +34,9 @@ import {
   isCodeWorkbenchReadyEvent,
 } from "@/lib/code-workbench-frame";
 import {
-  directCodeAttachmentHealthyWithin,
   openDirectCodeAttachmentSettings,
   preferProtectedCodeAttachment,
+  recoverPreferredCodeAttachmentRoute,
   stopDirectCodeAttachment,
 } from "@/lib/desktop-code";
 import { errorMessage } from "@/lib/error-message";
@@ -132,7 +132,7 @@ export function CodeSettings({
     new SerializedAttachmentLifecycle<CodeSettingsWorkbenchAttachmentWire>(
       (wire) =>
         retireAttachmentBestEffort(
-          () => stopDirectCodeAttachment(wire.attachment.tunnelId),
+          () => stopDirectCodeAttachment(wire.attachment),
           () => releaseCodeAttachment(wire.attachment.attachmentId),
         ),
     );
@@ -224,15 +224,13 @@ export function CodeSettings({
         if (!selected.preferred) return;
         setAttachment(selected.preferred.attachment);
         if (selected.preferred.directTunnelId) {
-          let failures = 0;
           const checkHealth = async () => {
             if (cancelled) return;
-            const healthy = await directCodeAttachmentHealthyWithin(
-              selected.preferred!.directTunnelId!,
+            const recovery = await recoverPreferredCodeAttachmentRoute(
+              selected.preferred!,
             );
             if (cancelled) return;
-            failures = healthy ? 0 : failures + 1;
-            if (failures >= 2) {
+            if (recovery === "replace-required") {
               setConnectionError("The Code settings connection was lost.");
               return;
             }

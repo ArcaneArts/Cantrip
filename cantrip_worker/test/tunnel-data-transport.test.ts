@@ -129,6 +129,7 @@ function authenticatedReadyWebSocketServer(): WebSocketServer {
 
 async function commandServer(
   options: {
+    autoPong?: boolean;
     autoReady?: boolean;
     protocol?: "auth-ready" | "legacy" | null;
     protocolSequence?: ReadonlyArray<"auth-ready" | "legacy" | null>;
@@ -150,6 +151,7 @@ async function commandServer(
         : WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL;
   };
   const webSockets = new WebSocketServer({
+    ...(options.autoPong === undefined ? {} : { autoPong: options.autoPong }),
     noServer: true,
     handleProtocols(protocols) {
       const selected = selectedProtocol();
@@ -413,6 +415,178 @@ describe("worker generic tunnel data transport", () => {
       requestId: "request-1",
       ok: true,
       result: { recovered: true },
+    });
+  });
+
+  it("reconnects the current socket when its keepalive Pong deadline expires", async () => {
+    const server = await commandServer({ autoPong: false });
+    const connected = vi.fn();
+    const disconnected = vi.fn();
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      disconnected,
+      25,
+      connected,
+      {
+        keepaliveTimeoutMs: 30,
+        reconnectDelayMs: 5,
+        transportDisconnectGraceMs: 200,
+      },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    const firstSocket = await server.nextSocket();
+    const firstPing = new Promise<void>((resolve) =>
+      firstSocket.once("ping", resolve),
+    );
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledOnce(), {
+      interval: 1,
+      timeout: 50,
+    });
+    await firstPing;
+    await vi.waitFor(() => expect(server.requestUrls).toHaveLength(2), {
+      interval: 1,
+      timeout: 150,
+    });
+
+    const secondSocket = await server.nextSocket();
+    secondSocket.on("ping", (payload) => secondSocket.pong(payload));
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledTimes(2), {
+      interval: 1,
+      timeout: 50,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(server.requestUrls).toHaveLength(2);
+    expect(disconnected).not.toHaveBeenCalled();
+  });
+
+  it("ignores a stale Pong from the previous keepalive Ping", async () => {
+    const server = await commandServer({ autoPong: false });
+    const connected = vi.fn();
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      20,
+      connected,
+      {
+        keepaliveTimeoutMs: 30,
+        reconnectDelayMs: 5,
+        transportDisconnectGraceMs: 200,
+      },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    const firstSocket = await server.nextSocket();
+    let firstPingPayload: Buffer | null = null;
+    let observeFirstPing!: () => void;
+    const firstPing = new Promise<void>((resolve) => {
+      observeFirstPing = resolve;
+    });
+    firstSocket.on("ping", (pingPayload) => {
+      if (!firstPingPayload) {
+        firstPingPayload = Buffer.from(pingPayload);
+        firstSocket.pong(pingPayload);
+        observeFirstPing();
+        return;
+      }
+      firstSocket.pong(firstPingPayload);
+    });
+    await firstPing;
+
+    await vi.waitFor(() => expect(server.requestUrls).toHaveLength(2), {
+      interval: 1,
+      timeout: 150,
+    });
+    const secondSocket = await server.nextSocket();
+    secondSocket.on("ping", (payload) => secondSocket.pong(payload));
+    await vi.waitFor(() => expect(connected).toHaveBeenCalledTimes(2), {
+      interval: 1,
+      timeout: 50,
+    });
+  });
+
+  it("starts the Pong deadline only after the Ping send callback succeeds", async () => {
+    const server = await commandServer({ autoPong: false });
+    let completePingSend: ((error?: Error) => void) | undefined;
+    const ping = vi
+      .spyOn(WebSocket.prototype, "ping")
+      .mockImplementation(function (_data, _mask, callback) {
+        completePingSend = callback;
+      });
+    closers.push(() => ping.mockRestore());
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      20,
+      () => undefined,
+      {
+        keepaliveTimeoutMs: 80,
+        reconnectDelayMs: 5,
+        transportDisconnectGraceMs: 250,
+      },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    await server.nextSocket();
+    await vi.waitFor(() => expect(completePingSend).toBeTypeOf("function"), {
+      interval: 1,
+      timeout: 80,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    completePingSend?.();
+    await new Promise((resolve) => setTimeout(resolve, 45));
+    expect(server.requestUrls).toHaveLength(1);
+
+    await vi.waitFor(() => expect(server.requestUrls).toHaveLength(2), {
+      interval: 1,
+      timeout: 80,
+    });
+  });
+
+  it("reconnects when a congested Ping send never invokes its callback", async () => {
+    const server = await commandServer({ autoPong: false });
+    const ping = vi
+      .spyOn(WebSocket.prototype, "ping")
+      .mockImplementation(() => undefined);
+    closers.push(() => ping.mockRestore());
+    const connection = new WorkerConnection(
+      workerConfig(server.port),
+      async () => undefined,
+      () => undefined,
+      () => undefined,
+      () => undefined,
+      20,
+      () => undefined,
+      {
+        keepaliveTimeoutMs: 30,
+        reconnectDelayMs: 5,
+        transportDisconnectGraceMs: 200,
+      },
+    );
+    connection.start();
+    closers.push(() => connection.close());
+
+    await server.nextSocket();
+    await vi.waitFor(() => expect(ping).toHaveBeenCalledOnce(), {
+      interval: 1,
+      timeout: 80,
+    });
+    await vi.waitFor(() => expect(server.requestUrls).toHaveLength(2), {
+      interval: 1,
+      timeout: 100,
     });
   });
 

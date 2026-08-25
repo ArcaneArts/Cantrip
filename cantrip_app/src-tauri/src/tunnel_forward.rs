@@ -161,12 +161,28 @@ pub async fn stop_tunnel_forward(
     app: AppHandle,
     state: State<'_, TunnelForwards>,
     tunnel_id: String,
+    expected_attachment_id: Option<String>,
+    expected_direct_capability_id: Option<String>,
 ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
     #[cfg(desktop)]
-    return desktop::stop(&app, &state, &tunnel_id, "requested").await;
+    return desktop::stop(
+        &app,
+        &state,
+        &tunnel_id,
+        expected_attachment_id.as_deref(),
+        expected_direct_capability_id.as_deref(),
+        "requested",
+    )
+    .await;
     #[cfg(mobile)]
     {
-        let _ = (app, state, tunnel_id);
+        let _ = (
+            app,
+            state,
+            tunnel_id,
+            expected_attachment_id,
+            expected_direct_capability_id,
+        );
         Err("Local tunnel attachments are only available in the desktop app.".into())
     }
 }
@@ -255,6 +271,7 @@ mod desktop {
     use std::convert::TryFrom;
     use std::future::Future;
     use std::net::{Ipv4Addr, SocketAddr};
+    use std::pin::Pin;
     use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -264,7 +281,7 @@ mod desktop {
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::{mpsc, oneshot, watch, Notify};
     use tokio::task::{AbortHandle, JoinHandle};
-    use tokio::time::{interval, sleep, timeout, Instant};
+    use tokio::time::{interval_at, sleep, timeout, Instant, Sleep};
     use tokio_tungstenite::connect_async;
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     use tokio_tungstenite::tungstenite::http::{header::AUTHORIZATION, HeaderValue};
@@ -285,7 +302,11 @@ mod desktop {
     const MAX_CREDIT_BYTES: u64 = 8 * 1024 * 1024;
     const OUTBOUND_QUEUE: usize = 256;
     const CONNECTION_QUEUE: usize = 64;
+    const CONNECTION_CANCEL_TIMEOUT: Duration = Duration::from_secs(1);
     const RELAY_FALLBACK_TIMEOUT: Duration = Duration::from_secs(5);
+    const SESSION_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
+    const SESSION_PONG_TIMEOUT: Duration = Duration::from_secs(10);
+    const SESSION_SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
     pub struct ForwardHandle {
         counters: Arc<ForwardCounters>,
@@ -744,6 +765,7 @@ mod desktop {
     enum RouteControl {
         ForceRelay {
             completed: oneshot::Sender<Result<(), String>>,
+            deadline: Instant,
         },
     }
 
@@ -766,6 +788,37 @@ mod desktop {
 
     type OutboundFrame = (FrameHeader, Vec<u8>);
     type InboundFrame = (FrameHeader, Vec<u8>);
+    struct ConnectionTask {
+        cancellation: watch::Sender<Option<&'static str>>,
+        cancellation_requested: bool,
+        inbound: mpsc::Sender<InboundFrame>,
+        task: JoinHandle<()>,
+    }
+
+    type ConnectionTasks = HashMap<String, ConnectionTask>;
+
+    #[derive(Clone, Copy)]
+    struct SessionTiming {
+        heartbeat_interval: Duration,
+        pong_timeout: Duration,
+        send_timeout: Duration,
+    }
+
+    impl SessionTiming {
+        fn production() -> Self {
+            Self {
+                heartbeat_interval: SESSION_HEARTBEAT_INTERVAL,
+                pong_timeout: SESSION_PONG_TIMEOUT,
+                send_timeout: SESSION_SEND_TIMEOUT,
+            }
+        }
+    }
+
+    enum InboundDelivery {
+        Delivered,
+        Missing,
+        CancellationRequested { reason: &'static str },
+    }
 
     pub async fn start(
         app: &AppHandle,
@@ -774,7 +827,7 @@ mod desktop {
     ) -> Result<TunnelForwardSummary, String> {
         validate_identifiers(&request)?;
         let relay_fallback_available = request.relay.is_some();
-        let _ = stop(app, state, &request.tunnel_id, "replaced").await?;
+        let _ = stop(app, state, &request.tunnel_id, None, None, "replaced").await?;
         let listener = match bind_listener(request.preferred_local_port).await {
             Ok(listener) => listener,
             Err(error) => {
@@ -962,18 +1015,23 @@ mod desktop {
         );
         let (completed, completion) = oneshot::channel();
         if route_control
-            .try_send(RouteControl::ForceRelay { completed })
+            .try_send(RouteControl::ForceRelay {
+                completed,
+                deadline: transition_deadline,
+            })
             .is_err()
         {
             counters.cancel_route_fallback();
             return Err("The desktop tunnel relay fallback could not be queued.".into());
         }
-        let completion = match timeout(RELAY_FALLBACK_TIMEOUT, completion).await {
+        let remaining = transition_deadline.saturating_duration_since(Instant::now());
+        let completion = match timeout(remaining, completion).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err("The desktop tunnel stopped during relay fallback.".into()),
             Err(_) => Err("The desktop tunnel relay fallback timed out.".into()),
         };
         if let Err(error) = completion {
+            counters.cancel_route_fallback();
             diagnostic_event(
                 Some(app),
                 "warn",
@@ -1093,6 +1151,8 @@ mod desktop {
         app: &AppHandle,
         state: &State<'_, TunnelForwards>,
         tunnel_id: &str,
+        expected_attachment_id: Option<&str>,
+        expected_direct_capability_id: Option<&str>,
         reason: &'static str,
     ) -> Result<Option<TunnelForwardTerminalSnapshot>, String> {
         let forward = {
@@ -1100,7 +1160,12 @@ mod desktop {
                 .forwards
                 .lock()
                 .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-            forwards.remove(tunnel_id)
+            take_forward_for_stop(
+                &mut forwards,
+                tunnel_id,
+                expected_attachment_id,
+                expected_direct_capability_id,
+            )
         };
         let Some(mut forward) = forward else {
             return Ok(None);
@@ -1113,6 +1178,40 @@ mod desktop {
         log_forward_snapshot(app, &forward, &snapshot, reason);
         log_forward_stopped(app, &forward, reason);
         Ok(Some(snapshot))
+    }
+
+    fn take_forward_for_stop(
+        forwards: &mut HashMap<String, ForwardHandle>,
+        tunnel_id: &str,
+        expected_attachment_id: Option<&str>,
+        expected_direct_capability_id: Option<&str>,
+    ) -> Option<ForwardHandle> {
+        let candidate = forwards.get(tunnel_id)?;
+        if !stop_fence_matches(
+            &candidate.summary,
+            expected_attachment_id,
+            expected_direct_capability_id,
+        ) {
+            return None;
+        }
+        forwards.remove(tunnel_id)
+    }
+
+    fn stop_fence_matches(
+        summary: &TunnelForwardSummary,
+        expected_attachment_id: Option<&str>,
+        expected_direct_capability_id: Option<&str>,
+    ) -> bool {
+        let Some(expected_attachment_id) = expected_attachment_id else {
+            return true;
+        };
+        if expected_attachment_id != summary.attachment_id {
+            return false;
+        }
+        match summary.direct_capability_id.as_deref() {
+            Some(current) => expected_direct_capability_id == Some(current),
+            None => true,
+        }
     }
 
     pub(super) fn abort_forward(forward: &mut ForwardHandle) {
@@ -1851,10 +1950,18 @@ mod desktop {
         if let Some(diagnostic_trace_id) = request.diagnostic_trace_id.as_deref() {
             initialize["diagnosticTraceId"] = serde_json::json!(diagnostic_trace_id);
         }
-        web_socket
-            .send(Message::Text(initialize.to_string().into()))
-            .await
-            .map_err(|_| "Could not initialize the tunnel attachment.".to_string())?;
+        wait_for_web_socket_send(
+            web_socket.send(Message::Text(initialize.to_string().into())),
+            SESSION_SEND_TIMEOUT,
+        )
+        .await
+        .map_err(|error| {
+            if error == "The tunnel WebSocket send timed out." {
+                error
+            } else {
+                "Could not initialize the tunnel attachment.".to_string()
+            }
+        })?;
         let message = timeout(Duration::from_secs(10), web_socket.next())
             .await
             .map_err(|_| "The tunnel attachment handshake timed out.".to_string())?
@@ -1883,7 +1990,128 @@ mod desktop {
         ))
     }
 
+    async fn wait_for_web_socket_send<F, E>(send: F, send_timeout: Duration) -> Result<(), String>
+    where
+        F: std::future::Future<Output = Result<(), E>>,
+    {
+        timeout(send_timeout, send)
+            .await
+            .map_err(|_| "The tunnel WebSocket send timed out.".to_string())?
+            .map_err(|_| "The tunnel WebSocket disconnected.".to_string())
+    }
+
+    fn matches_pending_pong(pending: Option<&[u8]>, payload: &[u8]) -> bool {
+        pending == Some(payload)
+    }
+
+    fn active_route_control(control: RouteControl) -> Option<SessionOutcome> {
+        match control {
+            RouteControl::ForceRelay {
+                completed,
+                deadline,
+            } if Instant::now() < deadline => Some(SessionOutcome::ForceRelay(completed)),
+            RouteControl::ForceRelay { .. } => None,
+        }
+    }
+
+    async fn wait_for_session_send<F, E>(
+        send: F,
+        send_timeout: Duration,
+        stop: &mut oneshot::Receiver<()>,
+        route_controls: &mut mpsc::Receiver<RouteControl>,
+        mut pong_deadline: Option<Pin<&mut Sleep>>,
+    ) -> Result<Option<SessionOutcome>, String>
+    where
+        F: Future<Output = Result<(), E>>,
+    {
+        let send = wait_for_web_socket_send(send, send_timeout);
+        tokio::pin!(send);
+        loop {
+            if let Some(deadline) = pong_deadline.as_mut() {
+                tokio::select! {
+                    _ = &mut *stop => return Ok(Some(SessionOutcome::Stopped)),
+                    control = route_controls.recv() => {
+                        let Some(control) = control else {
+                            return Ok(Some(SessionOutcome::Stopped));
+                        };
+                        if let Some(outcome) = active_route_control(control) {
+                            return Ok(Some(outcome));
+                        }
+                    }
+                    _ = deadline.as_mut() => {
+                        return Err("The tunnel WebSocket heartbeat timed out.".to_string());
+                    }
+                    result = &mut send => return result.map(|()| None),
+                }
+            } else {
+                tokio::select! {
+                    _ = &mut *stop => return Ok(Some(SessionOutcome::Stopped)),
+                    control = route_controls.recv() => {
+                        let Some(control) = control else {
+                            return Ok(Some(SessionOutcome::Stopped));
+                        };
+                        if let Some(outcome) = active_route_control(control) {
+                            return Ok(Some(outcome));
+                        }
+                    }
+                    result = &mut send => return result.map(|()| None),
+                }
+            }
+        }
+    }
+
+    fn deliver_inbound_frame(
+        connections: &mut ConnectionTasks,
+        connection_id: &str,
+        frame: InboundFrame,
+    ) -> InboundDelivery {
+        let Some(connection) = connections.get_mut(connection_id) else {
+            return InboundDelivery::Missing;
+        };
+        if connection.cancellation_requested {
+            return InboundDelivery::Missing;
+        }
+        let delivery = connection.inbound.try_send(frame);
+        let reason = match delivery {
+            Ok(()) => return InboundDelivery::Delivered,
+            Err(mpsc::error::TrySendError::Full(_)) => "inbound-queue-full",
+            Err(mpsc::error::TrySendError::Closed(_)) => "inbound-queue-closed",
+        };
+        connection.cancellation.send_replace(Some(reason));
+        connection.cancellation_requested = true;
+        InboundDelivery::CancellationRequested { reason }
+    }
+
     async fn run_session(
+        app: Option<&AppHandle>,
+        diagnostic_trace_id: Option<&str>,
+        listener: &TcpListener,
+        web_socket: tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<TcpStream>,
+        >,
+        identity: RouteIdentity,
+        protection: Option<Arc<DataProtection>>,
+        counters: Arc<ForwardCounters>,
+        stop: &mut oneshot::Receiver<()>,
+        route_controls: &mut mpsc::Receiver<RouteControl>,
+    ) -> Result<SessionOutcome, String> {
+        run_session_with_timing(
+            app,
+            diagnostic_trace_id,
+            listener,
+            web_socket,
+            identity,
+            protection,
+            counters,
+            stop,
+            route_controls,
+            SessionTiming::production(),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run_session_with_timing(
         app: Option<&AppHandle>,
         diagnostic_trace_id: Option<&str>,
         listener: &TcpListener,
@@ -1895,21 +2123,32 @@ mod desktop {
         counters: Arc<ForwardCounters>,
         stop: &mut oneshot::Receiver<()>,
         route_controls: &mut mpsc::Receiver<RouteControl>,
+        timing: SessionTiming,
     ) -> Result<SessionOutcome, String> {
         let (outbound_sender, mut outbound_receiver) =
             mpsc::channel::<OutboundFrame>(OUTBOUND_QUEUE);
         let (completed_sender, mut completed_receiver) = mpsc::channel::<String>(256);
-        let mut connections: HashMap<String, (mpsc::Sender<InboundFrame>, JoinHandle<()>)> =
-            HashMap::new();
-        let mut heartbeat = interval(Duration::from_secs(20));
-        let result = loop {
-            tokio::select! {
+        let mut connections = ConnectionTasks::new();
+        let mut heartbeat = interval_at(
+            Instant::now() + timing.heartbeat_interval,
+            timing.heartbeat_interval,
+        );
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let pong_deadline = sleep(timing.pong_timeout);
+        tokio::pin!(pong_deadline);
+        let mut heartbeat_sequence = 0_u64;
+        let mut pending_pong: Option<Vec<u8>> = None;
+        let result = async {
+            loop {
+                tokio::select! {
                 _ = &mut *stop => break Ok(SessionOutcome::Stopped),
                 control = route_controls.recv() => {
                     match control {
-                        Some(RouteControl::ForceRelay { completed }) => {
-                            break Ok(SessionOutcome::ForceRelay(completed));
-                        }
+                        Some(control) => {
+                            if let Some(outcome) = active_route_control(control) {
+                                break Ok(outcome);
+                            }
+                        },
                         None => break Ok(SessionOutcome::Stopped),
                     }
                 }
@@ -1944,6 +2183,7 @@ mod desktop {
                         identity.tunnel_id.clone(),
                     );
                     let (sender, receiver) = mpsc::channel(CONNECTION_QUEUE);
+                    let (cancellation, cancellation_receiver) = watch::channel(None);
                     let (start_sender, start_receiver) = oneshot::channel();
                     let task_identity = identity.clone();
                     let task_connection_id = connection_id.clone();
@@ -1959,6 +2199,7 @@ mod desktop {
                                 task_protection,
                                 task_outbound_sender,
                                 receiver,
+                                cancellation_receiver,
                                 task_completed_sender,
                                 open_connection,
                             )
@@ -1966,7 +2207,12 @@ mod desktop {
                         }
                     });
                     counters.track_connection_task(&connection_id, task.abort_handle());
-                    connections.insert(connection_id, (sender, task));
+                    connections.insert(connection_id, ConnectionTask {
+                        cancellation,
+                        cancellation_requested: false,
+                        inbound: sender,
+                        task,
+                    });
                     let _ = start_sender.send(());
                 }
                 outbound = outbound_receiver.recv() => {
@@ -1976,8 +2222,20 @@ mod desktop {
                         _ => None,
                     };
                     let frame = encode_frame(&header, &payload)?;
-                    web_socket.send(Message::Binary(frame.into())).await
-                        .map_err(|_| "The tunnel WebSocket disconnected.".to_string())?;
+                    let pong_timer = if pending_pong.is_some() {
+                        Some(pong_deadline.as_mut())
+                    } else {
+                        None
+                    };
+                    if let Some(outcome) = wait_for_session_send(
+                        web_socket.send(Message::Binary(frame.into())),
+                        timing.send_timeout,
+                        stop,
+                        route_controls,
+                        pong_timer,
+                    ).await? {
+                        break Ok(outcome);
+                    }
                     if let Some(connection_id) = open_connection_id {
                         ForwardCounters::add(&counters.opens_sent, 1);
                         if counters.is_first_diagnostic_connection(&connection_id) {
@@ -2005,15 +2263,55 @@ mod desktop {
                         Message::Binary(frame) => {
                             let (header, payload) = decode_frame(&frame)?;
                             let connection_id = header.base().connection_id.clone();
-                            if let Some((sender, _)) = connections.get(&connection_id) {
-                                sender.try_send((header, payload)).map_err(|_| "A local tunnel connection became congested.".to_string())?;
+                            if let InboundDelivery::CancellationRequested { reason } = deliver_inbound_frame(
+                                &mut connections,
+                                &connection_id,
+                                (header, payload),
+                            ) {
+                                if counters.is_first_diagnostic_connection(&connection_id) {
+                                    diagnostic_event(
+                                        app,
+                                        "warn",
+                                        "Desktop tunnel retired an unavailable local connection",
+                                        json!({
+                                            "attachmentId": identity.attachment_id,
+                                            "connectionId": connection_id,
+                                            "diagnosticTraceId": diagnostic_trace_id,
+                                            "event": "desktop.tunnel.local-connection.retired",
+                                            "operation": "deliver-inbound-frame",
+                                            "reasonCode": reason,
+                                            "status": "failed",
+                                            "subsystem": "tunnel-forward",
+                                            "tunnelId": identity.tunnel_id,
+                                        }),
+                                    );
+                                }
                             }
                         }
                         Message::Ping(payload) => {
-                            web_socket.send(Message::Pong(payload)).await.map_err(|_| "The tunnel WebSocket disconnected.".to_string())?;
+                            let pong_timer = if pending_pong.is_some() {
+                                Some(pong_deadline.as_mut())
+                            } else {
+                                None
+                            };
+                            if let Some(outcome) = wait_for_session_send(
+                                web_socket.send(Message::Pong(payload)),
+                                timing.send_timeout,
+                                stop,
+                                route_controls,
+                                pong_timer,
+                            ).await? {
+                                break Ok(outcome);
+                            }
                         }
                         Message::Close(_) => break Ok(SessionOutcome::Disconnected),
-                        Message::Text(_) | Message::Pong(_) | Message::Frame(_) => {}
+                        Message::Pong(payload) => {
+                            if matches_pending_pong(pending_pong.as_deref(), payload.as_ref()) {
+                                pending_pong = None;
+                                heartbeat.reset();
+                            }
+                        }
+                        Message::Text(_) | Message::Frame(_) => {}
                     }
                 }
                 completed = completed_receiver.recv() => {
@@ -2022,29 +2320,67 @@ mod desktop {
                         counters.untrack_connection_task(&connection_id);
                     }
                 }
-                _ = heartbeat.tick() => {
-                    web_socket.send(Message::Ping(Vec::new().into())).await
-                        .map_err(|_| "The tunnel WebSocket disconnected.".to_string())?;
+                _ = heartbeat.tick(), if pending_pong.is_none() => {
+                    heartbeat_sequence = heartbeat_sequence.wrapping_add(1);
+                    let payload = heartbeat_sequence.to_be_bytes().to_vec();
+                    if let Some(outcome) = wait_for_session_send(
+                        web_socket.send(Message::Ping(payload.clone().into())),
+                        timing.send_timeout,
+                        stop,
+                        route_controls,
+                        None,
+                    ).await? {
+                        break Ok(outcome);
+                    }
+                    pending_pong = Some(payload);
+                    pong_deadline.as_mut().reset(Instant::now() + timing.pong_timeout);
+                }
+                _ = &mut pong_deadline, if pending_pong.is_some() => {
+                    break Err("The tunnel WebSocket heartbeat timed out.".to_string());
+                }
                 }
             }
-        };
+        }
+        .await;
+        completed_receiver.close();
+        abort_session_connections(&mut connections, &counters).await;
+        result
+    }
+
+    async fn abort_session_connections(
+        connections: &mut ConnectionTasks,
+        counters: &ForwardCounters,
+    ) {
         let tasks = connections
             .drain()
-            .map(|(connection_id, (_, task))| {
+            .map(|(connection_id, connection)| {
                 counters.untrack_connection_task(&connection_id);
-                task.abort();
-                task
+                connection.task.abort();
+                connection.task
             })
             .collect::<Vec<_>>();
         for task in tasks {
             let _ = task.await;
         }
-        result
     }
 
     enum ConnectionEvent {
+        Cancelled(&'static str),
         Local(std::io::Result<usize>),
         Remote(Option<InboundFrame>),
+    }
+
+    async fn connection_cancellation(
+        cancellation: &mut watch::Receiver<Option<&'static str>>,
+    ) -> &'static str {
+        loop {
+            if let Some(reason) = *cancellation.borrow_and_update() {
+                return reason;
+            }
+            if cancellation.changed().await.is_err() {
+                return std::future::pending::<&'static str>().await;
+            }
+        }
     }
 
     async fn run_connection(
@@ -2054,6 +2390,7 @@ mod desktop {
         protection: Option<Arc<DataProtection>>,
         outbound: mpsc::Sender<OutboundFrame>,
         mut inbound: mpsc::Receiver<InboundFrame>,
+        mut cancellation: watch::Receiver<Option<&'static str>>,
         completed: mpsc::Sender<String>,
         mut open_connection: OpenConnection,
     ) {
@@ -2075,7 +2412,7 @@ mod desktop {
             .is_err()
         {
             open_connection.set_close_reason("open-queue-full");
-            let _ = completed.try_send(connection_id);
+            let _ = completed.send(connection_id).await;
             return;
         }
         ForwardCounters::add(&counters.opens_queued, 1);
@@ -2103,13 +2440,21 @@ mod desktop {
                     usize::try_from(source_credit).unwrap_or(MAX_PLAINTEXT_BYTES),
                 );
                 tokio::select! {
+                    reason = connection_cancellation(&mut cancellation) => ConnectionEvent::Cancelled(reason),
                     read = reader.read(&mut buffer[..read_size]) => ConnectionEvent::Local(read),
                     remote = inbound.recv() => ConnectionEvent::Remote(remote),
                 }
             } else {
-                ConnectionEvent::Remote(inbound.recv().await)
+                tokio::select! {
+                    reason = connection_cancellation(&mut cancellation) => ConnectionEvent::Cancelled(reason),
+                    remote = inbound.recv() => ConnectionEvent::Remote(remote),
+                }
             };
             match event {
+                ConnectionEvent::Cancelled(reason) => {
+                    open_connection.set_close_reason(reason);
+                    break;
+                }
                 ConnectionEvent::Local(Ok(0)) => {
                     local_eof = true;
                     if send_source(
@@ -2226,7 +2571,16 @@ mod desktop {
                                     break;
                                 }
                             };
-                            if writer.write_all(&plaintext).await.is_err() {
+                            let write = writer.write_all(&plaintext);
+                            tokio::pin!(write);
+                            let write_result = tokio::select! {
+                                reason = connection_cancellation(&mut cancellation) => {
+                                    open_connection.set_close_reason(reason);
+                                    break;
+                                }
+                                result = &mut write => result,
+                            };
+                            if write_result.is_err() {
                                 open_connection.set_close_reason("local-write-failed");
                                 break;
                             }
@@ -2259,7 +2613,15 @@ mod desktop {
                             direction: Direction::DestinationToSource,
                             ..
                         } if payload.is_empty() => {
-                            let _ = writer.shutdown().await;
+                            let shutdown = writer.shutdown();
+                            tokio::pin!(shutdown);
+                            tokio::select! {
+                                reason = connection_cancellation(&mut cancellation) => {
+                                    open_connection.set_close_reason(reason);
+                                    break;
+                                }
+                                _ = &mut shutdown => {}
+                            }
                         }
                         FrameHeader::Rejected { code, .. } => {
                             let wire_reason_code = safe_reason_code(&code);
@@ -2303,14 +2665,18 @@ mod desktop {
                 }
             }
         }
-        let _ = outbound.try_send((
-            FrameHeader::Close {
-                base: identity.base(&connection_id, source_sequence),
-                code: "normal".into(),
-            },
-            Vec::new(),
-        ));
-        let _ = completed.try_send(connection_id);
+        let _ = timeout(
+            CONNECTION_CANCEL_TIMEOUT,
+            outbound.send((
+                FrameHeader::Close {
+                    base: identity.base(&connection_id, source_sequence),
+                    code: "normal".into(),
+                },
+                Vec::new(),
+            )),
+        )
+        .await;
+        let _ = completed.send(connection_id).await;
     }
 
     fn send_source(
@@ -2800,6 +3166,7 @@ mod desktop {
             bad_control
                 .send(RouteControl::ForceRelay {
                     completed: fallback_completed,
+                    deadline: Instant::now() + RELAY_FALLBACK_TIMEOUT,
                 })
                 .await
                 .unwrap();
@@ -3374,6 +3741,32 @@ mod desktop {
                         break;
                     }
                 }
+                web_socket
+                    .send(Message::Binary(
+                        encode_frame(
+                            &FrameHeader::Close {
+                                base: FrameBase {
+                                    sequence: 3,
+                                    ..base
+                                },
+                                code: "normal".into(),
+                            },
+                            &[],
+                        )
+                        .unwrap()
+                        .into(),
+                    ))
+                    .await
+                    .unwrap();
+                while let Some(Ok(message)) = web_socket.next().await {
+                    let Message::Binary(frame) = message else {
+                        continue;
+                    };
+                    let (header, _) = decode_frame(&frame).unwrap();
+                    if matches!(header, FrameHeader::Close { .. }) {
+                        break;
+                    }
+                }
             });
 
             let listener = bind_listener(None).await.unwrap();
@@ -3580,6 +3973,7 @@ mod desktop {
             route_control_sender
                 .send(RouteControl::ForceRelay {
                     completed: fallback_completed,
+                    deadline: Instant::now() + RELAY_FALLBACK_TIMEOUT,
                 })
                 .await
                 .unwrap();
@@ -4160,6 +4554,132 @@ mod desktop {
             assert!(summary.direct_capability_id.is_none());
         }
 
+        #[test]
+        fn stale_stop_fence_cannot_match_a_replacement_forward() {
+            let mut summary = TunnelForwardSummary {
+                attachment_id: "current-attachment".into(),
+                diagnostic_trace_id: None,
+                expires_at: "2099-01-01T00:00:00.000Z".into(),
+                local_host: "127.0.0.1",
+                local_port: 43_123,
+                route_state: "local-direct",
+                relay_fallback_available: true,
+                relay_credential_expires_at_epoch_ms: Some(u64::MAX),
+                direct_capability_id: Some("current-capability".into()),
+                direct_fallback_reason: None,
+                last_destination_rejection_code: None,
+                tunnel_id: "tunnel".into(),
+                bytes_from_local: 0,
+                bytes_to_local: 0,
+                connections_closed: 0,
+                connections_opened: 0,
+                destination_rejected_count: 0,
+            };
+
+            assert!(stop_fence_matches(
+                &summary,
+                Some("current-attachment"),
+                Some("current-capability")
+            ));
+            assert!(!stop_fence_matches(
+                &summary,
+                Some("stale-attachment"),
+                Some("current-capability")
+            ));
+            assert!(!stop_fence_matches(
+                &summary,
+                Some("current-attachment"),
+                Some("stale-capability")
+            ));
+            assert!(!stop_fence_matches(
+                &summary,
+                Some("current-attachment"),
+                None
+            ));
+
+            summary.route_state = "relayed";
+            summary.direct_capability_id = None;
+            assert!(stop_fence_matches(
+                &summary,
+                Some("current-attachment"),
+                Some("stale-capability")
+            ));
+            assert!(stop_fence_matches(&summary, None, None));
+        }
+
+        #[tokio::test]
+        async fn stale_stop_leaves_the_replacement_forward_installed() {
+            let summary = TunnelForwardSummary {
+                attachment_id: "replacement-attachment".into(),
+                diagnostic_trace_id: None,
+                expires_at: "2099-01-01T00:00:00.000Z".into(),
+                local_host: "127.0.0.1",
+                local_port: 43_123,
+                route_state: "local-direct",
+                relay_fallback_available: true,
+                relay_credential_expires_at_epoch_ms: Some(u64::MAX),
+                direct_capability_id: Some("replacement-capability".into()),
+                direct_fallback_reason: None,
+                last_destination_rejection_code: None,
+                tunnel_id: "tunnel".into(),
+                bytes_from_local: 0,
+                bytes_to_local: 0,
+                connections_closed: 0,
+                connections_opened: 0,
+                destination_rejected_count: 0,
+            };
+            let (relay_refresh, _relay_refresh_receiver) =
+                watch::channel::<Option<Arc<RelayRoute>>>(None);
+            let (route_control, _route_control_receiver) = mpsc::channel::<RouteControl>(1);
+            let (stop, _stop_receiver) = oneshot::channel();
+            let task = tauri::async_runtime::spawn(std::future::pending::<()>());
+            let mut forwards = HashMap::from([(
+                "tunnel".to_string(),
+                ForwardHandle {
+                    counters: Arc::new(ForwardCounters::default()),
+                    relay_refresh,
+                    route_control,
+                    stop: Some(stop),
+                    summary,
+                    task,
+                },
+            )]);
+
+            assert!(take_forward_for_stop(
+                &mut forwards,
+                "tunnel",
+                Some("stale-attachment"),
+                Some("replacement-capability"),
+            )
+            .is_none());
+            assert_eq!(
+                forwards
+                    .get("tunnel")
+                    .map(|forward| forward.summary.attachment_id.as_str()),
+                Some("replacement-attachment")
+            );
+
+            assert!(take_forward_for_stop(
+                &mut forwards,
+                "tunnel",
+                Some("replacement-attachment"),
+                Some("stale-capability"),
+            )
+            .is_none());
+            assert!(forwards.contains_key("tunnel"));
+
+            let mut removed = take_forward_for_stop(
+                &mut forwards,
+                "tunnel",
+                Some("replacement-attachment"),
+                Some("replacement-capability"),
+            )
+            .expect("the exact replacement identity should remove the forward");
+            assert!(forwards.is_empty());
+            abort_forward(&mut removed);
+            let _ = removed.task.await;
+        }
+
         #[tokio::test]
         async fn terminal_snapshot_waits_for_aborted_connection_drop_accounting() {
             let counters = Arc::new(ForwardCounters::default());
@@ -4185,6 +4705,345 @@ mod desktop {
 
             assert_eq!(counters.connections_opened.load(Ordering::Acquire), 1);
             assert_eq!(counters.connections_closed.load(Ordering::Acquire), 1);
+        }
+
+        #[tokio::test]
+        async fn session_teardown_immediately_aborts_many_stalled_connections() {
+            const CONNECTION_COUNT: usize = 256;
+            let counters = Arc::new(ForwardCounters::default());
+            let mut connections = HashMap::new();
+            for index in 0..CONNECTION_COUNT {
+                let connection_id = format!("connection-{index}");
+                let (inbound, _inbound_receiver) = mpsc::channel(1);
+                let (cancellation, _cancellation_receiver) = watch::channel(None);
+                let task = tokio::spawn(std::future::pending::<()>());
+                counters.track_connection_task(&connection_id, task.abort_handle());
+                connections.insert(
+                    connection_id,
+                    ConnectionTask {
+                        cancellation,
+                        cancellation_requested: false,
+                        inbound,
+                        task,
+                    },
+                );
+            }
+
+            timeout(
+                Duration::from_millis(100),
+                abort_session_connections(&mut connections, &counters),
+            )
+            .await
+            .expect("session teardown should abort all connections under one bounded deadline");
+
+            assert!(connections.is_empty());
+            assert!(counters
+                .connection_tasks
+                .lock()
+                .expect("connection task registry")
+                .is_empty());
+        }
+
+        #[tokio::test]
+        async fn congested_inbound_connection_is_cancelled_without_affecting_its_sibling() {
+            let identity = RouteIdentity {
+                attachment_id: "attachment".into(),
+                destination_endpoint_id: "destination".into(),
+                source_endpoint_id: "source".into(),
+                tunnel_id: "tunnel".into(),
+            };
+            let congested_frame = || {
+                (
+                    FrameHeader::Close {
+                        base: identity.base("congested", 1),
+                        code: "test".into(),
+                    },
+                    Vec::new(),
+                )
+            };
+            let sibling_frame = (
+                FrameHeader::Close {
+                    base: identity.base("sibling", 1),
+                    code: "test".into(),
+                },
+                Vec::new(),
+            );
+            let (congested_sender, congested_receiver) = mpsc::channel(1);
+            congested_sender.try_send(congested_frame()).unwrap();
+            let (congested_cancellation, mut congested_cancellation_receiver) =
+                watch::channel(None);
+            let (cancellation_observed, cancellation_observation) = oneshot::channel();
+            let congested_task = tokio::spawn(async move {
+                let _receiver = congested_receiver;
+                let reason = connection_cancellation(&mut congested_cancellation_receiver).await;
+                let _ = cancellation_observed.send(reason);
+                std::future::pending::<()>().await;
+            });
+            let (sibling_sender, mut sibling_receiver) = mpsc::channel(1);
+            let (sibling_cancellation, _sibling_cancellation_receiver) = watch::channel(None);
+            let sibling_task = tokio::spawn(std::future::pending::<()>());
+            let mut connections = HashMap::from([
+                (
+                    "congested".into(),
+                    ConnectionTask {
+                        cancellation: congested_cancellation,
+                        cancellation_requested: false,
+                        inbound: congested_sender,
+                        task: congested_task,
+                    },
+                ),
+                (
+                    "sibling".into(),
+                    ConnectionTask {
+                        cancellation: sibling_cancellation,
+                        cancellation_requested: false,
+                        inbound: sibling_sender,
+                        task: sibling_task,
+                    },
+                ),
+            ]);
+
+            let InboundDelivery::CancellationRequested { reason } =
+                deliver_inbound_frame(&mut connections, "congested", congested_frame())
+            else {
+                panic!("the congested connection should be cancelled")
+            };
+            assert_eq!(reason, "inbound-queue-full");
+            assert!(connections.contains_key("congested"));
+            assert!(connections.contains_key("sibling"));
+            assert_eq!(cancellation_observation.await.unwrap(), reason);
+
+            assert!(matches!(
+                deliver_inbound_frame(&mut connections, "sibling", sibling_frame),
+                InboundDelivery::Delivered
+            ));
+            assert!(sibling_receiver.recv().await.is_some());
+
+            for (_, connection) in connections {
+                connection.task.abort();
+                let _ = connection.task.await;
+            }
+        }
+
+        #[tokio::test]
+        async fn connection_cancellation_emits_one_ordered_close() {
+            let listener = bind_listener(None).await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let client = tokio::spawn(async move {
+                TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+                    .await
+                    .unwrap()
+            });
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut client = client.await.unwrap();
+            let identity = RouteIdentity {
+                attachment_id: "attachment".into(),
+                destination_endpoint_id: "destination".into(),
+                source_endpoint_id: "source".into(),
+                tunnel_id: "tunnel".into(),
+            };
+            let counters = Arc::new(ForwardCounters::default());
+            assert!(counters.register_connection("cancelled"));
+            let open_connection = OpenConnection::new(
+                None,
+                "attachment".into(),
+                "cancelled".into(),
+                counters,
+                None,
+                false,
+                "tunnel".into(),
+            );
+            let (outbound, mut outbound_receiver) = mpsc::channel(4);
+            let (_inbound, inbound_receiver) = mpsc::channel(1);
+            let (cancellation, cancellation_receiver) = watch::channel(None);
+            let (completed, mut completed_receiver) = mpsc::channel(1);
+            let task = tokio::spawn(run_connection(
+                stream,
+                identity,
+                "cancelled".into(),
+                None,
+                outbound,
+                inbound_receiver,
+                cancellation_receiver,
+                completed,
+                open_connection,
+            ));
+
+            let (open, open_payload) = outbound_receiver.recv().await.unwrap();
+            assert!(matches!(open, FrameHeader::Open { .. }));
+            assert!(open_payload.is_empty());
+            cancellation.send_replace(Some("inbound-queue-full"));
+            let (close, close_payload) = outbound_receiver.recv().await.unwrap();
+            let FrameHeader::Close { base, .. } = close else {
+                panic!("connection cancellation should enqueue a Close")
+            };
+            assert_eq!(base.sequence, 1);
+            assert!(close_payload.is_empty());
+            assert_eq!(
+                completed_receiver.recv().await.as_deref(),
+                Some("cancelled")
+            );
+            task.await.unwrap();
+            assert!(timeout(Duration::from_millis(20), outbound_receiver.recv())
+                .await
+                .unwrap()
+                .is_none());
+            let mut remaining = Vec::new();
+            client.read_to_end(&mut remaining).await.unwrap();
+            assert!(remaining.is_empty());
+        }
+
+        #[tokio::test]
+        async fn web_socket_send_wait_is_bounded() {
+            let result = wait_for_web_socket_send(
+                std::future::pending::<Result<(), ()>>(),
+                Duration::from_millis(10),
+            )
+            .await;
+
+            assert_eq!(result.unwrap_err(), "The tunnel WebSocket send timed out.");
+        }
+
+        #[tokio::test]
+        async fn stalled_web_socket_send_does_not_block_route_control() {
+            let (_stop_sender, mut stop_receiver) = oneshot::channel();
+            let (route_control_sender, mut route_controls) = mpsc::channel(1);
+            let (completed, mut completion) = oneshot::channel();
+            route_control_sender
+                .send(RouteControl::ForceRelay {
+                    completed,
+                    deadline: Instant::now() + Duration::from_secs(1),
+                })
+                .await
+                .unwrap();
+
+            let result = timeout(
+                Duration::from_millis(50),
+                wait_for_session_send(
+                    std::future::pending::<Result<(), ()>>(),
+                    Duration::from_secs(10),
+                    &mut stop_receiver,
+                    &mut route_controls,
+                    None,
+                ),
+            )
+            .await
+            .expect("route control should preempt a stalled WebSocket send")
+            .unwrap();
+
+            let Some(SessionOutcome::ForceRelay(completed)) = result else {
+                panic!("expected relay fallback control")
+            };
+            assert!(completion.try_recv().is_err());
+            completed.send(Ok(())).unwrap();
+            assert_eq!(completion.await.unwrap(), Ok(()));
+        }
+
+        #[tokio::test]
+        async fn stalled_web_socket_send_does_not_block_pong_deadline() {
+            let (_stop_sender, mut stop_receiver) = oneshot::channel();
+            let (_route_control_sender, mut route_controls) = mpsc::channel(1);
+            let pong_deadline = sleep(Duration::from_millis(10));
+            tokio::pin!(pong_deadline);
+
+            let result = timeout(
+                Duration::from_millis(50),
+                wait_for_session_send(
+                    std::future::pending::<Result<(), ()>>(),
+                    Duration::from_secs(10),
+                    &mut stop_receiver,
+                    &mut route_controls,
+                    Some(pong_deadline.as_mut()),
+                ),
+            )
+            .await
+            .expect("Pong deadline should preempt a stalled WebSocket send");
+
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("the stalled send should not mask the Pong deadline"),
+            };
+            assert_eq!(error, "The tunnel WebSocket heartbeat timed out.");
+        }
+
+        #[test]
+        fn expired_route_control_cannot_execute_late() {
+            let (completed, mut completion) = oneshot::channel();
+            let outcome = active_route_control(RouteControl::ForceRelay {
+                completed,
+                deadline: Instant::now() - Duration::from_millis(1),
+            });
+
+            assert!(outcome.is_none());
+            assert!(matches!(
+                completion.try_recv(),
+                Err(oneshot::error::TryRecvError::Closed)
+            ));
+        }
+
+        #[test]
+        fn only_the_pending_heartbeat_pong_satisfies_liveness() {
+            assert!(matches_pending_pong(Some(b"heartbeat-7"), b"heartbeat-7"));
+            assert!(!matches_pending_pong(Some(b"heartbeat-7"), b"heartbeat-6"));
+            assert!(!matches_pending_pong(None, b"heartbeat-7"));
+        }
+
+        #[tokio::test]
+        async fn session_exits_when_the_matching_heartbeat_pong_is_not_received() {
+            let server_listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+            let server_port = server_listener.local_addr().unwrap().port();
+            let server = tokio::spawn(async move {
+                let (stream, _) = server_listener.accept().await.unwrap();
+                let _web_socket = accept_hdr_async(
+                    stream,
+                    |_request: &tokio_tungstenite::tungstenite::handshake::server::Request,
+                     response| { Ok(response) },
+                )
+                .await
+                .unwrap();
+                sleep(Duration::from_secs(1)).await;
+            });
+            let (web_socket, _) =
+                tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{server_port}"))
+                    .await
+                    .unwrap();
+            let listener = bind_listener(None).await.unwrap();
+            let (_stop_sender, mut stop_receiver) = oneshot::channel();
+            let (_route_control_sender, mut route_controls) = mpsc::channel(1);
+            let result = timeout(
+                Duration::from_millis(250),
+                run_session_with_timing(
+                    None,
+                    None,
+                    &listener,
+                    web_socket,
+                    RouteIdentity {
+                        attachment_id: "attachment".into(),
+                        destination_endpoint_id: "destination".into(),
+                        source_endpoint_id: "source".into(),
+                        tunnel_id: "tunnel".into(),
+                    },
+                    None,
+                    Arc::new(ForwardCounters::default()),
+                    &mut stop_receiver,
+                    &mut route_controls,
+                    SessionTiming {
+                        heartbeat_interval: Duration::from_millis(10),
+                        pong_timeout: Duration::from_millis(20),
+                        send_timeout: Duration::from_millis(20),
+                    },
+                ),
+            )
+            .await
+            .expect("the missing Pong deadline should remain bounded");
+
+            let error = match result {
+                Err(error) => error,
+                Ok(_) => panic!("the session should fail its missing Pong deadline"),
+            };
+            assert_eq!(error, "The tunnel WebSocket heartbeat timed out.");
+            server.abort();
+            let _ = server.await;
         }
     }
 }

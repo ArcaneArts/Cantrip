@@ -187,6 +187,22 @@ describe("startDesktopTunnel", () => {
 });
 
 describe("stopDesktopTunnel", () => {
+  it("passes the exact direct capability fence for an owned Code forward", async () => {
+    mocks.invoke.mockResolvedValue(null);
+
+    await stopDesktopTunnel("tunnel-1", "attachment-1", {
+      attachmentId: "attachment-1",
+      directCapabilityId: capabilityId,
+    });
+
+    expect(mocks.invoke).toHaveBeenCalledWith("stop_tunnel_forward", {
+      expectedAttachmentId: "attachment-1",
+      expectedDirectCapabilityId: capabilityId,
+      tunnelId: "tunnel-1",
+    });
+    expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1");
+  });
+
   it("stops locally before posting the exact terminal snapshot and deleting", async () => {
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "stop_tunnel_forward") {

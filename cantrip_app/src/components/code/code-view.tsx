@@ -36,8 +36,8 @@ import {
 } from "@/lib/code-workbench-frame";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
-  directCodeAttachmentHealthyWithin,
   preferProtectedCodeAttachment,
+  recoverPreferredCodeAttachmentRoute,
   stopDirectCodeAttachment,
 } from "@/lib/desktop-code";
 import {
@@ -175,7 +175,7 @@ export function CodeView({
   attachmentLifecycleRef.current ??=
     new SerializedAttachmentLifecycle<CodeProtectedAttachmentWire>((wire) =>
       retireAttachmentBestEffort(
-        () => stopDirectCodeAttachment(wire.tunnelId),
+        () => stopDirectCodeAttachment(wire),
         () => releaseCodeAttachment(wire.attachmentId),
       ),
     );
@@ -287,29 +287,14 @@ export function CodeView({
         });
         onChangedRef.current?.();
         if (preferred.directTunnelId) {
-          let failures = 0;
           const checkDirectRoute = async () => {
-            if (cancelled || !ownedDirectTunnelId) return;
-            try {
-              if (
-                !(await directCodeAttachmentHealthyWithin(ownedDirectTunnelId))
-              )
-                throw new Error("Direct Code route is unavailable.");
-              if (cancelled) return;
-              failures = 0;
-            } catch (error) {
-              if (cancelled) return;
-              failures += 1;
-              logCodeEvent("warn", "direct attachment health check failed", {
-                attachmentId: next.attachmentId,
-                error: errorText(error),
-                failures,
-                sessionId: next.sessionId,
-              });
-              if (failures >= 2 && !cancelled) {
-                reload();
-                return;
-              }
+            if (cancelled) return;
+            const recovery =
+              await recoverPreferredCodeAttachmentRoute(preferred);
+            if (cancelled) return;
+            if (recovery === "replace-required") {
+              reload();
+              return;
             }
             if (!cancelled)
               directHealthTimer = setTimeout(checkDirectRoute, 5_000);

@@ -32,8 +32,8 @@ import {
 import {
   CodeControlOperationTimeoutError,
   openDirectCodeAttachmentFile,
-  directCodeAttachmentHealthyWithin,
   preferProtectedCodeAttachment,
+  recoverPreferredCodeAttachmentRoute,
   setDirectCodeAttachmentPresentation,
   stopDirectCodeAttachment,
   type PreferredCodeAttachment,
@@ -70,16 +70,15 @@ export function explorerCodeEditorOpenRecovery(
   error: unknown,
   attempt: number,
   automaticReconnects: number,
-): "error" | "reload" | "retry" {
+): "error" | "recover-route" | "retry" {
   const controlTimeout = isCodeControlOperationTimeout(error);
   const transient = isTransientFileOpenFailure(error);
   if (attempt === 0 && (controlTimeout || transient)) return "retry";
   if (
-    !controlTimeout &&
-    transient &&
+    (controlTimeout || transient) &&
     automaticReconnects < FILE_OPEN_RECONNECT_LIMIT
   ) {
-    return "reload";
+    return "recover-route";
   }
   return "error";
 }
@@ -176,7 +175,7 @@ export function ExplorerCodeEditor({
   attachmentLifecycleRef.current ??=
     new SerializedAttachmentLifecycle<CodeProtectedAttachmentWire>((wire) =>
       retireAttachmentBestEffort(
-        () => stopDirectCodeAttachment(wire.tunnelId),
+        () => stopDirectCodeAttachment(wire),
         () => releaseCodeAttachment(wire.attachmentId),
       ),
     );
@@ -273,16 +272,17 @@ export function ExplorerCodeEditor({
   }, [path]);
 
   useEffect(() => {
-    const tunnelId = preferredAttachment?.directTunnelId;
-    if (!tunnelId) return;
+    if (!preferredAttachment?.directTunnelId) return;
     let cancelled = false;
-    let failures = 0;
+    const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const check = async () => {
-      const healthy = await directCodeAttachmentHealthyWithin(tunnelId);
+      const recovery = await recoverPreferredCodeAttachmentRoute(
+        preferredAttachment,
+        { signal: controller.signal },
+      ).catch(() => "recovering" as const);
       if (cancelled) return;
-      failures = healthy ? 0 : failures + 1;
-      if (failures >= 2) {
+      if (recovery === "replace-required") {
         reload();
         return;
       }
@@ -291,9 +291,15 @@ export function ExplorerCodeEditor({
     timer = setTimeout(check, ATTACHMENT_HEALTH_INTERVAL_MS);
     return () => {
       cancelled = true;
+      controller.abort(
+        new DOMException(
+          "Explorer Code health check superseded.",
+          "AbortError",
+        ),
+      );
       if (timer) clearTimeout(timer);
     };
-  }, [preferredAttachment?.directTunnelId, reload]);
+  }, [preferredAttachment, reload]);
 
   useEffect(() => {
     const tunnelId = preferredAttachment?.directTunnelId;
@@ -410,9 +416,22 @@ export function ExplorerCodeEditor({
           );
           return;
         }
-        if (recovery === "reload") {
+        if (recovery === "recover-route") {
+          const routeRecovery = await recoverPreferredCodeAttachmentRoute(
+            preferredAttachment,
+            { signal: navigationController.signal },
+          ).catch(() => "recovering" as const);
+          if (cancelled) return;
+          if (routeRecovery === "replace-required") {
+            automaticReconnectsRef.current += 1;
+            reload();
+            return;
+          }
           automaticReconnectsRef.current += 1;
-          reload();
+          retryTimer = setTimeout(
+            () => void openFile(attempt + 1),
+            routeRecovery === "available" ? FILE_OPEN_RETRY_DELAY_MS : 1_000,
+          );
           return;
         }
         setError(

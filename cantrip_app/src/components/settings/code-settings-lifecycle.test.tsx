@@ -22,6 +22,7 @@ const desktopCode = vi.hoisted(() => ({
   directCodeAttachmentHealthyWithin: vi.fn(),
   openDirectCodeAttachmentSettings: vi.fn(),
   preferProtectedCodeAttachment: vi.fn(),
+  recoverPreferredCodeAttachmentRoute: vi.fn(),
   stopDirectCodeAttachment: vi.fn(),
 }));
 
@@ -210,6 +211,9 @@ beforeEach(() => {
     attachment,
     directTunnelId: null,
   });
+  desktopCode.recoverPreferredCodeAttachmentRoute.mockResolvedValue(
+    "available",
+  );
   desktopCode.openDirectCodeAttachmentSettings.mockResolvedValue({
     opened: true,
   });
@@ -338,7 +342,7 @@ describe("CodeSettings retained workbench lifecycle", () => {
 
     expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
     expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledWith(
-      wire.attachment.tunnelId,
+      wire.attachment,
     );
     expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
     expect(api.releaseCodeAttachment).toHaveBeenCalledWith(

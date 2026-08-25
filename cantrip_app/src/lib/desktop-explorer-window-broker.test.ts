@@ -12,6 +12,7 @@ const desktopCode = vi.hoisted(() => ({
   directCodeAttachmentHealthyWithin: vi.fn(),
   openDirectCodeAttachmentFile: vi.fn(),
   preferProtectedCodeAttachment: vi.fn(),
+  recoverPreferredCodeAttachmentRoute: vi.fn(),
   setDirectCodeAttachmentPresentation: vi.fn(),
   stopDirectCodeAttachment: vi.fn(),
 }));
@@ -36,6 +37,10 @@ const wire = {
   expiresAt: attachment.expiresAt,
   runtime: attachment.runtime,
 };
+const desktopRouteIdentity = {
+  attachmentId: "transport-1",
+  directCapabilityId: "capability-1",
+};
 const frameNonce = "mount_nonce_1234567890";
 
 function deferred<T>(): {
@@ -56,10 +61,15 @@ describe("desktop Explorer window broker", () => {
     vi.useRealTimers();
     vi.clearAllMocks();
     desktopCode.directCodeAttachmentHealthyWithin.mockResolvedValue(true);
+    desktopCode.recoverPreferredCodeAttachmentRoute.mockResolvedValue(
+      "available",
+    );
     api.createProtectedExplorerCodeAttachment.mockResolvedValue(wire);
     desktopCode.preferProtectedCodeAttachment.mockResolvedValue({
       attachment,
+      desktopRouteIdentity,
       directTunnelId: wire.tunnelId,
+      transportKind: "local-direct",
     });
     desktopCode.setDirectCodeAttachmentPresentation.mockResolvedValue({
       presentation: "editor",
@@ -141,6 +151,7 @@ describe("desktop Explorer window broker", () => {
     await vi.waitFor(() =>
       expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledWith(
         wire.tunnelId,
+        desktopRouteIdentity,
       ),
     );
     expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
@@ -279,7 +290,9 @@ describe("desktop Explorer window broker", () => {
   it("aborts superseded preparation and releases a delayed result exactly once", async () => {
     const preference = deferred<{
       attachment: CodeAttachment;
+      desktopRouteIdentity: typeof desktopRouteIdentity;
       directTunnelId: string;
+      transportKind: "local-direct";
     }>();
     desktopCode.preferProtectedCodeAttachment.mockReturnValue(
       preference.promise,
@@ -321,13 +334,22 @@ describe("desktop Explorer window broker", () => {
     await broker.dispose();
 
     expect(preparationSignal.aborted).toBe(true);
-    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
+    expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
     expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
-    preference.resolve({ attachment, directTunnelId: wire.tunnelId });
+    preference.resolve({
+      attachment,
+      desktopRouteIdentity,
+      directTunnelId: wire.tunnelId,
+      transportKind: "local-direct",
+    });
     await ready;
     await Promise.resolve();
     expect(onEditor).not.toHaveBeenCalled();
-    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledTimes(1);
+    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
+    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledWith(
+      wire.tunnelId,
+      desktopRouteIdentity,
+    );
     expect(api.releaseCodeAttachment).toHaveBeenCalledTimes(1);
 
     await broker.dispose();
@@ -363,7 +385,7 @@ describe("desktop Explorer window broker", () => {
       expect(api.releaseCodeAttachment).toHaveBeenCalledOnce(),
     );
     expect(desktopCode.preferProtectedCodeAttachment).not.toHaveBeenCalled();
-    expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
+    expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
     expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();
   });
 
@@ -589,30 +611,12 @@ describe("desktop Explorer window broker", () => {
     await broker.dispose();
   });
 
-  it("replaces an unhealthy attachment and replays the current file", async () => {
+  it("retains one attachment and workbench across transient route recovery", async () => {
     vi.useFakeTimers();
-    const replacementWire = {
-      ...wire,
-      attachmentId: "33333333-3333-4333-8333-333333333333",
-      tunnelId: "44444444-4444-4444-8444-444444444444",
-    };
-    api.createProtectedExplorerCodeAttachment
-      .mockResolvedValueOnce(wire)
-      .mockResolvedValueOnce(replacementWire);
-    desktopCode.preferProtectedCodeAttachment.mockImplementation(
-      async (selectedWire) => ({
-        attachment: {
-          ...attachment,
-          attachmentId: selectedWire.attachmentId,
-          url: `http://127.0.0.1:43123/code/${selectedWire.attachmentId}/`,
-        },
-        directTunnelId: selectedWire.tunnelId,
-      }),
-    );
-    desktopCode.directCodeAttachmentHealthyWithin
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(false)
-      .mockResolvedValue(true);
+    desktopCode.recoverPreferredCodeAttachmentRoute
+      .mockResolvedValueOnce("recovering")
+      .mockResolvedValueOnce("recovering")
+      .mockResolvedValue("available");
     let endpointCount = 0;
     let client!: DesktopExplorerWindowClient;
     const broker = createDesktopExplorerWindowBroker({
@@ -640,14 +644,55 @@ describe("desktop Explorer window broker", () => {
     client.start();
     await broker.ready;
 
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledOnce();
+    expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledOnce();
+    expect(desktopCode.stopDirectCodeAttachment).not.toHaveBeenCalled();
+    expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
+    expect(endpointCount).toBe(1);
+
+    client.dispose();
+    await broker.dispose();
+    vi.useRealTimers();
+  });
+
+  it("replaces the editor only after exact route identity is terminal", async () => {
+    vi.useFakeTimers();
+    desktopCode.recoverPreferredCodeAttachmentRoute
+      .mockResolvedValueOnce("replace-required")
+      .mockResolvedValue("available");
+    let endpointCount = 0;
+    let client!: DesktopExplorerWindowClient;
+    const broker = createDesktopExplorerWindowBroker({
+      appearance: "dark",
+      explorer: {
+        activeWorkerId: "worker-one",
+        id: "explorer-terminal-route",
+        projectId: "project-one",
+        worktreeId: "worktree-one",
+      } as ExplorerSummary,
+      path: "src/current.ts",
+    });
+    client = new DesktopExplorerWindowClient(broker.launchId, {
+      onContext: vi.fn(),
+      onEditorEndpoint: () => {
+        endpointCount += 1;
+        const nonce = `terminal_mount_nonce_${endpointCount}_1234567890`;
+        client.editorWorkbenchMounted(nonce);
+        client.editorWorkbenchReady(nonce);
+      },
+      onEditorError: vi.fn(),
+      onEditorReady: vi.fn(),
+      onLaunchError: vi.fn(),
+    });
+    client.start();
+    await broker.ready;
+
+    await vi.advanceTimersByTimeAsync(5_000);
     await vi.waitFor(() =>
       expect(api.createProtectedExplorerCodeAttachment).toHaveBeenCalledTimes(
         2,
       ),
-    );
-    await vi.waitFor(() =>
-      expect(desktopCode.openDirectCodeAttachmentFile).toHaveBeenCalledTimes(2),
     );
     expect(desktopCode.stopDirectCodeAttachment).toHaveBeenCalledOnce();
     expect(api.releaseCodeAttachment).toHaveBeenCalledOnce();

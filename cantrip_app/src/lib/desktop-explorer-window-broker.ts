@@ -1,5 +1,3 @@
-import type { CodeAttachment } from "@cantrip/protocol";
-
 import {
   createProtectedExplorerCodeAttachment,
   getExplorerFile,
@@ -8,11 +6,12 @@ import {
   saveExplorerFile,
 } from "@/lib/api";
 import {
-  directCodeAttachmentHealthyWithin,
   openDirectCodeAttachmentFile,
   preferProtectedCodeAttachment,
+  recoverPreferredCodeAttachmentRoute,
   setDirectCodeAttachmentPresentation,
   stopDirectCodeAttachment,
+  type PreferredCodeAttachment,
 } from "@/lib/desktop-code";
 import {
   desktopExplorerWindowChannelName,
@@ -29,10 +28,7 @@ import {
 import { errorMessage } from "@/lib/error-message";
 import { retireAttachmentBestEffort } from "@/lib/serialized-attachment-lifecycle";
 
-interface PreparedEditorAttachment {
-  attachment: CodeAttachment;
-  directTunnelId: string | null;
-}
+type PreparedEditorAttachment = PreferredCodeAttachment;
 
 export interface DesktopExplorerWindowBroker {
   dispose(): Promise<void>;
@@ -133,9 +129,13 @@ async function retryEditorControl<T>(
 async function releasePreparedEditor(
   attachmentId: string,
   directTunnelId: string,
+  desktopRouteIdentity: PreferredCodeAttachment["desktopRouteIdentity"] = null,
 ): Promise<void> {
   await retireAttachmentBestEffort(
-    () => stopDirectCodeAttachment(directTunnelId),
+    () =>
+      desktopRouteIdentity
+        ? stopDirectCodeAttachment(directTunnelId, desktopRouteIdentity)
+        : Promise.resolve(),
     () => releaseCodeAttachment(attachmentId),
   );
 }
@@ -160,7 +160,11 @@ export function createDesktopExplorerWindowBroker(
   let disposed = false;
   let prepared: PreparedEditorAttachment | null = null;
   let ownedAttachmentId: string | null = null;
+  let ownedDesktopRouteIdentity: PreferredCodeAttachment["desktopRouteIdentity"] =
+    null;
   let ownedDirectTunnelId: string | null = null;
+  let releasedDesktopRouteIdentity: PreferredCodeAttachment["desktopRouteIdentity"] =
+    null;
   let releasePromise: Promise<void> | null = null;
   let preparedAtMs: number | null = null;
   let configuredAtMs: number | null = null;
@@ -203,10 +207,23 @@ export function createDesktopExplorerWindowBroker(
     if (!ownedAttachmentId || !ownedDirectTunnelId) {
       return Promise.resolve();
     }
-    releasePromise ??= releasePreparedEditor(
-      ownedAttachmentId,
-      ownedDirectTunnelId,
-    );
+    if (!releasePromise) {
+      releasedDesktopRouteIdentity = ownedDesktopRouteIdentity;
+      releasePromise = releasePreparedEditor(
+        ownedAttachmentId,
+        ownedDirectTunnelId,
+        ownedDesktopRouteIdentity,
+      );
+    } else if (
+      ownedDesktopRouteIdentity &&
+      ownedDesktopRouteIdentity !== releasedDesktopRouteIdentity
+    ) {
+      const identity = ownedDesktopRouteIdentity;
+      releasedDesktopRouteIdentity = identity;
+      releasePromise = releasePromise.then(() =>
+        stopDirectCodeAttachment(ownedDirectTunnelId, identity),
+      );
+    }
     return releasePromise;
   };
   let endpointGeneration = 0;
@@ -235,11 +252,9 @@ export function createDesktopExplorerWindowBroker(
       const preferred = await preferProtectedCodeAttachment(wire, {
         signal: preparationController.signal,
       });
+      ownedDesktopRouteIdentity = preferred.desktopRouteIdentity;
       preparationController.signal.throwIfAborted();
-      return {
-        attachment: preferred.attachment,
-        directTunnelId: wire.tunnelId,
-      };
+      return preferred;
     })().catch(async (error: unknown) => {
       await releaseOwnedEditor();
       throw error;
@@ -255,7 +270,6 @@ export function createDesktopExplorerWindowBroker(
         }
         prepared = result;
         preparedAtMs = Date.now();
-        let healthFailures = 0;
         const checkHealth = async () => {
           if (
             disposed ||
@@ -264,22 +278,17 @@ export function createDesktopExplorerWindowBroker(
           ) {
             return;
           }
-          try {
-            if (
-              !(await directCodeAttachmentHealthyWithin(result.directTunnelId))
-            ) {
-              throw new Error("The protected editor route is unavailable.");
-            }
-            healthFailures = 0;
-          } catch (error) {
-            healthFailures += 1;
-            if (healthFailures >= 2) {
-              void recoverEditorAttachment(error).catch(
-                (recoveryError: unknown) =>
-                  reportEditorError(recoveryError, "endpoint"),
-              );
-              return;
-            }
+          const recovery = await recoverPreferredCodeAttachmentRoute(result, {
+            signal: preparationController.signal,
+          }).catch(() => "recovering" as const);
+          if (disposed || generation !== endpointGeneration) return;
+          if (recovery === "replace-required") {
+            void recoverEditorAttachment(
+              new Error("The protected editor route was replaced."),
+            ).catch((recoveryError: unknown) =>
+              reportEditorError(recoveryError, "endpoint"),
+            );
+            return;
           }
           healthTimer = setTimeout(checkHealth, 5_000);
         };
@@ -445,15 +454,20 @@ export function createDesktopExplorerWindowBroker(
     configuredWorkbenchNonce = null;
     prepared = null;
     const staleAttachmentId = ownedAttachmentId;
+    const staleDesktopRouteIdentity = ownedDesktopRouteIdentity;
     const staleDirectTunnelId = ownedDirectTunnelId;
     const replacement = (async () => {
       await releaseOwnedEditor();
       preparationController.signal.throwIfAborted();
       if (ownedAttachmentId === staleAttachmentId) ownedAttachmentId = null;
+      if (ownedDesktopRouteIdentity === staleDesktopRouteIdentity) {
+        ownedDesktopRouteIdentity = null;
+      }
       if (ownedDirectTunnelId === staleDirectTunnelId) {
         ownedDirectTunnelId = null;
       }
       releasePromise = null;
+      releasedDesktopRouteIdentity = null;
       return prepareEditor();
     })();
     editorPromise = replacement;

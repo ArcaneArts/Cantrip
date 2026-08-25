@@ -41,6 +41,11 @@ export interface DesktopTunnelForwardSummary {
   destinationRejectedCount?: number;
 }
 
+export interface DesktopTunnelForwardIdentity {
+  attachmentId: string;
+  directCapabilityId: string | null;
+}
+
 interface DesktopTunnelTerminalSnapshot {
   attachmentId: string;
   tunnelId: string;
@@ -133,8 +138,9 @@ export async function startDesktopTunnel(
     options.diagnosticTraceId,
     options.preferredLocalPort,
   );
+  let started: DesktopTunnelForwardSummary | null = null;
   try {
-    const started = await invoke<DesktopTunnelForwardSummary>(
+    started = await invoke<DesktopTunnelForwardSummary>(
       "start_tunnel_forward",
       { request },
     );
@@ -162,7 +168,10 @@ export async function startDesktopTunnel(
     if (request.direct) request.direct.secret = "";
     request.dataProtection.key = "";
     attachment.secret = "";
-    await stopDesktopTunnelForward(tunnelId).catch(() => {
+    await stopDesktopTunnelForward(tunnelId, {
+      attachmentId: started?.attachmentId ?? attachment.attachmentId,
+      directCapabilityId: started?.directCapabilityId ?? null,
+    }).catch(() => {
       // Server revocation below remains authoritative.
     });
     await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
@@ -209,18 +218,28 @@ export async function startDirectDesktopTunnel(
 export async function stopDesktopTunnel(
   tunnelId: string,
   attachmentId: string,
+  expectedForward?: DesktopTunnelForwardIdentity,
 ): Promise<void> {
-  await stopDesktopTunnelForward(tunnelId);
+  await stopDesktopTunnelForward(tunnelId, expectedForward);
   await deleteTunnelAttachment(attachmentId);
 }
 
 export async function stopDesktopTunnelForward(
   tunnelId: string,
+  expectedForward?: DesktopTunnelForwardIdentity,
 ): Promise<void> {
   if (!isTauri()) return;
   const snapshot = await invoke<DesktopTunnelTerminalSnapshot | null>(
     "stop_tunnel_forward",
-    { tunnelId },
+    {
+      ...(expectedForward
+        ? {
+            expectedAttachmentId: expectedForward.attachmentId,
+            expectedDirectCapabilityId: expectedForward.directCapabilityId,
+          }
+        : {}),
+      tunnelId,
+    },
   ).catch(() => {
     // Server revocation remains authoritative if the local listener is gone.
     return null;
