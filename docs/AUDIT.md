@@ -23,7 +23,8 @@ work surrounding the live paths:
   backoff;
 - bounded buffers use full sorting, rebuilding, or Array.shift eviction in their hot paths.
 
-The first implementation wave should target P0-01 through P0-14. They are source-evident,
+P0-06 has since been fixed and is retained below as completed historical context. The first
+implementation wave should target the remaining P0 items. They are source-evident,
 high-upside, and can be validated without changing product semantics. P1 items should follow
 with focused benchmarks. P2 items require production-shaped measurement before design work.
 
@@ -34,7 +35,7 @@ with focused benchmarks. P2 items require production-shaped measurement before d
 | 3    | P0-03 no-op unchanged encryption bootstraps                  | high                | low        | removes synchronous disk and crypto work every five seconds                     |
 | 4    | P0-04 batch narrow AppLive authorization                     | high                | low        | turns reconnect hydration from potentially hundreds of queries into a few       |
 | 5    | P0-05 use focused settings loaders                           | high                | low        | avoids unrelated analytics and provider queries on normal model/runtime choices |
-| 6    | P0-06 collapse worker-management 1+2N queries                | high                | low        | protects a five-connection database pool as fleets grow                         |
+| 6    | P0-06 [fixed] collapse worker-management 1+2N queries        | fixed               | —          | reported fixed after the audit; retained for traceability                       |
 | 7    | P0-07 coalesce worktree observation across server and worker | high                | low-medium | removes per-target DB calls, Git probes, duplicate watchers, and overlap        |
 | 8    | P0-08 collapse redundant Git status pipelines                | high                | low-medium | removes several child processes from common status/operation refreshes          |
 | 9    | P0-09 make log ingestion incremental and export lazy         | high                | low        | removes O(N log N) work per live log batch                                      |
@@ -85,7 +86,7 @@ durability-sensitive loops without correlated ownership, replay, fencing, and mi
 recovery. The opportunities below optimize work that remains after those successful
 migrations.
 
-## P0: high-upside implementation candidates
+## P0: high-upside candidates and completed work
 
 ### P0-01 — opportunity — Isolate composer updates from the full chat transcript
 
@@ -255,15 +256,16 @@ loader for the settings UI.
 Validation: compare query counts and exact runtime/model outcomes with 10, 10,000, and
 1,000,000 token-interval rows.
 
-### P0-06 — opportunity — Collapse worker-management 1+2N queries
+### P0-06 — fixed — Collapse worker-management 1+2N queries
 
+- Status: fixed after the audit (reported 2026-08-24)
 - Category: N_PLUS_ONE_OR_CHATTER
 - Expected gain: high
-- Risk: low
-- Complexity: low
+- Original risk: low
+- Original complexity: low
 - Confidence: high
 
-Evidence:
+Original evidence on the audited baseline:
 
 - cantrip_server/src/db/repository.ts:6843-6899 loads workers, then issues two queries per
   worker for credentials and source/project assignments.
@@ -271,15 +273,16 @@ Evidence:
   only to find one worker for restart, rename, and delete.
 - cantrip_server/src/db/index.ts:229-234 caps the pool at five connections.
 
-Hypothesis: fleet listing and even single-worker mutation latency grow linearly with fleet
-size and can monopolize the database pool.
+Original hypothesis: fleet listing and even single-worker mutation latency grow linearly
+with fleet size and can monopolize the database pool.
 
-Suggested change: list with three constant queries—workers, credential aggregates by worker,
-and active source/project assignments—and group in memory. Add a targeted single-worker
-loader for mutations.
+Resolution: marked fixed after the audit and removed from the pending delivery waves. The
+fixing implementation was not present on origin/main when this status-only documentation
+update was prepared, so this report does not attribute an implementation PR or commit.
 
-Validation: require three queries for list and one focused lookup for mutation; compare
-response parity and p95 at 1, 10, 100, and 1,000 workers.
+Regression guardrail: retain the original acceptance target of three queries for the list
+and one focused lookup for mutation; compare response parity and p95 at 1, 10, 100, and
+1,000 workers.
 
 ### P0-07 — opportunity — Coalesce worktree observation across server and worker
 
@@ -1018,9 +1021,9 @@ Before behavior changes, add or reuse focused counters and deterministic fixture
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement the safe slices of P0-02, P0-05, P0-06, P0-08, P0-09, P0-11, P0-12, P0-13,
-P1-01, P1-06, P1-07, P1-15, P1-16, and P1-18. These mostly remove duplicate work or replace
-an equivalent data structure.
+Implement the safe slices of P0-02, P0-05, P0-08, P0-09, P0-11, P0-12, P0-13, P1-01,
+P1-06, P1-07, P1-15, P1-16, and P1-18. These mostly remove duplicate work or replace an
+equivalent data structure.
 
 ### Wave 2 — bounded batching, memoization, and ownership
 
