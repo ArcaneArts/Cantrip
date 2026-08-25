@@ -3,7 +3,10 @@ import type {
   AgentScope,
   ChatMessage,
   CodexEventCorrelation,
+  InferenceProgressSnapshot,
 } from "@cantrip/protocol";
+
+import type { InferenceProgressTrace } from "@/lib/inference-progress-history";
 
 import { activityLabel } from "./activity";
 import {
@@ -49,6 +52,7 @@ export interface TrajectoryEvent {
   kind: string;
   label: string;
   lane: TrajectoryLane;
+  metrics?: Array<{ label: string; value: string }>;
   messageId: string;
   preview: string | null;
   searchableText: string;
@@ -687,9 +691,169 @@ function activityFocusItemKey(activity: AgentActivity): string | null {
     : null;
 }
 
+function compactTokenCount(tokens: number): string {
+  return tokens < 1_000 ? `${tokens}` : `${Math.round(tokens / 1_000)}k`;
+}
+
+function progressPercent(progress: InferenceProgressSnapshot): number | null {
+  if (
+    progress.precision === "indeterminate" ||
+    progress.fractionComplete === null
+  ) {
+    return null;
+  }
+  return Math.min(100, Math.floor(progress.fractionComplete * 100));
+}
+
+function progressDurationLabel(durationMs: number): string {
+  const seconds = Math.max(0, Math.round(durationMs / 1_000));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function inferenceProgressEvents(input: {
+  agents: readonly TrajectoryAgent[];
+  current: InferenceProgressSnapshot | null | undefined;
+  history: readonly InferenceProgressTrace[] | undefined;
+  messages: readonly ChatMessage[];
+  nowMs: number;
+}): TrajectoryEvent[] {
+  const requestMessages = new Map(
+    input.messages
+      .filter((message) => message.role === "user")
+      .map((message) => [message.id, message] as const),
+  );
+  const traces = new Map<string, InferenceProgressTrace>();
+  for (const trace of input.history ?? []) {
+    const { progress } = trace;
+    if (
+      progress.phase !== "prefill" ||
+      !requestMessages.has(progress.requestId)
+    ) {
+      continue;
+    }
+    traces.set(`${progress.requestId}:${progress.cycle}`, trace);
+  }
+  if (
+    input.current?.phase === "prefill" &&
+    requestMessages.has(input.current.requestId)
+  ) {
+    traces.set(`${input.current.requestId}:${input.current.cycle}`, {
+      completedAt: null,
+      progress: input.current,
+    });
+  }
+  const root = input.agents.find((agent) => agent.root);
+  if (!root) return [];
+
+  return [...traces.values()].map((trace) => {
+    const { progress } = trace;
+    const current =
+      input.current?.requestId === progress.requestId &&
+      input.current.cycle === progress.cycle;
+    const startMs = Date.parse(progress.startedAt);
+    const observedAtMs = Date.parse(progress.observedAt);
+    const completedAtMs = trace.completedAt
+      ? Date.parse(trace.completedAt)
+      : observedAtMs;
+    const running = Boolean(current);
+    const endMs = Math.max(startMs, running ? input.nowMs : completedAtMs);
+    const observedDurationMs = Math.max(0, observedAtMs - startMs);
+    const durationMs = Math.max(0, endMs - startMs);
+    const percent = progressPercent(progress);
+    const observedTokensPerSecond =
+      progress.completedTokens !== null && observedDurationMs >= 1_000
+        ? Math.round(progress.completedTokens / (observedDurationMs / 1_000))
+        : null;
+    const tokenSummary =
+      progress.completedTokens === null
+        ? "Prompt token counts unavailable"
+        : progress.totalTokens === null
+          ? `${compactTokenCount(progress.completedTokens)} prompt tokens prefetched`
+          : `${compactTokenCount(progress.completedTokens)} of ${compactTokenCount(progress.totalTokens)} prompt tokens`;
+    const label = running
+      ? percent === null
+        ? "Prefilling prompt"
+        : `Prefilling prompt ${percent}%`
+      : "Prompt prefill completed";
+    const preview = [
+      tokenSummary,
+      progressDurationLabel(durationMs),
+      observedTokensPerSecond === null
+        ? null
+        : `${observedTokensPerSecond.toLocaleString()} tok/s observed`,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(" · ");
+    const request = requestMessages.get(progress.requestId)!;
+    const metrics = [
+      ...(percent === null
+        ? []
+        : [{ label: "Progress", value: `${percent}%` }]),
+      ...(progress.completedTokens === null
+        ? []
+        : [
+            {
+              label: "Prefilled tokens",
+              value: progress.completedTokens.toLocaleString(),
+            },
+          ]),
+      ...(progress.totalTokens === null
+        ? []
+        : [
+            {
+              label: "Prompt tokens",
+              value: progress.totalTokens.toLocaleString(),
+            },
+          ]),
+      { label: "Duration", value: progressDurationLabel(durationMs) },
+      ...(observedTokensPerSecond === null
+        ? []
+        : [
+            {
+              label: "Observed rate",
+              value: `${observedTokensPerSecond.toLocaleString()} tokens/s`,
+            },
+          ]),
+      { label: "Precision", value: progress.precision },
+      { label: "Source", value: progress.source },
+    ];
+    return {
+      activity: null,
+      agentDepth: root.depth,
+      agentIsRoot: true,
+      agentKey: root.key,
+      agentLabel: root.label,
+      completedAtMs: running ? null : endMs,
+      contentIndex: -1,
+      diagnosticId: null,
+      focusItemKey: null,
+      id: `inference-progress:${progress.requestId}:${progress.cycle}`,
+      itemId: null,
+      kind: "inferenceProgress",
+      label,
+      lane: "model",
+      messageId: progress.requestId,
+      metrics,
+      preview,
+      searchableText:
+        `${label} ${preview} ${metrics.map((metric) => `${metric.label} ${metric.value}`).join(" ")}`.toLocaleLowerCase(),
+      sequence: request.sequence,
+      startMs,
+      status: running ? "running" : "completed",
+      threadId: root.threadId,
+      timingQuality: "exact",
+      turnId: null,
+      updatedAtMs: endMs,
+    };
+  });
+}
+
 export function projectTrajectory(input: {
   active: boolean;
   agentProjection?: AgentTurnProjection;
+  inferenceProgress?: InferenceProgressSnapshot | null;
+  inferenceProgressHistory?: readonly InferenceProgressTrace[];
   messages: readonly ChatMessage[];
   nowMs: number;
   targetTurnKey?: string | null;
@@ -749,6 +913,16 @@ export function projectTrajectory(input: {
     messages: selected.messages,
     selectedKey: selected.key,
   });
+  const progressEvents = inferenceProgressEvents({
+    agents,
+    current: input.inferenceProgress,
+    history: input.inferenceProgressHistory,
+    messages: selected.messages,
+    nowMs: input.nowMs,
+  });
+  const livePrefill = progressEvents.some(
+    (event) => event.status === "running",
+  );
 
   const events: TrajectoryEvent[] = [];
   for (const message of selected.messages) {
@@ -809,6 +983,13 @@ export function projectTrajectory(input: {
   }
 
   for (const [id, record] of collectActivityRecords(selected.messages)) {
+    if (
+      livePrefill &&
+      record.activity.type === "turnSummary" &&
+      record.activity.status === "running"
+    ) {
+      continue;
+    }
     const activity = terminalActivityStatus
       ? settleRunningActivity(
           record.activity,
@@ -863,6 +1044,7 @@ export function projectTrajectory(input: {
       updatedAtMs: timing.endMs,
     });
   }
+  events.push(...progressEvents);
 
   events.sort(
     (left, right) =>

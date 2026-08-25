@@ -24,6 +24,12 @@ import { taskMessageOpaqueSummarySchema } from "@cantrip/protocol/tasks";
 
 import { openChatMessageOpaqueSummary } from "./chat-message-encryption";
 import {
+  completeInferenceProgressTrace,
+  inferenceProgressHistoryQueryKey,
+  upsertInferenceProgressTrace,
+  type InferenceProgressTrace,
+} from "./inference-progress-history";
+import {
   EMPTY_CHAT_MESSAGE_LIVE_OVERLAY,
   chatMessageLiveQueryKey,
   chatMessagePagesQueryKey,
@@ -681,6 +687,17 @@ export class AppLiveQueryBridge {
     if (latestCursor !== undefined && event.cursor <= latestCursor) return true;
     const queryKey = ["inference-progress", chatId] as const;
     if (event.action === "deleted") {
+      const progress =
+        this.#queryClient.getQueryData<InferenceProgressSnapshot | null>(
+          queryKey,
+        );
+      if (progress?.requestId === event.entityId) {
+        this.#queryClient.setQueryData<InferenceProgressTrace[]>(
+          inferenceProgressHistoryQueryKey(chatId),
+          (current) =>
+            completeInferenceProgressTrace(current, progress, event.occurredAt),
+        );
+      }
       this.#queryClient.setQueryData<InferenceProgressSnapshot | null>(
         queryKey,
         (current) =>
@@ -696,6 +713,10 @@ export class AppLiveQueryBridge {
     this.#queryClient.setQueryData<InferenceProgressSnapshot>(
       queryKey,
       parsed.data,
+    );
+    this.#queryClient.setQueryData<InferenceProgressTrace[]>(
+      inferenceProgressHistoryQueryKey(chatId),
+      (current) => upsertInferenceProgressTrace(current, parsed.data),
     );
     this.#inferenceProgressCursors.set(chatId, event.cursor);
     return true;

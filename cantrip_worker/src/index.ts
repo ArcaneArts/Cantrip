@@ -3860,15 +3860,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           workerEncryption,
         );
         let inferenceProgressSequence = 0;
+        let inferenceProgressCycle = 0;
+        let inferenceProgressStartedAt: string | null = null;
         let inferenceProgressVisible = false;
         const clearInferenceProgress = (): void => {
           if (!inferenceProgressVisible) return;
           inferenceProgressVisible = false;
+          inferenceProgressStartedAt = null;
           emit({
             type: "agent.inference-progress",
             progress: {
               kind: "clear",
               requestId: command.clientMessageId,
+              cycle: inferenceProgressCycle,
               sequence: inferenceProgressSequence++,
               observedAt: new Date().toISOString(),
             },
@@ -3895,15 +3899,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 command.model.catalog?.nativeModelId ?? command.model.name,
               provider: provider(),
               onProgress: (progress) => {
+                const observedAt = new Date().toISOString();
+                if (!inferenceProgressVisible) {
+                  inferenceProgressCycle += 1;
+                  inferenceProgressStartedAt = observedAt;
+                }
                 inferenceProgressVisible = true;
                 emit({
                   type: "agent.inference-progress",
                   progress: {
                     kind: "progress",
                     requestId: command.clientMessageId,
+                    cycle: inferenceProgressCycle,
                     sequence: inferenceProgressSequence++,
                     ...progress,
-                    observedAt: new Date().toISOString(),
+                    startedAt: inferenceProgressStartedAt ?? observedAt,
+                    observedAt,
                   },
                 });
               },

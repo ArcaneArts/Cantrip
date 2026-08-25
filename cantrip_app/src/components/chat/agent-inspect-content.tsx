@@ -1,4 +1,8 @@
-import type { ChatMessage, ChatSummary } from "@cantrip/protocol";
+import type {
+  ChatMessage,
+  ChatSummary,
+  InferenceProgressSnapshot,
+} from "@cantrip/protocol";
 import {
   BrainCircuit,
   Check,
@@ -13,6 +17,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 
 import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
+import type { InferenceProgressTrace } from "@/lib/inference-progress-history";
 import { cn } from "@/lib/utils";
 
 import { AgentTrajectory } from "./agent-trajectory";
@@ -479,6 +484,8 @@ export function AgentInspectStateContent({
 
 export function AgentInspectContent({
   active,
+  inferenceProgress,
+  inferenceProgressHistory,
   integratedPanelHeader = false,
   initialTab = "trajectory",
   messages,
@@ -490,6 +497,8 @@ export function AgentInspectContent({
   visible,
 }: {
   active: boolean;
+  inferenceProgress?: InferenceProgressSnapshot | null;
+  inferenceProgressHistory?: readonly InferenceProgressTrace[];
   integratedPanelHeader?: boolean;
   initialTab?: AgentInspectTab;
   messages: ChatMessage[];
@@ -530,6 +539,8 @@ export function AgentInspectContent({
         {activeTab === "trajectory" ? (
           <AgentTrajectory
             active={active}
+            inferenceProgress={inferenceProgress}
+            inferenceProgressHistory={inferenceProgressHistory}
             messages={messages}
             onBackToCurrent={onBackToCurrent}
             onOpenSubagent={onOpenSubagent}

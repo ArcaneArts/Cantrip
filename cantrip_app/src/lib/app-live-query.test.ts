@@ -548,6 +548,7 @@ describe("application live query bridge", () => {
     const progress = {
       kind: "progress" as const,
       requestId: "message-one",
+      cycle: 1,
       sequence: 2,
       phase: "prefill" as const,
       fractionComplete: 10_240 / 46_492,
@@ -555,6 +556,7 @@ describe("application live query bridge", () => {
       totalTokens: 46_492,
       precision: "estimated" as const,
       source: "provider-observer" as const,
+      startedAt: "2026-08-24T11:59:00.000Z",
       observedAt: "2026-08-24T12:00:00.000Z",
     };
     bridge.handleEvent({
@@ -571,6 +573,9 @@ describe("application live query bridge", () => {
     expect(
       queryClient.getQueryData(["inference-progress", "chat-one"]),
     ).toEqual(progress);
+    expect(
+      queryClient.getQueryData(["inference-progress-history", "chat-one"]),
+    ).toEqual([{ completedAt: null, progress }]);
     expect(invalidate).not.toHaveBeenCalled();
 
     bridge.handleEvent({
@@ -587,6 +592,9 @@ describe("application live query bridge", () => {
     expect(
       queryClient.getQueryData(["inference-progress", "chat-one"]),
     ).toBeNull();
+    expect(
+      queryClient.getQueryData(["inference-progress-history", "chat-one"]),
+    ).toEqual([{ completedAt: "2026-08-09T12:00:00.000Z", progress }]);
     expect(invalidate).not.toHaveBeenCalled();
   });
 

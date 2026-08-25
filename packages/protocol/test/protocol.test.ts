@@ -4737,6 +4737,7 @@ describe("Cantrip protocol", () => {
     const input = {
       kind: "progress",
       requestId: "message-one",
+      cycle: 1,
       sequence: 1,
       phase: "prefill",
       fractionComplete: 10_240 / 46_492,
@@ -4744,6 +4745,7 @@ describe("Cantrip protocol", () => {
       totalTokens: 46_492,
       precision: "estimated",
       source: "provider-observer",
+      startedAt: "2026-08-24T11:59:00.000Z",
       observedAt: "2026-08-24T12:00:00.000Z",
     } as const;
     expect(
@@ -4767,6 +4769,12 @@ describe("Cantrip protocol", () => {
       inferenceProgressSnapshotSchema.safeParse({
         ...progress,
         fractionComplete: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      inferenceProgressSnapshotSchema.safeParse({
+        ...progress,
+        startedAt: "2026-08-24T12:00:01.000Z",
       }).success,
     ).toBe(false);
   });

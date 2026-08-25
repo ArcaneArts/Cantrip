@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@cantrip/protocol";
+import type { ChatMessage, InferenceProgressSnapshot } from "@cantrip/protocol";
 import {
   ArrowDown,
   ArrowLeft,
@@ -21,6 +21,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { InferenceProgressTrace } from "@/lib/inference-progress-history";
 import { cn } from "@/lib/utils";
 
 import { buildAgentTurnProjection } from "./agent-turn-projection";
@@ -109,7 +110,9 @@ function EventStatus({ event }: { event: TrajectoryEvent }) {
   return <CircleX className="size-3.5 text-destructive" />;
 }
 
-function laneColor(lane: TrajectoryLane): string {
+function laneColor(event: TrajectoryEvent): string {
+  if (event.kind === "inferenceProgress") return "bg-[#ff168f]";
+  const { lane } = event;
   if (lane === "input") return "bg-sky-500";
   if (lane === "model") return "bg-violet-500";
   if (lane === "changes") return "bg-emerald-500";
@@ -154,7 +157,7 @@ function TrajectoryEventRow({
           aria-hidden="true"
           className={cn(
             "mt-1.5 size-2 shrink-0 rounded-full",
-            laneColor(event.lane),
+            laneColor(event),
           )}
         />
         <div className="min-w-0 flex-1">
@@ -195,6 +198,8 @@ function TrajectoryEventRow({
 
 export function AgentTrajectory({
   active,
+  inferenceProgress,
+  inferenceProgressHistory,
   messages,
   onBackToCurrent,
   onOpenSubagent,
@@ -202,6 +207,8 @@ export function AgentTrajectory({
   visible,
 }: {
   active: boolean;
+  inferenceProgress?: InferenceProgressSnapshot | null;
+  inferenceProgressHistory?: readonly InferenceProgressTrace[];
   messages: ChatMessage[];
   onBackToCurrent?(): void;
   onOpenSubagent?(agentKey: string, focusItemKey: string | null): void;
@@ -243,11 +250,21 @@ export function AgentTrajectory({
       projectTrajectory({
         active,
         agentProjection,
+        inferenceProgress,
+        inferenceProgressHistory,
         messages: deferredMessages,
         nowMs,
         targetTurnKey,
       }),
-    [active, agentProjection, deferredMessages, nowMs, targetTurnKey],
+    [
+      active,
+      agentProjection,
+      deferredMessages,
+      inferenceProgress,
+      inferenceProgressHistory,
+      nowMs,
+      targetTurnKey,
+    ],
   );
   const {
     contentRef: eventListContentRef,
