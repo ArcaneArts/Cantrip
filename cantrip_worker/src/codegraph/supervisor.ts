@@ -812,25 +812,33 @@ export class CodeGraphProjectSupervisor {
           : before.initialized
             ? "sync"
             : "init";
-      const timeoutMs = command === "sync" ? SYNC_TIMEOUT_MS : INDEX_TIMEOUT_MS;
-      const result = await this.#execute(
-        this.#command,
-        [...this.#commandArguments, command, project.root],
-        {
-          cwd: project.root,
-          environment: this.#environment,
-          signal: project.abortController?.signal,
-          timeoutMs,
-        },
-      );
-      if (result.code !== 0) {
-        throw new Error(
-          `codegraph ${command} failed: ${(result.stderr || result.stdout).trim() || `exit ${result.code}`}`,
+      const alreadyCurrent =
+        action === "sync" &&
+        before.initialized &&
+        before.pendingChanges === 0 &&
+        !before.reindexRecommended;
+      if (!alreadyCurrent) {
+        const timeoutMs =
+          command === "sync" ? SYNC_TIMEOUT_MS : INDEX_TIMEOUT_MS;
+        const result = await this.#execute(
+          this.#command,
+          [...this.#commandArguments, command, project.root],
+          {
+            cwd: project.root,
+            environment: this.#environment,
+            signal: project.abortController?.signal,
+            timeoutMs,
+          },
         );
+        if (result.code !== 0) {
+          throw new Error(
+            `codegraph ${command} failed: ${(result.stderr || result.stdout).trim() || `exit ${result.code}`}`,
+          );
+        }
+        const after = await this.#readStatus(project);
+        if (!after.initialized)
+          throw new Error("CodeGraph did not initialize its index.");
       }
-      const after = await this.#readStatus(project);
-      if (!after.initialized)
-        throw new Error("CodeGraph did not initialize its index.");
       project.failureCount = 0;
       project.lastSuccessfulSyncAt = this.#now().toISOString();
       project.state = "ready";
