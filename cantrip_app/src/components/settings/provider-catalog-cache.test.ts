@@ -2,17 +2,26 @@ import type { ProviderModelCatalogResult } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { setClientSession } from "@/lib/client-session";
+import { scopedClientStorageKey, setClientSession } from "@/lib/client-session";
 import {
   cachedProviderModelCatalog,
   cacheProviderModelCatalog,
 } from "./provider-catalog-cache";
-import { useProviderCatalog } from "./use-provider-catalog";
+import {
+  providerCatalogQueryOptions,
+  useProviderCatalog,
+} from "./use-provider-catalog";
 
 class MemoryStorage implements Storage {
-  readonly #values = new Map<string, string>();
+  readonly #values: Map<string, string>;
+  getItemCalls = 0;
+  setItemCalls = 0;
+
+  constructor(values?: Map<string, string>) {
+    this.#values = new Map(values);
+  }
 
   get length(): number {
     return this.#values.size;
@@ -23,6 +32,7 @@ class MemoryStorage implements Storage {
   }
 
   getItem(key: string): string | null {
+    this.getItemCalls += 1;
     return this.#values.get(key) ?? null;
   }
 
@@ -35,7 +45,12 @@ class MemoryStorage implements Storage {
   }
 
   setItem(key: string, value: string): void {
+    this.setItemCalls += 1;
     this.#values.set(key, value);
+  }
+
+  snapshot(): Map<string, string> {
+    return new Map(this.#values);
   }
 }
 
@@ -90,12 +105,12 @@ const catalog = {
   servedStale: false,
 } satisfies ProviderModelCatalogResult;
 
-function signIn(userId: string) {
+function signIn(userId: string, serverId = "server-1") {
   setClientSession({
     authMode: "none",
     csrfToken: null,
     expiresAt: null,
-    serverId: "server-1",
+    serverId,
     user: {
       id: userId,
       kind: "account",
@@ -107,11 +122,17 @@ function signIn(userId: string) {
 }
 
 describe("provider model catalog cache", () => {
+  let localStorage: MemoryStorage;
+
   beforeEach(() => {
-    const localStorage = new MemoryStorage();
+    localStorage = new MemoryStorage();
     vi.stubGlobal("window", { localStorage });
     vi.stubGlobal("localStorage", localStorage);
     signIn("user-1");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("restores the available model list for the matching worker", () => {
@@ -155,6 +176,20 @@ describe("provider model catalog cache", () => {
     expect(
       cachedProviderModelCatalog("provider-1", "worker-1"),
     ).toBeUndefined();
+
+    signIn("user-1");
+    expect(cachedProviderModelCatalog("provider-1", "worker-1")).toEqual(
+      catalog,
+    );
+  });
+
+  it("keeps cached account catalogs isolated by server", () => {
+    cacheProviderModelCatalog("provider-1", "worker-1", catalog);
+    signIn("user-1", "server-2");
+
+    expect(
+      cachedProviderModelCatalog("provider-1", "worker-1"),
+    ).toBeUndefined();
   });
 
   it("ignores catalogs that do not belong to the provider key", () => {
@@ -163,5 +198,82 @@ describe("provider model catalog cache", () => {
     expect(
       cachedProviderModelCatalog("provider-2", "worker-1"),
     ).toBeUndefined();
+  });
+
+  it("does not hydrate disabled queries and hydrates an enabled scope once", () => {
+    const largeCatalog = {
+      ...catalog,
+      models: Array.from({ length: 140 }, (_, index) => ({
+        ...catalog.models[0]!,
+        id: `model-${index}`,
+        nativeModelId: `model-${index}`,
+        displayName: `Model ${index}`,
+        description: "x".repeat(20_000),
+      })),
+    } satisfies ProviderModelCatalogResult;
+    cacheProviderModelCatalog("provider-1", "worker-1", largeCatalog);
+    const storedValue = [...localStorage.snapshot().values()][0]!;
+    expect(storedValue.length).toBeGreaterThan(2_700_000);
+    expect(storedValue.length).toBeLessThanOrEqual(3_000_000);
+
+    localStorage = new MemoryStorage(localStorage.snapshot());
+    vi.stubGlobal("window", { localStorage });
+    vi.stubGlobal("localStorage", localStorage);
+
+    for (let index = 0; index < 100; index += 1) {
+      providerCatalogQueryOptions("provider-1", "worker-1", false);
+      providerCatalogQueryOptions("provider-2", "worker-1", false);
+    }
+    expect(localStorage.getItemCalls).toBe(0);
+
+    expect(
+      providerCatalogQueryOptions("provider-1", "worker-1", true)
+        .placeholderData?.models,
+    ).toHaveLength(140);
+    providerCatalogQueryOptions("provider-1", "worker-1", true);
+    expect(localStorage.getItemCalls).toBe(1);
+  });
+
+  it("expires hydrated entries without rereading storage", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-24T00:00:00.000Z"));
+    cacheProviderModelCatalog("provider-1", "worker-1", catalog);
+    expect(cachedProviderModelCatalog("provider-1", "worker-1")).toEqual(
+      catalog,
+    );
+    const readsAfterHydration = localStorage.getItemCalls;
+
+    vi.advanceTimersByTime(30 * 24 * 60 * 60_000 + 1);
+
+    expect(
+      cachedProviderModelCatalog("provider-1", "worker-1"),
+    ).toBeUndefined();
+    expect(localStorage.getItemCalls).toBe(readsAfterHydration);
+  });
+
+  it("hydrates corrupt storage once and remains fail-closed", () => {
+    localStorage.setItem(
+      scopedClientStorageKey("cantrip.provider-model-catalogs.v1"),
+      "{invalid-json",
+    );
+    localStorage.getItemCalls = 0;
+
+    expect(
+      cachedProviderModelCatalog("provider-1", "worker-1"),
+    ).toBeUndefined();
+    expect(
+      cachedProviderModelCatalog("provider-1", "worker-1"),
+    ).toBeUndefined();
+    expect(localStorage.getItemCalls).toBe(1);
+  });
+
+  it("skips an identical persistence write", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-24T00:00:00.000Z"));
+
+    cacheProviderModelCatalog("provider-1", "worker-1", catalog);
+    cacheProviderModelCatalog("provider-1", "worker-1", catalog);
+
+    expect(localStorage.setItemCalls).toBe(1);
   });
 });
