@@ -42,6 +42,17 @@ export interface CodexRuntimeDiagnostic {
   payload: unknown;
 }
 
+export async function interruptChatAcrossRuntimes(
+  runtimes: Iterable<Pick<CodexRuntime, "interruptChat">>,
+  chatId: string,
+  threadId: string | null,
+): Promise<{ interrupted: boolean }> {
+  const results = await Promise.all(
+    [...runtimes].map((runtime) => runtime.interruptChat(chatId, threadId)),
+  );
+  return { interrupted: results.some((result) => result.interrupted) };
+}
+
 export interface CodexRuntime {
   readonly compatibility: CodexRuntimeReport;
 
