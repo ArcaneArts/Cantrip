@@ -136,6 +136,10 @@ fn should_autostart_profile(profile_server_url: &str, active_local_server_url: &
     !loopback || profile_server_url == active_local_server_url
 }
 
+fn linked_worker_autostart_enabled(debug_build: bool, local_only: bool) -> bool {
+    !debug_build || !local_only
+}
+
 fn mirror_child_output<R: Read + Send + 'static>(mut reader: R, use_stderr: bool) {
     thread::spawn(move || {
         let mut buffer = [0_u8; 8 * 1_024];
@@ -637,13 +641,20 @@ pub fn build(app: &App, active_local_server_url: &str) -> Result<DesktopWorkers,
         profiles: Mutex::new(profiles.clone()),
         profiles_path,
     };
+    let linked_worker_autostart_enabled = linked_worker_autostart_enabled(
+        cfg!(debug_assertions),
+        std::env::var("CANTRIP_LOCAL_ONLY").as_deref() == Ok("true"),
+    );
     for profile in &profiles {
         if let Err(error) = manager.persist_profile(profile) {
             eprintln!("Could not retain linked desktop worker profile: {error}");
         }
     }
     for profile in profiles {
-        if manager.should_autostart(&profile) && manager.has_stored_credential(&profile.worker_id) {
+        if linked_worker_autostart_enabled
+            && manager.should_autostart(&profile)
+            && manager.has_stored_credential(&profile.worker_id)
+        {
             if let Err(_error) = manager.ensure_running(&profile, None, None) {
                 app.state::<crate::local_logs::LocalServiceLogs>()
                     .runtime_event(
@@ -871,8 +882,8 @@ mod tests {
     use std::{collections::HashMap, fs, path::Path, sync::Mutex};
 
     use super::{
-        normalize_server_url, read_retained_profiles, recover_profiles,
-        replacement_credential_required, replacement_profile, repository_count,
+        linked_worker_autostart_enabled, normalize_server_url, read_retained_profiles,
+        recover_profiles, replacement_credential_required, replacement_profile, repository_count,
         should_autostart_profile, sort_worker_candidates, DesktopWorkerCandidate,
         DesktopWorkerProfile, DesktopWorkerProjectStorage, DesktopWorkers, WorkerLaunch,
     };
@@ -906,6 +917,13 @@ mod tests {
             "https://winterhold.cantrip.art",
             "http://127.0.0.1:4310",
         ));
+    }
+
+    #[test]
+    fn local_only_development_disables_linked_worker_autostart() {
+        assert!(!linked_worker_autostart_enabled(true, true));
+        assert!(linked_worker_autostart_enabled(true, false));
+        assert!(linked_worker_autostart_enabled(false, true));
     }
 
     fn local_project_manager(root: &Path, worker_id: &str) -> DesktopWorkers {

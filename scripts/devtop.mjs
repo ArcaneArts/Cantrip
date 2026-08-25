@@ -132,7 +132,7 @@ try {
         "pnpm --filter @cantrip/protocol dev",
         "cross-env FORCE_COLOR=1 CANTRIP_SERVICE_LOG_DIR=../.cantrip/dev/logs/server pnpm --filter @cantrip/server dev",
         "node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_SERVICE_LOG_DIR=../.cantrip/dev/logs/worker CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm --filter @cantrip/worker dev",
-        "node scripts/wait-for-server.mjs && pnpm --filter @cantrip/app tauri:dev",
+        "node scripts/wait-for-server.mjs && cross-env CANTRIP_LOCAL_ONLY=true pnpm --filter @cantrip/app tauri:dev",
       ]);
     }
   }

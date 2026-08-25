@@ -681,7 +681,7 @@ describe("worker generic tunnel data transport", () => {
     await vi.waitFor(() => expect(disconnected).toHaveBeenCalled());
   });
 
-  it("retains transport state and process generation through a short reconnect", async () => {
+  it("retains transport state and process generation through a one-second reconnect", async () => {
     const server = await commandServer();
     const disconnected = vi.fn();
     const firstConnected = server.nextSocket();
@@ -693,7 +693,7 @@ describe("worker generic tunnel data transport", () => {
       disconnected,
       10,
       () => undefined,
-      { reconnectDelayMs: 5, transportDisconnectGraceMs: 60 },
+      { reconnectDelayMs: 1_000, transportDisconnectGraceMs: 1_500 },
     );
     connection.start();
     closers.push(() => connection.close());
@@ -702,7 +702,7 @@ describe("worker generic tunnel data transport", () => {
     const secondConnected = server.nextSocket();
     firstSocket.terminate();
     await secondConnected;
-    await new Promise((resolve) => setTimeout(resolve, 75));
+    await new Promise((resolve) => setTimeout(resolve, 550));
 
     expect(disconnected).not.toHaveBeenCalled();
     expect(server.requestUrls).toHaveLength(2);
