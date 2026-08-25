@@ -84,6 +84,32 @@ export interface ClaimedTaskDispatch {
   taskWorker: TaskWorkerSummary;
 }
 
+export interface TaskDispatchSchedulerOwner {
+  ownerId: string;
+  hasQueued: boolean;
+  hasClaimed: boolean;
+  hasRunning: boolean;
+  hasPaused: boolean;
+}
+
+export interface TaskDispatchSchedulerPlan {
+  reconcileUnstartedClaims: boolean;
+  reconcileStartedLeases: boolean;
+  resumePaused: boolean;
+  claimQueued: boolean;
+}
+
+export function taskDispatchSchedulerPlan(
+  owner: TaskDispatchSchedulerOwner,
+): TaskDispatchSchedulerPlan {
+  return {
+    reconcileUnstartedClaims: owner.hasClaimed,
+    reconcileStartedLeases: owner.hasClaimed || owner.hasRunning,
+    resumePaused: owner.hasPaused,
+    claimQueued: owner.hasQueued,
+  };
+}
+
 function iso(value: Date): string {
   return value.toISOString();
 }
@@ -208,9 +234,12 @@ export class TaskDispatchRepository {
     );
   }
 
-  async listSchedulerOwnerIds(): Promise<string[]> {
+  async listSchedulerOwners(): Promise<TaskDispatchSchedulerOwner[]> {
     const rows = await this.database
-      .selectDistinct({ ownerId: schema.taskDispatchCycles.ownerId })
+      .selectDistinct({
+        ownerId: schema.taskDispatchCycles.ownerId,
+        state: schema.taskDispatchCycles.state,
+      })
       .from(schema.taskDispatchCycles)
       .where(
         inArray(schema.taskDispatchCycles.state, [
@@ -220,8 +249,38 @@ export class TaskDispatchRepository {
           "paused",
         ]),
       )
-      .orderBy(asc(schema.taskDispatchCycles.ownerId));
-    return rows.map(({ ownerId }) => ownerId);
+      .orderBy(
+        asc(schema.taskDispatchCycles.ownerId),
+        asc(schema.taskDispatchCycles.state),
+      );
+    const owners = new Map<string, TaskDispatchSchedulerOwner>();
+    for (const { ownerId, state } of rows) {
+      const owner = owners.get(ownerId) ?? {
+        ownerId,
+        hasQueued: false,
+        hasClaimed: false,
+        hasRunning: false,
+        hasPaused: false,
+      };
+      owners.set(ownerId, owner);
+      switch (state) {
+        case "queued":
+          owner.hasQueued = true;
+          break;
+        case "claimed":
+          owner.hasClaimed = true;
+          break;
+        case "running":
+          owner.hasRunning = true;
+          break;
+        case "paused":
+          owner.hasPaused = true;
+          break;
+        default:
+          break;
+      }
+    }
+    return [...owners.values()];
   }
 
   async enqueue(
@@ -488,8 +547,19 @@ export class TaskDispatchRepository {
               asc(schema.taskDispatchCycles.id),
             ),
           transaction
-            .select({ chatId: schema.chatExecutionLanes.chatId })
+            .selectDistinct({ chatId: schema.chatExecutionLanes.chatId })
             .from(schema.chatExecutionLanes)
+            .innerJoin(
+              schema.taskDispatchCycles,
+              and(
+                eq(
+                  schema.taskDispatchCycles.chatId,
+                  schema.chatExecutionLanes.chatId,
+                ),
+                eq(schema.taskDispatchCycles.ownerId, ownerId),
+                eq(schema.taskDispatchCycles.state, "queued"),
+              ),
+            )
             .where(
               inArray(schema.chatExecutionLanes.state, [
                 "active",

@@ -755,6 +755,7 @@ import { TaskConflictError } from "./db/tasks.js";
 import {
   TASK_DISPATCH_LEASE_MS,
   TaskDispatchConflictError,
+  taskDispatchSchedulerPlan,
   type ClaimedTaskDispatch,
   type TaskDispatchEligibilityResolver,
   type TaskDispatchResumeEligibilityResolver,
@@ -23916,11 +23917,15 @@ export async function buildApp({
   const queueTaskScheduleTick = (): void => {
     if (activeTaskScheduleTick) return;
     activeTaskScheduleTick = (async () => {
-      const ownerIds = await repository.taskDispatch.listSchedulerOwnerIds();
-      for (const ownerId of ownerIds) {
+      const schedulerOwners =
+        await repository.taskDispatch.listSchedulerOwners();
+      for (const schedulerOwner of schedulerOwners) {
+        const ownerId = schedulerOwner.ownerId;
+        const plan = taskDispatchSchedulerPlan(schedulerOwner);
         await runAsOwner(ownerId, async () => {
-          const requeued =
-            await repository.taskDispatch.requeueExpiredLeases(ownerId);
+          const requeued = plan.reconcileUnstartedClaims
+            ? await repository.taskDispatch.requeueExpiredLeases(ownerId)
+            : [];
           if (requeued.length > 0) {
             app.log.warn(
               {
@@ -23933,8 +23938,9 @@ export async function buildApp({
               "Requeued expired Task claims that had not started",
             );
           }
-          const expired =
-            await repository.taskDispatch.expireStartedLeases(ownerId);
+          const expired = plan.reconcileStartedLeases
+            ? await repository.taskDispatch.expireStartedLeases(ownerId)
+            : [];
           for (const cycle of expired) {
             try {
               await repository.tasks.failOperation(
@@ -23970,45 +23976,49 @@ export async function buildApp({
               "Expired started Task leases require user attention",
             );
           }
-          const resolveResumeEligibility =
-            await prepareTaskResumeEligibility(ownerId);
-          while (true) {
-            const resumed = await repository.taskDispatch.resumeNextPaused(
-              ownerId,
-              `${serverId}:${serverInstanceId}`,
-              resolveResumeEligibility,
-            );
-            if (!resumed) break;
-            void runResumedTaskDispatch(ownerId, resumed).catch((error) => {
-              app.log.error(
-                {
-                  chatId: resumed.cycle.chatId,
-                  cycleId: resumed.cycle.id,
-                  err: error,
-                },
-                "Paused Task resume failed",
+          if (plan.resumePaused) {
+            const resolveResumeEligibility =
+              await prepareTaskResumeEligibility(ownerId);
+            while (true) {
+              const resumed = await repository.taskDispatch.resumeNextPaused(
+                ownerId,
+                `${serverId}:${serverInstanceId}`,
+                resolveResumeEligibility,
               );
-            });
+              if (!resumed) break;
+              void runResumedTaskDispatch(ownerId, resumed).catch((error) => {
+                app.log.error(
+                  {
+                    chatId: resumed.cycle.chatId,
+                    cycleId: resumed.cycle.id,
+                    err: error,
+                  },
+                  "Paused Task resume failed",
+                );
+              });
+            }
           }
-          const resolveEligibility =
-            await prepareTaskDispatchEligibility(ownerId);
-          while (true) {
-            const claimed = await repository.taskDispatch.claimNext(
-              ownerId,
-              `${serverId}:${serverInstanceId}`,
-              resolveEligibility,
-            );
-            if (!claimed) break;
-            void runClaimedTaskOperation(ownerId, claimed).catch((error) => {
-              app.log.error(
-                {
-                  chatId: claimed.cycle.chatId,
-                  cycleId: claimed.cycle.id,
-                  err: error,
-                },
-                "Scheduled Task execution failed",
+          if (plan.claimQueued || requeued.length > 0) {
+            const resolveEligibility =
+              await prepareTaskDispatchEligibility(ownerId);
+            while (true) {
+              const claimed = await repository.taskDispatch.claimNext(
+                ownerId,
+                `${serverId}:${serverInstanceId}`,
+                resolveEligibility,
               );
-            });
+              if (!claimed) break;
+              void runClaimedTaskOperation(ownerId, claimed).catch((error) => {
+                app.log.error(
+                  {
+                    chatId: claimed.cycle.chatId,
+                    cycleId: claimed.cycle.id,
+                    err: error,
+                  },
+                  "Scheduled Task execution failed",
+                );
+              });
+            }
           }
         });
       }

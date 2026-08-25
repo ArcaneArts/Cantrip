@@ -34,7 +34,7 @@ The priority frontier now mixes the strongest new findings with still-valid carr
 | Rank | Opportunity                                              | Gain             | Risk       | Dominant avoided work                                   |
 | ---- | -------------------------------------------------------- | ---------------- | ---------- | ------------------------------------------------------- |
 | 1    | N0-01 watcher-first Run-configuration reconciliation     | very high idle   | low        | up to 128 rereads/parses every 500 ms per repository    |
-| 2    | N0-02 state-gate the durable Task scheduler              | high fleet-wide  | low        | impossible resume/claim transactions every second       |
+| 2    | N0-02 [completed] state-gate the durable Task scheduler  | completed        | —          | running-only owners now execute lease expiry only       |
 | 3    | N0-03 linear, low-copy Browser Code tunnel framing       | high interactive | low-medium | cumulative buffer copies and repeated payload copies    |
 | 4    | N0-04 coalesce AppLive cursor persistence/subscriptions  | high during live | low-medium | synchronous storage plus React fanout per event         |
 | 5    | N0-05 cache provider catalogs outside transcript renders | high interaction | low        | repeated multi-megabyte storage parse/schema validation |
@@ -124,15 +124,16 @@ Validation: count readdir/open/read/hash/schema work for 1, 32, and 256 reposito
 and 128 files. Exercise initially missing directories, create/edit/rename/delete, watcher
 errors, silently missed events, and eviction. The slow sweep must repair missed events.
 
-### N0-02 — opportunity — Gate the durable Task scheduler by actual cycle state
+### N0-02 — completed — Gate the durable Task scheduler by actual cycle state
 
+- Status: completed 2026-08-24
 - Category: N_PLUS_ONE_OR_CHATTER, REDUNDANT_COMPUTATION
 - Expected gain: high fleet-wide
-- Risk: low
-- Complexity: low-medium
+- Original risk: low
+- Original complexity: low-medium
 - Confidence: high
 
-Evidence:
+Original evidence:
 
 - cantrip_server/src/app.ts:1028 and 24335-24340 run the durable Task scheduler every second.
 - cantrip_server/src/db/task-dispatch.ts:211-224 returns owners with any queued, claimed,
@@ -143,17 +144,32 @@ Evidence:
   404-499 lock and issue four claim queries. The active-lane query at 490-499 is not scoped
   to the owner.
 
-Hypothesis: a single long-running Task keeps logically impossible resume and claim queries
+Original hypothesis: a single long-running Task keeps logically impossible resume and claim queries
 running every second for its entire duration, competing through the five-connection pool.
 
-Suggested change: preserve the one-second durability watchdog, but return per-state flags or
-counts from the owner scan. Run paused preparation only when paused work exists, queued
-preparation only when queued work exists, and lease expiry only for claimed/running work.
-Scope active-lane reads to the owner/candidate chats.
+Resolution:
 
-Validation: count SQL for 60 seconds with none, queued, claimed, running, paused, and mixed
-states. Running-only owners must perform no pause/claim hydration, while expiration,
-fencing, restart recovery, and the current recovery bound remain identical.
+- cantrip_server/src/db/task-dispatch.ts:237-284 now returns queued, claimed, running, and
+  paused flags for each owner in one distinct state query. Lines 87-110 convert those flags
+  into the exact scheduler stages that can do work.
+- cantrip_server/src/app.ts:23920-24022 gates unstarted-claim reconciliation, started-lease
+  expiry, paused resume preparation/transactions, and queued eligibility/claim work. A
+  newly requeued expired claim still enters claiming in the same tick.
+- cantrip_server/src/db/task-dispatch.ts:549-568 restricts the active-lane read to queued
+  chats belonging to the scheduled owner instead of reading every tenant's active lanes.
+- The durable one-second watchdog remains unchanged at cantrip_server/src/app.ts:1029 and
+  24358-24363.
+
+Validation:
+
+- cantrip_server/test/task-dispatch.test.ts:158-259 covers every active state, every terminal
+  state, a mixed owner, the one-query owner summary, and the running-only plan that enables
+  lease expiry while disabling unstarted-claim, pause-resume, and queued-claim stages.
+- Existing lease and paused-affinity coverage at cantrip_server/test/task-dispatch.test.ts:381
+  and 506 preserves requeue/expiry fencing and exact resume behavior.
+- The focused Task dispatch suite passes all seven tests, and the server TypeScript check
+  passes. No timing claim is made; the proof is deterministic elimination of impossible
+  repository stages while retaining their original state transitions.
 
 ### N0-03 — opportunity — Make Browser Code tunnel framing linear and low-copy
 
@@ -1491,7 +1507,7 @@ coalescing, or replace an equivalent data structure.
 
 ### Wave 2 — bounded batching, memoization, and ownership
 
-Implement N0-02, N0-03, N0-07, N0-08, N0-10 through N0-18, P0-02 through P0-04, P0-06,
+Implement N0-03, N0-07, N0-08, N0-10 through N0-18, P0-02 through P0-04, P0-06,
 P0-07, P0-10, P0-14, P1-02 through P1-05, P1-08 through P1-13, and P1-17. Land each behind
 equivalence, ownership, security, and bounded cache/queue tests.
 
