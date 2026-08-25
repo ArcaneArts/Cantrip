@@ -68,6 +68,9 @@ test("applies editor-only settings without changing ordinary workbenches", async
   const workspace = {
     getConfiguration(section) {
       return {
+        get() {
+          return undefined;
+        },
         async update(key, value, target) {
           if (section === "window" && key === "menuBarVisibility") {
             throw new Error("window.menuBarVisibility is application-scoped");
@@ -134,6 +137,93 @@ test("applies editor-only settings without changing ordinary workbenches", async
   ]);
 });
 
+test("does not rewrite editor-only settings that already have the desired value", async () => {
+  const updates = [];
+  const commands = [];
+  const desiredValues = new Map([
+    ["cantrip.presentation", "editor"],
+    ...EDITOR_CONFIGURATION.map(([section, key, value]) => [
+      `${section}.${key}`,
+      value,
+    ]),
+  ]);
+  const workspace = {
+    getConfiguration(section) {
+      return {
+        get(key) {
+          return desiredValues.get(`${section}.${key}`);
+        },
+        inspect(key) {
+          return {
+            workspaceValue: desiredValues.get(`${section}.${key}`),
+          };
+        },
+        async update(key, value, target) {
+          updates.push([section, key, value, target]);
+        },
+      };
+    },
+  };
+
+  assert.equal(
+    await setWorkbenchPresentation(
+      "editor",
+      workspace,
+      {
+        async executeCommand(command) {
+          commands.push(command);
+        },
+      },
+      "workspace",
+    ),
+    true,
+  );
+  assert.deepEqual(updates, []);
+  assert.deepEqual(commands, [
+    "workbench.action.closeAuxiliaryBar",
+    "workbench.action.closeSidebar",
+    "workbench.action.closePanel",
+    "notifications.hideToasts",
+    "notifications.clearAll",
+  ]);
+});
+
+test("pins inherited editor-only values at workspace scope", async () => {
+  const updates = [];
+  const desiredValues = new Map([
+    ["cantrip.presentation", "editor"],
+    ...EDITOR_CONFIGURATION.map(([section, key, value]) => [
+      `${section}.${key}`,
+      value,
+    ]),
+  ]);
+  const workspace = {
+    getConfiguration(section) {
+      return {
+        get(key) {
+          return desiredValues.get(`${section}.${key}`);
+        },
+        inspect() {
+          return { globalValue: "inherited", workspaceValue: undefined };
+        },
+        async update(key, value, target) {
+          updates.push([section, key, value, target]);
+        },
+      };
+    },
+  };
+
+  await setWorkbenchPresentation(
+    "editor",
+    workspace,
+    { executeCommand: async () => undefined },
+    "workspace",
+  );
+
+  assert.equal(updates.length, EDITOR_CONFIGURATION.length + 1);
+  assert.ok(updates.every(([, , , target]) => target === "workspace"));
+});
+
 test("defines every configurable editor-only chrome invariant", () => {
   assert.deepEqual(EDITOR_CONFIGURATION, [
     ["breadcrumbs", "enabled", false],
@@ -155,7 +245,7 @@ test("defines every configurable editor-only chrome invariant", () => {
 test("treats already-hidden close commands as best-effort after applying authoritative config", async () => {
   const workspace = {
     getConfiguration() {
-      return { update: async () => undefined };
+      return { get: () => undefined, update: async () => undefined };
     },
   };
 
@@ -179,6 +269,9 @@ test("rejects presentation control when an authoritative config write fails", as
   const workspace = {
     getConfiguration(section) {
       return {
+        get() {
+          return undefined;
+        },
         async update(key) {
           if (section === "workbench.statusBar" && key === "visible") {
             throw new Error("workspace settings are read-only");
@@ -203,7 +296,12 @@ test("rejects attempts to collapse a normal Code workbench", async () => {
   await assert.rejects(
     setWorkbenchPresentation(
       "workbench",
-      { getConfiguration: () => ({ update: async () => undefined }) },
+      {
+        getConfiguration: () => ({
+          get: () => undefined,
+          update: async () => undefined,
+        }),
+      },
       { executeCommand: async () => undefined },
       "workspace",
     ),

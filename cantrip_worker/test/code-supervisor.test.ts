@@ -8,6 +8,7 @@ import {
   readdir,
   realpath,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -1848,7 +1849,7 @@ describe("Cantrip Code supervisor", () => {
   });
 
   it("reconfigures a compatibility workbench as editor-only and opens a safe relative file", async () => {
-    const { repository, supervisor } = await fixture();
+    const { dataDirectory, repository, supervisor } = await fixture();
     const canonicalRepository = await realpath(repository);
     await writeFile(path.join(repository, "example.ts"), "export {};\n");
     await writeFile(path.join(repository, "second.ts"), "export {};\n");
@@ -1916,16 +1917,97 @@ describe("Cantrip Code supervisor", () => {
     });
     expect(workspace.settings).not.toHaveProperty("window.menuBarVisibility");
 
+    const runtimePath = path.join(
+      dataDirectory,
+      "code",
+      "state",
+      "runtime.json",
+    );
+    const workspacePath = new URL(target.workspaceUri);
+    const beforeOpenFile = {
+      runtime: (await stat(runtimePath, { bigint: true })).ino,
+      workspace: (await stat(workspacePath, { bigint: true })).ino,
+    };
+
     await expect(supervisor.openFile("editor", "second.ts")).resolves.toEqual({
       relativePath: "second.ts",
     });
+    expect((await stat(runtimePath, { bigint: true })).ino).toBe(
+      beforeOpenFile.runtime,
+    );
+    expect((await stat(workspacePath, { bigint: true })).ino).toBe(
+      beforeOpenFile.workspace,
+    );
     workspace = JSON.parse(
       await readFile(new URL(target.workspaceUri), "utf8"),
     ) as { settings: Record<string, unknown> };
     expect(workspace.settings).not.toHaveProperty("cantrip.initialFile");
+
+    await expect(
+      supervisor.setPresentation("editor", "editor"),
+    ).resolves.toMatchObject({ sessionId: "editor" });
+    expect((await stat(runtimePath, { bigint: true })).ino).toBe(
+      beforeOpenFile.runtime,
+    );
+    expect((await stat(workspacePath, { bigint: true })).ino).toBe(
+      beforeOpenFile.workspace,
+    );
     await expect(
       supervisor.openFile("editor", "../outside.ts"),
     ).rejects.toThrow("safe worktree-relative file path");
+    socket.close();
+  });
+
+  it("persists workbench navigation without rewriting its workspace", async () => {
+    const { dataDirectory, repository, supervisor } = await fixture();
+    await writeFile(path.join(repository, "first.ts"), "export {}\n");
+    await writeFile(path.join(repository, "second.ts"), "export {}\n");
+    await supervisor.open({
+      ...openCommand("durable-navigation", repository, "primary"),
+      initialFile: "first.ts",
+    });
+    const target = supervisor.proxyTarget("durable-navigation");
+    const workspace = JSON.parse(
+      await readFile(new URL(target.workspaceUri), "utf8"),
+    ) as { settings: Record<string, unknown> };
+    const socket = await openSocket(
+      workspace.settings["cantrip.bridgeUrl"] as string,
+    );
+    socket.on("message", (data) => {
+      const request = JSON.parse(data.toString()) as BridgeRequest;
+      socket.send(
+        JSON.stringify({
+          type: "response",
+          id: request.id,
+          ok: true,
+          result:
+            request.method === "openFile"
+              ? { relativePath: request.params.path }
+              : { applied: true },
+        }),
+      );
+    });
+    const workspacePath = new URL(target.workspaceUri);
+    const workspaceInode = (await stat(workspacePath, { bigint: true })).ino;
+
+    await expect(
+      supervisor.openFile("durable-navigation", "second.ts"),
+    ).resolves.toEqual({ relativePath: "second.ts" });
+
+    expect((await stat(workspacePath, { bigint: true })).ino).toBe(
+      workspaceInode,
+    );
+    const persisted = JSON.parse(
+      await readFile(
+        path.join(dataDirectory, "code", "state", "runtime.json"),
+        "utf8",
+      ),
+    ) as { sessions: Array<{ initialFile: string; sessionId: string }> };
+    expect(
+      persisted.sessions.find(
+        (session) => session.sessionId === "durable-navigation",
+      )?.initialFile,
+    ).toBe("second.ts");
     socket.close();
   });
 
@@ -2230,16 +2312,17 @@ describe("Cantrip Code supervisor", () => {
       repository,
       supervisor,
     } = await fixture();
+    const statePath = path.join(dataDirectory, "code", "state", "runtime.json");
+    await writeFile(statePath, '{"sentinel":true}\n');
+    const stateInode = (await stat(statePath, { bigint: true })).ino;
     await supervisor.open({
       ...openCommand("temporary-editor", repository, "primary"),
       presentation: "editor",
     });
+    expect((await stat(statePath, { bigint: true })).ino).toBe(stateInode);
     await supervisor.close();
 
-    const state = await readFile(
-      path.join(dataDirectory, "code", "state", "runtime.json"),
-      "utf8",
-    );
+    const state = await readFile(statePath, "utf8");
     expect(state).not.toContain("temporary-editor");
 
     const restored = new CodeSupervisor({
@@ -2251,6 +2334,22 @@ describe("Cantrip Code supervisor", () => {
     supervisors.push(restored);
     await restored.start();
     expect(() => restored.status("temporary-editor")).toThrow("is not open");
+  });
+
+  it("removes a durable record when an existing workbench reopens as editor-only", async () => {
+    const { dataDirectory, repository, supervisor } = await fixture();
+    const command = openCommand(
+      "reopened-temporary-editor",
+      repository,
+      "primary",
+    );
+    await supervisor.open(command);
+    const statePath = path.join(dataDirectory, "code", "state", "runtime.json");
+    expect(await readFile(statePath, "utf8")).toContain(command.sessionId);
+
+    await supervisor.open({ ...command, presentation: "editor" });
+
+    expect(await readFile(statePath, "utf8")).not.toContain(command.sessionId);
   });
 
   it("opens graphical settings in an ephemeral folderless session", async () => {
@@ -2312,7 +2411,11 @@ describe("Cantrip Code supervisor", () => {
     );
 
     const stateFile = path.join(dataDirectory, "code", "state", "runtime.json");
-    expect(await readFile(stateFile, "utf8")).not.toContain(sessionId);
+    expect(
+      await readFile(stateFile, "utf8").catch((error: NodeJS.ErrnoException) =>
+        error.code === "ENOENT" ? "" : Promise.reject(error),
+      ),
+    ).not.toContain(sessionId);
     bridge.socket.close();
     await supervisor.close();
 

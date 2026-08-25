@@ -619,6 +619,7 @@ export class CodeSupervisor {
       await this.#retireSession(current);
     }
     let session = this.#sessions.get(command.sessionId);
+    const previousPresentation = session?.presentation ?? null;
     let bridgeRegistered = false;
     let createdSession: CodeSession | null = null;
     let createdSessionDirectory: string | null = null;
@@ -740,7 +741,12 @@ export class CodeSupervisor {
       session.status = "running";
       session.startedAt ??= isoNow();
       this.#touch(session);
-      await this.#persistState();
+      if (
+        session.presentation === "workbench" ||
+        previousPresentation === "workbench"
+      ) {
+        await this.#persistState();
+      }
       this.#assertCurrentOperation(command.sessionId, generation, session);
       const status = this.#status(session);
       workerLogger.event("info", "Cantrip Code session is running", {
@@ -837,9 +843,9 @@ export class CodeSupervisor {
       this.#assertCurrentOperation(sessionId, generation, session);
       session.initialFile = relativePath;
       this.#touch(session);
-      await this.#writeWorkspace(session);
-      this.#assertCurrentOperation(sessionId, generation, session);
-      await this.#persistState();
+      if (session.presentation === "workbench") {
+        await this.#persistState();
+      }
       this.#assertCurrentOperation(sessionId, generation, session);
       const result = await this.#bridge.openFile(
         sessionId,
@@ -861,12 +867,15 @@ export class CodeSupervisor {
     return this.#enqueueSessionOperation(sessionId, async () => {
       this.#assertCurrentOperation(sessionId, generation);
       const session = this.#requireSession(sessionId);
+      const presentationChanged = session.presentation !== presentation;
       session.presentation = presentation;
       this.#touch(session);
-      await this.#writeWorkspace(session);
-      this.#assertCurrentOperation(sessionId, generation, session);
-      await this.#persistState();
-      this.#assertCurrentOperation(sessionId, generation, session);
+      if (presentationChanged) {
+        await this.#writeWorkspace(session);
+        this.#assertCurrentOperation(sessionId, generation, session);
+        await this.#persistState();
+        this.#assertCurrentOperation(sessionId, generation, session);
+      }
       await this.#bridge.setPresentation(sessionId, presentation, signal);
       this.#assertCurrentOperation(sessionId, generation, session);
       return this.#status(session);
