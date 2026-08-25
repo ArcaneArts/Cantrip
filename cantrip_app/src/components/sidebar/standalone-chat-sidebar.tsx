@@ -91,7 +91,7 @@ export function StandaloneChatSidebar({
 
   return (
     <>
-      <div className="space-y-2 px-3 pb-2 pt-4">
+      <div className="px-3 pb-2 pt-4">
         <Button
           className="w-full justify-start"
           variant="ghost"
@@ -99,28 +99,33 @@ export function StandaloneChatSidebar({
         >
           <Code2 className="size-4" /> IDE
         </Button>
-        <Button
-          className="w-full justify-start"
-          disabled={creating || creationDisabled}
-          title={creationUnavailableReason ?? undefined}
-          onClick={onNewChat}
-        >
-          {creating ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Plus className="size-4" />
-          )}
-          New Chat
-        </Button>
       </div>
 
       <nav
         aria-label="Standalone chats"
         className="min-h-0 flex-1 overflow-y-auto px-2 pb-4"
       >
-        <p className="px-2 pb-2 pt-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Chats
-        </p>
+        <div className="flex items-center justify-between px-2 pb-2 pt-1">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Chats
+          </p>
+          <Button
+            aria-busy={creating || undefined}
+            aria-label="New chat"
+            className="size-7"
+            disabled={creating || creationDisabled}
+            size="icon"
+            title={creationUnavailableReason ?? "New chat"}
+            variant="ghost"
+            onClick={onNewChat}
+          >
+            {creating ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : (
+              <Plus aria-hidden="true" className="size-4" />
+            )}
+          </Button>
+        </div>
         {error ? (
           <InlineAlert
             className="mx-1 mb-2"

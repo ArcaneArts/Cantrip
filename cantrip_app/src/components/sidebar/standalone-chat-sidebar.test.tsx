@@ -57,7 +57,9 @@ describe("standalone Chat sidebar", () => {
     );
 
     expect(markup).toContain(" IDE</button>");
-    expect(markup).toContain("New Chat");
+    expect(markup).toContain('aria-label="New chat"');
+    expect(markup).toContain('title="New chat"');
+    expect(markup).not.toContain(">New Chat</button>");
     expect(markup).toContain("Research notes");
     expect(markup).toContain("Agent turn finished");
     expect(markup).toContain("Archived");
