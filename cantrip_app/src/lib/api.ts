@@ -818,9 +818,14 @@ export async function getTunnels(projectId?: string) {
   return Promise.all(tunnels.map((tunnel) => openTunnelSummary(tunnel)));
 }
 
-export async function getTunnelDataProtection(tunnelId: string) {
+export async function getTunnelDataProtection(
+  tunnelId: string,
+  options: { signal?: AbortSignal } = {},
+) {
   const wire = tunnelWireSummarySchema.parse(
-    await request(`/api/tunnels/${encodeURIComponent(tunnelId)}`),
+    await request(`/api/tunnels/${encodeURIComponent(tunnelId)}`, {
+      signal: options.signal,
+    }),
   );
   if (!wire.protectedRecord) {
     throw new Error("This tunnel does not have protected data-plane keys.");
@@ -953,9 +958,11 @@ export async function createTunnelAttachment(
 
 export async function deleteTunnelAttachment(
   attachmentId: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<void> {
   await request(`/api/tunnel-attachments/${encodeURIComponent(attachmentId)}`, {
     method: "DELETE",
+    signal: options.signal,
   });
 }
 

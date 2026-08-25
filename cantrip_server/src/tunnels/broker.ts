@@ -226,6 +226,21 @@ export class TunnelStreamBroker {
     return routes.length;
   }
 
+  recordRouteActivity(
+    tunnelId: string,
+    attachmentId: string,
+    authoritativeRootRequired: boolean,
+  ): boolean {
+    const route = this.#routes.get(routeKey(tunnelId, attachmentId));
+    if (
+      !route ||
+      route.authoritativeRootRequired !== authoritativeRootRequired
+    ) {
+      return false;
+    }
+    return this.#recordRouteActivity(route);
+  }
+
   sweep(now = this.#now()): void {
     for (const connection of [...this.#connections.values()]) {
       if (now - connection.createdAt >= this.#maxLifetimeMs) {
@@ -296,13 +311,10 @@ export class TunnelStreamBroker {
         this.#rejectOpen(route, header, "limit-exceeded");
         return;
       }
-      if (
-        !this.#onActivity(
-          route.tunnelId,
-          route.attachmentId,
-          route.authoritativeRootRequired,
-        )
-      ) {
+      if (!this.#recordRouteActivity(route)) {
+        if (this.#routes.get(route.key) === route) {
+          this.#rejectOpen(route, header, "unauthorized");
+        }
         return;
       }
       if (this.#routes.get(route.key) !== route) return;
@@ -361,13 +373,7 @@ export class TunnelStreamBroker {
       this.#terminate(connection, "protocol-error");
       return;
     }
-    if (
-      !this.#onActivity(
-        route.tunnelId,
-        route.attachmentId,
-        route.authoritativeRootRequired,
-      )
-    ) {
+    if (!this.#recordRouteActivity(route)) {
       this.#terminate(connection, "endpoint-disconnected");
       return;
     }
@@ -523,6 +529,16 @@ export class TunnelStreamBroker {
     }
     connection.bandwidthBytes += bytes;
     return connection.bandwidthBytes <= this.#maxBytesPerSecond;
+  }
+
+  #recordRouteActivity(route: Route): boolean {
+    return (
+      this.#onActivity(
+        route.tunnelId,
+        route.attachmentId,
+        route.authoritativeRootRequired,
+      ) && this.#routes.get(route.key) === route
+    );
   }
 
   #forward(

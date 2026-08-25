@@ -1671,6 +1671,42 @@ export const tunnelAttachments = pgTable(
   ],
 );
 
+export const tunnelAttachmentDirectLeases = pgTable(
+  "tunnel_attachment_direct_leases",
+  {
+    capabilityId: text("capability_id").primaryKey(),
+    attachmentId: text("attachment_id")
+      .notNull()
+      .references(() => tunnelAttachments.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("active"),
+    leaseExpiresAt: timestamp("lease_expires_at", {
+      withTimezone: true,
+    }).notNull(),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("tunnel_attachment_direct_leases_attachment_status_expiry_index").on(
+      table.attachmentId,
+      table.status,
+      table.leaseExpiresAt,
+    ),
+    check(
+      "tunnel_attachment_direct_leases_status_check",
+      sql`${table.status} IN ('active', 'finalized')`,
+    ),
+    check(
+      "tunnel_attachment_direct_leases_finalized_at_check",
+      sql`(${table.status} = 'active' AND ${table.finalizedAt} IS NULL) OR (${table.status} = 'finalized' AND ${table.finalizedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
 export const mcpServers = pgTable(
   "mcp_servers",
   {

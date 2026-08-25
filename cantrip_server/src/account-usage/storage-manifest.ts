@@ -32,6 +32,7 @@ export type StorageOwnerResolution =
   | "provider-model"
   | "self"
   | "tunnel"
+  | "tunnel-attachment"
   | "user"
   | "workspace"
   | "workflow-definition"
@@ -173,6 +174,11 @@ export const STORAGE_ACCOUNTING_MANIFEST: readonly StorageAccountingManifestEntr
     accountOwned(schema.projects, "projects"),
     accountOwned(schema.tunnels, "projects"),
     accountOwned(schema.tunnelAttachments, "projects", "tunnel"),
+    accountOwned(
+      schema.tunnelAttachmentDirectLeases,
+      "projects",
+      "tunnel-attachment",
+    ),
     accountOwned(schema.mcpServers, "configuration"),
     accountOwned(schema.projectWorkspaces, "projects"),
     projectOwned(schema.projectWorkspaceMemberships),

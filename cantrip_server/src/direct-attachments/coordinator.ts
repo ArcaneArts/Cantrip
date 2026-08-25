@@ -146,6 +146,25 @@ export interface DirectAttachmentPrepareInput {
   worker: WorkerSummary;
 }
 
+export interface DirectAttachmentLeaseLifecycleEvent {
+  attachmentId: string;
+  capabilityId: string;
+  leaseExpiresAt: string;
+  mode: DirectGrant["mode"];
+  ownerId: string;
+  resourceId: string;
+  resourceKind: DirectResourceKind;
+}
+
+export interface DirectAttachmentCoordinatorOptions {
+  onLeaseFinalized?: (
+    event: DirectAttachmentLeaseLifecycleEvent,
+  ) => Promise<void> | void;
+  onLeaseRenewed?: (
+    event: DirectAttachmentLeaseLifecycleEvent,
+  ) => Promise<void> | void;
+}
+
 const CAPABILITY_TTL_MS = 15_000;
 const LEASE_TTL_MS = 60_000;
 const MAX_LEASE_TTL_MS = 12 * 60 * 60_000;
@@ -189,6 +208,7 @@ export class DirectAttachmentUnavailableError extends Error {}
 export class DirectAttachmentCoordinator {
   readonly #attachmentRevocations = new Map<string, number>();
   readonly #grants = new Map<string, DirectGrant>();
+  readonly #leaseLifecycleWrites = new Set<Promise<void>>();
   readonly #ownerRevocations = new Map<string, number>();
   readonly #preparationLeases = new Map<
     DirectAttachmentPreparationLease,
@@ -211,7 +231,30 @@ export class DirectAttachmentCoordinator {
   constructor(
     private readonly workers: WorkerCommandBus,
     private readonly logger: ServiceLogger = serverLogger,
+    private readonly options: DirectAttachmentCoordinatorOptions = {},
   ) {}
+
+  getTunnelLeaseForActivation(
+    capabilityId: string,
+    authorization: {
+      attachmentId: string;
+      authSessionId: string;
+      ownerId: string;
+    },
+  ): DirectAttachmentLeaseLifecycleEvent | null {
+    const grant = this.#grants.get(capabilityId);
+    if (
+      !grant ||
+      grant.ownerId !== authorization.ownerId ||
+      grant.authSessionId !== authorization.authSessionId ||
+      grant.attachmentId !== authorization.attachmentId ||
+      grant.mode !== "direct-tunnel" ||
+      grant.resourceKind !== "tunnel"
+    ) {
+      return null;
+    }
+    return this.#leaseLifecycleEvent(capabilityId, grant);
+  }
 
   acquirePreparationLease(
     input: DirectAttachmentPreparationLeaseInput,
@@ -898,6 +941,10 @@ export class DirectAttachmentCoordinator {
     );
     grant.timer = this.#scheduleExpiry(capabilityId, grant.leaseExpiresAtMs);
     grant.renewalCount += 1;
+    this.#notifyLeaseLifecycle(
+      "renewed",
+      this.#leaseLifecycleEvent(capabilityId, grant),
+    );
     this.logger.debug("Direct attachment capability lease renewed", {
       event: "direct_attachment.renew.completed",
       subsystem: "direct-attachment",
@@ -1001,6 +1048,13 @@ export class DirectAttachmentCoordinator {
   }
 
   async revokeAttachment(attachmentId: string): Promise<void> {
+    await this.mutateAttachment(attachmentId, async () => undefined);
+  }
+
+  async mutateAttachment<T>(
+    attachmentId: string,
+    mutation: () => Promise<T>,
+  ): Promise<T> {
     this.#beginFence(this.#attachmentRevocations, attachmentId);
     try {
       await Promise.all([
@@ -1018,6 +1072,7 @@ export class DirectAttachmentCoordinator {
             this.revoke(capabilityId, "Owning attachment was revoked"),
           ),
       );
+      return await mutation();
     } finally {
       this.#endFence(this.#attachmentRevocations, attachmentId);
     }
@@ -1120,6 +1175,7 @@ export class DirectAttachmentCoordinator {
           this.revoke(capabilityId, "Cantrip Server is stopping"),
         ),
       );
+      await Promise.allSettled([...this.#leaseLifecycleWrites]);
       this.logger.info("Direct attachment coordinator stopped", {
         event: "direct_attachment.runtime.stopped",
         subsystem: "direct-attachment",
@@ -1388,6 +1444,10 @@ export class DirectAttachmentCoordinator {
     clearTimeout(grant.timer);
     grant.unsubscribeDisconnect();
     this.#grants.delete(capabilityId);
+    this.#notifyLeaseLifecycle(
+      "finalized",
+      this.#leaseLifecycleEvent(capabilityId, grant),
+    );
     const resourceKey = this.#resourceKey(
       grant.ownerId,
       grant.resourceKind,
@@ -1434,6 +1494,65 @@ export class DirectAttachmentCoordinator {
         : { telemetryAgeMs: now - grant.telemetryObservedAtMs }),
     });
     return grant;
+  }
+
+  #leaseLifecycleEvent(
+    capabilityId: string,
+    grant: DirectGrant,
+  ): DirectAttachmentLeaseLifecycleEvent {
+    return {
+      attachmentId: grant.attachmentId,
+      capabilityId,
+      leaseExpiresAt: new Date(grant.leaseExpiresAtMs).toISOString(),
+      mode: grant.mode,
+      ownerId: grant.ownerId,
+      resourceId: grant.resourceId,
+      resourceKind: grant.resourceKind,
+    };
+  }
+
+  #notifyLeaseLifecycle(
+    kind: "finalized" | "renewed",
+    event: DirectAttachmentLeaseLifecycleEvent,
+  ): void {
+    if (event.mode !== "direct-tunnel" || event.resourceKind !== "tunnel") {
+      return;
+    }
+    const observer =
+      kind === "finalized"
+        ? this.options.onLeaseFinalized
+        : this.options.onLeaseRenewed;
+    if (!observer) return;
+    let observed: Promise<void> | void;
+    try {
+      observed = observer(event);
+    } catch (error) {
+      this.#logLeaseLifecycleFailure(kind, event, error);
+      return;
+    }
+    const write = Promise.resolve(observed)
+      .catch((error) => this.#logLeaseLifecycleFailure(kind, event, error))
+      .finally(() => this.#leaseLifecycleWrites.delete(write));
+    this.#leaseLifecycleWrites.add(write);
+  }
+
+  #logLeaseLifecycleFailure(
+    kind: "finalized" | "renewed",
+    event: DirectAttachmentLeaseLifecycleEvent,
+    error: unknown,
+  ): void {
+    this.logger.error("Direct attachment lease persistence failed", {
+      event: "direct_attachment.lease-persistence.failed",
+      subsystem: "direct-attachment",
+      operation: kind === "finalized" ? "finalize-lease" : "renew-lease",
+      status: "failed",
+      reasonCode: "repository_write_failed",
+      mode: event.mode,
+      attachmentId: event.attachmentId,
+      resourceId: event.resourceId,
+      resourceKind: event.resourceKind,
+      ...safeErrorMetadata(error),
+    });
   }
 
   #logPrepareFailure(

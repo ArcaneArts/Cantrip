@@ -19,12 +19,15 @@ import {
   TunnelRuntimeManager,
   tunnelBandwidthChannel,
 } from "../src/tunnels/runtime.js";
+import { TunnelStreamBroker } from "../src/tunnels/broker.js";
+import { DesktopTunnelEndpoint } from "../src/tunnels/desktop-endpoint.js";
 import type {
   WorkerCommandBus,
   WorkerTunnelDataPlaneFrameListener,
 } from "../src/workers/bridge.js";
 
 const EMPTY = new Uint8Array();
+const ACTIVATED_AT = new Date("2026-08-24T12:00:00.000Z");
 
 class RecordingMeter implements AccountUsageRecorder {
   readonly measurements: AccountUsageMeasurement[] = [];
@@ -36,6 +39,8 @@ class RecordingMeter implements AccountUsageRecorder {
 
 class FakeDesktopSocket extends EventEmitter {
   bufferedAmount = 0;
+  lastPingToken: Uint8Array | null = null;
+  pings = 0;
   readyState = 1;
   readonly sent: Array<ReturnType<typeof decodeTunnelDataPlaneFrame>> = [];
 
@@ -47,6 +52,15 @@ class FakeDesktopSocket extends EventEmitter {
 
   send(data: Uint8Array): void {
     this.sent.push(decodeTunnelDataPlaneFrame(data));
+  }
+
+  ping(data = EMPTY): void {
+    this.pings += 1;
+    this.lastPingToken = Uint8Array.from(data);
+  }
+
+  pong(data: unknown = this.lastPingToken): void {
+    this.emit("pong", data);
   }
 
   emitFrame(header: TunnelDataPlaneFrameHeader, payload = EMPTY): void {
@@ -148,6 +162,7 @@ const authorization: TunnelAttachmentAuthorization = {
   },
   expiresAt: new Date(Date.now() + 60_000),
   ownerId: "owner-1",
+  origin: "user",
   projectId: "project-1",
   protectedRecord: {
     operationId: "11111111-1111-4111-8111-111111111111",
@@ -165,8 +180,19 @@ const authorization: TunnelAttachmentAuthorization = {
       },
     },
   },
+  secretExpiresAt: new Date(Date.now() + 30_000),
   tunnelId: "tunnel-1",
 };
+
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
 
 function sourceFrame(
   connectionId: string,
@@ -195,9 +221,29 @@ function sourceFrame(
 }
 
 describe("desktop tunnel runtime", () => {
+  it("gates both directions until the desktop endpoint is activated", () => {
+    const socket = new FakeDesktopSocket();
+    const endpoint = new DesktopTunnelEndpoint(
+      socket,
+      authorization.clientId,
+      authorization.attachmentId,
+    );
+    const frame = sourceFrame("pre-activation-egress", 0, {
+      kind: "open",
+      initialCreditBytes: 1_024,
+    });
+
+    expect(endpoint.send(frame, EMPTY)).toBe(false);
+    expect(socket.sent).toHaveLength(0);
+    expect(endpoint.activate()).toBe(true);
+    expect(endpoint.send(frame, EMPTY)).toBe(true);
+    expect(socket.sent).toHaveLength(1);
+    endpoint.close();
+  });
+
   it("meters both physical tunnel legs without double counting", async () => {
     const repository = {
-      activateDesktopTunnelAttachment: async () => true,
+      activateDesktopTunnelAttachment: async () => ACTIVATED_AT,
       markDesktopTunnelAttachmentOffline: async () => undefined,
     } as unknown as ServerRepository;
     const bridge = new EchoWorkerBridge();
@@ -275,7 +321,7 @@ describe("desktop tunnel runtime", () => {
   it("relays concurrent binary streams and half-closes through a worker endpoint", async () => {
     const diagnosticTraceId = "22222222-2222-4222-8222-222222222222";
     const repository = {
-      activateDesktopTunnelAttachment: async () => true,
+      activateDesktopTunnelAttachment: async () => ACTIVATED_AT,
       markDesktopTunnelAttachmentOffline: async () => undefined,
       stopDesktopTunnelAttachment: async () => ({
         projectId: authorization.projectId,
@@ -354,7 +400,7 @@ describe("desktop tunnel runtime", () => {
 
   it("preserves a protected endpoint rejection from worker to desktop", async () => {
     const repository = {
-      activateDesktopTunnelAttachment: async () => true,
+      activateDesktopTunnelAttachment: async () => ACTIVATED_AT,
       markDesktopTunnelAttachmentOffline: async () => undefined,
     } as unknown as ServerRepository;
     const bridge = new EchoWorkerBridge("protected-endpoint-unavailable");
@@ -397,7 +443,7 @@ describe("desktop tunnel runtime", () => {
 
   it("authorizes revocation before closing another owner's active route", async () => {
     const repository = {
-      activateDesktopTunnelAttachment: async () => true,
+      activateDesktopTunnelAttachment: async () => ACTIVATED_AT,
       markDesktopTunnelAttachmentOffline: async () => undefined,
       stopDesktopTunnelAttachment: async (ownerId: string) =>
         ownerId === authorization.ownerId
@@ -430,7 +476,7 @@ describe("desktop tunnel runtime", () => {
 
   it("closes child desktop attachments by their owning Code tunnel", async () => {
     const repository = {
-      activateDesktopTunnelAttachment: async () => true,
+      activateDesktopTunnelAttachment: async () => ACTIVATED_AT,
       markDesktopTunnelAttachmentOffline: async () => undefined,
     } as unknown as ServerRepository;
     const bridge = new EchoWorkerBridge();
@@ -459,7 +505,7 @@ describe("desktop tunnel runtime", () => {
 
   it("unsubscribes worker disconnect handling when the desktop socket closes", async () => {
     const repository = {
-      activateDesktopTunnelAttachment: async () => true,
+      activateDesktopTunnelAttachment: async () => ACTIVATED_AT,
       markDesktopTunnelAttachmentOffline: async () => undefined,
     } as unknown as ServerRepository;
     const bridge = new EchoWorkerBridge();
@@ -480,7 +526,7 @@ describe("desktop tunnel runtime", () => {
   it("keeps an active route through reconnecting and cleans it up when the worker is offline", async () => {
     const markDesktopTunnelAttachmentOffline = vi.fn(async () => undefined);
     const repository = {
-      activateDesktopTunnelAttachment: async () => true,
+      activateDesktopTunnelAttachment: async () => ACTIVATED_AT,
       markDesktopTunnelAttachmentOffline,
     } as unknown as ServerRepository;
     const bridge = new OfflineAwareWorkerBridge();
@@ -531,5 +577,343 @@ describe("desktop tunnel runtime", () => {
     });
     expect(socket.readyState).toBe(3);
     runtime.close();
+  });
+
+  it("does not publish an attachment closed while activation is pending", async () => {
+    const activation = deferred<Date>();
+    let activationCommitted = false;
+    const offlineCommitStates: boolean[] = [];
+    const changes = vi.fn();
+    const repository = {
+      activateDesktopTunnelAttachment: vi.fn(async () => {
+        const activated = await activation.promise;
+        activationCommitted = true;
+        return activated;
+      }),
+      markDesktopTunnelAttachmentOffline: vi.fn(async () => {
+        offlineCommitStates.push(activationCommitted);
+        return undefined;
+      }),
+    } as unknown as ServerRepository;
+    const runtime = new TunnelRuntimeManager(
+      repository,
+      new EchoWorkerBridge(),
+      changes,
+    );
+    const socket = new FakeDesktopSocket();
+    const attaching = runtime.attach(socket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+    });
+    await vi.waitFor(() =>
+      expect(repository.activateDesktopTunnelAttachment).toHaveBeenCalledOnce(),
+    );
+
+    socket.close(1006, "transport disappeared");
+    activation.resolve(ACTIVATED_AT);
+
+    await expect(attaching).rejects.toThrow(/disconnected|stale/iu);
+    expect(changes).not.toHaveBeenCalled();
+    expect(offlineCommitStates).toEqual([true]);
+    expect(
+      repository.markDesktopTunnelAttachmentOffline,
+    ).toHaveBeenLastCalledWith(
+      authorization.attachmentId,
+      authorization.secretExpiresAt,
+      ACTIVATED_AT,
+    );
+    expect(runtime.stats()).toMatchObject({
+      activeConnections: 0,
+      activeRoutes: 0,
+    });
+    runtime.close();
+  });
+
+  it("drops data-plane frames until exact attachment activation completes", async () => {
+    const activation = deferred<Date>();
+    const repository = {
+      activateDesktopTunnelAttachment: vi.fn(() => activation.promise),
+      markDesktopTunnelAttachmentOffline: vi.fn(async () => false),
+    } as unknown as ServerRepository;
+    const bridge = new EchoWorkerBridge();
+    const runtime = new TunnelRuntimeManager(repository, bridge, () => {});
+    const socket = new FakeDesktopSocket();
+    const attaching = runtime.attach(socket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+    });
+    await vi.waitFor(() =>
+      expect(repository.activateDesktopTunnelAttachment).toHaveBeenCalledOnce(),
+    );
+
+    socket.emitFrame(
+      sourceFrame("pre-activation", 0, {
+        kind: "open",
+        initialCreditBytes: 1_024,
+      }),
+    );
+    expect(bridge.received).toHaveLength(0);
+    expect(runtime.stats().openedConnections).toBe(0);
+
+    activation.resolve(new Date("2026-08-24T12:00:00.000Z"));
+    await expect(attaching).resolves.toMatchObject({ type: "ready" });
+    socket.emitFrame(
+      sourceFrame("post-activation", 0, {
+        kind: "open",
+        initialCreditBytes: 1_024,
+      }),
+    );
+    expect(bridge.received).toHaveLength(1);
+    expect(bridge.received[0]).toMatchObject({
+      connectionId: "post-activation",
+      kind: "connect",
+    });
+    runtime.close();
+  });
+
+  it("generation-fences its automatic expiry stop", async () => {
+    vi.useFakeTimers();
+    try {
+      const activatedAt = new Date("2026-08-24T12:00:00.000Z");
+      const stopDesktopTunnelAttachment = vi.fn(async () => ({
+        projectId: authorization.projectId,
+        tunnelId: authorization.tunnelId,
+      }));
+      const repository = {
+        activateDesktopTunnelAttachment: vi.fn(async () => activatedAt),
+        markDesktopTunnelAttachmentOffline: vi.fn(async () => false),
+        stopDesktopTunnelAttachment,
+      } as unknown as ServerRepository;
+      const expiresAt = new Date(Date.now() + 1_000);
+      const expiringAuthorization = { ...authorization, expiresAt };
+      const runtime = new TunnelRuntimeManager(
+        repository,
+        new EchoWorkerBridge(),
+        () => {},
+      );
+      const socket = new FakeDesktopSocket();
+      await runtime.attach(socket, expiringAuthorization, {
+        type: "initialize",
+        clientId: expiringAuthorization.clientId,
+      });
+
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(stopDesktopTunnelAttachment).toHaveBeenCalledWith(
+        expiringAuthorization.ownerId,
+        expiringAuthorization.attachmentId,
+        "attachment-expired",
+        false,
+        {
+          activatedAt,
+          expiresAt,
+          secretExpiresAt: expiringAuthorization.secretExpiresAt,
+        },
+      );
+      runtime.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for an in-flight activation before fencing automatic expiry", async () => {
+    vi.useFakeTimers();
+    try {
+      const activation = deferred<Date>();
+      const stopDesktopTunnelAttachment = vi.fn(async () => ({
+        projectId: authorization.projectId,
+        tunnelId: authorization.tunnelId,
+      }));
+      const repository = {
+        activateDesktopTunnelAttachment: vi.fn(() => activation.promise),
+        markDesktopTunnelAttachmentOffline: vi.fn(async () => false),
+        stopDesktopTunnelAttachment,
+      } as unknown as ServerRepository;
+      const expiresAt = new Date(Date.now() + 1_000);
+      const expiringAuthorization = { ...authorization, expiresAt };
+      const runtime = new TunnelRuntimeManager(
+        repository,
+        new EchoWorkerBridge(),
+        () => {},
+      );
+      const socket = new FakeDesktopSocket();
+      const attaching = runtime.attach(socket, expiringAuthorization, {
+        type: "initialize",
+        clientId: expiringAuthorization.clientId,
+      });
+      await vi.waitFor(() =>
+        expect(
+          repository.activateDesktopTunnelAttachment,
+        ).toHaveBeenCalledOnce(),
+      );
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(stopDesktopTunnelAttachment).not.toHaveBeenCalled();
+      activation.resolve(ACTIVATED_AT);
+
+      await expect(attaching).rejects.toThrow(/disconnected/iu);
+      await vi.waitFor(() =>
+        expect(stopDesktopTunnelAttachment).toHaveBeenCalledWith(
+          expiringAuthorization.ownerId,
+          expiringAuthorization.attachmentId,
+          "attachment-expired",
+          false,
+          {
+            activatedAt: ACTIVATED_AT,
+            expiresAt,
+            secretExpiresAt: expiringAuthorization.secretExpiresAt,
+          },
+        ),
+      );
+      runtime.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not let a delayed activation publish over its replacement", async () => {
+    const firstActivation = deferred<Date>();
+    const replacementActivatedAt = new Date("2026-08-24T12:00:00.001Z");
+    const activateDesktopTunnelAttachment = vi
+      .fn<ServerRepository["activateDesktopTunnelAttachment"]>()
+      .mockImplementationOnce(() => firstActivation.promise)
+      .mockResolvedValueOnce(replacementActivatedAt);
+    const repository = {
+      activateDesktopTunnelAttachment,
+      markDesktopTunnelAttachmentOffline: vi.fn(async () => undefined),
+    } as unknown as ServerRepository;
+    const changes = vi.fn();
+    const runtime = new TunnelRuntimeManager(
+      repository,
+      new EchoWorkerBridge(),
+      changes,
+    );
+    const staleSocket = new FakeDesktopSocket();
+    const replacementSocket = new FakeDesktopSocket();
+    const staleAttach = runtime.attach(staleSocket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+    });
+    await vi.waitFor(() =>
+      expect(activateDesktopTunnelAttachment).toHaveBeenCalledOnce(),
+    );
+
+    const replacementAttach = runtime.attach(replacementSocket, authorization, {
+      type: "initialize",
+      clientId: authorization.clientId,
+    });
+    expect.soft(activateDesktopTunnelAttachment).toHaveBeenCalledTimes(1);
+    firstActivation.resolve(ACTIVATED_AT);
+
+    await expect(staleAttach).rejects.toThrow(/replaced|stale/iu);
+    await expect(replacementAttach).resolves.toMatchObject({
+      attachmentId: authorization.attachmentId,
+    });
+    expect(activateDesktopTunnelAttachment).toHaveBeenCalledTimes(2);
+    expect(staleSocket.readyState).toBe(3);
+    expect(replacementSocket.readyState).toBe(1);
+    expect(changes).toHaveBeenCalledOnce();
+    expect(runtime.stats()).toMatchObject({
+      activeConnections: 0,
+      activeRoutes: 1,
+    });
+    replacementSocket.close(1006, "replacement disconnected");
+    await vi.waitFor(() =>
+      expect(
+        repository.markDesktopTunnelAttachmentOffline,
+      ).toHaveBeenCalledWith(
+        authorization.attachmentId,
+        authorization.secretExpiresAt,
+        replacementActivatedAt,
+      ),
+    );
+    runtime.close();
+  });
+
+  it("renews only an exact pong and expires only the silent relay route", async () => {
+    vi.useFakeTimers();
+    try {
+      const activity = vi.fn(() => true);
+      const broker = new TunnelStreamBroker({ onActivity: activity });
+      const repository = {
+        activateDesktopTunnelAttachment: vi.fn(async () => ACTIVATED_AT),
+        markDesktopTunnelAttachmentOffline: vi.fn(async () => undefined),
+      } as unknown as ServerRepository;
+      const RuntimeWithHeartbeat = TunnelRuntimeManager as unknown as new (
+        repository: ServerRepository,
+        bridge: WorkerCommandBus,
+        changed: () => void,
+        broker: TunnelStreamBroker,
+        usage: undefined,
+        options: {
+          heartbeatIntervalMs: number;
+          heartbeatTimeoutMs: number;
+        },
+      ) => TunnelRuntimeManager;
+      const runtime = new RuntimeWithHeartbeat(
+        repository,
+        new EchoWorkerBridge(),
+        () => {},
+        broker,
+        undefined,
+        { heartbeatIntervalMs: 1_000, heartbeatTimeoutMs: 250 },
+      );
+      const exactAuthorization = (
+        attachmentId: string,
+      ): TunnelAttachmentAuthorization => ({
+        ...authorization,
+        attachmentId,
+        clientId: `client-${attachmentId}`,
+        destination: {
+          kind: "worker-adapter",
+          workerId: "worker-b",
+          adapter: "code",
+          resourceId: `tunnel-${attachmentId}`,
+        },
+        origin: "code",
+        tunnelId: `tunnel-${attachmentId}`,
+      });
+      const healthyAuthorization = exactAuthorization("heartbeat-healthy");
+      const silentAuthorization = exactAuthorization("heartbeat-silent");
+      const healthySocket = new FakeDesktopSocket();
+      const staleSocket = new FakeDesktopSocket();
+      const silentSocket = new FakeDesktopSocket();
+      await runtime.attach(healthySocket, healthyAuthorization, {
+        type: "initialize",
+        clientId: healthyAuthorization.clientId,
+      });
+      await runtime.attach(staleSocket, silentAuthorization, {
+        type: "initialize",
+        clientId: silentAuthorization.clientId,
+      });
+      await runtime.attach(silentSocket, silentAuthorization, {
+        type: "initialize",
+        clientId: silentAuthorization.clientId,
+      });
+      expect(staleSocket.readyState).toBe(3);
+      activity.mockClear();
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(healthySocket.pings).toBe(1);
+      expect(silentSocket.pings).toBe(1);
+      silentSocket.pong(new Uint8Array([0xff]));
+      expect(activity).not.toHaveBeenCalled();
+      healthySocket.pong();
+      staleSocket.pong();
+      expect(activity).toHaveBeenCalledTimes(1);
+      expect(activity).toHaveBeenCalledWith(
+        healthyAuthorization.tunnelId,
+        healthyAuthorization.attachmentId,
+        true,
+      );
+
+      await vi.advanceTimersByTimeAsync(250);
+      expect(healthySocket.readyState).toBe(1);
+      expect(silentSocket.readyState).toBe(3);
+      expect(runtime.stats()).toMatchObject({ activeRoutes: 1 });
+      runtime.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

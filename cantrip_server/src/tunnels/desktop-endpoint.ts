@@ -20,10 +20,13 @@ export interface DesktopTunnelSocket {
   close(code?: number, reason?: string): void;
   on(event: "close", listener: () => void): void;
   on(event: "error", listener: () => void): void;
+  on(event: "pong", listener: (data: unknown) => void): void;
   on(
     event: "message",
     listener: (data: unknown, isBinary?: boolean) => void,
   ): void;
+  off(event: "pong", listener: (data: unknown) => void): void;
+  ping(data?: Uint8Array): void;
   readyState: number;
   send(data: Uint8Array, options?: { binary?: boolean }): void;
 }
@@ -50,6 +53,7 @@ export class DesktopTunnelEndpoint implements TunnelDataPlaneEndpoint {
   readonly placement: { kind: "desktop-client"; clientId: string };
   readonly #disconnectListeners = new Set<() => void>();
   readonly #frameListeners = new Set<TunnelEndpointFrameListener>();
+  #activated = false;
   #disconnected = false;
 
   constructor(
@@ -65,7 +69,7 @@ export class DesktopTunnelEndpoint implements TunnelDataPlaneEndpoint {
     this.endpointId = `desktop:${clientId}:${attachmentId}`;
     this.placement = { kind: "desktop-client", clientId };
     socket.on("message", (data, isBinary) => {
-      if (!isBinary || this.#disconnected) return;
+      if (!isBinary || !this.#activated || this.#disconnected) return;
       recordEncodedFrame(this.usage?.recorder, {
         ownerId: this.usage?.ownerId ?? "",
         direction: "ingress",
@@ -86,8 +90,15 @@ export class DesktopTunnelEndpoint implements TunnelDataPlaneEndpoint {
     socket.on("error", disconnect);
   }
 
+  activate(): boolean {
+    if (this.#disconnected || this.socket.readyState !== 1) return false;
+    this.#activated = true;
+    return true;
+  }
+
   send(header: TunnelDataPlaneFrameHeader, payload: Uint8Array): boolean {
     if (
+      !this.#activated ||
       this.#disconnected ||
       this.socket.readyState !== 1 ||
       this.socket.bufferedAmount > MAX_BUFFERED_BYTES

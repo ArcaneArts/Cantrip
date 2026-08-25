@@ -118,6 +118,91 @@ async function prepareDirect(
 }
 
 describe("DirectAttachmentCoordinator", () => {
+  it("publishes exact tunnel lease renewal and finalization without observing generic grants", async () => {
+    const renewed = vi.fn(async () => undefined);
+    const finalized = vi.fn(async () => undefined);
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) => {
+        if (command.type === "direct.capability.prepare") {
+          return { accepted: true, capabilityId: command.binding.capabilityId };
+        }
+        if (command.type === "direct.capability.renew") {
+          return { renewed: true, leaseExpiresAt: command.leaseExpiresAt };
+        }
+        return { revoked: true };
+      }),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus, undefined, {
+      onLeaseFinalized: finalized,
+      onLeaseRenewed: renewed,
+    });
+    const ticket = await prepareDirect(coordinator, {
+      attachmentId: "attachment-lease-events",
+      authSessionId: "session-1",
+      channels: ["tunnel-data"],
+      ownerId: "owner-1",
+      resourceId: "tunnel-1",
+      resourceKind: "tunnel",
+      tunnelRoute: {
+        tunnelId: "tunnel-1",
+        attachmentId: "attachment-lease-events",
+        sourceEndpointId: "desktop:client-1:attachment-lease-events",
+        destinationEndpointId: "worker:worker-1",
+        target: { kind: "tcp", host: "127.0.0.1", port: 43124 },
+      },
+      worker: worker(true),
+    });
+    const authorization = {
+      attachmentId: ticket.binding.attachmentId,
+      authSessionId: "session-1",
+      ownerId: "owner-1",
+    };
+    const observed = coordinator.getTunnelLeaseForActivation(
+      ticket.binding.capabilityId,
+      authorization,
+    );
+    expect(observed).toMatchObject({
+      attachmentId: ticket.binding.attachmentId,
+      capabilityId: ticket.binding.capabilityId,
+      mode: "direct-tunnel",
+      ownerId: "owner-1",
+      resourceId: "tunnel-1",
+      resourceKind: "tunnel",
+    });
+    expect(observed).not.toHaveProperty("secret");
+    expect(
+      coordinator.recordActivationOutcome(
+        ticket.binding.capabilityId,
+        authorization,
+        "completed",
+      ),
+    ).toBe(true);
+    await coordinator.renewActiveLease(ticket.binding.capabilityId, {
+      authSessionId: "session-1",
+      ownerId: "owner-1",
+    });
+    await coordinator.revoke(ticket.binding.capabilityId, "test finalized");
+    await vi.waitFor(() => {
+      expect(renewed).toHaveBeenCalledOnce();
+      expect(finalized).toHaveBeenCalledOnce();
+    });
+
+    const generic = await prepareDirect(coordinator, {
+      authSessionId: "session-1",
+      channels: ["probe"],
+      ownerId: "owner-1",
+      resourceId: "worker-1",
+      resourceKind: "probe",
+      worker: worker(),
+    });
+    await coordinator.revoke(generic.binding.capabilityId, "generic finalized");
+    await coordinator.close();
+    expect(renewed).toHaveBeenCalledOnce();
+    expect(finalized).toHaveBeenCalledOnce();
+  });
+
   it("rejects renewal at the fixed-expiry boundary before a delayed timer can resurrect it", async () => {
     const commands: WorkerCommand[] = [];
     const bus = {
@@ -755,6 +840,61 @@ describe("DirectAttachmentCoordinator", () => {
       await coordinator.close();
     },
   );
+
+  it("holds the exact attachment fence across a caller-owned mutation", async () => {
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async () => ({ revoked: true })),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    let mutationStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      mutationStarted = resolve;
+    });
+    let finishMutation!: () => void;
+    const finish = new Promise<void>((resolve) => {
+      finishMutation = resolve;
+    });
+    const mutation = coordinator.mutateAttachment("attachment-1", async () => {
+      mutationStarted();
+      await finish;
+      return "mutated";
+    });
+
+    await started;
+    expect(
+      coordinator.acquirePreparationLease({
+        attachmentId: "attachment-1",
+        authSessionId: "session-1",
+        ownerId: "owner-1",
+        resourceId: "tunnel-1",
+        resourceKind: "tunnel",
+      }),
+    ).toBeNull();
+    const unrelated = coordinator.acquirePreparationLease({
+      attachmentId: "attachment-2",
+      authSessionId: "session-1",
+      ownerId: "owner-1",
+      resourceId: "tunnel-1",
+      resourceKind: "tunnel",
+    });
+    expect(unrelated).not.toBeNull();
+
+    finishMutation();
+    await expect(mutation).resolves.toBe("mutated");
+    const reacquired = coordinator.acquirePreparationLease({
+      attachmentId: "attachment-1",
+      authSessionId: "session-1",
+      ownerId: "owner-1",
+      resourceId: "tunnel-1",
+      resourceKind: "tunnel",
+    });
+    expect(reacquired).not.toBeNull();
+    coordinator.releasePreparationLease(reacquired!);
+    coordinator.releasePreparationLease(unrelated!);
+    await coordinator.close();
+  });
 
   it("waits for a route-entry lease during shutdown", async () => {
     const bus = {
