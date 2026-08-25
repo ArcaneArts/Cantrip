@@ -15,6 +15,7 @@ import {
   eq,
   exists,
   inArray,
+  isNotNull,
   isNull,
   lte,
   ne,
@@ -142,23 +143,44 @@ export class StandaloneChatRootJobRepository {
     return job;
   }
 
-  async createDeletionTombstoneAndPurge(input: {
-    id: string;
-    ownerId: string;
-    rootId: string;
-    chatId: string;
-    workerId: string;
-  }): Promise<StandaloneChatRootJobSummary> {
+  async createDeletionTombstoneAndPurge(
+    input: {
+      id: string;
+      ownerId: string;
+      rootId: string;
+      chatId: string;
+      workerId: string;
+    },
+    options: { expiredBy?: Date } = {},
+  ): Promise<StandaloneChatRootJobSummary> {
     return this.database.transaction(async (transaction) => {
       const roots = await transaction
-        .select()
+        .select({ id: schema.standaloneChatRoots.id })
         .from(schema.standaloneChatRoots)
+        .innerJoin(
+          schema.chats,
+          and(
+            eq(schema.chats.id, schema.standaloneChatRoots.chatId),
+            eq(schema.chats.ownerId, schema.standaloneChatRoots.ownerId),
+          ),
+        )
         .where(
           and(
             eq(schema.standaloneChatRoots.id, input.rootId),
             eq(schema.standaloneChatRoots.chatId, input.chatId),
             eq(schema.standaloneChatRoots.ownerId, input.ownerId),
             eq(schema.standaloneChatRoots.workerId, input.workerId),
+            eq(schema.chats.contextKind, "standalone"),
+            isNotNull(schema.chats.archivedAt),
+            ...(options.expiredBy
+              ? [
+                  isNotNull(schema.standaloneChatRoots.archiveExpiresAt),
+                  lte(
+                    schema.standaloneChatRoots.archiveExpiresAt,
+                    options.expiredBy,
+                  ),
+                ]
+              : []),
           ),
         )
         .for("update")
@@ -235,6 +257,82 @@ export class StandaloneChatRootJobRepository {
         );
       return toJob(existing);
     });
+  }
+
+  async purgeExpiredArchivedChats(
+    ownerId: string,
+    now = new Date(),
+  ): Promise<StandaloneChatRootJobSummary[]> {
+    const candidates = await this.database
+      .select({
+        chatId: schema.standaloneChatRoots.chatId,
+        ownerId: schema.standaloneChatRoots.ownerId,
+        rootId: schema.standaloneChatRoots.id,
+        workerId: schema.standaloneChatRoots.workerId,
+      })
+      .from(schema.standaloneChatRoots)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.standaloneChatRoots.chatId),
+          eq(schema.chats.ownerId, schema.standaloneChatRoots.ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.standaloneChatRoots.ownerId, ownerId),
+          eq(schema.chats.contextKind, "standalone"),
+          isNotNull(schema.chats.archivedAt),
+          isNotNull(schema.standaloneChatRoots.archiveExpiresAt),
+          lte(schema.standaloneChatRoots.archiveExpiresAt, now),
+        ),
+      );
+    const jobs: StandaloneChatRootJobSummary[] = [];
+    for (const candidate of candidates) {
+      try {
+        jobs.push(
+          await this.createDeletionTombstoneAndPurge(
+            { id: randomUUID(), ...candidate },
+            { expiredBy: now },
+          ),
+        );
+      } catch (error) {
+        if (!(error instanceof StandaloneChatRootJobConflictError)) throw error;
+      }
+    }
+    return jobs;
+  }
+
+  async purgeExpiredArchivedChatsForAllOwners(
+    now = new Date(),
+  ): Promise<Array<{ job: StandaloneChatRootJobSummary; ownerId: string }>> {
+    const owners = await this.database
+      .selectDistinct({ ownerId: schema.standaloneChatRoots.ownerId })
+      .from(schema.standaloneChatRoots)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.standaloneChatRoots.chatId),
+          eq(schema.chats.ownerId, schema.standaloneChatRoots.ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chats.contextKind, "standalone"),
+          isNotNull(schema.chats.archivedAt),
+          isNotNull(schema.standaloneChatRoots.archiveExpiresAt),
+          lte(schema.standaloneChatRoots.archiveExpiresAt, now),
+        ),
+      );
+    const changes: Array<{
+      job: StandaloneChatRootJobSummary;
+      ownerId: string;
+    }> = [];
+    for (const { ownerId } of owners) {
+      const jobs = await this.purgeExpiredArchivedChats(ownerId, now);
+      changes.push(...jobs.map((job) => ({ job, ownerId })));
+    }
+    return changes;
   }
 
   async #enqueue(input: {

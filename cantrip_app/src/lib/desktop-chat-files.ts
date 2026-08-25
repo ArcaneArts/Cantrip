@@ -1,5 +1,15 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { StandaloneChatSummary } from "@cantrip/protocol";
 
+import {
+  createStandaloneChatNetworkShare,
+  deleteProjectNetworkShare,
+} from "@/lib/api";
+import {
+  coordinateDesktopProjectRevealPreference,
+  directProjectShareUrl,
+} from "@/lib/desktop-project-share";
+import { startDesktopTunnel, stopDesktopTunnel } from "@/lib/desktop-tunnel";
 import type { DesktopWorkerStatus } from "@/lib/desktop-worker";
 import { getActiveServerUrl } from "@/lib/server-connections";
 
@@ -38,6 +48,14 @@ export function desktopChatRevealLabel(
   return null;
 }
 
+export function chatScratchRevealUsesLocalFolder(
+  local: boolean,
+  networkShareAvailable: boolean,
+  shiftKey: boolean,
+): boolean {
+  return local && (!networkShareAvailable || shiftKey);
+}
+
 export async function revealLocalChatScratch(input: {
   chatId: string;
   path: string;
@@ -50,6 +68,54 @@ export async function revealLocalChatScratch(input: {
       relativePath: input.path,
       serverUrl: getActiveServerUrl(),
       workerId: input.workerId,
+    },
+  });
+}
+
+export async function revealChatScratchInNativeFileManager(
+  chat: StandaloneChatSummary,
+  preferLocalFolder: boolean,
+  relativePath: string,
+): Promise<void> {
+  if (!isTauri()) throw new Error("Native Chat file reveal is unavailable.");
+  return coordinateDesktopProjectRevealPreference(preferLocalFolder, {
+    revealLocalFolder: () =>
+      chat.activeWorkerId
+        ? revealLocalChatScratch({
+            chatId: chat.id,
+            path: relativePath,
+            workerId: chat.activeWorkerId,
+          })
+        : Promise.resolve(false),
+    revealNetworkShare: async () => {
+      const attachment = await createStandaloneChatNetworkShare(chat);
+      try {
+        const forward = await startDesktopTunnel(attachment.attachmentId);
+        try {
+          await invoke("reveal_chat_share", {
+            request: {
+              attachmentId: attachment.attachmentId,
+              chatId: chat.id,
+              chatName: chat.title,
+              mountLeaseMs: attachment.mountLeaseMs,
+              password: attachment.password,
+              relativePath,
+              url: directProjectShareUrl(attachment, forward.localPort),
+              username: attachment.username,
+            },
+          });
+        } catch (error) {
+          await stopDesktopTunnel(forward.tunnelId, forward.attachmentId).catch(
+            () => undefined,
+          );
+          throw error;
+        }
+      } catch (error) {
+        await deleteProjectNetworkShare(attachment.attachmentId).catch(
+          () => undefined,
+        );
+        throw error;
+      }
     },
   });
 }

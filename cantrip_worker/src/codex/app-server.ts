@@ -2332,6 +2332,44 @@ export function codexNativeSubagentConfigOverride(
   };
 }
 
+export function measureCodexProfileFootprint(
+  executionProfile: RunAgentTurnOptions["executionProfile"],
+  mcpServers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
+  hasGitMetadata = true,
+) {
+  const threadParameters = cantripChatThreadParams(
+    hasGitMetadata,
+    executionProfile,
+  );
+  const mcpConfiguration = codexMcpConfigOverride(mcpServers);
+  const managedToolRequirements = managedMcpToolRequirements(mcpServers);
+  const nativeSubagentConfiguration = codexNativeSubagentConfigOverride(
+    null,
+    executionProfile === "ide",
+  );
+  const bytes = (value: unknown) =>
+    Buffer.byteLength(JSON.stringify(value), "utf8");
+  const threadParametersBytes = bytes(threadParameters);
+  const mcpConfigurationBytes = bytes(mcpConfiguration);
+  const managedToolSelectionBytes = bytes(managedToolRequirements);
+  const nativeSubagentConfigurationBytes = bytes(nativeSubagentConfiguration);
+  return {
+    executionProfile,
+    enabledMcpServerCount: mcpServers.filter(({ enabled }) => enabled).length,
+    managedToolCount: managedToolRequirements.length,
+    threadParametersBytes,
+    dynamicToolSchemaBytes: bytes(threadParameters.dynamicTools),
+    mcpConfigurationBytes,
+    managedToolSelectionBytes,
+    nativeSubagentConfigurationBytes,
+    serializedWorkerOverrideBytes:
+      threadParametersBytes +
+      mcpConfigurationBytes +
+      managedToolSelectionBytes +
+      nativeSubagentConfigurationBytes,
+  } as const;
+}
+
 export function codexRuntimeId(
   model: RunAgentTurnOptions["model"],
   provider: RunAgentTurnOptions["provider"],

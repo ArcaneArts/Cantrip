@@ -103,6 +103,7 @@ function fixture() {
     setFrameEmitter: vi.fn(),
   } as unknown as TunnelTcpDestinationAdapter;
   const projectShares = {
+    get: vi.fn().mockReturnValue(null),
     open: vi.fn(),
   } as unknown as ProjectShareManager;
   const codeEndpoints = {
@@ -124,7 +125,7 @@ function fixture() {
   const records: Array<{ context?: unknown }> = [];
   const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
   subscriptions.push(unsubscribe);
-  return { codeEndpoints, emitted, records, router, tcp };
+  return { codeEndpoints, emitted, projectShares, records, router, tcp };
 }
 
 function codeContent() {
@@ -137,6 +138,32 @@ function codeContent() {
       workerId: "worker-1",
       resourceId: "tunnel-1",
       sessionId: "session-1",
+    },
+    dataProtection: {
+      formatVersion: 1 as const,
+      algorithm: "AES-256-GCM" as const,
+      keyRevision: 1,
+      key: "A".repeat(43),
+    },
+  };
+}
+
+function chatShareContent() {
+  return {
+    name: "Chat scratch files",
+    description: null,
+    source: { kind: "desktop-loopback" as const },
+    destination: {
+      kind: "worker-chat-share" as const,
+      workerId: "worker-1",
+      resourceId: "tunnel-1",
+      chatId: "22222222-2222-4222-8222-222222222222",
+      rootId: "33333333-3333-4333-8333-333333333333",
+      publicBasePath: `/project-shares/${"x".repeat(43)}`,
+      publicOrigin: "http://127.0.0.1" as const,
+      username: "cantrip-chat",
+      password: "a-secure-random-password-value",
+      realm: "Cantrip Chat Share",
     },
     dataProtection: {
       formatVersion: 1 as const,
@@ -223,6 +250,42 @@ describe("TunnelDestinationRouter protected target diagnostics", () => {
           }),
         }),
       ]),
+    );
+  });
+
+  it("routes a Chat share only after its exact root-bound share was prepared", async () => {
+    const content = chatShareContent();
+    tunnelContent.open.mockResolvedValue(content);
+    const { projectShares, router, tcp } = fixture();
+    const descriptor = {
+      shareId: "tunnel-1",
+      protocol: "webdav" as const,
+      publicBasePath: content.destination.publicBasePath,
+      publicOrigin: "http://127.0.0.1" as const,
+      loopbackHost: "127.0.0.1" as const,
+      loopbackPort: 43_210,
+      username: content.destination.username,
+      password: content.destination.password,
+      realm: content.destination.realm,
+    };
+    vi.mocked(projectShares.get).mockReturnValue(descriptor);
+    const header = protectedConnect();
+    if (header.target.kind !== "protected-tunnel") {
+      throw new Error("Expected a protected test target.");
+    }
+    header.target.targetKind = "project-share";
+
+    router.handleFrame(header, new Uint8Array());
+
+    await vi.waitFor(() => expect(tcp.handleFrame).toHaveBeenCalledOnce());
+    expect(projectShares.get).toHaveBeenCalledWith("tunnel-1");
+    expect(projectShares.open).not.toHaveBeenCalled();
+    expect(tcp.handleFrame).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { kind: "tcp", host: "127.0.0.1", port: 43_210 },
+      }),
+      new Uint8Array(),
+      undefined,
     );
   });
 

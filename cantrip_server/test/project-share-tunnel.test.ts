@@ -62,10 +62,11 @@ describe("protected project share control plane", () => {
         type: "project.share.open",
         shareId: tunnelId,
         protectedRecord,
+        standaloneRoot: null,
       },
       expect.any(Object),
     );
-    expect(JSON.stringify(request.mock.calls)).not.toContain("root");
+    expect(JSON.stringify(request.mock.calls)).not.toContain('"root":"');
     expect(JSON.stringify(request.mock.calls)).not.toContain("password");
     expect(registerManagedTunnel).toHaveBeenCalledWith(
       "owner-1",
@@ -79,6 +80,70 @@ describe("protected project share control plane", () => {
         },
       }),
       { id: tunnelId, protectedRecord },
+    );
+
+    await broker.close();
+    streamBroker.close();
+  });
+
+  it("binds standalone Chat shares to an opaque managed resource", async () => {
+    const request = vi.fn().mockResolvedValue({
+      accepted: true,
+      shareId: tunnelId,
+    });
+    const bridge = {
+      isConnected: () => true,
+      request,
+    } as unknown as WorkerCommandBus;
+    const registerManagedTunnel = vi.fn().mockResolvedValue({ id: tunnelId });
+    const repository = {
+      getManagedTunnel: vi.fn().mockResolvedValue(null),
+      registerManagedTunnel,
+    } as unknown as ServerRepository;
+    const streamBroker = new TunnelStreamBroker();
+    const broker = new ProjectShareTunnelBroker(bridge);
+    broker.configureControlPlane(repository, streamBroker, () => undefined);
+
+    const attachment = await broker.open({
+      ownerId: "owner-1",
+      projectId: null,
+      managedResourceId: "chat:22222222-2222-4222-8222-222222222222",
+      standaloneRoot: {
+        chatId: "22222222-2222-4222-8222-222222222222",
+        rootId: "33333333-3333-4333-8333-333333333333",
+      },
+      protectedRecord,
+      tunnelId,
+      workerId: "worker-1",
+    });
+
+    expect(attachment).toMatchObject({
+      attachmentId: tunnelId,
+      projectId: null,
+      tunnelId,
+    });
+    expect(registerManagedTunnel).toHaveBeenCalledWith(
+      "owner-1",
+      expect.objectContaining({
+        projectId: null,
+        managedBy: {
+          kind: "project-share",
+          id: "chat:22222222-2222-4222-8222-222222222222",
+        },
+      }),
+      { id: tunnelId, protectedRecord },
+    );
+    expect(JSON.stringify(request.mock.calls)).not.toContain('"root":"');
+
+    expect(request).toHaveBeenCalledWith(
+      "worker-1",
+      expect.objectContaining({
+        standaloneRoot: {
+          chatId: "22222222-2222-4222-8222-222222222222",
+          rootId: "33333333-3333-4333-8333-333333333333",
+        },
+      }),
+      expect.any(Object),
     );
 
     await broker.close();

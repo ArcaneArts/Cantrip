@@ -1191,6 +1191,13 @@
       "when": 1787721600000,
       "tag": "0169_chat_resource_audiences",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1787725200000,
+      "tag": "0170_standalone_chat_pause",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@ import {
   contextualChatSummarySchema,
   contextualChatExecutionLaneSummarySchema,
   serverBootstrapSchema,
+  standaloneChatCapabilitiesSchema,
   standaloneChatFileOperationCommandSchema,
   userSettingsSchema,
 } from "../src/index.js";
@@ -55,11 +56,13 @@ describe("standalone Chat contracts", () => {
       experience: "agent",
       planMode: "default",
       hasPendingPlanQuestion: false,
+      automationPaused: true,
     });
     expect(standalone.contextKind).toBe("standalone");
     if (standalone.contextKind === "standalone") {
       expect(standalone.activeScratchRootId).toBe("scratch-1");
       expect(standalone.projectId).toBeNull();
+      expect(standalone.automationPaused).toBe(true);
     }
 
     expect(
@@ -172,6 +175,30 @@ describe("standalone Chat contracts", () => {
       protocolVersion: 1,
       reason: "Standalone Chat is not enabled by this server.",
     });
+  });
+
+  it("gates Chat network shares off for older worker capability payloads", () => {
+    const capabilities = standaloneChatCapabilitiesSchema.parse({
+      protocolVersion: 1,
+      scratch: {
+        provision: true,
+        resolve: true,
+        archive: true,
+        restore: true,
+        remove: true,
+        reconcile: true,
+        routingHandles: true,
+      },
+      files: {
+        list: true,
+        read: true,
+        write: true,
+        remove: true,
+        download: true,
+        archive: true,
+      },
+    });
+    expect(capabilities.files.networkShare).toBe(false);
   });
 
   it("bounds protected Chat file operations and declares their capability intent", () => {

@@ -207,6 +207,7 @@ const unavailableStandaloneChatCapabilities = {
     remove: false,
     download: false,
     archive: false,
+    networkShare: false,
   },
 } satisfies StandaloneChatCapabilities;
 
@@ -2850,7 +2851,7 @@ export const chats = pgTable(
     ),
     check(
       "chats_execution_root_check",
-      sql`(${table.contextKind} = 'project' AND ${table.projectId} IS NOT NULL AND ${table.activeWorktreeId} IS NOT NULL AND ${table.activeScratchRootId} IS NULL AND ${table.worktreeMode} IN ('agent-managed', 'pinned')) OR (${table.contextKind} = 'standalone' AND ${table.projectId} IS NULL AND ${table.activeWorkerId} IS NOT NULL AND ${table.activeWorktreeId} IS NULL AND ${table.activeScratchRootId} IS NOT NULL AND ${table.worktreeMode} IS NULL AND ${table.experience} = 'agent' AND ${table.customSubagentModel} = false AND ${table.subagentModelId} IS NULL AND ${table.subagentReasoningEffort} IS NULL AND ${table.planMode} = 'default' AND ${table.protectedPlan} IS NULL AND ${table.hasPendingPlanQuestion} = false AND ${table.automationPaused} = false)`,
+      sql`(${table.contextKind} = 'project' AND ${table.projectId} IS NOT NULL AND ${table.activeWorktreeId} IS NOT NULL AND ${table.activeScratchRootId} IS NULL AND ${table.worktreeMode} IN ('agent-managed', 'pinned')) OR (${table.contextKind} = 'standalone' AND ${table.projectId} IS NULL AND ${table.activeWorkerId} IS NOT NULL AND ${table.activeWorktreeId} IS NULL AND ${table.activeScratchRootId} IS NOT NULL AND ${table.worktreeMode} IS NULL AND ${table.experience} = 'agent' AND ${table.customSubagentModel} = false AND ${table.subagentModelId} IS NULL AND ${table.subagentReasoningEffort} IS NULL AND ${table.planMode} = 'default' AND ${table.protectedPlan} IS NULL AND ${table.hasPendingPlanQuestion} = false)`,
     ),
     check(
       "chats_protected_plan_question_check",

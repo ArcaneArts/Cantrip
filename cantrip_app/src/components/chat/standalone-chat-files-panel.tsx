@@ -20,7 +20,7 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
 import {
@@ -46,8 +46,9 @@ import {
 } from "@/lib/api";
 import {
   chatFilesAreLocalToDesktop,
+  chatScratchRevealUsesLocalFolder,
   desktopChatRevealLabel,
-  revealLocalChatScratch,
+  revealChatScratchInNativeFileManager,
 } from "@/lib/desktop-chat-files";
 import { standaloneChatFileDownloadsVisible } from "@/lib/standalone-chat-file-locality";
 import { listDesktopWorkers } from "@/lib/desktop-worker";
@@ -98,21 +99,54 @@ function ChatFileRow({
   onDelete(entry: ExplorerEntry): void;
   onDownload(entry: ExplorerEntry): void;
   onOpen(entry: ExplorerEntry): void;
-  onReveal(entry: ExplorerEntry): void;
+  onReveal(entry: ExplorerEntry, shift: boolean): void;
   revealLabel: string | null;
   selected: boolean;
 }) {
+  const preferLocalRevealRef = useRef(false);
   const Icon = entryIcon(entry, expanded);
   const row = (
     <button
       aria-expanded={entry.kind === "directory" ? expanded : undefined}
       aria-level={depth + 1}
+      aria-selected={selected}
       className={cn(
         "flex min-h-9 w-full items-center gap-1.5 px-2 text-left text-xs text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50",
         selected && "bg-primary/10 text-foreground",
         entry.symbolicLink && "opacity-55",
       )}
+      data-chat-file-path={entry.path}
       onClick={() => onOpen(entry)}
+      onContextMenu={(event) => {
+        preferLocalRevealRef.current = event.shiftKey;
+      }}
+      onKeyDown={(event) => {
+        const tree = event.currentTarget.closest('[role="tree"]');
+        if (!tree) return;
+        const rows = Array.from(
+          tree.querySelectorAll<HTMLButtonElement>('[role="treeitem"]'),
+        );
+        const index = rows.indexOf(event.currentTarget);
+        let target: HTMLButtonElement | undefined;
+        if (event.key === "ArrowDown") target = rows[index + 1];
+        else if (event.key === "ArrowUp") target = rows[index - 1];
+        else if (event.key === "Home") target = rows[0];
+        else if (event.key === "End") target = rows.at(-1);
+        else if (event.key === "ArrowRight" && entry.kind === "directory") {
+          if (!expanded) onOpen(entry);
+          else target = rows[index + 1];
+        } else if (event.key === "ArrowLeft") {
+          if (entry.kind === "directory" && expanded) onOpen(entry);
+          else {
+            const parentPath = entry.path.split("/").slice(0, -1).join("/");
+            target = rows.find(
+              (candidate) => candidate.dataset.chatFilePath === parentPath,
+            );
+          }
+        } else return;
+        event.preventDefault();
+        target?.focus();
+      }}
       role="treeitem"
       title={
         entry.symbolicLink
@@ -140,12 +174,21 @@ function ChatFileRow({
   );
   if (entry.symbolicLink) return row;
   return (
-    <ContextMenu.Root>
+    <ContextMenu.Root
+      onOpenChange={(open) => {
+        if (!open) preferLocalRevealRef.current = false;
+      }}
+    >
       <ContextMenu.Trigger asChild>{row}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <StyledContextMenuContent className="min-w-48">
-          {local && revealLabel ? (
-            <StyledContextMenuItem onSelect={() => onReveal(entry)}>
+          {revealLabel ? (
+            <StyledContextMenuItem
+              onSelect={() => {
+                onReveal(entry, preferLocalRevealRef.current);
+                preferLocalRevealRef.current = false;
+              }}
+            >
               <FolderOpen className="size-4" />
               {revealLabel}
             </StyledContextMenuItem>
@@ -199,7 +242,7 @@ function ChatFileDirectory({
   onDelete(entry: ExplorerEntry): void;
   onDownload(entry: ExplorerEntry): void;
   onOpen(entry: ExplorerEntry): void;
-  onReveal(entry: ExplorerEntry): void;
+  onReveal(entry: ExplorerEntry, shift: boolean): void;
   onToggle(path: string): void;
   path: string;
   revealLabel: string | null;
@@ -440,9 +483,17 @@ function ChatFilePreview({
   }
   if (query.isError || !query.data) {
     return (
-      <p className="m-auto p-4 text-xs text-destructive">
-        File preview unavailable.
-      </p>
+      <div className="m-auto max-w-full p-5 text-center text-xs text-muted-foreground">
+        <File className="mx-auto mb-2 size-6" />
+        <p className="font-medium text-destructive">
+          {query.error instanceof Error
+            ? query.error.message
+            : "File preview unavailable."}
+        </p>
+        <p className="mt-1 break-all">
+          {formatExplorerSize(entry.size ?? 0)} · {entry.path}
+        </p>
+      </div>
     );
   }
   const format = structuredFileFormatForPath(entry.path);
@@ -622,19 +673,12 @@ export function StandaloneChatFilesPanel({
     onSuccess: ({ blob, fileName }) => downloadBlob(blob, fileName),
   });
   const reveal = useMutation({
-    mutationFn: (entry: ExplorerEntry) =>
-      workerId
-        ? revealLocalChatScratch({
-            chatId: chat.id,
-            path: entry.path,
-            workerId,
-          }).then((revealed) => {
-            if (!revealed)
-              throw new Error(
-                "This Chat scratch folder is not local to this desktop.",
-              );
-          })
-        : Promise.reject(new Error("The Chat has no assigned worker.")),
+    mutationFn: (input: { entry: ExplorerEntry; preferLocal: boolean }) =>
+      revealChatScratchInNativeFileManager(
+        chat,
+        input.preferLocal,
+        input.entry.path,
+      ),
   });
   const actionError = remove.error ?? download.error ?? reveal.error;
   const ready = Boolean(
@@ -644,6 +688,8 @@ export function StandaloneChatFilesPanel({
     capabilities.write &&
     capabilities.remove,
   );
+  const networkShare = Boolean(capabilities?.networkShare);
+  const revealSupported = desktopRuntime && (local || networkShare);
   return (
     <div className="flex h-full min-h-0 flex-col pt-11">
       <div className="flex h-9 shrink-0 items-center gap-1 border-y px-2">
@@ -710,7 +756,16 @@ export function StandaloneChatFilesPanel({
                 })
               }
               onOpen={setSelectedEntry}
-              onReveal={(entry) => reveal.mutate(entry)}
+              onReveal={(entry, shift) =>
+                reveal.mutate({
+                  entry,
+                  preferLocal: chatScratchRevealUsesLocalFolder(
+                    local,
+                    networkShare,
+                    shift,
+                  ),
+                })
+              }
               onToggle={(path) =>
                 setExpandedPaths((current) => {
                   const next = new Set(current);
@@ -720,7 +775,7 @@ export function StandaloneChatFilesPanel({
                 })
               }
               path=""
-              revealLabel={local ? revealLabel : null}
+              revealLabel={revealSupported ? revealLabel : null}
               selectedPath={selectedEntry?.path ?? null}
             />
           </div>

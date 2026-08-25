@@ -352,6 +352,7 @@ import {
   projectShareAttachmentWireSchema,
   projectShareDirectCreateSchema,
   projectShareTunnelCreateSchema,
+  standaloneChatShareAttachmentWireSchema,
   projectWireSummarySchema,
   projectPreferredWorkerUpdateSchema,
   encryptedProjectWorkspaceCreateSchema,
@@ -1711,6 +1712,34 @@ export async function buildApp({
     tunnelStreamBroker,
     publishTunnelRuntimeChange,
   );
+  const revokeManagedFileShare = async (
+    ownerId: string,
+    managedResourceId: string,
+  ): Promise<boolean> => {
+    const tunnel = await repository.getManagedTunnel(ownerId, {
+      kind: "project-share",
+      id: managedResourceId,
+    });
+    if (!tunnel) return false;
+    return directAttachments.mutateResource(
+      ownerId,
+      "tunnel",
+      tunnel.id,
+      async () => {
+        await Promise.all(
+          tunnel.attachments.map(({ id }) =>
+            tunnelRuntime.revoke(ownerId, id, {
+              preserveTunnelState: true,
+            }),
+          ),
+        );
+        return projectShareTunnel.revokeManagedResource(
+          managedResourceId,
+          ownerId,
+        );
+      },
+    );
+  };
   codeTunnel.configureControlPlane(
     repository,
     publishTunnelRuntimeChange,
@@ -3017,6 +3046,8 @@ export async function buildApp({
   ): void => {
     if (projectId) {
       publishLiveInvalidation("chat", { entityId: chatId, projectId });
+    } else {
+      publishLiveInvalidation("chat", { entityId: chatId });
     }
   };
   const publishChatTurnBoundary = (
@@ -3405,6 +3436,9 @@ export async function buildApp({
   const publishStandaloneChatRootJobChange = (
     change: StandaloneChatRootJobLiveChange,
   ): void => {
+    runAsOwner(change.ownerId, () => {
+      publishLiveInvalidation("chat", { entityId: change.job.chatId });
+    });
     const context = {
       event: "standalone-chat.scratch.transitioned",
       subsystem: "standalone-chat-scratch",
@@ -14504,6 +14538,7 @@ export async function buildApp({
         input.data,
         (workerId) => bridge.isConnected(workerId),
       );
+      publishChatSummary(created.chat.id, null);
       standaloneChatRootJobExecutor.queueAvailable();
       return reply
         .code(202)
@@ -20509,6 +20544,103 @@ export async function buildApp({
     },
   );
 
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/network-shares",
+    async (request, reply) => {
+      const input = projectShareTunnelCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const context = await repository.getChatExecutionContext(
+        ownerId,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat not found." });
+      }
+      if (context.contextKind !== "standalone") {
+        return reply.code(409).send({
+          error:
+            "Scratch network shares are available only in standalone Chat.",
+        });
+      }
+      if (context.workerId !== input.data.workerId) {
+        return reply.code(409).send({
+          code: "target-mismatch",
+          error: "The protected Chat share targets another worker.",
+        });
+      }
+      const worker = await repository.getWorker(ownerId, context.workerId);
+      if (!worker?.standaloneChat.files.networkShare) {
+        return reply.code(409).send({
+          error: "The Chat worker does not support scratch network shares.",
+        });
+      }
+      const managedResourceId = `chat:${context.chatId}`;
+      try {
+        return await directAttachments.mutateResource(
+          ownerId,
+          "tunnel",
+          input.data.tunnelId,
+          async () => {
+            const existing = await repository.getManagedTunnel(ownerId, {
+              kind: "project-share",
+              id: managedResourceId,
+            });
+            if (existing && existing.id !== input.data.tunnelId) {
+              return reply.code(409).send({
+                code: "stale-tunnel",
+                error: "The Chat share tunnel identity is stale.",
+              });
+            }
+            if (existing) {
+              await Promise.all(
+                existing.attachments.map(({ id }) =>
+                  tunnelRuntime.revoke(ownerId, id, {
+                    preserveTunnelState: true,
+                  }),
+                ),
+              );
+            }
+            const attachment = await projectShareTunnel.open({
+              ownerId,
+              projectId: null,
+              managedResourceId,
+              standaloneRoot: {
+                chatId: context.chatId,
+                rootId: context.scratchRootId,
+              },
+              protectedRecord: input.data.protectedRecord,
+              tunnelId: input.data.tunnelId,
+              workerId: input.data.workerId,
+            });
+            return reply.code(201).send(
+              standaloneChatShareAttachmentWireSchema.parse({
+                attachmentId: attachment.attachmentId,
+                chatId: context.chatId,
+                protocol: attachment.protocol,
+                tunnelId: attachment.tunnelId,
+                expiresAt: attachment.expiresAt,
+                mountLeaseMs: attachment.mountLeaseMs,
+              }),
+            );
+          },
+        );
+      } catch (error) {
+        const message = errorMessage(error);
+        return reply
+          .code(
+            error instanceof WorkerUnavailableError ||
+              message.toLowerCase().includes("offline")
+              ? 503
+              : 502,
+          )
+          .send({ error: message });
+      }
+    },
+  );
+
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/project-shares/:attachmentId",
     async (request, reply) => {
@@ -24026,11 +24158,26 @@ export async function buildApp({
   );
 
   app.post("/api/chats/archives/cleanup", async (_request, reply) => {
+    const ownerId = applicationOwnerId();
     const deleted = await repository.purgeExpiredArchivedChats(
-      applicationOwnerId(),
+      ownerId,
       new Date(Date.now() - ARCHIVED_CHAT_RETENTION_MS),
     );
-    return reply.send(archivedChatCleanupResultSchema.parse({ deleted }));
+    const standaloneJobs =
+      await repository.standaloneChatRootJobs.purgeExpiredArchivedChats(
+        ownerId,
+      );
+    for (const job of standaloneJobs) {
+      publishStandaloneChatRootJobChange({ ownerId, job });
+    }
+    if (standaloneJobs.length > 0) {
+      standaloneChatRootJobExecutor.queueAvailable();
+    }
+    return reply.send(
+      archivedChatCleanupResultSchema.parse({
+        deleted: deleted + standaloneJobs.length,
+      }),
+    );
   });
 
   app.post<{ Params: { projectId: string } }>(
@@ -29905,6 +30052,16 @@ export async function buildApp({
             );
           }
         }
+        await revokeManagedFileShare(
+          applicationOwnerId(),
+          `chat:${request.params.chatId}`,
+        ).catch((error) => {
+          request.log.warn(
+            { chatId: request.params.chatId, err: error },
+            "Standalone Chat scratch share revocation will expire naturally",
+          );
+        });
+        publishChatSummary(request.params.chatId, null);
         return reply.code(204).send();
       }
       const result = await repository.deleteChat(
@@ -29944,6 +30101,7 @@ export async function buildApp({
             );
           }
         }
+        publishChatSummary(request.params.chatId, null);
         return reply.send(
           standaloneChatWireSummarySchema.parse(standalone.chat),
         );
@@ -29966,9 +30124,19 @@ export async function buildApp({
         request.params.chatId,
       );
       if (root) {
+        await revokeManagedFileShare(
+          applicationOwnerId(),
+          `chat:${request.params.chatId}`,
+        ).catch((error) => {
+          request.log.warn(
+            { chatId: request.params.chatId, err: error },
+            "Standalone Chat scratch share revocation will expire naturally",
+          );
+        });
         await repository.standaloneChatRootJobs.createDeletionTombstoneAndPurge(
           { id: randomUUID(), ...root },
         );
+        publishChatSummary(request.params.chatId, null);
         standaloneChatRootJobExecutor.queueAvailable();
         return reply.code(204).send();
       }
@@ -30034,7 +30202,10 @@ export async function buildApp({
             (workerId) => bridge.isConnected(workerId),
             reprotect,
           );
-          if (created) standaloneChatRootJobExecutor.queueAvailable();
+          if (created) {
+            publishChatSummary(created.chat.id, null);
+            standaloneChatRootJobExecutor.queueAvailable();
+          }
           return created
             ? reply
                 .code(202)
@@ -30276,6 +30447,8 @@ export async function buildApp({
         return reply.code(404).send({ error: "Chat source not found." });
       }
 
+      publishChatSummary(context.chatId, context.projectId);
+
       if (!input.data.paused) {
         try {
           await resumeChatAutomation(context.chatId);
@@ -30285,6 +30458,7 @@ export async function buildApp({
             context.chatId,
             true,
           );
+          publishChatSummary(context.chatId, context.projectId);
           if (bridge.isConnected(context.workerId)) {
             await bridge
               .request(context.workerId, {

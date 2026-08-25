@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   cantripCliCommandResultSchema,
+  appLiveServerMessageSchema,
   chatPauseStateSchema,
   chatSummarySchema,
   chatMessageListSchema,
@@ -63,6 +64,7 @@ import {
   projectWorktreeListSchema,
   projectWorktreeSummarySchema,
   queuedPromptSchema,
+  standaloneChatShareAttachmentWireSchema,
   standaloneChatWireSummarySchema,
   terminalSummarySchema,
   terminalWireSummarySchema,
@@ -72,8 +74,10 @@ import {
   type WorkerCommand,
   type GitManagedOperationContext,
   type ThreadGoal,
+  type AppLiveServerMessage,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type { WebSocket } from "ws";
 
 import { buildApp } from "../src/app.js";
 import { CodeTunnelBroker } from "../src/code/tunnel.js";
@@ -333,6 +337,9 @@ const codeEndpointRevokedTunnelIds: string[] = [];
 const directPrepareCapabilityIds: string[] = [];
 const directRevokeCapabilityIds: string[] = [];
 const projectShareOpenIds: string[] = [];
+const projectShareOpenCommands: Array<
+  Extract<WorkerCommand, { type: "project.share.open" }>
+> = [];
 const projectShareCloseIds: string[] = [];
 const terminalOpenCommands: Array<
   Extract<WorkerCommand, { type: "terminal.open" }>
@@ -1741,6 +1748,7 @@ const workerBridge = {
         return { revoked: true };
       case "project.share.open":
         projectShareOpenIds.push(command.shareId);
+        projectShareOpenCommands.push(command);
         return { accepted: true, shareId: command.shareId };
       case "project.share.close":
         projectShareCloseIds.push(command.shareId);
@@ -2013,6 +2021,7 @@ beforeAll(async () => {
         remove: true,
         download: true,
         archive: true,
+        networkShare: true,
       },
     },
     startedAt: new Date().toISOString(),
@@ -2082,6 +2091,108 @@ describe.sequential("server worktree control plane", () => {
     if (context?.contextKind !== "standalone" || !context.modelId) {
       throw new Error("Standalone Chat execution context was not ready.");
     }
+
+    const liveEvents: AppLiveServerMessage[] = [];
+    let liveClient: WebSocket | null = null;
+    const liveSocket = await app.injectWS(
+      "/api/live",
+      { headers: { origin: config.appOrigins[0] } },
+      {
+        onInit(client) {
+          liveClient = client;
+          client.on("message", (data) => {
+            liveEvents.push(
+              appLiveServerMessageSchema.parse(JSON.parse(data.toString())),
+            );
+          });
+        },
+      },
+    );
+    if (!liveClient) throw new Error("Standalone live socket did not open.");
+    liveClient.send(
+      JSON.stringify({
+        type: "initialize",
+        protocolVersion: 1,
+        client: {
+          id: "standalone-lifecycle",
+          name: "Standalone lifecycle test",
+          version: "1",
+        },
+        resume: null,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(liveEvents.at(-1)).toMatchObject({ type: "ready" }),
+    );
+    liveClient.send(
+      JSON.stringify({
+        type: "subscribe",
+        requestId: "standalone-list",
+        scopes: [{ kind: "current-user" }],
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(liveEvents.at(-1)).toMatchObject({
+        type: "subscribed",
+        requestId: "standalone-list",
+      }),
+    );
+    const pauseEventStart = liveEvents.length;
+
+    const paused = await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${chat.id}/pause`,
+      payload: { paused: true },
+    });
+    expect(paused.statusCode, paused.body).toBe(200);
+    expect(chatPauseStateSchema.parse(paused.json())).toEqual({ paused: true });
+    await vi.waitFor(() =>
+      expect(
+        liveEvents
+          .slice(pauseEventStart)
+          .some(
+            (event) =>
+              event.type === "event" &&
+              event.resource === "chat" &&
+              event.entityId === chat.id &&
+              event.scope.kind === "current-user",
+          ),
+      ).toBe(true),
+    );
+    expect(
+      (
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/chats?context=standalone",
+          })
+        ).json() as Array<{ automationPaused: boolean; id: string }>
+      ).find(({ id }) => id === chat.id),
+    ).toMatchObject({ automationPaused: true });
+    await expect(
+      database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
+    ).resolves.toMatchObject({
+      automationPaused: true,
+      contextKind: "standalone",
+    });
+    const resumed = await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${chat.id}/pause`,
+      payload: { paused: false },
+    });
+    expect(resumed.statusCode, resumed.body).toBe(200);
+    expect(chatPauseStateSchema.parse(resumed.json())).toEqual({
+      paused: false,
+    });
+    liveSocket.terminate();
+
+    const forbiddenSync = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/sync`,
+      payload: {},
+    });
+    expect(forbiddenSync.statusCode, forbiddenSync.body).toBe(409);
+    expect(forbiddenSync.json().error).toContain("IDE-only");
 
     const fileOperationId = randomUUID();
     const fileOperation = await app.inject({
@@ -2261,11 +2372,37 @@ describe.sequential("server worktree control plane", () => {
     });
     expect(forbiddenGoal.statusCode, forbiddenGoal.body).toBe(409);
 
+    const shareId = randomUUID();
+    const shareResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${chat.id}/network-shares`,
+      payload: {
+        tunnelId: shareId,
+        workerId: context.workerId,
+        protectedRecord: protectedTunnelRecord(shareId),
+      },
+    });
+    expect(shareResponse.statusCode, shareResponse.body).toBe(201);
+    expect(
+      standaloneChatShareAttachmentWireSchema.parse(shareResponse.json()),
+    ).toMatchObject({
+      attachmentId: shareId,
+      chatId: chat.id,
+      protocol: "webdav",
+      tunnelId: shareId,
+    });
+    expect(projectShareOpenCommands.at(-1)?.standaloneRoot).toEqual({
+      chatId: chat.id,
+      rootId: context.scratchRootId,
+    });
+    const shareCloseCount = projectShareCloseIds.length;
+
     const archive = await app.inject({
       method: "DELETE",
       url: `/api/chats/${chat.id}`,
     });
     expect(archive.statusCode, archive.body).toBe(204);
+    expect(projectShareCloseIds.slice(shareCloseCount)).toEqual([shareId]);
     const archived = await app.inject({
       method: "GET",
       url: "/api/chats/archived?context=standalone",

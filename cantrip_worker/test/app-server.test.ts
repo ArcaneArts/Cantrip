@@ -51,6 +51,7 @@ import {
   normalizeTokenUsageActivity,
   latestChangedLine,
   managedMcpToolRequirements,
+  measureCodexProfileFootprint,
   parseCodexRpcMessage,
   parseCodexSkills,
   parsePermissionProfileList,
@@ -1900,6 +1901,43 @@ describe("native Codex subagent configuration", () => {
       features: { multi_agent: false },
       agents: { enabled: false },
     });
+  });
+
+  it("measures the worker-owned request and tool-selection footprint", () => {
+    const managedIdeServers = [
+      {
+        name: "cantrip",
+        transport: "stdio" as const,
+        command: "/worker/runtime/node",
+        args: ["/worker/dist/mcp/stdio.js", "--connection", "/binding.json"],
+        environment: {},
+        enabled: true,
+      },
+      {
+        name: "codegraph",
+        transport: "stdio" as const,
+        command: "/worker/tools/codegraph/bin/codegraph",
+        args: ["serve", "--mcp", "--path", "/workspace/project"],
+        environment: {},
+        enabled: true,
+      },
+    ];
+    const ide = measureCodexProfileFootprint("ide", managedIdeServers);
+    const standalone = measureCodexProfileFootprint("standalone-chat", []);
+
+    expect(ide).toMatchObject({
+      enabledMcpServerCount: 2,
+      managedToolCount: CANTRIP_MCP_TOOL_NAMES.length + 1,
+      dynamicToolSchemaBytes: 2,
+    });
+    expect(standalone).toMatchObject({
+      enabledMcpServerCount: 0,
+      managedToolCount: 0,
+      dynamicToolSchemaBytes: 2,
+    });
+    expect(standalone.serializedWorkerOverrideBytes).toBeLessThan(
+      ide.serializedWorkerOverrideBytes,
+    );
   });
 
   it("enables native tools without inventing child defaults", () => {
