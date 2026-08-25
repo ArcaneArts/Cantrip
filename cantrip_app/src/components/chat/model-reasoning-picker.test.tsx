@@ -114,6 +114,21 @@ describe("model reasoning picker", () => {
     expect(markup).toContain("Subagents unavailable");
   });
 
+  it("removes subagent configuration from standalone Chat", () => {
+    const markup = renderToStaticMarkup(
+      <ModelReasoningPicker
+        configuration={inheritedConfiguration}
+        models={models}
+        subagents={false}
+        onSave={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("Conversation model");
+    expect(markup).not.toContain("Subagents inherit root");
+    expect(markup).not.toContain("Custom Subagent Model");
+  });
+
   it("maps legacy chats to inherited subagent defaults", () => {
     expect(
       chatModelConfiguration(

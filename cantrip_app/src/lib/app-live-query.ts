@@ -192,6 +192,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         ? [["chats", projectId]]
         : event.scope.kind === "chat"
           ? [
+              ["standalone-chats"],
               ["messages", event.scope.chatId],
               ["task-dashboard", event.scope.chatId],
             ]
@@ -449,6 +450,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
       ];
     case "chat":
       return [
+        ["standalone-chats"],
         ["chat-sync", scope.chatId],
         ["chat-relocation-jobs", scope.chatId],
         ["messages", scope.chatId],
@@ -624,7 +626,7 @@ export class AppLiveQueryBridge {
       encryptedChat.data.chatId === event.scope.chatId
     ) {
       void openChatMessageOpaqueSummary(encryptedChat.data)
-        .catch(() => openTaskMessageOpaqueSummary(encryptedChat.data))
+        .catch(() => openTaskMessageOpaqueSummary(event.payload))
         .then((message) => {
           const latest = this.#messageCursors.get(entityKey);
           if (latest !== undefined && event.cursor <= latest) return;

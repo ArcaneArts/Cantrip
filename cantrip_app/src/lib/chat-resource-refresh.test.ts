@@ -15,7 +15,9 @@ const message = (
 ): ChatMessage => ({
   id: `message-${sequence}`,
   chatId: "chat-one",
+  contextKind: "project",
   worktreeId: "worktree-one",
+  scratchRootId: null,
   executionLaneId: "lane-one",
   sequence,
   role,

@@ -27,7 +27,9 @@ function usageMessage(
   return {
     id: `message-${sequence}`,
     chatId: "chat-1",
+    contextKind: "project",
     worktreeId: "worktree-1",
+    scratchRootId: null,
     executionLaneId: null,
     sequence,
     role: "assistant",

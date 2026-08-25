@@ -1,7 +1,9 @@
 import type {
   ArchivedChatWireSummary,
+  ArchivedStandaloneChatWireSummary,
   ChatWireSummary,
   ProjectTabLayoutWireSummary,
+  StandaloneChatWireSummary,
 } from "@cantrip/protocol";
 import type { PrivateDisplayLabelOpaque } from "@cantrip/protocol/private-labels";
 import { describe, expect, it } from "vitest";
@@ -100,6 +102,26 @@ describe("chat title encryption adapter", () => {
       title: "Private task",
     });
 
+    const standalone: StandaloneChatWireSummary = {
+      ...chat,
+      contextKind: "standalone",
+      experience: "agent",
+      projectId: null,
+      activeWorktreeId: null,
+      activeScratchRootId: "00000000-0000-4000-8000-000000000016",
+      worktreeMode: null,
+      customSubagentModel: false,
+      subagentModelId: null,
+      subagentReasoningEffort: null,
+      planMode: "default",
+      hasPendingPlanQuestion: false,
+      automationPaused: false,
+    };
+    await expect(adapter.openStandalone(standalone)).resolves.toMatchObject({
+      contextKind: "standalone",
+      title: "Private agent",
+    });
+
     const archived: ArchivedChatWireSummary = {
       id: chat.id,
       projectId: chat.projectId,
@@ -112,6 +134,18 @@ describe("chat title encryption adapter", () => {
       updatedAt: timestamp,
     };
     await expect(adapter.openArchived(archived)).resolves.toMatchObject({
+      title: "Private agent",
+    });
+    const archivedStandalone: ArchivedStandaloneChatWireSummary = {
+      ...archived,
+      contextKind: "standalone",
+      projectId: null,
+      experience: "agent",
+    };
+    await expect(
+      adapter.openArchivedStandalone(archivedStandalone),
+    ).resolves.toMatchObject({
+      contextKind: "standalone",
       title: "Private agent",
     });
 

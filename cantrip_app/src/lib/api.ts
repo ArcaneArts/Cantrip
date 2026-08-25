@@ -15,6 +15,8 @@ import {
   accountResourceUsageHistoryQuerySchema,
   accountResourceUsageHistorySchema,
   accountResourceUsageSchema,
+  appDestinationSchema,
+  appDestinationUpdateSchema,
   authLoginSchema,
   mobileSignInGrantCreateResultSchema,
   mobileSignInGrantExchangeSchema,
@@ -26,6 +28,7 @@ import {
   agentInteractionResolutionCreateSchema,
   archivedChatCleanupResultSchema,
   archivedChatWireListSchema,
+  archivedStandaloneChatWireSummarySchema,
   browserWireListSchema,
   browserServiceFleetDiscoverySchema,
   browserServiceListSchema,
@@ -46,6 +49,7 @@ import {
   chatMessageSchema,
   chatMessageWireListSchema,
   chatWireSummarySchema,
+  contextualChatWireSummarySchema,
   chatModelConfigurationUpdateSchema,
   encryptedChatComposerDraftUpdateSchema,
   encryptedChatComposerDraftWireStateSchema,
@@ -74,6 +78,7 @@ import {
   chatPromptSubmitResultSchema,
   encryptedChatPromptSubmitResultSchema,
   encryptedChatTurnCreateSchema,
+  encryptedStandaloneChatCreateSchema,
   encryptedQueuedPromptListSchema,
   encryptedQueuedPromptSchema,
   chatReasoningStateSchema,
@@ -293,6 +298,7 @@ import {
   skillSettingsFileUpdateSchema,
   skillSettingsInventorySchema,
   skillSettingsMutationResultSchema,
+  standaloneChatWireSummarySchema,
   systemHealthSchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
@@ -485,6 +491,7 @@ import type {
   TunnelAttachmentCreate,
   BrowserTunnelRequest,
   BrowserSummary,
+  AppDestinationUpdate,
   TunnelUserCreate,
   TunnelUserUpdate,
   UserSettingsUpdate,
@@ -1217,6 +1224,15 @@ export async function updateSettings(input: UserSettingsUpdate) {
     await request("/api/settings", {
       method: "PATCH",
       body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function updateAppDestination(input: AppDestinationUpdate) {
+  return appDestinationSchema.parse(
+    await request("/api/settings/destination", {
+      method: "PATCH",
+      body: JSON.stringify(appDestinationUpdateSchema.parse(input)),
     }),
   );
 }
@@ -4258,6 +4274,24 @@ export async function getChats(projectId: string) {
   );
 }
 
+export async function getStandaloneChats() {
+  return Promise.all(
+    standaloneChatWireSummarySchema
+      .array()
+      .parse(await request("/api/chats?context=standalone"))
+      .map((chat) => chatTitleEncryption.openStandalone(chat)),
+  );
+}
+
+export async function getArchivedStandaloneChats() {
+  return Promise.all(
+    archivedStandaloneChatWireSummarySchema
+      .array()
+      .parse(await request("/api/chats/archived?context=standalone"))
+      .map((chat) => chatTitleEncryption.openArchivedStandalone(chat)),
+  );
+}
+
 export async function getExternalChatHistory(
   projectId: string,
   includeArchived = false,
@@ -4520,6 +4554,21 @@ export async function createChat(
         ...(tabGroupId ? { tabGroupId } : {}),
         ...(target ? { target } : {}),
       }),
+    ),
+  );
+}
+
+export async function createStandaloneChat(title = "New chat") {
+  const id = crypto.randomUUID();
+  return chatTitleEncryption.openStandalone(
+    standaloneChatWireSummarySchema.parse(
+      await post(
+        "/api/chats",
+        encryptedStandaloneChatCreateSchema.parse({
+          id,
+          titleProtection: await chatTitleEncryption.protect(id, title),
+        }),
+      ),
     ),
   );
 }
@@ -5947,27 +5996,27 @@ export function remoteSurfaceWebSocketUrl(
   return url.toString();
 }
 
+async function openContextualChat(raw: unknown) {
+  const chat = contextualChatWireSummarySchema.parse(raw);
+  return chat.contextKind === "standalone"
+    ? chatTitleEncryption.openStandalone(chat)
+    : chatTitleEncryption.open(chat);
+}
+
 export async function renameChat(chatId: string, title: string) {
-  return chatTitleEncryption.open(
-    chatWireSummarySchema.parse(
-      await request(`/api/chats/${encodeURIComponent(chatId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          titleProtection: await chatTitleEncryption.protect(chatId, title),
-        }),
+  return openContextualChat(
+    await request(`/api/chats/${encodeURIComponent(chatId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        titleProtection: await chatTitleEncryption.protect(chatId, title),
       }),
-    ),
+    }),
   );
 }
 
 export async function acknowledgeChatCompletion(chatId: string) {
-  return chatTitleEncryption.open(
-    chatWireSummarySchema.parse(
-      await post(
-        `/api/chats/${encodeURIComponent(chatId)}/completion/read`,
-        {},
-      ),
-    ),
+  return openContextualChat(
+    await post(`/api/chats/${encodeURIComponent(chatId)}/completion/read`, {}),
   );
 }
 
@@ -5992,10 +6041,8 @@ export async function deleteChat(chatId: string) {
 }
 
 export async function restoreArchivedChat(chatId: string) {
-  return chatTitleEncryption.open(
-    chatWireSummarySchema.parse(
-      await post(`/api/chats/${encodeURIComponent(chatId)}/restore`, {}),
-    ),
+  return openContextualChat(
+    await post(`/api/chats/${encodeURIComponent(chatId)}/restore`, {}),
   );
 }
 
@@ -6011,17 +6058,15 @@ export async function forkChat(
   messageId?: string,
 ) {
   const id = crypto.randomUUID();
-  return chatTitleEncryption.open(
-    chatWireSummarySchema.parse(
-      await post(`/api/chats/${encodeURIComponent(chatId)}/fork`, {
+  return openContextualChat(
+    await post(`/api/chats/${encodeURIComponent(chatId)}/fork`, {
+      id,
+      titleProtection: await chatTitleEncryption.protect(
         id,
-        titleProtection: await chatTitleEncryption.protect(
-          id,
-          `${sourceTitle} (fork)`,
-        ),
-        ...(messageId ? { messageId } : {}),
-      }),
-    ),
+        `${sourceTitle} (fork)`,
+      ),
+      ...(messageId ? { messageId } : {}),
+    }),
   );
 }
 
@@ -6292,14 +6337,18 @@ export async function getMessagePage(
       { signal: options.signal },
     ),
   );
-  const messages = await mapWithConcurrency(
-    response.messages,
-    CHAT_MESSAGE_DECRYPT_CONCURRENCY,
-    (message) =>
-      response.kind === "task-encrypted"
-        ? openTaskMessageOpaqueSummary(message)
-        : openChatMessageOpaqueSummary(message),
-  );
+  const messages =
+    response.kind === "task-encrypted"
+      ? await mapWithConcurrency(
+          response.messages,
+          CHAT_MESSAGE_DECRYPT_CONCURRENCY,
+          (message) => openTaskMessageOpaqueSummary(message),
+        )
+      : await mapWithConcurrency(
+          response.messages,
+          CHAT_MESSAGE_DECRYPT_CONCURRENCY,
+          (message) => openChatMessageOpaqueSummary(message),
+        );
   return {
     messages: chatMessageListSchema.parse(messages),
     page: response.page,
@@ -6662,17 +6711,15 @@ export async function updateChatModelConfiguration(
   chatId: string,
   configuration: ModelConfiguration,
 ) {
-  return chatTitleEncryption.open(
-    chatWireSummarySchema.parse(
-      await request(
-        `/api/chats/${encodeURIComponent(chatId)}/model-configuration`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(
-            chatModelConfigurationUpdateSchema.parse(configuration),
-          ),
-        },
-      ),
+  return openContextualChat(
+    await request(
+      `/api/chats/${encodeURIComponent(chatId)}/model-configuration`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(
+          chatModelConfigurationUpdateSchema.parse(configuration),
+        ),
+      },
     ),
   );
 }
