@@ -65,12 +65,15 @@ export function sidebarFilePreviewIsVisible({
 
 export function tabbedExplorerIds(
   layout: ProjectTabLayoutSummary | null | undefined,
+  groupIds?: ReadonlySet<string>,
 ): ReadonlySet<string> {
   return new Set(
     layout?.groups.flatMap((group) =>
-      group.members.flatMap((member) =>
-        member.tabKind === "explorer" ? [member.tabId] : [],
-      ),
+      groupIds && !groupIds.has(group.id)
+        ? []
+        : group.members.flatMap((member) =>
+            member.tabKind === "explorer" ? [member.tabId] : [],
+          ),
     ) ?? [],
   );
 }

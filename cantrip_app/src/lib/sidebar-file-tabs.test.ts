@@ -161,6 +161,29 @@ describe("sidebar file tabs", () => {
     expect(sidebarFileName("src/index.ts")).toBe("index.ts");
   });
 
+  it("scopes connected Explorer tabs to the groups owned by this window", () => {
+    const groupedLayout = {
+      groups: [
+        {
+          id: "main-group",
+          members: [{ tabId: "main-explorer", tabKind: "explorer" }],
+        },
+        {
+          id: "popout-group",
+          members: [{ tabId: "popout-explorer", tabKind: "explorer" }],
+        },
+      ],
+    } as ProjectTabLayoutSummary;
+
+    expect(tabbedExplorerIds(groupedLayout, new Set(["main-group"]))).toEqual(
+      new Set(["main-explorer"]),
+    );
+    expect(tabbedExplorerIds(groupedLayout, new Set(["popout-group"]))).toEqual(
+      new Set(["popout-explorer"]),
+    );
+    expect(tabbedExplorerIds(groupedLayout, new Set())).toEqual(new Set());
+  });
+
   it("moves a preview path when its file or ancestor folder is renamed", () => {
     expect(moveSidebarPath("src/index.ts", "src", "source")).toBe(
       "source/index.ts",

@@ -14,10 +14,17 @@ vi.mock("@/components/explorer/explorer-image-viewport", () => ({
   ExplorerImageViewport: () => createElement("div"),
 }));
 vi.mock("@/components/explorer/retained-explorer-code-editor", () => ({
-  RetainedExplorerCodeEditor: ({ activePath }: { activePath: string | null }) =>
+  RetainedExplorerCodeEditor: ({
+    path,
+    visible,
+  }: {
+    path: string | null;
+    visible: boolean;
+  }) =>
     createElement("div", {
-      "data-active-path": activePath,
+      "data-path": path,
       "data-retained-code-editor": true,
+      "data-visible": visible,
     }),
 }));
 vi.mock("@/components/explorer/use-explorer-worker-encryption", () => ({
@@ -90,9 +97,55 @@ describe("ExplorerView transient selection", () => {
 
     expect(
       renderer.root.findByProps({ "data-retained-code-editor": true }).props[
-        "data-active-path"
+        "data-path"
       ],
     ).toBe("src/requested.ts");
+    expect(
+      renderer.root.findByProps({ "data-retained-code-editor": true }).props[
+        "data-visible"
+      ],
+    ).toBe(true);
+
+    await act(async () => renderer.unmount());
+    client.clear();
+  });
+
+  it("keeps an open pinned Code path mounted while its tab is inactive", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const explorer = {
+      activeWorkerId: "worker-one",
+      fileMode: "edit",
+      id: "explorer-one",
+      projectId: "project-one",
+      selectedPath: "src/pinned.ts",
+      worktreeId: "worktree-one",
+    } as ExplorerSummary;
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(ExplorerView, {
+            active: false,
+            appearance: "dark",
+            explorer,
+            gitStatus: undefined,
+            keepInlineCodeWarm: true,
+            repositoryGraphAvailable: false,
+          }),
+        ),
+      );
+    });
+
+    const editor = renderer.root.findByProps({
+      "data-retained-code-editor": true,
+    });
+    expect(editor.props["data-path"]).toBe("src/pinned.ts");
+    expect(editor.props["data-visible"]).toBe(false);
 
     await act(async () => renderer.unmount());
     client.clear();

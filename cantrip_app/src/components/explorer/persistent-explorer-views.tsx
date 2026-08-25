@@ -73,6 +73,26 @@ export function retainRequestedExplorerSurfaceTabs(
   });
 }
 
+export function ownedExplorerSurfaceTabs(
+  openExplorers: readonly ExplorerSummary[],
+  active: ExplorerSummary | null,
+  prewarm: ExplorerSummary | null | undefined,
+): ExplorerSummary[] {
+  const owned: ExplorerSummary[] = [];
+  const indexById = new Map<string, number>();
+  for (const explorer of [...openExplorers, prewarm, active]) {
+    if (!explorer) continue;
+    const existingIndex = indexById.get(explorer.id);
+    if (existingIndex === undefined) {
+      indexById.set(explorer.id, owned.length);
+      owned.push(explorer);
+    } else {
+      owned[existingIndex] = explorer;
+    }
+  }
+  return owned;
+}
+
 export function PersistentExplorerViews({
   activeExplorer,
   transientFile,
@@ -88,6 +108,7 @@ export function PersistentExplorerViews({
   onRevealFolder,
   revealLabel,
   onOpenTerminal,
+  openExplorers,
   prewarmExplorer,
   repositoryGraphAvailable,
 }: {
@@ -121,6 +142,7 @@ export function PersistentExplorerViews({
   ): void | Promise<void>;
   revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
+  openExplorers?: readonly ExplorerSummary[];
   prewarmExplorer?: ExplorerSummary | null;
   repositoryGraphAvailable: boolean;
 }) {
@@ -132,6 +154,7 @@ export function PersistentExplorerViews({
   );
 
   useEffect(() => {
+    if (openExplorers) return;
     if (!activeExplorer && !prewarmExplorer) return;
     setRetainedExplorers((current) =>
       retainRequestedExplorerSurfaceTabs(
@@ -142,24 +165,41 @@ export function PersistentExplorerViews({
         transientFile ? new Set([transientFile.explorerId]) : undefined,
       ),
     );
-  }, [activeExplorer, dirtyIds, prewarmExplorer, transientFile?.explorerId]);
+  }, [
+    activeExplorer,
+    dirtyIds,
+    openExplorers,
+    prewarmExplorer,
+    transientFile?.explorerId,
+  ]);
 
   const renderedExplorers = useMemo(
     () =>
-      retainRequestedExplorerSurfaceTabs(
-        retainedExplorers,
-        activeExplorer,
-        prewarmExplorer,
-        dirtyIds,
-        transientFile ? new Set([transientFile.explorerId]) : undefined,
-      ),
+      openExplorers
+        ? ownedExplorerSurfaceTabs(
+            openExplorers,
+            activeExplorer,
+            prewarmExplorer,
+          )
+        : retainRequestedExplorerSurfaceTabs(
+            retainedExplorers,
+            activeExplorer,
+            prewarmExplorer,
+            dirtyIds,
+            transientFile ? new Set([transientFile.explorerId]) : undefined,
+          ),
     [
       activeExplorer,
       dirtyIds,
+      openExplorers,
       prewarmExplorer,
       retainedExplorers,
       transientFile?.explorerId,
     ],
+  );
+  const openExplorerIds = useMemo(
+    () => new Set(openExplorers?.map(({ id }) => id) ?? []),
+    [openExplorers],
   );
 
   const handleLifecycleChange = useCallback(
@@ -199,6 +239,7 @@ export function PersistentExplorerViews({
             : null
         }
         gitStatus={gitStatuses[explorer.worktreeId]}
+        keepInlineCodeWarm={openExplorerIds.has(explorer.id)}
         key={explorer.id}
         onChanged={onChanged}
         onHeaderChange={active ? onHeaderChange : undefined}
