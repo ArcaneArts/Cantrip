@@ -76,6 +76,22 @@ function transcriptEntries(streamingText: string): AgentTranscriptEntry[] {
   }));
 }
 
+function userTranscriptEntry(): AgentTranscriptEntry {
+  return {
+    type: "timeline",
+    entry: {
+      type: "message",
+      message: {
+        ...messages[0]!,
+        id: "user-message",
+        role: "user",
+        content: [{ type: "text", text: "User request" }],
+      },
+      turnMetadata: null,
+    },
+  };
+}
+
 const editedMessageRef = { current: null };
 const noAction = () => undefined;
 const noAsyncAction = async () => undefined;
@@ -128,6 +144,41 @@ function ComposerRenderHarness() {
 }
 
 describe("ChatTranscriptEntries render isolation", () => {
+  it("marks user message cards for high contrast outline styling", async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <ChatTranscriptEntries
+          copiedMessageId={null}
+          editedMessageRef={editedMessageRef}
+          editingSentMessage={null}
+          entries={[userTranscriptEntry()]}
+          forkPending={false}
+          latestEditableMessageId={null}
+          latestLiveActivityGroupKey={null}
+          retryPending={false}
+          onCancelEditingMessage={noAction}
+          onChangeEditingMessage={noAction}
+          onCopyResponse={noAsyncAction}
+          onEditMessage={noAction}
+          onForkMessage={noAction}
+          onOpenFile={noAction}
+          onSubmitEditedMessage={noAction}
+          onViewSubagent={noAction}
+          onViewTrajectory={noAction}
+        />,
+      );
+    });
+
+    const userMessage = renderer.root.findByProps({
+      "data-chat-message-role": "user",
+    });
+    expect(userMessage.props.className).toContain("border-transparent");
+    expect(userMessage.props.className).toContain("bg-muted/80");
+
+    await act(async () => renderer.unmount());
+  });
+
   it("skips historical rows for composer updates and rerenders only changed live content", async () => {
     messageContentRender.mockClear();
     let renderer!: TestRenderer.ReactTestRenderer;

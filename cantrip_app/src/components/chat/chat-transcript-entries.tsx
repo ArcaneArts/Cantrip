@@ -152,10 +152,11 @@ export const ChatTranscriptEntries = memo(function ChatTranscriptEntries({
           </div>
         ) : null}
         <div
+          data-chat-message-role={user ? "user" : undefined}
           className={cn(
             "min-w-0",
             user &&
-              "max-w-[85%] overflow-hidden rounded-2xl bg-muted/80 px-4 py-3 text-foreground sm:max-w-[42rem]",
+              "max-w-[85%] overflow-hidden rounded-2xl border border-transparent bg-muted/80 px-4 py-3 text-foreground sm:max-w-[42rem]",
             editingThisMessage && "w-full",
             !user && !system && "flex-1 py-1",
             system &&

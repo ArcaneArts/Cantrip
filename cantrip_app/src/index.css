@@ -584,6 +584,11 @@
   backdrop-filter: blur(40px) saturate(125%);
 }
 
+.high-contrast [data-chat-message-role="user"] {
+  border-color: var(--input);
+  background: transparent;
+}
+
 @supports (padding: max(0px)) {
   .mobile-safe-top {
     min-height: calc(4rem + env(safe-area-inset-top));
