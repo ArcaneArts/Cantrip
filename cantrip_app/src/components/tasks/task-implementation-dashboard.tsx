@@ -42,6 +42,8 @@ import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { useChatMessageHistory } from "@/lib/use-chat-message-history";
 import { cn } from "@/lib/utils";
 
+import { TaskListBackButton } from "./task-list-back-button";
+
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
   active: "Running",
   paused: "Paused",
@@ -81,6 +83,9 @@ export function taskImplementationShowsLiveActivity(
     (task.planGoalEnabled ? goal?.status === "active" : active)
   );
 }
+
+export const TASK_IMPLEMENTATION_CONTENT_CLASS_NAME =
+  "flex w-full flex-col px-4 py-5 sm:px-8";
 
 function PullRequestRow({
   pullRequest,
@@ -132,10 +137,12 @@ function PullRequestRow({
 export function TaskImplementationDashboard({
   chat,
   initialTask,
+  onClose,
   workerName,
 }: {
   chat: ChatSummary;
   initialTask: TaskDetail;
+  onClose?(): void;
   workerName?: string;
 }) {
   const queryClient = useQueryClient();
@@ -231,8 +238,9 @@ export function TaskImplementationDashboard({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-5 sm:px-8">
+      <div className={TASK_IMPLEMENTATION_CONTENT_CLASS_NAME}>
         <header className="flex flex-wrap items-center gap-3 border-b pb-4">
+          {onClose ? <TaskListBackButton onBack={onClose} /> : null}
           <div className="grid size-9 place-items-center rounded-lg bg-violet-500/10 text-violet-500">
             <Target className="size-4" />
           </div>

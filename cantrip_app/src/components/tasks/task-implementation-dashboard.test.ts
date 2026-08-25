@@ -2,6 +2,7 @@ import type { TaskDetail, TaskGoalSnapshot } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
+  TASK_IMPLEMENTATION_CONTENT_CLASS_NAME,
   taskImplementationPlacementLabel,
   taskImplementationShowsLiveActivity,
   taskImplementationStatusLabel,
@@ -16,6 +17,12 @@ const goal = {
 } as TaskGoalSnapshot;
 
 describe("Task implementation dashboard presentation", () => {
+  it("uses the full Task surface width without centered gutters", () => {
+    expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).toContain("w-full");
+    expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).not.toContain("mx-auto");
+    expect(TASK_IMPLEMENTATION_CONTENT_CLASS_NAME).not.toContain("max-w-");
+  });
+
   it("labels managed folder placement without Git terminology", () => {
     expect(
       taskImplementationPlacementLabel({
