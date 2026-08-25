@@ -1,50 +1,56 @@
 # Cantrip performance and reliability audit
 
 - Date: 2026-08-24
-- Baseline: origin/main at 02d39bb6898a498a0dd30121af1758a6b1c2bfb5
-- Status: inspection complete; implementation fixes are tracked inline
+- Baseline: origin/main at 77216a0224b354b9e4b7f94495b94ba5c1254980
+- Status: second independent audit complete; pending inventory reconciled to current source
 
 ## Executive result
 
-Cantrip already has the right high-level live architecture. AppLive eliminates repeating
-project-resource HTTP requests while healthy, the worker owns local filesystem and process
-observation, and bounded recovery polling remains available when a live path is degraded.
-The largest safe gains are therefore not another transport rewrite. They are the repeated
-work surrounding the live paths:
+The live architecture remains sound: AppLive eliminates repeating project-resource HTTP
+while healthy, workers own local filesystem/process observation, and bounded recovery
+polling protects degraded and restart paths. The deeper second pass found the largest safe
+gains one layer below that architecture:
 
-- historical chat and root application trees reconcile for local UI changes that should be
-  isolated;
-- remote-surface frames are copied, decoded, validated, and encoded more than once;
-- common server reads hydrate entire resources or issue per-resource queries when they need
-  only ownership or preference fields;
-- healthy workers repeat Git subprocesses, cryptography, and filesystem writes when nothing
-  changed;
-- several recovery/reconnect/service loops lack single-flight guards or bounded jittered
-  backoff;
-- bounded buffers use full sorting, rebuilding, or Array.shift eviction in their hot paths.
+- healthy Run-configuration watchers still accompany a 500 ms full repository rescan;
+- the durable one-second Task scheduler executes logically impossible resume/claim work for
+  running-only owners;
+- Browser Code tunnel framing repeatedly copies accumulated byte streams and can grow
+  quadratically with fragmentation;
+- every accepted AppLive event synchronously persists its cursor and wakes status-only React
+  subscribers;
+- closed inspection UI, disabled provider queries, and diagnostic capture still build or
+  parse expensive data that the user cannot see;
+- project, Task, worker-metadata, session-validation, and attachment-maintenance paths retain
+  avoidable N+1 request/query patterns;
+- attachment ranges and command streams reread or recopy data already in memory or on disk.
 
-P0-01, P0-05, P0-06, P0-09, P0-11, and P0-12 have since been fixed and are retained below
-as completed historical context. The first implementation wave should target the remaining
-P0 items. They are source-evident, high-upside, and can be validated without changing
-product semantics. P1 items should follow with focused benchmarks. P2 items require
-production-shaped measurement before design work.
+Five completed findings were removed from the active report: former P0-01, P0-05, P0-09,
+P0-11, and P0-12. Their current implementations and focused tests were rechecked before
+removal. P0-06 was marked fixed only by a status-only documentation change; current source
+still contains its original `1 + 2N` query pattern, so this pass restores it as pending.
 
-| Rank | Opportunity                                                  | Expected gain       | Risk       | Why it should move first                                                  |
-| ---- | ------------------------------------------------------------ | ------------------- | ---------- | ------------------------------------------------------------------------- |
-| 1    | P0-01 [fixed] isolate composer updates from transcript rows  | fixed               | —          | historical rows now skip draft, caret, and composer-scroll updates        |
-| 2    | P0-02 remove redundant remote-frame work end to end          | high                | low-medium | removes frame-sized copies and repeated validation at interactive rates   |
-| 3    | P0-03 no-op unchanged encryption bootstraps                  | high                | low        | removes synchronous disk and crypto work every five seconds               |
-| 4    | P0-04 batch narrow AppLive authorization                     | high                | low        | turns reconnect hydration from potentially hundreds of queries into a few |
-| 5    | P0-05 [fixed] use focused settings loaders                   | fixed               | —          | preference decisions now use one history-independent query                |
-| 6    | P0-06 [fixed] collapse worker-management 1+2N queries        | fixed               | —          | reported fixed after the audit; retained for traceability                 |
-| 7    | P0-07 coalesce worktree observation across server and worker | high                | low-medium | removes per-target DB calls, Git probes, duplicate watchers, and overlap  |
-| 8    | P0-08 collapse redundant Git status pipelines                | high                | low-medium | removes several child processes from common status/operation refreshes    |
-| 9    | P0-09 [resolved] incremental log ingestion and lazy export   | resolved            | —          | equivalent 10k-buffer benchmarks improved ordered and mixed batches       |
-| 10   | P0-10 make live chat overlay merging incremental             | high                | medium     | avoids O(N log N) history rebuilds on streamed message updates            |
-| 11   | P0-11 [resolved] parallel workspace snapshot metadata reads  | resolved            | —          | ordered reads are now capped at 16 with equivalent snapshot bytes         |
-| 12   | P0-12 [resolved] skip proven no-op CodeGraph syncs           | resolved            | —          | clean reconciliation now performs status only                             |
-| 13   | P0-13 add capped jittered reconnect and crash backoff        | high during failure | low        | prevents worker herds and endless five-second service crash loops         |
-| 14   | P0-14 make worker shutdown failure-tolerant                  | high reliability    | low-medium | prevents one failed close from wedging restart and later cleanup          |
+The priority frontier now mixes the strongest new findings with still-valid carryovers:
+
+| Rank | Opportunity                                              | Gain             | Risk       | Dominant avoided work                                   |
+| ---- | -------------------------------------------------------- | ---------------- | ---------- | ------------------------------------------------------- |
+| 1    | N0-01 watcher-first Run-configuration reconciliation     | very high idle   | low        | up to 128 rereads/parses every 500 ms per repository    |
+| 2    | N0-02 state-gate the durable Task scheduler              | high fleet-wide  | low        | impossible resume/claim transactions every second       |
+| 3    | N0-03 linear, low-copy Browser Code tunnel framing       | high interactive | low-medium | cumulative buffer copies and repeated payload copies    |
+| 4    | N0-04 coalesce AppLive cursor persistence/subscriptions  | high during live | low-medium | synchronous storage plus React fanout per event         |
+| 5    | N0-05 cache provider catalogs outside transcript renders | high interaction | low        | repeated multi-megabyte storage parse/schema validation |
+| 6    | N0-06 unmount hidden inspection trajectory work          | high long-chat   | low        | invisible projections and thousands of retained rows    |
+| 7    | N0-07 batch project/worker routing metadata hydration    | high fleet-wide  | low-medium | per-project HTTP and per-worker protected commands      |
+| 8    | N0-08 make attachment transfer genuinely ranged          | high transfer    | low-medium | full-file reads for every requested range               |
+| 9    | N0-09 disable routine full-payload diagnostic cloning    | high streaming   | low-medium | recursive clone/redaction of every Codex RPC            |
+| 10   | N0-10 batch Codex stream accumulation at 100 ms          | high streaming   | low-medium | complete-buffer encode/copy on every small delta        |
+| 11   | N0-11 bulk-read Project Task workloads                   | high dashboard   | low-medium | approximately `3 + 3N` SQL plus oversized invalidation  |
+| 12   | N0-12 consolidate authenticated socket validation        | high at scale    | low        | duplicate per-session/per-frame database reads          |
+| 13   | N0-13 add a live-message wire discriminator              | high Task chat   | low-medium | failed wrong-key decrypt and repeated schema passes     |
+| 14   | N0-14 batch retained-attachment maintenance              | high at scale    | low-medium | up to `6N` authenticated heartbeat requests per minute  |
+| 15   | P0-02 remove redundant remote-frame work end to end      | high interactive | low-medium | frame-sized copies and repeated encoding                |
+| 16   | P0-04 batch narrow AppLive authorization                 | high reconnect   | low        | full resource hydration per subscribed scope            |
+| 17   | P0-06 collapse worker-management `1 + 2N` queries        | high fleet-wide  | low        | pool-consuming list and mutation fanout                 |
+| 18   | P0-07 coalesce worktree observation                      | high idle        | low-medium | per-target SQL, Git probes, watchers, and overlap       |
 
 ## Scope and method
 
@@ -52,11 +58,11 @@ The audit inspected cantrip_app, cantrip_server, cantrip_worker, packages/protoc
 cross-layer call paths. It deliberately did not spend time inside cantrip_code,
 cantrip_codex, or cantrip_site. Generated and vendored candidates were discarded.
 
-Three independent source passes covered UI/rendering, server/netcode/database behavior, and
-worker/service management. A fourth cross-layer pass followed remote-surface, tunnel,
-logging, project-statistics, AppLive, and command paths across packages. Automated static
-scouting was used only to locate candidates; each retained finding below was manually
-re-read at the cited source lines.
+Three fresh independent source passes covered UI/rendering, server/netcode/database
+behavior, and worker/service management. A fourth cross-layer pass followed Browser Code,
+project hydration, AppLive, attachment, and command-stream paths. Automated static scouting
+was used only to locate candidates; generated/minified matches were discarded and every
+retained finding was manually re-read at the cited current-source lines.
 
 This is a static audit, not a production profile. Every item is therefore labeled
 opportunity rather than confirmed bottleneck. Expected gain estimates combine call
@@ -87,59 +93,588 @@ durability-sensitive loops without correlated ownership, replay, fencing, and mi
 recovery. The opportunities below optimize work that remains after those successful
 migrations.
 
-## P0: high-upside candidates and completed work
+## New second-pass opportunities
 
-### P0-01 — fixed — Isolate composer updates from the full chat transcript
+### N0-01 — opportunity — Replace 500 ms Run-configuration rescans with watcher-first reconciliation
 
-- Status: fixed 2026-08-24
-- Category: REDUNDANT_COMPUTATION
-- Expected gain: high
-- Original risk: low
-- Original complexity: low-medium
+- Category: SYNC_IO_HOT_PATH, N_PLUS_ONE_OR_CHATTER
+- Expected gain: very high idle-worker reduction
+- Risk: low
+- Complexity: low-medium
 - Confidence: high
 
-Original evidence on the audited baseline:
+Evidence:
 
-- cantrip_app/src/App.tsx:1245 and 1322-1377 keep transcript, composer draft, caret,
-  attachment, scroll, and other UI state in ChatTranscript.
-- cantrip_app/src/App.tsx:2836-3030 maps and renders every transcript entry.
-- cantrip_app/src/App.tsx:3539-3573 updates transcript-level state on textarea keystrokes
-  and scrolling.
-- cantrip_app/src/App.tsx:646-700 and
-  cantrip_app/src/components/chat/markdown.tsx:29-52 show non-memoized message/Markdown
-  rendering and recreated Markdown configuration.
+- cantrip_worker/src/run-configuration-repository.ts:44-46 sets a 500 ms poll, and lines
+  924-940 keep it active even after the filesystem watcher is armed successfully.
+- cantrip_worker/src/run-configuration-repository.ts:595-672 rereads, hashes, parses, and
+  schema-validates as many as 128 files per scan; lines 141-170 open and read each file.
+- cantrip_worker/src/run-configuration-definition-service.ts:37 and 401-455 retain
+  persistent observation for as many as 256 projects.
 
-Original hypothesis: a composer keystroke or textarea scroll can reconcile historical
-messages and re-enter Markdown components. The cost grows with conversation length and is
-paid on the IDE's most frequent interaction.
+Hypothesis: one inactive repository containing 128 definitions can perform roughly 256
+complete file reads/parses each second. The configured static upper bound is 65,536 file
+reads per second before directory, stat, hash, and schema work.
 
-Resolution:
+Suggested change: when the watcher is healthy, reconcile from events and retain a 30-60
+second integrity sweep. Use the existing fast poll only while watching is unavailable or
+degraded. Optionally lower the 256-project observation cap based on active attachment.
 
-- cantrip_app/src/components/chat/chat-transcript-entries.tsx now owns the extracted
-  historical transcript rows behind one memoized component boundary. Its props deliberately
-  exclude composer draft, caret, attachment, menu, and scroll state.
-- cantrip_app/src/components/chat/message-content.tsx memoizes each immutable message, so a
-  live transcript update re-enters only message objects whose identity changed.
-- cantrip_app/src/components/chat/markdown.tsx memoizes Markdown output and hoists the
-  stable remark plugin list; its component table is rebuilt only when inverse/link behavior
-  changes.
-- cantrip_app/src/App.tsx passes stable callbacks for edit, copy, fork, and resend actions
-  while preserving existing draft persistence, upload, command-menu, queue-edit, mutation,
-  and live-history behavior.
+Validation: count readdir/open/read/hash/schema work for 1, 32, and 256 repositories at 0
+and 128 files. Exercise initially missing directories, create/edit/rename/delete, watcher
+errors, silently missed events, and eviction. The slow sweep must repair missed events.
 
-Deterministic render-count proof:
+### N0-02 — opportunity — Gate the durable Task scheduler by actual cycle state
 
-- cantrip_app/src/components/chat/chat-transcript-entries.test.tsx mounts 500 historical
-  messages, performs 100 separate draft updates and 100 composer-scroll updates, and
-  verifies that historical message render count remains exactly 500.
-- The same test changes the active streaming message and verifies exactly one additional
-  message render, proving the memo boundary still admits live content changes.
-- Validation completed with the app typecheck, all 287 app test files (1,283 passing tests;
-  3 skipped), and the production app build.
+- Category: N_PLUS_ONE_OR_CHATTER, REDUNDANT_COMPUTATION
+- Expected gain: high fleet-wide
+- Risk: low
+- Complexity: low-medium
+- Confidence: high
 
-Regression guardrail: retain the 500-message render-count test and keep composer-only state
-out of ChatTranscriptEntries props. Any new transcript-row callback must be referentially
-stable across draft, caret, attachment, and composer-scroll updates.
+Evidence:
+
+- cantrip_server/src/app.ts:1028 and 24335-24340 run the durable Task scheduler every second.
+- cantrip_server/src/db/task-dispatch.ts:211-224 returns owners with any queued, claimed,
+  running, or paused cycle.
+- cantrip_server/src/app.ts:23902-23999 unconditionally performs lease reconciliation,
+  paused eligibility/resume, and queued eligibility/claim for each owner.
+- cantrip_server/src/db/task-dispatch.ts:742-805 locks and scans for paused work, while lines
+  404-499 lock and issue four claim queries. The active-lane query at 490-499 is not scoped
+  to the owner.
+
+Hypothesis: a single long-running Task keeps logically impossible resume and claim queries
+running every second for its entire duration, competing through the five-connection pool.
+
+Suggested change: preserve the one-second durability watchdog, but return per-state flags or
+counts from the owner scan. Run paused preparation only when paused work exists, queued
+preparation only when queued work exists, and lease expiry only for claimed/running work.
+Scope active-lane reads to the owner/candidate chats.
+
+Validation: count SQL for 60 seconds with none, queued, claimed, running, paused, and mixed
+states. Running-only owners must perform no pause/claim hydration, while expiration,
+fencing, restart recovery, and the current recovery bound remain identical.
+
+### N0-03 — opportunity — Make Browser Code tunnel framing linear and low-copy
+
+- Category: HOT_PATH_ALLOCATION, ALGORITHM_COMPLEXITY
+- Expected gain: high for embedded Code interaction
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_app/src/lib/browser-code-tunnel.ts:209-222 copies decrypted payloads before
+  delivery. Lines 810-820 allocate `old buffer + chunk` and recopy all retained bytes for
+  every incoming chunk.
+- cantrip_app/src/lib/browser-code-tunnel.ts:823-885 copies parsed frame payloads and then
+  copies completed fragmented messages again.
+- cantrip_app/src/lib/browser-code-tunnel.ts:924-933 posts the final ArrayBuffer without a
+  transfer list, permitting another structured-clone copy.
+- packages/protocol/src/tunnel-data-plane.ts:7 permits 64 KiB plaintext frames, while the
+  browser HTTP tunnel path accepts responses up to 64 MiB.
+
+Hypothesis: extension-host, LSP, and asset traffic pays several full payload copies; repeated
+concatenation makes a fragmented large message quadratic and increases GC/input latency.
+
+Suggested change: replace monolithic append with a chunk deque/head offset or amortized
+growable buffer, establish payload ownership so each boundary copies at most once, and
+transfer final binary buffers through `postMessage`. Preserve source sequence ordering and
+ensure destination-credit return cannot sit behind a source-credit wait.
+
+Validation: replay 1 KiB, 64 KiB, 1 MiB, and 8 MiB fragmented traffic both directions.
+Measure bytes copied, allocations, GC, throughput, and latency; require exact framing,
+sequence/credit behavior, bounds, malformed rejection, and linear scaling.
+
+### N0-04 — opportunity — Coalesce AppLive cursor persistence and split status subscriptions
+
+- Category: SYNC_IO_HOT_PATH, REDUNDANT_COMPUTATION
+- Expected gain: high during live bursts
+- Risk: low-medium
+- Complexity: low-medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_app/src/lib/app-live-client.ts:732-735 advances the cursor for every accepted
+  event; lines 1041-1059 emit a new snapshot and synchronously call
+  `storage.setItem(JSON.stringify(...))` on every advance.
+- cantrip_app/src/lib/app-live-react.tsx:36-48 makes status-only consumers subscribe to the
+  full snapshot and set React state on every emit. Status is consumed throughout App, chat,
+  settings, Tasks, Git, workflows, and projects.
+
+Hypothesis: streaming traffic performs synchronous localStorage I/O, snapshot allocation,
+listener fanout, and status-only React updates on the main thread for every live event.
+
+Suggested change: keep the in-memory cursor immediate, persist the latest cursor on a
+bounded 100-250 ms trailing schedule, and flush on stop/pagehide/visibility/shutdown. Add a
+status selector/subscription that emits only on status transitions while retaining the full
+diagnostic snapshot API.
+
+Validation: inject 10,000 sequential events and count storage writes/status callbacks.
+Require exact final cursor after every explicit lifecycle flush, safe replay from an
+intentionally lagged persisted cursor, no event loss, and identical status transitions.
+
+### N0-05 — opportunity — Remove provider-cache parsing from ordinary transcript renders
+
+- Category: SYNC_IO_HOT_PATH, REGEX_OR_PARSING_HOT_PATH
+- Expected gain: high with a populated catalog cache
+- Risk: low
+- Complexity: low
+- Confidence: high
+
+Evidence:
+
+- cantrip_app/src/components/settings/provider-catalog-cache.ts:8-12 permits eight entries
+  and three million stored characters. Lines 34-60 perform localStorage read, JSON parse,
+  and schema validation for every stored entry on each load.
+- cantrip_app/src/components/settings/provider-catalog-cache.ts:74-115 rereads on lookup and
+  rereads/revalidates/reserializes on write without an in-memory hydration layer.
+- cantrip_app/src/components/settings/use-provider-catalog.ts:16-34 computes placeholder
+  data even when the query is disabled.
+- cantrip_app/src/App.tsx:1430-1449 constructs those options during ChatTranscript renders
+  while image-attachment state only controls `enabled`.
+
+Hypothesis: ordinary text-chat updates can synchronously parse and validate megabytes of
+catalog data once per provider, directly in the typing/render path.
+
+Suggested change: skip placeholder lookup when disabled; hydrate a server/user-scoped
+module/session cache once, update it on writes, and persist only actual changes.
+
+Validation: seed the maximum three-megabyte cache and simulate 100 keystrokes across
+multiple providers. Require zero reads while image queries are disabled, one hydration on
+first enable, and identical expiry, corrupt-cache, and server/user isolation behavior.
+
+### N0-06 — opportunity — Do not retain full trajectory UI while Inspect is closed
+
+- Category: REDUNDANT_COMPUTATION
+- Expected gain: high for long chats
+- Risk: low
+- Complexity: low-medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_app/src/App.tsx:3544-3595 always renders the Inspect shell and content.
+- cantrip_app/src/components/ui/resizable-panel.tsx:345-379 closes via width, inert, and
+  opacity but leaves children mounted.
+- cantrip_app/src/components/chat/agent-inspect-content.tsx:438-559 has no hidden
+  short-circuit for expensive content.
+- cantrip_app/src/components/chat/agent-trajectory.tsx:237-268 rebuilds projections,
+  and lines 730-755 map the full trajectory into DOM rows.
+
+Hypothesis: a closed panel retains/reconciles a large invisible event tree and duplicates
+agent projection work during composer/live updates. This is distinct from the completed
+transcript-row memoization.
+
+Suggested change: lazily mount or short-circuit expensive content while closed, preserve
+intentional controlled tab/filter state, and reuse the parent's computed projection when
+open. Windowing visible rows can remain a measured follow-up.
+
+Validation: with 1,000 events and the panel closed, projection calls and trajectory rows
+must remain zero across 100 draft and 100 live updates. Opening must preserve exact order,
+selection, filtering, and the explicitly chosen reopen-state policy.
+
+### N0-07 — opportunity — Batch project and worker routing-metadata hydration
+
+- Category: N_PLUS_ONE_OR_CHATTER
+- Expected gain: high for larger project/fleet lists
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_app/src/lib/project-encryption.ts:143-205 resolves protected project metadata and
+  calls `listWorktrees(project.id)` separately for every project.
+- cantrip_app/src/lib/project-encryption.ts:211-273 groups replicas by worker but still
+  issues a separate protected metadata-resolution command for each worker/project group.
+- cantrip_app/src/lib/api.ts:996-1024 similarly resolves worker-source metadata once per
+  source after the management list response.
+- cantrip_app/src/lib/api.ts:1770-1772 and 2379-2382 show the one initial project list plus a
+  distinct worktree HTTP request per project; lines 2297-2322 route each protected metadata
+  resolution through server and worker.
+
+Hypothesis: opening project or worker management fans one logical list into N HTTP requests
+and many protected server-worker round trips, increasing remote latency and encryption work.
+
+Suggested change: include public worktree records in a bulk project response or add a batch
+endpoint. Batch protected metadata inputs by worker while preserving per-scope associated
+data and fail-closed behavior; a short-lived keyed single-flight is a safe intermediate.
+
+Validation: use 1, 20, and 100 projects/sources across multiple workers. Count HTTP and
+worker commands; assert exact decrypted/fail-closed routing metadata and AppLive freshness.
+
+### N0-08 — opportunity — Make attachment transfer truly ranged and incremental
+
+- Category: SYNC_IO_HOT_PATH
+- Expected gain: high for upload, download, and relocation
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_worker/src/attachment-store.ts:15-16 permits 25 MiB files in 256 KiB chunks.
+- cantrip_worker/src/attachment-store.ts:109-179 reopens with `appendFile` for each chunk and
+  rereads the entire completed file solely to verify its digest.
+- cantrip_worker/src/attachment-store.ts:200-225 calls `readFile` for every requested range
+  and only then returns a subarray. Reading a 25 MiB file in 100 ranges can read about 2.5
+  GiB from disk.
+- cantrip_worker/src/chat-relocation-store.ts:121-169 repeats per-chunk append opens and the
+  final digest pass; cantrip_worker/src/external-chat-attachments.ts:326-380 already contains
+  a safe positioned ranged-reader shape.
+
+Hypothesis: transfers create avoidable open/close traffic, full-file allocations, and
+quadratic aggregate reads.
+
+Suggested change: retain a bounded upload FileHandle plus incremental SHA-256 state, close
+before rename/removal, and use positioned FileHandle reads for ranges. Extract the proven
+ranged-reader shape; preserve relocation's necessary final JSON parse.
+
+Validation: empty, maximum-size, concurrent, abort, shutdown, stale-upload, checksum-error,
+out-of-order, EOF, and Windows handle-before-rename cases. Count handles, bytes read, RSS,
+and syscalls; require byte-identical output.
+
+### N0-09 — opportunity — Stop cloning every routine Codex RPC payload for diagnostics
+
+- Category: REDUNDANT_COMPUTATION, HOT_PATH_ALLOCATION
+- Expected gain: high during streaming and thread hydration
+- Risk: low-medium
+- Complexity: low-medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_worker/src/codex/app-server.ts:7065-7088 records a full diagnostic before
+  dispatching every parsed RPC message, including streaming deltas.
+- cantrip_worker/src/codex/app-server.ts:8758-8777 redacts and retains each payload in a
+  count-bounded but not byte/node/string-bounded ring.
+- cantrip_worker/src/codex/diagnostic-redaction.ts:10-38 recursively clones objects and
+  arrays; every string runs bearer-token regex and registered-secret scans.
+- Normal construction at cantrip_worker/src/index.ts:1277-1336 supplies no diagnostic
+  consumer, and no production caller consumes the retained payload ring.
+
+Hypothesis: high-volume deltas and large thread responses are synchronously copied and
+scanned on the worker event loop even though routine diagnostics are unused.
+
+Suggested change: always retain compact correlation/method/kind/time metadata, but capture
+bounded redacted payloads only for malformed, unknown, unmatched, unsupported, error, or
+explicitly enabled diagnostic cases. Add byte/node/string caps.
+
+Validation: replay 100,000 deltas and one 10 MiB response. Measure CPU, heap, and event-loop
+delay; preserve unique correlations, error/unknown visibility, protected diagnostic mode,
+and all secret-redaction tests.
+
+### N0-10 — opportunity — Batch Codex stream accumulation at the existing 100 ms boundary
+
+- Category: HOT_PATH_ALLOCATION, ALGORITHM_COMPLEXITY
+- Expected gain: high for long responses and verbose commands
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_worker/src/codex/app-server.ts:314-323 and 524-608 retain complete streaming text,
+  a second complete last-emitted text, and append every small agent delta.
+- cantrip_worker/src/codex/app-server.ts:2625-2676 strips each command delta character by
+  character, then converts both complete current output and the delta to Buffers.
+- cantrip_worker/src/codex/app-server.ts:7411-7444 performs that complete bounded-output
+  rebuild per raw delta even though delivery is coalesced at lines 505-515.
+- packages/protocol/src/index.ts:6704 permits 256 KiB of retained command output.
+
+Hypothesis: small verbose deltas repeatedly encode/copy the growing buffer before the
+coalescing boundary, approaching quadratic work and duplicating the agent response in
+multiple accumulators.
+
+Suggested change: collect immutable pending chunks, sanitize/bound once per scheduled flush
+or completion, maintain O(1) head trimming, and keep one authoritative agent accumulator.
+Only consider append-only wire events if transport-byte measurement still justifies them.
+
+Validation: replay one-byte, 64-byte, and 4 KiB chunks to 10 KiB, 256 KiB, and 1 MiB. Require
+identical final text, truncation, UTF-8/control handling, message order/classification, and
+100 ms semantics; measure allocation, CPU, event-loop delay, and transport bytes.
+
+### N0-11 — opportunity — Collapse the Project Task workload endpoint's `3 + 3N` fanout
+
+- Category: N_PLUS_ONE_OR_CHATTER
+- Expected gain: high for Task-heavy projects
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_server/src/app.ts:24421-24456 lists Tasks, then loads one plan and a 100-message
+  page for each Task.
+- cantrip_server/src/db/repository.ts:15494-15520 implements the plan query; lines
+  16576-16673 implement two queries per message page, for roughly `3 + 3N` SQL statements.
+- cantrip_app/src/components/projects/project-tasks-dashboard.tsx:481-487 consumes the
+  endpoint, while cantrip_app/src/lib/app-live-query.ts:201-275 invalidates the whole project
+  workload on Task, message, goal, plan, and interaction events.
+
+Hypothesis: one Task update can reread, parse, serialize, transfer, and decrypt plans plus up
+to 100 protected messages for every historical Task in the project.
+
+Suggested change: bulk-read all plans by chat ID, partition page headers by chat in one
+query, and load selected message rows in one query while preserving exact order/page
+boundaries. Patch only the affected Task after the bulk path is proven.
+
+Validation: exact presentation/wire parity and SQL/payload/p95 at 1, 25, and 100 Tasks with
+10, 100, and 10,000 messages. Replay one plan/message invalidation and verify unaffected
+item identity and content.
+
+### N0-12 — opportunity — Consolidate authenticated WebSocket session validation
+
+- Category: N_PLUS_ONE_OR_CHATTER, STATE_OR_CACHE_STRATEGY
+- Expected gain: high at connection scale
+- Risk: low
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_server/src/app.ts:3845-3851 and 4286-4312 already group sockets by session, but
+  lines 4349-4364 launch one database validation per session every 30 seconds without a
+  sweep guard.
+- cantrip_server/src/app.ts:4401-4412 provides another direct database-backed AppLive
+  validator; cantrip_server/src/live/hub.ts:515-524 calls it for every inbound frame and
+  lines 1081-1104 call it again for every heartbeat connection.
+- cantrip_server/src/db/repository.ts:2836-2854 executes a user/session join each time. Local
+  logout already eagerly revokes the hub and grouped sockets at app.ts:12699-12739.
+
+Hypothesis: normal heartbeats and generic sweeps duplicate queries, while subscribe/control
+bursts multiply them and a slow database can overlap sweeps.
+
+Suggested change: create one single-flight coordinator keyed by owner/session, batch all due
+IDs in one status query, and share results no longer than the existing interval. Explicitly
+invalidate on logout/revoke and preserve the cross-instance revocation bound.
+
+Validation: 1, 100, and 1,000 sessions with one/four sockets plus ping/subscribe bursts.
+Count SQL/p95, then revoke locally and from a peer; closure latency and security decisions
+must remain identical.
+
+### N0-13 — opportunity — Add a live-message wire discriminator
+
+- Category: REGEX_OR_PARSING_HOT_PATH, REDUNDANT_COMPUTATION
+- Expected gain: high for Task streaming/history
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_server/src/app.ts:2669-2749 emits plaintext, Task-encrypted, and chat-encrypted
+  live messages without an explicit wire-kind discriminator.
+- cantrip_app/src/lib/app-live-query.ts:616-640 schema-parses all possibilities, attempts
+  chat decryption first, catches failure, and then attempts Task decryption.
+- cantrip_app/src/lib/chat-message-encryption.ts:150-177 and
+  cantrip_app/src/lib/task-message-encryption.ts:104-146 reparse opaque/nested/parent data.
+- cantrip_app/src/lib/api.ts:6155-6197 parses wire collections and later parses every clear
+  message again.
+
+Hypothesis: structurally compatible Task ciphertext pays a guaranteed wrong-key AES-GCM
+authentication plus repeated Zod passes before the correct Task-key path succeeds.
+
+Suggested change: publish an explicit `plaintext|chat-encrypted|task-encrypted` kind and
+select exactly one opener. Use typed already-parsed summaries internally, retain an old-shape
+fallback during rolling deployment, and validate clear output once.
+
+Validation: instrument schema/decrypt counts for 100 events/pages of each kind. Target one
+opaque parse, one decrypt, and one clear parse per encrypted record with identical malformed,
+wrong-key, and mixed-version behavior.
+
+### N0-14 — opportunity — Batch retained-attachment telemetry and lease heartbeats
+
+- Category: N_PLUS_ONE_OR_CHATTER
+- Expected gain: high with many retained attachments
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_app/src/lib/direct-transport-telemetry.ts:14-18 and 46-90 run every ten seconds,
+  enumerate forwards, and issue one telemetry or lease call per attachment.
+- cantrip_app/src/lib/api.ts:794-806 and 961-972 send each entry as a separate authenticated
+  POST. N retained surfaces therefore produce as many as `6N` requests per minute before
+  relay maintenance.
+
+Hypothesis: retained Code, tunnel, terminal, and browser attachments create periodic
+HTTP/auth/schema/database herds; eight retained views alone can produce 48 requests/minute.
+
+Suggested change: add one authenticated batch maintenance endpoint with per-entry results
+and a jittered cadence. Keep leases as durable recovery rather than replacing them with
+AppLive-only liveness.
+
+Validation: run 1, 10, and 50 attachments for ten minutes; request count should approach six
+per minute rather than `6N`. Verify deltas, expiry, retry/revoke, unauthorized entries,
+partial failure, offline recovery, and timeout behavior.
+
+### N0-15 — opportunity — Batch Task dispatch eligibility and suppress no-op reason writes
+
+- Category: ALGORITHM_COMPLEXITY, N_PLUS_ONE_OR_CHATTER
+- Expected gain: high with Task backlog
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_server/src/app.ts:23733-23813 sequentially loads chat context and physical worker
+  for every queued cycle, then resolves routes for every cycle by Task-worker pair.
+- cantrip_server/src/db/task-dispatch.ts:413-499 reloads workers, counts, all candidates, and
+  active lanes on each claim attempt. Lines 509-650 scan worker by candidate and write every
+  ineligible cycle even when its reason is unchanged.
+- cantrip_server/src/app.ts:23980-23999 calls `claimNext` repeatedly until no claim remains.
+
+Hypothesis: backlog work trends toward cycles times workers, repeats full snapshots, and
+writes permanent no-op eligibility reasons every second.
+
+Suggested change: batch contexts/grants, memoize route resolution for the scheduler tick,
+reuse one candidate snapshot across claims while retaining compare-and-swap fencing, and
+bulk-update only eligibility codes distinct from stored values.
+
+Validation: queued cycles 1/25/100 by Task workers 1/4/16. Measure SQL, route calls, writes,
+and duration; preserve FIFO, requested-worker, continuity, encryption, and two-scheduler
+fencing behavior.
+
+### N0-16 — opportunity — Share and parallelize Run-configuration discovery and validation
+
+- Category: N_PLUS_ONE_OR_CHATTER, REDUNDANT_COMPUTATION
+- Expected gain: high for large repositories/configuration sets
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_worker/src/run-configuration-definition-service.ts:230-314 awaits Node, Java,
+  Dart, Flutter, and Rust discovery sequentially when no provider is selected.
+- Provider bounds in run-configuration-node-provider.ts:27-30,
+  run-configuration-java-provider.ts:35-41, run-configuration-dart-provider.ts:27-33,
+  run-configuration-flutter-provider.ts:31-37, and run-configuration-rust-provider.ts:31-36
+  permit more than 4,500 aggregate directory visits. Dart and Flutter independently traverse
+  the same manifests and sources.
+- cantrip_worker/src/run-configuration-definition-service.ts:171-189 then validates as many
+  as 128 ready documents strictly serially.
+
+Hypothesis: detect-all latency is the sum of five bounded tree walks followed by the sum of
+all filesystem/toolchain validation latencies.
+
+Suggested change: use an ordered bounded mapper for providers and document validation, then
+extract a bounded immutable project inventory—especially shared Dart/Flutter traversal—for
+provider-specific interpretation.
+
+Validation: compare candidates, order, diagnostics, caps, symlink exclusion, malformed-file
+tolerance, and provider-failure behavior. Count directory/file reads and wall time at 1, 32,
+and 128 definitions under a slow-disk fixture with a fixed concurrency bound.
+
+### N0-17 — opportunity — Make expiration maintenance single-flight and deadline-aware
+
+- Category: N_PLUS_ONE_OR_CHATTER, STATE_OR_CACHE_STRATEGY
+- Expected gain: medium-high database relief
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_server/src/app.ts:1023-1024 and 5065-5079 run agent-interaction sweeps every second
+  and workflow-gate sweeps every 500 ms without in-flight guards.
+- cantrip_server/src/db/repository.ts:15977-16234 performs global expiry updates; several
+  resolve/validate paths expire and then call getters that expire again, and affected chats
+  are restored sequentially.
+- cantrip_server/src/db/workflow-runs.ts:6611-6677 runs two scans and sequential expiry;
+  cantrip_server/src/workflows/executor.ts:529-544 fully hydrates each run merely to recover
+  projectId for notification.
+
+Hypothesis: idle servers issue constant write/read probes, request paths duplicate them, and
+slow sweeps overlap. Expiry bursts add sequential full-run hydration.
+
+Suggested change: add shared single-flight, remove duplicate request-path sweeps, return
+`runId/projectId` from expiry, and batch chat restoration. A nearest-known-deadline scheduler
+may complement—but must not replace—a bounded durable watchdog.
+
+Validation: ten idle minutes, 1,000 simultaneous expirations, and concurrent resolution at
+the deadline. Compare SQL/writes, event-loop delay, winner semantics, restoration,
+notifications, and restart recovery.
+
+### N0-18 — opportunity — Shard AppLive replay by owner
+
+- Category: STATE_OR_CACHE_STRATEGY, ALGORITHM_COMPLEXITY
+- Expected gain: high resume reliability; medium CPU
+- Risk: low-medium
+- Complexity: medium
+- Confidence: high
+
+Evidence:
+
+- cantrip_server/src/live/hub.ts:189-209 stores every owner's events in one replay array and
+  one aggregate event/byte budget despite owner-specific cursors.
+- cantrip_server/src/live/hub.ts:422-453 appends and evicts globally. Lines 890-929 scan the
+  global array for replay and first owner cursor.
+
+Hypothesis: one noisy tenant evicts quiet tenants' resume history and forces unrelated full
+resyncs; resume work scans other owners' events.
+
+Suggested change: store a per-owner head-index replay ring with its own oldest cursor, plus
+an aggregate byte cap and fair global eviction. This subsumes the server half of P1-15 while
+preserving bounded memory.
+
+Validation: owner A must be able to overflow its traffic while disconnected owner B retains
+the documented replay window. Verify isolation, exact order/cursors, aggregate cap, and
+resume CPU across 1,000 owners.
+
+### N0-19 — opportunity — Pre-index workflow detail joins in the UI
+
+- Category: ALGORITHM_COMPLEXITY
+- Expected gain: medium-high on large/live workflows
+- Risk: low
+- Complexity: low
+- Confidence: high
+
+Evidence: cantrip_app/src/components/workflows/workflow-center.tsx:1444-1460 filters all
+attempts and searches revision nodes inside every node render. packages/protocol/src/workflows.ts:2219-2226
+permits 1,000 nodes and 10,000 attempts.
+
+Hypothesis: detail rendering approaches nodes times attempts plus nodes times revision nodes
+on each live update.
+
+Suggested change: memoize `attemptsByNodeId` and `revisionNodeByKey` maps per run revision.
+
+Validation: profile 100/1,000 nodes with 1,000/10,000 attempts; preserve exact row order,
+status, selection, and control actions.
+
+### N0-20 — opportunity — Make Code-settings polling transport-aware
+
+- Category: N_PLUS_ONE_OR_CHATTER, STATE_OR_CACHE_STRATEGY
+- Expected gain: medium fleet-wide idle reduction
+- Risk: low-medium
+- Complexity: medium
+- Confidence: medium-high
+
+Evidence:
+
+- cantrip_worker/src/code-settings-sync.ts:40 and 354-363 run full synchronization every 30
+  seconds; lines 457-470 and 664-787 perform HTTP plus local/state work on each pass.
+- cantrip_server/src/app.ts:12141-12177 already pushes `code.settings.invalidate` revisions,
+  reconnect synchronizes at cantrip_worker/src/index.ts:4690-4696, and transport keepalive
+  detects failure at cantrip_worker/src/transport.ts:620-675.
+
+Hypothesis: healthy workers repeatedly fetch and parse unchanged settings despite live
+invalidation and reconnect reconciliation.
+
+Suggested change: keep polling as durability fallback, but slow it while the command channel
+is healthy and synchronize immediately on reconnect/degradation. Never remove the fallback.
+
+Validation: count healthy idle HTTP/file work and exercise local edits, remote/dropped
+invalidations, socket loss/reconnect, conflict, outage, and watcher failure. Document the
+maximum missed-invalidation recovery bound.
+
+## Revalidated carryover opportunities
 
 ### P0-02 — opportunity — Remove redundant remote-surface frame work end to end
 
@@ -196,7 +731,7 @@ rejection, and rendered canvas snapshots.
 
 Evidence:
 
-- cantrip_worker/src/index.ts:455, 4753-4756, and 4960-4963 tie encryption refresh to the
+- cantrip_worker/src/index.ts:4766-4889 and 4975-4979 tie encryption refresh to the
   five-second heartbeat/bootstrap path.
 - cantrip_worker/src/worker-encryption.ts:495-515 and 645-755 unwrap grants and export key
   material.
@@ -229,10 +764,10 @@ Evidence:
 
 - cantrip_server/src/live/hub.ts:700-732 and 750-805 authorize each subscribe/resync scope,
   up to 128 scopes.
-- cantrip_server/src/app.ts:4339-4357 authorizes projects via listProjects(...).some, chats
+- cantrip_server/src/app.ts:4366-4384 authorizes projects via listProjects(...).some, chats
   via full getChatExecutionContext, and workflows via full getRun.
-- cantrip_server/src/db/repository.ts:7910-7991 shows project listing also loading
-  replica/source/worktree data; 15484-15563 shows chat context loading settings, worktree,
+- cantrip_server/src/db/repository.ts:7983-8064 shows project listing also loading
+  replica/source/worktree data; 15557-15636 shows chat context loading settings, worktree,
   runtime, and lane state.
 - cantrip_server/src/db/workflow-runs.ts:996-1069 shows getRun plus six detail queries.
 - cantrip_server/src/db/index.ts:229-234 caps the PostgreSQL pool at five connections.
@@ -246,88 +781,35 @@ three ownership/existence IN queries, preserving owner, archival, and lifecycle 
 Validation: assert identical decisions and count SQL plus subscribe/resync p50/p95 at 1, 16,
 and 128 scopes against large fixtures.
 
-### P0-05 — fixed — Stop using aggregate settings hydration for preference decisions
+### P0-06 — opportunity — Collapse worker-management 1+2N queries
 
-- Status: fixed 2026-08-24
-- Category: REDUNDANT_COMPUTATION
-- Expected gain: high
-- Original risk: low
-- Original complexity: low-medium
-- Confidence: high
-
-Original evidence on the audited baseline:
-
-- cantrip_server/src/db/repository.ts:3023-3131 performs roughly nine settings-related
-  queries, including token and agent-time analytics.
-- cantrip_server/src/db/repository.ts:3205-3231 reads lifetime token intervals and
-  groups/sorts them in application code.
-- A focused preference loader already exists at
-  cantrip_server/src/db/repository.ts:3652-3683.
-- Preference-oriented callers use the aggregate loader at
-  cantrip_server/src/app.ts:8487-8501 and 13597-13609,
-  cantrip_server/src/chat-imports/executor.ts:693-708,
-  cantrip_server/src/chat-relocations/executor.ts:612-620 and 825-843, and
-  cantrip_server/src/workflows/executor.ts:1325-1338.
-
-Original hypothesis: routine model/runtime resolution pays for unrelated provider,
-credential, routing, and lifetime-analytics work, with cost growing alongside telemetry
-history.
-
-Resolution:
-
-- Preference-only decisions in the app, chat import/relocation, and workflow executors now
-  call `getUserSettings`, which selects only the preference row.
-- Provider catalog reconciliation and worker-scoped catalog refresh use dedicated provider
-  projections. Provider deletion checks route existence with a bounded joined lookup rather
-  than hydrating and scanning every model.
-- `getSettings` now composes the same focused preference loader and remains available for
-  settings UI responses that intentionally need provider, model, credential, routing, and
-  analytics data.
-
-Validation:
-
-- A PGlite query-count regression test verifies exact preference parity, one query for the
-  focused preference loader, nine queries for the aggregate loader, and one query for each
-  provider projection and route-existence lookup.
-- With 10, 10,000, and 1,000,000 token-interval rows, focused and aggregate preference
-  results, selected model IDs, and resolved model runtimes were identical. Focused hydration
-  remained one query and measured 0.39 ms, 0.47 ms, and 0.67 ms respectively; aggregate
-  hydration remained nine queries and measured 4.73 ms, 57.46 ms, and 4,707.38 ms in the
-  same local PGlite validation run. These timings are directional local measurements; the
-  query counts and output-equivalence assertions are the regression contract.
-
-Regression guardrail: keep routine preference and provider decisions off `getSettings`.
-Require exact result-parity tests when adding a focused projection, retain the one-query
-regression test, and rerun the history-scale comparison when changing settings or analytics
-hydration.
-
-### P0-06 — fixed — Collapse worker-management 1+2N queries
-
-- Status: fixed after the audit (reported 2026-08-24)
 - Category: N_PLUS_ONE_OR_CHATTER
 - Expected gain: high
-- Original risk: low
-- Original complexity: low
+- Risk: low
+- Complexity: low
 - Confidence: high
 
-Original evidence on the audited baseline:
+Current evidence:
 
-- cantrip_server/src/db/repository.ts:6843-6899 loads workers, then issues two queries per
-  worker for credentials and source/project assignments.
-- cantrip_server/src/app.ts:14745-14752, 14789-14800, and 14823-14829 load the whole fleet
-  only to find one worker for restart, rename, and delete.
+- cantrip_server/src/db/repository.ts:6916-6972 still loads workers, then issues two queries
+  per worker for credentials and source/project assignments.
+- cantrip_server/src/app.ts:14773, 14821, and 14851 still load the complete management list
+  and `.find` one worker for restart, rename, and delete.
 - cantrip_server/src/db/index.ts:229-234 caps the pool at five connections.
 
-Original hypothesis: fleet listing and even single-worker mutation latency grow linearly
-with fleet size and can monopolize the database pool.
+Hypothesis: fleet listing and even single-worker mutation latency grow linearly with fleet
+size and can monopolize the database pool.
 
-Resolution: marked fixed after the audit and removed from the pending delivery waves. The
-fixing implementation was not present on origin/main when this status-only documentation
-update was prepared, so this report does not attribute an implementation PR or commit.
+Reconciliation note: the earlier fixed marker was a status-only documentation change. No
+corresponding implementation exists on the current baseline, so this is restored to the
+pending inventory.
 
-Regression guardrail: retain the original acceptance target of three queries for the list
-and one focused lookup for mutation; compare response parity and p95 at 1, 10, 100, and
-1,000 workers.
+Suggested change: use one workers query, one credential aggregate grouped by worker ID, and
+one source/project query for all IDs; group in memory. Add a focused single-worker loader
+for mutations.
+
+Validation: require three constant list queries and one focused mutation lookup, with exact
+response parity and p95 measurements at 1, 10, 100, and 1,000 workers.
 
 ### P0-07 — opportunity — Coalesce worktree observation across server and worker
 
@@ -393,56 +875,6 @@ or expose an index-only conflict helper.
 Validation: golden-compare results and invocation counts for attached with/without upstream,
 detached, unborn, dirty, renamed, many-ref, merge, rebase, cherry-pick, and revert cases.
 
-### P0-09 — resolved — Make log ingestion incremental and export formatting lazy
-
-- Status: resolved 2026-08-24
-- Category: ALGORITHM_COMPLEXITY
-- Expected gain: high
-- Original risk: low
-- Original complexity: low-medium
-- Confidence: high
-
-Original evidence:
-
-- cantrip_app/src/components/settings/log-viewer-model.ts previously rebuilt and fully
-  sorted the complete bounded collection, recomputed all bytes, and repeatedly shifted the
-  head on every append.
-- cantrip_app/src/components/settings/log-settings.tsx previously memoized the complete
-  newline-delimited export string on every visible-record update.
-
-Original hypothesis: high-volume logs paid O(N log N) plus several O(N) passes per batch and
-retained a large derived string even when the user was only viewing.
-
-Resolution:
-
-- cantrip_app/src/components/settings/log-viewer-model.ts:192-251 now associates immutable
-  record snapshots with incremental byte/cursor metadata and trims through one head index
-  and slice.
-- cantrip_app/src/components/settings/log-viewer-model.ts:254-383 takes a direct ordered
-  append path for normal stream batches and a linear merge path for backfill or replacement,
-  while retaining a defensive normalization fallback for noncanonical input.
-- cantrip_app/src/components/settings/log-viewer-model.ts:162-175 returns the original
-  collection for an inactive filter; lines 385-405 preserve incremental metadata when
-  visible records are cleared.
-- cantrip_app/src/components/settings/log-settings.tsx:870-887 uses the metadata-preserving
-  removal path, while lines 990-1026 build visible text only inside copy/export actions.
-- cantrip_app/src/components/settings/log-viewer-model.test.ts:232-355 covers cross-transport
-  deduplication, last-write replacement, ordered and out-of-order merging, record and byte
-  limits, inactive-filter identity, export equivalence, and clear-then-append behavior.
-
-A/B benchmark proof on a full 10,000-record buffer, with 5 warmups and 20 measured
-process-isolated runs per variant:
-
-- 150 ordered 50-record batches produced stable equivalent output. Median command time fell
-  from 425.096 ms to 301.382 ms: 1.410x, or 29.10% faster.
-- 100 mixed 50-record batches containing ordered records, an existing-key replacement, and
-  an out-of-order backfill produced stable equivalent output. Median command time fell from
-  381.534 ms to 337.270 ms: 1.131x, or 11.60% faster.
-
-Regression guardrail: retain focused model/UI tests and the baseline-equivalence helper.
-Require exact ordering, transport/cursor deduplication, last-write replacement, byte and
-record limits, filtered/exported text, and clear behavior to remain unchanged.
-
 ### P0-10 — opportunity — Make live chat overlay merging incremental
 
 - Category: ALGORITHM_COMPLEXITY
@@ -471,90 +903,6 @@ records once refreshed pages contain them.
 Validation: compare exact output for 10k base messages plus 1k same-ID, new-ID, deletion,
 and out-of-order events, including AppLive replay and resync.
 
-### P0-11 — resolved — Parallelize bounded workspace-snapshot metadata reads
-
-- Status: resolved 2026-08-24
-- Category: SYNC_IO_HOT_PATH
-- Expected gain: high for large dirty worktrees
-- Original risk: low
-- Original complexity: low
-- Confidence: high
-
-Original evidence:
-
-- cantrip_worker/src/codex/app-server.ts previously awaited one lstat per dirty or untracked
-  file inside the porcelain-record loop.
-- Snapshot collection is on chat/workflow turn baselines, completion reconciliation, and
-  workspace-change activity paths.
-
-Original hypothesis: turn start and completion latency grew by one filesystem round trip
-per changed path.
-
-Resolution:
-
-- cantrip_worker/src/codex/app-server.ts:2799-2819 adds an ordered bounded mapper whose
-  result slots retain input order regardless of completion order.
-- cantrip_worker/src/codex/app-server.ts:2821-2857 parses porcelain records before running
-  metadata reads with a hard cap of 16. It skips lstat only for the definite worktree
-  deletion status, retains the missing-file fallback for races, and constructs the Map from
-  ordered results.
-- cantrip_worker/src/codex/app-server.ts:2859-2872 preserves the existing Git command and
-  empty-snapshot failure behavior. The helper remains shared by workspace-change collection
-  and the turn baseline/reconciliation call sites at lines 2879, 4050, 4241, and 8194.
-- cantrip_worker/test/app-server.test.ts:1612-1722 proves byte-equivalent ordered snapshots
-  for 1, 100, and 5,000 delayed reads; a maximum of 16 in-flight operations; stable order
-  under uneven completion; definite-deletion bypass; missing-file fallback; and rename
-  record skipping.
-
-A/B benchmark proof with 5 warmups and 20 measured process-isolated runs per variant:
-
-- 200 delayed metadata reads produced stable equivalent output. Median command time fell
-  from 794.141 ms to 568.144 ms: 1.398x, or 28.46% faster.
-- A direct 1/100/5,000-path equivalence sweep produced identical output hashes at every
-  size. At 5,000 paths, wall time fell from 6.86 seconds to 0.93 seconds.
-
-Regression guardrail: retain the focused snapshot tests and require deterministic Map
-ordering, a maximum of 16 concurrent reads, rename parsing, and missing/deletion semantics
-to remain unchanged.
-
-### P0-12 — resolved — Skip CodeGraph sync when fresh status proves no work exists
-
-- Status: resolved 2026-08-24
-- Category: REDUNDANT_COMPUTATION
-- Expected gain: high for enabled idle projects
-- Original risk: low
-- Original complexity: low
-- Confidence: high
-
-Original evidence:
-
-- cantrip_worker/src/codegraph/supervisor.ts:29-31 and 479-485 schedule each project every
-  two minutes.
-- Lines 798-831 and 896-932 perform status, sync, then status even when the first fresh
-  status says pendingChanges is zero; logging recognizes the no-change case.
-
-Original hypothesis: idle indexed projects repeatedly invoke an unnecessary external sync.
-
-Resolution:
-
-- cantrip_worker/src/codegraph/supervisor.ts:807-841 now returns through the normal success
-  path after the fresh status when the action is sync, the project is initialized,
-  pendingChanges is zero, and reindex is not recommended.
-- cantrip_worker/test/codegraph-supervisor.test.ts:186-244 proves a clean sync performs only
-  status while unknown pending state retains status/sync/status and a reindex recommendation
-  retains status/index/status.
-- cantrip_worker/test/codegraph-supervisor.test.ts:246-274 disables the filesystem watcher,
-  advances the two-minute reconciliation interval, and proves a pending change still
-  performs status/sync/status.
-
-Deterministic work-count proof: the clean fake-executor path falls from three external
-operations (status, sync, status) to one (status), eliminating the sync and verification
-status calls while preserving the ready state and completed job acknowledgement.
-
-Regression guardrail: retain the focused CodeGraph supervisor test and require unknown,
-changed, uninitialized, rebuild, and reindex paths to continue executing their existing
-fallback commands.
-
 ### P0-13 — opportunity — Add capped jittered backoff to worker reconnects and crashing services
 
 - Category: N_PLUS_ONE_OR_CHATTER
@@ -565,8 +913,8 @@ fallback commands.
 
 Evidence:
 
-- cantrip_worker/src/transport.ts:49-51, 279-305, and 388-405 reconnect the command channel
-  at a fixed one-second interval.
+- cantrip_worker/src/transport.ts:49-52 and 400-417 reconnect the command channel at a fixed
+  one-second interval.
 - cantrip_worker/src/terminal-manager.ts:189-204, 601-692, and 716-728 restart a broken
   service every five seconds forever. restartCount does not change delay or reset.
 
@@ -591,7 +939,7 @@ manual restart.
 
 Evidence:
 
-- cantrip_worker/src/index.ts:4881-4948 awaits independent shutdown stages sequentially.
+- cantrip_worker/src/index.ts:4896-4963 awaits independent shutdown stages sequentially.
 - One rejection prevents later cleanup, archive closure, and resolveShutdown.
 - cantrip_worker/src/mcp/broker.ts:590-603 includes a close path that can wait on a server
   close.
@@ -887,9 +1235,9 @@ hosts; fault-inject every probe and preserve fail-fast/degraded semantics and or
 - Complexity: low
 - Confidence: high
 
-Evidence: cantrip_server/src/live/hub.ts:419-453 uses Array.shift to evict from a replay
-buffer of up to 2,048 events/32 MiB. cantrip_worker/src/transport.ts:195-196, 633-669, and
-721-735 uses shift for an 8 MiB command queue and recomputes byte lengths.
+Evidence: cantrip_worker/src/transport.ts:726-828 uses Array.shift for an 8 MiB command
+queue and recomputes byte lengths. N0-18 replaces the former server-side replay-array half
+with an owner-sharded head-index ring.
 
 Suggested change: standardize a tested head-index deque/ring holding precomputed byte sizes,
 with occasional compaction.
@@ -951,7 +1299,7 @@ replay/resync, ordering, and flicker.
 - Complexity: low
 - Confidence: medium-high
 
-Evidence: cantrip_worker/src/browser/browser-adapter.ts:463-493 has no in-flight capture
+Evidence: cantrip_worker/src/browser/browser-adapter.ts:478-493 has no in-flight capture
 coalescing, while 630-641 triggers full Page.captureScreenshot from both
 frameStoppedLoading and loadEventFired despite continuous screencast.
 
@@ -971,8 +1319,9 @@ bounded final still, screencast delivery, and attachment behavior.
 
 Evidence: cantrip_worker/src/direct-broker.ts:327-339 allocates an array and linearly scans
 all active sessions for every return frame; 413-420 repeats a scan then polls bufferedAmount
-every 5 ms. cantrip_worker/src/transport.ts:796-803 and
-cantrip_worker/src/tunnel-tcp-adapter.ts:345-383 can create similar per-stream polling.
+every 5 ms. cantrip_worker/src/tunnel-tcp-adapter.ts:56-68 creates safe subarray views, but
+327-342 copies every view before cantrip_worker/src/transport.ts:853-867 encodes it again;
+lines 345-383 also create per-stream backpressure polling.
 
 Suggested change: maintain synchronized attachment/route/connection indexes. Share one
 low-water waiter/timer per WebSocket or use adaptive polling; do not assume unsupported
@@ -1033,7 +1382,7 @@ indexes that materially reduce reads without unacceptable write amplification.
 - Complexity: high
 - Confidence: medium
 
-Evidence: cantrip_worker/src/transport.ts:301-304 and 807-845 start asynchronous command
+Evidence: cantrip_worker/src/transport.ts:313-316 and 900-938 start asynchronous command
 handlers independently. Bursts can launch Git, filesystem, and child-process work without a
 transport-level bound, although some subsystems already serialize internally.
 
@@ -1100,7 +1449,19 @@ primitives rather than one-off fixes:
 - Ordered bounded mapper: concurrency cap plus deterministic result order. Use for snapshot
   lstat and presence/startup batches.
 - Remote-frame ownership contract: define where a received byte view becomes immutable and
-  where a copy is required. Use the same contract for WebSocket and WebRTC.
+  where a copy is required. Use it for remote surfaces, Browser Code, attachments, and TCP
+  tunnel framing.
+- Watcher-aware reconciler: fast event-driven refresh while healthy, slower integrity sweep,
+  degraded fast retry, and a single latest-dirty rerun. Use for Run configurations,
+  worktrees, and Code settings without weakening durable recovery.
+- Coalesced durable writer: immediate in-memory value, bounded trailing persistence, and
+  explicit lifecycle flush. Use for AppLive cursors; never hide whether persisted state may
+  lag.
+- Bounded stream accumulator: immutable chunks, incremental byte accounting, O(1) head
+  trimming, and materialization only at delivery boundaries. Use for Codex command and
+  Browser Code byte streams.
+- Batch result envelope: one authenticated request with per-entry success/failure and stable
+  ordering. Use for attachment leases, protected routing metadata, and catalog refresh.
 
 These are code-sharing opportunities, not a recommendation to build a generic framework.
 Each primitive should stay small, locally testable, and tied to the listed callers.
@@ -1111,48 +1472,52 @@ Each primitive should stay small, locally testable, and tied to the listed calle
 
 Before behavior changes, add or reuse focused counters and deterministic fixtures:
 
-- retain the 500-message composer render-count regression and add a 1,000-turn anchor-layout
-  profiler harness;
-- prerecorded remote-frame replay for browser/server allocation and encode counts;
-- SQL counter fixtures for AppLive scopes, worker fleets, and workflow recovery;
-- child-process counters for idle worktrees and Git status;
-- fake clocks for reconnect, service restart, and guarded recovery;
-- retain the workspace-snapshot equivalence/concurrency fixture and add delayed-filesystem
-  fixtures for Explorer and repository stats.
+- delayed-filesystem counters for Run-configuration repository scans, provider discovery,
+  validation, attachment ranges, Explorer, and repository statistics;
+- byte-copy/allocation traces for Browser Code, remote surfaces, TCP tunnels, and Codex
+  one-byte/realistic streaming deltas;
+- SQL/request counters for Task scheduler states/backlogs, Project Task workloads, AppLive
+  scopes/sessions/replay owners, project hydration, worker fleets, and attachment counts;
+- React render/projection/storage spies for closed Inspect, disabled provider catalogs,
+  AppLive status consumers, workflow details, and 10,000 cursor advances;
+- child-process counters for idle worktrees and Git status plus fake clocks for reconnect,
+  restart, expiration, guarded recovery, watcher degradation, and lifecycle cursor flush.
 
 ### Wave 1 — local and mechanically verifiable
 
-Implement the safe slices of P0-02, P0-08, P0-13, P1-01, P1-06, P1-07, P1-15, P1-16, and
-P1-18. These mostly remove duplicate work or replace an equivalent data structure.
+Implement N0-01, N0-04 through N0-06, N0-09, N0-19, P0-08, P0-13, P1-01, P1-06, P1-07,
+P1-15, P1-16, and P1-18. These gate work that is provably invisible/impossible, add bounded
+coalescing, or replace an equivalent data structure.
 
 ### Wave 2 — bounded batching, memoization, and ownership
 
-Implement P0-03, P0-04, P0-07, P0-10, P0-14, P1-02 through P1-05, P1-08 through P1-13,
-and P1-17. Land each behind equivalence tests and bounded cache/queue policies.
+Implement N0-02, N0-03, N0-07, N0-08, N0-10 through N0-18, P0-02 through P0-04, P0-06,
+P0-07, P0-10, P0-14, P1-02 through P1-05, P1-08 through P1-13, and P1-17. Land each behind
+equivalence, ownership, security, and bounded cache/queue tests.
 
 ### Wave 3 — conditional tuning
 
-Use Wave 0/1 telemetry to decide P1-14, P1-19, P1-20, and all P2 items. Avoid architectural
-transport or admission-control work without production evidence.
+Use Wave 0/1 telemetry to decide N0-20, P1-14, P1-19, P1-20, and all P2 items. Avoid
+architectural transport, eviction, or admission-control work without production evidence.
 
 ## Success metrics
 
 Track the following before and after each wave:
 
-| Surface                  | Primary metric                                   | Guardrail                                             |
-| ------------------------ | ------------------------------------------------ | ----------------------------------------------------- |
-| Chat typing/streaming    | React commit time and historical row renders     | no lost/reordered live messages                       |
-| Remote surfaces          | allocations/s, GC, frame latency, dropped frames | byte-identical framing and usage accounting           |
-| AppLive subscribe/resync | SQL count and p50/p95                            | identical scope authorization and replay              |
-| Worker fleet management  | SQL count and p95 by fleet size                  | identical credential/source projection                |
-| Idle worktrees           | Git child processes/minute and watchers/source   | unchanged watcher-failure recovery                    |
-| Git status               | subprocesses/refresh and latency                 | detached/unborn/conflict parity                       |
-| Worker idle              | event-loop delay, crypto unwraps, disk writes    | key rotation/revocation refresh bound                 |
-| Logs                     | CPU/allocation per 10k records                   | exact ordering, limits, filters, export               |
-| Turn boundaries          | snapshot wall time by changed paths              | deterministic snapshot contents                       |
-| Failure recovery         | reconnect/spawn attempt distribution             | terminal errors stop; manual actions remain immediate |
-| Shutdown                 | completion bound and leaked resources            | every close attempted and errors retained             |
-| Database recovery        | statements and recovery duration                 | identical job/run outcomes                            |
+| Surface                     | Primary metric                                   | Guardrail                                          |
+| --------------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| Run configurations          | file reads/parses/minute and detect/list p95     | watcher-loss integrity recovery                    |
+| Task scheduler/workload     | SQL, route calls, writes/tick and dashboard p95  | FIFO, fencing, eligibility, durable recovery       |
+| Chat typing/Inspect         | React commits, projections, hidden DOM rows      | exact open-state and live-message behavior         |
+| Provider catalog            | storage reads, parsed bytes, schema calls/render | expiry/corruption/scope isolation                  |
+| Browser Code/remote surface | copied bytes, allocation, GC, frame/stream p95   | byte-identical framing, sequence, credits, usage   |
+| AppLive event/replay        | storage writes, callbacks, SQL, replay scan p95  | cursor, owner isolation, auth/revocation parity    |
+| Project/worker lists        | HTTP, worker commands, SQL and p95 by list size  | exact protected metadata/fail-closed projection    |
+| Attachments                 | requests, handles, bytes read, RSS, throughput   | digest, lease, EOF, abort, platform parity         |
+| Codex streaming             | allocations, payload scans, event-loop delay     | diagnostics, UTF-8, truncation, ordering parity    |
+| Idle worktrees/workers      | Git children, watchers, crypto/disk work/minute  | watcher failure and key rotation/revocation bounds |
+| Failure/shutdown            | attempt distribution, completion bound, leaks    | manual immediacy; every cleanup attempted          |
+| Database recovery           | statements, writes, duration, pool occupancy     | exact job/run/expiry outcomes                      |
 
 The expected end state is not merely lower benchmark numbers: long chats should type like
 short chats, remote surfaces should remain smooth under sustained frames, idle projects
