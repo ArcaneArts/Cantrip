@@ -56,6 +56,20 @@ pub struct RevealLocalChatScratchRequest {
     worker_id: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevealChatShareRequest {
+    attachment_id: String,
+    chat_id: String,
+    chat_name: String,
+    mount_lease_ms: u64,
+    password: String,
+    #[serde(default)]
+    relative_path: String,
+    url: String,
+    username: String,
+}
+
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum LocalProjectSourceKind {
@@ -140,6 +154,30 @@ pub async fn reveal_project_share(
     })
     .await
     .map_err(|error| format!("Could not join the native project reveal task: {error}"))?
+}
+
+#[tauri::command]
+pub async fn reveal_chat_share(
+    app: AppHandle,
+    state: State<'_, ProjectShareMounts>,
+    request: RevealChatShareRequest,
+) -> Result<(), String> {
+    let mounts = Arc::clone(&state.mounts);
+    let request = RevealProjectShareRequest {
+        attachment_id: request.attachment_id,
+        mount_lease_ms: request.mount_lease_ms,
+        password: request.password,
+        project_id: format!("chat:{}", request.chat_id),
+        project_name: request.chat_name,
+        relative_path: request.relative_path,
+        url: request.url,
+        username: request.username,
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        reveal_project_share_blocking(&app, mounts, request)
+    })
+    .await
+    .map_err(|error| format!("Could not join the native Chat reveal task: {error}"))?
 }
 
 #[tauri::command]

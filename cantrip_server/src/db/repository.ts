@@ -1705,7 +1705,7 @@ function toStandaloneChatWireSummary(
     planMode: "default",
     hasPendingPlanQuestion: false,
     hasUnreadCompletion: chat.hasUnreadCompletion,
-    automationPaused: false,
+    automationPaused: chat.automationPaused,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
   });
@@ -16112,24 +16112,15 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     paused: boolean,
-  ): Promise<ChatWireSummary | null> {
+  ): Promise<ContextualChatWireSummary | null> {
     const rows = await this.database
       .update(schema.chats)
       .set({ automationPaused: paused, updatedAt: new Date() })
       .where(
-        and(
-          eq(schema.chats.id, chatId),
-          inArray(
-            schema.chats.projectId,
-            this.database
-              .select({ id: schema.projects.id })
-              .from(schema.projects)
-              .where(eq(schema.projects.ownerId, ownerId)),
-          ),
-        ),
+        and(eq(schema.chats.id, chatId), eq(schema.chats.ownerId, ownerId)),
       )
       .returning();
-    return rows[0] ? toChatWireSummary(rows[0]) : null;
+    return rows[0] ? toContextualChatWireSummary(rows[0]) : null;
   }
 
   async updateChatWorktree(
@@ -17482,7 +17473,7 @@ export class ServerRepository {
     if (!row) return null;
     return {
       contextKind: "standalone",
-      automationPaused: false,
+      automationPaused: row.chat.automationPaused,
       chatId,
       cwd: row.root.protectedPathHandle ?? "standalone-root-unavailable",
       experience: "agent",

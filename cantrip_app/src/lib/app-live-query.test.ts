@@ -176,6 +176,14 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "chat",
+          scope: { kind: "current-user" },
+        }),
+      ),
+    ).toEqual([["chats"], ["standalone-chats"], ["archived-standalone-chats"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           entityId: "replica-job-one",
           resource: "project-replica-job",
           scope: { kind: "project", projectId: "project-one" },

@@ -80,6 +80,7 @@ export function createHeartbeat(
         remove: true,
         download: true,
         archive: true,
+        networkShare: true,
       },
     },
     chatRelocation: true,

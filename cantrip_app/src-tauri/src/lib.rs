@@ -964,6 +964,7 @@ pub fn run() {
             set_macos_pro_mode,
             project_share::reveal_local_project_folder,
             project_share::reveal_local_chat_scratch,
+            project_share::reveal_chat_share,
             project_share::reveal_project_share,
             tunnel_forward::start_tunnel_forward,
             tunnel_forward::force_tunnel_forward_relay,

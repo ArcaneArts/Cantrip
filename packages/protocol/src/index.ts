@@ -708,6 +708,7 @@ export const standaloneChatFileCapabilitiesSchema = z
     remove: z.boolean(),
     download: z.boolean(),
     archive: z.boolean(),
+    networkShare: z.boolean().default(false),
   })
   .strict();
 
@@ -738,6 +739,7 @@ export const unavailableStandaloneChatCapabilities =
       remove: false,
       download: false,
       archive: false,
+      networkShare: false,
     },
   });
 
@@ -4999,7 +5001,6 @@ const standaloneChatContextFields = {
   subagentReasoningEffort: z.null().optional(),
   planMode: z.literal("default"),
   hasPendingPlanQuestion: z.literal(false),
-  automationPaused: z.literal(false).default(false),
 } as const;
 
 export const projectChatSummarySchema = chatSummaryBaseSchema
@@ -5869,6 +5870,37 @@ export const projectShareAttachmentWireSchema = z
   .object({
     attachmentId: tunnelResourceIdSchema,
     projectId: tunnelResourceIdSchema,
+    protocol: z.literal("webdav"),
+    tunnelId: tunnelResourceIdSchema,
+    expiresAt: z.string().datetime(),
+    mountLeaseMs: z
+      .number()
+      .int()
+      .positive()
+      .max(24 * 60 * 60_000),
+  })
+  .strict();
+
+export const standaloneChatShareAttachmentSchema = z.object({
+  attachmentId: z.string().min(1).max(200),
+  chatId: z.string().uuid(),
+  protocol: z.literal("webdav"),
+  url: z.url(),
+  username: z.string().min(1).max(128),
+  password: z.string().min(24).max(256),
+  realm: z.string().min(1).max(200),
+  expiresAt: z.string().datetime(),
+  mountLeaseMs: z
+    .number()
+    .int()
+    .positive()
+    .max(24 * 60 * 60_000),
+});
+
+export const standaloneChatShareAttachmentWireSchema = z
+  .object({
+    attachmentId: tunnelResourceIdSchema,
+    chatId: z.string().uuid(),
     protocol: z.literal("webdav"),
     tunnelId: tunnelResourceIdSchema,
     expiresAt: z.string().datetime(),
@@ -13303,6 +13335,14 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("project.share.open"),
     shareId: z.string().min(1).max(200),
     protectedRecord: protectedTunnelContentRecordSchema,
+    standaloneRoot: z
+      .object({
+        chatId: z.string().uuid(),
+        rootId: z.string().uuid(),
+      })
+      .strict()
+      .nullable()
+      .default(null),
   }),
   z.object({
     type: z.literal("project.share.close"),
@@ -16112,6 +16152,12 @@ export type ProjectShareAttachment = z.infer<
 >;
 export type ProjectShareAttachmentWire = z.infer<
   typeof projectShareAttachmentWireSchema
+>;
+export type StandaloneChatShareAttachment = z.infer<
+  typeof standaloneChatShareAttachmentSchema
+>;
+export type StandaloneChatShareAttachmentWire = z.infer<
+  typeof standaloneChatShareAttachmentWireSchema
 >;
 export type BrowserCreate = z.infer<typeof browserCreateSchema>;
 export type EncryptedBrowserCreate = z.infer<

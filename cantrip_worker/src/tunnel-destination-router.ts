@@ -275,20 +275,34 @@ export class TunnelDestinationRouter {
         return;
       }
       if (
-        content.destination.kind === "worker-project-share" &&
+        (content.destination.kind === "worker-project-share" ||
+          content.destination.kind === "worker-chat-share") &&
         header.target.targetKind === "project-share" &&
         content.destination.resourceId === header.target.recordId
       ) {
         reasonCode = "project-share-preparation-failed";
-        const share = await this.projectShares.open({
-          password: content.destination.password,
-          publicBasePath: content.destination.publicBasePath,
-          publicOrigin: content.destination.publicOrigin,
-          realm: content.destination.realm,
-          root: content.destination.root,
-          shareId: content.destination.resourceId,
-          username: content.destination.username,
-        });
+        const share =
+          content.destination.kind === "worker-project-share"
+            ? await this.projectShares.open({
+                password: content.destination.password,
+                publicBasePath: content.destination.publicBasePath,
+                publicOrigin: content.destination.publicOrigin,
+                realm: content.destination.realm,
+                root: content.destination.root,
+                shareId: content.destination.resourceId,
+                username: content.destination.username,
+              })
+            : this.projectShares.get(content.destination.resourceId);
+        if (
+          !share ||
+          share.password !== content.destination.password ||
+          share.publicBasePath !== content.destination.publicBasePath ||
+          share.username !== content.destination.username
+        ) {
+          throw new Error(
+            "The protected Chat share was not prepared for this connection.",
+          );
+        }
         if (!this.#isPendingProtection(key, generation)) return;
         reasonCode = "project-share-handoff-failed";
         this.#handoffProtectedConnect(

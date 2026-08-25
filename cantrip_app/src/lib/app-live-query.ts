@@ -197,7 +197,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
               ["task-dashboard", event.scope.chatId],
             ]
           : event.scope.kind === "current-user"
-            ? [["chats"]]
+            ? [["chats"], ["standalone-chats"], ["archived-standalone-chats"]]
             : [];
     case "task":
       return projectId

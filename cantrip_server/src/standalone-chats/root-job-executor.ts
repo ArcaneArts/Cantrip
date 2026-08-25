@@ -48,7 +48,10 @@ export class StandaloneChatRootJobExecutor {
   ) {}
 
   async recoverAfterRestart(force = true): Promise<number> {
-    return this.repository.standaloneChatRootJobs.recoverInterrupted(force);
+    const recovered =
+      await this.repository.standaloneChatRootJobs.recoverInterrupted(force);
+    await this.#purgeExpiredArchives();
+    return recovered;
   }
 
   startRecoverySweep(): void {
@@ -56,7 +59,8 @@ export class StandaloneChatRootJobExecutor {
     this.#recoveryTimer = setInterval(() => {
       void this.repository.standaloneChatRootJobs
         .recoverInterrupted(false)
-        .then((recovered) => {
+        .then(async (recovered) => {
+          await this.#purgeExpiredArchives();
           if (recovered > 0) this.queueAvailable();
         })
         .catch((error: unknown) => {
@@ -292,6 +296,11 @@ export class StandaloneChatRootJobExecutor {
           { timeoutMs: STANDALONE_CHAT_ROOT_JOB_TIMEOUT_MS },
         ),
       );
+      const expired =
+        await this.repository.standaloneChatRootJobs.purgeExpiredArchivedChats(
+          ownerId,
+        );
+      for (const job of expired) this.onChanged({ ownerId, job });
       await this.repository.standaloneChatRootJobs.markMissingRoots(
         workerId,
         result.missingRootIds,
@@ -308,5 +317,12 @@ export class StandaloneChatRootJobExecutor {
         "Could not reconcile standalone Chat scratch roots after reconnect",
       );
     }
+  }
+
+  async #purgeExpiredArchives(): Promise<void> {
+    const changes =
+      await this.repository.standaloneChatRootJobs.purgeExpiredArchivedChatsForAllOwners();
+    for (const change of changes) this.onChanged(change);
+    if (changes.length > 0) this.queueAvailable();
   }
 }

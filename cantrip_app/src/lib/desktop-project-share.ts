@@ -93,7 +93,7 @@ export function nativeLocalProjectFolderRequest(
 }
 
 export function directProjectShareUrl(
-  attachment: ProjectShareAttachment,
+  attachment: Pick<ProjectShareAttachment, "url">,
   localPort: number,
 ): string {
   const url = new URL(attachment.url);

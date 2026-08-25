@@ -121,6 +121,41 @@ describe("tunnel protocol", () => {
     ).toMatchObject({ targetKind: "code" });
   });
 
+  it("keeps standalone Chat root identity inside protected share content", () => {
+    const content = tunnelContentRecordSchema.parse({
+      name: "Chat scratch files",
+      description: null,
+      source: { kind: "desktop-loopback" },
+      destination: {
+        kind: "worker-chat-share",
+        workerId: "worker-b",
+        resourceId: "chat-share-1",
+        chatId: "22222222-2222-4222-8222-222222222222",
+        rootId: "33333333-3333-4333-8333-333333333333",
+        publicBasePath: `/project-shares/${"x".repeat(43)}`,
+        publicOrigin: "http://127.0.0.1",
+        username: "cantrip-chat",
+        password: "a-secure-random-password-value",
+        realm: "Cantrip Chat Share",
+      },
+      dataProtection: {
+        formatVersion: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 1,
+        key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      },
+    });
+
+    const routing = tunnelPublicDestinationEndpoint(content.destination);
+    expect(routing).toEqual({
+      kind: "worker-adapter",
+      workerId: "worker-b",
+      adapter: "project-share",
+      resourceId: "chat-share-1",
+    });
+    expect(JSON.stringify(routing)).not.toMatch(/22222222|33333333/u);
+  });
+
   it("carries an explicit discovered-service worker into Browser tunneling", () => {
     expect(
       browserTunnelRequestSchema.parse({

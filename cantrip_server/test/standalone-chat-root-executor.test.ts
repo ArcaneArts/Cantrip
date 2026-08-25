@@ -108,6 +108,7 @@ function worker(): WorkerSummary {
         remove: false,
         download: false,
         archive: false,
+        networkShare: false,
       },
     },
     chatRelocation: false,
@@ -142,6 +143,37 @@ function worker(): WorkerSummary {
 }
 
 describe("standalone Chat root job executor", () => {
+  it("recovers expired archived roots after a server restart", async () => {
+    const expired = job("delete");
+    const onChanged = vi.fn();
+    const repository = {
+      standaloneChatRootJobs: {
+        recoverInterrupted: vi.fn().mockResolvedValue(0),
+        purgeExpiredArchivedChatsForAllOwners: vi
+          .fn()
+          .mockResolvedValue([{ ownerId: "owner-one", job: expired }]),
+        claimNext: vi.fn().mockResolvedValue(null),
+      },
+    } as unknown as ServerRepository;
+    const executor = new StandaloneChatRootJobExecutor(
+      repository,
+      {} as WorkerCommandBus,
+      { error: vi.fn(), warn: vi.fn() },
+      onChanged,
+    );
+
+    await expect(executor.recoverAfterRestart()).resolves.toBe(0);
+    await executor.drain();
+    expect(onChanged).toHaveBeenCalledWith({
+      ownerId: "owner-one",
+      job: expired,
+    });
+    expect(
+      repository.standaloneChatRootJobs.purgeExpiredArchivedChatsForAllOwners,
+    ).toHaveBeenCalledOnce();
+    executor.stop();
+  });
+
   it("blocks while offline and requeues on worker reconnect", async () => {
     const active = job();
     const blocked = {
@@ -166,6 +198,7 @@ describe("standalone Chat root job executor", () => {
         block,
         requeueRetryableForWorker,
         reconciliationTargets: vi.fn().mockResolvedValue([]),
+        purgeExpiredArchivedChats: vi.fn().mockResolvedValue([]),
       },
     } as unknown as ServerRepository;
     const bridge = {
@@ -253,6 +286,10 @@ describe("standalone Chat root job executor", () => {
 
   it("performs one authoritative reconciliation on reconnect", async () => {
     const markMissingRoots = vi.fn().mockResolvedValue(1);
+    const purgeExpiredArchivedChats = vi
+      .fn()
+      .mockResolvedValue([job("delete")]);
+    const onChanged = vi.fn();
     const reconciliationTargets = vi
       .fn()
       .mockResolvedValue([
@@ -264,6 +301,7 @@ describe("standalone Chat root job executor", () => {
       standaloneChatRootJobs: {
         requeueRetryableForWorker: vi.fn().mockResolvedValue(0),
         reconciliationTargets,
+        purgeExpiredArchivedChats,
         markMissingRoots,
         claimNext: vi.fn().mockResolvedValue(null),
       },
@@ -278,10 +316,15 @@ describe("standalone Chat root job executor", () => {
       isConnected: vi.fn().mockReturnValue(true),
       request,
     } as unknown as WorkerCommandBus;
-    const executor = new StandaloneChatRootJobExecutor(repository, bridge, {
-      error: vi.fn(),
-      warn: vi.fn(),
-    });
+    const executor = new StandaloneChatRootJobExecutor(
+      repository,
+      bridge,
+      {
+        error: vi.fn(),
+        warn: vi.fn(),
+      },
+      onChanged,
+    );
 
     await executor.workerConnected("worker-one");
     await executor.drain();
@@ -294,6 +337,11 @@ describe("standalone Chat root job executor", () => {
       },
       { timeoutMs: 60_000 },
     );
+    expect(purgeExpiredArchivedChats).toHaveBeenCalledWith("owner-one");
+    expect(onChanged).toHaveBeenCalledWith({
+      ownerId: "owner-one",
+      job: job("delete"),
+    });
     expect(markMissingRoots).toHaveBeenCalledWith("worker-one", [rootId]);
   });
 });

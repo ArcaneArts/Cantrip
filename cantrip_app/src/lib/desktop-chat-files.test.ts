@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   chatFilesAreLocalToDesktop,
+  chatScratchRevealUsesLocalFolder,
   desktopChatRevealLabel,
 } from "./desktop-chat-files";
 
@@ -44,5 +45,12 @@ describe("standalone Chat file locality", () => {
       "Show in File Explorer",
     );
     expect(desktopChatRevealLabel(false, "Macintosh")).toBeNull();
+  });
+
+  it("uses a network share by default and the proven local root with Shift", () => {
+    expect(chatScratchRevealUsesLocalFolder(true, true, false)).toBe(false);
+    expect(chatScratchRevealUsesLocalFolder(true, true, true)).toBe(true);
+    expect(chatScratchRevealUsesLocalFolder(true, false, false)).toBe(true);
+    expect(chatScratchRevealUsesLocalFolder(false, true, true)).toBe(false);
   });
 });

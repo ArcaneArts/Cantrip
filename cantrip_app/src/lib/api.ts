@@ -299,6 +299,9 @@ import {
   skillSettingsInventorySchema,
   skillSettingsMutationResultSchema,
   standaloneChatWireSummarySchema,
+  standaloneChatShareAttachmentSchema,
+  standaloneChatShareAttachmentWireSchema,
+  type StandaloneChatSummary,
   systemHealthSchema,
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
@@ -2000,6 +2003,107 @@ export async function createProjectNetworkShare(project: ProjectSummary) {
       username,
       password,
       realm: "Cantrip Project Share",
+      expiresAt: wire.expiresAt,
+      mountLeaseMs: wire.mountLeaseMs,
+    });
+  } finally {
+    clearSensitiveBytes(tokenBytes);
+    clearSensitiveBytes(usernameBytes);
+    clearSensitiveBytes(passwordBytes);
+  }
+}
+
+export async function createStandaloneChatNetworkShare(
+  chat: StandaloneChatSummary,
+) {
+  const workerId = chat.activeWorkerId;
+  const rootId = chat.activeScratchRootId;
+  if (!workerId || !rootId) {
+    throw new Error("Chat scratch placement is unavailable.");
+  }
+  await ensureTunnelWorker(workerId);
+  const managedResourceId = `chat:${chat.id}`;
+  let existing = tunnelWireListSchema
+    .parse(await request("/api/tunnels"))
+    .find(
+      ({ origin, managedBy }) =>
+        origin === "project-share" &&
+        managedBy?.kind === "project-share" &&
+        managedBy.id === managedResourceId,
+    );
+  let existingContent = existing?.protectedRecord
+    ? await openTunnelContentRecord({
+        tunnelId: existing.id,
+        record: existing.protectedRecord,
+        workerId: existing.destination.workerId,
+      })
+    : null;
+  if (
+    existing &&
+    (!existingContent ||
+      existingContent.destination.kind !== "worker-chat-share" ||
+      existingContent.destination.chatId !== chat.id ||
+      existingContent.destination.rootId !== rootId ||
+      existingContent.destination.workerId !== workerId)
+  ) {
+    await deleteProjectNetworkShare(existing.id);
+    existing = undefined;
+    existingContent = null;
+  }
+  const tunnelId = existing?.id ?? crypto.randomUUID();
+  const tokenBytes = randomBytes(32);
+  const usernameBytes = randomBytes(18);
+  const passwordBytes = randomBytes(32);
+  try {
+    const publicBasePath = `/project-shares/${encodeBase64Url(tokenBytes)}`;
+    const username = `cantrip-${encodeBase64Url(usernameBytes)}`;
+    const password = encodeBase64Url(passwordBytes);
+    const protectedRecord = await protectTunnelContentRecord({
+      content: {
+        name: "Chat scratch files",
+        description: "Secure WebDAV access to this Chat's scratch files.",
+        source: { kind: "desktop-loopback" },
+        destination: {
+          kind: "worker-chat-share",
+          workerId,
+          resourceId: tunnelId,
+          chatId: chat.id,
+          rootId,
+          publicBasePath,
+          publicOrigin: "http://127.0.0.1",
+          username,
+          password,
+          realm: "Cantrip Chat Share",
+        },
+        dataProtection:
+          existingContent?.dataProtection ?? createTunnelDataProtection(),
+      },
+      operationId: existing ? crypto.randomUUID() : tunnelId,
+      revision: (existing?.protectedRecord?.revision ?? 0) + 1,
+      tunnelId,
+      workerId,
+    });
+    const wire = standaloneChatShareAttachmentWireSchema.parse(
+      await post(
+        `/api/chats/${encodeURIComponent(chat.id)}/network-shares`,
+        projectShareTunnelCreateSchema.parse({
+          tunnelId,
+          workerId,
+          protectedRecord,
+        }),
+      ),
+    );
+    if (wire.tunnelId !== tunnelId || wire.chatId !== chat.id) {
+      throw new Error("Chat share response belongs to another tunnel.");
+    }
+    return standaloneChatShareAttachmentSchema.parse({
+      attachmentId: wire.attachmentId,
+      chatId: wire.chatId,
+      protocol: wire.protocol,
+      url: `http://127.0.0.1${publicBasePath}/`,
+      username,
+      password,
+      realm: "Cantrip Chat Share",
       expiresAt: wire.expiresAt,
       mountLeaseMs: wire.mountLeaseMs,
     });

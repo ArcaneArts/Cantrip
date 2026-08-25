@@ -81,6 +81,22 @@ export const tunnelContentDestinationEndpointSchema = z.discriminatedUnion(
         realm: z.string().min(1).max(200),
       })
       .strict(),
+    z
+      .object({
+        kind: z.literal("worker-chat-share"),
+        workerId: tunnelContentIdSchema,
+        resourceId: tunnelContentIdSchema,
+        chatId: z.string().uuid(),
+        rootId: z.string().uuid(),
+        publicBasePath: z
+          .string()
+          .regex(/^\/project-shares\/[A-Za-z0-9_-]{43}$/u),
+        publicOrigin: z.literal("http://127.0.0.1"),
+        username: z.string().min(1).max(128),
+        password: z.string().min(24).max(256),
+        realm: z.string().min(1).max(200),
+      })
+      .strict(),
   ],
 );
 
@@ -157,7 +173,10 @@ export function tunnelPublicDestinationEndpoint(
   if (destination.kind === "worker-tcp") {
     return { kind: destination.kind, workerId: destination.workerId };
   }
-  if (destination.kind === "worker-project-share") {
+  if (
+    destination.kind === "worker-project-share" ||
+    destination.kind === "worker-chat-share"
+  ) {
     return {
       kind: "worker-adapter",
       workerId: destination.workerId,

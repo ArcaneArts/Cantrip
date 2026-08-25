@@ -1,8 +1,4 @@
-import {
-  projectShareAttachmentWireSchema,
-  workerProjectShareOpenResultSchema,
-  type ProjectShareAttachmentWire,
-} from "@cantrip/protocol";
+import { workerProjectShareOpenResultSchema } from "@cantrip/protocol";
 import type { ProtectedTunnelContentRecord } from "@cantrip/protocol/tunnel-content";
 
 import type { ServerRepository } from "../db/repository.js";
@@ -12,7 +8,9 @@ import type { WorkerCommandBus } from "../workers/bridge.js";
 
 export interface OpenProjectShareInput {
   ownerId: string;
-  projectId: string;
+  projectId: string | null;
+  managedResourceId?: string;
+  standaloneRoot?: { chatId: string; rootId: string };
   protectedRecord: ProtectedTunnelContentRecord;
   tunnelId: string;
   workerId: string;
@@ -31,7 +29,7 @@ type ProjectShareTunnelChange = (input: {
 
 interface ActiveShare {
   ownerId: string;
-  projectId: string;
+  projectId: string | null;
   tunnelId: string;
   workerId: string;
 }
@@ -80,15 +78,27 @@ export class ProjectShareTunnelBroker {
     this.#changed = changed;
   }
 
-  async open(
-    input: OpenProjectShareInput,
-  ): Promise<ProjectShareAttachmentWire> {
+  async open(input: OpenProjectShareInput): Promise<{
+    attachmentId: string;
+    expiresAt: string;
+    mountLeaseMs: number;
+    projectId: string | null;
+    protocol: "webdav";
+    tunnelId: string;
+  }> {
     const startedAtMs = Date.now();
     const repository = this.#requiredRepository();
     if (!this.bridge.isConnected(input.workerId)) {
       throw new Error(`Worker ${input.workerId} is offline.`);
     }
-    const managedBy = { kind: "project-share" as const, id: input.projectId };
+    const managedResourceId = input.managedResourceId ?? input.projectId;
+    if (!managedResourceId) {
+      throw new Error("A protected file share requires an owning resource.");
+    }
+    const managedBy = {
+      kind: "project-share" as const,
+      id: managedResourceId,
+    };
     const existing = await repository.getManagedTunnel(
       input.ownerId,
       managedBy,
@@ -119,6 +129,7 @@ export class ProjectShareTunnelBroker {
         type: "project.share.open",
         shareId: input.tunnelId,
         protectedRecord: input.protectedRecord,
+        standaloneRoot: input.standaloneRoot ?? null,
       },
       { timeoutMs: WORKER_SHARE_COMMAND_TIMEOUT_MS },
     );
@@ -179,14 +190,14 @@ export class ProjectShareTunnelBroker {
         workerId: input.workerId,
         durationMs: Date.now() - startedAtMs,
       });
-      return projectShareAttachmentWireSchema.parse({
+      return {
         attachmentId: tunnel.id,
         projectId: input.projectId,
         protocol: "webdav",
         tunnelId: tunnel.id,
         expiresAt: new Date(Date.now() + this.#maxLifetimeMs).toISOString(),
         mountLeaseMs: this.#maxLifetimeMs,
-      });
+      };
     } catch (error) {
       await this.#closeWorkerShare(input.tunnelId, input.workerId);
       throw error;
@@ -224,8 +235,15 @@ export class ProjectShareTunnelBroker {
   }
 
   async revokeProject(projectId: string, ownerId: string): Promise<boolean> {
+    return this.revokeManagedResource(projectId, ownerId);
+  }
+
+  async revokeManagedResource(
+    resourceId: string,
+    ownerId: string,
+  ): Promise<boolean> {
     const repository = this.#requiredRepository();
-    const managedBy = { kind: "project-share" as const, id: projectId };
+    const managedBy = { kind: "project-share" as const, id: resourceId };
     const tunnel = await repository.getManagedTunnel(ownerId, managedBy);
     if (!tunnel) return false;
     await this.#closeWorkerShare(tunnel.id, tunnel.destination.workerId);
