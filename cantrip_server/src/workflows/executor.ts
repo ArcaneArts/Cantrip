@@ -606,6 +606,7 @@ export class WorkflowExecutor {
           context.workerId,
           {
             type: "agent.interaction.respond.protected",
+            executionProfile: "ide",
             requestKey: interaction.requestKey,
             response,
             model: runtime.model,
@@ -1312,6 +1313,7 @@ export class WorkflowExecutor {
     try {
       await this.bridge.request(workerId, {
         type: "agent.interaction.cancel",
+        executionProfile: "ide",
         requestKey,
         reason,
         model: runtime.model,

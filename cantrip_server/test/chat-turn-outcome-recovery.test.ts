@@ -12,6 +12,7 @@ afterEach(() => {
 });
 
 const activeLane = {
+  scratchRootId: null,
   state: "active",
   workerId: "worker-1",
   worktreeId: "worktree-1",
@@ -26,24 +27,49 @@ describe("chat turn outcome recovery", () => {
 
   it("only recovers an outcome while its original lane is active", () => {
     expect(
-      shouldRecoverChatTurnOutcome(activeLane, "worker-1", "worktree-1"),
+      shouldRecoverChatTurnOutcome(activeLane, "worker-1", "worktree-1", null),
     ).toBe(true);
     expect(
       shouldRecoverChatTurnOutcome(
         { ...activeLane, state: "suspended" },
         "worker-1",
         "worktree-1",
+        null,
       ),
     ).toBe(false);
     expect(
-      shouldRecoverChatTurnOutcome(activeLane, "worker-2", "worktree-1"),
+      shouldRecoverChatTurnOutcome(activeLane, "worker-2", "worktree-1", null),
     ).toBe(false);
     expect(
-      shouldRecoverChatTurnOutcome(activeLane, "worker-1", "worktree-2"),
+      shouldRecoverChatTurnOutcome(activeLane, "worker-1", "worktree-2", null),
     ).toBe(false);
-    expect(shouldRecoverChatTurnOutcome(null, "worker-1", "worktree-1")).toBe(
-      false,
-    );
+    expect(
+      shouldRecoverChatTurnOutcome(null, "worker-1", "worktree-1", null),
+    ).toBe(false);
+    expect(
+      shouldRecoverChatTurnOutcome(
+        {
+          ...activeLane,
+          scratchRootId: "scratch-1",
+          worktreeId: null,
+        },
+        "worker-1",
+        null,
+        "scratch-1",
+      ),
+    ).toBe(true);
+    expect(
+      shouldRecoverChatTurnOutcome(
+        {
+          ...activeLane,
+          scratchRootId: "scratch-1",
+          worktreeId: null,
+        },
+        "worker-1",
+        null,
+        "scratch-2",
+      ),
+    ).toBe(false);
   });
 
   it("does not schedule a durable recovery after normal completion settles the turn", () => {

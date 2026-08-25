@@ -1,7 +1,8 @@
 export interface ChatTurnOutcomeLane {
+  scratchRootId: string | null;
   state: string;
   workerId: string;
-  worktreeId: string;
+  worktreeId: string | null;
 }
 
 export interface ChatTurnOutcomeMessage {
@@ -70,12 +71,14 @@ export function chatTurnOutcomeRecoveryKey(
 export function shouldRecoverChatTurnOutcome(
   lane: ChatTurnOutcomeLane | null,
   workerId: string,
-  worktreeId: string,
+  worktreeId: string | null,
+  scratchRootId: string | null,
 ): boolean {
   return (
     lane?.state === "active" &&
     lane.workerId === workerId &&
-    lane.worktreeId === worktreeId
+    lane.worktreeId === worktreeId &&
+    lane.scratchRootId === scratchRootId
   );
 }
 

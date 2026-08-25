@@ -605,6 +605,7 @@ export class ChatImportJobExecutor {
         context.workerId,
         {
           type: "chat.sync",
+          executionProfile: "ide",
           chatId,
           cwd: context.cwd,
           threadId: hydrated.threadId,

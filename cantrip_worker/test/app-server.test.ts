@@ -12,6 +12,7 @@ import {
   CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS,
   CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
   NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS,
+  STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS,
   cantripChatThreadParams,
   agentInteractionRequestFromServerRequest,
   appendBoundedCommandOutput,
@@ -1253,6 +1254,15 @@ describe("managed Cantrip MCP guidance", () => {
     );
   });
 
+  it("uses a compact standalone thread profile without IDE guidance", () => {
+    const params = cantripChatThreadParams(true, "standalone-chat");
+    expect(params.developerInstructions).toBe(
+      STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS,
+    );
+    expect(params.developerInstructions).not.toContain("managed `cantrip`");
+    expect(params.dynamicTools).toEqual([]);
+  });
+
   it("recognizes Git directories, worktree files, and ancestor metadata", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "cantrip-git-context-"));
     try {
@@ -1312,6 +1322,31 @@ describe("codexReasoningEffortParams", () => {
 });
 
 describe("codexWorktreeTurnPolicy", () => {
+  it("isolates standalone Chat writes to the scratch root", () => {
+    const policy = codexWorktreeTurnPolicy({
+      cwd: "/scratch/chat-one",
+      executionProfile: "standalone-chat",
+      rootKind: null,
+      isPrimary: true,
+      resultMode: { kind: "visible" },
+      worktreeMode: null,
+      worktreePolicy: null,
+    });
+    expect(policy.sandboxPolicy).toEqual({
+      type: "workspaceWrite",
+      writableRoots: ["/scratch/chat-one"],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    });
+    expect(policy.additionalContext["cantrip.standalone-chat"].value).toContain(
+      "isolated standalone Chat scratch workspace",
+    );
+    expect(policy.additionalContext).not.toHaveProperty(
+      "cantrip.worktree-policy",
+    );
+  });
+
   it("enforces inspection-only Primary for required-for-writes projects", () => {
     const policy = codexWorktreeTurnPolicy({
       cwd: "/workspace/project",
@@ -1860,6 +1895,13 @@ describe("codexMcpConfigOverride", () => {
 });
 
 describe("native Codex subagent configuration", () => {
+  it("disables native collaboration for standalone Chat runtimes", () => {
+    expect(codexNativeSubagentConfigOverride(null, false)).toEqual({
+      features: { multi_agent: false },
+      agents: { enabled: false },
+    });
+  });
+
   it("enables native tools without inventing child defaults", () => {
     expect(codexNativeSubagentConfigOverride(null)).toEqual({
       features: { multi_agent: true },

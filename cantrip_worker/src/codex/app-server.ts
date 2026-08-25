@@ -1617,6 +1617,7 @@ export interface RunAgentTurnOptions {
   captureProtectedDiagnostics: boolean;
   clientMessageId: string;
   cwd: string;
+  executionProfile: "ide" | "standalone-chat";
   isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
   mcpServers?: McpServerConfiguration[];
@@ -1797,6 +1798,9 @@ export const CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS =
 export const NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS =
   "The current project path has no local `.git` metadata in it or any parent directory, so treat this project as a non-Git folder. Do not run Git or GitHub commands, inspect branches, remotes, or worktrees, or attempt commits or pull requests. Work directly with its files. Do not initialize Git unless the user explicitly asks.";
 
+export const STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS =
+  "You are in a standalone Cantrip Chat with an isolated scratch folder. This is not an IDE project. Do not use or request Cantrip project, worktree, Task, Code, CodeGraph, managed MCP, console, relocation, trajectory, or subagent features. You may use built-in shell, file, and web capabilities under the active permission profile, and must treat the current scratch folder as the only normal workspace root.";
+
 export const CANTRIP_DYNAMIC_TOOLS_OVERRIDE = { dynamicTools: [] } as const;
 
 export async function workspaceHasGitMetadata(cwd: string): Promise<boolean> {
@@ -1819,7 +1823,16 @@ export async function workspaceHasGitMetadata(cwd: string): Promise<boolean> {
   }
 }
 
-export function cantripChatThreadParams(hasGitMetadata = true) {
+export function cantripChatThreadParams(
+  hasGitMetadata = true,
+  executionProfile: RunAgentTurnOptions["executionProfile"] = "ide",
+) {
+  if (executionProfile === "standalone-chat") {
+    return {
+      developerInstructions: STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS,
+      ...CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
+    } as const;
+  }
   return {
     developerInstructions: hasGitMetadata
       ? CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS
@@ -1832,6 +1845,7 @@ export function codexWorktreeTurnPolicy(
   options: Pick<
     RunAgentTurnOptions,
     | "cwd"
+    | "executionProfile"
     | "isPrimary"
     | "resultMode"
     | "rootKind"
@@ -1843,6 +1857,36 @@ export function codexWorktreeTurnPolicy(
   },
 ) {
   const cwd = path.resolve(options.cwd);
+  if (options.executionProfile === "standalone-chat") {
+    return {
+      additionalContext: {
+        "cantrip.standalone-chat": {
+          kind: "application" as const,
+          value:
+            "This is an isolated standalone Chat scratch workspace, not a Cantrip project. Work only with this conversation and the current scratch folder. Project, worktree, Task, Code, CodeGraph, Cantrip MCP, and subagent workflows are unavailable.",
+        },
+        ...(options.policyContext
+          ? {
+              "cantrip.policies": {
+                kind: "application" as const,
+                value: options.policyContext,
+              },
+            }
+          : {}),
+      },
+      ...(options.permissionProfileActive
+        ? {}
+        : {
+            sandboxPolicy: {
+              type: "workspaceWrite" as const,
+              writableRoots: [cwd],
+              networkAccess: false,
+              excludeTmpdirEnvVar: false,
+              excludeSlashTmp: false,
+            },
+          }),
+    } as const;
+  }
   const structuredReadOnly = options.resultMode?.kind === "structured";
   const primaryIsReadOnly =
     options.rootKind === "git-worktree" &&
@@ -1908,6 +1952,7 @@ function assembledInstructionContextActivity(input: {
 }): AgentActivity {
   const developerInstructions = cantripChatThreadParams(
     input.hasGitMetadata,
+    input.options.executionProfile,
   ).developerInstructions;
   const contextEntries = Object.entries(input.turnPolicy.additionalContext);
   const selectedSkillSources = input.options.skillNames
@@ -2162,7 +2207,7 @@ export function parsePermissionProfileList(response: unknown) {
 
 export type CompactAgentThreadOptions = Pick<
   RunAgentTurnOptions,
-  "cwd" | "model" | "permissionProfileId" | "provider"
+  "cwd" | "executionProfile" | "model" | "permissionProfileId" | "provider"
 > & {
   threadId: string;
 };
@@ -2266,12 +2311,13 @@ export function managedMcpToolRequirements(
 
 export function codexNativeSubagentConfigOverride(
   defaults: RuntimeSubagentDefaults | null,
+  enabled = true,
 ): Record<string, unknown> {
   return {
-    features: { multi_agent: true },
+    features: { multi_agent: enabled },
     agents: {
-      enabled: true,
-      ...(defaults
+      enabled,
+      ...(enabled && defaults
         ? {
             default_subagent_model: defaults.model.name,
             ...(defaults.model.reasoningEffort
@@ -2290,6 +2336,7 @@ export function codexRuntimeId(
   model: RunAgentTurnOptions["model"],
   provider: RunAgentTurnOptions["provider"],
   subagentDefaults: RuntimeSubagentDefaults | null = null,
+  executionProfile: RunAgentTurnOptions["executionProfile"] = "ide",
 ): string {
   // Reasoning effort is a thread/turn override. Including it here would spawn
   // another app-server against the same Codex home, so resuming the thread
@@ -2305,6 +2352,7 @@ export function codexRuntimeId(
         credentialHomeKey: provider.credentialHomeKey,
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
+        executionProfile,
         subagentModel: subagentDefaults
           ? {
               name: subagentDefaults.model.name,
@@ -4046,6 +4094,7 @@ export class CodexAppServer implements CodexRuntime {
       options.model,
       options.provider,
       options.subagentDefaults,
+      options.executionProfile,
     );
     const baseline = await workspaceSnapshot(options.cwd);
     const threadId = await this.loadThread(options);
@@ -4705,10 +4754,15 @@ export class CodexAppServer implements CodexRuntime {
   async syncThread(
     options: Pick<
       RunAgentTurnOptions,
-      "cwd" | "model" | "provider" | "threadId"
+      "cwd" | "executionProfile" | "model" | "provider" | "threadId"
     > & { threadId: string },
   ): Promise<AgentThreadSync> {
-    await this.ensureStarted(options.model, options.provider);
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      null,
+      options.executionProfile,
+    );
     const response = (await this.request("thread/read", {
       threadId: options.threadId,
       includeTurns: true,
@@ -4738,6 +4792,7 @@ export class CodexAppServer implements CodexRuntime {
     options: Pick<
       RunAgentTurnOptions,
       | "cwd"
+      | "executionProfile"
       | "mcpServers"
       | "model"
       | "permissionProfileId"
@@ -4745,7 +4800,12 @@ export class CodexAppServer implements CodexRuntime {
       | "threadId"
     > & { threadId: string },
   ): Promise<void> {
-    await this.ensureStarted(options.model, options.provider);
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      null,
+      options.executionProfile,
+    );
     // Older servers do not send console MCP materialization fields. Preserve
     // their prior attach behavior rather than resuming with an incomplete
     // configuration during a rolling deployment.
@@ -4778,7 +4838,12 @@ export class CodexAppServer implements CodexRuntime {
     options: CompactAgentThreadOptions,
   ): Promise<{ accepted: true }> {
     const startedAtMs = Date.now();
-    await this.ensureStarted(options.model, options.provider);
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      null,
+      options.executionProfile,
+    );
     const threadId = await this.loadThread(options, false);
     if (!threadId) {
       throw new Error(
@@ -4805,7 +4870,12 @@ export class CodexAppServer implements CodexRuntime {
     options: CompactAgentThreadOptions & { clientMessageId: string },
   ): Promise<{ rolledBack: true }> {
     const startedAtMs = Date.now();
-    await this.ensureStarted(options.model, options.provider);
+    await this.ensureStarted(
+      options.model,
+      options.provider,
+      null,
+      options.executionProfile,
+    );
     const threadId = await this.loadThread(options, false);
     if (!threadId) {
       throw new Error(
@@ -5335,6 +5405,7 @@ export class CodexAppServer implements CodexRuntime {
     model: RunAgentTurnOptions["model"],
     provider: RunAgentTurnOptions["provider"],
     subagentDefaults: RuntimeSubagentDefaults | null = null,
+    executionProfile: RunAgentTurnOptions["executionProfile"] = "ide",
   ): Promise<void> {
     if (
       this.compatibility.compatibility === "missing" ||
@@ -5345,7 +5416,12 @@ export class CodexAppServer implements CodexRuntime {
         `Codex runtime is ${this.compatibility.compatibility}; expected ${this.compatibility.testedRange}.${detail ? ` ${detail}` : ""}`,
       );
     }
-    const runtimeId = codexRuntimeId(model, provider, subagentDefaults);
+    const runtimeId = codexRuntimeId(
+      model,
+      provider,
+      subagentDefaults,
+      executionProfile,
+    );
     if (this.#starting) {
       await this.#starting;
     }
@@ -5369,7 +5445,12 @@ export class CodexAppServer implements CodexRuntime {
       codexVersion: this.compatibility.version?.raw ?? null,
       ...codexProviderLogContext(provider),
     });
-    const starting = this.start(model, provider, subagentDefaults);
+    const starting = this.start(
+      model,
+      provider,
+      subagentDefaults,
+      executionProfile,
+    );
     this.#starting = starting;
     try {
       await starting;
@@ -5574,6 +5655,7 @@ export class CodexAppServer implements CodexRuntime {
       | "provider"
       | "threadId"
     > & {
+      executionProfile?: RunAgentTurnOptions["executionProfile"];
       resultMode?: RunAgentTurnOptions["resultMode"];
       subagentDefaults?: RuntimeSubagentDefaults | null;
     },
@@ -5589,7 +5671,10 @@ export class CodexAppServer implements CodexRuntime {
         ? codexMcpConfigOverride(options.mcpServers)
         : null;
     const threadConfig = {
-      ...codexNativeSubagentConfigOverride(options.subagentDefaults ?? null),
+      ...codexNativeSubagentConfigOverride(
+        options.subagentDefaults ?? null,
+        (options.executionProfile ?? "ide") === "ide",
+      ),
       ...(mcpConfig ?? {}),
     };
     const threadConfigFingerprint = JSON.stringify(threadConfig);
@@ -5637,7 +5722,10 @@ export class CodexAppServer implements CodexRuntime {
             this.permissionProfilesSupported(),
             structuredReadOnly,
           ),
-          ...cantripChatThreadParams(hasGitMetadata),
+          ...cantripChatThreadParams(
+            hasGitMetadata,
+            options.executionProfile ?? "ide",
+          ),
           config: threadConfig,
         })) as ThreadResponse;
         threadId = resumed.thread.id;
@@ -5686,7 +5774,10 @@ export class CodexAppServer implements CodexRuntime {
           this.permissionProfilesSupported(),
           structuredReadOnly,
         ),
-        ...cantripChatThreadParams(hasGitMetadata),
+        ...cantripChatThreadParams(
+          hasGitMetadata,
+          options.executionProfile ?? "ide",
+        ),
         config: threadConfig,
       })) as ThreadResponse;
       threadId = started.thread.id;
@@ -6646,6 +6737,7 @@ export class CodexAppServer implements CodexRuntime {
     model: RunAgentTurnOptions["model"] | null,
     provider: RunAgentTurnOptions["provider"],
     subagentDefaults: RuntimeSubagentDefaults | null = null,
+    _executionProfile: RunAgentTurnOptions["executionProfile"] = "ide",
   ): Promise<void> {
     const startedAtMs = Date.now();
     this.#appServerSessionId = randomUUID();

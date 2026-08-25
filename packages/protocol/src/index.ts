@@ -4758,6 +4758,26 @@ export const standaloneChatIdentitySchema = z
     "Standalone Chat identities must be canonical lowercase UUIDs.",
   );
 
+export const standaloneChatCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).default("New chat"),
+  })
+  .strict();
+
+export const encryptedStandaloneChatCreateSchema = z
+  .object({
+    id: standaloneChatIdentitySchema,
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "chat",
+    {
+      message: "Standalone Chat title classification must be chat.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const standaloneChatRootJobKindSchema = z.enum(["provision", "delete"]);
 
 export const standaloneChatRootJobStateSchema = z.enum([
@@ -7479,7 +7499,9 @@ export const chatMessageSchema = chatMessageCreateSchema
   .extend({
     id: z.string().min(1),
     chatId: z.string().min(1),
-    worktreeId: z.string().min(1),
+    contextKind: chatContextKindSchema.default("project"),
+    worktreeId: z.string().min(1).nullable(),
+    scratchRootId: z.string().min(1).nullable().default(null),
     executionLaneId: z.string().min(1).nullable(),
     sequence: z.number().int().positive(),
     mode: chatTurnModeSchema.default("default"),
@@ -7492,6 +7514,23 @@ export const chatMessageSchema = chatMessageCreateSchema
     appliedReasoningEffort: reasoningEffortSchema.nullable().default(null),
     reasoningAdjusted: z.boolean().default(false),
     createdAt: z.string().datetime(),
+  })
+  .superRefine((message, context) => {
+    if (
+      (message.contextKind === "project" &&
+        message.worktreeId !== null &&
+        message.scratchRootId === null) ||
+      (message.contextKind === "standalone" &&
+        message.worktreeId === null &&
+        message.scratchRootId !== null)
+    ) {
+      return;
+    }
+    context.addIssue({
+      code: "custom",
+      message: "Chat message execution root is invalid.",
+      path: ["contextKind"],
+    });
   });
 
 export const chatRelocationStateSchema = z.enum([
@@ -7907,7 +7946,7 @@ function fitsAgentInteractionStorageLimit(value: unknown): boolean {
 export const agentInteractionRequestCreateSchema = z
   .object({
     requestKey: z.string().min(1).max(200),
-    projectId: z.string().min(1),
+    projectId: z.string().min(1).nullable(),
     provenance: agentInteractionProvenanceSchema,
     payload: agentInteractionRequestPayloadSchema,
     expiresAt: z.string().datetime().nullable(),
@@ -7928,7 +7967,7 @@ export const agentInteractionResolutionCreateSchema = z
 export const encryptedAgentInteractionRequestCreateSchema = z
   .object({
     requestKey: z.string().min(1).max(200),
-    projectId: z.string().min(1),
+    projectId: z.string().min(1).nullable(),
     provenance: agentInteractionProvenanceSchema,
     ...interactionRequestOpaqueContentSchema.shape,
     expiresAt: z.string().datetime().nullable(),
@@ -7976,7 +8015,7 @@ export const agentInteractionRequestSchema = z
   .object({
     id: z.string().min(1),
     requestKey: z.string().min(1),
-    projectId: z.string().min(1),
+    projectId: z.string().min(1).nullable(),
     provenance: agentInteractionProvenanceSchema,
     payload: agentInteractionRequestPayloadSchema,
     status: agentInteractionRequestStatusSchema,
@@ -8038,7 +8077,7 @@ export const encryptedAgentInteractionRequestSchema = z
   .object({
     id: z.string().min(1),
     requestKey: z.string().min(1),
-    projectId: z.string().min(1),
+    projectId: z.string().min(1).nullable(),
     provenance: agentInteractionProvenanceSchema,
     classification: interactionProtectedClassificationSchema,
     protectedPayload:
@@ -14115,16 +14154,19 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("chat.turn"),
+      executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
+      contextKind: chatContextKindSchema.default("project"),
       chatId: z.string().min(1),
       clientMessageId: z.string().min(1),
       executionLaneId: z.string().min(1),
-      worktreeId: z.string().min(1),
-      rootKind: projectRootKindSchema.default("git-worktree"),
+      worktreeId: z.string().min(1).nullable(),
+      scratchRootId: z.string().min(1).nullable().default(null),
+      rootKind: projectRootKindSchema.nullable().default("git-worktree"),
       cwd: z.string().min(1),
       isPrimary: z.boolean(),
-      worktreeMode: z.enum(["agent-managed", "pinned"]),
-      worktreePolicy: worktreePolicySchema,
-      policyProjectId: z.string().min(1).max(200),
+      worktreeMode: z.enum(["agent-managed", "pinned"]).nullable(),
+      worktreePolicy: worktreePolicySchema.nullable(),
+      policyProjectId: z.string().min(1).max(200).nullable(),
       policies: effectivePolicyWireListSchema.default({ policies: [] }),
       threadId: z.string().min(1).nullable(),
       prompt: z.string().min(1).optional(),
@@ -14157,6 +14199,38 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       taskDispatchLease: taskDispatchWorkerLeaseSchema.optional(),
     })
     .superRefine((command, context) => {
+      const projectShape =
+        command.executionProfile === "ide" &&
+        command.contextKind === "project" &&
+        command.worktreeId !== null &&
+        command.scratchRootId === null &&
+        command.rootKind !== null &&
+        command.worktreeMode !== null &&
+        command.worktreePolicy !== null &&
+        command.policyProjectId !== null;
+      const standaloneShape =
+        command.executionProfile === "standalone-chat" &&
+        command.contextKind === "standalone" &&
+        command.worktreeId === null &&
+        command.scratchRootId !== null &&
+        command.rootKind === null &&
+        command.isPrimary &&
+        command.worktreeMode === null &&
+        command.worktreePolicy === null &&
+        command.policyProjectId === null &&
+        command.planMode === "default" &&
+        command.automationPaused === false &&
+        command.subagentDefaults == null &&
+        command.subagentProtocolVersion === undefined &&
+        command.taskDispatchLease === undefined;
+      if (!projectShape && !standaloneShape) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Chat turn execution profile does not match its execution root and capabilities.",
+          path: ["executionProfile"],
+        });
+      }
       if (Boolean(command.prompt) === Boolean(command.protectedPrompt)) {
         context.addIssue({
           code: "custom",
@@ -14241,6 +14315,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("chat.compact"),
+    executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1),
@@ -14250,6 +14325,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("chat.interrupt"),
+    executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     chatId: z.string().min(1),
     threadId: z.string().min(1).nullable(),
     model: workerRuntimeModelSchema,
@@ -14257,6 +14333,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("chat.turn.rollback"),
+    executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     chatId: z.string().min(1),
     clientMessageId: z.string().min(1).max(200),
     cwd: z.string().min(1),
@@ -14375,6 +14452,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("agent.interaction.respond"),
+    executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     requestKey: z.string().min(1).max(200),
     response: agentInteractionResponseSchema,
     model: workerRuntimeModelSchema,
@@ -14382,6 +14460,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("agent.interaction.respond.protected"),
+    executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     requestKey: z.string().min(1).max(200),
     response: interactionResponseOpaqueContentSchema,
     model: workerRuntimeModelSchema,
@@ -14389,6 +14468,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("agent.interaction.cancel"),
+    executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     requestKey: z.string().min(1).max(200),
     reason: z.string().min(1).max(4_000),
     model: workerRuntimeModelSchema,
@@ -14397,6 +14477,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("chat.steer"),
+      executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
       chatId: z.string().min(1),
       threadId: z.string().min(1).nullable(),
       prompt: z.string().trim().min(1).max(100_000).optional(),
@@ -14417,6 +14498,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     }),
   z.object({
     type: z.literal("chat.sync"),
+    executionProfile: z.enum(["ide", "standalone-chat"]).default("ide"),
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1),
@@ -14728,26 +14810,46 @@ export const workerEventEnvelopeSchema = z.object({
 });
 
 export const workerNotificationSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("chat.turn.outcome"),
-    chatId: z.string().min(1),
-    clientMessageId: z.string().min(1),
-    executionLaneId: z.string().min(1),
-    worktreeId: z.string().min(1),
-    taskDispatchFence: taskDispatchWorkerLeaseSchema
-      .omit({ leaseExpiresAt: true })
-      .optional(),
-    outcome: z.discriminatedUnion("ok", [
-      z.object({
-        ok: z.literal(true),
-        result: agentTurnResultSchema,
-      }),
-      z.object({
-        ok: z.literal(false),
-        error: z.string().min(1),
-      }),
-    ]),
-  }),
+  z
+    .object({
+      type: z.literal("chat.turn.outcome"),
+      chatId: z.string().min(1),
+      clientMessageId: z.string().min(1),
+      executionLaneId: z.string().min(1),
+      contextKind: chatContextKindSchema.default("project"),
+      worktreeId: z.string().min(1).nullable(),
+      scratchRootId: z.string().min(1).nullable().default(null),
+      taskDispatchFence: taskDispatchWorkerLeaseSchema
+        .omit({ leaseExpiresAt: true })
+        .optional(),
+      outcome: z.discriminatedUnion("ok", [
+        z.object({
+          ok: z.literal(true),
+          result: agentTurnResultSchema,
+        }),
+        z.object({
+          ok: z.literal(false),
+          error: z.string().min(1),
+        }),
+      ]),
+    })
+    .superRefine((notification, context) => {
+      if (
+        (notification.contextKind === "project" &&
+          notification.worktreeId !== null &&
+          notification.scratchRootId === null) ||
+        (notification.contextKind === "standalone" &&
+          notification.worktreeId === null &&
+          notification.scratchRootId !== null)
+      ) {
+        return;
+      }
+      context.addIssue({
+        code: "custom",
+        message: "Chat turn outcome execution root is invalid.",
+        path: ["contextKind"],
+      });
+    }),
   z
     .object({
       type: z.literal("chat.thread.changed"),
@@ -15726,6 +15828,10 @@ export type ChatWorktreeUpdate = z.infer<typeof chatWorktreeUpdateSchema>;
 export type WorktreeSelection = z.infer<typeof worktreeSelectionSchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
 export type EncryptedChatCreate = z.infer<typeof encryptedChatCreateSchema>;
+export type StandaloneChatCreate = z.infer<typeof standaloneChatCreateSchema>;
+export type EncryptedStandaloneChatCreate = z.infer<
+  typeof encryptedStandaloneChatCreateSchema
+>;
 export type TaskCreate = z.infer<typeof taskCreateSchema>;
 export type EncryptedTaskCreate = z.infer<typeof encryptedTaskCreateSchema>;
 export type TaskCreateResult = z.infer<typeof taskCreateResultSchema>;
@@ -15767,6 +15873,12 @@ export type ChatWireSummary = z.infer<typeof chatWireSummarySchema>;
 export type ArchivedChatSummary = z.infer<typeof archivedChatSummarySchema>;
 export type ArchivedChatWireSummary = z.infer<
   typeof archivedChatWireSummarySchema
+>;
+export type ArchivedStandaloneChatSummary = z.infer<
+  typeof archivedStandaloneChatSummarySchema
+>;
+export type ArchivedStandaloneChatWireSummary = z.infer<
+  typeof archivedStandaloneChatWireSummarySchema
 >;
 export type ArchivedChatCleanupResult = z.infer<
   typeof archivedChatCleanupResultSchema
