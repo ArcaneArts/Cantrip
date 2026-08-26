@@ -1,7 +1,7 @@
 # Client-worker network fabric progress
 
 - Tranche One: Stabilized
-- Tranche Two: Not started
+- Tranche Two: In progress
 - Architecture: [NETWORK.md](NETWORK.md)
 - Execution started: 2026-08-26
 
@@ -16,13 +16,12 @@ worker gateway, client manager, LOCAL and RELAY carriers, QoS/flow-control
 foundation, and migration of Terminal, saved and managed tunnels, project
 shares, and Cantrip Code. The server remains authoritative for durable state.
 
-Tranche Two remains explicitly deferred: LAN candidate gathering and
-classification, WAN negotiation, default STUN configuration, VPN runtime
-classification, a feature-neutral WebRTC peer carrier, native LAN/WAN tunnels,
-browser or Capacitor peer-direct Code/Terminal, Browser and Remote Desktop
-migration, direct worker observations, incremental chat and file watcher
-events, network-mobility reprobes beyond current transports, TURN, transparent
-TCP resumption, and final legacy-relay consolidation.
+Tranche Two activates the deferred direct-route system in independently
+mergeable passes. Its first pass adds bounded peer contracts, deployment policy,
+and regression fences without enabling LAN or WAN runtime routing. Candidate
+classification, negotiation, carriers, feature migrations, and mobility follow
+behind those contracts. TURN and transparent TCP resumption remain intentionally
+out of scope.
 
 ## Passes
 
@@ -48,6 +47,12 @@ TCP resumption, and final legacy-relay consolidation.
 | S4 — Stabilization gate       | Audit the Tranche One cutover and run the final acceptance matrix                            | Complete | `codex/network-tranche1-acceptance`      | [#1191](https://github.com/ArcaneArts/Cantrip/pull/1191) | Workspace typecheck/build; cutover audit; focused protocol 10, app 112, server 79, worker 54; full protocol 359, app 1,582, worker 883; Rust fmt/check and WorkerLink 4; source/CLI verification | All in-scope suites pass; broad repository baseline failures were reproduced from the unchanged `origin/main` base and are recorded below; Tranche Two remains out of scope                                     |
 | S5 — WebKit timer receiver    | Preserve the browser receiver when the native WorkerLink bridge schedules or cancels timers  | Complete | `codex/fix-worker-link-window-timers`    | [#1192](https://github.com/ArcaneArts/Cantrip/pull/1192) | Workspace build/typecheck; focused desktop tunnel and Code 73; full app 1,583; WebKit receiver regression; cutover, changed-file formatting, and diff checks                                     | Bare `Window.setTimeout` and `Window.clearTimeout` references were invoked with the dependency object as their receiver, aborting the native Code bridge handshake in WebKit                                    |
 | S6 — Tunnel output congestion | Retain and retry nested TCP frames across transient shared WorkerLink backpressure           | Complete | `codex/fix-code-worker-link-congestion`  | [#1193](https://github.com/ArcaneArts/Cantrip/pull/1193) | Workspace typecheck/build; focused tunnel, Code, and WorkerLink 23; full worker 885; cutover, changed-file formatting, and diff checks                                                           | Concurrent Code asset and WebSocket streams could consume shared outer capacity between emission attempts; rejected frames were removed and their logical stream was closed instead of waiting for fresh credit |
+
+## Tranche Two passes
+
+| Pass                                      | Scope                                                                                    | Status      | Branch                                   | PR      | Validation | Notes or deviations                                                                                       |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------- | ----------- | ---------------------------------------- | ------- | ---------- | --------------------------------------------------------------------------------------------------------- |
+| T2.1 — Contracts, config, regression base | Add bounded peer/signaling policy, deployment controls, and LOCAL/RELAY plus Code fences | In progress | `codex/network-tranche2-pass1-contracts` | Pending | Pending    | LAN/WAN stay non-operational; legacy Remote Surface TURN configuration remains isolated for compatibility |
 
 ## Stabilization acceptance evidence
 
@@ -242,7 +247,7 @@ TCP resumption, and final legacy-relay consolidation.
   caller and was removed. Public compatibility endpoints and shared direct
   infrastructure remain because older clients may still depend on them.
 
-## Tranche Two handoff
+## Tranche Two remaining work
 
 Tranche Two starts from the shared WorkerLink session, grant, QoS, telemetry,
 and carrier interfaces delivered here. Its first work should introduce LAN
@@ -253,10 +258,10 @@ Capacitor peer-direct Code and Terminal transport before migrating Browser
 Remote Surface, Remote Desktop, worker observations, incremental chat, and
 filesystem watcher events.
 
-The following remain intentionally unimplemented: LAN/WAN runtime routes,
-STUN deployment/configuration, VPN runtime classification, peer WebRTC,
-peer-direct browser or Capacitor features, Browser and Remote Desktop
-migration, direct observation/chat/watcher delivery, mobility reprobes beyond
-current LOCAL/RELAY reconnect, TURN, transparent TCP resumption, and final
-legacy-relay consolidation. No Tranche Two runtime behavior is partially
-enabled by Tranche One.
+The following remain intentionally unimplemented after T2.1: LAN/WAN runtime
+routes, candidate classification, VPN runtime classification, peer WebRTC,
+peer-direct browser or Capacitor features, Browser and Remote Desktop migration,
+direct observation/chat/watcher delivery, mobility reprobes beyond current
+LOCAL/RELAY reconnect, and final legacy-relay consolidation. TURN and
+transparent TCP resumption remain explicitly deferred. T2.1 adds no partial
+LAN/WAN runtime behavior.

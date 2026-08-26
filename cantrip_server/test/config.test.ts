@@ -336,4 +336,87 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_WEBRTC_ICE_TRANSPORT_POLICY", "relay");
     expect(() => readServerConfig()).toThrow(/requires TURN/i);
   });
+
+  it("bounds the separate TURN-free WorkerLink peer policy", () => {
+    expect(readServerConfig().workerLinkPeer).toMatchObject({
+      directRoutes: { local: true, lan: true, wan: true },
+      relayOnly: false,
+      stunUrls: ["stun:stun.cloudflare.com:3478"],
+      interfacePolicy: { mode: "default", interfaces: [] },
+      vpnPolicy: { defaultRoute: "wan", lanAllowlist: [] },
+      negotiationTimeoutMs: 8_000,
+      upgradeProbeTimeoutMs: 15_000,
+      maxPeerSessionsPerClient: 4,
+      maxPeerSessionsPerWorker: 32,
+    });
+
+    vi.stubEnv("CANTRIP_WORKER_LINK_LOCAL_ENABLED", "false");
+    vi.stubEnv("CANTRIP_WORKER_LINK_LAN_ENABLED", "false");
+    vi.stubEnv("CANTRIP_WORKER_LINK_WAN_ENABLED", "true");
+    vi.stubEnv(
+      "CANTRIP_WORKER_LINK_STUN_URLS",
+      "stun:one.example.test:3478,stuns:two.example.test:5349",
+    );
+    vi.stubEnv("CANTRIP_WORKER_LINK_INTERFACE_DENYLIST", "en9,bridge0");
+    vi.stubEnv("CANTRIP_WORKER_LINK_VPN_LAN_ALLOWLIST", "corp-vpn0");
+    vi.stubEnv("CANTRIP_WORKER_LINK_NEGOTIATION_TIMEOUT_MS", "12000");
+    vi.stubEnv("CANTRIP_WORKER_LINK_UPGRADE_PROBE_TIMEOUT_MS", "45000");
+    vi.stubEnv("CANTRIP_WORKER_LINK_MAX_PEER_SESSIONS_PER_CLIENT", "8");
+    vi.stubEnv("CANTRIP_WORKER_LINK_MAX_PEER_SESSIONS_PER_WORKER", "64");
+    vi.stubEnv(
+      "CANTRIP_WORKER_LINK_LANE_LIMITS",
+      JSON.stringify({
+        realtime: { maxQueuedFrames: 32, maxQueuedBytes: 2 * 1_024 * 1_024 },
+        stream: { maxBytesPerSecond: 256 * 1_024 * 1_024 },
+      }),
+    );
+    expect(readServerConfig().workerLinkPeer).toMatchObject({
+      directRoutes: { local: false, lan: false, wan: true },
+      stunUrls: ["stun:one.example.test:3478", "stuns:two.example.test:5349"],
+      interfacePolicy: {
+        mode: "denylist",
+        interfaces: ["en9", "bridge0"],
+      },
+      vpnPolicy: { defaultRoute: "wan", lanAllowlist: ["corp-vpn0"] },
+      negotiationTimeoutMs: 12_000,
+      upgradeProbeTimeoutMs: 45_000,
+      maxPeerSessionsPerClient: 8,
+      maxPeerSessionsPerWorker: 64,
+      laneLimits: {
+        realtime: {
+          maxQueuedFrames: 32,
+          maxQueuedBytes: 2 * 1_024 * 1_024,
+        },
+        stream: { maxBytesPerSecond: 256 * 1_024 * 1_024 },
+      },
+    });
+  });
+
+  it("fails closed for contradictory or malformed WorkerLink peer controls", () => {
+    vi.stubEnv("CANTRIP_WORKER_LINK_RELAY_ONLY", "true");
+    expect(readServerConfig().workerLinkPeer).toMatchObject({
+      directRoutes: { local: false, lan: false, wan: false },
+      relayOnly: true,
+      stunUrls: [],
+    });
+
+    vi.stubEnv("CANTRIP_WORKER_LINK_RELAY_ONLY", "false");
+    vi.stubEnv("CANTRIP_WORKER_LINK_INTERFACE_ALLOWLIST", "en0");
+    vi.stubEnv("CANTRIP_WORKER_LINK_INTERFACE_DENYLIST", "en9");
+    expect(() => readServerConfig()).toThrow(/only one.*INTERFACE/i);
+
+    vi.stubEnv("CANTRIP_WORKER_LINK_INTERFACE_DENYLIST", "");
+    vi.stubEnv("CANTRIP_WORKER_LINK_STUN_URLS", "turn:relay.example.test");
+    expect(() => readServerConfig()).toThrow(/STUN URLs.*stun:/i);
+
+    vi.stubEnv("CANTRIP_WORKER_LINK_STUN_URLS", "");
+    vi.stubEnv("CANTRIP_WORKER_LINK_LANE_LIMITS", "{not-json");
+    expect(() => readServerConfig()).toThrow(/valid JSON/i);
+
+    vi.stubEnv(
+      "CANTRIP_WORKER_LINK_LANE_LIMITS",
+      JSON.stringify({ realtime: { maxQueuedFrames: 0 } }),
+    );
+    expect(() => readServerConfig()).toThrow(/LANE_LIMITS/i);
+  });
 });

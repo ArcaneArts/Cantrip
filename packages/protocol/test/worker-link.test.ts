@@ -8,12 +8,19 @@ import {
   isWorkerLinkFrame,
   WORKER_LINK_MAX_CREDIT_BYTES,
   WORKER_LINK_MAX_PAYLOAD_BYTES,
+  WORKER_LINK_MAX_PEER_CANDIDATES,
+  WORKER_LINK_MAX_PEER_SIGNALS,
   WORKER_LINK_MAX_TELEMETRY_SAMPLES,
   workerLinkCoordinatorCommandSchema,
   workerLinkFrameHeaderSchema,
   workerLinkGrantBindingSchema,
   workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
+  workerLinkPeerCandidateAdvertisementSchema,
+  workerLinkPeerConfigurationSchema,
+  workerLinkPeerSessionSchema,
+  workerLinkPeerSignalBatchSchema,
+  workerLinkPeerSignalEnvelopeSchema,
   workerLinkQosLaneSchema,
   workerLinkResourceGrantSchema,
   workerLinkRoutePolicySchema,
@@ -37,6 +44,7 @@ const grantId = "22222222-2222-4222-8222-222222222222";
 const channelId = "33333333-3333-4333-8333-333333333333";
 const connectionId = "44444444-4444-4444-8444-444444444444";
 const openNonce = "55555555-5555-4555-8555-555555555555";
+const peerSessionId = "66666666-6666-4666-8666-666666666666";
 
 const now = new Date("2026-08-26T12:00:00.000Z").toISOString();
 const expiresAt = new Date("2026-08-26T12:15:00.000Z").toISOString();
@@ -78,6 +86,24 @@ const binding: WorkerLinkGrantBinding = {
 const grant = {
   binding,
   token: "a".repeat(43),
+};
+
+const peerCandidate = {
+  candidate:
+    "candidate:1 1 UDP 2122260223 192.168.1.20 43123 typ host generation 0",
+  sdpMid: "0",
+  sdpMLineIndex: 0,
+  usernameFragment: "peer-fragment",
+};
+
+const peerSignalEnvelope = {
+  peerSessionId,
+  sessionId,
+  routeGeneration: 2,
+  route: "lan" as const,
+  sender: "worker" as const,
+  signalSequence: 0,
+  signal: { type: "candidate" as const, candidate: peerCandidate },
 };
 
 const frameBase = {
@@ -175,6 +201,112 @@ describe("WorkerLink protocol", () => {
       workerLinkResourceGrantSchema.safeParse({
         binding,
         token: "too-short",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds direct-route deployment policy without activating deferred routes", () => {
+    const laneLimit = {
+      maxChannels: 64,
+      maxQueuedFrames: 128,
+      maxQueuedBytes: 4 * 1_024 * 1_024,
+      maxBytesPerSecond: 16 * 1_024 * 1_024,
+    };
+    const configuration = {
+      directRoutes: { local: true, lan: true, wan: true },
+      relayOnly: false,
+      stunUrls: ["stun:stun.cloudflare.com:3478"],
+      interfacePolicy: { mode: "default" as const, interfaces: [] as [] },
+      vpnPolicy: { defaultRoute: "wan" as const, lanAllowlist: [] },
+      negotiationTimeoutMs: 8_000,
+      upgradeProbeTimeoutMs: 15_000,
+      maxPeerSessionsPerClient: 4,
+      maxPeerSessionsPerWorker: 32,
+      laneLimits: {
+        events: laneLimit,
+        interactive: laneLimit,
+        stream: laneLimit,
+        realtime: laneLimit,
+        bulk: laneLimit,
+      },
+    };
+    expect(workerLinkPeerConfigurationSchema.parse(configuration)).toEqual(
+      configuration,
+    );
+    expect(
+      workerLinkPeerConfigurationSchema.safeParse({
+        ...configuration,
+        relayOnly: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      workerLinkPeerConfigurationSchema.safeParse({
+        ...configuration,
+        directRoutes: { local: true, lan: true, wan: false },
+      }).success,
+    ).toBe(false);
+    expect(
+      workerLinkPeerConfigurationSchema.safeParse({
+        ...configuration,
+        stunUrls: ["turn:relay.example.test:3478"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("fences and bounds peer sessions, candidates, and signaling", () => {
+    expect(
+      workerLinkPeerSessionSchema.parse({
+        peerSessionId,
+        sessionId,
+        identity,
+        routeGeneration: 2,
+        route: "lan",
+        lease,
+      }),
+    ).toMatchObject({ peerSessionId, route: "lan", routeGeneration: 2 });
+    expect(
+      workerLinkPeerCandidateAdvertisementSchema.parse({
+        peerSessionId,
+        sessionId,
+        routeGeneration: 2,
+        route: "lan",
+        advertisementSequence: 0,
+        candidates: [peerCandidate],
+        complete: false,
+      }).candidates,
+    ).toEqual([peerCandidate]);
+    expect(
+      workerLinkPeerSignalEnvelopeSchema.parse(peerSignalEnvelope),
+    ).toEqual(peerSignalEnvelope);
+    expect(
+      workerLinkPeerCandidateAdvertisementSchema.safeParse({
+        peerSessionId,
+        sessionId,
+        routeGeneration: 2,
+        route: "lan",
+        advertisementSequence: 0,
+        candidates: Array.from(
+          { length: WORKER_LINK_MAX_PEER_CANDIDATES + 1 },
+          () => peerCandidate,
+        ),
+        complete: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      workerLinkPeerSignalBatchSchema.safeParse({
+        signals: Array.from(
+          { length: WORKER_LINK_MAX_PEER_SIGNALS + 1 },
+          (_, signalSequence) => ({
+            ...peerSignalEnvelope,
+            signalSequence,
+          }),
+        ),
+      }).success,
+    ).toBe(false);
+    expect(
+      workerLinkPeerSignalEnvelopeSchema.safeParse({
+        ...peerSignalEnvelope,
+        candidateAddress: "192.168.1.20",
       }).success,
     ).toBe(false);
   });

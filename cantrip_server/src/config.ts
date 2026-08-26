@@ -6,12 +6,17 @@ import {
   authModeSchema,
   bootstrapModeSchema,
   deploymentModeSchema,
+  workerLinkPeerConfigurationSchema,
+  workerLinkPeerLaneLimitsSchema,
   type AuthMode,
   type BootstrapMode,
   type DeploymentMode,
+  type WorkerLinkPeerConfiguration,
+  type WorkerLinkPeerLaneLimits,
 } from "@cantrip/protocol";
 
 const DEFAULT_WORKER_TOKEN = "cantrip-local-development";
+const DEFAULT_WORKER_LINK_STUN_URLS = ["stun:stun.cloudflare.com:3478"];
 const DEFAULT_APP_ORIGINS =
   "http://127.0.0.1:5173,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost,capacitor://localhost";
 const TRUST_PROXY_ALIASES = new Set(["linklocal", "loopback", "uniquelocal"]);
@@ -78,6 +83,7 @@ export interface ServerConfig {
   coordinationMaxInstances?: number;
   coordinationPresenceTtlMs?: number;
   workerToken: string;
+  workerLinkPeer: WorkerLinkPeerConfiguration;
   remoteSurfaceWebRtc?: RemoteSurfaceWebRtcConfig;
   secretEncryption?: SecretEncryptionConfig;
   serverInstanceId?: string;
@@ -129,6 +135,39 @@ export interface RemoteSurfaceWebRtcConfig {
   turn?: RemoteSurfaceTurnConfig;
 }
 
+const DEFAULT_WORKER_LINK_LANE_LIMITS: WorkerLinkPeerLaneLimits = {
+  events: {
+    maxChannels: 64,
+    maxQueuedFrames: 256,
+    maxQueuedBytes: 4 * 1_024 * 1_024,
+    maxBytesPerSecond: 16 * 1_024 * 1_024,
+  },
+  interactive: {
+    maxChannels: 64,
+    maxQueuedFrames: 128,
+    maxQueuedBytes: 2 * 1_024 * 1_024,
+    maxBytesPerSecond: 16 * 1_024 * 1_024,
+  },
+  stream: {
+    maxChannels: 256,
+    maxQueuedFrames: 256,
+    maxQueuedBytes: 16 * 1_024 * 1_024,
+    maxBytesPerSecond: 128 * 1_024 * 1_024,
+  },
+  realtime: {
+    maxChannels: 64,
+    maxQueuedFrames: 64,
+    maxQueuedBytes: 4 * 1_024 * 1_024,
+    maxBytesPerSecond: 64 * 1_024 * 1_024,
+  },
+  bulk: {
+    maxChannels: 32,
+    maxQueuedFrames: 128,
+    maxQueuedBytes: 16 * 1_024 * 1_024,
+    maxBytesPerSecond: 64 * 1_024 * 1_024,
+  },
+};
+
 function readBoundedInteger(
   name: string,
   value: string | undefined,
@@ -141,6 +180,163 @@ function readBoundedInteger(
     throw new Error(`Invalid ${name}: ${value}`);
   }
   return parsed;
+}
+
+function readUniqueList(
+  name: string,
+  value: string | undefined,
+  fallback: readonly string[] = [],
+): string[] {
+  const entries = value === undefined ? [...fallback] : value.split(",");
+  const normalized = entries.map((entry) => entry.trim()).filter(Boolean);
+  if (new Set(normalized).size !== normalized.length) {
+    throw new Error(`${name} entries must be unique.`);
+  }
+  return normalized;
+}
+
+function readWorkerLinkLaneLimits(): WorkerLinkPeerLaneLimits {
+  const input = process.env.CANTRIP_WORKER_LINK_LANE_LIMITS?.trim();
+  if (!input) return structuredClone(DEFAULT_WORKER_LINK_LANE_LIMITS);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    throw new Error("CANTRIP_WORKER_LINK_LANE_LIMITS must be valid JSON.");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("CANTRIP_WORKER_LINK_LANE_LIMITS must be a JSON object.");
+  }
+  const lanes = Object.keys(DEFAULT_WORKER_LINK_LANE_LIMITS) as Array<
+    keyof WorkerLinkPeerLaneLimits
+  >;
+  const knownLanes = new Set<string>(lanes);
+  if (Object.keys(parsed).some((lane) => !knownLanes.has(lane))) {
+    throw new Error(
+      "CANTRIP_WORKER_LINK_LANE_LIMITS contains an unknown QoS lane.",
+    );
+  }
+  const merged = structuredClone(DEFAULT_WORKER_LINK_LANE_LIMITS);
+  for (const lane of lanes) {
+    const override = (parsed as Record<string, unknown>)[lane];
+    if (override === undefined) continue;
+    if (!override || typeof override !== "object" || Array.isArray(override)) {
+      throw new Error(
+        `CANTRIP_WORKER_LINK_LANE_LIMITS.${lane} must be a JSON object.`,
+      );
+    }
+    const allowed = new Set(Object.keys(merged[lane]));
+    if (Object.keys(override).some((field) => !allowed.has(field))) {
+      throw new Error(
+        `CANTRIP_WORKER_LINK_LANE_LIMITS.${lane} contains an unknown field.`,
+      );
+    }
+    Object.assign(merged[lane], override);
+  }
+  const result = workerLinkPeerLaneLimitsSchema.safeParse(merged);
+  if (!result.success) {
+    throw new Error(
+      `Invalid CANTRIP_WORKER_LINK_LANE_LIMITS: ${result.error.issues[0]?.message ?? "invalid limits"}`,
+    );
+  }
+  return result.data;
+}
+
+function readWorkerLinkPeerConfig(): WorkerLinkPeerConfiguration {
+  const relayOnly = readBoolean(
+    "CANTRIP_WORKER_LINK_RELAY_ONLY",
+    process.env.CANTRIP_WORKER_LINK_RELAY_ONLY,
+  );
+  const allowlist = readUniqueList(
+    "CANTRIP_WORKER_LINK_INTERFACE_ALLOWLIST",
+    process.env.CANTRIP_WORKER_LINK_INTERFACE_ALLOWLIST,
+  );
+  const denylist = readUniqueList(
+    "CANTRIP_WORKER_LINK_INTERFACE_DENYLIST",
+    process.env.CANTRIP_WORKER_LINK_INTERFACE_DENYLIST,
+  );
+  if (allowlist.length > 0 && denylist.length > 0) {
+    throw new Error(
+      "Configure only one of CANTRIP_WORKER_LINK_INTERFACE_ALLOWLIST or CANTRIP_WORKER_LINK_INTERFACE_DENYLIST.",
+    );
+  }
+  const wanEnabled =
+    !relayOnly &&
+    (process.env.CANTRIP_WORKER_LINK_WAN_ENABLED === undefined ||
+      readBoolean(
+        "CANTRIP_WORKER_LINK_WAN_ENABLED",
+        process.env.CANTRIP_WORKER_LINK_WAN_ENABLED,
+      ));
+  const stunUrls = wanEnabled
+    ? readUniqueList(
+        "CANTRIP_WORKER_LINK_STUN_URLS",
+        process.env.CANTRIP_WORKER_LINK_STUN_URLS,
+        DEFAULT_WORKER_LINK_STUN_URLS,
+      )
+    : [];
+  return workerLinkPeerConfigurationSchema.parse({
+    directRoutes: {
+      local:
+        !relayOnly &&
+        (process.env.CANTRIP_WORKER_LINK_LOCAL_ENABLED === undefined ||
+          readBoolean(
+            "CANTRIP_WORKER_LINK_LOCAL_ENABLED",
+            process.env.CANTRIP_WORKER_LINK_LOCAL_ENABLED,
+          )),
+      lan:
+        !relayOnly &&
+        (process.env.CANTRIP_WORKER_LINK_LAN_ENABLED === undefined ||
+          readBoolean(
+            "CANTRIP_WORKER_LINK_LAN_ENABLED",
+            process.env.CANTRIP_WORKER_LINK_LAN_ENABLED,
+          )),
+      wan: wanEnabled,
+    },
+    relayOnly,
+    stunUrls,
+    interfacePolicy:
+      allowlist.length > 0
+        ? { mode: "allowlist", interfaces: allowlist }
+        : denylist.length > 0
+          ? { mode: "denylist", interfaces: denylist }
+          : { mode: "default", interfaces: [] },
+    vpnPolicy: {
+      defaultRoute: "wan",
+      lanAllowlist: readUniqueList(
+        "CANTRIP_WORKER_LINK_VPN_LAN_ALLOWLIST",
+        process.env.CANTRIP_WORKER_LINK_VPN_LAN_ALLOWLIST,
+      ),
+    },
+    negotiationTimeoutMs: readBoundedInteger(
+      "CANTRIP_WORKER_LINK_NEGOTIATION_TIMEOUT_MS",
+      process.env.CANTRIP_WORKER_LINK_NEGOTIATION_TIMEOUT_MS,
+      8_000,
+      1_000,
+      30_000,
+    ),
+    upgradeProbeTimeoutMs: readBoundedInteger(
+      "CANTRIP_WORKER_LINK_UPGRADE_PROBE_TIMEOUT_MS",
+      process.env.CANTRIP_WORKER_LINK_UPGRADE_PROBE_TIMEOUT_MS,
+      15_000,
+      1_000,
+      300_000,
+    ),
+    maxPeerSessionsPerClient: readBoundedInteger(
+      "CANTRIP_WORKER_LINK_MAX_PEER_SESSIONS_PER_CLIENT",
+      process.env.CANTRIP_WORKER_LINK_MAX_PEER_SESSIONS_PER_CLIENT,
+      4,
+      1,
+      256,
+    ),
+    maxPeerSessionsPerWorker: readBoundedInteger(
+      "CANTRIP_WORKER_LINK_MAX_PEER_SESSIONS_PER_WORKER",
+      process.env.CANTRIP_WORKER_LINK_MAX_PEER_SESSIONS_PER_WORKER,
+      32,
+      1,
+      4_096,
+    ),
+    laneLimits: readWorkerLinkLaneLimits(),
+  });
 }
 
 function normalizeHttpOrigin(
@@ -732,6 +928,7 @@ export function readServerConfig(): ServerConfig {
       365 * 24 * 60 * 60,
     ),
     workerToken,
+    workerLinkPeer: readWorkerLinkPeerConfig(),
     remoteSurfaceWebRtc: readRemoteSurfaceWebRtcConfig(),
     requireHttps: deploymentMode === "hosted",
     secretEncryption,
