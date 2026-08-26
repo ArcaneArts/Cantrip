@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { WorkerCommand } from "@cantrip/protocol";
+import type { WorkerCommand, WorkerNotification } from "@cantrip/protocol";
 import type { WorkerLinkPeerConfiguration } from "@cantrip/protocol/worker-link";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,6 +16,10 @@ const workerGeneration = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 class FakeWorkerBus {
   readonly commands: WorkerCommand[] = [];
+  readonly notifications = new Map<
+    string,
+    Set<(notification: WorkerNotification) => Promise<void> | void>
+  >();
   readonly offline = new Map<string, Set<() => void>>();
   requestImplementation: (
     workerId: string,
@@ -51,6 +55,24 @@ class FakeWorkerBus {
 
   subscribeWorkerDisconnect(workerId: string, listener: () => void) {
     return this.subscribeWorkerOffline(workerId, listener);
+  }
+
+  subscribeNotifications(
+    workerId: string,
+    listener: (notification: WorkerNotification) => Promise<void> | void,
+  ) {
+    const listeners = this.notifications.get(workerId) ?? new Set();
+    listeners.add(listener);
+    this.notifications.set(workerId, listeners);
+    return () => listeners.delete(listener);
+  }
+
+  async notify(workerId: string, notification: WorkerNotification) {
+    await Promise.all(
+      [...(this.notifications.get(workerId) ?? [])].map((listener) =>
+        listener(notification),
+      ),
+    );
   }
 
   disconnect(workerId: string) {
@@ -380,6 +402,17 @@ describe("WorkerLinkCoordinator", () => {
       signalSequence: 0,
       signal: { type: "offer", sdp: "offer-sdp" },
     });
+    await expect(
+      coordinator.signalPeer({
+        peerSessionId: peer.peerSessionId,
+        sessionId: peer.sessionId,
+        routeGeneration: peer.routeGeneration,
+        route: peer.route,
+        sender: "client",
+        signalSequence: 0,
+        signal: { type: "offer", sdp: "replayed-offer" },
+      }),
+    ).rejects.toThrow(/sequence is invalid/i);
     expect(workers.commands).toContainEqual({
       type: "worker-link.peer.signal",
       envelope: expect.objectContaining({
@@ -387,6 +420,60 @@ describe("WorkerLinkCoordinator", () => {
         sender: "client",
       }),
     });
+    await workers.notify("worker-1", {
+      type: "worker-link.peer.signal",
+      envelope: {
+        peerSessionId: peer.peerSessionId,
+        sessionId: peer.sessionId,
+        routeGeneration: peer.routeGeneration,
+        route: peer.route,
+        sender: "worker",
+        signalSequence: 0,
+        signal: { type: "answer", sdp: "answer-sdp" },
+      },
+    });
+    await workers.notify("worker-1", {
+      type: "worker-link.peer.candidates",
+      advertisement: {
+        peerSessionId: peer.peerSessionId,
+        sessionId: peer.sessionId,
+        routeGeneration: peer.routeGeneration,
+        route: peer.route,
+        advertisementSequence: 0,
+        candidates: [
+          {
+            candidate:
+              "candidate:1 1 UDP 2122260223 192.168.1.20 43123 typ host",
+            sdpMid: "0",
+            sdpMLineIndex: 0,
+            usernameFragment: "fragment",
+          },
+        ],
+        complete: true,
+      },
+    });
+    expect(
+      coordinator.readPeerMailbox(session.sessionId, peer.peerSessionId, {
+        afterSignalSequence: null,
+        afterAdvertisementSequence: null,
+      }),
+    ).toMatchObject({
+      signals: [
+        expect.objectContaining({
+          signalSequence: 0,
+          signal: { type: "answer", sdp: "answer-sdp" },
+        }),
+      ],
+      candidateAdvertisements: [
+        expect.objectContaining({ advertisementSequence: 0 }),
+      ],
+    });
+    expect(
+      coordinator.readPeerMailbox(session.sessionId, peer.peerSessionId, {
+        afterSignalSequence: 0,
+        afterAdvertisementSequence: 0,
+      }),
+    ).toMatchObject({ signals: [], candidateAdvertisements: [] });
 
     now += 1_000;
     await coordinator.renewSession(session.sessionId, 180_000);
@@ -426,6 +513,49 @@ describe("WorkerLinkCoordinator", () => {
         sessionId: session.sessionId,
       }),
     ).rejects.toThrow(/generation is stale/i);
+    await coordinator.close();
+  });
+
+  it("fails closed when worker peer signaling skips its fenced sequence", async () => {
+    const workers = new FakeWorkerBus();
+    const coordinator = new WorkerLinkCoordinator(workers.asBus(), {
+      peerConfiguration: peerConfiguration(),
+      serverGeneration,
+      serverId,
+      sweepIntervalMs: 0,
+    });
+    const session = await coordinator.openSession(sessionInput());
+    const peer = await coordinator.openPeerSession({
+      route: "wan",
+      routeGeneration: session.routeGeneration,
+      sessionId: session.sessionId,
+    });
+
+    await workers.notify("worker-1", {
+      type: "worker-link.peer.signal",
+      envelope: {
+        peerSessionId: peer.peerSessionId,
+        sessionId: peer.sessionId,
+        routeGeneration: peer.routeGeneration,
+        route: peer.route,
+        sender: "worker",
+        signalSequence: 1,
+        signal: { type: "answer", sdp: "skipped-sequence" },
+      },
+    });
+    expect(() =>
+      coordinator.readPeerMailbox(session.sessionId, peer.peerSessionId, {
+        afterSignalSequence: null,
+        afterAdvertisementSequence: null,
+      }),
+    ).toThrow(/mailbox is unavailable/i);
+    expect(workers.commands).toContainEqual(
+      expect.objectContaining({
+        type: "worker-link.peer.revoke",
+        peerSessionId: peer.peerSessionId,
+        revocation: expect.objectContaining({ reason: "protocol-violation" }),
+      }),
+    );
     await coordinator.close();
   });
 

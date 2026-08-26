@@ -1,13 +1,18 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { normalizeLogError, type ServiceLogger } from "@cantrip/logging";
+import type { WorkerNotification } from "@cantrip/protocol";
 import {
   WORKER_LINK_MAX_CHANNELS_PER_GRANT,
   WORKER_LINK_MAX_GRANTS_PER_SESSION,
+  WORKER_LINK_MAX_PEER_SIGNALING_BYTES,
+  WORKER_LINK_MAX_PEER_SIGNALS,
   installedWorkerLinkGrantSchema,
   workerLinkGrantBindingSchema,
   workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
+  workerLinkPeerMailboxReadRequestSchema,
+  workerLinkPeerMailboxSchema,
   workerLinkPeerSessionSchema,
   workerLinkPeerSignalEnvelopeSchema,
   workerLinkSessionSchema,
@@ -16,8 +21,11 @@ import {
   type WorkerLinkCoordinatorCommand,
   type WorkerLinkLease,
   type WorkerLinkOperationalRoute,
+  type WorkerLinkPeerCandidateAdvertisement,
   type WorkerLinkPeerConfiguration,
   type WorkerLinkPeerCoordinatorCommand,
+  type WorkerLinkPeerMailbox,
+  type WorkerLinkPeerMailboxReadRequest,
   type WorkerLinkPeerRoute,
   type WorkerLinkPeerSession,
   type WorkerLinkPeerSignalEnvelope,
@@ -51,8 +59,14 @@ interface WorkerLinkGrantState {
 }
 
 interface WorkerLinkPeerState {
+  candidateAdvertisements: WorkerLinkPeerCandidateAdvertisement[];
+  clientSignalQueue: Promise<void>;
+  lastAdvertisementSequence: number;
+  lastClientSignalSequence: number;
+  lastWorkerSignalSequence: number;
   peerSession: WorkerLinkPeerSession;
   ready: boolean;
+  signals: WorkerLinkPeerSignalEnvelope[];
 }
 
 interface WorkerSubscription {
@@ -356,7 +370,16 @@ export class WorkerLinkCoordinator {
         absoluteExpiresAt: state.session.lease.absoluteExpiresAt,
       },
     });
-    const peerState: WorkerLinkPeerState = { peerSession, ready: false };
+    const peerState: WorkerLinkPeerState = {
+      candidateAdvertisements: [],
+      clientSignalQueue: Promise.resolve(),
+      lastAdvertisementSequence: -1,
+      lastClientSignalSequence: -1,
+      lastWorkerSignalSequence: -1,
+      peerSession,
+      ready: false,
+      signals: [],
+    };
     state.peers.set(peerSession.peerSessionId, peerState);
     try {
       await this.#request(state.session.identity.workerId, {
@@ -402,8 +425,27 @@ export class WorkerLinkCoordinator {
     }
     const state = this.#readySession(envelope.sessionId);
     const peer = state.peers.get(envelope.peerSessionId);
+    if (!peer) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink peer signal authority is unavailable.",
+      );
+    }
+    const operation = peer.clientSignalQueue.then(() =>
+      this.#forwardPeerSignal(state, peer, envelope),
+    );
+    peer.clientSignalQueue = operation.catch(() => undefined);
+    await operation;
+  }
+
+  async #forwardPeerSignal(
+    state: WorkerLinkSessionState,
+    peer: WorkerLinkPeerState,
+    envelope: WorkerLinkPeerSignalEnvelope,
+  ): Promise<void> {
     if (
       !peer?.ready ||
+      this.#sessions.get(envelope.sessionId) !== state ||
+      state.peers.get(envelope.peerSessionId) !== peer ||
       envelope.routeGeneration !== peer.peerSession.routeGeneration ||
       envelope.route !== peer.peerSession.route ||
       Date.parse(peer.peerSession.lease.expiresAt) <= this.#now()
@@ -412,9 +454,78 @@ export class WorkerLinkCoordinator {
         "The WorkerLink peer signal authority is unavailable.",
       );
     }
+    if (envelope.signalSequence !== peer.lastClientSignalSequence + 1) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink peer signal sequence is invalid.",
+      );
+    }
+    if (envelope.signalSequence >= WORKER_LINK_MAX_PEER_SIGNALS) {
+      await this.revokePeerSession(
+        peer.peerSession.sessionId,
+        peer.peerSession.peerSessionId,
+        "protocol-violation",
+      );
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink peer signal limit has been reached.",
+      );
+    }
     await this.#request(state.session.identity.workerId, {
       type: "worker-link.peer.signal",
       envelope,
+    });
+    if (
+      this.#sessions.get(envelope.sessionId) === state &&
+      state.peers.get(envelope.peerSessionId) === peer
+    ) {
+      peer.lastClientSignalSequence = envelope.signalSequence;
+    }
+  }
+
+  readPeerMailbox(
+    sessionId: string,
+    peerSessionId: string,
+    input: WorkerLinkPeerMailboxReadRequest,
+  ): WorkerLinkPeerMailbox {
+    const request = workerLinkPeerMailboxReadRequestSchema.parse(input);
+    const state = this.#readySession(sessionId);
+    const peer = state.peers.get(peerSessionId);
+    if (
+      !peer?.ready ||
+      Date.parse(peer.peerSession.lease.expiresAt) <= this.#now()
+    ) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink peer mailbox is unavailable.",
+      );
+    }
+    if (
+      (request.afterSignalSequence !== null &&
+        request.afterSignalSequence > peer.lastWorkerSignalSequence) ||
+      (request.afterAdvertisementSequence !== null &&
+        request.afterAdvertisementSequence > peer.lastAdvertisementSequence)
+    ) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink peer mailbox cursor is invalid.",
+      );
+    }
+    if (request.afterSignalSequence !== null) {
+      peer.signals = peer.signals.filter(
+        (signal) => signal.signalSequence > request.afterSignalSequence!,
+      );
+    }
+    if (request.afterAdvertisementSequence !== null) {
+      peer.candidateAdvertisements = peer.candidateAdvertisements.filter(
+        (advertisement) =>
+          advertisement.advertisementSequence >
+          request.afterAdvertisementSequence!,
+      );
+    }
+    return workerLinkPeerMailboxSchema.parse({
+      peerSessionId,
+      sessionId,
+      routeGeneration: peer.peerSession.routeGeneration,
+      route: peer.peerSession.route,
+      signals: peer.signals,
+      candidateAdvertisements: peer.candidateAdvertisements,
     });
   }
 
@@ -966,6 +1077,118 @@ export class WorkerLinkCoordinator {
     }
   }
 
+  async #receivePeerNotification(
+    workerId: string,
+    notification: WorkerNotification,
+  ): Promise<void> {
+    if (
+      notification.type !== "worker-link.peer.signal" &&
+      notification.type !== "worker-link.peer.candidates"
+    ) {
+      return;
+    }
+    const peerSessionId =
+      notification.type === "worker-link.peer.signal"
+        ? notification.envelope.peerSessionId
+        : notification.advertisement.peerSessionId;
+    let state: WorkerLinkSessionState | undefined;
+    let peer: WorkerLinkPeerState | undefined;
+    for (const candidate of this.#sessions.values()) {
+      const match = candidate.peers.get(peerSessionId);
+      if (match) {
+        state = candidate;
+        peer = match;
+        break;
+      }
+    }
+    if (!state || !peer) return;
+    const authority =
+      notification.type === "worker-link.peer.signal"
+        ? notification.envelope
+        : notification.advertisement;
+    if (
+      state.session.identity.workerId !== workerId ||
+      authority.sessionId !== peer.peerSession.sessionId ||
+      authority.routeGeneration !== peer.peerSession.routeGeneration ||
+      authority.route !== peer.peerSession.route ||
+      Date.parse(peer.peerSession.lease.expiresAt) <= this.#now()
+    ) {
+      await this.revokePeerSession(
+        peer.peerSession.sessionId,
+        peer.peerSession.peerSessionId,
+        "protocol-violation",
+      );
+      return;
+    }
+    if (notification.type === "worker-link.peer.signal") {
+      const sequence = notification.envelope.signalSequence;
+      if (sequence <= peer.lastWorkerSignalSequence) {
+        const recorded = peer.signals.find(
+          (signal) => signal.signalSequence === sequence,
+        );
+        if (
+          recorded &&
+          canonical(recorded) !== canonical(notification.envelope)
+        ) {
+          await this.revokePeerSession(
+            peer.peerSession.sessionId,
+            peer.peerSession.peerSessionId,
+            "protocol-violation",
+          );
+        }
+        return;
+      }
+      if (
+        sequence !== peer.lastWorkerSignalSequence + 1 ||
+        peer.signals.length >= WORKER_LINK_MAX_PEER_SIGNALS ||
+        peerMailboxBytes(peer, notification.envelope) >
+          WORKER_LINK_MAX_PEER_SIGNALING_BYTES
+      ) {
+        await this.revokePeerSession(
+          peer.peerSession.sessionId,
+          peer.peerSession.peerSessionId,
+          "protocol-violation",
+        );
+        return;
+      }
+      peer.signals.push(notification.envelope);
+      peer.lastWorkerSignalSequence = sequence;
+      return;
+    }
+    const sequence = notification.advertisement.advertisementSequence;
+    if (sequence <= peer.lastAdvertisementSequence) {
+      const recorded = peer.candidateAdvertisements.find(
+        (advertisement) => advertisement.advertisementSequence === sequence,
+      );
+      if (
+        recorded &&
+        canonical(recorded) !== canonical(notification.advertisement)
+      ) {
+        await this.revokePeerSession(
+          peer.peerSession.sessionId,
+          peer.peerSession.peerSessionId,
+          "protocol-violation",
+        );
+      }
+      return;
+    }
+    if (
+      sequence !== peer.lastAdvertisementSequence + 1 ||
+      peer.candidateAdvertisements.length >= WORKER_LINK_MAX_PEER_SIGNALS ||
+      peerMailboxBytes(peer, notification.advertisement) >
+        WORKER_LINK_MAX_PEER_SIGNALING_BYTES
+    ) {
+      await this.revokePeerSession(
+        peer.peerSession.sessionId,
+        peer.peerSession.peerSessionId,
+        "protocol-violation",
+      );
+      return;
+    }
+    peer.candidateAdvertisements.push(notification.advertisement);
+    peer.lastAdvertisementSequence = sequence;
+  }
+
   #registerWorkerSession(workerId: string, sessionId: string): void {
     let subscription = this.#workerSubscriptions.get(workerId);
     if (!subscription) {
@@ -982,10 +1205,20 @@ export class WorkerLinkCoordinator {
           });
         });
       };
-      const unsubscribe = this.workers.subscribeWorkerOffline
+      const unsubscribeOffline = this.workers.subscribeWorkerOffline
         ? this.workers.subscribeWorkerOffline(workerId, listener)
         : this.workers.subscribeWorkerDisconnect(workerId, listener);
-      subscription = { sessionIds: new Set(), unsubscribe };
+      const unsubscribeNotifications = this.workers.subscribeNotifications?.(
+        workerId,
+        (notification) => this.#receivePeerNotification(workerId, notification),
+      );
+      subscription = {
+        sessionIds: new Set(),
+        unsubscribe: () => {
+          unsubscribeOffline();
+          unsubscribeNotifications?.();
+        },
+      };
       this.#workerSubscriptions.set(workerId, subscription);
     }
     subscription.sessionIds.add(sessionId);
@@ -1077,6 +1310,25 @@ export class WorkerLinkCoordinator {
 
 function tokenHash(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+function canonical(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function peerMailboxBytes(
+  peer: WorkerLinkPeerState,
+  incoming: WorkerLinkPeerSignalEnvelope | WorkerLinkPeerCandidateAdvertisement,
+): number {
+  const signals =
+    "signalSequence" in incoming ? [...peer.signals, incoming] : peer.signals;
+  const candidateAdvertisements =
+    "advertisementSequence" in incoming
+      ? [...peer.candidateAdvertisements, incoming]
+      : peer.candidateAdvertisements;
+  return new TextEncoder().encode(
+    JSON.stringify({ signals, candidateAdvertisements }),
+  ).byteLength;
 }
 
 function revocation(reason: WorkerLinkRevokeReason, now: number) {

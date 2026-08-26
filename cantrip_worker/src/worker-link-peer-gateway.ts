@@ -1,5 +1,6 @@
 import {
   WORKER_LINK_MAX_PEER_SIGNALS,
+  WORKER_LINK_MAX_PEER_SIGNALING_BYTES,
   workerLinkPeerCandidateAdvertisementSchema,
   workerLinkPeerCoordinatorCommandSchema,
   workerLinkPeerSignalEnvelopeSchema,
@@ -49,6 +50,7 @@ interface PeerState {
   opening: Promise<void> | null;
   peerSession: WorkerLinkPeerSession;
   pendingSignals: WorkerLinkPeerSignal[];
+  pendingSignalBytes: number;
   transport: WorkerLinkPeerTransport | null;
 }
 
@@ -259,6 +261,7 @@ export class WorkerLinkPeerGateway {
       opening: null,
       peerSession,
       pendingSignals: [],
+      pendingSignalBytes: 0,
       transport: null,
     };
     this.#peers.set(peerSession.peerSessionId, state);
@@ -292,11 +295,23 @@ export class WorkerLinkPeerGateway {
     if (envelope.signalSequence !== state.lastClientSignalSequence + 1) {
       throw new Error("WorkerLink peer signal sequence is invalid.");
     }
+    if (envelope.signalSequence >= WORKER_LINK_MAX_PEER_SIGNALS) {
+      await this.#retire(state, "peer-signal-limit");
+      throw new Error("WorkerLink peer signal limit was reached.");
+    }
     if (!state.transport) {
-      if (state.pendingSignals.length >= WORKER_LINK_MAX_PEER_SIGNALS) {
+      const signalBytes = new TextEncoder().encode(
+        JSON.stringify(envelope.signal),
+      ).byteLength;
+      if (
+        state.pendingSignals.length >= WORKER_LINK_MAX_PEER_SIGNALS ||
+        state.pendingSignalBytes + signalBytes >
+          WORKER_LINK_MAX_PEER_SIGNALING_BYTES
+      ) {
         throw new Error("WorkerLink pending peer-signal capacity was reached.");
       }
       state.pendingSignals.push(envelope.signal);
+      state.pendingSignalBytes += signalBytes;
       state.lastClientSignalSequence = envelope.signalSequence;
       return;
     }
@@ -358,6 +373,7 @@ export class WorkerLinkPeerGateway {
       }
       state.transport = transport;
       const pending = state.pendingSignals.splice(0);
+      state.pendingSignalBytes = 0;
       for (const signal of pending) await transport.handleSignal(signal);
     });
     state.opening = opening;
@@ -445,6 +461,7 @@ export class WorkerLinkPeerGateway {
     if (this.#peers.get(state.peerSession.peerSessionId) !== state) return;
     this.#peers.delete(state.peerSession.peerSessionId);
     state.pendingSignals = [];
+    state.pendingSignalBytes = 0;
     const transport = state.transport;
     state.transport = null;
     await Promise.resolve(transport?.close(reason)).catch(() => undefined);

@@ -15,9 +15,12 @@ import {
   serverBootstrapSchema,
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
+  workerLinkPeerMailboxSchema,
+  workerLinkPeerSessionSchema,
   workerLinkResourceGrantSchema,
   workerLinkSessionSchema,
   type WorkerCommand,
+  type WorkerNotification,
 } from "@cantrip/protocol";
 import {
   afterAll,
@@ -53,6 +56,12 @@ import {
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-project-placement-api-"),
 );
+const workerLinkLaneLimit = {
+  maxChannels: 64,
+  maxQueuedFrames: 128,
+  maxQueuedBytes: 4 * 1_024 * 1_024,
+  maxBytesPerSecond: 16 * 1_024 * 1_024,
+};
 const config: ServerConfig = {
   agentModel: "gemma4:26b",
   agentModelProvider: "ollama",
@@ -64,11 +73,34 @@ const config: ServerConfig = {
   host: "127.0.0.1",
   ollamaBaseUrl: "http://127.0.0.1:11434/v1",
   port: 4310,
+  workerLinkPeer: {
+    directRoutes: { local: true, lan: true, wan: true },
+    relayOnly: false,
+    stunUrls: ["stun:stun.cloudflare.com:3478"],
+    interfacePolicy: { mode: "default", interfaces: [] },
+    vpnPolicy: { defaultRoute: "wan", lanAllowlist: [] },
+    negotiationTimeoutMs: 8_000,
+    upgradeProbeTimeoutMs: 15_000,
+    maxPeerSessionsPerClient: 4,
+    maxPeerSessionsPerWorker: 32,
+    invalidHandshakeRatePerMinute: 60,
+    laneLimits: {
+      events: workerLinkLaneLimit,
+      interactive: workerLinkLaneLimit,
+      stream: workerLinkLaneLimit,
+      realtime: workerLinkLaneLimit,
+      bulk: workerLinkLaneLimit,
+    },
+  },
   workerToken: "test-worker-token",
 };
 
 const connectedWorkers = new Set(["worker-alpha", "worker-beta"]);
 const routedCommands: Array<{ workerId: string; command: WorkerCommand }> = [];
+const workerNotificationListeners = new Map<
+  string,
+  Set<(notification: WorkerNotification) => Promise<void> | void>
+>();
 let resolvedServerId = "";
 const protectedSurfacePayload = surfaceStreamOpaqueSchema.parse({
   formatVersion: 1,
@@ -109,6 +141,12 @@ const workerBridge: WorkerCommandBus = {
   subscribeSurfaceFrames() {
     return () => undefined;
   },
+  subscribeNotifications(workerId, listener) {
+    const listeners = workerNotificationListeners.get(workerId) ?? new Set();
+    listeners.add(listener);
+    workerNotificationListeners.set(workerId, listeners);
+    return () => listeners.delete(listener);
+  },
   async request(workerId, command, options) {
     routedCommands.push({ workerId, command });
     switch (command.type) {
@@ -126,6 +164,10 @@ const workerBridge: WorkerCommandBus = {
       case "worker-link.grant.install":
       case "worker-link.grant.renew":
       case "worker-link.grant.revoke":
+      case "worker-link.peer.install":
+      case "worker-link.peer.renew":
+      case "worker-link.peer.revoke":
+      case "worker-link.peer.signal":
         return { accepted: true };
       case "terminal.open":
         await options?.onEvent?.({ type: "terminal.ready" });
@@ -393,6 +435,118 @@ describe.sequential("project execution placement API", () => {
     );
     expect(metrics.body).not.toContain(session.sessionId);
     expect(metrics.body).not.toContain("telemetry-client-1");
+  });
+
+  it("authorizes bounded peer signaling and an exact worker mailbox", async () => {
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/worker-alpha/worker-link/sessions",
+      payload: { clientInstanceId: "peer-client-1" },
+    });
+    expect(sessionResponse.statusCode).toBe(201);
+    const session = workerLinkSessionSchema.parse(sessionResponse.json());
+    const peerResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/peers`,
+      payload: { route: "lan", routeGeneration: session.routeGeneration },
+    });
+    expect(peerResponse.statusCode).toBe(201);
+    const peer = workerLinkPeerSessionSchema.parse(peerResponse.json());
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: expect.objectContaining({
+        type: "worker-link.peer.install",
+        peerSession: peer,
+      }),
+    });
+
+    const offered = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/peers/${peer.peerSessionId}/signals`,
+      payload: {
+        signals: [
+          {
+            peerSessionId: peer.peerSessionId,
+            sessionId: session.sessionId,
+            routeGeneration: peer.routeGeneration,
+            route: peer.route,
+            sender: "client",
+            signalSequence: 0,
+            signal: { type: "offer", sdp: "offer-sdp" },
+          },
+        ],
+      },
+    });
+    expect(offered.statusCode).toBe(204);
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: expect.objectContaining({
+        type: "worker-link.peer.signal",
+        envelope: expect.objectContaining({ sender: "client" }),
+      }),
+    });
+
+    const answer: WorkerNotification = {
+      type: "worker-link.peer.signal",
+      envelope: {
+        peerSessionId: peer.peerSessionId,
+        sessionId: session.sessionId,
+        routeGeneration: peer.routeGeneration,
+        route: peer.route,
+        sender: "worker",
+        signalSequence: 0,
+        signal: { type: "answer", sdp: "answer-sdp" },
+      },
+    };
+    await Promise.all(
+      [...(workerNotificationListeners.get("worker-alpha") ?? [])].map(
+        (listener) => listener(answer),
+      ),
+    );
+    const mailboxResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/peers/${peer.peerSessionId}/mailbox`,
+      payload: {},
+    });
+    expect(mailboxResponse.statusCode).toBe(200);
+    expect(
+      workerLinkPeerMailboxSchema.parse(mailboxResponse.json()),
+    ).toMatchObject({
+      peerSessionId: peer.peerSessionId,
+      signals: [
+        expect.objectContaining({
+          sender: "worker",
+          signal: { type: "answer", sdp: "answer-sdp" },
+        }),
+      ],
+    });
+
+    const spoofed = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/peers/${peer.peerSessionId}/signals`,
+      payload: {
+        signals: [
+          {
+            ...answer.envelope,
+            sender: "worker",
+            signalSequence: 1,
+          },
+        ],
+      },
+    });
+    expect(spoofed.statusCode).toBe(400);
+    const removed = await app.inject({
+      method: "DELETE",
+      url: `/api/worker-links/${session.sessionId}/peers/${peer.peerSessionId}`,
+    });
+    expect(removed.statusCode).toBe(204);
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: expect.objectContaining({
+        type: "worker-link.peer.revoke",
+        peerSessionId: peer.peerSessionId,
+      }),
+    });
   });
 
   it("authorizes a Terminal WorkerLink grant without relaying PTY output", async () => {

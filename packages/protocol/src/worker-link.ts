@@ -16,6 +16,7 @@ export const WORKER_LINK_MAX_GRANTS_PER_SESSION = 128;
 export const WORKER_LINK_MAX_TELEMETRY_SAMPLES = 128;
 export const WORKER_LINK_MAX_PEER_CANDIDATES = 64;
 export const WORKER_LINK_MAX_PEER_SIGNALS = 256;
+export const WORKER_LINK_MAX_PEER_SIGNALING_BYTES = 4 * 1_024 * 1_024;
 export const WORKER_LINK_MAX_STUN_URLS = 8;
 export const WORKER_LINK_MAX_INTERFACE_RULES = 64;
 
@@ -398,7 +399,46 @@ export const workerLinkPeerSignalBatchSchema = z
       .min(1)
       .max(WORKER_LINK_MAX_PEER_SIGNALS),
   })
+  .strict()
+  .superRefine((batch, context) => {
+    if (jsonBytes(batch) > WORKER_LINK_MAX_PEER_SIGNALING_BYTES) {
+      context.addIssue({
+        code: "custom",
+        path: ["signals"],
+        message: "WorkerLink peer signaling exceeds the byte limit.",
+      });
+    }
+  });
+
+export const workerLinkPeerMailboxReadRequestSchema = z
+  .object({
+    afterSignalSequence: sequenceSchema.nullable().default(null),
+    afterAdvertisementSequence: sequenceSchema.nullable().default(null),
+  })
   .strict();
+
+export const workerLinkPeerMailboxSchema = z
+  .object({
+    peerSessionId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    routeGeneration: generationSchema,
+    route: workerLinkPeerRouteSchema,
+    signals: z
+      .array(workerLinkPeerSignalEnvelopeSchema)
+      .max(WORKER_LINK_MAX_PEER_SIGNALS),
+    candidateAdvertisements: z
+      .array(workerLinkPeerCandidateAdvertisementSchema)
+      .max(WORKER_LINK_MAX_PEER_SIGNALS),
+  })
+  .strict()
+  .superRefine((mailbox, context) => {
+    if (jsonBytes(mailbox) > WORKER_LINK_MAX_PEER_SIGNALING_BYTES) {
+      context.addIssue({
+        code: "custom",
+        message: "WorkerLink peer mailbox exceeds the byte limit.",
+      });
+    }
+  });
 
 export const workerLinkRouteUpdateRequestSchema = z
   .object({
@@ -834,6 +874,10 @@ function validatePayload(
   }
 }
 
+function jsonBytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
 export function isWorkerLinkFrame(frame: Uint8Array): boolean {
   return (
     frame.byteLength >= FRAME_MAGIC.byteLength &&
@@ -907,6 +951,9 @@ export type WorkerLinkPeerLaneLimits = z.infer<
   typeof workerLinkPeerLaneLimitsSchema
 >;
 export type WorkerLinkPeerSession = z.infer<typeof workerLinkPeerSessionSchema>;
+export type WorkerLinkPeerSessionOpenRequest = z.infer<
+  typeof workerLinkPeerSessionOpenRequestSchema
+>;
 export type WorkerLinkPeerCandidate = z.infer<
   typeof workerLinkPeerCandidateSchema
 >;
@@ -917,6 +964,10 @@ export type WorkerLinkPeerSignal = z.infer<typeof workerLinkPeerSignalSchema>;
 export type WorkerLinkPeerSignalEnvelope = z.infer<
   typeof workerLinkPeerSignalEnvelopeSchema
 >;
+export type WorkerLinkPeerMailboxReadRequest = z.infer<
+  typeof workerLinkPeerMailboxReadRequestSchema
+>;
+export type WorkerLinkPeerMailbox = z.infer<typeof workerLinkPeerMailboxSchema>;
 export type WorkerLinkPeerCoordinatorCommand = z.infer<
   typeof workerLinkPeerCoordinatorCommandSchema
 >;

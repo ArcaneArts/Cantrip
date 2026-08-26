@@ -1,4 +1,5 @@
-import type { WorkerCommand } from "@cantrip/protocol";
+import type { WorkerCommand, WorkerNotification } from "@cantrip/protocol";
+import type { WorkerLinkPeerConfiguration } from "@cantrip/protocol/worker-link";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -16,6 +17,10 @@ const serverId = "server-1";
 
 class FakeWorkerBus {
   readonly commands: WorkerCommand[] = [];
+  readonly notificationListeners = new Map<
+    string,
+    Set<(notification: WorkerNotification) => Promise<void> | void>
+  >();
 
   request = vi.fn(
     async (
@@ -43,9 +48,55 @@ class FakeWorkerBus {
     return () => undefined;
   }
 
+  subscribeNotifications(
+    workerId: string,
+    listener: (notification: WorkerNotification) => Promise<void> | void,
+  ) {
+    const listeners = this.notificationListeners.get(workerId) ?? new Set();
+    listeners.add(listener);
+    this.notificationListeners.set(workerId, listeners);
+    return () => listeners.delete(listener);
+  }
+
+  async emit(workerId: string, notification: WorkerNotification) {
+    await Promise.all(
+      [...(this.notificationListeners.get(workerId) ?? [])].map((listener) =>
+        listener(notification),
+      ),
+    );
+  }
+
   asBus(): WorkerCommandBus {
     return this as unknown as WorkerCommandBus;
   }
+}
+
+function peerConfiguration(): WorkerLinkPeerConfiguration {
+  const laneLimit = {
+    maxChannels: 64,
+    maxQueuedFrames: 128,
+    maxQueuedBytes: 4 * 1_024 * 1_024,
+    maxBytesPerSecond: 16 * 1_024 * 1_024,
+  };
+  return {
+    directRoutes: { local: true, lan: true, wan: true },
+    relayOnly: false,
+    stunUrls: ["stun:stun.cloudflare.com:3478"],
+    interfacePolicy: { mode: "default", interfaces: [] },
+    vpnPolicy: { defaultRoute: "wan", lanAllowlist: [] },
+    negotiationTimeoutMs: 8_000,
+    upgradeProbeTimeoutMs: 15_000,
+    maxPeerSessionsPerClient: 4,
+    maxPeerSessionsPerWorker: 32,
+    invalidHandshakeRatePerMinute: 60,
+    laneLimits: {
+      events: laneLimit,
+      interactive: laneLimit,
+      stream: laneLimit,
+      realtime: laneLimit,
+      bulk: laneLimit,
+    },
+  };
 }
 
 describe("WorkerLinkService replicated authority", () => {
@@ -58,6 +109,7 @@ describe("WorkerLinkService replicated authority", () => {
     const workersB = new FakeWorkerBus();
     const serviceA = new WorkerLinkService(
       new WorkerLinkCoordinator(workersA.asBus(), {
+        peerConfiguration: peerConfiguration(),
         serverGeneration: "generation-a",
         serverId,
         sweepIntervalMs: 0,
@@ -66,6 +118,7 @@ describe("WorkerLinkService replicated authority", () => {
     );
     const serviceB = new WorkerLinkService(
       new WorkerLinkCoordinator(workersB.asBus(), {
+        peerConfiguration: peerConfiguration(),
         serverGeneration: "generation-b",
         serverId,
         sweepIntervalMs: 0,
@@ -99,6 +152,62 @@ describe("WorkerLinkService replicated authority", () => {
         ownerId: "owner-1",
       }),
     ).resolves.toBeNull();
+
+    const peer = await serviceB.openPeerSession(opened.sessionId, {
+      route: "lan",
+      routeGeneration: opened.routeGeneration,
+    });
+    expect(peer.identity.serverGeneration).toBe("generation-a");
+    expect(workersA.commands).toContainEqual({
+      type: "worker-link.peer.install",
+      peerSession: peer,
+      configuration: peerConfiguration(),
+    });
+    expect(workersB.commands).toHaveLength(0);
+    await serviceB.signalPeer(opened.sessionId, {
+      peerSessionId: peer.peerSessionId,
+      sessionId: peer.sessionId,
+      routeGeneration: peer.routeGeneration,
+      route: peer.route,
+      sender: "client",
+      signalSequence: 0,
+      signal: { type: "offer", sdp: "offer-sdp" },
+    });
+    expect(workersA.commands).toContainEqual(
+      expect.objectContaining({
+        type: "worker-link.peer.signal",
+        envelope: expect.objectContaining({
+          peerSessionId: peer.peerSessionId,
+          sender: "client",
+        }),
+      }),
+    );
+    await workersA.emit("worker-1", {
+      type: "worker-link.peer.signal",
+      envelope: {
+        peerSessionId: peer.peerSessionId,
+        sessionId: peer.sessionId,
+        routeGeneration: peer.routeGeneration,
+        route: peer.route,
+        sender: "worker",
+        signalSequence: 0,
+        signal: { type: "answer", sdp: "answer-sdp" },
+      },
+    });
+    await expect(
+      serviceB.readPeerMailbox(opened.sessionId, peer.peerSessionId, {
+        afterSignalSequence: null,
+        afterAdvertisementSequence: null,
+      }),
+    ).resolves.toMatchObject({
+      peerSessionId: peer.peerSessionId,
+      signals: [
+        expect.objectContaining({
+          sender: "worker",
+          signal: { type: "answer", sdp: "answer-sdp" },
+        }),
+      ],
+    });
 
     const relayed = await serviceB.replaceRoute(opened.sessionId, "relay");
     expect(relayed).toMatchObject({
