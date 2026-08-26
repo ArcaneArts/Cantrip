@@ -8,6 +8,7 @@ import {
   inputRoot,
   readLock,
   signArtifact,
+  tarArgumentPath,
   validateLock,
 } from "./searxng-lib.mjs";
 
@@ -21,6 +22,19 @@ test("runtime lock pins exactly six internally consistent native targets", async
       validateLock({ ...lock, searxng: { ...lock.searxng, commit: "main" } }),
     /pinned/,
   );
+});
+
+test("tar arguments are relative so Windows drive letters are never parsed as remote hosts", () => {
+  const cwd = path.join(path.parse(process.cwd()).root, "build", "work");
+  const archive = path.join(
+    path.parse(process.cwd()).root,
+    "cache",
+    "runtime.tar.gz",
+  );
+  const argument = tarArgumentPath(archive, cwd);
+  assert.equal(path.isAbsolute(argument), false);
+  assert.doesNotMatch(argument, /^[A-Za-z]:/u);
+  assert.match(argument, /runtime\.tar\.gz$/u);
 });
 
 test("settings bind locally and retain only curated engines", async () => {

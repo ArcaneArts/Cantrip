@@ -68,6 +68,12 @@ export function hostTarget(
   return os && arch ? `${os}-${arch}` : null;
 }
 
+export function tarArgumentPath(value, cwd) {
+  const relative = path.relative(cwd, value);
+  if (!relative) return ".";
+  return relative.split(path.sep).join("/");
+}
+
 export async function sha256(file) {
   const hash = createHash("sha256");
   await pipeline(createReadStream(file), hash);

@@ -21,6 +21,7 @@ import {
   run,
   sha256,
   stat,
+  tarArgumentPath,
   writeFile,
 } from "./searxng-lib.mjs";
 
@@ -72,8 +73,26 @@ const pythonStage = path.join(work, "python-stage");
 const searxStage = path.join(work, "searx-stage");
 await mkdir(pythonStage, { recursive: true });
 await mkdir(searxStage, { recursive: true });
-await run("tar", ["-xzf", pythonArchive, "-C", pythonStage]);
-await run("tar", ["-xzf", searxArchive, "-C", searxStage]);
+await run(
+  "tar",
+  [
+    "-xzf",
+    tarArgumentPath(pythonArchive, work),
+    "-C",
+    tarArgumentPath(pythonStage, work),
+  ],
+  { cwd: work },
+);
+await run(
+  "tar",
+  [
+    "-xzf",
+    tarArgumentPath(searxArchive, work),
+    "-C",
+    tarArgumentPath(searxStage, work),
+  ],
+  { cwd: work },
+);
 const pythonRoots = await readdir(pythonStage, { withFileTypes: true });
 const pythonContainer =
   pythonRoots.length === 1 && pythonRoots[0].isDirectory()
@@ -289,16 +308,34 @@ async function smoke(runtimeRoot, external) {
       throw new Error(
         `SearXNG readiness timed out:\n${diagnostics.slice(-4000)}`,
       );
-    const query = external ? "Cantrip software" : "deterministic fixture";
     const engine = external ? "duckduckgo,wikipedia,brave" : "cantrip offline";
-    const response = await fetch(
-      `http://127.0.0.1:${port}/search?q=${encodeURIComponent(query)}&format=json&engines=${encodeURIComponent(engine)}`,
-      { signal: AbortSignal.timeout(20_000) },
-    );
-    const body = await response.json();
-    if (!response.ok || !Array.isArray(body.results) || body.results.length < 1)
+    const queries = external
+      ? ["Python programming language", "World Wide Web", "OpenAI"]
+      : ["deterministic fixture"];
+    let lastStatus = 0;
+    let lastBody;
+    for (const query of queries) {
+      const response = await fetch(
+        `http://127.0.0.1:${port}/search?q=${encodeURIComponent(query)}&format=json&engines=${encodeURIComponent(engine)}`,
+        { signal: AbortSignal.timeout(20_000) },
+      );
+      lastStatus = response.status;
+      lastBody = await response.json();
+      if (
+        response.ok &&
+        Array.isArray(lastBody.results) &&
+        lastBody.results.length > 0
+      )
+        break;
+    }
+    if (
+      lastStatus < 200 ||
+      lastStatus >= 300 ||
+      !Array.isArray(lastBody?.results) ||
+      lastBody.results.length < 1
+    )
       throw new Error(
-        `search smoke failed (${response.status}): ${JSON.stringify(body).slice(0, 2_000)}`,
+        `search smoke failed (${lastStatus}): ${JSON.stringify(lastBody).slice(0, 2_000)}`,
       );
   } finally {
     if (child.exitCode === null) terminate(child, "SIGTERM");
