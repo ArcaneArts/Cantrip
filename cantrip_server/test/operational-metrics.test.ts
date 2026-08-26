@@ -11,6 +11,44 @@ describe("OperationalMetrics direct data plane", () => {
       connectionsClosed: 1,
       connectionsOpened: 2,
     });
+    metrics.recordWorkerLinkTelemetry([
+      {
+        occurredAt: "2026-08-26T12:00:00.000Z",
+        event: "route-selected",
+        route: "local",
+        lane: null,
+        value: 1,
+        latencyMs: 8,
+        reason: "none",
+      },
+      {
+        occurredAt: "2026-08-26T12:00:01.000Z",
+        event: "route-fallback",
+        route: "relay",
+        lane: null,
+        value: 1,
+        latencyMs: 22,
+        reason: "local-unavailable",
+      },
+      {
+        occurredAt: "2026-08-26T12:00:02.000Z",
+        event: "bytes-sent",
+        route: "relay",
+        lane: "interactive",
+        value: 64,
+        latencyMs: null,
+        reason: "none",
+      },
+      {
+        occurredAt: "2026-08-26T12:00:03.000Z",
+        event: "bytes-received",
+        route: "relay",
+        lane: "interactive",
+        value: 48,
+        latencyMs: null,
+        reason: "none",
+      },
+    ]);
     const output = metrics.renderPrometheus({
       accountUsage: {
         bandwidthMeter: {
@@ -117,6 +155,21 @@ describe("OperationalMetrics direct data plane", () => {
     );
     expect(output).toContain(
       'cantrip_data_plane_bytes_total{direction="source_to_destination",resource_kind="tunnel",transport="server-relay"} 40',
+    );
+    expect(output).toContain(
+      'cantrip_worker_link_events_total{event="route-selected",route="local",lane="none",reason="none"} 1',
+    );
+    expect(output).toContain(
+      'cantrip_worker_link_events_total{event="route-fallback",route="relay",lane="none",reason="local-unavailable"} 1',
+    );
+    expect(output).toContain(
+      'cantrip_worker_link_bytes_total{direction="client_to_worker",route="relay",lane="interactive"} 64',
+    );
+    expect(output).toContain(
+      'cantrip_worker_link_bytes_total{direction="worker_to_client",route="relay",lane="interactive"} 48',
+    );
+    expect(output).toContain(
+      'cantrip_worker_link_route_latency_seconds_sum{route="local"} 0.008',
     );
     expect(output).toContain(
       "cantrip_account_usage_bandwidth_buffered_bytes 9223372036854775000",

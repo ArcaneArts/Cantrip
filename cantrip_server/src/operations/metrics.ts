@@ -1,6 +1,7 @@
 import type {
   DirectResourceKind,
   DirectTransportTelemetry,
+  WorkerLinkTelemetrySample,
 } from "@cantrip/protocol";
 
 import type { RelayCoordinatorStats } from "../coordination/relay-coordinator.js";
@@ -15,6 +16,11 @@ import type { RelayQuotaStats } from "./relay-quotas.js";
 interface HttpMetric {
   durationSeconds: number;
   requests: number;
+}
+
+interface WorkerLinkLatencyMetric {
+  count: number;
+  sumSeconds: number;
 }
 
 export interface SchedulerStats {
@@ -80,6 +86,9 @@ export class OperationalMetrics {
   readonly #directConnections = new Map<string, number>();
   readonly #http = new Map<string, HttpMetric>();
   readonly #startedAt = Date.now();
+  readonly #workerLinkBytes = new Map<string, number>();
+  readonly #workerLinkEvents = new Map<string, number>();
+  readonly #workerLinkLatency = new Map<string, WorkerLinkLatencyMetric>();
   #activeRequests = 0;
   #database: DatabaseHealthStats = {
     latencySeconds: 0,
@@ -153,6 +162,39 @@ export class OperationalMetrics {
         key,
         (this.#directConnections.get(key) ?? 0) + value,
       );
+    }
+  }
+
+  recordWorkerLinkTelemetry(samples: WorkerLinkTelemetrySample[]): void {
+    for (const sample of samples) {
+      const route = sample.route ?? "none";
+      const lane = sample.lane ?? "none";
+      if (sample.event === "bytes-sent" || sample.event === "bytes-received") {
+        const direction =
+          sample.event === "bytes-sent"
+            ? "client_to_worker"
+            : "worker_to_client";
+        const key = `${direction}\0${route}\0${lane}`;
+        this.#workerLinkBytes.set(
+          key,
+          (this.#workerLinkBytes.get(key) ?? 0) + sample.value,
+        );
+      } else {
+        const key = `${sample.event}\0${route}\0${lane}\0${sample.reason}`;
+        this.#workerLinkEvents.set(
+          key,
+          (this.#workerLinkEvents.get(key) ?? 0) + sample.value,
+        );
+      }
+      if (sample.event === "route-selected" && sample.latencyMs !== null) {
+        const metric = this.#workerLinkLatency.get(route) ?? {
+          count: 0,
+          sumSeconds: 0,
+        };
+        metric.count += 1;
+        metric.sumSeconds += sample.latencyMs / 1_000;
+        this.#workerLinkLatency.set(route, metric);
+      }
     }
   }
 
@@ -288,6 +330,53 @@ export class OperationalMetrics {
           resource_kind: resourceKind!,
           transport: "local-direct",
         }),
+      );
+    }
+    lines.push(
+      "# HELP cantrip_worker_link_events_total WorkerLink lifecycle, route, fallback, reconnect, rejection, revocation, and pressure events.",
+      "# TYPE cantrip_worker_link_events_total counter",
+    );
+    for (const [key, value] of this.#workerLinkEvents) {
+      const [event, route, lane, reason] = key.split("\0");
+      lines.push(
+        metricLine("cantrip_worker_link_events_total", value, {
+          event: event!,
+          route: route!,
+          lane: lane!,
+          reason: reason!,
+        }),
+      );
+    }
+    lines.push(
+      "# HELP cantrip_worker_link_bytes_total Payload bytes carried by WorkerLink.",
+      "# TYPE cantrip_worker_link_bytes_total counter",
+    );
+    for (const [key, value] of this.#workerLinkBytes) {
+      const [direction, route, lane] = key.split("\0");
+      lines.push(
+        metricLine("cantrip_worker_link_bytes_total", value, {
+          direction: direction!,
+          route: route!,
+          lane: lane!,
+        }),
+      );
+    }
+    lines.push(
+      "# HELP cantrip_worker_link_route_latency_seconds WorkerLink carrier selection latency.",
+      "# TYPE cantrip_worker_link_route_latency_seconds summary",
+    );
+    for (const [route, metric] of this.#workerLinkLatency) {
+      lines.push(
+        metricLine(
+          "cantrip_worker_link_route_latency_seconds_sum",
+          metric.sumSeconds,
+          { route },
+        ),
+        metricLine(
+          "cantrip_worker_link_route_latency_seconds_count",
+          metric.count,
+          { route },
+        ),
       );
     }
     const usage = input.accountUsage;

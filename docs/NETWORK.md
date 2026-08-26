@@ -1,6 +1,6 @@
 # Client-worker network fabric
 
-- Status: Proposed
+- Status: Tranche One implemented; Tranche Two proposed
 - Scope: Client-to-worker latency- and bandwidth-sensitive traffic
 - Route priority: `LOCAL -> LAN -> WAN -> RELAY`
 

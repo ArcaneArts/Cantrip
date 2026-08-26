@@ -285,9 +285,11 @@ import {
   workerLinkRouteUpdateRequestSchema,
   workerLinkSessionOpenRequestSchema,
   workerLinkSessionSchema,
+  workerLinkTelemetryBatchSchema,
   workerLinkTerminalGrantRequestSchema,
   workerLinkTunnelGrantRequestSchema,
   workerLinkTunnelGrantSchema,
+  type WorkerLinkTelemetrySample,
   directTransportTelemetrySchema,
   directTunnelPrepareRequestSchema,
   directTunnelTicketSchema,
@@ -866,6 +868,17 @@ export async function updateWorkerLinkRoute(
       `/api/worker-links/${encodeURIComponent(sessionId)}/route`,
       workerLinkRouteUpdateRequestSchema.parse({ preferredRoute }),
     ),
+  );
+}
+
+export async function recordWorkerLinkTelemetry(
+  sessionId: string,
+  routeGeneration: number,
+  samples: WorkerLinkTelemetrySample[],
+): Promise<void> {
+  await post(
+    `/api/worker-links/${encodeURIComponent(sessionId)}/telemetry`,
+    workerLinkTelemetryBatchSchema.parse({ routeGeneration, samples }),
   );
 }
 
