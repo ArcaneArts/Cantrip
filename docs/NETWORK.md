@@ -527,8 +527,18 @@ frames, and cursor updates use the fabric:
 - frames and cursor images use `realtime`; and
 - Browser-owned development-service tunnels use `stream`.
 
-The existing Remote Surface WebRTC implementation becomes a shared carrier
-rather than a Browser-specific transport decision.
+Remote Surface frames are fragmented beneath the feature boundary because one
+protected frame may be larger than a bounded WorkerLink data message. Reliable
+chunks resume across credit returns. The realtime lane finishes its current
+frame and retains only the newest successor, so it remains bounded without
+permanently starving large screenshots. A ready Browser client sends its
+viewport again to request current state and a fresh frame after both lanes are
+installed.
+
+The supported Browser client no longer selects Remote Surface WebRTC or a
+server WebSocket. WebRTC is a shared WorkerLink carrier, while the legacy
+feature-specific Remote Surface transport remains only as a compatibility
+surface during the documented soak period.
 
 ### Cantrip Code
 

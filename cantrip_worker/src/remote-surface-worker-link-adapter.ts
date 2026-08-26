@@ -1,6 +1,9 @@
 import {
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
+  encodeWorkerLinkRemoteSurfaceChunk,
+  WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
+  WorkerLinkRemoteSurfaceFrameAssembler,
   type InstalledWorkerLinkGrant,
   type RemoteSurfaceFrameHeader,
   type RemoteSurfaceKind,
@@ -27,11 +30,20 @@ interface ActiveAttachment {
   readonly attachmentId: string;
   failed: boolean;
   readonly grantId: string;
+  readonly inboundInteractive: WorkerLinkRemoteSurfaceFrameAssembler;
   readonly lanes: Map<WorkerLinkQosLane, ActiveLane>;
+  readonly nextFrameIds: Map<WorkerLinkQosLane, number>;
   pendingInteractiveBytes: number;
-  readonly pendingInteractive: Uint8Array[];
+  readonly pendingInteractive: PendingInteractiveFrame[];
+  readonly pendingRealtime: PendingInteractiveFrame[];
   releaseEmitter(): void;
   readonly surfaceId: string;
+}
+
+interface PendingInteractiveFrame {
+  readonly bytes: Uint8Array;
+  readonly frameId: number;
+  offset: number;
 }
 
 export interface RemoteSurfaceWorkerLinkAdapterOptions {
@@ -99,9 +111,12 @@ export class RemoteSurfaceWorkerLinkAdapter implements WorkerLinkResourceAdapter
         attachmentId,
         failed: false,
         grantId: grant.binding.grantId,
+        inboundInteractive: new WorkerLinkRemoteSurfaceFrameAssembler(),
         lanes: new Map(),
+        nextFrameIds: new Map(),
         pendingInteractiveBytes: 0,
         pendingInteractive: [],
+        pendingRealtime: [],
         releaseEmitter: () => undefined,
         surfaceId: resource.resourceId,
       };
@@ -130,11 +145,13 @@ export class RemoteSurfaceWorkerLinkAdapter implements WorkerLinkResourceAdapter
     const identity = `${channel.channelId}\0${channel.connectionId}`;
     active.lanes.set(lane, { emitter: emit, identity });
     if (lane === "interactive") this.#drainInteractive(active);
+    if (lane === "realtime") this.#drainRealtime(active);
 
     return {
       close: () => this.#closeLane(active!, lane, identity),
       credit: () => {
         if (lane === "interactive") this.#drainInteractive(active!);
+        if (lane === "realtime") this.#drainRealtime(active!);
       },
       ...(lane === "interactive"
         ? { write: (payload: Uint8Array) => this.#write(active!, payload) }
@@ -164,15 +181,30 @@ export class RemoteSurfaceWorkerLinkAdapter implements WorkerLinkResourceAdapter
     if (header.channel === "frame" || header.channel === "cursor") {
       // Realtime output is explicitly disposable. A missing or pressured lane
       // consumes the frame instead of spilling it into the legacy relay path.
-      active.lanes.get("realtime")?.emitter.data(encoded);
+      // Finish one partially-sent frame across credit returns and retain only
+      // the newest successor, so large screenshots still make progress.
+      const pending = {
+        bytes: encoded,
+        frameId: this.#nextFrameId(active, "realtime"),
+        offset: 0,
+      };
+      const current = active.pendingRealtime[0];
+      if (!current || current.offset === 0) {
+        active.pendingRealtime.splice(
+          0,
+          active.pendingRealtime.length,
+          pending,
+        );
+      } else if (active.pendingRealtime.length === 1) {
+        active.pendingRealtime.push(pending);
+      } else {
+        active.pendingRealtime[1] = pending;
+      }
+      this.#drainRealtime(active);
       return true;
     }
     if (header.channel !== "control" && header.channel !== "clipboard") {
       return false;
-    }
-    if (active.pendingInteractive.length === 0) {
-      const lane = active.lanes.get("interactive");
-      if (lane?.emitter.data(encoded)) return true;
     }
     return this.#queueInteractive(active, encoded);
   }
@@ -187,8 +219,13 @@ export class RemoteSurfaceWorkerLinkAdapter implements WorkerLinkResourceAdapter
       return false;
     }
     const copy = payload.slice();
-    active.pendingInteractive.push(copy);
+    active.pendingInteractive.push({
+      bytes: copy,
+      frameId: this.#nextFrameId(active, "interactive"),
+      offset: 0,
+    });
     active.pendingInteractiveBytes += copy.byteLength;
+    this.#drainInteractive(active);
     return true;
   }
 
@@ -197,10 +234,55 @@ export class RemoteSurfaceWorkerLinkAdapter implements WorkerLinkResourceAdapter
     const lane = active.lanes.get("interactive");
     if (!lane) return;
     while (active.pendingInteractive.length > 0) {
-      const payload = active.pendingInteractive[0]!;
-      if (!lane.emitter.data(payload)) return;
+      const frame = active.pendingInteractive[0]!;
+      const end = Math.min(
+        frame.bytes.byteLength,
+        frame.offset + WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
+      );
+      if (
+        !lane.emitter.data(
+          encodeWorkerLinkRemoteSurfaceChunk({
+            frameId: frame.frameId,
+            frameLength: frame.bytes.byteLength,
+            offset: frame.offset,
+            payload: frame.bytes.subarray(frame.offset, end),
+          }),
+        )
+      ) {
+        return;
+      }
+      frame.offset = end;
+      if (frame.offset < frame.bytes.byteLength) continue;
       active.pendingInteractive.shift();
-      active.pendingInteractiveBytes -= payload.byteLength;
+      active.pendingInteractiveBytes -= frame.bytes.byteLength;
+    }
+  }
+
+  #drainRealtime(active: ActiveAttachment): void {
+    if (active.failed) return;
+    const lane = active.lanes.get("realtime");
+    if (!lane) return;
+    while (active.pendingRealtime.length > 0) {
+      const frame = active.pendingRealtime[0]!;
+      const end = Math.min(
+        frame.bytes.byteLength,
+        frame.offset + WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
+      );
+      if (
+        !lane.emitter.data(
+          encodeWorkerLinkRemoteSurfaceChunk({
+            frameId: frame.frameId,
+            frameLength: frame.bytes.byteLength,
+            offset: frame.offset,
+            payload: frame.bytes.subarray(frame.offset, end),
+          }),
+        )
+      ) {
+        return;
+      }
+      frame.offset = end;
+      if (frame.offset < frame.bytes.byteLength) continue;
+      active.pendingRealtime.shift();
     }
   }
 
@@ -208,7 +290,9 @@ export class RemoteSurfaceWorkerLinkAdapter implements WorkerLinkResourceAdapter
     if (active.failed) {
       throw new Error("Remote Surface WorkerLink attachment has failed.");
     }
-    const frame = decodeRemoteSurfaceFrame(payload);
+    const assembled = active.inboundInteractive.push(payload);
+    if (!assembled) return;
+    const frame = decodeRemoteSurfaceFrame(assembled);
     if (
       frame.header.surfaceId !== active.surfaceId ||
       frame.header.attachmentId !== active.attachmentId ||
@@ -226,7 +310,24 @@ export class RemoteSurfaceWorkerLinkAdapter implements WorkerLinkResourceAdapter
   ): void {
     if (active.lanes.get(lane)?.identity === identity) {
       active.lanes.delete(lane);
+      if (lane === "interactive") {
+        active.inboundInteractive.reset();
+        const pending = active.pendingInteractive[0];
+        if (pending) pending.offset = 0;
+      } else if (lane === "realtime") {
+        const pending = active.pendingRealtime[0];
+        if (pending) pending.offset = 0;
+      }
     }
+  }
+
+  #nextFrameId(
+    active: ActiveAttachment,
+    lane: Extract<WorkerLinkQosLane, "interactive" | "realtime">,
+  ): number {
+    const frameId = active.nextFrameIds.get(lane) ?? 0;
+    active.nextFrameIds.set(lane, (frameId + 1) >>> 0);
+    return frameId;
   }
 
   #fail(active: ActiveAttachment): void {
@@ -234,6 +335,7 @@ export class RemoteSurfaceWorkerLinkAdapter implements WorkerLinkResourceAdapter
     active.failed = true;
     active.pendingInteractive.length = 0;
     active.pendingInteractiveBytes = 0;
+    active.pendingRealtime.length = 0;
     const lane = active.lanes.get("interactive");
     lane?.emitter.error("credit-exceeded");
     void lane?.emitter.close("congested");
@@ -252,6 +354,7 @@ export class RemoteSurfaceWorkerLinkAdapter implements WorkerLinkResourceAdapter
       active.lanes.clear();
       active.pendingInteractive.length = 0;
       active.pendingInteractiveBytes = 0;
+      active.pendingRealtime.length = 0;
     }
     await this.surfaces.detach(resource.resourceId, attachmentId);
   }
