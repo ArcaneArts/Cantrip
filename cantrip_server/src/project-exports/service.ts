@@ -56,10 +56,16 @@ const TARGET_DEFINITIONS = new Map<
           id: "chat-messages",
           label: "Conversation",
           description:
-            "User, assistant, and developer messages become native Codex thread messages.",
+            "User and assistant messages become native, discoverable Codex turns.",
         },
       ],
       flattens: [
+        {
+          id: "developer-messages",
+          label: "Developer messages",
+          description:
+            "Developer messages keep their content and order as explicit annotations in native Codex user turns.",
+        },
         {
           id: "activities",
           label: "Tool and agent activity",
