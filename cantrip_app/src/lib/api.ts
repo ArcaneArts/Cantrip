@@ -211,6 +211,8 @@ import {
   encryptedManagedFolderProjectCreateSchema,
   mcpServerCopySchema,
   mcpServerDiscoveryResultSchema,
+  managedWebRuntimeActionRequestSchema,
+  managedWebRuntimeActionResultSchema,
   orderedIdsSchema,
   effectivePolicyWireListSchema,
   encryptedPolicyBootstrapSchema,
@@ -768,6 +770,18 @@ export async function checkCodeGraphUpdate(workerId: string) {
     await post(
       `/api/workers/${encodeURIComponent(workerId)}/codegraph/update-check`,
       {},
+    ),
+  );
+}
+
+export async function runManagedWebRuntimeAction(
+  workerId: string,
+  input: import("@cantrip/protocol").ManagedWebRuntimeActionRequest,
+) {
+  return managedWebRuntimeActionResultSchema.parse(
+    await post(
+      `/api/workers/${encodeURIComponent(workerId)}/web-runtimes/actions`,
+      managedWebRuntimeActionRequestSchema.parse(input),
     ),
   );
 }

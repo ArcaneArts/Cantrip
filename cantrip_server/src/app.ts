@@ -322,6 +322,8 @@ import {
   mcpServerWireSummarySchema,
   mentionedSkillNames,
   managedFolderDeleteResultSchema,
+  managedWebRuntimeActionRequestSchema,
+  managedWebRuntimeActionResultSchema,
   encryptedManagedFolderProjectCreateSchema,
   orderedIdsSchema,
   operationalProbeSchema,
@@ -13941,6 +13943,36 @@ export async function buildApp({
               ),
             ),
           );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/web-runtimes/actions",
+    async (request, reply) => {
+      const input = managedWebRuntimeActionRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success)
+        return reply.code(400).send(invalidBody(input.error.issues));
+      const ownerId = principalOwnerId(request);
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      try {
+        return reply.send(
+          managedWebRuntimeActionResultSchema.parse(
+            await bridge.request(
+              request.params.workerId,
+              { type: "web-runtime.action", ...input.data },
+              { ownerId, timeoutMs: 12 * 60_000 },
+            ),
+          ),
+        );
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }

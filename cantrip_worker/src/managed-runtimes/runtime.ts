@@ -277,6 +277,19 @@ function boundedFailure(error: unknown, now: Date): ManagedWebRuntimeFailure {
   };
 }
 
+export function publicManagedWebRuntimeStatus(
+  status: ManagedWebRuntimeStatus,
+): ManagedWebRuntimeStatus {
+  if (!status.failure) return managedWebRuntimeStatusSchema.parse(status);
+  return managedWebRuntimeStatusSchema.parse({
+    ...status,
+    failure: {
+      ...status.failure,
+      message: `Managed ${status.component} runtime ${status.failure.category} failure.`,
+    },
+  });
+}
+
 export class ManagedRuntimeInstaller {
   readonly #architecture: string;
   readonly #component: ManagedWebRuntimeComponent;
@@ -342,6 +355,29 @@ export class ManagedRuntimeInstaller {
     return this.#operation;
   }
 
+  async reinstall(): Promise<ManagedWebRuntimeStatus> {
+    if (!this.#status.supported) return this.status();
+    if (this.#operation) {
+      await this.#operation;
+      return await this.reinstall();
+    }
+    this.#operation = this.#prepare(true).finally(() => {
+      this.#operation = null;
+    });
+    return await this.#operation;
+  }
+
+  async clearCache(): Promise<ManagedWebRuntimeStatus> {
+    if (this.#operation) {
+      await this.#operation;
+      return await this.clearCache();
+    }
+    this.#operation = this.#clearCache().finally(() => {
+      this.#operation = null;
+    });
+    return await this.#operation;
+  }
+
   async rollback(): Promise<ManagedWebRuntimeStatus> {
     await this.#ensureStorage();
     return await this.#withLock(async () => {
@@ -367,7 +403,7 @@ export class ManagedRuntimeInstaller {
     });
   }
 
-  async #prepare(): Promise<ManagedWebRuntimeStatus> {
+  async #prepare(forceReinstall = false): Promise<ManagedWebRuntimeStatus> {
     try {
       await this.#ensureStorage();
       const current = await this.#loadPointer();
@@ -405,6 +441,18 @@ export class ManagedRuntimeInstaller {
         });
         const selected = await this.#loadPointer();
         if (
+          forceReinstall &&
+          selected &&
+          selected.version !== artifact.version
+        ) {
+          throw new ManagedRuntimeInstallError(
+            "compatibility",
+            "The installed runtime version is no longer available in the signed release channel.",
+            false,
+          );
+        }
+        if (
+          !forceReinstall &&
           selected?.version === artifact.version &&
           selected.archiveSha256 === artifact.sha256
         ) {
@@ -413,7 +461,7 @@ export class ManagedRuntimeInstaller {
           await this.#cleanup(selected);
           return this.status();
         }
-        await this.#install(artifact, selected);
+        await this.#install(artifact, selected, forceReinstall);
         return this.status();
       });
     } catch (error) {
@@ -467,6 +515,7 @@ export class ManagedRuntimeInstaller {
   async #install(
     artifact: ManagedWebRuntimeArtifact,
     current: RuntimePointer | null,
+    forceReinstall = false,
   ): Promise<void> {
     this.#status = managedWebRuntimeStatusSchema.parse({
       ...this.#status,
@@ -522,11 +571,27 @@ export class ManagedRuntimeInstaller {
       );
       const promotedEntry = await lstat(promoted).catch(() => null);
       let promotedByOperation = false;
+      let replacedDirectory: string | null = null;
       if (promotedEntry) {
         const retained =
           current?.archiveSha256 === artifact.sha256 ||
           current?.previous?.archiveSha256 === artifact.sha256;
-        if (retained) {
+        if (forceReinstall && current?.archiveSha256 === artifact.sha256) {
+          replacedDirectory = path.join(
+            this.#root,
+            "versions",
+            `.reinstall-${artifact.sha256}-${process.pid}`,
+          );
+          await rm(replacedDirectory, { recursive: true, force: true });
+          await rename(promoted, replacedDirectory);
+          try {
+            await rename(staging, promoted);
+          } catch (error) {
+            await rename(replacedDirectory, promoted);
+            throw error;
+          }
+          promotedByOperation = true;
+        } else if (retained) {
           await this.#requireDirectory(promoted);
           await rm(staging, { recursive: true, force: true });
         } else {
@@ -544,6 +609,7 @@ export class ManagedRuntimeInstaller {
       } catch (error) {
         if (promotedByOperation) {
           await rm(promoted, { recursive: true, force: true });
+          if (replacedDirectory) await rename(replacedDirectory, promoted);
         }
         throw error;
       }
@@ -552,17 +618,45 @@ export class ManagedRuntimeInstaller {
         component: this.#component,
         version: artifact.version,
         archiveSha256: artifact.sha256,
-        previous: current
-          ? { version: current.version, archiveSha256: current.archiveSha256 }
-          : null,
+        previous:
+          current && current.archiveSha256 !== artifact.sha256
+            ? { version: current.version, archiveSha256: current.archiveSha256 }
+            : (current?.previous ?? null),
         verifiedAt: this.#now().toISOString(),
       };
       await atomicJsonWrite(this.#pointerPath(), pointer);
       this.#applyPointer(pointer, "ready", null);
+      if (replacedDirectory)
+        await rm(replacedDirectory, { recursive: true, force: true });
       await this.#cleanup(pointer);
     } finally {
       await rm(archive, { force: true });
       await rm(staging, { recursive: true, force: true });
+    }
+  }
+
+  async #clearCache(): Promise<ManagedWebRuntimeStatus> {
+    try {
+      await this.#ensureStorage();
+      return await this.#withLock(async () => {
+        for (const directory of ["downloads", "staging"] as const) {
+          const target = path.join(this.#root, directory);
+          await rm(target, { recursive: true, force: true });
+          await mkdir(target, { recursive: true, mode: 0o700 });
+        }
+        this.#status = managedWebRuntimeStatusSchema.parse({
+          ...this.#status,
+          progress: null,
+        });
+        return this.status();
+      });
+    } catch (error) {
+      this.#status = managedWebRuntimeStatusSchema.parse({
+        ...this.#status,
+        failure: boundedFailure(error, this.#now()),
+        progress: null,
+      });
+      return this.status();
     }
   }
 
@@ -768,7 +862,20 @@ export class ManagedRuntimeInstaller {
         false,
       );
     }
-    await this.#requireDirectory(this.#versionDirectory(pointer.archiveSha256));
+    const versionDirectory = this.#versionDirectory(pointer.archiveSha256);
+    const versionEntry = await lstat(versionDirectory).catch(() => null);
+    if (!versionEntry) {
+      const prefix = `.reinstall-${pointer.archiveSha256}-`;
+      const backups = (await readdir(path.join(this.#root, "versions"))).filter(
+        (name) => name.startsWith(prefix),
+      );
+      if (backups.length === 1) {
+        const backup = path.join(this.#root, "versions", backups[0]!);
+        await this.#requireDirectory(backup);
+        await rename(backup, versionDirectory);
+      }
+    }
+    await this.#requireDirectory(versionDirectory);
     return pointer;
   }
 
@@ -841,6 +948,11 @@ export class ManagedRuntimeInstaller {
     ]);
     for (const name of await readdir(path.join(this.#root, "versions"))) {
       if (/^[0-9a-f]{64}$/u.test(name) && !retained.has(name)) {
+        await rm(path.join(this.#root, "versions", name), {
+          recursive: true,
+          force: true,
+        });
+      } else if (name.startsWith(".reinstall-")) {
         await rm(path.join(this.#root, "versions", name), {
           recursive: true,
           force: true,

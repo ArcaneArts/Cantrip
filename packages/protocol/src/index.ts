@@ -999,6 +999,39 @@ export const managedWebRuntimeCapabilitiesSchema = z
     }
   });
 
+export const managedWebRuntimeActionSchema = z.enum([
+  "check-update",
+  "retry",
+  "reinstall",
+  "clear-cache",
+  "clear-profiles",
+]);
+
+export const managedWebRuntimeActionRequestSchema = z
+  .object({
+    component: managedWebRuntimeComponentSchema,
+    action: managedWebRuntimeActionSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.action === "clear-profiles" && input.component !== "playwright") {
+      context.addIssue({
+        code: "custom",
+        message: "Only the managed browser runtime has persistent profiles.",
+        path: ["component"],
+      });
+    }
+  });
+
+export const managedWebRuntimeActionResultSchema = z
+  .object({
+    accepted: z.literal(true),
+    action: managedWebRuntimeActionSchema,
+    component: managedWebRuntimeComponentSchema,
+    status: managedWebRuntimeStatusSchema,
+  })
+  .strict();
+
 export const unavailableManagedWebRuntimeCapabilities =
   managedWebRuntimeCapabilitiesSchema.parse({
     schemaVersion: 1,
@@ -13513,6 +13546,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   standaloneChatFileOperationCommandSchema,
   z.object({ type: z.literal("worker.version") }),
   z.object({ type: z.literal("worker.restart") }),
+  managedWebRuntimeActionRequestSchema.extend({
+    type: z.literal("web-runtime.action"),
+  }),
   workerEncryptionRefreshRequestSchema.extend({
     type: z.literal("worker.encryption.refresh"),
   }),
@@ -17529,6 +17565,15 @@ export type ManagedWebRuntimeStatus = z.infer<
 >;
 export type ManagedWebRuntimeCapabilities = z.infer<
   typeof managedWebRuntimeCapabilitiesSchema
+>;
+export type ManagedWebRuntimeAction = z.infer<
+  typeof managedWebRuntimeActionSchema
+>;
+export type ManagedWebRuntimeActionRequest = z.infer<
+  typeof managedWebRuntimeActionRequestSchema
+>;
+export type ManagedWebRuntimeActionResult = z.infer<
+  typeof managedWebRuntimeActionResultSchema
 >;
 export type CodeGraphProjectStatus = z.infer<
   typeof codeGraphProjectStatusSchema
