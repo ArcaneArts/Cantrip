@@ -28,11 +28,17 @@ interface BridgeSession {
   dirtyEditors: CodeDirtyEditor[];
   nextGeneration: number;
   pending: Map<string, PendingBridgeRequest>;
+  registrationGeneration: string;
   sockets: Map<WebSocket, BridgeSocket>;
   token: string;
   unresolvedDirtyEditors: CodeDirtyEditor[];
   unresolvedDirtyGeneration: number | null;
   workbench: CodeWorkbenchState;
+}
+
+interface RetiredBridgeSession {
+  expiresAt: number;
+  registrationGeneration: string;
 }
 
 interface PendingBridgeRequest {
@@ -95,11 +101,17 @@ const DEFAULT_LIVENESS_TIMEOUT_MS = 3_000;
 const MAX_LIVENESS_INTERVAL_MS = 60_000;
 const MAX_LIVENESS_TIMEOUT_MS = 5_000;
 const OPEN_SETTINGS_REQUEST_TIMEOUT_MS = 15_000;
+const DEFAULT_RETIRED_SESSION_LIMIT = 256;
+const MAX_RETIRED_SESSION_LIMIT = 1_024;
+const DEFAULT_RETIRED_SESSION_TTL_MS = 30_000;
+const MAX_RETIRED_SESSION_TTL_MS = 5 * 60_000;
 
 export interface CodeWorkbenchBridgeOptions {
   controlConnectTimeoutMs?: number;
   livenessIntervalMs?: number;
   livenessTimeoutMs?: number;
+  retiredSessionLimit?: number;
+  retiredSessionTtlMs?: number;
   requestTimeoutMs?: number;
   scheduleLiveness?: (
     sweep: () => Promise<void>,
@@ -227,9 +239,12 @@ export class CodeWorkbenchBridge {
   readonly #livenessTimeoutMs: number;
   #origin: string | null = null;
   readonly #requestTimeoutMs: number;
+  readonly #retiredSessionLimit: number;
+  readonly #retiredSessionTtlMs: number;
   readonly #scheduleLiveness: NonNullable<
     CodeWorkbenchBridgeOptions["scheduleLiveness"]
   >;
+  #retiredSessions = new Map<string, RetiredBridgeSession>();
   #sessions = new Map<string, BridgeSession>();
   #webSockets: WebSocketServer | null = null;
 
@@ -255,6 +270,18 @@ export class CodeWorkbenchBridge {
     this.#requestTimeoutMs = Math.max(
       10,
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    );
+    this.#retiredSessionLimit = boundedDuration(
+      options.retiredSessionLimit,
+      DEFAULT_RETIRED_SESSION_LIMIT,
+      1,
+      MAX_RETIRED_SESSION_LIMIT,
+    );
+    this.#retiredSessionTtlMs = boundedDuration(
+      options.retiredSessionTtlMs,
+      DEFAULT_RETIRED_SESSION_TTL_MS,
+      10,
+      MAX_RETIRED_SESSION_TTL_MS,
     );
     this.#scheduleLiveness = options.scheduleLiveness ?? scheduleLiveness;
   }
@@ -294,9 +321,19 @@ export class CodeWorkbenchBridge {
       const session = sessionId ? this.#sessions.get(sessionId) : null;
       const token = url.searchParams.get("token") ?? "";
       if (!sessionId || !session || !secureTokenEqual(session.token, token)) {
+        const recentlyRetired = Boolean(
+          sessionId && !session && this.#recentlyRetired(sessionId),
+        );
+        const reasonCode = !sessionId
+          ? "invalid-session-path"
+          : !session
+            ? recentlyRetired
+              ? "retired-session"
+              : "unknown-session"
+            : "invalid-token";
         workerLogger.rateLimited(
-          `code-bridge-upgrade-rejected:${sessionId ?? "unknown"}`,
-          "warn",
+          `code-bridge-upgrade-rejected:${reasonCode}:${sessionId ?? "unknown"}`,
+          recentlyRetired ? "debug" : "warn",
           "Cantrip Code bridge rejected an upgrade",
           {
             event: "code.bridge.upgrade-rejected",
@@ -304,11 +341,7 @@ export class CodeWorkbenchBridge {
             operation: "bridge-upgrade",
             hasSessionId: Boolean(sessionId),
             hasToken: Boolean(token),
-            reasonCode: !sessionId
-              ? "invalid-session-path"
-              : !session
-                ? "unknown-session"
-                : "invalid-token",
+            reasonCode,
             status: "rejected",
             sessionId,
           },
@@ -355,6 +388,7 @@ export class CodeWorkbenchBridge {
   ): string {
     if (!this.#origin)
       throw new Error("Cantrip workbench bridge is not ready.");
+    this.#retiredSessions.delete(sessionId);
     const current = this.#sessions.get(sessionId);
     if (current) {
       this.#rejectPending(
@@ -372,6 +406,7 @@ export class CodeWorkbenchBridge {
       dirtyEditors: [],
       nextGeneration: 1,
       pending: new Map(),
+      registrationGeneration: randomUUID(),
       sockets: new Map(),
       token,
       unresolvedDirtyEditors: [],
@@ -404,6 +439,7 @@ export class CodeWorkbenchBridge {
     }
     session.sockets.clear();
     this.#sessions.delete(sessionId);
+    this.#recordRetired(sessionId, session.registrationGeneration);
     workerLogger.event("debug", "Cantrip Code bridge session unregistered", {
       event: "code.bridge.session-unregistered",
       subsystem: "code",
@@ -853,6 +889,7 @@ export class CodeWorkbenchBridge {
     this.#disposeLiveness = null;
     for (const sessionId of [...this.#sessions.keys()])
       this.unregister(sessionId);
+    this.#retiredSessions.clear();
     this.#webSockets?.close();
     const server = this.#http;
     this.#webSockets = null;
@@ -861,6 +898,33 @@ export class CodeWorkbenchBridge {
     if (server) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  }
+
+  #pruneRetired(now: number): void {
+    for (const [sessionId, retired] of this.#retiredSessions) {
+      if (retired.expiresAt <= now) this.#retiredSessions.delete(sessionId);
+    }
+    while (this.#retiredSessions.size > this.#retiredSessionLimit) {
+      const oldest = this.#retiredSessions.keys().next().value;
+      if (typeof oldest !== "string") break;
+      this.#retiredSessions.delete(oldest);
+    }
+  }
+
+  #recentlyRetired(sessionId: string): boolean {
+    this.#pruneRetired(Date.now());
+    return this.#retiredSessions.has(sessionId);
+  }
+
+  #recordRetired(sessionId: string, registrationGeneration: string): void {
+    const now = Date.now();
+    this.#pruneRetired(now);
+    this.#retiredSessions.delete(sessionId);
+    this.#retiredSessions.set(sessionId, {
+      expiresAt: now + this.#retiredSessionTtlMs,
+      registrationGeneration,
+    });
+    this.#pruneRetired(now);
   }
 
   #attach(sessionId: string, session: BridgeSession, socket: WebSocket): void {

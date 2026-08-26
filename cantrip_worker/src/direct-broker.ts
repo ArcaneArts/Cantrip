@@ -581,6 +581,31 @@ export class DirectBroker {
   }
 
   #handleDirectFrame(active: ActiveSession, data: RawData): void {
+    if (this.#active.get(active.binding.capabilityId) !== active) {
+      workerLogger.rateLimited(
+        `direct-frame-discarded:retired-capability:${active.binding.resourceKind}`,
+        "debug",
+        "Direct tunnel frame discarded after capability retirement",
+        {
+          event: "direct.frame.discarded",
+          subsystem: "direct-broker",
+          operation: "route-frame",
+          reasonCode: "retired-capability",
+          status: "discarded",
+          resourceKind: active.binding.resourceKind,
+          ...(active.tunnelRoute
+            ? {
+                tunnelId: active.tunnelRoute.tunnelId,
+                attachmentId: active.tunnelRoute.attachmentId,
+              }
+            : {}),
+          ...(active.diagnosticTraceId
+            ? { diagnosticTraceId: active.diagnosticTraceId }
+            : {}),
+        },
+      );
+      return;
+    }
     const route = active.tunnelRoute;
     if (!route || !active.binding.channels.includes("tunnel-data")) {
       workerLogger.rateLimited(

@@ -1,9 +1,13 @@
+import { randomUUID } from "node:crypto";
+
 import WebSocket from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CodeWorkbenchBridge } from "../src/code/workbench-bridge.js";
+import { subscribeWorkerLogs } from "../src/logger.js";
 
 const bridges: CodeWorkbenchBridge[] = [];
+const subscriptions: Array<() => void> = [];
 interface WorkbenchRequest {
   id: string;
   method: string;
@@ -17,6 +21,7 @@ const requestWaiters = new WeakMap<
 >();
 
 afterEach(async () => {
+  for (const unsubscribe of subscriptions.splice(0)) unsubscribe();
   await Promise.all(bridges.splice(0).map((bridge) => bridge.close()));
 });
 
@@ -379,6 +384,162 @@ describe("Cantrip workbench bridge", () => {
       "Unexpected server response: 401",
     );
     socket.close();
+  });
+
+  it("keeps retired bridge upgrades unauthorized while classifying exact teardown at debug", async () => {
+    const bridge = new CodeWorkbenchBridge();
+    bridges.push(bridge);
+    await bridge.start();
+    const retiredSessionId = randomUUID();
+    const retiredToken = `retired-${randomUUID()}`;
+    const retiredUrl = bridge.register(retiredSessionId, retiredToken);
+    const records: Array<{ context?: unknown; level: string }> = [];
+    const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
+    subscriptions.push(unsubscribe);
+
+    bridge.unregister(retiredSessionId);
+    await expect(openSocket(retiredUrl)).rejects.toThrow(
+      "Unexpected server response: 401",
+    );
+
+    const unknownSessionId = randomUUID();
+    const unknownUrl = new URL(retiredUrl);
+    unknownUrl.pathname = `/sessions/${unknownSessionId}`;
+    unknownUrl.searchParams.set("token", "unknown-token");
+    await expect(openSocket(unknownUrl.toString())).rejects.toThrow(
+      "Unexpected server response: 401",
+    );
+
+    const activeSessionId = randomUUID();
+    const activeUrl = bridge.register(activeSessionId, "active-token");
+    const invalidTokenUrl = new URL(activeUrl);
+    invalidTokenUrl.searchParams.set("token", "wrong-token");
+    await expect(openSocket(invalidTokenUrl.toString())).rejects.toThrow(
+      "Unexpected server response: 401",
+    );
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "debug",
+          context: expect.objectContaining({
+            event: "code.bridge.upgrade-rejected",
+            reasonCode: "retired-session",
+            sessionId: retiredSessionId,
+          }),
+        }),
+        expect.objectContaining({
+          level: "warn",
+          context: expect.objectContaining({
+            event: "code.bridge.upgrade-rejected",
+            reasonCode: "unknown-session",
+            sessionId: unknownSessionId,
+          }),
+        }),
+        expect.objectContaining({
+          level: "warn",
+          context: expect.objectContaining({
+            event: "code.bridge.upgrade-rejected",
+            reasonCode: "invalid-token",
+            sessionId: activeSessionId,
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(records)).not.toContain(retiredToken);
+  });
+
+  it("bounds retired session tombstones and clears them on exact registration reuse", async () => {
+    const bridge = new CodeWorkbenchBridge({
+      retiredSessionLimit: 2,
+      retiredSessionTtlMs: 1_000,
+    });
+    bridges.push(bridge);
+    await bridge.start();
+    const records: Array<{ context?: unknown; level: string }> = [];
+    const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
+    subscriptions.push(unsubscribe);
+    const retired = Array.from({ length: 3 }, () => {
+      const sessionId = randomUUID();
+      const url = bridge.register(sessionId, randomUUID());
+      bridge.unregister(sessionId);
+      return { sessionId, url };
+    });
+
+    await expect(openSocket(retired[0]!.url)).rejects.toThrow(
+      "Unexpected server response: 401",
+    );
+    await expect(openSocket(retired[2]!.url)).rejects.toThrow(
+      "Unexpected server response: 401",
+    );
+
+    const reusedSessionId = retired[2]!.sessionId;
+    const replacementUrl = bridge.register(reusedSessionId, "replacement");
+    await expect(openSocket(retired[2]!.url)).rejects.toThrow(
+      "Unexpected server response: 401",
+    );
+    const replacement = await openSocket(replacementUrl);
+    replacement.close();
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          context: expect.objectContaining({
+            reasonCode: "unknown-session",
+            sessionId: retired[0]!.sessionId,
+          }),
+        }),
+        expect.objectContaining({
+          level: "debug",
+          context: expect.objectContaining({
+            reasonCode: "retired-session",
+            sessionId: retired[2]!.sessionId,
+          }),
+        }),
+        expect.objectContaining({
+          level: "warn",
+          context: expect.objectContaining({
+            reasonCode: "invalid-token",
+            sessionId: reusedSessionId,
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("expires retired session tombstones without changing rejection", async () => {
+    const bridge = new CodeWorkbenchBridge({ retiredSessionTtlMs: 10 });
+    bridges.push(bridge);
+    await bridge.start();
+    const records: Array<{ context?: unknown; level: string }> = [];
+    const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
+    subscriptions.push(unsubscribe);
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const sessionId = randomUUID();
+      const url = bridge.register(sessionId, randomUUID());
+      bridge.unregister(sessionId);
+      now += 11;
+
+      await expect(openSocket(url)).rejects.toThrow(
+        "Unexpected server response: 401",
+      );
+      expect(records).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            level: "warn",
+            context: expect.objectContaining({
+              reasonCode: "unknown-session",
+              sessionId,
+            }),
+          }),
+        ]),
+      );
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("keeps every workbench surface connected and reapplies themes", async () => {
