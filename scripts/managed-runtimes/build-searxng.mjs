@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { randomBytes } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { cp, lstat, readdir, realpath } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import {
@@ -180,18 +180,24 @@ await writeFile(
   )}\n`,
 );
 await smoke(runtime, process.argv.includes("--external-smoke"));
+await materializeSymlinks(runtime);
 
-const artifactName = `cantrip-searxng-${lock.bundleVersion}-${target}.tar.gz`;
+const artifactName = `cantrip-searxng-${lock.bundleVersion}-${target}.zip`;
 const artifactPath = path.join(outputRoot, artifactName);
 await rm(artifactPath, { force: true });
-await run("tar", ["-czf", artifactPath, "-C", runtime, "."]);
+await run(python, [
+  "-I",
+  path.join(inputRoot, "tools", "archive_runtime.py"),
+  runtime,
+  artifactPath,
+]);
 const descriptor = {
   schemaVersion: 1,
   component: "searxng",
   version: lock.bundleVersion,
   platform: lock.targets[target].platform,
   architecture: lock.targets[target].architecture,
-  archiveFormat: "tar.gz",
+  archiveFormat: "zip",
   compressedBytes: (await stat(artifactPath)).size,
   extractedBytes: await extractedBytes(runtime),
   sha256: await sha256(artifactPath),
@@ -284,14 +290,16 @@ async function smoke(runtimeRoot, external) {
         `SearXNG readiness timed out:\n${diagnostics.slice(-4000)}`,
       );
     const query = external ? "Cantrip software" : "deterministic fixture";
-    const engine = external ? "wikipedia" : "cantrip offline";
+    const engine = external ? "duckduckgo,wikipedia,brave" : "cantrip offline";
     const response = await fetch(
       `http://127.0.0.1:${port}/search?q=${encodeURIComponent(query)}&format=json&engines=${encodeURIComponent(engine)}`,
       { signal: AbortSignal.timeout(20_000) },
     );
     const body = await response.json();
     if (!response.ok || !Array.isArray(body.results) || body.results.length < 1)
-      throw new Error(`search smoke failed (${response.status})`);
+      throw new Error(
+        `search smoke failed (${response.status}): ${JSON.stringify(body).slice(0, 2_000)}`,
+      );
   } finally {
     if (child.exitCode === null) terminate(child, "SIGTERM");
     await Promise.race([
@@ -380,6 +388,44 @@ export function parseLockedRequirements(contents) {
     if (hash && current) current.hashes.add(hash[1]);
   }
   return records;
+}
+
+async function materializeSymlinks(rootDirectory) {
+  const resolvedRoot = await realpath(rootDirectory);
+  const inodes = new Set();
+  await visit(rootDirectory);
+
+  async function visit(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const candidate = path.join(directory, entry.name);
+      const metadata = await lstat(candidate);
+      if (metadata.isSymbolicLink()) {
+        const resolved = await realpath(candidate);
+        const relation = path.relative(resolvedRoot, resolved);
+        if (relation.startsWith("..") || path.isAbsolute(relation)) {
+          throw new Error(`runtime symlink escapes the artifact: ${candidate}`);
+        }
+        const target = await stat(resolved);
+        await rm(candidate, { recursive: true, force: true });
+        await cp(resolved, candidate, {
+          dereference: true,
+          recursive: target.isDirectory(),
+        });
+      } else if (metadata.isDirectory()) {
+        await visit(candidate);
+      } else if (metadata.isFile() && metadata.nlink > 1) {
+        const key = `${metadata.dev}:${metadata.ino}`;
+        if (inodes.has(key)) {
+          const replacement = `${candidate}.materialized-${randomBytes(6).toString("hex")}`;
+          await cp(candidate, replacement);
+          await rm(candidate, { force: true });
+          await rename(replacement, candidate);
+        } else {
+          inodes.add(key);
+        }
+      }
+    }
+  }
 }
 
 export { smoke };
