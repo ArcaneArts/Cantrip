@@ -8718,6 +8718,11 @@ export const cantripAgentOperationNameSchema = z.enum([
   "terminal.restart",
   "web.search",
   "web.read",
+  "web.session.snapshot",
+  "web.session.open",
+  "web.session.click",
+  "web.session.type",
+  "web.session.close",
   "browser.services",
   "browser.open",
   "client.notify",
@@ -8745,6 +8750,7 @@ export const CANTRIP_MCP_READ_OPERATIONS = [
   "terminal.read",
   "web.search",
   "web.read",
+  "web.session.snapshot",
   "browser.services",
 ] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
 
@@ -8767,6 +8773,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
   "terminal_read",
   "web_search",
   "web_read",
+  "web_session_snapshot",
   "browser_services",
 ] as const;
 
@@ -8785,6 +8792,10 @@ export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
   "explorer.write",
   "terminal.send",
   "terminal.restart",
+  "web.session.open",
+  "web.session.click",
+  "web.session.type",
+  "web.session.close",
   "browser.open",
 ] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
 
@@ -8815,6 +8826,10 @@ export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
   "explorer_write",
   "terminal_send",
   "terminal_restart",
+  "web_session_open",
+  "web_session_click",
+  "web_session_type",
+  "web_session_close",
   "browser_navigate",
   "client_notify",
   "client_focus_project",
@@ -8855,7 +8870,9 @@ export function cantripMcpOperationsForPermissionProfile(
   permissionProfileId: string,
 ): readonly z.infer<typeof cantripAgentOperationNameSchema>[] {
   return permissionProfileId === ":read-only"
-    ? CANTRIP_MCP_READ_OPERATIONS
+    ? CANTRIP_MCP_READ_OPERATIONS.filter(
+        (operation) => operation !== "web.session.snapshot",
+      )
     : CANTRIP_MCP_OPERATIONS;
 }
 
@@ -9257,6 +9274,47 @@ export const cantripMcpWebReadInputSchema = z
       });
     }
   });
+const cantripWebSessionIdSchema = z.string().regex(/^wss_[A-Za-z0-9_-]{32}$/u);
+const cantripWebElementRefSchema = z.string().regex(/^wer_[A-Za-z0-9_-]{32}$/u);
+export const cantripMcpWebSessionOpenInputSchema = z
+  .object({
+    url: z.url().max(8_192),
+    sessionId: cantripWebSessionIdSchema.optional(),
+    browserTarget: cantripMcpSurfaceTargetSchema("browser").optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.sessionId && input.browserTarget) {
+      context.addIssue({
+        code: "custom",
+        message: "A resumed session already has a fixed profile target.",
+        path: ["browserTarget"],
+      });
+    }
+  });
+export const cantripMcpWebSessionSnapshotInputSchema = z
+  .object({
+    sessionId: cantripWebSessionIdSchema,
+    maxChars: z.number().int().min(1_000).max(50_000).default(20_000),
+  })
+  .strict();
+export const cantripMcpWebSessionClickInputSchema = z
+  .object({
+    sessionId: cantripWebSessionIdSchema,
+    elementRef: cantripWebElementRefSchema,
+  })
+  .strict();
+export const cantripMcpWebSessionTypeInputSchema = z
+  .object({
+    sessionId: cantripWebSessionIdSchema,
+    elementRef: cantripWebElementRefSchema,
+    text: z.string().max(4_000),
+    submit: z.boolean().default(false),
+  })
+  .strict();
+export const cantripMcpWebSessionCloseInputSchema = z
+  .object({ sessionId: cantripWebSessionIdSchema })
+  .strict();
 export const cantripMcpBrowserServicesInputSchema = z
   .object({ target: cantripMcpSurfaceTargetSchema("browser") })
   .strict();
@@ -9670,6 +9728,58 @@ export const cantripMcpWebReadResultSchema = cantripMcpReadResultBaseSchema
       .strict(),
   })
   .strict();
+const cantripWebSessionStateSchema = z
+  .object({
+    sessionId: cantripWebSessionIdSchema,
+    url: z.url().max(8_192),
+    title: z.string().max(1_000),
+    generation: z.number().int().positive(),
+    persistent: z.boolean(),
+  })
+  .strict();
+const cantripMcpWebSessionMutationResultBaseSchema =
+  cantripMcpReadResultBaseSchema
+    .extend({
+      target: z.null().default(null),
+      mutated: z.literal(true),
+    })
+    .strict();
+export const cantripMcpWebSessionOpenResultSchema =
+  cantripMcpWebSessionMutationResultBaseSchema.extend({
+    data: cantripWebSessionStateSchema,
+  });
+export const cantripMcpWebSessionSnapshotResultSchema =
+  cantripMcpReadResultBaseSchema
+    .extend({
+      target: z.null().default(null),
+      data: cantripWebSessionStateSchema
+        .extend({
+          snapshot: z.string().max(50_000),
+          elements: z
+            .array(
+              z
+                .object({
+                  ref: cantripWebElementRefSchema,
+                  description: z.string().min(1).max(1_000),
+                })
+                .strict(),
+            )
+            .max(100),
+          truncated: z.boolean(),
+        })
+        .strict(),
+    })
+    .strict();
+export const cantripMcpWebSessionActionResultSchema =
+  cantripMcpWebSessionMutationResultBaseSchema.extend({
+    data: cantripWebSessionStateSchema,
+  });
+export const cantripMcpWebSessionCloseResultSchema =
+  cantripMcpWebSessionMutationResultBaseSchema.extend({
+    data: z
+      .object({ sessionId: cantripWebSessionIdSchema, closed: z.literal(true) })
+      .strict(),
+  });
 export const cantripMcpBrowserServicesResultSchema =
   cantripMcpReadResultBaseSchema.extend({
     target: cantripMcpSurfaceTargetSchema("browser"),

@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
 import {
   chmod,
   lstat,
@@ -13,6 +14,7 @@ import { pathToFileURL } from "node:url";
 
 import {
   managedWebRuntimeStatusSchema,
+  type CantripMcpBinding,
   type ManagedWebRuntimeStatus,
 } from "@cantrip/protocol";
 
@@ -29,6 +31,8 @@ const IDLE_BROWSER_MS = 5 * 60_000;
 const MAX_CONTEXTS = 4;
 const MAX_WAITERS = 16;
 const MAX_RENDERED_HTML_BYTES = 10_000_000;
+const SESSION_TTL_MS = 15 * 60_000;
+const MAX_SESSION_ELEMENTS = 100;
 
 interface InstallerLike {
   prepare(): Promise<ManagedWebRuntimeStatus>;
@@ -43,9 +47,22 @@ interface PlaywrightPage {
     url: string,
     options: { timeout: number; waitUntil: "domcontentloaded" },
   ): Promise<unknown>;
-  locator(selector: string): { ariaSnapshot(): Promise<string> };
+  locator(selector: string): PlaywrightLocator;
   title(): Promise<string>;
   url(): string;
+  waitForLoadState(
+    state: "domcontentloaded",
+    options: { timeout: number },
+  ): Promise<void>;
+}
+
+interface PlaywrightLocator {
+  ariaSnapshot(): Promise<string>;
+  click(options: { timeout: number }): Promise<void>;
+  count(): Promise<number>;
+  fill(value: string, options: { timeout: number }): Promise<void>;
+  nth(index: number): PlaywrightLocator;
+  press(key: string, options: { timeout: number }): Promise<void>;
 }
 
 interface PlaywrightContext {
@@ -85,6 +102,10 @@ interface PlaywrightModule {
     launchServer(
       options: Record<string, unknown>,
     ): Promise<PlaywrightBrowserServer>;
+    launchPersistentContext(
+      userDataDirectory: string,
+      options: Record<string, unknown>,
+    ): Promise<PlaywrightContext>;
   };
 }
 
@@ -106,6 +127,56 @@ export interface RenderedPage {
   html: string;
   title: string;
   url: string;
+}
+
+export interface WebSessionState {
+  generation: number;
+  persistent: boolean;
+  sessionId: string;
+  title: string;
+  url: string;
+}
+
+export interface WebSessionSnapshot extends WebSessionState {
+  elements: Array<{ description: string; ref: string }>;
+  snapshot: string;
+  truncated: boolean;
+}
+
+export interface WebSessionOpenOptions {
+  beforeNavigation?: (url: URL) => Promise<void>;
+  browserTarget?: { projectId: string; surfaceId: string };
+  sessionId?: string;
+}
+
+interface WebSessionRecord {
+  beforeNavigation?: (url: URL) => Promise<void>;
+  busy: boolean;
+  chatId: string;
+  context: PlaywrightContext;
+  elements: Map<string, PlaywrightLocator>;
+  generation: number;
+  lastUsedAt: number;
+  ownerId: string;
+  page: PlaywrightPage;
+  persistent: boolean;
+  proxy: BrowserNetworkProxy | null;
+  release: () => void;
+  snapshotCache: {
+    elements: Array<{ description: string; ref: string }>;
+    snapshot: string;
+  } | null;
+}
+
+function opaque(prefix: "wer" | "wss"): string {
+  return `${prefix}_${randomBytes(24).toString("base64url")}`;
+}
+
+function belongsToSession(
+  record: WebSessionRecord,
+  binding: CantripMcpBinding,
+): boolean {
+  return record.ownerId === binding.ownerId && record.chatId === binding.chatId;
 }
 
 class ContextSlots {
@@ -337,9 +408,12 @@ export class PlaywrightRuntimeManager {
   #operation: Promise<void> | null = null;
   #pendingRuntime: string | null = null;
   #proxy: BrowserNetworkProxy | null = null;
+  #persistentSessions = 0;
   #rollbackAttempted = false;
   #runtimeDirectory: string | null = null;
   #runtimeFailure: ManagedWebRuntimeStatus["failure"] = null;
+  readonly #sessions = new Map<string, WebSessionRecord>();
+  #sessionTimer: ReturnType<typeof setInterval> | null = null;
   #updateTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: PlaywrightRuntimeManagerOptions) {
@@ -411,23 +485,7 @@ export class PlaywrightRuntimeManager {
         userAgent:
           "CantripResearchBot/1.0 (+https://github.com/ArcaneArts/Cantrip)",
       });
-      await context.route("**/*", async (route) => {
-        const request = route.request();
-        const value = request.url();
-        if (value === "about:blank") return await route.continue();
-        if (!/^https?:/u.test(value))
-          return await route.abort("blockedbyclient");
-        if (!["GET", "HEAD"].includes(request.method()))
-          return await route.abort("blockedbyclient");
-        if (["websocket", "eventsource"].includes(request.resourceType()))
-          return await route.abort("blockedbyclient");
-        if (
-          request.isNavigationRequest() &&
-          request.resourceType() === "document"
-        )
-          await beforeNavigation?.(normalizedPublicHttpUrl(value));
-        await route.continue();
-      });
+      await this.#configureContext(context, beforeNavigation, false);
       const page = await context.newPage();
       await page.goto(target.href, {
         timeout: 30_000,
@@ -455,11 +513,338 @@ export class PlaywrightRuntimeManager {
     }
   }
 
+  async openSession(
+    binding: CantripMcpBinding,
+    urlValue: string,
+    options: WebSessionOpenOptions = {},
+  ): Promise<WebSessionState> {
+    const target = normalizedPublicHttpUrl(urlValue);
+    this.#expireSessions();
+    if (options.sessionId) {
+      const record = this.#session(binding, options.sessionId);
+      if (options.browserTarget)
+        throw new Error(
+          "A resumed web session cannot change its browser profile.",
+        );
+      this.#claimSession(record);
+      try {
+        record.beforeNavigation = options.beforeNavigation;
+        this.#invalidateSession(record);
+        await record.page.goto(target.href, {
+          timeout: 30_000,
+          waitUntil: "domcontentloaded",
+        });
+        return await this.#sessionState(options.sessionId, record);
+      } finally {
+        record.busy = false;
+      }
+    }
+
+    const release = await this.#slots.acquire();
+    this.#activeContexts += 1;
+    let context: PlaywrightContext | null = null;
+    let proxy: BrowserNetworkProxy | null = null;
+    let persistent = false;
+    try {
+      if (options.browserTarget) {
+        if (this.#persistentSessions >= 1)
+          throw new Error(
+            "The managed browser persistent-session limit is reached.",
+          );
+        const runtime = await this.#readyRuntime();
+        const stateRoot = path.join(
+          this.#dataDirectory,
+          "managed-runtimes",
+          "playwright",
+          "state",
+        );
+        await createState(stateRoot);
+        const profileKey = createHash("sha256")
+          .update(binding.ownerId)
+          .update("\0")
+          .update(options.browserTarget.projectId)
+          .update("\0")
+          .update(options.browserTarget.surfaceId)
+          .digest("hex");
+        const profileDirectory = path.join(stateRoot, "profiles", profileKey);
+        await privateDirectory(profileDirectory);
+        proxy = this.#proxyFactory();
+        const proxyOrigin = await proxy.start();
+        const module = await this.#loadPlaywright(runtime);
+        context = await module.chromium.launchPersistentContext(
+          profileDirectory,
+          {
+            executablePath: await findExecutable(runtime),
+            headless: true,
+            chromiumSandbox: true,
+            proxy: { server: proxyOrigin, bypass: "" },
+            env: browserEnvironment(runtime, stateRoot),
+            acceptDownloads: false,
+            serviceWorkers: "block",
+            userAgent:
+              "CantripResearchBot/1.0 (+https://github.com/ArcaneArts/Cantrip)",
+          },
+        );
+        persistent = true;
+        this.#persistentSessions += 1;
+      } else {
+        const browser = await this.#ensureBrowser();
+        context = await browser.newContext({
+          acceptDownloads: false,
+          serviceWorkers: "block",
+          userAgent:
+            "CantripResearchBot/1.0 (+https://github.com/ArcaneArts/Cantrip)",
+        });
+      }
+      await this.#configureContext(context, options.beforeNavigation, true);
+      const page = await context.newPage();
+      await page.goto(target.href, {
+        timeout: 30_000,
+        waitUntil: "domcontentloaded",
+      });
+      const sessionId = opaque("wss");
+      const record: WebSessionRecord = {
+        beforeNavigation: options.beforeNavigation,
+        busy: false,
+        chatId: binding.chatId,
+        context,
+        elements: new Map(),
+        generation: 1,
+        lastUsedAt: this.#now().getTime(),
+        ownerId: binding.ownerId,
+        page,
+        persistent,
+        proxy,
+        release,
+        snapshotCache: null,
+      };
+      this.#sessions.set(sessionId, record);
+      this.#startSessionExpiry();
+      this.#runtimeFailure = null;
+      return await this.#sessionState(sessionId, record);
+    } catch (error) {
+      await context?.close().catch(() => undefined);
+      await proxy?.close().catch(() => undefined);
+      if (persistent) this.#persistentSessions -= 1;
+      this.#activeContexts -= 1;
+      release();
+      this.#recordFailure(error);
+      throw error;
+    }
+  }
+
+  async snapshotSession(
+    binding: CantripMcpBinding,
+    sessionId: string,
+    maxChars: number,
+  ): Promise<WebSessionSnapshot> {
+    this.#expireSessions();
+    const record = this.#session(binding, sessionId);
+    this.#claimSession(record);
+    try {
+      if (!record.snapshotCache) {
+        const rawSnapshot = await record.page.locator("body").ariaSnapshot();
+        const interactive = record.page.locator(
+          "a,button,input,textarea,select,[role=button],[tabindex]",
+        );
+        const elements: Array<{ description: string; ref: string }> = [];
+        const count = Math.min(await interactive.count(), MAX_SESSION_ELEMENTS);
+        for (let index = 0; index < count; index += 1) {
+          const locator = interactive.nth(index);
+          const description =
+            (await locator.ariaSnapshot())
+              .replace(/\s+/gu, " ")
+              .trim()
+              .slice(0, 500) || "interactive element";
+          const ref = opaque("wer");
+          record.elements.set(ref, locator);
+          elements.push({ description, ref });
+        }
+        record.snapshotCache = { elements, snapshot: rawSnapshot };
+      }
+      record.lastUsedAt = this.#now().getTime();
+      const state = await this.#sessionState(sessionId, record);
+      return {
+        ...state,
+        elements: record.snapshotCache.elements,
+        snapshot: record.snapshotCache.snapshot.slice(0, maxChars),
+        truncated: record.snapshotCache.snapshot.length > maxChars,
+      };
+    } finally {
+      record.busy = false;
+    }
+  }
+
+  async clickSession(
+    binding: CantripMcpBinding,
+    sessionId: string,
+    elementRef: string,
+  ): Promise<WebSessionState> {
+    const record = this.#session(binding, sessionId);
+    const locator = this.#element(record, elementRef);
+    this.#claimSession(record);
+    try {
+      await locator.click({ timeout: 15_000 });
+      await record.page
+        .waitForLoadState("domcontentloaded", { timeout: 5_000 })
+        .catch(() => undefined);
+    } finally {
+      this.#invalidateSession(record);
+      record.busy = false;
+    }
+    return await this.#sessionState(sessionId, record);
+  }
+
+  async typeSession(
+    binding: CantripMcpBinding,
+    sessionId: string,
+    elementRef: string,
+    value: string,
+    submit: boolean,
+  ): Promise<WebSessionState> {
+    const record = this.#session(binding, sessionId);
+    const locator = this.#element(record, elementRef);
+    this.#claimSession(record);
+    try {
+      await locator.fill(value, { timeout: 15_000 });
+      if (submit) {
+        await locator.press("Enter", { timeout: 15_000 });
+        await record.page
+          .waitForLoadState("domcontentloaded", { timeout: 5_000 })
+          .catch(() => undefined);
+      }
+    } finally {
+      this.#invalidateSession(record);
+      record.busy = false;
+    }
+    return await this.#sessionState(sessionId, record);
+  }
+
+  async closeSession(
+    binding: CantripMcpBinding,
+    sessionId: string,
+  ): Promise<void> {
+    const record = this.#session(binding, sessionId);
+    await this.#closeSession(sessionId, record);
+  }
+
   async close(): Promise<void> {
     this.#closed = true;
     if (this.#updateTimer) clearInterval(this.#updateTimer);
     if (this.#idleTimer) clearTimeout(this.#idleTimer);
+    if (this.#sessionTimer) clearInterval(this.#sessionTimer);
+    await Promise.all(
+      [...this.#sessions].map(([sessionId, record]) =>
+        this.#closeSession(sessionId, record),
+      ),
+    );
     await this.#closeBrowser();
+  }
+
+  async #configureContext(
+    context: PlaywrightContext,
+    beforeNavigation: ((url: URL) => Promise<void>) | undefined,
+    interactive: boolean,
+  ): Promise<void> {
+    await context.route("**/*", async (route) => {
+      const request = route.request();
+      const value = request.url();
+      if (value === "about:blank") return await route.continue();
+      if (!/^https?:/u.test(value)) return await route.abort("blockedbyclient");
+      if (!interactive && !["GET", "HEAD"].includes(request.method()))
+        return await route.abort("blockedbyclient");
+      if (
+        !interactive &&
+        ["websocket", "eventsource"].includes(request.resourceType())
+      )
+        return await route.abort("blockedbyclient");
+      if (
+        request.isNavigationRequest() &&
+        request.resourceType() === "document"
+      )
+        await beforeNavigation?.(normalizedPublicHttpUrl(value));
+      await route.continue();
+    });
+  }
+
+  async #readyRuntime(): Promise<string> {
+    await this.prepare();
+    const runtime =
+      this.#runtimeDirectory ?? this.#installer.runtimeDirectory();
+    if (!runtime) throw new Error(`Browser runtime is ${this.status().state}.`);
+    return runtime;
+  }
+
+  #session(binding: CantripMcpBinding, sessionId: string): WebSessionRecord {
+    const record = this.#sessions.get(sessionId);
+    if (!record || !belongsToSession(record, binding))
+      throw new Error("The web session is unavailable for this task.");
+    record.lastUsedAt = this.#now().getTime();
+    return record;
+  }
+
+  #element(record: WebSessionRecord, elementRef: string): PlaywrightLocator {
+    const locator = record.elements.get(elementRef);
+    if (!locator)
+      throw new Error(
+        "The web element reference is stale; take a fresh session snapshot.",
+      );
+    return locator;
+  }
+
+  #claimSession(record: WebSessionRecord): void {
+    if (record.busy)
+      throw new Error("The web session is busy with another operation.");
+    record.busy = true;
+  }
+
+  #invalidateSession(record: WebSessionRecord): void {
+    record.generation += 1;
+    record.lastUsedAt = this.#now().getTime();
+    record.elements.clear();
+    record.snapshotCache = null;
+  }
+
+  async #sessionState(
+    sessionId: string,
+    record: WebSessionRecord,
+  ): Promise<WebSessionState> {
+    return {
+      generation: record.generation,
+      persistent: record.persistent,
+      sessionId,
+      title: (await record.page.title()).slice(0, 1_000),
+      url: normalizedPublicHttpUrl(record.page.url()).href,
+    };
+  }
+
+  #startSessionExpiry(): void {
+    if (this.#sessionTimer) return;
+    this.#sessionTimer = setInterval(() => this.#expireSessions(), 60_000);
+    this.#sessionTimer.unref();
+  }
+
+  #expireSessions(): void {
+    const expiredBefore = this.#now().getTime() - SESSION_TTL_MS;
+    for (const [sessionId, record] of this.#sessions) {
+      if (record.lastUsedAt < expiredBefore)
+        void this.#closeSession(sessionId, record);
+    }
+  }
+
+  async #closeSession(
+    sessionId: string,
+    record: WebSessionRecord,
+  ): Promise<void> {
+    if (this.#sessions.get(sessionId) !== record) return;
+    this.#sessions.delete(sessionId);
+    await record.context.close().catch(() => undefined);
+    await record.proxy?.close().catch(() => undefined);
+    if (record.persistent) this.#persistentSessions -= 1;
+    this.#activeContexts -= 1;
+    record.release();
+    await this.#applyPendingRuntime();
+    this.#scheduleIdleClose();
   }
 
   async #reconcile(): Promise<void> {
@@ -532,6 +917,9 @@ export class PlaywrightRuntimeManager {
         this.#recordFailure(
           new Error("Managed Chromium stopped unexpectedly."),
         );
+        for (const [sessionId, record] of this.#sessions) {
+          if (!record.persistent) void this.#closeSession(sessionId, record);
+        }
         void proxy.close();
       });
       return browser;

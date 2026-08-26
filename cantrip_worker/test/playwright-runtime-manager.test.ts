@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { managedWebRuntimeStatusSchema } from "@cantrip/protocol";
+import type { CantripMcpBinding } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserNetworkProxy } from "../src/managed-runtimes/browser-proxy.js";
@@ -134,6 +135,130 @@ describe("PlaywrightRuntimeManager", () => {
     await manager.close();
     expect(browserClose).toHaveBeenCalledOnce();
     expect(serverClose).toHaveBeenCalledOnce();
+  });
+
+  it("fences interactive element references by owner and generation", async () => {
+    const runtime = await fixture();
+    const state = await fixture();
+    const click = vi.fn(async () => undefined);
+    const fill = vi.fn(async () => undefined);
+    const element = {
+      ariaSnapshot: async () => '- button "Search"',
+      click,
+      count: async () => 1,
+      fill,
+      nth: () => element,
+      press: vi.fn(async () => undefined),
+    };
+    const body = { ...element, ariaSnapshot: async () => "- document Web" };
+    let currentUrl = "about:blank";
+    let routeHandler: ((route: unknown) => Promise<void>) | null = null;
+    const contextClose = vi.fn(async () => undefined);
+    const page = {
+      content: async () => "",
+      goto: async (url: string) => {
+        await routeHandler!({
+          abort: async () => undefined,
+          continue: async () => undefined,
+          request: () => ({
+            isNavigationRequest: () => true,
+            method: () => "GET",
+            resourceType: () => "document",
+            url: () => url,
+          }),
+        });
+        currentUrl = url;
+      },
+      locator: (selector: string) => (selector === "body" ? body : element),
+      title: async () => "Web",
+      url: () => currentUrl,
+      waitForLoadState: async () => undefined,
+    };
+    const processEvents = Object.assign(new EventEmitter(), {
+      spawnargs: ["chromium", "--headless"],
+    });
+    const manager = new PlaywrightRuntimeManager({
+      dataDirectory: state,
+      installer: {
+        prepare: async () => readyStatus(),
+        rollback: async () => readyStatus(),
+        runtimeDirectory: () => runtime,
+        status: () => readyStatus(),
+      },
+      proxyFactory: () =>
+        ({
+          start: async () => "http://127.0.0.1:41000",
+          close: async () => undefined,
+        }) as unknown as BrowserNetworkProxy,
+      loadPlaywright: async () =>
+        ({
+          chromium: {
+            launchServer: async () => ({
+              close: async () => undefined,
+              process: () => processEvents,
+              wsEndpoint: () => "ws://127.0.0.1:41001/fixture",
+            }),
+            connect: async () => ({
+              close: async () => undefined,
+              newContext: async () => ({
+                close: contextClose,
+                route: async (
+                  _pattern: string,
+                  handler: (route: unknown) => Promise<void>,
+                ) => {
+                  routeHandler = handler;
+                },
+                newPage: async () => page,
+              }),
+            }),
+          },
+        }) as never,
+    });
+    const binding = {
+      bindingId: "00000000-0000-4000-8000-000000000001",
+      ownerId: "owner-one",
+      projectId: "project-one",
+      chatId: "chat-one",
+      executionLaneId: "lane-one",
+      workerId: "worker-one",
+      worktreeId: "worktree-one",
+      rootKind: "git-worktree",
+      permissionProfileId: ":workspace-write",
+      allowedOperations: [],
+      issuedAt: "2026-08-21T12:00:00.000Z",
+      expiresAt: "2026-08-21T18:00:00.000Z",
+    } as CantripMcpBinding;
+    const opened = await manager.openSession(binding, "https://example.com/");
+    const first = await manager.snapshotSession(
+      binding,
+      opened.sessionId,
+      5_000,
+    );
+    const repeated = await manager.snapshotSession(
+      binding,
+      opened.sessionId,
+      5_000,
+    );
+    expect(repeated.elements).toEqual(first.elements);
+    await expect(
+      manager.snapshotSession(
+        { ...binding, chatId: "other-chat" },
+        opened.sessionId,
+        5_000,
+      ),
+    ).rejects.toThrow(/unavailable/u);
+    await manager.clickSession(
+      binding,
+      opened.sessionId,
+      first.elements[0]!.ref,
+    );
+    expect(click).toHaveBeenCalledOnce();
+    await expect(
+      manager.clickSession(binding, opened.sessionId, first.elements[0]!.ref),
+    ).rejects.toThrow(/stale/u);
+    await manager.closeSession(binding, opened.sessionId);
+    expect(contextClose).toHaveBeenCalledOnce();
+    await manager.close();
   });
 });
 

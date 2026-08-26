@@ -33,6 +33,11 @@ import {
   cantripMcpToolHelpResultSchema,
   cantripMcpWebReadInputSchema,
   cantripMcpWebSearchInputSchema,
+  cantripMcpWebSessionClickInputSchema,
+  cantripMcpWebSessionCloseInputSchema,
+  cantripMcpWebSessionOpenInputSchema,
+  cantripMcpWebSessionSnapshotInputSchema,
+  cantripMcpWebSessionTypeInputSchema,
   cantripMcpWorktreeCreateInputSchema,
   cantripMcpWorktreeListInputSchema,
   cantripMcpWorktreeReleaseInputSchema,
@@ -67,6 +72,7 @@ const inputSchemas = {
   terminal_read: cantripMcpTerminalReadInputSchema,
   web_search: cantripMcpWebSearchInputSchema,
   web_read: cantripMcpWebReadInputSchema,
+  web_session_snapshot: cantripMcpWebSessionSnapshotInputSchema,
   browser_services: cantripMcpBrowserServicesInputSchema,
   run_configuration_create: cantripMcpRunConfigurationCreateInputSchema,
   run_configuration_update: cantripMcpRunConfigurationUpdateInputSchema,
@@ -82,6 +88,10 @@ const inputSchemas = {
   explorer_write: cantripMcpExplorerWriteInputSchema,
   terminal_send: cantripMcpTerminalSendInputSchema,
   terminal_restart: cantripMcpTerminalRestartInputSchema,
+  web_session_open: cantripMcpWebSessionOpenInputSchema,
+  web_session_click: cantripMcpWebSessionClickInputSchema,
+  web_session_type: cantripMcpWebSessionTypeInputSchema,
+  web_session_close: cantripMcpWebSessionCloseInputSchema,
   browser_navigate: cantripMcpBrowserNavigateInputSchema,
   client_notify: cantripMcpClientNotifyInputSchema,
   client_focus_project: cantripMcpClientFocusProjectInputSchema,
@@ -92,6 +102,8 @@ const inputSchemas = {
 const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
   web_search: [{ query: "portable local search runtimes", count: 10 }],
   web_read: [{ searchResultId: `wsr_${"A".repeat(32)}` }],
+  web_session_open: [{ url: "https://example.com/" }],
+  web_session_snapshot: [{ sessionId: `wss_${"A".repeat(32)}` }],
   tool_help: [{ tool: "worktree_create" }],
   run_configuration_start: [
     {
@@ -139,6 +151,13 @@ const notes: Partial<Record<ToolName, string[]>> = {
   web_read: [
     "On the first page provide exactly one of url or searchResultId. On later pages provide only cursor plus optional maxChars.",
     "render=always requires the managed browser runtime; render=auto begins with static extraction.",
+  ],
+  web_session_snapshot: [
+    "Element references are bound to the current session generation and become stale after any action or navigation.",
+  ],
+  web_session_open: [
+    "Omit browserTarget for an ephemeral session. Provide an exact Browser target for an owner-partitioned persistent profile.",
+    "Resume and navigate an existing session with sessionId; its profile cannot be changed.",
   ],
   run_configuration_create: [
     "Definitions are stored under Primary .cantrip/run-configurations with document.id as the filename.",
