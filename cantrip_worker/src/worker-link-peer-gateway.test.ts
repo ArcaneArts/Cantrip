@@ -277,4 +277,49 @@ describe("WorkerLinkPeerGateway", () => {
     expect(closed).toHaveBeenCalledWith("invalid-handshake-rate-limit");
     await gateway.close();
   });
+
+  it("bounds buffered signaling by bytes before a transport is available", async () => {
+    const peer = peerSession();
+    const gateway = new WorkerLinkPeerGateway({
+      authorize: () => true,
+      emit: () => true,
+      now: () => now,
+      sweepIntervalMs: 0,
+    });
+    await gateway.handleCoordinatorCommand({
+      type: "worker-link.peer.install",
+      peerSession: peer,
+      configuration: configuration(),
+    });
+    for (let signalSequence = 0; signalSequence < 4; signalSequence += 1) {
+      await gateway.handleCoordinatorCommand({
+        type: "worker-link.peer.signal",
+        envelope: {
+          peerSessionId: peer.peerSessionId,
+          sessionId: peer.sessionId,
+          routeGeneration: peer.routeGeneration,
+          route: peer.route,
+          sender: "client",
+          signalSequence,
+          signal: { type: "offer", sdp: "s".repeat(900_000) },
+        },
+      });
+    }
+    await expect(
+      gateway.handleCoordinatorCommand({
+        type: "worker-link.peer.signal",
+        envelope: {
+          peerSessionId: peer.peerSessionId,
+          sessionId: peer.sessionId,
+          routeGeneration: peer.routeGeneration,
+          route: peer.route,
+          sender: "client",
+          signalSequence: 4,
+          signal: { type: "offer", sdp: "s".repeat(900_000) },
+        },
+      }),
+    ).rejects.toThrow(/capacity/i);
+    expect(gateway.stats().pendingSignals).toBe(4);
+    await gateway.close();
+  });
 });

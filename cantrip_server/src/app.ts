@@ -965,6 +965,11 @@ import {
   workerLinkGrantBindingSchema,
   workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
+  workerLinkPeerMailboxReadRequestSchema,
+  workerLinkPeerMailboxSchema,
+  workerLinkPeerSessionOpenRequestSchema,
+  workerLinkPeerSessionSchema,
+  workerLinkPeerSignalBatchSchema,
   workerLinkResourceGrantSchema,
   workerLinkRouteUpdateRequestSchema,
   workerLinkSessionOpenRequestSchema,
@@ -14674,6 +14679,180 @@ export async function buildApp({
           .send({ error: "WorkerLink route generation is not current." });
       }
       operationalMetrics.recordWorkerLinkTelemetry(input.data.samples);
+      return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    "/api/worker-links/:sessionId/peers",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerLinkPeerSessionOpenRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const session = await workerLinks.sessionForAuthorization(
+        request.params.sessionId,
+        {
+          accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        },
+      );
+      if (!session) {
+        return reply.code(404).send({ error: "WorkerLink session not found." });
+      }
+      try {
+        return reply
+          .code(201)
+          .send(
+            workerLinkPeerSessionSchema.parse(
+              await workerLinks.openPeerSession(
+                request.params.sessionId,
+                input.data,
+              ),
+            ),
+          );
+      } catch (error) {
+        if (error instanceof WorkerLinkUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { sessionId: string; peerSessionId: string };
+  }>(
+    "/api/worker-links/:sessionId/peers/:peerSessionId/signals",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const peerSessionId =
+        workerLinkPeerSessionSchema.shape.peerSessionId.safeParse(
+          request.params.peerSessionId,
+        );
+      if (!peerSessionId.success) {
+        return reply.code(400).send({ error: "Invalid peer session ID." });
+      }
+      const input = workerLinkPeerSignalBatchSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      if (
+        !(await workerLinks.sessionForAuthorization(request.params.sessionId, {
+          accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        }))
+      ) {
+        return reply.code(404).send({ error: "WorkerLink session not found." });
+      }
+      if (
+        input.data.signals.some(
+          (signal, index) =>
+            signal.sessionId !== request.params.sessionId ||
+            signal.peerSessionId !== peerSessionId.data ||
+            signal.sender !== "client" ||
+            signal.route !== input.data.signals[0]!.route ||
+            signal.routeGeneration !== input.data.signals[0]!.routeGeneration ||
+            signal.signalSequence !==
+              input.data.signals[0]!.signalSequence + index,
+        )
+      ) {
+        return reply
+          .code(400)
+          .send({ error: "WorkerLink peer signal authority does not match." });
+      }
+      try {
+        for (const signal of input.data.signals) {
+          await workerLinks.signalPeer(request.params.sessionId, signal);
+        }
+        return reply.code(204).send();
+      } catch (error) {
+        if (error instanceof WorkerLinkUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{
+    Params: { sessionId: string; peerSessionId: string };
+  }>(
+    "/api/worker-links/:sessionId/peers/:peerSessionId/mailbox",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const peerSessionId =
+        workerLinkPeerSessionSchema.shape.peerSessionId.safeParse(
+          request.params.peerSessionId,
+        );
+      if (!peerSessionId.success) {
+        return reply.code(400).send({ error: "Invalid peer session ID." });
+      }
+      const input = workerLinkPeerMailboxReadRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      if (
+        !(await workerLinks.sessionForAuthorization(request.params.sessionId, {
+          accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        }))
+      ) {
+        return reply.code(404).send({ error: "WorkerLink session not found." });
+      }
+      try {
+        return reply.send(
+          workerLinkPeerMailboxSchema.parse(
+            await workerLinks.readPeerMailbox(
+              request.params.sessionId,
+              peerSessionId.data,
+              input.data,
+            ),
+          ),
+        );
+      } catch (error) {
+        if (error instanceof WorkerLinkUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.delete<{
+    Params: { sessionId: string; peerSessionId: string };
+  }>(
+    "/api/worker-links/:sessionId/peers/:peerSessionId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const peerSessionId =
+        workerLinkPeerSessionSchema.shape.peerSessionId.safeParse(
+          request.params.peerSessionId,
+        );
+      if (!peerSessionId.success) {
+        return reply.code(400).send({ error: "Invalid peer session ID." });
+      }
+      const principal = authenticatedPrincipal(request);
+      if (
+        !(await workerLinks.sessionForAuthorization(request.params.sessionId, {
+          accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        }))
+      ) {
+        return reply.code(204).send();
+      }
+      await workerLinks.revokePeerSession(
+        request.params.sessionId,
+        peerSessionId.data,
+      );
       return reply.code(204).send();
     },
   );

@@ -281,6 +281,11 @@ import {
   queuedPromptSchema,
   directAttachmentTicketSchema,
   workerLinkLeaseSchema,
+  workerLinkPeerMailboxReadRequestSchema,
+  workerLinkPeerMailboxSchema,
+  workerLinkPeerSessionOpenRequestSchema,
+  workerLinkPeerSessionSchema,
+  workerLinkPeerSignalBatchSchema,
   workerLinkResourceGrantSchema,
   workerLinkRouteUpdateRequestSchema,
   workerLinkSessionOpenRequestSchema,
@@ -289,6 +294,8 @@ import {
   workerLinkTerminalGrantRequestSchema,
   workerLinkTunnelGrantRequestSchema,
   workerLinkTunnelGrantSchema,
+  type WorkerLinkPeerMailboxReadRequest,
+  type WorkerLinkPeerSignalEnvelope,
   type WorkerLinkTelemetrySample,
   directTransportTelemetrySchema,
   directTunnelPrepareRequestSchema,
@@ -885,6 +892,53 @@ export async function recordWorkerLinkTelemetry(
 export async function createWorkerLinkDirectTicket(sessionId: string) {
   return directAttachmentTicketSchema.parse(
     await post(`/api/worker-links/${encodeURIComponent(sessionId)}/direct`, {}),
+  );
+}
+
+export async function createWorkerLinkPeerSession(
+  sessionId: string,
+  routeGeneration: number,
+  route: "lan" | "wan",
+) {
+  return workerLinkPeerSessionSchema.parse(
+    await post(
+      `/api/worker-links/${encodeURIComponent(sessionId)}/peers`,
+      workerLinkPeerSessionOpenRequestSchema.parse({ routeGeneration, route }),
+    ),
+  );
+}
+
+export async function sendWorkerLinkPeerSignals(
+  sessionId: string,
+  peerSessionId: string,
+  signals: WorkerLinkPeerSignalEnvelope[],
+): Promise<void> {
+  await post(
+    `/api/worker-links/${encodeURIComponent(sessionId)}/peers/${encodeURIComponent(peerSessionId)}/signals`,
+    workerLinkPeerSignalBatchSchema.parse({ signals }),
+  );
+}
+
+export async function readWorkerLinkPeerMailbox(
+  sessionId: string,
+  peerSessionId: string,
+  input: Partial<WorkerLinkPeerMailboxReadRequest> = {},
+) {
+  return workerLinkPeerMailboxSchema.parse(
+    await post(
+      `/api/worker-links/${encodeURIComponent(sessionId)}/peers/${encodeURIComponent(peerSessionId)}/mailbox`,
+      workerLinkPeerMailboxReadRequestSchema.parse(input),
+    ),
+  );
+}
+
+export async function deleteWorkerLinkPeerSession(
+  sessionId: string,
+  peerSessionId: string,
+): Promise<void> {
+  await request(
+    `/api/worker-links/${encodeURIComponent(sessionId)}/peers/${encodeURIComponent(peerSessionId)}`,
+    { method: "DELETE" },
   );
 }
 

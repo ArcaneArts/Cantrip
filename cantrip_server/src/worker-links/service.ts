@@ -2,11 +2,21 @@ import { randomUUID } from "node:crypto";
 
 import {
   workerLinkLeaseSchema,
+  workerLinkPeerMailboxReadRequestSchema,
+  workerLinkPeerMailboxSchema,
+  workerLinkPeerSessionOpenRequestSchema,
+  workerLinkPeerSessionSchema,
+  workerLinkPeerSignalEnvelopeSchema,
   workerLinkResourceKindSchema,
   workerLinkResourceGrantSchema,
   workerLinkSessionSchema,
   type WorkerLinkLease,
   type WorkerLinkOperationalRoute,
+  type WorkerLinkPeerMailbox,
+  type WorkerLinkPeerMailboxReadRequest,
+  type WorkerLinkPeerSession,
+  type WorkerLinkPeerSessionOpenRequest,
+  type WorkerLinkPeerSignalEnvelope,
   type WorkerLinkResourceGrant,
   type WorkerLinkResourceKind,
   type WorkerLinkSession,
@@ -25,7 +35,9 @@ import {
   type WorkerLinkSessionOpenInput,
 } from "./coordinator.js";
 
-const OPERATION_TIMEOUT_MS = 5_000;
+// A replicated operation may spend one full worker-command timeout at the
+// authority before its response crosses the coordination bus again.
+const OPERATION_TIMEOUT_MS = 10_000;
 const MAX_ERROR_LENGTH = 500;
 
 type WorkerLinkOperation =
@@ -34,6 +46,27 @@ type WorkerLinkOperation =
       kind: "replace-route";
       sessionId: string;
       preferredRoute: WorkerLinkOperationalRoute;
+    }
+  | {
+      kind: "open-peer";
+      sessionId: string;
+      input: WorkerLinkPeerSessionOpenRequest;
+    }
+  | {
+      kind: "signal-peer";
+      sessionId: string;
+      envelope: WorkerLinkPeerSignalEnvelope;
+    }
+  | {
+      kind: "read-peer-mailbox";
+      sessionId: string;
+      peerSessionId: string;
+      input: WorkerLinkPeerMailboxReadRequest;
+    }
+  | {
+      kind: "revoke-peer";
+      sessionId: string;
+      peerSessionId: string;
     }
   | { kind: "issue-grant"; input: WorkerLinkGrantIssueInput }
   | {
@@ -171,6 +204,62 @@ export class WorkerLinkService {
     );
     await this.#revokeRelayEverywhere({ kind: "session", sessionId });
     return session;
+  }
+
+  openPeerSession(
+    sessionId: string,
+    input: WorkerLinkPeerSessionOpenRequest,
+  ): Promise<WorkerLinkPeerSession> {
+    return this.#runSessionOperation(sessionId, {
+      kind: "open-peer",
+      sessionId,
+      input: workerLinkPeerSessionOpenRequestSchema.parse(input),
+    }).then((value) => workerLinkPeerSessionSchema.parse(value));
+  }
+
+  signalPeer(
+    sessionId: string,
+    envelope: WorkerLinkPeerSignalEnvelope,
+  ): Promise<void> {
+    const parsed = workerLinkPeerSignalEnvelopeSchema.parse(envelope);
+    if (parsed.sessionId !== sessionId) {
+      throw new WorkerLinkUnavailableError(
+        "WorkerLink peer signal authority does not match the session.",
+      );
+    }
+    return this.#runSessionOperation(sessionId, {
+      kind: "signal-peer",
+      sessionId,
+      envelope: parsed,
+    }).then(() => undefined);
+  }
+
+  readPeerMailbox(
+    sessionId: string,
+    peerSessionId: string,
+    input: WorkerLinkPeerMailboxReadRequest,
+  ): Promise<WorkerLinkPeerMailbox> {
+    const parsedPeerSessionId =
+      workerLinkPeerSessionSchema.shape.peerSessionId.parse(peerSessionId);
+    return this.#runSessionOperation(sessionId, {
+      kind: "read-peer-mailbox",
+      sessionId,
+      peerSessionId: parsedPeerSessionId,
+      input: workerLinkPeerMailboxReadRequestSchema.parse(input),
+    }).then((value) => workerLinkPeerMailboxSchema.parse(value));
+  }
+
+  revokePeerSession(
+    sessionId: string,
+    peerSessionId: string,
+  ): Promise<boolean> {
+    const parsedPeerSessionId =
+      workerLinkPeerSessionSchema.shape.peerSessionId.parse(peerSessionId);
+    return this.#runSessionOperation(sessionId, {
+      kind: "revoke-peer",
+      sessionId,
+      peerSessionId: parsedPeerSessionId,
+    }).then(Boolean);
   }
 
   issueGrant(
@@ -381,6 +470,24 @@ export class WorkerLinkService {
         await this.#refreshClaim(session);
         return session;
       }
+      case "open-peer":
+        return this.local.openPeerSession({
+          sessionId: operation.sessionId,
+          ...operation.input,
+        });
+      case "signal-peer":
+        return this.local.signalPeer(operation.envelope);
+      case "read-peer-mailbox":
+        return this.local.readPeerMailbox(
+          operation.sessionId,
+          operation.peerSessionId,
+          operation.input,
+        );
+      case "revoke-peer":
+        return this.local.revokePeerSession(
+          operation.sessionId,
+          operation.peerSessionId,
+        );
       case "issue-grant":
         return this.local.issueGrant(operation.input);
       case "renew-grant":
@@ -566,6 +673,49 @@ function parseOperation(value: unknown): WorkerLinkOperation | null {
       return text(value.sessionId) &&
         (value.preferredRoute === "local" || value.preferredRoute === "relay")
         ? (value as WorkerLinkOperation)
+        : null;
+    case "open-peer": {
+      const input = workerLinkPeerSessionOpenRequestSchema.safeParse(
+        value.input,
+      );
+      return text(value.sessionId) && input.success
+        ? { kind: "open-peer", sessionId: value.sessionId, input: input.data }
+        : null;
+    }
+    case "signal-peer": {
+      const envelope = workerLinkPeerSignalEnvelopeSchema.safeParse(
+        value.envelope,
+      );
+      return text(value.sessionId) &&
+        envelope.success &&
+        envelope.data.sessionId === value.sessionId
+        ? {
+            kind: "signal-peer",
+            sessionId: value.sessionId,
+            envelope: envelope.data,
+          }
+        : null;
+    }
+    case "read-peer-mailbox": {
+      const input = workerLinkPeerMailboxReadRequestSchema.safeParse(
+        value.input,
+      );
+      return text(value.sessionId) && text(value.peerSessionId) && input.success
+        ? {
+            kind: "read-peer-mailbox",
+            sessionId: value.sessionId,
+            peerSessionId: value.peerSessionId,
+            input: input.data,
+          }
+        : null;
+    }
+    case "revoke-peer":
+      return text(value.sessionId) && text(value.peerSessionId)
+        ? {
+            kind: "revoke-peer",
+            sessionId: value.sessionId,
+            peerSessionId: value.peerSessionId,
+          }
         : null;
     case "issue-grant":
       return record(value.input) && text(value.input.sessionId)

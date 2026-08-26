@@ -54,6 +54,7 @@ out of scope.
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | T2.1 — Contracts, config, regression base | Add bounded peer/signaling policy, deployment controls, and LOCAL/RELAY plus Code fences                                               | Complete | `codex/network-tranche2-pass1-contracts`       | [#1196](https://github.com/ArcaneArts/Cantrip/pull/1196) | Protocol WorkerLink 12; server config 16; focused app WorkerLink and Code/Explorer 47; full protocol 361; protocol/server/app typechecks; full app 1,584 pass and 3 skip with one order-dependent baseline failure whose isolated file passes 3; formatting/diff check | LAN/WAN stay non-operational; legacy Remote Surface TURN remains isolated; no Code runtime was changed; default STUN and all peer limits are inert until signaling and PeerCarrier passes consume the policy |
 | T2.2A — Peer authority and worker gateway | Install exact peer rounds through the worker command plane, fence signaling/lifecycle, and expose a bounded transport-factory boundary | Complete | `codex/network-tranche2-pass2a-peer-authority` | [#1197](https://github.com/ArcaneArts/Cantrip/pull/1197) | Focused protocol/server/worker 49; focused coordinated server 59; full protocol 361; full worker 887 pass and 2 skip with two order-dependent baseline failures whose isolated files pass 10; workspace typecheck; changed-file formatting and diff checks             | No client signaling API or WebRTC transport is activated yet; T2.2B will publish authenticated signaling through CoordinationBus, and T2.3 will register the feature-neutral transport factory               |
+| T2.2B — Replicated signaling mailbox      | Expose authenticated client signaling and bounded candidate delivery through the exact peer authority across coordinated replicas      | Complete | `codex/network-tranche2-pass2b-signaling`      | [#1198](https://github.com/ArcaneArts/Cantrip/pull/1198) | Focused protocol/server/worker 53; full protocol 361; full worker 890 pass and 2 skip; workspace typecheck; changed-file formatting and diff checks                                                                                                                    | Signaling is transient and authority-owned; any authenticated replica forwards through CoordinationBus, while LAN/WAN remain dormant until T2.3 registers the feature-neutral WebRTC transport               |
 
 ## Stabilization acceptance evidence
 
@@ -160,6 +161,18 @@ out of scope.
   bounded peer counts; it retires peers that exceed the per-session invalid
   handshake rate. Its transport-factory boundary deliberately remains empty
   until T2.3 supplies WebRTC, so T2.2A cannot accidentally activate LAN or WAN.
+- The authenticated peer REST boundary never owns peer state. It authorizes the
+  exact account session, then forwards open, signaling, mailbox, and revocation
+  operations to the transient server authority named by the existing
+  CoordinationBus session claim. Worker notifications follow the coordinated
+  worker bridge back to that authority, so client and worker attachment to
+  different replicas has identical behavior without sticky sessions.
+- Worker-to-client signaling and candidate advertisements use an
+  acknowledgement-pruned, per-peer transient mailbox. Both directions require
+  exact session, peer, sender, route, generation, lease, and monotonic sequence
+  identities; gaps, conflicting duplicates, or the 256-message/4 MiB bounds
+  revoke only the affected peer round. No reusable worker credential or raw
+  candidate enters logs, metrics, or durable storage.
 - Route-generation replacement retires active worker channels before the
   replacement is acknowledged. Logout fences are transient around revocation,
   allowing a later authenticated account session to establish fresh authority.
@@ -263,21 +276,18 @@ out of scope.
 
 ## Tranche Two remaining work
 
-After T2.2A, the next pass must expose the authenticated client signaling and
-candidate mailbox through WorkerLinkService and prove that a client and worker
-on different coordinated server replicas retain identical authority and
-revocation behavior. T2.3 can then add LAN candidate gathering and
-classification, WAN direct negotiation with the configured STUN service, VPN
-classification, and the feature-neutral WebRTC peer carrier. Native LAN/WAN
+After T2.2B, T2.3 must add LAN candidate gathering and classification, WAN
+direct negotiation with the configured STUN service, VPN classification, and
+the feature-neutral WebRTC peer carrier. Native LAN/WAN
 tunnel carriers and browser or Capacitor peer-direct Code and Terminal
 transport follow before Browser Remote Surface, Remote Desktop, worker
 observations, incremental chat, and filesystem watcher migration.
 
-The following remain intentionally unimplemented after T2.2A: authenticated
-client signaling delivery, LAN/WAN runtime routes, candidate classification,
-VPN runtime classification, peer WebRTC, peer-direct browser or Capacitor
+The following remain intentionally unimplemented after T2.2B: LAN/WAN runtime
+routes, candidate classification, VPN runtime classification, peer WebRTC,
+peer-direct browser or Capacitor
 features, Browser and Remote Desktop migration, direct
 observation/chat/watcher delivery, mobility reprobes beyond current LOCAL/RELAY
 reconnect, and final legacy-relay consolidation. TURN and transparent TCP
-resumption remain explicitly deferred. T2.2A adds authority and a dormant
-worker gateway, not partial LAN/WAN runtime behavior.
+resumption remain explicitly deferred. T2.2B completes authenticated signaling
+for the dormant worker gateway, not partial LAN/WAN runtime behavior.

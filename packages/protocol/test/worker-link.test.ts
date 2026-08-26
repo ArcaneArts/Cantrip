@@ -18,6 +18,8 @@ import {
   workerLinkLeaseSchema,
   workerLinkPeerCandidateAdvertisementSchema,
   workerLinkPeerConfigurationSchema,
+  workerLinkPeerMailboxReadRequestSchema,
+  workerLinkPeerMailboxSchema,
   workerLinkPeerSessionSchema,
   workerLinkPeerSignalBatchSchema,
   workerLinkPeerSignalEnvelopeSchema,
@@ -316,6 +318,15 @@ describe("WorkerLink protocol", () => {
       }).success,
     ).toBe(false);
     expect(
+      workerLinkPeerSignalBatchSchema.safeParse({
+        signals: Array.from({ length: 5 }, (_, signalSequence) => ({
+          ...peerSignalEnvelope,
+          signalSequence,
+          signal: { type: "offer", sdp: "s".repeat(900_000) },
+        })),
+      }).success,
+    ).toBe(false);
+    expect(
       workerLinkPeerSignalEnvelopeSchema.safeParse({
         ...peerSignalEnvelope,
         candidateAddress: "192.168.1.20",
@@ -360,6 +371,35 @@ describe("WorkerLink protocol", () => {
         },
       }),
     ).toMatchObject({ type: "worker-link.peer.candidates" });
+    expect(workerLinkPeerMailboxReadRequestSchema.parse({})).toEqual({
+      afterSignalSequence: null,
+      afterAdvertisementSequence: null,
+    });
+    expect(
+      workerLinkPeerMailboxSchema.parse({
+        peerSessionId,
+        sessionId,
+        routeGeneration: 2,
+        route: "lan",
+        signals: [peerSignalEnvelope],
+        candidateAdvertisements: [
+          {
+            peerSessionId,
+            sessionId,
+            routeGeneration: 2,
+            route: "lan",
+            advertisementSequence: 0,
+            candidates: [peerCandidate],
+            complete: true,
+          },
+        ],
+      }),
+    ).toMatchObject({ peerSessionId, route: "lan" });
+    expect(
+      workerLinkPeerMailboxReadRequestSchema.safeParse({
+        afterSignalSequence: -1,
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps worker-installed token hashes separate from client bearer grants", () => {

@@ -6,6 +6,7 @@ import {
   encodeRemoteSurfaceFrame,
   encodeWorkerLinkFrame,
   workerRequestEnvelopeSchema,
+  workerNotificationSchema,
   type AppLiveClientMessage,
   type AppLiveServerMessage,
   type RemoteSurfaceFrameHeader,
@@ -211,6 +212,29 @@ describe("shared relay coordination", () => {
         { ...workerLinkHeader, sequence: 2 },
         new Uint8Array(),
       ),
+    );
+
+    const notificationReceived = vi.fn();
+    bridgeA.subscribeNotifications("worker-1", notificationReceived);
+    const peerNotification = workerNotificationSchema.parse({
+      type: "worker-link.peer.signal",
+      envelope: {
+        peerSessionId: "44444444-4444-4444-8444-444444444444",
+        sessionId: workerLinkHeader.sessionId,
+        routeGeneration: 1,
+        route: "lan",
+        sender: "worker",
+        signalSequence: 0,
+        signal: { type: "answer", sdp: "answer-sdp" },
+      },
+    });
+    workerSocket.emit(
+      "message",
+      JSON.stringify({ kind: "notification", notification: peerNotification }),
+      false,
+    );
+    await vi.waitFor(() =>
+      expect(notificationReceived).toHaveBeenCalledWith(peerNotification),
     );
 
     await bridgeA.close();
