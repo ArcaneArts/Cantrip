@@ -340,15 +340,19 @@ Bonjour service: peer discovery and signaling remain server-authorized, so no
 `NSBonjourServices` entry is declared. Browser and Capacitor expose only these
 in-app surfaces; they do not expose a general operating-system localhost port.
 
-Tauri additionally owns TCP listeners used by unrelated desktop programs. An
-early implementation spike must select the best native path among:
+Tauri additionally owns TCP listeners used by unrelated desktop programs.
+[ADR 0010](adr/0010-tauri-native-worker-link-carrier.md) selects a bounded
+localhost bridge into the WebView's existing WebRTC session. The native Rust
+tunnel engine keeps its stable listener, endpoint encryption, nested tunnel
+framing, half-close, and backpressure; a loopback-only, generation-fenced
+WebSocket hands the physical WorkerLink stream to the renderer. Carrier failure
+replaces that bridge stream without rebinding the public localhost port.
 
-1. native Rust WebRTC;
-2. an encrypted, identity-pinned worker peer socket; or
-3. a bounded localhost bridge into the WebView's WebRTC session.
-
-The result must implement the same carrier contract and fabric framing. This is
-an implementation choice beneath `WorkerLink`, not a feature-level choice.
+Native Rust WebRTC was rejected because it would duplicate the client ICE,
+DTLS, signaling, candidate policy, and QoS implementation. A server-pinned raw
+peer socket was rejected because it cannot inherit STUN/ICE WAN traversal
+without public worker ports or a second custom hole-punching protocol. These are
+implementation choices beneath `WorkerLink`, never feature-level routes.
 
 Browser and Capacitor must actually carry in-app Terminal, Code, Browser,
 Remote Desktop, and observation traffic over WebRTC when direct connectivity
