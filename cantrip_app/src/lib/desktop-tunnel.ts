@@ -12,6 +12,7 @@ import {
   deleteDirectAttachment,
   deleteTunnelAttachment,
   getTunnelDataProtection,
+  getTunnelTransportConfiguration,
   recordDirectAttachmentTelemetry,
   renewTunnelAttachmentLease,
   explorerCodeSessionBindingCurrent,
@@ -26,6 +27,11 @@ import {
   getActiveServerUrl,
   onServerConnectionIdentityChanged,
 } from "@/lib/server-connections";
+import {
+  refreshDesktopTunnelWorkerLinkForward,
+  startDesktopTunnelWorkerLinkForward,
+  stopDesktopTunnelWorkerLinkForward,
+} from "@/lib/desktop-tunnel-worker-link";
 
 const clientIdStorageKey = "cantrip.desktop-tunnel-client.v1";
 const FINAL_TELEMETRY_TIMEOUT_MS = 2_000;
@@ -100,11 +106,10 @@ function ensureDesktopCodeWindowRegistered(): Promise<void> {
   codeTransportRuntime.windowRegistration ??= invoke<void>(
     "register_code_transport_window_instance",
     { windowInstanceId: desktopCodeWindowInstanceId },
-  )
-    .catch((error) => {
-      codeTransportRuntime.windowRegistration = null;
-      throw error;
-    });
+  ).catch((error) => {
+    codeTransportRuntime.windowRegistration = null;
+    throw error;
+  });
   return codeTransportRuntime.windowRegistration;
 }
 
@@ -283,6 +288,7 @@ export type DesktopTunnelDestinationRejectionCode =
   | "unauthorized";
 
 export interface StartDesktopTunnelOptions {
+  compatibilityTransport?: "legacy";
   diagnosticTraceId?: string;
   preferredLocalPort?: number;
 }
@@ -557,6 +563,46 @@ export async function startDesktopTunnel(
       "Local tunnel attachments are only available in the desktop app.",
     );
   }
+  if (options.compatibilityTransport === "legacy") {
+    return startLegacyDesktopTunnel(tunnelId, options);
+  }
+  const clientId = desktopTunnelClientId(window.localStorage);
+  const configuration = await getTunnelTransportConfiguration(tunnelId);
+  const attachment = await createTunnelAttachment(tunnelId, { clientId });
+  let started: DesktopTunnelForwardSummary | null = null;
+  try {
+    started = await startDesktopTunnelWorkerLinkForward({
+      attachmentId: attachment.attachmentId,
+      dataProtection: configuration.dataProtection,
+      diagnosticTraceId: options.diagnosticTraceId,
+      expiresAt: attachment.expiresAt,
+      preferredLocalPort: options.preferredLocalPort,
+      tunnelId: attachment.tunnelId,
+      workerId: configuration.workerId,
+    });
+    configuration.dataProtection.key = "";
+    attachment.secret = "";
+    return started;
+  } catch (error) {
+    configuration.dataProtection.key = "";
+    attachment.secret = "";
+    await stopDesktopTunnelForward(tunnelId, {
+      attachmentId: started?.attachmentId ?? attachment.attachmentId,
+      diagnosticTraceId:
+        started?.diagnosticTraceId ?? options.diagnosticTraceId ?? null,
+      directCapabilityId: null,
+    }).catch(() => undefined);
+    await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
+      // Preserve the native bind/connection error if best-effort cleanup fails.
+    });
+    throw error;
+  }
+}
+
+async function startLegacyDesktopTunnel(
+  tunnelId: string,
+  options: StartDesktopTunnelOptions,
+): Promise<DesktopTunnelForwardSummary> {
   const clientId = desktopTunnelClientId(window.localStorage);
   const dataProtection = await getTunnelDataProtection(tunnelId);
   const attachment = await createTunnelAttachment(tunnelId, { clientId });
@@ -699,7 +745,9 @@ async function publishDesktopCodeTransportReservation(input: {
   } catch {
     // Preserve the publication error; cleanup treats this as commit-ambiguous.
   }
-  throw publicationError ?? new Error("The shared Code forward was not published.");
+  throw (
+    publicationError ?? new Error("The shared Code forward was not published.")
+  );
 }
 
 export async function acquireDesktopCodeTransport(
@@ -1038,6 +1086,7 @@ export async function stopDesktopTunnelForward(
   expectedForward?: DesktopTunnelForwardIdentity,
 ): Promise<void> {
   if (!isTauri()) return;
+  await stopDesktopTunnelWorkerLinkForward(tunnelId);
   const snapshot = await invoke<DesktopTunnelTerminalSnapshot | null>(
     "stop_tunnel_forward",
     {
@@ -1087,10 +1136,7 @@ export async function forceDesktopTunnelRelay(
     throw new Error("The desktop tunnel has no relay fallback.");
   }
   options.signal?.throwIfAborted();
-  if (
-    options.binding &&
-    !explorerCodeSessionBindingCurrent(options.binding)
-  ) {
+  if (options.binding && !explorerCodeSessionBindingCurrent(options.binding)) {
     throw new Error("The shared Code transport security identity changed.");
   }
   const relayed = await raceWithAbort(
@@ -1132,12 +1178,7 @@ async function retireDirectCapabilityAndConfirm(
   const existing = directCapabilityRetirements.get(capabilityId);
   if (existing) return raceWithAbort(existing, signal);
   const operation = (async () => {
-    await retireDirectCapability(
-      capabilityId,
-      snapshot,
-      serverUrl,
-      binding,
-    );
+    await retireDirectCapability(capabilityId, snapshot, serverUrl, binding);
     const confirmed = await raceWithAbort(
       invoke<boolean>("confirm_tunnel_forward_direct_retired", {
         directCapabilityId: capabilityId,
@@ -1282,6 +1323,42 @@ export function refreshDesktopTunnelRelay(
   });
   relayRefreshes.set(forward.tunnelId, refresh);
   return refresh;
+}
+
+export function isDesktopTunnelWorkerLinkForward(
+  forward: DesktopTunnelForwardSummary,
+): boolean {
+  return (
+    forward.codePoolGeneration == null &&
+    forward.directCapabilityId == null &&
+    forward.relayFallbackAvailable === false
+  );
+}
+
+export async function refreshDesktopTunnelWorkerLinkAttachment(
+  forward: DesktopTunnelForwardSummary,
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
+): Promise<boolean> {
+  if (!isTauri() || !isDesktopTunnelWorkerLinkForward(forward)) return false;
+  const attachment = await createTunnelAttachment(
+    forward.tunnelId,
+    { clientId: desktopTunnelClientId(window.localStorage) },
+    options,
+  );
+  try {
+    if (attachment.attachmentId !== forward.attachmentId) {
+      throw new Error(
+        "The refreshed tunnel attachment identity did not match.",
+      );
+    }
+    return refreshDesktopTunnelWorkerLinkForward(
+      forward.tunnelId,
+      forward.attachmentId,
+      attachment.expiresAt,
+    );
+  } finally {
+    attachment.secret = "";
+  }
 }
 
 async function rotateDesktopTunnelRelay(

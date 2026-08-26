@@ -984,7 +984,10 @@ describe("preferProtectedCodeAttachment", () => {
     expect(preferred.transportKind).toBe("relay");
     expect(mocks.startDesktopTunnel).toHaveBeenCalledWith(
       "11111111-1111-4111-8111-111111111111",
-      { diagnosticTraceId: expect.any(String) },
+      {
+        compatibilityTransport: "legacy",
+        diagnosticTraceId: expect.any(String),
+      },
     );
     expect(mocks.fetch).toHaveBeenCalledWith(
       new URL("http://127.0.0.1:52345/code/_cantrip/health"),

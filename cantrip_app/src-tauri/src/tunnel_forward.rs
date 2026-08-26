@@ -39,6 +39,31 @@ pub struct StartTunnelForwardRequest {
     pub code_pool_generation: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareWorkerLinkTunnelForwardRequest {
+    pub attachment_id: String,
+    pub data_protection: TunnelDataProtectionRequest,
+    pub diagnostic_trace_id: Option<String>,
+    pub expires_at: String,
+    pub preferred_local_port: Option<u16>,
+    pub tunnel_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkerLinkTunnelBridge {
+    pub token: String,
+    pub url: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkerLinkTunnelForwardPreparation {
+    pub bridge: WorkerLinkTunnelBridge,
+    pub forward: TunnelForwardSummary,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeTransportPoolIdentity {
@@ -321,6 +346,53 @@ pub async fn start_tunnel_forward(
     #[cfg(mobile)]
     {
         let _ = (app, state, request);
+        Err("Local tunnel attachments are only available in the desktop app.".into())
+    }
+}
+
+#[tauri::command]
+pub async fn prepare_worker_link_tunnel_forward(
+    app: AppHandle,
+    state: State<'_, TunnelForwards>,
+    request: PrepareWorkerLinkTunnelForwardRequest,
+) -> Result<WorkerLinkTunnelForwardPreparation, String> {
+    #[cfg(desktop)]
+    return desktop::prepare_worker_link(&app, &state, request).await;
+    #[cfg(mobile)]
+    {
+        let _ = (app, state, request);
+        Err("Local tunnel attachments are only available in the desktop app.".into())
+    }
+}
+
+#[tauri::command]
+pub fn update_worker_link_tunnel_forward_route(
+    state: State<'_, TunnelForwards>,
+    tunnel_id: String,
+    attachment_id: String,
+    route: String,
+) -> Result<bool, String> {
+    #[cfg(desktop)]
+    return desktop::update_worker_link_route(&state, &tunnel_id, &attachment_id, &route);
+    #[cfg(mobile)]
+    {
+        let _ = (state, tunnel_id, attachment_id, route);
+        Err("Local tunnel attachments are only available in the desktop app.".into())
+    }
+}
+
+#[tauri::command]
+pub fn refresh_worker_link_tunnel_forward(
+    state: State<'_, TunnelForwards>,
+    tunnel_id: String,
+    attachment_id: String,
+    expires_at: String,
+) -> Result<bool, String> {
+    #[cfg(desktop)]
+    return desktop::refresh_worker_link_forward(&state, &tunnel_id, &attachment_id, &expires_at);
+    #[cfg(mobile)]
+    {
+        let _ = (state, tunnel_id, attachment_id, expires_at);
         Err("Local tunnel attachments are only available in the desktop app.".into())
     }
 }
@@ -701,10 +773,12 @@ mod desktop {
     use super::{
         AcquireCodeTransportForwardRequest, CodeTransportClientIdentity,
         CodeTransportForwardAcquisition, CodeTransportForwardCompletion,
-        CodeTransportForwardRelease, CodeTransportPoolIdentity, RelayTunnelRequest,
-        StartTunnelForwardRequest, TunnelDataProtectionRequest, TunnelForwardSummary,
-        TunnelForwardTerminalEvent, TunnelForwardTerminalSnapshot, TunnelForwards,
-        TunnelRelayRefreshOutcome, TunnelRelayRefreshResult, TUNNEL_FORWARD_TERMINAL_EVENT,
+        CodeTransportForwardRelease, CodeTransportPoolIdentity,
+        PrepareWorkerLinkTunnelForwardRequest, RelayTunnelRequest, StartTunnelForwardRequest,
+        TunnelDataProtectionRequest, TunnelForwardSummary, TunnelForwardTerminalEvent,
+        TunnelForwardTerminalSnapshot, TunnelForwards, TunnelRelayRefreshOutcome,
+        TunnelRelayRefreshResult, WorkerLinkTunnelBridge, WorkerLinkTunnelForwardPreparation,
+        TUNNEL_FORWARD_TERMINAL_EVENT,
     };
     use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
     use aes_gcm::{Aes256Gcm, Nonce};
@@ -724,15 +798,16 @@ mod desktop {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::async_runtime::JoinHandle as TauriJoinHandle;
     use tauri::{AppHandle, Emitter, Manager, State};
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::{mpsc, oneshot, watch, Notify};
     use tokio::task::{AbortHandle, JoinHandle};
     use tokio::time::{interval_at, sleep, timeout, Instant, Sleep};
-    use tokio_tungstenite::connect_async;
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     use tokio_tungstenite::tungstenite::http::{header::AUTHORIZATION, HeaderValue};
+    use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
     use tokio_tungstenite::tungstenite::Message;
+    use tokio_tungstenite::{accept_async_with_config, connect_async};
     use url::Url;
     use uuid::Uuid;
     use zeroize::Zeroizing;
@@ -758,6 +833,9 @@ mod desktop {
     const CODE_TRANSPORT_MAINTENANCE_LEASE: Duration = Duration::from_secs(15);
     const CODE_TRANSPORT_TERMINAL_RETENTION: Duration = Duration::from_secs(10 * 60);
     const MAX_TERMINATED_CODE_TRANSPORTS: usize = 256;
+    const WORKER_LINK_BRIDGE_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+    const WORKER_LINK_BRIDGE_MAX_INVALID_ATTEMPTS: usize = 8;
+    const WORKER_LINK_BRIDGE_INVALID_BACKOFF: Duration = Duration::from_secs(1);
 
     pub struct ForwardHandle {
         code_pool_generation: Option<String>,
@@ -1343,6 +1421,32 @@ mod desktop {
                 sequence,
             }
         }
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct WorkerLinkBridgeInitialize {
+        r#type: String,
+        token: String,
+        route: String,
+        identity: WorkerLinkBridgeRouteIdentity,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct WorkerLinkBridgeRouteIdentity {
+        attachment_id: String,
+        destination_endpoint_id: String,
+        source_endpoint_id: String,
+        tunnel_id: String,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct WorkerLinkBridgeReady<'a> {
+        r#type: &'static str,
+        attachment_id: &'a str,
+        tunnel_id: &'a str,
     }
 
     struct StartupRoute {
@@ -2929,6 +3033,212 @@ mod desktop {
         Ok(summary)
     }
 
+    pub async fn prepare_worker_link(
+        app: &AppHandle,
+        state: &State<'_, TunnelForwards>,
+        request: PrepareWorkerLinkTunnelForwardRequest,
+    ) -> Result<WorkerLinkTunnelForwardPreparation, String> {
+        validate_worker_link_forward_identifiers(&request)?;
+        let PrepareWorkerLinkTunnelForwardRequest {
+            attachment_id,
+            data_protection: protection_request,
+            diagnostic_trace_id,
+            expires_at,
+            preferred_local_port,
+            tunnel_id,
+        } = request;
+        let protection = data_protection(Some(protection_request))?;
+        let _start_reservation = reserve_forward_start(state, &tunnel_id, None)?;
+        let _ = stop(app, state, &tunnel_id, None, None, None, None, "replaced").await?;
+        let listener = bind_listener(preferred_local_port).await?;
+        let local_port = listener
+            .local_addr()
+            .map_err(|error| format!("Could not inspect the local tunnel listener: {error}"))?
+            .port();
+        let bridge_listener = bind_listener(None).await?;
+        let bridge_port = bridge_listener
+            .local_addr()
+            .map_err(|error| format!("Could not inspect the tunnel bridge listener: {error}"))?
+            .port();
+        let bridge_token = URL_SAFE_NO_PAD.encode(Aes256Gcm::generate_key(&mut OsRng));
+        let task_token = Zeroizing::new(bridge_token.clone());
+        let counters = Arc::new(ForwardCounters::default());
+        counters.route_state.store(3, Ordering::Relaxed);
+        let summary = TunnelForwardSummary {
+            attachment_id: attachment_id.clone(),
+            diagnostic_trace_id: diagnostic_trace_id.clone(),
+            expires_at,
+            local_host: "127.0.0.1",
+            local_port,
+            route_state: "degraded",
+            relay_fallback_available: false,
+            relay_credential_expires_at_epoch_ms: None,
+            direct_capability_id: None,
+            direct_fallback_reason: None,
+            last_destination_rejection_code: None,
+            tunnel_id: tunnel_id.clone(),
+            bytes_from_local: 0,
+            bytes_to_local: 0,
+            connections_closed: 0,
+            connections_opened: 0,
+            destination_rejected_count: 0,
+            code_pool_generation: None,
+        };
+        let terminal_event = TunnelForwardTerminalEvent {
+            attachment_id: attachment_id.clone(),
+            diagnostic_trace_id: diagnostic_trace_id.clone(),
+            reason_code: "route-terminated",
+            tunnel_id: tunnel_id.clone(),
+        };
+        let (stop_sender, stop_receiver) = oneshot::channel();
+        let (publication_sender, publication_receiver) = oneshot::channel();
+        let (relay_refresh_sender, _relay_refresh_receiver) = watch::channel(None);
+        let (route_control_sender, _route_control_receiver) = mpsc::channel(1);
+        let task_app = app.clone();
+        let task_counters = counters.clone();
+        let task = tauri::async_runtime::spawn(async move {
+            run_worker_link_forward(
+                Some(task_app.clone()),
+                listener,
+                bridge_listener,
+                task_token,
+                attachment_id,
+                tunnel_id,
+                diagnostic_trace_id,
+                protection,
+                task_counters,
+                stop_receiver,
+            )
+            .await;
+            let _ = publication_receiver.await;
+            let removed = task_app
+                .state::<TunnelForwards>()
+                .forwards
+                .lock()
+                .ok()
+                .is_some_and(|mut forwards| {
+                    let exact = forwards
+                        .get(&terminal_event.tunnel_id)
+                        .is_some_and(|forward| {
+                            forward.summary.attachment_id == terminal_event.attachment_id
+                                && forward.summary.diagnostic_trace_id
+                                    == terminal_event.diagnostic_trace_id
+                        });
+                    if exact {
+                        forwards.remove(&terminal_event.tunnel_id);
+                    }
+                    exact
+                });
+            if removed {
+                emit_forward_terminal(&task_app, &terminal_event);
+            }
+        });
+        let mut forwards = state
+            .forwards
+            .lock()
+            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+        if forwards.contains_key(&summary.tunnel_id) {
+            task.abort();
+            let _ = publication_sender.send(());
+            return Err("The tunnel acquired another forward during startup.".into());
+        }
+        forwards.insert(
+            summary.tunnel_id.clone(),
+            ForwardHandle {
+                code_pool_generation: None,
+                counters,
+                relay_refresh: relay_refresh_sender,
+                route_control: route_control_sender,
+                stop: Some(stop_sender),
+                summary: summary.clone(),
+                task,
+            },
+        );
+        drop(forwards);
+        let _ = publication_sender.send(());
+        diagnostic_event(
+            Some(app),
+            "info",
+            "Desktop WorkerLink tunnel listener bound",
+            json!({
+                "attachmentId": summary.attachment_id,
+                "diagnosticTraceId": summary.diagnostic_trace_id,
+                "event": "desktop.tunnel.worker-link-bridge.bound",
+                "operation": "bind-listener",
+                "routeState": "degraded",
+                "status": "ready",
+                "subsystem": "tunnel-forward",
+                "tunnelId": summary.tunnel_id,
+            }),
+        );
+        Ok(WorkerLinkTunnelForwardPreparation {
+            bridge: WorkerLinkTunnelBridge {
+                token: bridge_token,
+                url: format!("ws://127.0.0.1:{bridge_port}/worker-link-tunnel"),
+            },
+            forward: summary,
+        })
+    }
+
+    pub fn update_worker_link_route(
+        state: &State<'_, TunnelForwards>,
+        tunnel_id: &str,
+        attachment_id: &str,
+        route: &str,
+    ) -> Result<bool, String> {
+        let route_state = match route {
+            "local" => 1,
+            "relay" => 2,
+            _ => return Err("The WorkerLink tunnel route is invalid.".into()),
+        };
+        let forwards = state
+            .forwards
+            .lock()
+            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+        let Some(forward) = forwards.get(tunnel_id) else {
+            return Ok(false);
+        };
+        if forward.code_pool_generation.is_some()
+            || forward.summary.attachment_id != attachment_id
+            || forward.summary.direct_capability_id.is_some()
+            || forward.summary.relay_fallback_available
+        {
+            return Ok(false);
+        }
+        forward
+            .counters
+            .route_state
+            .store(route_state, Ordering::Relaxed);
+        Ok(true)
+    }
+
+    pub fn refresh_worker_link_forward(
+        state: &State<'_, TunnelForwards>,
+        tunnel_id: &str,
+        attachment_id: &str,
+        expires_at: &str,
+    ) -> Result<bool, String> {
+        if expires_at.len() > 64 || chrono::DateTime::parse_from_rfc3339(expires_at).is_err() {
+            return Err("The WorkerLink tunnel expiration is invalid.".into());
+        }
+        let mut forwards = state
+            .forwards
+            .lock()
+            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+        let Some(forward) = forwards.get_mut(tunnel_id) else {
+            return Ok(false);
+        };
+        if forward.code_pool_generation.is_some()
+            || forward.summary.attachment_id != attachment_id
+            || forward.summary.direct_capability_id.is_some()
+            || forward.summary.relay_fallback_available
+        {
+            return Ok(false);
+        }
+        forward.summary.expires_at = expires_at.to_string();
+        Ok(true)
+    }
+
     pub async fn force_relay(
         app: &AppHandle,
         state: &State<'_, TunnelForwards>,
@@ -3409,6 +3719,31 @@ mod desktop {
         Ok(())
     }
 
+    fn validate_worker_link_forward_identifiers(
+        request: &PrepareWorkerLinkTunnelForwardRequest,
+    ) -> Result<(), String> {
+        for (label, value) in [
+            ("tunnel", request.tunnel_id.as_str()),
+            ("attachment", request.attachment_id.as_str()),
+        ] {
+            if !valid_tunnel_identity(value) {
+                return Err(format!("The {label} identity is invalid."));
+            }
+        }
+        if request
+            .diagnostic_trace_id
+            .as_deref()
+            .is_some_and(|trace_id| Uuid::parse_str(trace_id).is_err())
+        {
+            return Err("The tunnel diagnostic trace identity is invalid.".into());
+        }
+        Ok(())
+    }
+
+    fn valid_tunnel_identity(value: &str) -> bool {
+        !value.is_empty() && value.len() <= 200 && !value.chars().any(char::is_control)
+    }
+
     fn validate_relay(relay: &RelayTunnelRequest) -> Result<(), String> {
         if relay.secret.len() < 32 || relay.secret.len() > 512 {
             return Err("The tunnel attachment credential is invalid.".into());
@@ -3638,6 +3973,219 @@ mod desktop {
             "subsystem": "tunnel-forward",
             "tunnelId": request.tunnel_id,
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run_worker_link_forward(
+        app: Option<AppHandle>,
+        listener: TcpListener,
+        bridge_listener: TcpListener,
+        bridge_token: Zeroizing<String>,
+        attachment_id: String,
+        tunnel_id: String,
+        diagnostic_trace_id: Option<String>,
+        protection: Option<Arc<DataProtection>>,
+        counters: Arc<ForwardCounters>,
+        mut stop: oneshot::Receiver<()>,
+    ) {
+        let mut invalid_attempts = 0_usize;
+        loop {
+            let accepted = tokio::select! {
+                _ = &mut stop => return,
+                accepted = bridge_listener.accept() => accepted,
+            };
+            let Ok((stream, peer)) = accepted else {
+                return;
+            };
+            if !peer.ip().is_loopback() {
+                if throttle_invalid_bridge_attempts(&mut invalid_attempts, &mut stop).await {
+                    return;
+                }
+                continue;
+            }
+            let connected = tokio::select! {
+                _ = &mut stop => return,
+                connected = accept_worker_link_bridge(
+                    stream,
+                    bridge_token.as_str(),
+                    &tunnel_id,
+                    &attachment_id,
+                ) => connected,
+            };
+            let (web_socket, identity, route) = match connected {
+                Ok(connected) => connected,
+                Err(_) => {
+                    if throttle_invalid_bridge_attempts(&mut invalid_attempts, &mut stop).await {
+                        return;
+                    }
+                    continue;
+                }
+            };
+            invalid_attempts = 0;
+            counters
+                .route_state
+                .store(if route == "local" { 1 } else { 2 }, Ordering::Relaxed);
+            if counters.record_route_selection() {
+                diagnostic_event(
+                    app.as_ref(),
+                    "info",
+                    "Desktop tunnel WorkerLink route selected",
+                    json!({
+                        "attachmentId": attachment_id,
+                        "diagnosticTraceId": diagnostic_trace_id,
+                        "event": "desktop.tunnel.route.selected",
+                        "operation": "select-route",
+                        "routeState": if route == "local" { "local-direct" } else { "relayed" },
+                        "status": "completed",
+                        "subsystem": "tunnel-forward",
+                        "tunnelId": tunnel_id,
+                    }),
+                );
+            }
+            let (_route_control_sender, mut route_controls) = mpsc::channel(1);
+            let result = run_session_with_timing(
+                app.as_ref(),
+                diagnostic_trace_id.as_deref(),
+                &listener,
+                web_socket,
+                identity,
+                protection.clone(),
+                counters.clone(),
+                &mut stop,
+                &mut route_controls,
+                SessionTiming::production(),
+            )
+            .await;
+            if matches!(result, Ok(SessionOutcome::Stopped)) {
+                return;
+            }
+            counters.route_state.store(3, Ordering::Relaxed);
+            if counters.record_route_disconnect() {
+                diagnostic_event(
+                    app.as_ref(),
+                    "warn",
+                    "Desktop tunnel WorkerLink route disconnected",
+                    json!({
+                        "attachmentId": attachment_id,
+                        "diagnosticTraceId": diagnostic_trace_id,
+                        "event": "desktop.tunnel.route.disconnected",
+                        "operation": "forward-route",
+                        "reasonCode": if result.is_err() { "route-error" } else { "remote-closed" },
+                        "status": "degraded",
+                        "subsystem": "tunnel-forward",
+                        "tunnelId": tunnel_id,
+                    }),
+                );
+            }
+        }
+    }
+
+    async fn throttle_invalid_bridge_attempts(
+        invalid_attempts: &mut usize,
+        stop: &mut oneshot::Receiver<()>,
+    ) -> bool {
+        *invalid_attempts = invalid_attempts.saturating_add(1);
+        if *invalid_attempts < WORKER_LINK_BRIDGE_MAX_INVALID_ATTEMPTS {
+            return false;
+        }
+        *invalid_attempts = 0;
+        tokio::select! {
+            _ = &mut *stop => true,
+            _ = sleep(WORKER_LINK_BRIDGE_INVALID_BACKOFF) => false,
+        }
+    }
+
+    async fn accept_worker_link_bridge(
+        stream: TcpStream,
+        expected_token: &str,
+        tunnel_id: &str,
+        attachment_id: &str,
+    ) -> Result<
+        (
+            tokio_tungstenite::WebSocketStream<TcpStream>,
+            RouteIdentity,
+            String,
+        ),
+        String,
+    > {
+        let max_wire_frame_bytes = MAX_HEADER_BYTES + MAX_PAYLOAD_BYTES + 8;
+        let config = WebSocketConfig::default()
+            .read_buffer_size(16 * 1024)
+            .write_buffer_size(16 * 1024)
+            .max_write_buffer_size(2 * max_wire_frame_bytes)
+            .max_message_size(Some(max_wire_frame_bytes))
+            .max_frame_size(Some(max_wire_frame_bytes));
+        let mut web_socket = timeout(
+            WORKER_LINK_BRIDGE_HANDSHAKE_TIMEOUT,
+            accept_async_with_config(stream, Some(config)),
+        )
+        .await
+        .map_err(|_| "The native tunnel bridge WebSocket handshake timed out.".to_string())?
+        .map_err(|_| "The native tunnel bridge WebSocket handshake failed.".to_string())?;
+        let message = timeout(WORKER_LINK_BRIDGE_HANDSHAKE_TIMEOUT, web_socket.next())
+            .await
+            .map_err(|_| "The native tunnel bridge authorization timed out.".to_string())?
+            .ok_or_else(|| "The native tunnel bridge closed during authorization.".to_string())?
+            .map_err(|_| "The native tunnel bridge authorization failed.".to_string())?;
+        let Message::Text(text) = message else {
+            return Err("The native tunnel bridge authorization was invalid.".into());
+        };
+        if text.len() > MAX_HEADER_BYTES {
+            return Err("The native tunnel bridge authorization was too large.".into());
+        }
+        let mut initialize: WorkerLinkBridgeInitialize = serde_json::from_str(&text)
+            .map_err(|_| "The native tunnel bridge authorization was invalid.".to_string())?;
+        let supplied_token = Zeroizing::new(std::mem::take(&mut initialize.token));
+        if initialize.r#type != "initialize"
+            || !constant_time_secret_match(expected_token, supplied_token.as_str())
+            || !matches!(initialize.route.as_str(), "local" | "relay")
+            || initialize.identity.tunnel_id != tunnel_id
+            || initialize.identity.attachment_id != attachment_id
+            || !valid_tunnel_identity(&initialize.identity.source_endpoint_id)
+            || !valid_tunnel_identity(&initialize.identity.destination_endpoint_id)
+            || !initialize
+                .identity
+                .source_endpoint_id
+                .starts_with("worker-link-client:")
+            || !initialize
+                .identity
+                .destination_endpoint_id
+                .starts_with("worker-link-worker:")
+        {
+            return Err("The native tunnel bridge authorization was invalid.".into());
+        }
+        let identity = RouteIdentity {
+            attachment_id: initialize.identity.attachment_id,
+            destination_endpoint_id: initialize.identity.destination_endpoint_id,
+            source_endpoint_id: initialize.identity.source_endpoint_id,
+            tunnel_id: initialize.identity.tunnel_id,
+        };
+        let ready = serde_json::to_string(&WorkerLinkBridgeReady {
+            r#type: "ready",
+            attachment_id: &identity.attachment_id,
+            tunnel_id: &identity.tunnel_id,
+        })
+        .map_err(|_| "Could not encode the native tunnel bridge handshake.".to_string())?;
+        wait_for_web_socket_send(
+            web_socket.send(Message::Text(ready.into())),
+            SESSION_SEND_TIMEOUT,
+        )
+        .await?;
+        Ok((web_socket, identity, initialize.route))
+    }
+
+    fn constant_time_secret_match(expected: &str, supplied: &str) -> bool {
+        if expected.len() != supplied.len() {
+            return false;
+        }
+        expected
+            .as_bytes()
+            .iter()
+            .zip(supplied.as_bytes())
+            .fold(0_u8, |difference, (left, right)| {
+                difference | (left ^ right)
+            })
+            == 0
     }
 
     async fn run_forward(
@@ -4179,20 +4727,21 @@ mod desktop {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn run_session_with_timing(
+    async fn run_session_with_timing<S>(
         app: Option<&AppHandle>,
         diagnostic_trace_id: Option<&str>,
         listener: &TcpListener,
-        mut web_socket: tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<TcpStream>,
-        >,
+        mut web_socket: tokio_tungstenite::WebSocketStream<S>,
         identity: RouteIdentity,
         protection: Option<Arc<DataProtection>>,
         counters: Arc<ForwardCounters>,
         stop: &mut oneshot::Receiver<()>,
         route_controls: &mut mpsc::Receiver<RouteControl>,
         timing: SessionTiming,
-    ) -> Result<SessionOutcome, String> {
+    ) -> Result<SessionOutcome, String>
+    where
+        S: AsyncRead + AsyncWrite + Unpin,
+    {
         let (outbound_sender, mut outbound_receiver) =
             mpsc::channel::<OutboundFrame>(OUTBOUND_QUEUE);
         let (completed_sender, mut completed_receiver) = mpsc::channel::<String>(256);
@@ -4883,6 +5432,64 @@ mod desktop {
                 publication_reservation_id: "88888888-8888-4888-8888-888888888888".into(),
                 retirement_fence: Arc::new(ForwardRetirementFence::default()),
             })
+        }
+
+        #[test]
+        fn worker_link_bridge_secrets_require_an_exact_constant_time_match() {
+            let token = "a".repeat(43);
+            assert!(constant_time_secret_match(&token, &token));
+            assert!(!constant_time_secret_match(&token, &"b".repeat(43)));
+            assert!(!constant_time_secret_match(&token, &"a".repeat(42)));
+        }
+
+        #[tokio::test]
+        async fn worker_link_bridge_accepts_only_the_bound_route_identity() {
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let token = "a".repeat(43);
+            let expected_token = token.clone();
+            let server = tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                accept_worker_link_bridge(stream, &expected_token, "tunnel-one", "attachment-one")
+                    .await
+            });
+            let (mut client, _) = connect_async(format!("ws://{address}/worker-link-tunnel"))
+                .await
+                .unwrap();
+            client
+                .send(Message::Text(
+                    json!({
+                        "type": "initialize",
+                        "token": token,
+                        "route": "relay",
+                        "identity": {
+                            "attachmentId": "attachment-one",
+                            "destinationEndpointId": "worker-link-worker:worker-one",
+                            "sourceEndpointId": "worker-link-client:grant-one",
+                            "tunnelId": "tunnel-one",
+                        },
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            let ready = client.next().await.unwrap().unwrap();
+            let Message::Text(ready) = ready else {
+                panic!("bridge did not return a text handshake");
+            };
+            assert_eq!(
+                serde_json::from_str::<Value>(&ready).unwrap(),
+                json!({
+                    "type": "ready",
+                    "attachmentId": "attachment-one",
+                    "tunnelId": "tunnel-one",
+                })
+            );
+            let (_, identity, route) = server.await.unwrap().unwrap();
+            assert_eq!(identity.tunnel_id, "tunnel-one");
+            assert_eq!(identity.attachment_id, "attachment-one");
+            assert_eq!(route, "relay");
         }
 
         #[test]

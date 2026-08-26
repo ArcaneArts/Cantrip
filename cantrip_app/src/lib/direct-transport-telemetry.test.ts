@@ -11,9 +11,20 @@ const mocks = vi.hoisted(() => ({
   },
   forceDesktopTunnelRelay: vi.fn(),
   invalidateDesktopTunnelForward: vi.fn(),
+  isDesktopTunnelWorkerLinkForward: vi.fn(
+    (forward: {
+      codePoolGeneration?: string | null;
+      directCapabilityId?: string | null;
+      relayFallbackAvailable?: boolean;
+    }) =>
+      forward.codePoolGeneration == null &&
+      forward.directCapabilityId == null &&
+      forward.relayFallbackAvailable === false,
+  ),
   listDesktopTunnelsWithOptions: vi.fn(),
   recordDirectAttachmentTelemetry: vi.fn(),
   refreshDesktopTunnelRelay: vi.fn(),
+  refreshDesktopTunnelWorkerLinkAttachment: vi.fn(),
   renewTunnelAttachmentLease: vi.fn(),
 }));
 
@@ -26,8 +37,11 @@ vi.mock("@/lib/desktop-tunnel", () => ({
   desktopTunnelAvailable: () => true,
   forceDesktopTunnelRelay: mocks.forceDesktopTunnelRelay,
   invalidateDesktopTunnelForward: mocks.invalidateDesktopTunnelForward,
+  isDesktopTunnelWorkerLinkForward: mocks.isDesktopTunnelWorkerLinkForward,
   listDesktopTunnelsWithOptions: mocks.listDesktopTunnelsWithOptions,
   refreshDesktopTunnelRelay: mocks.refreshDesktopTunnelRelay,
+  refreshDesktopTunnelWorkerLinkAttachment:
+    mocks.refreshDesktopTunnelWorkerLinkAttachment,
 }));
 
 import {
@@ -43,6 +57,7 @@ beforeEach(() => {
   mocks.invalidateDesktopTunnelForward.mockResolvedValue(undefined);
   mocks.recordDirectAttachmentTelemetry.mockResolvedValue(undefined);
   mocks.refreshDesktopTunnelRelay.mockResolvedValue(true);
+  mocks.refreshDesktopTunnelWorkerLinkAttachment.mockResolvedValue(true);
   mocks.renewTunnelAttachmentLease.mockResolvedValue(undefined);
 });
 
@@ -183,6 +198,50 @@ describe("reportDesktopDirectTransportTelemetry", () => {
 
     expect(mocks.refreshDesktopTunnelRelay).not.toHaveBeenCalled();
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
+    expect(mocks.renewTunnelAttachmentLease).toHaveBeenCalledWith(
+      "attachment-1",
+      { signal: expect.any(AbortSignal) },
+    );
+  });
+
+  it("rotates a WorkerLink attachment before its grant lifetime expires", async () => {
+    const forward = {
+      attachmentId: "attachment-1",
+      expiresAt: new Date(Date.now() + 30_000).toISOString(),
+      routeState: "relayed",
+      relayFallbackAvailable: false,
+      directCapabilityId: null,
+      tunnelId: "tunnel-1",
+    } as const;
+    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([forward]);
+
+    await reportDesktopDirectTransportTelemetry();
+
+    expect(mocks.refreshDesktopTunnelWorkerLinkAttachment).toHaveBeenCalledWith(
+      forward,
+      {
+        signal: expect.any(AbortSignal),
+      },
+    );
+    expect(mocks.renewTunnelAttachmentLease).not.toHaveBeenCalled();
+  });
+
+  it("keeps a healthy WorkerLink attachment on its lightweight lease check", async () => {
+    const forward = {
+      attachmentId: "attachment-1",
+      expiresAt: new Date(Date.now() + 120_000).toISOString(),
+      routeState: "local-direct",
+      relayFallbackAvailable: false,
+      directCapabilityId: null,
+      tunnelId: "tunnel-1",
+    } as const;
+    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([forward]);
+
+    await reportDesktopDirectTransportTelemetry();
+
+    expect(
+      mocks.refreshDesktopTunnelWorkerLinkAttachment,
+    ).not.toHaveBeenCalled();
     expect(mocks.renewTunnelAttachmentLease).toHaveBeenCalledWith(
       "attachment-1",
       { signal: expect.any(AbortSignal) },

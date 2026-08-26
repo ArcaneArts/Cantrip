@@ -665,6 +665,7 @@ export async function preferProtectedCodeAttachment(
   }
   const diagnosticTraceId = crypto.randomUUID();
   let forward = await startDesktopTunnel(wire.tunnelId, {
+    compatibilityTransport: "legacy",
     diagnosticTraceId,
   });
   const readinessStartedAtMs = monotonicNow();

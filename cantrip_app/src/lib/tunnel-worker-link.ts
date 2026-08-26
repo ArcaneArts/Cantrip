@@ -5,6 +5,7 @@ import {
   type WorkerLinkChannelCloseCode,
   type WorkerLinkLease,
   type WorkerLinkTunnelGrant,
+  type WorkerLinkTunnelRoute,
 } from "@cantrip/protocol";
 
 import {
@@ -26,6 +27,7 @@ const MIN_RENEW_DELAY_MS = 1_000;
 
 export interface TunnelWorkerLinkConnection {
   readonly route: "local" | "relay";
+  readonly tunnelRoute: WorkerLinkTunnelRoute;
   activate(): void;
   close(code?: WorkerLinkChannelCloseCode): void;
   send(frame: Uint8Array): boolean;
@@ -36,6 +38,7 @@ export interface OpenTunnelWorkerLinkOptions {
   diagnosticTraceId?: string;
   onClose(code: WorkerLinkChannelCloseCode): void;
   onFrame(frame: Uint8Array): Promise<void> | void;
+  onRouteChanged?(route: "local" | "relay"): void;
   workerId: string;
 }
 
@@ -125,6 +128,7 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
           status.effectiveRoute === "relay"
         ) {
           this.#route = status.effectiveRoute;
+          this.options.onRouteChanged?.(this.#route);
         }
       }),
     ];
@@ -133,6 +137,10 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
 
   get route(): "local" | "relay" {
     return this.#route;
+  }
+
+  get tunnelRoute(): WorkerLinkTunnelRoute {
+    return this.issued.route;
   }
 
   activate(): void {
