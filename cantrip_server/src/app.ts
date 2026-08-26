@@ -14505,24 +14505,30 @@ export async function buildApp({
     async (request, reply) => {
       const principal = authenticatedPrincipal(request);
       const telemetry = directTransportTelemetrySchema.parse(request.body);
-      const delta = directAttachments.recordTelemetry(
+      const authorization = {
+        authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+        ownerId: principal.user.id,
+      };
+      const activeDelta = directAttachments.recordTelemetry(
         request.params.capabilityId,
-        {
-          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
-          ownerId: principal.user.id,
-        },
+        authorization,
         telemetry,
       );
+      const delta =
+        activeDelta ??
+        directAttachments.recordFinalizedTelemetry(
+          request.params.capabilityId,
+          authorization,
+          telemetry,
+        );
       if (!delta) {
         return reply.code(404).send({ error: "Direct attachment not found." });
       }
       operationalMetrics.recordDirectTransport(delta.resourceKind, delta);
+      if (activeDelta === null) return reply.code(204).send();
       const renewal = await directAttachments.renewActiveLease(
         request.params.capabilityId,
-        {
-          authSessionId: principal.sessionId ?? `local:${principal.user.id}`,
-          ownerId: principal.user.id,
-        },
+        authorization,
       );
       switch (renewal.status) {
         case "completed":
@@ -14533,9 +14539,10 @@ export async function buildApp({
             error: "Direct attachment renewal is temporarily unavailable.",
           });
         case "missing":
-          return reply
-            .code(404)
-            .send({ error: "Direct attachment not found." });
+          // Telemetry was correlated while the capability was live. A
+          // concurrent authoritative teardown may have finalized it before
+          // renewal; the requested terminal accounting still succeeded.
+          return reply.code(204).send();
         case "expired":
         case "not-active":
         case "root-missing":
@@ -14800,12 +14807,22 @@ export async function buildApp({
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/tunnel-attachments/:attachmentId",
     async (request, reply) => {
-      const ownerId = principalOwnerId(request);
+      const principal = authenticatedPrincipal(request);
+      const ownerId = principal.user.id;
       const revoked = await directAttachments.mutateAttachment(
         request.params.attachmentId,
         () => tunnelRuntime.revoke(ownerId, request.params.attachmentId),
       );
       if (!revoked) {
+        if (
+          codeTunnel.retiredSharedRelayAttachmentIsAuthorized(
+            request.params.attachmentId,
+            ownerId,
+            principal.sessionId,
+          )
+        ) {
+          return reply.code(204).send();
+        }
         return reply.code(404).send({ error: "Tunnel attachment not found." });
       }
       codeTunnel.releaseRelayAttachment(request.params.attachmentId);

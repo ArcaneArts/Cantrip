@@ -1789,4 +1789,94 @@ describe("DirectAttachmentCoordinator", () => {
     );
     await coordinator.close();
   });
+
+  it("accepts one monotonic final telemetry report for the exact retired tunnel capability", async () => {
+    const bus = {
+      isConnected: () => true,
+      request: vi.fn(async (_workerId: string, command: WorkerCommand) =>
+        command.type === "direct.capability.prepare"
+          ? { accepted: true, capabilityId: command.binding.capabilityId }
+          : { revoked: true },
+      ),
+      subscribeWorkerDisconnect: () => () => undefined,
+    } as unknown as WorkerCommandBus;
+    const coordinator = new DirectAttachmentCoordinator(bus);
+    const ticket = await prepareDirect(coordinator, {
+      attachmentId: "attachment-final-telemetry",
+      authSessionId: "session-1",
+      channels: ["tunnel-data"],
+      ownerId: "owner-1",
+      resourceId: "tunnel-final-telemetry",
+      resourceKind: "tunnel",
+      tunnelRoute: {
+        tunnelId: "tunnel-final-telemetry",
+        attachmentId: "attachment-final-telemetry",
+        sourceEndpointId: "desktop:client-1:attachment-final-telemetry",
+        destinationEndpointId: "worker:worker-1",
+        target: { kind: "tcp", host: "127.0.0.1", port: 43124 },
+      },
+      worker: worker(),
+    });
+    const authorization = {
+      authSessionId: "session-1",
+      ownerId: "owner-1",
+    };
+    coordinator.recordTelemetry(ticket.binding.capabilityId, authorization, {
+      bytesFromLocal: 10,
+      bytesToLocal: 20,
+      connectionsClosed: 1,
+      connectionsOpened: 2,
+    });
+    await coordinator.revoke(ticket.binding.capabilityId, "released");
+
+    expect(
+      coordinator.recordFinalizedTelemetry(
+        ticket.binding.capabilityId,
+        authorization,
+        {
+          bytesFromLocal: 25,
+          bytesToLocal: 30,
+          connectionsClosed: 3,
+          connectionsOpened: 4,
+        },
+      ),
+    ).toMatchObject({
+      bytesFromLocal: 15,
+      bytesToLocal: 10,
+      connectionsClosed: 2,
+      connectionsOpened: 2,
+      resourceId: "tunnel-final-telemetry",
+      resourceKind: "tunnel",
+    });
+    expect(
+      coordinator.recordFinalizedTelemetry(
+        ticket.binding.capabilityId,
+        authorization,
+        {
+          bytesFromLocal: 100,
+          bytesToLocal: 100,
+          connectionsClosed: 100,
+          connectionsOpened: 100,
+        },
+      ),
+    ).toMatchObject({
+      bytesFromLocal: 0,
+      bytesToLocal: 0,
+      connectionsClosed: 0,
+      connectionsOpened: 0,
+    });
+    expect(
+      coordinator.recordFinalizedTelemetry(
+        ticket.binding.capabilityId,
+        { ...authorization, authSessionId: "session-2" },
+        {
+          bytesFromLocal: 25,
+          bytesToLocal: 30,
+          connectionsClosed: 3,
+          connectionsOpened: 4,
+        },
+      ),
+    ).toBeNull();
+    await coordinator.close();
+  });
 });

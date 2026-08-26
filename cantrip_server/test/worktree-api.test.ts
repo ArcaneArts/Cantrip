@@ -4014,6 +4014,43 @@ describe.sequential("server worktree control plane", () => {
           expiresAt: attachment.session.expiresAt,
         }),
       ]);
+      const desktopAttachmentResponse = await app.inject({
+        method: "POST",
+        url: `/api/tunnels/${sharedTransportId}/attachments`,
+        payload: { clientId: `desktop-${sessionId}` },
+      });
+      expect(
+        desktopAttachmentResponse.statusCode,
+        desktopAttachmentResponse.body,
+      ).toBe(201);
+      const desktopAttachmentId = desktopAttachmentResponse.json()
+        .attachmentId as string;
+      const directResponse = await app.inject({
+        method: "POST",
+        url: `/api/tunnel-attachments/${desktopAttachmentId}/direct`,
+        payload: { diagnosticTraceId: randomUUID() },
+      });
+      expect(directResponse.statusCode, directResponse.body).toBe(201);
+      const capabilityId = directResponse.json().binding.capabilityId as string;
+      expect(
+        await app.inject({
+          method: "POST",
+          url: `/api/tunnel-attachments/${desktopAttachmentId}/direct-activate`,
+          payload: { capabilityId },
+        }),
+      ).toMatchObject({ statusCode: 204 });
+      expect(
+        await app.inject({
+          method: "POST",
+          url: `/api/direct-attachments/${capabilityId}/telemetry`,
+          payload: {
+            bytesFromLocal: 5,
+            bytesToLocal: 7,
+            connectionsClosed: 1,
+            connectionsOpened: 2,
+          },
+        }),
+      ).toMatchObject({ statusCode: 204 });
 
       const leaseResponse = await app.inject({
         method: "POST",
@@ -4090,6 +4127,58 @@ describe.sequential("server worktree control plane", () => {
         await app.inject({
           method: "POST",
           url: `/api/code-session-attachments/${attachmentId}/lease`,
+        }),
+      ).toMatchObject({ statusCode: 404 });
+      expect(
+        await app.inject({
+          method: "DELETE",
+          url: `/api/code-session-attachments/${attachmentId}`,
+        }),
+      ).toMatchObject({ statusCode: 204 });
+      expect(
+        await app.inject({
+          method: "DELETE",
+          url: `/api/code-transports/${sharedTransportId}`,
+        }),
+      ).toMatchObject({ statusCode: 204 });
+      for (const payload of [
+        {
+          bytesFromLocal: 11,
+          bytesToLocal: 13,
+          connectionsClosed: 2,
+          connectionsOpened: 3,
+        },
+        {
+          bytesFromLocal: 50,
+          bytesToLocal: 50,
+          connectionsClosed: 50,
+          connectionsOpened: 50,
+        },
+      ]) {
+        expect(
+          await app.inject({
+            method: "POST",
+            url: `/api/direct-attachments/${capabilityId}/telemetry`,
+            payload,
+          }),
+        ).toMatchObject({ statusCode: 204 });
+      }
+      expect(
+        await app.inject({
+          method: "DELETE",
+          url: `/api/tunnel-attachments/${desktopAttachmentId}`,
+        }),
+      ).toMatchObject({ statusCode: 204 });
+      expect(
+        await app.inject({
+          method: "DELETE",
+          url: `/api/tunnel-attachments/${desktopAttachmentId}`,
+        }),
+      ).toMatchObject({ statusCode: 204 });
+      expect(
+        await app.inject({
+          method: "DELETE",
+          url: `/api/tunnel-attachments/${randomUUID()}`,
         }),
       ).toMatchObject({ statusCode: 404 });
     } finally {
@@ -4763,7 +4852,7 @@ describe.sequential("server worktree control plane", () => {
           connectionsOpened: 1,
         },
       }),
-    ).toMatchObject({ statusCode: 404 });
+    ).toMatchObject({ statusCode: 204 });
 
     expect(
       await app.inject({

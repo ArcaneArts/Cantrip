@@ -336,6 +336,102 @@ describe("shared Cantrip Code transport ownership", () => {
     }
   });
 
+  it("makes exact shared session, transport, and relay cleanup idempotent", async () => {
+    const context = harness();
+    const relayAttachmentId = "55555555-5555-4555-8555-555555555555";
+    const unknownAttachmentId = "66666666-6666-4666-8666-666666666666";
+    const cleanup = deferred<void>();
+    try {
+      const attached = await context.broker.createSharedSessionAttachment(
+        sharedInput(1),
+      );
+      expect(
+        context.broker.bindRelayAttachment(relayAttachmentId, rootIdentity()),
+      ).toBe(true);
+
+      const authorization = {
+        attachmentId: attached.session.attachmentId,
+        authSessionId,
+        ownerId,
+      };
+      context.cleanup.mockReturnValueOnce(cleanup.promise);
+      const initialRelease =
+        context.broker.revokeSharedSessionAttachment(authorization);
+      await vi.waitFor(() => expect(context.cleanup).toHaveBeenCalledOnce());
+      const duplicateRelease =
+        context.broker.revokeSharedSessionAttachment(authorization);
+      await expect(
+        context.broker.revokeSharedTransport(
+          ownerId,
+          authSessionId,
+          transportId,
+        ),
+      ).resolves.toBe(true);
+      expect(
+        context.broker.retiredSharedRelayAttachmentIsAuthorized(
+          relayAttachmentId,
+          ownerId,
+          authSessionId,
+        ),
+      ).toBe(true);
+      cleanup.resolve();
+      await expect(initialRelease).resolves.toBe(true);
+      await expect(duplicateRelease).resolves.toBe(true);
+      await expect(
+        context.broker.revokeSharedSessionAttachment({
+          ...authorization,
+          authSessionId: "auth-session-2",
+        }),
+      ).resolves.toBe(false);
+      await expect(
+        context.broker.revokeSharedSessionAttachment({
+          ...authorization,
+          attachmentId: unknownAttachmentId,
+        }),
+      ).resolves.toBe(false);
+
+      await expect(
+        context.broker.revokeSharedTransport(
+          ownerId,
+          authSessionId,
+          transportId,
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        context.broker.revokeSharedTransport(
+          ownerId,
+          "auth-session-2",
+          transportId,
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        context.broker.revokeSharedTransport(
+          ownerId,
+          authSessionId,
+          unknownAttachmentId,
+        ),
+      ).resolves.toBe(false);
+
+      expect(
+        context.broker.retiredSharedRelayAttachmentIsAuthorized(
+          relayAttachmentId,
+          ownerId,
+          "auth-session-2",
+        ),
+      ).toBe(false);
+      expect(
+        context.broker.retiredSharedRelayAttachmentIsAuthorized(
+          unknownAttachmentId,
+          ownerId,
+          authSessionId,
+        ),
+      ).toBe(false);
+    } finally {
+      cleanup.resolve();
+      await context.broker.close();
+    }
+  });
+
   it("serializes concurrent first acquisition and returns the winning root", async () => {
     const context = harness();
     const otherTransportId = "55555555-5555-4555-8555-555555555555";
