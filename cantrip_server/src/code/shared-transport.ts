@@ -273,6 +273,8 @@ export class SharedCodeTransportRegistry {
   readonly #rootsByTransportId = new Map<string, SharedCodeTransportRoot>();
   readonly #retiredSessionAttachmentIds: SharedCodeLifecycleTombstones =
     new Map();
+  readonly #retiredRelayAttachmentIds: SharedCodeLifecycleTombstones =
+    new Map();
   readonly #sessions = new Map<string, SharedCodeSessionAttachment>();
   readonly #sessionOwnership: SharedCodeSessionOwnershipController;
   readonly #sweepTimer: ReturnType<typeof setInterval>;
@@ -578,18 +580,26 @@ export class SharedCodeTransportRegistry {
   async revokeSessionAttachment(
     authorization: SharedCodeSessionAttachmentAuthorization,
   ): Promise<boolean> {
+    const attachmentKey = this.#sessionAttachmentKey(authorization);
     const current = this.#sessions.get(authorization.attachmentId);
-    this.#recordTombstone(
-      this.#retiredSessionAttachmentIds,
-      this.#sessionAttachmentKey(authorization),
-      authorization,
-      Boolean(current && this.#authorizedSession(current, authorization)),
-    );
+    if (!this.#hasTombstone(this.#retiredSessionAttachmentIds, attachmentKey)) {
+      this.#recordTombstone(
+        this.#retiredSessionAttachmentIds,
+        attachmentKey,
+        authorization,
+        Boolean(current && this.#authorizedSession(current, authorization)),
+      );
+    }
     return this.#serialize(
       this.#attachmentQueueKey(authorization.attachmentId),
       async () => {
         const current = this.#sessions.get(authorization.attachmentId);
-        if (!current) return false;
+        if (!current) {
+          return this.#hasAuthoritativeTombstone(
+            this.#retiredSessionAttachmentIds,
+            attachmentKey,
+          );
+        }
         const continuityKey = sharedCodeTransportContinuityIdentityKey(
           current.transport,
         );
@@ -742,22 +752,39 @@ export class SharedCodeTransportRegistry {
     const authorizedRoot = Boolean(
       root && root.ownerId === ownerId && root.authSessionId === authSessionId,
     );
-    this.#recordTombstone(
-      this.#cancelledTransportCandidates,
-      candidateKey,
-      { authSessionId, ownerId },
-      pending || authorizedRoot,
-    );
+    if (!this.#hasTombstone(this.#cancelledTransportCandidates, candidateKey)) {
+      this.#recordTombstone(
+        this.#cancelledTransportCandidates,
+        candidateKey,
+        { authSessionId, ownerId },
+        pending || authorizedRoot,
+      );
+    }
     if (
       !root ||
       root.ownerId !== ownerId ||
       root.authSessionId !== authSessionId
     ) {
-      return pending;
+      return (
+        pending ||
+        this.#hasAuthoritativeTombstone(
+          this.#cancelledTransportCandidates,
+          candidateKey,
+        ) ||
+        this.#hasAuthorizedTombstone(this.#retiringTransportIds, transportId, {
+          authSessionId,
+          ownerId,
+        })
+      );
     }
     const continuityKey = sharedCodeTransportContinuityIdentityKey(root);
     return this.#serialize(this.#identityQueueKey(continuityKey), async () => {
-      if (this.#rootsByTransportId.get(transportId) !== root) return false;
+      if (this.#rootsByTransportId.get(transportId) !== root) {
+        return this.#hasAuthoritativeTombstone(
+          this.#cancelledTransportCandidates,
+          candidateKey,
+        );
+      }
       await this.#retireRoot(root, "Shared Code transport released");
       return true;
     });
@@ -806,6 +833,20 @@ export class SharedCodeTransportRegistry {
     return true;
   }
 
+  retiredRelayAttachmentIsAuthorized(
+    relayAttachmentId: string,
+    authorization: Pick<
+      SharedCodeSessionAttachmentAuthorization,
+      "authSessionId" | "ownerId"
+    >,
+  ): boolean {
+    return this.#hasAuthorizedTombstone(
+      this.#retiredRelayAttachmentIds,
+      this.#relayAttachmentKey({ relayAttachmentId, ...authorization }),
+      authorization,
+    );
+  }
+
   allowRelayAttachmentActivity(
     relayAttachmentId: string,
     tunnelId: string,
@@ -820,6 +861,9 @@ export class SharedCodeTransportRegistry {
   }
 
   releaseRelayAttachment(relayAttachmentId: string): void {
+    const root = this.#relayRoots.get(relayAttachmentId);
+    if (!root) return;
+    this.#recordRetiredRelayAttachment(relayAttachmentId, root);
     this.#relayRoots.delete(relayAttachmentId);
   }
 
@@ -899,6 +943,14 @@ export class SharedCodeTransportRegistry {
     ownerId: string;
   }): string {
     return `${keyPart(input.ownerId)}${keyPart(input.authSessionId)}${input.attachmentId}`;
+  }
+
+  #relayAttachmentKey(input: {
+    authSessionId: string;
+    ownerId: string;
+    relayAttachmentId: string;
+  }): string {
+    return `${keyPart(input.ownerId)}${keyPart(input.authSessionId)}${input.relayAttachmentId}`;
   }
 
   #assertSessionCandidateCurrent(key: string): void {
@@ -1086,6 +1138,27 @@ export class SharedCodeTransportRegistry {
     return false;
   }
 
+  #hasAuthoritativeTombstone(
+    tombstones: SharedCodeLifecycleTombstones,
+    key: string,
+  ): boolean {
+    if (!this.#hasTombstone(tombstones, key)) return false;
+    return tombstones.get(key)?.authoritative === true;
+  }
+
+  #hasAuthorizedTombstone(
+    tombstones: SharedCodeLifecycleTombstones,
+    key: string,
+    identity: Pick<SharedCodeTransportIdentity, "authSessionId" | "ownerId">,
+  ): boolean {
+    if (!this.#hasAuthoritativeTombstone(tombstones, key)) return false;
+    const tombstone = tombstones.get(key);
+    return (
+      tombstone?.ownerId === identity.ownerId &&
+      tombstone.authSessionId === identity.authSessionId
+    );
+  }
+
   #clearSpeculativeTombstones(
     predicate: (tombstone: SharedCodeLifecycleTombstone) => boolean,
   ): void {
@@ -1102,6 +1175,7 @@ export class SharedCodeTransportRegistry {
     return [
       this.#cancelledTransportCandidates,
       this.#failedTransportRetirements,
+      this.#retiredRelayAttachmentIds,
       this.#retiredSessionAttachmentIds,
       this.#retiringTransportIds,
     ];
@@ -1587,6 +1661,19 @@ export class SharedCodeTransportRegistry {
     }
   }
 
+  #recordRetiredRelayAttachment(
+    relayAttachmentId: string,
+    root: SharedCodeTransportRoot,
+  ): void {
+    const key = this.#relayAttachmentKey({
+      authSessionId: root.authSessionId,
+      ownerId: root.ownerId,
+      relayAttachmentId,
+    });
+    if (this.#hasTombstone(this.#retiredRelayAttachmentIds, key)) return;
+    this.#recordTombstone(this.#retiredRelayAttachmentIds, key, root, true);
+  }
+
   #retainPendingSessionStop(session: SharedCodeSessionAttachment): void {
     const identity = this.#sessionOwnershipIdentity(session);
     const key = this.#pendingSessionStopKey(identity);
@@ -1645,7 +1732,9 @@ export class SharedCodeTransportRegistry {
       this.#rootsByIdentity.delete(root.identityKey);
     }
     for (const [relayAttachmentId, relayRoot] of this.#relayRoots) {
-      if (relayRoot === root) this.#relayRoots.delete(relayAttachmentId);
+      if (relayRoot !== root) continue;
+      this.#recordRetiredRelayAttachment(relayAttachmentId, root);
+      this.#relayRoots.delete(relayAttachmentId);
     }
 
     const sessionStops = new Map<string, SharedCodeSessionOwnershipIdentity>();

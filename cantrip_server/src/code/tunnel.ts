@@ -774,6 +774,20 @@ export class CodeTunnelBroker {
     this.#sharedTransports.releaseRelayAttachment(relayAttachmentId);
   }
 
+  retiredSharedRelayAttachmentIsAuthorized(
+    relayAttachmentId: string,
+    ownerId: string,
+    authSessionId: string | null,
+  ): boolean {
+    return this.#sharedTransports.retiredRelayAttachmentIsAuthorized(
+      relayAttachmentId,
+      {
+        authSessionId: canonicalCodeAuthSessionId(ownerId, authSessionId),
+        ownerId,
+      },
+    );
+  }
+
   async #createProtectedAttachment(
     input: CreateProtectedCodeAttachmentInput,
   ): Promise<CodeProtectedAttachmentWire> {

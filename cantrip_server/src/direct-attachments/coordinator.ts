@@ -48,6 +48,19 @@ interface DirectGrant {
   telemetry: DirectTransportTelemetry;
 }
 
+interface FinalizedDirectTelemetryGrant {
+  readonly attachmentId: string;
+  readonly authSessionId: string;
+  readonly diagnosticTraceId: string;
+  readonly expiresAtMs: number;
+  finalTelemetryAccepted: boolean;
+  readonly ownerId: string;
+  readonly resourceId: string;
+  readonly resourceKind: DirectResourceKind;
+  telemetry: DirectTransportTelemetry;
+  readonly workerId: string;
+}
+
 type WorkerOfflineSubscription = {
   subscribeWorkerOffline?: WorkerCommandBus["subscribeWorkerDisconnect"];
 };
@@ -171,6 +184,8 @@ const MAX_LEASE_TTL_MS = 12 * 60 * 60_000;
 const MIN_RENEWAL_WINDOW_MS = 90_000;
 const RENEWAL_WINDOW_JITTER_MS = 60_000;
 const WORKER_RENEW_TIMEOUT_MS = 5_000;
+const FINALIZED_TELEMETRY_TTL_MS = 2 * 60_000;
+const MAX_FINALIZED_TELEMETRY_GRANTS = 4_096;
 const SAFE_ERROR_CLASSES = new Set([
   "AggregateError",
   "Error",
@@ -208,6 +223,10 @@ export class DirectAttachmentUnavailableError extends Error {}
 export class DirectAttachmentCoordinator {
   readonly #attachmentRevocations = new Map<string, number>();
   readonly #grants = new Map<string, DirectGrant>();
+  readonly #finalizedTelemetryGrants = new Map<
+    string,
+    FinalizedDirectTelemetryGrant
+  >();
   readonly #leaseLifecycleWrites = new Set<Promise<void>>();
   readonly #ownerRevocations = new Map<string, number>();
   readonly #preparationLeases = new Map<
@@ -982,42 +1001,13 @@ export class DirectAttachmentCoordinator {
       return null;
     }
     const previous = grant.telemetry;
-    const merged = {
-      bytesFromLocal: Math.max(
-        previous.bytesFromLocal,
-        telemetry.bytesFromLocal,
-      ),
-      bytesToLocal: Math.max(previous.bytesToLocal, telemetry.bytesToLocal),
-      connectionsClosed: Math.max(
-        previous.connectionsClosed,
-        telemetry.connectionsClosed,
-      ),
-      connectionsOpened: Math.max(
-        previous.connectionsOpened,
-        telemetry.connectionsOpened,
-      ),
-      ...((telemetry.lastDestinationRejectionCode ??
-      previous.lastDestinationRejectionCode)
-        ? {
-            lastDestinationRejectionCode:
-              telemetry.lastDestinationRejectionCode ??
-              previous.lastDestinationRejectionCode,
-          }
-        : {}),
-    };
-    const delta = {
-      bytesFromLocal: merged.bytesFromLocal - previous.bytesFromLocal,
-      bytesToLocal: merged.bytesToLocal - previous.bytesToLocal,
-      connectionsClosed: merged.connectionsClosed - previous.connectionsClosed,
-      connectionsOpened: merged.connectionsOpened - previous.connectionsOpened,
-      ...(merged.lastDestinationRejectionCode
-        ? {
-            lastDestinationRejectionCode: merged.lastDestinationRejectionCode,
-          }
-        : {}),
-      resourceId: grant.resourceId,
-      resourceKind: grant.resourceKind,
-    };
+    const merged = mergeDirectTransportTelemetry(previous, telemetry);
+    const delta = directTransportTelemetryDelta(
+      previous,
+      merged,
+      grant.resourceId,
+      grant.resourceKind,
+    );
     grant.telemetry = merged;
     grant.telemetryObservedAtMs = Date.now();
     grant.telemetryReportCount += 1;
@@ -1043,6 +1033,72 @@ export class DirectAttachmentCoordinator {
         : {}),
       telemetryReportCount: grant.telemetryReportCount,
       leaseRemainingMs: Math.max(0, grant.leaseExpiresAtMs - Date.now()),
+    });
+    return delta;
+  }
+
+  recordFinalizedTelemetry(
+    capabilityId: string,
+    authorization: { authSessionId: string; ownerId: string },
+    telemetry: DirectTransportTelemetry,
+  ): DirectTransportTelemetryDelta | null {
+    this.#pruneFinalizedTelemetryGrants();
+    const finalized = this.#finalizedTelemetryGrants.get(capabilityId);
+    if (
+      !finalized ||
+      finalized.ownerId !== authorization.ownerId ||
+      finalized.authSessionId !== authorization.authSessionId
+    ) {
+      return null;
+    }
+    if (finalized.finalTelemetryAccepted) {
+      return {
+        bytesFromLocal: 0,
+        bytesToLocal: 0,
+        connectionsClosed: 0,
+        connectionsOpened: 0,
+        ...(finalized.telemetry.lastDestinationRejectionCode
+          ? {
+              lastDestinationRejectionCode:
+                finalized.telemetry.lastDestinationRejectionCode,
+            }
+          : {}),
+        resourceId: finalized.resourceId,
+        resourceKind: finalized.resourceKind,
+      };
+    }
+    const merged = mergeDirectTransportTelemetry(
+      finalized.telemetry,
+      telemetry,
+    );
+    const delta = directTransportTelemetryDelta(
+      finalized.telemetry,
+      merged,
+      finalized.resourceId,
+      finalized.resourceKind,
+    );
+    finalized.telemetry = merged;
+    finalized.finalTelemetryAccepted = true;
+    this.logger.debug("Final direct attachment telemetry recorded", {
+      event: "direct_attachment.telemetry.final-recorded",
+      subsystem: "direct-attachment",
+      operation: "record-final-telemetry",
+      status: "completed",
+      diagnosticTraceId: finalized.diagnosticTraceId,
+      mode: "direct-tunnel",
+      attachmentId: finalized.attachmentId,
+      resourceId: finalized.resourceId,
+      resourceKind: finalized.resourceKind,
+      workerId: finalized.workerId,
+      fromLocalBytes: merged.bytesFromLocal,
+      toLocalBytes: merged.bytesToLocal,
+      openedConnectionCount: merged.connectionsOpened,
+      closedConnectionCount: merged.connectionsClosed,
+      ...(merged.lastDestinationRejectionCode
+        ? {
+            lastDestinationRejectionCode: merged.lastDestinationRejectionCode,
+          }
+        : {}),
     });
     return delta;
   }
@@ -1176,6 +1232,7 @@ export class DirectAttachmentCoordinator {
         ),
       );
       await Promise.allSettled([...this.#leaseLifecycleWrites]);
+      this.#finalizedTelemetryGrants.clear();
       this.logger.info("Direct attachment coordinator stopped", {
         event: "direct_attachment.runtime.stopped",
         subsystem: "direct-attachment",
@@ -1458,6 +1515,28 @@ export class DirectAttachmentCoordinator {
       this.#removeResourceLifecycleIfUnused(resourceKey, lifecycle);
     }
     const now = Date.now();
+    if (grant.mode === "direct-tunnel") {
+      this.#pruneFinalizedTelemetryGrants(now);
+      this.#finalizedTelemetryGrants.set(capabilityId, {
+        attachmentId: grant.attachmentId,
+        authSessionId: grant.authSessionId,
+        diagnosticTraceId: grant.diagnosticTraceId,
+        expiresAtMs: now + FINALIZED_TELEMETRY_TTL_MS,
+        finalTelemetryAccepted: false,
+        ownerId: grant.ownerId,
+        resourceId: grant.resourceId,
+        resourceKind: grant.resourceKind,
+        telemetry: { ...grant.telemetry },
+        workerId: grant.workerId,
+      });
+      while (
+        this.#finalizedTelemetryGrants.size > MAX_FINALIZED_TELEMETRY_GRANTS
+      ) {
+        const oldest = this.#finalizedTelemetryGrants.keys().next().value;
+        if (oldest === undefined) break;
+        this.#finalizedTelemetryGrants.delete(oldest);
+      }
+    }
     this.logger.info("Direct attachment final state captured", {
       event: "direct_attachment.finalized",
       subsystem: "direct-attachment",
@@ -1494,6 +1573,14 @@ export class DirectAttachmentCoordinator {
         : { telemetryAgeMs: now - grant.telemetryObservedAtMs }),
     });
     return grant;
+  }
+
+  #pruneFinalizedTelemetryGrants(now = Date.now()): void {
+    for (const [capabilityId, finalized] of this.#finalizedTelemetryGrants) {
+      if (finalized.expiresAtMs <= now) {
+        this.#finalizedTelemetryGrants.delete(capabilityId);
+      }
+    }
   }
 
   #leaseLifecycleEvent(
@@ -1622,4 +1709,51 @@ function directRenewalTimedOut(error: unknown): boolean {
     error instanceof Error &&
     error.message === "Worker command direct.capability.renew timed out.",
   );
+}
+
+function mergeDirectTransportTelemetry(
+  previous: DirectTransportTelemetry,
+  telemetry: DirectTransportTelemetry,
+): DirectTransportTelemetry {
+  return {
+    bytesFromLocal: Math.max(previous.bytesFromLocal, telemetry.bytesFromLocal),
+    bytesToLocal: Math.max(previous.bytesToLocal, telemetry.bytesToLocal),
+    connectionsClosed: Math.max(
+      previous.connectionsClosed,
+      telemetry.connectionsClosed,
+    ),
+    connectionsOpened: Math.max(
+      previous.connectionsOpened,
+      telemetry.connectionsOpened,
+    ),
+    ...((telemetry.lastDestinationRejectionCode ??
+    previous.lastDestinationRejectionCode)
+      ? {
+          lastDestinationRejectionCode:
+            telemetry.lastDestinationRejectionCode ??
+            previous.lastDestinationRejectionCode,
+        }
+      : {}),
+  };
+}
+
+function directTransportTelemetryDelta(
+  previous: DirectTransportTelemetry,
+  merged: DirectTransportTelemetry,
+  resourceId: string,
+  resourceKind: DirectResourceKind,
+): DirectTransportTelemetryDelta {
+  return {
+    bytesFromLocal: merged.bytesFromLocal - previous.bytesFromLocal,
+    bytesToLocal: merged.bytesToLocal - previous.bytesToLocal,
+    connectionsClosed: merged.connectionsClosed - previous.connectionsClosed,
+    connectionsOpened: merged.connectionsOpened - previous.connectionsOpened,
+    ...(merged.lastDestinationRejectionCode
+      ? {
+          lastDestinationRejectionCode: merged.lastDestinationRejectionCode,
+        }
+      : {}),
+    resourceId,
+    resourceKind,
+  };
 }
