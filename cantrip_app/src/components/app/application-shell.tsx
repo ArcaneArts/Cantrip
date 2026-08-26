@@ -537,6 +537,7 @@ import {
   moveSidebarPath,
   sidebarFileName,
   sidebarFilePreviewIsVisible,
+  sidebarFileTargetGroupId,
   sidebarPathAtOrBelow,
   surfaceWorktreeId,
   tabbedExplorerIds,
@@ -8028,10 +8029,12 @@ export function App() {
       .catch(() => selectLocally());
   };
   const sidebarFileGroupId = (explorer: ExplorerSummary): string | null => {
-    if (sidebarFilePreview?.explorerId === explorer.id) {
-      return sidebarFilePreview.groupId;
-    }
-    return selectedTabGroup?.id ?? tabLayout.data?.groups[0]?.id ?? null;
+    return sidebarFileTargetGroupId({
+      activeGroupId: selectedTabGroup?.id,
+      explorerId: explorer.id,
+      fallbackGroupId: tabLayout.data?.groups[0]?.id,
+      preview: sidebarFilePreview,
+    });
   };
   const focusPinnedSidebarFile = (explorer: ExplorerSummary) => {
     sidebarFilePreviewLifecycleRef.current = null;
