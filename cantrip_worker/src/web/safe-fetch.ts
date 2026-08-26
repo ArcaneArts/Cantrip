@@ -151,7 +151,7 @@ function mappedIpv4(address: string): string | null {
   return `${high >>> 8}.${high & 255}.${low >>> 8}.${low & 255}`;
 }
 
-async function publicAddresses(
+export async function resolvePublicAddresses(
   hostname: string,
   lookup: typeof dnsLookup,
 ): Promise<Array<{ address: string; family: 4 | 6 }>> {
@@ -220,7 +220,10 @@ export async function safeFetch(
       const releaseHost = await hostSemaphore.acquire();
       try {
         await options.beforeRequest?.(new URL(current.href));
-        const addresses = await publicAddresses(current.hostname, lookup);
+        const addresses = await resolvePublicAddresses(
+          current.hostname,
+          lookup,
+        );
         const selected = addresses[0]!;
         const dispatcher = new Agent({
           connect: {

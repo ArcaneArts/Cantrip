@@ -114,6 +114,7 @@ await rename(
   path.join(searxStage, searxRoots[0].name),
   path.join(runtime, "app", "searxng"),
 );
+await applyPortableValkeyPatch(path.join(runtime, "app", "searxng"));
 const frozenVersion = `# SPDX-License-Identifier: AGPL-3.0-or-later
 # Generated from runtime.lock.json; avoids invoking host git at runtime.
 VERSION_STRING = "${lock.bundleVersion}"
@@ -194,6 +195,18 @@ await writeFile(
         artifactSha256: lock.targets[target].assetSha256,
       },
       requirementsLockSha256: await sha256(requirements),
+      cantripPatches: [
+        {
+          path: "patches/0001-portable-valkey-identity.patch",
+          sha256: await sha256(
+            path.join(
+              inputRoot,
+              "patches",
+              "0001-portable-valkey-identity.patch",
+            ),
+          ),
+        },
+      ],
     },
     null,
     2,
@@ -364,6 +377,13 @@ async function buildSources(runtimeLock, destination, searxSource) {
   const sourceRoot = path.join(destination, ".sources");
   await rm(sourceRoot, { recursive: true, force: true });
   await mkdir(path.join(sourceRoot, "python-packages"), { recursive: true });
+  await cp(
+    path.join(inputRoot, "patches"),
+    path.join(sourceRoot, "cantrip-patches"),
+    {
+      recursive: true,
+    },
+  );
   await pipeline(
     (await import("node:fs")).createReadStream(searxSource),
     createWriteStream(path.join(sourceRoot, path.basename(searxSource))),
@@ -410,6 +430,24 @@ async function buildSources(runtimeLock, destination, searxSource) {
     ".",
   ]);
   await rm(sourceRoot, { recursive: true, force: true });
+}
+
+async function applyPortableValkeyPatch(searxngRoot) {
+  const file = path.join(searxngRoot, "searx", "valkeydb.py");
+  let source = await readFile(file, "utf8");
+  const importBefore = "import os\nimport pwd\nimport logging";
+  const importAfter =
+    "import os\ntry:\n    import pwd\nexcept ImportError:  # Windows has no POSIX account database.\n    pwd = None\nimport logging";
+  const failureBefore =
+    '        _pw = pwd.getpwuid(os.getuid())\n        logger.exception("[%s (%s)] can\'t connect valkey DB ...", _pw.pw_name, _pw.pw_uid)';
+  const failureAfter =
+    '        if pwd is None:\n            logger.exception("can\'t connect valkey DB ...")\n        else:\n            _pw = pwd.getpwuid(os.getuid())\n            logger.exception("[%s (%s)] can\'t connect valkey DB ...", _pw.pw_name, _pw.pw_uid)';
+  if (!source.includes(importBefore) || !source.includes(failureBefore))
+    throw new Error("SearXNG portability patch no longer applies cleanly");
+  source = source
+    .replace(importBefore, importAfter)
+    .replace(failureBefore, failureAfter);
+  await writeFile(file, source);
 }
 
 export function parseLockedRequirements(contents) {

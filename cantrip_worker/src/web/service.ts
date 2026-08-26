@@ -71,6 +71,10 @@ export interface WorkerWebServiceOptions {
   fetchOptions?: SafeFetchOptions;
   now?: () => Date;
   robots?: RobotsPolicy;
+  renderPage?: (
+    url: string,
+    beforeNavigation?: (url: URL) => Promise<void>,
+  ) => Promise<{ html: string; title: string; url: string }>;
   searchRuntime: Pick<SearxngRuntimeManager, "request">;
 }
 
@@ -170,6 +174,12 @@ export class WorkerWebService {
   readonly #now: () => Date;
   readonly #readCursors = new Map<string, ReadCursor>();
   readonly #references = new Map<string, SearchReference>();
+  readonly #renderPage:
+    | ((
+        url: string,
+        beforeNavigation?: (url: URL) => Promise<void>,
+      ) => Promise<{ html: string; title: string; url: string }>)
+    | null;
   readonly #rateWindows = new Map<string, RateWindow>();
   readonly #robots: RobotsPolicy;
   readonly #searchRuntime: WorkerWebServiceOptions["searchRuntime"];
@@ -180,6 +190,7 @@ export class WorkerWebService {
     this.#now = options.now ?? (() => new Date());
     this.#robots =
       options.robots ?? new RobotsPolicy({ fetchOptions: this.#fetchOptions });
+    this.#renderPage = options.renderPage ?? null;
     this.#searchRuntime = options.searchRuntime;
   }
 
@@ -300,12 +311,9 @@ export class WorkerWebService {
       urlValue = reference.url;
     }
     const url = normalizedPublicHttpUrl(urlValue!);
-    if (input.render === "always") {
-      throw new Error(
-        "Rendered reading is temporarily unavailable while the managed browser runtime is preparing.",
-      );
-    }
     await this.#robots.assertAllowed(url);
+    if (input.render === "always")
+      return await this.#render(binding, url.href, input.maxChars);
     const response = await this.#fetchPage(url.href, {
       ...this.#fetchOptions,
       beforeRequest: async (candidate) => {
@@ -350,9 +358,7 @@ export class WorkerWebService {
       );
     }
     if (extracted.content.length < 100 && input.render === "auto") {
-      throw new Error(
-        "Static extraction found no usable content; rendered reading is temporarily unavailable.",
-      );
+      return await this.#render(binding, response.url, input.maxChars);
     }
     const retrievedAt = this.#now().toISOString();
     return this.#page(
@@ -360,6 +366,32 @@ export class WorkerWebService {
       { ...extracted, method, retrievedAt },
       0,
       input.maxChars,
+    );
+  }
+
+  async #render(
+    binding: CantripMcpBinding,
+    url: string,
+    maxChars: number,
+  ): Promise<CantripAgentOperationResult> {
+    if (!this.#renderPage)
+      throw new Error("Rendered reading is unavailable on this worker.");
+    const rendered = await this.#renderPage(url, async (candidate) => {
+      await this.#robots.assertAllowed(candidate);
+    });
+    const extracted = extractionFromHtml(rendered.html, rendered.url);
+    if (!extracted.title) extracted.title = compactText(rendered.title, 1_000);
+    if (extracted.content.length < 1)
+      throw new Error("Rendered reading found no usable page content.");
+    return this.#page(
+      binding,
+      {
+        ...extracted,
+        method: "rendered",
+        retrievedAt: this.#now().toISOString(),
+      },
+      0,
+      maxChars,
     );
   }
 

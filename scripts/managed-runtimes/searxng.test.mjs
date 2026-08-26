@@ -91,3 +91,12 @@ test("requirements lock contains hashes and no editable or URL requirements", as
   assert.match(requirements, /--hash=sha256:[a-f0-9]{64}/);
   assert.doesNotMatch(requirements, /^(-e |https?:|git\+)/m);
 });
+
+test("the Windows portability patch is explicit and source-shipped", async () => {
+  const patch = await readFile(
+    path.join(inputRoot, "patches", "0001-portable-valkey-identity.patch"),
+    "utf8",
+  );
+  assert.match(patch, /except ImportError/u);
+  assert.match(patch, /Windows has no POSIX account database/u);
+});

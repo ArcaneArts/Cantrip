@@ -91,6 +91,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Enable the Chromium namespace sandbox on Linux release runners
+        if: startsWith(matrix.target, 'linux-')
+        shell: bash
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Verify release tooling
         run: pnpm managed-runtime:playwright:test
       - name: Build, inventory, launch, snapshot, isolate, and shut down
