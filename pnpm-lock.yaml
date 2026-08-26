@@ -268,6 +268,9 @@ importers:
 
   cantrip_site:
     dependencies:
+      "@cantrip/glitch":
+        specifier: workspace:*
+        version: link:../packages/glitch
       lucide-react:
         specifier: ^1.29.0
         version: 1.29.0(react@19.2.8)

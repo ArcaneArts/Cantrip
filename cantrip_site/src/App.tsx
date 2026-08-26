@@ -1,3 +1,4 @@
+import { EliteReveal } from "@cantrip/glitch";
 import {
   Activity,
   AppWindow,
@@ -41,6 +42,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+
+import {
+  SITE_DEMO_GLITCH_CONFIG,
+  SITE_HERO_GLITCH_CONFIG,
+  SITE_REDUCED_MOTION_GLITCH_CONFIG,
+  usePrefersReducedMotion,
+} from "./site-glitch";
 
 type ThemeMode = "system" | "light" | "dark";
 type DemoTab = "editor" | "agents" | "terminal" | "git";
@@ -617,8 +625,9 @@ function GitDemo() {
   );
 }
 
-function ProductDemo() {
+function ProductDemo({ glitchEnabled }: { glitchEnabled: boolean }) {
   const [active, setActive] = useState<DemoTab>("editor");
+  const [replayKey, setReplayKey] = useState(0);
   const tabs: Array<{ icon: LucideIcon; label: string; value: DemoTab }> = [
     { icon: Code2, label: "Editor", value: "editor" },
     { icon: Bot, label: "Agents", value: "agents" },
@@ -672,7 +681,10 @@ function ProductDemo() {
                 aria-selected={active === value}
                 className={active === value ? "active" : ""}
                 key={value}
-                onClick={() => setActive(value)}
+                onClick={() => {
+                  setActive(value);
+                  setReplayKey((current) => current + 1);
+                }}
                 role="tab"
                 type="button"
               >
@@ -680,10 +692,20 @@ function ProductDemo() {
               </button>
             ))}
           </div>
-          {active === "editor" && <EditorDemo />}
-          {active === "agents" && <ChatDemo />}
-          {active === "terminal" && <TerminalDemo />}
-          {active === "git" && <GitDemo />}
+          <EliteReveal
+            className="demo-reveal"
+            config={
+              glitchEnabled
+                ? SITE_DEMO_GLITCH_CONFIG
+                : SITE_REDUCED_MOTION_GLITCH_CONFIG
+            }
+            replayKey={replayKey}
+          >
+            {active === "editor" && <EditorDemo />}
+            {active === "agents" && <ChatDemo />}
+            {active === "terminal" && <TerminalDemo />}
+            {active === "git" && <GitDemo />}
+          </EliteReveal>
         </main>
       </div>
       <div className="stage-orbit orbit-a">
@@ -756,6 +778,8 @@ function WorkflowBoard() {
 
 function App() {
   const { mode, setMode } = useTheme();
+  const reducedMotion = usePrefersReducedMotion();
+  const glitchEnabled = !reducedMotion;
 
   return (
     <div className="site-shell" id="top">
@@ -798,7 +822,18 @@ function App() {
             <div className="status-line">
               <i /> EDITOR · TERMINALS · GIT · AGENTS · EVERY DEVICE
             </div>
-            <h1>The last agentic IDE you’ll need.</h1>
+            <EliteReveal
+              className="hero-title-reveal"
+              config={
+                glitchEnabled
+                  ? SITE_HERO_GLITCH_CONFIG
+                  : SITE_REDUCED_MOTION_GLITCH_CONFIG
+              }
+              contentKind="text"
+              replayKey={0}
+            >
+              <h1>The last agentic IDE you’ll need.</h1>
+            </EliteReveal>
             <p className="hero-lede">
               Cantrip is a complete development environment where you and your
               agents edit, run, review, and ship together. Keep the editor,
@@ -849,7 +884,7 @@ function App() {
               </div>
             </div>
           </div>
-          <ProductDemo />
+          <ProductDemo glitchEnabled={glitchEnabled} />
         </section>
 
         <section

@@ -20,6 +20,9 @@
   --violet-soft: #e3dbf8;
   --terminal: #101315;
   --terminal-ink: #e7ece8;
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --primary: var(--cyan);
 }
 
 :root[data-theme="dark"] {
@@ -292,6 +295,14 @@ h1 {
   line-height: 0.96;
   letter-spacing: -0.072em;
   font-weight: 700;
+}
+.hero-title-reveal {
+  max-width: 650px;
+  margin-bottom: 24px;
+}
+.hero-title-reveal h1 {
+  max-width: none;
+  margin-bottom: 0;
 }
 .hero-lede {
   max-width: 580px;
@@ -642,6 +653,18 @@ h1 {
   flex: 1;
   display: flex;
   flex-direction: column;
+}
+.demo-reveal {
+  --background: #101316;
+  --foreground: #eef2ef;
+  --primary: var(--cyan-bright);
+  min-height: 0;
+  flex: 1;
+}
+.demo-reveal > .elite-reveal__content {
+  height: 100%;
+  min-height: 0;
+  display: flex;
 }
 .demo-tabs {
   height: 39px;
