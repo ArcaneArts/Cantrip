@@ -1,6 +1,6 @@
 # Client-worker network fabric progress
 
-- Tranche One: Implemented; stabilization in progress
+- Tranche One: Stabilized
 - Tranche Two: Not started
 - Architecture: [NETWORK.md](NETWORK.md)
 - Execution started: 2026-08-26
@@ -40,12 +40,24 @@ TCP resumption, and final legacy-relay consolidation.
 
 ## Stabilization passes
 
-| Pass                         | Scope                                                                                        | Status   | Branch                                   | PR                                                       | Validation                                                                                                                           | Notes or deviations                                                                                                                                                   |
-| ---------------------------- | -------------------------------------------------------------------------------------------- | -------- | ---------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S1 — Code grant regression   | Remove the stale Code-origin grant block and prove exact protected Code attachment authority | Complete | `codex/network-tranche1-stabilize-code`  | [#1187](https://github.com/ArcaneArts/Cantrip/pull/1187) | Workspace typecheck; focused server 43, protocol 17, worker 13; full app 1,573; Rust fmt/check; cutover, formatting, and diff checks | Tranche One Pass 6 migrated Code clients but left the Pass 5 server migration guard active, causing every Code grant to fail with HTTP 409                            |
-| S2 — Route status projection | Expose feature-neutral current-client WorkerLink lifecycle and route snapshots               | Complete | `codex/network-tranche1-route-status`    | [#1188](https://github.com/ArcaneArts/Cantrip/pull/1188) | Workspace typecheck/build; focused WorkerLink 10; full app 1,575; cutover, changed-file formatting, and diff checks                  | Manager-owned snapshots are exact to client identity and worker; inactive links retain a labeled 30-second last-used route and expose no authority or network secrets |
-| S3 — Settings Network Map    | Render truthful control-plane and LOCAL/RELAY data-plane state                               | Complete | `codex/network-tranche1-settings-routes` | [#1190](https://github.com/ArcaneArts/Cantrip/pull/1190) | Workspace typecheck/build; focused Settings 20; full app 1,582; live desktop/narrow browser QA; cutover, formatting, and diff checks | Current-client worker cards and details consume the shared projection; peer-client data routes remain explicitly unknown and idle presence does not invent a route    |
-| S4 — Stabilization gate      | Audit the Tranche One cutover and run the final acceptance matrix                            | Planned  | Pending                                  | Pending                                                  | Pending                                                                                                                              | Tranche Two remains out of scope                                                                                                                                      |
+| Pass                         | Scope                                                                                        | Status   | Branch                                   | PR                                                       | Validation                                                                                                                                                                                       | Notes or deviations                                                                                                                                                         |
+| ---------------------------- | -------------------------------------------------------------------------------------------- | -------- | ---------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1 — Code grant regression   | Remove the stale Code-origin grant block and prove exact protected Code attachment authority | Complete | `codex/network-tranche1-stabilize-code`  | [#1187](https://github.com/ArcaneArts/Cantrip/pull/1187) | Workspace typecheck; focused server 43, protocol 17, worker 13; full app 1,573; Rust fmt/check; cutover, formatting, and diff checks                                                             | Tranche One Pass 6 migrated Code clients but left the Pass 5 server migration guard active, causing every Code grant to fail with HTTP 409                                  |
+| S2 — Route status projection | Expose feature-neutral current-client WorkerLink lifecycle and route snapshots               | Complete | `codex/network-tranche1-route-status`    | [#1188](https://github.com/ArcaneArts/Cantrip/pull/1188) | Workspace typecheck/build; focused WorkerLink 10; full app 1,575; cutover, changed-file formatting, and diff checks                                                                              | Manager-owned snapshots are exact to client identity and worker; inactive links retain a labeled 30-second last-used route and expose no authority or network secrets       |
+| S3 — Settings Network Map    | Render truthful control-plane and LOCAL/RELAY data-plane state                               | Complete | `codex/network-tranche1-settings-routes` | [#1190](https://github.com/ArcaneArts/Cantrip/pull/1190) | Workspace typecheck/build; focused Settings 20; full app 1,582; live desktop/narrow browser QA; cutover, formatting, and diff checks                                                             | Current-client worker cards and details consume the shared projection; peer-client data routes remain explicitly unknown and idle presence does not invent a route          |
+| S4 — Stabilization gate      | Audit the Tranche One cutover and run the final acceptance matrix                            | Complete | `codex/network-tranche1-acceptance`      | [#1191](https://github.com/ArcaneArts/Cantrip/pull/1191) | Workspace typecheck/build; cutover audit; focused protocol 10, app 112, server 79, worker 54; full protocol 359, app 1,582, worker 883; Rust fmt/check and WorkerLink 4; source/CLI verification | All in-scope suites pass; broad repository baseline failures were reproduced from the unchanged `origin/main` base and are recorded below; Tranche Two remains out of scope |
+
+## Stabilization acceptance evidence
+
+| Acceptance surface             | Evidence                                                                                                                                                                                                                                                                                         | Result |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| WorkerLink-owned topology      | The source cutover audit follows Terminal, saved and managed tunnels, project shares, browser/Capacitor Code, dedicated desktop Code, and the shared desktop Code pool to their WorkerLink entry points and rejects the removed feature-owned topology identifiers                               | Pass   |
+| Code authorization regression  | The grant endpoint now accepts a valid Code-origin protected attachment and installs its exact bounded worker grant; integration coverage retains account, account-session, placement, resource, attachment, expiry, revocation, replay, worker-generation, and route-generation rejection cases | Pass   |
+| Route lifecycle and fallback   | Focused protocol, app, server, and worker tests cover LOCAL-to-RELAY fallback, route replacement, generation fencing, renewal, revocation, logout, worker restart, server reconnect, channel retirement, and reconnect without rebinding native listeners                                        | Pass   |
+| Browser and Capacitor behavior | Hosted Code continues to use the service-worker/WebSocket shim over a WorkerLink RELAY carrier; the browser-compatible adapter suite and full app suite pass without enabling peer-direct transport                                                                                              | Pass   |
+| Settings observability         | Component coverage proves active LOCAL and RELAY, fallback, connecting, reconnecting, idle, offline, last-used, mixed-route, and unknown peer-route states; live desktop and 390-pixel browser QA verifies responsive worker cards and details                                                   | Pass   |
+| Broad validation               | Protocol, app, and worker suites pass in full; workspace build/typecheck, source verification, CLI check, Tauri compile, and the focused native WorkerLink tests pass                                                                                                                            | Pass   |
+| Baseline separation            | The acceptance branch was byte-identical to synchronized `origin/main` while the broad server suite, server-boundary audit, and root formatting check were captured; their unrelated failures are listed below                                                                                   | Pass   |
 
 ## Tranche One acceptance checklist
 
@@ -63,7 +75,7 @@ TCP resumption, and final legacy-relay consolidation.
 - [x] Durable application state remains server-authoritative.
 - [x] Metrics distinguish LOCAL and RELAY without sensitive or high-cardinality labels.
 - [x] Focused validation and the final repository check were run; WorkerLink scopes pass and only independently reproduced repository baseline failures remain.
-- [x] Every pass PR is squash-merged, `origin/main` contains the tranche, Primary is synchronized, and goal worktrees are removed when this ledger reaches `main` through PR #1186.
+- [x] Every implementation and stabilization pass uses its own squash-merged PR; `origin/main`, Primary synchronization, and goal-worktree cleanup are completed as the S4 stabilization PR lands.
 
 ## Blockers and known risks
 
@@ -77,12 +89,15 @@ TCP resumption, and final legacy-relay consolidation.
   `cantrip_app/src/lib/server-connections.ts`, and
   `cantrip_server/test/chat-turn-retry-repository.test.ts`.
 - The final full protocol suite passes 359 tests. The final full app suite
-  passes 1,573 tests with three skipped. The final full worker suite passes 880
-  tests with two skipped across 141 passing files and one skipped file. The
-  broad server suite continues to report pre-existing schema and version
-  fixture drift; representative failures reproduce on Primary, while the final
-  focused WorkerLink, metrics, placement, Browser attachment, and tunnel
-  control surfaces pass.
+  passes 1,582 tests with three skipped. The final full worker suite passes 883
+  tests with two skipped across 142 passing files and one skipped file. The
+  broad server suite, run while the acceptance worktree was still byte-identical
+  to synchronized `origin/main` at `51b51702`, passes 690 of 840 tests, with 48
+  failures and 102 pending across 319 passing and 52 failing suites. Those
+  failures remain pre-existing schema, placement, and version-fixture drift;
+  the focused WorkerLink coordinator, service, relay, tunnel control plane,
+  bridge, shared coordination, project placement, and metrics suites pass all
+  79 tests.
 - Two existing native tunnel-forward tests that launch the real packaged Code
   transport time out under the current Node 24/Rust test harness (44 sibling
   tunnel-forward tests pass). The same recovery-case timeout reproduces on the
