@@ -15,12 +15,16 @@ import { pathToFileURL } from "node:url";
 import {
   managedWebRuntimeStatusSchema,
   type CantripMcpBinding,
+  type ManagedWebRuntimeAction,
   type ManagedWebRuntimeStatus,
 } from "@cantrip/protocol";
 
 import { normalizedPublicHttpUrl } from "../web/safe-fetch.js";
 import { BrowserNetworkProxy } from "./browser-proxy.js";
-import { ManagedRuntimeInstaller } from "./runtime.js";
+import {
+  ManagedRuntimeInstaller,
+  publicManagedWebRuntimeStatus,
+} from "./runtime.js";
 import {
   managedRuntimeManifestUrl,
   managedRuntimePublicKeys,
@@ -35,7 +39,9 @@ const SESSION_TTL_MS = 15 * 60_000;
 const MAX_SESSION_ELEMENTS = 100;
 
 interface InstallerLike {
+  clearCache(): Promise<ManagedWebRuntimeStatus>;
   prepare(): Promise<ManagedWebRuntimeStatus>;
+  reinstall(): Promise<ManagedWebRuntimeStatus>;
   rollback(): Promise<ManagedWebRuntimeStatus>;
   runtimeDirectory(): string | null;
   status(): ManagedWebRuntimeStatus;
@@ -446,13 +452,15 @@ export class PlaywrightRuntimeManager {
 
   status(): ManagedWebRuntimeStatus {
     const installed = this.#installer.status();
-    if (!this.#runtimeFailure) return installed;
-    return managedWebRuntimeStatusSchema.parse({
-      ...installed,
-      state: installed.installedVersion ? "degraded" : "failed",
-      progress: null,
-      failure: this.#runtimeFailure,
-    });
+    if (!this.#runtimeFailure) return publicManagedWebRuntimeStatus(installed);
+    return publicManagedWebRuntimeStatus(
+      managedWebRuntimeStatusSchema.parse({
+        ...installed,
+        state: installed.installedVersion ? "degraded" : "failed",
+        progress: null,
+        failure: this.#runtimeFailure,
+      }),
+    );
   }
 
   prepare(): Promise<void> {
@@ -467,6 +475,17 @@ export class PlaywrightRuntimeManager {
       this.#updateTimer.unref();
     }
     return this.#operation;
+  }
+
+  async action(
+    action: ManagedWebRuntimeAction,
+  ): Promise<ManagedWebRuntimeStatus> {
+    if (this.#operation) await this.#operation;
+    this.#operation = this.#performAction(action).finally(
+      () => (this.#operation = null),
+    );
+    await this.#operation;
+    return this.status();
   }
 
   async render(
@@ -856,6 +875,66 @@ export class PlaywrightRuntimeManager {
     else {
       await this.#closeBrowser();
       this.#runtimeDirectory = runtime;
+    }
+  }
+
+  async #performAction(action: ManagedWebRuntimeAction): Promise<void> {
+    if (action === "clear-profiles") {
+      for (const [sessionId, record] of this.#sessions) {
+        if (record.persistent) await this.#closeSession(sessionId, record);
+      }
+      const profiles = path.join(
+        this.#dataDirectory,
+        "managed-runtimes",
+        "playwright",
+        "state",
+        "profiles",
+      );
+      await rm(profiles, { recursive: true, force: true });
+      await privateDirectory(profiles);
+      return;
+    }
+    if (
+      this.#activeContexts > 0 &&
+      ["retry", "reinstall", "clear-cache"].includes(action)
+    )
+      throw new Error(
+        "The browser runtime is busy; retry after active contexts finish.",
+      );
+    if (["retry", "reinstall", "clear-cache"].includes(action)) {
+      await this.#closeBrowser();
+      this.#runtimeFailure = null;
+    }
+    if (action === "clear-cache") {
+      await this.#installer.clearCache();
+      const stateRoot = path.join(
+        this.#dataDirectory,
+        "managed-runtimes",
+        "playwright",
+        "state",
+      );
+      for (const directory of ["cache", "downloads", "traces"] as const) {
+        const target = path.join(stateRoot, directory);
+        await rm(target, { recursive: true, force: true });
+        await privateDirectory(target);
+      }
+    }
+    const status =
+      action === "reinstall"
+        ? await this.#installer.reinstall()
+        : await this.#installer.prepare();
+    const runtime = this.#installer.runtimeDirectory();
+    if (
+      status.state === "ready" &&
+      runtime &&
+      runtime !== this.#runtimeDirectory
+    ) {
+      if (this.#activeContexts > 0) this.#pendingRuntime = runtime;
+      else {
+        await this.#closeBrowser();
+        this.#runtimeDirectory = runtime;
+        this.#pendingRuntime = null;
+      }
     }
   }
 

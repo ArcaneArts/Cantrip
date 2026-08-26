@@ -17,11 +17,15 @@ import {
   managedWebRuntimeStatusSchema,
   unavailableManagedWebRuntimeCapabilities,
   type ManagedWebRuntimeCapabilities,
+  type ManagedWebRuntimeAction,
   type ManagedWebRuntimeStatus,
 } from "@cantrip/protocol";
 
 import { spawnGuardedProcess } from "../code/process-guard.js";
-import { ManagedRuntimeInstaller } from "./runtime.js";
+import {
+  ManagedRuntimeInstaller,
+  publicManagedWebRuntimeStatus,
+} from "./runtime.js";
 import {
   managedRuntimeManifestUrl,
   managedRuntimePublicKeys,
@@ -35,7 +39,9 @@ const MAX_FAILURES_BEFORE_DEGRADED = 5;
 const STABLE_PROCESS_MS = 5 * 60_000;
 
 interface InstallerLike {
+  clearCache(): Promise<ManagedWebRuntimeStatus>;
   prepare(): Promise<ManagedWebRuntimeStatus>;
+  reinstall(): Promise<ManagedWebRuntimeStatus>;
   rollback(): Promise<ManagedWebRuntimeStatus>;
   runtimeDirectory(): string | null;
   status(): ManagedWebRuntimeStatus;
@@ -368,13 +374,15 @@ export class SearxngRuntimeManager {
 
   status(): ManagedWebRuntimeStatus {
     const installed = this.#installer.status();
-    if (!this.#runtimeFailure) return installed;
-    return managedWebRuntimeStatusSchema.parse({
-      ...installed,
-      state: installed.installedVersion ? "degraded" : "failed",
-      progress: null,
-      failure: this.#runtimeFailure,
-    });
+    if (!this.#runtimeFailure) return publicManagedWebRuntimeStatus(installed);
+    return publicManagedWebRuntimeStatus(
+      managedWebRuntimeStatusSchema.parse({
+        ...installed,
+        state: installed.installedVersion ? "degraded" : "failed",
+        progress: null,
+        failure: this.#runtimeFailure,
+      }),
+    );
   }
 
   prepare(): Promise<void> {
@@ -390,6 +398,23 @@ export class SearxngRuntimeManager {
       this.#updateTimer.unref();
     }
     return this.#operation;
+  }
+
+  async action(
+    action: ManagedWebRuntimeAction,
+  ): Promise<ManagedWebRuntimeStatus> {
+    if (action === "clear-profiles")
+      throw new Error("The search runtime has no persistent browser profiles.");
+    if (this.#activeRequests > 0)
+      throw new Error(
+        "The search runtime is busy; retry after active searches finish.",
+      );
+    if (this.#operation) await this.#operation;
+    this.#operation = this.#performAction(action).finally(() => {
+      this.#operation = null;
+    });
+    await this.#operation;
+    return this.status();
   }
 
   async endpoint(): Promise<SearxngEndpoint> {
@@ -442,6 +467,43 @@ export class SearxngRuntimeManager {
     if (this.#child && before === after && this.#endpoint) return;
     await this.#stopChild();
     await this.#startChild(after, status.installedVersion ?? "unknown");
+  }
+
+  async #performAction(action: ManagedWebRuntimeAction): Promise<void> {
+    const before = this.#installer.runtimeDirectory();
+    if (
+      action === "reinstall" ||
+      action === "retry" ||
+      action === "clear-cache"
+    ) {
+      await this.#stopChild();
+      this.#runtimeFailure = null;
+    }
+    if (action === "clear-cache") {
+      await this.#installer.clearCache();
+      const cache = path.join(
+        this.#dataDirectory,
+        "managed-runtimes",
+        "searxng",
+        "cache",
+      );
+      await rm(cache, { recursive: true, force: true });
+      await privateDirectory(cache);
+    }
+    const status =
+      action === "reinstall"
+        ? await this.#installer.reinstall()
+        : await this.#installer.prepare();
+    const runtime = this.#installer.runtimeDirectory();
+    if (
+      status.state === "ready" &&
+      runtime &&
+      !this.#closed &&
+      !(this.#child && this.#endpoint && before === runtime)
+    ) {
+      await this.#stopChild();
+      await this.#startChild(runtime, status.installedVersion ?? "unknown");
+    }
   }
 
   async #startChild(runtimeDirectory: string, version: string): Promise<void> {

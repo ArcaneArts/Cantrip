@@ -30,6 +30,7 @@ import {
 import {
   ManagedRuntimeInstaller,
   managedRuntimeArtifactSignaturePayload,
+  publicManagedWebRuntimeStatus,
 } from "../src/managed-runtimes/runtime.js";
 
 const temporaryDirectories: string[] = [];
@@ -119,6 +120,27 @@ function fixtureFetch(
 }
 
 describe("managed runtime foundation", () => {
+  it("removes internal failure detail from advertised status", () => {
+    const status = publicManagedWebRuntimeStatus({
+      component: "playwright",
+      supported: true,
+      state: "failed",
+      installedVersion: null,
+      previousVersion: null,
+      latestVersion: null,
+      lastCheckedAt: null,
+      progress: null,
+      failure: {
+        category: "process",
+        message: "https://secret.example/private /worker/private/path",
+        retryable: true,
+        failedAt: "2026-08-26T12:00:00.000Z",
+      },
+    });
+    expect(status.failure?.message).toBe(
+      "Managed playwright runtime process failure.",
+    );
+  });
   it("rejects traversal and platform-specific absolute paths", () => {
     expect(() => validateManagedRuntimeArchivePath("../escape")).toThrow(
       /unsafe/u,
@@ -209,11 +231,31 @@ describe("managed runtime foundation", () => {
       installedVersion: "2026.8.2",
       previousVersion: "2026.8.1",
     });
+    const currentDirectory = installer.runtimeDirectory()!;
+    await writeFile(path.join(currentDirectory, "launcher"), "corrupted\n");
+    expect(await installer.reinstall()).toMatchObject({
+      state: "ready",
+      installedVersion: "2026.8.2",
+      previousVersion: "2026.8.1",
+    });
+    expect(
+      await readFile(path.join(currentDirectory, "launcher"), "utf8"),
+    ).toBe("runtime 2026.8.2\n");
     expect(await installer.rollback()).toMatchObject({
       state: "ready",
       installedVersion: "2026.8.1",
       previousVersion: "2026.8.2",
     });
+    const disposable = path.join(
+      dataDirectory,
+      "managed-runtimes",
+      "searxng",
+      "downloads",
+      "discard.partial",
+    );
+    await writeFile(disposable, "discard");
+    await installer.clearCache();
+    await expect(readFile(disposable)).rejects.toThrow();
   });
 
   it("rejects an artifact whose signature is not trusted", async () => {

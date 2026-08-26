@@ -32,6 +32,7 @@ import {
   gitStashMutationResultSchema,
   providerQuotaSnapshotSchema,
   mentionedSkillNames,
+  managedWebRuntimeActionResultSchema,
   scriptCommandListSchema,
   skillListSchema,
   skillSettingsDeleteRequestSchema,
@@ -3213,6 +3214,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           acceptedAt,
           status: "queued" as const,
         };
+      }
+      case "web-runtime.action": {
+        const runtime =
+          command.component === "searxng" ? searxngRuntime : playwrightRuntime;
+        const status = await runtime.action(command.action);
+        return managedWebRuntimeActionResultSchema.parse({
+          accepted: true,
+          action: command.action,
+          component: command.component,
+          status,
+        });
       }
       case "explorer.operation": {
         const streamContext = {

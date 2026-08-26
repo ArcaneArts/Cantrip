@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   managedWebRuntimeCapabilitiesSchema,
+  managedWebRuntimeActionRequestSchema,
   managedWebRuntimeReleaseManifestSchema,
   managedWebRuntimeStatusSchema,
   unavailableManagedWebRuntimeCapabilities,
@@ -81,5 +82,20 @@ describe("managed web runtime contracts", () => {
         },
       }),
     ).toThrow(/Search runtime status/u);
+  });
+
+  it("limits profile cleanup to the managed browser runtime", () => {
+    expect(
+      managedWebRuntimeActionRequestSchema.parse({
+        component: "playwright",
+        action: "clear-profiles",
+      }),
+    ).toEqual({ component: "playwright", action: "clear-profiles" });
+    expect(() =>
+      managedWebRuntimeActionRequestSchema.parse({
+        component: "searxng",
+        action: "clear-profiles",
+      }),
+    ).toThrow(/browser runtime/u);
   });
 });

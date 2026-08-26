@@ -5,6 +5,7 @@ import {
   canAddThisMachine,
   desktopWorkerEnrollmentStopped,
   formatWorkerLastSeen,
+  managedRuntimeLabel,
   recoverableDesktopWorkerId,
   resolveDesktopWorkerPairingId,
   staleDesktopWorkerIds,
@@ -12,6 +13,21 @@ import {
 } from "./worker-settings";
 
 describe("worker settings helpers", () => {
+  it("formats managed web runtime state without exposing failure detail", () => {
+    expect(
+      managedRuntimeLabel({
+        component: "playwright",
+        supported: true,
+        state: "ready",
+        installedVersion: "2026.08.22.1",
+        previousVersion: null,
+        latestVersion: "2026.08.22.1",
+        lastCheckedAt: null,
+        progress: null,
+        failure: null,
+      }),
+    ).toBe("ready · v2026.08.22.1");
+  });
   it("only offers restart for an online worker without a restart in flight", () => {
     expect(canRestartWorker({ online: true, restarting: false })).toBe(true);
     expect(canRestartWorker({ online: false, restarting: false })).toBe(false);

@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { connect } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -258,6 +258,17 @@ describe("PlaywrightRuntimeManager", () => {
     ).rejects.toThrow(/stale/u);
     await manager.closeSession(binding, opened.sessionId);
     expect(contextClose).toHaveBeenCalledOnce();
+    const profileMarker = path.join(
+      state,
+      "managed-runtimes",
+      "playwright",
+      "state",
+      "profiles",
+      "saved-cookie",
+    );
+    await writeFile(profileMarker, "private");
+    await manager.action("clear-profiles");
+    await expect(readFile(profileMarker)).rejects.toThrow();
     await manager.close();
   });
 });

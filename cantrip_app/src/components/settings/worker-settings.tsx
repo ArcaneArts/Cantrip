@@ -2,6 +2,8 @@ import type {
   WorkerCredentialSummary,
   WorkerEnrollmentCodeResult,
   WorkerManagementSummary,
+  ManagedWebRuntimeAction,
+  ManagedWebRuntimeStatus,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -11,6 +13,7 @@ import {
   Cpu,
   GitCompareArrows,
   HardDrive,
+  Globe2,
   KeyRound,
   Laptop,
   Loader2,
@@ -50,6 +53,7 @@ import {
   getSettings,
   revokeWorkerCredential,
   restartWorker,
+  runManagedWebRuntimeAction,
   rotateWorkerCredential,
   unlinkWorker,
   updateSettings,
@@ -200,6 +204,27 @@ function WorkerCapabilities({ worker }: { worker: WorkerManagementSummary }) {
   );
 }
 
+export function managedRuntimeLabel(status: ManagedWebRuntimeStatus): string {
+  const state = status.state.replace("-", " ");
+  const version = status.installedVersion
+    ? ` · v${status.installedVersion}`
+    : "";
+  const progress = status.progress?.totalBytes
+    ? ` · ${Math.floor((status.progress.completedBytes / status.progress.totalBytes) * 100)}%`
+    : "";
+  return `${state}${version}${progress}`;
+}
+
+const managedRuntimeActions: Array<{
+  action: ManagedWebRuntimeAction;
+  label: string;
+}> = [
+  { action: "check-update", label: "Check for update" },
+  { action: "retry", label: "Retry" },
+  { action: "reinstall", label: "Reinstall" },
+  { action: "clear-cache", label: "Clear cache" },
+];
+
 function CredentialRow({
   credential,
   revoking,
@@ -250,6 +275,7 @@ function WorkerRow({
   onManage,
   onRestart,
   onCheckCodeGraphUpdate,
+  onManageWebRuntimes,
   onUnlink,
 }: {
   isDefault: boolean;
@@ -260,12 +286,13 @@ function WorkerRow({
   onManage(): void;
   onRestart(): void;
   onCheckCodeGraphUpdate(): void;
+  onManageWebRuntimes(): void;
   onUnlink(): void;
 }) {
   return (
     <div
       data-high-contrast-row
-      className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]"
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_144px]"
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <span
@@ -319,6 +346,12 @@ function WorkerRow({
             : ""}
           {worker.codegraph.telemetryDisabled ? " · telemetry off" : ""}
         </p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          Web Search: {managedRuntimeLabel(worker.webRuntimes.search)}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          Web Browser: {managedRuntimeLabel(worker.webRuntimes.browser)}
+        </p>
       </div>
       <div className="col-span-2 min-w-0 pl-10 lg:col-span-1 lg:pl-0">
         <p className="truncate text-xs">
@@ -339,6 +372,15 @@ function WorkerRow({
         </p>
       </div>
       <div className="col-start-2 row-start-1 flex items-center justify-end lg:col-auto lg:row-auto">
+        <Button
+          size="icon"
+          variant="ghost"
+          title="Managed web runtimes"
+          onClick={onManageWebRuntimes}
+        >
+          <Globe2 className="size-3.5" />
+          <span className="sr-only">Managed web runtimes on {worker.name}</span>
+        </Button>
         <Button
           size="icon"
           variant="ghost"
@@ -452,6 +494,9 @@ export function WorkerSettings() {
     useState<WorkerManagementSummary | null>(null);
   const [restartTarget, setRestartTarget] =
     useState<WorkerManagementSummary | null>(null);
+  const [webRuntimeTarget, setWebRuntimeTarget] =
+    useState<WorkerManagementSummary | null>(null);
+  const [confirmProfileClear, setConfirmProfileClear] = useState(false);
   const [restartBaselines, setRestartBaselines] = useState<
     Record<string, string>
   >({});
@@ -648,6 +693,31 @@ export function WorkerSettings() {
   const codeGraphUpdate = useMutation({
     mutationFn: (workerId: string) => checkCodeGraphUpdate(workerId),
     onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["worker-management"] }),
+        queryClient.invalidateQueries({ queryKey: ["workers"] }),
+      ]);
+    },
+  });
+  const webRuntimeAction = useMutation({
+    mutationFn: (input: {
+      action: ManagedWebRuntimeAction;
+      component: "playwright" | "searxng";
+    }) => runManagedWebRuntimeAction(webRuntimeTarget!.workerId, input),
+    onSuccess: async (result) => {
+      setConfirmProfileClear(false);
+      setWebRuntimeTarget((current) =>
+        current
+          ? {
+              ...current,
+              webRuntimes: {
+                ...current.webRuntimes,
+                [result.component === "searxng" ? "search" : "browser"]:
+                  result.status,
+              },
+            }
+          : null,
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["worker-management"] }),
         queryClient.invalidateQueries({ queryKey: ["workers"] }),
@@ -1063,7 +1133,7 @@ export function WorkerSettings() {
             <span className="sr-only">Refresh workers</span>
           </Button>
         </div>
-        <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_108px] gap-3 border-t px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground lg:grid">
+        <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_144px] gap-3 border-t px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground lg:grid">
           <span>Worker</span>
           <span>Runtime</span>
           <span>Project sources</span>
@@ -1102,6 +1172,11 @@ export function WorkerSettings() {
               onCheckCodeGraphUpdate={() =>
                 codeGraphUpdate.mutate(worker.workerId)
               }
+              onManageWebRuntimes={() => {
+                webRuntimeAction.reset();
+                setConfirmProfileClear(false);
+                setWebRuntimeTarget(worker);
+              }}
               onUnlink={() => setUnlinkTarget(worker)}
             />
           ))}
@@ -1123,6 +1198,147 @@ export function WorkerSettings() {
           ) : null}
         </div>
       </section>
+
+      <Dialog
+        open={Boolean(webRuntimeTarget)}
+        onOpenChange={(open) => {
+          if (!open && !webRuntimeAction.isPending) {
+            setWebRuntimeTarget(null);
+            setConfirmProfileClear(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Managed web runtimes</DialogTitle>
+            <DialogDescription>
+              Portable worker runtimes on {webRuntimeTarget?.name}. They are
+              installed and updated only by Cantrip and never use system Python
+              or browsers.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {webRuntimeTarget
+              ? (
+                  [
+                    [
+                      "searxng",
+                      "Web Search — SearXNG",
+                      webRuntimeTarget.webRuntimes.search,
+                    ],
+                    [
+                      "playwright",
+                      "Web Browser — Playwright + Chromium",
+                      webRuntimeTarget.webRuntimes.browser,
+                    ],
+                  ] as const
+                ).map(([component, title, status]) => (
+                  <div key={component} className="rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">{title}</p>
+                      <Badge variant="outline">{status.state}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Managed by Cantrip · Portable worker runtime
+                    </p>
+                    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                      <dt className="text-muted-foreground">Installed</dt>
+                      <dd>{status.installedVersion ?? "Not installed"}</dd>
+                      <dt className="text-muted-foreground">Latest</dt>
+                      <dd>{status.latestVersion ?? "Not checked"}</dd>
+                      <dt className="text-muted-foreground">Previous</dt>
+                      <dd>{status.previousVersion ?? "None"}</dd>
+                      <dt className="text-muted-foreground">Diagnostic</dt>
+                      <dd>
+                        {status.failure
+                          ? `${status.failure.category} · ${status.failure.retryable ? "retryable" : "operator action required"}`
+                          : "No reported failure"}
+                      </dd>
+                    </dl>
+                    {status.progress ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {status.progress.phase} · {managedRuntimeLabel(status)}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {managedRuntimeActions.map(({ action, label }) => (
+                        <Button
+                          key={action}
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            !webRuntimeTarget.online ||
+                            webRuntimeAction.isPending
+                          }
+                          onClick={() =>
+                            webRuntimeAction.mutate({ action, component })
+                          }
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                      {component === "playwright" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            !webRuntimeTarget.online ||
+                            webRuntimeAction.isPending
+                          }
+                          onClick={() => setConfirmProfileClear(true)}
+                        >
+                          Clear profiles
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              : null}
+          </div>
+          {confirmProfileClear ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+              <p>
+                Clear every persistent Cantrip Browser profile on this worker?
+                Saved browser sessions and cookies cannot be recovered.
+              </p>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setConfirmProfileClear(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={webRuntimeAction.isPending}
+                  onClick={() =>
+                    webRuntimeAction.mutate({
+                      action: "clear-profiles",
+                      component: "playwright",
+                    })
+                  }
+                >
+                  Clear profiles
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {webRuntimeAction.isError ? (
+            <p className="text-sm text-destructive">
+              {errorMessage(webRuntimeAction.error)}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" disabled={webRuntimeAction.isPending}>
+                Close
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(restartTarget)}

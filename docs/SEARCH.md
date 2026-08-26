@@ -521,6 +521,9 @@ persistent browser profiles with confirmation. Managed entries cannot be
 edited, disabled by shadowing their reserved names, pointed at system
 executables, or copied into user MCP configuration.
 
+Release, compatibility, licensing, cache, operator-action, and incident
+procedures are maintained in [Managed web runtime operations](MANAGED_WEB_RUNTIMES.md).
+
 There is no prerequisite screen. Installation begins in the background, and a
 tool invoked during first setup returns bounded installing/progress state. The
 agent is instructed to continue independent work or retry after readiness, not
