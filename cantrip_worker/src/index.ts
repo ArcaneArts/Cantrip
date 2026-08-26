@@ -1377,12 +1377,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     const cantripAttachment = effectiveAttachment
       ? mcpBroker.createBinding({
           ownerId: workerEncryption.ownerId(),
+          contextKind: "project",
           projectId: effectiveAttachment.projectId,
           chatId: effectiveAttachment.chatId,
           executionLaneId: effectiveAttachment.executionLaneId,
           workerId: effectiveAttachment.workerId,
           worktreeId: effectiveAttachment.worktreeId,
           rootKind: effectiveAttachment.rootKind,
+          scratchRootId: null,
           permissionProfileId: effectiveAttachment.permissionProfileId,
           allowedOperations: [...cantripAllowedOperations],
           legacyCanonicalRoot: protectedLegacyRoot,

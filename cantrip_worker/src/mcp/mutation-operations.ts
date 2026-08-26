@@ -53,6 +53,13 @@ function exactWorktreeTarget(projectId: string, worktreeId: string) {
   };
 }
 
+function boundProjectId(options: CantripMcpOperationOptions): string {
+  if (options.binding.contextKind !== "project") {
+    throw new Error("Worktree operations require a project MCP binding.");
+  }
+  return options.binding.projectId;
+}
+
 async function resolveWorktreeTarget(
   options: CantripMcpOperationOptions,
   target: ReturnType<typeof exactWorktreeTarget>,
@@ -168,7 +175,7 @@ async function executeWorktreeOperation(options: CantripMcpOperationOptions) {
       );
       const transition = normalizedTransition(result);
       const target = exactWorktreeTarget(
-        options.binding.projectId,
+        boundProjectId(options),
         transition.worktree.id,
       );
       return cantripMcpWorktreeReleaseResultSchema.parse({
@@ -424,6 +431,9 @@ async function executeBrowserNavigate(options: CantripMcpOperationOptions) {
 export async function executeCantripMcpMutationOperation(
   options: CantripMcpOperationOptions,
 ): Promise<CantripAgentOperationResult> {
+  if (options.binding.contextKind !== "project") {
+    throw new Error("Project mutations require a project MCP binding.");
+  }
   if (options.service.ownerId() !== options.binding.ownerId) {
     throw new Error("Worker encryption belongs to a different MCP owner.");
   }

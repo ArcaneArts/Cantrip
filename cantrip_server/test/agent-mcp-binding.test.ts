@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CANTRIP_MCP_READ_OPERATIONS,
   CANTRIP_MCP_OPERATIONS,
+  cantripMcpOperationsForPermissionProfile,
   type CantripMcpBinding,
 } from "@cantrip/protocol";
 
@@ -16,6 +17,7 @@ const now = Date.parse("2026-08-21T12:00:00.000Z");
 const context: ChatExecutionContext = {
   automationPaused: false,
   chatId: "chat-one",
+  contextKind: "project",
   cwd: `ctrr_${"A".repeat(43)}`,
   experience: "chat",
   defaultPermissionProfileId: ":default",
@@ -30,6 +32,7 @@ const context: ChatExecutionContext = {
   planMode: "default",
   projectId: "project-one",
   rootKind: "git-worktree",
+  scratchRootId: null,
   threadId: "thread-one",
   workerId: "worker-one",
   worktreeId: "worktree-one",
@@ -39,18 +42,40 @@ const context: ChatExecutionContext = {
 const binding: CantripMcpBinding = {
   bindingId: "00000000-0000-4000-8000-000000000001",
   ownerId: "owner-one",
+  contextKind: "project",
   projectId: context.projectId,
   chatId: context.chatId,
   executionLaneId: context.executionLaneId!,
   workerId: context.workerId,
   worktreeId: context.worktreeId,
   rootKind: context.rootKind,
+  scratchRootId: null,
   permissionProfileId: ":workspace-write",
   allowedOperations: [...CANTRIP_MCP_READ_OPERATIONS],
   issuedAt: "2026-08-21T11:59:00.000Z",
   expiresAt: "2026-08-21T13:00:00.000Z",
 };
 const serverAllowedOperations = new Set(CANTRIP_MCP_READ_OPERATIONS);
+
+const standaloneContext: ChatExecutionContext = {
+  ...context,
+  contextKind: "standalone",
+  projectId: null,
+  rootKind: null,
+  scratchRootId: "scratch-one",
+  worktreeId: null,
+  worktreeMode: null,
+  worktreePolicy: null,
+};
+const standaloneBinding: CantripMcpBinding = {
+  ...binding,
+  contextKind: "standalone",
+  projectId: null,
+  rootKind: null,
+  scratchRootId: "scratch-one",
+  worktreeId: null,
+  allowedOperations: ["web.search", "web.read"],
+};
 
 describe("Cantrip MCP server binding", () => {
   it("reports authoritative mutation readiness and bounded recovery claims", () => {
@@ -118,6 +143,40 @@ describe("Cantrip MCP server binding", () => {
     ).not.toThrow();
   });
 
+  it("accepts standalone bindings only for the exact standalone scratch root", () => {
+    const webOperations = new Set(["web.search", "web.read"] as const);
+    expect(() =>
+      assertCantripMcpBinding({
+        binding: standaloneBinding,
+        context: standaloneContext,
+        operation: "web.search",
+        ownerId: "owner-one",
+        serverAllowedOperations: webOperations,
+        now,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertCantripMcpBinding({
+        binding: standaloneBinding,
+        context: { ...standaloneContext, scratchRootId: "scratch-two" },
+        operation: "web.search",
+        ownerId: "owner-one",
+        serverAllowedOperations: webOperations,
+        now,
+      }),
+    ).toThrow("changed: scratch root");
+    expect(() =>
+      assertCantripMcpBinding({
+        binding: standaloneBinding,
+        context,
+        operation: "web.search",
+        ownerId: "owner-one",
+        serverAllowedOperations: webOperations,
+        now,
+      }),
+    ).toThrow("changed: context kind");
+  });
+
   it("allows the read-only context probe between linked console turns", () => {
     const idleContext = { ...context, status: "idle" as const };
 
@@ -153,7 +212,9 @@ describe("Cantrip MCP server binding", () => {
       ...binding,
       permissionProfileId: ":read-only",
     };
-    for (const operation of CANTRIP_MCP_READ_OPERATIONS) {
+    for (const operation of cantripMcpOperationsForPermissionProfile(
+      ":read-only",
+    )) {
       expect(() =>
         assertCantripMcpBinding({
           binding: readOnlyBinding,

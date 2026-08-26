@@ -44,8 +44,10 @@ export function cantripMcpBindingReadiness(options: {
   const currentPermissionProfile =
     effectivePermissionProfile(context).effectiveId;
   const staleClaims = [
+    binding.contextKind !== context.contextKind ? "context-kind" : null,
     binding.chatId !== context.chatId ? "chat" : null,
     binding.projectId !== context.projectId ? "project" : null,
+    binding.scratchRootId !== context.scratchRootId ? "scratch-root" : null,
     binding.workerId !== context.workerId ? "worker" : null,
     binding.executionLaneId !== context.executionLaneId
       ? "execution-lane"
@@ -130,8 +132,10 @@ export function assertCantripMcpBinding(options: {
   const currentPermissionProfile =
     effectivePermissionProfile(context).effectiveId;
   const staleIdentityClaims = [
+    binding.contextKind !== context.contextKind ? "context kind" : null,
     binding.chatId !== context.chatId ? "chat" : null,
     binding.projectId !== context.projectId ? "project" : null,
+    binding.scratchRootId !== context.scratchRootId ? "scratch root" : null,
     binding.workerId !== context.workerId ? "worker" : null,
   ].filter((claim): claim is string => claim !== null);
   // The worktree ID is the durable execution-root identity shared by the

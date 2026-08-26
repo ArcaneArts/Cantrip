@@ -67,6 +67,9 @@ async function inspectSurface(
 export async function executeCantripMcpClientControlOperation(
   options: CantripMcpOperationOptions,
 ): Promise<CantripAgentOperationResult> {
+  if (options.binding.contextKind !== "project") {
+    throw new Error("Client-control operations require a project MCP binding.");
+  }
   switch (options.request.operation) {
     case "client.notify": {
       const arguments_ = cantripMcpClientNotifyInputSchema.parse(

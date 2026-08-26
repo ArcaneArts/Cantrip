@@ -786,18 +786,21 @@ describe("Cantrip protocol", () => {
     const binding = cantripMcpBindingSchema.parse({
       bindingId: "00000000-0000-4000-8000-000000000001",
       ownerId: "owner-one",
+      contextKind: "project",
       projectId: "project-one",
       chatId: "chat-one",
       executionLaneId: "lane-one",
       workerId: "worker-one",
       worktreeId: "worktree-one",
       rootKind: "git-worktree",
+      scratchRootId: null,
       permissionProfileId: ":workspace-write",
       allowedOperations: ["context.get"],
       issuedAt: "2026-08-21T12:00:00.000Z",
       expiresAt: "2026-08-21T18:00:00.000Z",
     });
     expect(binding.allowedOperations).toEqual(["context.get"]);
+    expect(binding.contextKind).toBe("project");
     expect(
       cantripMcpBindingSchema.safeParse({
         ...binding,
@@ -820,6 +823,48 @@ describe("Cantrip protocol", () => {
       cantripMcpBindingSchema.safeParse({
         ...binding,
         expiresAt: "2026-08-23T12:00:00.000Z",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("discriminates project and standalone MCP binding scopes", () => {
+    const common = {
+      bindingId: "00000000-0000-4000-8000-000000000002",
+      ownerId: "owner-one",
+      chatId: "chat-one",
+      executionLaneId: "lane-one",
+      workerId: "worker-one",
+      permissionProfileId: ":workspace-write",
+      allowedOperations: ["web.search"],
+      issuedAt: "2026-08-21T12:00:00.000Z",
+      expiresAt: "2026-08-21T18:00:00.000Z",
+    } as const;
+    const standalone = cantripMcpBindingSchema.parse({
+      ...common,
+      contextKind: "standalone",
+      projectId: null,
+      worktreeId: null,
+      rootKind: null,
+      scratchRootId: "scratch-one",
+    });
+
+    expect(standalone.contextKind).toBe("standalone");
+    expect(
+      cantripMcpBindingSchema.safeParse({
+        ...standalone,
+        projectId: "project-one",
+      }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpBindingSchema.safeParse({
+        ...standalone,
+        scratchRootId: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpBindingSchema.safeParse({
+        ...standalone,
+        contextKind: "project",
       }).success,
     ).toBe(false);
   });
@@ -999,7 +1044,9 @@ describe("Cantrip protocol", () => {
     );
     expect(CANTRIP_MCP_OPERATIONS).toHaveLength(CANTRIP_MCP_TOOL_NAMES.length);
     expect(cantripMcpOperationsForPermissionProfile(":read-only")).toEqual(
-      CANTRIP_MCP_READ_OPERATIONS,
+      CANTRIP_MCP_READ_OPERATIONS.filter(
+        (operation) => operation !== "web.session.snapshot",
+      ),
     );
     expect(cantripMcpOperationsForPermissionProfile(":workspace")).toEqual(
       CANTRIP_MCP_OPERATIONS,
@@ -1008,7 +1055,11 @@ describe("Cantrip protocol", () => {
       cantripMcpToolNamesForOperations(
         cantripMcpOperationsForPermissionProfile(":read-only"),
       ),
-    ).toEqual(CANTRIP_MCP_READ_TOOL_NAMES);
+    ).toEqual(
+      CANTRIP_MCP_READ_TOOL_NAMES.filter(
+        (toolName) => toolName !== "web_session_snapshot",
+      ),
+    );
     expect(cantripMcpToolNamesForOperations(CANTRIP_MCP_OPERATIONS)).toEqual(
       CANTRIP_MCP_TOOL_NAMES,
     );

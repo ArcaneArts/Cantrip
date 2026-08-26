@@ -477,6 +477,16 @@ export async function executeCantripMcpReadOperation(
   if (options.service.ownerId() !== options.binding.ownerId) {
     throw new Error("Worker encryption belongs to a different MCP owner.");
   }
+  if (
+    options.binding.contextKind === "standalone" &&
+    options.request.operation !== "tool.help" &&
+    options.request.operation !== "web.search" &&
+    options.request.operation !== "web.read"
+  ) {
+    throw new Error(
+      "Standalone MCP bindings authorize only shared web operations.",
+    );
+  }
   switch (options.request.operation) {
     case "tool.help": {
       const { tool } = cantripMcpToolHelpInputSchema.parse(
