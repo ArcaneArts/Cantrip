@@ -63,21 +63,18 @@ describe("Codex provider configuration", () => {
     });
   });
 
-  it("disables Codex web search for SuperGrok compatibility", () => {
-    expect(codexProviderConfiguration(provider("grok")).arguments).toContain(
-      'web_search="disabled"',
-    );
-  });
-
-  it("preserves native search behavior for ChatGPT accounts", () => {
-    expect(
-      codexProviderConfiguration(provider("chatgpt")).arguments,
-    ).not.toContain('web_search="disabled"');
-  });
-
-  it("does not disable search for generic Responses-compatible providers", () => {
-    expect(
-      codexProviderConfiguration(provider("openai-compatible")).arguments,
-    ).not.toContain('web_search="disabled"');
+  it("disables native Codex web search for every provider family", () => {
+    for (const kind of [
+      "chatgpt",
+      "ollama",
+      "openai-compatible",
+      "grok",
+    ] as const) {
+      const arguments_ = codexProviderConfiguration(provider(kind)).arguments;
+      expect(arguments_).toContain('web_search="disabled"');
+      expect(
+        arguments_.filter((argument) => argument === 'web_search="disabled"'),
+      ).toHaveLength(1);
+    }
   });
 });
