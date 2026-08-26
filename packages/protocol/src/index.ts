@@ -5441,12 +5441,15 @@ export const protectedScriptCommandListSchema = z
   })
   .strict();
 
+export const explorerFileModeSchema = z.enum(["preview", "visual", "edit"]);
+
 const explorerCreateBaseSchema = z
   .object({
     worktreeId: z.string().min(1).optional(),
     tabGroupId: z.string().min(1).optional(),
     target: executionTargetSchema.optional(),
     attachToTabLayout: z.boolean().optional(),
+    fileMode: explorerFileModeSchema.optional(),
   })
   .refine((input) => !(input.worktreeId && input.target), {
     message: "Choose either a legacy worktreeId or an execution target.",
@@ -5485,8 +5488,6 @@ export const encryptedExplorerUpdateSchema = z
       path: ["titleProtection", "classification", "recordKind"],
     },
   );
-
-export const explorerFileModeSchema = z.enum(["preview", "visual", "edit"]);
 
 export const explorerViewStateUpdateSchema = z.object({
   selectedPath: z.string().min(1).max(8_192).nullable(),

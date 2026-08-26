@@ -856,6 +856,7 @@ describe.sequential("project execution placement API", () => {
           url: `/api/projects/${projectId}/explorers`,
           payload: {
             ...protectedExplorerFields(),
+            fileMode: "edit",
             target: {
               kind: "worktree",
               projectId,
@@ -865,6 +866,7 @@ describe.sequential("project execution placement API", () => {
         })
       ).json(),
     );
+    expect(explorer.fileMode).toBe("edit");
     const terminal = terminalWireSummarySchema.parse(
       (
         await app.inject({

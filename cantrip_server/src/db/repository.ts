@@ -14630,6 +14630,7 @@ export class ServerRepository {
           position,
           activeWorkerId: workerId,
           worktreeId,
+          fileMode: input.fileMode ?? "preview",
         })
         .returning();
       const explorer = firstOrThrow(result, "creating an explorer");

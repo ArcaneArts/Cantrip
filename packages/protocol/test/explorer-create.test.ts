@@ -17,4 +17,13 @@ describe("explorer create schema", () => {
       title: "Explorer",
     });
   });
+
+  it("accepts an initial file mode for atomically created file tabs", () => {
+    expect(
+      explorerCreateSchema.parse({ fileMode: "edit", title: "source.ts" }),
+    ).toMatchObject({
+      fileMode: "edit",
+      title: "source.ts",
+    });
+  });
 });
