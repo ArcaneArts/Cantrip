@@ -5,12 +5,14 @@ import {
   type CodeGraphWorkerStatus,
   type CodexRuntimeReport,
   type DirectBrokerAdvertisement,
+  type ManagedWebRuntimeCapabilities,
   type ProjectReplicaCapabilities,
   type RemoteSurfaceCapabilities,
   type WorkerHeartbeat,
   type WorkerEncryptionStatus,
   unavailableCodeCapabilities,
   unavailableCodeGraphWorkerStatus,
+  unavailableManagedWebRuntimeCapabilities,
   unavailableWorkerEncryptionStatus,
   workerHeartbeatSchema,
 } from "@cantrip/protocol";
@@ -44,6 +46,7 @@ export function createHeartbeat(
     attachExisting: true,
     recursiveParentCreation: true,
   },
+  webRuntimes: ManagedWebRuntimeCapabilities = unavailableManagedWebRuntimeCapabilities,
 ): WorkerHeartbeat {
   return workerHeartbeatSchema.parse({
     workerId: config.workerId,
@@ -87,6 +90,7 @@ export function createHeartbeat(
     externalCodexHistory:
       process.platform === "darwin" || process.platform === "win32",
     codegraph,
+    webRuntimes,
     encryption,
     startedAt,
   });

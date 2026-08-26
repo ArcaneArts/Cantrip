@@ -82,6 +82,16 @@ describe("worker presence fingerprint", () => {
     expect(
       workerPresenceFingerprint(
         worker({
+          webRuntimes: {
+            ...worker().webRuntimes,
+            staticReading: true,
+          },
+        }),
+      ),
+    ).not.toBe(current);
+    expect(
+      workerPresenceFingerprint(
+        worker({
           encryption: readyEncryption({
             grants: [
               { component: "surface-private-state", keyRevision: 4 },

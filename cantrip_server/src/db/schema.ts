@@ -21,6 +21,7 @@ import type {
   GitManagedOperationType,
   GitInteractiveRebaseTodoAction,
   ManagedFolderCapabilities,
+  ManagedWebRuntimeCapabilities,
   MobileProjectTabConfigurations,
   ModelReasoningEffortOption,
   PrivateDisplayLabelOpaque,
@@ -169,6 +170,33 @@ const unavailableCodeGraphWorkerStatus = {
   cliAvailable: false,
   mcpInjectionAvailable: false,
 } satisfies CodeGraphWorkerStatus;
+
+const unavailableManagedWebRuntimeCapabilities = {
+  schemaVersion: 1,
+  search: {
+    component: "searxng",
+    supported: false,
+    state: "unsupported",
+    installedVersion: null,
+    previousVersion: null,
+    latestVersion: null,
+    lastCheckedAt: null,
+    progress: null,
+    failure: null,
+  },
+  browser: {
+    component: "playwright",
+    supported: false,
+    state: "unsupported",
+    installedVersion: null,
+    previousVersion: null,
+    latestVersion: null,
+    lastCheckedAt: null,
+    progress: null,
+    failure: null,
+  },
+  staticReading: false,
+} satisfies ManagedWebRuntimeCapabilities;
 
 const unavailableWorkerEncryptionStatus = {
   supported: false,
@@ -1227,6 +1255,10 @@ export const workers = pgTable("workers", {
     .$type<CodeGraphWorkerStatus>()
     .notNull()
     .default(unavailableCodeGraphWorkerStatus),
+  webRuntimeCapabilities: jsonb("web_runtime_capabilities")
+    .$type<ManagedWebRuntimeCapabilities>()
+    .notNull()
+    .default(unavailableManagedWebRuntimeCapabilities),
   encryptionStatus: jsonb("encryption_status")
     .$type<WorkerEncryptionStatus>()
     .notNull()
