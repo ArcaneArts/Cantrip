@@ -141,6 +141,28 @@ describe("WorkerLinkService replicated authority", () => {
         sessionId: opened.sessionId,
       }),
     );
+    await expect(
+      serviceB.renewGrant(opened.sessionId, grant.binding.grantId),
+    ).resolves.toMatchObject({
+      absoluteExpiresAt: grant.binding.lease.absoluteExpiresAt,
+    });
+    expect(workersA.commands).toContainEqual(
+      expect.objectContaining({
+        type: "worker-link.grant.renew",
+        sessionId: opened.sessionId,
+        grantId: grant.binding.grantId,
+      }),
+    );
+    await expect(
+      serviceB.revokeGrant(opened.sessionId, grant.binding.grantId),
+    ).resolves.toBe(true);
+    expect(workersA.commands).toContainEqual(
+      expect.objectContaining({
+        type: "worker-link.grant.revoke",
+        sessionId: opened.sessionId,
+        grantId: grant.binding.grantId,
+      }),
+    );
 
     await expect(serviceB.revokeSession(opened.sessionId)).resolves.toBe(true);
     await expect(

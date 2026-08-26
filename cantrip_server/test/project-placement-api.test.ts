@@ -12,8 +12,11 @@ import {
   executionTargetResolutionSchema,
   projectTabLayoutWireSummarySchema,
   protectedScriptCommandListSchema,
+  serverBootstrapSchema,
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
+  workerLinkResourceGrantSchema,
+  workerLinkSessionSchema,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import {
@@ -66,6 +69,7 @@ const config: ServerConfig = {
 
 const connectedWorkers = new Set(["worker-alpha", "worker-beta"]);
 const routedCommands: Array<{ workerId: string; command: WorkerCommand }> = [];
+let resolvedServerId = "";
 const protectedSurfacePayload = surfaceStreamOpaqueSchema.parse({
   formatVersion: 1,
   keyRevision: 1,
@@ -105,9 +109,29 @@ const workerBridge: WorkerCommandBus = {
   subscribeSurfaceFrames() {
     return () => undefined;
   },
-  async request(workerId, command) {
+  async request(workerId, command, options) {
     routedCommands.push({ workerId, command });
     switch (command.type) {
+      case "worker-link.identity.resolve":
+        return {
+          serverId: resolvedServerId,
+          ownerId: LOCAL_USER_ID,
+          workerId,
+          workerProcessGeneration: "worker-generation-1",
+        };
+      case "worker-link.session.install":
+      case "worker-link.session.renew":
+      case "worker-link.session.route":
+      case "worker-link.session.revoke":
+      case "worker-link.grant.install":
+      case "worker-link.grant.renew":
+      case "worker-link.grant.revoke":
+        return { accepted: true };
+      case "terminal.open":
+        await options?.onEvent?.({ type: "terminal.ready" });
+        return { status: "detached" };
+      case "terminal.detach":
+        return { status: "detached" };
       case "explorer.operation":
         return {
           operationId: command.operationId,
@@ -294,6 +318,9 @@ beforeAll(async () => {
     );
   }
   app = await buildApp({ config, database, logger: false, workerBridge });
+  resolvedServerId = serverBootstrapSchema.parse(
+    (await app.inject({ method: "GET", url: "/api/bootstrap" })).json(),
+  ).server.id;
 });
 
 beforeEach(async () => {
@@ -317,6 +344,80 @@ afterAll(async () => {
 });
 
 describe.sequential("project execution placement API", () => {
+  it("authorizes a Terminal WorkerLink grant without relaying PTY output", async () => {
+    const terminalCreated = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/terminals`,
+      payload: {
+        ...protectedTerminalFields(),
+        target: {
+          kind: "worktree",
+          projectId,
+          worktreeId: alphaWorktreeId,
+        },
+      },
+    });
+    expect(terminalCreated.statusCode).toBe(201);
+    const terminal = terminalWireSummarySchema.parse(terminalCreated.json());
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/worker-alpha/worker-link/sessions",
+      payload: { clientInstanceId: "terminal-client-1" },
+    });
+    expect(sessionResponse.statusCode).toBe(201);
+    const session = workerLinkSessionSchema.parse(sessionResponse.json());
+    const operationId = randomUUID();
+
+    const grantResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/terminals/${terminal.id}/grant`,
+      payload: { operationId },
+    });
+    expect(grantResponse.statusCode).toBe(201);
+    const grant = workerLinkResourceGrantSchema.parse(grantResponse.json());
+    expect(grant.binding).toMatchObject({
+      sessionId: session.sessionId,
+      resource: {
+        kind: "terminal",
+        resourceId: terminal.id,
+        attachmentId: operationId,
+      },
+      lanes: ["interactive"],
+      maxChannels: 1,
+    });
+    expect(routedCommands).toContainEqual(
+      expect.objectContaining({
+        workerId: "worker-alpha",
+        command: expect.objectContaining({
+          type: "terminal.open",
+          terminalId: terminal.id,
+          outputMode: "discard",
+        }),
+      }),
+    );
+    expect(routedCommands).toContainEqual(
+      expect.objectContaining({
+        workerId: "worker-alpha",
+        command: expect.objectContaining({
+          type: "worker-link.grant.install",
+          sessionId: session.sessionId,
+        }),
+      }),
+    );
+
+    const renewed = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/grants/${grant.binding.grantId}/renew`,
+      payload: {},
+    });
+    expect(renewed.statusCode).toBe(200);
+    const revoked = await app.inject({
+      method: "DELETE",
+      url: `/api/worker-links/${session.sessionId}/grants/${grant.binding.grantId}`,
+    });
+    expect(revoked.statusCode).toBe(204);
+  });
+
   it("serializes logical branch mutation across worker replicas", async () => {
     const alphaChat = await database.repository.createChat(
       LOCAL_USER_ID,

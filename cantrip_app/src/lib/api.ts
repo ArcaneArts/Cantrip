@@ -280,9 +280,12 @@ import {
   queuedPromptListSchema,
   queuedPromptSchema,
   directAttachmentTicketSchema,
+  workerLinkLeaseSchema,
+  workerLinkResourceGrantSchema,
   workerLinkRouteUpdateRequestSchema,
   workerLinkSessionOpenRequestSchema,
   workerLinkSessionSchema,
+  workerLinkTerminalGrantRequestSchema,
   directTransportTelemetrySchema,
   directTunnelPrepareRequestSchema,
   directTunnelTicketSchema,
@@ -867,6 +870,38 @@ export async function updateWorkerLinkRoute(
 export async function createWorkerLinkDirectTicket(sessionId: string) {
   return directAttachmentTicketSchema.parse(
     await post(`/api/worker-links/${encodeURIComponent(sessionId)}/direct`, {}),
+  );
+}
+
+export async function createTerminalWorkerLinkGrant(
+  sessionId: string,
+  terminalId: string,
+  operationId: string,
+) {
+  return workerLinkResourceGrantSchema.parse(
+    await post(
+      `/api/worker-links/${encodeURIComponent(sessionId)}/terminals/${encodeURIComponent(terminalId)}/grant`,
+      workerLinkTerminalGrantRequestSchema.parse({ operationId }),
+    ),
+  );
+}
+
+export async function renewWorkerLinkGrant(sessionId: string, grantId: string) {
+  return workerLinkLeaseSchema.parse(
+    await post(
+      `/api/worker-links/${encodeURIComponent(sessionId)}/grants/${encodeURIComponent(grantId)}/renew`,
+      {},
+    ),
+  );
+}
+
+export async function deleteWorkerLinkGrant(
+  sessionId: string,
+  grantId: string,
+): Promise<void> {
+  await request(
+    `/api/worker-links/${encodeURIComponent(sessionId)}/grants/${encodeURIComponent(grantId)}`,
+    { method: "DELETE" },
   );
 }
 

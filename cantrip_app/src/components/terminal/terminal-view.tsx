@@ -5,10 +5,7 @@ import type {
   TerminalServerMessage,
   TerminalSummary,
 } from "@cantrip/protocol";
-import {
-  DEFAULT_ELITE_REVEAL_CONFIG,
-  terminalServerMessageSchema,
-} from "@cantrip/protocol";
+import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/protocol";
 import {
   terminalInputContentSchema,
   terminalOutputContentSchema,
@@ -16,20 +13,19 @@ import {
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { getWorkers, terminalWebSocketUrl } from "@/lib/api";
+import { getWorkers } from "@/lib/api";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import { ResizablePanel } from "@/components/ui/resizable-panel";
-import {
-  startDirectDesktopTerminal,
-  stopDirectDesktopTerminal,
-  type DesktopTerminalConnection,
-} from "@/lib/desktop-terminal";
 import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import {
   openSurfaceStreamContent,
   protectSurfaceStreamContent,
 } from "@/lib/surface-stream-encryption";
+import {
+  openTerminalWorkerLink,
+  type TerminalWorkerLinkConnection,
+} from "@/lib/terminal-worker-link";
 
 import { terminalCommandInput } from "./terminal-command-palette";
 import {
@@ -192,9 +188,7 @@ export function TerminalView({
     container.addEventListener("focusin", updateTerminalFocus);
     container.addEventListener("focusout", handleTerminalFocusOut);
 
-    let socket: WebSocket | null = null;
-    let directConnection: DesktopTerminalConnection | null = null;
-    let directFallbackStarted = false;
+    let connection: TerminalWorkerLinkConnection | null = null;
     let ready = false;
     let disposed = false;
     let exited = false;
@@ -228,10 +222,16 @@ export function TerminalView({
       );
     };
     const sendSize = () => {
-      if (!ready || socket?.readyState !== WebSocket.OPEN) return;
-      socket.send(
-        JSON.stringify({ type: "resize", cols: xterm.cols, rows: xterm.rows }),
-      );
+      if (!ready || !connection) return;
+      if (
+        !connection.send({
+          type: "resize",
+          cols: xterm.cols,
+          rows: xterm.rows,
+        })
+      ) {
+        connection.close("congested");
+      }
     };
     const resize = () => {
       try {
@@ -260,7 +260,7 @@ export function TerminalView({
       attributes: true,
     });
     const sendInput = (data: string) => {
-      if (ready && socket?.readyState === WebSocket.OPEN) {
+      if (ready && connection) {
         const sequence = inputSequence;
         inputSequence += 1;
         inputQueue = inputQueue
@@ -276,15 +276,17 @@ export function TerminalView({
               content: { type: "terminal.input" as const, data },
               schema: terminalInputContentSchema,
             });
-            if (ready && socket?.readyState === WebSocket.OPEN) {
-              socket.send(
-                JSON.stringify({
-                  type: "input",
-                  operationId,
-                  sequence,
-                  protectedData,
-                }),
-              );
+            if (
+              ready &&
+              connection &&
+              !connection.send({
+                type: "input",
+                operationId,
+                sequence,
+                protectedData,
+              })
+            ) {
+              throw new Error("Terminal input queue is full.");
             }
           })
           .catch(() => {
@@ -299,233 +301,173 @@ export function TerminalView({
     };
     inputSenderRef.current = sendInput;
     const input = xterm.onData(sendInput);
-    const releaseDirect = () => {
-      const connection = directConnection;
-      directConnection = null;
-      if (connection) void stopDirectDesktopTerminal(connection);
-    };
-    const connectSocket = (url: string, direct: boolean) => {
-      if (disposed) return;
-      const nextSocket = new WebSocket(url);
-      socket = nextSocket;
-      nextSocket.addEventListener("message", (event) => {
-        let message: TerminalServerMessage;
-        try {
-          message = terminalServerMessageSchema.parse(JSON.parse(event.data));
-        } catch {
-          setError("The server sent an invalid terminal frame.");
-          clientLogger.rateLimited(
-            `terminal-frame:${terminal.id}`,
-            "warn",
-            "Terminal surface received an invalid frame",
-            {
-              event: "surface.terminal.protocol-error",
-              operation: "decode-frame",
-              reasonCode: "invalid-frame",
-              subsystem: "terminal",
-              surfaceId: terminal.id,
-            },
-          );
-          return;
-        }
-        if (message.type === "ready") {
-          // xterm can answer capability queries while parsing scrollback. Keep
-          // input closed until every replay write ahead of ready has finished.
-          outputQueue = outputQueue.then(() => {
-            if (
-              disposed ||
-              socket !== nextSocket ||
-              nextSocket.readyState !== WebSocket.OPEN
-            )
-              return;
-            ready = true;
-            reconnectAttemptRef.current = 0;
-            loadedTerminalIds.add(terminal.id);
-            setLoadedTerminalId(terminal.id);
-            setState("ready");
-            const queuedInput = pendingInputRef.current;
-            if (queuedInput && sendInput(queuedInput.data)) {
-              pendingInputRef.current = null;
-              onPendingInputSentRef.current?.(queuedInput.id);
-            }
-            clientLogger.info("Terminal surface is ready", {
-              attempt: reconnectAttemptRef.current + 1,
-              durationMs: Math.round(performance.now() - connectionStartedAt),
-              event: "surface.terminal.ready",
-              operation: "connect",
-              status: "ready",
-              subsystem: "terminal",
-              surfaceId: terminal.id,
-              transport: direct ? "direct" : "relay",
-            });
-            requestAnimationFrame(() => {
-              resize();
-              xterm.focus();
-            });
-          });
-        } else if (message.type === "output") {
-          if (
-            message.operationId !== operationId ||
-            message.sequence !== outputSequence
-          ) {
-            setError("The protected terminal stream is out of sequence.");
-            nextSocket.close(1008, "Protected terminal stream out of sequence");
-            return;
+    const handleMessage = (message: TerminalServerMessage): Promise<void> => {
+      if (message.type === "ready") {
+        // xterm can answer capability queries while parsing scrollback. Keep
+        // input closed until every replay write ahead of ready has finished.
+        outputQueue = outputQueue.then(() => {
+          if (disposed || !connection) return;
+          ready = true;
+          reconnectAttemptRef.current = 0;
+          loadedTerminalIds.add(terminal.id);
+          setLoadedTerminalId(terminal.id);
+          setState("ready");
+          const queuedInput = pendingInputRef.current;
+          if (queuedInput && sendInput(queuedInput.data)) {
+            pendingInputRef.current = null;
+            onPendingInputSentRef.current?.(queuedInput.id);
           }
-          const sequence = outputSequence;
-          outputSequence += 1;
-          outputQueue = outputQueue
-            .then(async () => {
-              const content = await openSurfaceStreamContent({
-                context: {
-                  surfaceKind: "terminal",
-                  surfaceId: terminal.id,
-                  operationId,
-                  direction: "output",
-                  sequence,
-                },
-                opaque: message.protectedData,
-                schema: terminalOutputContentSchema,
-              });
-              if (!disposed) {
-                const animateContent =
-                  ready && eliteContentGlitchEnabledRef.current;
-                if (animateContent) {
-                  terminalContentGlitchRenderer.beforeWrite();
-                }
-                await new Promise<void>((resolve) => {
-                  xterm.write(content.data, resolve);
-                });
-                if (animateContent) {
-                  terminalContentGlitchRenderer.afterWrite();
-                }
-              }
-            })
-            .catch(() => {
-              if (!disposed) {
-                setError("The protected terminal output could not be opened.");
-                nextSocket.close(
-                  1008,
-                  "Protected terminal output authentication failed",
-                );
-              }
-            });
-        } else if (message.type === "exit") {
-          ready = false;
-          exited = true;
-          clientLogger.info("Terminal process exited", {
-            event: "surface.terminal.exited",
-            exitCode: message.exitCode,
-            operation: "process-exit",
-            status: "exited",
-            subsystem: "terminal",
-            surfaceId: terminal.id,
-          });
-          if (onExitRef.current) {
-            onExitRef.current();
-            nextSocket.close(1000, "Terminal process exited");
-            return;
-          }
-          xterm.write(
-            `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
-          );
-          scheduleReconnect();
-          nextSocket.close(1000, "Terminal process exited");
-        } else {
-          ready = false;
-          setError(message.message);
-          scheduleReconnect();
-          clientLogger.warn("Terminal surface reported an error", {
-            event: "surface.terminal.remote-error",
-            operation: "terminal-session",
-            reasonCode: "remote-error",
-            status: "failed",
-            subsystem: "terminal",
-            surfaceId: terminal.id,
-          });
-        }
-      });
-      const fail = () => {
-        if (disposed || exited || socket !== nextSocket) return;
-        const wasReady = ready;
-        ready = false;
-        if (direct && !directFallbackStarted) {
-          directFallbackStarted = true;
-          clientLogger.warn("Terminal direct transport fell back to relay", {
-            event: "surface.terminal.transport-fallback",
-            operation: "select-transport",
-            reasonCode: "direct-unavailable",
-            status: "fallback",
-            subsystem: "terminal",
-            surfaceId: terminal.id,
-          });
-          releaseDirect();
-          if (wasReady) scheduleReconnect();
-          else
-            connectSocket(
-              terminalWebSocketUrl(terminal.id, operationId),
-              false,
-            );
-          return;
-        }
-        setError("Could not connect to the terminal session.");
-        clientLogger.rateLimited(
-          `terminal-connect:${terminal.id}`,
-          "warn",
-          "Terminal surface connection failed",
-          {
+          clientLogger.info("Terminal surface is ready", {
             attempt: reconnectAttemptRef.current + 1,
             durationMs: Math.round(performance.now() - connectionStartedAt),
-            event: "surface.terminal.connect.failed",
+            event: "surface.terminal.ready",
             operation: "connect",
-            reasonCode: "transport-error",
-            status: "failed",
+            status: "ready",
             subsystem: "terminal",
             surfaceId: terminal.id,
-            transport: direct ? "direct" : "relay",
-          },
+            transport: connection.route,
+          });
+          requestAnimationFrame(() => {
+            resize();
+            xterm.focus();
+          });
+        });
+      } else if (message.type === "output") {
+        if (
+          message.operationId !== operationId ||
+          message.sequence !== outputSequence
+        ) {
+          setError("The protected terminal stream is out of sequence.");
+          connection?.close("protocol-error");
+          return Promise.resolve();
+        }
+        const sequence = outputSequence;
+        outputSequence += 1;
+        outputQueue = outputQueue
+          .then(async () => {
+            const content = await openSurfaceStreamContent({
+              context: {
+                surfaceKind: "terminal",
+                surfaceId: terminal.id,
+                operationId,
+                direction: "output",
+                sequence,
+              },
+              opaque: message.protectedData,
+              schema: terminalOutputContentSchema,
+            });
+            if (!disposed) {
+              const animateContent =
+                ready && eliteContentGlitchEnabledRef.current;
+              if (animateContent) {
+                terminalContentGlitchRenderer.beforeWrite();
+              }
+              await new Promise<void>((resolve) => {
+                xterm.write(content.data, resolve);
+              });
+              if (animateContent) {
+                terminalContentGlitchRenderer.afterWrite();
+              }
+            }
+          })
+          .catch(() => {
+            if (!disposed) {
+              setError("The protected terminal output could not be opened.");
+              connection?.close("protocol-error");
+            }
+          });
+      } else if (message.type === "exit") {
+        ready = false;
+        exited = true;
+        clientLogger.info("Terminal process exited", {
+          event: "surface.terminal.exited",
+          exitCode: message.exitCode,
+          operation: "process-exit",
+          status: "exited",
+          subsystem: "terminal",
+          surfaceId: terminal.id,
+        });
+        if (onExitRef.current) {
+          onExitRef.current();
+          connection?.close("normal");
+          return Promise.resolve();
+        }
+        xterm.write(
+          `\r\n\x1b[90m[Process exited ${message.exitCode}]\x1b[0m\r\n`,
         );
         scheduleReconnect();
-      };
-      nextSocket.addEventListener("close", fail);
-      nextSocket.addEventListener("error", fail);
+        connection?.close("normal");
+      } else {
+        ready = false;
+        setError(message.message);
+        scheduleReconnect();
+        clientLogger.warn("Terminal surface reported an error", {
+          event: "surface.terminal.remote-error",
+          operation: "terminal-session",
+          reasonCode: "remote-error",
+          status: "failed",
+          subsystem: "terminal",
+          surfaceId: terminal.id,
+        });
+      }
+      return outputQueue;
+    };
+    const fail = () => {
+      if (disposed || exited) return;
+      ready = false;
+      setError("Could not connect to the terminal session.");
+      clientLogger.rateLimited(
+        `terminal-connect:${terminal.id}`,
+        "warn",
+        "Terminal surface connection failed",
+        {
+          attempt: reconnectAttemptRef.current + 1,
+          durationMs: Math.round(performance.now() - connectionStartedAt),
+          event: "surface.terminal.connect.failed",
+          operation: "connect",
+          reasonCode: "transport-error",
+          status: "failed",
+          subsystem: "terminal",
+          surfaceId: terminal.id,
+          transport: connection?.route ?? "relay",
+        },
+      );
+      scheduleReconnect();
     };
     const startTransport = () => {
-      void startDirectDesktopTerminal(terminal.id)
-        .then((connection) => {
+      void openTerminalWorkerLink({
+        onClose: fail,
+        onMessage: handleMessage,
+        operationId,
+        terminalId: terminal.id,
+        workerId: terminal.activeWorkerId,
+      })
+        .then((nextConnection) => {
           if (disposed) {
-            if (connection) void stopDirectDesktopTerminal(connection);
+            nextConnection.close("normal");
             return;
           }
-          directConnection = connection;
+          connection = nextConnection;
           clientLogger.debug("Terminal surface transport selected", {
             event: "surface.terminal.transport-selected",
             operation: "select-transport",
             subsystem: "terminal",
             surfaceId: terminal.id,
-            transport: connection ? "direct" : "relay",
+            transport: nextConnection.route,
           });
-          const url = connection
-            ? new URL(connection.url)
-            : new URL(terminalWebSocketUrl(terminal.id, operationId));
-          url.searchParams.set("operationId", operationId);
-          connectSocket(url.toString(), Boolean(connection));
+          nextConnection.activate();
         })
         .catch((error: unknown) => {
-          clientLogger.warn("Terminal direct transport discovery failed", {
+          clientLogger.warn("Terminal WorkerLink connection failed", {
             ...operationalErrorMetadata(error),
-            event: "surface.terminal.direct-discovery.failed",
-            operation: "discover-direct",
-            reasonCode: "discovery-failed",
-            status: "fallback",
+            event: "surface.terminal.connect.failed",
+            operation: "connect-worker-link",
+            reasonCode: "transport-error",
+            status: "failed",
             subsystem: "terminal",
             surfaceId: terminal.id,
           });
-          if (!disposed)
-            connectSocket(
-              terminalWebSocketUrl(terminal.id, operationId),
-              false,
-            );
+          fail();
         });
     };
     void getWorkers()
@@ -572,7 +514,7 @@ export function TerminalView({
       }
       resizeObserver.disconnect();
       themeObserver.disconnect();
-      socket?.close(1000, "Terminal view closed");
+      connection?.close("normal");
       clientLogger.info("Terminal surface view closed", {
         event: "surface.terminal.closed",
         operation: "disconnect",
@@ -580,7 +522,6 @@ export function TerminalView({
         subsystem: "terminal",
         surfaceId: terminal.id,
       });
-      releaseDirect();
       terminalLinks.dispose();
       terminalContentGlitchRenderer.dispose();
       xterm.dispose();

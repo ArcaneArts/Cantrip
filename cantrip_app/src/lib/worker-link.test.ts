@@ -98,6 +98,7 @@ class FakeCarrier implements WorkerLinkCarrier {
   readonly frames = new Set<WorkerLinkCarrierFrameListener>();
   readonly sent: Array<{ header: WorkerLinkFrameHeader; payload: Uint8Array }> =
     [];
+  writable = true;
 
   constructor(
     readonly route: "local" | "relay",
@@ -105,7 +106,7 @@ class FakeCarrier implements WorkerLinkCarrier {
   ) {}
 
   send(header: WorkerLinkFrameHeader, payload: Uint8Array): boolean {
-    if (this.closed) return false;
+    if (this.closed || !this.writable) return false;
     this.sent.push({ header, payload });
     return true;
   }
@@ -259,7 +260,10 @@ describe("WorkerLinkManager", () => {
     });
     const stream = await opening;
     const received = vi.fn();
+    const writable = vi.fn();
     stream.onData(received);
+    stream.onWritable(writable);
+    expect(writable).toHaveBeenCalledOnce();
     expect(stream.write(new Uint8Array([1, 2, 3]))).toBe(true);
 
     carrier.receive(
@@ -296,12 +300,65 @@ describe("WorkerLinkManager", () => {
     expect(received).toHaveBeenCalledWith(new Uint8Array([7, 8]));
     expect(stream.acknowledge(3)).toBe(false);
     expect(stream.acknowledge(2)).toBe(true);
+    carrier.receive({
+      protocolVersion: 1,
+      sessionId: open.sessionId,
+      routeGeneration: open.routeGeneration,
+      effectiveRoute: "local",
+      channel: open.channel,
+      lane: open.lane,
+      sequence: 2,
+      kind: "credit",
+      direction: "client-to-worker",
+      bytes: 3,
+    });
+    expect(writable).toHaveBeenCalledTimes(2);
     await vi.waitFor(() => expect(carrier.sent).toHaveLength(3));
     expect(carrier.sent.map((frame) => frame.header.kind)).toEqual([
       "open",
       "data",
       "credit",
     ]);
+
+    reference.release();
+    await manager.close();
+  });
+
+  it("notifies a writable stream when its saturated scheduler lane drains", async () => {
+    const carrier = new FakeCarrier("local");
+    const setup = dependencies({ local: async () => carrier });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+    const opening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.waitFor(() => expect(carrier.sent).toHaveLength(1));
+    const open = carrier.sent[0]!.header;
+    if (open.kind !== "open") throw new Error("Missing open frame.");
+    carrier.receive({
+      protocolVersion: 1,
+      sessionId: open.sessionId,
+      routeGeneration: open.routeGeneration,
+      effectiveRoute: "local",
+      channel: open.channel,
+      lane: open.lane,
+      sequence: 0,
+      kind: "accept",
+      initialCreditBytes: 1_024,
+    });
+    const stream = await opening;
+    const writable = vi.fn();
+    stream.onWritable(writable);
+    writable.mockClear();
+    carrier.writable = false;
+    for (let index = 0; index < 128; index += 1) {
+      expect(stream.write(new Uint8Array([index % 255]))).toBe(true);
+    }
+    expect(stream.write(new Uint8Array([255]))).toBe(false);
+
+    carrier.writable = true;
+    await vi.waitFor(() => expect(writable).toHaveBeenCalled());
 
     reference.release();
     await manager.close();

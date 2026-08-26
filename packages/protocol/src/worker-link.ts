@@ -186,6 +186,12 @@ export const workerLinkRouteUpdateRequestSchema = z
   })
   .strict();
 
+export const workerLinkTerminalGrantRequestSchema = z
+  .object({
+    operationId: z.string().uuid(),
+  })
+  .strict();
+
 export const workerLinkResourceSchema = z
   .object({
     kind: workerLinkResourceKindSchema,
@@ -606,6 +612,9 @@ export type WorkerLinkSessionOpenRequest = z.infer<
 >;
 export type WorkerLinkRouteUpdateRequest = z.infer<
   typeof workerLinkRouteUpdateRequestSchema
+>;
+export type WorkerLinkTerminalGrantRequest = z.infer<
+  typeof workerLinkTerminalGrantRequestSchema
 >;
 export type WorkerLinkGrantBinding = z.infer<
   typeof workerLinkGrantBindingSchema

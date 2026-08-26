@@ -77,6 +77,7 @@ export type WorkerLinkStreamHalfCloseListener = () => void;
 export type WorkerLinkStreamErrorListener = (
   code: WorkerLinkChannelErrorCode | WorkerLinkChannelRejectCode,
 ) => void;
+export type WorkerLinkStreamWritableListener = () => void;
 
 export interface WorkerLinkStream {
   readonly channelId: string;
@@ -89,6 +90,7 @@ export interface WorkerLinkStream {
   onData(listener: WorkerLinkDataListener): () => void;
   onError(listener: WorkerLinkStreamErrorListener): () => void;
   onHalfClose(listener: WorkerLinkStreamHalfCloseListener): () => void;
+  onWritable(listener: WorkerLinkStreamWritableListener): () => void;
   write(payload: Uint8Array, format?: WorkerLinkPayloadFormat): boolean;
 }
 
@@ -401,7 +403,11 @@ class ClientWorkerLink implements WorkerLink {
       return;
     }
     this.#carrier = carrier;
-    this.#scheduler = new WorkerLinkFrameScheduler(carrier);
+    this.#scheduler = new WorkerLinkFrameScheduler(carrier, (lane) => {
+      for (const stream of this.#streams.values()) {
+        if (stream.lane === lane) stream.notifyWritable();
+      }
+    });
     this.#unsubscribeCarrier = [
       carrier.onFrame((frame) => this.#receive(frame)),
       carrier.onClose(() => {
@@ -536,9 +542,13 @@ class WorkerLinkFrameScheduler {
   #laneIndex = 0;
   readonly #queues = new Map<WorkerLinkQosLane, ScheduledWorkerLinkFrame[]>();
   #scheduled = false;
+  readonly #saturated = new Set<WorkerLinkQosLane>();
   #timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly carrier: WorkerLinkCarrier) {
+  constructor(
+    private readonly carrier: WorkerLinkCarrier,
+    private readonly available: (lane: WorkerLinkQosLane) => void,
+  ) {
     for (const lane of new Set(SCHEDULER_LANES)) {
       this.#queues.set(lane, []);
       this.#bytes.set(lane, 0);
@@ -555,6 +565,7 @@ class WorkerLinkFrameScheduler {
       queue.length >= SCHEDULER_MAX_FRAMES_PER_LANE ||
       laneBytes + frameBytes > SCHEDULER_MAX_BYTES_PER_LANE
     ) {
+      this.#saturated.add(header.lane);
       return false;
     }
     queue.push({
@@ -574,6 +585,7 @@ class WorkerLinkFrameScheduler {
     this.#timer = null;
     for (const queue of this.#queues.values()) queue.length = 0;
     this.#bytes.clear();
+    this.#saturated.clear();
   }
 
   cancelChannel(channelId: string, preserveClose: boolean): void {
@@ -626,6 +638,9 @@ class WorkerLinkFrameScheduler {
         next.header.lane,
         Math.max(0, (this.#bytes.get(next.header.lane) ?? 0) - next.bytes),
       );
+      if (this.#saturated.delete(next.header.lane)) {
+        this.available(next.header.lane);
+      }
       sent += 1;
     }
     if (this.#hasQueuedFrames()) this.#schedule(1);
@@ -666,6 +681,7 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
   #openReject: ((error: Error) => void) | null = null;
   #openResolve: (() => void) | null = null;
   #outboundSequence = 0;
+  #writableListeners = new Set<WorkerLinkStreamWritableListener>();
 
   constructor(
     readonly channelId: string,
@@ -782,6 +798,17 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
     return () => this.#halfCloseListeners.delete(listener);
   }
 
+  onWritable(listener: WorkerLinkStreamWritableListener): () => void {
+    this.#writableListeners.add(listener);
+    if (this.#accepted && !this.#closed && this.#creditBytes > 0) listener();
+    return () => this.#writableListeners.delete(listener);
+  }
+
+  notifyWritable(): void {
+    if (!this.#accepted || this.#closed || this.#creditBytes <= 0) return;
+    for (const listener of this.#writableListeners) listener();
+  }
+
   receive(header: WorkerLinkFrameHeader, payload: Uint8Array): void {
     if (
       this.#closed ||
@@ -841,6 +868,7 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
           WORKER_LINK_MAX_CREDIT_BYTES,
           this.#creditBytes + header.bytes,
         );
+        for (const listener of this.#writableListeners) listener();
         return;
       case "close":
         this.retire(header.code);
@@ -874,6 +902,7 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
     this.#dataListeners.clear();
     this.#errorListeners.clear();
     this.#halfCloseListeners.clear();
+    this.#writableListeners.clear();
   }
 
   #send(

@@ -177,7 +177,15 @@ function commandLaunch(
 export interface TerminalManagerOptions {
   environment?: Record<string, string>;
   environmentForCwd?(cwd: string): Record<string, string>;
+  observeLifecycle?(observation: TerminalLifecycleObservation): void;
   serviceRestartDelayMs?: number;
+}
+
+export interface TerminalLifecycleObservation {
+  terminalId: string;
+  status: "exited";
+  exitCode: number;
+  signal: number | null;
 }
 
 export interface TerminalServiceRuntime {
@@ -193,6 +201,7 @@ export class TerminalManager {
   readonly #environmentForCwd: NonNullable<
     TerminalManagerOptions["environmentForCwd"]
   >;
+  #observeLifecycle: NonNullable<TerminalManagerOptions["observeLifecycle"]>;
   readonly #serviceRestartDelayMs: number;
   #closing = false;
   #serviceFingerprint = "";
@@ -200,7 +209,14 @@ export class TerminalManager {
   constructor(options: TerminalManagerOptions = {}) {
     this.#environment = { ...options.environment };
     this.#environmentForCwd = options.environmentForCwd ?? (() => ({}));
+    this.#observeLifecycle = options.observeLifecycle ?? (() => undefined);
     this.#serviceRestartDelayMs = options.serviceRestartDelayMs ?? 5_000;
+  }
+
+  setLifecycleObserver(
+    observer: NonNullable<TerminalManagerOptions["observeLifecycle"]>,
+  ): void {
+    this.#observeLifecycle = observer;
   }
 
   hasLiveSession(terminalId: string): boolean {
@@ -738,6 +754,12 @@ export class TerminalManager {
     session.subscribers.clear();
     session.waiters.clear();
     if (session.removeAfterExit) this.#sessions.delete(terminalId);
+    this.#observeLifecycle({
+      terminalId,
+      status: "exited",
+      exitCode: result.exitCode,
+      signal: result.signal,
+    });
   }
 
   #stoppedResult(): Extract<TerminalOpenResult, { status: "exited" }> {

@@ -70,6 +70,7 @@ type PendingAdapterEmission =
 
 export interface WorkerLinkAdapterChannel {
   close?(code: WorkerLinkChannelCloseCode): Promise<void> | void;
+  credit?(bytes: number): Promise<void> | void;
   halfClose?(): Promise<void> | void;
   write?(payload: Uint8Array): Promise<void> | void;
 }
@@ -773,6 +774,7 @@ export class WorkerLinkGateway {
           WORKER_LINK_MAX_CREDIT_BYTES,
           channel.outboundCreditBytes + header.bytes,
         );
+        await channel.adapter.credit?.(header.bytes);
         return;
       case "half-close":
         if (header.direction !== "client-to-worker") {

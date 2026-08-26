@@ -23,7 +23,9 @@ import {
   workerLinkSessionSchema,
   workerLinkSessionIdentitySchema,
   workerLinkTelemetryBatchSchema,
+  workerLinkTerminalGrantRequestSchema,
   workerCommandSchema,
+  workerNotificationSchema,
   type WorkerLinkFrameHeader,
   type WorkerLinkGrantBinding,
 } from "../src/index.js";
@@ -226,6 +228,9 @@ describe("WorkerLink protocol", () => {
         .success,
     ).toBe(false);
     expect(
+      workerLinkTerminalGrantRequestSchema.parse({ operationId: openNonce }),
+    ).toEqual({ operationId: openNonce });
+    expect(
       workerCommandSchema.parse({ type: "worker-link.identity.resolve" }),
     ).toEqual({ type: "worker-link.identity.resolve" });
     expect(
@@ -236,6 +241,16 @@ describe("WorkerLink protocol", () => {
         workerProcessGeneration: identity.workerProcessGeneration,
       }),
     ).toMatchObject({ workerProcessGeneration: "worker-process-1" });
+    expect(
+      workerNotificationSchema.parse({
+        type: "terminal.runtime.observed",
+        terminalId: "terminal-1",
+        workerProcessGeneration: identity.workerProcessGeneration,
+        status: "exited",
+        exitCode: 0,
+        signal: null,
+      }),
+    ).toMatchObject({ type: "terminal.runtime.observed", status: "exited" });
   });
 
   it("round-trips every reliable channel operation", () => {
