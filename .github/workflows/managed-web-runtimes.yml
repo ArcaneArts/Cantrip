@@ -63,9 +63,48 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  playwright:
+    name: Playwright ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+          - target: darwin-x64
+            runner: macos-15-intel
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - target: win32-arm64
+            runner: windows-11-arm
+          - target: win32-x64
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify release tooling
+        run: pnpm managed-runtime:playwright:test
+      - name: Build, inventory, launch, snapshot, isolate, and shut down
+        run: pnpm managed-runtime:playwright:build -- --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ matrix.target }}
+          path: dist/managed-runtimes/playwright/*
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
     if: github.event_name == 'workflow_dispatch' && inputs.publish
-    needs: searxng
+    needs: [searxng, playwright]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -82,18 +121,23 @@ jobs:
           pattern: searxng-*
           path: dist/managed-runtimes/searxng
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: playwright-*
+          path: dist/managed-runtimes/playwright
+          merge-multiple: true
       - name: Sign release manifest
         env:
           CANTRIP_MANAGED_RUNTIME_SIGNING_KEY_BASE64: ${{ secrets.CANTRIP_MANAGED_RUNTIME_SIGNING_KEY_BASE64 }}
           CANTRIP_MANAGED_RUNTIME_SIGNING_KEY_ID: ${{ vars.CANTRIP_MANAGED_RUNTIME_SIGNING_KEY_ID }}
-        run: pnpm managed-runtime:searxng:release
+        run: pnpm managed-runtime:web:release
       - name: Publish immutable release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           version="$(node -p "require('./managed_runtimes/searxng/runtime.lock.json').bundleVersion")"
-          gh release create "web-runtime-${version}" dist/managed-runtimes/searxng/* \
+          gh release create "web-runtime-${version}" dist/managed-runtimes/manifest.json dist/managed-runtimes/searxng/* dist/managed-runtimes/playwright/* \
             --repo "${GITHUB_REPOSITORY}" \
             --title "Managed web runtime ${version}" \
-            --notes "Pinned, signed, six-platform Cantrip SearXNG runtime."
+            --notes "Pinned, signed, six-platform Cantrip SearXNG and Playwright/Chromium runtimes."

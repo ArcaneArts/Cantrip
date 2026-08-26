@@ -88,6 +88,7 @@ await run(
   [
     "-xzf",
     tarArgumentPath(searxArchive, work),
+    "--exclude=*/utils/templates/etc/apache2",
     "-C",
     tarArgumentPath(searxStage, work),
   ],
@@ -308,7 +309,9 @@ async function smoke(runtimeRoot, external) {
       throw new Error(
         `SearXNG readiness timed out:\n${diagnostics.slice(-4000)}`,
       );
-    const engine = external ? "duckduckgo,wikipedia,brave" : "cantrip offline";
+    const engine = external
+      ? "duckduckgo,wikipedia,brave,mojeek,qwant"
+      : "cantrip offline";
     const queries = external
       ? ["Python programming language", "World Wide Web", "OpenAI"]
       : ["deterministic fixture"];
@@ -321,18 +324,17 @@ async function smoke(runtimeRoot, external) {
       );
       lastStatus = response.status;
       lastBody = await response.json();
-      if (
-        response.ok &&
-        Array.isArray(lastBody.results) &&
-        lastBody.results.length > 0
-      )
-        break;
+      const liveRecords = [lastBody?.results, lastBody?.infoboxes]
+        .filter(Array.isArray)
+        .reduce((count, records) => count + records.length, 0);
+      if (response.ok && liveRecords > 0) break;
     }
     if (
       lastStatus < 200 ||
       lastStatus >= 300 ||
-      !Array.isArray(lastBody?.results) ||
-      lastBody.results.length < 1
+      ![lastBody?.results, lastBody?.infoboxes]
+        .filter(Array.isArray)
+        .some((records) => records.length > 0)
     )
       throw new Error(
         `search smoke failed (${lastStatus}): ${JSON.stringify(lastBody).slice(0, 2_000)}`,
