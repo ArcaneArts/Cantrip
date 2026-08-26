@@ -97,13 +97,12 @@ await Promise.all([
   mkdir(path.dirname(stateFile), { recursive: true }),
 ]);
 
-// Tauri keys its encrypted client state by the application identifier. Keep
-// Primary compatible with the existing art.cantrip profile, but give every
-// other worktree a persisted identity paired with that worktree's server and
-// worker state. Recreating .cantrip/dev intentionally creates a fresh pair.
+// Tauri keys its encrypted client state by the application identifier. Give
+// every development worktree a persisted identity paired with that worktree's
+// server and worker state. Recreating .cantrip/dev intentionally creates a
+// fresh pair without touching the release client's art.cantrip profile.
 await ensureDevtopTauriConfig({
   repositoryRoot,
-  repositoryCommonDirectory,
 });
 
 // A new devtop owns the fixed development ports. Remove the previous tree
