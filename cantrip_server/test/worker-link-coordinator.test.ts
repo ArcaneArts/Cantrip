@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { WorkerCommand } from "@cantrip/protocol";
+import type { WorkerLinkPeerConfiguration } from "@cantrip/protocol/worker-link";
 import { describe, expect, it, vi } from "vitest";
 
 import { WorkerLinkCoordinator } from "../src/worker-links/coordinator.js";
@@ -74,6 +75,37 @@ function sessionInput(
     clientInstanceId: "client-instance-1",
     ownerId: "owner-1",
     workerId: "worker-1",
+    ...overrides,
+  };
+}
+
+function peerConfiguration(
+  overrides: Partial<WorkerLinkPeerConfiguration> = {},
+): WorkerLinkPeerConfiguration {
+  const laneLimit = {
+    maxChannels: 64,
+    maxQueuedFrames: 128,
+    maxQueuedBytes: 4 * 1_024 * 1_024,
+    maxBytesPerSecond: 16 * 1_024 * 1_024,
+  };
+  return {
+    directRoutes: { local: true, lan: true, wan: true },
+    relayOnly: false,
+    stunUrls: ["stun:stun.cloudflare.com:3478"],
+    interfacePolicy: { mode: "default", interfaces: [] },
+    vpnPolicy: { defaultRoute: "wan", lanAllowlist: [] },
+    negotiationTimeoutMs: 8_000,
+    upgradeProbeTimeoutMs: 15_000,
+    maxPeerSessionsPerClient: 4,
+    maxPeerSessionsPerWorker: 32,
+    invalidHandshakeRatePerMinute: 60,
+    laneLimits: {
+      events: laneLimit,
+      interactive: laneLimit,
+      stream: laneLimit,
+      realtime: laneLimit,
+      bulk: laneLimit,
+    },
     ...overrides,
   };
 }
@@ -260,6 +292,140 @@ describe("WorkerLinkCoordinator", () => {
     await expect(pending).resolves.toMatchObject({
       binding: { resource: { resourceId: "terminal-1" } },
     });
+    await coordinator.close();
+  });
+
+  it("installs, fences, renews, and revokes one exact peer round", async () => {
+    let now = Date.parse("2026-08-26T12:00:00.000Z");
+    const workers = new FakeWorkerBus();
+    let acknowledgePeer!: () => void;
+    const peerAcknowledged = new Promise<void>((resolve) => {
+      acknowledgePeer = resolve;
+    });
+    workers.requestImplementation = async (_workerId, command) => {
+      if (command.type === "worker-link.peer.install") {
+        await peerAcknowledged;
+      }
+      return { accepted: true };
+    };
+    const coordinator = new WorkerLinkCoordinator(workers.asBus(), {
+      now: () => now,
+      peerConfiguration: peerConfiguration({
+        maxPeerSessionsPerClient: 1,
+        maxPeerSessionsPerWorker: 1,
+      }),
+      serverGeneration,
+      serverId,
+      sweepIntervalMs: 0,
+    });
+    const session = await coordinator.openSession(sessionInput());
+    let returned = false;
+    const first = coordinator
+      .openPeerSession({
+        route: "lan",
+        routeGeneration: session.routeGeneration,
+        sessionId: session.sessionId,
+      })
+      .then((peer) => {
+        returned = true;
+        return peer;
+      });
+    const duplicate = coordinator.openPeerSession({
+      route: "lan",
+      routeGeneration: session.routeGeneration,
+      sessionId: session.sessionId,
+    });
+    await vi.waitFor(() =>
+      expect(
+        workers.commands.filter(
+          (command) => command.type === "worker-link.peer.install",
+        ),
+      ).toHaveLength(1),
+    );
+    expect(returned).toBe(false);
+    acknowledgePeer();
+    const [peer, samePeer] = await Promise.all([first, duplicate]);
+    expect(samePeer.peerSessionId).toBe(peer.peerSessionId);
+    expect(peer).toMatchObject({
+      identity: session.identity,
+      route: "lan",
+      routeGeneration: 1,
+      sessionId: session.sessionId,
+    });
+
+    await expect(
+      coordinator.openPeerSession({
+        route: "wan",
+        routeGeneration: session.routeGeneration,
+        sessionId: session.sessionId,
+      }),
+    ).rejects.toThrow(/client peer-session limit/i);
+    const otherSession = await coordinator.openSession(
+      sessionInput({ clientInstanceId: "client-instance-2" }),
+    );
+    await expect(
+      coordinator.openPeerSession({
+        route: "lan",
+        routeGeneration: otherSession.routeGeneration,
+        sessionId: otherSession.sessionId,
+      }),
+    ).rejects.toThrow(/worker peer-session limit/i);
+
+    await coordinator.signalPeer({
+      peerSessionId: peer.peerSessionId,
+      sessionId: peer.sessionId,
+      routeGeneration: peer.routeGeneration,
+      route: peer.route,
+      sender: "client",
+      signalSequence: 0,
+      signal: { type: "offer", sdp: "offer-sdp" },
+    });
+    expect(workers.commands).toContainEqual({
+      type: "worker-link.peer.signal",
+      envelope: expect.objectContaining({
+        peerSessionId: peer.peerSessionId,
+        sender: "client",
+      }),
+    });
+
+    now += 1_000;
+    await coordinator.renewSession(session.sessionId, 180_000);
+    expect(
+      workers.commands.some(
+        (command) =>
+          command.type === "worker-link.peer.renew" &&
+          command.peerSessionId === peer.peerSessionId &&
+          Date.parse(command.lease.expiresAt) >
+            Date.parse(peer.lease.expiresAt),
+      ),
+    ).toBe(true);
+    await coordinator.replaceRoute(session.sessionId, "relay");
+    expect(
+      workers.commands.some(
+        (command) =>
+          command.type === "worker-link.peer.revoke" &&
+          command.peerSessionId === peer.peerSessionId &&
+          command.revocation.reason === "route-replaced",
+      ),
+    ).toBe(true);
+    await expect(
+      coordinator.signalPeer({
+        peerSessionId: peer.peerSessionId,
+        sessionId: peer.sessionId,
+        routeGeneration: peer.routeGeneration,
+        route: peer.route,
+        sender: "client",
+        signalSequence: 1,
+        signal: { type: "end-of-candidates" },
+      }),
+    ).rejects.toThrow(/authority is unavailable/i);
+    await expect(
+      coordinator.openPeerSession({
+        route: "lan",
+        routeGeneration: 1,
+        sessionId: session.sessionId,
+      }),
+    ).rejects.toThrow(/generation is stale/i);
     await coordinator.close();
   });
 

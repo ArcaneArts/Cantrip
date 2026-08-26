@@ -86,6 +86,7 @@ export const workerLinkRevokeReasonSchema = z.enum([
   "worker-disconnected",
   "worker-generation-changed",
   "server-generation-changed",
+  "route-replaced",
   "lease-expired",
   "server-shutdown",
   "worker-shutdown",
@@ -257,6 +258,7 @@ export const workerLinkPeerConfigurationSchema = z
     upgradeProbeTimeoutMs: z.number().int().min(1_000).max(300_000),
     maxPeerSessionsPerClient: z.number().int().positive().max(256),
     maxPeerSessionsPerWorker: z.number().int().positive().max(4_096),
+    invalidHandshakeRatePerMinute: z.number().int().positive().max(10_000),
     laneLimits: workerLinkPeerLaneLimitsSchema,
   })
   .strict()
@@ -504,6 +506,72 @@ export const workerLinkRevocationSchema = z
   .object({
     reason: workerLinkRevokeReasonSchema,
     revokedAt: timestampSchema,
+  })
+  .strict();
+
+export const workerLinkPeerSessionInstallCommandSchema = z
+  .object({
+    type: z.literal("worker-link.peer.install"),
+    peerSession: workerLinkPeerSessionSchema,
+    configuration: workerLinkPeerConfigurationSchema,
+  })
+  .strict();
+
+export const workerLinkPeerSessionRevokeCommandSchema = z
+  .object({
+    type: z.literal("worker-link.peer.revoke"),
+    peerSessionId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    revocation: workerLinkRevocationSchema,
+  })
+  .strict();
+
+export const workerLinkPeerSessionRenewCommandSchema = z
+  .object({
+    type: z.literal("worker-link.peer.renew"),
+    peerSessionId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    lease: workerLinkLeaseSchema,
+  })
+  .strict();
+
+export const workerLinkPeerSignalCommandSchema = z
+  .object({
+    type: z.literal("worker-link.peer.signal"),
+    envelope: workerLinkPeerSignalEnvelopeSchema,
+  })
+  .strict();
+
+export const workerLinkPeerCoordinatorCommandSchema = z.discriminatedUnion(
+  "type",
+  [
+    workerLinkPeerSessionInstallCommandSchema,
+    workerLinkPeerSessionRenewCommandSchema,
+    workerLinkPeerSessionRevokeCommandSchema,
+    workerLinkPeerSignalCommandSchema,
+  ],
+);
+
+export const workerLinkPeerSignalNotificationSchema = z
+  .object({
+    type: z.literal("worker-link.peer.signal"),
+    envelope: workerLinkPeerSignalEnvelopeSchema,
+  })
+  .strict()
+  .superRefine((notification, context) => {
+    if (notification.envelope.sender !== "worker") {
+      context.addIssue({
+        code: "custom",
+        path: ["envelope", "sender"],
+        message: "Worker peer notifications must be worker-authored.",
+      });
+    }
+  });
+
+export const workerLinkPeerCandidateNotificationSchema = z
+  .object({
+    type: z.literal("worker-link.peer.candidates"),
+    advertisement: workerLinkPeerCandidateAdvertisementSchema,
   })
   .strict();
 
@@ -848,6 +916,9 @@ export type WorkerLinkPeerCandidateAdvertisement = z.infer<
 export type WorkerLinkPeerSignal = z.infer<typeof workerLinkPeerSignalSchema>;
 export type WorkerLinkPeerSignalEnvelope = z.infer<
   typeof workerLinkPeerSignalEnvelopeSchema
+>;
+export type WorkerLinkPeerCoordinatorCommand = z.infer<
+  typeof workerLinkPeerCoordinatorCommandSchema
 >;
 export type WorkerLinkChannelKind = z.infer<typeof workerLinkChannelKindSchema>;
 export type WorkerLinkPayloadFormat = z.infer<

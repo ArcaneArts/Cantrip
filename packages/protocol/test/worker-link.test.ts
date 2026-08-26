@@ -96,6 +96,33 @@ const peerCandidate = {
   usernameFragment: "peer-fragment",
 };
 
+const peerLaneLimit = {
+  maxChannels: 64,
+  maxQueuedFrames: 128,
+  maxQueuedBytes: 4 * 1_024 * 1_024,
+  maxBytesPerSecond: 16 * 1_024 * 1_024,
+};
+
+const peerConfiguration = {
+  directRoutes: { local: true, lan: true, wan: true },
+  relayOnly: false,
+  stunUrls: ["stun:stun.cloudflare.com:3478"],
+  interfacePolicy: { mode: "default" as const, interfaces: [] as [] },
+  vpnPolicy: { defaultRoute: "wan" as const, lanAllowlist: [] },
+  negotiationTimeoutMs: 8_000,
+  upgradeProbeTimeoutMs: 15_000,
+  maxPeerSessionsPerClient: 4,
+  maxPeerSessionsPerWorker: 32,
+  invalidHandshakeRatePerMinute: 60,
+  laneLimits: {
+    events: peerLaneLimit,
+    interactive: peerLaneLimit,
+    stream: peerLaneLimit,
+    realtime: peerLaneLimit,
+    bulk: peerLaneLimit,
+  },
+};
+
 const peerSignalEnvelope = {
   peerSessionId,
   sessionId,
@@ -206,64 +233,49 @@ describe("WorkerLink protocol", () => {
   });
 
   it("bounds direct-route deployment policy without activating deferred routes", () => {
-    const laneLimit = {
-      maxChannels: 64,
-      maxQueuedFrames: 128,
-      maxQueuedBytes: 4 * 1_024 * 1_024,
-      maxBytesPerSecond: 16 * 1_024 * 1_024,
-    };
-    const configuration = {
-      directRoutes: { local: true, lan: true, wan: true },
-      relayOnly: false,
-      stunUrls: ["stun:stun.cloudflare.com:3478"],
-      interfacePolicy: { mode: "default" as const, interfaces: [] as [] },
-      vpnPolicy: { defaultRoute: "wan" as const, lanAllowlist: [] },
-      negotiationTimeoutMs: 8_000,
-      upgradeProbeTimeoutMs: 15_000,
-      maxPeerSessionsPerClient: 4,
-      maxPeerSessionsPerWorker: 32,
-      laneLimits: {
-        events: laneLimit,
-        interactive: laneLimit,
-        stream: laneLimit,
-        realtime: laneLimit,
-        bulk: laneLimit,
-      },
-    };
-    expect(workerLinkPeerConfigurationSchema.parse(configuration)).toEqual(
-      configuration,
+    expect(workerLinkPeerConfigurationSchema.parse(peerConfiguration)).toEqual(
+      peerConfiguration,
     );
     expect(
       workerLinkPeerConfigurationSchema.safeParse({
-        ...configuration,
+        ...peerConfiguration,
         relayOnly: true,
       }).success,
     ).toBe(false);
     expect(
       workerLinkPeerConfigurationSchema.safeParse({
-        ...configuration,
+        ...peerConfiguration,
         directRoutes: { local: true, lan: true, wan: false },
       }).success,
     ).toBe(false);
     expect(
       workerLinkPeerConfigurationSchema.safeParse({
-        ...configuration,
+        ...peerConfiguration,
         stunUrls: ["turn:relay.example.test:3478"],
+      }).success,
+    ).toBe(false);
+    expect(
+      workerLinkPeerConfigurationSchema.safeParse({
+        ...peerConfiguration,
+        invalidHandshakeRatePerMinute: 0,
       }).success,
     ).toBe(false);
   });
 
   it("fences and bounds peer sessions, candidates, and signaling", () => {
-    expect(
-      workerLinkPeerSessionSchema.parse({
-        peerSessionId,
-        sessionId,
-        identity,
-        routeGeneration: 2,
-        route: "lan",
-        lease,
-      }),
-    ).toMatchObject({ peerSessionId, route: "lan", routeGeneration: 2 });
+    const peerSession = {
+      peerSessionId,
+      sessionId,
+      identity,
+      routeGeneration: 2,
+      route: "lan" as const,
+      lease,
+    };
+    expect(workerLinkPeerSessionSchema.parse(peerSession)).toMatchObject({
+      peerSessionId,
+      route: "lan",
+      routeGeneration: 2,
+    });
     expect(
       workerLinkPeerCandidateAdvertisementSchema.parse({
         peerSessionId,
@@ -309,6 +321,45 @@ describe("WorkerLink protocol", () => {
         candidateAddress: "192.168.1.20",
       }).success,
     ).toBe(false);
+    expect(
+      workerCommandSchema.parse({
+        type: "worker-link.peer.install",
+        peerSession,
+        configuration: peerConfiguration,
+      }),
+    ).toMatchObject({ type: "worker-link.peer.install", peerSession });
+    expect(
+      workerCommandSchema.parse({
+        type: "worker-link.peer.signal",
+        envelope: { ...peerSignalEnvelope, sender: "client" },
+      }),
+    ).toMatchObject({ type: "worker-link.peer.signal" });
+    expect(
+      workerNotificationSchema.parse({
+        type: "worker-link.peer.signal",
+        envelope: peerSignalEnvelope,
+      }),
+    ).toMatchObject({ type: "worker-link.peer.signal" });
+    expect(
+      workerNotificationSchema.safeParse({
+        type: "worker-link.peer.signal",
+        envelope: { ...peerSignalEnvelope, sender: "client" },
+      }).success,
+    ).toBe(false);
+    expect(
+      workerNotificationSchema.parse({
+        type: "worker-link.peer.candidates",
+        advertisement: {
+          peerSessionId,
+          sessionId,
+          routeGeneration: 2,
+          route: "lan",
+          advertisementSequence: 0,
+          candidates: [peerCandidate],
+          complete: true,
+        },
+      }),
+    ).toMatchObject({ type: "worker-link.peer.candidates" });
   });
 
   it("keeps worker-installed token hashes separate from client bearer grants", () => {

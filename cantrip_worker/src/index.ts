@@ -168,6 +168,7 @@ import {
 import { readWorkerConfig, resolveWorkerDataDirectory } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { WorkerLinkGateway } from "./worker-link-gateway.js";
+import { WorkerLinkPeerGateway } from "./worker-link-peer-gateway.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
 import {
@@ -718,6 +719,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }),
     { workerId: config.workerId },
   );
+  let workerNotificationEmitter:
+    ((notification: WorkerNotification) => boolean) | null = null;
   const workerLinkGateway = new WorkerLinkGateway({
     ownerId: () => {
       try {
@@ -735,6 +738,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     workerId: config.workerId,
     workerProcessGeneration,
+  });
+  const workerLinkPeerGateway = new WorkerLinkPeerGateway({
+    authorize: (peerSession) =>
+      workerLinkGateway.peerSessionAuthorized(peerSession),
+    emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
   });
   directBroker.setWorkerLinkFrameHandler(
     (header, payload, respond) =>
@@ -1123,8 +1131,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   remoteSurfaces.setEncryptionService(workerEncryption);
   const worktrees = new WorktreeManager(config.dataDirectory);
   let codegraphNotificationEmitter:
-    ((notification: WorkerNotification) => boolean) | null = null;
-  let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
   const runConfigurationDefinitions = new RunConfigurationDefinitionService({
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
@@ -1764,12 +1770,30 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       case "worker-link.session.install":
       case "worker-link.session.renew":
-      case "worker-link.session.route":
-      case "worker-link.session.revoke":
       case "worker-link.grant.install":
       case "worker-link.grant.renew":
       case "worker-link.grant.revoke":
         return workerLinkGateway.handleCoordinatorCommand(command);
+      case "worker-link.session.route": {
+        const accepted =
+          await workerLinkGateway.handleCoordinatorCommand(command);
+        await workerLinkPeerGateway.replaceRouteGeneration(
+          command.sessionId,
+          command.routeGeneration,
+        );
+        return accepted;
+      }
+      case "worker-link.session.revoke":
+        await workerLinkPeerGateway.revokeSession(
+          command.sessionId,
+          command.revocation.reason,
+        );
+        return workerLinkGateway.handleCoordinatorCommand(command);
+      case "worker-link.peer.install":
+      case "worker-link.peer.renew":
+      case "worker-link.peer.revoke":
+      case "worker-link.peer.signal":
+        return workerLinkPeerGateway.handleCoordinatorCommand(command);
       case "direct.capability.prepare":
         if (command.binding.workerId !== config.workerId) {
           throw new Error("Direct capability targets another worker.");
@@ -5697,6 +5721,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     await playwrightRuntime.close();
     await searxngRuntime.close();
     commandConnection.close();
+    await workerLinkPeerGateway.close();
     await workerLinkGateway.close();
     await directBroker.close();
     terminalDirectEndpoints.close();

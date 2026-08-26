@@ -2727,6 +2727,12 @@ export async function buildApp({
       return;
     }
     if (notification.type === "diagnostics.logs.observed") return;
+    if (
+      notification.type === "worker-link.peer.signal" ||
+      notification.type === "worker-link.peer.candidates"
+    ) {
+      return;
+    }
     const context = await repository.getProjectWorktreeObservationContext(
       ownerId,
       workerId,
@@ -3776,6 +3782,7 @@ export async function buildApp({
   ]);
   const workerLinks = new WorkerLinkService(
     new WorkerLinkCoordinator(bridge, {
+      peerConfiguration: config.workerLinkPeer,
       serverId,
       serverGeneration: serverControlPlaneGeneration,
     }),

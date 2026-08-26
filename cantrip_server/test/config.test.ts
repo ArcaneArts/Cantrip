@@ -348,6 +348,7 @@ describe("server configuration safety", () => {
       upgradeProbeTimeoutMs: 15_000,
       maxPeerSessionsPerClient: 4,
       maxPeerSessionsPerWorker: 32,
+      invalidHandshakeRatePerMinute: 60,
     });
 
     vi.stubEnv("CANTRIP_WORKER_LINK_LOCAL_ENABLED", "false");
@@ -363,6 +364,7 @@ describe("server configuration safety", () => {
     vi.stubEnv("CANTRIP_WORKER_LINK_UPGRADE_PROBE_TIMEOUT_MS", "45000");
     vi.stubEnv("CANTRIP_WORKER_LINK_MAX_PEER_SESSIONS_PER_CLIENT", "8");
     vi.stubEnv("CANTRIP_WORKER_LINK_MAX_PEER_SESSIONS_PER_WORKER", "64");
+    vi.stubEnv("CANTRIP_WORKER_LINK_INVALID_HANDSHAKE_RATE_PER_MINUTE", "120");
     vi.stubEnv(
       "CANTRIP_WORKER_LINK_LANE_LIMITS",
       JSON.stringify({
@@ -382,6 +384,7 @@ describe("server configuration safety", () => {
       upgradeProbeTimeoutMs: 45_000,
       maxPeerSessionsPerClient: 8,
       maxPeerSessionsPerWorker: 64,
+      invalidHandshakeRatePerMinute: 120,
       laneLimits: {
         realtime: {
           maxQueuedFrames: 32,
