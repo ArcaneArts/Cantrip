@@ -1,0 +1,130 @@
+import type {
+  WorkerLinkChannelCloseCode,
+  WorkerLinkTunnelRoute,
+} from "@cantrip/protocol";
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  createBrowserCodeWorkerLinkSocket,
+  type BrowserCodeWorkerLinkSocketDependencies,
+} from "./browser-code-worker-link-socket";
+import type { TunnelWorkerLinkConnection } from "./tunnel-worker-link";
+
+const route: WorkerLinkTunnelRoute = {
+  attachmentId: "attachment-1",
+  destinationEndpointId: "worker-link-worker:worker-1",
+  sourceEndpointId: "worker-link-client:grant-1",
+  target: { host: "127.0.0.1", kind: "tcp", port: 4321 },
+  tunnelId: "tunnel-1",
+};
+
+class FakeConnection implements TunnelWorkerLinkConnection {
+  readonly activate = vi.fn();
+  readonly bufferedAmount = 0;
+  readonly close = vi.fn((_code?: WorkerLinkChannelCloseCode) => undefined);
+  readonly route = "relay" as const;
+  readonly send = vi.fn((_frame: Uint8Array) => true);
+  readonly tunnelRoute = route;
+}
+
+function setup() {
+  const connection = new FakeConnection();
+  let options:
+    Parameters<BrowserCodeWorkerLinkSocketDependencies["openLink"]>[0] | null =
+    null;
+  const dependencies: BrowserCodeWorkerLinkSocketDependencies = {
+    openLink: vi.fn(async (input) => {
+      options = input;
+      return connection;
+    }),
+    queue: queueMicrotask,
+  };
+  const socket = createBrowserCodeWorkerLinkSocket(
+    {
+      attachmentId: route.attachmentId,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      tunnelId: route.tunnelId,
+      workerId: "worker-1",
+    },
+    dependencies,
+  );
+  return { connection, dependencies, options: () => options, socket };
+}
+
+describe("browser Code WorkerLink socket", () => {
+  it("adapts the shared WorkerLink stream to the existing Code socket boundary", async () => {
+    const fixture = setup();
+    await new Promise<void>((resolve) =>
+      fixture.socket.addEventListener("open", () => resolve(), { once: true }),
+    );
+    const messages: unknown[] = [];
+    fixture.socket.setMessageConsumer!(async (event) => {
+      messages.push(event.data);
+    });
+
+    fixture.socket.send(
+      JSON.stringify({ type: "initialize", clientId: "web-code:client-1" }),
+    );
+    await vi.waitFor(() => expect(messages).toHaveLength(1));
+    expect(JSON.parse(messages[0] as string)).toEqual({
+      type: "ready",
+      attachmentId: route.attachmentId,
+      destinationEndpointId: route.destinationEndpointId,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      sourceEndpointId: route.sourceEndpointId,
+      tunnelId: route.tunnelId,
+    });
+    await vi.waitFor(() =>
+      expect(fixture.connection.activate).toHaveBeenCalledOnce(),
+    );
+
+    fixture.socket.send(new Uint8Array([1, 2, 3]).buffer);
+    expect(fixture.connection.send).toHaveBeenCalledWith(
+      new Uint8Array([1, 2, 3]),
+    );
+    await fixture.options()!.onFrame(new Uint8Array([4, 5, 6]));
+    expect(messages[1]).toEqual(new Uint8Array([4, 5, 6]).buffer);
+  });
+
+  it("maps authorization expiry to the existing protected-transport recovery signal", async () => {
+    const fixture = setup();
+    await new Promise<void>((resolve) =>
+      fixture.socket.addEventListener("open", () => resolve(), { once: true }),
+    );
+    const closed = new Promise<CloseEvent>((resolve) =>
+      fixture.socket.addEventListener(
+        "close",
+        (event) => resolve(event as CloseEvent),
+        { once: true },
+      ),
+    );
+
+    fixture.options()!.onClose("lifetime-expired");
+
+    await expect(closed).resolves.toMatchObject({ code: 1008 });
+  });
+
+  it("does not acknowledge WorkerLink input until the Code consumer drains it", async () => {
+    const fixture = setup();
+    await new Promise<void>((resolve) =>
+      fixture.socket.addEventListener("open", () => resolve(), { once: true }),
+    );
+    let release!: () => void;
+    const drained = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fixture.socket.setMessageConsumer!(async () => drained);
+
+    const delivery = fixture.options()!.onFrame(new Uint8Array([7, 8, 9]));
+    let settled = false;
+    void Promise.resolve(delivery).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release();
+    await delivery;
+    expect(settled).toBe(true);
+  });
+});

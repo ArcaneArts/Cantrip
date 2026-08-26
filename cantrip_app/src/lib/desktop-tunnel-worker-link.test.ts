@@ -28,6 +28,7 @@ function route(grantId = "grant-1"): WorkerLinkTunnelRoute {
 }
 
 class FakeConnection implements TunnelWorkerLinkConnection {
+  readonly bufferedAmount = 0;
   readonly activate = vi.fn();
   readonly close = vi.fn((_code?: WorkerLinkChannelCloseCode) => undefined);
   readonly send = vi.fn((_frame: Uint8Array) => true);

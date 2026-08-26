@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => {
     getActiveServerConnection: vi.fn(),
     getActiveServerUrl: vi.fn(),
     getClientSession: vi.fn(),
-    getTunnelDataProtection: vi.fn(),
+    getTunnelTransportConfiguration: vi.fn(),
     onClientSessionIdentityChanged: vi.fn((listener: () => void) => {
       clientIdentityListeners.add(listener);
       return () => clientIdentityListeners.delete(listener);
@@ -36,7 +36,16 @@ vi.mock("@/lib/api", () => ({
   createTunnelAttachment: mocks.createTunnelAttachment,
   deleteTunnelAttachment: mocks.deleteTunnelAttachment,
   explorerCodeSessionBindingCurrent: mocks.explorerCodeSessionBindingCurrent,
-  getTunnelDataProtection: mocks.getTunnelDataProtection,
+  getTunnelTransportConfiguration: mocks.getTunnelTransportConfiguration,
+}));
+
+vi.mock("@/lib/browser-code-worker-link-socket", () => ({
+  BROWSER_CODE_TUNNEL_SOCKET_CLOSED: 3,
+  BROWSER_CODE_TUNNEL_SOCKET_OPEN: 1,
+  createBrowserCodeWorkerLinkSocket: (input: { attachmentId: string }) =>
+    new WebSocket(
+      `wss://cantrip.example/api/tunnel-attachments/${input.attachmentId}/connect`,
+    ),
 }));
 
 vi.mock("@/lib/server-connections", () => ({
@@ -843,11 +852,14 @@ beforeEach(() => {
     serverId: "server-1",
     user: { id: "owner-1" },
   });
-  mocks.getTunnelDataProtection.mockResolvedValue({
-    formatVersion: 1,
-    algorithm: "AES-256-GCM",
-    keyRevision: 1,
-    key: "A".repeat(43),
+  mocks.getTunnelTransportConfiguration.mockResolvedValue({
+    dataProtection: {
+      formatVersion: 1,
+      algorithm: "AES-256-GCM",
+      keyRevision: 1,
+      key: "A".repeat(43),
+    },
+    workerId: "worker-1",
   });
   mocks.createTunnelAttachment.mockImplementation(async (tunnelId: string) => {
     const attachmentId = `browser-attachment-${++attachmentSequence}`;
@@ -961,7 +973,7 @@ describe("shared browser Code transport pooling", () => {
       owners.map((owned) => startSharedBrowserCodeAttachment(owned)),
     );
 
-    expect(mocks.getTunnelDataProtection).toHaveBeenCalledOnce();
+    expect(mocks.getTunnelTransportConfiguration).toHaveBeenCalledOnce();
     expect(mocks.createTunnelAttachment).toHaveBeenCalledOnce();
     expect(sockets).toHaveLength(1);
     expect(adapterPorts).toHaveLength(4);
@@ -1173,6 +1185,15 @@ describe("shared browser Code transport pooling", () => {
       const index = offset + 1;
       const owned = sharedOwned((offset % 3) + 1);
       mutate(owned, index);
+      mocks.getTunnelTransportConfiguration.mockResolvedValue({
+        dataProtection: {
+          formatVersion: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: owned.attachment.transport.protectedKeyRevision,
+          key: "A".repeat(43),
+        },
+        workerId: owned.attachment.transport.workerId,
+      });
       const candidate = await startSharedBrowserCodeAttachment(owned);
       expect(mocks.createTunnelAttachment, field).toHaveBeenCalledTimes(
         index + 1,
@@ -1194,11 +1215,14 @@ describe("shared browser Code transport pooling", () => {
 
     const second = sharedOwned(1);
     second.attachment.transport.protectedKeyRevision = 2;
-    mocks.getTunnelDataProtection.mockResolvedValue({
-      formatVersion: 1,
-      algorithm: "AES-256-GCM",
-      keyRevision: 2,
-      key: "B".repeat(43),
+    mocks.getTunnelTransportConfiguration.mockResolvedValue({
+      dataProtection: {
+        formatVersion: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 2,
+        key: "B".repeat(43),
+      },
+      workerId: "worker-1",
     });
     const secondOpened = await startSharedBrowserCodeAttachment(second);
 
