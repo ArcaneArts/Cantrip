@@ -102,6 +102,7 @@ import type {
   EncryptedCodeTabUpdate,
   DesktopUpdateActiveWorkSummary,
   EncryptedExplorerCreate,
+  EncryptedExplorerPin,
   EncryptedExplorerViewStateUpdate,
   EncryptedExplorerWorktreeUpdate,
   ExplorerWireSummary,
@@ -14733,6 +14734,67 @@ export class ServerRepository {
       .where(eq(schema.explorers.id, explorerId))
       .returning();
     return result[0] ? toExplorerWireSummary(result[0]) : null;
+  }
+
+  async pinExplorer(
+    ownerId: string,
+    explorerId: string,
+    input: EncryptedExplorerPin,
+  ): Promise<ExplorerWireSummary | null> {
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({ explorer: schema.explorers })
+        .from(schema.explorers)
+        .innerJoin(
+          schema.projects,
+          and(
+            eq(schema.projects.id, schema.explorers.projectId),
+            eq(schema.projects.ownerId, ownerId),
+          ),
+        )
+        .where(eq(schema.explorers.id, explorerId))
+        .limit(1)
+        .for("update");
+      const explorer = rows[0]?.explorer;
+      if (!explorer) return null;
+
+      const tabKey = projectTabKey("explorer", explorerId);
+      const existingMembers = await transaction
+        .select({ tabKey: schema.tabGroupMembers.tabKey })
+        .from(schema.tabGroupMembers)
+        .where(
+          and(
+            eq(schema.tabGroupMembers.projectId, explorer.projectId),
+            eq(schema.tabGroupMembers.tabKey, tabKey),
+          ),
+        )
+        .limit(1);
+      if (existingMembers[0]) {
+        // The operation is retry-safe, but it must never repurpose an
+        // Explorer that is already a tab.
+        return toExplorerWireSummary(explorer);
+      }
+
+      const updatedRows = await transaction
+        .update(schema.explorers)
+        .set({
+          protectedLabel: input.titleProtection,
+          protectedState: input.stateProtection,
+          fileMode: input.fileMode,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.explorers.id, explorerId))
+        .returning();
+      const updated = firstOrThrow(updatedRows, "pinning an explorer");
+      await attachProjectTab(transaction, {
+        projectId: explorer.projectId,
+        tabGroupId: input.tabGroupId,
+        tabId: explorerId,
+        tabKind: "explorer",
+      });
+
+      return toExplorerWireSummary(updated);
+    });
   }
 
   async updateExplorerViewState(

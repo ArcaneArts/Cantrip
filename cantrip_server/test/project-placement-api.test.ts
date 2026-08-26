@@ -1300,6 +1300,122 @@ describe.sequential("project execution placement API", () => {
     expect(stale.json().error).toContain("active chat lane");
   });
 
+  it("atomically promotes an existing sidebar Explorer into the tab layout", async () => {
+    const sidebarFields = protectedExplorerFields();
+    const sidebarResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...sidebarFields,
+        attachToTabLayout: false,
+        target: {
+          kind: "worktree",
+          projectId,
+          worktreeId: alphaWorktreeId,
+        },
+      },
+    });
+    expect(sidebarResponse.statusCode, sidebarResponse.body).toBe(201);
+    const sidebar = explorerWireSummarySchema.parse(sidebarResponse.json());
+
+    const anchorResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/explorers`,
+      payload: {
+        ...protectedExplorerFields(),
+        target: {
+          kind: "worktree",
+          projectId,
+          worktreeId: alphaWorktreeId,
+        },
+      },
+    });
+    expect(anchorResponse.statusCode, anchorResponse.body).toBe(201);
+    const anchor = explorerWireSummarySchema.parse(anchorResponse.json());
+    let layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tab-groups`,
+        })
+      ).json(),
+    );
+    const groupId = layout.groups.find(({ members }) =>
+      members.some(({ tabId }) => tabId === anchor.id),
+    )!.id;
+    expect(
+      layout.groups
+        .flatMap(({ members }) => members)
+        .some(({ tabId }) => tabId === sidebar.id),
+    ).toBe(false);
+
+    const pinnedFields = protectedExplorerFields(sidebar.id);
+    const pin = () =>
+      app.inject({
+        method: "POST",
+        url: `/api/explorers/${sidebar.id}/pin`,
+        payload: {
+          fileMode: "edit",
+          stateProtection: pinnedFields.stateProtection,
+          tabGroupId: groupId,
+          titleProtection: pinnedFields.titleProtection,
+        },
+      });
+    const pinnedResponse = await pin();
+    expect(pinnedResponse.statusCode, pinnedResponse.body).toBe(200);
+    expect(
+      explorerWireSummarySchema.parse(pinnedResponse.json()),
+    ).toMatchObject({
+      id: sidebar.id,
+      fileMode: "edit",
+      stateProtection: pinnedFields.stateProtection,
+      titleProtection: pinnedFields.titleProtection,
+    });
+
+    const repeatedResponse = await pin();
+    expect(repeatedResponse.statusCode, repeatedResponse.body).toBe(200);
+    const conflictingFields = protectedExplorerFields(sidebar.id);
+    const conflictingResponse = await app.inject({
+      method: "POST",
+      url: `/api/explorers/${sidebar.id}/pin`,
+      payload: {
+        fileMode: "visual",
+        stateProtection: conflictingFields.stateProtection,
+        tabGroupId: groupId,
+        titleProtection: conflictingFields.titleProtection,
+      },
+    });
+    expect(conflictingResponse.statusCode, conflictingResponse.body).toBe(200);
+    expect(
+      explorerWireSummarySchema.parse(conflictingResponse.json()),
+    ).toMatchObject({
+      fileMode: "edit",
+      stateProtection: pinnedFields.stateProtection,
+      titleProtection: pinnedFields.titleProtection,
+    });
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(
+      layout.groups
+        .flatMap(({ members }) => members)
+        .filter(
+          ({ tabId, tabKind }) =>
+            tabId === sidebar.id && tabKind === "explorer",
+        ),
+    ).toHaveLength(1);
+    expect(
+      layout.groups
+        .find(({ id }) => id === groupId)
+        ?.members.some(({ tabId }) => tabId === sidebar.id),
+    ).toBe(true);
+  });
+
   it("keeps custom tab-group labels opaque through rename, reorder, split, and merge", async () => {
     const terminal = terminalWireSummarySchema.parse(
       (

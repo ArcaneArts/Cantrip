@@ -5489,6 +5489,22 @@ export const encryptedExplorerUpdateSchema = z
     },
   );
 
+export const encryptedExplorerPinSchema = z
+  .object({
+    tabGroupId: z.string().min(1).optional(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: explorerPrivateStateOpaqueSchema,
+    fileMode: explorerFileModeSchema,
+  })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "explorer",
+    {
+      message: "Explorer title classification must be explorer.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const explorerViewStateUpdateSchema = z.object({
   selectedPath: z.string().min(1).max(8_192).nullable(),
   fileMode: explorerFileModeSchema,
@@ -16321,6 +16337,7 @@ export type ExplorerUpdate = z.infer<typeof explorerUpdateSchema>;
 export type EncryptedExplorerUpdate = z.infer<
   typeof encryptedExplorerUpdateSchema
 >;
+export type EncryptedExplorerPin = z.infer<typeof encryptedExplorerPinSchema>;
 export type ExplorerFileMode = z.infer<typeof explorerFileModeSchema>;
 export type ExplorerViewStateUpdate = z.infer<
   typeof explorerViewStateUpdateSchema

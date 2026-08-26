@@ -228,8 +228,8 @@ export function PersistentExplorerViews({
         // A pin handoff becomes an ordinary open owner after the layout
         // refresh, without changing the keyed ExplorerView instance.
         ...(handoffExplorer ? [handoffExplorer.id] : []),
-        // The source is captured before the create request so query/layout
-        // reconciliation cannot release the last Code transport lease.
+        // The source is captured before the pin request so query/layout
+        // reconciliation cannot release the Code owner during promotion.
         ...(handoffSourceExplorer ? [handoffSourceExplorer.id] : []),
       ]),
     [handoffExplorer, handoffSourceExplorer, openExplorers],
