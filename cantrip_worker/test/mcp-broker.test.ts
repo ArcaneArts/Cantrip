@@ -52,7 +52,105 @@ function bindingInput() {
   };
 }
 
+function standaloneBindingInput(scratchRootId = "scratch-one") {
+  return {
+    ownerId: "owner-one",
+    contextKind: "standalone" as const,
+    projectId: null,
+    chatId: "chat-one",
+    executionLaneId: "lane-one",
+    workerId: "worker-one",
+    worktreeId: null,
+    rootKind: null,
+    scratchRootId,
+    permissionProfileId: ":workspace-write",
+    allowedOperations: ["tool.help", "web.search", "web.read"] as Array<
+      "tool.help" | "web.search" | "web.read"
+    >,
+  };
+}
+
 describe("Cantrip MCP worker broker", () => {
+  it("isolates standalone bindings by scratch root and expires their credentials", async () => {
+    const dataDirectory = await temporaryDirectory();
+    let now = Date.parse("2026-08-21T12:00:00.000Z");
+    const broker = new CantripMcpBroker(
+      {
+        dataDirectory,
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-one",
+      },
+      { now: () => now, ttlMs: 1_000 },
+    );
+    await broker.start();
+    try {
+      const first = broker.createBinding(standaloneBindingInput());
+      expect(first.binding).toMatchObject({
+        contextKind: "standalone",
+        projectId: null,
+        rootKind: null,
+        scratchRootId: "scratch-one",
+        worktreeId: null,
+        allowedOperations: ["tool.help", "web.search", "web.read"],
+      });
+
+      const hiddenTool = await fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${first.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: first.binding.bindingId,
+          request: { operation: "target.list", arguments: {} },
+        }),
+      });
+      expect(hiddenTool.status).toBe(403);
+
+      const rotated = broker.createBinding(
+        standaloneBindingInput("scratch-two"),
+      );
+      expect(rotated.binding.bindingId).not.toBe(first.binding.bindingId);
+      await expect(access(first.connectionPath)).rejects.toThrow();
+
+      now += 1_000;
+      const expired = await fetch(
+        `${broker.endpoint}/v1/bindings/${rotated.binding.bindingId}`,
+        {
+          headers: {
+            authorization: `Bearer ${rotated.connection.credential}`,
+          },
+        },
+      );
+      expect(expired.status).toBe(401);
+      await expect(access(rotated.connectionPath)).rejects.toThrow();
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("rejects invalid mixed standalone binding claims", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const broker = new CantripMcpBroker({
+      dataDirectory,
+      serverUrl: "https://cantrip.example",
+      token: "worker-token",
+      workerId: "worker-one",
+    });
+    await broker.start();
+    try {
+      expect(() =>
+        broker.createBinding({
+          ...standaloneBindingInput(),
+          projectId: "project-one",
+        } as never),
+      ).toThrow();
+    } finally {
+      await broker.close();
+    }
+  });
+
   it("reuses an unchanged live binding instead of invalidating its stdio host", async () => {
     const dataDirectory = await temporaryDirectory();
     const broker = new CantripMcpBroker({

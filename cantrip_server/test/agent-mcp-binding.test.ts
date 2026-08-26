@@ -177,6 +177,49 @@ describe("Cantrip MCP server binding", () => {
     ).toThrow("changed: context kind");
   });
 
+  it("pins standalone web operations to lane, permission, owner, and expiry", () => {
+    const webOperations = new Set(["web.search", "web.read"] as const);
+    for (const changedContext of [
+      { ...standaloneContext, executionLaneId: "lane-two" },
+      {
+        ...standaloneContext,
+        defaultPermissionProfileId: ":read-only",
+        permissionProfileId: ":read-only",
+      },
+    ]) {
+      expect(() =>
+        assertCantripMcpBinding({
+          binding: standaloneBinding,
+          context: changedContext,
+          operation: "web.search",
+          ownerId: "owner-one",
+          serverAllowedOperations: webOperations,
+          now,
+        }),
+      ).toThrow("active Cantrip chat lane");
+    }
+    expect(() =>
+      assertCantripMcpBinding({
+        binding: standaloneBinding,
+        context: standaloneContext,
+        operation: "web.search",
+        ownerId: "owner-two",
+        serverAllowedOperations: webOperations,
+        now,
+      }),
+    ).toThrow("different owner");
+    expect(() =>
+      assertCantripMcpBinding({
+        binding: standaloneBinding,
+        context: standaloneContext,
+        operation: "web.search",
+        ownerId: "owner-one",
+        serverAllowedOperations: webOperations,
+        now: Date.parse(standaloneBinding.expiresAt),
+      }),
+    ).toThrow("expired");
+  });
+
   it("allows the read-only context probe between linked console turns", () => {
     const idleContext = { ...context, status: "idle" as const };
 
