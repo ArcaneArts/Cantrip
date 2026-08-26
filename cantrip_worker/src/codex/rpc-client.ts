@@ -16,9 +16,21 @@ export interface CodexRpcResponse {
   result?: unknown;
 }
 
+export interface CodexRpcNotification {
+  method: string;
+  params?: unknown;
+}
+
 interface PendingRequest {
   reject(error: Error): void;
   resolve(response: CodexRpcResponse): void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
+interface PendingNotification {
+  matches(notification: CodexRpcNotification): boolean;
+  reject(error: Error): void;
+  resolve(notification: CodexRpcNotification): void;
   timeout: ReturnType<typeof setTimeout>;
 }
 
@@ -29,6 +41,8 @@ function objectValue(value: unknown): Record<string, unknown> | null {
 }
 
 export class CodexRpcClient {
+  readonly #notifications: CodexRpcNotification[] = [];
+  readonly #notificationWaiters = new Set<PendingNotification>();
   readonly #pending = new Map<number, PendingRequest>();
   #nextId = 1;
 
@@ -65,6 +79,35 @@ export class CodexRpcClient {
     this.child.stdin.write(`${JSON.stringify({ method, params })}\n`);
   }
 
+  waitForNotification(
+    method: string,
+    predicate: (params: unknown) => boolean = () => true,
+    timeoutMs = this.requestTimeoutMs,
+  ): Promise<CodexRpcNotification> {
+    const index = this.#notifications.findIndex(
+      (notification) =>
+        notification.method === method && predicate(notification.params),
+    );
+    if (index >= 0) {
+      return Promise.resolve(this.#notifications.splice(index, 1)[0]!);
+    }
+    return new Promise((resolve, reject) => {
+      const waiter: PendingNotification = {
+        matches: (notification) =>
+          notification.method === method && predicate(notification.params),
+        reject,
+        resolve,
+        timeout: setTimeout(() => {
+          this.#notificationWaiters.delete(waiter);
+          reject(
+            new Error(`Codex App Server notification ${method} timed out.`),
+          );
+        }, timeoutMs),
+      };
+      this.#notificationWaiters.add(waiter);
+    });
+  }
+
   close(): void {
     this.rejectAll(new Error("Codex app-server client closed."));
     this.child.kill("SIGINT");
@@ -78,21 +121,38 @@ export class CodexRpcClient {
       return;
     }
     const message = objectValue(value);
-    if (!message || typeof message.id !== "number") return;
-    const pending = this.#pending.get(message.id);
-    if (!pending) return;
-    this.#pending.delete(message.id);
-    clearTimeout(pending.timeout);
-    const error = objectValue(message.error);
-    pending.resolve({
-      id: message.id,
-      result: message.result,
-      ...(error &&
-      typeof error.code === "number" &&
-      typeof error.message === "string"
-        ? { error: { code: error.code, message: error.message } }
-        : {}),
-    });
+    if (!message) return;
+    if (typeof message.id === "number") {
+      const pending = this.#pending.get(message.id);
+      if (!pending) return;
+      this.#pending.delete(message.id);
+      clearTimeout(pending.timeout);
+      const error = objectValue(message.error);
+      pending.resolve({
+        id: message.id,
+        result: message.result,
+        ...(error &&
+        typeof error.code === "number" &&
+        typeof error.message === "string"
+          ? { error: { code: error.code, message: error.message } }
+          : {}),
+      });
+      return;
+    }
+    if (typeof message.method !== "string") return;
+    const notification: CodexRpcNotification = {
+      method: message.method,
+      ...(message.params === undefined ? {} : { params: message.params }),
+    };
+    for (const waiter of this.#notificationWaiters) {
+      if (!waiter.matches(notification)) continue;
+      this.#notificationWaiters.delete(waiter);
+      clearTimeout(waiter.timeout);
+      waiter.resolve(notification);
+      return;
+    }
+    this.#notifications.push(notification);
+    if (this.#notifications.length > 100) this.#notifications.shift();
   }
 
   private rejectAll(error: Error): void {
@@ -101,6 +161,12 @@ export class CodexRpcClient {
       pending.reject(error);
     }
     this.#pending.clear();
+    for (const waiter of this.#notificationWaiters) {
+      clearTimeout(waiter.timeout);
+      waiter.reject(error);
+    }
+    this.#notificationWaiters.clear();
+    this.#notifications.length = 0;
   }
 }
 

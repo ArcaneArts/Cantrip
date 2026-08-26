@@ -1757,6 +1757,55 @@ export function relocationResponseItems(
   });
 }
 
+export function relocationExternalSessionRecords(
+  payload: ChatRelocationContextPayload,
+  input: { cwd: string; title: string },
+): Array<Record<string, unknown>> {
+  if (payload.kind !== "visible") {
+    throw new Error(
+      "Encrypted Task relocation content must be opened before export.",
+    );
+  }
+  const responseItems = relocationResponseItems(payload);
+  relocationItemBatches(responseItems);
+  const records: Array<Record<string, unknown>> = [
+    {
+      type: "custom-title",
+      customTitle: input.title,
+    },
+  ];
+  let hasUserTurn = false;
+  for (const [index, item] of responseItems.entries()) {
+    const message = payload.messages[index]!;
+    const leadingAssistant: boolean = item.role === "assistant" && !hasUserTurn;
+    const role: "assistant" | "user" =
+      item.role === "assistant" && !leadingAssistant ? "assistant" : "user";
+    hasUserTurn = hasUserTurn || role === "user";
+    const content = Array.isArray(item.content)
+      ? objectRecord(item.content[0])
+      : null;
+    const text =
+      typeof content?.text === "string" ? content.text : "[Empty message]";
+    records.push({
+      type: role,
+      cwd: input.cwd,
+      timestamp: message.createdAt,
+      message: {
+        content:
+          item.role === "developer"
+            ? `[Cantrip developer message]\n${text}`
+            : leadingAssistant
+              ? `[Cantrip assistant message]\n${text}`
+              : text,
+      },
+    });
+  }
+  if (!hasUserTurn) {
+    throw new Error("A Codex export requires at least one visible message.");
+  }
+  return records;
+}
+
 export function relocationItemBatches(
   items: Array<Record<string, unknown>>,
 ): Array<Array<Record<string, unknown>>> {

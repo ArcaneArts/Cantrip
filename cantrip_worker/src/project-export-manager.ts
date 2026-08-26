@@ -6,6 +6,7 @@ import {
   realpath,
   rename,
   rm,
+  rmdir,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -31,10 +32,7 @@ import {
 import { decodePrivateDisplayLabelForWorker } from "./private-label-encryption.js";
 import { openTaskRelocationPayload } from "./task-operation.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
-import {
-  relocationItemBatches,
-  relocationResponseItems,
-} from "./codex/app-server.js";
+import { relocationExternalSessionRecords } from "./codex/app-server.js";
 import {
   initializeCodexRpcClient,
   spawnCodexRpcClient,
@@ -43,6 +41,7 @@ import {
 } from "./codex/rpc-client.js";
 
 const EXPORT_REQUEST_TIMEOUT_MS = 30_000;
+const EXPORT_IMPORT_TIMEOUT_MS = 2 * 60_000;
 
 type ExportBeginCommand = Extract<
   WorkerCommand,
@@ -95,7 +94,10 @@ export interface CodexLocalProjectExportAdapterOptions {
   binary: string;
   createClient?: (
     codexHome: string,
-  ) => Pick<CodexRpcClient, "request" | "notify" | "close">;
+  ) => Pick<
+    CodexRpcClient,
+    "request" | "notify" | "waitForNotification" | "close"
+  >;
   environment?: NodeJS.ProcessEnv;
   homeDirectory?: string;
   managedDataDirectory: string;
@@ -138,6 +140,50 @@ function safeThreadId(value: unknown): string | null {
   return typeof thread?.id === "string" && thread.id.length > 0
     ? thread.id.slice(0, 500)
     : null;
+}
+
+function safeImportId(value: unknown): string | null {
+  const importId = objectValue(value)?.importId;
+  return typeof importId === "string" && importId.length > 0
+    ? importId.slice(0, 500)
+    : null;
+}
+
+function completedImportThreadId(value: unknown): string {
+  const results = objectValue(value)?.itemTypeResults;
+  if (!Array.isArray(results)) {
+    throw new Error("Codex returned an invalid session import completion.");
+  }
+  const sessions = results
+    .map(objectValue)
+    .find((result) => result?.itemType === "SESSIONS");
+  const successes = sessions?.successes;
+  if (Array.isArray(successes)) {
+    for (const success of successes) {
+      const target = objectValue(success)?.target;
+      if (typeof target === "string" && target.length > 0) {
+        return target.slice(0, 500);
+      }
+    }
+  }
+  const failures = sessions?.failures;
+  const failure = Array.isArray(failures)
+    ? failures.map(objectValue).find(Boolean)
+    : null;
+  throw new Error(
+    typeof failure?.message === "string"
+      ? `Codex could not import the chat: ${failure.message.slice(0, 2_000)}`
+      : "Codex did not create a thread for the imported chat.",
+  );
+}
+
+function listedThreadIds(value: unknown): string[] | null {
+  const data = objectValue(value)?.data;
+  if (!Array.isArray(data)) return null;
+  return data.flatMap((entry) => {
+    const id = objectValue(entry)?.id;
+    return typeof id === "string" ? [id] : [];
+  });
 }
 
 function pathContains(
@@ -247,6 +293,15 @@ export class CodexLocalProjectExportAdapter implements ProjectExportTargetAdapte
           }),
           "thread/list",
         );
+        responseResult(
+          await client.request("externalAgentConfig/detect", {
+            migrationSource: "cursor",
+            includeHome: false,
+            cwds: [],
+            maxSessions: 0,
+          }),
+          "externalAgentConfig/detect",
+        );
       } finally {
         client.close();
       }
@@ -288,6 +343,13 @@ export class CodexLocalProjectExportAdapter implements ProjectExportTargetAdapte
     }
     const client = this.#createClient(currentDestination.path);
     let createdThreadId: string | null = null;
+    const stagingRoot = path.join(
+      this.#homeDirectory,
+      ".cursor",
+      "projects",
+      ".cantrip-exports",
+    );
+    const stagingDirectory = path.join(stagingRoot, randomUUID());
     try {
       await initializeCodexRpcClient(client, {
         name: "cantrip_project_exporter",
@@ -308,35 +370,53 @@ export class CodexLocalProjectExportAdapter implements ProjectExportTargetAdapte
           );
         }
       }
-      const started = responseResult(
-        await client.request("thread/start", {
-          cwd: input.cwd,
-          runtimeWorkspaceRoots: [input.cwd],
-          ephemeral: false,
-        }),
-        "thread/start",
+      const title = input.title.trim().slice(0, 120) || "Exported Cantrip chat";
+      const records = relocationExternalSessionRecords(input.payload, {
+        cwd: input.cwd,
+        title,
+      });
+      const expectedTurns = records.filter(
+        (record) => record.type === "user",
+      ).length;
+      await mkdir(stagingDirectory, { recursive: true, mode: 0o700 });
+      const sourcePath = path.join(stagingDirectory, "session.jsonl");
+      await writeFile(
+        sourcePath,
+        `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+        { encoding: "utf8", mode: 0o600, flag: "wx" },
       );
-      const threadId = safeThreadId(started);
-      if (!threadId) {
-        throw new Error("Codex returned an invalid thread/start response.");
-      }
-      createdThreadId = threadId;
-      await input.onThreadStarted(threadId);
-      for (const items of relocationItemBatches(
-        relocationResponseItems(input.payload),
-      )) {
-        responseResult(
-          await client.request("thread/inject_items", { threadId, items }),
-          "thread/inject_items",
+      const imported = responseResult(
+        await client.request("externalAgentConfig/import", {
+          migrationSource: "cursor",
+          providerId: "cantrip",
+          source: "cantrip_project_export",
+          migrationItems: [
+            {
+              itemType: "SESSIONS",
+              description: "Import Cantrip chat",
+              cwd: input.cwd,
+              details: {
+                sessions: [{ path: sourcePath, cwd: input.cwd, title }],
+              },
+            },
+          ],
+        }),
+        "externalAgentConfig/import",
+      );
+      const importId = safeImportId(imported);
+      if (!importId) {
+        throw new Error(
+          "Codex returned an invalid externalAgentConfig/import response.",
         );
       }
-      responseResult(
-        await client.request("thread/name/set", {
-          threadId,
-          name: input.title.trim().slice(0, 200) || "Exported Cantrip chat",
-        }),
-        "thread/name/set",
+      const completed = await client.waitForNotification(
+        "externalAgentConfig/import/completed",
+        (params) => safeImportId(params) === importId,
+        EXPORT_IMPORT_TIMEOUT_MS,
       );
+      const threadId = completedImportThreadId(completed.params);
+      createdThreadId = threadId;
+      await input.onThreadStarted(threadId);
       const verified = responseResult(
         await client.request("thread/read", {
           threadId,
@@ -344,13 +424,37 @@ export class CodexLocalProjectExportAdapter implements ProjectExportTargetAdapte
         }),
         "thread/read",
       );
-      if (safeThreadId(verified) !== threadId) {
-        throw new Error("Codex did not return the newly exported thread.");
+      const verifiedThread = objectValue(objectValue(verified)?.thread);
+      if (
+        safeThreadId(verified) !== threadId ||
+        typeof verifiedThread?.preview !== "string" ||
+        verifiedThread.preview.trim().length === 0 ||
+        !Array.isArray(verifiedThread.turns) ||
+        verifiedThread.turns.length !== expectedTurns
+      ) {
+        throw new Error(
+          "Codex did not persist the exported chat as native visible turns.",
+        );
       }
-      responseResult(
-        await client.request("thread/unsubscribe", { threadId }),
-        "thread/unsubscribe",
+      const listed = responseResult(
+        await client.request("thread/list", {
+          archived: false,
+          cwd: input.cwd,
+          searchTerm: title,
+          limit: 100,
+          sortKey: "updated_at",
+          sortDirection: "desc",
+          sourceKinds: ["cli", "vscode"],
+          useStateDbOnly: true,
+        }),
+        "thread/list",
       );
+      const ids = listedThreadIds(listed);
+      if (!ids || !ids.includes(threadId)) {
+        throw new Error(
+          "Codex persisted the exported chat but did not expose it in thread discovery.",
+        );
+      }
       return { threadId };
     } catch (error) {
       if (createdThreadId) {
@@ -360,6 +464,10 @@ export class CodexLocalProjectExportAdapter implements ProjectExportTargetAdapte
       }
       throw error;
     } finally {
+      await rm(stagingDirectory, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+      await rmdir(stagingRoot).catch(() => undefined);
       client.close();
     }
   }
