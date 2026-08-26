@@ -54,10 +54,11 @@ type McpOperationExecutor = (
   requestId: string,
 ) => Promise<CantripAgentOperationResult>;
 
-type BindingClaims = Omit<
-  CantripMcpBinding,
-  "bindingId" | "expiresAt" | "issuedAt"
->;
+type BindingClaimsFor<Binding extends CantripMcpBinding> =
+  Binding extends CantripMcpBinding
+    ? Omit<Binding, "bindingId" | "expiresAt" | "issuedAt">
+    : never;
+type BindingClaims = BindingClaimsFor<CantripMcpBinding>;
 
 type BindingInput = BindingClaims & {
   legacyCanonicalRoot?: string | null;
@@ -98,7 +99,9 @@ function bindingIdentityMatchesInput(
 ): boolean {
   return (
     binding.ownerId === input.ownerId &&
+    binding.contextKind === input.contextKind &&
     binding.projectId === input.projectId &&
+    binding.scratchRootId === input.scratchRootId &&
     binding.chatId === input.chatId &&
     binding.workerId === input.workerId
   );

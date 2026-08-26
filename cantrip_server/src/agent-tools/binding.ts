@@ -152,14 +152,18 @@ export function assertCantripMcpBinding(options: {
       ? "permission profile"
       : null,
   ].filter((claim): claim is string => claim !== null);
+  const exactScopeRequired =
+    binding.contextKind === "standalone" ||
+    isCantripMcpMutationOperation(operation);
   const staleClaims = [
     ...staleIdentityClaims,
-    ...(isCantripMcpMutationOperation(operation) ? staleScopeClaims : []),
+    ...(exactScopeRequired ? staleScopeClaims : []),
   ];
   // Read-only discovery follows the active lane after a safe Cantrip
   // transition. The request remains bound to the same owner, chat, project,
   // and worker, and the current permission profile is independently checked
-  // below. Mutations retain exact lane, worktree, root, and permission claims.
+  // below. Mutations and every standalone operation retain exact lane, root,
+  // and permission claims.
   // A linked Codex console can call the read-only context probe while the
   // Cantrip chat row is between turns. Keep every durable binding claim
   // authoritative, but do not reject that harmless probe solely because the
