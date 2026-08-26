@@ -10,6 +10,7 @@ import {
   CircleAlert,
   FileCode2,
   GitBranch,
+  ListVideo,
   Loader2,
   MoreHorizontal,
   Package,
@@ -368,7 +369,7 @@ export function RunConfigurationControl({
     loading ? (
       <Loader2 className="size-3.5 animate-spin" />
     ) : (
-      <Play className="size-4 fill-current" />
+      <ListVideo className="size-4" />
     )
   ) : (
     <>
@@ -421,7 +422,7 @@ export function RunConfigurationControl({
             aria-label={emptyRepository ? "Add Run Configuration" : undefined}
             className={cn(
               emptyRepository
-                ? "size-8 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                ? "size-8 text-muted-foreground hover:text-foreground"
                 : "min-w-0 justify-between px-2",
               !emptyRepository && (compact ? "max-w-36" : "max-w-64"),
             )}

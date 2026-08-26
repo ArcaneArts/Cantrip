@@ -168,11 +168,13 @@ describe("Run configuration control", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("renders the empty project action as a compact Play button", () => {
+  it("renders the empty project action as a neutral configuration button", () => {
     const html = markup([], emptyInventory);
 
     expect(html).toContain('aria-label="Add Run Configuration"');
-    expect(html).toContain("lucide-play");
+    expect(html).toContain("lucide-list-video");
+    expect(html).toContain("text-muted-foreground");
+    expect(html).not.toContain("text-emerald");
     expect(html).not.toContain(">Add Run Configuration<");
   });
 
