@@ -10,8 +10,12 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   isTauri: vi.fn(),
   getTunnelDataProtection: vi.fn(),
+  getTunnelTransportConfiguration: vi.fn(),
   recordDirectAttachmentTelemetry: vi.fn(),
   renewTunnelAttachmentLease: vi.fn(),
+  refreshDesktopTunnelWorkerLinkForward: vi.fn(),
+  startDesktopTunnelWorkerLinkForward: vi.fn(),
+  stopDesktopTunnelWorkerLinkForward: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -26,8 +30,16 @@ vi.mock("@/lib/api", () => ({
   deleteTunnelAttachment: mocks.deleteTunnelAttachment,
   explorerCodeSessionBindingCurrent: mocks.explorerCodeSessionBindingCurrent,
   getTunnelDataProtection: mocks.getTunnelDataProtection,
+  getTunnelTransportConfiguration: mocks.getTunnelTransportConfiguration,
   recordDirectAttachmentTelemetry: mocks.recordDirectAttachmentTelemetry,
   renewTunnelAttachmentLease: mocks.renewTunnelAttachmentLease,
+}));
+vi.mock("@/lib/desktop-tunnel-worker-link", () => ({
+  refreshDesktopTunnelWorkerLinkForward:
+    mocks.refreshDesktopTunnelWorkerLinkForward,
+  startDesktopTunnelWorkerLinkForward:
+    mocks.startDesktopTunnelWorkerLinkForward,
+  stopDesktopTunnelWorkerLinkForward: mocks.stopDesktopTunnelWorkerLinkForward,
 }));
 vi.mock("@/lib/server-connections", () => ({
   getActiveServerUrl: () => "https://cantrip.example",
@@ -41,6 +53,7 @@ import {
   invalidateDesktopTunnelForward,
   maintainDesktopCodeTransportsOnce,
   refreshDesktopTunnelRelay,
+  refreshDesktopTunnelWorkerLinkAttachment,
   releaseDesktopCodeTransport,
   startDesktopTunnel,
   startDirectDesktopTunnel,
@@ -181,6 +194,27 @@ beforeEach(() => {
     keyRevision: 1,
     key: "k".repeat(43),
   });
+  mocks.getTunnelTransportConfiguration.mockResolvedValue({
+    dataProtection: {
+      formatVersion: 1,
+      algorithm: "AES-256-GCM",
+      keyRevision: 1,
+      key: "k".repeat(43),
+    },
+    workerId: "worker-1",
+  });
+  mocks.startDesktopTunnelWorkerLinkForward.mockResolvedValue({
+    attachmentId: "attachment-1",
+    expiresAt,
+    localHost: "127.0.0.1",
+    localPort: 41_234,
+    routeState: "relayed",
+    directCapabilityId: null,
+    directFallbackReason: null,
+    tunnelId: "tunnel-1",
+  });
+  mocks.refreshDesktopTunnelWorkerLinkForward.mockResolvedValue(true);
+  mocks.stopDesktopTunnelWorkerLinkForward.mockResolvedValue(undefined);
   mocks.recordDirectAttachmentTelemetry.mockResolvedValue(undefined);
   mocks.renewTunnelAttachmentLease.mockResolvedValue(undefined);
   const values = new Map<string, string>();
@@ -282,8 +316,7 @@ describe("shared desktop Code transport", () => {
           identity: {
             accountId: "account-one",
             clientIdentityGeneration: 7,
-            clientIdentityIncarnationId:
-              owned.binding.identity.incarnationId,
+            clientIdentityIncarnationId: owned.binding.identity.incarnationId,
             connectionId: "connection-one",
             protectedKeyRevision: 1,
             securityScopeId: owned.attachment.transport.securityScopeId,
@@ -596,7 +629,7 @@ describe("shared desktop Code transport", () => {
 });
 
 describe("startDesktopTunnel", () => {
-  it("activates a verified local-direct attachment", async () => {
+  it("keeps the legacy Code compatibility path until its vertical cutover", async () => {
     mocks.createDirectTunnelAttachment.mockResolvedValue(directTicket());
     mocks.invoke.mockResolvedValue({
       attachmentId: "attachment-1",
@@ -611,6 +644,7 @@ describe("startDesktopTunnel", () => {
 
     await expect(
       startDesktopTunnel("tunnel-1", {
+        compatibilityTransport: "legacy",
         diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
       }),
     ).resolves.toMatchObject({ routeState: "local-direct" });
@@ -629,26 +663,43 @@ describe("startDesktopTunnel", () => {
     });
   });
 
-  it("keeps the relay usable when a local capability cannot be prepared", async () => {
-    mocks.createDirectTunnelAttachment.mockRejectedValue(
-      new Error("worker is elsewhere"),
-    );
-    mocks.invoke.mockResolvedValue({
-      attachmentId: "attachment-1",
-      expiresAt,
-      localHost: "127.0.0.1",
-      localPort: 41_234,
-      routeState: "relayed",
-      directCapabilityId: capabilityId,
-      directFallbackReason: null,
-      tunnelId: "tunnel-1",
-    });
-
+  it("routes generic desktop tunnels through the WorkerLink bridge", async () => {
     await expect(startDesktopTunnel("tunnel-1")).resolves.toMatchObject({
       routeState: "relayed",
     });
+    expect(mocks.startDesktopTunnelWorkerLinkForward).toHaveBeenCalledWith({
+      attachmentId: "attachment-1",
+      dataProtection: expect.objectContaining({ keyRevision: 1 }),
+      diagnosticTraceId: undefined,
+      expiresAt,
+      preferredLocalPort: undefined,
+      tunnelId: "tunnel-1",
+      workerId: "worker-1",
+    });
+    expect(mocks.createDirectTunnelAttachment).not.toHaveBeenCalled();
     expect(mocks.activateDirectTunnelAttachment).not.toHaveBeenCalled();
     expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
+  });
+
+  it("revokes the exact attachment when WorkerLink bridge startup fails", async () => {
+    mocks.startDesktopTunnelWorkerLinkForward.mockRejectedValue(
+      new Error("bridge unavailable"),
+    );
+
+    await expect(startDesktopTunnel("tunnel-1")).rejects.toThrow(
+      "bridge unavailable",
+    );
+
+    expect(mocks.stopDesktopTunnelWorkerLinkForward).toHaveBeenCalledWith(
+      "tunnel-1",
+    );
+    expect(mocks.invoke).toHaveBeenCalledWith("stop_tunnel_forward", {
+      expectedAttachmentId: "attachment-1",
+      expectedDiagnosticTraceId: null,
+      expectedDirectCapabilityId: null,
+      tunnelId: "tunnel-1",
+    });
+    expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1");
   });
 
   it("starts a capability-only local listener without relay credentials", async () => {
@@ -674,6 +725,38 @@ describe("startDesktopTunnel", () => {
       }),
     });
     expect(direct.secret).toBe("");
+  });
+});
+
+describe("WorkerLink tunnel attachment rotation", () => {
+  it("rotates the server lifetime without rebinding the native listener", async () => {
+    const forward = {
+      attachmentId: "attachment-1",
+      diagnosticTraceId: null,
+      expiresAt: "2026-08-26T12:00:00.000Z",
+      localHost: "127.0.0.1" as const,
+      localPort: 41_234,
+      routeState: "local-direct" as const,
+      relayFallbackAvailable: false,
+      directCapabilityId: null,
+      directFallbackReason: null,
+      tunnelId: "tunnel-1",
+    };
+
+    await expect(
+      refreshDesktopTunnelWorkerLinkAttachment(forward),
+    ).resolves.toBe(true);
+
+    expect(mocks.createTunnelAttachment).toHaveBeenCalledWith(
+      "tunnel-1",
+      { clientId: expect.any(String) },
+      {},
+    );
+    expect(mocks.refreshDesktopTunnelWorkerLinkForward).toHaveBeenCalledWith(
+      "tunnel-1",
+      "attachment-1",
+      expiresAt,
+    );
   });
 });
 

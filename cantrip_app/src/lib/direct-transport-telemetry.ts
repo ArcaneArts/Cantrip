@@ -9,14 +9,17 @@ import {
   desktopTunnelAvailable,
   forceDesktopTunnelRelay,
   invalidateDesktopTunnelForward,
+  isDesktopTunnelWorkerLinkForward,
   listDesktopTunnelsWithOptions,
   refreshDesktopTunnelRelay,
+  refreshDesktopTunnelWorkerLinkAttachment,
 } from "@/lib/desktop-tunnel";
 
 const REPORT_INTERVAL_MS = 10_000;
 const REPORT_REQUEST_TIMEOUT_MS = 7_500;
 const RELAY_CREDENTIAL_RENEWAL_MARGIN_MS = 30_000;
 const RELAY_CREDENTIAL_RENEWAL_JITTER_MS = 10_000;
+const WORKER_LINK_ATTACHMENT_RENEWAL_MARGIN_MS = 60_000;
 const transportMaintenance = new Map<string, Promise<void>>();
 
 export function isAuthoritativeTunnelAttachmentFailure(
@@ -52,15 +55,18 @@ function forwardGenerationKey(
 }
 
 export function relayCredentialRenewalMarginMs(tunnelId: string): number {
+  return (
+    RELAY_CREDENTIAL_RENEWAL_MARGIN_MS + tunnelMaintenanceJitterMs(tunnelId)
+  );
+}
+
+function tunnelMaintenanceJitterMs(tunnelId: string): number {
   let hash = 2_166_136_261;
   for (let index = 0; index < tunnelId.length; index += 1) {
     hash ^= tunnelId.charCodeAt(index);
     hash = Math.imul(hash, 16_777_619);
   }
-  return (
-    RELAY_CREDENTIAL_RENEWAL_MARGIN_MS +
-    ((hash >>> 0) % (RELAY_CREDENTIAL_RENEWAL_JITTER_MS + 1))
-  );
+  return (hash >>> 0) % (RELAY_CREDENTIAL_RENEWAL_JITTER_MS + 1);
 }
 
 function relayCredentialRefreshDue(
@@ -74,6 +80,20 @@ function relayCredentialRefreshDue(
     typeof expiresAt === "number" &&
     Number.isFinite(expiresAt) &&
     expiresAt <= Date.now() + relayCredentialRenewalMarginMs(forward.tunnelId)
+  );
+}
+
+function workerLinkAttachmentRefreshDue(
+  forward: Awaited<ReturnType<typeof listDesktopTunnelsWithOptions>>[number],
+): boolean {
+  if (!isDesktopTunnelWorkerLinkForward(forward)) return false;
+  const expiresAt = Date.parse(forward.expiresAt);
+  return (
+    Number.isFinite(expiresAt) &&
+    expiresAt <=
+      Date.now() +
+        WORKER_LINK_ATTACHMENT_RENEWAL_MARGIN_MS +
+        tunnelMaintenanceJitterMs(forward.tunnelId)
   );
 }
 
@@ -127,9 +147,14 @@ export async function reportDesktopDirectTransportTelemetry(): Promise<void> {
         (forward) => !directTelemetryAttachments.has(forward.attachmentId),
       )
       .map((forward) =>
-        renewTunnelAttachmentLease(forward.attachmentId, {
-          signal: AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
-        }).catch(async (error) => {
+        (workerLinkAttachmentRefreshDue(forward)
+          ? refreshDesktopTunnelWorkerLinkAttachment(forward, {
+              signal: AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
+            })
+          : renewTunnelAttachmentLease(forward.attachmentId, {
+              signal: AbortSignal.timeout(REPORT_REQUEST_TIMEOUT_MS),
+            })
+        ).catch(async (error) => {
           if (
             await invalidateForwardAfterAuthoritativeFailure(forward, error)
           ) {

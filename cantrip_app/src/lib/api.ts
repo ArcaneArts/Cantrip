@@ -969,7 +969,7 @@ export async function getTunnels(projectId?: string) {
   return Promise.all(tunnels.map((tunnel) => openTunnelSummary(tunnel)));
 }
 
-export async function getTunnelDataProtection(
+export async function getTunnelTransportConfiguration(
   tunnelId: string,
   options: { serverUrl?: string; signal?: AbortSignal } = {},
 ) {
@@ -990,7 +990,18 @@ export async function getTunnelDataProtection(
     record: wire.protectedRecord,
     workerId: wire.destination.workerId,
   });
-  return { ...content.dataProtection };
+  return {
+    dataProtection: { ...content.dataProtection },
+    workerId: wire.destination.workerId,
+  };
+}
+
+export async function getTunnelDataProtection(
+  tunnelId: string,
+  options: { serverUrl?: string; signal?: AbortSignal } = {},
+) {
+  return (await getTunnelTransportConfiguration(tunnelId, options))
+    .dataProtection;
 }
 
 export async function createTunnel(input: TunnelUserCreate) {
