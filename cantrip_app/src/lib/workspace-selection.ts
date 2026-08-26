@@ -45,6 +45,9 @@ export function reconcileWorkspaceSelection(
   preferredTabKey?: string | null,
 ): WorkspaceSelection {
   if (!layout) return emptyWorkspaceSelection(selection.projectId);
+  if (layout.groups.length === 0) {
+    return emptyWorkspaceSelection(layout.projectId);
+  }
   const projectChanged = selection.projectId !== layout.projectId;
   const overviewSelected =
     !projectChanged && !preferredTabKey && selection.destination === "overview";

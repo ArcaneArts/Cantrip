@@ -96,6 +96,18 @@ describe("workspace selection", () => {
     expect(selectedWorkspaceTabKey(selection)).toBe("chat:one");
   });
 
+  it("returns to the project overview when the last tab disappears", () => {
+    const selected = selectWorkspaceTab(
+      reconcileWorkspaceSelection(emptyWorkspaceSelection(), initialLayout),
+      initialLayout,
+      "chat:two",
+    );
+
+    expect(reconcileWorkspaceSelection(selected, layout([]))).toEqual(
+      emptyWorkspaceSelection("project-1"),
+    );
+  });
+
   it("honors an initial deep link without globally persisting selection", () => {
     const selection = reconcileWorkspaceSelection(
       emptyWorkspaceSelection("project-1"),
