@@ -359,6 +359,7 @@ import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
 import { TunnelWorkerLinkAdapter } from "./tunnel-worker-link-adapter.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
+import { RemoteSurfaceWorkerLinkAdapter } from "./remote-surface-worker-link-adapter.js";
 import {
   runWorkerRuntimeLoop,
   scheduleWorkerRuntimeRestart,
@@ -1231,6 +1232,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           service: workerEncryption,
         }),
       replay: surfaceStreamReplay,
+    }),
+  );
+  workerLinkGateway.registerAdapter(
+    new RemoteSurfaceWorkerLinkAdapter(remoteSurfaces, {
+      resourceKind: "browser",
+      surfaceKind: "browser",
     }),
   );
   const tunnelWorkerLinkAdapter = new TunnelWorkerLinkAdapter(

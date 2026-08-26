@@ -504,6 +504,18 @@ export const workerLinkTunnelGrantRequestSchema = z
   .strict()
   .default({});
 
+export const workerLinkRemoteSurfaceGrantRequestSchema = z
+  .object({
+    viewport: z
+      .object({
+        width: z.number().int().min(1).max(16_384),
+        height: z.number().int().min(1).max(16_384),
+        devicePixelRatio: z.number().min(0.25).max(8),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const workerLinkTunnelRouteSchema = z
   .object({
     tunnelId: idSchema,
@@ -1304,6 +1316,9 @@ export type WorkerLinkTerminalGrantRequest = z.infer<
 >;
 export type WorkerLinkTunnelGrantRequest = z.infer<
   typeof workerLinkTunnelGrantRequestSchema
+>;
+export type WorkerLinkRemoteSurfaceGrantRequest = z.infer<
+  typeof workerLinkRemoteSurfaceGrantRequestSchema
 >;
 export type WorkerLinkTunnelRoute = z.infer<typeof workerLinkTunnelRouteSchema>;
 export type WorkerLinkTunnelGrant = z.infer<typeof workerLinkTunnelGrantSchema>;

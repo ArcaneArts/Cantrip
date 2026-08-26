@@ -286,6 +286,7 @@ import {
   workerLinkPeerSessionOpenRequestSchema,
   workerLinkPeerSessionDescriptorSchema,
   workerLinkPeerSignalBatchSchema,
+  workerLinkRemoteSurfaceGrantRequestSchema,
   workerLinkResourceGrantSchema,
   workerLinkRouteUpdateRequestSchema,
   workerLinkSessionOpenRequestSchema,
@@ -952,6 +953,19 @@ export async function createTerminalWorkerLinkGrant(
     await post(
       `/api/worker-links/${encodeURIComponent(sessionId)}/terminals/${encodeURIComponent(terminalId)}/grant`,
       workerLinkTerminalGrantRequestSchema.parse({ operationId }),
+    ),
+  );
+}
+
+export async function createRemoteSurfaceWorkerLinkGrant(
+  sessionId: string,
+  surfaceId: string,
+  viewport: { width: number; height: number; devicePixelRatio: number },
+) {
+  return workerLinkResourceGrantSchema.parse(
+    await post(
+      `/api/worker-links/${encodeURIComponent(sessionId)}/remote-surfaces/${encodeURIComponent(surfaceId)}/grant`,
+      workerLinkRemoteSurfaceGrantRequestSchema.parse({ viewport }),
     ),
   );
 }

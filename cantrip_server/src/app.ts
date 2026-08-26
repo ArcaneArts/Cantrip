@@ -971,6 +971,7 @@ import {
   workerLinkPeerSessionDescriptorSchema,
   workerLinkPeerSessionSchema,
   workerLinkPeerSignalBatchSchema,
+  workerLinkRemoteSurfaceGrantRequestSchema,
   workerLinkResourceGrantSchema,
   workerLinkRouteUpdateRequestSchema,
   workerLinkSessionOpenRequestSchema,
@@ -28784,6 +28785,12 @@ export async function buildApp({
       ) {
         return reply.code(404).send({ error: "Browser not found." });
       }
+      await workerLinks.revokeResource(
+        ownerId,
+        "browser",
+        request.params.browserId,
+        "resource-deleted",
+      );
       if (managedTunnel) {
         await Promise.all(
           managedTunnel.attachments.map(({ id }) =>
@@ -29280,6 +29287,12 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Remote Surface not found." });
       }
+      await workerLinks.revokeResource(
+        applicationOwnerId(),
+        context.surface.kind === "browser" ? "browser" : "remote-desktop",
+        context.surface.id,
+        "resource-deleted",
+      );
       if (bridge.isConnected(context.workerId)) {
         void bridge
           .request(context.workerId, {
@@ -30415,6 +30428,153 @@ export async function buildApp({
         return sendWorkerRequestFailure(reply, error);
       } finally {
         directAttachments.releasePreparationLease(preparationLease);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string; surfaceId: string } }>(
+    "/api/worker-links/:sessionId/remote-surfaces/:surfaceId/grant",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerLinkRemoteSurfaceGrantRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const accountSessionId =
+        principal.sessionId ?? `local:${principal.user.id}`;
+      const session = await workerLinks.sessionForAuthorization(
+        request.params.sessionId,
+        { accountSessionId, ownerId: principal.user.id },
+      );
+      if (!session) {
+        return reply.code(404).send({ error: "WorkerLink session not found." });
+      }
+      const context = await repository.getRemoteSurfaceExecutionContext(
+        principal.user.id,
+        request.params.surfaceId,
+      );
+      if (!context || context.surface.kind !== "browser") {
+        return reply.code(404).send({ error: "Browser surface not found." });
+      }
+      if (context.workerId !== session.identity.workerId) {
+        return reply.code(409).send({
+          error: "Browser placement does not match the WorkerLink session.",
+        });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        await updateRemoteSurfaceStatus(
+          context.surface.id,
+          "offline",
+          "Worker is offline.",
+        );
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+
+      const attachmentId = randomUUID();
+      let attached = false;
+      let grantId: string | null = null;
+      try {
+        await updateRemoteSurfaceStatus(context.surface.id, "connecting");
+        remoteSurfaceAttachResultSchema.parse(
+          await bridge.request(
+            context.workerId,
+            {
+              type: "surface.attach",
+              surfaceId: context.surface.id,
+              attachmentId,
+              projectId: context.surface.projectId,
+              serverId,
+              configuration: context.surface.configuration,
+              stateResource:
+                context.surface.titleProtection.classification.recordKind ===
+                "browser"
+                  ? "browser-row"
+                  : "browser-remote-surface",
+              stateRevision: context.surface.stateRevision,
+              stateProtection: context.surface.stateProtection,
+              // WorkerLink owns direct negotiation. Do not start the legacy
+              // feature-specific WebRTC attachment beneath this grant.
+              preferredTransport: "websocket",
+              webrtc: null,
+              viewport: input.data.viewport,
+              desktopStream: null,
+            },
+            { ownerId: principal.user.id, timeoutMs: 30_000 },
+          ),
+        );
+        attached = true;
+        const grant = await workerLinks.issueGrant({
+          attachmentId,
+          lanes: ["interactive", "realtime"],
+          maxChannels: 2,
+          operations: ["stream:open", "stream:read", "stream:write"],
+          resourceId: context.surface.id,
+          resourceKind: "browser",
+          sessionId: session.sessionId,
+        });
+        grantId = grant.binding.grantId;
+        const current = await repository.getRemoteSurfaceExecutionContext(
+          principal.user.id,
+          context.surface.id,
+        );
+        if (
+          !current ||
+          current.surface.kind !== "browser" ||
+          current.workerId !== context.workerId ||
+          current.surface.stateRevision !== context.surface.stateRevision
+        ) {
+          await workerLinks.revokeGrant(
+            session.sessionId,
+            grant.binding.grantId,
+            current ? "resource-stopped" : "resource-deleted",
+          );
+          attached = false;
+          grantId = null;
+          return reply.code(current ? 409 : 404).send({
+            error: current
+              ? "Browser placement or state changed while opening."
+              : "Browser surface not found.",
+          });
+        }
+        await updateRemoteSurfaceStatus(context.surface.id, "active");
+        return reply.code(201).send(workerLinkResourceGrantSchema.parse(grant));
+      } catch (error) {
+        if (grantId) {
+          await workerLinks
+            .revokeGrant(session.sessionId, grantId, "resource-stopped")
+            .catch(() => undefined);
+          attached = false;
+        }
+        const message =
+          error instanceof WorkerUnavailableError
+            ? "Worker is offline."
+            : "Browser surface could not be opened.";
+        await updateRemoteSurfaceStatus(
+          context.surface.id,
+          error instanceof WorkerUnavailableError ? "offline" : "error",
+          message,
+        );
+        if (error instanceof WorkerLinkUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return sendWorkerRequestFailure(reply, error);
+      } finally {
+        if (attached && !grantId && bridge.isConnected(context.workerId)) {
+          await bridge
+            .request(
+              context.workerId,
+              {
+                type: "surface.detach",
+                surfaceId: context.surface.id,
+                attachmentId,
+              },
+              { ownerId: principal.user.id, timeoutMs: 5_000 },
+            )
+            .catch(() => undefined);
+        }
       }
     },
   );

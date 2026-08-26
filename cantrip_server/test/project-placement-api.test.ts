@@ -174,6 +174,11 @@ const workerBridge: WorkerCommandBus = {
         return { status: "detached" };
       case "terminal.detach":
         return { status: "detached" };
+      case "surface.attach":
+        return { accepted: true, transport: "websocket" };
+      case "surface.detach":
+      case "surface.close":
+        return { accepted: true };
       case "explorer.operation":
         return {
           operationId: command.operationId,
@@ -624,6 +629,86 @@ describe.sequential("project execution placement API", () => {
       url: `/api/worker-links/${session.sessionId}/grants/${grant.binding.grantId}`,
     });
     expect(revoked.statusCode).toBe(204);
+  });
+
+  it("authorizes Browser control and disposable frames on separate WorkerLink lanes", async () => {
+    const browserResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/browsers`,
+      payload: {
+        ...protectedBrowserFields(),
+        target: { kind: "worker", projectId, workerId: "worker-alpha" },
+      },
+    });
+    expect(browserResponse.statusCode).toBe(201);
+    const browser = browserWireSummarySchema.parse(browserResponse.json());
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/worker-alpha/worker-link/sessions",
+      payload: { clientInstanceId: "browser-surface-client-1" },
+    });
+    expect(sessionResponse.statusCode).toBe(201);
+    const session = workerLinkSessionSchema.parse(sessionResponse.json());
+
+    const grantResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/remote-surfaces/${browser.id}/grant`,
+      payload: {
+        viewport: { width: 1_280, height: 720, devicePixelRatio: 2 },
+      },
+    });
+    expect(grantResponse.statusCode, JSON.stringify(grantResponse.json())).toBe(
+      201,
+    );
+    const grant = workerLinkResourceGrantSchema.parse(grantResponse.json());
+    expect(grant.binding).toMatchObject({
+      sessionId: session.sessionId,
+      resource: {
+        kind: "browser",
+        resourceId: browser.id,
+        attachmentId: expect.any(String),
+      },
+      lanes: ["interactive", "realtime"],
+      operations: ["stream:open", "stream:read", "stream:write"],
+      maxChannels: 2,
+    });
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: expect.objectContaining({
+        type: "surface.attach",
+        surfaceId: browser.id,
+        attachmentId: grant.binding.resource.attachmentId,
+        preferredTransport: "websocket",
+        webrtc: null,
+        viewport: { width: 1_280, height: 720, devicePixelRatio: 2 },
+      }),
+    });
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: expect.objectContaining({
+        type: "worker-link.grant.install",
+        sessionId: session.sessionId,
+        grant: expect.objectContaining({
+          binding: expect.objectContaining({
+            grantId: grant.binding.grantId,
+          }),
+        }),
+      }),
+    });
+
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/browsers/${browser.id}`,
+    });
+    expect(deleted.statusCode).toBe(204);
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: expect.objectContaining({
+        type: "worker-link.grant.revoke",
+        sessionId: session.sessionId,
+        grantId: grant.binding.grantId,
+      }),
+    });
   });
 
   it("serializes logical branch mutation across worker replicas", async () => {

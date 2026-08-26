@@ -31,6 +31,7 @@ import {
   workerLinkPeerSignalBatchSchema,
   workerLinkPeerSignalEnvelopeSchema,
   workerLinkQosLaneSchema,
+  workerLinkRemoteSurfaceGrantRequestSchema,
   workerLinkResourceGrantSchema,
   workerLinkRoutePolicySchema,
   workerLinkRouteUpdateRequestSchema,
@@ -553,6 +554,18 @@ describe("WorkerLink protocol", () => {
     expect(
       workerLinkTerminalGrantRequestSchema.parse({ operationId: openNonce }),
     ).toEqual({ operationId: openNonce });
+    expect(
+      workerLinkRemoteSurfaceGrantRequestSchema.parse({
+        viewport: { width: 1_280, height: 720, devicePixelRatio: 2 },
+      }),
+    ).toEqual({
+      viewport: { width: 1_280, height: 720, devicePixelRatio: 2 },
+    });
+    expect(
+      workerLinkRemoteSurfaceGrantRequestSchema.safeParse({
+        viewport: { width: 0, height: 720, devicePixelRatio: 2 },
+      }).success,
+    ).toBe(false);
     expect(
       workerCommandSchema.parse({ type: "worker-link.identity.resolve" }),
     ).toEqual({ type: "worker-link.identity.resolve" });
