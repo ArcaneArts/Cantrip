@@ -441,8 +441,12 @@ export function useSidebarExplorerModel({
       ? sidebarFilePreview.explorerId
       : null,
   });
+  // The active preview already owns its warm workbench. Keep a different
+  // unpinned Explorer warm so promoting this preview never makes the next
+  // file click pay for a fresh embedded workbench.
   const sidebarInlineExplorer = dedicatedSidebarExplorer({
     desiredWorktreeId: sidebarDesiredWorktreeId,
+    excludeExplorerId: sidebarFilePreview?.explorerId,
     explorers: explorers ?? [],
     layout: tabLayout,
   });
@@ -500,6 +504,7 @@ export function sidebarExplorerProvisioningDetails({
   sidebarDesiredWorktreeId,
   sidebarExplorer,
   sidebarInlineExplorer,
+  sidebarPreviewExplorerId,
 }: {
   onlineWorkerIds: ReadonlySet<string>;
   selectedProject: ProjectSummary | undefined;
@@ -507,6 +512,7 @@ export function sidebarExplorerProvisioningDetails({
   sidebarDesiredWorktreeId: string | null;
   sidebarExplorer: ExplorerSummary | null;
   sidebarInlineExplorer: ExplorerSummary | null;
+  sidebarPreviewExplorerId?: string | null;
 }) {
   const sidebarFileWorkerId =
     sidebarExplorer?.activeWorkerId ?? selectedProjectWorkerId;
@@ -524,8 +530,12 @@ export function sidebarExplorerProvisioningDetails({
             : {}),
         }
       : null;
+  // A preview consumes the primary slot, so its reserve is a distinct
+  // provisioning generation even though the worktree is unchanged.
   const sidebarExplorerCreationKey = sidebarExplorerCreationInput
-    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}`
+    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}${
+        sidebarPreviewExplorerId ? `:reserve:${sidebarPreviewExplorerId}` : ""
+      }`
     : null;
   const sidebarHasDesiredExplorer = Boolean(
     sidebarExplorerCreationInput && sidebarInlineExplorer,
@@ -783,6 +793,7 @@ export function useSidebarExplorerProvisioning({
     sidebarDesiredWorktreeId,
     sidebarExplorer,
     sidebarInlineExplorer,
+    sidebarPreviewExplorerId: sidebarFilePreview?.explorerId,
   });
   useEffect(() => {
     if (

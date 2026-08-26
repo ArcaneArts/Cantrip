@@ -46,6 +46,24 @@ describe("sidebar Explorer provisioning", () => {
     });
   });
 
+  it("uses a distinct provisioning key for the next warm preview", () => {
+    expect(
+      sidebarExplorerProvisioningDetails({
+        onlineWorkerIds: new Set(["worker-explorer"]),
+        selectedProject: project,
+        selectedProjectWorkerId: "worker-project",
+        sidebarDesiredWorktreeId: "worktree-1",
+        sidebarExplorer: explorer(),
+        sidebarInlineExplorer: null,
+        sidebarPreviewExplorerId: "preview-explorer",
+      }),
+    ).toMatchObject({
+      sidebarExplorerCreationKey:
+        "project-1:worktree-1:reserve:preview-explorer",
+      sidebarHasDesiredExplorer: false,
+    });
+  });
+
   it("prefers the Explorer worker and reports its live availability", () => {
     expect(
       sidebarExplorerProvisioningDetails({
