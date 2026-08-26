@@ -157,6 +157,7 @@ import {
   encryptedChatUpdateSchema,
   chatWorktreeUpdateSchema,
   encryptedExplorerCreateSchema,
+  encryptedExplorerPinSchema,
   explorerCodeAttachmentCreateSchema,
   explorerWireListSchema,
   explorerWireSummarySchema,
@@ -29020,6 +29021,31 @@ export async function buildApp({
       return explorer
         ? reply.send(explorerWireSummarySchema.parse(explorer))
         : reply.code(404).send({ error: "Explorer not found." });
+    },
+  );
+
+  app.post<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId/pin",
+    async (request, reply) => {
+      const input = encryptedExplorerPinSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const explorer = await repository.pinExplorer(
+          applicationOwnerId(),
+          request.params.explorerId,
+          input.data,
+        );
+        return explorer
+          ? reply.send(explorerWireSummarySchema.parse(explorer))
+          : reply.code(404).send({ error: "Explorer not found." });
+      } catch (error) {
+        if (error instanceof TabLayoutInvariantError) {
+          return reply.code(400).send({ error: error.message });
+        }
+        throw error;
+      }
     },
   );
 

@@ -222,10 +222,7 @@ import {
   type GitViewSection,
 } from "@/components/git/git-history";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
-import {
-  defaultExplorerFileMode,
-  usesCantripCodeEditor,
-} from "@/components/explorer/explorer-file-language";
+import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
 import {
   explorerGraphRootForEntry,
   explorerRepositoryGraphAvailable,
@@ -378,6 +375,7 @@ import {
   createTask,
   createChatConsole,
   createExplorer,
+  pinExplorer,
   createProjectWorktree,
   createProjectView,
   createRemoteDesktop,
@@ -5219,35 +5217,33 @@ export function App() {
   const pinSidebarFileMutation = useMutation({
     mutationFn: async ({
       destinationExplorerId,
-      explorer,
       groupId,
       path,
     }: {
       destinationExplorerId: string;
-      explorer: ExplorerSummary;
       groupId: string | null;
       path: string;
       transactionId: string;
     }) => {
-      return createExplorer(
-        explorer.projectId,
+      return pinExplorer(
+        destinationExplorerId,
         sidebarFileName(path),
-        explorer.worktreeId,
-        groupId ?? undefined,
-        undefined,
         {
-          id: destinationExplorerId,
-          initialViewState: {
-            fileMode: defaultExplorerFileMode(path),
-            selectedPath: path,
-          },
+          fileMode: defaultExplorerFileMode(path),
+          selectedPath: path,
         },
+        groupId ?? undefined,
       );
     },
     onSuccess: (explorer, input) => {
       const handoff = sidebarFilePinHandoffRef.current;
       if (!handoff || handoff.transactionId !== input.transactionId) {
-        void deleteExplorer(explorer.id).catch(() => undefined);
+        void queryClient.invalidateQueries({
+          queryKey: ["explorers", explorer.projectId],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ["project-tab-layout", explorer.projectId],
+        });
         return;
       }
       const expectedFileMode = defaultExplorerFileMode(input.path);
@@ -5256,23 +5252,27 @@ export function App() {
         explorer.selectedPath !== input.path ||
         explorer.fileMode !== expectedFileMode
       ) {
-        queryClient.setQueryData<ExplorerSummary[]>(
-          ["explorers", handoff.sourceExplorer.projectId],
-          (current = []) =>
-            [
-              ...current.filter(({ id }) => id !== handoff.sourceExplorer.id),
-              handoff.sourceExplorer,
-            ].sort((left, right) => left.position - right.position),
-        );
         sidebarFilePinHandoffRef.current = null;
         setSidebarFilePinHandoff(null);
-        void deleteExplorer(explorer.id).catch(() => undefined);
+        void queryClient.invalidateQueries({
+          queryKey: ["explorers", explorer.projectId],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ["project-tab-layout", explorer.projectId],
+        });
         setPopoutError(
-          "The pinned Explorer did not preserve the requested file state. The preview remains open.",
+          "The pinned Explorer did not preserve the requested file state.",
         );
         return;
       }
-      const nextHandoff = { ...handoff, destinationExplorer: explorer };
+      const nextHandoff = {
+        ...handoff,
+        destinationExplorer: explorer,
+        ready: true,
+      };
+      // This Explorer is now a tab. Permit the creation effect to provision
+      // and prewarm the next dedicated sidebar Explorer for this worktree.
+      sidebarExplorerCreationKeyRef.current = null;
       sidebarFilePinHandoffRef.current = nextHandoff;
       setSidebarFilePinHandoff(nextHandoff);
       queryClient.setQueryData<ExplorerSummary[]>(
@@ -5288,33 +5288,18 @@ export function App() {
       void queryClient.invalidateQueries({
         queryKey: ["project-tab-layout", explorer.projectId],
       });
-      if (
-        explorer.selectedPath &&
-        usesCantripCodeEditor(explorer.selectedPath, explorer.fileMode)
-      ) {
-        // The transaction already owns the source. Keep both owners mounted
-        // until the exact destination path reports ready.
-        return;
-      }
-      sidebarFilePinHandoffRef.current = null;
-      setSidebarFilePinHandoff(null);
-      setSidebarFilePreview(null);
-      openCreatedTab(explorer.projectId, "explorer", explorer.id);
     },
     onError: (error, input) => {
       const handoff = sidebarFilePinHandoffRef.current;
       if (handoff?.transactionId === input.transactionId) {
-        queryClient.setQueryData<ExplorerSummary[]>(
-          ["explorers", handoff.sourceExplorer.projectId],
-          (current = []) =>
-            [
-              ...current.filter(({ id }) => id !== handoff.sourceExplorer.id),
-              handoff.sourceExplorer,
-            ].sort((left, right) => left.position - right.position),
-        );
         sidebarFilePinHandoffRef.current = null;
         setSidebarFilePinHandoff(null);
-        void deleteExplorer(input.destinationExplorerId).catch(() => undefined);
+        void queryClient.invalidateQueries({
+          queryKey: ["explorers", handoff.sourceExplorer.projectId],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ["project-tab-layout", handoff.sourceExplorer.projectId],
+        });
       }
       setPopoutError(errorText(error));
     },
@@ -6311,26 +6296,14 @@ export function App() {
       ) {
         return;
       }
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", handoff.sourceExplorer.projectId],
-        (current = []) =>
-          [
-            ...current.filter(({ id }) => id !== handoff.sourceExplorer.id),
-            handoff.sourceExplorer,
-          ].sort((left, right) => left.position - right.position),
-      );
       sidebarFilePinHandoffRef.current = null;
       setSidebarFilePinHandoff(null);
-      void deleteExplorer(handoff.destinationExplorerId)
-        .catch(() => undefined)
-        .finally(() => {
-          void queryClient.invalidateQueries({
-            queryKey: ["explorers", handoff.sourceExplorer.projectId],
-          });
-          void queryClient.invalidateQueries({
-            queryKey: ["project-tab-layout", handoff.sourceExplorer.projectId],
-          });
-        });
+      void queryClient.invalidateQueries({
+        queryKey: ["explorers", handoff.sourceExplorer.projectId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", handoff.sourceExplorer.projectId],
+      });
       if (message) setPopoutError(message);
     },
     [queryClient],
@@ -6390,7 +6363,7 @@ export function App() {
     const timeout = setTimeout(() => {
       abandonSidebarFilePinHandoff(
         sidebarFilePinHandoff,
-        "The pinned editor did not become ready. The preview remains open.",
+        "The file could not be pinned before the request timed out.",
       );
     }, SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS);
     return () => clearTimeout(timeout);
@@ -8119,7 +8092,7 @@ export function App() {
     }
     const handoff: SidebarFilePinHandoffState = {
       destinationExplorer: null,
-      destinationExplorerId: crypto.randomUUID(),
+      destinationExplorerId: explorer.id,
       ready: false,
       sourceExplorer: explorer,
       sourcePath: path,
@@ -8149,7 +8122,6 @@ export function App() {
     }
     pinSidebarFileMutation.mutate({
       destinationExplorerId: handoff.destinationExplorerId,
-      explorer,
       groupId: sidebarFileGroupId(explorer),
       path,
       transactionId: handoff.transactionId,
@@ -9831,7 +9803,7 @@ export function App() {
             }}
             onlineWorkerIds={onlineWorkerIds}
             openExplorers={openExplorers}
-            prewarmExplorer={!isPopout ? sidebarPreviewExplorer : null}
+            prewarmExplorer={!isPopout ? sidebarInlineExplorer : null}
           />
         </Suspense>
 

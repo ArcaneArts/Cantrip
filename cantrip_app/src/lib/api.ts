@@ -5087,6 +5087,34 @@ export async function createExplorer(
   );
 }
 
+export async function pinExplorer(
+  explorerId: string,
+  title: string,
+  viewState: ExplorerViewStateUpdate,
+  tabGroupId?: string,
+) {
+  const state = explorerViewStateUpdateSchema.parse(viewState);
+  const titleProtection = await surfaceTitleEncryption.protect(
+    explorerId,
+    title,
+    "explorer",
+  );
+  const stateProtection = await surfaceTitleEncryption.protectExplorerState(
+    explorerId,
+    state.selectedPath,
+  );
+  return surfaceTitleEncryption.openExplorer(
+    explorerWireSummarySchema.parse(
+      await post(`/api/explorers/${encodeURIComponent(explorerId)}/pin`, {
+        titleProtection,
+        stateProtection,
+        fileMode: state.fileMode,
+        ...(tabGroupId ? { tabGroupId } : {}),
+      }),
+    ),
+  );
+}
+
 export async function updateExplorerWorktree(
   explorerId: string,
   worktreeId: string,

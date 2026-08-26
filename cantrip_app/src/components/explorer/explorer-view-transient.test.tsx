@@ -110,6 +110,66 @@ describe("ExplorerView transient selection", () => {
     client.clear();
   });
 
+  it("keeps the transient Code path when the same Explorer is pinned", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const preview = {
+      activeWorkerId: "worker-one",
+      fileMode: "preview",
+      id: "explorer-one",
+      projectId: "project-one",
+      selectedPath: null,
+      worktreeId: "worktree-one",
+    } as ExplorerSummary;
+    const pinned = {
+      ...preview,
+      fileMode: "edit",
+      selectedPath: "src/requested.ts",
+    } as ExplorerSummary;
+    const render = (
+      explorer: ExplorerSummary,
+      transientFile?: { close: () => void; path: string },
+    ) =>
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(ExplorerView, {
+          active: true,
+          appearance: "dark",
+          explorer,
+          gitStatus: undefined,
+          repositoryGraphAvailable: false,
+          transientFile,
+        }),
+      );
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        render(preview, {
+          close: vi.fn(),
+          path: "src/requested.ts",
+        }),
+      );
+    });
+    await act(async () => renderer.update(render(pinned)));
+
+    expect(
+      renderer.root.findByProps({ "data-retained-code-editor": true }).props[
+        "data-path"
+      ],
+    ).toBe("src/requested.ts");
+    expect(
+      renderer.root.findByProps({ "data-retained-code-editor": true }).props[
+        "data-visible"
+      ],
+    ).toBe(true);
+
+    await act(async () => renderer.unmount());
+    client.clear();
+  });
+
   it("keeps an open pinned Code path mounted while its tab is inactive", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

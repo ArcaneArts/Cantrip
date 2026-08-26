@@ -673,18 +673,26 @@ export function ExplorerView({
         selectedPath: selectedPathRef.current,
       };
     }
+    const persistedViewState = {
+      fileMode: explorer.fileMode,
+      selectedPath: explorerSurfaceSelectedPath({
+        openFilesExternally: Boolean(onOpenFile),
+        persistedPath: explorer.selectedPath,
+      }),
+    };
+    const transientWasPinned = Boolean(
+      previousTransientPath &&
+      !transientFilePath &&
+      persistedViewState.selectedPath === previousTransientPath,
+    );
     const nextViewState = transientFilePath
       ? {
           fileMode: defaultExplorerFileMode(transientFilePath),
           selectedPath: transientFilePath,
         }
-      : (transientRestoreRef.current ?? {
-          fileMode: explorer.fileMode,
-          selectedPath: explorerSurfaceSelectedPath({
-            openFilesExternally: Boolean(onOpenFile),
-            persistedPath: explorer.selectedPath,
-          }),
-        });
+      : transientWasPinned
+        ? persistedViewState
+        : (transientRestoreRef.current ?? persistedViewState);
     if (!transientFilePath) transientRestoreRef.current = null;
     if (
       nextViewState.selectedPath === selectedPathRef.current &&

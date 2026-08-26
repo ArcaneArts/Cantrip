@@ -306,6 +306,113 @@ describe("Persistent Explorer Code ownership", () => {
     client.clear();
   });
 
+  it("promotes a sidebar preview under the same Explorer identity without reconnecting Code", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const preview = explorer("sidebar-explorer", null);
+    const pinned = explorer(preview.id, "src/pinned.ts");
+    const replacement = explorer("replacement-sidebar-explorer", null);
+    const render = ({
+      activeExplorer,
+      handoffExplorer,
+      handoffSourceExplorer,
+      openExplorers,
+      prewarmExplorer,
+      transient,
+    }: {
+      activeExplorer: ExplorerSummary;
+      handoffExplorer?: ExplorerSummary;
+      handoffSourceExplorer?: ExplorerSummary;
+      openExplorers: ExplorerSummary[];
+      prewarmExplorer: ExplorerSummary | null;
+      transient: boolean;
+    }) =>
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(PersistentExplorerViews, {
+          activeExplorer,
+          appearance: "dark",
+          gitStatuses: {},
+          handoffExplorer,
+          handoffSourceExplorer,
+          openExplorers,
+          prewarmExplorer,
+          repositoryGraphAvailable: false,
+          transientFile: transient
+            ? {
+                explorerId: preview.id,
+                file: { close: vi.fn(), path: "src/pinned.ts" },
+              }
+            : undefined,
+        }),
+      );
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        render({
+          activeExplorer: preview,
+          openExplorers: [],
+          prewarmExplorer: preview,
+          transient: true,
+        }),
+      );
+    });
+    expect(connections.created).toEqual([preview.id]);
+
+    await act(async () => {
+      renderer.update(
+        render({
+          activeExplorer: pinned,
+          handoffExplorer: pinned,
+          handoffSourceExplorer: preview,
+          openExplorers: [],
+          prewarmExplorer: pinned,
+          transient: true,
+        }),
+      );
+    });
+    expect(connections.created).toEqual([preview.id]);
+    expect(connections.released).toEqual([]);
+    expect(
+      renderer.root.findByProps({ "data-code-owner": preview.id }).props[
+        "data-path"
+      ],
+    ).toBe("src/pinned.ts");
+
+    await act(async () => {
+      renderer.update(
+        render({
+          activeExplorer: pinned,
+          handoffExplorer: pinned,
+          openExplorers: [pinned],
+          prewarmExplorer: null,
+          transient: false,
+        }),
+      );
+    });
+    expect(connections.created).toEqual([preview.id]);
+    expect(connections.released).toEqual([]);
+
+    await act(async () => {
+      renderer.update(
+        render({
+          activeExplorer: pinned,
+          openExplorers: [pinned],
+          prewarmExplorer: replacement,
+          transient: false,
+        }),
+      );
+    });
+    expect(connections.created).toEqual([preview.id, replacement.id]);
+    expect(connections.released).toEqual([]);
+
+    await act(async () => renderer.unmount());
+    client.clear();
+  });
+
   it("keeps the captured source owner through POST and live-query ordering under StrictMode", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

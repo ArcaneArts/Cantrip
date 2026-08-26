@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   encryptedExplorerCreateSchema,
+  encryptedExplorerPinSchema,
   encryptedExplorerViewStateUpdateSchema,
   encryptedExplorerWorktreeUpdateSchema,
   encryptedTerminalCreateSchema,
@@ -189,6 +190,22 @@ describe("surface private-state contracts", () => {
         stateProtection,
         fileMode: "edit",
         selectedPath: "private/selection.ts",
+      }).success,
+    ).toBe(false);
+    expect(
+      encryptedExplorerPinSchema.safeParse({
+        fileMode: "edit",
+        stateProtection,
+        tabGroupId: "group-1",
+        titleProtection,
+      }).success,
+    ).toBe(true);
+    expect(
+      encryptedExplorerPinSchema.safeParse({
+        fileMode: "edit",
+        selectedPath: "private/selection.ts",
+        stateProtection,
+        titleProtection,
       }).success,
     ).toBe(false);
     expect(
