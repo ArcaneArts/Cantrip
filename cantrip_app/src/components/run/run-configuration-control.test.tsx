@@ -168,6 +168,14 @@ describe("Run configuration control", () => {
     await act(async () => renderer.unmount());
   });
 
+  it("renders the empty project action as a compact Play button", () => {
+    const html = markup([], emptyInventory);
+
+    expect(html).toContain('aria-label="Add Run Configuration"');
+    expect(html).toContain("lucide-play");
+    expect(html).not.toContain(">Add Run Configuration<");
+  });
+
   it("keeps Stop available when provider validation blocks restart", () => {
     const html = markup(
       [

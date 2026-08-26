@@ -364,7 +364,13 @@ export function RunConfigurationControl({
     model.invalidConfigurations.length === 0 &&
     !error;
 
-  const selectorContent = (
+  const selectorContent = emptyRepository ? (
+    loading ? (
+      <Loader2 className="size-3.5 animate-spin" />
+    ) : (
+      <Play className="size-4 fill-current" />
+    )
+  ) : (
     <>
       {loading ? (
         <Loader2 className="size-3.5 animate-spin" />
@@ -374,9 +380,7 @@ export function RunConfigurationControl({
       <span className="truncate">
         {selected?.name ?? "Add Run Configuration"}
       </span>
-      {emptyRepository ? null : (
-        <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
-      )}
+      <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
     </>
   );
 
@@ -416,11 +420,13 @@ export function RunConfigurationControl({
           <Button
             aria-label={emptyRepository ? "Add Run Configuration" : undefined}
             className={cn(
-              "min-w-0 justify-between px-2",
-              compact ? "max-w-36" : "max-w-64",
+              emptyRepository
+                ? "size-8 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                : "min-w-0 justify-between px-2",
+              !emptyRepository && (compact ? "max-w-36" : "max-w-64"),
             )}
             disabled={emptyRepository && loading}
-            size="sm"
+            size={emptyRepository ? "icon" : "sm"}
             title={
               selected
                 ? `${selected.name} · ${selected.targetLabel}`
