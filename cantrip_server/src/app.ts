@@ -969,6 +969,7 @@ import {
   workerLinkRouteUpdateRequestSchema,
   workerLinkSessionOpenRequestSchema,
   workerLinkSessionSchema,
+  workerLinkTelemetryBatchSchema,
   workerLinkTerminalGrantRequestSchema,
   workerLinkTunnelGrantRequestSchema,
   workerLinkTunnelGrantSchema,
@@ -14638,6 +14639,35 @@ export async function buildApp({
         }
         return sendWorkerRequestFailure(reply, error);
       }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    "/api/worker-links/:sessionId/telemetry",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerLinkTelemetryBatchSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const session = await workerLinks.sessionForAuthorization(
+        request.params.sessionId,
+        {
+          accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        },
+      );
+      if (!session) {
+        return reply.code(404).send({ error: "WorkerLink session not found." });
+      }
+      if (input.data.routeGeneration > session.routeGeneration) {
+        return reply
+          .code(409)
+          .send({ error: "WorkerLink route generation is not current." });
+      }
+      operationalMetrics.recordWorkerLinkTelemetry(input.data.samples);
+      return reply.code(204).send();
     },
   );
 

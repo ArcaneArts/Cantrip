@@ -344,6 +344,57 @@ afterAll(async () => {
 });
 
 describe.sequential("project execution placement API", () => {
+  it("accepts authenticated bounded WorkerLink telemetry for current generations", async () => {
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/worker-alpha/worker-link/sessions",
+      payload: { clientInstanceId: "telemetry-client-1" },
+    });
+    expect(sessionResponse.statusCode).toBe(201);
+    const session = workerLinkSessionSchema.parse(sessionResponse.json());
+    const payload = {
+      routeGeneration: session.routeGeneration,
+      samples: [
+        {
+          occurredAt: "2026-08-26T12:00:00.000Z",
+          event: "route-selected",
+          route: "local",
+          lane: null,
+          value: 1,
+          latencyMs: 7,
+          reason: "none",
+        },
+      ],
+    };
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/telemetry`,
+      payload,
+    });
+    expect(accepted.statusCode).toBe(204);
+    const future = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/telemetry`,
+      payload: { ...payload, routeGeneration: session.routeGeneration + 1 },
+    });
+    expect(future.statusCode).toBe(409);
+    const invalid = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/telemetry`,
+      payload: { ...payload, samples: [] },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const metrics = await app.inject({ method: "GET", url: "/metrics" });
+    expect(metrics.statusCode).toBe(200);
+    expect(metrics.body).toContain(
+      'cantrip_worker_link_events_total{event="route-selected",route="local",lane="none",reason="none"} 1',
+    );
+    expect(metrics.body).not.toContain(session.sessionId);
+    expect(metrics.body).not.toContain("telemetry-client-1");
+  });
+
   it("authorizes a Terminal WorkerLink grant without relaying PTY output", async () => {
     const terminalCreated = await app.inject({
       method: "POST",

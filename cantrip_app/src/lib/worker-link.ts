@@ -3,6 +3,7 @@ import {
   WORKER_LINK_MAX_CREDIT_BYTES,
   WORKER_LINK_MAX_HEADER_BYTES,
   WORKER_LINK_MAX_PAYLOAD_BYTES,
+  WORKER_LINK_MAX_TELEMETRY_SAMPLES,
   decodeWorkerLinkFrame,
   workerLinkFrameHeaderSchema,
   type WorkerLinkChannelCloseCode,
@@ -14,6 +15,7 @@ import {
   type WorkerLinkResourceGrant,
   type WorkerLinkRouteStatus,
   type WorkerLinkSession,
+  type WorkerLinkTelemetrySample,
 } from "@cantrip/protocol";
 
 import {
@@ -22,6 +24,7 @@ import {
   deleteDirectAttachment,
   deleteWorkerLinkSession,
   recordDirectAttachmentTelemetry,
+  recordWorkerLinkTelemetry,
   renewWorkerLinkSession,
   updateWorkerLinkRoute,
 } from "@/lib/api";
@@ -47,6 +50,7 @@ const SCHEDULER_MAX_FRAMES_PER_LANE = 128;
 const SCHEDULER_MAX_BYTES_PER_LANE = 4 * 1_024 * 1_024;
 const SCHEDULER_BURST_FRAMES = 16;
 const SCHEDULER_RETRY_MS = 5;
+const TELEMETRY_FLUSH_INTERVAL_MS = 1_000;
 const SCHEDULER_LANES: readonly WorkerLinkQosLane[] = [
   "interactive",
   "interactive",
@@ -127,12 +131,95 @@ export interface WorkerLinkManagerDependencies {
     identity: ClientSessionIdentitySnapshot,
     clientInstanceId: string,
   ): Promise<WorkerLinkCarrier>;
+  recordTelemetry(
+    sessionId: string,
+    routeGeneration: number,
+    samples: WorkerLinkTelemetrySample[],
+  ): Promise<void>;
   renewSession(sessionId: string): Promise<WorkerLinkSession>;
   setRoute(
     sessionId: string,
     route: "local" | "relay",
   ): Promise<WorkerLinkSession>;
   subscribeIdentity(listener: () => void): () => void;
+}
+
+interface PendingWorkerLinkTelemetry {
+  routeGeneration: number;
+  sample: WorkerLinkTelemetrySample;
+}
+
+class WorkerLinkTelemetryReporter {
+  #closed = false;
+  #flush: Promise<void> | null = null;
+  readonly #pending: PendingWorkerLinkTelemetry[] = [];
+  #timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private readonly sessionId: string,
+    private readonly dependencies: Pick<
+      WorkerLinkManagerDependencies,
+      "now" | "recordTelemetry"
+    >,
+  ) {}
+
+  record(
+    routeGeneration: number,
+    sample: Omit<WorkerLinkTelemetrySample, "occurredAt">,
+  ): void {
+    if (this.#closed) return;
+    if (this.#pending.length >= WORKER_LINK_MAX_TELEMETRY_SAMPLES) {
+      this.#pending.shift();
+    }
+    this.#pending.push({
+      routeGeneration,
+      sample: {
+        occurredAt: new Date(this.dependencies.now()).toISOString(),
+        ...sample,
+      },
+    });
+    this.#schedule();
+  }
+
+  async close(): Promise<void> {
+    if (this.#closed) return this.#flush ?? Promise.resolve();
+    this.#closed = true;
+    if (this.#timer) clearTimeout(this.#timer);
+    this.#timer = null;
+    await this.flush();
+  }
+
+  flush(): Promise<void> {
+    if (this.#flush) return this.#flush;
+    const operation = (async () => {
+      while (this.#pending.length > 0) {
+        const routeGeneration = this.#pending[0]!.routeGeneration;
+        const samples: WorkerLinkTelemetrySample[] = [];
+        while (
+          this.#pending[0]?.routeGeneration === routeGeneration &&
+          samples.length < WORKER_LINK_MAX_TELEMETRY_SAMPLES
+        ) {
+          samples.push(this.#pending.shift()!.sample);
+        }
+        await this.dependencies
+          .recordTelemetry(this.sessionId, routeGeneration, samples)
+          .catch(() => undefined);
+      }
+    })().finally(() => {
+      if (this.#flush === operation) this.#flush = null;
+      if (!this.#closed && this.#pending.length > 0) this.#schedule();
+    });
+    this.#flush = operation;
+    return operation;
+  }
+
+  #schedule(): void {
+    if (this.#closed || this.#timer || this.#flush) return;
+    this.#timer = setTimeout(() => {
+      this.#timer = null;
+      void this.flush();
+    }, TELEMETRY_FLUSH_INTERVAL_MS);
+  }
 }
 
 interface ManagedEntry {
@@ -254,6 +341,7 @@ class ClientWorkerLink implements WorkerLink {
   #scheduler: WorkerLinkFrameScheduler | null = null;
   #session: WorkerLinkSession;
   readonly #streams = new Map<string, ClientWorkerLinkStream>();
+  #telemetry: WorkerLinkTelemetryReporter;
   #unsubscribeCarrier: Array<() => void> = [];
 
   constructor(
@@ -263,6 +351,10 @@ class ClientWorkerLink implements WorkerLink {
     private readonly dependencies: WorkerLinkManagerDependencies,
   ) {
     this.#session = session;
+    this.#telemetry = new WorkerLinkTelemetryReporter(
+      session.sessionId,
+      dependencies,
+    );
     this.#routeStatus = {
       preferredRoute: session.preferredRoute,
       effectiveRoute: session.preferredRoute,
@@ -287,6 +379,7 @@ class ClientWorkerLink implements WorkerLink {
 
   async start(): Promise<void> {
     await this.#connect();
+    this.#recordTelemetry("session-opened", 1, "none");
     this.#scheduleRenewal();
   }
 
@@ -312,11 +405,19 @@ class ClientWorkerLink implements WorkerLink {
       this.dependencies.createId(),
       lane,
       this.#session,
-      (header, payload) => this.#scheduler?.enqueue(header, payload) ?? false,
+      (header, payload) => {
+        const sent = this.#scheduler?.enqueue(header, payload) ?? false;
+        if (!sent) {
+          this.#recordTelemetry("queue-pressure", 1, "congested", lane);
+        }
+        return sent;
+      },
       (preserveClose) => {
         this.#streams.delete(channelId);
         this.#scheduler?.cancelChannel(channelId, preserveClose);
       },
+      (event, value, reason) =>
+        this.#recordTelemetry(event, value, reason, lane),
     );
     this.#streams.set(channelId, stream);
     try {
@@ -339,7 +440,9 @@ class ClientWorkerLink implements WorkerLink {
     this.#closed = true;
     if (this.#renewTimer) clearTimeout(this.#renewTimer);
     this.#renewTimer = null;
+    this.#recordTelemetry("session-closed", 1, code);
     this.#detachCarrier(code);
+    await this.#telemetry.close();
     await this.dependencies
       .deleteSession(this.#session.sessionId)
       .catch(() => undefined);
@@ -417,12 +520,31 @@ class ClientWorkerLink implements WorkerLink {
       }),
     ];
     this.#publishRoute(carrier.route, carrier.latencyMs, fallbackReason);
+    this.#recordTelemetry(
+      "route-selected",
+      1,
+      "none",
+      null,
+      carrier.route,
+      carrier.latencyMs,
+    );
+    if (fallbackReason) {
+      this.#recordTelemetry(
+        "route-fallback",
+        1,
+        fallbackReason,
+        null,
+        carrier.route,
+        carrier.latencyMs,
+      );
+    }
   }
 
   async #reconnect(): Promise<void> {
     for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
       await delay(RECONNECT_DELAYS_MS[attempt] ?? RECONNECT_DELAYS_MS.at(-1)!);
       if (this.#closed || this.#carrier) return;
+      this.#recordTelemetry("reconnect-attempt", 1, "local-disconnected");
       try {
         await this.#connect();
         return;
@@ -434,6 +556,7 @@ class ClientWorkerLink implements WorkerLink {
     try {
       await this.#replaceSession();
       await this.#connect();
+      this.#recordTelemetry("session-opened", 1, "local-disconnected");
       this.#scheduleRenewal();
     } catch {
       // An explicit reprobe or feature reconnect may try again later.
@@ -452,7 +575,13 @@ class ClientWorkerLink implements WorkerLink {
       this.clientInstanceId,
       this.clientIdentity,
     );
+    this.#recordTelemetry("session-closed", 1, "endpoint-disconnected");
+    await this.#telemetry.close();
     this.#session = replacement;
+    this.#telemetry = new WorkerLinkTelemetryReporter(
+      replacement.sessionId,
+      this.dependencies,
+    );
     if (replacement.sessionId !== previousSessionId) {
       await this.dependencies
         .deleteSession(previousSessionId)
@@ -481,13 +610,13 @@ class ClientWorkerLink implements WorkerLink {
 
   #detachCarrier(code: WorkerLinkChannelCloseCode): void {
     const carrier = this.#carrier;
-    this.#carrier = null;
     this.#scheduler?.close();
     this.#scheduler = null;
     for (const unsubscribe of this.#unsubscribeCarrier) unsubscribe();
     this.#unsubscribeCarrier = [];
     for (const stream of [...this.#streams.values()]) stream.retire(code);
     this.#streams.clear();
+    this.#carrier = null;
     carrier?.close(code);
   }
 
@@ -527,6 +656,24 @@ class ClientWorkerLink implements WorkerLink {
       changedAt: new Date(this.dependencies.now()).toISOString(),
     };
     for (const listener of this.#routeListeners) listener(this.#routeStatus);
+  }
+
+  #recordTelemetry(
+    event: WorkerLinkTelemetrySample["event"],
+    value: number,
+    reason: WorkerLinkTelemetrySample["reason"],
+    lane: WorkerLinkQosLane | null = null,
+    route: "local" | "relay" | null = this.#carrier?.route ?? null,
+    latencyMs: number | null = null,
+  ): void {
+    this.#telemetry.record(this.#session.routeGeneration, {
+      event,
+      route,
+      lane,
+      value,
+      latencyMs,
+      reason,
+    });
   }
 }
 
@@ -681,6 +828,7 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
   #openReject: ((error: Error) => void) | null = null;
   #openResolve: (() => void) | null = null;
   #outboundSequence = 0;
+  #rejectionReported = false;
   #writableListeners = new Set<WorkerLinkStreamWritableListener>();
 
   constructor(
@@ -693,6 +841,11 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
       payload: Uint8Array,
     ) => boolean,
     private readonly onRetired: (preserveClose: boolean) => void,
+    private readonly recordTelemetry: (
+      event: WorkerLinkTelemetrySample["event"],
+      value: number,
+      reason: WorkerLinkTelemetrySample["reason"],
+    ) => void,
   ) {}
 
   open(grant: WorkerLinkResourceGrant): Promise<void> {
@@ -743,7 +896,10 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
       },
       payload,
     );
-    if (sent) this.#creditBytes -= payload.byteLength;
+    if (sent) {
+      this.#creditBytes -= payload.byteLength;
+      this.recordTelemetry("bytes-sent", payload.byteLength, "none");
+    }
     return sent;
   }
 
@@ -829,10 +985,13 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
         this.#accepted = true;
         this.#creditBytes = header.initialCreditBytes;
         this.#inboundCreditLimit = header.initialCreditBytes;
+        this.recordTelemetry("channel-opened", 1, "none");
         this.#openResolve?.();
         this.#clearOpenCallbacks();
       } else if (header.kind === "reject") {
         for (const listener of this.#errorListeners) listener(header.code);
+        this.#rejectionReported = true;
+        this.recordTelemetry("channel-rejected", 1, header.code);
         this.#rejectOpen(`WorkerLink channel was rejected: ${header.code}.`);
       } else {
         this.retire("protocol-error");
@@ -857,6 +1016,7 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
           return;
         }
         this.#inboundUncreditedBytes += payload.byteLength;
+        this.recordTelemetry("bytes-received", payload.byteLength, "none");
         for (const listener of this.#dataListeners) listener(payload);
         return;
       case "credit":
@@ -896,6 +1056,16 @@ class ClientWorkerLinkStream implements WorkerLinkStream {
     this.#closed = true;
     this.#openReject?.(new Error(`WorkerLink channel closed: ${code}.`));
     this.#clearOpenCallbacks();
+    if (this.#accepted) {
+      this.recordTelemetry(
+        code === "revoked" ? "channel-revoked" : "channel-closed",
+        1,
+        code,
+      );
+    } else if (!this.#rejectionReported) {
+      this.#rejectionReported = true;
+      this.recordTelemetry("channel-rejected", 1, code);
+    }
     this.onRetired(preserveClose);
     for (const listener of this.#closeListeners) listener(code);
     this.#closeListeners.clear();
@@ -1091,6 +1261,7 @@ const defaultDependencies: WorkerLinkManagerDependencies = {
       session,
     }),
   renewSession: renewWorkerLinkSession,
+  recordTelemetry: recordWorkerLinkTelemetry,
   setRoute: updateWorkerLinkRoute,
   subscribeIdentity: (listener) =>
     onClientSessionIdentityChanged(() => listener()),

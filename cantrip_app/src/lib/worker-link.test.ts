@@ -160,6 +160,7 @@ function dependencies(
     openRelay:
       options.relay ??
       (async () => new FakeCarrier("relay") as WorkerLinkCarrier),
+    recordTelemetry: vi.fn(async () => undefined),
     renewSession: vi.fn(async () => activeSession),
     setRoute: vi.fn(async (_sessionId, route) => {
       activeSession = session(
@@ -232,6 +233,31 @@ describe("WorkerLinkManager", () => {
       "relay",
     );
     reference.release();
+    await vi.waitFor(() =>
+      expect(setup.dependency.recordTelemetry).toHaveBeenCalled(),
+    );
+    const samples = vi
+      .mocked(setup.dependency.recordTelemetry)
+      .mock.calls.flatMap((call) => call[2]);
+    expect(samples).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "route-selected",
+          route: "relay",
+          latencyMs: 14,
+        }),
+        expect.objectContaining({
+          event: "route-fallback",
+          route: "relay",
+          reason: "local-unavailable",
+        }),
+        expect.objectContaining({ event: "session-opened", route: "relay" }),
+        expect.objectContaining({ event: "session-closed", route: "relay" }),
+      ]),
+    );
+    expect(vi.mocked(setup.dependency.recordTelemetry).mock.calls[0]?.[1]).toBe(
+      2,
+    );
     await manager.close();
   });
 
@@ -321,6 +347,65 @@ describe("WorkerLinkManager", () => {
     ]);
 
     reference.release();
+    await vi.waitFor(() =>
+      expect(setup.dependency.recordTelemetry).toHaveBeenCalled(),
+    );
+    const samples = vi
+      .mocked(setup.dependency.recordTelemetry)
+      .mock.calls.flatMap((call) => call[2]);
+    expect(samples).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "channel-opened",
+          lane: "interactive",
+        }),
+        expect.objectContaining({ event: "bytes-sent", value: 3 }),
+        expect.objectContaining({ event: "bytes-received", value: 2 }),
+        expect.objectContaining({
+          event: "channel-closed",
+          reason: "normal",
+        }),
+      ]),
+    );
+    await manager.close();
+  });
+
+  it("reports rejected channels without duplicating their terminal event", async () => {
+    const carrier = new FakeCarrier("local");
+    const setup = dependencies({ local: async () => carrier });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+    const opening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.waitFor(() => expect(carrier.sent).toHaveLength(1));
+    const open = carrier.sent[0]!.header;
+    if (open.kind !== "open") throw new Error("Missing open frame.");
+    carrier.receive({
+      protocolVersion: 1,
+      sessionId: open.sessionId,
+      routeGeneration: open.routeGeneration,
+      effectiveRoute: "local",
+      channel: open.channel,
+      lane: open.lane,
+      sequence: 0,
+      kind: "reject",
+      code: "grant-expired",
+    });
+    await expect(opening).rejects.toThrow(/grant-expired/);
+
+    reference.release();
+    await vi.waitFor(() =>
+      expect(setup.dependency.recordTelemetry).toHaveBeenCalled(),
+    );
+    const rejected = vi
+      .mocked(setup.dependency.recordTelemetry)
+      .mock.calls.flatMap((call) => call[2])
+      .filter((sample) => sample.event === "channel-rejected");
+    expect(rejected).toEqual([
+      expect.objectContaining({ reason: "grant-expired", value: 1 }),
+    ]);
     await manager.close();
   });
 
@@ -355,12 +440,28 @@ describe("WorkerLinkManager", () => {
     for (let index = 0; index < 128; index += 1) {
       expect(stream.write(new Uint8Array([index % 255]))).toBe(true);
     }
-    expect(stream.write(new Uint8Array([255]))).toBe(false);
+    for (let index = 0; index < 160; index += 1) {
+      expect(stream.write(new Uint8Array([255]))).toBe(false);
+    }
 
     carrier.writable = true;
     await vi.waitFor(() => expect(writable).toHaveBeenCalled());
 
     reference.release();
+    await vi.waitFor(() =>
+      expect(setup.dependency.recordTelemetry).toHaveBeenCalled(),
+    );
+    const calls = vi.mocked(setup.dependency.recordTelemetry).mock.calls;
+    expect(calls.every((call) => call[2].length <= 128)).toBe(true);
+    expect(calls.flatMap((call) => call[2])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: "queue-pressure",
+          reason: "congested",
+        }),
+        expect.objectContaining({ event: "session-closed" }),
+      ]),
+    );
     await manager.close();
   });
 
@@ -432,7 +533,9 @@ describe("WorkerLinkManager", () => {
 
     setup.invalidateIdentity();
     await vi.waitFor(() => expect(carrier.closed).toBe(true));
-    expect(setup.dependency.deleteSession).toHaveBeenCalledOnce();
+    await vi.waitFor(() =>
+      expect(setup.dependency.deleteSession).toHaveBeenCalledOnce(),
+    );
     await expect(manager.acquire("worker-1")).rejects.toThrow(/authenticated/i);
     await manager.close();
   });
