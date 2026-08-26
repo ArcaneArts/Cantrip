@@ -4,6 +4,7 @@ import {
   workerLinkLeaseSchema,
   workerLinkPeerMailboxReadRequestSchema,
   workerLinkPeerMailboxSchema,
+  workerLinkPeerSessionDescriptorSchema,
   workerLinkPeerSessionOpenRequestSchema,
   workerLinkPeerSessionSchema,
   workerLinkPeerSignalEnvelopeSchema,
@@ -14,7 +15,7 @@ import {
   type WorkerLinkOperationalRoute,
   type WorkerLinkPeerMailbox,
   type WorkerLinkPeerMailboxReadRequest,
-  type WorkerLinkPeerSession,
+  type WorkerLinkPeerSessionDescriptor,
   type WorkerLinkPeerSessionOpenRequest,
   type WorkerLinkPeerSignalEnvelope,
   type WorkerLinkResourceGrant,
@@ -209,12 +210,12 @@ export class WorkerLinkService {
   openPeerSession(
     sessionId: string,
     input: WorkerLinkPeerSessionOpenRequest,
-  ): Promise<WorkerLinkPeerSession> {
+  ): Promise<WorkerLinkPeerSessionDescriptor> {
     return this.#runSessionOperation(sessionId, {
       kind: "open-peer",
       sessionId,
       input: workerLinkPeerSessionOpenRequestSchema.parse(input),
-    }).then((value) => workerLinkPeerSessionSchema.parse(value));
+    }).then((value) => workerLinkPeerSessionDescriptorSchema.parse(value));
   }
 
   signalPeer(
@@ -470,11 +471,16 @@ export class WorkerLinkService {
         await this.#refreshClaim(session);
         return session;
       }
-      case "open-peer":
-        return this.local.openPeerSession({
+      case "open-peer": {
+        const peerSession = await this.local.openPeerSession({
           sessionId: operation.sessionId,
           ...operation.input,
         });
+        return {
+          peerSession,
+          configuration: this.local.peerConfiguration(),
+        };
+      }
       case "signal-peer":
         return this.local.signalPeer(operation.envelope);
       case "read-peer-mailbox":

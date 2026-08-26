@@ -19,6 +19,10 @@ export const WORKER_LINK_MAX_PEER_SIGNALS = 256;
 export const WORKER_LINK_MAX_PEER_SIGNALING_BYTES = 4 * 1_024 * 1_024;
 export const WORKER_LINK_MAX_STUN_URLS = 8;
 export const WORKER_LINK_MAX_INTERFACE_RULES = 64;
+export const WORKER_LINK_PEER_CONTROL_CHANNEL =
+  "cantrip-worker-link-v1:control";
+export const WORKER_LINK_PEER_LANE_CHANNEL_PREFIX =
+  "cantrip-worker-link-v1:lane:";
 
 const FRAME_MAGIC = new Uint8Array([0x43, 0x57, 0x4c, 0x4b]);
 
@@ -40,7 +44,7 @@ const creditSchema = z
 
 export const workerLinkRouteSchema = z.enum(["local", "lan", "wan", "relay"]);
 
-export const workerLinkOperationalRouteSchema = z.enum(["local", "relay"]);
+export const workerLinkOperationalRouteSchema = workerLinkRouteSchema;
 
 export const workerLinkPeerRouteSchema = z.enum(["lan", "wan"]);
 
@@ -327,6 +331,13 @@ export const workerLinkPeerSessionOpenRequestSchema = z
   })
   .strict();
 
+export const workerLinkPeerSessionDescriptorSchema = z
+  .object({
+    peerSession: workerLinkPeerSessionSchema,
+    configuration: workerLinkPeerConfigurationSchema,
+  })
+  .strict();
+
 export const workerLinkPeerCandidateSchema = z
   .object({
     candidate: z.string().trim().min(1).max(16_384),
@@ -345,9 +356,35 @@ export const workerLinkPeerCandidateAdvertisementSchema = z
     advertisementSequence: sequenceSchema,
     candidates: z
       .array(workerLinkPeerCandidateSchema)
-      .min(1)
       .max(WORKER_LINK_MAX_PEER_CANDIDATES),
     complete: z.boolean(),
+  })
+  .strict()
+  .superRefine((advertisement, context) => {
+    if (!advertisement.complete && advertisement.candidates.length === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["candidates"],
+        message: "An incomplete candidate advertisement cannot be empty.",
+      });
+    }
+  });
+
+export const workerLinkPeerHandshakeSchema = z
+  .object({
+    type: z.literal("worker-link-peer-handshake"),
+    protocolVersion: z.literal(WORKER_LINK_PROTOCOL_VERSION),
+    role: z.enum(["client", "worker"]),
+    peerSessionId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    routeGeneration: generationSchema,
+    route: workerLinkPeerRouteSchema,
+    identity: workerLinkSessionIdentitySchema,
+    challenge: z
+      .string()
+      .min(43)
+      .max(128)
+      .regex(/^[A-Za-z0-9_-]+$/u),
   })
   .strict();
 
@@ -878,6 +915,252 @@ function jsonBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
+export type WorkerLinkPeerAddressKind =
+  | "private"
+  | "link-local"
+  | "cgnat"
+  | "public"
+  | "mdns"
+  | "loopback"
+  | "invalid";
+
+export interface ParsedWorkerLinkPeerCandidate {
+  address: string;
+  relatedAddress: string | null;
+  transport: string;
+  type: "host" | "srflx" | "prflx" | "relay" | "unknown";
+}
+
+export interface WorkerLinkPeerCandidateRouteContext {
+  vpn?: boolean;
+  vpnLanAllowed?: boolean;
+}
+
+export function parseWorkerLinkPeerCandidate(
+  value: string,
+): ParsedWorkerLinkPeerCandidate | null {
+  const candidate = value.trim().replace(/^a=/u, "");
+  const fields = candidate.split(/\s+/u);
+  if (
+    fields.length < 8 ||
+    !fields[0]?.startsWith("candidate:") ||
+    fields[6]?.toLowerCase() !== "typ"
+  ) {
+    return null;
+  }
+  const rawType = fields[7]?.toLowerCase();
+  const type = ["host", "srflx", "prflx", "relay"].includes(rawType ?? "")
+    ? (rawType as ParsedWorkerLinkPeerCandidate["type"])
+    : "unknown";
+  const relatedIndex = fields.findIndex(
+    (field) => field.toLowerCase() === "raddr",
+  );
+  return {
+    address: fields[4]!,
+    relatedAddress:
+      relatedIndex >= 0 && fields[relatedIndex + 1]
+        ? fields[relatedIndex + 1]!
+        : null,
+    transport: fields[2]!.toLowerCase(),
+    type,
+  };
+}
+
+export function classifyWorkerLinkPeerAddress(
+  input: string,
+): WorkerLinkPeerAddressKind {
+  const address = input
+    .trim()
+    .replace(/^\[|\]$/gu, "")
+    .split("%", 1)[0]!;
+  if (/^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.local\.?$/iu.test(address)) {
+    return "mdns";
+  }
+  const ipv4 = parseIpv4(address);
+  if (ipv4) return classifyIpv4(ipv4);
+  const ipv6 = parseIpv6(address);
+  if (!ipv6) return "invalid";
+  if (ipv6.every((word) => word === 0)) return "invalid";
+  if (ipv6.slice(0, 7).every((word) => word === 0) && ipv6[7] === 1) {
+    return "loopback";
+  }
+  if (ipv6.slice(0, 5).every((word) => word === 0) && ipv6[5] === 0xffff) {
+    return classifyIpv4([
+      ipv6[6]! >> 8,
+      ipv6[6]! & 0xff,
+      ipv6[7]! >> 8,
+      ipv6[7]! & 0xff,
+    ]);
+  }
+  const firstIpv6 = ipv6[0]!;
+  if ((firstIpv6 & 0xffc0) === 0xfe80) return "link-local";
+  if ((firstIpv6 & 0xfe00) === 0xfc00) return "private";
+  if ((firstIpv6 & 0xe000) === 0x2000) return "public";
+  return "invalid";
+}
+
+export function workerLinkPeerCandidateAllowed(
+  candidate: WorkerLinkPeerCandidate,
+  route: WorkerLinkPeerRoute,
+  context: WorkerLinkPeerCandidateRouteContext = {},
+): boolean {
+  const parsed = parseWorkerLinkPeerCandidate(candidate.candidate);
+  if (!parsed || parsed.type === "unknown" || parsed.type === "relay") {
+    return false;
+  }
+  const addressKind = classifyWorkerLinkPeerAddress(parsed.address);
+  if (addressKind === "invalid" || addressKind === "loopback") return false;
+  const vpn = context.vpn === true || addressKind === "cgnat";
+  if (route === "lan") {
+    if (vpn && !context.vpnLanAllowed) return false;
+    return (
+      (parsed.type === "host" || parsed.type === "prflx") &&
+      ["private", "link-local", "mdns", "cgnat"].includes(addressKind)
+    );
+  }
+  if (vpn) return parsed.type === "host" || parsed.type === "prflx";
+  if (parsed.type === "srflx" || parsed.type === "prflx") {
+    return addressKind === "public";
+  }
+  return parsed.type === "host" && addressKind === "public";
+}
+
+export function filterWorkerLinkPeerSdp(
+  sdp: string,
+  route: WorkerLinkPeerRoute,
+  contextForAddress: (
+    address: string,
+    candidate: ParsedWorkerLinkPeerCandidate,
+  ) => WorkerLinkPeerCandidateRouteContext = () => ({}),
+): { removedCandidates: number; sdp: string } {
+  const newline = sdp.includes("\r\n") ? "\r\n" : "\n";
+  const trailingNewline = sdp.endsWith(newline);
+  let removedCandidates = 0;
+  const lines = sdp.split(/\r?\n/u).filter((line) => {
+    const raw = line.startsWith("a=candidate:")
+      ? line.slice(2)
+      : line.startsWith("candidate:")
+        ? line
+        : null;
+    if (raw === null) return true;
+    const parsed = parseWorkerLinkPeerCandidate(raw);
+    if (
+      parsed &&
+      workerLinkPeerCandidateAllowed(
+        {
+          candidate: raw,
+          sdpMid: null,
+          sdpMLineIndex: null,
+          usernameFragment: null,
+        },
+        route,
+        contextForAddress(parsed.address, parsed),
+      )
+    ) {
+      return true;
+    }
+    removedCandidates += 1;
+    return false;
+  });
+  if (lines.at(-1) === "") lines.pop();
+  return {
+    removedCandidates,
+    sdp: `${lines.join(newline)}${trailingNewline ? newline : ""}`,
+  };
+}
+
+export function workerLinkPeerInterfaceAllowed(
+  interfaceName: string,
+  configuration: WorkerLinkPeerConfiguration,
+): boolean {
+  const normalized = interfaceName.toLowerCase();
+  const configured = configuration.interfacePolicy.interfaces.map((value) =>
+    value.toLowerCase(),
+  );
+  return configuration.interfacePolicy.mode === "allowlist"
+    ? configured.includes(normalized)
+    : configuration.interfacePolicy.mode === "denylist"
+      ? !configured.includes(normalized)
+      : true;
+}
+
+export function workerLinkPeerInterfaceIsVpn(interfaceName: string): boolean {
+  return /^(?:utun|tun|tap|tailscale|zt|zerotier|wg|wireguard|ppp|ipsec|vpn)/iu.test(
+    interfaceName,
+  );
+}
+
+export function workerLinkPeerLaneChannelLabel(
+  lane: WorkerLinkQosLane,
+): string {
+  return `${WORKER_LINK_PEER_LANE_CHANNEL_PREFIX}${workerLinkQosLaneSchema.parse(lane)}`;
+}
+
+function parseIpv4(address: string): readonly number[] | null {
+  const fields = address.split(".");
+  if (fields.length !== 4) return null;
+  const values = fields.map((field) =>
+    /^\d{1,3}$/u.test(field) ? Number(field) : Number.NaN,
+  );
+  return values.every((value) => Number.isInteger(value) && value <= 255)
+    ? values
+    : null;
+}
+
+function classifyIpv4(values: readonly number[]): WorkerLinkPeerAddressKind {
+  const [first, second, third, fourth] = values;
+  if (first === 0 || first === undefined || second === undefined) {
+    return "invalid";
+  }
+  if (first === 127) return "loopback";
+  if (first >= 224 || first === 255) return "invalid";
+  if (first === 169 && second === 254) return "link-local";
+  if (
+    first === 10 ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  ) {
+    return "private";
+  }
+  if (first === 100 && second >= 64 && second <= 127) return "cgnat";
+  if (first === 192 && second === 0 && third === 0) return "invalid";
+  if (first === 198 && [18, 19].includes(second)) return "invalid";
+  if (first === 198 && second === 51 && third === 100) return "invalid";
+  if (first === 203 && second === 0 && third === 113) return "invalid";
+  if (first >= 240 || fourth === undefined) return "invalid";
+  return "public";
+}
+
+function parseIpv6(address: string): readonly number[] | null {
+  if (!address.includes(":")) return null;
+  const compressed = address.split("::");
+  if (compressed.length > 2) return null;
+  const parseSide = (side: string): number[] | null => {
+    if (side === "") return [];
+    const fields = side.split(":");
+    const words: number[] = [];
+    for (const [index, field] of fields.entries()) {
+      if (field.includes(".")) {
+        if (index !== fields.length - 1) return null;
+        const ipv4 = parseIpv4(field);
+        if (!ipv4) return null;
+        words.push(ipv4[0]! * 256 + ipv4[1]!, ipv4[2]! * 256 + ipv4[3]!);
+      } else {
+        if (!/^[0-9a-f]{1,4}$/iu.test(field)) return null;
+        words.push(Number.parseInt(field, 16));
+      }
+    }
+    return words;
+  };
+  const left = parseSide(compressed[0] ?? "");
+  const right = parseSide(compressed[1] ?? "");
+  if (!left || !right) return null;
+  const wordCount = left.length + right.length;
+  if (compressed.length === 1) return wordCount === 8 ? left : null;
+  if (wordCount >= 8) return null;
+  return [...left, ...Array<number>(8 - wordCount).fill(0), ...right];
+}
+
 export function isWorkerLinkFrame(frame: Uint8Array): boolean {
   return (
     frame.byteLength >= FRAME_MAGIC.byteLength &&
@@ -954,6 +1237,9 @@ export type WorkerLinkPeerSession = z.infer<typeof workerLinkPeerSessionSchema>;
 export type WorkerLinkPeerSessionOpenRequest = z.infer<
   typeof workerLinkPeerSessionOpenRequestSchema
 >;
+export type WorkerLinkPeerSessionDescriptor = z.infer<
+  typeof workerLinkPeerSessionDescriptorSchema
+>;
 export type WorkerLinkPeerCandidate = z.infer<
   typeof workerLinkPeerCandidateSchema
 >;
@@ -968,6 +1254,9 @@ export type WorkerLinkPeerMailboxReadRequest = z.infer<
   typeof workerLinkPeerMailboxReadRequestSchema
 >;
 export type WorkerLinkPeerMailbox = z.infer<typeof workerLinkPeerMailboxSchema>;
+export type WorkerLinkPeerHandshake = z.infer<
+  typeof workerLinkPeerHandshakeSchema
+>;
 export type WorkerLinkPeerCoordinatorCommand = z.infer<
   typeof workerLinkPeerCoordinatorCommandSchema
 >;

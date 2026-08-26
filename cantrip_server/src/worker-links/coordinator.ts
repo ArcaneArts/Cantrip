@@ -895,6 +895,16 @@ export class WorkerLinkCoordinator {
     return { grants, sessions: this.#sessions.size };
   }
 
+  peerConfiguration(): WorkerLinkPeerConfiguration {
+    const configuration = this.options.peerConfiguration;
+    if (!configuration) {
+      throw new WorkerLinkUnavailableError(
+        "WorkerLink peer routing is not configured.",
+      );
+    }
+    return configuration;
+  }
+
   sessionForAuthorization(
     sessionId: string,
     authorization: { accountSessionId: string; ownerId: string },
@@ -942,6 +952,20 @@ export class WorkerLinkCoordinator {
     this.#assertOpen();
     this.#assertIdentityAuthorized(identity.ownerId, identity.accountSessionId);
     const now = this.#now();
+    const peerConfiguration = this.options.peerConfiguration;
+    const enabledRoutes: WorkerLinkOperationalRoute[] = [];
+    if (!peerConfiguration?.relayOnly) {
+      if (peerConfiguration?.directRoutes.local !== false) {
+        enabledRoutes.push("local");
+      }
+      if (peerConfiguration?.directRoutes.lan === true) {
+        enabledRoutes.push("lan");
+      }
+      if (peerConfiguration?.directRoutes.wan === true) {
+        enabledRoutes.push("wan");
+      }
+    }
+    enabledRoutes.push("relay");
     const absoluteExpiresAt =
       now +
       Math.max(
@@ -967,10 +991,10 @@ export class WorkerLinkCoordinator {
       },
       routePolicy: {
         priority: ["local", "lan", "wan", "relay"],
-        enabled: ["local", "relay"],
+        enabled: enabledRoutes,
       },
       routeGeneration: 1,
-      preferredRoute: "local",
+      preferredRoute: enabledRoutes.includes("local") ? "local" : "relay",
     });
     const state: WorkerLinkSessionState = {
       grants: new Map(),

@@ -284,7 +284,7 @@ import {
   workerLinkPeerMailboxReadRequestSchema,
   workerLinkPeerMailboxSchema,
   workerLinkPeerSessionOpenRequestSchema,
-  workerLinkPeerSessionSchema,
+  workerLinkPeerSessionDescriptorSchema,
   workerLinkPeerSignalBatchSchema,
   workerLinkResourceGrantSchema,
   workerLinkRouteUpdateRequestSchema,
@@ -900,7 +900,7 @@ export async function createWorkerLinkPeerSession(
   routeGeneration: number,
   route: "lan" | "wan",
 ) {
-  return workerLinkPeerSessionSchema.parse(
+  return workerLinkPeerSessionDescriptorSchema.parse(
     await post(
       `/api/worker-links/${encodeURIComponent(sessionId)}/peers`,
       workerLinkPeerSessionOpenRequestSchema.parse({ routeGeneration, route }),

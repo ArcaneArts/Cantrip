@@ -169,6 +169,7 @@ import { readWorkerConfig, resolveWorkerDataDirectory } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { WorkerLinkGateway } from "./worker-link-gateway.js";
 import { WorkerLinkPeerGateway } from "./worker-link-peer-gateway.js";
+import { createWorkerLinkWebRtcTransportFactory } from "./worker-link-webrtc.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
 import {
@@ -744,6 +745,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       workerLinkGateway.peerSessionAuthorized(peerSession),
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
   });
+  const unregisterWorkerLinkPeerTransport =
+    workerLinkPeerGateway.registerTransportFactory(
+      createWorkerLinkWebRtcTransportFactory({
+        disconnectResponder: (respond) =>
+          workerLinkGateway.disconnectResponder(respond),
+        handleFrame: (header, payload, respond) =>
+          workerLinkGateway.handleFrame(header, payload, respond),
+      }),
+    );
   directBroker.setWorkerLinkFrameHandler(
     (header, payload, respond) =>
       workerLinkGateway.handleFrame(header, payload, respond),
@@ -5721,6 +5731,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     await playwrightRuntime.close();
     await searxngRuntime.close();
     commandConnection.close();
+    unregisterWorkerLinkPeerTransport();
     await workerLinkPeerGateway.close();
     await workerLinkGateway.close();
     await directBroker.close();

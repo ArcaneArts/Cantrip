@@ -153,10 +153,12 @@ describe("WorkerLinkService replicated authority", () => {
       }),
     ).resolves.toBeNull();
 
-    const peer = await serviceB.openPeerSession(opened.sessionId, {
+    const descriptor = await serviceB.openPeerSession(opened.sessionId, {
       route: "lan",
       routeGeneration: opened.routeGeneration,
     });
+    const peer = descriptor.peerSession;
+    expect(descriptor.configuration).toEqual(peerConfiguration());
     expect(peer.identity.serverGeneration).toBe("generation-a");
     expect(workersA.commands).toContainEqual({
       type: "worker-link.peer.install",

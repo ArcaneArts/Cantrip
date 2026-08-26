@@ -895,7 +895,7 @@ class ClientWorkerLink implements WorkerLink {
   }
 
   #publishRoute(
-    route: "local" | "relay",
+    route: WorkerLinkRoute,
     latencyMs: number | null,
     fallbackReason: WorkerLinkRouteStatus["fallbackReason"],
   ): void {
@@ -939,7 +939,7 @@ class ClientWorkerLink implements WorkerLink {
     value: number,
     reason: WorkerLinkTelemetrySample["reason"],
     lane: WorkerLinkQosLane | null = null,
-    route: "local" | "relay" | null = this.#carrier?.route ?? null,
+    route: WorkerLinkRoute | null = this.#carrier?.route ?? null,
     latencyMs: number | null = null,
   ): void {
     this.#telemetry.record(this.#session.routeGeneration, {
@@ -1473,13 +1473,6 @@ function validateSessionAuthority(
     );
   }
   operationalRoute(session.preferredRoute);
-  if (
-    session.routePolicy.enabled.some(
-      (route) => route !== "local" && route !== "relay",
-    )
-  ) {
-    throw new Error("WorkerLink authority enabled a deferred route.");
-  }
 }
 
 function clientIdentityKey(identity: ClientSessionIdentitySnapshot): string {
