@@ -955,6 +955,7 @@ import {
   DirectAttachmentCoordinator,
   DirectAttachmentUnavailableError,
 } from "./direct-attachments/coordinator.js";
+import { WorkerLinkCoordinator } from "./worker-links/coordinator.js";
 import { OpenRouterCatalogService } from "./models/openrouter-catalog.js";
 import { OpenRouterRuntimeCatalogHydrator } from "./models/openrouter-runtime-catalog.js";
 import { OllamaCatalogService } from "./models/ollama-catalog.js";
@@ -3723,6 +3724,10 @@ export async function buildApp({
       ? Promise.resolve(null)
       : repository.ensureLocalIdentity(),
   ]);
+  const workerLinks = new WorkerLinkCoordinator(bridge, {
+    serverId,
+    serverGeneration: serverControlPlaneGeneration,
+  });
   const authorizedCodeAttachmentRootIdentity = (
     authorization: Pick<
       TunnelAttachmentAuthorization,
@@ -13066,6 +13071,7 @@ export async function buildApp({
     liveHub.revokeSession(principal.sessionId!);
     await codeTunnel.revokeAuthSession(principal.sessionId!);
     await directAttachments.revokeSession(principal.sessionId!);
+    await workerLinks.revokeAccountSession(principal.sessionId!);
     closeSessionSockets(
       (sessionId) => sessionId === principal.sessionId,
       "Session was revoked",
@@ -13097,6 +13103,7 @@ export async function buildApp({
     liveHub.revokeOwner(principal.user.id);
     await codeTunnel.revokeOwner(principal.user.id);
     await directAttachments.revokeOwner(principal.user.id);
+    await workerLinks.revokeOwner(principal.user.id);
     closeSessionSockets(
       (_sessionId, ownerId) => ownerId === principal.user.id,
       "Account sessions were revoked",
@@ -35058,6 +35065,7 @@ export async function buildApp({
     await projectShareTunnel.close();
     tunnelRuntime.close();
     await directAttachments.close();
+    await workerLinks.close();
     await bridge.close();
     await accountUsageMeter.close();
     accountResourceUsageLiveInvalidations.close();

@@ -161,6 +161,7 @@ import {
 } from "./mcp/managed.js";
 import { readWorkerConfig, resolveWorkerDataDirectory } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
+import { WorkerLinkGateway } from "./worker-link-gateway.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
 import {
@@ -709,6 +710,26 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }),
     { workerId: config.workerId },
   );
+  let workerLinkServerGeneration: string | null = null;
+  const workerLinkGateway = new WorkerLinkGateway({
+    ownerId: () => {
+      try {
+        return workerEncryption.ownerId();
+      } catch {
+        return null;
+      }
+    },
+    serverId: () => {
+      try {
+        return workerEncryption.serverIdentity();
+      } catch {
+        return null;
+      }
+    },
+    serverGeneration: () => workerLinkServerGeneration,
+    workerId: config.workerId,
+    workerProcessGeneration,
+  });
   const activeCodeTransportSecurityIdentity = () => {
     const tunnelContentKey = workerEncryption.componentKey("tunnel-content");
     const protectedKeyRevision = tunnelContentKey.keyRevision;
@@ -746,6 +767,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       // route immediately.
       reconcileCodeTransportSecurityIdentity();
       reconcileCodeSettingsAuthorization();
+      void workerLinkGateway.reconcileSecurityIdentity();
     }
   };
   const unavailableCodeSettingsStatus = (): CodeSettingsWorkerStatus =>
@@ -1655,6 +1677,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "worker-link.session.install":
+      case "worker-link.session.renew":
+      case "worker-link.session.route":
+      case "worker-link.session.revoke":
+      case "worker-link.grant.install":
+      case "worker-link.grant.renew":
+      case "worker-link.grant.revoke":
+        return workerLinkGateway.handleCoordinatorCommand(command);
       case "direct.capability.prepare":
         if (command.binding.workerId !== config.workerId) {
           throw new Error("Direct capability targets another worker.");
@@ -5293,10 +5323,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       // bounded reconnect grace and invokes this only on terminal loss.
       tunnelDestinations.disconnect();
       directBroker.revokeAll();
+      void workerLinkGateway.revokeAll("endpoint-disconnected");
       codeDirectEndpoints.disconnect();
     },
     undefined,
     (serverControlPlaneGeneration) => {
+      workerLinkServerGeneration = serverControlPlaneGeneration;
+      void workerLinkGateway.reconcileSecurityIdentity();
       if (serverControlPlaneGeneration) {
         codeDirectEndpoints.synchronizeControlPlaneGeneration(
           serverControlPlaneGeneration,
@@ -5535,6 +5568,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     await playwrightRuntime.close();
     await searxngRuntime.close();
     commandConnection.close();
+    await workerLinkGateway.close();
     await directBroker.close();
     terminalDirectEndpoints.close();
     codeDirectEndpoints.close();

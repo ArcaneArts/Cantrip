@@ -138,6 +138,15 @@ import {
 export * from "./direct-data-plane.js";
 
 import { tunnelDataPlaneCloseCodeSchema } from "./tunnel-data-plane.js";
+import {
+  workerLinkGrantInstallCommandSchema,
+  workerLinkGrantRenewCommandSchema,
+  workerLinkGrantRevokeCommandSchema,
+  workerLinkSessionInstallCommandSchema,
+  workerLinkSessionRenewCommandSchema,
+  workerLinkSessionRouteCommandSchema,
+  workerLinkSessionRevokeCommandSchema,
+} from "./worker-link.js";
 
 export * from "./tunnel-data-plane.js";
 export * from "./worker-link.js";
@@ -13488,6 +13497,13 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
   directCapabilityRenewCommandSchema,
+  workerLinkSessionInstallCommandSchema,
+  workerLinkSessionRenewCommandSchema,
+  workerLinkSessionRouteCommandSchema,
+  workerLinkSessionRevokeCommandSchema,
+  workerLinkGrantInstallCommandSchema,
+  workerLinkGrantRenewCommandSchema,
+  workerLinkGrantRevokeCommandSchema,
   standaloneChatScratchProvisionCommandSchema,
   standaloneChatScratchResolveCommandSchema,
   standaloneChatScratchArchiveCommandSchema,
