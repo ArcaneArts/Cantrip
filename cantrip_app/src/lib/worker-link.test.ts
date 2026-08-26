@@ -2,6 +2,7 @@ import {
   encodeWorkerLinkFrame,
   type WorkerLinkFrameHeader,
   type WorkerLinkResourceGrant,
+  type WorkerLinkRoute,
   type WorkerLinkSession,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -38,8 +39,9 @@ const identity: ClientSessionIdentitySnapshot = {
 
 function session(
   clientInstanceId = ids[0]!,
-  route: "local" | "relay" = "local",
+  route: WorkerLinkRoute = "local",
   routeGeneration = 1,
+  enabled: WorkerLinkRoute[] = [route],
 ): WorkerLinkSession {
   return {
     sessionId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
@@ -59,7 +61,7 @@ function session(
     },
     routePolicy: {
       priority: ["local", "lan", "wan", "relay"],
-      enabled: ["local", "relay"],
+      enabled,
     },
     routeGeneration,
     preferredRoute: route,
@@ -101,7 +103,7 @@ class FakeCarrier implements WorkerLinkCarrier {
   writable = true;
 
   constructor(
-    readonly route: "local" | "relay",
+    readonly route: WorkerLinkRoute,
     readonly latencyMs = 5,
   ) {}
 
@@ -135,19 +137,24 @@ class FakeCarrier implements WorkerLinkCarrier {
 
 function dependencies(
   options: {
+    enabled?: WorkerLinkRoute[];
     local?: () => Promise<WorkerLinkCarrier>;
     localSupported?: boolean;
+    peer?: (route: "lan" | "wan") => Promise<WorkerLinkCarrier>;
+    preferredRoute?: WorkerLinkRoute;
     relay?: () => Promise<WorkerLinkCarrier>;
   } = {},
 ) {
   let activeIdentity: ClientSessionIdentitySnapshot | null = identity;
   let idIndex = 0;
   let identityListener: () => void = () => undefined;
-  let activeSession = session();
+  const preferredRoute = options.preferredRoute ?? "local";
+  const enabled = options.enabled ?? [preferredRoute];
+  let activeSession = session(ids[0], preferredRoute, 1, enabled);
   const dependency: WorkerLinkManagerDependencies = {
     createId: () => ids[idIndex++] ?? crypto.randomUUID(),
     createSession: vi.fn(async (_workerId, clientInstanceId) => {
-      activeSession = session(clientInstanceId);
+      activeSession = session(clientInstanceId, preferredRoute, 1, enabled);
       return activeSession;
     }),
     deleteSession: vi.fn(async () => undefined),
@@ -157,6 +164,10 @@ function dependencies(
     openLocal:
       options.local ??
       (async () => new FakeCarrier("local") as WorkerLinkCarrier),
+    openPeer: async (_session, route) => {
+      if (options.peer) return options.peer(route);
+      throw new Error(`${route} unavailable`);
+    },
     openRelay:
       options.relay ??
       (async () => new FakeCarrier("relay") as WorkerLinkCarrier),
@@ -167,6 +178,7 @@ function dependencies(
         activeSession.identity.clientInstanceId,
         route,
         activeSession.routeGeneration + 1,
+        enabled,
       );
       return activeSession;
     }),
@@ -182,6 +194,34 @@ function dependencies(
       identityListener();
     },
   };
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
+function acceptOpen(carrier: FakeCarrier, index = 0): WorkerLinkFrameHeader {
+  const open = carrier.sent[index]?.header;
+  if (!open || open.kind !== "open") throw new Error("Missing open frame.");
+  carrier.receive({
+    protocolVersion: 1,
+    sessionId: open.sessionId,
+    routeGeneration: open.routeGeneration,
+    effectiveRoute: carrier.route,
+    channel: open.channel,
+    lane: open.lane,
+    sequence: 0,
+    kind: "accept",
+    initialCreditBytes: 32,
+  });
+  return open;
 }
 
 afterEach(() => {
@@ -214,7 +254,7 @@ describe("WorkerLinkManager", () => {
     await manager.close();
   });
 
-  it("keeps the pre-peer baseline deterministic for LOCAL and RELAY", async () => {
+  it("honors LOCAL-only and RELAY-only policy without rewriting authority", async () => {
     const local = vi.fn(
       async () => new FakeCarrier("local") as WorkerLinkCarrier,
     );
@@ -237,15 +277,17 @@ describe("WorkerLinkManager", () => {
       async () => new FakeCarrier("relay") as WorkerLinkCarrier,
     );
     const relaySetup = dependencies({
+      enabled: ["relay"],
       local: unsupportedLocal,
       localSupported: false,
+      preferredRoute: "relay",
       relay: relayOnly,
     });
     const relayManager = new WorkerLinkManager(relaySetup.dependency);
     const relayReference = await relayManager.acquire("worker-1");
     expect(unsupportedLocal).not.toHaveBeenCalled();
     expect(relayOnly).toHaveBeenCalledOnce();
-    expect(relaySetup.dependency.setRoute).toHaveBeenCalledOnce();
+    expect(relaySetup.dependency.setRoute).not.toHaveBeenCalled();
     expect(relayReference.link.preferredRoute).toBe("relay");
     relayReference.release();
     await relayManager.close();
@@ -339,6 +381,7 @@ describe("WorkerLinkManager", () => {
   it("falls back from LOCAL to the same logical RELAY link", async () => {
     const relay = new FakeCarrier("relay", 14);
     const setup = dependencies({
+      enabled: ["local", "relay"],
       local: async () => {
         throw new Error("loopback unavailable");
       },
@@ -353,18 +396,17 @@ describe("WorkerLinkManager", () => {
       ),
     );
 
-    expect(routes).toEqual(["relay:local-unavailable:2"]);
-    expect(setup.dependency.setRoute).toHaveBeenCalledWith(
-      session().sessionId,
-      "relay",
+    await vi.waitFor(() =>
+      expect(routes).toContain("relay:local-unavailable:1"),
     );
+    expect(setup.dependency.setRoute).not.toHaveBeenCalled();
     expect(manager.getStatusSnapshot()).toEqual([
       expect.objectContaining({
         effectiveRoutes: ["relay"],
         fallbackReason: "local-unavailable",
         latencyMs: 14,
         preferredRoute: "relay",
-        routeGeneration: 2,
+        routeGeneration: 1,
         state: "active",
       }),
     ]);
@@ -384,7 +426,7 @@ describe("WorkerLinkManager", () => {
         }),
         expect.objectContaining({
           event: "route-fallback",
-          route: "relay",
+          route: "local",
           reason: "local-unavailable",
         }),
         expect.objectContaining({ event: "session-opened", route: "relay" }),
@@ -392,8 +434,131 @@ describe("WorkerLinkManager", () => {
       ]),
     );
     expect(vi.mocked(setup.dependency.recordTelemetry).mock.calls[0]?.[1]).toBe(
-      2,
+      1,
     );
+    await manager.close();
+  });
+
+  it("promotes new streams to LAN while preserving RELAY streams and standby", async () => {
+    const relay = new FakeCarrier("relay", 40);
+    const lan = new FakeCarrier("lan", 3);
+    const pendingLan = deferred<WorkerLinkCarrier>();
+    const peer = vi
+      .fn<(route: "lan" | "wan") => Promise<WorkerLinkCarrier>>()
+      .mockImplementationOnce(async () => pendingLan.promise)
+      .mockRejectedValue(new Error("peer unavailable"));
+    const setup = dependencies({
+      enabled: ["lan", "relay"],
+      peer,
+      preferredRoute: "lan",
+      relay: async () => relay,
+    });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+
+    expect(reference.link.preferredRoute).toBe("relay");
+    expect(reference.link.session.routeGeneration).toBe(1);
+    expect(setup.dependency.setRoute).not.toHaveBeenCalled();
+
+    const relayOpening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.waitFor(() => expect(relay.sent).toHaveLength(1));
+    acceptOpen(relay);
+    const relayStream = await relayOpening;
+    expect(relayStream.route).toBe("relay");
+
+    pendingLan.resolve(lan);
+    await vi.waitFor(() => expect(reference.link.preferredRoute).toBe("lan"));
+    expect(relay.closed).toBe(false);
+
+    const lanOpening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.waitFor(() => expect(lan.sent).toHaveLength(1));
+    acceptOpen(lan);
+    const lanStream = await lanOpening;
+    expect(lanStream.route).toBe("lan");
+    expect(manager.getStatusSnapshot()[0]).toEqual(
+      expect.objectContaining({
+        activeChannelCount: 2,
+        effectiveRoutes: ["lan", "relay"],
+        preferredRoute: "lan",
+        routeGeneration: 1,
+      }),
+    );
+    expect(manager.getStatusSnapshot()[0]?.routeChannelCounts).toEqual([
+      { channelCount: 0, route: "local" },
+      { channelCount: 1, route: "lan" },
+      { channelCount: 0, route: "wan" },
+      { channelCount: 1, route: "relay" },
+    ]);
+
+    const lanClosed = vi.fn();
+    const relayClosed = vi.fn();
+    lanStream.onClose(lanClosed);
+    relayStream.onClose(relayClosed);
+    lan.close();
+    await vi.waitFor(() => expect(lanClosed).toHaveBeenCalledOnce());
+    expect(relayClosed).not.toHaveBeenCalled();
+    expect(relayStream.write(new Uint8Array([1]))).toBe(true);
+    await vi.waitFor(() => expect(relay.sent).toHaveLength(2));
+    expect(manager.getStatusSnapshot()[0]).toEqual(
+      expect.objectContaining({
+        activeChannelCount: 1,
+        effectiveRoutes: ["relay"],
+        preferredRoute: "relay",
+      }),
+    );
+
+    const fallbackOpening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.waitFor(() => expect(relay.sent).toHaveLength(3));
+    acceptOpen(relay, 2);
+    const fallbackStream = await fallbackOpening;
+    expect(fallbackStream.route).toBe("relay");
+    expect(setup.dependency.setRoute).not.toHaveBeenCalled();
+
+    reference.release();
+    await manager.close();
+  });
+
+  it("widens browser direct probing from LAN to WAN before retaining RELAY", async () => {
+    const relay = new FakeCarrier("relay", 50);
+    const wan = new FakeCarrier("wan", 12);
+    const attempted: Array<"lan" | "wan"> = [];
+    const setup = dependencies({
+      enabled: ["local", "lan", "wan", "relay"],
+      localSupported: false,
+      peer: async (route) => {
+        attempted.push(route);
+        if (route === "lan") throw new Error("not on the same LAN");
+        return wan;
+      },
+      relay: async () => relay,
+    });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+
+    await vi.waitFor(() => expect(reference.link.preferredRoute).toBe("wan"));
+    expect(attempted).toEqual(["lan", "wan"]);
+    expect(relay.closed).toBe(false);
+    expect(manager.getStatusSnapshot()[0]).toEqual(
+      expect.objectContaining({
+        effectiveRoutes: ["wan"],
+        fallbackReason: "lan-unavailable",
+        latencyMs: 12,
+        preferredRoute: "wan",
+        routeGeneration: 1,
+      }),
+    );
+    expect(setup.dependency.setRoute).not.toHaveBeenCalled();
+
+    reference.release();
     await manager.close();
   });
 
@@ -688,7 +853,7 @@ describe("WorkerLinkManager", () => {
     const relay = vi
       .fn<() => Promise<WorkerLinkCarrier>>()
       .mockRejectedValue(new Error("relay down"));
-    const setup = dependencies({ local, relay });
+    const setup = dependencies({ enabled: ["local", "relay"], local, relay });
     const manager = new WorkerLinkManager(setup.dependency);
     await manager.acquire("worker-1");
     const states: string[] = [];
@@ -700,11 +865,9 @@ describe("WorkerLinkManager", () => {
     initial.close();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(local).toHaveBeenCalledTimes(1 + 4 + 1);
-    expect(relay).toHaveBeenCalledTimes(4 + 1);
+    expect(relay).toHaveBeenCalledTimes(1 + 4 + 1);
     expect(setup.dependency.createSession).toHaveBeenCalledTimes(2);
-    expect(states).toEqual(
-      expect.arrayContaining(["degraded", "reconnecting", "offline"]),
-    );
+    expect(states).toEqual(expect.arrayContaining(["reconnecting", "offline"]));
     expect(manager.getStatusSnapshot()).toEqual([
       expect.objectContaining({
         activeLinkCount: 1,
@@ -719,6 +882,7 @@ describe("WorkerLinkManager", () => {
   it("retains a bounded offline status when initial route setup fails", async () => {
     vi.useFakeTimers();
     const setup = dependencies({
+      enabled: ["local", "relay"],
       local: async () => {
         throw new Error("local down");
       },
@@ -730,7 +894,9 @@ describe("WorkerLinkManager", () => {
       lastUsedStatusTtlMs: 500,
     });
 
-    await expect(manager.acquire("worker-1")).rejects.toThrow("relay down");
+    await expect(manager.acquire("worker-1")).rejects.toThrow(
+      "No WorkerLink route could be established.",
+    );
     expect(manager.getStatusSnapshot()).toEqual([
       expect.objectContaining({
         activeLinkCount: 0,

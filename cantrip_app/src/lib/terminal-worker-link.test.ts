@@ -2,6 +2,7 @@ import type {
   TerminalClientMessage,
   WorkerLinkChannelCloseCode,
   WorkerLinkResourceGrant,
+  WorkerLinkRoute,
   WorkerLinkSession,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -88,6 +89,8 @@ class FakeStream implements WorkerLinkStream {
   readonly halfCloseListeners = new Set<WorkerLinkStreamHalfCloseListener>();
   readonly writableListeners = new Set<WorkerLinkStreamWritableListener>();
 
+  constructor(readonly route: WorkerLinkRoute) {}
+
   acknowledge(bytes: number): boolean {
     this.acknowledgements.push(bytes);
     return true;
@@ -147,7 +150,7 @@ class FakeStream implements WorkerLinkStream {
 function setup(route: "local" | "relay" = "local") {
   const activeSession = session(route);
   const activeGrant = grant(activeSession);
-  const stream = new FakeStream();
+  const stream = new FakeStream(route);
   const release = vi.fn();
   const link: WorkerLink = {
     preferredRoute: route,

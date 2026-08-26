@@ -357,7 +357,6 @@ export class WorkerLinkGateway {
     }
     if (
       parsed.routeGeneration !== state.session.routeGeneration ||
-      parsed.effectiveRoute !== state.session.preferredRoute ||
       !state.session.routePolicy.enabled.includes(parsed.effectiveRoute)
     ) {
       throw this.#rejection(
@@ -564,7 +563,7 @@ export class WorkerLinkGateway {
       this.#sessions.get(parsed.sessionId) !== state ||
       state.grants.get(installed.grant.binding.grantId) !== installed ||
       state.session.routeGeneration !== parsed.routeGeneration ||
-      state.session.preferredRoute !== parsed.effectiveRoute
+      !state.session.routePolicy.enabled.includes(parsed.effectiveRoute)
     ) {
       try {
         await adapterChannel.close?.("revoked");
@@ -739,6 +738,7 @@ export class WorkerLinkGateway {
       state &&
       canonical(state.session.identity) === canonical(peer.identity) &&
       state.session.routeGeneration === peer.routeGeneration &&
+      state.session.routePolicy.enabled.includes(peer.route) &&
       Date.parse(peer.lease.issuedAt) >=
         Date.parse(state.session.lease.issuedAt) &&
       Date.parse(peer.lease.expiresAt) > this.#now() &&
@@ -1038,14 +1038,8 @@ export class WorkerLinkGateway {
     if (Date.parse(session.lease.expiresAt) <= this.#now()) {
       throw new Error("WorkerLink session is already expired.");
     }
-    if (
-      session.routePolicy.enabled.some(
-        (route) => !["local", "relay"].includes(route),
-      ) ||
-      !session.routePolicy.enabled.includes(session.preferredRoute) ||
-      !["local", "relay"].includes(session.preferredRoute)
-    ) {
-      throw new Error("WorkerLink LAN/WAN routes are not operational.");
+    if (!session.routePolicy.enabled.includes(session.preferredRoute)) {
+      throw new Error("WorkerLink preferred route is not enabled.");
     }
     const existing = this.#sessions.get(session.sessionId);
     if (existing) {

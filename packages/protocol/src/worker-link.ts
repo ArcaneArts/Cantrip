@@ -106,6 +106,14 @@ export const workerLinkFallbackReasonSchema = z.enum([
   "local-capability-rejected",
   "local-connect-timeout",
   "local-disconnected",
+  "lan-unavailable",
+  "lan-connect-timeout",
+  "lan-disconnected",
+  "wan-unavailable",
+  "wan-connect-timeout",
+  "wan-disconnected",
+  "relay-unavailable",
+  "relay-disconnected",
   "policy-relay-only",
   "route-replaced",
 ]);
@@ -863,8 +871,15 @@ export const workerLinkTelemetryEventSchema = z.enum([
   "bytes-received",
   "route-selected",
   "route-fallback",
+  "route-promoted",
+  "route-demoted",
+  "negotiation-started",
+  "negotiation-completed",
+  "negotiation-failed",
   "reconnect-attempt",
   "queue-pressure",
+  "frame-dropped",
+  "relay-bytes-avoided",
 ]);
 
 export const workerLinkTelemetryReasonSchema = z.enum([

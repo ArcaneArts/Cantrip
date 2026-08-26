@@ -50,12 +50,13 @@ out of scope.
 
 ## Tranche Two passes
 
-| Pass                                      | Scope                                                                                                                                  | Status   | Branch                                         | PR                                                       | Validation                                                                                                                                                                                                                                                               | Notes or deviations                                                                                                                                                                                                   |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T2.1 — Contracts, config, regression base | Add bounded peer/signaling policy, deployment controls, and LOCAL/RELAY plus Code fences                                               | Complete | `codex/network-tranche2-pass1-contracts`       | [#1196](https://github.com/ArcaneArts/Cantrip/pull/1196) | Protocol WorkerLink 12; server config 16; focused app WorkerLink and Code/Explorer 47; full protocol 361; protocol/server/app typechecks; full app 1,584 pass and 3 skip with one order-dependent baseline failure whose isolated file passes 3; formatting/diff check   | LAN/WAN stay non-operational; legacy Remote Surface TURN remains isolated; no Code runtime was changed; default STUN and all peer limits are inert until signaling and PeerCarrier passes consume the policy          |
-| T2.2A — Peer authority and worker gateway | Install exact peer rounds through the worker command plane, fence signaling/lifecycle, and expose a bounded transport-factory boundary | Complete | `codex/network-tranche2-pass2a-peer-authority` | [#1197](https://github.com/ArcaneArts/Cantrip/pull/1197) | Focused protocol/server/worker 49; focused coordinated server 59; full protocol 361; full worker 887 pass and 2 skip with two order-dependent baseline failures whose isolated files pass 10; workspace typecheck; changed-file formatting and diff checks               | No client signaling API or WebRTC transport is activated yet; T2.2B will publish authenticated signaling through CoordinationBus, and T2.3 will register the feature-neutral transport factory                        |
-| T2.2B — Replicated signaling mailbox      | Expose authenticated client signaling and bounded candidate delivery through the exact peer authority across coordinated replicas      | Complete | `codex/network-tranche2-pass2b-signaling`      | [#1198](https://github.com/ArcaneArts/Cantrip/pull/1198) | Focused protocol/server/worker 53; full protocol 361; full worker 890 pass and 2 skip; workspace typecheck; changed-file formatting and diff checks                                                                                                                      | Signaling is transient and authority-owned; any authenticated replica forwards through CoordinationBus, while LAN/WAN remain dormant until T2.3 registers the feature-neutral WebRTC transport                        |
-| T2.3 — Feature-neutral WebRTC PeerCarrier | Add strict LAN/WAN candidate rounds and carry the shared WorkerLink envelope over authenticated, lane-separated WebRTC DataChannels    | Complete | `codex/network-tranche2-pass3-peer-carrier`    | [#1199](https://github.com/ArcaneArts/Cantrip/pull/1199) | Focused protocol/app/server/worker 46; full protocol 363; full app 1,587 pass and 3 skip; full worker 892 pass, 1 order-dependent baseline failure, and 2 skip with both isolated failures passing 9; workspace typecheck/build; changed-file formatting and diff checks | The worker transport is registered, but client route selection remains dormant until T2.4; no feature adapter or Code/Explorer lifecycle changed, TURN remains forbidden, and relay-only authority exposes only RELAY |
+| Pass                                      | Scope                                                                                                                                  | Status   | Branch                                         | PR                                                       | Validation                                                                                                                                                                                                                                                               | Notes or deviations                                                                                                                                                                                                              |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T2.1 — Contracts, config, regression base | Add bounded peer/signaling policy, deployment controls, and LOCAL/RELAY plus Code fences                                               | Complete | `codex/network-tranche2-pass1-contracts`       | [#1196](https://github.com/ArcaneArts/Cantrip/pull/1196) | Protocol WorkerLink 12; server config 16; focused app WorkerLink and Code/Explorer 47; full protocol 361; protocol/server/app typechecks; full app 1,584 pass and 3 skip with one order-dependent baseline failure whose isolated file passes 3; formatting/diff check   | LAN/WAN stay non-operational; legacy Remote Surface TURN remains isolated; no Code runtime was changed; default STUN and all peer limits are inert until signaling and PeerCarrier passes consume the policy                     |
+| T2.2A — Peer authority and worker gateway | Install exact peer rounds through the worker command plane, fence signaling/lifecycle, and expose a bounded transport-factory boundary | Complete | `codex/network-tranche2-pass2a-peer-authority` | [#1197](https://github.com/ArcaneArts/Cantrip/pull/1197) | Focused protocol/server/worker 49; focused coordinated server 59; full protocol 361; full worker 887 pass and 2 skip with two order-dependent baseline failures whose isolated files pass 10; workspace typecheck; changed-file formatting and diff checks               | No client signaling API or WebRTC transport is activated yet; T2.2B will publish authenticated signaling through CoordinationBus, and T2.3 will register the feature-neutral transport factory                                   |
+| T2.2B — Replicated signaling mailbox      | Expose authenticated client signaling and bounded candidate delivery through the exact peer authority across coordinated replicas      | Complete | `codex/network-tranche2-pass2b-signaling`      | [#1198](https://github.com/ArcaneArts/Cantrip/pull/1198) | Focused protocol/server/worker 53; full protocol 361; full worker 890 pass and 2 skip; workspace typecheck; changed-file formatting and diff checks                                                                                                                      | Signaling is transient and authority-owned; any authenticated replica forwards through CoordinationBus, while LAN/WAN remain dormant until T2.3 registers the feature-neutral WebRTC transport                                   |
+| T2.3 — Feature-neutral WebRTC PeerCarrier | Add strict LAN/WAN candidate rounds and carry the shared WorkerLink envelope over authenticated, lane-separated WebRTC DataChannels    | Complete | `codex/network-tranche2-pass3-peer-carrier`    | [#1199](https://github.com/ArcaneArts/Cantrip/pull/1199) | Focused protocol/app/server/worker 46; full protocol 363; full app 1,587 pass and 3 skip; full worker 892 pass, 1 order-dependent baseline failure, and 2 skip with both isolated failures passing 9; workspace typecheck/build; changed-file formatting and diff checks | The worker transport is registered, but client route selection remains dormant until T2.4; no feature adapter or Code/Explorer lifecycle changed, TURN remains forbidden, and relay-only authority exposes only RELAY            |
+| T2.4A — Mixed-carrier route activation    | Activate four-route priority, concurrent RELAY readiness, fixed per-stream routes, promotion, and partial carrier fallback             | Complete | `codex/network-tranche2-pass4-route-selection` | [#1200](https://github.com/ArcaneArts/Cantrip/pull/1200) | Protocol 363; focused app/server/worker 47; full app 1,589 pass and 3 skip; workspace typecheck/build; Rust fmt/check; topology and source verification; formatting/diff check                                                                                           | Routine carrier promotion stays within one authority generation and does not kill streams on other carriers; T2.4B retains lifecycle-triggered reprobe, transition projection, bounded mobility metrics, and resubscription work |
 
 ## Stabilization acceptance evidence
 
@@ -97,6 +98,12 @@ out of scope.
   assertions, the T2.3 focused worker transport suite passes, and an earlier
   full run passed all 892 then-current worker assertions. Neither failure
   touches WorkerLink peer code.
+- The T2.4A full worker run reports 892 passing tests, two skipped, and one
+  timing-only DirectBroker log assertion under full-suite load. Its isolated
+  file passes all 10 tests, including the new LOCAL physical-boundary fence.
+  The broad server run reproduces the existing schema, placement, version, and
+  order failure cluster recorded below; the focused replicated service and
+  relay suites pass. No failing broad test exercises the mixed-carrier manager.
 - The repository-wide `pnpm check` currently stops at the pre-existing
   `audit:server-boundaries` failure: “Client-control notification E2EE boundary
   regressed: client: protected notification path is missing.” Root formatting
@@ -207,6 +214,17 @@ out of scope.
   set. T2.3 widens transport contracts to represent operational LAN/WAN but
   deliberately leaves client selection on the existing LOCAL/RELAY behavior
   until T2.4 can add concurrent fallback and mobility as one coherent change.
+- T2.4A treats `routeGeneration` as the installed authority-policy epoch.
+  Preparing, promoting, or demoting enabled carriers does not rewrite server
+  authority: existing streams remain pinned to their physical route, new
+  streams choose the best ready `LOCAL -> LAN -> WAN -> RELAY` carrier, and a
+  failed carrier retires only its streams. Explicit authority replacement still
+  increments the generation, retires every stream, and rejects stale frames.
+- RELAY now prepares concurrently as a warm, authenticated standby. LOCAL,
+  server RELAY, LAN peer, and WAN peer ingress each independently require their
+  matching physical route in the frame, while the worker gateway authorizes
+  any route enabled in the exact session. Terminal and tunnel adapters consume
+  the route fixed on the opened WorkerLink stream and contain no carrier choice.
 - Route-generation replacement retires active worker channels before the
   replacement is acknowledged. Logout fences are transient around revocation,
   allowing a later authenticated account session to establish fresh authority.
@@ -310,20 +328,18 @@ out of scope.
 
 ## Tranche Two remaining work
 
-After T2.3, T2.4 must activate `LOCAL -> LAN -> WAN -> RELAY` selection beneath
-WorkerLink, prepare RELAY concurrently with direct probing, promote new channels,
-reprobe on connectivity and lifecycle changes, support per-channel fallback,
-and project truthful transitions and metrics into the Settings Network Map.
-Browser, Capacitor, and Tauri renderer consumers follow before the separately
-decided native Tauri carrier, Browser Remote Surface, Remote Desktop, worker
-observations, incremental chat, filesystem watcher migration, relay
-consolidation, and the final acceptance gate.
+After T2.4A, LAN/WAN selection, concurrent RELAY preparation, route promotion,
+and per-channel mixed routing are active beneath WorkerLink. T2.4B must add
+network-interface, application-resume, ICE-failure, generation-change, and
+authorized mobility triggers; safe subscription reopening; truthful transition
+reasons; and the bounded negotiation, promotion, demotion, dropped-frame, and
+relay-bytes-avoided metrics and Settings projection.
 
-The following remain intentionally unimplemented after T2.3: client activation
-of LAN/WAN routes, concurrent relay preparation, route promotion and mobility
-reprobes, per-channel mixed routing, browser or Capacitor feature activation,
-native Tauri direct transport, Browser and Remote Desktop migration, direct
-observation/chat/watcher delivery, and final legacy-relay consolidation. TURN
-and transparent TCP resumption remain explicitly deferred. T2.3 supplies the
-feature-neutral carrier and strict peer boundary without changing any feature
-adapter or the restored Code/Explorer lifecycle.
+Browser, Capacitor, and Tauri renderer consumer validation follows before the
+separately decided native Tauri carrier, Browser Remote Surface, Remote Desktop,
+worker observations, incremental chat, filesystem watcher migration, relay
+consolidation, and the final acceptance gate. Native desktop tunnels still map
+LAN/WAN stream labels onto their existing direct summary state; T2.6 decides and
+implements the physical native carrier. TURN and transparent TCP resumption
+remain explicitly deferred, and the restored Code/Explorer lifecycle remains a
+mandatory regression boundary.

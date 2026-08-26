@@ -4,6 +4,7 @@ import {
   type TunnelDataPlaneFrameHeader,
   type WorkerLinkChannelCloseCode,
   type WorkerLinkLease,
+  type WorkerLinkRoute,
   type WorkerLinkTunnelGrant,
   type WorkerLinkTunnelRoute,
 } from "@cantrip/protocol";
@@ -27,7 +28,7 @@ const MIN_RENEW_DELAY_MS = 1_000;
 
 export interface TunnelWorkerLinkConnection {
   readonly bufferedAmount: number;
-  readonly route: "local" | "relay";
+  readonly route: WorkerLinkRoute;
   readonly tunnelRoute: WorkerLinkTunnelRoute;
   activate(): void;
   close(code?: WorkerLinkChannelCloseCode): void;
@@ -39,7 +40,7 @@ export interface OpenTunnelWorkerLinkOptions {
   diagnosticTraceId?: string;
   onClose(code: WorkerLinkChannelCloseCode): void;
   onFrame(frame: Uint8Array): Promise<void> | void;
-  onRouteChanged?(route: "local" | "relay"): void;
+  onRouteChanged?(route: WorkerLinkRoute): void;
   workerId: string;
 }
 
@@ -105,7 +106,7 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
   #outboundBytes = 0;
   readonly #outbound: Uint8Array[] = [];
   #renewTimer: ReturnType<typeof setTimeout> | null = null;
-  #route: "local" | "relay";
+  readonly #route: WorkerLinkRoute;
   readonly #sessionId: string;
   readonly #unsubscribe: Array<() => void>;
 
@@ -117,26 +118,17 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
     private readonly issued: WorkerLinkTunnelGrant,
   ) {
     this.#sessionId = issued.grant.binding.sessionId;
-    this.#route = reference.link.preferredRoute;
+    this.#route = stream.route;
     this.#unsubscribe = [
       stream.onData((payload) => this.#receive(payload)),
       stream.onWritable(() => this.#drainOutbound()),
       stream.onError(() => this.#retire("protocol-error", false)),
       stream.onClose((code) => this.#retire(code, false)),
-      reference.link.onRouteChanged((status) => {
-        if (
-          status.effectiveRoute === "local" ||
-          status.effectiveRoute === "relay"
-        ) {
-          this.#route = status.effectiveRoute;
-          this.options.onRouteChanged?.(this.#route);
-        }
-      }),
     ];
     this.#scheduleRenewal(issued.grant.binding.lease);
   }
 
-  get route(): "local" | "relay" {
+  get route(): WorkerLinkRoute {
     return this.#route;
   }
 

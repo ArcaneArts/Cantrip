@@ -677,7 +677,7 @@ function parseOperation(value: unknown): WorkerLinkOperation | null {
       return text(value.sessionId) ? (value as WorkerLinkOperation) : null;
     case "replace-route":
       return text(value.sessionId) &&
-        (value.preferredRoute === "local" || value.preferredRoute === "relay")
+        workerLinkOperationalRoute(value.preferredRoute)
         ? (value as WorkerLinkOperation)
         : null;
     case "open-peer": {
@@ -757,6 +757,12 @@ function parseOperation(value: unknown): WorkerLinkOperation | null {
     default:
       return null;
   }
+}
+
+function workerLinkOperationalRoute(
+  value: unknown,
+): value is WorkerLinkOperationalRoute {
+  return ["local", "lan", "wan", "relay"].includes(String(value));
 }
 
 function parseRevokeScope(value: unknown): WorkerLinkRevokeScope | null {

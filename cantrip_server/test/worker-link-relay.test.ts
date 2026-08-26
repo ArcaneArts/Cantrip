@@ -241,7 +241,7 @@ describe("WorkerLinkRelay", () => {
     expect(relay.stats()).toEqual({ channels: 0, connections: 0 });
   });
 
-  it("rejects non-relay sessions and ends relays when the worker is offline", () => {
+  it("keeps RELAY on standby, rejects disabled RELAY, and ends offline relays", () => {
     const workers = new FakeWorkerBus();
     const relay = new WorkerLinkRelay(workers.asBus());
     const localSocket = new FakeSocket();
@@ -250,8 +250,25 @@ describe("WorkerLinkRelay", () => {
         { ...session(), preferredRoute: "local", routeGeneration: 1 },
         localSocket,
       ),
+    ).toBe(true);
+    localSocket.close();
+
+    const disabledSocket = new FakeSocket();
+    expect(
+      relay.attach(
+        {
+          ...session(),
+          preferredRoute: "local",
+          routeGeneration: 1,
+          routePolicy: {
+            priority: ["local", "lan", "wan", "relay"],
+            enabled: ["local"],
+          },
+        },
+        disabledSocket,
+      ),
     ).toBe(false);
-    expect(localSocket.closes.at(-1)?.code).toBe(1013);
+    expect(disabledSocket.closes.at(-1)?.code).toBe(1013);
 
     const alreadyClosedSocket = new FakeSocket();
     alreadyClosedSocket.readyState = 3;

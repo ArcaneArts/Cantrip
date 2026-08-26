@@ -51,7 +51,7 @@ export class WorkerLinkRelay {
     if (
       this.#closed ||
       socket.readyState !== 1 ||
-      session.preferredRoute !== "relay"
+      !session.routePolicy.enabled.includes("relay")
     ) {
       socket.close(1013, "WorkerLink relay is unavailable");
       return false;

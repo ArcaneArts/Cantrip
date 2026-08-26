@@ -198,6 +198,22 @@ function fallbackLabel(
       return "LOCAL connection timed out";
     case "local-disconnected":
       return "LOCAL disconnected";
+    case "lan-unavailable":
+      return "LAN unavailable";
+    case "lan-connect-timeout":
+      return "LAN connection timed out";
+    case "lan-disconnected":
+      return "LAN disconnected";
+    case "wan-unavailable":
+      return "WAN unavailable";
+    case "wan-connect-timeout":
+      return "WAN connection timed out";
+    case "wan-disconnected":
+      return "WAN disconnected";
+    case "relay-unavailable":
+      return "RELAY unavailable";
+    case "relay-disconnected":
+      return "RELAY disconnected";
     case "policy-relay-only":
       return "Policy requires RELAY";
     case "route-replaced":

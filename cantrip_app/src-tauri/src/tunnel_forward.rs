@@ -3489,7 +3489,7 @@ mod desktop {
         route: &str,
     ) -> Result<bool, String> {
         let route_state = match route {
-            "local" => 1,
+            "local" | "lan" | "wan" => 1,
             "relay" => 2,
             _ => return Err("The WorkerLink tunnel route is invalid.".into()),
         };
@@ -3513,7 +3513,7 @@ mod desktop {
                 .route_state
                 .store(route_state, Ordering::Relaxed);
             forward.summary.route_state = match route {
-                "local" => "local-direct",
+                "local" | "lan" | "wan" => "local-direct",
                 "relay" => "relayed",
                 _ => unreachable!(),
             };
@@ -4496,7 +4496,7 @@ mod desktop {
         let supplied_token = Zeroizing::new(std::mem::take(&mut initialize.token));
         if initialize.r#type != "initialize"
             || !constant_time_secret_match(expected_token, supplied_token.as_str())
-            || !matches!(initialize.route.as_str(), "local" | "relay")
+            || !matches!(initialize.route.as_str(), "local" | "lan" | "wan" | "relay")
             || initialize.identity.tunnel_id != tunnel_id
             || initialize.identity.attachment_id != attachment_id
             || !valid_tunnel_identity(&initialize.identity.source_endpoint_id)

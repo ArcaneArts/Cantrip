@@ -5,6 +5,7 @@ import {
   type TerminalServerMessage,
   type WorkerLinkChannelCloseCode,
   type WorkerLinkLease,
+  type WorkerLinkRoute,
   type WorkerLinkResourceGrant,
 } from "@cantrip/protocol";
 
@@ -28,7 +29,7 @@ const RENEW_AHEAD_MS = 20_000;
 const MIN_RENEW_DELAY_MS = 1_000;
 
 export interface TerminalWorkerLinkConnection {
-  readonly route: "local" | "relay";
+  readonly route: WorkerLinkRoute;
   activate(): void;
   close(code?: WorkerLinkChannelCloseCode): void;
   send(message: TerminalClientMessage): boolean;
@@ -104,7 +105,7 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
   #outboundBytes = 0;
   readonly #outbound: Uint8Array[] = [];
   #renewTimer: ReturnType<typeof setTimeout> | null = null;
-  #route: "local" | "relay";
+  readonly #route: WorkerLinkRoute;
   readonly #sessionId: string;
   readonly #unsubscribe: Array<() => void>;
 
@@ -116,25 +117,17 @@ class ActiveTerminalWorkerLink implements TerminalWorkerLinkConnection {
     private readonly grant: WorkerLinkResourceGrant,
   ) {
     this.#sessionId = grant.binding.sessionId;
-    this.#route = reference.link.preferredRoute;
+    this.#route = stream.route;
     this.#unsubscribe = [
       stream.onData((payload) => this.#receive(payload)),
       stream.onWritable(() => this.#drainOutbound()),
       stream.onError(() => this.#retire("protocol-error", false)),
       stream.onClose((code) => this.#retire(code, false)),
-      reference.link.onRouteChanged((status) => {
-        if (
-          status.effectiveRoute === "local" ||
-          status.effectiveRoute === "relay"
-        ) {
-          this.#route = status.effectiveRoute;
-        }
-      }),
     ];
     this.#scheduleRenewal(grant.binding.lease);
   }
 
-  get route(): "local" | "relay" {
+  get route(): WorkerLinkRoute {
     return this.#route;
   }
 
