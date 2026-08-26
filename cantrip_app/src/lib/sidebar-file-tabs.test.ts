@@ -12,6 +12,7 @@ import {
   sidebarFileName,
   sidebarFilePreviewIsVisible,
   sidebarFilePreviewViewKey,
+  sidebarFileTargetGroupId,
   sidebarPathAtOrBelow,
   tabbedExplorerIds,
 } from "./sidebar-file-tabs";
@@ -143,6 +144,41 @@ describe("sidebar file tabs", () => {
         path: "src/index.ts",
       }),
     );
+  });
+
+  it("places sidebar files in the active tab group before a stale preview group", () => {
+    const preview = {
+      active: false,
+      explorerId: "sidebar-explorer",
+      groupId: "previous-group",
+      path: "src/previous.ts",
+      projectId: "project-1",
+    };
+
+    expect(
+      sidebarFileTargetGroupId({
+        activeGroupId: "current-group",
+        explorerId: "sidebar-explorer",
+        fallbackGroupId: "fallback-group",
+        preview,
+      }),
+    ).toBe("current-group");
+    expect(
+      sidebarFileTargetGroupId({
+        activeGroupId: null,
+        explorerId: "sidebar-explorer",
+        fallbackGroupId: "fallback-group",
+        preview,
+      }),
+    ).toBe("previous-group");
+    expect(
+      sidebarFileTargetGroupId({
+        activeGroupId: null,
+        explorerId: "other-explorer",
+        fallbackGroupId: "fallback-group",
+        preview,
+      }),
+    ).toBe("fallback-group");
   });
 
   it("only treats layout-backed matching files as pinned", () => {

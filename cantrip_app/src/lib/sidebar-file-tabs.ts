@@ -38,6 +38,24 @@ export function sidebarFilePreviewViewKey(
   return `sidebar-file-preview:${preview.explorerId}`;
 }
 
+export function sidebarFileTargetGroupId({
+  activeGroupId,
+  explorerId,
+  fallbackGroupId,
+  preview,
+}: {
+  activeGroupId: string | null | undefined;
+  explorerId: string;
+  fallbackGroupId: string | null | undefined;
+  preview: SidebarFilePreviewState | null;
+}): string | null {
+  if (activeGroupId) return activeGroupId;
+  if (preview?.explorerId === explorerId && preview.groupId) {
+    return preview.groupId;
+  }
+  return fallbackGroupId ?? null;
+}
+
 export function sidebarFilePreviewIsVisible({
   previewActive,
   previewExplorerAvailable,
