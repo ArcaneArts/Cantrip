@@ -34,7 +34,8 @@ const migratedConsumers = [
   },
   {
     path: "cantrip_app/src/components/browser/browser-view.tsx",
-    required: ["startDesktopTunnel"],
+    required: ["startDesktopTunnel", "useRemoteSurfaceWorkerLink"],
+    forbidden: ["remoteSurfaceWebSocketUrl", "useRemoteSurfaceTransport"],
   },
   {
     path: "cantrip_app/src/lib/terminal-worker-link.ts",
@@ -47,6 +48,26 @@ const migratedConsumers = [
   {
     path: "cantrip_app/src/lib/browser-code-worker-link-socket.ts",
     required: ["openTunnelWorkerLink"],
+  },
+  {
+    path: "cantrip_app/src/lib/remote-surface-worker-link.ts",
+    required: [
+      "workerLinkManager",
+      'openStream(grant, "interactive")',
+      'openStream(grant, "realtime")',
+    ],
+  },
+  {
+    path: "cantrip_worker/src/remote-surface-worker-link-adapter.ts",
+    required: [
+      "encodeWorkerLinkRemoteSurfaceChunk",
+      "pendingInteractive",
+      "pendingRealtime",
+    ],
+  },
+  {
+    path: "cantrip_worker/src/browser/browser-adapter.ts",
+    required: ["publishState(attachmentId)", "captureFrame(attachmentId)"],
   },
 ];
 
@@ -96,6 +117,11 @@ for (const consumer of migratedConsumers) {
       );
     }
   }
+  for (const identifier of consumer.forbidden ?? []) {
+    if (content.includes(identifier)) {
+      violations.push(`${consumer.path} must not retain ${identifier}`);
+    }
+  }
 }
 
 for (const platform of platformRequirements) {
@@ -126,6 +152,6 @@ if (violations.length > 0) {
   process.exitCode = 1;
 } else {
   console.log(
-    "Renderer Terminal, tunnels, project shares, and Code inherit WorkerLink-owned LOCAL/LAN/WAN/RELAY topology",
+    "Renderer Terminal, tunnels, project shares, Code, and Browser Remote Surface inherit WorkerLink-owned LOCAL/LAN/WAN/RELAY topology",
   );
 }

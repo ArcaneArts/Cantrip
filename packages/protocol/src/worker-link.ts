@@ -10,6 +10,11 @@ export const WORKER_LINK_PROTOCOL_VERSION = 1;
 export const WORKER_LINK_MAX_HEADER_BYTES = 8 * 1_024;
 export const WORKER_LINK_MAX_PAYLOAD_BYTES =
   8 + TUNNEL_DATA_PLANE_MAX_HEADER_BYTES + TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES;
+export const WORKER_LINK_REMOTE_SURFACE_CHUNK_HEADER_BYTES = 16;
+export const WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES =
+  WORKER_LINK_MAX_PAYLOAD_BYTES - WORKER_LINK_REMOTE_SURFACE_CHUNK_HEADER_BYTES;
+export const WORKER_LINK_REMOTE_SURFACE_MAX_FRAME_BYTES =
+  8 + 64 * 1_024 + 4 * 1_024 * 1_024;
 export const WORKER_LINK_MAX_CREDIT_BYTES = 8 * 1_024 * 1_024;
 export const WORKER_LINK_MAX_CHANNELS_PER_GRANT = 64;
 export const WORKER_LINK_MAX_GRANTS_PER_SESSION = 128;
@@ -1246,6 +1251,123 @@ export function decodeWorkerLinkFrame(frame: Uint8Array): {
   const payload = frame.subarray(payloadOffset);
   validatePayload(header, payload);
   return { header, payload };
+}
+
+const REMOTE_SURFACE_CHUNK_MAGIC = new Uint8Array([0x43, 0x54, 0x52, 0x4c]);
+
+export interface WorkerLinkRemoteSurfaceChunk {
+  frameId: number;
+  frameLength: number;
+  offset: number;
+  payload: Uint8Array;
+}
+
+export function encodeWorkerLinkRemoteSurfaceChunk(
+  chunk: WorkerLinkRemoteSurfaceChunk,
+): Uint8Array {
+  validateRemoteSurfaceChunk(chunk);
+  const encoded = new Uint8Array(
+    WORKER_LINK_REMOTE_SURFACE_CHUNK_HEADER_BYTES + chunk.payload.byteLength,
+  );
+  encoded.set(REMOTE_SURFACE_CHUNK_MAGIC, 0);
+  const view = new DataView(encoded.buffer);
+  view.setUint32(4, chunk.frameId, false);
+  view.setUint32(8, chunk.frameLength, false);
+  view.setUint32(12, chunk.offset, false);
+  encoded.set(chunk.payload, WORKER_LINK_REMOTE_SURFACE_CHUNK_HEADER_BYTES);
+  return encoded;
+}
+
+export function decodeWorkerLinkRemoteSurfaceChunk(
+  encoded: Uint8Array,
+): WorkerLinkRemoteSurfaceChunk {
+  if (
+    encoded.byteLength <= WORKER_LINK_REMOTE_SURFACE_CHUNK_HEADER_BYTES ||
+    encoded.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
+    !REMOTE_SURFACE_CHUNK_MAGIC.every(
+      (value, index) => encoded[index] === value,
+    )
+  ) {
+    throw new Error("WorkerLink Remote Surface chunk is invalid.");
+  }
+  const view = new DataView(
+    encoded.buffer,
+    encoded.byteOffset,
+    encoded.byteLength,
+  );
+  const chunk = {
+    frameId: view.getUint32(4, false),
+    frameLength: view.getUint32(8, false),
+    offset: view.getUint32(12, false),
+    payload: encoded.subarray(WORKER_LINK_REMOTE_SURFACE_CHUNK_HEADER_BYTES),
+  };
+  validateRemoteSurfaceChunk(chunk);
+  return chunk;
+}
+
+export class WorkerLinkRemoteSurfaceFrameAssembler {
+  #active:
+    | {
+        bytes: Uint8Array;
+        frameId: number;
+        offset: number;
+      }
+    | undefined;
+
+  constructor(private readonly replaceIncompleteOnFrameStart = false) {}
+
+  push(encoded: Uint8Array): Uint8Array | null {
+    const chunk = decodeWorkerLinkRemoteSurfaceChunk(encoded);
+    if (chunk.offset === 0) {
+      if (this.#active && !this.replaceIncompleteOnFrameStart) {
+        throw new Error(
+          "WorkerLink Remote Surface frame restarted before completion.",
+        );
+      }
+      this.#active = {
+        bytes: new Uint8Array(chunk.frameLength),
+        frameId: chunk.frameId,
+        offset: 0,
+      };
+    }
+    const active = this.#active;
+    if (
+      !active ||
+      active.frameId !== chunk.frameId ||
+      active.bytes.byteLength !== chunk.frameLength ||
+      active.offset !== chunk.offset
+    ) {
+      throw new Error("WorkerLink Remote Surface chunks are not contiguous.");
+    }
+    active.bytes.set(chunk.payload, chunk.offset);
+    active.offset += chunk.payload.byteLength;
+    if (active.offset !== active.bytes.byteLength) return null;
+    this.#active = undefined;
+    return active.bytes;
+  }
+
+  reset(): void {
+    this.#active = undefined;
+  }
+}
+
+function validateRemoteSurfaceChunk(chunk: WorkerLinkRemoteSurfaceChunk): void {
+  if (
+    !Number.isSafeInteger(chunk.frameId) ||
+    chunk.frameId < 0 ||
+    chunk.frameId > 0xffff_ffff ||
+    !Number.isSafeInteger(chunk.frameLength) ||
+    chunk.frameLength < 1 ||
+    chunk.frameLength > WORKER_LINK_REMOTE_SURFACE_MAX_FRAME_BYTES ||
+    !Number.isSafeInteger(chunk.offset) ||
+    chunk.offset < 0 ||
+    chunk.offset >= chunk.frameLength ||
+    chunk.payload.byteLength < 1 ||
+    chunk.payload.byteLength > WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES ||
+    chunk.offset + chunk.payload.byteLength > chunk.frameLength
+  ) {
+    throw new Error("WorkerLink Remote Surface chunk is out of bounds.");
+  }
 }
 
 export type WorkerLinkRoute = z.infer<typeof workerLinkRouteSchema>;

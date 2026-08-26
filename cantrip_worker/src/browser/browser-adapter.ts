@@ -411,6 +411,11 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       const attachment = this.#attachments.get(attachmentId);
       if (attachment) attachment.viewport = message.viewport;
       await this.configureViewport(message.viewport);
+      // The server creates the attachment before the client's two WorkerLink
+      // lanes open. Re-publish the current state and a fresh frame after the
+      // ready viewport message so no startup output depends on that race.
+      await this.publishState(attachmentId);
+      await this.captureFrame(attachmentId).catch(() => undefined);
     } else if (message.type === "pointer") {
       await this.pointer(message);
       if (

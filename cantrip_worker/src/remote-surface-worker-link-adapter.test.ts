@@ -1,6 +1,9 @@
 import {
   decodeRemoteSurfaceFrame,
   encodeRemoteSurfaceFrame,
+  encodeWorkerLinkRemoteSurfaceChunk,
+  WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
+  WorkerLinkRemoteSurfaceFrameAssembler,
   type InstalledWorkerLinkGrant,
   type RemoteSurfaceFrameHeader,
   type WorkerLinkSession,
@@ -82,6 +85,29 @@ function header(
   };
 }
 
+function chunk(frame: Uint8Array, frameId = 0, offset = 0): Uint8Array {
+  return encodeWorkerLinkRemoteSurfaceChunk({
+    frameId,
+    frameLength: frame.byteLength,
+    offset,
+    payload: frame.subarray(
+      offset,
+      Math.min(
+        frame.byteLength,
+        offset + WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
+      ),
+    ),
+  });
+}
+
+function assembled(calls: Uint8Array[][]): Uint8Array {
+  const assembler = new WorkerLinkRemoteSurfaceFrameAssembler(true);
+  let frame: Uint8Array | null = null;
+  for (const [payload] of calls) frame = assembler.push(payload!);
+  if (!frame) throw new Error("Expected a complete Remote Surface frame.");
+  return frame;
+}
+
 describe("RemoteSurfaceWorkerLinkAdapter", () => {
   it("isolates reliable control from disposable frame and cursor output", async () => {
     const frameRoute: { current?: FrameEmitter } = {};
@@ -143,7 +169,7 @@ describe("RemoteSurfaceWorkerLinkAdapter", () => {
     );
     expect(interactiveSend).toHaveBeenCalledTimes(1);
     expect(
-      decodeRemoteSurfaceFrame(interactiveSend.mock.calls[0]![0]).header
+      decodeRemoteSurfaceFrame(assembled(interactiveSend.mock.calls)).header
         .channel,
     ).toBe("control");
     expect(realtimeSend).toHaveBeenCalledTimes(2);
@@ -152,7 +178,7 @@ describe("RemoteSurfaceWorkerLinkAdapter", () => {
       header("control", 1),
       new Uint8Array([4, 5]),
     );
-    await interactiveChannel.write?.(clientFrame);
+    await interactiveChannel.write?.(chunk(clientFrame));
     expect(handleFrame).toHaveBeenCalledWith(
       header("control", 1),
       new Uint8Array([4, 5]),
@@ -215,7 +241,7 @@ describe("RemoteSurfaceWorkerLinkAdapter", () => {
     });
     expect(replacementSend).toHaveBeenCalledOnce();
     expect(
-      decodeRemoteSurfaceFrame(replacementSend.mock.calls[0]![0]).payload,
+      decodeRemoteSurfaceFrame(assembled(replacementSend.mock.calls)).payload,
     ).toEqual(new Uint8Array([7]));
   });
 
@@ -253,11 +279,119 @@ describe("RemoteSurfaceWorkerLinkAdapter", () => {
     ).rejects.toMatchObject({ code: "resource-unavailable" });
     await expect(
       channel.write?.(
-        encodeRemoteSurfaceFrame(
-          { ...header("control", 0), attachmentId: "another-attachment" },
-          new Uint8Array([1]),
+        chunk(
+          encodeRemoteSurfaceFrame(
+            { ...header("control", 0), attachmentId: "another-attachment" },
+            new Uint8Array([1]),
+          ),
         ),
       ),
     ).rejects.toThrow(/grant binding/u);
+  });
+
+  it("fragments multi-chunk control and realtime output below WorkerLink limits", async () => {
+    const frameRoute: { current?: FrameEmitter } = {};
+    const surfaces = {
+      bindAttachmentFrameEmitter(
+        _surfaceId: string,
+        _attachmentId: string,
+        _surfaceKind: "browser" | "desktop",
+        emit: FrameEmitter,
+      ) {
+        frameRoute.current = emit;
+        return () => undefined;
+      },
+      detach: vi.fn(async () => undefined),
+      handleFrame: vi.fn(async () => undefined),
+    };
+    const adapter = new RemoteSurfaceWorkerLinkAdapter(surfaces, {
+      resourceKind: "browser",
+      surfaceKind: "browser",
+    });
+    const interactiveSend = vi.fn((_payload: Uint8Array) => true);
+    const realtimeSend = vi.fn((_payload: Uint8Array) => true);
+    await adapter.open({
+      channel: {
+        channelId: "33333333-3333-4333-8333-333333333333",
+        connectionId: "44444444-4444-4444-8444-444444444444",
+      },
+      emit: emitter(interactiveSend),
+      grant,
+      lane: "interactive",
+      session,
+    });
+    await adapter.open({
+      channel: {
+        channelId: "55555555-5555-4555-8555-555555555555",
+        connectionId: "66666666-6666-4666-8666-666666666666",
+      },
+      emit: emitter(realtimeSend),
+      grant,
+      lane: "realtime",
+      session,
+    });
+    const payload = new Uint8Array(
+      WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES + 1,
+    ).fill(9);
+    expect(frameRoute.current?.(header("control", 0), payload)).toBe(true);
+    expect(frameRoute.current?.(header("frame", 0), payload)).toBe(true);
+    expect(interactiveSend).toHaveBeenCalledTimes(2);
+    expect(realtimeSend).toHaveBeenCalledTimes(2);
+    expect(
+      decodeRemoteSurfaceFrame(assembled(interactiveSend.mock.calls)).payload,
+    ).toEqual(payload);
+    expect(
+      decodeRemoteSurfaceFrame(assembled(realtimeSend.mock.calls)).payload,
+    ).toEqual(payload);
+  });
+
+  it("finishes a large realtime frame across credit returns", async () => {
+    const frameRoute: { current?: FrameEmitter } = {};
+    const surfaces = {
+      bindAttachmentFrameEmitter(
+        _surfaceId: string,
+        _attachmentId: string,
+        _surfaceKind: "browser" | "desktop",
+        emit: FrameEmitter,
+      ) {
+        frameRoute.current = emit;
+        return () => undefined;
+      },
+      detach: vi.fn(async () => undefined),
+      handleFrame: vi.fn(async () => undefined),
+    };
+    const adapter = new RemoteSurfaceWorkerLinkAdapter(surfaces, {
+      resourceKind: "browser",
+      surfaceKind: "browser",
+    });
+    let writableChunks = 1;
+    const realtimeSend = vi.fn((_payload: Uint8Array) => {
+      if (writableChunks < 1) return false;
+      writableChunks -= 1;
+      return true;
+    });
+    const realtime = await adapter.open({
+      channel: {
+        channelId: "55555555-5555-4555-8555-555555555555",
+        connectionId: "66666666-6666-4666-8666-666666666666",
+      },
+      emit: emitter(realtimeSend),
+      grant,
+      lane: "realtime",
+      session,
+    });
+    const payload = new Uint8Array(
+      WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES + 1,
+    ).fill(6);
+    expect(frameRoute.current?.(header("frame", 0), payload)).toBe(true);
+    expect(realtimeSend).toHaveBeenCalledTimes(2);
+    writableChunks = 1;
+    await realtime.credit?.(WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES);
+    expect(realtimeSend).toHaveBeenCalledTimes(3);
+    expect(
+      decodeRemoteSurfaceFrame(
+        assembled([realtimeSend.mock.calls[0]!, realtimeSend.mock.calls[2]!]),
+      ).payload,
+    ).toEqual(payload);
   });
 });

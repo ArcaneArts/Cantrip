@@ -50,7 +50,6 @@ import {
   getBrowserServices,
   getProjectBrowserServices,
   getWorkers,
-  remoteSurfaceWebSocketUrl,
 } from "@/lib/api";
 import {
   desktopTunnelAvailable,
@@ -66,11 +65,11 @@ import {
   remoteSurfacePointerCoordinates,
   remoteSurfaceTouchPoints,
 } from "@/lib/remote-surface-input";
-import {
-  useRemoteSurfaceTransport,
-  type RemoteSurfaceFrameContext,
-  type RemoteSurfaceInboundFrame,
-} from "@/lib/use-remote-surface-transport";
+import { useRemoteSurfaceWorkerLink } from "@/lib/use-remote-surface-worker-link";
+import type {
+  RemoteSurfaceWorkerLinkFrameContext,
+  RemoteSurfaceWorkerLinkInboundFrame,
+} from "@/lib/remote-surface-worker-link";
 
 const decoder = new TextDecoder();
 // The server permits a worker attachment to spend up to 30 seconds starting.
@@ -80,11 +79,7 @@ const decoder = new TextDecoder();
 export const BROWSER_STARTUP_FAILURE_GRACE_MS = 30_000;
 export const BROWSER_FRAME_POLICY = "latest" satisfies RemoteSurfaceFramePolicy;
 const browserTransportMessages = {
-  closeReason: "Browser view closed",
-  congestionReason: "Remote Surface connection is congested",
   connectionError: "Could not connect to the worker browser.",
-  invalidConnectionMessage:
-    "The server sent an invalid browser connection message.",
   invalidFrame: "The server sent an invalid browser frame.",
 };
 
@@ -325,7 +320,10 @@ export function BrowserView({
   }, [browser.id, browser.workerId, encryptionAttempt]);
 
   const handleFrame = useCallback(
-    (frame: RemoteSurfaceInboundFrame, context: RemoteSurfaceFrameContext) => {
+    (
+      frame: RemoteSurfaceWorkerLinkInboundFrame,
+      context: RemoteSurfaceWorkerLinkFrameContext,
+    ) => {
       if (frame.header.channel === "frame") {
         remoteCanvasRef.current?.pushFrame(frame.payload);
       } else if (frame.header.channel === "control") {
@@ -418,24 +416,18 @@ export function BrowserView({
     [browser.id],
   );
 
-  const {
-    activeTransport,
-    connectionState,
-    error,
-    retry,
-    sendFrame,
-    setError,
-  } = useRemoteSurfaceTransport({
-    enabled: encryptionReady,
-    streamKind: "browser",
-    surfaceKind: "browser",
-    surfaceId: browser.id,
-    webSocketUrl: () =>
-      remoteSurfaceWebSocketUrl(browser.id, viewportRef.current),
-    messages: browserTransportMessages,
-    onConnecting: () => remoteCanvasRef.current?.reset(),
-    onFrame: handleFrame,
-  });
+  const { activeRoute, connectionState, error, retry, sendFrame, setError } =
+    useRemoteSurfaceWorkerLink({
+      enabled: encryptionReady && Boolean(browser.workerId),
+      streamKind: "browser",
+      surfaceKind: "browser",
+      surfaceId: browser.id,
+      workerId: browser.workerId ?? "",
+      viewport: () => viewportRef.current,
+      messages: browserTransportMessages,
+      onConnecting: () => remoteCanvasRef.current?.reset(),
+      onFrame: handleFrame,
+    });
 
   const send = useCallback(
     (message: RemoteBrowserClientMessage) =>
@@ -657,7 +649,7 @@ export function BrowserView({
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div
         className="flex h-12 shrink-0 items-center gap-1.5 bg-background px-3"
-        data-remote-surface-transport={activeTransport ?? undefined}
+        data-remote-surface-route={activeRoute ?? undefined}
       >
         <Button
           type="button"

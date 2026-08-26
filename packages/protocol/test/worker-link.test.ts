@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   decodeTunnelDataPlaneFrame,
   decodeWorkerLinkFrame,
+  decodeWorkerLinkRemoteSurfaceChunk,
   encodeTunnelDataPlaneFrame,
   encodeWorkerLinkFrame,
+  encodeWorkerLinkRemoteSurfaceChunk,
   classifyWorkerLinkPeerAddress,
   filterWorkerLinkPeerSdp,
   isWorkerLinkFrame,
@@ -13,6 +15,8 @@ import {
   WORKER_LINK_MAX_PEER_CANDIDATES,
   WORKER_LINK_MAX_PEER_SIGNALS,
   WORKER_LINK_MAX_TELEMETRY_SAMPLES,
+  WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
+  WorkerLinkRemoteSurfaceFrameAssembler,
   workerLinkCoordinatorCommandSchema,
   workerLinkFrameHeaderSchema,
   workerLinkGrantBindingSchema,
@@ -696,6 +700,60 @@ describe("WorkerLink protocol", () => {
     expect(decodeTunnelDataPlaneFrame(decoded.payload).header.kind).toBe(
       "open",
     );
+  });
+
+  it("fragments and reassembles bounded Remote Surface frames", () => {
+    const frame = Uint8Array.from(
+      {
+        length: WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES + 17,
+      },
+      (_, index) => index % 251,
+    );
+    const assembler = new WorkerLinkRemoteSurfaceFrameAssembler();
+    const first = encodeWorkerLinkRemoteSurfaceChunk({
+      frameId: 7,
+      frameLength: frame.byteLength,
+      offset: 0,
+      payload: frame.subarray(
+        0,
+        WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
+      ),
+    });
+    const second = encodeWorkerLinkRemoteSurfaceChunk({
+      frameId: 7,
+      frameLength: frame.byteLength,
+      offset: WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
+      payload: frame.subarray(WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES),
+    });
+    expect(first.byteLength).toBe(WORKER_LINK_MAX_PAYLOAD_BYTES);
+    expect(decodeWorkerLinkRemoteSurfaceChunk(second)).toMatchObject({
+      frameId: 7,
+      frameLength: frame.byteLength,
+      offset: WORKER_LINK_REMOTE_SURFACE_CHUNK_PAYLOAD_BYTES,
+    });
+    expect(assembler.push(first)).toBeNull();
+    expect(assembler.push(second)).toEqual(frame);
+  });
+
+  it("rejects interrupted reliable frames but lets realtime restart", () => {
+    const first = encodeWorkerLinkRemoteSurfaceChunk({
+      frameId: 1,
+      frameLength: 4,
+      offset: 0,
+      payload: new Uint8Array([1, 2]),
+    });
+    const replacement = encodeWorkerLinkRemoteSurfaceChunk({
+      frameId: 2,
+      frameLength: 2,
+      offset: 0,
+      payload: new Uint8Array([3, 4]),
+    });
+    const reliable = new WorkerLinkRemoteSurfaceFrameAssembler();
+    expect(reliable.push(first)).toBeNull();
+    expect(() => reliable.push(replacement)).toThrow(/restarted/i);
+    const realtime = new WorkerLinkRemoteSurfaceFrameAssembler(true);
+    expect(realtime.push(first)).toBeNull();
+    expect(realtime.push(replacement)).toEqual(new Uint8Array([3, 4]));
   });
 
   it("rejects unknown fields, oversized payloads, and credit overflow", () => {
