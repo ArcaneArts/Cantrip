@@ -48,11 +48,13 @@ async function activate(
   port: number,
   grant: ReturnType<typeof binding>,
   secret: string,
+  tunnelRoute?: Parameters<DirectBroker["prepare"]>[0]["tunnelRoute"],
 ): Promise<WebSocket> {
   await broker.prepare({
     type: "direct.capability.prepare",
     binding: grant,
     secret,
+    ...(tunnelRoute ? { tunnelRoute } : {}),
   });
   const socket = await connect(port);
   const ready = new Promise<void>((resolve) =>
@@ -300,6 +302,151 @@ describe("DirectBroker", () => {
         revokedSecret,
       ),
     ).resolves.toBe(1008);
+  });
+
+  it("discards an exact queued frame after capability revocation without a protocol warning", async () => {
+    const broker = new DirectBroker();
+    brokers.push(broker);
+    const advertisement = await broker.start();
+    if (!advertisement.available) throw new Error("broker unavailable");
+    const attachmentId = randomUUID();
+    const tunnelId = randomUUID();
+    const grant = {
+      ...binding(),
+      resourceKind: "tunnel" as const,
+      resourceId: tunnelId,
+      attachmentId,
+      channels: ["tunnel-data"],
+    };
+    const route = {
+      tunnelId,
+      attachmentId,
+      sourceEndpointId: `desktop:client:${attachmentId}`,
+      destinationEndpointId: "worker:worker-1",
+      target: { kind: "tcp" as const, host: "127.0.0.1", port: 4173 },
+    };
+    const secret = randomBytes(32).toString("base64url");
+    const records: Array<{ context?: unknown; level: string }> = [];
+    const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
+    subscriptions.push(unsubscribe);
+    const socket = await activate(
+      broker,
+      advertisement.loopbackPort,
+      grant,
+      secret,
+      route,
+    );
+    const closed = new Promise<void>((resolve) =>
+      socket.once("close", () => resolve()),
+    );
+    const { target: _target, ...publicRoute } = route;
+    socket.send(
+      encodeTunnelDataPlaneFrame(
+        {
+          protocolVersion: 1,
+          ...publicRoute,
+          connectionId: randomUUID(),
+          sequence: 1,
+          kind: "data",
+          direction: "source-to-destination",
+        },
+        new Uint8Array([1]),
+      ),
+    );
+    expect(broker.revoke(grant.capabilityId, "test retirement")).toBe(true);
+    await closed;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "debug",
+          context: expect.objectContaining({
+            event: "direct.frame.discarded",
+            reasonCode: "retired-capability",
+            tunnelId,
+            attachmentId,
+          }),
+        }),
+      ]),
+    );
+    expect(records).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          context: expect.objectContaining({
+            event: "direct.frame.rejected",
+            reasonCode: "invalid-frame-sequence",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("keeps invalid frame sequences warning-level for an active capability", async () => {
+    const broker = new DirectBroker();
+    brokers.push(broker);
+    const advertisement = await broker.start();
+    if (!advertisement.available) throw new Error("broker unavailable");
+    const attachmentId = randomUUID();
+    const tunnelId = randomUUID();
+    const grant = {
+      ...binding(),
+      resourceKind: "tunnel" as const,
+      resourceId: tunnelId,
+      attachmentId,
+      channels: ["tunnel-data"],
+    };
+    const route = {
+      tunnelId,
+      attachmentId,
+      sourceEndpointId: `desktop:client:${attachmentId}`,
+      destinationEndpointId: "worker:worker-1",
+      target: { kind: "tcp" as const, host: "127.0.0.1", port: 4173 },
+    };
+    const secret = randomBytes(32).toString("base64url");
+    const records: Array<{ context?: unknown; level: string }> = [];
+    const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
+    subscriptions.push(unsubscribe);
+    const socket = await activate(
+      broker,
+      advertisement.loopbackPort,
+      grant,
+      secret,
+      route,
+    );
+    const closed = new Promise<number>((resolve) =>
+      socket.once("close", (code) => resolve(code)),
+    );
+    const { target: _target, ...publicRoute } = route;
+    socket.send(
+      encodeTunnelDataPlaneFrame(
+        {
+          protocolVersion: 1,
+          ...publicRoute,
+          connectionId: randomUUID(),
+          sequence: 1,
+          kind: "data",
+          direction: "source-to-destination",
+        },
+        new Uint8Array([1]),
+      ),
+    );
+
+    await expect(closed).resolves.toBe(1003);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          context: expect.objectContaining({
+            event: "direct.frame.rejected",
+            reasonCode: "invalid-frame-sequence",
+            tunnelId,
+            attachmentId,
+          }),
+        }),
+      ]),
+    );
   });
 
   it("injects the server-authorized target into direct tunnel frames", async () => {
