@@ -5052,9 +5052,16 @@ export async function createExplorer(
   worktreeId?: string,
   tabGroupId?: string,
   target?: ExecutionTarget,
-  attachToTabLayout = true,
+  options: {
+    attachToTabLayout?: boolean;
+    id?: string;
+    initialViewState?: ExplorerViewStateUpdate;
+  } = {},
 ) {
-  const id = crypto.randomUUID();
+  const id = options.id ?? crypto.randomUUID();
+  const initialViewState = options.initialViewState
+    ? explorerViewStateUpdateSchema.parse(options.initialViewState)
+    : null;
   const titleProtection = await surfaceTitleEncryption.protect(
     id,
     title,
@@ -5062,7 +5069,7 @@ export async function createExplorer(
   );
   const stateProtection = await surfaceTitleEncryption.protectExplorerState(
     id,
-    null,
+    initialViewState?.selectedPath ?? null,
   );
   return surfaceTitleEncryption.openExplorer(
     explorerWireSummarySchema.parse(
@@ -5073,7 +5080,8 @@ export async function createExplorer(
         ...(worktreeId ? { worktreeId } : {}),
         ...(tabGroupId ? { tabGroupId } : {}),
         ...(target ? { target } : {}),
-        attachToTabLayout,
+        ...(initialViewState ? { fileMode: initialViewState.fileMode } : {}),
+        attachToTabLayout: options.attachToTabLayout ?? true,
       }),
     ),
   );

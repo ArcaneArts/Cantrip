@@ -1,14 +1,29 @@
 import type { ExplorerSummary } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createElement, useEffect } from "react";
+import { createElement, StrictMode, useEffect } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const connections = vi.hoisted(() => ({
   created: [] as string[],
+  live: new Map<string, number>(),
+  minimumLive: Number.POSITIVE_INFINITY,
   ready: new Map<string, () => void>(),
   released: [] as string[],
+  tracking: false,
 }));
+
+function recordConnection(explorerId: string, delta: 1 | -1) {
+  const count = (connections.live.get(explorerId) ?? 0) + delta;
+  if (count > 0) connections.live.set(explorerId, count);
+  else connections.live.delete(explorerId);
+  if (connections.tracking) {
+    connections.minimumLive = Math.min(
+      connections.minimumLive,
+      [...connections.live.values()].reduce((total, value) => total + value, 0),
+    );
+  }
+}
 
 vi.mock("@/components/chat/markdown", () => ({
   Markdown: () => createElement("div"),
@@ -27,8 +42,10 @@ vi.mock("@/components/explorer/explorer-code-editor", () => ({
   }) => {
     useEffect(() => {
       connections.created.push(explorerId);
+      recordConnection(explorerId, 1);
       return () => {
         connections.released.push(explorerId);
+        recordConnection(explorerId, -1);
       };
     }, [explorerId]);
     useEffect(() => {
@@ -98,8 +115,11 @@ function explorer(id: string, selectedPath: string | null): ExplorerSummary {
 describe("Persistent Explorer Code ownership", () => {
   beforeEach(() => {
     connections.created.length = 0;
+    connections.live.clear();
+    connections.minimumLive = Number.POSITIVE_INFINITY;
     connections.ready.clear();
     connections.released.length = 0;
+    connections.tracking = false;
   });
 
   it("connects only actual open tabs when there is no preview owner", async () => {
@@ -282,6 +302,125 @@ describe("Persistent Explorer Code ownership", () => {
       ],
     ).toBe(true);
 
+    await act(async () => renderer.unmount());
+    client.clear();
+  });
+
+  it("keeps the captured source owner through POST and live-query ordering under StrictMode", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const preview = explorer("preview-explorer", null);
+    const pinned = explorer("pinned-explorer", "src/pinned.ts");
+    const ready = vi.fn();
+    const render = ({
+      activeExplorer,
+      handoffExplorer,
+      handoffSourceExplorer,
+      openExplorers,
+      prewarmExplorer,
+      transient,
+    }: {
+      activeExplorer: ExplorerSummary | null;
+      handoffExplorer?: ExplorerSummary;
+      handoffSourceExplorer?: ExplorerSummary;
+      openExplorers: ExplorerSummary[];
+      prewarmExplorer: ExplorerSummary | null;
+      transient: boolean;
+    }) =>
+      createElement(
+        StrictMode,
+        null,
+        createElement(
+          QueryClientProvider,
+          { client },
+          createElement(PersistentExplorerViews, {
+            activeExplorer,
+            appearance: "dark",
+            gitStatuses: {},
+            handoffExplorer,
+            handoffSourceExplorer,
+            onInlineCodeReady: ready,
+            openExplorers,
+            prewarmExplorer,
+            repositoryGraphAvailable: false,
+            transientFile: transient
+              ? {
+                  explorerId: preview.id,
+                  file: { close: vi.fn(), path: "src/pinned.ts" },
+                }
+              : undefined,
+          }),
+        ),
+      );
+    let renderer!: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      renderer = TestRenderer.create(
+        render({
+          activeExplorer: preview,
+          openExplorers: [],
+          prewarmExplorer: preview,
+          transient: true,
+        }),
+      );
+    });
+    expect(connections.live.get(preview.id)).toBe(1);
+
+    connections.tracking = true;
+    connections.minimumLive = 1;
+
+    // The transaction is registered before POST. Simulate a live-query
+    // snapshot that temporarily contains neither source nor destination.
+    await act(async () => {
+      renderer.update(
+        render({
+          activeExplorer: null,
+          handoffSourceExplorer: preview,
+          openExplorers: [],
+          prewarmExplorer: null,
+          transient: false,
+        }),
+      );
+    });
+    expect(connections.live.get(preview.id)).toBe(1);
+
+    // The layout event may expose the atomically initialized destination
+    // before the POST response is reconciled into handoff state.
+    await act(async () => {
+      renderer.update(
+        render({
+          activeExplorer: null,
+          handoffSourceExplorer: preview,
+          openExplorers: [pinned],
+          prewarmExplorer: null,
+          transient: false,
+        }),
+      );
+    });
+    expect(connections.live.get(preview.id)).toBe(1);
+    expect(connections.live.get(pinned.id)).toBe(1);
+
+    await act(async () => connections.ready.get(pinned.id)?.());
+    expect(ready).toHaveBeenCalledWith(pinned.id);
+
+    // Only exact-path readiness permits the source owner to leave.
+    await act(async () => {
+      renderer.update(
+        render({
+          activeExplorer: pinned,
+          handoffExplorer: pinned,
+          openExplorers: [pinned],
+          prewarmExplorer: null,
+          transient: false,
+        }),
+      );
+    });
+    expect(connections.live.has(preview.id)).toBe(false);
+    expect(connections.live.get(pinned.id)).toBe(1);
+    expect(connections.minimumLive).toBeGreaterThanOrEqual(1);
+
+    connections.tracking = false;
     await act(async () => renderer.unmount());
     client.clear();
   });

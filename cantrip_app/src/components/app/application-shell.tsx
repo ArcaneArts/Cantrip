@@ -623,6 +623,15 @@ function codeAppearanceFor(
 
 const SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS = 20_000;
 
+interface SidebarFilePinHandoffState {
+  destinationExplorer: ExplorerSummary | null;
+  destinationExplorerId: string;
+  ready: boolean;
+  sourceExplorer: ExplorerSummary;
+  sourcePath: string;
+  transactionId: string;
+}
+
 const TerminalView = lazy(() =>
   import("@/components/terminal/terminal-view").then((module) => ({
     default: module.TerminalView,
@@ -3902,12 +3911,10 @@ export function App() {
   );
   const [sidebarFilePreview, setSidebarFilePreview] =
     useState<SidebarFilePreviewState | null>(null);
-  const [sidebarFilePinHandoff, setSidebarFilePinHandoff] = useState<{
-    explorer: ExplorerSummary;
-    ready: boolean;
-    sourceExplorerId: string;
-    sourcePath: string;
-  } | null>(null);
+  const [sidebarFilePinHandoff, setSidebarFilePinHandoff] =
+    useState<SidebarFilePinHandoffState | null>(null);
+  const sidebarFilePinHandoffRef = useRef(sidebarFilePinHandoff);
+  sidebarFilePinHandoffRef.current = sidebarFilePinHandoff;
   const [explorerGraphRequest, setExplorerGraphRequest] =
     useState<ExplorerGraphRequest | null>(null);
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
@@ -5189,7 +5196,7 @@ export function App() {
         worktreeId,
         undefined,
         undefined,
-        false,
+        { attachToTabLayout: false },
       ),
     onError: (_error, input) => {
       sidebarExplorerCreationKeyRef.current = `${input.projectId}:${input.worktreeId ?? "default"}`;
@@ -5209,31 +5216,63 @@ export function App() {
   });
   const pinSidebarFileMutation = useMutation({
     mutationFn: async ({
+      destinationExplorerId,
       explorer,
       groupId,
       path,
     }: {
+      destinationExplorerId: string;
       explorer: ExplorerSummary;
       groupId: string | null;
       path: string;
+      transactionId: string;
     }) => {
-      const created = await createExplorer(
+      return createExplorer(
         explorer.projectId,
         sidebarFileName(path),
         explorer.worktreeId,
         groupId ?? undefined,
+        undefined,
+        {
+          id: destinationExplorerId,
+          initialViewState: {
+            fileMode: defaultExplorerFileMode(path),
+            selectedPath: path,
+          },
+        },
       );
-      try {
-        return await updateExplorerViewState(created.id, {
-          fileMode: defaultExplorerFileMode(path),
-          selectedPath: path,
-        });
-      } catch (error) {
-        await deleteExplorer(created.id).catch(() => undefined);
-        throw error;
-      }
     },
     onSuccess: (explorer, input) => {
+      const handoff = sidebarFilePinHandoffRef.current;
+      if (!handoff || handoff.transactionId !== input.transactionId) {
+        void deleteExplorer(explorer.id).catch(() => undefined);
+        return;
+      }
+      const expectedFileMode = defaultExplorerFileMode(input.path);
+      if (
+        explorer.id !== input.destinationExplorerId ||
+        explorer.selectedPath !== input.path ||
+        explorer.fileMode !== expectedFileMode
+      ) {
+        queryClient.setQueryData<ExplorerSummary[]>(
+          ["explorers", handoff.sourceExplorer.projectId],
+          (current = []) =>
+            [
+              ...current.filter(({ id }) => id !== handoff.sourceExplorer.id),
+              handoff.sourceExplorer,
+            ].sort((left, right) => left.position - right.position),
+        );
+        sidebarFilePinHandoffRef.current = null;
+        setSidebarFilePinHandoff(null);
+        void deleteExplorer(explorer.id).catch(() => undefined);
+        setPopoutError(
+          "The pinned Explorer did not preserve the requested file state. The preview remains open.",
+        );
+        return;
+      }
+      const nextHandoff = { ...handoff, destinationExplorer: explorer };
+      sidebarFilePinHandoffRef.current = nextHandoff;
+      setSidebarFilePinHandoff(nextHandoff);
       queryClient.setQueryData<ExplorerSummary[]>(
         ["explorers", explorer.projectId],
         (current = []) =>
@@ -5251,20 +5290,32 @@ export function App() {
         explorer.selectedPath &&
         usesCantripCodeEditor(explorer.selectedPath, explorer.fileMode)
       ) {
-        // The pinned tab needs its own Code owner. Keep the existing preview
-        // visible while that new owner connects behind it.
-        setSidebarFilePinHandoff({
-          explorer,
-          ready: false,
-          sourceExplorerId: input.explorer.id,
-          sourcePath: input.path,
-        });
+        // The transaction already owns the source. Keep both owners mounted
+        // until the exact destination path reports ready.
         return;
       }
+      sidebarFilePinHandoffRef.current = null;
+      setSidebarFilePinHandoff(null);
       setSidebarFilePreview(null);
       openCreatedTab(explorer.projectId, "explorer", explorer.id);
     },
-    onError: (error) => setPopoutError(errorText(error)),
+    onError: (error, input) => {
+      const handoff = sidebarFilePinHandoffRef.current;
+      if (handoff?.transactionId === input.transactionId) {
+        queryClient.setQueryData<ExplorerSummary[]>(
+          ["explorers", handoff.sourceExplorer.projectId],
+          (current = []) =>
+            [
+              ...current.filter(({ id }) => id !== handoff.sourceExplorer.id),
+              handoff.sourceExplorer,
+            ].sort((left, right) => left.position - right.position),
+        );
+        sidebarFilePinHandoffRef.current = null;
+        setSidebarFilePinHandoff(null);
+        void deleteExplorer(input.destinationExplorerId).catch(() => undefined);
+      }
+      setPopoutError(errorText(error));
+    },
   });
   const openProjectExplorerFile = (
     projectId: string,
@@ -6186,11 +6237,19 @@ export function App() {
   const sidebarDesiredWorktreeId =
     surfaceWorktreeId(selectedSurface) ??
     primaryWorktreeId(worktrees.data ?? []);
-  const sidebarPreviewExplorer = sidebarFilePreview
+  const queriedSidebarPreviewExplorer = sidebarFilePreview
     ? (explorers.data?.find(
         (explorer) => explorer.id === sidebarFilePreview.explorerId,
       ) ?? null)
     : null;
+  const sidebarPreviewExplorer =
+    queriedSidebarPreviewExplorer ??
+    (sidebarFilePreview &&
+    sidebarFilePinHandoff?.sourceExplorer.id ===
+      sidebarFilePreview.explorerId &&
+    sidebarFilePinHandoff.sourcePath === sidebarFilePreview.path
+      ? sidebarFilePinHandoff.sourceExplorer
+      : null);
   const sidebarExplorer = preferredSidebarExplorer({
     desiredWorktreeId: sidebarDesiredWorktreeId,
     explorers: explorers.data ?? [],
@@ -6234,84 +6293,126 @@ export function App() {
   );
   const sidebarFilePreviewRef = useRef(sidebarFilePreview);
   sidebarFilePreviewRef.current = sidebarFilePreview;
-  const sidebarFilePinHandoffRef = useRef(sidebarFilePinHandoff);
-  sidebarFilePinHandoffRef.current = sidebarFilePinHandoff;
   const selectedProjectIdRef = useRef(selectedProjectId);
   selectedProjectIdRef.current = selectedProjectId;
   const openCreatedTabRef = useRef(openCreatedTab);
   openCreatedTabRef.current = openCreatedTab;
+  const abandonSidebarFilePinHandoff = useCallback(
+    (handoff: SidebarFilePinHandoffState, message?: string) => {
+      if (
+        sidebarFilePinHandoffRef.current?.transactionId !==
+        handoff.transactionId
+      ) {
+        return;
+      }
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", handoff.sourceExplorer.projectId],
+        (current = []) =>
+          [
+            ...current.filter(({ id }) => id !== handoff.sourceExplorer.id),
+            handoff.sourceExplorer,
+          ].sort((left, right) => left.position - right.position),
+      );
+      sidebarFilePinHandoffRef.current = null;
+      setSidebarFilePinHandoff(null);
+      void deleteExplorer(handoff.destinationExplorerId)
+        .catch(() => undefined)
+        .finally(() => {
+          void queryClient.invalidateQueries({
+            queryKey: ["explorers", handoff.sourceExplorer.projectId],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: ["project-tab-layout", handoff.sourceExplorer.projectId],
+          });
+        });
+      if (message) setPopoutError(message);
+    },
+    [queryClient],
+  );
   const completeSidebarFilePinHandoff = useCallback(
     (explorerId: string) => {
       const handoff = sidebarFilePinHandoffRef.current;
-      if (!handoff || handoff.ready || handoff.explorer.id !== explorerId) {
+      if (!handoff || handoff.destinationExplorerId !== explorerId) {
         return;
       }
-      const readyHandoff = { ...handoff, ready: true };
-      sidebarFilePinHandoffRef.current = readyHandoff;
-      setSidebarFilePinHandoff(readyHandoff);
+      const readyHandoff = handoff.ready
+        ? handoff
+        : { ...handoff, ready: true };
+      if (!handoff.ready) {
+        sidebarFilePinHandoffRef.current = readyHandoff;
+        setSidebarFilePinHandoff(readyHandoff);
+      }
+      const destination = readyHandoff.destinationExplorer;
+      if (!destination) return;
       const preview = sidebarFilePreviewRef.current;
       if (
         preview?.active &&
-        selectedProjectIdRef.current === handoff.explorer.projectId &&
-        preview.explorerId === handoff.sourceExplorerId &&
-        preview.path === handoff.sourcePath
+        selectedProjectIdRef.current === destination.projectId &&
+        preview.explorerId === readyHandoff.sourceExplorer.id &&
+        preview.path === readyHandoff.sourcePath
       ) {
         sidebarFilePreviewLifecycleRef.current = null;
         sidebarFilePreviewRef.current = null;
         setSidebarFilePreview(null);
         openCreatedTabRef.current(
-          handoff.explorer.projectId,
+          destination.projectId,
           "explorer",
-          handoff.explorer.id,
+          destination.id,
         );
         return;
       }
       void queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", handoff.explorer.projectId],
+        queryKey: ["project-tab-layout", destination.projectId],
       });
     },
     [queryClient],
   );
   useEffect(() => {
     if (!sidebarFilePinHandoff) return;
-    const handoffStillExists =
-      !explorers.isSuccess ||
-      Boolean(
-        explorers.data?.some(
-          ({ id }) => id === sidebarFilePinHandoff.explorer.id,
-        ),
-      );
+    if (sidebarFilePinHandoff.sourceExplorer.projectId === selectedProjectId) {
+      return;
+    }
+    abandonSidebarFilePinHandoff(sidebarFilePinHandoff);
+  }, [abandonSidebarFilePinHandoff, selectedProjectId, sidebarFilePinHandoff]);
+  useEffect(() => {
     if (
-      sidebarFilePinHandoff.explorer.projectId === selectedProjectId &&
-      handoffStillExists
+      !sidebarFilePinHandoff ||
+      (sidebarFilePinHandoff.ready && sidebarFilePinHandoff.destinationExplorer)
     ) {
       return;
     }
-    sidebarFilePinHandoffRef.current = null;
-    setSidebarFilePinHandoff(null);
-  }, [
-    explorers.data,
-    explorers.isSuccess,
-    selectedProjectId,
-    sidebarFilePinHandoff,
-  ]);
-  useEffect(() => {
-    if (!sidebarFilePinHandoff || sidebarFilePinHandoff.ready) return;
-    const explorerId = sidebarFilePinHandoff.explorer.id;
-    const timeout = setTimeout(
-      () => completeSidebarFilePinHandoff(explorerId),
-      SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS,
-    );
+    const timeout = setTimeout(() => {
+      abandonSidebarFilePinHandoff(
+        sidebarFilePinHandoff,
+        "The pinned editor did not become ready. The preview remains open.",
+      );
+    }, SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS);
     return () => clearTimeout(timeout);
   }, [
-    completeSidebarFilePinHandoff,
-    sidebarFilePinHandoff?.explorer.id,
+    abandonSidebarFilePinHandoff,
+    sidebarFilePinHandoff,
+    sidebarFilePinHandoff?.destinationExplorerId,
     sidebarFilePinHandoff?.ready,
   ]);
   useEffect(() => {
     if (
       !sidebarFilePinHandoff?.ready ||
-      !openExplorerIds.has(sidebarFilePinHandoff.explorer.id)
+      !sidebarFilePinHandoff.destinationExplorer
+    ) {
+      return;
+    }
+    completeSidebarFilePinHandoff(sidebarFilePinHandoff.destinationExplorerId);
+  }, [
+    completeSidebarFilePinHandoff,
+    sidebarFilePinHandoff?.destinationExplorer,
+    sidebarFilePinHandoff?.destinationExplorerId,
+    sidebarFilePinHandoff?.ready,
+  ]);
+  useEffect(() => {
+    if (
+      !sidebarFilePinHandoff?.ready ||
+      !sidebarFilePinHandoff.destinationExplorer ||
+      !openExplorerIds.has(sidebarFilePinHandoff.destinationExplorerId)
     ) {
       return;
     }
@@ -7995,16 +8096,55 @@ export function App() {
       focusPinnedSidebarFile(pinned);
       return;
     }
+    const currentHandoff = sidebarFilePinHandoffRef.current;
+    if (currentHandoff) {
+      // Double-click emits both click and double-click activity. Treat an
+      // exact repeated pin as the same transaction and serialize other pins
+      // until its destination either becomes ready or is abandoned.
+      if (
+        currentHandoff.sourceExplorer.id === explorer.id &&
+        currentHandoff.sourcePath === path
+      ) {
+        return;
+      }
+      return;
+    }
+    const handoff: SidebarFilePinHandoffState = {
+      destinationExplorer: null,
+      destinationExplorerId: crypto.randomUUID(),
+      ready: false,
+      sourceExplorer: explorer,
+      sourcePath: path,
+      transactionId: crypto.randomUUID(),
+    };
+    sidebarFilePinHandoffRef.current = handoff;
+    setSidebarFilePinHandoff(handoff);
     const previewLifecycle =
       sidebarFilePreview?.explorerId === explorer.id &&
       sidebarFilePreview.path === path
         ? sidebarFilePreviewLifecycleRef.current
         : null;
-    if (previewLifecycle?.dirty && !(await previewLifecycle.save())) return;
+    if (previewLifecycle?.dirty && !(await previewLifecycle.save())) {
+      if (
+        sidebarFilePinHandoffRef.current?.transactionId ===
+        handoff.transactionId
+      ) {
+        sidebarFilePinHandoffRef.current = null;
+        setSidebarFilePinHandoff(null);
+      }
+      return;
+    }
+    if (
+      sidebarFilePinHandoffRef.current?.transactionId !== handoff.transactionId
+    ) {
+      return;
+    }
     pinSidebarFileMutation.mutate({
+      destinationExplorerId: handoff.destinationExplorerId,
       explorer,
       groupId: sidebarFileGroupId(explorer),
       path,
+      transactionId: handoff.transactionId,
     });
   };
   const pinSidebarFile = (explorer: ExplorerSummary, entry: ExplorerEntry) => {
@@ -8226,6 +8366,14 @@ export function App() {
       )
     ) {
       return;
+    }
+    const handoff = sidebarFilePinHandoffRef.current;
+    if (
+      handoff &&
+      sidebarFilePreview?.explorerId === handoff.sourceExplorer.id &&
+      sidebarFilePreview.path === handoff.sourcePath
+    ) {
+      abandonSidebarFilePinHandoff(handoff);
     }
     sidebarFilePreviewLifecycleRef.current = null;
     setSidebarFilePreview(null);
@@ -9616,8 +9764,15 @@ export function App() {
             graphRequest={explorerGraphRequest}
             gitStatuses={worktreeStatuses}
             handoffExplorer={
-              sidebarFilePinHandoff?.explorer.projectId === selectedProjectId
-                ? sidebarFilePinHandoff.explorer
+              sidebarFilePinHandoff?.destinationExplorer?.projectId ===
+              selectedProjectId
+                ? sidebarFilePinHandoff.destinationExplorer
+                : null
+            }
+            handoffSourceExplorer={
+              sidebarFilePinHandoff?.sourceExplorer.projectId ===
+              selectedProjectId
+                ? sidebarFilePinHandoff.sourceExplorer
                 : null
             }
             key={selectedProjectId ?? "no-project"}

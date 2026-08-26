@@ -78,10 +78,17 @@ export function ownedExplorerSurfaceTabs(
   active: ExplorerSummary | null,
   prewarm: ExplorerSummary | null | undefined,
   handoff?: ExplorerSummary | null,
+  handoffSource?: ExplorerSummary | null,
 ): ExplorerSummary[] {
   const owned: ExplorerSummary[] = [];
   const indexById = new Map<string, number>();
-  for (const explorer of [...openExplorers, prewarm, handoff, active]) {
+  for (const explorer of [
+    ...openExplorers,
+    prewarm,
+    handoffSource,
+    handoff,
+    active,
+  ]) {
     if (!explorer) continue;
     const existingIndex = indexById.get(explorer.id);
     if (existingIndex === undefined) {
@@ -101,6 +108,7 @@ export function PersistentExplorerViews({
   graphRequest,
   gitStatuses,
   handoffExplorer,
+  handoffSourceExplorer,
   onlineWorkerIds,
   onChanged,
   onHeaderChange,
@@ -124,6 +132,7 @@ export function PersistentExplorerViews({
   graphRequest?: ExplorerGraphRequest | null;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
   handoffExplorer?: ExplorerSummary | null;
+  handoffSourceExplorer?: ExplorerSummary | null;
   onlineWorkerIds?: ReadonlySet<string>;
   onChanged?(explorer: ExplorerSummary): void;
   onHeaderChange?(state: ExplorerHeaderState | null): void;
@@ -186,6 +195,7 @@ export function PersistentExplorerViews({
             activeExplorer,
             prewarmExplorer,
             handoffExplorer,
+            handoffSourceExplorer,
           )
         : ownedExplorerSurfaceTabs(
             retainRequestedExplorerSurfaceTabs(
@@ -198,11 +208,13 @@ export function PersistentExplorerViews({
             activeExplorer,
             prewarmExplorer,
             handoffExplorer,
+            handoffSourceExplorer,
           ),
     [
       activeExplorer,
       dirtyIds,
       handoffExplorer,
+      handoffSourceExplorer,
       openExplorers,
       prewarmExplorer,
       retainedExplorers,
@@ -216,8 +228,11 @@ export function PersistentExplorerViews({
         // A pin handoff becomes an ordinary open owner after the layout
         // refresh, without changing the keyed ExplorerView instance.
         ...(handoffExplorer ? [handoffExplorer.id] : []),
+        // The source is captured before the create request so query/layout
+        // reconciliation cannot release the last Code transport lease.
+        ...(handoffSourceExplorer ? [handoffSourceExplorer.id] : []),
       ]),
-    [handoffExplorer, openExplorers],
+    [handoffExplorer, handoffSourceExplorer, openExplorers],
   );
 
   const handleLifecycleChange = useCallback(
