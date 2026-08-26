@@ -345,8 +345,12 @@ Tauri additionally owns TCP listeners used by unrelated desktop programs.
 localhost bridge into the WebView's existing WebRTC session. The native Rust
 tunnel engine keeps its stable listener, endpoint encryption, nested tunnel
 framing, half-close, and backpressure; a loopback-only, generation-fenced
-WebSocket hands the physical WorkerLink stream to the renderer. Carrier failure
-replaces that bridge stream without rebinding the public localhost port.
+WebSocket hands the physical WorkerLink stream to the renderer. Its one-use,
+30-second claim is fenced by native-forward and renderer-claim generations, and
+the handshake binds the exact WorkerLink session, account session, client
+instance, worker process, route, grant, channel, connection, tunnel, and
+attachment identities. Carrier failure rotates the claim and replaces only that
+bridge stream without rebinding the public localhost port.
 
 Native Rust WebRTC was rejected because it would duplicate the client ICE,
 DTLS, signaling, candidate policy, and QoS implementation. A server-pinned raw
@@ -706,9 +710,9 @@ None of these WorkerLink controls permits TURN.
 
 - Benchmark the native Rust WebRTC, pinned peer socket, and bounded WebView
   bridge alternatives.
-- Implement the selected native carrier beneath the common interface.
-- Route Code and generic desktop tunnels over LAN and WAN.
-- Preserve Tauri localhost listener ports across carrier reconnects.
+- Implement the selected native carrier beneath the common interface. Complete.
+- Route Code and generic desktop tunnels over LAN and WAN. Complete.
+- Preserve Tauri localhost listener ports across carrier reconnects. Complete.
 
 ### Phase 5: Feature consolidation
 

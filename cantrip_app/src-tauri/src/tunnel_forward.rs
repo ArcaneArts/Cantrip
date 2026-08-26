@@ -55,6 +55,10 @@ pub struct PrepareWorkerLinkTunnelForwardRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkerLinkTunnelBridge {
+    pub claim_generation: u64,
+    pub claim_id: String,
+    pub expires_at_epoch_ms: u64,
+    pub native_forward_generation: String,
     pub token: String,
     pub url: String,
 }
@@ -187,6 +191,7 @@ pub struct TunnelForwardSummary {
     pub expires_at: String,
     pub local_host: &'static str,
     pub local_port: u16,
+    pub effective_route: Option<String>,
     pub route_state: &'static str,
     pub relay_fallback_available: bool,
     pub relay_credential_expires_at_epoch_ms: Option<u64>,
@@ -444,6 +449,38 @@ pub fn claim_worker_link_tunnel_bridge(
             code_pool_generation,
             lease_id,
             window_instance_id,
+        );
+        Err("Local tunnel attachments are only available in the desktop app.".into())
+    }
+}
+
+#[tauri::command]
+pub fn rotate_worker_link_tunnel_bridge_claim(
+    state: State<'_, TunnelForwards>,
+    tunnel_id: String,
+    attachment_id: String,
+    native_forward_generation: String,
+    claim_generation: u64,
+    claim_id: String,
+) -> Result<Option<WorkerLinkTunnelBridge>, String> {
+    #[cfg(desktop)]
+    return desktop::rotate_worker_link_bridge_claim(
+        &state,
+        &tunnel_id,
+        &attachment_id,
+        &native_forward_generation,
+        claim_generation,
+        &claim_id,
+    );
+    #[cfg(mobile)]
+    {
+        let _ = (
+            state,
+            tunnel_id,
+            attachment_id,
+            native_forward_generation,
+            claim_generation,
+            claim_id,
         );
         Err("Local tunnel attachments are only available in the desktop app.".into())
     }
@@ -918,6 +955,7 @@ mod desktop {
     const CODE_TRANSPORT_TERMINAL_RETENTION: Duration = Duration::from_secs(10 * 60);
     const MAX_TERMINATED_CODE_TRANSPORTS: usize = 256;
     const WORKER_LINK_BRIDGE_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+    const WORKER_LINK_BRIDGE_CLAIM_LIFETIME: Duration = Duration::from_secs(30);
     const WORKER_LINK_BRIDGE_MAX_INVALID_ATTEMPTS: usize = 8;
     const WORKER_LINK_BRIDGE_INVALID_BACKOFF: Duration = Duration::from_secs(1);
 
@@ -933,16 +971,55 @@ mod desktop {
     }
 
     struct StoredWorkerLinkBridge {
-        token: Zeroizing<String>,
+        claim: Arc<Mutex<WorkerLinkBridgeClaim>>,
+        native_forward_generation: String,
         url: String,
     }
 
+    struct WorkerLinkBridgeClaim {
+        generation: u64,
+        id: String,
+        expires_at_epoch_ms: u64,
+        token: Zeroizing<String>,
+    }
+
     impl StoredWorkerLinkBridge {
-        fn expose(&self) -> WorkerLinkTunnelBridge {
-            WorkerLinkTunnelBridge {
-                token: self.token.to_string(),
+        fn expose(&self) -> Result<WorkerLinkTunnelBridge, String> {
+            let claim = self
+                .claim
+                .lock()
+                .map_err(|_| "The native WorkerLink bridge claim is unavailable.".to_string())?;
+            Ok(WorkerLinkTunnelBridge {
+                claim_generation: claim.generation,
+                claim_id: claim.id.clone(),
+                expires_at_epoch_ms: claim.expires_at_epoch_ms,
+                native_forward_generation: self.native_forward_generation.clone(),
+                token: claim.token.to_string(),
                 url: self.url.clone(),
+            })
+        }
+
+        fn rotate(
+            &self,
+            expected_generation: Option<u64>,
+            expected_id: Option<&str>,
+            claim_id: &str,
+        ) -> Result<Option<WorkerLinkTunnelBridge>, String> {
+            let mut claim = self
+                .claim
+                .lock()
+                .map_err(|_| "The native WorkerLink bridge claim is unavailable.".to_string())?;
+            if expected_generation.is_some_and(|expected| expected != claim.generation)
+                || expected_id.is_some_and(|expected| expected != claim.id)
+            {
+                return Ok(None);
             }
+            claim.generation = claim.generation.saturating_add(1);
+            claim.id = claim_id.to_string();
+            claim.expires_at_epoch_ms = bridge_claim_expiration();
+            claim.token = Zeroizing::new(new_bridge_token());
+            drop(claim);
+            self.expose().map(Some)
         }
     }
 
@@ -1196,12 +1273,16 @@ mod desktop {
             summary.connections_closed = self.connections_closed.load(Ordering::Relaxed);
             summary.connections_opened = self.connections_opened.load(Ordering::Relaxed);
             summary.destination_rejected_count = self.destination_rejected.load(Ordering::Relaxed);
-            summary.route_state = match self.route_state.load(Ordering::Relaxed) {
+            let route_state = self.route_state.load(Ordering::Relaxed);
+            summary.route_state = match route_state {
                 1 => "local-direct",
                 2 => "relayed",
                 3 => "degraded",
                 _ => summary.route_state,
             };
+            if route_state == 3 {
+                summary.effective_route = None;
+            }
             summary.last_destination_rejection_code = self
                 .last_destination_rejection_code
                 .lock()
@@ -1525,10 +1606,32 @@ mod desktop {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct WorkerLinkBridgeInitialize {
+        authority: WorkerLinkBridgeAuthority,
+        claim_generation: u64,
+        claim_id: String,
+        native_forward_generation: String,
         r#type: String,
         token: String,
         route: String,
         identity: WorkerLinkBridgeRouteIdentity,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct WorkerLinkBridgeAuthority {
+        account_session_id: String,
+        channel_id: String,
+        client_instance_id: String,
+        connection_id: String,
+        grant_generation: u64,
+        grant_id: String,
+        owner_id: String,
+        route_generation: u64,
+        server_generation: String,
+        server_id: String,
+        session_id: String,
+        worker_id: String,
+        worker_process_generation: String,
     }
 
     #[derive(Deserialize)]
@@ -1545,6 +1648,8 @@ mod desktop {
     struct WorkerLinkBridgeReady<'a> {
         r#type: &'static str,
         attachment_id: &'a str,
+        claim_generation: u64,
+        native_forward_generation: &'a str,
         tunnel_id: &'a str,
     }
 
@@ -3218,6 +3323,11 @@ mod desktop {
             expires_at: summary_identity.2,
             local_host: "127.0.0.1",
             local_port,
+            effective_route: match startup.state {
+                "local-direct" => Some("local".into()),
+                "relayed" => Some("relay".into()),
+                _ => None,
+            },
             route_state: startup.state,
             relay_fallback_available,
             relay_credential_expires_at_epoch_ms: summary_identity.3,
@@ -3284,7 +3394,7 @@ mod desktop {
             preferred_local_port,
             server_url: _,
             tunnel_id,
-            worker_id: _,
+            worker_id,
         } = request;
         let protection = data_protection(Some(protection_request))?;
         let _start_reservation = reserve_forward_start(state, &tunnel_id, code_pool_generation)?;
@@ -3299,13 +3409,19 @@ mod desktop {
             .local_addr()
             .map_err(|error| format!("Could not inspect the tunnel bridge listener: {error}"))?
             .port();
-        let bridge_token = URL_SAFE_NO_PAD.encode(Aes256Gcm::generate_key(&mut OsRng));
+        let native_forward_generation = Uuid::new_v4().to_string();
+        let bridge_claim = Arc::new(Mutex::new(WorkerLinkBridgeClaim {
+            generation: 1,
+            id: Uuid::new_v4().to_string(),
+            expires_at_epoch_ms: bridge_claim_expiration(),
+            token: Zeroizing::new(new_bridge_token()),
+        }));
         let bridge = StoredWorkerLinkBridge {
-            token: Zeroizing::new(bridge_token),
+            claim: bridge_claim.clone(),
+            native_forward_generation: native_forward_generation.clone(),
             url: format!("ws://127.0.0.1:{bridge_port}/worker-link-tunnel"),
         };
-        let task_token = Zeroizing::new(bridge.token.to_string());
-        let exposed_bridge = bridge.expose();
+        let exposed_bridge = bridge.expose()?;
         let code_pool_generation = code_pool_generation.map(str::to_string);
         let counters = Arc::new(ForwardCounters::default());
         counters.route_state.store(3, Ordering::Relaxed);
@@ -3315,6 +3431,7 @@ mod desktop {
             expires_at,
             local_host: "127.0.0.1",
             local_port,
+            effective_route: None,
             route_state: "degraded",
             relay_fallback_available: false,
             relay_credential_expires_at_epoch_ms: None,
@@ -3349,9 +3466,11 @@ mod desktop {
                 Some(task_app.clone()),
                 listener,
                 bridge_listener,
-                task_token,
+                bridge_claim,
+                native_forward_generation,
                 attachment_id,
                 tunnel_id,
+                worker_id,
                 diagnostic_trace_id,
                 protection,
                 task_counters,
@@ -3461,11 +3580,11 @@ mod desktop {
             return Ok(None);
         }
         drop(pool);
-        let forwards = state
+        let mut forwards = state
             .forwards
             .lock()
             .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-        let Some(forward) = forwards.get(tunnel_id) else {
+        let Some(forward) = forwards.get_mut(tunnel_id) else {
             return Ok(None);
         };
         if forward.summary.attachment_id != attachment_id
@@ -3476,10 +3595,43 @@ mod desktop {
         {
             return Ok(None);
         }
-        Ok(forward
-            .worker_link_bridge
-            .as_ref()
-            .map(StoredWorkerLinkBridge::expose))
+        let Some(bridge) = forward.worker_link_bridge.as_ref() else {
+            return Ok(None);
+        };
+        bridge.rotate(None, None, lease_id)
+    }
+
+    pub fn rotate_worker_link_bridge_claim(
+        state: &TunnelForwards,
+        tunnel_id: &str,
+        attachment_id: &str,
+        native_forward_generation: &str,
+        claim_generation: u64,
+        claim_id: &str,
+    ) -> Result<Option<WorkerLinkTunnelBridge>, String> {
+        if Uuid::parse_str(native_forward_generation).is_err() || Uuid::parse_str(claim_id).is_err()
+        {
+            return Err("The native WorkerLink bridge claim identity is invalid.".into());
+        }
+        let forwards = state
+            .forwards
+            .lock()
+            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+        let Some(forward) = forwards.get(tunnel_id) else {
+            return Ok(None);
+        };
+        if forward.summary.attachment_id != attachment_id
+            || forward.counters.route_state.load(Ordering::Relaxed) != 3
+        {
+            return Ok(None);
+        }
+        let Some(bridge) = forward.worker_link_bridge.as_ref() else {
+            return Ok(None);
+        };
+        if bridge.native_forward_generation != native_forward_generation {
+            return Ok(None);
+        }
+        bridge.rotate(Some(claim_generation), Some(claim_id), claim_id)
     }
 
     pub fn update_worker_link_route(
@@ -3512,6 +3664,7 @@ mod desktop {
                 .counters
                 .route_state
                 .store(route_state, Ordering::Relaxed);
+            forward.summary.effective_route = Some(route.to_string());
             forward.summary.route_state = match route {
                 "local" | "lan" | "wan" => "local-direct",
                 "relay" => "relayed",
@@ -4338,9 +4491,11 @@ mod desktop {
         app: Option<AppHandle>,
         listener: TcpListener,
         bridge_listener: TcpListener,
-        bridge_token: Zeroizing<String>,
+        bridge_claim: Arc<Mutex<WorkerLinkBridgeClaim>>,
+        native_forward_generation: String,
         attachment_id: String,
         tunnel_id: String,
+        worker_id: String,
         diagnostic_trace_id: Option<String>,
         protection: Option<Arc<DataProtection>>,
         counters: Arc<ForwardCounters>,
@@ -4365,9 +4520,11 @@ mod desktop {
                 _ = &mut stop => return,
                 connected = accept_worker_link_bridge(
                     stream,
-                    bridge_token.as_str(),
+                    &bridge_claim,
+                    &native_forward_generation,
                     &tunnel_id,
                     &attachment_id,
+                    &worker_id,
                 ) => connected,
             };
             let (web_socket, identity, route) = match connected {
@@ -4380,9 +4537,14 @@ mod desktop {
                 }
             };
             invalid_attempts = 0;
-            counters
-                .route_state
-                .store(if route == "local" { 1 } else { 2 }, Ordering::Relaxed);
+            counters.route_state.store(
+                if matches!(route.as_str(), "local" | "lan" | "wan") {
+                    1
+                } else {
+                    2
+                },
+                Ordering::Relaxed,
+            );
             if counters.record_route_selection() {
                 diagnostic_event(
                     app.as_ref(),
@@ -4393,7 +4555,8 @@ mod desktop {
                         "diagnosticTraceId": diagnostic_trace_id,
                         "event": "desktop.tunnel.route.selected",
                         "operation": "select-route",
-                        "routeState": if route == "local" { "local-direct" } else { "relayed" },
+                        "effectiveRoute": route,
+                        "routeState": if route == "relay" { "relayed" } else { "local-direct" },
                         "status": "completed",
                         "subsystem": "tunnel-forward",
                         "tunnelId": tunnel_id,
@@ -4455,9 +4618,11 @@ mod desktop {
 
     async fn accept_worker_link_bridge(
         stream: TcpStream,
-        expected_token: &str,
+        bridge_claim: &Arc<Mutex<WorkerLinkBridgeClaim>>,
+        native_forward_generation: &str,
         tunnel_id: &str,
         attachment_id: &str,
+        worker_id: &str,
     ) -> Result<
         (
             tokio_tungstenite::WebSocketStream<TcpStream>,
@@ -4494,22 +4659,45 @@ mod desktop {
         let mut initialize: WorkerLinkBridgeInitialize = serde_json::from_str(&text)
             .map_err(|_| "The native tunnel bridge authorization was invalid.".to_string())?;
         let supplied_token = Zeroizing::new(std::mem::take(&mut initialize.token));
-        if initialize.r#type != "initialize"
-            || !constant_time_secret_match(expected_token, supplied_token.as_str())
-            || !matches!(initialize.route.as_str(), "local" | "lan" | "wan" | "relay")
-            || initialize.identity.tunnel_id != tunnel_id
-            || initialize.identity.attachment_id != attachment_id
-            || !valid_tunnel_identity(&initialize.identity.source_endpoint_id)
-            || !valid_tunnel_identity(&initialize.identity.destination_endpoint_id)
-            || !initialize
+        let structurally_valid = initialize.r#type == "initialize"
+            && initialize.native_forward_generation == native_forward_generation
+            && matches!(initialize.route.as_str(), "local" | "lan" | "wan" | "relay")
+            && initialize.identity.tunnel_id == tunnel_id
+            && initialize.identity.attachment_id == attachment_id
+            && valid_tunnel_identity(&initialize.identity.source_endpoint_id)
+            && valid_tunnel_identity(&initialize.identity.destination_endpoint_id)
+            && initialize
                 .identity
                 .source_endpoint_id
                 .starts_with("worker-link-client:")
-            || !initialize
+            && initialize
                 .identity
                 .destination_endpoint_id
                 .starts_with("worker-link-worker:")
-        {
+            && valid_worker_link_bridge_authority(
+                &initialize.authority,
+                worker_id,
+                &initialize.identity,
+            );
+        let claim_valid = {
+            let mut claim = bridge_claim
+                .lock()
+                .map_err(|_| "The native WorkerLink bridge claim is unavailable.".to_string())?;
+            let valid = structurally_valid
+                && worker_link_bridge_claim_matches(
+                    &claim,
+                    initialize.claim_generation,
+                    &initialize.claim_id,
+                    supplied_token.as_str(),
+                    unix_epoch_ms(),
+                );
+            if valid {
+                claim.expires_at_epoch_ms = 0;
+                claim.token = Zeroizing::new(String::new());
+            }
+            valid
+        };
+        if !claim_valid {
             return Err("The native tunnel bridge authorization was invalid.".into());
         }
         let identity = RouteIdentity {
@@ -4521,6 +4709,8 @@ mod desktop {
         let ready = serde_json::to_string(&WorkerLinkBridgeReady {
             r#type: "ready",
             attachment_id: &identity.attachment_id,
+            claim_generation: initialize.claim_generation,
+            native_forward_generation,
             tunnel_id: &identity.tunnel_id,
         })
         .map_err(|_| "Could not encode the native tunnel bridge handshake.".to_string())?;
@@ -4544,6 +4734,58 @@ mod desktop {
                 difference | (left ^ right)
             })
             == 0
+    }
+
+    fn worker_link_bridge_claim_matches(
+        claim: &WorkerLinkBridgeClaim,
+        generation: u64,
+        id: &str,
+        token: &str,
+        now_epoch_ms: u64,
+    ) -> bool {
+        claim.generation == generation
+            && claim.id == id
+            && claim.expires_at_epoch_ms >= now_epoch_ms
+            && constant_time_secret_match(claim.token.as_str(), token)
+    }
+
+    fn new_bridge_token() -> String {
+        URL_SAFE_NO_PAD.encode(Aes256Gcm::generate_key(&mut OsRng))
+    }
+
+    fn bridge_claim_expiration() -> u64 {
+        unix_epoch_ms().saturating_add(
+            u64::try_from(WORKER_LINK_BRIDGE_CLAIM_LIFETIME.as_millis()).unwrap_or(u64::MAX),
+        )
+    }
+
+    fn valid_worker_link_bridge_authority(
+        authority: &WorkerLinkBridgeAuthority,
+        worker_id: &str,
+        route: &WorkerLinkBridgeRouteIdentity,
+    ) -> bool {
+        let bounded = [
+            authority.server_id.as_str(),
+            authority.server_generation.as_str(),
+            authority.owner_id.as_str(),
+            authority.account_session_id.as_str(),
+            authority.client_instance_id.as_str(),
+            authority.worker_id.as_str(),
+            authority.worker_process_generation.as_str(),
+        ]
+        .into_iter()
+        .all(valid_tunnel_identity);
+        bounded
+            && authority.worker_id == worker_id
+            && authority.route_generation > 0
+            && authority.grant_generation > 0
+            && Uuid::parse_str(&authority.session_id).is_ok()
+            && Uuid::parse_str(&authority.grant_id).is_ok()
+            && valid_tunnel_identity(&authority.channel_id)
+            && valid_tunnel_identity(&authority.connection_id)
+            && route.source_endpoint_id == format!("worker-link-client:{}", authority.grant_id)
+            && route.destination_endpoint_id
+                == format!("worker-link-worker:{}", authority.worker_id)
     }
 
     async fn run_forward(
@@ -5757,6 +5999,7 @@ mod desktop {
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 local_host: "127.0.0.1",
                 local_port: 43_123,
+                effective_route: Some("local".into()),
                 route_state: "local-direct",
                 relay_fallback_available: true,
                 relay_credential_expires_at_epoch_ms: Some(u64::MAX),
@@ -5780,6 +6023,7 @@ mod desktop {
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 local_host: "127.0.0.1",
                 local_port: 43_123,
+                effective_route: None,
                 route_state: "degraded",
                 relay_fallback_available: false,
                 relay_credential_expires_at_epoch_ms: None,
@@ -5821,6 +6065,51 @@ mod desktop {
             assert!(constant_time_secret_match(&token, &token));
             assert!(!constant_time_secret_match(&token, &"b".repeat(43)));
             assert!(!constant_time_secret_match(&token, &"a".repeat(42)));
+            let claim = WorkerLinkBridgeClaim {
+                generation: 2,
+                id: "22222222-2222-4222-8222-222222222222".into(),
+                expires_at_epoch_ms: 500,
+                token: Zeroizing::new(token.clone()),
+            };
+            assert!(worker_link_bridge_claim_matches(
+                &claim, 2, &claim.id, &token, 500,
+            ));
+            assert!(!worker_link_bridge_claim_matches(
+                &claim, 2, &claim.id, &token, 501,
+            ));
+        }
+
+        #[test]
+        fn worker_link_bridge_claim_rotation_rejects_stale_renderers() {
+            let bridge = StoredWorkerLinkBridge {
+                claim: Arc::new(Mutex::new(WorkerLinkBridgeClaim {
+                    generation: 4,
+                    id: "44444444-4444-4444-8444-444444444444".into(),
+                    expires_at_epoch_ms: u64::MAX,
+                    token: Zeroizing::new("old-bridge-secret".into()),
+                })),
+                native_forward_generation: "55555555-5555-4555-8555-555555555555".into(),
+                url: "ws://127.0.0.1:43210/worker-link-tunnel".into(),
+            };
+
+            let rotated = bridge
+                .rotate(
+                    Some(4),
+                    Some("44444444-4444-4444-8444-444444444444"),
+                    "44444444-4444-4444-8444-444444444444",
+                )
+                .unwrap()
+                .unwrap();
+            assert_eq!(rotated.claim_generation, 5);
+            assert_ne!(rotated.token, "old-bridge-secret");
+            assert!(bridge
+                .rotate(
+                    Some(4),
+                    Some("44444444-4444-4444-8444-444444444444"),
+                    "44444444-4444-4444-8444-444444444444",
+                )
+                .unwrap()
+                .is_none());
         }
 
         #[test]
@@ -5900,7 +6189,13 @@ mod desktop {
                     summary: test_worker_link_code_pool_forward(),
                     task,
                     worker_link_bridge: Some(StoredWorkerLinkBridge {
-                        token: Zeroizing::new("bridge-secret".into()),
+                        claim: Arc::new(Mutex::new(WorkerLinkBridgeClaim {
+                            generation: 1,
+                            id: "66666666-6666-4666-8666-666666666666".into(),
+                            expires_at_epoch_ms: u64::MAX,
+                            token: Zeroizing::new("bridge-secret".into()),
+                        })),
+                        native_forward_generation: "55555555-5555-4555-8555-555555555555".into(),
                         url: "ws://127.0.0.1:43210/worker-link-tunnel".into(),
                     }),
                 },
@@ -5917,7 +6212,9 @@ mod desktop {
             )
             .unwrap()
             .unwrap();
-            assert_eq!(claimed.token, "bridge-secret");
+            assert_eq!(claimed.claim_generation, 2);
+            assert_eq!(claimed.claim_id, lease_id);
+            assert_ne!(claimed.token, "bridge-secret");
             assert!(claim_worker_link_bridge(
                 &state,
                 transport_id,
@@ -5949,11 +6246,25 @@ mod desktop {
             let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
             let address = listener.local_addr().unwrap();
             let token = "a".repeat(43);
-            let expected_token = token.clone();
+            let claim = Arc::new(Mutex::new(WorkerLinkBridgeClaim {
+                generation: 7,
+                id: "77777777-7777-4777-8777-777777777777".into(),
+                expires_at_epoch_ms: u64::MAX,
+                token: Zeroizing::new(token.clone()),
+            }));
+            let expected_claim = claim.clone();
+            let native_forward_generation = "66666666-6666-4666-8666-666666666666";
             let server = tokio::spawn(async move {
                 let (stream, _) = listener.accept().await.unwrap();
-                accept_worker_link_bridge(stream, &expected_token, "tunnel-one", "attachment-one")
-                    .await
+                accept_worker_link_bridge(
+                    stream,
+                    &expected_claim,
+                    native_forward_generation,
+                    "tunnel-one",
+                    "attachment-one",
+                    "worker-one",
+                )
+                .await
             });
             let (mut client, _) = connect_async(format!("ws://{address}/worker-link-tunnel"))
                 .await
@@ -5962,12 +6273,30 @@ mod desktop {
                 .send(Message::Text(
                     json!({
                         "type": "initialize",
+                        "authority": {
+                            "accountSessionId": "account-session-one",
+                            "channelId": "11111111-1111-4111-8111-111111111111",
+                            "clientInstanceId": "client-instance-one",
+                            "connectionId": "22222222-2222-4222-8222-222222222222",
+                            "grantGeneration": 1,
+                            "grantId": "33333333-3333-4333-8333-333333333333",
+                            "ownerId": "owner-one",
+                            "routeGeneration": 1,
+                            "serverGeneration": "server-generation-one",
+                            "serverId": "server-one",
+                            "sessionId": "44444444-4444-4444-8444-444444444444",
+                            "workerId": "worker-one",
+                            "workerProcessGeneration": "worker-process-one",
+                        },
+                        "claimGeneration": 7,
+                        "claimId": "77777777-7777-4777-8777-777777777777",
+                        "nativeForwardGeneration": native_forward_generation,
                         "token": token,
                         "route": "relay",
                         "identity": {
                             "attachmentId": "attachment-one",
                             "destinationEndpointId": "worker-link-worker:worker-one",
-                            "sourceEndpointId": "worker-link-client:grant-one",
+                            "sourceEndpointId": "worker-link-client:33333333-3333-4333-8333-333333333333",
                             "tunnelId": "tunnel-one",
                         },
                     })
@@ -5985,6 +6314,8 @@ mod desktop {
                 json!({
                     "type": "ready",
                     "attachmentId": "attachment-one",
+                    "claimGeneration": 7,
+                    "nativeForwardGeneration": native_forward_generation,
                     "tunnelId": "tunnel-one",
                 })
             );
@@ -5992,6 +6323,9 @@ mod desktop {
             assert_eq!(identity.tunnel_id, "tunnel-one");
             assert_eq!(identity.attachment_id, "attachment-one");
             assert_eq!(route, "relay");
+            let consumed = claim.lock().unwrap();
+            assert_eq!(consumed.expires_at_epoch_ms, 0);
+            assert!(consumed.token.is_empty());
         }
 
         #[test]
@@ -8463,6 +8797,7 @@ mod desktop {
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 local_host: "127.0.0.1",
                 local_port: 41_234,
+                effective_route: Some("relay".into()),
                 route_state: "relayed",
                 relay_fallback_available: true,
                 relay_credential_expires_at_epoch_ms: Some(u64::MAX),
@@ -8506,6 +8841,7 @@ mod desktop {
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 local_host: "127.0.0.1",
                 local_port: 43_123,
+                effective_route: Some("local".into()),
                 route_state: "local-direct",
                 relay_fallback_available: true,
                 relay_credential_expires_at_epoch_ms: Some(u64::MAX),
@@ -8572,6 +8908,7 @@ mod desktop {
                 expires_at: "2099-01-01T00:00:00.000Z".into(),
                 local_host: "127.0.0.1",
                 local_port: 43_123,
+                effective_route: Some("local".into()),
                 route_state: "local-direct",
                 relay_fallback_available: true,
                 relay_credential_expires_at_epoch_ms: Some(u64::MAX),

@@ -27,12 +27,29 @@ const RENEW_AHEAD_MS = 20_000;
 const MIN_RENEW_DELAY_MS = 1_000;
 
 export interface TunnelWorkerLinkConnection {
+  readonly bridgeAuthority: TunnelWorkerLinkBridgeAuthority;
   readonly bufferedAmount: number;
   readonly route: WorkerLinkRoute;
   readonly tunnelRoute: WorkerLinkTunnelRoute;
   activate(): void;
   close(code?: WorkerLinkChannelCloseCode): void;
   send(frame: Uint8Array): boolean;
+}
+
+export interface TunnelWorkerLinkBridgeAuthority {
+  accountSessionId: string;
+  channelId: string;
+  clientInstanceId: string;
+  connectionId: string;
+  grantGeneration: number;
+  grantId: string;
+  ownerId: string;
+  routeGeneration: number;
+  serverGeneration: string;
+  serverId: string;
+  sessionId: string;
+  workerId: string;
+  workerProcessGeneration: string;
 }
 
 export interface OpenTunnelWorkerLinkOptions {
@@ -109,6 +126,7 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
   readonly #route: WorkerLinkRoute;
   readonly #sessionId: string;
   readonly #unsubscribe: Array<() => void>;
+  readonly bridgeAuthority: TunnelWorkerLinkBridgeAuthority;
 
   constructor(
     private readonly options: OpenTunnelWorkerLinkOptions,
@@ -119,6 +137,22 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
   ) {
     this.#sessionId = issued.grant.binding.sessionId;
     this.#route = stream.route;
+    const identity = issued.grant.binding.identity;
+    this.bridgeAuthority = {
+      accountSessionId: identity.accountSessionId,
+      channelId: stream.channelId,
+      clientInstanceId: identity.clientInstanceId,
+      connectionId: stream.connectionId,
+      grantGeneration: issued.grant.binding.grantGeneration,
+      grantId: issued.grant.binding.grantId,
+      ownerId: identity.ownerId,
+      routeGeneration: reference.link.session.routeGeneration,
+      serverGeneration: identity.serverGeneration,
+      serverId: identity.serverId,
+      sessionId: issued.grant.binding.sessionId,
+      workerId: identity.workerId,
+      workerProcessGeneration: identity.workerProcessGeneration,
+    };
     this.#unsubscribe = [
       stream.onData((payload) => this.#receive(payload)),
       stream.onWritable(() => this.#drainOutbound()),

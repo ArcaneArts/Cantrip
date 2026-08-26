@@ -24,6 +24,7 @@ export interface DesktopTunnelWorkerLinkSummary {
   expiresAt: string;
   localHost: "127.0.0.1";
   localPort: number;
+  effectiveRoute?: WorkerLinkRoute | null;
   routeState: "local-direct" | "relayed" | "degraded";
   relayFallbackAvailable?: boolean;
   relayCredentialExpiresAtEpochMs?: number | null;
@@ -50,6 +51,10 @@ export interface DesktopTunnelWorkerLinkSummary {
 }
 
 export interface DesktopTunnelWorkerLinkBridge {
+  claimGeneration: number;
+  claimId: string;
+  expiresAtEpochMs: number;
+  nativeForwardGeneration: string;
   token: string;
   url: string;
 }
@@ -140,6 +145,7 @@ export async function startDesktopTunnelWorkerLinkForward(
     const route = await controller.start();
     return {
       ...preparation.forward,
+      effectiveRoute: route,
       routeState: routeState(route),
     };
   } catch (error) {
@@ -215,6 +221,7 @@ export async function refreshDesktopTunnelWorkerLinkForward(
 class DesktopTunnelWorkerLinkController {
   #connection: TunnelWorkerLinkConnection | null = null;
   #generation = 0;
+  #hasConnected = false;
   #reconnectDelayMs = MIN_RECONNECT_DELAY_MS;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #socket: BridgeSocket | null = null;
@@ -222,7 +229,7 @@ class DesktopTunnelWorkerLinkController {
 
   constructor(
     private readonly input: DesktopTunnelWorkerLinkControllerInput,
-    private readonly bridge: DesktopTunnelWorkerLinkBridge,
+    private bridge: DesktopTunnelWorkerLinkBridge,
     private readonly dependencies: DesktopTunnelWorkerLinkDependencies,
   ) {}
 
@@ -270,9 +277,11 @@ class DesktopTunnelWorkerLinkController {
         throw new Error("The desktop tunnel changed while connecting.");
       }
       this.#connection = connection;
+      await this.#ensureFreshBridgeClaim();
       socket = await openBridgeSocket(
         this.bridge,
         connection.tunnelRoute,
+        connection.bridgeAuthority,
         connection.route,
         (frame) => {
           if (
@@ -292,6 +301,8 @@ class DesktopTunnelWorkerLinkController {
         throw new Error("The desktop tunnel changed while connecting.");
       }
       this.#socket = socket;
+      this.bridge.token = "";
+      this.#hasConnected = true;
       this.#reconnectDelayMs = MIN_RECONNECT_DELAY_MS;
       connection.activate();
       return connection.route;
@@ -327,6 +338,34 @@ class DesktopTunnelWorkerLinkController {
       this.#reconnectTimer = null;
       void this.#connect().catch(() => this.#scheduleReconnect());
     }, delay);
+  }
+
+  async #ensureFreshBridgeClaim(): Promise<void> {
+    if (
+      !this.#hasConnected &&
+      this.bridge.expiresAtEpochMs >
+        this.dependencies.now() + BRIDGE_HANDSHAKE_TIMEOUT_MS
+    ) {
+      return;
+    }
+    const current = this.bridge;
+    const replacement = (await this.dependencies.invoke(
+      "rotate_worker_link_tunnel_bridge_claim",
+      {
+        attachmentId: this.input.attachmentId,
+        claimGeneration: current.claimGeneration,
+        claimId: current.claimId,
+        nativeForwardGeneration: current.nativeForwardGeneration,
+        tunnelId: this.input.tunnelId,
+      },
+    )) as DesktopTunnelWorkerLinkBridge | null;
+    if (!replacement) {
+      throw new Error(
+        "The native tunnel bridge claim changed while reconnecting.",
+      );
+    }
+    current.token = "";
+    this.bridge = replacement;
   }
 
   #routeChanged(generation: number, route: WorkerLinkRoute): void {
@@ -380,6 +419,7 @@ class DesktopTunnelWorkerLinkController {
 async function openBridgeSocket(
   bridge: DesktopTunnelWorkerLinkBridge,
   route: WorkerLinkTunnelRoute,
+  authority: TunnelWorkerLinkConnection["bridgeAuthority"],
   effectiveRoute: WorkerLinkRoute,
   onFrame: (frame: Uint8Array) => void,
   onClose: () => void,
@@ -406,6 +446,10 @@ async function openBridgeSocket(
       socket.send(
         JSON.stringify({
           type: "initialize",
+          authority,
+          claimGeneration: bridge.claimGeneration,
+          claimId: bridge.claimId,
+          nativeForwardGeneration: bridge.nativeForwardGeneration,
           token: bridge.token,
           route: effectiveRoute,
           identity: {
@@ -428,7 +472,7 @@ async function openBridgeSocket(
     };
     socket.onmessage = ({ data }) => {
       if (!settled) {
-        if (typeof data !== "string" || !bridgeReady(data, route)) {
+        if (typeof data !== "string" || !bridgeReady(data, bridge, route)) {
           fail(
             new Error(
               "The native tunnel bridge returned an invalid handshake.",
@@ -450,13 +494,19 @@ async function openBridgeSocket(
   });
 }
 
-function bridgeReady(payload: string, route: WorkerLinkTunnelRoute): boolean {
+function bridgeReady(
+  payload: string,
+  bridge: DesktopTunnelWorkerLinkBridge,
+  route: WorkerLinkTunnelRoute,
+): boolean {
   try {
     const value = JSON.parse(payload) as Record<string, unknown>;
     return (
       value.type === "ready" &&
       value.tunnelId === route.tunnelId &&
-      value.attachmentId === route.attachmentId
+      value.attachmentId === route.attachmentId &&
+      value.claimGeneration === bridge.claimGeneration &&
+      value.nativeForwardGeneration === bridge.nativeForwardGeneration
     );
   } catch {
     return false;
