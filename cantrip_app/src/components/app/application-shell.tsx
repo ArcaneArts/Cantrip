@@ -7412,13 +7412,6 @@ export function App() {
       return;
     }
     if (explorerFileTarget) return;
-    if (projects.data.length === 0 && !isPopout) {
-      setAppMode("chat");
-      setSelectedProjectId(null);
-      setWorkspaceSelection(emptyWorkspaceSelection());
-      void persistAppDestination({ lastAppMode: "chat" });
-      return;
-    }
     const action = projectSelectionAction({
       compact: compactShell,
       preserveCurrentDestination: showServerAdmin || showSettings,
@@ -7444,8 +7437,6 @@ export function App() {
     appMode,
     compactShell,
     explorerFileTarget,
-    isPopout,
-    persistAppDestination,
     projects.data,
     selectedProjectId,
     showServerAdmin,
@@ -7672,7 +7663,7 @@ export function App() {
       setWorkspaceSelection(emptyWorkspaceSelection(candidate));
       setPendingSurfaceSelection(null);
     }
-    setShowImporter(false);
+    setShowImporter(candidate === null);
     setShowSettings(false);
     setShowArchivedStandaloneChats(false);
     setShowServerAdmin(false);
