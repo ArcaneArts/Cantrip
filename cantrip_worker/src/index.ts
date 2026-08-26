@@ -322,6 +322,7 @@ import {
   readGitGraphSnapshot,
 } from "./git-graph.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
+import { SearxngRuntimeManager } from "./managed-runtimes/searxng.js";
 import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
 import { ProjectShareManager } from "./project-share-manager.js";
@@ -921,6 +922,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     attachExisting: true,
     recursiveParentCreation: true,
   } as const;
+  const searxngRuntime = new SearxngRuntimeManager({
+    dataDirectory: config.dataDirectory,
+    manifestUrl:
+      process.env.CANTRIP_MANAGED_RUNTIME_MANIFEST_URL?.trim() || undefined,
+  });
   const terminalStreamContexts = new Map<
     string,
     {
@@ -947,6 +953,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     codeGraphWorkerStatus(codegraphRuntime, null, codegraphPreparationError),
     workerEncryption.status(),
     projectReplicaCapabilities,
+    searxngRuntime.capabilities(false),
   );
   await workerStartupPhase(
     "establish-worker-credential",
@@ -955,6 +962,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     { workerId: config.workerId },
   );
+  void searxngRuntime.prepare().catch((error) => {
+    workerLogger.rateLimited(
+      `searxng-runtime-prepare-failed:${config.workerId}`,
+      "warn",
+      "Managed search runtime is not ready",
+      {
+        event: "worker.search-runtime.prepare-failed",
+        subsystem: "managed-web-runtime",
+        operation: "prepare-searxng",
+        reasonCode: "runtime-unavailable",
+        status: "degraded",
+        workerId: config.workerId,
+        error: workerLogError(error),
+      },
+    );
+  });
   await refreshWorkerEncryption().catch((error) => {
     workerLogger.rateLimited(
       `worker-encryption-refresh-failed:${config.workerId}`,
@@ -5367,6 +5390,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ),
           workerEncryption.status(),
           heartbeat.projectReplicas,
+          searxngRuntime.capabilities(false),
         ),
       );
       const codeSettingsAuthorizationChanged =
@@ -5478,6 +5502,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     providerAuthObserver.close();
     runConfigurationDefinitions.close();
     await runConfigurationRuntimes.closeAll();
+    await searxngRuntime.close();
     commandConnection.close();
     await directBroker.close();
     terminalDirectEndpoints.close();
