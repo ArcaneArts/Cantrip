@@ -13,6 +13,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -45,6 +46,50 @@ export interface PendingSurfaceSelection {
   groupId?: string;
   projectId: string;
   tabKey: string;
+}
+
+export type ShellDestination =
+  | { kind: "workspace" }
+  | { kind: "importer" }
+  | { kind: "settings" }
+  | { kind: "archived-chats" }
+  | { kind: "server-admin" }
+  | { kind: "project-settings" };
+
+type ManagedShellDestinationKind = Exclude<
+  ShellDestination["kind"],
+  "workspace"
+>;
+
+export function shellDestinationVisibility(destination: ShellDestination) {
+  return {
+    showArchivedStandaloneChats: destination.kind === "archived-chats",
+    showImporter: destination.kind === "importer",
+    showProjectSettings: destination.kind === "project-settings",
+    showServerAdmin: destination.kind === "server-admin",
+    showSettings: destination.kind === "settings",
+  } as const;
+}
+
+export function updateShellDestinationVisibility(
+  current: ShellDestination,
+  kind: ManagedShellDestinationKind,
+  update: SetStateAction<boolean>,
+): ShellDestination {
+  const visible =
+    typeof update === "function" ? update(current.kind === kind) : update;
+  if (visible) return current.kind === kind ? current : { kind };
+  return current.kind === kind ? { kind: "workspace" } : current;
+}
+
+function shellDestinationVisibilityDispatcher(
+  setDestination: Dispatch<SetStateAction<ShellDestination>>,
+  kind: ManagedShellDestinationKind,
+): Dispatch<SetStateAction<boolean>> {
+  return (update) =>
+    setDestination((current) =>
+      updateShellDestinationVisibility(current, kind, update),
+    );
 }
 
 export function useShellNavigationState(
@@ -86,15 +131,50 @@ export function useShellNavigationState(
     setProjectOverviewSection("overview");
     setProjectOverviewWorktreeId(null);
   }, [projectOverviewPopoutTarget, selectedProjectId]);
-  const [showImporter, setShowImporter] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showArchivedStandaloneChats, setShowArchivedStandaloneChats] =
-    useState(false);
-  const [showServerAdmin, setShowServerAdmin] = useState(false);
+  const [destination, setDestination] = useState<ShellDestination>({
+    kind: "workspace",
+  });
+  const {
+    setShowArchivedStandaloneChats,
+    setShowImporter,
+    setShowProjectSettings,
+    setShowServerAdmin,
+    setShowSettings,
+  } = useMemo(
+    () => ({
+      setShowArchivedStandaloneChats: shellDestinationVisibilityDispatcher(
+        setDestination,
+        "archived-chats",
+      ),
+      setShowImporter: shellDestinationVisibilityDispatcher(
+        setDestination,
+        "importer",
+      ),
+      setShowProjectSettings: shellDestinationVisibilityDispatcher(
+        setDestination,
+        "project-settings",
+      ),
+      setShowServerAdmin: shellDestinationVisibilityDispatcher(
+        setDestination,
+        "server-admin",
+      ),
+      setShowSettings: shellDestinationVisibilityDispatcher(
+        setDestination,
+        "settings",
+      ),
+    }),
+    [],
+  );
+  const {
+    showArchivedStandaloneChats,
+    showImporter,
+    showProjectSettings,
+    showServerAdmin,
+    showSettings,
+  } = shellDestinationVisibility(destination);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
   const [settingsPolicyId, setSettingsPolicyId] = useState<string | null>(null);
-  const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [projectSettingsSection, setProjectSettingsSection] =
     useState<ProjectSettingsSection>("general");
   const [selectedWorkflowIntentId, setSelectedWorkflowIntentId] = useState<
@@ -103,6 +183,7 @@ export function useShellNavigationState(
 
   return {
     appMode,
+    destination,
     destinationWriteRef,
     projectOverviewSection,
     projectOverviewWorktreeId,

@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createShellNavigationCommands } from "@/components/app/shell-navigation";
+import {
+  createShellNavigationCommands,
+  shellDestinationVisibility,
+  updateShellDestinationVisibility,
+  type ShellDestination,
+} from "@/components/app/shell-navigation";
 
 type CommandOptions = Parameters<typeof createShellNavigationCommands>[0];
 
@@ -125,5 +130,67 @@ describe("shell navigation commands", () => {
       lastIdeProjectId: "project-next",
       lastIdeWorkspaceId: "workspace-next",
     });
+  });
+});
+
+describe("shell destination state", () => {
+  it.each([
+    ["workspace", []],
+    ["importer", ["showImporter"]],
+    ["settings", ["showSettings"]],
+    ["archived-chats", ["showArchivedStandaloneChats"]],
+    ["server-admin", ["showServerAdmin"]],
+    ["project-settings", ["showProjectSettings"]],
+  ] satisfies ReadonlyArray<
+    readonly [
+      ShellDestination["kind"],
+      ReadonlyArray<keyof ReturnType<typeof shellDestinationVisibility>>,
+    ]
+  >)("derives only the %s destination visibility", (kind, visibleKeys) => {
+    const visibility = shellDestinationVisibility({ kind });
+
+    expect(
+      Object.entries(visibility)
+        .filter(([, visible]) => visible)
+        .map(([key]) => key),
+    ).toEqual(visibleKeys);
+  });
+
+  it("replaces the current destination when another one opens", () => {
+    expect(
+      updateShellDestinationVisibility(
+        { kind: "settings" },
+        "server-admin",
+        true,
+      ),
+    ).toEqual({ kind: "server-admin" });
+  });
+
+  it("returns to the workspace only when the current destination closes", () => {
+    const current = { kind: "settings" } as const;
+
+    expect(
+      updateShellDestinationVisibility(current, "server-admin", false),
+    ).toBe(current);
+    expect(
+      updateShellDestinationVisibility(current, "settings", false),
+    ).toEqual({ kind: "workspace" });
+  });
+
+  it("supports the legacy functional visibility updater", () => {
+    expect(
+      updateShellDestinationVisibility(
+        { kind: "workspace" },
+        "importer",
+        (visible) => !visible,
+      ),
+    ).toEqual({ kind: "importer" });
+    expect(
+      updateShellDestinationVisibility(
+        { kind: "importer" },
+        "importer",
+        (visible) => !visible,
+      ),
+    ).toEqual({ kind: "workspace" });
   });
 });
