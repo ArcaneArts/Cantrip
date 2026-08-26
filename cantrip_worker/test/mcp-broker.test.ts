@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CantripServerRequestError } from "../src/cli-client.js";
 import { readWorkerLogs } from "../src/logger.js";
 import { CantripMcpBroker } from "../src/mcp/broker.js";
+import { CANTRIP_MCP_STANDALONE_TOOL_NAMES } from "../src/mcp/profile.js";
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 const directories: string[] = [];
@@ -616,6 +617,81 @@ describe("Cantrip MCP worker broker", () => {
           },
         });
         expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toContain("web_session_open");
+      } finally {
+        await client.close();
+        await broker.close();
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "exposes only shared web tools from the standalone stdio profile",
+    async () => {
+      const dataDirectory = await temporaryDirectory();
+      const broker = new CantripMcpBroker({
+        dataDirectory,
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-one",
+      });
+      await broker.start();
+      const attachment = broker.createBinding(standaloneBindingInput());
+      const transport = new StdioClientTransport({
+        command: path.resolve("../node_modules/.bin/tsx"),
+        args: [
+          path.resolve("src/mcp/stdio.ts"),
+          "--connection",
+          attachment.connectionPath,
+        ],
+        cwd: process.cwd(),
+        env: {
+          CANTRIP_MCP_PROFILE: "standalone-web",
+          PATH: process.env.PATH ?? "",
+        },
+        stderr: "pipe",
+      });
+      const client = new Client(
+        { name: "cantrip-standalone-test", version: "1.0.0" },
+        { capabilities: {} },
+      );
+      try {
+        await client.connect(transport);
+        const catalog = await client.listTools();
+        expect(catalog.tools.map(({ name }) => name)).toEqual([
+          ...CANTRIP_MCP_STANDALONE_TOOL_NAMES,
+        ]);
+        expect(
+          catalog.tools.find(({ name }) => name === "tool_help")?.inputSchema,
+        ).toMatchObject({
+          properties: {
+            tool: { enum: [...CANTRIP_MCP_STANDALONE_TOOL_NAMES] },
+          },
+        });
+        await expect(
+          client.callTool({ name: "context_get", arguments: {} }),
+        ).resolves.toMatchObject({
+          content: [
+            expect.objectContaining({
+              text: expect.stringContaining("disabled"),
+            }),
+          ],
+          isError: true,
+        });
+        await expect(
+          client.callTool({
+            name: "tool_help",
+            arguments: { tool: "worktree_create" },
+          }),
+        ).resolves.toMatchObject({ isError: true });
+        await expect(
+          client.callTool({
+            name: "tool_help",
+            arguments: { tool: "web_search" },
+          }),
+        ).resolves.toMatchObject({
+          structuredContent: { data: { tool: "web_search" } },
+        });
       } finally {
         await client.close();
         await broker.close();

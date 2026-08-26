@@ -7,12 +7,14 @@ import {
   verifyCantripMcpConnection,
 } from "./connection.js";
 import { createCantripMcpServer } from "./server.js";
+import { cantripMcpProfile } from "./profile.js";
 
 async function main() {
   const connection = await readCantripMcpConnection(cantripMcpConnectionPath());
   await verifyCantripMcpConnection(connection);
-  const mcp = createCantripMcpServer((request) =>
-    invokeCantripMcpBrokerOperation(connection, request),
+  const mcp = createCantripMcpServer(
+    (request) => invokeCantripMcpBrokerOperation(connection, request),
+    cantripMcpProfile(process.env.CANTRIP_MCP_PROFILE),
   );
   const transport = new StdioServerTransport();
   let closing = false;

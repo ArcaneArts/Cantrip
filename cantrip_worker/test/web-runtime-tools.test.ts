@@ -1,10 +1,7 @@
 import { gzipSync } from "node:zlib";
 import { Readable } from "node:stream";
 
-import {
-  CANTRIP_MCP_READ_OPERATIONS,
-  type CantripMcpBinding,
-} from "@cantrip/protocol";
+import type { CantripMcpBinding } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import { RobotsPolicy } from "../src/web/robots.js";
@@ -15,20 +12,21 @@ import {
   type SafeFetchResponse,
 } from "../src/web/safe-fetch.js";
 import { WorkerWebService } from "../src/web/service.js";
+import { CANTRIP_MCP_STANDALONE_OPERATIONS } from "../src/mcp/profile.js";
 
 const binding: CantripMcpBinding = {
   bindingId: "00000000-0000-4000-8000-000000000001",
   ownerId: "owner-one",
-  contextKind: "project",
-  projectId: "project-one",
+  contextKind: "standalone",
+  projectId: null,
   chatId: "chat-one",
   executionLaneId: "lane-one",
   workerId: "worker-one",
-  worktreeId: "worktree-one",
-  rootKind: "git-worktree",
-  scratchRootId: null,
+  worktreeId: null,
+  rootKind: null,
+  scratchRootId: "scratch-one",
   permissionProfileId: ":workspace-write",
-  allowedOperations: [...CANTRIP_MCP_READ_OPERATIONS],
+  allowedOperations: [...CANTRIP_MCP_STANDALONE_OPERATIONS],
   issuedAt: "2026-08-21T12:00:00.000Z",
   expiresAt: "2026-08-21T18:00:00.000Z",
 };

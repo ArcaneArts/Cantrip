@@ -161,6 +161,10 @@ import {
   managedCantripMcpServer,
   mergeManagedMcpServers,
 } from "./mcp/managed.js";
+import {
+  CANTRIP_MCP_STANDALONE_OPERATIONS,
+  type CantripMcpProfile,
+} from "./mcp/profile.js";
 import { readWorkerConfig, resolveWorkerDataDirectory } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { WorkerLinkGateway } from "./worker-link-gateway.js";
@@ -1317,22 +1321,36 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const agentMcpServers = async (
     cwd: string,
     configured: McpServerOpaqueRuntime[],
-    attachment?: {
-      chatId: string;
-      executionLaneId: string;
-      permissionProfileId: string;
-      projectId: string;
-      rootKind: "folder-root" | "git-worktree";
-      workerId: string;
-      worktreeId: string;
-    },
-    includeManaged = true,
+    attachment?:
+      | {
+          contextKind: "project";
+          chatId: string;
+          executionLaneId: string;
+          permissionProfileId: string;
+          projectId: string;
+          rootKind: "folder-root" | "git-worktree";
+          scratchRootId: null;
+          workerId: string;
+          worktreeId: string;
+        }
+      | {
+          contextKind: "standalone";
+          chatId: string;
+          executionLaneId: string;
+          permissionProfileId: string;
+          projectId: null;
+          rootKind: null;
+          scratchRootId: string;
+          workerId: string;
+          worktreeId: null;
+        },
+    profile: CantripMcpProfile = "ide",
   ): Promise<McpServerConfiguration[]> => {
     let managedCodeGraph: McpServerConfiguration | null = null;
-    if (includeManaged && codegraphProjects && codegraphInvocation) {
+    if (profile === "ide" && codegraphProjects && codegraphInvocation) {
       try {
         let canonicalRoot = await codegraphProjects.prepareForAgent(cwd);
-        if (!canonicalRoot && attachment) {
+        if (!canonicalRoot && attachment?.contextKind === "project") {
           await codegraphObservations.ensure({
             projectId: attachment.projectId,
             worktreeId: attachment.worktreeId,
@@ -1377,14 +1395,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
     }
-    const effectiveAttachment = includeManaged ? attachment : undefined;
+    const effectiveAttachment = attachment;
     const serverCompatibility = effectiveAttachment
       ? await mcpBroker.serverCompatibility()
       : null;
     const serverOperations = new Set(serverCompatibility?.operations ?? []);
     const cantripAllowedOperations = effectiveAttachment
-      ? cantripMcpOperationsForPermissionProfile(
-          effectiveAttachment.permissionProfileId,
+      ? (effectiveAttachment.contextKind === "standalone"
+          ? CANTRIP_MCP_STANDALONE_OPERATIONS
+          : cantripMcpOperationsForPermissionProfile(
+              effectiveAttachment.permissionProfileId,
+            )
         ).filter(
           (operation) =>
             operation === "tool.help" || serverOperations.has(operation),
@@ -1393,6 +1414,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     let protectedLegacyRoot: string | null = null;
     if (
       effectiveAttachment &&
+      effectiveAttachment.contextKind === "project" &&
       serverCompatibility?.bindingProtocolVersion === 1
     ) {
       const protectedPath = (
@@ -1404,27 +1426,42 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       protectedLegacyRoot = protectedPath;
     }
     const cantripAttachment = effectiveAttachment
-      ? mcpBroker.createBinding({
-          ownerId: workerEncryption.ownerId(),
-          contextKind: "project",
-          projectId: effectiveAttachment.projectId,
-          chatId: effectiveAttachment.chatId,
-          executionLaneId: effectiveAttachment.executionLaneId,
-          workerId: effectiveAttachment.workerId,
-          worktreeId: effectiveAttachment.worktreeId,
-          rootKind: effectiveAttachment.rootKind,
-          scratchRootId: null,
-          permissionProfileId: effectiveAttachment.permissionProfileId,
-          allowedOperations: [...cantripAllowedOperations],
-          legacyCanonicalRoot: protectedLegacyRoot,
-          serverCompatibility: serverCompatibility!,
-        })
+      ? (() => {
+          const commonClaims = {
+            ownerId: workerEncryption.ownerId(),
+            chatId: effectiveAttachment.chatId,
+            executionLaneId: effectiveAttachment.executionLaneId,
+            workerId: effectiveAttachment.workerId,
+            permissionProfileId: effectiveAttachment.permissionProfileId,
+            allowedOperations: [...cantripAllowedOperations],
+            legacyCanonicalRoot: protectedLegacyRoot,
+            serverCompatibility: serverCompatibility!,
+          };
+          return effectiveAttachment.contextKind === "project"
+            ? mcpBroker.createBinding({
+                ...commonClaims,
+                contextKind: "project",
+                projectId: effectiveAttachment.projectId,
+                worktreeId: effectiveAttachment.worktreeId,
+                rootKind: effectiveAttachment.rootKind,
+                scratchRootId: null,
+              })
+            : mcpBroker.createBinding({
+                ...commonClaims,
+                contextKind: "standalone",
+                projectId: null,
+                worktreeId: null,
+                rootKind: null,
+                scratchRootId: effectiveAttachment.scratchRootId,
+              });
+        })()
       : null;
     const managedCantrip = cantripAttachment
       ? managedCantripMcpServer(
           mcpHost,
           cantripAttachment.connectionPath,
           cantripMcpToolNamesForOperations(cantripAllowedOperations),
+          profile,
         )
       : null;
     if (managedCantrip) {
@@ -1433,7 +1470,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         subsystem: "mcp-broker",
         operation: "prepare-agent-mcp",
         status: "completed",
-        projectId: effectiveAttachment!.projectId,
+        projectId: effectiveAttachment!.projectId ?? undefined,
         chatId: effectiveAttachment!.chatId,
         worktreePath: cwd,
       });
@@ -4498,18 +4535,32 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         const resolvedMcpServers = await agentMcpServers(
           command.cwd,
           command.mcpServers,
-          standalone || (encryptedTaskOperation && !directTaskOperation)
+          encryptedTaskOperation && !directTaskOperation
             ? undefined
-            : {
-                chatId: command.chatId,
-                executionLaneId: command.executionLaneId,
-                permissionProfileId: command.permissionProfileId,
-                projectId: command.policyProjectId!,
-                rootKind: command.rootKind!,
-                workerId: config.workerId,
-                worktreeId: command.worktreeId!,
-              },
-          !standalone,
+            : standalone
+              ? {
+                  contextKind: "standalone",
+                  chatId: command.chatId,
+                  executionLaneId: command.executionLaneId,
+                  permissionProfileId: command.permissionProfileId,
+                  projectId: null,
+                  rootKind: null,
+                  scratchRootId: command.scratchRootId!,
+                  workerId: config.workerId,
+                  worktreeId: null,
+                }
+              : {
+                  contextKind: "project",
+                  chatId: command.chatId,
+                  executionLaneId: command.executionLaneId,
+                  permissionProfileId: command.permissionProfileId,
+                  projectId: command.policyProjectId!,
+                  rootKind: command.rootKind!,
+                  scratchRootId: null,
+                  workerId: config.workerId,
+                  worktreeId: command.worktreeId!,
+                },
+          standalone ? "standalone-web" : "ide",
         );
         const openedAttachments = await openWorkerAttachments(
           command.attachments,

@@ -1799,7 +1799,7 @@ export const NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS =
   "The current project path has no local `.git` metadata in it or any parent directory, so treat this project as a non-Git folder. Do not run Git or GitHub commands, inspect branches, remotes, or worktrees, or attempt commits or pull requests. Work directly with its files. Do not initialize Git unless the user explicitly asks.";
 
 export const STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS =
-  "You are in a standalone Cantrip Chat with an isolated scratch folder. This is not an IDE project. Do not use or request Cantrip project, worktree, Task, Code, CodeGraph, managed MCP, console, relocation, trajectory, or subagent features. You may use built-in shell, file, and web capabilities under the active permission profile, and must treat the current scratch folder as the only normal workspace root.";
+  "You are in a standalone Cantrip Chat with an isolated scratch folder. This is not an IDE project. The managed `cantrip` MCP exposes only `tool_help`, `web_search`, and `web_read`; use those tools for web research and do not request unavailable project tools through `tool_help`. Do not use or request Cantrip project, worktree, Task, Code, CodeGraph, console, relocation, trajectory, interactive browser, or subagent features. Treat the current scratch folder as the only normal workspace root.";
 
 export const CANTRIP_DYNAMIC_TOOLS_OVERRIDE = { dynamicTools: [] } as const;
 
@@ -1863,7 +1863,7 @@ export function codexWorktreeTurnPolicy(
         "cantrip.standalone-chat": {
           kind: "application" as const,
           value:
-            "This is an isolated standalone Chat scratch workspace, not a Cantrip project. Work only with this conversation and the current scratch folder. Project, worktree, Task, Code, CodeGraph, Cantrip MCP, and subagent workflows are unavailable.",
+            "This is an isolated standalone Chat scratch workspace, not a Cantrip project. Work only with this conversation, the current scratch folder, and the managed Cantrip web tools (`tool_help`, `web_search`, and `web_read`). Project, worktree, Task, Code, CodeGraph, interactive browser, and subagent workflows are unavailable.",
         },
         ...(options.policyContext
           ? {
