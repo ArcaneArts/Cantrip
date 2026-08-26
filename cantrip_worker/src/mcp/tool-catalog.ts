@@ -31,6 +31,8 @@ import {
   cantripMcpTerminalSendInputSchema,
   cantripMcpToolHelpInputSchema,
   cantripMcpToolHelpResultSchema,
+  cantripMcpWebReadInputSchema,
+  cantripMcpWebSearchInputSchema,
   cantripMcpWorktreeCreateInputSchema,
   cantripMcpWorktreeListInputSchema,
   cantripMcpWorktreeReleaseInputSchema,
@@ -63,6 +65,8 @@ const inputSchemas = {
   explorer_list: cantripMcpExplorerListInputSchema,
   explorer_read: cantripMcpExplorerReadInputSchema,
   terminal_read: cantripMcpTerminalReadInputSchema,
+  web_search: cantripMcpWebSearchInputSchema,
+  web_read: cantripMcpWebReadInputSchema,
   browser_services: cantripMcpBrowserServicesInputSchema,
   run_configuration_create: cantripMcpRunConfigurationCreateInputSchema,
   run_configuration_update: cantripMcpRunConfigurationUpdateInputSchema,
@@ -86,6 +90,8 @@ const inputSchemas = {
 } satisfies Record<ToolName, InputSchema>;
 
 const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
+  web_search: [{ query: "portable local search runtimes", count: 10 }],
+  web_read: [{ searchResultId: `wsr_${"A".repeat(32)}` }],
   tool_help: [{ tool: "worktree_create" }],
   run_configuration_start: [
     {
@@ -127,6 +133,13 @@ const examples: Partial<Record<ToolName, Array<Record<string, unknown>>>> = {
 };
 
 const notes: Partial<Record<ToolName, string[]>> = {
+  web_search: [
+    "Use the opaque result ID with web_read; do not copy a URL when preserving the bound search reference is useful.",
+  ],
+  web_read: [
+    "On the first page provide exactly one of url or searchResultId. On later pages provide only cursor plus optional maxChars.",
+    "render=always requires the managed browser runtime; render=auto begins with static extraction.",
+  ],
   run_configuration_create: [
     "Definitions are stored under Primary .cantrip/run-configurations with document.id as the filename.",
     "New documents should leave environment.includeCodexEnvironment enabled unless the user explicitly disables it.",
