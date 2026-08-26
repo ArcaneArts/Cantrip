@@ -12,7 +12,6 @@ import {
   Code2,
   Columns3,
   Command,
-  Database,
   ExternalLink,
   FolderTree,
   GitBranch,
@@ -44,7 +43,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type ThemeMode = "system" | "light" | "dark";
-type DemoTab = "chat" | "terminal" | "git";
+type DemoTab = "editor" | "agents" | "terminal" | "git";
 
 const GITHUB_URL = "https://github.com/ArcaneArts/Cantrip";
 const APP_URL = "https://app.cantrip.art";
@@ -56,11 +55,18 @@ const surfaces: Array<{
   title: string;
 }> = [
   {
-    icon: MessageSquare,
-    title: "Codex chats",
-    meta: "TASKS · STEER · APPROVE",
+    icon: Code2,
+    title: "Code editor",
+    meta: "MONACO · PREVIEW · PERSISTENT",
     description:
-      "Structured Tasks, plans, reasoning, tools, subagents, approvals, attachments, GitHub references, and a linked live Codex console.",
+      "Edit with Monaco, keep drafts, cursor, scroll, and undo state across tabs, and guard every save against stale revisions.",
+  },
+  {
+    icon: FolderTree,
+    title: "Project explorer",
+    meta: "LAZY TREE · GRAPH · PREVIEW",
+    description:
+      "Browse a Git-aware lazy tree, inspect commit context, and preview source, Markdown, images, and media without leaving the IDE.",
   },
   {
     icon: TerminalSquare,
@@ -70,39 +76,32 @@ const surfaces: Array<{
       "Worker-owned shells with real color, clickable links, a mobile command bar, durable reconnect, and encrypted remote relay.",
   },
   {
-    icon: Code2,
-    title: "Cantrip Code",
-    meta: "VSCODE · DIRECT · PERSISTENT",
-    description:
-      "A worker-hosted VS Code workbench with durable settings, extensions, terminals, theme, and project context.",
-  },
-  {
-    icon: FolderTree,
-    title: "Project explorer",
-    meta: "LAZY TREE · GRAPH · EDIT",
-    description:
-      "Browse a Git-aware lazy tree and repository graph, stream previews, and edit supported files in a persistent editor.",
-  },
-  {
-    icon: Globe2,
-    title: "Browser tabs",
-    meta: "CHROMIUM · STREAMED",
-    description:
-      "Full worker Chromium sessions—not iframes—with navigation, clipboard, and durable reconnect behavior.",
-  },
-  {
-    icon: Monitor,
-    title: "Remote desktop",
-    meta: "DISPLAY · INPUT",
-    description:
-      "Pick a display or application window, then see and control the worker when a task needs a human hand.",
-  },
-  {
     icon: GitBranch,
     title: "Git workspace",
     meta: "GRAPH · REVIEW · RECOVERY",
     description:
       "See commits, branches, worktrees, and code structure; stage by line or hunk, recover mistakes, and manage GitHub work.",
+  },
+  {
+    icon: MessageSquare,
+    title: "Built-in agents",
+    meta: "TASKS · STEER · APPROVE",
+    description:
+      "Structured Tasks, plans, reasoning, tools, subagents, approvals, attachments, GitHub references, and a linked live Codex console.",
+  },
+  {
+    icon: AppWindow,
+    title: "Full VS Code workbench",
+    meta: "EXTENSIONS · TERMINALS · PERSISTENT",
+    description:
+      "Open a warm, worker-hosted VS Code environment with durable settings, extensions, terminals, theme, and project context.",
+  },
+  {
+    icon: Globe2,
+    title: "Browser & desktop",
+    meta: "CHROMIUM · DISPLAY · INPUT",
+    description:
+      "Run full worker Chromium sessions, then see and control a worker display or application when the job needs a human hand.",
   },
   {
     icon: Network,
@@ -113,7 +112,7 @@ const surfaces: Array<{
   },
 ];
 
-const releaseHighlights: Array<{
+const ideHighlights: Array<{
   description: string;
   features: string[];
   icon: LucideIcon;
@@ -121,51 +120,51 @@ const releaseHighlights: Array<{
   title: string;
 }> = [
   {
-    icon: Braces,
-    label: "AGENT-NATIVE MCP",
-    title: "Cantrip is now part of the agent’s toolbelt.",
+    icon: Code2,
+    label: "COMPLETE EDITOR",
+    title: "Write code in an IDE—not a chat window with a file pane.",
     description:
-      "Every compatible Codex chat receives a worker-owned managed MCP connection with validated project, lane, worker, worktree, policy, and target context.",
+      "Cantrip pairs a fast built-in editor and rich previews with a complete, persistent VS Code workbench when you need the full environment.",
     features: [
-      "Inspect policies, worktrees, files, terminals, and browser targets",
-      "Write through Explorer and control authorized live surfaces",
-      "Focus the right project, surface, or pending interaction in the app",
+      "Monaco editing with durable drafts, cursor, scroll, and undo state",
+      "Git-aware Explorer with source, Markdown, image, and media previews",
+      "Warm VS Code sessions with settings, extensions, and terminals",
     ],
   },
   {
-    icon: ShieldCheck,
-    label: "PRIVATE + LIVE",
-    title: "Protected state moves without becoming server plaintext.",
+    icon: TerminalSquare,
+    label: "REAL TOOLCHAIN",
+    title: "The shell, source tree, and Git history stay within reach.",
     description:
-      "The recent account-mode encryption work now covers workspace identity, Tasks, and private surface state while AppLive keeps clients synchronized as work changes.",
+      "Use the same worker-owned files, PTYs, worktrees, Git graph, and GitHub workflow whether you are editing yourself or delegating a change.",
     features: [
-      "End-to-end encrypted workspace labels and Task content",
-      "Protected Terminal, Explorer, Browser, and Desktop state",
-      "Live Git, CodeGraph, provider, chat, and worker-log updates",
+      "Real reconnectable terminals with encrypted remote relay",
+      "Line and hunk staging, conflicts, recovery, issues, and pull requests",
+      "Isolated worktrees that keep parallel changes off Primary",
     ],
   },
   {
-    icon: Network,
-    label: "CODE INTELLIGENCE",
-    title: "Repository structure is visible—and queryable.",
+    icon: Bot,
+    label: "AGENTS BUILT IN",
+    title: "Delegate from inside the environment that understands the work.",
     description:
-      "Managed CodeGraph follows project worktrees and stays available to agents as a read-only MCP, paired with an interactive repository graph for people.",
+      "Agents get validated project, lane, worker, worktree, policy, and target context through managed MCP while you retain explicit control.",
     features: [
-      "Live indexing and status across compatible workers",
-      "Repository graph overlays for files, folders, and commits",
-      "Semantic project context exposed without replacing normal tools",
+      "Default, Plan, and Goal modes with steer, queue, pause, and approval",
+      "Structured Tasks, attachments, tools, subagents, and durable history",
+      "CodeGraph plus authorized file, terminal, browser, and client controls",
     ],
   },
   {
     icon: Smartphone,
-    label: "REMOTE DAILY DRIVER",
-    title: "Mobile and Windows have real recovery paths.",
+    label: "ONE IDE, EVERYWHERE",
+    title: "Keep the same workspace across machines and devices.",
     description:
-      "Remote work is smoother from the first connection through the last terminal command, with platform-specific affordances and actionable setup recovery.",
+      "Start local on one desktop or connect a hosted control plane to every machine that owns code, then reach it from desktop, web, iOS, or Android.",
     features: [
-      "Mobile terminal command bar, haptics, links, and touch recovery",
-      "Encrypted remote terminal connections with local-direct fallback",
-      "Windows CodeGraph setup, share reveal, and long-path guidance",
+      "Native desktop, browser, and mobile clients with QR handoff",
+      "Persistent tabs and live state across connected clients",
+      "Browser, remote desktop, Code, shares, and tunnels with relay fallback",
     ],
   },
 ];
@@ -448,6 +447,75 @@ function Brand() {
   );
 }
 
+function EditorDemo() {
+  const lines = [
+    ["1", "export async function ship(change: Change) {"],
+    ["2", "  const checks = await workspace.verify(change);"],
+    ["3", ""],
+    ["4", "  if (!checks.passed) return checks.explain();"],
+    ["5", ""],
+    ["6", "  return git.openPullRequest({"],
+    ["7", "    change,"],
+    ["8", '    review: "agent + human",'],
+    ["9", "  });"],
+    ["10", "}"],
+  ];
+
+  return (
+    <div className="demo-pane editor-demo">
+      <aside className="editor-explorer">
+        <div className="editor-explorer-heading">
+          <span>EXPLORER</span>
+          <small>CANTRIP</small>
+        </div>
+        <div className="editor-tree-row folder open">
+          <span>⌄</span> src
+        </div>
+        <div className="editor-tree-row active">
+          <Braces size={11} /> workspace.ts
+          <i>M</i>
+        </div>
+        <div className="editor-tree-row">
+          <Braces size={11} /> agent.ts
+        </div>
+        <div className="editor-tree-row folder">
+          <span>›</span> tests
+        </div>
+        <div className="editor-tree-row">
+          <Box size={11} /> package.json
+        </div>
+        <div className="editor-outline">
+          <span>OUTLINE</span>
+          <small>ship(change)</small>
+          <small>verify(change)</small>
+        </div>
+      </aside>
+      <div className="editor-workbench">
+        <div className="editor-tabbar">
+          <span>
+            <Braces size={11} /> workspace.ts <i />
+          </span>
+          <small>src / workspace.ts</small>
+        </div>
+        <div className="editor-code" aria-label="TypeScript editor preview">
+          {lines.map(([number, code]) => (
+            <div className={number === "4" ? "active-line" : ""} key={number}>
+              <span>{number}</span>
+              <code>{code || " "}</code>
+            </div>
+          ))}
+        </div>
+        <div className="editor-statusbar">
+          <span>
+            <GitBranch size={10} /> feat/agentic-ide*
+          </span>
+          <span>Ln 4, Col 3 · TypeScript · ✓</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChatDemo() {
   return (
     <div className="demo-pane chat-demo">
@@ -550,9 +618,10 @@ function GitDemo() {
 }
 
 function ProductDemo() {
-  const [active, setActive] = useState<DemoTab>("chat");
+  const [active, setActive] = useState<DemoTab>("editor");
   const tabs: Array<{ icon: LucideIcon; label: string; value: DemoTab }> = [
-    { icon: Bot, label: "Chat", value: "chat" },
+    { icon: Code2, label: "Editor", value: "editor" },
+    { icon: Bot, label: "Agents", value: "agents" },
     { icon: TerminalSquare, label: "Terminal", value: "terminal" },
     { icon: GitBranch, label: "Git", value: "git" },
   ];
@@ -611,7 +680,8 @@ function ProductDemo() {
               </button>
             ))}
           </div>
-          {active === "chat" && <ChatDemo />}
+          {active === "editor" && <EditorDemo />}
+          {active === "agents" && <ChatDemo />}
           {active === "terminal" && <TerminalDemo />}
           {active === "git" && <GitDemo />}
         </main>
@@ -693,10 +763,10 @@ function App() {
         <div className="header-inner">
           <Brand />
           <nav aria-label="Primary navigation">
-            <a href="#latest">Latest</a>
-            <a href="#workspace">Surfaces</a>
-            <a href="#toolkit">Tooling</a>
+            <a href="#workspace">IDE</a>
             <a href="#agents">Agents</a>
+            <a href="#git">Git</a>
+            <a href="#workflows">Automate</a>
             <a href="#architecture">Deploy</a>
           </nav>
           <div className="header-actions">
@@ -726,14 +796,14 @@ function App() {
         <section className="hero section-wrap">
           <div className="hero-copy">
             <div className="status-line">
-              <i /> MANAGED MCP · LIVE STATE · ENCRYPTED · CROSS-DEVICE
+              <i /> EDITOR · TERMINALS · GIT · AGENTS · EVERY DEVICE
             </div>
-            <h1>One workspace for the whole build.</h1>
+            <h1>The last agentic IDE you’ll need.</h1>
             <p className="hero-lede">
-              Give Codex a durable, agent-native workspace around the whole job:
-              managed MCP, CodeGraph, editable files, real terminals, persistent
-              VS Code, Git and GitHub, browsers, remote desktops, and
-              automations—local-first and available from every device.
+              Cantrip is a complete development environment where you and your
+              agents edit, run, review, and ship together. Keep the editor,
+              terminal, Git, browser, automation, and project context in one
+              local-first IDE that follows you to every device.
             </p>
             <div className="hero-actions">
               <a
@@ -742,7 +812,7 @@ function App() {
                 rel="noreferrer"
                 target="_blank"
               >
-                <AppWindow size={18} /> Open Cantrip <ArrowRight size={16} />
+                <AppWindow size={18} /> Open the IDE <ArrowRight size={16} />
               </a>
               <a
                 className="button button-quiet"
@@ -755,24 +825,26 @@ function App() {
             </div>
             <div className="hero-proof">
               <div>
+                <Code2 size={17} />
+                <span>
+                  <strong>A complete editor at the center.</strong>
+                  <small>Monaco for speed. VS Code when you want it all.</small>
+                </span>
+              </div>
+              <div>
+                <Bot size={17} />
+                <span>
+                  <strong>Agents belong inside the IDE.</strong>
+                  <small>
+                    Delegate with context, then inspect every change.
+                  </small>
+                </span>
+              </div>
+              <div>
                 <ShieldCheck size={17} />
                 <span>
                   <strong>Your source stays on your worker.</strong>
-                  <small>Cantrip coordinates it.</small>
-                </span>
-              </div>
-              <div>
-                <Database size={17} />
-                <span>
-                  <strong>Private state stays protected.</strong>
-                  <small>Keys stay with clients and authorized workers.</small>
-                </span>
-              </div>
-              <div>
-                <Braces size={17} />
-                <span>
-                  <strong>Managed MCP plus the Cantrip CLI.</strong>
-                  <small>Agents get exact context and bounded controls.</small>
+                  <small>Local-first, protected, and self-hostable.</small>
                 </span>
               </div>
             </div>
@@ -786,34 +858,34 @@ function App() {
         >
           <div className="section-wrap deployment-rail-inner">
             <span>
-              <Laptop size={16} /> LOCAL DESKTOP
+              <Code2 size={16} /> EDITOR + EXPLORER
             </span>
             <span>
-              <Cloud size={16} /> HOSTED CONTROL PLANE
+              <TerminalSquare size={16} /> TERMINALS + GIT
             </span>
             <span>
-              <Server size={16} /> MULTIPLE WORKERS
+              <Bot size={16} /> AGENTS + AUTOMATION
             </span>
             <span>
-              <Smartphone size={16} /> MOBILE HANDOFF
+              <Smartphone size={16} /> DESKTOP + WEB + MOBILE
             </span>
           </div>
         </section>
 
-        <section className="release-section section-wrap" id="latest">
+        <section className="release-section section-wrap">
           <div className="section-heading split-heading">
             <div>
-              <SectionLabel>RECENT RELEASE TRAIN</SectionLabel>
-              <h2>The foundations are turning into daily tools.</h2>
+              <SectionLabel>THE WHOLE DEVELOPMENT LOOP</SectionLabel>
+              <h2>A real IDE first. Agentic all the way through.</h2>
             </div>
             <p>
-              Recent releases connected the agent, control plane, workers, and
-              clients more tightly—while making remote and cross-platform work
-              easier to trust and recover.
+              Cantrip starts with the tools developers already rely on, then
+              makes agents, remote machines, and durable automation native to
+              the same environment.
             </p>
           </div>
           <div className="release-grid">
-            {releaseHighlights.map(
+            {ideHighlights.map(
               ({ description, features, icon: Icon, label, title }, index) => (
                 <article className="release-card" key={label}>
                   <div className="release-card-topline">
@@ -838,11 +910,11 @@ function App() {
           </div>
           <div className="release-footer">
             <span>
-              <Activity size={14} /> SHIPPING CONTINUOUSLY
+              <Activity size={14} /> BUILT IN THE OPEN
             </span>
             <p>
-              These capabilities are in the current release train—not future
-              roadmap promises.
+              This is the current product—not a mockup or a list of future
+              promises.
             </p>
             <a href={`${GITHUB_URL}/releases`} rel="noreferrer" target="_blank">
               Browse releases <ExternalLink size={14} />
@@ -853,12 +925,13 @@ function App() {
         <section className="workspace-section section-wrap" id="workspace">
           <div className="section-heading split-heading">
             <div>
-              <SectionLabel>ONE WORKSPACE</SectionLabel>
-              <h2>Every surface the work touches.</h2>
+              <SectionLabel>ONE COMPLETE IDE</SectionLabel>
+              <h2>Everything serious software work touches.</h2>
             </div>
             <p>
-              Move between an agent and its environment without breaking context
-              or reaching for another window.
+              Edit directly, drop into a full workbench, run commands, inspect
+              Git, and collaborate with agents without rebuilding context in a
+              stack of disconnected tools.
             </p>
           </div>
           <div className="surface-grid">
@@ -882,13 +955,13 @@ function App() {
         <section className="capabilities-section section-wrap">
           <div className="section-heading split-heading">
             <div>
-              <SectionLabel>BUILT FOR THE WHOLE LOOP</SectionLabel>
-              <h2>From first prompt to shipped change.</h2>
+              <SectionLabel>THE IDE IS THE WORKFLOW</SectionLabel>
+              <h2>From first edit to shipped change.</h2>
             </div>
             <p>
-              Cantrip is the durable layer around the model: organization,
-              source control, automation, and deployment all use the same
-              project context.
+              Organization, source control, agents, automation, and deployment
+              all share the same durable project context instead of becoming
+              separate products you have to stitch together.
             </p>
           </div>
           <div className="capability-grid">
@@ -919,8 +992,8 @@ function App() {
         <section className="toolkit-section section-wrap" id="toolkit">
           <div className="section-heading split-heading">
             <div>
-              <SectionLabel>WORKER-NATIVE TOOLKIT</SectionLabel>
-              <h2>The environment is part of the conversation.</h2>
+              <SectionLabel>IDE-NATIVE TOOLKIT</SectionLabel>
+              <h2>The editor, runtime, and agent share one workspace.</h2>
             </div>
             <p>
               Cantrip gives people and agents the same durable view of files,
@@ -959,11 +1032,14 @@ function App() {
         <section className="agent-section section-wrap" id="agents">
           <div className="agent-panel">
             <div className="agent-copy">
-              <SectionLabel>AGENT CONTROL</SectionLabel>
-              <h2>More than a prompt box—and more than a shell.</h2>
+              <SectionLabel>AGENTS, BUILT IN</SectionLabel>
+              <h2>
+                Your agent belongs inside the IDE—not in a clone beside it.
+              </h2>
               <p>
-                Give Codex the right operating mode and exact Cantrip context,
-                then stay in control while it works across authorized targets.
+                Choose the right operating mode, give the agent exact Cantrip
+                context, and stay in control while it works across the same
+                files, terminals, Git state, and authorized targets you see.
               </p>
               <ul className="feature-checks">
                 {agentFeatures.map((feature) => (
@@ -1006,7 +1082,7 @@ function App() {
           </div>
         </section>
 
-        <section className="git-section section-wrap">
+        <section className="git-section section-wrap" id="git">
           <div className="git-visual" aria-hidden="true">
             <div className="branch-map">
               <div className="branch-row primary">
@@ -1038,11 +1114,12 @@ function App() {
           </div>
           <div className="git-copy">
             <SectionLabel>GIT, BUILT IN</SectionLabel>
-            <h2>Let agents work in parallel—not on top of each other.</h2>
+            <h2>Source control is part of the IDE, not an afterthought.</h2>
             <p>
               Cantrip understands branches, worktrees, staged and unstaged
               changes, history, issues, pull requests, submodules, LFS, and
-              signatures. Keep Primary calm while every task gets its own lane.
+              signatures. Work directly when you want, and keep Primary calm
+              while every delegated task gets its own lane.
             </p>
             <div className="git-detail-list">
               {gitDetails.map(({ description, icon: Icon, title }) => (
@@ -1207,15 +1284,16 @@ function App() {
           <div className="closing-mark">
             <GlintMark />
           </div>
-          <SectionLabel>THE WORKSPACE IS THE INTERFACE</SectionLabel>
+          <SectionLabel>ONE IDE FOR THE WHOLE BUILD</SectionLabel>
           <h2>
-            Give your agents somewhere
+            Make this the last agentic IDE
             <br />
-            serious to work.
+            you have to switch to.
           </h2>
           <p>
-            Open the web app, run the desktop workspace, or host the control
-            plane yourself. Cantrip is open source and under active development.
+            Your editor, agents, terminals, Git, browsers, and automations are
+            ready in the web app, native desktop workspace, or your own hosted
+            control plane. Cantrip is open source and under active development.
           </p>
           <div className="closing-actions">
             <a
@@ -1224,7 +1302,7 @@ function App() {
               rel="noreferrer"
               target="_blank"
             >
-              <AppWindow size={18} /> Open Cantrip <ArrowRight size={16} />
+              <AppWindow size={18} /> Open the IDE <ArrowRight size={16} />
             </a>
             <a
               className="button button-quiet"
@@ -1241,7 +1319,7 @@ function App() {
       <footer className="site-footer">
         <div className="section-wrap footer-inner">
           <Brand />
-          <p>Local-first tools for ambitious builds.</p>
+          <p>The open-source, local-first agentic IDE.</p>
           <div>
             <a href={APP_URL} rel="noreferrer" target="_blank">
               App
