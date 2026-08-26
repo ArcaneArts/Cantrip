@@ -20,6 +20,8 @@ import {
   cantripMcpTerminalReadInputSchema,
   cantripMcpTerminalReadResultSchema,
   cantripMcpToolHelpInputSchema,
+  cantripMcpWebReadInputSchema,
+  cantripMcpWebSearchInputSchema,
   cantripMcpWorktreeListInputSchema,
   cantripMcpWorktreeListResultSchema,
   cantripMcpWorktreeStatusInputSchema,
@@ -58,6 +60,7 @@ import {
   protectWorkerSurfaceStreamContent,
 } from "../surface-stream-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
+import type { WorkerWebService } from "../web/service.js";
 import { cantripMcpToolHelp } from "./tool-catalog.js";
 
 export type CantripMcpRawOperationExecutor = (
@@ -72,6 +75,7 @@ export interface CantripMcpOperationOptions {
   request: CantripAgentOperationRequest;
   requestId: string;
   service: WorkerEncryptionService;
+  webService?: WorkerWebService | null;
 }
 
 export function dataRecord(result: CantripAgentOperationResult) {
@@ -508,6 +512,22 @@ export async function executeCantripMcpReadOperation(
       return executeExplorerOperation(options);
     case "terminal.read":
       return executeTerminalRead(options);
+    case "web.search":
+      if (!options.webService)
+        throw new Error("Web search is unavailable on this worker.");
+      cantripMcpWebSearchInputSchema.parse(options.request.arguments);
+      return await options.webService.search(
+        options.binding,
+        options.request.arguments,
+      );
+    case "web.read":
+      if (!options.webService)
+        throw new Error("Web reading is unavailable on this worker.");
+      cantripMcpWebReadInputSchema.parse(options.request.arguments);
+      return await options.webService.read(
+        options.binding,
+        options.request.arguments,
+      );
     case "browser.services": {
       const arguments_ = cantripMcpBrowserServicesInputSchema.parse(
         options.request.arguments,

@@ -456,6 +456,8 @@ describe("Cantrip MCP worker broker", () => {
             "terminal_send",
           ]).has(tool.name);
           const openWorld = new Set([
+            "web_search",
+            "web_read",
             "browser_services",
             "run_configuration_start",
             "run_configuration_restart",

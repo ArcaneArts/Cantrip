@@ -67,6 +67,10 @@ import {
   cantripMcpTerminalSendResultSchema,
   cantripMcpToolHelpInputSchema,
   cantripMcpToolHelpResultSchema,
+  cantripMcpWebReadInputSchema,
+  cantripMcpWebReadResultSchema,
+  cantripMcpWebSearchInputSchema,
+  cantripMcpWebSearchResultSchema,
   cantripMcpWorktreeCreateInputSchema,
   cantripMcpWorktreeCreateResultSchema,
   cantripMcpWorktreeListInputSchema,
@@ -84,7 +88,7 @@ import {
 import { cantripMcpToolHelp } from "./tool-catalog.js";
 
 export const CANTRIP_MCP_INSTRUCTIONS =
-  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Call context_get first. Call tool_help with a tool name before guessing arguments; it returns exact schema generated from the live authoritative validator. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Use run_configuration_detect to discover typed targets and run_configuration_list or run_configuration_get to obtain stable configuration IDs and exact revisions. Create and update structured definitions with explicit operation IDs; never select a configuration or worktree by display name. A Run targets Primary unless an exact worktree ID is supplied. Use explicit start, restart, stop, status, and read-output operations for one configuration/worktree runtime identity. Secret values are write-only through run_configuration_secret_set. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
+  "Use Cantrip MCP only for Cantrip-owned state, surfaces, and worker-managed web research. Call context_get first. Call tool_help with a tool name before guessing arguments; it returns exact schema generated from the live authoritative validator. Use web_search for bounded discovery and web_read with its opaque result IDs or continuation cursors for static page content. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Use run_configuration_detect to discover typed targets and run_configuration_list or run_configuration_get to obtain stable configuration IDs and exact revisions. Create and update structured definitions with explicit operation IDs; never select a configuration or worktree by display name. A Run targets Primary unless an exact worktree ID is supplied. Use explicit start, restart, stop, status, and read-output operations for one configuration/worktree runtime identity. Secret values are write-only through run_configuration_secret_set. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
 
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
@@ -550,6 +554,50 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
               operation: "terminal.read",
               arguments: arguments_,
             }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "web_search",
+    {
+      title: "Search the web",
+      description:
+        "Search through the worker-managed private SearXNG runtime and return bounded result metadata with opaque read references.",
+      inputSchema: cantripMcpWebSearchInputSchema,
+      outputSchema: cantripMcpWebSearchResultSchema,
+      annotations: browserDiscoveryAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWebSearchResultSchema.parse(
+            await gateway({ operation: "web.search", arguments: arguments_ }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "web_read",
+    {
+      title: "Read a web page",
+      description:
+        "Fetch and extract a bounded public web page using SSRF, redirect, robots, content-type, decompression, and output limits. Continue large pages with an opaque cursor.",
+      inputSchema: cantripMcpWebReadInputSchema,
+      outputSchema: cantripMcpWebReadResultSchema,
+      annotations: browserDiscoveryAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWebReadResultSchema.parse(
+            await gateway({ operation: "web.read", arguments: arguments_ }),
           ),
         );
       } catch (error) {

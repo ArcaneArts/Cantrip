@@ -31,6 +31,7 @@ import { CantripServerRequestError } from "../cli-client.js";
 import type { WorkerConfig } from "../config.js";
 import { workerLogError, workerLogger } from "../logger.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
+import type { WorkerWebService } from "../web/service.js";
 import {
   fetchCantripMcpServerCompatibility,
   invokeCantripMcpOperation,
@@ -164,6 +165,7 @@ export class CantripMcpBroker {
     value: CantripMcpServerCompatibility;
   } | null = null;
   #encryptionService: WorkerEncryptionService | null = null;
+  #webService: WorkerWebService | null = null;
   #endpoint: string | null = null;
   #server: Server | null = null;
   #sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -211,6 +213,10 @@ export class CantripMcpBroker {
 
   setEncryptionService(service: WorkerEncryptionService): void {
     this.#encryptionService = service;
+  }
+
+  setWebService(service: WorkerWebService): void {
+    this.#webService = service;
   }
 
   async serverCompatibility(): Promise<CantripMcpServerCompatibility> {
@@ -463,6 +469,7 @@ export class CantripMcpBroker {
                     request: parsed.request,
                     requestId,
                     service: this.#encryptionService,
+                    webService: this.#webService,
                   })
                 : parsed.request.operation === "context.get"
                   ? await this.#execute(

@@ -8715,6 +8715,8 @@ export const cantripAgentOperationNameSchema = z.enum([
   "terminal.read",
   "terminal.send",
   "terminal.restart",
+  "web.search",
+  "web.read",
   "browser.services",
   "browser.open",
   "client.notify",
@@ -8740,6 +8742,8 @@ export const CANTRIP_MCP_READ_OPERATIONS = [
   "explorer.list",
   "explorer.read",
   "terminal.read",
+  "web.search",
+  "web.read",
   "browser.services",
 ] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
 
@@ -8760,6 +8764,8 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
   "explorer_list",
   "explorer_read",
   "terminal_read",
+  "web_search",
+  "web_read",
   "browser_services",
 ] as const;
 
@@ -9181,6 +9187,75 @@ export const cantripMcpTerminalReadInputSchema = z
     maxChars: z.number().int().min(1).max(100_000).default(20_000),
   })
   .strict();
+const cantripWebDomainSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(253)
+  .regex(
+    /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/u,
+    "Domains must be hostnames without a scheme or path.",
+  )
+  .transform((value) => value.toLowerCase());
+export const cantripMcpWebSearchInputSchema = z
+  .object({
+    query: z.string().trim().min(1).max(500),
+    count: z.number().int().min(1).max(20).default(10),
+    page: z.number().int().min(1).max(5).default(1),
+    freshness: z.enum(["day", "month", "year"]).optional(),
+    language: z
+      .string()
+      .trim()
+      .min(2)
+      .max(35)
+      .regex(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u)
+      .optional(),
+    category: z.enum(["general", "news", "science", "it"]).default("general"),
+    safeSearch: z.enum(["off", "moderate", "strict"]).default("moderate"),
+    includeDomains: z.array(cantripWebDomainSchema).max(10).default([]),
+    excludeDomains: z.array(cantripWebDomainSchema).max(10).default([]),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const included = new Set(input.includeDomains);
+    for (const [index, domain] of input.excludeDomains.entries()) {
+      if (included.has(domain)) {
+        context.addIssue({
+          code: "custom",
+          message: "A domain cannot be both included and excluded.",
+          path: ["excludeDomains", index],
+        });
+      }
+    }
+  });
+export const cantripMcpWebReadInputSchema = z
+  .object({
+    url: z.url().max(8_192).optional(),
+    searchResultId: z
+      .string()
+      .regex(/^wsr_[A-Za-z0-9_-]{32}$/u)
+      .optional(),
+    cursor: z
+      .string()
+      .regex(/^wrc_[A-Za-z0-9_-]{32}$/u)
+      .optional(),
+    maxChars: z.number().int().min(1_000).max(100_000).default(20_000),
+    render: z.enum(["never", "auto", "always"]).default("auto"),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const initialSources =
+      Number(Boolean(input.url)) + Number(Boolean(input.searchResultId));
+    if (input.cursor ? initialSources !== 0 : initialSources !== 1) {
+      context.addIssue({
+        code: "custom",
+        message: input.cursor
+          ? "A continuation cursor cannot be combined with a URL or search result ID."
+          : "Provide exactly one of url or searchResultId.",
+        path: input.cursor ? ["cursor"] : [],
+      });
+    }
+  });
 export const cantripMcpBrowserServicesInputSchema = z
   .object({ target: cantripMcpSurfaceTargetSchema("browser") })
   .strict();
@@ -9536,6 +9611,64 @@ export const cantripMcpTerminalReadResultSchema =
       })
       .strict(),
   });
+const cantripWebSearchResultRowSchema = z
+  .object({
+    id: z.string().regex(/^wsr_[A-Za-z0-9_-]{32}$/u),
+    title: z.string().max(1_000),
+    url: z.url().max(8_192),
+    snippet: z.string().max(4_000),
+    engines: z.array(z.string().min(1).max(100)).max(10),
+    publishedAt: z.iso.datetime().nullable(),
+  })
+  .strict();
+export const cantripMcpWebSearchResultSchema = cantripMcpReadResultBaseSchema
+  .extend({
+    target: z.null().default(null),
+    data: z
+      .object({
+        query: z.string().max(500),
+        results: z.array(cantripWebSearchResultRowSchema).max(20),
+        diagnostics: z
+          .array(
+            z
+              .object({
+                engine: z.string().min(1).max(100),
+                category: z.enum([
+                  "captcha",
+                  "rate-limited",
+                  "timeout",
+                  "unavailable",
+                  "unknown",
+                ]),
+                message: z.string().min(1).max(500),
+              })
+              .strict(),
+          )
+          .max(10),
+        truncated: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+export const cantripMcpWebReadResultSchema = cantripMcpReadResultBaseSchema
+  .extend({
+    target: z.null().default(null),
+    data: z
+      .object({
+        url: z.url().max(8_192),
+        title: z.string().max(1_000),
+        content: z.string().max(100_000),
+        method: z.enum(["static", "plain-text", "rendered"]),
+        retrievedAt: z.iso.datetime(),
+        cursor: z
+          .string()
+          .regex(/^wrc_[A-Za-z0-9_-]{32}$/u)
+          .nullable(),
+        truncated: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
 export const cantripMcpBrowserServicesResultSchema =
   cantripMcpReadResultBaseSchema.extend({
     target: cantripMcpSurfaceTargetSchema("browser"),
