@@ -1,5 +1,5 @@
 import { createServiceLogEmitter } from "@cantrip/logging";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   AccountUsageMeter,
@@ -11,7 +11,37 @@ const logger = createServiceLogEmitter("account-usage-meter-test", {
   output: () => undefined,
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("AccountUsageMeter", () => {
+  it("flushes on the one-minute default cadence", async () => {
+    vi.useFakeTimers();
+    const batches: AccountBandwidthFlushBatch[] = [];
+    const meter = new AccountUsageMeter(
+      {
+        async flushBandwidthBatch(batch) {
+          batches.push(batch);
+          return { applied: true, ownerIds: ["owner-1"] };
+        },
+      },
+      logger,
+    );
+    meter.record({
+      ownerId: "owner-1",
+      direction: "ingress",
+      channel: "http",
+      bytes: 1,
+    });
+
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(batches).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(batches).toHaveLength(1);
+    await meter.close();
+  });
+
   it("aggregates directions and channels into one retry-safe batch", async () => {
     const batches: AccountBandwidthFlushBatch[] = [];
     const sink: AccountBandwidthFlushSink = {

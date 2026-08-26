@@ -144,8 +144,8 @@ request-rate, concurrency, WebSocket, worker, or surface limits.
 
 One shared in-memory meter accepts owner, direction, channel, bytes, and an
 optional operation count. It validates nonnegative safe inputs, aggregates by
-owner/hour/channel/direction, and flushes batches after a short interval or
-byte threshold. Recording never performs database I/O.
+owner/hour/channel/direction, and flushes batches after a one-minute default
+interval or byte threshold. Recording never performs database I/O.
 
 Every process uses a unique meter ID and monotonic sequence. A durable flush
 ledger makes an ambiguous retry idempotent, while additive bucket upserts let
@@ -183,7 +183,7 @@ development and a modest hosted deployment.
 | Variable                                        |   Default | Valid range       | Meaning                                  |
 | ----------------------------------------------- | --------: | ----------------- | ---------------------------------------- |
 | `CANTRIP_STORAGE_RECONCILIATION_INTERVAL_MS`    | `3600000` | 1 minute–24 hours | Full storage sweep interval              |
-| `CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS`     |    `5000` | 250 ms–60 seconds | Maximum normal in-memory flush interval  |
+| `CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS`     |   `60000` | 250 ms–60 seconds | Maximum normal in-memory flush interval  |
 | `CANTRIP_BANDWIDTH_USAGE_FLUSH_THRESHOLD_BYTES` | `1048576` | 1 KiB–1 GiB       | Buffered-byte threshold for early flush  |
 | `CANTRIP_BANDWIDTH_USAGE_MAX_BUFFERED_ENTRIES`  |    `4096` | 64–65,536 entries | Bound on owner/bucket/channel dimensions |
 | `CANTRIP_ACCOUNT_USAGE_MAINTENANCE_INTERVAL_MS` | `3600000` | 1 minute–24 hours | Rollup and retention interval            |

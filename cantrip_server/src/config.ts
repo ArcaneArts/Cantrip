@@ -637,7 +637,7 @@ export function readServerConfig(): ServerConfig {
     bandwidthUsageFlushIntervalMs: readBoundedInteger(
       "CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS",
       process.env.CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS,
-      5_000,
+      60_000,
       250,
       60_000,
     ),

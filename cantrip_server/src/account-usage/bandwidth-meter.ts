@@ -12,7 +12,7 @@ import type {
   AccountBandwidthFlushResult,
 } from "../db/account-resource-usage.js";
 
-const DEFAULT_FLUSH_INTERVAL_MS = 5_000;
+const DEFAULT_FLUSH_INTERVAL_MS = 60_000;
 const DEFAULT_FLUSH_THRESHOLD_BYTES = 1024 * 1024;
 const DEFAULT_MAX_BUFFERED_ENTRIES = 4_096;
 const MAX_POSTGRES_BIGINT = 9_223_372_036_854_775_807n;
