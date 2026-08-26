@@ -44,9 +44,12 @@ visibility, or project creation flow is part of this implementation.
 - A worker must be online to create a Chat conversation or send a message.
   Server-owned history remains readable while its worker is offline.
 - Every Chat conversation has its own persistent worker-owned scratch folder.
-- Managed Cantrip MCP and managed CodeGraph MCP are absent from Chat runtimes.
-- Codex's built-in shell, file, web, and other non-collaboration tools remain
-  available subject to the selected permission profile and approvals.
+- Chat receives the managed Cantrip MCP standalone web profile, containing
+  exactly `tool_help`, `web_search`, and `web_read`. Managed CodeGraph remains
+  absent.
+- Codex's built-in shell, file, and other non-collaboration tools remain
+  available subject to the selected permission profile and approvals. Hosted
+  native web search is disabled in favor of managed Cantrip search.
 - Native subagents are disabled at the runtime and protocol layers, not merely
   hidden in the app.
 - Chat has no Plan mode, Goal mode, linked Codex console, Inspect, Trajectory,
@@ -79,7 +82,8 @@ visibility, or project creation flow is part of this implementation.
 4. Make the Chat experience visibly and operationally simpler than an Agent
    chat inside a project.
 5. Reduce default Chat prompt/tool overhead by excluding IDE-only MCP servers,
-   Policies, Skills, CodeGraph, Cantrip MCP, and native collaboration tools.
+   Policies, Skills, CodeGraph, project-only Cantrip tools, and native
+   collaboration tools.
 6. Preserve a clean future path from a standalone conversation to an explicit
    project context without implementing that transition now.
 
@@ -99,8 +103,8 @@ visibility, or project creation flow is part of this implementation.
 - Inspect, Trajectory, State, or protected raw diagnostics UI.
 - A per-Chat customization inventory, MCP OAuth panel, MCP resource browser,
   Skill picker, slash-command palette, or workflow launcher.
-- Filtering Codex's remaining built-in shell/file/web tool set in the first
-  implementation.
+- Filtering Codex's remaining built-in shell/file tool set beyond existing
+  permission behavior.
 - A full embedded Code workspace for scratch files.
 - Moving an existing Chat to another worker in the first implementation.
 
@@ -479,9 +483,11 @@ not eligible even if their stored audience includes Chat. Keeping the audience
 field on those rows preserves a future project-linking path without granting
 project access now.
 
-Managed `cantrip` and `codegraph` MCP servers are hard-coded IDE-only system
-servers. They do not appear in editable audience controls and are never
-injected into a standalone Chat.
+Managed `codegraph` is a hard-coded IDE-only system server. Managed `cantrip`
+does not appear in editable audience controls: the worker injects its full
+profile for IDE turns and its strict `tool_help`/`web_search`/`web_read` profile
+for standalone Chat. User-managed servers continue to follow the audience and
+scope rules above.
 
 An audience change updates affected idle Codex threads through the existing
 MCP rematerialization lifecycle. A running turn is not interrupted; its next
@@ -502,11 +508,11 @@ by that account. Project/workspace assignment does not apply because a Chat has
 no project. This makes the audience selection the explicit opt-in to applying
 that Policy across standalone Chat conversations.
 
-Standalone Chat cannot call managed Cantrip MCP `policy_read`. Therefore its
-effective Policy bodies are supplied directly as bounded runtime instruction
-context rather than summaries that point to an unavailable tool. IDE policy
-behavior remains unchanged. Policy edits affect future turns and do not
-interrupt an active turn.
+The standalone managed Cantrip profile does not expose `policy_read`.
+Therefore its effective Policy bodies are supplied directly as bounded runtime
+instruction context rather than summaries that point to an unavailable tool.
+IDE policy behavior remains unchanged. Policy edits affect future turns and do
+not interrupt an active turn.
 
 ### Skills
 
@@ -579,14 +585,16 @@ For standalone Chat, the worker:
 
 - skips Cantrip Code preparation and agent-state notification;
 - skips CodeGraph observation/preparation;
-- omits managed Cantrip and CodeGraph MCP;
+- injects managed Cantrip with exactly `tool_help`, `web_search`, and
+  `web_read`, and omits managed CodeGraph MCP;
 - opens only audience-eligible user MCP servers;
 - loads only audience-eligible global Policies and Skills;
 - sets `features.multi_agent=false` and `agents.enabled=false`;
 - omits subagent defaults and `subagentProtocolVersion`;
 - rejects child-agent lifecycle events as an incompatible runtime result;
 - uses the scratch folder as `cwd` and the only normal workspace root; and
-- retains Codex's built-in shell/file/web tools subject to permissions.
+- retains Codex's built-in shell/file tools subject to permissions and disables
+  hosted native web search in favor of managed Cantrip search.
 
 The capability profile participates in `codexRuntimeId` or an equivalent
 runtime cache key. An app-server process configured for an IDE Agent chat must
@@ -687,9 +695,9 @@ window.
   handling.
 - Audience is control-plane metadata. It reveals only where a configured
   object may apply, not its protected name, content, command, URL, or secrets.
-- Removing managed Cantrip MCP means a Chat cannot reach project, worktree,
-  client-focus, terminal, Browser, Run, or Explorer operations through that
-  tool boundary.
+- The standalone Cantrip profile means a Chat cannot reach project, worktree,
+  client-focus, terminal, Browser, Run, Explorer, or interactive web-session
+  operations through that tool boundary.
 - Disabling subagents is enforced in Codex configuration and server protocol;
   hiding UI controls alone is insufficient.
 
@@ -753,7 +761,8 @@ worktree, pull-request, and auto-merge protocol.
 - migrate every existing record to IDE;
 - update create/import/discovery/template dialogs;
 - filter before effective resolution and runtime dispatch;
-- inject full bounded Chat Policy bodies without Cantrip MCP;
+- inject full bounded Chat Policy bodies without relying on Cantrip
+  `policy_read`;
 - load eligible global Skills without exposing a Chat Skill picker; and
 - add separate Chat model/reasoning and permission settings.
 
@@ -805,8 +814,9 @@ worktree, pull-request, and auto-merge protocol.
 - a Chat can run shell and file work inside its scratch root;
 - Workspace permission cannot write outside that root;
 - Full/YOLO behavior and warnings remain unchanged;
-- Chat turns receive no Cantrip MCP, CodeGraph MCP, project Policy assignment,
-  project Skill root, or subagent tool;
+- Chat turns receive only the three-tool managed Cantrip web profile and no
+  CodeGraph MCP, project Policy assignment, project Skill root, or subagent
+  tool;
 - eligible Chat/Both MCP, Policies, and global Skills do reach the runtime;
 - archive retains scratch content and restore cancels cleanup;
 - retention purge eventually cleans an offline worker after reconnect; and
@@ -830,8 +840,9 @@ worktree, pull-request, and auto-merge protocol.
 
 ### Regression
 
-- project Agent chats retain Cantrip MCP, CodeGraph, Policies, Skills,
-  worktrees, relocation, linked console, Inspect, Trajectory, and subagents;
+- project Agent chats retain the full Cantrip MCP catalog, CodeGraph, Policies,
+  Skills, worktrees, relocation, linked console, Inspect, Trajectory, and
+  subagents;
 - Tasks retain planning, finalization, Goal, scheduling, and activity surfaces;
 - MCP project/global/worker precedence remains unchanged within the IDE
   audience;
@@ -853,9 +864,10 @@ The feature is complete when:
 4. The shared transcript retains attachments, streaming, model/reasoning,
    context ring, queue/steer, pause/resume/stop, retry, fork, archive, and
    encrypted history.
-5. Plan, Goal, Tasks, linked console, Inspect/Trajectory, project tools,
-   Cantrip MCP, CodeGraph MCP, and subagents are unavailable in standalone Chat
-   at both UI and runtime boundaries.
+5. Plan, Goal, Tasks, linked console, Inspect/Trajectory, project-only Cantrip
+   tools, CodeGraph MCP, and subagents are unavailable in standalone Chat at
+   both UI and runtime boundaries; its managed Cantrip catalog is exactly
+   `tool_help`, `web_search`, and `web_read`.
 6. MCP servers, Policies, and Skills honor IDE/Chat/Both, with every preexisting
    or imported item safely defaulted to IDE.
 7. Chat and IDE have independent default permission settings, and Chat can
