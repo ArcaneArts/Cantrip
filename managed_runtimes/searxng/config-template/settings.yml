@@ -1,0 +1,32 @@
+use_default_settings:
+  engines:
+    keep_only:
+      - brave
+      - duckduckgo
+      - mojeek
+      - qwant
+      - wikipedia
+
+general:
+  debug: false
+  instance_name: "Cantrip Search"
+  enable_metrics: false
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json
+
+server:
+  bind_address: "127.0.0.1"
+  port: __CANTRIP_PORT__
+  secret_key: "__CANTRIP_SECRET__"
+  limiter: false
+  image_proxy: false
+
+valkey:
+  url: false
+
+ui:
+  static_use_hash: true

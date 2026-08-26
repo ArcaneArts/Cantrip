@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "component": "searxng",
+  "bundleVersion": "2026.08.22.1",
+  "searxng": {
+    "repository": "https://github.com/searxng/searxng",
+    "commit": "9fea41204fdfa7a5cfa15b0ebd12904c520478ce",
+    "sourceUrl": "https://github.com/searxng/searxng/archive/9fea41204fdfa7a5cfa15b0ebd12904c520478ce.tar.gz",
+    "sourceSha256": "4065d39a15d33f717c002d7196d39694902943f95f75f6970d78365856cd5cf7",
+    "sourceBytes": 5991652,
+    "license": "AGPL-3.0-or-later"
+  },
+  "python": {
+    "version": "3.13.15",
+    "distributionRelease": "20260825",
+    "repository": "https://github.com/astral-sh/python-build-standalone",
+    "license": "MPL-2.0"
+  },
+  "targets": {
+    "darwin-arm64": {
+      "platform": "darwin",
+      "architecture": "arm64",
+      "assetUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.13.15%2B20260825-aarch64-apple-darwin-install_only_stripped.tar.gz",
+      "assetSha256": "149038dd0c194c25d4616d7e42a35f67f2edee96412788f74115819b6a4c8548",
+      "assetBytes": 25140257,
+      "minimumOs": "macOS 11.0"
+    },
+    "darwin-x64": {
+      "platform": "darwin",
+      "architecture": "x64",
+      "assetUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.13.15%2B20260825-x86_64-apple-darwin-install_only_stripped.tar.gz",
+      "assetSha256": "d33d61f7f4982c94216e14a43599c75657b7d0839277fc72bc6dbac53e8229bc",
+      "assetBytes": 24921256,
+      "minimumOs": "macOS 11.0"
+    },
+    "linux-arm64": {
+      "platform": "linux",
+      "architecture": "arm64",
+      "assetUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.13.15%2B20260825-aarch64-unknown-linux-gnu-install_only_stripped.tar.gz",
+      "assetSha256": "e5d0df1a6070a8614d808496e5ea28c727480e40ffcce1a94697a067f1690aa8",
+      "assetBytes": 29222461,
+      "minimumKernel": "4.18",
+      "minimumLibc": "glibc 2.17"
+    },
+    "linux-x64": {
+      "platform": "linux",
+      "architecture": "x64",
+      "assetUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.13.15%2B20260825-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+      "assetSha256": "8af9a8214c71b2dd698005e39fab87aad02a994330508857da4e6d1ba7e6ddb6",
+      "assetBytes": 34813635,
+      "minimumKernel": "4.18",
+      "minimumLibc": "glibc 2.17"
+    },
+    "win32-arm64": {
+      "platform": "win32",
+      "architecture": "arm64",
+      "assetUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.13.15%2B20260825-aarch64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "assetSha256": "8fe51d85c93833ec3153546a698b801b688a115109b118b9fc1383a376becd5d",
+      "assetBytes": 20657497,
+      "minimumOs": "Windows 10"
+    },
+    "win32-x64": {
+      "platform": "win32",
+      "architecture": "x64",
+      "assetUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.13.15%2B20260825-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+      "assetSha256": "c1dc1e267f2a81493ce6e94837263f648f1eb6d0df73a1492469c1fed025ce8f",
+      "assetBytes": 21937152,
+      "minimumOs": "Windows 10"
+    }
+  }
+}
