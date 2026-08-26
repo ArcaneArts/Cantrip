@@ -26,7 +26,6 @@ import {
 } from "@/lib/browser-code-tunnel";
 import { clientLogger } from "@/lib/client-log-relay";
 import {
-  forceDesktopTunnelRelay,
   acquireDesktopCodeTransport,
   listDesktopTunnelsWithOptions,
   releaseDesktopCodeTransport,
@@ -761,8 +760,7 @@ export async function preferSharedProtectedCodeAttachment(
   options.signal?.throwIfAborted();
   const wire = owned.attachment;
   const lease = await acquireDesktopCodeTransport(owned, options);
-  let forward = lease.forward;
-  const readinessStartedAtMs = monotonicNow();
+  const forward = lease.forward;
   try {
     const assertCurrent = () => {
       options.signal?.throwIfAborted();
@@ -792,7 +790,10 @@ export async function preferSharedProtectedCodeAttachment(
       expiresAt: wire.session.expiresAt,
       runtime: wire.session.runtime,
     } satisfies CodeAttachment;
-    const health = async (phase: "direct" | "relay", timeoutMs: number) =>
+    const health = async (
+      phase: "direct" | "initial" | "relay",
+      timeoutMs: number,
+    ) =>
       waitForDirectCodeAttachmentReady(attachment, {
         attachmentId: wire.session.attachmentId,
         ...(forward.diagnosticTraceId
@@ -805,41 +806,7 @@ export async function preferSharedProtectedCodeAttachment(
         totalTimeoutMs: timeoutMs,
         tunnelId: wire.transport.transportId,
       });
-    try {
-      await health(
-        forward.routeState === "local-direct" ? "direct" : "relay",
-        forward.routeState === "local-direct"
-          ? CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS
-          : CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS,
-      );
-    } catch (error) {
-      if (
-        !(error instanceof CodeAttachmentHealthError) ||
-        !error.relayFallbackEligible ||
-        forward.routeState !== "local-direct" ||
-        !forward.relayFallbackAvailable
-      ) {
-        throw error;
-      }
-      forward = await forceDesktopTunnelRelay(forward, {
-        binding: owned.binding,
-        serverUrl: owned.binding.serverUrl,
-        signal: options.signal,
-      });
-      assertCurrent();
-      const remainingHealthMs = Math.floor(
-        CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS -
-          (monotonicNow() - readinessStartedAtMs),
-      );
-      if (remainingHealthMs <= 0) {
-        throw new CodeAttachmentHealthError({
-          attemptCount: 0,
-          cause: error,
-          failureKind: "total-timeout",
-        });
-      }
-      await health("relay", remainingHealthMs);
-    }
+    await health("initial", CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS);
     assertCurrent();
     const desktopRouteIdentity = {
       attachmentId: forward.attachmentId,
@@ -849,7 +816,6 @@ export async function preferSharedProtectedCodeAttachment(
     const ownedLeases =
       sharedProtectedAttachmentLeases.get(owned) ??
       new Map<string, DesktopCodeTransportLease>();
-    lease.forward = forward;
     ownedLeases.set(lease.leaseId, lease);
     sharedProtectedAttachmentLeases.set(owned, ownedLeases);
     return {
@@ -980,18 +946,13 @@ function exactDesktopForward(
   if (!tunnelId || !identity) return "mismatch";
   const forward = forwards.find((candidate) => candidate.tunnelId === tunnelId);
   if (!forward) return null;
-  if (forward.attachmentId !== identity.attachmentId) return "mismatch";
-  const capabilityMatches =
-    forward.directCapabilityId === identity.directCapabilityId;
-  const capabilityRetiredAfterFallback =
-    identity.directCapabilityId !== null &&
-    forward.directCapabilityId === null &&
-    (forward.routeState === "degraded" || forward.routeState === "relayed");
-  if (!capabilityMatches && !capabilityRetiredAfterFallback) {
+  if (
+    forward.attachmentId !== identity.attachmentId ||
+    forward.diagnosticTraceId !== identity.diagnosticTraceId ||
+    forward.directCapabilityId !== identity.directCapabilityId
+  ) {
     return "mismatch";
   }
-  // A successful direct-to-relay fallback retires the capability, so a
-  // relayed forward is expected to report directCapabilityId=null.
   return forward;
 }
 
@@ -1027,50 +988,9 @@ async function performPreferredCodeAttachmentRouteRecovery(
   const exact = exactDesktopForward(preferred, forwards);
   if (exact === null || exact === "mismatch") return "replace-required";
   if (exact.routeState === "degraded") return "recovering";
-  if (await codeAttachmentRouteResponds(preferred.attachment, signal)) {
-    return "available";
-  }
-  if (
-    exact.routeState !== "local-direct" ||
-    !exact.relayFallbackAvailable ||
-    !exact.directCapabilityId
-  ) {
-    return "recovering";
-  }
-  if (await codeAttachmentRouteResponds(preferred.attachment, signal)) {
-    return "available";
-  }
-
-  try {
-    const sharedOwned = preferred.sharedOwnedAttachment;
-    if (
-      sharedOwned &&
-      !explorerCodeSessionBindingCurrent(sharedOwned.binding)
-    ) {
-      return "replace-required";
-    }
-    const relayed = await forceDesktopTunnelRelay(exact, {
-      ...(sharedOwned
-        ? {
-            binding: sharedOwned.binding,
-            serverUrl: sharedOwned.binding.serverUrl,
-          }
-        : {}),
-      signal,
-    });
-    if (
-      relayed.tunnelId !== tunnelId ||
-      relayed.attachmentId !== preferred.desktopRouteIdentity.attachmentId ||
-      relayed.routeState !== "relayed"
-    ) {
-      return "replace-required";
-    }
-    return (await codeAttachmentRouteResponds(preferred.attachment, signal))
-      ? "available"
-      : "recovering";
-  } catch {
-    return "recovering";
-  }
+  return (await codeAttachmentRouteResponds(preferred.attachment, signal))
+    ? "available"
+    : "recovering";
 }
 
 export function recoverPreferredCodeAttachmentRoute(

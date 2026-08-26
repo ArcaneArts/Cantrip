@@ -6,12 +6,9 @@ import type {
 } from "@cantrip/protocol";
 
 import {
-  activateDirectTunnelAttachment,
-  createDirectTunnelAttachment,
   createTunnelAttachment,
   deleteDirectAttachment,
   deleteTunnelAttachment,
-  getTunnelDataProtection,
   getTunnelTransportConfiguration,
   recordDirectAttachmentTelemetry,
   renewTunnelAttachmentLease,
@@ -28,9 +25,11 @@ import {
   onServerConnectionIdentityChanged,
 } from "@/lib/server-connections";
 import {
+  attachDesktopTunnelWorkerLinkForward,
   refreshDesktopTunnelWorkerLinkForward,
   startDesktopTunnelWorkerLinkForward,
   stopDesktopTunnelWorkerLinkForward,
+  type DesktopTunnelWorkerLinkBridge,
 } from "@/lib/desktop-tunnel-worker-link";
 
 const clientIdStorageKey = "cantrip.desktop-tunnel-client.v1";
@@ -40,6 +39,7 @@ const CODE_TRANSPORT_LEADER_STEP_TIMEOUT_MS = 10_000;
 const CODE_TRANSPORT_MAINTENANCE_INTERVAL_MS = 10_000;
 const CODE_TRANSPORT_MAINTENANCE_TIMEOUT_MS = 7_500;
 const CODE_TRANSPORT_RELAY_RENEWAL_MARGIN_MS = 40_000;
+const CODE_TRANSPORT_WORKER_LINK_RENEWAL_MARGIN_MS = 60_000;
 const directCapabilityRetirements = new Map<string, Promise<void>>();
 const relayRefreshes = new Map<string, Promise<boolean>>();
 
@@ -288,7 +288,6 @@ export type DesktopTunnelDestinationRejectionCode =
   | "unauthorized";
 
 export interface StartDesktopTunnelOptions {
-  compatibilityTransport?: "legacy";
   diagnosticTraceId?: string;
   preferredLocalPort?: number;
 }
@@ -334,6 +333,10 @@ interface CodeTransportForwardCompletion {
   generation: string;
 }
 
+interface WorkerLinkCodeTransportForwardCompletion extends CodeTransportForwardCompletion {
+  bridge: DesktopTunnelWorkerLinkBridge;
+}
+
 interface CodeTransportForwardRelease {
   released: boolean;
   remainingLeases: number;
@@ -346,6 +349,7 @@ export interface DesktopCodeTransportLease {
   generation: string;
   leaseId: string;
   serverUrl: string;
+  workerId: string;
 }
 
 function trackDesktopCodeTransportLease(
@@ -430,6 +434,49 @@ function pooledRelayRefreshDue(forward: DesktopTunnelForwardSummary): boolean {
   );
 }
 
+function pooledWorkerLinkAttachmentRefreshDue(
+  forward: DesktopTunnelForwardSummary,
+): boolean {
+  if (!isDesktopCodeWorkerLinkForward(forward)) return false;
+  const expiresAt = Date.parse(forward.expiresAt);
+  return (
+    Number.isFinite(expiresAt) &&
+    expiresAt <= Date.now() + CODE_TRANSPORT_WORKER_LINK_RENEWAL_MARGIN_MS
+  );
+}
+
+async function ensureDesktopCodeWorkerLinkCarrier(
+  lease: DesktopCodeTransportLease,
+): Promise<boolean> {
+  if (
+    !isDesktopCodeWorkerLinkForward(lease.forward) ||
+    lease.forward.routeState !== "degraded"
+  ) {
+    return false;
+  }
+  const bridge = await invoke<DesktopTunnelWorkerLinkBridge | null>(
+    "claim_worker_link_tunnel_bridge",
+    {
+      attachmentId: lease.forward.attachmentId,
+      codePoolGeneration: lease.generation,
+      leaseId: lease.leaseId,
+      tunnelId: lease.forward.tunnelId,
+      windowInstanceId: desktopCodeWindowInstanceId,
+    },
+  );
+  if (!bridge) return false;
+  await attachDesktopTunnelWorkerLinkForward(
+    {
+      attachmentId: lease.forward.attachmentId,
+      diagnosticTraceId: lease.forward.diagnosticTraceId ?? undefined,
+      tunnelId: lease.forward.tunnelId,
+      workerId: lease.workerId,
+    },
+    bridge,
+  );
+  return true;
+}
+
 async function maintainDesktopCodeTransportLease(
   lease: DesktopCodeTransportLease,
 ): Promise<void> {
@@ -457,6 +504,26 @@ async function maintainDesktopCodeTransportLease(
     return;
   }
   lease.forward = forward;
+  if (isDesktopCodeWorkerLinkForward(forward)) {
+    if (pooledWorkerLinkAttachmentRefreshDue(forward)) {
+      await refreshDesktopTunnelWorkerLinkAttachment(forward, {
+        clientId: lease.generation,
+        serverUrl: lease.serverUrl,
+        signal,
+      });
+    } else {
+      await renewTunnelAttachmentLease(forward.attachmentId, {
+        serverUrl: lease.serverUrl,
+        signal,
+      });
+    }
+    if (!explorerCodeSessionBindingCurrent(lease.binding)) {
+      await releaseDesktopCodeTransport(lease);
+      return;
+    }
+    await ensureDesktopCodeWorkerLinkCarrier(lease);
+    return;
+  }
   if (forward.directCapabilityId && forward.routeState === "local-direct") {
     await recordDirectAttachmentTelemetry(
       forward.directCapabilityId,
@@ -527,33 +594,6 @@ export function desktopTunnelClientId(storage: Storage): string {
   return clientId;
 }
 
-function nativeStartRequest(
-  attachment: TunnelAttachmentCreateResult,
-  clientId: string,
-  direct: Awaited<ReturnType<typeof createDirectTunnelAttachment>> | null,
-  dataProtection: Awaited<ReturnType<typeof getTunnelDataProtection>>,
-  diagnosticTraceId?: string,
-  preferredLocalPort?: number,
-  serverUrl = getActiveServerUrl(),
-) {
-  return {
-    attachmentId: attachment.attachmentId,
-    clientId,
-    diagnosticTraceId: diagnosticTraceId ?? null,
-    dataProtection,
-    direct,
-    expiresAt: attachment.expiresAt,
-    preferredLocalPort: preferredLocalPort ?? null,
-    relay: {
-      connectPath: attachment.connectPath,
-      secret: attachment.secret,
-      secretExpiresAtEpochMs: new Date(attachment.secretExpiresAt).getTime(),
-      serverUrl,
-    },
-    tunnelId: attachment.tunnelId,
-  };
-}
-
 export async function startDesktopTunnel(
   tunnelId: string,
   options: StartDesktopTunnelOptions = {},
@@ -562,9 +602,6 @@ export async function startDesktopTunnel(
     throw new Error(
       "Local tunnel attachments are only available in the desktop app.",
     );
-  }
-  if (options.compatibilityTransport === "legacy") {
-    return startLegacyDesktopTunnel(tunnelId, options);
   }
   const clientId = desktopTunnelClientId(window.localStorage);
   const configuration = await getTunnelTransportConfiguration(tunnelId);
@@ -577,6 +614,7 @@ export async function startDesktopTunnel(
       diagnosticTraceId: options.diagnosticTraceId,
       expiresAt: attachment.expiresAt,
       preferredLocalPort: options.preferredLocalPort,
+      serverUrl: getActiveServerUrl(),
       tunnelId: attachment.tunnelId,
       workerId: configuration.workerId,
     });
@@ -592,69 +630,6 @@ export async function startDesktopTunnel(
         started?.diagnosticTraceId ?? options.diagnosticTraceId ?? null,
       directCapabilityId: null,
     }).catch(() => undefined);
-    await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
-      // Preserve the native bind/connection error if best-effort cleanup fails.
-    });
-    throw error;
-  }
-}
-
-async function startLegacyDesktopTunnel(
-  tunnelId: string,
-  options: StartDesktopTunnelOptions,
-): Promise<DesktopTunnelForwardSummary> {
-  const clientId = desktopTunnelClientId(window.localStorage);
-  const dataProtection = await getTunnelDataProtection(tunnelId);
-  const attachment = await createTunnelAttachment(tunnelId, { clientId });
-  const direct = await createDirectTunnelAttachment(attachment.attachmentId, {
-    diagnosticTraceId: options.diagnosticTraceId,
-  }).catch(() => null);
-  const request = nativeStartRequest(
-    attachment,
-    clientId,
-    direct,
-    dataProtection,
-    options.diagnosticTraceId,
-    options.preferredLocalPort,
-  );
-  let started: DesktopTunnelForwardSummary | null = null;
-  try {
-    started = await invoke<DesktopTunnelForwardSummary>(
-      "start_tunnel_forward",
-      { request },
-    );
-    request.relay.secret = "";
-    if (request.direct) request.direct.secret = "";
-    request.dataProtection.key = "";
-    attachment.secret = "";
-    if (started.routeState === "local-direct") {
-      if (!started.directCapabilityId) {
-        throw new Error(
-          "The local direct tunnel omitted its capability identity.",
-        );
-      }
-      await activateDirectTunnelAttachment(attachment.attachmentId, {
-        capabilityId: started.directCapabilityId,
-      });
-    } else if (direct) {
-      await deleteDirectAttachment(direct.binding.capabilityId).catch(() => {
-        // The relayed tunnel remains usable if best-effort capability cleanup fails.
-      });
-    }
-    return started;
-  } catch (error) {
-    request.relay.secret = "";
-    if (request.direct) request.direct.secret = "";
-    request.dataProtection.key = "";
-    attachment.secret = "";
-    await stopDesktopTunnelForward(tunnelId, {
-      attachmentId: started?.attachmentId ?? attachment.attachmentId,
-      diagnosticTraceId:
-        started?.diagnosticTraceId ?? options.diagnosticTraceId ?? null,
-      directCapabilityId: started?.directCapabilityId ?? null,
-    }).catch(() => {
-      // Server revocation below remains authoritative.
-    });
     await deleteTunnelAttachment(attachment.attachmentId).catch(() => {
       // Preserve the native bind/connection error if best-effort cleanup fails.
     });
@@ -793,6 +768,7 @@ export async function acquireDesktopCodeTransport(
           generation: acquisition.generation,
           leaseId: acquisition.leaseId,
           serverUrl: owned.binding.serverUrl,
+          workerId: wire.transport.workerId,
         }).catch(() => undefined);
       } else if (acquisition.state === "leader") {
         await failDesktopCodeTransportReservation({
@@ -805,13 +781,21 @@ export async function acquireDesktopCodeTransport(
       assertDesktopCodeTransportBinding(owned);
     }
     if (acquisition.state === "ready") {
-      return trackDesktopCodeTransportLease({
+      const lease = trackDesktopCodeTransportLease({
         binding: owned.binding,
         forward: acquisition.forward,
         generation: acquisition.generation,
         leaseId: acquisition.leaseId,
         serverUrl: owned.binding.serverUrl,
+        workerId: wire.transport.workerId,
       });
+      try {
+        await ensureDesktopCodeWorkerLinkCarrier(lease);
+        return lease;
+      } catch (error) {
+        await releaseDesktopCodeTransport(lease).catch(() => undefined);
+        throw error;
+      }
     }
     if (acquisition.state === "waiting") {
       await raceWithAbort(
@@ -830,11 +814,8 @@ export async function acquireDesktopCodeTransport(
       transportId: wire.transport.transportId,
     };
     let attachment: TunnelAttachmentCreateResult | null = null;
-    let direct: Awaited<
-      ReturnType<typeof createDirectTunnelAttachment>
-    > | null = null;
-    let dataProtection: Awaited<
-      ReturnType<typeof getTunnelDataProtection>
+    let configuration: Awaited<
+      ReturnType<typeof getTunnelTransportConfiguration>
     > | null = null;
     let publishedLease: DesktopCodeTransportLease | null = null;
     let publicationMayHaveCommitted = false;
@@ -843,17 +824,19 @@ export async function acquireDesktopCodeTransport(
       // coupled to one React AbortSignal. Followers may already be waiting on
       // the reservation, so the elected leader must either publish or fail it.
       assertDesktopCodeTransportBinding(owned);
-      dataProtection = await getTunnelDataProtection(
+      configuration = await getTunnelTransportConfiguration(
         wire.transport.transportId,
         {
           serverUrl: owned.binding.serverUrl,
           signal: AbortSignal.timeout(CODE_TRANSPORT_LEADER_STEP_TIMEOUT_MS),
         },
       );
-      if (dataProtection.keyRevision !== wire.transport.protectedKeyRevision) {
-        throw new Error(
-          "The shared Code transport encryption revision changed.",
-        );
+      if (
+        configuration.dataProtection.keyRevision !==
+          wire.transport.protectedKeyRevision ||
+        configuration.workerId !== wire.transport.workerId
+      ) {
+        throw new Error("The shared Code transport security identity changed.");
       }
       assertDesktopCodeTransportBinding(owned);
       // Server tunnel attachments are keyed by tunnel + client id. A stable
@@ -871,64 +854,43 @@ export async function acquireDesktopCodeTransport(
       );
       assertDesktopCodeTransportBinding(owned);
       const diagnosticTraceId = crypto.randomUUID();
-      direct = await createDirectTunnelAttachment(
-        attachment.attachmentId,
-        { diagnosticTraceId },
-        {
-          serverUrl: owned.binding.serverUrl,
-          signal: AbortSignal.timeout(CODE_TRANSPORT_LEADER_STEP_TIMEOUT_MS),
-        },
-      ).catch(() => null);
-      assertDesktopCodeTransportBinding(owned);
-      const request = nativeStartRequest(
-        attachment,
-        clientId,
-        direct,
-        dataProtection,
+      const request = {
+        attachmentId: attachment.attachmentId,
+        dataProtection: configuration.dataProtection,
         diagnosticTraceId,
-        undefined,
-        owned.binding.serverUrl,
-      );
-      const completion = await invoke<CodeTransportForwardCompletion>(
-        "complete_code_transport_forward",
+        expiresAt: attachment.expiresAt,
+        preferredLocalPort: null,
+        serverUrl: owned.binding.serverUrl,
+        tunnelId: wire.transport.transportId,
+        workerId: wire.transport.workerId,
+      };
+      attachment.secret = "";
+      const completion = await invoke<WorkerLinkCodeTransportForwardCompletion>(
+        "complete_worker_link_code_transport_forward",
         {
           ...reservation,
           request,
           windowInstanceId: desktopCodeWindowInstanceId,
         },
       );
-      request.relay.secret = "";
-      if (request.direct) request.direct.secret = "";
       request.dataProtection.key = "";
-      attachment.secret = "";
-      if (direct) direct.secret = "";
-      dataProtection.key = "";
+      configuration.dataProtection.key = "";
       if (completion.generation !== acquisition.generation) {
         throw new Error(
           "The shared Code forward changed while it was preparing.",
         );
       }
       assertDesktopCodeTransportBinding(owned);
-      if (completion.forward.routeState === "local-direct") {
-        if (!completion.forward.directCapabilityId || !direct) {
-          throw new Error(
-            "The shared local Code transport omitted its capability identity.",
-          );
-        }
-        await activateDirectTunnelAttachment(
-          attachment.attachmentId,
-          { capabilityId: completion.forward.directCapabilityId },
-          {
-            serverUrl: owned.binding.serverUrl,
-            signal: AbortSignal.timeout(CODE_TRANSPORT_LEADER_STEP_TIMEOUT_MS),
-          },
-        );
-        assertDesktopCodeTransportBinding(owned);
-      } else if (direct) {
-        await deleteDirectAttachment(direct.binding.capabilityId, {
-          serverUrl: owned.binding.serverUrl,
-        }).catch(() => undefined);
-      }
+      await attachDesktopTunnelWorkerLinkForward(
+        {
+          attachmentId: completion.forward.attachmentId,
+          diagnosticTraceId: completion.forward.diagnosticTraceId ?? undefined,
+          tunnelId: completion.forward.tunnelId,
+          workerId: wire.transport.workerId,
+        },
+        completion.bridge,
+      );
+      assertDesktopCodeTransportBinding(owned);
       publicationMayHaveCommitted = true;
       const published = await publishDesktopCodeTransportReservation({
         acquisitionId,
@@ -944,6 +906,7 @@ export async function acquireDesktopCodeTransport(
         generation: published.generation,
         leaseId: published.leaseId,
         serverUrl: owned.binding.serverUrl,
+        workerId: wire.transport.workerId,
       };
       options.signal?.throwIfAborted();
       assertDesktopCodeTransportBinding(owned);
@@ -958,15 +921,6 @@ export async function acquireDesktopCodeTransport(
       }
       if (
         !publicationMayHaveCommitted &&
-        direct &&
-        explorerCodeSessionBindingCurrent(owned.binding)
-      ) {
-        await deleteDirectAttachment(direct.binding.capabilityId, {
-          serverUrl: owned.binding.serverUrl,
-        }).catch(() => undefined);
-      }
-      if (
-        !publicationMayHaveCommitted &&
         attachment &&
         explorerCodeSessionBindingCurrent(owned.binding)
       ) {
@@ -977,8 +931,7 @@ export async function acquireDesktopCodeTransport(
       throw error;
     } finally {
       if (attachment) attachment.secret = "";
-      if (direct) direct.secret = "";
-      if (dataProtection) dataProtection.key = "";
+      if (configuration) configuration.dataProtection.key = "";
     }
   }
 }
@@ -1023,6 +976,7 @@ async function releaseDesktopCodeTransportOnce(
   }
   untrackDesktopCodeTransportLease(lease);
   if (!result.stopped) return true;
+  await stopDesktopTunnelWorkerLinkForward(result.stopped.tunnelId);
   // A native exact-generation release is always safe. Server cleanup is not:
   // after a server/account switch, attaching the new credentials to the old
   // origin would cross the authentication boundary. The old server expires or
@@ -1330,6 +1284,23 @@ export function isDesktopTunnelWorkerLinkForward(
 ): boolean {
   return (
     forward.codePoolGeneration == null &&
+    isAnyDesktopTunnelWorkerLinkForward(forward)
+  );
+}
+
+export function isDesktopCodeWorkerLinkForward(
+  forward: DesktopTunnelForwardSummary,
+): boolean {
+  return (
+    forward.codePoolGeneration != null &&
+    isAnyDesktopTunnelWorkerLinkForward(forward)
+  );
+}
+
+function isAnyDesktopTunnelWorkerLinkForward(
+  forward: DesktopTunnelForwardSummary,
+): boolean {
+  return (
     forward.directCapabilityId == null &&
     forward.relayFallbackAvailable === false
   );
@@ -1337,13 +1308,20 @@ export function isDesktopTunnelWorkerLinkForward(
 
 export async function refreshDesktopTunnelWorkerLinkAttachment(
   forward: DesktopTunnelForwardSummary,
-  options: { serverUrl?: string; signal?: AbortSignal } = {},
+  options: {
+    clientId?: string;
+    serverUrl?: string;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<boolean> {
-  if (!isTauri() || !isDesktopTunnelWorkerLinkForward(forward)) return false;
+  if (!isTauri() || !isAnyDesktopTunnelWorkerLinkForward(forward)) return false;
+  const { clientId, ...requestOptions } = options;
   const attachment = await createTunnelAttachment(
     forward.tunnelId,
-    { clientId: desktopTunnelClientId(window.localStorage) },
-    options,
+    {
+      clientId: clientId ?? desktopTunnelClientId(window.localStorage),
+    },
+    requestOptions,
   );
   try {
     if (attachment.attachmentId !== forward.attachmentId) {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   activateDirectTunnelAttachment: vi.fn(),
+  attachDesktopTunnelWorkerLinkForward: vi.fn(),
   createDirectTunnelAttachment: vi.fn(),
   createTunnelAttachment: vi.fn(),
   deleteDirectAttachment: vi.fn(),
@@ -35,6 +36,8 @@ vi.mock("@/lib/api", () => ({
   renewTunnelAttachmentLease: mocks.renewTunnelAttachmentLease,
 }));
 vi.mock("@/lib/desktop-tunnel-worker-link", () => ({
+  attachDesktopTunnelWorkerLinkForward:
+    mocks.attachDesktopTunnelWorkerLinkForward,
   refreshDesktopTunnelWorkerLinkForward:
     mocks.refreshDesktopTunnelWorkerLinkForward,
   startDesktopTunnelWorkerLinkForward:
@@ -213,6 +216,7 @@ beforeEach(() => {
     directFallbackReason: null,
     tunnelId: "tunnel-1",
   });
+  mocks.attachDesktopTunnelWorkerLinkForward.mockResolvedValue("relay");
   mocks.refreshDesktopTunnelWorkerLinkForward.mockResolvedValue(true);
   mocks.stopDesktopTunnelWorkerLinkForward.mockResolvedValue(undefined);
   mocks.recordDirectAttachmentTelemetry.mockResolvedValue(undefined);
@@ -229,12 +233,14 @@ beforeEach(() => {
 describe("shared desktop Code transport", () => {
   const forward = {
     attachmentId: "attachment-1",
+    codePoolGeneration: "generation-one",
     diagnosticTraceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     expiresAt,
     localHost: "127.0.0.1" as const,
     localPort: 41_234,
-    routeState: "local-direct" as const,
-    directCapabilityId: capabilityId,
+    routeState: "relayed" as const,
+    relayFallbackAvailable: false,
+    directCapabilityId: null,
     directFallbackReason: null,
     tunnelId: "tunnel-1",
   };
@@ -248,6 +254,7 @@ describe("shared desktop Code transport", () => {
       generation: "generation-hot",
       leaseId: "lease-hot",
       serverUrl: "https://bound-server.example",
+      workerId: "worker-1",
     };
     first.maintenanceLeases.set(lease.leaseId, lease);
     first.pendingRetirementLeases.add(lease.leaseId);
@@ -271,7 +278,6 @@ describe("shared desktop Code transport", () => {
   });
 
   it("elects before creating credentials and publishes one exact leader lease", async () => {
-    mocks.createDirectTunnelAttachment.mockResolvedValue(directTicket());
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "register_code_transport_window_instance") return;
       if (command === "acquire_code_transport_forward") {
@@ -281,8 +287,15 @@ describe("shared desktop Code transport", () => {
           state: "leader",
         };
       }
-      if (command === "complete_code_transport_forward") {
-        return { forward, generation: "generation-one" };
+      if (command === "complete_worker_link_code_transport_forward") {
+        return {
+          bridge: {
+            token: "bridge-token",
+            url: "ws://127.0.0.1:43210/worker-link-tunnel",
+          },
+          forward,
+          generation: "generation-one",
+        };
       }
       if (command === "publish_code_transport_forward") {
         return {
@@ -301,6 +314,7 @@ describe("shared desktop Code transport", () => {
       generation: "generation-one",
       leaseId: "lease-one",
       serverUrl: owned.binding.serverUrl,
+      workerId: "worker-1",
     });
 
     expect(
@@ -340,8 +354,20 @@ describe("shared desktop Code transport", () => {
       { clientId: "generation-one" },
       expect.objectContaining({ serverUrl: owned.binding.serverUrl }),
     );
-    expect(mocks.createDirectTunnelAttachment).toHaveBeenCalledOnce();
-    expect(mocks.activateDirectTunnelAttachment).toHaveBeenCalledOnce();
+    expect(mocks.createDirectTunnelAttachment).not.toHaveBeenCalled();
+    expect(mocks.activateDirectTunnelAttachment).not.toHaveBeenCalled();
+    expect(mocks.attachDesktopTunnelWorkerLinkForward).toHaveBeenCalledWith(
+      {
+        attachmentId: "attachment-1",
+        diagnosticTraceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        tunnelId: "tunnel-1",
+        workerId: "worker-1",
+      },
+      {
+        token: "bridge-token",
+        url: "ws://127.0.0.1:43210/worker-link-tunnel",
+      },
+    );
     expect(
       mocks.invoke.mock.calls
         .map(([command]) => command)
@@ -350,7 +376,7 @@ describe("shared desktop Code transport", () => {
         ),
     ).toEqual([
       "acquire_code_transport_forward",
-      "complete_code_transport_forward",
+      "complete_worker_link_code_transport_forward",
       "publish_code_transport_forward",
     ]);
   });
@@ -392,6 +418,55 @@ describe("shared desktop Code transport", () => {
       "wait_code_transport_forward",
       "acquire_code_transport_forward",
     ]);
+  });
+
+  it("claims the exact degraded WorkerLink carrier after a window handoff", async () => {
+    const degraded = { ...forward, routeState: "degraded" as const };
+    const bridge = {
+      token: "handoff-bridge-token",
+      url: "ws://127.0.0.1:43211/worker-link-tunnel",
+    };
+    mocks.invoke.mockImplementation(async (command: string) => {
+      if (command === "register_code_transport_window_instance") return;
+      if (command === "acquire_code_transport_forward") {
+        return {
+          forward: degraded,
+          generation: "generation-one",
+          leaseId: "lease-handoff",
+          state: "ready",
+        };
+      }
+      if (command === "claim_worker_link_tunnel_bridge") return bridge;
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    await expect(
+      acquireDesktopCodeTransport(sharedOwnedAttachment()),
+    ).resolves.toMatchObject({
+      forward: degraded,
+      leaseId: "lease-handoff",
+      workerId: "worker-1",
+    });
+
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "claim_worker_link_tunnel_bridge",
+      {
+        attachmentId: "attachment-1",
+        codePoolGeneration: "generation-one",
+        leaseId: "lease-handoff",
+        tunnelId: "tunnel-1",
+        windowInstanceId: expect.any(String),
+      },
+    );
+    expect(mocks.attachDesktopTunnelWorkerLinkForward).toHaveBeenCalledWith(
+      {
+        attachmentId: "attachment-1",
+        diagnosticTraceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        tunnelId: "tunnel-1",
+        workerId: "worker-1",
+      },
+      bridge,
+    );
   });
 
   it("releases an exact ready lease when abort wins after native commit", async () => {
@@ -499,12 +574,16 @@ describe("shared desktop Code transport", () => {
       generation: "generation-one",
       leaseId: "lease-one",
       serverUrl: "https://bound-server.example",
+      workerId: "worker-1",
     };
 
     await releaseDesktopCodeTransport(first);
     expect(mocks.deleteTunnelAttachment).not.toHaveBeenCalled();
 
     await releaseDesktopCodeTransport({ ...first, leaseId: "lease-two" });
+    expect(mocks.stopDesktopTunnelWorkerLinkForward).toHaveBeenCalledWith(
+      "tunnel-1",
+    );
     expect(mocks.deleteTunnelAttachment).toHaveBeenCalledOnce();
     expect(mocks.deleteTunnelAttachment).toHaveBeenCalledWith("attachment-1", {
       serverUrl: "https://bound-server.example",
@@ -518,6 +597,7 @@ describe("shared desktop Code transport", () => {
       generation: "generation-retry",
       leaseId: "lease-retry",
       serverUrl: "https://bound-server.example",
+      workerId: "worker-1",
     };
     let targetReleaseAttempts = 0;
     mocks.invoke.mockImplementation(async (command: string, input: unknown) => {
@@ -550,7 +630,6 @@ describe("shared desktop Code transport", () => {
   });
 
   it("reconciles a publication response lost after native commit", async () => {
-    mocks.createDirectTunnelAttachment.mockResolvedValue(directTicket());
     let acquisitions = 0;
     let publications = 0;
     mocks.invoke.mockImplementation(async (command: string) => {
@@ -563,8 +642,12 @@ describe("shared desktop Code transport", () => {
           state: "leader",
         };
       }
-      if (command === "complete_code_transport_forward") {
-        return { forward, generation: "generation-one" };
+      if (command === "complete_worker_link_code_transport_forward") {
+        return {
+          bridge: { token: "bridge-token", url: "ws://127.0.0.1:43210" },
+          forward,
+          generation: "generation-one",
+        };
       }
       if (command === "publish_code_transport_forward") {
         publications += 1;
@@ -592,7 +675,6 @@ describe("shared desktop Code transport", () => {
   });
 
   it("does not elect an abandoned leader when publication reconciliation is empty", async () => {
-    mocks.createDirectTunnelAttachment.mockResolvedValue(directTicket());
     let acquisitions = 0;
     mocks.invoke.mockImplementation(async (command: string) => {
       if (command === "register_code_transport_window_instance") return;
@@ -604,8 +686,12 @@ describe("shared desktop Code transport", () => {
           state: "leader",
         };
       }
-      if (command === "complete_code_transport_forward") {
-        return { forward, generation: "generation-one" };
+      if (command === "complete_worker_link_code_transport_forward") {
+        return {
+          bridge: { token: "bridge-token", url: "ws://127.0.0.1:43210" },
+          forward,
+          generation: "generation-one",
+        };
       }
       if (command === "publish_code_transport_forward") {
         throw new Error("publication unavailable");
@@ -629,40 +715,6 @@ describe("shared desktop Code transport", () => {
 });
 
 describe("startDesktopTunnel", () => {
-  it("keeps the legacy Code compatibility path until its vertical cutover", async () => {
-    mocks.createDirectTunnelAttachment.mockResolvedValue(directTicket());
-    mocks.invoke.mockResolvedValue({
-      attachmentId: "attachment-1",
-      expiresAt,
-      localHost: "127.0.0.1",
-      localPort: 41_234,
-      routeState: "local-direct",
-      directCapabilityId: capabilityId,
-      directFallbackReason: null,
-      tunnelId: "tunnel-1",
-    });
-
-    await expect(
-      startDesktopTunnel("tunnel-1", {
-        compatibilityTransport: "legacy",
-        diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
-      }),
-    ).resolves.toMatchObject({ routeState: "local-direct" });
-    expect(mocks.createDirectTunnelAttachment).toHaveBeenCalledWith(
-      "attachment-1",
-      { diagnosticTraceId: "33333333-3333-4333-8333-333333333333" },
-    );
-    expect(mocks.activateDirectTunnelAttachment).toHaveBeenCalledWith(
-      "attachment-1",
-      { capabilityId },
-    );
-    expect(mocks.invoke).toHaveBeenCalledWith("start_tunnel_forward", {
-      request: expect.objectContaining({
-        diagnosticTraceId: expect.any(String),
-      }),
-    });
-  });
-
   it("routes generic desktop tunnels through the WorkerLink bridge", async () => {
     await expect(startDesktopTunnel("tunnel-1")).resolves.toMatchObject({
       routeState: "relayed",
@@ -673,6 +725,7 @@ describe("startDesktopTunnel", () => {
       diagnosticTraceId: undefined,
       expiresAt,
       preferredLocalPort: undefined,
+      serverUrl: "https://cantrip.example",
       tunnelId: "tunnel-1",
       workerId: "worker-1",
     });
@@ -756,6 +809,35 @@ describe("WorkerLink tunnel attachment rotation", () => {
       "tunnel-1",
       "attachment-1",
       expiresAt,
+    );
+  });
+
+  it("uses the physical Code generation when rotating a pooled attachment", async () => {
+    const forward = {
+      attachmentId: "attachment-1",
+      codePoolGeneration: "generation-one",
+      diagnosticTraceId: null,
+      expiresAt: "2026-08-26T12:00:00.000Z",
+      localHost: "127.0.0.1" as const,
+      localPort: 41_234,
+      routeState: "relayed" as const,
+      relayFallbackAvailable: false,
+      directCapabilityId: null,
+      directFallbackReason: null,
+      tunnelId: "tunnel-1",
+    };
+
+    await expect(
+      refreshDesktopTunnelWorkerLinkAttachment(forward, {
+        clientId: "generation-one",
+        serverUrl: "https://bound-server.example",
+      }),
+    ).resolves.toBe(true);
+
+    expect(mocks.createTunnelAttachment).toHaveBeenCalledWith(
+      "tunnel-1",
+      { clientId: "generation-one" },
+      { serverUrl: "https://bound-server.example" },
     );
   });
 });
