@@ -4,7 +4,6 @@ import type {
   BrowserSummary,
   BrowserFleetService,
   ChatSummary,
-  CodeAppearance,
   CodeTabSummary,
   ExecutionTarget,
   ExplorerEntry,
@@ -58,15 +57,12 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { flushSync } from "react-dom";
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
 import { RunConfigurationControl } from "@/components/run/run-configuration-control";
 import { AppCommandBar } from "@/components/app/app-command-bar";
 import {
-  codeAppearanceFor,
   projectOverviewSectionLabel,
   SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS,
   type SidebarFilePinHandoffState,
@@ -82,6 +78,16 @@ import {
 } from "@/components/app/application-shell-surfaces";
 import { StatusDot } from "@/components/app/status-dot";
 import { useShellEnvironment } from "@/components/app/shell-environment";
+import {
+  useShellAppearanceEffects,
+  useShellAppearanceState,
+} from "@/components/app/shell-appearance";
+import {
+  useContentScrollChrome,
+  useShellChromeState,
+  useSidebarResizeController,
+  useSidebarWidthPersistence,
+} from "@/components/app/shell-chrome";
 import {
   createShellNavigationCommands,
   createShellProjectNavigationCommands,
@@ -173,7 +179,6 @@ import {
   WorktreeCreateDialog,
   type WorktreeStatusMap,
 } from "@/components/worktrees/worktree-control";
-import { hasScrolledContent } from "@/lib/scroll-divider";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { openExternalUrl } from "@/lib/external-url";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
@@ -289,14 +294,11 @@ import { getProjects } from "@/lib/project-encryption";
 import {
   closeCurrentDesktopWindow,
   desktopPopoutTitlebarLeftInset,
-  desktopWindowThemeOverride,
   focusDesktopPopoutGroup,
   isMacosDesktopRuntime,
   openDesktopExplorerFile,
   openDesktopPopoutGroup,
   openDesktopProjectOverviewPopout,
-  updateDesktopWindowTheme,
-  updateMacosProMode,
   updateDesktopWindowTitle,
   watchDesktopPopoutGroup,
 } from "@/lib/desktop-popout";
@@ -331,21 +333,7 @@ import {
   type SidebarFilePreviewState,
 } from "@/lib/sidebar-file-tabs";
 import { projectScriptCommandDestination } from "@/lib/project-script-command";
-import {
-  clampSidebarWidth,
-  DEFAULT_SIDEBAR_WIDTH,
-  MAX_SIDEBAR_WIDTH,
-  MIN_SIDEBAR_WIDTH,
-  sidebarWidthFromKey,
-  sidebarWidthFromPointer,
-} from "@/lib/sidebar-resize";
-import {
-  readStartupHighContrast,
-  readStartupThemePreference,
-  rememberStartupHighContrast,
-  rememberStartupThemePreference,
-  startupThemeIsDark,
-} from "@/lib/startup-theme";
+import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "@/lib/sidebar-resize";
 import { cn } from "@/lib/utils";
 import {
   applyOptimisticTabLayoutToCache,
@@ -572,12 +560,26 @@ export function App() {
   const [activeMobileBottomTabId, setActiveMobileBottomTabId] = useState(
     PRIMARY_MOBILE_BOTTOM_TAB_ID,
   );
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [desktopSidebarDrawerOpen, setDesktopSidebarDrawerOpen] =
-    useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
-  const [sidebarResizing, setSidebarResizing] = useState(false);
-  const [contentScrolled, setContentScrolled] = useState(false);
+  const {
+    contentRootRef,
+    contentScrolled,
+    desktopSidebarDrawerOpen,
+    scrolledContentRef,
+    setContentScrolled,
+    setDesktopSidebarDrawerOpen,
+    setSidebarCollapsed,
+    setSidebarResizing,
+    setSidebarWidth,
+    sidebarCollapsed,
+    sidebarRef,
+    sidebarResizeBodyStyleRef,
+    sidebarResizeLeftRef,
+    sidebarResizePointerIdRef,
+    sidebarResizeStartWidthRef,
+    sidebarResizing,
+    sidebarWidth,
+    sidebarWidthRef,
+  } = useShellChromeState({ desktopSidebarDrawer });
   const [gitHistoryHeader, setGitHistoryHeader] =
     useState<GitHistoryHeaderState | null>(null);
   const [explorerHeader, setExplorerHeader] =
@@ -617,44 +619,13 @@ export function App() {
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
     null,
   );
-  const [codeAppearance, setCodeAppearance] = useState<CodeAppearance>(() =>
-    codeAppearanceFor(
-      document.documentElement.classList.contains("dark"),
-      document.documentElement.classList.contains("high-contrast"),
-      false,
-    ),
-  );
-  const [proModeActive, setProModeActive] = useState(false);
-  const contentRootRef = useRef<HTMLElement>(null);
+  const { codeAppearance, proModeActive, setCodeAppearance, setProModeActive } =
+    useShellAppearanceState();
   const mobileBottomTabSequenceRef = useRef(0);
   const persistedMobileBottomTabsRef = useRef<{
     projectId: string;
     signature: string;
   } | null>(null);
-  const scrolledContentRef = useRef(new Set<EventTarget>());
-  const sidebarRef = useRef<HTMLElement>(null);
-  const sidebarWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
-  const sidebarResizePointerIdRef = useRef<number | null>(null);
-  const sidebarResizeLeftRef = useRef(0);
-  const sidebarResizeStartWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
-  const sidebarResizeBodyStyleRef = useRef<{
-    cursor: string;
-    userSelect: string;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!desktopSidebarDrawer) setDesktopSidebarDrawerOpen(false);
-  }, [desktopSidebarDrawer]);
-
-  useEffect(() => {
-    if (!desktopSidebarDrawerOpen) return;
-    sidebarRef.current?.focus();
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setDesktopSidebarDrawerOpen(false);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [desktopSidebarDrawerOpen]);
 
   const handleExplorerLifecycleChange = useCallback(
     (explorerId: string, actions: ExplorerLifecycleActions | null) => {
@@ -819,20 +790,7 @@ export function App() {
     retry: 2,
     scope: { id: "mobile-project-tab-configurations" },
   });
-  const saveSidebarWidth = useMutation({
-    mutationFn: (width: number) => updateSettings({ sidebarWidth: width }),
-    onSuccess: (bundle) => queryClient.setQueryData(["settings"], bundle),
-    onError: (error) => {
-      clientLogger.warn("Sidebar width failed to save", {
-        ...operationalErrorMetadata(error),
-        event: "settings.sidebar-width.save.failed",
-        operation: "save-setting",
-        reasonCode: "request-failed",
-        status: "rolled-back",
-        subsystem: "settings",
-      });
-    },
-  });
+  const saveSidebarWidth = useSidebarWidthPersistence(queryClient);
   const projects = useQuery({
     queryFn: getProjects,
     queryKey: ["projects"],
@@ -3563,119 +3521,30 @@ export function App() {
       stopObserving?.();
     };
   }, [desktopRuntime, detachedGroupId, isPopout, resumeDetachedGroup]);
-  useEffect(() => {
-    scrolledContentRef.current.clear();
-    setContentScrolled(false);
-  }, [activeContentKey]);
-  useEffect(() => {
-    const root = contentRootRef.current;
-    if (!root || isPopout) return;
-    const update = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof Node) || !root.contains(target)) return;
-      const scrolled = scrolledContentRef.current;
-      for (const candidate of scrolled) {
-        if (!(candidate instanceof Node) || !root.contains(candidate)) {
-          scrolled.delete(candidate);
-        }
-      }
-      if (hasScrolledContent(target)) scrolled.add(target);
-      else scrolled.delete(target);
-      setContentScrolled(scrolled.size > 0);
-    };
-    root.addEventListener("scroll", update, true);
-    return () => root.removeEventListener("scroll", update, true);
-  }, [isPopout]);
-  useEffect(() => {
-    if (
-      sidebarResizePointerIdRef.current !== null ||
-      settings.data?.preferences.sidebarWidth === undefined
-    ) {
-      return;
-    }
-    const width = clampSidebarWidth(settings.data.preferences.sidebarWidth);
-    sidebarWidthRef.current = width;
-    setSidebarWidth(width);
-  }, [settings.data?.preferences.sidebarWidth]);
-  useEffect(
-    () => () => {
-      const previous = sidebarResizeBodyStyleRef.current;
-      if (!previous) return;
-      document.body.style.cursor = previous.cursor;
-      document.body.style.userSelect = previous.userSelect;
-    },
-    [],
-  );
-
-  const applySidebarWidth = (width: number) => {
-    const next = clampSidebarWidth(width);
-    sidebarWidthRef.current = next;
-    setSidebarWidth(next);
-    return next;
-  };
-
-  const restoreSidebarResizeBodyStyle = () => {
-    const previous = sidebarResizeBodyStyleRef.current;
-    if (!previous) return;
-    document.body.style.cursor = previous.cursor;
-    document.body.style.userSelect = previous.userSelect;
-    sidebarResizeBodyStyleRef.current = null;
-  };
-
-  const beginSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    sidebarResizePointerIdRef.current = event.pointerId;
-    sidebarResizeLeftRef.current =
-      sidebarRef.current?.getBoundingClientRect().left ?? 0;
-    sidebarResizeStartWidthRef.current = sidebarWidthRef.current;
-    sidebarResizeBodyStyleRef.current = {
-      cursor: document.body.style.cursor,
-      userSelect: document.body.style.userSelect,
-    };
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setSidebarResizing(true);
-  };
-
-  const moveSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (sidebarResizePointerIdRef.current !== event.pointerId) return;
-    applySidebarWidth(
-      sidebarWidthFromPointer(event.clientX, sidebarResizeLeftRef.current),
-    );
-  };
-
-  const finishSidebarResize = (
-    event: ReactPointerEvent<HTMLDivElement>,
-    persist: boolean,
-  ) => {
-    if (sidebarResizePointerIdRef.current !== event.pointerId) return;
-    sidebarResizePointerIdRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    restoreSidebarResizeBodyStyle();
-    setSidebarResizing(false);
-    if (!persist) {
-      applySidebarWidth(sidebarResizeStartWidthRef.current);
-      return;
-    }
-    if (sidebarWidthRef.current !== sidebarResizeStartWidthRef.current) {
-      saveSidebarWidth.mutate(sidebarWidthRef.current);
-    }
-  };
-
-  const resizeSidebarWithKeyboard = (
-    event: ReactKeyboardEvent<HTMLDivElement>,
-  ) => {
-    const next = sidebarWidthFromKey(sidebarWidthRef.current, event.key);
-    if (next === null) return;
-    event.preventDefault();
-    if (next === sidebarWidthRef.current) return;
-    applySidebarWidth(next);
-    saveSidebarWidth.mutate(next);
-  };
+  useContentScrollChrome({
+    activeContentKey,
+    contentRootRef,
+    isPopout,
+    scrolledContentRef,
+    setContentScrolled,
+  });
+  const {
+    beginSidebarResize,
+    finishSidebarResize,
+    moveSidebarResize,
+    resizeSidebarWithKeyboard,
+  } = useSidebarResizeController({
+    configuredWidth: settings.data?.preferences.sidebarWidth,
+    saveSidebarWidth,
+    setSidebarResizing,
+    setSidebarWidth,
+    sidebarRef,
+    sidebarResizeBodyStyleRef,
+    sidebarResizeLeftRef,
+    sidebarResizePointerIdRef,
+    sidebarResizeStartWidthRef,
+    sidebarWidthRef,
+  });
 
   const showChatConsole = (chat: ChatSummary) => {
     const existing = terminals.data?.find(
@@ -3687,101 +3556,12 @@ export function App() {
       openChatConsole.mutate(chat.id);
     }
   };
-  useEffect(() => {
-    const configuredPreference = settings.data?.preferences.theme;
-    const configuredHighContrast = settings.data?.preferences.highContrast;
-    const preference =
-      configuredPreference ?? readStartupThemePreference() ?? "system";
-    const highContrast =
-      configuredHighContrast ?? readStartupHighContrast() ?? false;
-    if (configuredPreference) {
-      rememberStartupThemePreference(configuredPreference);
-    }
-    if (configuredHighContrast !== undefined) {
-      rememberStartupHighContrast(configuredHighContrast);
-    }
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    let active = true;
-    const apply = () => {
-      const dark = startupThemeIsDark(preference, media.matches);
-      document.documentElement.classList.toggle("dark", dark);
-      document.documentElement.classList.toggle("high-contrast", highContrast);
-      setCodeAppearance(codeAppearanceFor(dark, highContrast, proModeActive));
-      document.documentElement.style.colorScheme = dark ? "dark" : "light";
-    };
-    apply();
-    if (preference === "system") {
-      media.addEventListener("change", apply);
-    }
-    void updateDesktopWindowTheme(desktopWindowThemeOverride(preference))
-      .then(() => {
-        if (active && preference === "system") apply();
-      })
-      .catch((error: unknown) => {
-        clientLogger.warn("Desktop window theme update failed", {
-          ...operationalErrorMetadata(error),
-          event: "window.theme.failed",
-          operation: "set-theme",
-          reasonCode: "native-window-error",
-          status: "failed",
-          subsystem: "desktop-window",
-        });
-      });
-    return () => {
-      active = false;
-      if (preference === "system") {
-        media.removeEventListener("change", apply);
-      }
-    };
-  }, [
-    settings.data?.preferences.highContrast,
-    settings.data?.preferences.theme,
+  useShellAppearanceEffects({
+    preferences: settings.data?.preferences,
     proModeActive,
-  ]);
-
-  useEffect(() => {
-    const opacity = settings.data?.preferences.proModeOpacity ?? 80;
-    document.documentElement.style.setProperty(
-      "--pro-mode-opacity",
-      `${opacity}%`,
-    );
-  }, [settings.data?.preferences.proModeOpacity]);
-
-  useEffect(() => {
-    const requested = settings.data?.preferences.proMode ?? false;
-    const supported = isMacosDesktopRuntime();
-    let active = true;
-    document.documentElement.classList.toggle(
-      "pro-mode",
-      supported && requested,
-    );
-    setProModeActive(supported && requested);
-    if (!supported) return;
-    void updateMacosProMode(requested)
-      .then((enabled) => {
-        if (active) {
-          document.documentElement.classList.toggle("pro-mode", enabled);
-          setProModeActive(enabled);
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          document.documentElement.classList.remove("pro-mode");
-          setProModeActive(false);
-        }
-        clientLogger.warn("macOS Pro Mode update failed", {
-          ...operationalErrorMetadata(error),
-          event: "window.pro-mode.failed",
-          operation: "set-pro-mode",
-          reasonCode: "native-window-error",
-          status: "failed",
-          subsystem: "desktop-window",
-        });
-      });
-    return () => {
-      active = false;
-    };
-  }, [settings.data?.preferences.proMode]);
+    setCodeAppearance,
+    setProModeActive,
+  });
 
   useEffect(() => {
     if (!projectWorkspaces.data?.length) return;
