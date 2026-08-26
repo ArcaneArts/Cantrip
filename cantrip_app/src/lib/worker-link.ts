@@ -1,3 +1,5 @@
+import { App as CapacitorApp } from "@capacitor/app";
+import { Network as CapacitorNetwork } from "@capacitor/network";
 import { isTauri } from "@tauri-apps/api/core";
 import {
   WORKER_LINK_MAX_CREDIT_BYTES,
@@ -116,7 +118,7 @@ export interface WorkerLink {
     grant: WorkerLinkResourceGrant,
     lane: WorkerLinkQosLane,
   ): Promise<WorkerLinkStream>;
-  reprobe(): Promise<void>;
+  reprobe(reason?: WorkerLinkReprobeReason): Promise<void>;
 }
 
 export interface WorkerLinkReference {
@@ -128,6 +130,27 @@ export type WorkerLinkConnectionState =
   "idle" | "connecting" | "active" | "degraded" | "reconnecting" | "offline";
 
 export type WorkerLinkStatusFreshness = "active" | "last-used";
+
+export type WorkerLinkEnvironmentReason =
+  "network-change" | "application-resume";
+
+export type WorkerLinkReprobeReason =
+  WorkerLinkEnvironmentReason | "authorized-reprobe";
+
+export type WorkerLinkTransitionReason =
+  | "initial-connect"
+  | "carrier-ready"
+  | "route-promoted"
+  | "route-demoted"
+  | "route-unavailable"
+  | "carrier-failed"
+  | "ice-failure"
+  | "network-change"
+  | "application-resume"
+  | "authorized-reprobe"
+  | "authority-replaced"
+  | "session-renewed"
+  | "connection-failed";
 
 export interface WorkerLinkRouteChannelCount {
   readonly channelCount: number;
@@ -147,10 +170,12 @@ export interface WorkerLinkStatusSnapshot {
   readonly routeChannelCounts: readonly WorkerLinkRouteChannelCount[];
   readonly routeGeneration: number | null;
   readonly state: WorkerLinkConnectionState;
+  readonly transitionReason: WorkerLinkTransitionReason;
   readonly workerId: string;
 }
 
 export interface WorkerLinkManagerOptions {
+  readonly environmentReprobeDebounceMs?: number;
   readonly lastUsedStatusTtlMs?: number;
 }
 
@@ -184,6 +209,9 @@ export interface WorkerLinkManagerDependencies {
     sessionId: string,
     route: WorkerLinkRoute,
   ): Promise<WorkerLinkSession>;
+  subscribeEnvironment(
+    listener: (reason: WorkerLinkEnvironmentReason) => void,
+  ): () => void;
   subscribeIdentity(listener: () => void): () => void;
 }
 
@@ -281,6 +309,7 @@ interface ClientWorkerLinkStatus {
   routeChannelCounts: readonly WorkerLinkRouteChannelCount[];
   routeGeneration: number | null;
   state: WorkerLinkConnectionState;
+  transitionReason: WorkerLinkTransitionReason;
 }
 
 interface ManagedStatusEntry {
@@ -296,13 +325,21 @@ export class WorkerLinkManager {
   readonly #statusListeners = new Set<() => void>();
   #statusSnapshot: readonly WorkerLinkStatusSnapshot[] = [];
   #closed = false;
+  readonly #environmentReprobeDebounceMs: number;
+  #environmentReprobeReason: WorkerLinkEnvironmentReason | null = null;
+  #environmentReprobeTimer: ReturnType<typeof setTimeout> | null = null;
   readonly #lastUsedStatusTtlMs: number;
+  readonly #unsubscribeEnvironment: () => void;
   readonly #unsubscribeIdentity: () => void;
 
   constructor(
     private readonly dependencies: WorkerLinkManagerDependencies,
     options: WorkerLinkManagerOptions = {},
   ) {
+    this.#environmentReprobeDebounceMs = Math.max(
+      0,
+      options.environmentReprobeDebounceMs ?? 250,
+    );
     this.#lastUsedStatusTtlMs = Math.max(
       0,
       options.lastUsedStatusTtlMs ?? DEFAULT_LAST_USED_STATUS_TTL_MS,
@@ -310,6 +347,9 @@ export class WorkerLinkManager {
     this.#unsubscribeIdentity = dependencies.subscribeIdentity(() => {
       void this.#retireAll("revoked");
     });
+    this.#unsubscribeEnvironment = dependencies.subscribeEnvironment((reason) =>
+      this.#scheduleEnvironmentReprobe(reason),
+    );
   }
 
   getStatusSnapshot(): readonly WorkerLinkStatusSnapshot[] {
@@ -357,9 +397,29 @@ export class WorkerLinkManager {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    if (this.#environmentReprobeTimer) {
+      clearTimeout(this.#environmentReprobeTimer);
+      this.#environmentReprobeTimer = null;
+    }
+    this.#unsubscribeEnvironment();
     this.#unsubscribeIdentity();
     await this.#retireAll("normal");
     this.#statusListeners.clear();
+  }
+
+  #scheduleEnvironmentReprobe(reason: WorkerLinkEnvironmentReason): void {
+    if (this.#closed) return;
+    this.#environmentReprobeReason = reason;
+    if (this.#environmentReprobeTimer) return;
+    this.#environmentReprobeTimer = setTimeout(() => {
+      this.#environmentReprobeTimer = null;
+      const activeReason = this.#environmentReprobeReason;
+      this.#environmentReprobeReason = null;
+      if (!activeReason || this.#closed) return;
+      for (const entry of this.#entries.values()) {
+        void entry.link.reprobe(activeReason).catch(() => undefined);
+      }
+    }, this.#environmentReprobeDebounceMs);
   }
 
   #release(key: string, entry: ManagedEntry): void {
@@ -447,6 +507,7 @@ export class WorkerLinkManager {
         routeChannelCounts: emptyRouteChannelCounts(),
         routeGeneration: null,
         state: "connecting",
+        transitionReason: "initial-connect",
         workerId,
       },
       timer: null,
@@ -577,6 +638,8 @@ class ClientWorkerLink implements WorkerLink {
   #connectionState: WorkerLinkConnectionState = "connecting";
   #connecting: Promise<void> | null = null;
   #directProbe: Promise<void> | null = null;
+  #pendingReprobeReason: WorkerLinkReprobeReason | null = null;
+  #reprobeOperation: Promise<void> | null = null;
   readonly #routeFailures = new Map<
     WorkerLinkRoute,
     WorkerLinkRouteStatus["fallbackReason"]
@@ -584,10 +647,13 @@ class ClientWorkerLink implements WorkerLink {
   readonly #routeListeners = new Set<(status: WorkerLinkRouteStatus) => void>();
   #renewTimer: ReturnType<typeof setTimeout> | null = null;
   #routeStatus: WorkerLinkRouteStatus;
+  #selectedRoute: WorkerLinkRoute | null = null;
   #session: WorkerLinkSession;
   readonly #streams = new Map<string, ClientWorkerLinkStream>();
   #telemetry: WorkerLinkTelemetryReporter;
   #statusEnabled = true;
+  #transitionChangedAt: string;
+  #transitionReason: WorkerLinkTransitionReason = "initial-connect";
 
   constructor(
     session: WorkerLinkSession,
@@ -597,6 +663,7 @@ class ClientWorkerLink implements WorkerLink {
     private readonly publishStatus: (status: ClientWorkerLinkStatus) => void,
   ) {
     this.#session = session;
+    this.#transitionChangedAt = new Date(dependencies.now()).toISOString();
     this.#telemetry = new WorkerLinkTelemetryReporter(
       session.sessionId,
       dependencies,
@@ -624,13 +691,13 @@ class ClientWorkerLink implements WorkerLink {
   }
 
   async start(): Promise<void> {
-    this.#transition("connecting");
+    this.#transition("connecting", "initial-connect");
     try {
       await this.#connect();
       this.#recordTelemetry("session-opened", 1, "none");
       this.#scheduleRenewal();
     } catch (error) {
-      this.#transition("offline");
+      this.#transition("offline", "connection-failed");
       throw error;
     }
   }
@@ -675,6 +742,15 @@ class ClientWorkerLink implements WorkerLink {
               lane,
               route,
             );
+            if (lane === "realtime") {
+              this.#recordTelemetry(
+                "frame-dropped",
+                1,
+                "congested",
+                lane,
+                route,
+              );
+            }
           }
           return sent;
         },
@@ -687,7 +763,7 @@ class ClientWorkerLink implements WorkerLink {
           active.scheduler.cancelChannel(channelId, preserveClose);
         },
         (event, value, reason) =>
-          this.#recordTelemetry(event, value, reason, lane, route),
+          this.#recordStreamTelemetry(event, value, reason, lane, route),
       );
       this.#streams.set(channelId, stream);
       try {
@@ -719,12 +795,41 @@ class ClientWorkerLink implements WorkerLink {
     );
   }
 
-  async reprobe(): Promise<void> {
+  async reprobe(
+    reason: WorkerLinkReprobeReason = "authorized-reprobe",
+  ): Promise<void> {
     if (this.#closed) throw new Error("WorkerLink is closed.");
-    this.#transition(this.#carriers.size > 0 ? "degraded" : "reconnecting");
+    this.#pendingReprobeReason = reason;
+    if (this.#reprobeOperation) return this.#reprobeOperation;
+    const operation = (async () => {
+      while (this.#pendingReprobeReason && !this.#closed) {
+        const activeReason = this.#pendingReprobeReason;
+        this.#pendingReprobeReason = null;
+        await this.#runReprobe(activeReason);
+      }
+    })();
+    this.#reprobeOperation = operation;
+    try {
+      await operation;
+    } finally {
+      if (this.#reprobeOperation === operation) this.#reprobeOperation = null;
+    }
+  }
+
+  async #runReprobe(reason: WorkerLinkReprobeReason): Promise<void> {
+    this.#transition(
+      this.#carriers.size > 0 ? "degraded" : "reconnecting",
+      reason,
+    );
+    for (const route of [...this.#carriers.keys()]) {
+      if (route !== "relay") {
+        this.#detachCarrier(route, "route-replaced");
+      }
+    }
+    this.#routeFailures.clear();
     await Promise.allSettled([this.#ensureRelay(), this.#probeDirect()]);
     if (this.#carriers.size === 0) {
-      this.#transition("offline");
+      this.#transition("offline", "connection-failed");
       throw new Error("WorkerLink reprobe found no usable route.");
     }
     this.#transition("active");
@@ -819,29 +924,50 @@ class ClientWorkerLink implements WorkerLink {
     const opening = this.#carrierOpenings.get(route);
     if (opening) return opening;
     const session = this.#session;
+    this.#recordTelemetry("negotiation-started", 1, "none", null, route);
     const operation = (async () => {
-      const carrier =
-        route === "local"
-          ? await this.dependencies.openLocal(session)
-          : route === "relay"
-            ? await this.dependencies.openRelay(
-                session,
-                this.clientIdentity,
-                this.clientInstanceId,
-              )
-            : await this.dependencies.openPeer(session, route);
-      if (
-        this.#closed ||
-        this.#session.sessionId !== session.sessionId ||
-        this.#session.routeGeneration !== session.routeGeneration ||
-        carrier.route !== route
-      ) {
-        carrier.close("stale-carrier");
-        throw new WorkerLinkRouteUnavailableError(
-          "WorkerLink carrier authority changed during setup.",
+      try {
+        const carrier =
+          route === "local"
+            ? await this.dependencies.openLocal(session)
+            : route === "relay"
+              ? await this.dependencies.openRelay(
+                  session,
+                  this.clientIdentity,
+                  this.clientInstanceId,
+                )
+              : await this.dependencies.openPeer(session, route);
+        if (
+          this.#closed ||
+          this.#session.sessionId !== session.sessionId ||
+          this.#session.routeGeneration !== session.routeGeneration ||
+          carrier.route !== route
+        ) {
+          carrier.close("stale-carrier");
+          throw new WorkerLinkRouteUnavailableError(
+            "WorkerLink carrier authority changed during setup.",
+          );
+        }
+        const active = this.#installCarrier(carrier);
+        this.#recordTelemetry(
+          "negotiation-completed",
+          1,
+          "none",
+          null,
+          route,
+          carrier.latencyMs,
         );
+        return active;
+      } catch (error) {
+        this.#recordTelemetry(
+          "negotiation-failed",
+          1,
+          unavailableReasonFor(route),
+          null,
+          route,
+        );
+        throw error;
       }
-      return this.#installCarrier(carrier);
     })();
     this.#carrierOpenings.set(route, operation);
     try {
@@ -878,7 +1004,10 @@ class ClientWorkerLink implements WorkerLink {
         if (this.#carriers.get(route) !== active || this.#closed) return;
         this.#detachCarrier(route, "endpoint-disconnected", active, false);
         this.#noteRouteFailure(route, disconnectedReason(route));
-        this.#transition(this.#carriers.size > 0 ? "degraded" : "reconnecting");
+        this.#transition(
+          this.#carriers.size > 0 ? "degraded" : "reconnecting",
+          route === "lan" || route === "wan" ? "ice-failure" : "carrier-failed",
+        );
         void this.#recover();
       }),
     ];
@@ -896,10 +1025,14 @@ class ClientWorkerLink implements WorkerLink {
     return active;
   }
 
-  async #recover(): Promise<void> {
+  async #recover(replaceAuthority = false): Promise<void> {
     if (this.#connecting || this.#closed) return this.#connecting ?? undefined;
     const recovery = (async () => {
-      for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
+      for (
+        let attempt = 0;
+        !replaceAuthority && attempt < MAX_RECONNECT_ATTEMPTS;
+        attempt += 1
+      ) {
         await delay(
           RECONNECT_DELAYS_MS[attempt] ?? RECONNECT_DELAYS_MS.at(-1)!,
         );
@@ -979,6 +1112,7 @@ class ClientWorkerLink implements WorkerLink {
     try {
       decoded = decodeWorkerLinkFrame(frame);
     } catch {
+      this.#recordTelemetry("frame-dropped", 1, "protocol-error", null, route);
       active.carrier.close("invalid-frame");
       return;
     }
@@ -989,9 +1123,27 @@ class ClientWorkerLink implements WorkerLink {
       header.routeGeneration !== this.#session.routeGeneration ||
       header.effectiveRoute !== route
     ) {
+      this.#recordTelemetry(
+        "frame-dropped",
+        1,
+        "route-replaced",
+        header.lane,
+        route,
+      );
       return;
     }
-    this.#streams.get(header.channel.channelId)?.receive(header, payload);
+    const stream = this.#streams.get(header.channel.channelId);
+    if (!stream) {
+      this.#recordTelemetry(
+        "frame-dropped",
+        1,
+        "protocol-error",
+        header.lane,
+        route,
+      );
+      return;
+    }
+    stream.receive(header, payload);
   }
 
   #detachCarrier(
@@ -1033,23 +1185,43 @@ class ClientWorkerLink implements WorkerLink {
   #publishPreferredRoute(): void {
     const route = this.#availableRoutes()[0];
     if (!route) {
+      if (this.#selectedRoute) {
+        this.#selectedRoute = null;
+        this.#markTransition("route-unavailable");
+      }
       this.#emitStatus();
       return;
     }
     const fallbackReason = this.#fallbackFor(route);
     const carrier = this.#carriers.get(route)!.carrier;
     const previous = this.#routeStatus;
+    const previousSelected = this.#selectedRoute;
+    this.#selectedRoute = route;
+    if (!previousSelected) {
+      this.#markTransition("carrier-ready");
+    } else if (previousSelected !== route) {
+      const previousPriority =
+        this.#session.routePolicy.priority.indexOf(previousSelected);
+      const nextPriority = this.#session.routePolicy.priority.indexOf(route);
+      const promoted = nextPriority < previousPriority;
+      const transition = promoted ? "route-promoted" : "route-demoted";
+      this.#markTransition(transition);
+      this.#recordTelemetry(
+        transition,
+        1,
+        fallbackReason ?? "none",
+        null,
+        route,
+        carrier.latencyMs,
+      );
+    }
     this.#routeStatus = {
       preferredRoute: route,
       effectiveRoute: route,
       routeGeneration: this.#session.routeGeneration,
       latencyMs: carrier.latencyMs,
       fallbackReason,
-      changedAt:
-        previous.effectiveRoute === route &&
-        previous.fallbackReason === fallbackReason
-          ? previous.changedAt
-          : new Date(this.dependencies.now()).toISOString(),
+      changedAt: this.#transitionChangedAt,
     };
     if (
       previous.effectiveRoute !== route ||
@@ -1104,17 +1276,42 @@ class ClientWorkerLink implements WorkerLink {
         .renewSession(expectedSession.sessionId)
         .then((session) => {
           if (this.#closed) return;
+          validateSessionAuthority(
+            session,
+            this.workerId,
+            this.clientInstanceId,
+            this.clientIdentity,
+          );
           if (
             session.sessionId !== expectedSession.sessionId ||
-            session.routeGeneration !== expectedSession.routeGeneration ||
+            session.routeGeneration < expectedSession.routeGeneration ||
             JSON.stringify(session.identity) !==
               JSON.stringify(expectedSession.identity)
           ) {
             this.#detachAllCarriers("route-replaced");
+            void this.#recover(true);
+            return;
+          }
+          if (session.routeGeneration !== expectedSession.routeGeneration) {
+            this.#detachAllCarriers("route-replaced");
+            this.#routeFailures.clear();
+            this.#session = session;
+            this.#routeStatus = {
+              preferredRoute: session.preferredRoute,
+              effectiveRoute: session.preferredRoute,
+              routeGeneration: session.routeGeneration,
+              latencyMs: null,
+              fallbackReason: null,
+              changedAt: new Date(this.dependencies.now()).toISOString(),
+            };
+            this.#markTransition("authority-replaced");
+            this.#transition("reconnecting");
+            this.#scheduleRenewal();
             void this.#recover();
             return;
           }
           this.#session = session;
+          this.#markTransition("session-renewed");
           this.#emitStatus();
           this.#scheduleRenewal();
         })
@@ -1125,9 +1322,18 @@ class ClientWorkerLink implements WorkerLink {
     }, delayMs);
   }
 
-  #transition(state: WorkerLinkConnectionState): void {
+  #transition(
+    state: WorkerLinkConnectionState,
+    reason?: WorkerLinkTransitionReason,
+  ): void {
+    if (reason) this.#markTransition(reason);
     this.#connectionState = state;
     this.#emitStatus();
+  }
+
+  #markTransition(reason: WorkerLinkTransitionReason): void {
+    this.#transitionReason = reason;
+    this.#transitionChangedAt = new Date(this.dependencies.now()).toISOString();
   }
 
   #emitStatus(): void {
@@ -1147,7 +1353,7 @@ class ClientWorkerLink implements WorkerLink {
           : [];
     this.publishStatus({
       activeChannelCount: this.#activeStreamRoutes.size,
-      changedAt: this.#routeStatus.changedAt,
+      changedAt: this.#transitionChangedAt,
       effectiveRoutes,
       fallbackReason: this.#routeStatus.fallbackReason,
       latencyMs: preferred
@@ -1157,7 +1363,24 @@ class ClientWorkerLink implements WorkerLink {
       routeChannelCounts: routeChannelCounts(routeCounts),
       routeGeneration: this.#session.routeGeneration,
       state: this.#connectionState,
+      transitionReason: this.#transitionReason,
     });
+  }
+
+  #recordStreamTelemetry(
+    event: WorkerLinkTelemetrySample["event"],
+    value: number,
+    reason: WorkerLinkTelemetrySample["reason"],
+    lane: WorkerLinkQosLane,
+    route: WorkerLinkRoute,
+  ): void {
+    this.#recordTelemetry(event, value, reason, lane, route);
+    if (
+      route !== "relay" &&
+      (event === "bytes-sent" || event === "bytes-received")
+    ) {
+      this.#recordTelemetry("relay-bytes-avoided", value, "none", lane, route);
+    }
   }
 
   #recordTelemetry(
@@ -1751,6 +1974,12 @@ function unavailableReason(
       : "wan-unavailable";
 }
 
+function unavailableReasonFor(
+  route: WorkerLinkRoute,
+): NonNullable<WorkerLinkRouteStatus["fallbackReason"]> {
+  return route === "relay" ? "relay-unavailable" : unavailableReason(route);
+}
+
 function disconnectedReason(
   route: WorkerLinkRoute,
 ): NonNullable<WorkerLinkRouteStatus["fallbackReason"]> {
@@ -1765,6 +1994,57 @@ function disconnectedReason(
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function subscribeWorkerLinkEnvironment(
+  listener: (reason: WorkerLinkEnvironmentReason) => void,
+): () => void {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return () => undefined;
+  }
+  const connection = (
+    navigator as Navigator & {
+      connection?: Pick<
+        EventTarget,
+        "addEventListener" | "removeEventListener"
+      >;
+    }
+  ).connection;
+  let wasHidden = document.visibilityState === "hidden";
+  const networkChanged = () => listener("network-change");
+  const visibilityChanged = () => {
+    const hidden = document.visibilityState === "hidden";
+    if (wasHidden && !hidden) listener("application-resume");
+    wasHidden = hidden;
+  };
+  const pageShown = (event: PageTransitionEvent) => {
+    if (event.persisted) listener("application-resume");
+  };
+  let disposed = false;
+  const nativeHandles = [
+    CapacitorNetwork.addListener("networkStatusChange", () => {
+      if (!disposed) listener("network-change");
+    }).catch(() => null),
+    CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+      if (!disposed && isActive) listener("application-resume");
+    }).catch(() => null),
+  ];
+  window.addEventListener("online", networkChanged);
+  window.addEventListener("pageshow", pageShown);
+  document.addEventListener("visibilitychange", visibilityChanged);
+  connection?.addEventListener("change", networkChanged);
+  return () => {
+    disposed = true;
+    window.removeEventListener("online", networkChanged);
+    window.removeEventListener("pageshow", pageShown);
+    document.removeEventListener("visibilitychange", visibilityChanged);
+    connection?.removeEventListener("change", networkChanged);
+    for (const handle of nativeHandles) {
+      void handle
+        .then((activeHandle) => activeHandle?.remove())
+        .catch(() => undefined);
+    }
+  };
 }
 
 const defaultDependencies: WorkerLinkManagerDependencies = {
@@ -1808,6 +2088,7 @@ const defaultDependencies: WorkerLinkManagerDependencies = {
   renewSession: renewWorkerLinkSession,
   recordTelemetry: recordWorkerLinkTelemetry,
   setRoute: updateWorkerLinkRoute,
+  subscribeEnvironment: subscribeWorkerLinkEnvironment,
   subscribeIdentity: (listener) =>
     onClientSessionIdentityChanged(() => listener()),
 };

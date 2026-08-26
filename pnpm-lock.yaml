@@ -71,6 +71,9 @@ importers:
       "@capacitor/ios":
         specifier: ^8.5.0
         version: 8.5.0(@capacitor/core@8.5.0)
+      "@capacitor/network":
+        specifier: ^8.0.1
+        version: 8.0.1(@capacitor/core@8.5.0)
       "@capacitor/share":
         specifier: ^8.0.1
         version: 8.0.1(@capacitor/core@8.5.0)
@@ -690,6 +693,14 @@ packages:
       }
     peerDependencies:
       "@capacitor/core": ^8.5.0
+
+  "@capacitor/network@8.0.1":
+    resolution:
+      {
+        integrity: sha512-9xK/FHFmzKGanB6BdoSZOzXk8vF0OFVQSQ4PAsIrzAzLuXHryO317qy8dcHVpgxYeuZq2noI0My9z1DvVDi/9w==,
+      }
+    peerDependencies:
+      "@capacitor/core": ">=8.0.0"
 
   "@capacitor/share@8.0.1":
     resolution:
@@ -9322,6 +9333,10 @@ snapshots:
       "@capacitor/core": 8.5.0
 
   "@capacitor/ios@8.5.0(@capacitor/core@8.5.0)":
+    dependencies:
+      "@capacitor/core": 8.5.0
+
+  "@capacitor/network@8.0.1(@capacitor/core@8.5.0)":
     dependencies:
       "@capacitor/core": 8.5.0
 
