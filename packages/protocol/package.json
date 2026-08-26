@@ -56,6 +56,10 @@
       "types": "./src/remote-surface-stream.ts",
       "import": "./dist/remote-surface-stream.js"
     },
+    "./worker-link": {
+      "types": "./src/worker-link.ts",
+      "import": "./dist/worker-link.js"
+    },
     "./repository-operation": {
       "types": "./src/repository-operation.ts",
       "import": "./dist/repository-operation.js"

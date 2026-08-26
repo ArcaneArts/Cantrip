@@ -140,6 +140,7 @@ export * from "./direct-data-plane.js";
 import { tunnelDataPlaneCloseCodeSchema } from "./tunnel-data-plane.js";
 
 export * from "./tunnel-data-plane.js";
+export * from "./worker-link.js";
 
 import { clientControlResultStatusSchema } from "./live.js";
 
