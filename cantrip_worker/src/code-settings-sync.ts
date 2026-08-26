@@ -38,6 +38,8 @@ import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 const DEFAULT_DEBOUNCE_MS = 350;
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
+const DEFAULT_MAX_RETRY_DELAY_MS = 5 * 60_000;
+const DEFAULT_RETRY_JITTER_RATIO = 0.2;
 const reservedKeys = new Set<string>(codeSettingsReservedKeys);
 
 interface CodeSettingsWatcher {
@@ -210,6 +212,50 @@ export function codeSettingsDigest(settings: CodeSettingsJsonObject): string {
     .digest("hex");
 }
 
+export function codeSettingsRetryDelay(input: {
+  attempt: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  jitterRatio?: number;
+  random?: () => number;
+}): number {
+  const attempt = Math.max(0, Math.floor(input.attempt));
+  const baseDelayMs = Math.max(1, Math.floor(input.baseDelayMs));
+  const maxDelayMs = Math.max(baseDelayMs, Math.floor(input.maxDelayMs));
+  const jitterRatio = Math.min(
+    1,
+    Math.max(0, input.jitterRatio ?? DEFAULT_RETRY_JITTER_RATIO),
+  );
+  const exponential = Math.min(
+    maxDelayMs,
+    baseDelayMs * 2 ** Math.min(attempt, 30),
+  );
+  if (attempt === 0 || jitterRatio === 0) return exponential;
+  const random = Math.min(1, Math.max(0, (input.random ?? Math.random)()));
+  const factor = 1 - jitterRatio + random * jitterRatio * 2;
+  return Math.max(1, Math.min(maxDelayMs, Math.round(exponential * factor)));
+}
+
+export function codeSettingsAuthorizationFingerprint(
+  service: WorkerEncryptionService,
+): string | null {
+  const status = service.status();
+  const customizationGrant = status.grants.find(
+    (grant) => grant.component === "customization-content",
+  );
+  if (!customizationGrant) return null;
+  try {
+    return JSON.stringify([
+      service.ownerId(),
+      service.serverIdentity(),
+      status.principalId,
+      customizationGrant.keyRevision,
+    ]);
+  } catch {
+    return null;
+  }
+}
+
 function valuesEqual(left: unknown, right: unknown): boolean {
   return (
     JSON.stringify(normalizeValue(left)) ===
@@ -301,6 +347,9 @@ export class CodeSettingsSynchronizer {
   readonly #profileId = "default" as const;
   readonly #debounceMs: number;
   readonly #pollIntervalMs: number;
+  readonly #maxRetryDelayMs: number;
+  readonly #retryJitterRatio: number;
+  readonly #random: () => number;
   readonly #watchFactory: CodeSettingsWatchFactory;
   #state: PersistedSyncState = emptyState();
   #status: CodeSettingsWorkerStatus;
@@ -308,15 +357,22 @@ export class CodeSettingsSynchronizer {
   #watcher: CodeSettingsWatcher | null = null;
   #watchRetryTimer: ReturnType<typeof setTimeout> | null = null;
   #debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  #pollTimer: ReturnType<typeof setInterval> | null = null;
+  #pollTimer: ReturnType<typeof setTimeout> | null = null;
   #closed = false;
   #lastAppliedHash: string | null = null;
+  #authorizationFingerprint: string | null;
+  #authorizationPaused = false;
+  #consecutiveRetryFailures = 0;
 
   constructor(input: {
+    authorizationFingerprint: string;
     credential: () => string;
     debounceMs?: number;
     fetch?: typeof fetch;
+    maxRetryDelayMs?: number;
     pollIntervalMs?: number;
+    random?: () => number;
+    retryJitterRatio?: number;
     serverUrl: string;
     service: WorkerEncryptionService;
     settingsPath: string;
@@ -337,6 +393,17 @@ export class CodeSettingsSynchronizer {
     this.#service = input.service;
     this.#debounceMs = input.debounceMs ?? DEFAULT_DEBOUNCE_MS;
     this.#pollIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.#maxRetryDelayMs = Math.max(
+      this.#pollIntervalMs,
+      input.maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS,
+    );
+    this.#retryJitterRatio =
+      input.retryJitterRatio ?? DEFAULT_RETRY_JITTER_RATIO;
+    this.#random = input.random ?? Math.random;
+    if (!input.authorizationFingerprint) {
+      throw new Error("Code settings authorization fingerprint is required.");
+    }
+    this.#authorizationFingerprint = input.authorizationFingerprint;
     this.#watchFactory =
       input.watchFactory ??
       ((directory, listener) =>
@@ -356,21 +423,49 @@ export class CodeSettingsSynchronizer {
     await mkdir(path.dirname(this.#statePath), { recursive: true });
     this.#state = await this.readState();
     this.startWatcher();
-    this.#pollTimer = setInterval(() => {
-      void this.synchronize({ initializeIfMissing: false });
-    }, this.#pollIntervalMs);
-    this.#pollTimer.unref();
+    this.schedulePoll();
   }
 
   status(): CodeSettingsWorkerStatus {
     return structuredClone(this.#status);
   }
 
+  updateAuthorization(
+    fingerprint: string | null,
+    options: { forceResume?: boolean } = {},
+  ): boolean {
+    if (!fingerprint) {
+      const changed =
+        this.#authorizationFingerprint !== null || !this.#authorizationPaused;
+      this.#authorizationFingerprint = null;
+      this.#authorizationPaused = true;
+      this.#consecutiveRetryFailures = 0;
+      this.cancelScheduledNetworkAttempts();
+      this.#status = this.statusValue(
+        "unavailable",
+        "Code settings authorization requires an active customization-content grant.",
+      );
+      return changed;
+    }
+
+    const changed = fingerprint !== this.#authorizationFingerprint;
+    this.#authorizationFingerprint = fingerprint;
+    if (!changed && !options.forceResume) return false;
+    this.#authorizationPaused = false;
+    this.#consecutiveRetryFailures = 0;
+    this.#status = this.statusValue("unavailable", null);
+    this.schedulePoll();
+    return true;
+  }
+
   synchronize(input: {
     initializeIfMissing: boolean;
   }): Promise<CodeSettingsWorkerStatus> {
+    if (this.#authorizationPaused) return Promise.resolve(this.status());
     return this.enqueue(async () => {
+      if (this.#authorizationPaused) return this.status();
       await this.runGuarded(() => this.reconcile(input.initializeIfMissing));
+      this.schedulePoll();
       return this.status();
     });
   }
@@ -385,7 +480,9 @@ export class CodeSettingsSynchronizer {
   resolve(
     resolution: CodeSettingsResolution,
   ): Promise<CodeSettingsWorkerStatus> {
+    if (this.#authorizationPaused) return Promise.resolve(this.status());
     return this.enqueue(async () => {
+      if (this.#authorizationPaused) return this.status();
       await this.runGuarded(async () => {
         const conflict = this.#state.conflict;
         if (!conflict)
@@ -399,6 +496,7 @@ export class CodeSettingsSynchronizer {
         const local = await this.readLocal();
         await this.upload(local.settings, conflict.remoteRevision, local);
       });
+      this.schedulePoll();
       return this.status();
     });
   }
@@ -409,7 +507,7 @@ export class CodeSettingsSynchronizer {
     this.#watcher = null;
     if (this.#watchRetryTimer) clearTimeout(this.#watchRetryTimer);
     if (this.#debounceTimer) clearTimeout(this.#debounceTimer);
-    if (this.#pollTimer) clearInterval(this.#pollTimer);
+    if (this.#pollTimer) clearTimeout(this.#pollTimer);
     this.#watchRetryTimer = null;
     this.#debounceTimer = null;
     this.#pollTimer = null;
@@ -429,9 +527,42 @@ export class CodeSettingsSynchronizer {
   private async runGuarded(operation: () => Promise<void>): Promise<void> {
     try {
       await operation();
+      this.#consecutiveRetryFailures = 0;
     } catch (error) {
+      if (this.isAuthorizationRejection(error)) {
+        this.#authorizationPaused = true;
+        this.#consecutiveRetryFailures = 0;
+        this.cancelScheduledNetworkAttempts();
+        this.#status = this.statusValue(
+          "unavailable",
+          "Code settings authorization is unavailable on Cantrip Server.",
+        );
+        workerLogger.event(
+          "warn",
+          "Global Code settings synchronization authorization became unavailable",
+          {
+            event: "code.settings.authorization-unavailable",
+            subsystem: "code-settings",
+            operation: "synchronize",
+            reasonCode: `http-${error.status}`,
+            status: "unavailable",
+            error: workerLogError(error),
+          },
+        );
+        return;
+      }
       const offline =
         error instanceof CodeSettingsClientError && error.code === "offline";
+      const retryableServerFailure =
+        error instanceof CodeSettingsClientError &&
+        error.code === "rejected" &&
+        error.status !== null &&
+        error.status >= 500;
+      if (offline || retryableServerFailure) {
+        this.#consecutiveRetryFailures += 1;
+      } else {
+        this.#consecutiveRetryFailures = 0;
+      }
       const state = this.#state.conflict
         ? "conflict"
         : offline
@@ -452,6 +583,40 @@ export class CodeSettingsSynchronizer {
         },
       );
     }
+  }
+
+  private isAuthorizationRejection(
+    error: unknown,
+  ): error is CodeSettingsClientError {
+    return (
+      error instanceof CodeSettingsClientError &&
+      error.code === "rejected" &&
+      (error.status === 401 || error.status === 403)
+    );
+  }
+
+  private cancelScheduledNetworkAttempts(): void {
+    if (this.#pollTimer) clearTimeout(this.#pollTimer);
+    if (this.#debounceTimer) clearTimeout(this.#debounceTimer);
+    this.#pollTimer = null;
+    this.#debounceTimer = null;
+  }
+
+  private schedulePoll(): void {
+    if (this.#closed || this.#authorizationPaused) return;
+    if (this.#pollTimer) clearTimeout(this.#pollTimer);
+    const delay = codeSettingsRetryDelay({
+      attempt: this.#consecutiveRetryFailures,
+      baseDelayMs: this.#pollIntervalMs,
+      maxDelayMs: this.#maxRetryDelayMs,
+      jitterRatio: this.#retryJitterRatio,
+      random: this.#random,
+    });
+    this.#pollTimer = setTimeout(() => {
+      this.#pollTimer = null;
+      void this.synchronize({ initializeIfMissing: false });
+    }, delay);
+    this.#pollTimer.unref();
   }
 
   private async reconcile(initializeIfMissing: boolean): Promise<void> {
@@ -794,6 +959,7 @@ export class CodeSettingsSynchronizer {
       this.#watcher = this.#watchFactory(
         path.dirname(this.#settingsPath),
         (_event, filename) => {
+          if (this.#authorizationPaused) return;
           if (
             filename &&
             filename.toString() !== path.basename(this.#settingsPath)
