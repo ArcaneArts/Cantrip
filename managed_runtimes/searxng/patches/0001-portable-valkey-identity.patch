@@ -1,0 +1,16 @@
+--- a/searx/valkeydb.py
++++ b/searx/valkeydb.py
+@@ -20,1 +20,4 @@
+-import pwd
++try:
++    import pwd
++except ImportError:  # Windows has no POSIX account database.
++    pwd = None
+@@ -62,2 +65,5 @@ def initialize():
+-        _pw = pwd.getpwuid(os.getuid())
+-        logger.exception("[%s (%s)] can't connect valkey DB ...", _pw.pw_name, _pw.pw_uid)
++        if pwd is None:
++            logger.exception("can't connect valkey DB ...")
++        else:
++            _pw = pwd.getpwuid(os.getuid())
++            logger.exception("[%s (%s)] can't connect valkey DB ...", _pw.pw_name, _pw.pw_uid)

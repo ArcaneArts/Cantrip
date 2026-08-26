@@ -323,6 +323,7 @@ import {
 } from "./git-graph.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { SearxngRuntimeManager } from "./managed-runtimes/searxng.js";
+import { PlaywrightRuntimeManager } from "./managed-runtimes/playwright.js";
 import { WorkerWebService } from "./web/service.js";
 import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
@@ -928,7 +929,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     manifestUrl:
       process.env.CANTRIP_MANAGED_RUNTIME_MANIFEST_URL?.trim() || undefined,
   });
-  const webService = new WorkerWebService({ searchRuntime: searxngRuntime });
+  const playwrightRuntime = new PlaywrightRuntimeManager({
+    dataDirectory: config.dataDirectory,
+    manifestUrl:
+      process.env.CANTRIP_MANAGED_RUNTIME_MANIFEST_URL?.trim() || undefined,
+  });
+  const webService = new WorkerWebService({
+    searchRuntime: searxngRuntime,
+    renderPage: (url, beforeNavigation) =>
+      playwrightRuntime.render(url, beforeNavigation),
+  });
   mcpBroker.setWebService(webService);
   const terminalStreamContexts = new Map<
     string,
@@ -956,7 +966,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     codeGraphWorkerStatus(codegraphRuntime, null, codegraphPreparationError),
     workerEncryption.status(),
     projectReplicaCapabilities,
-    searxngRuntime.capabilities(true),
+    searxngRuntime.capabilities(true, playwrightRuntime.status()),
   );
   await workerStartupPhase(
     "establish-worker-credential",
@@ -974,6 +984,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         event: "worker.search-runtime.prepare-failed",
         subsystem: "managed-web-runtime",
         operation: "prepare-searxng",
+        reasonCode: "runtime-unavailable",
+        status: "degraded",
+        workerId: config.workerId,
+        error: workerLogError(error),
+      },
+    );
+  });
+  void playwrightRuntime.prepare().catch((error) => {
+    workerLogger.rateLimited(
+      `playwright-runtime-prepare-failed:${config.workerId}`,
+      "warn",
+      "Managed browser runtime is not ready",
+      {
+        event: "worker.browser-runtime.prepare-failed",
+        subsystem: "managed-web-runtime",
+        operation: "prepare-playwright",
         reasonCode: "runtime-unavailable",
         status: "degraded",
         workerId: config.workerId,
@@ -5393,7 +5419,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ),
           workerEncryption.status(),
           heartbeat.projectReplicas,
-          searxngRuntime.capabilities(true),
+          searxngRuntime.capabilities(true, playwrightRuntime.status()),
         ),
       );
       const codeSettingsAuthorizationChanged =
@@ -5505,6 +5531,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     providerAuthObserver.close();
     runConfigurationDefinitions.close();
     await runConfigurationRuntimes.closeAll();
+    await playwrightRuntime.close();
     await searxngRuntime.close();
     commandConnection.close();
     await directBroker.close();

@@ -218,4 +218,32 @@ describe("robots and bound web tools", () => {
       ),
     ).rejects.toThrow(/another task/u);
   });
+
+  it("escalates an explicitly rendered read and rechecks robots on navigation", async () => {
+    const robots = { assertAllowed: vi.fn(async () => undefined) };
+    const renderPage = vi.fn(
+      async (_url: string, beforeNavigation?: (url: URL) => Promise<void>) => {
+        await beforeNavigation?.(new URL("https://example.com/final"));
+        return {
+          html: `<html><body><article><h1>Rendered</h1><p>${"Browser content. ".repeat(20)}</p></article></body></html>`,
+          title: "Rendered",
+          url: "https://example.com/final",
+        };
+      },
+    );
+    const service = new WorkerWebService({
+      searchRuntime: { request: vi.fn() },
+      robots: robots as never,
+      renderPage,
+    });
+    const result = await service.read(binding, {
+      url: "https://example.com/start",
+      render: "always",
+    });
+    expect(result.data).toMatchObject({
+      method: "rendered",
+      url: "https://example.com/final",
+    });
+    expect(robots.assertAllowed).toHaveBeenCalledTimes(2);
+  });
 });

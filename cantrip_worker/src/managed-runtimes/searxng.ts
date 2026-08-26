@@ -354,10 +354,14 @@ export class SearxngRuntimeManager {
       });
   }
 
-  capabilities(staticReading = false): ManagedWebRuntimeCapabilities {
+  capabilities(
+    staticReading = false,
+    browser: ManagedWebRuntimeStatus = unavailableManagedWebRuntimeCapabilities.browser,
+  ): ManagedWebRuntimeCapabilities {
     return managedWebRuntimeCapabilitiesSchema.parse({
       ...unavailableManagedWebRuntimeCapabilities,
       search: this.status(),
+      browser,
       staticReading,
     });
   }
