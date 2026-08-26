@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   SettingsPage,
   changedAccountLabel,
+  initialProviderName,
   type SettingsSection,
 } from "./settings-page";
 
@@ -25,6 +26,11 @@ function renderSettings(
 }
 
 describe("account settings", () => {
+  it("defaults new Ollama providers to the Ollama name", () => {
+    expect(initialProviderName(null)).toBe("Ollama");
+    expect(initialProviderName({ name: "Local models" })).toBe("Local models");
+  });
+
   it("only saves changed, non-empty account labels", () => {
     expect(changedAccountLabel("Arcane", "  Personal  ")).toBe("Personal");
     expect(changedAccountLabel("Arcane", " Arcane ")).toBeNull();
