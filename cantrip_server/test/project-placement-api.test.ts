@@ -16,7 +16,7 @@ import {
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
   workerLinkPeerMailboxSchema,
-  workerLinkPeerSessionSchema,
+  workerLinkPeerSessionDescriptorSchema,
   workerLinkResourceGrantSchema,
   workerLinkSessionSchema,
   type WorkerCommand,
@@ -451,7 +451,10 @@ describe.sequential("project execution placement API", () => {
       payload: { route: "lan", routeGeneration: session.routeGeneration },
     });
     expect(peerResponse.statusCode).toBe(201);
-    const peer = workerLinkPeerSessionSchema.parse(peerResponse.json());
+    const peerDescriptor = workerLinkPeerSessionDescriptorSchema.parse(
+      peerResponse.json(),
+    );
+    const peer = peerDescriptor.peerSession;
     expect(routedCommands).toContainEqual({
       workerId: "worker-alpha",
       command: expect.objectContaining({

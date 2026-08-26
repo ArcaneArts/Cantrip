@@ -5,6 +5,8 @@ import {
   decodeWorkerLinkFrame,
   encodeTunnelDataPlaneFrame,
   encodeWorkerLinkFrame,
+  classifyWorkerLinkPeerAddress,
+  filterWorkerLinkPeerSdp,
   isWorkerLinkFrame,
   WORKER_LINK_MAX_CREDIT_BYTES,
   WORKER_LINK_MAX_PAYLOAD_BYTES,
@@ -17,9 +19,14 @@ import {
   workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
   workerLinkPeerCandidateAdvertisementSchema,
+  workerLinkPeerCandidateAllowed,
   workerLinkPeerConfigurationSchema,
   workerLinkPeerMailboxReadRequestSchema,
   workerLinkPeerMailboxSchema,
+  workerLinkPeerHandshakeSchema,
+  workerLinkPeerInterfaceAllowed,
+  workerLinkPeerInterfaceIsVpn,
+  workerLinkPeerSessionDescriptorSchema,
   workerLinkPeerSessionSchema,
   workerLinkPeerSignalBatchSchema,
   workerLinkPeerSignalEnvelopeSchema,
@@ -162,7 +169,7 @@ describe("WorkerLink protocol", () => {
     ).toBe(false);
   });
 
-  it("names future routes while limiting operational Tranche One policy", () => {
+  it("defines the operational four-route priority", () => {
     expect(workerLinkRouteSchema.options).toEqual([
       "local",
       "lan",
@@ -234,7 +241,7 @@ describe("WorkerLink protocol", () => {
     ).toBe(false);
   });
 
-  it("bounds direct-route deployment policy without activating deferred routes", () => {
+  it("bounds direct-route deployment policy", () => {
     expect(workerLinkPeerConfigurationSchema.parse(peerConfiguration)).toEqual(
       peerConfiguration,
     );
@@ -278,6 +285,25 @@ describe("WorkerLink protocol", () => {
       route: "lan",
       routeGeneration: 2,
     });
+    expect(
+      workerLinkPeerSessionDescriptorSchema.parse({
+        peerSession,
+        configuration: peerConfiguration,
+      }),
+    ).toMatchObject({ peerSession: { peerSessionId } });
+    expect(
+      workerLinkPeerHandshakeSchema.parse({
+        type: "worker-link-peer-handshake",
+        protocolVersion: 1,
+        role: "worker",
+        peerSessionId,
+        sessionId,
+        routeGeneration: 2,
+        route: "lan",
+        identity,
+        challenge: "a".repeat(43),
+      }),
+    ).toMatchObject({ role: "worker", peerSessionId });
     expect(
       workerLinkPeerCandidateAdvertisementSchema.parse({
         peerSessionId,
@@ -402,6 +428,74 @@ describe("WorkerLink protocol", () => {
     ).toBe(false);
   });
 
+  it("classifies LAN, WAN, VPN, and forbidden ICE candidates", () => {
+    const candidate = (address: string, type: string = "host") => ({
+      candidate: `candidate:1 1 udp 2122260223 ${address} 43123 typ ${type}`,
+      sdpMid: "0",
+      sdpMLineIndex: 0,
+      usernameFragment: null,
+    });
+    expect(classifyWorkerLinkPeerAddress("192.168.1.20")).toBe("private");
+    expect(classifyWorkerLinkPeerAddress("fe80::1")).toBe("link-local");
+    expect(classifyWorkerLinkPeerAddress("fd00::1")).toBe("private");
+    expect(classifyWorkerLinkPeerAddress("2001:db8::1")).toBe("public");
+    expect(classifyWorkerLinkPeerAddress("2001:not-an-address")).toBe(
+      "invalid",
+    );
+    expect(classifyWorkerLinkPeerAddress("::ffff:192.168.1.20")).toBe(
+      "private",
+    );
+    expect(classifyWorkerLinkPeerAddress("100.100.12.1")).toBe("cgnat");
+    expect(classifyWorkerLinkPeerAddress("1.1.1.1")).toBe("public");
+    expect(classifyWorkerLinkPeerAddress("host.local")).toBe("mdns");
+    expect(
+      workerLinkPeerCandidateAllowed(candidate("192.168.1.20"), "lan"),
+    ).toBe(true);
+    expect(workerLinkPeerCandidateAllowed(candidate("1.1.1.1"), "lan")).toBe(
+      false,
+    );
+    expect(
+      workerLinkPeerCandidateAllowed(candidate("1.1.1.1", "srflx"), "wan"),
+    ).toBe(true);
+    expect(
+      workerLinkPeerCandidateAllowed(candidate("100.100.12.1"), "wan"),
+    ).toBe(true);
+    expect(
+      workerLinkPeerCandidateAllowed(candidate("10.0.0.2"), "wan", {
+        vpn: true,
+      }),
+    ).toBe(true);
+    expect(
+      workerLinkPeerCandidateAllowed(candidate("1.1.1.1", "relay"), "wan"),
+    ).toBe(false);
+    expect(workerLinkPeerCandidateAllowed(candidate("127.0.0.1"), "lan")).toBe(
+      false,
+    );
+  });
+
+  it("filters SDP and applies interface and VPN policy without scanning", () => {
+    const sdp = [
+      "v=0",
+      "a=candidate:1 1 udp 1 192.168.1.20 43123 typ host",
+      "a=candidate:2 1 udp 1 203.0.113.20 43124 typ host",
+      "a=end-of-candidates",
+      "",
+    ].join("\r\n");
+    const filtered = filterWorkerLinkPeerSdp(sdp, "lan");
+    expect(filtered.removedCandidates).toBe(1);
+    expect(filtered.sdp).toContain("192.168.1.20");
+    expect(filtered.sdp).not.toContain("203.0.113.20");
+    expect(
+      workerLinkPeerInterfaceAllowed("en0", {
+        ...peerConfiguration,
+        interfacePolicy: { mode: "denylist", interfaces: ["EN0"] },
+      }),
+    ).toBe(false);
+    expect(workerLinkPeerInterfaceIsVpn("utun4")).toBe(true);
+    expect(workerLinkPeerInterfaceIsVpn("tailscale0")).toBe(true);
+    expect(workerLinkPeerInterfaceIsVpn("en0")).toBe(false);
+  });
+
   it("keeps worker-installed token hashes separate from client bearer grants", () => {
     const command = {
       type: "worker-link.grant.install" as const,
@@ -450,6 +544,10 @@ describe("WorkerLink protocol", () => {
     ).toBe(false);
     expect(
       workerLinkRouteUpdateRequestSchema.safeParse({ preferredRoute: "lan" })
+        .success,
+    ).toBe(true);
+    expect(
+      workerLinkRouteUpdateRequestSchema.safeParse({ preferredRoute: "turn" })
         .success,
     ).toBe(false);
     expect(

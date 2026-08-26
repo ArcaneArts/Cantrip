@@ -968,6 +968,7 @@ import {
   workerLinkPeerMailboxReadRequestSchema,
   workerLinkPeerMailboxSchema,
   workerLinkPeerSessionOpenRequestSchema,
+  workerLinkPeerSessionDescriptorSchema,
   workerLinkPeerSessionSchema,
   workerLinkPeerSignalBatchSchema,
   workerLinkResourceGrantSchema,
@@ -14708,7 +14709,7 @@ export async function buildApp({
         return reply
           .code(201)
           .send(
-            workerLinkPeerSessionSchema.parse(
+            workerLinkPeerSessionDescriptorSchema.parse(
               await workerLinks.openPeerSession(
                 request.params.sessionId,
                 input.data,

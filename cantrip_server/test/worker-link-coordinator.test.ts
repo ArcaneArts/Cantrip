@@ -271,6 +271,38 @@ describe("WorkerLinkCoordinator", () => {
     await coordinator.close();
   });
 
+  it("advertises direct routes only when policy permits them", async () => {
+    const workers = new FakeWorkerBus();
+    const direct = new WorkerLinkCoordinator(workers.asBus(), {
+      peerConfiguration: peerConfiguration(),
+      serverGeneration,
+      serverId,
+      sweepIntervalMs: 0,
+    });
+    const directSession = await direct.openSession(sessionInput());
+    expect(directSession.routePolicy.enabled).toEqual([
+      "local",
+      "lan",
+      "wan",
+      "relay",
+    ]);
+    await direct.close();
+
+    const relayOnly = new WorkerLinkCoordinator(workers.asBus(), {
+      peerConfiguration: peerConfiguration({ relayOnly: true }),
+      serverGeneration,
+      serverId,
+      sweepIntervalMs: 0,
+    });
+    const relaySession = await relayOnly.openSession({
+      ...sessionInput(),
+      clientInstanceId: "relay-only-client",
+    });
+    expect(relaySession.routePolicy.enabled).toEqual(["relay"]);
+    expect(relaySession.preferredRoute).toBe("relay");
+    await relayOnly.close();
+  });
+
   it("does not return bearer authority before the worker acknowledges installation", async () => {
     const workers = new FakeWorkerBus();
     let acknowledgeGrant!: () => void;

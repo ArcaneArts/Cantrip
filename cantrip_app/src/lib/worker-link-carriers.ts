@@ -3,6 +3,7 @@ import {
   encodeWorkerLinkFrame,
   type DirectAttachmentTicket,
   type WorkerLinkFrameHeader,
+  type WorkerLinkRoute,
   type WorkerLinkSession,
 } from "@cantrip/protocol";
 
@@ -15,7 +16,7 @@ export type WorkerLinkCarrierFrameListener = (frame: Uint8Array) => void;
 
 export interface WorkerLinkCarrier {
   readonly latencyMs: number | null;
-  readonly route: "local" | "relay";
+  readonly route: WorkerLinkRoute;
   close(reason?: string): void;
   onClose(listener: WorkerLinkCarrierCloseListener): () => void;
   onFrame(listener: WorkerLinkCarrierFrameListener): () => void;

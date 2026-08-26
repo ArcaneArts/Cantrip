@@ -15,6 +15,7 @@ import {
   type WorkerLinkChannelRejectCode,
   type WorkerLinkCoordinatorCommand,
   type WorkerLinkFrameHeader,
+  type WorkerLinkOperationalRoute,
   type WorkerLinkPayloadFormat,
   type WorkerLinkPeerSession,
   type WorkerLinkResourceKind,
@@ -356,7 +357,6 @@ export class WorkerLinkGateway {
     }
     if (
       parsed.routeGeneration !== state.session.routeGeneration ||
-      !["local", "relay"].includes(parsed.effectiveRoute) ||
       parsed.effectiveRoute !== state.session.preferredRoute ||
       !state.session.routePolicy.enabled.includes(parsed.effectiveRoute)
     ) {
@@ -1084,7 +1084,7 @@ export class WorkerLinkGateway {
   async #replaceRoute(
     sessionId: string,
     routeGeneration: number,
-    preferredRoute: "local" | "relay",
+    preferredRoute: WorkerLinkOperationalRoute,
   ): Promise<void> {
     const state = this.#sessions.get(sessionId);
     if (!state) throw new Error("WorkerLink session is not installed.");
