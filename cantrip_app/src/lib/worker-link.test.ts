@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClientSessionIdentitySnapshot } from "./client-session";
 import {
   WorkerLinkManager,
+  type WorkerLinkEnvironmentReason,
   type WorkerLinkManagerDependencies,
 } from "./worker-link";
 import type {
@@ -143,11 +144,14 @@ function dependencies(
     peer?: (route: "lan" | "wan") => Promise<WorkerLinkCarrier>;
     preferredRoute?: WorkerLinkRoute;
     relay?: () => Promise<WorkerLinkCarrier>;
+    renew?: (activeSession: WorkerLinkSession) => Promise<WorkerLinkSession>;
   } = {},
 ) {
   let activeIdentity: ClientSessionIdentitySnapshot | null = identity;
   let idIndex = 0;
   let identityListener: () => void = () => undefined;
+  let environmentListener: (reason: WorkerLinkEnvironmentReason) => void = () =>
+    undefined;
   const preferredRoute = options.preferredRoute ?? "local";
   const enabled = options.enabled ?? [preferredRoute];
   let activeSession = session(ids[0], preferredRoute, 1, enabled);
@@ -172,7 +176,9 @@ function dependencies(
       options.relay ??
       (async () => new FakeCarrier("relay") as WorkerLinkCarrier),
     recordTelemetry: vi.fn(async () => undefined),
-    renewSession: vi.fn(async () => activeSession),
+    renewSession: vi.fn(async () =>
+      options.renew ? options.renew(activeSession) : activeSession,
+    ),
     setRoute: vi.fn(async (_sessionId, route) => {
       activeSession = session(
         activeSession.identity.clientInstanceId,
@@ -182,6 +188,10 @@ function dependencies(
       );
       return activeSession;
     }),
+    subscribeEnvironment: (listener) => {
+      environmentListener = listener;
+      return () => undefined;
+    },
     subscribeIdentity: (listener) => {
       identityListener = listener;
       return () => undefined;
@@ -189,6 +199,9 @@ function dependencies(
   };
   return {
     dependency,
+    triggerEnvironment(reason: WorkerLinkEnvironmentReason) {
+      environmentListener(reason);
+    },
     invalidateIdentity() {
       activeIdentity = null;
       identityListener();
@@ -316,6 +329,7 @@ describe("WorkerLinkManager", () => {
         preferredRoute: "local",
         routeGeneration: 1,
         state: "active",
+        transitionReason: "carrier-ready",
         workerId: "worker-1",
       }),
     ]);
@@ -420,6 +434,15 @@ describe("WorkerLinkManager", () => {
     expect(samples).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          event: "negotiation-started",
+          route: "relay",
+        }),
+        expect.objectContaining({
+          event: "negotiation-completed",
+          route: "relay",
+          latencyMs: 14,
+        }),
+        expect.objectContaining({
           event: "route-selected",
           route: "relay",
           latencyMs: 14,
@@ -510,6 +533,7 @@ describe("WorkerLinkManager", () => {
         activeChannelCount: 1,
         effectiveRoutes: ["relay"],
         preferredRoute: "relay",
+        transitionReason: "ice-failure",
       }),
     );
 
@@ -525,6 +549,15 @@ describe("WorkerLinkManager", () => {
 
     reference.release();
     await manager.close();
+    const routeTransitions = vi
+      .mocked(setup.dependency.recordTelemetry)
+      .mock.calls.flatMap((call) => call[2]);
+    expect(routeTransitions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: "route-promoted", route: "lan" }),
+        expect.objectContaining({ event: "route-demoted", route: "relay" }),
+      ]),
+    );
   });
 
   it("widens browser direct probing from LAN to WAN before retaining RELAY", async () => {
@@ -662,6 +695,20 @@ describe("WorkerLinkManager", () => {
         }),
         expect.objectContaining({ event: "bytes-sent", value: 3 }),
         expect.objectContaining({ event: "bytes-received", value: 2 }),
+        expect.objectContaining({
+          event: "frame-dropped",
+          reason: "route-replaced",
+        }),
+        expect.objectContaining({
+          event: "relay-bytes-avoided",
+          route: "local",
+          value: 3,
+        }),
+        expect.objectContaining({
+          event: "relay-bytes-avoided",
+          route: "local",
+          value: 2,
+        }),
         expect.objectContaining({
           event: "channel-closed",
           reason: "normal",
@@ -840,6 +887,122 @@ describe("WorkerLinkManager", () => {
       expect(setup.dependency.deleteSession).toHaveBeenCalledOnce(),
     );
     await expect(manager.acquire("worker-1")).rejects.toThrow(/authenticated/i);
+    await manager.close();
+  });
+
+  it("reprobes direct routes on network changes while retaining RELAY", async () => {
+    vi.useFakeTimers();
+    const initialLocal = new FakeCarrier("local", 4);
+    const replacementLocal = new FakeCarrier("local", 6);
+    const resumedLocal = new FakeCarrier("local", 5);
+    const relay = new FakeCarrier("relay", 30);
+    const openRelay = vi.fn(async () => relay as WorkerLinkCarrier);
+    const local = vi
+      .fn<() => Promise<WorkerLinkCarrier>>()
+      .mockResolvedValueOnce(initialLocal)
+      .mockResolvedValueOnce(replacementLocal)
+      .mockResolvedValueOnce(resumedLocal);
+    const setup = dependencies({
+      enabled: ["local", "relay"],
+      local,
+      relay: openRelay,
+    });
+    const manager = new WorkerLinkManager(setup.dependency, {
+      environmentReprobeDebounceMs: 0,
+    });
+    const reference = await manager.acquire("worker-1");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => expect(openRelay).toHaveBeenCalledOnce());
+
+    const opening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    acceptOpen(initialLocal);
+    const stream = await opening;
+    const closed = vi.fn();
+    stream.onClose(closed);
+
+    setup.triggerEnvironment("network-change");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => expect(local).toHaveBeenCalledTimes(2));
+    expect(closed).toHaveBeenCalledWith("route-replaced");
+    expect(initialLocal.closed).toBe(true);
+    expect(relay.closed).toBe(false);
+    expect(reference.link.preferredRoute).toBe("local");
+    expect(setup.dependency.createSession).toHaveBeenCalledOnce();
+    expect(manager.getStatusSnapshot()[0]).toEqual(
+      expect.objectContaining({
+        state: "active",
+        transitionReason: "route-promoted",
+      }),
+    );
+
+    setup.triggerEnvironment("application-resume");
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => expect(local).toHaveBeenCalledTimes(3));
+    expect(replacementLocal.closed).toBe(true);
+    expect(resumedLocal.closed).toBe(false);
+    expect(relay.closed).toBe(false);
+
+    reference.release();
+    await manager.close();
+  });
+
+  it("adopts a renewed route generation and reconnects without stale authority", async () => {
+    vi.useFakeTimers();
+    const initialLocal = new FakeCarrier("local", 4);
+    const replacementLocal = new FakeCarrier("local", 5);
+    const local = vi
+      .fn<() => Promise<WorkerLinkCarrier>>()
+      .mockResolvedValueOnce(initialLocal)
+      .mockResolvedValueOnce(replacementLocal);
+    const setup = dependencies({
+      local,
+      renew: async (active) => ({
+        ...active,
+        lease: {
+          ...active.lease,
+          expiresAt: new Date(now + 900_000).toISOString(),
+        },
+        routeGeneration: active.routeGeneration + 1,
+      }),
+    });
+    const manager = new WorkerLinkManager(setup.dependency);
+    const reference = await manager.acquire("worker-1");
+    const reasons: string[] = [];
+    manager.subscribeStatus(() => {
+      const reason = manager.getStatusSnapshot()[0]?.transitionReason;
+      if (reason) reasons.push(reason);
+    });
+    const opening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    acceptOpen(initialLocal);
+    const stream = await opening;
+    const closed = vi.fn();
+    stream.onClose(closed);
+
+    await vi.advanceTimersByTimeAsync(270_000);
+    await vi.waitFor(() => expect(local).toHaveBeenCalledTimes(2));
+    expect(reference.link.session.routeGeneration).toBe(2);
+    expect(closed).toHaveBeenCalledWith("route-replaced");
+    expect(reasons).toContain("authority-replaced");
+    expect(setup.dependency.createSession).toHaveBeenCalledOnce();
+
+    const reopened = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    const reopenedHeader = acceptOpen(replacementLocal);
+    expect(reopenedHeader.routeGeneration).toBe(2);
+    await reopened;
+
+    reference.release();
     await manager.close();
   });
 

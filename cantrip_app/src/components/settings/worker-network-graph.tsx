@@ -89,6 +89,7 @@ export type WorkerNetworkRoutePresentation = {
     channelCount: number;
     route: WorkerLinkRoute;
   }[];
+  transitionLabel: string | null;
 };
 
 export type WorkerNetworkDataEdgeSegment =
@@ -221,6 +222,39 @@ function fallbackLabel(
   }
 }
 
+function transitionLabel(
+  reason: WorkerLinkStatusSnapshot["transitionReason"],
+): string {
+  switch (reason) {
+    case "initial-connect":
+      return "Initial connection";
+    case "carrier-ready":
+      return "Carrier ready";
+    case "route-promoted":
+      return "Route promoted";
+    case "route-demoted":
+      return "Route demoted";
+    case "route-unavailable":
+      return "Route unavailable";
+    case "carrier-failed":
+      return "Carrier failed";
+    case "ice-failure":
+      return "ICE connection failed";
+    case "network-change":
+      return "Network changed";
+    case "application-resume":
+      return "Application resumed";
+    case "authorized-reprobe":
+      return "Route check requested";
+    case "authority-replaced":
+      return "Route authority replaced";
+    case "session-renewed":
+      return "Session renewed";
+    case "connection-failed":
+      return "Connection failed";
+  }
+}
+
 function routeName(route: WorkerLinkRoute): "LOCAL" | "LAN" | "WAN" | "RELAY" {
   return route.toUpperCase() as "LOCAL" | "LAN" | "WAN" | "RELAY";
 }
@@ -286,6 +320,7 @@ export function workerNetworkRoutePresentation(
     label,
     latencyMs: status?.latencyMs ?? null,
     routeChannelCounts,
+    transitionLabel: status ? transitionLabel(status.transitionReason) : null,
   };
 }
 
@@ -342,6 +377,10 @@ export function workerNetworkRouteDetails(
           : `${status.latencyMs} ms`,
     },
     { label: "Fallback", value: route.fallbackLabel ?? "None" },
+    {
+      label: "Transition reason",
+      value: route.transitionLabel ?? "No WorkerLink activity",
+    },
     {
       label: "Last transition",
       value: status ? timestamp(status.changedAt) : "No WorkerLink activity",
@@ -507,6 +546,14 @@ function NetworkNodeButton({
                 className="basis-full text-[10px] leading-4 text-amber-500"
               >
                 {node.route.fallbackLabel}
+              </span>
+            ) : null}
+            {node.route.transitionLabel ? (
+              <span
+                data-worker-route-transition={node.route.transitionLabel}
+                className="basis-full text-[10px] leading-4 text-muted-foreground"
+              >
+                {node.route.transitionLabel}
               </span>
             ) : null}
           </span>

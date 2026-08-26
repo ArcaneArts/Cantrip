@@ -13,6 +13,7 @@ dependencies {
     implementation project(':capacitor-app-launcher')
     implementation project(':capacitor-filesystem')
     implementation project(':capacitor-haptics')
+    implementation project(':capacitor-network')
     implementation project(':capacitor-share')
 
 }

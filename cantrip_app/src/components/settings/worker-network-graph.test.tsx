@@ -91,6 +91,7 @@ function routeStatus(
     ],
     routeGeneration: 3,
     state: "active",
+    transitionReason: "carrier-ready",
     workerId: "local-worker",
     ...overrides,
   };
@@ -184,6 +185,7 @@ describe("worker network graph", () => {
     expect(markup).toContain('data-worker-route-active="true"');
     expect(markup).toContain('data-worker-route-freshness="active"');
     expect(markup).toContain("Active now · 1 link · 2 channels");
+    expect(markup).toContain("Carrier ready");
     expect(markup).toContain("Server control plane");
     expect(markup).toContain("LOCAL direct data");
   });
@@ -329,6 +331,7 @@ describe("worker network graph", () => {
       "Preferred route": "RELAY",
       "Route freshness": "Active now",
       "Route generation": "3",
+      "Transition reason": "Carrier ready",
     });
     expect(byLabel["Last transition"]).toBeTruthy();
     expect(JSON.stringify(details)).not.toMatch(

@@ -243,6 +243,23 @@ Route selection restarts from `LOCAL` after:
 - server control-plane generation change; or
 - an explicit server-authorized reprobe.
 
+The client coalesces bursts of browser/WebView network-interface, online,
+back-forward-cache, and hidden-to-visible lifecycle notifications plus native
+Capacitor network and app-state notifications before reprobing. A mobility
+reprobe retains an already-ready `RELAY` carrier while it retires and recreates
+the direct carriers. Only streams fixed to a retired carrier close; streams on
+surviving carriers continue, and the owning feature controller reacquires a
+grant and opens a new stream through the current priority chain. WorkerLink
+does not pretend that an arbitrary TCP or event stream survived the route
+change.
+
+A same-session renewal with a higher route generation atomically retires the
+old carriers, installs the returned authority, and reconnects against that new
+generation. A stale generation or changed session, worker process, server
+generation, account session, or client identity fails closed and replaces the
+session. Routine carrier promotion and demotion do not change the authority
+generation.
+
 ```mermaid
 sequenceDiagram
     participant C as Client
@@ -591,6 +608,13 @@ Expose to the client:
 - current worker process generation;
 - reconnect activity; and
 - whether direct routing is disabled by deployment policy.
+
+The Settings projection records a bounded transition reason independently of
+the fallback reason. It distinguishes initial connection, carrier readiness,
+route promotion/demotion, unavailable or failed carriers, ICE failure,
+network change, application resume, authorized reprobe, authority replacement,
+session renewal, and terminal connection failure. It never exposes addresses,
+candidates, session authority, or resource identity.
 
 Export bounded metrics for:
 
