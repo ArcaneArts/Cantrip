@@ -102,8 +102,8 @@ const defaultDependencies: DesktopTunnelWorkerLinkDependencies = {
   invoke: (command, args) => invoke(command, args),
   openLink: openTunnelWorkerLink,
   openSocket: (url) => new WebSocket(url),
-  schedule: setTimeout,
-  cancelSchedule: clearTimeout,
+  schedule: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+  cancelSchedule: (timer) => globalThis.clearTimeout(timer),
   now: Date.now,
 };
 
