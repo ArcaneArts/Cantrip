@@ -38,3 +38,16 @@ export async function prepareExplorerPopout(
   if (actions && !(await actions.flushViewState())) return "state-failed";
   return "ready";
 }
+
+export async function deleteExplorerAfterPreparation<TResult>(
+  actions: ExplorerLifecycleActions | null | undefined,
+  deleteExplorer: () => Promise<TResult>,
+): Promise<TResult> {
+  await actions?.prepareClose();
+  try {
+    return await deleteExplorer();
+  } catch (error) {
+    actions?.cancelClose();
+    throw error;
+  }
+}

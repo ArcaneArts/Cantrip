@@ -1,13 +1,17 @@
 import type { CodeAppearance } from "@cantrip/protocol";
 import { useEffect, useState } from "react";
 
-import { ExplorerCodeEditor } from "@/components/explorer/explorer-code-editor";
+import {
+  ExplorerCodeEditor,
+  type ExplorerCodeEditorLifecycleActions,
+} from "@/components/explorer/explorer-code-editor";
 import { INLINE_CODE_WORKBENCH_RETENTION_MS } from "@/components/explorer/use-retained-inline-workbench";
 import { cn } from "@/lib/utils";
 
 export function RetainedExplorerCodeEditor({
   appearance,
   explorerId,
+  onLifecycleChange,
   onReady,
   path,
   prewarm,
@@ -19,6 +23,7 @@ export function RetainedExplorerCodeEditor({
 }: {
   appearance: CodeAppearance;
   explorerId: string;
+  onLifecycleChange?(actions: ExplorerCodeEditorLifecycleActions | null): void;
   onReady?: () => void;
   path: string | null;
   prewarm: boolean;
@@ -61,6 +66,7 @@ export function RetainedExplorerCodeEditor({
         active={visible}
         appearance={appearance}
         explorerId={explorerId}
+        onLifecycleChange={onLifecycleChange}
         onReady={onReady}
         path={workbenchPath}
         workerOnline={workerOnline}

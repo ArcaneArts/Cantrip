@@ -31,6 +31,7 @@ import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
 import { ExplorerImageViewport } from "@/components/explorer/explorer-image-viewport";
 import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
+import type { ExplorerCodeEditorLifecycleActions } from "@/components/explorer/explorer-code-editor";
 import { RetainedExplorerCodeEditor } from "@/components/explorer/retained-explorer-code-editor";
 import { useExplorerWorkerEncryption } from "@/components/explorer/use-explorer-worker-encryption";
 import { useRetainedInlineWorkbench } from "@/components/explorer/use-retained-inline-workbench";
@@ -254,8 +255,10 @@ export interface ExplorerHeaderState {
 }
 
 export interface ExplorerLifecycleActions {
+  cancelClose(): void;
   dirty: boolean;
   flushViewState(): Promise<boolean>;
+  prepareClose(): Promise<void>;
   reconcile(explorer: ExplorerSummary): Promise<void>;
   save(): Promise<boolean>;
 }
@@ -323,6 +326,14 @@ export function ExplorerView({
   const transientFilePath = transientFile?.path;
   const transientFileCloseRef = useRef(transientFile?.close);
   transientFileCloseRef.current = transientFile?.close;
+  const codeEditorLifecycleRef =
+    useRef<ExplorerCodeEditorLifecycleActions | null>(null);
+  const handleCodeEditorLifecycleChange = useCallback(
+    (actions: ExplorerCodeEditorLifecycleActions | null) => {
+      codeEditorLifecycleRef.current = actions;
+    },
+    [],
+  );
   const previousActiveRef = useRef(active);
   const [entryReplayKey, setEntryReplayKey] = useState(0);
   const [selectedPath, setSelectedPath] = useState(() =>
@@ -998,14 +1009,24 @@ export function ExplorerView({
     };
   }, [active, onHeaderChange]);
 
+  const prepareClose = useCallback(
+    () => codeEditorLifecycleRef.current?.prepareClose() ?? Promise.resolve(),
+    [],
+  );
+  const cancelClose = useCallback(
+    () => codeEditorLifecycleRef.current?.cancelClose(),
+    [],
+  );
   const lifecycle = useMemo<ExplorerLifecycleActions>(
     () => ({
+      cancelClose,
       dirty,
       flushViewState: () => viewStateQueueRef.current,
+      prepareClose,
       reconcile,
       save: saveDraft,
     }),
-    [dirty, reconcile, saveDraft],
+    [cancelClose, dirty, prepareClose, reconcile, saveDraft],
   );
 
   useEffect(() => {
@@ -1130,6 +1151,7 @@ export function ExplorerView({
           <RetainedExplorerCodeEditor
             appearance={appearance}
             explorerId={explorer.id}
+            onLifecycleChange={handleCodeEditorLifecycleChange}
             onReady={onInlineCodeReady}
             path={codeEditorPath}
             prewarm={prewarmInlineCode}
