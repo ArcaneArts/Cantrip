@@ -61,6 +61,7 @@ out of scope.
 | T2.5 — Renderer PeerCarrier parity        | Prove browser, Capacitor, and Tauri renderer consumers inherit LAN/WAN for Terminal, Code, and in-app tunnels without feature route branches | Complete | `codex/network-tranche2-pass5-renderer-parity`           | [#1202](https://github.com/ArcaneArts/Cantrip/pull/1202) | Focused WorkerLink, renderer, and Code/Explorer 182; full app 1,600 pass and 3 skip; workspace typecheck/build; Android/iOS Capacitor sync; packaged macOS plist; Rust fmt/check; Code/Codex source, topology, plist, formatting, and diff verification                  | Preserves the existing Code service-worker/WebSocket shim and Explorer lifecycle; adds Apple local-network usage metadata without adding Bonjour discovery or a general browser/Capacitor localhost listener                     |
 | T2.6A — Native Tauri carrier decision     | Benchmark native WebRTC, a server-pinned socket, and the existing bounded WebView bridge, then select the T2.6B architecture                 | Complete | `codex/network-tranche2-pass6a-native-carrier-decision`  | [#1203](https://github.com/ArcaneArts/Cantrip/pull/1203) | Native bridge tests 4; focused native bridge and desktop Code 44; workspace typecheck; network source verification; Rust check/fmt; release spike and five-run benchmark aggregation; Clippy passes with 15 pre-existing tunnel-forward warnings; formatting/diff check  | ADR 0010 selects the bounded WebView bridge; measured local overhead does not justify a second WebRTC stack, while a raw peer socket cannot preserve ICE/STUN WAN reachability without a new protocol                            |
 | T2.6B — Native Tauri LAN/WAN transport    | Harden the selected WebView bridge, preserve exact LAN/WAN route identity, and prove generic tunnel and Code listener stability              | Complete | `codex/network-tranche2-pass6b-native-carrier-hardening` | [#1204](https://github.com/ArcaneArts/Cantrip/pull/1204) | Focused app 84; full app 1,601 pass and 3 skip; native bridge 5; portable native tunnel 49; workspace typecheck and app build; Rust check/fmt/Clippy; topology and Code/Codex source verification; formatting/diff check                                                 | Uses one-use 30-second bridge claims and exact native-forward, renderer-claim, WorkerLink authority, grant, and channel fencing; the two documented packaged-Code Rust harness timeouts still reproduce                          |
+| T2.7A — Browser Remote Surface authority  | Add exact Browser attachment grants and the worker-side interactive/realtime lane adapter without changing the supported Browser client      | Complete | `codex/network-tranche2-pass7-browser-remote-surface`    | [#1205](https://github.com/ArcaneArts/Cantrip/pull/1205) | Protocol WorkerLink 14; focused worker 15; focused server placement API 14; full protocol 363; full worker 897 pass and 2 skip; full app 1,601 pass and 3 skip; workspace typecheck; app build; topology and Code/Codex source verification; formatting and diff checks  | Raw Chromium CDP remains worker-internal; the legacy Browser client stays operational until T2.7B proves the WorkerLink client adapter and performs the feature cutover                                                          |
 
 ## Stabilization acceptance evidence
 
@@ -286,6 +287,18 @@ out of scope.
   the bridge claim and re-enters `LOCAL -> LAN -> WAN -> RELAY`. The native
   summary now preserves the exact effective route instead of collapsing LAN and
   WAN into the legacy `local-direct` state.
+- Browser Remote Surface authority now issues one short-lived, exact
+  attachment grant with separate `interactive` and `realtime` channels. The
+  worker adapter queues bounded control and clipboard output across channel
+  replacement, treats frames and cursor images as disposable, and gives the
+  shared WorkerLink scheduler—not the Browser feature—physical route
+  ownership. Grant expiry, session revocation, resource deletion, and logout
+  detach the worker attachment even if a client never opens a channel.
+- The WorkerLink Browser attachment explicitly suppresses the legacy
+  feature-specific WebRTC attachment; raw Chromium CDP remains bound to worker
+  loopback and never enters WorkerLink. T2.7A leaves the supported Browser UI
+  on its compatibility transport until the T2.7B client adapter proves
+  reconnect, encryption, lane separation, and RELAY fallback.
 - Interactive Terminal sessions now obtain an exact, short-lived grant after
   the server authorizes and starts the PTY through the existing worker command
   plane. The bootstrap attachment discards its output because the WorkerLink
@@ -386,8 +399,9 @@ projection, and bounded transport metrics are active beneath WorkerLink.
 
 The native Tauri bridge now has generation-scoped, one-use claims, exact
 WorkerLink authority fencing, truthful effective routes, per-channel fallback,
-and stable localhost listeners. Browser Remote Surface is next, followed by
-Remote Desktop, worker observations, incremental chat, filesystem watcher
-migration, relay consolidation, and the final acceptance gate. TURN and
-transparent TCP resumption remain explicitly deferred, and the restored
-Code/Explorer lifecycle remains a mandatory regression boundary.
+and stable localhost listeners. Browser Remote Surface server/worker authority
+is implemented in T2.7A; its supported client cutover remains T2.7B. Remote
+Desktop, worker observations, incremental chat, filesystem watcher migration,
+relay consolidation, and the final acceptance gate follow. TURN and transparent
+TCP resumption remain explicitly deferred, and the restored Code/Explorer
+lifecycle remains a mandatory regression boundary.

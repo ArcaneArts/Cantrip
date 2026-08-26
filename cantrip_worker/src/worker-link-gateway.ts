@@ -104,6 +104,10 @@ export interface WorkerLinkResourceAdapter {
     emit: WorkerLinkAdapterEmitter;
     session: WorkerLinkSession;
   }): Promise<WorkerLinkAdapterChannel> | WorkerLinkAdapterChannel;
+  revoke?(context: {
+    grant: InstalledWorkerLinkGrant;
+    session: WorkerLinkSession;
+  }): Promise<void> | void;
 }
 
 export interface WorkerLinkGatewayOptions {
@@ -179,6 +183,13 @@ export class WorkerLinkGateway {
         const grant = this.#grant(channel.sessionId, channel.grantId);
         if (grant?.grant.binding.resource.kind === adapter.kind) {
           void this.#closeChannel(channelId, "revoked");
+        }
+      }
+      for (const state of this.#sessions.values()) {
+        for (const grant of state.grants.values()) {
+          if (grant.grant.binding.resource.kind === adapter.kind) {
+            void this.#revokeAdapterGrant(adapter, state.session, grant.grant);
+          }
         }
       }
     };
@@ -1197,6 +1208,10 @@ export class WorkerLinkGateway {
       ),
     );
     for (const grant of state.grants.values()) {
+      const adapter = this.#adapters.get(grant.grant.binding.resource.kind);
+      if (adapter) {
+        await this.#revokeAdapterGrant(adapter, state.session, grant.grant);
+      }
       this.#rememberGrantRevocation(
         grant.grant.binding.grantId,
         grant.grant.binding.grantGeneration,
@@ -1228,7 +1243,23 @@ export class WorkerLinkGateway {
         this.#closeChannel(channelId, code),
       ),
     );
+    const adapter = this.#adapters.get(grant.grant.binding.resource.kind);
+    if (adapter) {
+      await this.#revokeAdapterGrant(adapter, state.session, grant.grant);
+    }
     return true;
+  }
+
+  async #revokeAdapterGrant(
+    adapter: WorkerLinkResourceAdapter,
+    session: WorkerLinkSession,
+    grant: InstalledWorkerLinkGrant,
+  ): Promise<void> {
+    try {
+      await adapter.revoke?.({ grant, session });
+    } catch {
+      // Resource cleanup is isolated to authority that has already been revoked.
+    }
   }
 
   async #closeChannel(

@@ -113,10 +113,16 @@ export type RemoteSurfaceFrameEmitter = (
   payload: Uint8Array,
 ) => boolean;
 
+export type RemoteSurfaceAttachmentFrameEmitter = RemoteSurfaceFrameEmitter;
+
 export class RemoteSurfaceManager {
   readonly #adapters: Partial<
     Record<RemoteSurfaceConfiguration["kind"], RemoteSurfaceAdapter>
   >;
+  readonly #attachmentFrameEmitters = new Map<
+    string,
+    RemoteSurfaceAttachmentFrameEmitter
+  >();
   readonly #outboundSequences = new Map<string, number>();
   readonly #openingSessions = new Map<string, Promise<ManagedSession>>();
   readonly #sessions = new Map<string, ManagedSession>();
@@ -141,6 +147,31 @@ export class RemoteSurfaceManager {
 
   setEncryptionService(service: WorkerEncryptionService): void {
     this.#encryption = service;
+  }
+
+  bindAttachmentFrameEmitter(
+    surfaceId: string,
+    attachmentId: string,
+    surfaceKind: RemoteSurfaceConfiguration["kind"],
+    emitFrame: RemoteSurfaceAttachmentFrameEmitter,
+  ): () => void {
+    const managed = this.#sessions.get(surfaceId);
+    if (
+      !managed?.attachments.has(attachmentId) ||
+      managed.session.configuration.kind !== surfaceKind
+    ) {
+      throw new Error("Remote Surface attachment is not available.");
+    }
+    const key = this.attachmentKey(surfaceId, attachmentId);
+    if (this.#attachmentFrameEmitters.has(key)) {
+      throw new Error("Remote Surface attachment already has a frame route.");
+    }
+    this.#attachmentFrameEmitters.set(key, emitFrame);
+    return () => {
+      if (this.#attachmentFrameEmitters.get(key) === emitFrame) {
+        this.#attachmentFrameEmitters.delete(key);
+      }
+    };
   }
 
   async attach(command: AttachCommand): Promise<{
@@ -267,6 +298,9 @@ export class RemoteSurfaceManager {
     const attachment = managed?.attachments.get(attachmentId);
     if (!managed || !attachment) return;
     managed.attachments.delete(attachmentId);
+    this.#attachmentFrameEmitters.delete(
+      this.attachmentKey(surfaceId, attachmentId),
+    );
     await attachment.webrtc?.close(false);
     for (const channel of REMOTE_SURFACE_CHANNELS) {
       this.#outboundSequences.delete(
@@ -342,6 +376,9 @@ export class RemoteSurfaceManager {
     if (!managed) return;
     this.#sessions.delete(surfaceId);
     for (const attachmentId of managed.attachments.keys()) {
+      this.#attachmentFrameEmitters.delete(
+        this.attachmentKey(surfaceId, attachmentId),
+      );
       for (const channel of REMOTE_SURFACE_CHANNELS) {
         this.#outboundSequences.delete(
           this.streamKey(surfaceId, attachmentId, channel),
@@ -486,6 +523,14 @@ export class RemoteSurfaceManager {
       payload,
     );
     if (!protectedPayload) return false;
+    const attachmentEmitter = this.#attachmentFrameEmitters.get(
+      this.attachmentKey(surfaceId, attachmentId),
+    );
+    if (attachmentEmitter) {
+      const sent = attachmentEmitter(header, protectedPayload);
+      if (sent) this.#outboundSequences.set(key, sequence);
+      return sent;
+    }
     const rtcResult = attachment.webrtc?.send(
       channel,
       encodeRemoteSurfaceFrame(header, protectedPayload),
@@ -649,6 +694,10 @@ export class RemoteSurfaceManager {
     channel: RemoteSurfaceChannel,
   ): string {
     return JSON.stringify([surfaceId, attachmentId, channel]);
+  }
+
+  private attachmentKey(surfaceId: string, attachmentId: string): string {
+    return JSON.stringify([surfaceId, attachmentId]);
   }
 
   private requiredSession(surfaceId: string): ManagedSession {

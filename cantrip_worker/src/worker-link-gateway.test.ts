@@ -332,6 +332,7 @@ describe("WorkerLinkGateway", () => {
     let now = Date.parse("2026-08-26T12:00:00.000Z");
     const fixture = fixtures(now);
     const closed = vi.fn();
+    const revoked = vi.fn();
     const gateway = new WorkerLinkGateway({
       now: () => now,
       ownerId: "owner-1",
@@ -343,6 +344,7 @@ describe("WorkerLinkGateway", () => {
     gateway.registerAdapter({
       kind: "terminal",
       open: () => ({ close: closed }),
+      revoke: revoked,
     });
     await install(gateway, fixture);
     await gateway.openChannel(fixture.open);
@@ -358,6 +360,10 @@ describe("WorkerLinkGateway", () => {
       },
     });
     expect(closed).toHaveBeenCalledWith("revoked");
+    expect(revoked).toHaveBeenCalledWith({
+      grant: fixture.installed,
+      session: fixture.session,
+    });
     expect(gateway.stats()).toMatchObject({ channels: 0, grants: 0 });
     await expect(gateway.openChannel(fixture.open)).rejects.toMatchObject({
       code: "grant-revoked",
