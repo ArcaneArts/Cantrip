@@ -2,8 +2,6 @@ import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/protocol";
 import type {
   BrowserFleetService,
   ChatSummary,
-  ExplorerEntry,
-  ExplorerSummary,
   ProjectViewSummary,
   RemoteDesktopTarget,
   ScriptCommand,
@@ -45,8 +43,6 @@ import { RunConfigurationControl } from "@/components/run/run-configuration-cont
 import { AppCommandBar } from "@/components/app/app-command-bar";
 import {
   projectOverviewSectionLabel,
-  SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS,
-  type SidebarFilePinHandoffState,
   type WorktreeBindingTarget,
 } from "@/components/app/application-shell-model";
 import {
@@ -79,6 +75,17 @@ import {
   useTerminalSurfaceOperations,
 } from "@/components/app/surface-crud-operations";
 import { createSurfaceCommandController } from "@/components/app/surface-commands";
+import { createSidebarExplorerCommands } from "@/components/app/sidebar-explorer-commands";
+import {
+  createProjectExplorerFileOpening,
+  useExplorerLifecycleRefs,
+  useExplorerLifecycleRegistration,
+  useSidebarExplorerModel,
+  useSidebarExplorerMutations,
+  useSidebarExplorerProvisioning,
+  useSidebarFilePinHandoffLifecycle,
+  useSidebarFileState,
+} from "@/components/app/sidebar-explorer-controller";
 import {
   useApplicationInventory,
   useProjectInventory,
@@ -125,7 +132,6 @@ import {
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
 import { updateAgentInspectOpenChats } from "@/components/chat/agent-inspect-panel";
 
-import { projectFilePath } from "@/components/chat/markdown-file-link";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { updateChatConsoleOpenChats } from "@/components/chat/chat-console-state";
 import {
@@ -142,20 +148,13 @@ import {
   type GitViewSection,
 } from "@/components/git/git-history";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
-import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
+
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
-import type {
-  ExplorerGraphRequest,
-  ExplorerHeaderState,
-  ExplorerLifecycleActions,
-} from "@/components/explorer/explorer-view";
-import {
-  confirmExplorerDiscard,
-  prepareExplorerPopout as prepareExplorerPopoutLifecycle,
-} from "@/components/explorer/explorer-lifecycle";
+import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
+import { prepareExplorerPopout as prepareExplorerPopoutLifecycle } from "@/components/explorer/explorer-lifecycle";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { StandaloneChatSidebar } from "@/components/sidebar/standalone-chat-sidebar";
-import type { ExplorerFileMutationAuthorization } from "@/components/sidebar/project-sidebar-file-tree";
+
 import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
 
 import type { ProjectSurfacePlacementContext } from "@/components/workspace/project-surface-create-menu";
@@ -229,14 +228,9 @@ import {
   EmptyStateTitle,
 } from "@/components/ui/empty-state";
 import {
-  createExplorer,
-  pinExplorer,
-  deleteExplorerEntry,
   getChatRelocations,
   getExplorers,
-  renameExplorerEntry,
   resolveStandaloneChatFilePath,
-  updateExplorerViewState,
   updateSettings,
 } from "@/lib/api";
 
@@ -247,7 +241,6 @@ import {
   desktopPopoutTitlebarLeftInset,
   focusDesktopPopoutGroup,
   isMacosDesktopRuntime,
-  openDesktopExplorerFile,
   openDesktopPopoutGroup,
   openDesktopProjectOverviewPopout,
   updateDesktopWindowTitle,
@@ -264,18 +257,8 @@ import {
   runTerminalTargetLabel,
 } from "@/lib/run-terminal-model";
 import {
-  dedicatedSidebarExplorer,
-  pinnedExplorerForPath,
-  preferredSidebarExplorer,
-  primaryWorktreeId,
-  moveSidebarPath,
   sidebarFileName,
   sidebarFilePreviewIsVisible,
-  sidebarFileTargetGroupId,
-  sidebarPathAtOrBelow,
-  surfaceWorktreeId,
-  tabbedExplorerIds,
-  type SidebarFilePreviewState,
 } from "@/lib/sidebar-file-tabs";
 import { projectScriptCommandDestination } from "@/lib/project-script-command";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "@/lib/sidebar-resize";
@@ -378,14 +361,16 @@ export function App() {
     setWorkspaceSelection,
     workspaceSelection,
   } = useProjectWorkspaceSelectionState({ popoutProjectId, popoutTarget });
-  const [sidebarFilePreview, setSidebarFilePreview] =
-    useState<SidebarFilePreviewState | null>(null);
-  const [sidebarFilePinHandoff, setSidebarFilePinHandoff] =
-    useState<SidebarFilePinHandoffState | null>(null);
-  const sidebarFilePinHandoffRef = useRef(sidebarFilePinHandoff);
-  sidebarFilePinHandoffRef.current = sidebarFilePinHandoff;
-  const [explorerGraphRequest, setExplorerGraphRequest] =
-    useState<ExplorerGraphRequest | null>(null);
+  const sidebarFileState = useSidebarFileState();
+  const {
+    explorerGraphRequest,
+    setExplorerGraphRequest,
+    setSidebarFilePinHandoff,
+    setSidebarFilePreview,
+    sidebarFilePinHandoff,
+    sidebarFilePinHandoffRef,
+    sidebarFilePreview,
+  } = sidebarFileState;
   const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -522,12 +507,12 @@ export function App() {
   >([]);
   const [detachedGroupId, setDetachedGroupId] = useState<string | null>(null);
   const detachedExplorerIdRef = useRef<string | null>(null);
-  const explorerLifecycleRef = useRef(
-    new Map<string, ExplorerLifecycleActions>(),
-  );
-  const sidebarFilePreviewLifecycleRef =
-    useRef<ExplorerLifecycleActions | null>(null);
-  const sidebarExplorerCreationKeyRef = useRef<string | null>(null);
+  const explorerLifecycle = useExplorerLifecycleRefs();
+  const {
+    explorerLifecycleRef,
+    sidebarExplorerCreationKeyRef,
+    sidebarFilePreviewLifecycleRef,
+  } = explorerLifecycle;
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
     useState<WorktreeBindingTarget | null>(null);
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
@@ -541,47 +526,16 @@ export function App() {
     signature: string;
   } | null>(null);
 
-  const handleExplorerLifecycleChange = useCallback(
-    (explorerId: string, actions: ExplorerLifecycleActions | null) => {
-      if (actions) explorerLifecycleRef.current.set(explorerId, actions);
-      else explorerLifecycleRef.current.delete(explorerId);
-    },
-    [],
-  );
-
-  const handleSidebarFilePreviewLifecycleChange = useCallback(
-    (_explorerId: string, actions: ExplorerLifecycleActions | null) => {
-      sidebarFilePreviewLifecycleRef.current = actions;
-    },
-    [],
-  );
-  const handleExplorerChanged = useCallback(
-    (updated: ExplorerSummary) => {
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", updated.projectId],
-        (current = []) =>
-          current.map((explorer) =>
-            explorer.id === updated.id ? updated : explorer,
-          ),
-      );
-    },
-    [queryClient],
-  );
-
-  const openExplorerFileWindow = useCallback(
-    async (explorer: ExplorerSummary, entry: ExplorerEntry) => {
-      await openDesktopExplorerFile(
-        {
-          explorerId: explorer.id,
-          path: entry.path,
-          projectId: explorer.projectId,
-        },
-        entry.name,
-        { appearance: codeAppearance, explorer },
-      );
-    },
-    [codeAppearance],
-  );
+  const {
+    handleExplorerChanged,
+    handleExplorerLifecycleChange,
+    handleSidebarFilePreviewLifecycleChange,
+    openExplorerFileWindow,
+  } = useExplorerLifecycleRegistration({
+    codeAppearance,
+    lifecycle: explorerLifecycle,
+    queryClient,
+  });
 
   const resetMobileBottomTabs = () => {
     setMobileBottomTabs(initialMobileBottomTabs());
@@ -809,203 +763,26 @@ export function App() {
     setExplorerGraphRequest,
     setPopoutError,
   });
-  const createSidebarExplorerMutation = useMutation({
-    mutationFn: ({
-      projectId,
-      worktreeId,
-    }: {
-      projectId: string;
-      worktreeId?: string;
-    }) =>
-      createExplorer(
-        projectId,
-        "Project files",
-        worktreeId,
-        undefined,
-        undefined,
-        { attachToTabLayout: false },
-      ),
-    onError: (_error, input) => {
-      sidebarExplorerCreationKeyRef.current = `${input.projectId}:${input.worktreeId ?? "default"}`;
-    },
-    onSuccess: (explorer) => {
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", explorer.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== explorer.id), explorer].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      void queryClient.invalidateQueries({
-        queryKey: ["explorers", explorer.projectId],
-      });
-    },
-  });
-  const pinSidebarFileMutation = useMutation({
-    mutationFn: async ({
-      destinationExplorerId,
-      groupId,
-      path,
-    }: {
-      destinationExplorerId: string;
-      groupId: string | null;
-      path: string;
-      transactionId: string;
-    }) => {
-      return pinExplorer(
-        destinationExplorerId,
-        sidebarFileName(path),
-        {
-          fileMode: defaultExplorerFileMode(path),
-          selectedPath: path,
-        },
-        groupId ?? undefined,
-      );
-    },
-    onSuccess: (explorer, input) => {
-      const handoff = sidebarFilePinHandoffRef.current;
-      if (!handoff || handoff.transactionId !== input.transactionId) {
-        void queryClient.invalidateQueries({
-          queryKey: ["explorers", explorer.projectId],
-        });
-        void queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", explorer.projectId],
-        });
-        return;
-      }
-      const expectedFileMode = defaultExplorerFileMode(input.path);
-      if (
-        explorer.id !== input.destinationExplorerId ||
-        explorer.selectedPath !== input.path ||
-        explorer.fileMode !== expectedFileMode
-      ) {
-        sidebarFilePinHandoffRef.current = null;
-        setSidebarFilePinHandoff(null);
-        void queryClient.invalidateQueries({
-          queryKey: ["explorers", explorer.projectId],
-        });
-        void queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", explorer.projectId],
-        });
-        setPopoutError(
-          "The pinned Explorer did not preserve the requested file state.",
-        );
-        return;
-      }
-      const nextHandoff = {
-        ...handoff,
-        destinationExplorer: explorer,
-        ready: true,
-      };
-      // This Explorer is now a tab. Permit the creation effect to provision
-      // and prewarm the next dedicated sidebar Explorer for this worktree.
-      sidebarExplorerCreationKeyRef.current = null;
-      sidebarFilePinHandoffRef.current = nextHandoff;
-      setSidebarFilePinHandoff(nextHandoff);
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", explorer.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== explorer.id), explorer].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      void queryClient.invalidateQueries({
-        queryKey: ["explorers", explorer.projectId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", explorer.projectId],
-      });
-    },
-    onError: (error, input) => {
-      const handoff = sidebarFilePinHandoffRef.current;
-      if (handoff?.transactionId === input.transactionId) {
-        sidebarFilePinHandoffRef.current = null;
-        setSidebarFilePinHandoff(null);
-        void queryClient.invalidateQueries({
-          queryKey: ["explorers", handoff.sourceExplorer.projectId],
-        });
-        void queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", handoff.sourceExplorer.projectId],
-        });
-      }
-      setPopoutError(errorText(error));
-    },
-  });
-  const openProjectExplorerFile = (
-    projectId: string,
-    worktreeId: string,
-    path: string,
-  ) => {
-    void (async () => {
-      let explorer = (explorers.data ?? []).find(
-        (candidate) =>
-          candidate.worktreeId === worktreeId &&
-          (desktopRuntime ||
-            !explorerLifecycleRef.current.get(candidate.id)?.dirty),
-      );
-      if (!explorer) {
-        const created = await createExplorer(projectId, "Explorer", worktreeId);
-        explorer = created;
-        queryClient.setQueryData<ExplorerSummary[]>(
-          ["explorers", created.projectId],
-          (current = []) =>
-            [
-              ...current.filter((candidate) => candidate.id !== created.id),
-              created,
-            ].sort((left, right) => left.position - right.position),
-        );
-        void queryClient.invalidateQueries({
-          queryKey: ["explorers", created.projectId],
-        });
-      }
-      if (desktopRuntime) {
-        await openDesktopExplorerFile(
-          {
-            explorerId: explorer.id,
-            path,
-            projectId: explorer.projectId,
-          },
-          path.split("/").at(-1) ?? path,
-          { appearance: codeAppearance, explorer },
-        );
-        return;
-      }
-      const updated = await updateExplorerViewState(explorer.id, {
-        fileMode: defaultExplorerFileMode(path),
-        selectedPath: path,
-      });
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", updated.projectId],
-        (current = []) =>
-          current.map((candidate) =>
-            candidate.id === updated.id ? updated : candidate,
-          ),
-      );
-      openCreatedTab(updated.projectId, "explorer", updated.id);
-    })().catch((error: unknown) => setPopoutError(errorText(error)));
-  };
-  const openChatFileLink = (chat: ChatSummary, reference: string) => {
-    const worktree = (worktrees.data ?? []).find(
-      (candidate) => candidate.id === chat.activeWorktreeId,
-    );
-    const projectRoot =
-      worktree?.path ??
-      (selectedProject?.id === chat.projectId
-        ? selectedProject.source?.path
-        : null);
-    const path = projectRoot ? projectFilePath(reference, projectRoot) : null;
-    if (!projectRoot || !path) {
-      showAppToast({
-        message: projectRoot
-          ? "The link points outside the active project folder."
-          : "The active worktree is not available.",
-        title: "Could not open file link",
-        tone: "error",
-      });
-      return;
-    }
-    openProjectExplorerFile(chat.projectId, chat.activeWorktreeId, path);
-  };
+  const { createSidebarExplorerMutation, pinSidebarFileMutation } =
+    useSidebarExplorerMutations({
+      fileState: sidebarFileState,
+      lifecycle: explorerLifecycle,
+      queryClient,
+      setPopoutError,
+    });
+  const { openChatFileLink, openProjectExplorerFile } =
+    createProjectExplorerFileOpening({
+      codeAppearance,
+      desktopRuntime,
+      explorers: explorers.data,
+      explorerLifecycleRef,
+      openCreatedTab,
+      queryClient,
+      selectedProject,
+      setPopoutError,
+      showAppToast,
+      worktrees: worktrees.data,
+    });
   const { newBrowser, newCodeTab, newProjectView } =
     useBrowserCodeViewCreationOperations({
       openCreatedTab,
@@ -1144,249 +921,61 @@ export function App() {
       resources: projectWorkspaceResources,
       selectedTabKey,
     });
-  const sidebarDesiredWorktreeId =
-    surfaceWorktreeId(selectedSurface) ??
-    primaryWorktreeId(worktrees.data ?? []);
-  const queriedSidebarPreviewExplorer = sidebarFilePreview
-    ? (explorers.data?.find(
-        (explorer) => explorer.id === sidebarFilePreview.explorerId,
-      ) ?? null)
-    : null;
-  const sidebarPreviewExplorer =
-    queriedSidebarPreviewExplorer ??
-    (sidebarFilePreview &&
-    sidebarFilePinHandoff?.sourceExplorer.id ===
-      sidebarFilePreview.explorerId &&
-    sidebarFilePinHandoff.sourcePath === sidebarFilePreview.path
-      ? sidebarFilePinHandoff.sourceExplorer
-      : null);
-  const sidebarExplorer = preferredSidebarExplorer({
-    desiredWorktreeId: sidebarDesiredWorktreeId,
-    explorers: explorers.data ?? [],
-    layout: tabLayout.data,
-    previewExplorerId: sidebarFilePreview?.active
-      ? sidebarFilePreview.explorerId
-      : null,
-  });
-  const sidebarInlineExplorer = dedicatedSidebarExplorer({
-    desiredWorktreeId: sidebarDesiredWorktreeId,
-    explorers: explorers.data ?? [],
-    layout: tabLayout.data,
-  });
-  const connectedExplorerGroupIds = useMemo(() => {
-    if (projectOverviewPopoutTarget || explorerFileTarget) {
-      return new Set<string>();
-    }
-    if (popoutTarget) return new Set([popoutTarget.groupId]);
-    return new Set(
-      tabLayout.data?.groups
-        .filter(({ id }) => id !== detachedGroupId)
-        .map(({ id }) => id) ?? [],
-    );
-  }, [
+  const sidebarExplorerModel = useSidebarExplorerModel({
     detachedGroupId,
-    explorerFileTarget,
-    popoutTarget,
-    projectOverviewPopoutTarget,
-    tabLayout.data,
-  ]);
-  const openExplorerIds = useMemo(
-    () => tabbedExplorerIds(tabLayout.data, connectedExplorerGroupIds),
-    [connectedExplorerGroupIds, tabLayout.data],
-  );
-  const openExplorers = useMemo(
-    () =>
-      (explorers.data ?? []).filter((explorer) =>
-        openExplorerIds.has(explorer.id),
-      ),
-    [explorers.data, openExplorerIds],
-  );
-  const sidebarFilePreviewRef = useRef(sidebarFilePreview);
-  sidebarFilePreviewRef.current = sidebarFilePreview;
-  const selectedProjectIdRef = useRef(selectedProjectId);
-  selectedProjectIdRef.current = selectedProjectId;
-  const openCreatedTabRef = useRef(openCreatedTab);
-  openCreatedTabRef.current = openCreatedTab;
-  const abandonSidebarFilePinHandoff = useCallback(
-    (handoff: SidebarFilePinHandoffState, message?: string) => {
-      if (
-        sidebarFilePinHandoffRef.current?.transactionId !==
-        handoff.transactionId
-      ) {
-        return;
-      }
-      sidebarFilePinHandoffRef.current = null;
-      setSidebarFilePinHandoff(null);
-      void queryClient.invalidateQueries({
-        queryKey: ["explorers", handoff.sourceExplorer.projectId],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", handoff.sourceExplorer.projectId],
-      });
-      if (message) setPopoutError(message);
+    environment: {
+      explorerFileTarget,
+      popoutTarget,
+      projectOverviewPopoutTarget,
     },
-    [queryClient],
-  );
-  const completeSidebarFilePinHandoff = useCallback(
-    (explorerId: string) => {
-      const handoff = sidebarFilePinHandoffRef.current;
-      if (!handoff || handoff.destinationExplorerId !== explorerId) {
-        return;
-      }
-      const readyHandoff = handoff.ready
-        ? handoff
-        : { ...handoff, ready: true };
-      if (!handoff.ready) {
-        sidebarFilePinHandoffRef.current = readyHandoff;
-        setSidebarFilePinHandoff(readyHandoff);
-      }
-      const destination = readyHandoff.destinationExplorer;
-      if (!destination) return;
-      const preview = sidebarFilePreviewRef.current;
-      if (
-        preview?.active &&
-        selectedProjectIdRef.current === destination.projectId &&
-        preview.explorerId === readyHandoff.sourceExplorer.id &&
-        preview.path === readyHandoff.sourcePath
-      ) {
-        sidebarFilePreviewLifecycleRef.current = null;
-        sidebarFilePreviewRef.current = null;
-        setSidebarFilePreview(null);
-        openCreatedTabRef.current(
-          destination.projectId,
-          "explorer",
-          destination.id,
-        );
-        return;
-      }
-      void queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", destination.projectId],
-      });
-    },
-    [queryClient],
-  );
-  useEffect(() => {
-    if (!sidebarFilePinHandoff) return;
-    if (sidebarFilePinHandoff.sourceExplorer.projectId === selectedProjectId) {
-      return;
-    }
-    abandonSidebarFilePinHandoff(sidebarFilePinHandoff);
-  }, [abandonSidebarFilePinHandoff, selectedProjectId, sidebarFilePinHandoff]);
-  useEffect(() => {
-    if (
-      !sidebarFilePinHandoff ||
-      (sidebarFilePinHandoff.ready && sidebarFilePinHandoff.destinationExplorer)
-    ) {
-      return;
-    }
-    const timeout = setTimeout(() => {
-      abandonSidebarFilePinHandoff(
-        sidebarFilePinHandoff,
-        "The file could not be pinned before the request timed out.",
-      );
-    }, SIDEBAR_FILE_PIN_HANDOFF_TIMEOUT_MS);
-    return () => clearTimeout(timeout);
-  }, [
-    abandonSidebarFilePinHandoff,
-    sidebarFilePinHandoff,
-    sidebarFilePinHandoff?.destinationExplorerId,
-    sidebarFilePinHandoff?.ready,
-  ]);
-  useEffect(() => {
-    if (
-      !sidebarFilePinHandoff?.ready ||
-      !sidebarFilePinHandoff.destinationExplorer
-    ) {
-      return;
-    }
-    completeSidebarFilePinHandoff(sidebarFilePinHandoff.destinationExplorerId);
-  }, [
-    completeSidebarFilePinHandoff,
-    sidebarFilePinHandoff?.destinationExplorer,
-    sidebarFilePinHandoff?.destinationExplorerId,
-    sidebarFilePinHandoff?.ready,
-  ]);
-  useEffect(() => {
-    if (
-      !sidebarFilePinHandoff?.ready ||
-      !sidebarFilePinHandoff.destinationExplorer ||
-      !openExplorerIds.has(sidebarFilePinHandoff.destinationExplorerId)
-    ) {
-      return;
-    }
-    sidebarFilePinHandoffRef.current = null;
-    setSidebarFilePinHandoff(null);
-  }, [openExplorerIds, sidebarFilePinHandoff]);
-  const sidebarFileWorkerId =
-    sidebarExplorer?.activeWorkerId ?? selectedProjectWorkerId;
-  const onlineWorkerIds = useMemo(
-    () =>
-      new Set(
-        (workers.data ?? [])
-          .filter(({ online }) => online)
-          .map(({ workerId }) => workerId),
-      ),
-    [workers.data],
-  );
-  const sidebarFileWorkerOnline = Boolean(
-    sidebarFileWorkerId && onlineWorkerIds.has(sidebarFileWorkerId),
-  );
-  const sidebarExplorerCreationInput =
-    selectedProject?.setupStatus === "ready" &&
-    selectedProject.source &&
-    (!selectedProject.capabilities.worktrees || sidebarDesiredWorktreeId)
-      ? {
-          projectId: selectedProject.id,
-          ...(sidebarDesiredWorktreeId
-            ? { worktreeId: sidebarDesiredWorktreeId }
-            : {}),
-        }
-      : null;
-  const sidebarExplorerCreationKey = sidebarExplorerCreationInput
-    ? `${sidebarExplorerCreationInput.projectId}:${sidebarExplorerCreationInput.worktreeId ?? "default"}`
-    : null;
-  const sidebarHasDesiredExplorer = Boolean(
-    sidebarExplorerCreationInput && sidebarInlineExplorer,
-  );
-  useEffect(() => {
-    if (
-      isPopout ||
-      !explorers.isSuccess ||
-      !tabLayout.isSuccess ||
-      !sidebarExplorerCreationInput ||
-      !sidebarExplorerCreationKey ||
-      sidebarHasDesiredExplorer ||
-      createSidebarExplorerMutation.isPending ||
-      sidebarExplorerCreationKeyRef.current === sidebarExplorerCreationKey
-    ) {
-      return;
-    }
-    sidebarExplorerCreationKeyRef.current = sidebarExplorerCreationKey;
-    createSidebarExplorerMutation.mutate(sidebarExplorerCreationInput);
-  }, [
-    createSidebarExplorerMutation,
-    explorers.isSuccess,
-    isPopout,
+    explorers: explorers.data,
+    fileState: sidebarFileState,
+    openCreatedTab,
+    selectedProjectId,
+    selectedSurface,
+    tabLayout: tabLayout.data,
+    worktrees: worktrees.data,
+  });
+  const {
+    openCreatedTabRef,
+    openExplorerIds,
+    openExplorers,
+    selectedProjectIdRef,
+    sidebarDesiredWorktreeId,
+    sidebarExplorer,
+    sidebarFilePreviewRef,
+    sidebarInlineExplorer,
+    sidebarPreviewExplorer,
+  } = sidebarExplorerModel;
+  const { abandonSidebarFilePinHandoff, completeSidebarFilePinHandoff } =
+    useSidebarFilePinHandoffLifecycle({
+      fileState: sidebarFileState,
+      lifecycle: explorerLifecycle,
+      model: sidebarExplorerModel,
+      queryClient,
+      selectedProjectId,
+      setPopoutError,
+    });
+  const {
+    onlineWorkerIds,
     sidebarExplorerCreationInput,
     sidebarExplorerCreationKey,
-    sidebarHasDesiredExplorer,
-    tabLayout.isSuccess,
-  ]);
-  useEffect(() => {
-    if (
-      sidebarFilePreview &&
-      (sidebarFilePreview.projectId !== selectedProjectId ||
-        (explorers.isSuccess && !sidebarPreviewExplorer))
-    ) {
-      sidebarFilePreviewLifecycleRef.current = null;
-      setSidebarFilePreview(null);
-    }
-  }, [
-    explorers.isSuccess,
+    sidebarFileWorkerId,
+    sidebarFileWorkerOnline,
+  } = useSidebarExplorerProvisioning({
+    explorers: explorers.data,
+    explorersIsSuccess: explorers.isSuccess,
+    fileState: sidebarFileState,
+    isPopout,
+    lifecycle: explorerLifecycle,
+    model: sidebarExplorerModel,
+    mutations: { createSidebarExplorerMutation },
+    selectedProject,
     selectedProjectId,
-    sidebarFilePreview,
-    sidebarPreviewExplorer,
-  ]);
+    selectedProjectWorkerId,
+    tabLayoutIsSuccess: tabLayout.isSuccess,
+    workers: workers.data,
+  });
   const validMobileGroupIds = useMemo(
     () =>
       new Set(
@@ -2457,385 +2046,41 @@ export function App() {
       })
       .catch(() => selectLocally());
   };
-  const sidebarFileGroupId = (explorer: ExplorerSummary): string | null => {
-    return sidebarFileTargetGroupId({
-      activeGroupId: selectedTabGroup?.id,
-      explorerId: explorer.id,
-      fallbackGroupId: tabLayout.data?.groups[0]?.id,
-      preview: sidebarFilePreview,
-    });
-  };
-  const focusPinnedSidebarFile = (explorer: ExplorerSummary) => {
-    sidebarFilePreviewLifecycleRef.current = null;
-    setSidebarFilePreview(null);
-    openCreatedTab(explorer.projectId, "explorer", explorer.id);
-    setDesktopSidebarDrawerOpen(false);
-  };
-  const openSidebarFilePreview = (
-    explorer: ExplorerSummary,
-    entry: ExplorerEntry,
-  ) => {
-    if (entry.kind !== "file" || !entry.viewable) return;
-    const pinned = pinnedExplorerForPath({
-      explorers: explorers.data ?? [],
-      layout: tabLayout.data,
-      path: entry.path,
-      worktreeId: explorer.worktreeId,
-    });
-    if (pinned) {
-      focusPinnedSidebarFile(pinned);
-      return;
-    }
-    const previewLifecycle = sidebarFilePreview
-      ? sidebarFilePreviewLifecycleRef.current
-      : (explorerLifecycleRef.current.get(explorer.id) ?? null);
-    if (
-      sidebarFilePreview?.path !== entry.path &&
-      !confirmExplorerDiscard(previewLifecycle, () =>
-        window.confirm(
-          "Open another file and discard the unsaved changes in this preview?",
-        ),
-      )
-    ) {
-      return;
-    }
-    const groupId = sidebarFileGroupId(explorer);
-    const layout = tabLayout.data;
-    if (layout && groupId) {
-      setWorkspaceSelection((current) =>
-        selectWorkspaceGroup(current, layout, groupId),
-      );
-    }
-    sidebarFilePreviewLifecycleRef.current = null;
-    setSidebarFilePreview({
-      active: true,
-      explorerId: explorer.id,
-      groupId,
-      path: entry.path,
-      projectId: explorer.projectId,
-    });
-    setDesktopSidebarDrawerOpen(false);
-    setMobileTabGridOpen(false);
-    setDetachedGroupId(null);
-    revealWorkspace();
-  };
-  const pinSidebarFilePath = async (
-    explorer: ExplorerSummary,
-    path: string,
-  ) => {
-    const pinned = pinnedExplorerForPath({
-      explorers: explorers.data ?? [],
-      layout: tabLayout.data,
-      path,
-      worktreeId: explorer.worktreeId,
-    });
-    if (pinned) {
-      focusPinnedSidebarFile(pinned);
-      return;
-    }
-    const currentHandoff = sidebarFilePinHandoffRef.current;
-    if (currentHandoff) {
-      // Double-click emits both click and double-click activity. Treat an
-      // exact repeated pin as the same transaction and serialize other pins
-      // until its destination either becomes ready or is abandoned.
-      if (
-        currentHandoff.sourceExplorer.id === explorer.id &&
-        currentHandoff.sourcePath === path
-      ) {
-        return;
-      }
-      return;
-    }
-    const handoff: SidebarFilePinHandoffState = {
-      destinationExplorer: null,
-      destinationExplorerId: explorer.id,
-      ready: false,
-      sourceExplorer: explorer,
-      sourcePath: path,
-      transactionId: crypto.randomUUID(),
-    };
-    sidebarFilePinHandoffRef.current = handoff;
-    setSidebarFilePinHandoff(handoff);
-    const previewLifecycle =
-      sidebarFilePreview?.explorerId === explorer.id &&
-      sidebarFilePreview.path === path
-        ? sidebarFilePreviewLifecycleRef.current
-        : null;
-    if (previewLifecycle?.dirty && !(await previewLifecycle.save())) {
-      if (
-        sidebarFilePinHandoffRef.current?.transactionId ===
-        handoff.transactionId
-      ) {
-        sidebarFilePinHandoffRef.current = null;
-        setSidebarFilePinHandoff(null);
-      }
-      return;
-    }
-    if (
-      sidebarFilePinHandoffRef.current?.transactionId !== handoff.transactionId
-    ) {
-      return;
-    }
-    pinSidebarFileMutation.mutate({
-      destinationExplorerId: handoff.destinationExplorerId,
-      groupId: sidebarFileGroupId(explorer),
-      path,
-      transactionId: handoff.transactionId,
-    });
-  };
-  const pinSidebarFile = (explorer: ExplorerSummary, entry: ExplorerEntry) => {
-    if (entry.kind !== "file" || !entry.viewable) return;
-    void pinSidebarFilePath(explorer, entry.path);
-  };
-  const refreshSidebarExplorerEntries = async (explorer: ExplorerSummary) => {
-    const relatedExplorerIds = (explorers.data ?? [])
-      .filter((candidate) => candidate.worktreeId === explorer.worktreeId)
-      .map((candidate) => candidate.id);
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: [
-          "explorer-directory",
-          explorer.projectId,
-          explorer.worktreeId,
-        ],
-      }),
-      queryClient.invalidateQueries({
-        queryKey: [
-          "explorer-directory-commits",
-          explorer.projectId,
-          explorer.worktreeId,
-        ],
-      }),
-      ...relatedExplorerIds.map((explorerId) =>
-        queryClient.invalidateQueries({
-          queryKey: ["explorer-file", explorerId],
-        }),
-      ),
-      queryClient.invalidateQueries({
-        exact: true,
-        queryKey: ["worktree-status", explorer.projectId, explorer.worktreeId],
-      }),
-    ]);
-  };
-  const explorersDisplayingSidebarEntry = (
-    explorer: ExplorerSummary,
-    entryPath: string,
-  ) =>
-    (explorers.data ?? []).filter(
-      (candidate) =>
-        candidate.worktreeId === explorer.worktreeId &&
-        candidate.selectedPath !== null &&
-        sidebarPathAtOrBelow(candidate.selectedPath, entryPath),
-    );
-  const persistSidebarEntryPathChanges = async (
-    candidates: ExplorerSummary[],
-    previousPath: string,
-    nextPath: string | null,
-  ) => {
-    const updates = await Promise.all(
-      candidates.map((candidate) => {
-        const selectedPath = nextPath
-          ? moveSidebarPath(candidate.selectedPath!, previousPath, nextPath)
-          : null;
-        return updateExplorerViewState(candidate.id, {
-          fileMode: selectedPath
-            ? defaultExplorerFileMode(selectedPath)
-            : "preview",
-          selectedPath,
-        });
-      }),
-    );
-    for (const updated of updates) {
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", updated.projectId],
-        (current = []) =>
-          current.map((candidate) =>
-            candidate.id === updated.id ? updated : candidate,
-          ),
-      );
-      await explorerLifecycleRef.current.get(updated.id)?.reconcile(updated);
-    }
-  };
-  const renameSidebarFileEntry = async (
-    explorer: ExplorerSummary,
-    entry: ExplorerEntry,
-    name: string,
-    authorization: ExplorerFileMutationAuthorization,
-  ) => {
-    const displayedExplorers = explorersDisplayingSidebarEntry(
-      explorer,
-      entry.path,
-    );
-    for (const displayedExplorer of displayedExplorers) {
-      if (!authorization.isCurrent()) {
-        throw new Error("Explorer authorization changed. Try renaming again.");
-      }
-      const lifecycle = explorerLifecycleRef.current.get(displayedExplorer.id);
-      if (lifecycle?.dirty && !(await lifecycle.save())) {
-        throw new Error("Save the open file before renaming it.");
-      }
-    }
-    if (!authorization.isCurrent()) {
-      throw new Error("Explorer authorization changed. Try renaming again.");
-    }
-    if (
-      sidebarFilePreview?.explorerId === explorer.id &&
-      sidebarPathAtOrBelow(sidebarFilePreview.path, entry.path) &&
-      sidebarFilePreviewLifecycleRef.current?.dirty &&
-      !(await sidebarFilePreviewLifecycleRef.current.save())
-    ) {
-      throw new Error("Save the open file before renaming it.");
-    }
-    if (!authorization.isCurrent()) {
-      throw new Error("Explorer authorization changed. Try renaming again.");
-    }
-    const result = await renameExplorerEntry(explorer.id, {
-      name,
-      path: entry.path,
-    });
-    if (!authorization.isCurrent()) return;
-    if (result.newPath) {
-      await persistSidebarEntryPathChanges(
-        displayedExplorers,
-        result.path,
-        result.newPath,
-      ).catch((error: unknown) =>
-        setPopoutError(
-          `The entry was renamed, but an open file tab could not be updated: ${errorText(error)}`,
-        ),
-      );
-      setSidebarFilePreview((current) =>
-        current &&
-        current.projectId === explorer.projectId &&
-        sidebarPathAtOrBelow(current.path, result.path)
-          ? {
-              ...current,
-              path: moveSidebarPath(current.path, result.path, result.newPath!),
-            }
-          : current,
-      );
-    }
-    await refreshSidebarExplorerEntries(explorer);
-  };
-  const deleteSidebarFileEntry = async (
-    explorer: ExplorerSummary,
-    entry: ExplorerEntry,
-    authorization: ExplorerFileMutationAuthorization,
-  ) => {
-    const displayedExplorers = explorersDisplayingSidebarEntry(
-      explorer,
-      entry.path,
-    );
-    if (!authorization.isCurrent()) {
-      throw new Error("Explorer authorization changed. Try deleting again.");
-    }
-    await deleteExplorerEntry(explorer.id, { path: entry.path });
-    if (!authorization.isCurrent()) return;
-    await persistSidebarEntryPathChanges(
-      displayedExplorers,
-      entry.path,
-      null,
-    ).catch((error: unknown) =>
-      setPopoutError(
-        `The entry was deleted, but an open file tab could not be updated: ${errorText(error)}`,
-      ),
-    );
-    setSidebarFilePreview((current) => {
-      if (
-        !current ||
-        current.projectId !== explorer.projectId ||
-        !sidebarPathAtOrBelow(current.path, entry.path)
-      ) {
-        return current;
-      }
-      sidebarFilePreviewLifecycleRef.current = null;
-      return null;
-    });
-    await refreshSidebarExplorerEntries(explorer);
-  };
-  const openSidebarFolderNative = (
-    explorer: ExplorerSummary,
-    entry: ExplorerEntry,
-    localFolder: boolean,
-  ) => {
-    const project = (projects.data ?? []).find(
-      (candidate) => candidate.id === explorer.projectId,
-    );
-    if (!project?.source) return;
-    void revealProjectInNativeFileManager(
-      project,
-      localFolder,
-      entry.path,
-    ).catch((error: unknown) => setPopoutError(errorText(error)));
-  };
-  const openSidebarFolderTerminal = (
-    explorer: ExplorerSummary,
-    entry: ExplorerEntry,
-  ) => {
-    newTerminal.mutate({
-      projectId: explorer.projectId,
-      directoryPath: entry.path,
-      tabGroupId: sidebarFileGroupId(explorer) ?? undefined,
-      title: `Terminal · ${entry.name}`,
-      worktreeId: explorer.worktreeId,
-      target: {
-        kind: "worktree",
-        projectId: explorer.projectId,
-        worktreeId: explorer.worktreeId,
-      },
-    });
-  };
-  const openSidebarFolderGraph = (
-    explorer: ExplorerSummary,
-    entry: ExplorerEntry,
-  ) => {
-    newGraphExplorer.mutate({
-      explorer,
-      entry,
-      tabGroupId: sidebarFileGroupId(explorer) ?? undefined,
-    });
-  };
-  const closeSidebarFilePreview = () => {
-    if (
-      !confirmExplorerDiscard(sidebarFilePreviewLifecycleRef.current, () =>
-        window.confirm("Close this preview and discard its unsaved changes?"),
-      )
-    ) {
-      return;
-    }
-    const handoff = sidebarFilePinHandoffRef.current;
-    if (
-      handoff &&
-      sidebarFilePreview?.explorerId === handoff.sourceExplorer.id &&
-      sidebarFilePreview.path === handoff.sourcePath
-    ) {
-      abandonSidebarFilePinHandoff(handoff);
-    }
-    sidebarFilePreviewLifecycleRef.current = null;
-    setSidebarFilePreview(null);
-  };
-  const activateSidebarFilePreview = () => {
-    if (!sidebarFilePreview) return;
-    const layout = tabLayout.data;
-    if (layout && sidebarFilePreview.groupId) {
-      setWorkspaceSelection((current) =>
-        selectWorkspaceGroup(current, layout, sidebarFilePreview.groupId!),
-      );
-    }
-    setSidebarFilePreview((current) =>
-      current ? { ...current, active: true } : null,
-    );
-    setMobileTabGridOpen(false);
-    setDetachedGroupId(null);
-    revealWorkspace();
-  };
-  const retrySidebarFileTree = () => {
-    createSidebarExplorerMutation.reset();
-    sidebarExplorerCreationKeyRef.current = null;
-    if (!sidebarExplorerCreationInput || !sidebarExplorerCreationKey) return;
-    sidebarExplorerCreationKeyRef.current = sidebarExplorerCreationKey;
-    createSidebarExplorerMutation.mutate(sidebarExplorerCreationInput);
-  };
+  const {
+    activateSidebarFilePreview,
+    closeSidebarFilePreview,
+    deleteSidebarFileEntry,
+    openSidebarFilePreview,
+    openSidebarFolderGraph,
+    openSidebarFolderNative,
+    openSidebarFolderTerminal,
+    pinSidebarFile,
+    pinSidebarFilePath,
+    renameSidebarFileEntry,
+    retrySidebarFileTree,
+  } = createSidebarExplorerCommands({
+    abandonSidebarFilePinHandoff,
+    createSidebarExplorerMutation,
+    explorers: explorers.data,
+    fileState: sidebarFileState,
+    lifecycle: explorerLifecycle,
+    newGraphExplorer,
+    newTerminal,
+    openCreatedTab,
+    pinSidebarFileMutation,
+    projects: projects.data,
+    queryClient,
+    revealWorkspace,
+    selectedTabGroup,
+    setDesktopSidebarDrawerOpen,
+    setDetachedGroupId,
+    setMobileTabGridOpen,
+    setPopoutError,
+    setWorkspaceSelection,
+    sidebarExplorerCreationInput,
+    sidebarExplorerCreationKey,
+    tabLayout: tabLayout.data,
+  });
   const selectMobileBottomTab = (tabId: string) => {
     setActiveMobileBottomTabId(tabId);
     const tab = mobileBottomTabs.find(({ id }) => id === tabId);
