@@ -26,6 +26,7 @@ import {
   unavailableCodeCapabilities,
   unavailableCodeGraphWorkerStatus,
   unavailableManagedFolderCapabilities,
+  unavailableManagedWebRuntimeCapabilities,
   unavailableProjectReplicaCapabilities,
   unavailableStandaloneChatCapabilities,
   unavailableWorkerEncryptionStatus,
@@ -1922,6 +1923,7 @@ function toWorkerSummary(
     directBroker: worker.directBrokerAdvertisement,
     code: worker.codeCapabilities,
     codegraph: worker.codegraphStatus,
+    webRuntimes: worker.webRuntimeCapabilities,
     encryption: worker.encryptionStatus,
     projectReplicas: worker.projectReplicaCapabilities,
     managedFolders: worker.managedFolderCapabilities,
@@ -6921,6 +6923,9 @@ export class ServerRepository {
         codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
         codegraphStatus:
           input.heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
+        webRuntimeCapabilities:
+          input.heartbeat.webRuntimes ??
+          unavailableManagedWebRuntimeCapabilities,
         encryptionStatus:
           input.heartbeat.encryption ?? unavailableWorkerEncryptionStatus,
         projectReplicaCapabilities:
@@ -7150,6 +7155,8 @@ export class ServerRepository {
       directBrokerAdvertisement: heartbeat.directBroker,
       codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
       codegraphStatus: heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
+      webRuntimeCapabilities:
+        heartbeat.webRuntimes ?? unavailableManagedWebRuntimeCapabilities,
       encryptionStatus:
         heartbeat.encryption ?? unavailableWorkerEncryptionStatus,
       projectReplicaCapabilities:

@@ -20,6 +20,7 @@ export function workerPresenceFingerprint(worker: WorkerSummary): string {
     worker.chatRelocation,
     worker.externalCodexHistory,
     worker.codegraph,
+    worker.webRuntimes,
     workerEncryptionMaterialFingerprint(worker.encryption),
     worker.startedAt,
     worker.online,

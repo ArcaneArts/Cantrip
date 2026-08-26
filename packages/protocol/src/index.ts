@@ -807,6 +807,216 @@ export const unavailableCodeGraphWorkerStatus =
     mcpInjectionAvailable: false,
   });
 
+export const managedWebRuntimeComponentSchema = z.enum([
+  "searxng",
+  "playwright",
+]);
+
+export const managedWebRuntimePlatformSchema = z.enum([
+  "darwin",
+  "win32",
+  "linux",
+]);
+
+export const managedWebRuntimeArchitectureSchema = z.enum(["arm64", "x64"]);
+
+export const managedWebRuntimeArchiveFormatSchema = z.enum(["tar.gz", "zip"]);
+
+const managedWebRuntimeRelativePathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(8_192)
+  .refine(
+    (value) =>
+      !value.includes("\\") &&
+      !value.startsWith("/") &&
+      !/^[A-Za-z]:/u.test(value) &&
+      value
+        .split("/")
+        .every(
+          (segment) => segment !== "" && segment !== "." && segment !== "..",
+        ),
+    { message: "Managed runtime inventory paths must be safe relative paths." },
+  );
+
+export const managedWebRuntimeArtifactSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    component: managedWebRuntimeComponentSchema,
+    version: z.string().trim().min(1).max(100),
+    platform: managedWebRuntimePlatformSchema,
+    architecture: managedWebRuntimeArchitectureSchema,
+    archiveFormat: managedWebRuntimeArchiveFormatSchema,
+    downloadUrl: z
+      .url()
+      .max(8_192)
+      .refine((value) => value.startsWith("https://"), {
+        message: "Managed web runtime artifacts must use HTTPS.",
+      }),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+    signature: z.string().regex(/^[A-Za-z0-9+/]{86}==$/u, {
+      message: "Managed runtime signatures must be Ed25519 base64 values.",
+    }),
+    signingKeyId: z.string().trim().min(1).max(200),
+    compressedBytes: z.number().int().positive().max(4_000_000_000),
+    extractedBytes: z.number().int().positive().max(12_000_000_000),
+    licenseManifest: managedWebRuntimeRelativePathSchema,
+    sourceManifest: managedWebRuntimeRelativePathSchema,
+    minimumOs: z.string().trim().min(1).max(200).optional(),
+    minimumKernel: z.string().trim().min(1).max(200).optional(),
+    minimumLibc: z.string().trim().min(1).max(200).optional(),
+  })
+  .strict();
+
+export const managedWebRuntimeReleaseManifestSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    channel: z.string().trim().min(1).max(100),
+    publishedAt: z.iso.datetime(),
+    artifacts: z.array(managedWebRuntimeArtifactSchema).min(1).max(12),
+  })
+  .strict()
+  .superRefine((manifest, context) => {
+    const targets = new Set<string>();
+    for (const [index, artifact] of manifest.artifacts.entries()) {
+      const target = `${artifact.component}:${artifact.platform}:${artifact.architecture}`;
+      if (targets.has(target)) {
+        context.addIssue({
+          code: "custom",
+          message: `Managed web runtime manifest contains duplicate target ${target}.`,
+          path: ["artifacts", index],
+        });
+      }
+      targets.add(target);
+    }
+  });
+
+export const managedWebRuntimeStateSchema = z.enum([
+  "checking",
+  "installing",
+  "updating",
+  "ready",
+  "degraded",
+  "failed",
+  "unsupported",
+]);
+
+export const managedWebRuntimeProgressPhaseSchema = z.enum([
+  "manifest",
+  "download",
+  "verify",
+  "extract",
+  "inventory",
+  "probe",
+  "promote",
+  "cleanup",
+]);
+
+export const managedWebRuntimeProgressSchema = z
+  .object({
+    phase: managedWebRuntimeProgressPhaseSchema,
+    completedBytes: z.number().int().nonnegative().max(12_000_000_000),
+    totalBytes: z.number().int().nonnegative().max(12_000_000_000),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict()
+  .refine(
+    (progress) =>
+      progress.totalBytes === 0 ||
+      progress.completedBytes <= progress.totalBytes,
+    { message: "Managed web runtime progress cannot exceed its total." },
+  );
+
+export const managedWebRuntimeFailureCategorySchema = z.enum([
+  "download",
+  "integrity",
+  "signature",
+  "archive",
+  "inventory",
+  "health-check",
+  "compatibility",
+  "disk",
+  "process",
+  "unknown",
+]);
+
+export const managedWebRuntimeFailureSchema = z
+  .object({
+    category: managedWebRuntimeFailureCategorySchema,
+    message: z.string().trim().min(1).max(1_000),
+    retryable: z.boolean(),
+    failedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const managedWebRuntimeStatusSchema = z
+  .object({
+    component: managedWebRuntimeComponentSchema,
+    supported: z.boolean(),
+    state: managedWebRuntimeStateSchema,
+    installedVersion: z.string().trim().min(1).max(100).nullable(),
+    previousVersion: z.string().trim().min(1).max(100).nullable(),
+    latestVersion: z.string().trim().min(1).max(100).nullable(),
+    lastCheckedAt: z.iso.datetime().nullable(),
+    progress: managedWebRuntimeProgressSchema.nullable(),
+    failure: managedWebRuntimeFailureSchema.nullable(),
+  })
+  .strict();
+
+export const managedWebRuntimeCapabilitiesSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    search: managedWebRuntimeStatusSchema,
+    browser: managedWebRuntimeStatusSchema,
+    staticReading: z.boolean(),
+  })
+  .strict()
+  .superRefine((capabilities, context) => {
+    if (capabilities.search.component !== "searxng") {
+      context.addIssue({
+        code: "custom",
+        message: "Search runtime status must describe SearXNG.",
+        path: ["search", "component"],
+      });
+    }
+    if (capabilities.browser.component !== "playwright") {
+      context.addIssue({
+        code: "custom",
+        message: "Browser runtime status must describe Playwright.",
+        path: ["browser", "component"],
+      });
+    }
+  });
+
+export const unavailableManagedWebRuntimeCapabilities =
+  managedWebRuntimeCapabilitiesSchema.parse({
+    schemaVersion: 1,
+    search: {
+      component: "searxng",
+      supported: false,
+      state: "unsupported",
+      installedVersion: null,
+      previousVersion: null,
+      latestVersion: null,
+      lastCheckedAt: null,
+      progress: null,
+      failure: null,
+    },
+    browser: {
+      component: "playwright",
+      supported: false,
+      state: "unsupported",
+      installedVersion: null,
+      previousVersion: null,
+      latestVersion: null,
+      lastCheckedAt: null,
+      progress: null,
+      failure: null,
+    },
+    staticReading: false,
+  });
+
 export const codeGraphJobSchema = z.object({
   id: z.string().uuid(),
   action: z.enum(["sync", "rebuild"]),
@@ -865,6 +1075,9 @@ export const workerHeartbeatSchema = z.object({
   externalCodexHistory: z.boolean().default(false),
   codegraph: codeGraphWorkerStatusSchema.default(
     unavailableCodeGraphWorkerStatus,
+  ),
+  webRuntimes: managedWebRuntimeCapabilitiesSchema.default(
+    unavailableManagedWebRuntimeCapabilities,
   ),
   encryption: workerEncryptionStatusSchema.default(
     unavailableWorkerEncryptionStatus,
@@ -17036,6 +17249,27 @@ export type WorkerLogStreamServerMessage = z.infer<
 >;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
 export type CodeGraphWorkerStatus = z.infer<typeof codeGraphWorkerStatusSchema>;
+export type ManagedWebRuntimeComponent = z.infer<
+  typeof managedWebRuntimeComponentSchema
+>;
+export type ManagedWebRuntimeArtifact = z.infer<
+  typeof managedWebRuntimeArtifactSchema
+>;
+export type ManagedWebRuntimeReleaseManifest = z.infer<
+  typeof managedWebRuntimeReleaseManifestSchema
+>;
+export type ManagedWebRuntimeProgress = z.infer<
+  typeof managedWebRuntimeProgressSchema
+>;
+export type ManagedWebRuntimeFailure = z.infer<
+  typeof managedWebRuntimeFailureSchema
+>;
+export type ManagedWebRuntimeStatus = z.infer<
+  typeof managedWebRuntimeStatusSchema
+>;
+export type ManagedWebRuntimeCapabilities = z.infer<
+  typeof managedWebRuntimeCapabilitiesSchema
+>;
 export type CodeGraphProjectStatus = z.infer<
   typeof codeGraphProjectStatusSchema
 >;
