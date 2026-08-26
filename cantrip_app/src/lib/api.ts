@@ -296,6 +296,7 @@ import {
   workerLinkTunnelGrantSchema,
   type WorkerLinkPeerMailboxReadRequest,
   type WorkerLinkPeerSignalEnvelope,
+  type WorkerLinkRoute,
   type WorkerLinkTelemetrySample,
   directTransportTelemetrySchema,
   directTunnelPrepareRequestSchema,
@@ -868,7 +869,7 @@ export async function renewWorkerLinkSession(sessionId: string) {
 
 export async function updateWorkerLinkRoute(
   sessionId: string,
-  preferredRoute: "local" | "relay",
+  preferredRoute: WorkerLinkRoute,
 ) {
   return workerLinkSessionSchema.parse(
     await post(

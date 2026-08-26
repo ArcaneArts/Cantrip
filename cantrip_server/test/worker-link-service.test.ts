@@ -211,15 +211,15 @@ describe("WorkerLinkService replicated authority", () => {
       ],
     });
 
-    const relayed = await serviceB.replaceRoute(opened.sessionId, "relay");
-    expect(relayed).toMatchObject({
-      preferredRoute: "relay",
+    const routedWan = await serviceB.replaceRoute(opened.sessionId, "wan");
+    expect(routedWan).toMatchObject({
+      preferredRoute: "wan",
       routeGeneration: 2,
     });
     expect(workersA.commands).toContainEqual({
       type: "worker-link.session.route",
       sessionId: opened.sessionId,
-      preferredRoute: "relay",
+      preferredRoute: "wan",
       routeGeneration: 2,
     });
     expect(workersB.commands).toHaveLength(0);
@@ -236,7 +236,7 @@ describe("WorkerLinkService replicated authority", () => {
         accountSessionId: "account-session-1",
         ownerId: "owner-1",
       }),
-    ).resolves.toMatchObject({ preferredRoute: "relay", routeGeneration: 2 });
+    ).resolves.toMatchObject({ preferredRoute: "wan", routeGeneration: 2 });
 
     const grant = await serviceB.issueGrant({
       lanes: ["interactive", "stream"],

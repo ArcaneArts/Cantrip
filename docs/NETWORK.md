@@ -158,12 +158,14 @@ one tier is an expected transition, not a feature error.
 ```mermaid
 flowchart TD
     START["Acquire server-authorized<br/>WorkerLink session"] --> LOCAL{"Authenticated loopback<br/>worker reachable?"}
+    START --> RELAY_PREP["Prepare authenticated<br/>RELAY concurrently"]
     LOCAL -->|Yes| LOCAL_ACTIVE["LOCAL active"]
     LOCAL -->|No or unsupported| LAN{"LAN-only authenticated<br/>peer connection succeeds?"}
     LAN -->|Yes| LAN_ACTIVE["LAN active"]
     LAN -->|No| WAN{"Direct public peer<br/>connection succeeds?"}
     WAN -->|Yes| WAN_ACTIVE["WAN active"]
-    WAN -->|No| RELAY["Cantrip server RELAY active"]
+    WAN -->|No| RELAY["Use prepared Cantrip<br/>server RELAY"]
+    RELAY_PREP --> RELAY_READY["RELAY ready or active"]
 
     LOCAL_ACTIVE --> CHANGE["Disconnect or network change"]
     LAN_ACTIVE --> CHANGE
@@ -274,8 +276,17 @@ The relay may be prepared in parallel so the UI does not wait for the complete
 direct timeout chain. A direct route that succeeds later promotes new logical
 connections away from the relay.
 
-Every route change increments `routeGeneration`. Frames from an older route
-generation are rejected. On a route change:
+`routeGeneration` is the server-authorized route-policy epoch, not a mutable
+label for whichever prepared carrier is currently best. Preparing, promoting,
+or demoting a carrier inside one installed policy keeps the same generation so
+existing channels can remain pinned to their original effective route while new
+channels choose the best ready route. An explicit authority replacement, worker
+process replacement, or server control-plane replacement increments the
+generation and rejects every older frame.
+
+When a carrier fails, only the streams pinned to that carrier close and
+reconnect through the current priority list. When the authority generation
+changes, all streams are retired. In either case:
 
 - non-resumable streams close and reconnect;
 - a Tauri localhost listener should retain its local port when possible;

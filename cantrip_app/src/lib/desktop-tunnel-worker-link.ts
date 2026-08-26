@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   TunnelDataProtectionConfiguration,
   WorkerLinkChannelCloseCode,
+  WorkerLinkRoute,
   WorkerLinkTunnelRoute,
 } from "@cantrip/protocol";
 
@@ -165,7 +166,7 @@ export async function attachDesktopTunnelWorkerLinkForward(
   >,
   bridge: DesktopTunnelWorkerLinkBridge,
   dependencies: DesktopTunnelWorkerLinkDependencies = defaultDependencies,
-): Promise<"local" | "relay"> {
+): Promise<WorkerLinkRoute> {
   await stopDesktopTunnelWorkerLinkForward(input.tunnelId);
   const controller = new DesktopTunnelWorkerLinkController(
     input,
@@ -225,7 +226,7 @@ class DesktopTunnelWorkerLinkController {
     private readonly dependencies: DesktopTunnelWorkerLinkDependencies,
   ) {}
 
-  async start(): Promise<"local" | "relay"> {
+  async start(): Promise<WorkerLinkRoute> {
     const route = await this.#connect();
     await this.#publishRoute(this.#generation, route);
     return route;
@@ -248,7 +249,7 @@ class DesktopTunnelWorkerLinkController {
     this.bridge.token = "";
   }
 
-  async #connect(): Promise<"local" | "relay"> {
+  async #connect(): Promise<WorkerLinkRoute> {
     if (this.#stopped) throw new Error("The desktop tunnel was stopped.");
     const generation = ++this.#generation;
     let connection: TunnelWorkerLinkConnection | null = null;
@@ -328,14 +329,14 @@ class DesktopTunnelWorkerLinkController {
     }, delay);
   }
 
-  #routeChanged(generation: number, route: "local" | "relay"): void {
+  #routeChanged(generation: number, route: WorkerLinkRoute): void {
     if (this.#stopped || generation !== this.#generation) return;
     void this.#publishRoute(generation, route).catch(() => undefined);
   }
 
   async #publishRoute(
     generation: number,
-    route: "local" | "relay",
+    route: WorkerLinkRoute,
   ): Promise<void> {
     if (this.#stopped || generation !== this.#generation) return;
     await this.dependencies.invoke("update_worker_link_tunnel_forward_route", {
@@ -379,7 +380,7 @@ class DesktopTunnelWorkerLinkController {
 async function openBridgeSocket(
   bridge: DesktopTunnelWorkerLinkBridge,
   route: WorkerLinkTunnelRoute,
-  effectiveRoute: "local" | "relay",
+  effectiveRoute: WorkerLinkRoute,
   onFrame: (frame: Uint8Array) => void,
   onClose: () => void,
   dependencies: DesktopTunnelWorkerLinkDependencies,
@@ -462,6 +463,6 @@ function bridgeReady(payload: string, route: WorkerLinkTunnelRoute): boolean {
   }
 }
 
-function routeState(route: "local" | "relay"): "local-direct" | "relayed" {
-  return route === "local" ? "local-direct" : "relayed";
+function routeState(route: WorkerLinkRoute): "local-direct" | "relayed" {
+  return route === "relay" ? "relayed" : "local-direct";
 }

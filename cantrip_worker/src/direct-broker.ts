@@ -673,7 +673,10 @@ export class DirectBroker {
               ? Buffer.concat(data)
               : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
         const frame = decodeWorkerLinkFrame(bytes);
-        if (frame.header.sessionId !== active.binding.resourceId) {
+        if (
+          frame.header.sessionId !== active.binding.resourceId ||
+          frame.header.effectiveRoute !== "local"
+        ) {
           throw new Error("WorkerLink frame escaped its direct capability.");
         }
         void Promise.resolve(

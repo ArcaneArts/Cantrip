@@ -14872,10 +14872,10 @@ export async function buildApp({
       if (!session) {
         return reply.code(404).send({ error: "WorkerLink session not found." });
       }
-      if (session.preferredRoute !== "local") {
+      if (!session.routePolicy.enabled.includes("local")) {
         return reply
           .code(409)
-          .send({ error: "WorkerLink LOCAL is not selected." });
+          .send({ error: "WorkerLink LOCAL is not enabled." });
       }
       const preparationLease = directAttachments.acquirePreparationLease({
         authSessionId: accountSessionId,

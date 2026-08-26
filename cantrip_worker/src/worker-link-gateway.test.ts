@@ -43,7 +43,7 @@ function fixtures(now: number) {
     lease,
     routePolicy: {
       priority: ["local", "lan", "wan", "relay"],
-      enabled: ["local", "relay"],
+      enabled: ["local", "lan", "relay"],
     },
     routeGeneration: 1,
     preferredRoute: "local",
@@ -122,10 +122,12 @@ describe("WorkerLinkGateway", () => {
     gateway.registerAdapter({ kind: "terminal", open: opened });
     await install(gateway, fixture);
 
-    await expect(gateway.openChannel(fixture.open)).resolves.toMatchObject({
+    await expect(
+      gateway.openChannel({ ...fixture.open, effectiveRoute: "relay" }),
+    ).resolves.toMatchObject({
       kind: "accept",
       channel: fixture.open.channel,
-      effectiveRoute: "local",
+      effectiveRoute: "relay",
       routeGeneration: 1,
     });
     expect(opened).toHaveBeenCalledWith(
@@ -173,6 +175,9 @@ describe("WorkerLinkGateway", () => {
 
     await expect(
       gateway.openChannel({ ...fixture.open, routeGeneration: 2 }),
+    ).rejects.toMatchObject({ code: "route-generation-stale" });
+    await expect(
+      gateway.openChannel({ ...fixture.open, effectiveRoute: "wan" }),
     ).rejects.toMatchObject({ code: "route-generation-stale" });
     await expect(
       gateway.openChannel({ ...fixture.open, sessionId: randomUUID() }),
@@ -511,6 +516,9 @@ describe("WorkerLinkGateway", () => {
     };
 
     expect(gateway.peerSessionAuthorized(peerSession)).toBe(true);
+    expect(
+      gateway.peerSessionAuthorized({ ...peerSession, route: "wan" }),
+    ).toBe(false);
     expect(
       gateway.peerSessionAuthorized({
         ...peerSession,

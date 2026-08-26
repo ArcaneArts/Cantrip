@@ -4,7 +4,9 @@ import {
   decodeTunnelDataPlaneFrame,
   directBrokerReadySchema,
   encodeTunnelDataPlaneFrame,
+  encodeWorkerLinkFrame,
   type TunnelDataPlaneFrameHeader,
+  type WorkerLinkFrameHeader,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
@@ -142,6 +144,81 @@ describe("DirectBroker", () => {
       }),
     );
     expect(await closed).toBe(1008);
+  });
+
+  it("rejects non-LOCAL WorkerLink frames at the loopback boundary", async () => {
+    const broker = new DirectBroker();
+    brokers.push(broker);
+    const advertisement = await broker.start();
+    if (!advertisement.available) throw new Error("broker unavailable");
+    const sessionId = randomUUID();
+    const grant = {
+      ...binding(),
+      resourceKind: "worker-link" as const,
+      resourceId: sessionId,
+      attachmentId: sessionId,
+      channels: ["worker-link"],
+    };
+    const handled = vi.fn(() => true);
+    broker.setWorkerLinkFrameHandler(handled, vi.fn());
+    const socket = await activate(
+      broker,
+      advertisement.loopbackPort,
+      grant,
+      randomBytes(32).toString("base64url"),
+    );
+    const lease = {
+      issuedAt: new Date().toISOString(),
+      expiresAt: grant.expiresAt,
+      absoluteExpiresAt: grant.leaseExpiresAt,
+    };
+    const identity = {
+      serverId: "server-1",
+      serverGeneration: "server-generation-1",
+      ownerId: grant.ownerId,
+      accountSessionId: grant.authSessionId,
+      clientInstanceId: "client-instance-1",
+      workerId: grant.workerId,
+      workerProcessGeneration: "worker-generation-1",
+    };
+    const frame: WorkerLinkFrameHeader = {
+      protocolVersion: 1,
+      sessionId,
+      routeGeneration: 1,
+      effectiveRoute: "wan",
+      channel: { channelId: randomUUID(), connectionId: randomUUID() },
+      lane: "interactive",
+      sequence: 0,
+      kind: "open",
+      openNonce: randomUUID(),
+      channelKind: "reliable-stream",
+      grant: {
+        binding: {
+          grantId: randomUUID(),
+          grantGeneration: 1,
+          sessionId,
+          identity,
+          resource: {
+            kind: "terminal",
+            resourceId: "terminal-1",
+            attachmentId: null,
+          },
+          lanes: ["interactive"],
+          operations: ["stream:open"],
+          maxChannels: 1,
+          lease,
+        },
+        token: "a".repeat(43),
+      },
+      initialCreditBytes: 1_024,
+    };
+    const closed = new Promise<number>((resolve) =>
+      socket.once("close", (code) => resolve(code)),
+    );
+    socket.send(encodeWorkerLinkFrame(frame, new Uint8Array()));
+
+    await expect(closed).resolves.toBe(1003);
+    expect(handled).not.toHaveBeenCalled();
   });
 
   it("does not resurrect an active capability after its current lease expires", async () => {
