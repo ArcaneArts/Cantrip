@@ -12,6 +12,7 @@ import {
   executionTargetResolutionSchema,
   projectTabLayoutWireSummarySchema,
   protectedScriptCommandListSchema,
+  remoteDesktopWireSummarySchema,
   serverBootstrapSchema,
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
@@ -50,6 +51,7 @@ import {
   protectedDisplayLabelFields,
   protectedExplorerFields,
   protectedProjectFields,
+  protectedRemoteDesktopFields,
   protectedTerminalFields,
 } from "./private-label-fixture.js";
 
@@ -176,6 +178,8 @@ const workerBridge: WorkerCommandBus = {
         return { status: "detached" };
       case "surface.attach":
         return { accepted: true, transport: "websocket" };
+      case "surface.desktop.probe":
+        return { available: true, message: null };
       case "surface.detach":
       case "surface.close":
         return { accepted: true };
@@ -699,6 +703,79 @@ describe.sequential("project execution placement API", () => {
     const deleted = await app.inject({
       method: "DELETE",
       url: `/api/browsers/${browser.id}`,
+    });
+    expect(deleted.statusCode).toBe(204);
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: expect.objectContaining({
+        type: "worker-link.grant.revoke",
+        sessionId: session.sessionId,
+        grantId: grant.binding.grantId,
+      }),
+    });
+  });
+
+  it("authorizes Remote Desktop input and disposable frames through WorkerLink", async () => {
+    const desktopResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/remote-desktops`,
+      payload: {
+        ...protectedRemoteDesktopFields(),
+        target: { kind: "worker", projectId, workerId: "worker-alpha" },
+      },
+    });
+    expect(desktopResponse.statusCode).toBe(201);
+    const desktop = remoteDesktopWireSummarySchema.parse(
+      desktopResponse.json(),
+    );
+    const sessionResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/worker-alpha/worker-link/sessions",
+      payload: { clientInstanceId: "desktop-surface-client-1" },
+    });
+    expect(sessionResponse.statusCode).toBe(201);
+    const session = workerLinkSessionSchema.parse(sessionResponse.json());
+
+    const grantResponse = await app.inject({
+      method: "POST",
+      url: `/api/worker-links/${session.sessionId}/remote-surfaces/${desktop.id}/grant`,
+      payload: {
+        viewport: { width: 1_440, height: 900, devicePixelRatio: 2 },
+      },
+    });
+    expect(grantResponse.statusCode, JSON.stringify(grantResponse.json())).toBe(
+      201,
+    );
+    const grant = workerLinkResourceGrantSchema.parse(grantResponse.json());
+    expect(grant.binding).toMatchObject({
+      sessionId: session.sessionId,
+      resource: {
+        kind: "remote-desktop",
+        resourceId: desktop.id,
+        attachmentId: expect.any(String),
+      },
+      lanes: ["interactive", "realtime"],
+      operations: ["stream:open", "stream:read", "stream:write"],
+      maxChannels: 2,
+    });
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-alpha",
+      command: expect.objectContaining({
+        type: "surface.attach",
+        surfaceId: desktop.id,
+        attachmentId: grant.binding.resource.attachmentId,
+        configuration: { kind: "desktop" },
+        stateResource: "remote-desktop-row",
+        preferredTransport: "websocket",
+        webrtc: null,
+        viewport: { width: 1_440, height: 900, devicePixelRatio: 2 },
+        desktopStream: { targetFps: 30, quality: "adaptive" },
+      }),
+    });
+
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/project-views/${desktop.id}`,
     });
     expect(deleted.statusCode).toBe(204);
     expect(routedCommands).toContainEqual({

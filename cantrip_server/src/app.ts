@@ -29644,6 +29644,14 @@ export async function buildApp({
       ) {
         return reply.code(404).send({ error: "Project view not found." });
       }
+      if (context) {
+        await workerLinks.revokeResource(
+          applicationOwnerId(),
+          context.surface.kind === "browser" ? "browser" : "remote-desktop",
+          context.surface.id,
+          "resource-deleted",
+        );
+      }
       if (context && bridge.isConnected(context.workerId)) {
         void bridge
           .request(context.workerId, {
@@ -30456,12 +30464,16 @@ export async function buildApp({
         principal.user.id,
         request.params.surfaceId,
       );
-      if (!context || context.surface.kind !== "browser") {
-        return reply.code(404).send({ error: "Browser surface not found." });
+      if (!context) {
+        return reply.code(404).send({ error: "Remote Surface not found." });
       }
+      const surfaceName =
+        context.surface.kind === "browser" ? "Browser" : "Remote Desktop";
+      const resourceKind =
+        context.surface.kind === "browser" ? "browser" : "remote-desktop";
       if (context.workerId !== session.identity.workerId) {
         return reply.code(409).send({
-          error: "Browser placement does not match the WorkerLink session.",
+          error: `${surfaceName} placement does not match the WorkerLink session.`,
         });
       }
       if (!bridge.isConnected(context.workerId)) {
@@ -30478,6 +30490,15 @@ export async function buildApp({
       let grantId: string | null = null;
       try {
         await updateRemoteSurfaceStatus(context.surface.id, "connecting");
+        const desktopStream =
+          context.surface.kind === "desktop"
+            ? await repository
+                .getUserSettings(principal.user.id)
+                .then((preferences) => ({
+                  targetFps: preferences.desktopFrameRate,
+                  quality: preferences.desktopStreamQuality,
+                }))
+            : null;
         remoteSurfaceAttachResultSchema.parse(
           await bridge.request(
             context.workerId,
@@ -30489,10 +30510,12 @@ export async function buildApp({
               serverId,
               configuration: context.surface.configuration,
               stateResource:
-                context.surface.titleProtection.classification.recordKind ===
-                "browser"
-                  ? "browser-row"
-                  : "browser-remote-surface",
+                context.surface.kind === "browser"
+                  ? context.surface.titleProtection.classification
+                      .recordKind === "browser"
+                    ? "browser-row"
+                    : "browser-remote-surface"
+                  : "remote-desktop-row",
               stateRevision: context.surface.stateRevision,
               stateProtection: context.surface.stateProtection,
               // WorkerLink owns direct negotiation. Do not start the legacy
@@ -30500,7 +30523,7 @@ export async function buildApp({
               preferredTransport: "websocket",
               webrtc: null,
               viewport: input.data.viewport,
-              desktopStream: null,
+              desktopStream,
             },
             { ownerId: principal.user.id, timeoutMs: 30_000 },
           ),
@@ -30512,7 +30535,7 @@ export async function buildApp({
           maxChannels: 2,
           operations: ["stream:open", "stream:read", "stream:write"],
           resourceId: context.surface.id,
-          resourceKind: "browser",
+          resourceKind,
           sessionId: session.sessionId,
         });
         grantId = grant.binding.grantId;
@@ -30522,7 +30545,7 @@ export async function buildApp({
         );
         if (
           !current ||
-          current.surface.kind !== "browser" ||
+          current.surface.kind !== context.surface.kind ||
           current.workerId !== context.workerId ||
           current.surface.stateRevision !== context.surface.stateRevision
         ) {
@@ -30535,8 +30558,8 @@ export async function buildApp({
           grantId = null;
           return reply.code(current ? 409 : 404).send({
             error: current
-              ? "Browser placement or state changed while opening."
-              : "Browser surface not found.",
+              ? `${surfaceName} placement or state changed while opening.`
+              : `${surfaceName} surface not found.`,
           });
         }
         await updateRemoteSurfaceStatus(context.surface.id, "active");
@@ -30551,7 +30574,7 @@ export async function buildApp({
         const message =
           error instanceof WorkerUnavailableError
             ? "Worker is offline."
-            : "Browser surface could not be opened.";
+            : `${surfaceName} surface could not be opened.`;
         await updateRemoteSurfaceStatus(
           context.surface.id,
           error instanceof WorkerUnavailableError ? "offline" : "error",

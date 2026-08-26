@@ -565,8 +565,20 @@ Remote Desktop uses:
 - `interactive` for pointer, keyboard, clipboard, and lifecycle messages; and
 - `realtime` for desktop and cursor frames.
 
-Its feature-owned WebRTC-versus-WebSocket selection is removed after the shared
-carrier reaches behavioral parity.
+The supported Remote Desktop client obtains one exact attachment grant and
+opens both lanes through the same topology-free Remote Surface WorkerLink
+client used by Browser. The worker registers the shared Remote Surface adapter
+for `remote-desktop`, so protected frame fragmentation, bounded reliable
+queues, disposable current-plus-latest realtime output, grant rotation, and
+reconnect behavior are identical across both features. The first ready
+viewport message republishes current desktop state and encrypted target
+inventory after the lanes exist; ordinary later resizes do not repeat that
+inventory resync.
+
+The UI reports the effective route for each lane, including mixed fallback.
+It no longer selects feature-specific WebRTC, TURN, or a server WebSocket.
+Those legacy endpoints remain available only for compatibility during the
+documented soak period.
 
 ### Worker events
 

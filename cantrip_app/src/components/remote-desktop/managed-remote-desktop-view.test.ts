@@ -4,6 +4,7 @@ import {
   desktopPointerCoordinates,
   filterRemoteDesktopTargetInventory,
   fitDesktopSize,
+  remoteDesktopRouteLabel,
   remoteDesktopTargetLabel,
   remoteDesktopTargetMatches,
 } from "./managed-remote-desktop-view";
@@ -27,6 +28,16 @@ describe("managed Remote Desktop geometry", () => {
         { width: 1_920, height: 1_080 },
       ),
     ).toEqual({ x: 960, y: 540 });
+  });
+
+  it("reports truthful per-lane WorkerLink routes", () => {
+    expect(
+      remoteDesktopRouteLabel({ interactive: "lan", realtime: "lan" }),
+    ).toBe("LAN");
+    expect(
+      remoteDesktopRouteLabel({ interactive: "wan", realtime: "relay" }),
+    ).toBe("Input WAN · Frames RELAY");
+    expect(remoteDesktopRouteLabel(null)).toBeNull();
   });
 
   it("labels and restores persisted monitor and application targets", () => {

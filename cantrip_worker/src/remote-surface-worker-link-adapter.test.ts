@@ -109,6 +109,50 @@ function assembled(calls: Uint8Array[][]): Uint8Array {
 }
 
 describe("RemoteSurfaceWorkerLinkAdapter", () => {
+  it("binds Remote Desktop attachments through the same lane adapter", async () => {
+    const desktopGrant: InstalledWorkerLinkGrant = {
+      ...grant,
+      binding: {
+        ...grant.binding,
+        resource: {
+          kind: "remote-desktop",
+          resourceId: "desktop-1",
+          attachmentId: "desktop-attachment-1",
+        },
+      },
+    };
+    const surfaces = {
+      bindAttachmentFrameEmitter: vi.fn(() => () => undefined),
+      detach: vi.fn(async () => undefined),
+      handleFrame: vi.fn(async () => undefined),
+    };
+    const adapter = new RemoteSurfaceWorkerLinkAdapter(surfaces, {
+      resourceKind: "remote-desktop",
+      surfaceKind: "desktop",
+    });
+    await adapter.open({
+      channel: {
+        channelId: "99999999-9999-4999-8999-999999999999",
+        connectionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      },
+      emit: emitter(),
+      grant: desktopGrant,
+      lane: "interactive",
+      session,
+    });
+    expect(surfaces.bindAttachmentFrameEmitter).toHaveBeenCalledWith(
+      "desktop-1",
+      "desktop-attachment-1",
+      "desktop",
+      expect.any(Function),
+    );
+    await adapter.revoke?.({ grant: desktopGrant, session });
+    expect(surfaces.detach).toHaveBeenCalledWith(
+      "desktop-1",
+      "desktop-attachment-1",
+    );
+  });
+
   it("isolates reliable control from disposable frame and cursor output", async () => {
     const frameRoute: { current?: FrameEmitter } = {};
     const releaseEmitter = vi.fn();

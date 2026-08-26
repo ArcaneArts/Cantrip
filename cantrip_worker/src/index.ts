@@ -1240,6 +1240,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       surfaceKind: "browser",
     }),
   );
+  workerLinkGateway.registerAdapter(
+    new RemoteSurfaceWorkerLinkAdapter(remoteSurfaces, {
+      resourceKind: "remote-desktop",
+      surfaceKind: "desktop",
+    }),
+  );
   const tunnelWorkerLinkAdapter = new TunnelWorkerLinkAdapter(
     tunnelDestinations,
   );
