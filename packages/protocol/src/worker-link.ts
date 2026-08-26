@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   TUNNEL_DATA_PLANE_MAX_HEADER_BYTES,
   TUNNEL_DATA_PLANE_MAX_PAYLOAD_BYTES,
+  tunnelDataPlaneTargetSchema,
 } from "./tunnel-data-plane.js";
 
 export const WORKER_LINK_PROTOCOL_VERSION = 1;
@@ -192,6 +193,23 @@ export const workerLinkTerminalGrantRequestSchema = z
   })
   .strict();
 
+export const workerLinkTunnelGrantRequestSchema = z
+  .object({
+    diagnosticTraceId: z.string().uuid().optional(),
+  })
+  .strict()
+  .default({});
+
+export const workerLinkTunnelRouteSchema = z
+  .object({
+    tunnelId: idSchema,
+    attachmentId: idSchema,
+    sourceEndpointId: idSchema,
+    destinationEndpointId: idSchema,
+    target: tunnelDataPlaneTargetSchema,
+  })
+  .strict();
+
 export const workerLinkResourceSchema = z
   .object({
     kind: workerLinkResourceKindSchema,
@@ -248,6 +266,13 @@ export const workerLinkResourceGrantSchema = z
   .object({
     binding: workerLinkGrantBindingSchema,
     token: workerLinkGrantTokenSchema,
+  })
+  .strict();
+
+export const workerLinkTunnelGrantSchema = z
+  .object({
+    grant: workerLinkResourceGrantSchema,
+    route: workerLinkTunnelRouteSchema,
   })
   .strict();
 
@@ -616,6 +641,11 @@ export type WorkerLinkRouteUpdateRequest = z.infer<
 export type WorkerLinkTerminalGrantRequest = z.infer<
   typeof workerLinkTerminalGrantRequestSchema
 >;
+export type WorkerLinkTunnelGrantRequest = z.infer<
+  typeof workerLinkTunnelGrantRequestSchema
+>;
+export type WorkerLinkTunnelRoute = z.infer<typeof workerLinkTunnelRouteSchema>;
+export type WorkerLinkTunnelGrant = z.infer<typeof workerLinkTunnelGrantSchema>;
 export type WorkerLinkGrantBinding = z.infer<
   typeof workerLinkGrantBindingSchema
 >;

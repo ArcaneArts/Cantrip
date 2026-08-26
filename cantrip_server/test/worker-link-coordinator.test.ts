@@ -79,6 +79,44 @@ function sessionInput(
 }
 
 describe("WorkerLinkCoordinator", () => {
+  it("revokes one exact tunnel attachment without retiring sibling grants", async () => {
+    const workers = new FakeWorkerBus();
+    const coordinator = new WorkerLinkCoordinator(workers.asBus(), {
+      serverGeneration,
+      serverId,
+      sweepIntervalMs: 0,
+    });
+    const session = await coordinator.openSession(sessionInput());
+    const issue = (attachmentId: string) =>
+      coordinator.issueGrant({
+        attachmentId,
+        lanes: ["stream"],
+        maxChannels: 1,
+        operations: ["stream:open", "stream:read", "stream:write"],
+        resourceId: "tunnel-1",
+        resourceKind: "tunnel",
+        sessionId: session.sessionId,
+      });
+    const first = await issue("attachment-1");
+    const second = await issue("attachment-2");
+
+    await expect(
+      coordinator.revokeAttachment(
+        session.identity.ownerId,
+        "tunnel",
+        "tunnel-1",
+        "attachment-1",
+      ),
+    ).resolves.toBe(1);
+    await expect(
+      coordinator.renewGrant(session.sessionId, first.binding.grantId),
+    ).rejects.toThrow(/missing/i);
+    await expect(
+      coordinator.renewGrant(session.sessionId, second.binding.grantId),
+    ).resolves.toBeDefined();
+    await coordinator.close();
+  });
+
   it("installs one exact session and a hash-only resource grant before returning authority", async () => {
     let now = Date.parse("2026-08-26T12:00:00.000Z");
     const workers = new FakeWorkerBus();
@@ -128,6 +166,7 @@ describe("WorkerLinkCoordinator", () => {
     });
 
     const grant = await coordinator.issueGrant({
+      absoluteExpiresAt: new Date(now + 45_000).toISOString(),
       attachmentId: "attachment-1",
       lanes: ["interactive", "stream"],
       maxChannels: 2,
@@ -171,6 +210,9 @@ describe("WorkerLinkCoordinator", () => {
       grant.binding.grantId,
     );
     expect(Date.parse(renewed.expiresAt)).toBeGreaterThan(now);
+    expect(renewed.absoluteExpiresAt).toBe(
+      new Date(now + 15_000).toISOString(),
+    );
 
     await coordinator.close();
   });
