@@ -214,6 +214,43 @@ describe("WorkerLinkManager", () => {
     await manager.close();
   });
 
+  it("keeps the pre-peer baseline deterministic for LOCAL and RELAY", async () => {
+    const local = vi.fn(
+      async () => new FakeCarrier("local") as WorkerLinkCarrier,
+    );
+    const relay = vi.fn(
+      async () => new FakeCarrier("relay") as WorkerLinkCarrier,
+    );
+    const localSetup = dependencies({ local, relay });
+    const localManager = new WorkerLinkManager(localSetup.dependency);
+    const localReference = await localManager.acquire("worker-1");
+    expect(local).toHaveBeenCalledOnce();
+    expect(relay).not.toHaveBeenCalled();
+    expect(localSetup.dependency.setRoute).not.toHaveBeenCalled();
+    localReference.release();
+    await localManager.close();
+
+    const unsupportedLocal = vi.fn(
+      async () => new FakeCarrier("local") as WorkerLinkCarrier,
+    );
+    const relayOnly = vi.fn(
+      async () => new FakeCarrier("relay") as WorkerLinkCarrier,
+    );
+    const relaySetup = dependencies({
+      local: unsupportedLocal,
+      localSupported: false,
+      relay: relayOnly,
+    });
+    const relayManager = new WorkerLinkManager(relaySetup.dependency);
+    const relayReference = await relayManager.acquire("worker-1");
+    expect(unsupportedLocal).not.toHaveBeenCalled();
+    expect(relayOnly).toHaveBeenCalledOnce();
+    expect(relaySetup.dependency.setRoute).toHaveBeenCalledOnce();
+    expect(relayReference.link.preferredRoute).toBe("relay");
+    relayReference.release();
+    await relayManager.close();
+  });
+
   it("projects feature-neutral route, channel, consumer, and last-used status", async () => {
     vi.useFakeTimers();
     const carrier = new FakeCarrier("local", 7);

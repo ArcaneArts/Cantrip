@@ -614,6 +614,18 @@ listener binds only the required ephemeral sockets, discloses candidates only
 through the authenticated server, rate-limits invalid handshakes, and accepts no
 resource operation without an installed grant.
 
+The WorkerLink controls use a separate namespace from the compatibility Remote
+Surface ICE settings. `CANTRIP_WORKER_LINK_LOCAL_ENABLED`,
+`CANTRIP_WORKER_LINK_LAN_ENABLED`, and `CANTRIP_WORKER_LINK_WAN_ENABLED` control
+direct route eligibility. `CANTRIP_WORKER_LINK_STUN_URLS` replaces the default
+`stun:stun.cloudflare.com:3478` WAN discovery endpoint; an explicitly empty
+value disables STUN discovery. Interface allowlists and denylists are mutually
+exclusive, and VPN interfaces remain `WAN` unless named by the explicit VPN LAN
+allowlist. Negotiation/probe timeouts, client/worker peer ceilings, and bounded
+per-lane limits are deployment-controlled. The emergency
+`CANTRIP_WORKER_LINK_RELAY_ONLY` switch overrides every direct-route setting.
+None of these WorkerLink controls permits TURN.
+
 ## Implementation plan
 
 ### Phase 1: Protocol and facade

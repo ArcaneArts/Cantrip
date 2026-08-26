@@ -14,6 +14,10 @@ export const WORKER_LINK_MAX_CREDIT_BYTES = 8 * 1_024 * 1_024;
 export const WORKER_LINK_MAX_CHANNELS_PER_GRANT = 64;
 export const WORKER_LINK_MAX_GRANTS_PER_SESSION = 128;
 export const WORKER_LINK_MAX_TELEMETRY_SAMPLES = 128;
+export const WORKER_LINK_MAX_PEER_CANDIDATES = 64;
+export const WORKER_LINK_MAX_PEER_SIGNALS = 256;
+export const WORKER_LINK_MAX_STUN_URLS = 8;
+export const WORKER_LINK_MAX_INTERFACE_RULES = 64;
 
 const FRAME_MAGIC = new Uint8Array([0x43, 0x57, 0x4c, 0x4b]);
 
@@ -36,6 +40,10 @@ const creditSchema = z
 export const workerLinkRouteSchema = z.enum(["local", "lan", "wan", "relay"]);
 
 export const workerLinkOperationalRouteSchema = z.enum(["local", "relay"]);
+
+export const workerLinkPeerRouteSchema = z.enum(["lan", "wan"]);
+
+export const workerLinkPeerSignalSenderSchema = z.enum(["client", "worker"]);
 
 export const workerLinkQosLaneSchema = z.enum([
   "events",
@@ -155,6 +163,123 @@ export const workerLinkRoutePolicySchema = z
   })
   .strict();
 
+const workerLinkStunUrlSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2_048)
+  .refine((value) => /^stuns?:[^\s]+$/u.test(value), {
+    message: "WorkerLink STUN URLs must use stun: or stuns:.",
+  });
+
+const workerLinkInterfaceRuleSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[^\u0000-\u001f\u007f]+$/u);
+
+export const workerLinkPeerLaneLimitSchema = z
+  .object({
+    maxChannels: z.number().int().positive().max(4_096),
+    maxQueuedFrames: z.number().int().positive().max(4_096),
+    maxQueuedBytes: z
+      .number()
+      .int()
+      .min(64 * 1_024)
+      .max(64 * 1_024 * 1_024),
+    maxBytesPerSecond: z
+      .number()
+      .int()
+      .min(64 * 1_024)
+      .max(1_024 * 1_024 * 1_024),
+  })
+  .strict();
+
+export const workerLinkPeerLaneLimitsSchema = z
+  .object({
+    events: workerLinkPeerLaneLimitSchema,
+    interactive: workerLinkPeerLaneLimitSchema,
+    stream: workerLinkPeerLaneLimitSchema,
+    realtime: workerLinkPeerLaneLimitSchema,
+    bulk: workerLinkPeerLaneLimitSchema,
+  })
+  .strict();
+
+export const workerLinkPeerConfigurationSchema = z
+  .object({
+    directRoutes: z
+      .object({
+        local: z.boolean(),
+        lan: z.boolean(),
+        wan: z.boolean(),
+      })
+      .strict(),
+    relayOnly: z.boolean(),
+    stunUrls: z
+      .array(workerLinkStunUrlSchema)
+      .max(WORKER_LINK_MAX_STUN_URLS)
+      .refine((urls) => new Set(urls).size === urls.length, {
+        message: "WorkerLink STUN URLs must be unique.",
+      }),
+    interfacePolicy: z.discriminatedUnion("mode", [
+      z
+        .object({ mode: z.literal("default"), interfaces: z.tuple([]) })
+        .strict(),
+      z
+        .object({
+          mode: z.literal("allowlist"),
+          interfaces: z
+            .array(workerLinkInterfaceRuleSchema)
+            .min(1)
+            .max(WORKER_LINK_MAX_INTERFACE_RULES),
+        })
+        .strict(),
+      z
+        .object({
+          mode: z.literal("denylist"),
+          interfaces: z
+            .array(workerLinkInterfaceRuleSchema)
+            .min(1)
+            .max(WORKER_LINK_MAX_INTERFACE_RULES),
+        })
+        .strict(),
+    ]),
+    vpnPolicy: z
+      .object({
+        defaultRoute: z.literal("wan"),
+        lanAllowlist: z
+          .array(workerLinkInterfaceRuleSchema)
+          .max(WORKER_LINK_MAX_INTERFACE_RULES),
+      })
+      .strict(),
+    negotiationTimeoutMs: z.number().int().min(1_000).max(30_000),
+    upgradeProbeTimeoutMs: z.number().int().min(1_000).max(300_000),
+    maxPeerSessionsPerClient: z.number().int().positive().max(256),
+    maxPeerSessionsPerWorker: z.number().int().positive().max(4_096),
+    laneLimits: workerLinkPeerLaneLimitsSchema,
+  })
+  .strict()
+  .superRefine((configuration, context) => {
+    if (
+      configuration.relayOnly &&
+      Object.values(configuration.directRoutes).some(Boolean)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["directRoutes"],
+        message: "Relay-only WorkerLink policy cannot enable a direct route.",
+      });
+    }
+    if (!configuration.directRoutes.wan && configuration.stunUrls.length > 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["stunUrls"],
+        message: "WorkerLink STUN URLs require the WAN route.",
+      });
+    }
+  });
+
 export const workerLinkSessionSchema = z
   .object({
     sessionId: z.string().uuid(),
@@ -178,6 +303,98 @@ export const workerLinkSessionSchema = z
 export const workerLinkSessionOpenRequestSchema = z
   .object({
     clientInstanceId: idSchema,
+  })
+  .strict();
+
+export const workerLinkPeerSessionSchema = z
+  .object({
+    peerSessionId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    identity: workerLinkSessionIdentitySchema,
+    routeGeneration: generationSchema,
+    route: workerLinkPeerRouteSchema,
+    lease: workerLinkLeaseSchema,
+  })
+  .strict();
+
+export const workerLinkPeerSessionOpenRequestSchema = z
+  .object({
+    routeGeneration: generationSchema,
+    route: workerLinkPeerRouteSchema,
+  })
+  .strict();
+
+export const workerLinkPeerCandidateSchema = z
+  .object({
+    candidate: z.string().trim().min(1).max(16_384),
+    sdpMid: z.string().max(1_024).nullable(),
+    sdpMLineIndex: z.number().int().nonnegative().max(65_535).nullable(),
+    usernameFragment: z.string().max(1_024).nullable(),
+  })
+  .strict();
+
+export const workerLinkPeerCandidateAdvertisementSchema = z
+  .object({
+    peerSessionId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    routeGeneration: generationSchema,
+    route: workerLinkPeerRouteSchema,
+    advertisementSequence: sequenceSchema,
+    candidates: z
+      .array(workerLinkPeerCandidateSchema)
+      .min(1)
+      .max(WORKER_LINK_MAX_PEER_CANDIDATES),
+    complete: z.boolean(),
+  })
+  .strict();
+
+export const workerLinkPeerSignalSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("offer"),
+      sdp: z.string().min(1).max(1_000_000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("answer"),
+      sdp: z.string().min(1).max(1_000_000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("candidate"),
+      candidate: workerLinkPeerCandidateSchema,
+    })
+    .strict(),
+  z.object({ type: z.literal("end-of-candidates") }).strict(),
+  z
+    .object({
+      type: z.literal("transport-state"),
+      state: z.enum(["connected", "failed", "closed"]),
+      message: z.string().max(2_048).nullable(),
+    })
+    .strict(),
+]);
+
+export const workerLinkPeerSignalEnvelopeSchema = z
+  .object({
+    peerSessionId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    routeGeneration: generationSchema,
+    route: workerLinkPeerRouteSchema,
+    sender: workerLinkPeerSignalSenderSchema,
+    signalSequence: sequenceSchema,
+    signal: workerLinkPeerSignalSchema,
+  })
+  .strict();
+
+export const workerLinkPeerSignalBatchSchema = z
+  .object({
+    signals: z
+      .array(workerLinkPeerSignalEnvelopeSchema)
+      .min(1)
+      .max(WORKER_LINK_MAX_PEER_SIGNALS),
   })
   .strict();
 
@@ -614,6 +831,24 @@ export type WorkerLinkOperationalRoute = z.infer<
   typeof workerLinkOperationalRouteSchema
 >;
 export type WorkerLinkQosLane = z.infer<typeof workerLinkQosLaneSchema>;
+export type WorkerLinkPeerRoute = z.infer<typeof workerLinkPeerRouteSchema>;
+export type WorkerLinkPeerConfiguration = z.infer<
+  typeof workerLinkPeerConfigurationSchema
+>;
+export type WorkerLinkPeerLaneLimits = z.infer<
+  typeof workerLinkPeerLaneLimitsSchema
+>;
+export type WorkerLinkPeerSession = z.infer<typeof workerLinkPeerSessionSchema>;
+export type WorkerLinkPeerCandidate = z.infer<
+  typeof workerLinkPeerCandidateSchema
+>;
+export type WorkerLinkPeerCandidateAdvertisement = z.infer<
+  typeof workerLinkPeerCandidateAdvertisementSchema
+>;
+export type WorkerLinkPeerSignal = z.infer<typeof workerLinkPeerSignalSchema>;
+export type WorkerLinkPeerSignalEnvelope = z.infer<
+  typeof workerLinkPeerSignalEnvelopeSchema
+>;
 export type WorkerLinkChannelKind = z.infer<typeof workerLinkChannelKindSchema>;
 export type WorkerLinkPayloadFormat = z.infer<
   typeof workerLinkPayloadFormatSchema

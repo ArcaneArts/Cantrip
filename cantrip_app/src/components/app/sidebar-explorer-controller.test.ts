@@ -62,4 +62,21 @@ describe("sidebar Explorer provisioning", () => {
       sidebarHasDesiredExplorer: true,
     });
   });
+
+  it("does not provision a speculative spare while one sidebar Explorer owns preview navigation", () => {
+    const previewExplorer = explorer();
+    expect(
+      sidebarExplorerProvisioningDetails({
+        onlineWorkerIds: new Set(["worker-explorer"]),
+        selectedProject: project,
+        selectedProjectWorkerId: "worker-project",
+        sidebarDesiredWorktreeId: "worktree-1",
+        sidebarExplorer: previewExplorer,
+        sidebarInlineExplorer: previewExplorer,
+      }),
+    ).toMatchObject({
+      sidebarExplorerCreationKey: "project-1:worktree-1",
+      sidebarHasDesiredExplorer: true,
+    });
+  });
 });
