@@ -272,6 +272,39 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         ),
     ).toMatchObject({ type: "desktop-state", width: 1920, height: 1080 });
 
+    const targetMessageCount = () =>
+      emissions.filter(({ channel, payload }) => {
+        if (channel !== "control") return false;
+        return (
+          remoteDesktopServerMessageSchema.parse(
+            JSON.parse(new TextDecoder().decode(payload)),
+          ).type === "desktop-targets"
+        );
+      }).length;
+    const targetsBeforeReadyViewport = targetMessageCount();
+    await session.handleFrame(
+      "attachment-1",
+      "control",
+      new TextEncoder().encode(
+        JSON.stringify({
+          type: "viewport",
+          viewport: { width: 1_440, height: 900, devicePixelRatio: 1 },
+        }),
+      ),
+    );
+    expect(targetMessageCount()).toBe(targetsBeforeReadyViewport + 1);
+    await session.handleFrame(
+      "attachment-1",
+      "control",
+      new TextEncoder().encode(
+        JSON.stringify({
+          type: "viewport",
+          viewport: { width: 1_600, height: 900, devicePixelRatio: 1 },
+        }),
+      ),
+    );
+    expect(targetMessageCount()).toBe(targetsBeforeReadyViewport + 1);
+
     await session.handleFrame(
       "attachment-1",
       "control",

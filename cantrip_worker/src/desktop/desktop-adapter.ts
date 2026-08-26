@@ -139,6 +139,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   };
   #targetMessage: string | null = null;
   #requestedTarget: RemoteDesktopTarget;
+  readonly #resynchronizedAttachments = new Set<string>();
 
   constructor(options: {
     client: DesktopAutomationClient;
@@ -227,6 +228,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
 
   detach(attachmentId: string): void {
     this.#attachments.delete(attachmentId);
+    this.#resynchronizedAttachments.delete(attachmentId);
     if (this.#attachments.size === 0) this.clearCaptureTimer();
   }
 
@@ -242,6 +244,22 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     if (message.type === "viewport") {
       const attachment = this.#attachments.get(attachmentId);
       if (attachment) attachment.viewport = message.viewport;
+      if (!this.#resynchronizedAttachments.has(attachmentId)) {
+        this.#resynchronizedAttachments.add(attachmentId);
+        const status = this.#suspended
+          ? "suspended"
+          : this.#launchingApplication
+            ? "launching"
+            : this.#inputTargetError
+              ? "error"
+              : "ready";
+        this.publishState(
+          attachmentId,
+          status,
+          this.#inputTargetError ?? this.#targetMessage,
+        );
+        await this.refreshTargets(attachmentId);
+      }
       this.scheduleCapture(0);
       return;
     }
@@ -331,6 +349,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       },
     });
     this.#attachments.clear();
+    this.#resynchronizedAttachments.clear();
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {

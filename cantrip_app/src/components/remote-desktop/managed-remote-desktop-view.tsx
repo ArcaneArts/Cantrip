@@ -33,11 +33,7 @@ import {
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
-import {
-  getWorkers,
-  remoteSurfaceWebSocketUrl,
-  updateRemoteDesktopTarget,
-} from "@/lib/api";
+import { getWorkers, updateRemoteDesktopTarget } from "@/lib/api";
 import {
   forwardRemoteSurfaceClipboard,
   remoteSurfacePointerCoordinates,
@@ -48,21 +44,18 @@ import {
 } from "@/lib/remote-desktop-icon-cache";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
 import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
-import {
-  useRemoteSurfaceTransport,
-  type RemoteSurfaceFrameContext,
-  type RemoteSurfaceInboundFrame,
-} from "@/lib/use-remote-surface-transport";
+import { useRemoteSurfaceWorkerLink } from "@/lib/use-remote-surface-worker-link";
+import type {
+  RemoteSurfaceWorkerLinkFrameContext,
+  RemoteSurfaceWorkerLinkInboundFrame,
+  RemoteSurfaceWorkerLinkRoutes,
+} from "@/lib/remote-surface-worker-link";
 import { cn } from "@/lib/utils";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const desktopTransportMessages = {
-  closeReason: "Remote Desktop view closed",
-  congestionReason: "Remote Desktop connection is congested",
   connectionError: "Could not connect to the worker Remote Desktop.",
-  invalidConnectionMessage:
-    "The server sent an invalid Remote Desktop connection message.",
   invalidFrame: "The server sent an invalid Remote Desktop frame.",
 };
 
@@ -88,6 +81,16 @@ export function desktopPointerCoordinates(
   desktop: Size,
 ) {
   return remoteSurfacePointerCoordinates(point, bounds, desktop, "last-pixel");
+}
+
+export function remoteDesktopRouteLabel(
+  routes: RemoteSurfaceWorkerLinkRoutes | null,
+): string | null {
+  if (!routes) return null;
+  if (routes.interactive === routes.realtime) {
+    return routes.interactive.toUpperCase();
+  }
+  return `Input ${routes.interactive.toUpperCase()} · Frames ${routes.realtime.toUpperCase()}`;
 }
 
 export function remoteDesktopTargetMatches(
@@ -267,8 +270,8 @@ export function ManagedRemoteDesktopView({
   });
 
   function handleFrame(
-    frame: RemoteSurfaceInboundFrame,
-    context: RemoteSurfaceFrameContext,
+    frame: RemoteSurfaceWorkerLinkInboundFrame,
+    context: RemoteSurfaceWorkerLinkFrameContext,
   ): void {
     if (frame.header.channel === "frame") {
       remoteCanvasRef.current?.pushFrame(frame.payload);
@@ -341,19 +344,20 @@ export function ManagedRemoteDesktopView({
   }
 
   const {
-    activeTransport,
+    activeRoute,
+    activeRoutes,
     connectionState,
     error,
     retry,
     sendFrame,
     setError,
-  } = useRemoteSurfaceTransport({
-    enabled: encryptionReady,
+  } = useRemoteSurfaceWorkerLink({
+    enabled: encryptionReady && Boolean(desktop.workerId),
     streamKind: "desktop",
     surfaceKind: "remote-desktop",
     surfaceId: desktop.id,
-    webSocketUrl: () =>
-      remoteSurfaceWebSocketUrl(desktop.id, viewportRef.current),
+    workerId: desktop.workerId,
+    viewport: () => viewportRef.current,
     messages: desktopTransportMessages,
     onConnecting: () => {
       remoteCanvasRef.current?.reset();
@@ -529,7 +533,10 @@ export function ManagedRemoteDesktopView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="flex h-12 shrink-0 items-center gap-1.5 bg-background px-3">
+      <div
+        className="flex h-12 shrink-0 items-center gap-1.5 bg-background px-3"
+        data-remote-surface-route={activeRoute ?? undefined}
+      >
         <div className="mr-auto flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <MonitorUp className="size-4 shrink-0" />
           <span className="truncate">
@@ -827,15 +834,9 @@ export function ManagedRemoteDesktopView({
               {notice}
             </div>
           ) : null}
-          {connectionState === "ready" && activeTransport ? (
+          {connectionState === "ready" && activeRoutes ? (
             <div className="pointer-events-none absolute left-4 top-3 rounded-md bg-background/80 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur-xl">
-              {activeTransport === "webrtc-direct"
-                ? "Direct WebRTC stream"
-                : activeTransport === "webrtc-relay"
-                  ? "TURN-relayed WebRTC stream"
-                  : activeTransport === "webrtc-unknown"
-                    ? "WebRTC stream"
-                    : "Server-relayed WebSocket stream"}
+              WorkerLink · {remoteDesktopRouteLabel(activeRoutes)}
             </div>
           ) : null}
         </div>

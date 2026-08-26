@@ -56,7 +56,10 @@ function session(): WorkerLinkSession {
   };
 }
 
-function grant(activeSession: WorkerLinkSession): WorkerLinkResourceGrant {
+function grant(
+  activeSession: WorkerLinkSession,
+  streamKind: "browser" | "desktop" = "browser",
+): WorkerLinkResourceGrant {
   return {
     binding: {
       grantId: crypto.randomUUID(),
@@ -64,8 +67,8 @@ function grant(activeSession: WorkerLinkSession): WorkerLinkResourceGrant {
       sessionId: activeSession.sessionId,
       identity: activeSession.identity,
       resource: {
-        kind: "browser",
-        resourceId: "browser-1",
+        kind: streamKind === "browser" ? "browser" : "remote-desktop",
+        resourceId: `${streamKind}-1`,
         attachmentId: crypto.randomUUID(),
       },
       lanes: ["interactive", "realtime"],
@@ -171,6 +174,7 @@ function setup(
     interactive: "local",
     realtime: "local",
   },
+  streamKind: "browser" | "desktop" = "browser",
 ) {
   const activeSession = session();
   const grants: WorkerLinkResourceGrant[] = [];
@@ -198,7 +202,7 @@ function setup(
   };
   const dependencies: RemoteSurfaceWorkerLinkDependencies = {
     createGrant: vi.fn(async () => {
-      const created = grant(activeSession);
+      const created = grant(activeSession, streamKind);
       grants.push(created);
       return created;
     }),
@@ -232,9 +236,9 @@ function setup(
         frames.push(frame);
       },
       onReady: (selected) => readyRoutes.push(selected),
-      streamKind: "browser",
-      surfaceId: "browser-1",
-      surfaceKind: "browser",
+      streamKind,
+      surfaceId: `${streamKind}-1`,
+      surfaceKind: streamKind === "browser" ? "browser" : "remote-desktop",
       viewport: () => ({ width: 1_280, height: 720, devicePixelRatio: 2 }),
       workerId: "worker-1",
     },
@@ -258,6 +262,38 @@ afterEach(() => {
 });
 
 describe("Remote Surface WorkerLink client", () => {
+  it("accepts an exact Remote Desktop grant through the same client", async () => {
+    const fixture = setup({ interactive: "local", realtime: "lan" }, "desktop");
+    fixture.client.start();
+    await vi.waitFor(() => expect(fixture.readyRoutes).toHaveLength(1));
+    expect(fixture.grants[0]!.binding.resource).toMatchObject({
+      kind: "remote-desktop",
+      resourceId: "desktop-1",
+      attachmentId: expect.any(String),
+    });
+    expect(fixture.dependencies.createGrant).toHaveBeenCalledWith(
+      fixture.grants[0]!.binding.sessionId,
+      "desktop-1",
+      { width: 1_280, height: 720, devicePixelRatio: 2 },
+    );
+    expect(fixture.client.send("control", new Uint8Array([1, 2, 3]))).toBe(
+      true,
+    );
+    await vi.waitFor(() =>
+      expect(fixture.dependencies.protectPayload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: expect.objectContaining({
+            surfaceKind: "desktop",
+            surfaceId: "desktop-1",
+            channel: "control",
+            direction: "client-to-worker",
+          }),
+        }),
+      ),
+    );
+    fixture.client.close();
+  });
+
   it("opens both lanes, exposes their effective routes, and fragments control", async () => {
     const fixture = setup({ interactive: "lan", realtime: "relay" });
     fixture.client.start();
