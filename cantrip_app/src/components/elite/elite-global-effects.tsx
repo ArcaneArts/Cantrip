@@ -10,7 +10,7 @@ import {
   normalizeEliteRevealConfig,
   type EliteRevealConfig,
   type EliteRevealContentKind,
-} from "./elite-reveal";
+} from "@cantrip/glitch";
 
 import "./elite-global-effects.css";
 

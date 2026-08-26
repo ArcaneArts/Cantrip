@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./elite": {
+      "types": "./src/elite.ts",
+      "import": "./dist/elite.js"
+    },
     "./workflows": {
       "types": "./src/workflows.ts",
       "import": "./dist/workflows.js"

@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@cantrip/crypto": "workspace:*",
+    "@cantrip/glitch": "workspace:*",
     "@cantrip/logging": "workspace:*",
     "@cantrip/protocol": "workspace:*",
     "@cantrip/version": "workspace:*",

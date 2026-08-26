@@ -5,7 +5,7 @@ import {
   DEFAULT_ELITE_REVEAL_CONFIG,
   EliteReveal,
   type EliteRevealConfig,
-} from "@/components/elite/elite-reveal";
+} from "@cantrip/glitch";
 import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
 
 import "./application-loading-splash.css";

@@ -1,4 +1,4 @@
-import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/protocol";
+import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import { RunConfigurationControl } from "@/components/run/run-configuration-control";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import { type ContentHeaderActionsProps } from "@/components/workspace/content-header-actions";

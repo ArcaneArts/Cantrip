@@ -6,7 +6,7 @@ import {
   type EliteGlitchVariant,
   type EliteGlitchVariantWeights,
   type EliteRevealConfig,
-} from "@cantrip/protocol";
+} from "@cantrip/protocol/elite";
 import {
   useEffect,
   useMemo,
@@ -16,13 +16,21 @@ import {
   type ReactNode,
 } from "react";
 
-import { cn } from "@/lib/utils";
-
-import "./elite-reveal.css";
+import "../styles.css";
 
 export const ELITE_GLITCH_VARIANTS = eliteGlitchVariantSchema.options;
 export { MAX_ELITE_GLITCH_COUNT };
-export type { EliteGlitchVariant, EliteRevealConfig } from "@cantrip/protocol";
+export type {
+  EliteGlitchVariant,
+  EliteGlitchVariantWeights,
+  EliteRevealConfig,
+} from "@cantrip/protocol/elite";
+export {
+  DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS,
+  eliteGlitchVariantSchema,
+  eliteGlitchVariantWeightsSchema,
+  eliteRevealConfigSchema,
+} from "@cantrip/protocol/elite";
 export type EliteRevealContentKind = "box" | "control" | "text";
 
 export const ELITE_GLITCH_VARIANT_WEIGHTS =
@@ -516,7 +524,7 @@ export function EliteReveal({
 
   return (
     <div
-      className={cn("elite-reveal", className)}
+      className={["elite-reveal", className].filter(Boolean).join(" ")}
       data-content-kind={contentKind}
       data-elite-reveal=""
       data-state={stage.state}
