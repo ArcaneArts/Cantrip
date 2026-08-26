@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { createClient } from "redis";
+import {
+  workerLinkSessionSchema,
+  type WorkerLinkSession,
+} from "@cantrip/protocol/worker-link";
 
 import { serverLogger } from "../logger.js";
 
@@ -14,6 +18,12 @@ export interface WorkerPresenceClaim {
   instanceId: string;
   ownerId: string;
   workerId: string;
+}
+
+export interface WorkerLinkSessionClaim {
+  authorityInstanceId: string;
+  expiresAt: number;
+  session: WorkerLinkSession;
 }
 
 interface CoordinationPayloadBase {
@@ -58,7 +68,7 @@ export type RelayCoordinationPayload =
       direction: "to-worker" | "from-worker";
       ownerId: string;
       workerId: string;
-      transport: "surface" | "tunnel";
+      transport: "surface" | "tunnel" | "worker-link";
       header: unknown;
       payloadBase64: string;
     })
@@ -71,6 +81,26 @@ export type RelayCoordinationPayload =
   | (CoordinationPayloadBase & {
       kind: "live-publication";
       publication: unknown;
+    })
+  | (CoordinationPayloadBase & {
+      kind: "worker-link-operation-request";
+      requestId: string;
+      operation: unknown;
+    })
+  | (CoordinationPayloadBase & {
+      kind: "worker-link-operation-response";
+      requestId: string;
+      ok: boolean;
+      result?: unknown;
+      error?: string;
+    })
+  | (CoordinationPayloadBase & {
+      kind: "worker-link-revoke";
+      scope: unknown;
+    })
+  | (CoordinationPayloadBase & {
+      kind: "worker-link-relay-revoke";
+      scope: unknown;
     });
 
 export type RelayCoordinationMessage = RelayCoordinationPayload & {
@@ -100,13 +130,24 @@ export interface RelayCoordinator {
   claimWorker(
     input: Omit<WorkerPresenceClaim, "expiresAt" | "instanceId">,
   ): Promise<WorkerPresenceClaim | null>;
+  claimWorkerLinkSession(
+    claim: WorkerLinkSessionClaim,
+  ): Promise<WorkerLinkSessionClaim | null>;
   close(): Promise<void>;
   cachedWorker(workerId: string): WorkerPresenceClaim | null;
   findWorker(workerId: string): Promise<WorkerPresenceClaim | null>;
+  findWorkerLinkSession(
+    sessionId: string,
+  ): Promise<WorkerLinkSessionClaim | null>;
   health(): Promise<boolean>;
   publish(payload: RelayCoordinationPayload, ttlMs?: number): Promise<void>;
   refreshWorker(workerId: string, connectionId: string): Promise<boolean>;
+  refreshWorkerLinkSession(claim: WorkerLinkSessionClaim): Promise<boolean>;
   releaseWorker(workerId: string, connectionId: string): Promise<boolean>;
+  releaseWorkerLinkSession(
+    sessionId: string,
+    authorityInstanceId: string,
+  ): Promise<boolean>;
   start(): Promise<void>;
   stats(): RelayCoordinatorStats;
   subscribe(listener: RelayCoordinationListener): () => void;
@@ -131,6 +172,31 @@ function parsePresence(value: unknown): WorkerPresenceClaim | null {
     return null;
   }
   return value as WorkerPresenceClaim;
+}
+
+function parseWorkerLinkSessionClaim(
+  value: unknown,
+): WorkerLinkSessionClaim | null {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !validString(Reflect.get(value, "authorityInstanceId")) ||
+    typeof Reflect.get(value, "expiresAt") !== "number"
+  ) {
+    return null;
+  }
+  const session = workerLinkSessionSchema.safeParse(
+    Reflect.get(value, "session"),
+  );
+  if (!session.success) return null;
+  const claim = value as WorkerLinkSessionClaim;
+  if (
+    claim.expiresAt !== Date.parse(session.data.lease.expiresAt) ||
+    claim.expiresAt <= Date.now()
+  ) {
+    return null;
+  }
+  return { ...claim, session: session.data };
 }
 
 function parseMessage(value: unknown): RelayCoordinationMessage | null {
@@ -167,16 +233,29 @@ abstract class BaseRelayCoordinator implements RelayCoordinator {
   abstract claimWorker(
     input: Omit<WorkerPresenceClaim, "expiresAt" | "instanceId">,
   ): Promise<WorkerPresenceClaim | null>;
+  abstract claimWorkerLinkSession(
+    claim: WorkerLinkSessionClaim,
+  ): Promise<WorkerLinkSessionClaim | null>;
   abstract close(): Promise<void>;
   abstract findWorker(workerId: string): Promise<WorkerPresenceClaim | null>;
+  abstract findWorkerLinkSession(
+    sessionId: string,
+  ): Promise<WorkerLinkSessionClaim | null>;
   abstract health(): Promise<boolean>;
   abstract refreshWorker(
     workerId: string,
     connectionId: string,
   ): Promise<boolean>;
+  abstract refreshWorkerLinkSession(
+    claim: WorkerLinkSessionClaim,
+  ): Promise<boolean>;
   abstract releaseWorker(
     workerId: string,
     connectionId: string,
+  ): Promise<boolean>;
+  abstract releaseWorkerLinkSession(
+    sessionId: string,
+    authorityInstanceId: string,
   ): Promise<boolean>;
   abstract start(): Promise<void>;
   protected abstract send(message: RelayCoordinationMessage): Promise<void>;
@@ -280,11 +359,16 @@ abstract class BaseRelayCoordinator implements RelayCoordinator {
 
 export interface InMemoryRelayCoordinatorBackend {
   coordinators: Set<InMemoryRelayCoordinator>;
+  workerLinkSessions: Map<string, WorkerLinkSessionClaim>;
   workers: Map<string, WorkerPresenceClaim>;
 }
 
 export function createInMemoryRelayCoordinatorBackend(): InMemoryRelayCoordinatorBackend {
-  return { coordinators: new Set(), workers: new Map() };
+  return {
+    coordinators: new Set(),
+    workerLinkSessions: new Map(),
+    workers: new Map(),
+  };
 }
 
 export class InMemoryRelayCoordinator extends BaseRelayCoordinator {
@@ -318,6 +402,17 @@ export class InMemoryRelayCoordinator extends BaseRelayCoordinator {
     this.backend.workers.set(input.workerId, presence);
     this.cachePresence(presence);
     await this.publish({ kind: "worker-presence", action: "online", presence });
+    return previous;
+  }
+
+  async claimWorkerLinkSession(
+    claim: WorkerLinkSessionClaim,
+  ): Promise<WorkerLinkSessionClaim | null> {
+    const parsed = parseWorkerLinkSessionClaim(claim);
+    if (!parsed) throw new Error("WorkerLink session claim is invalid.");
+    const previous = await this.findWorkerLinkSession(parsed.session.sessionId);
+    if (previous?.authorityInstanceId !== undefined) return previous;
+    this.backend.workerLinkSessions.set(parsed.session.sessionId, parsed);
     return previous;
   }
 
@@ -370,6 +465,40 @@ export class InMemoryRelayCoordinator extends BaseRelayCoordinator {
     }
     if (presence) this.cachePresence(presence);
     return presence;
+  }
+
+  async findWorkerLinkSession(
+    sessionId: string,
+  ): Promise<WorkerLinkSessionClaim | null> {
+    const claim = this.backend.workerLinkSessions.get(sessionId) ?? null;
+    if (claim && claim.expiresAt <= Date.now()) {
+      this.backend.workerLinkSessions.delete(sessionId);
+      return null;
+    }
+    return claim;
+  }
+
+  async refreshWorkerLinkSession(
+    claim: WorkerLinkSessionClaim,
+  ): Promise<boolean> {
+    const parsed = parseWorkerLinkSessionClaim(claim);
+    if (!parsed) return false;
+    const current = await this.findWorkerLinkSession(parsed.session.sessionId);
+    if (current?.authorityInstanceId !== parsed.authorityInstanceId) {
+      return false;
+    }
+    this.backend.workerLinkSessions.set(parsed.session.sessionId, parsed);
+    return true;
+  }
+
+  async releaseWorkerLinkSession(
+    sessionId: string,
+    authorityInstanceId: string,
+  ): Promise<boolean> {
+    const current = await this.findWorkerLinkSession(sessionId);
+    if (current?.authorityInstanceId !== authorityInstanceId) return false;
+    this.backend.workerLinkSessions.delete(sessionId);
+    return true;
   }
 
   async health(): Promise<boolean> {
@@ -557,6 +686,23 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
     return previous;
   }
 
+  async claimWorkerLinkSession(
+    claim: WorkerLinkSessionClaim,
+  ): Promise<WorkerLinkSessionClaim | null> {
+    const parsed = parseWorkerLinkSessionClaim(claim);
+    if (!parsed) throw new Error("WorkerLink session claim is invalid.");
+    const previous = await this.findWorkerLinkSession(parsed.session.sessionId);
+    if (previous?.authorityInstanceId !== undefined) return previous;
+    const claimed = await this.#client.set(
+      this.#workerLinkSessionKey(parsed.session.sessionId),
+      JSON.stringify(parsed),
+      { NX: true, PX: Math.max(1, parsed.expiresAt - Date.now()) },
+    );
+    return claimed === "OK"
+      ? null
+      : this.findWorkerLinkSession(parsed.session.sessionId);
+  }
+
   async refreshWorker(
     workerId: string,
     connectionId: string,
@@ -659,6 +805,70 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
     return presence;
   }
 
+  async findWorkerLinkSession(
+    sessionId: string,
+  ): Promise<WorkerLinkSessionClaim | null> {
+    const raw = await this.#client.get(this.#workerLinkSessionKey(sessionId));
+    if (!raw) return null;
+    try {
+      return parseWorkerLinkSessionClaim(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+
+  async refreshWorkerLinkSession(
+    claim: WorkerLinkSessionClaim,
+  ): Promise<boolean> {
+    const parsed = parseWorkerLinkSessionClaim(claim);
+    if (!parsed) return false;
+    const key = this.#workerLinkSessionKey(parsed.session.sessionId);
+    const currentRaw = await this.#client.get(key);
+    if (!currentRaw) return false;
+    let current: WorkerLinkSessionClaim | null = null;
+    try {
+      current = parseWorkerLinkSessionClaim(JSON.parse(currentRaw));
+    } catch {
+      return false;
+    }
+    if (current?.authorityInstanceId !== parsed.authorityInstanceId) {
+      return false;
+    }
+    const result = await this.#client.eval(
+      "if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]); return 1 else return 0 end",
+      {
+        keys: [key],
+        arguments: [
+          currentRaw,
+          JSON.stringify(parsed),
+          String(Math.max(1, parsed.expiresAt - Date.now())),
+        ],
+      },
+    );
+    return Number(result) === 1;
+  }
+
+  async releaseWorkerLinkSession(
+    sessionId: string,
+    authorityInstanceId: string,
+  ): Promise<boolean> {
+    const key = this.#workerLinkSessionKey(sessionId);
+    const currentRaw = await this.#client.get(key);
+    if (!currentRaw) return false;
+    let current: WorkerLinkSessionClaim | null = null;
+    try {
+      current = parseWorkerLinkSessionClaim(JSON.parse(currentRaw));
+    } catch {
+      return false;
+    }
+    if (current?.authorityInstanceId !== authorityInstanceId) return false;
+    const result = await this.#client.eval(
+      "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+      { keys: [key], arguments: [currentRaw] },
+    );
+    return Number(result) === 1;
+  }
+
   async health(): Promise<boolean> {
     if (!this.#client.isReady) {
       serverLogger.rateLimited(
@@ -751,5 +961,9 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
 
   #workerKey(workerId: string): string {
     return `${this.#keyPrefix}:worker:${encodeURIComponent(workerId)}`;
+  }
+
+  #workerLinkSessionKey(sessionId: string): string {
+    return `${this.#keyPrefix}:worker-link:${encodeURIComponent(sessionId)}`;
   }
 }

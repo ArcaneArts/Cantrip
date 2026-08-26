@@ -20,6 +20,7 @@ export const directResourceKindSchema = z.enum([
   "project-share",
   "terminal",
   "code",
+  "worker-link",
 ]);
 
 export const directChannelSchema = z

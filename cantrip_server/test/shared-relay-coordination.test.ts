@@ -2,11 +2,14 @@ import {
   appLiveClientMessageSchema,
   appLiveServerMessageSchema,
   decodeRemoteSurfaceFrame,
+  decodeWorkerLinkFrame,
   encodeRemoteSurfaceFrame,
+  encodeWorkerLinkFrame,
   workerRequestEnvelopeSchema,
   type AppLiveClientMessage,
   type AppLiveServerMessage,
   type RemoteSurfaceFrameHeader,
+  type WorkerLinkFrameHeader,
 } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
@@ -164,6 +167,49 @@ describe("shared relay coordination", () => {
       expect(received).toHaveBeenCalledWith(
         { ...header, sequence: 2 },
         new Uint8Array([3, 4]),
+      ),
+    );
+
+    const workerLinkHeader: WorkerLinkFrameHeader = {
+      protocolVersion: 1,
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      routeGeneration: 1,
+      effectiveRoute: "relay",
+      channel: {
+        channelId: "22222222-2222-4222-8222-222222222222",
+        connectionId: "33333333-3333-4333-8333-333333333333",
+      },
+      lane: "interactive",
+      sequence: 1,
+      kind: "close",
+      code: "normal",
+    };
+    expect(
+      bridgeA.sendWorkerLinkFrame(
+        "worker-1",
+        workerLinkHeader,
+        new Uint8Array(),
+      ),
+    ).toBe(true);
+    await vi.waitFor(() => expect(workerSocket.sent).toHaveLength(3));
+    expect(
+      decodeWorkerLinkFrame(workerSocket.sent[2] as Uint8Array).header,
+    ).toEqual(workerLinkHeader);
+
+    const workerLinkReceived = vi.fn();
+    bridgeA.subscribeWorkerLinkFrames("worker-1", workerLinkReceived);
+    workerSocket.emit(
+      "message",
+      encodeWorkerLinkFrame(
+        { ...workerLinkHeader, sequence: 2 },
+        new Uint8Array(),
+      ),
+      true,
+    );
+    await vi.waitFor(() =>
+      expect(workerLinkReceived).toHaveBeenCalledWith(
+        { ...workerLinkHeader, sequence: 2 },
+        new Uint8Array(),
       ),
     );
 

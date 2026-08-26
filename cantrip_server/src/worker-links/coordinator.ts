@@ -6,6 +6,7 @@ import {
   WORKER_LINK_MAX_GRANTS_PER_SESSION,
   installedWorkerLinkGrantSchema,
   workerLinkGrantBindingSchema,
+  workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
   workerLinkSessionSchema,
   type InstalledWorkerLinkGrant,
@@ -61,7 +62,6 @@ export interface WorkerLinkSessionOpenInput {
   clientInstanceId: string;
   ownerId: string;
   workerId: string;
-  workerProcessGeneration: string;
 }
 
 export interface WorkerLinkGrantIssueInput {
@@ -115,7 +115,7 @@ export class WorkerLinkCoordinator {
     this.#assertOpen();
     this.#assertIdentityAuthorized(input.ownerId, input.accountSessionId);
     await this.sweepExpired();
-    const identity = this.#identity(input);
+    const identity = await this.#identity(input);
     const identityKey = identityKeyOf(identity);
     const existingId = this.#identitySessions.get(identityKey);
     const existing = existingId ? this.#sessions.get(existingId) : undefined;
@@ -489,6 +489,23 @@ export class WorkerLinkCoordinator {
     return { grants, sessions: this.#sessions.size };
   }
 
+  sessionForAuthorization(
+    sessionId: string,
+    authorization: { accountSessionId: string; ownerId: string },
+  ): WorkerLinkSession | null {
+    const state = this.#sessions.get(sessionId);
+    if (
+      !state?.ready ||
+      state.session.identity.ownerId !== authorization.ownerId ||
+      state.session.identity.accountSessionId !==
+        authorization.accountSessionId ||
+      Date.parse(state.session.lease.expiresAt) <= this.#now()
+    ) {
+      return null;
+    }
+    return state.session;
+  }
+
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
@@ -590,7 +607,25 @@ export class WorkerLinkCoordinator {
     return session;
   }
 
-  #identity(input: WorkerLinkSessionOpenInput): WorkerLinkSessionIdentity {
+  async #identity(
+    input: WorkerLinkSessionOpenInput,
+  ): Promise<WorkerLinkSessionIdentity> {
+    const resolved = workerLinkIdentityResolveResultSchema.parse(
+      await this.workers.request(
+        input.workerId,
+        { type: "worker-link.identity.resolve" },
+        { ownerId: input.ownerId, timeoutMs: WORKER_COMMAND_TIMEOUT_MS },
+      ),
+    );
+    if (
+      resolved.serverId !== this.options.serverId ||
+      resolved.ownerId !== input.ownerId ||
+      resolved.workerId !== input.workerId
+    ) {
+      throw new WorkerLinkUnavailableError(
+        "WorkerLink identity resolution did not match the authorized worker.",
+      );
+    }
     return {
       serverId: this.options.serverId,
       serverGeneration: this.options.serverGeneration,
@@ -598,7 +633,7 @@ export class WorkerLinkCoordinator {
       accountSessionId: input.accountSessionId,
       clientInstanceId: input.clientInstanceId,
       workerId: input.workerId,
-      workerProcessGeneration: input.workerProcessGeneration,
+      workerProcessGeneration: resolved.workerProcessGeneration,
     };
   }
 

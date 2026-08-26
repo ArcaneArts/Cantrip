@@ -6,15 +6,19 @@ import {
   decodeWorkerRequestEnvelope,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
+  decodeWorkerLinkFrame,
   encodeWorkerServerEnvelope,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
+  encodeWorkerLinkFrame,
   isTunnelDataPlaneFrame,
+  isWorkerLinkFrame,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
   type WorkerEvent,
   type WorkerNotification,
+  type WorkerLinkFrameHeader,
   type WorkerRequestEnvelope,
   type WorkerServerEnvelope,
   WORKER_WEBSOCKET_AUTH_READY_SUBPROTOCOL,
@@ -43,6 +47,11 @@ type TunnelDataPlaneFrameHandler = (
   payload: Uint8Array,
 ) => Promise<void> | void;
 
+type WorkerLinkFrameHandler = (
+  header: WorkerLinkFrameHeader,
+  payload: Uint8Array,
+) => Promise<void> | void;
+
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
 const MAX_BUFFERED_COMMAND_BYTES = 8 * 1_024 * 1_024;
@@ -55,6 +64,7 @@ type CommandEnvelopeDelivery = "sent" | "queued" | "dropped";
 
 export interface WorkerConnectionTimingOptions {
   connectionGeneration?: string;
+  handleWorkerLinkFrame?: WorkerLinkFrameHandler;
   keepaliveTimeoutMs?: number;
   reconnectDelayMs?: number;
   transportDisconnectGraceMs?: number;
@@ -229,7 +239,7 @@ export class WorkerConnection {
     private readonly handleTransportConnect: (
       serverControlPlaneGeneration: string | null,
     ) => void = () => undefined,
-    timing: WorkerConnectionTimingOptions = {},
+    private readonly timing: WorkerConnectionTimingOptions = {},
   ) {
     this.#connectionGeneration = timing.connectionGeneration ?? randomUUID();
     this.#keepaliveTimeoutMs = Math.max(
@@ -898,6 +908,21 @@ export class WorkerConnection {
     }
   }
 
+  sendWorkerLinkFrame(
+    header: WorkerLinkFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    const socket = this.#readySocket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
+    try {
+      socket.send(encodeWorkerLinkFrame(header, payload));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   sendNotification(notification: WorkerNotification): boolean {
     const socket = this.#readySocket;
     if (
@@ -974,6 +999,9 @@ export class WorkerConnection {
       if (isTunnelDataPlaneFrame(bytes)) {
         const frame = decodeTunnelDataPlaneFrame(bytes);
         await this.handleTunnelDataPlaneFrame(frame.header, frame.payload);
+      } else if (isWorkerLinkFrame(bytes)) {
+        const frame = decodeWorkerLinkFrame(bytes);
+        await this.timing.handleWorkerLinkFrame?.(frame.header, frame.payload);
       } else {
         const frame = decodeRemoteSurfaceFrame(bytes);
         await this.handleSurfaceFrame(frame.header, frame.payload);

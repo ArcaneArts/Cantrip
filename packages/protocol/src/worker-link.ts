@@ -163,6 +163,27 @@ export const workerLinkSessionSchema = z
     routeGeneration: generationSchema,
     preferredRoute: workerLinkRouteSchema,
   })
+  .strict()
+  .superRefine((session, context) => {
+    if (!session.routePolicy.enabled.includes(session.preferredRoute)) {
+      context.addIssue({
+        code: "custom",
+        path: ["preferredRoute"],
+        message: "Preferred route must be enabled by the session policy.",
+      });
+    }
+  });
+
+export const workerLinkSessionOpenRequestSchema = z
+  .object({
+    clientInstanceId: idSchema,
+  })
+  .strict();
+
+export const workerLinkRouteUpdateRequestSchema = z
+  .object({
+    preferredRoute: workerLinkOperationalRouteSchema,
+  })
   .strict();
 
 export const workerLinkResourceSchema = z
@@ -413,6 +434,21 @@ export const workerLinkGrantRevokeCommandSchema = z
   })
   .strict();
 
+export const workerLinkIdentityResolveCommandSchema = z
+  .object({
+    type: z.literal("worker-link.identity.resolve"),
+  })
+  .strict();
+
+export const workerLinkIdentityResolveResultSchema = z
+  .object({
+    serverId: idSchema,
+    ownerId: idSchema,
+    workerId: idSchema,
+    workerProcessGeneration: idSchema,
+  })
+  .strict();
+
 export const workerLinkCoordinatorCommandSchema = z.discriminatedUnion("type", [
   workerLinkSessionInstallCommandSchema,
   workerLinkSessionRenewCommandSchema,
@@ -548,6 +584,9 @@ export type WorkerLinkOperationalRoute = z.infer<
 >;
 export type WorkerLinkQosLane = z.infer<typeof workerLinkQosLaneSchema>;
 export type WorkerLinkChannelKind = z.infer<typeof workerLinkChannelKindSchema>;
+export type WorkerLinkPayloadFormat = z.infer<
+  typeof workerLinkPayloadFormatSchema
+>;
 export type WorkerLinkResourceKind = z.infer<
   typeof workerLinkResourceKindSchema
 >;
@@ -562,6 +601,12 @@ export type WorkerLinkSessionIdentity = z.infer<
   typeof workerLinkSessionIdentitySchema
 >;
 export type WorkerLinkSession = z.infer<typeof workerLinkSessionSchema>;
+export type WorkerLinkSessionOpenRequest = z.infer<
+  typeof workerLinkSessionOpenRequestSchema
+>;
+export type WorkerLinkRouteUpdateRequest = z.infer<
+  typeof workerLinkRouteUpdateRequestSchema
+>;
 export type WorkerLinkGrantBinding = z.infer<
   typeof workerLinkGrantBindingSchema
 >;
@@ -587,6 +632,9 @@ export type WorkerLinkChannelErrorCode = z.infer<
 >;
 export type WorkerLinkCoordinatorCommand = z.infer<
   typeof workerLinkCoordinatorCommandSchema
+>;
+export type WorkerLinkIdentityResolveResult = z.infer<
+  typeof workerLinkIdentityResolveResultSchema
 >;
 export type WorkerLinkTelemetrySample = z.infer<
   typeof workerLinkTelemetrySampleSchema

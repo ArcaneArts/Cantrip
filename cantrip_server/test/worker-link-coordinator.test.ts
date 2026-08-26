@@ -20,14 +20,23 @@ class FakeWorkerBus {
     workerId: string,
     command: WorkerCommand,
   ) => Promise<unknown> = async () => ({ accepted: true });
+  workerProcessGeneration = workerGeneration;
 
   request = vi.fn(
     async (
       workerId: string,
       command: WorkerCommand,
-      _options?: WorkerRequestOptions,
+      options?: WorkerRequestOptions,
     ) => {
       this.commands.push(command);
+      if (command.type === "worker-link.identity.resolve") {
+        return {
+          serverId,
+          ownerId: options?.ownerId ?? "owner-1",
+          workerId,
+          workerProcessGeneration: this.workerProcessGeneration,
+        };
+      }
       return this.requestImplementation(workerId, command);
     },
   );
@@ -58,7 +67,6 @@ function sessionInput(
     clientInstanceId: string;
     ownerId: string;
     workerId: string;
-    workerProcessGeneration: string;
   }> = {},
 ) {
   return {
@@ -66,7 +74,6 @@ function sessionInput(
     clientInstanceId: "client-instance-1",
     ownerId: "owner-1",
     workerId: "worker-1",
-    workerProcessGeneration: workerGeneration,
     ...overrides,
   };
 }
@@ -87,10 +94,11 @@ describe("WorkerLinkCoordinator", () => {
     expect(session.identity).toEqual({
       serverId,
       serverGeneration,
+      workerProcessGeneration: workerGeneration,
       ...sessionInput(),
     });
     expect(session.routePolicy.enabled).toEqual(["local", "relay"]);
-    expect(workers.commands[0]).toEqual({
+    expect(workers.commands).toContainEqual({
       type: "worker-link.session.install",
       session,
     });
@@ -256,11 +264,11 @@ describe("WorkerLinkCoordinator", () => {
           command.revocation.reason === "resource-deleted",
       ),
     ).toBe(true);
+    workers.workerProcessGeneration = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
     const replacement = await coordinator.openSession(
       sessionInput({
         accountSessionId: "account-session-2",
         clientInstanceId: "client-instance-3",
-        workerProcessGeneration: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
       }),
     );
     expect(coordinator.stats().sessions).toBe(1);

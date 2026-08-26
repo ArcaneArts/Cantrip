@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
   WORKER_LINK_MAX_GRANTS_PER_SESSION,
+  WORKER_LINK_MAX_CREDIT_BYTES,
   WORKER_LINK_MAX_PAYLOAD_BYTES,
   installedWorkerLinkGrantSchema,
   workerLinkCoordinatorCommandSchema,
@@ -9,6 +10,7 @@ import {
   workerLinkSessionSchema,
   type InstalledWorkerLinkGrant,
   type WorkerLinkChannelCloseCode,
+  type WorkerLinkChannelErrorCode,
   type WorkerLinkChannelRejectCode,
   type WorkerLinkCoordinatorCommand,
   type WorkerLinkFrameHeader,
@@ -24,6 +26,8 @@ const MAX_INSTALLED_GRANTS = 2_048;
 const MAX_ACTIVE_CHANNELS = 1_024;
 const MAX_OPEN_NONCES = 8_192;
 const MAX_INVALID_ATTEMPTS_PER_SESSION = 32;
+const MAX_PENDING_ADAPTER_EMISSIONS = 128;
+const EMPTY_PAYLOAD = new Uint8Array();
 
 interface InstalledSessionState {
   channels: Set<string>;
@@ -41,16 +45,45 @@ interface ActiveChannel {
   adapter: WorkerLinkAdapterChannel;
   grantId: string;
   identity: Extract<WorkerLinkFrameHeader, { kind: "open" }>["channel"];
+  inboundCreditBytes: number;
+  inboundSequence: number;
+  inputTail: Promise<void>;
   lane: Extract<WorkerLinkFrameHeader, { kind: "open" }>["lane"];
   lastActivityAtMs: number;
   openedAtMs: number;
+  outboundCreditBytes: number;
+  outboundSequence: number;
+  outputReady: boolean;
+  pendingOutput: PendingAdapterEmission[];
+  pendingOutputBytes: number;
+  respond: WorkerLinkFrameResponder;
   route: Extract<WorkerLinkFrameHeader, { kind: "open" }>["effectiveRoute"];
   routeGeneration: number;
   sessionId: string;
 }
 
+type PendingAdapterEmission =
+  | { kind: "close"; code: WorkerLinkChannelCloseCode }
+  | { kind: "data"; payload: Uint8Array }
+  | { kind: "error"; code: WorkerLinkChannelErrorCode }
+  | { kind: "half-close" };
+
 export interface WorkerLinkAdapterChannel {
   close?(code: WorkerLinkChannelCloseCode): Promise<void> | void;
+  halfClose?(): Promise<void> | void;
+  write?(payload: Uint8Array): Promise<void> | void;
+}
+
+export type WorkerLinkFrameResponder = (
+  header: WorkerLinkFrameHeader,
+  payload: Uint8Array,
+) => boolean;
+
+export interface WorkerLinkAdapterEmitter {
+  close(code?: WorkerLinkChannelCloseCode): Promise<boolean>;
+  data(payload: Uint8Array): boolean;
+  error(code: WorkerLinkChannelErrorCode): boolean;
+  halfClose(): boolean;
 }
 
 export interface WorkerLinkResourceAdapter {
@@ -59,6 +92,7 @@ export interface WorkerLinkResourceAdapter {
     channel: Extract<WorkerLinkFrameHeader, { kind: "open" }>["channel"];
     grant: InstalledWorkerLinkGrant;
     lane: Extract<WorkerLinkFrameHeader, { kind: "open" }>["lane"];
+    emit: WorkerLinkAdapterEmitter;
     session: WorkerLinkSession;
   }): Promise<WorkerLinkAdapterChannel> | WorkerLinkAdapterChannel;
 }
@@ -73,7 +107,6 @@ export interface WorkerLinkGatewayOptions {
   maxOpenNonces?: number;
   now?: () => number;
   ownerId: string | (() => string | null);
-  serverGeneration: string | (() => string | null);
   serverId: string | (() => string | null);
   sweepIntervalMs?: number;
   workerId: string;
@@ -107,6 +140,7 @@ export class WorkerLinkGateway {
   readonly #identitySessions = new Map<string, string>();
   readonly #invalidAttempts = new Map<string, number>();
   readonly #now: () => number;
+  readonly #openingChannels = new Map<string, string>();
   readonly #openNonces = new Map<string, number>();
   readonly #sessions = new Map<string, InstalledSessionState>();
   readonly #sweepTimer: ReturnType<typeof setInterval> | null;
@@ -190,8 +224,93 @@ export class WorkerLinkGateway {
     }
   }
 
+  async handleFrame(
+    input: WorkerLinkFrameHeader,
+    payload: Uint8Array,
+    respond: WorkerLinkFrameResponder,
+  ): Promise<boolean> {
+    const header = workerLinkFrameHeaderSchema.parse(input);
+    if (
+      payload.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
+      (header.kind === "data"
+        ? payload.byteLength === 0
+        : payload.byteLength > 0)
+    ) {
+      throw new Error("WorkerLink frame payload is invalid.");
+    }
+    if (header.kind === "open") {
+      try {
+        const accepted = await this.openChannel(header, respond, true);
+        const sent = respond(accepted, EMPTY_PAYLOAD);
+        if (!sent) {
+          await this.#closeChannel(
+            header.channel.channelId,
+            "endpoint-disconnected",
+          );
+        } else {
+          await this.#activateAdapterOutput(header.channel.channelId);
+        }
+        return sent;
+      } catch (error) {
+        if (!(error instanceof WorkerLinkChannelRejectedError)) throw error;
+        return respond(
+          {
+            protocolVersion: header.protocolVersion,
+            sessionId: header.sessionId,
+            routeGeneration: header.routeGeneration,
+            effectiveRoute: header.effectiveRoute,
+            channel: header.channel,
+            lane: header.lane,
+            sequence: 0,
+            kind: "reject",
+            code: error.code,
+          },
+          EMPTY_PAYLOAD,
+        );
+      }
+    }
+    const channel = this.#channels.get(header.channel.channelId);
+    if (
+      !channel ||
+      channel.sessionId !== header.sessionId ||
+      canonical(channel.identity) !== canonical(header.channel) ||
+      channel.lane !== header.lane ||
+      channel.route !== header.effectiveRoute
+    ) {
+      return false;
+    }
+    const handling = channel.inputTail.then(() =>
+      this.#handleChannelFrame(channel, header, payload),
+    );
+    channel.inputTail = handling.catch(() => undefined);
+    try {
+      await handling;
+      return true;
+    } catch {
+      await this.#closeChannel(header.channel.channelId, "protocol-error");
+      return false;
+    }
+  }
+
+  async disconnectResponder(
+    respond: WorkerLinkFrameResponder,
+  ): Promise<number> {
+    let closed = 0;
+    for (const [channelId, channel] of [...this.#channels]) {
+      if (
+        channel.respond === respond &&
+        (await this.#closeChannel(channelId, "endpoint-disconnected"))
+      ) {
+        closed += 1;
+      }
+    }
+    return closed;
+  }
+
   async openChannel(
     input: Extract<WorkerLinkFrameHeader, { kind: "open" }>,
+    respond: WorkerLinkFrameResponder = () => false,
+    deferAdapterOutput = false,
   ): Promise<Extract<WorkerLinkFrameHeader, { kind: "accept" }>> {
     this.#assertOpen();
     await this.sweepExpired();
@@ -230,6 +349,7 @@ export class WorkerLinkGateway {
     if (
       parsed.routeGeneration !== state.session.routeGeneration ||
       !["local", "relay"].includes(parsed.effectiveRoute) ||
+      parsed.effectiveRoute !== state.session.preferredRoute ||
       !state.session.routePolicy.enabled.includes(parsed.effectiveRoute)
     ) {
       throw this.#rejection(
@@ -247,7 +367,8 @@ export class WorkerLinkGateway {
     }
     if (
       this.#channels.has(parsed.channel.channelId) ||
-      this.#channels.size >=
+      this.#openingChannels.has(parsed.channel.channelId) ||
+      this.#channels.size + this.#openingChannels.size >=
         (this.options.maxActiveChannels ?? MAX_ACTIVE_CHANNELS)
     ) {
       throw this.#rejection(
@@ -319,7 +440,13 @@ export class WorkerLinkGateway {
         "WorkerLink grant does not authorize this channel.",
       );
     }
-    if (installed.activeChannels.size >= installed.grant.binding.maxChannels) {
+    if (
+      installed.activeChannels.size +
+        [...this.#openingChannels.values()].filter(
+          (grantId) => grantId === installed.grant.binding.grantId,
+        ).length >=
+      installed.grant.binding.maxChannels
+    ) {
       throw this.#rejection(
         parsed.sessionId,
         "limit-exceeded",
@@ -355,12 +482,61 @@ export class WorkerLinkGateway {
       parsed.openNonce,
       Date.parse(installed.grant.binding.lease.absoluteExpiresAt),
     );
+    this.#openingChannels.set(
+      parsed.channel.channelId,
+      installed.grant.binding.grantId,
+    );
+    const pendingOutput: PendingAdapterEmission[] = [];
+    let pendingOutputBytes = 0;
+    let liveEmitter: WorkerLinkAdapterEmitter | null = null;
+    const queueEmission = (emission: PendingAdapterEmission): boolean => {
+      if (pendingOutput.length >= MAX_PENDING_ADAPTER_EMISSIONS) return false;
+      if (emission.kind === "data") {
+        if (
+          !installed.grant.binding.operations.includes("stream:read") ||
+          emission.payload.byteLength === 0 ||
+          emission.payload.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
+          pendingOutputBytes + emission.payload.byteLength >
+            parsed.initialCreditBytes
+        ) {
+          return false;
+        }
+        pendingOutputBytes += emission.payload.byteLength;
+      }
+      if (
+        emission.kind === "half-close" &&
+        !installed.grant.binding.operations.includes("stream:half-close")
+      ) {
+        return false;
+      }
+      pendingOutput.push(emission);
+      return true;
+    };
+    const openingEmitter: WorkerLinkAdapterEmitter = {
+      close: (code = "normal") =>
+        liveEmitter
+          ? liveEmitter.close(code)
+          : Promise.resolve(queueEmission({ kind: "close", code })),
+      data: (payload) =>
+        liveEmitter
+          ? liveEmitter.data(payload)
+          : queueEmission({ kind: "data", payload: payload.slice() }),
+      error: (code) =>
+        liveEmitter
+          ? liveEmitter.error(code)
+          : queueEmission({ kind: "error", code }),
+      halfClose: () =>
+        liveEmitter
+          ? liveEmitter.halfClose()
+          : queueEmission({ kind: "half-close" }),
+    };
     let adapterChannel: WorkerLinkAdapterChannel;
     try {
       adapterChannel = await adapter.open({
         channel: parsed.channel,
         grant: installed.grant,
         lane: parsed.lane,
+        emit: openingEmitter,
         session: state.session,
       });
     } catch {
@@ -369,10 +545,14 @@ export class WorkerLinkGateway {
         "resource-unavailable",
         "WorkerLink resource adapter rejected the channel.",
       );
+    } finally {
+      this.#openingChannels.delete(parsed.channel.channelId);
     }
     if (
       this.#sessions.get(parsed.sessionId) !== state ||
-      state.grants.get(installed.grant.binding.grantId) !== installed
+      state.grants.get(installed.grant.binding.grantId) !== installed ||
+      state.session.routeGeneration !== parsed.routeGeneration ||
+      state.session.preferredRoute !== parsed.effectiveRoute
     ) {
       try {
         await adapterChannel.close?.("revoked");
@@ -389,9 +569,18 @@ export class WorkerLinkGateway {
       adapter: adapterChannel,
       grantId: installed.grant.binding.grantId,
       identity: parsed.channel,
+      inboundCreditBytes: parsed.initialCreditBytes,
+      inboundSequence: 0,
+      inputTail: Promise.resolve(),
       lane: parsed.lane,
       lastActivityAtMs: now,
       openedAtMs: now,
+      outboundCreditBytes: parsed.initialCreditBytes,
+      outboundSequence: 1,
+      outputReady: false,
+      pendingOutput,
+      pendingOutputBytes,
+      respond,
       route: parsed.effectiveRoute,
       routeGeneration: parsed.routeGeneration,
       sessionId: parsed.sessionId,
@@ -399,6 +588,10 @@ export class WorkerLinkGateway {
     this.#channels.set(parsed.channel.channelId, channel);
     state.channels.add(parsed.channel.channelId);
     installed.activeChannels.add(parsed.channel.channelId);
+    liveEmitter = this.#emitter(parsed.channel.channelId);
+    if (!deferAdapterOutput) {
+      await this.#activateAdapterOutput(parsed.channel.channelId);
+    }
     this.#invalidAttempts.delete(parsed.sessionId);
     return {
       protocolVersion: parsed.protocolVersion,
@@ -495,6 +688,7 @@ export class WorkerLinkGateway {
       sessionIds.map((sessionId) => this.#removeSession(sessionId, code)),
     );
     this.#openNonces.clear();
+    this.#openingChannels.clear();
     this.#invalidAttempts.clear();
   }
 
@@ -532,6 +726,266 @@ export class WorkerLinkGateway {
     if (this.#sweepTimer) clearInterval(this.#sweepTimer);
     await this.revokeAll("revoked");
     this.#adapters.clear();
+  }
+
+  async #handleChannelFrame(
+    channel: ActiveChannel,
+    header: Exclude<WorkerLinkFrameHeader, { kind: "open" }>,
+    payload: Uint8Array,
+  ): Promise<void> {
+    if (
+      this.#channels.get(channel.identity.channelId) !== channel ||
+      header.routeGeneration !== channel.routeGeneration ||
+      header.sequence !== channel.inboundSequence + 1
+    ) {
+      throw new Error("WorkerLink channel frame is stale or out of sequence.");
+    }
+    channel.inboundSequence = header.sequence;
+    channel.lastActivityAtMs = this.#now();
+    switch (header.kind) {
+      case "data": {
+        const grant = this.#grant(channel.sessionId, channel.grantId);
+        if (
+          header.direction !== "client-to-worker" ||
+          payload.byteLength === 0 ||
+          payload.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
+          payload.byteLength > channel.inboundCreditBytes ||
+          !grant?.grant.binding.operations.includes("stream:write") ||
+          !channel.adapter.write
+        ) {
+          throw new Error("WorkerLink stream data is not authorized.");
+        }
+        channel.inboundCreditBytes -= payload.byteLength;
+        await channel.adapter.write(payload);
+        if (this.#emitCredit(channel, "client-to-worker", payload.byteLength)) {
+          channel.inboundCreditBytes = Math.min(
+            WORKER_LINK_MAX_CREDIT_BYTES,
+            channel.inboundCreditBytes + payload.byteLength,
+          );
+        }
+        return;
+      }
+      case "credit":
+        if (header.direction !== "worker-to-client") {
+          throw new Error("WorkerLink credit direction is invalid.");
+        }
+        channel.outboundCreditBytes = Math.min(
+          WORKER_LINK_MAX_CREDIT_BYTES,
+          channel.outboundCreditBytes + header.bytes,
+        );
+        return;
+      case "half-close":
+        if (header.direction !== "client-to-worker") {
+          throw new Error("WorkerLink half-close direction is invalid.");
+        }
+        if (
+          !this.#grant(
+            channel.sessionId,
+            channel.grantId,
+          )?.grant.binding.operations.includes("stream:half-close")
+        ) {
+          throw new Error("WorkerLink half-close is not authorized.");
+        }
+        await channel.adapter.halfClose?.();
+        return;
+      case "close":
+        await this.#closeChannel(channel.identity.channelId, header.code);
+        return;
+      case "accept":
+      case "reject":
+      case "error":
+        throw new Error("WorkerLink client sent a worker-only control frame.");
+    }
+  }
+
+  #emitter(channelId: string): WorkerLinkAdapterEmitter {
+    return {
+      close: (code = "normal") => {
+        const channel = this.#channels.get(channelId);
+        if (!channel) return Promise.resolve(false);
+        if (!channel.outputReady) {
+          return Promise.resolve(
+            this.#queueAdapterEmission(channel, { kind: "close", code }),
+          );
+        }
+        return this.#closeChannel(channelId, code);
+      },
+      data: (payload) => {
+        const channel = this.#channels.get(channelId);
+        return channel && !channel.outputReady
+          ? this.#queueAdapterEmission(channel, {
+              kind: "data",
+              payload: payload.slice(),
+            })
+          : this.#emitData(channelId, payload);
+      },
+      error: (code) => {
+        const channel = this.#channels.get(channelId);
+        return channel && !channel.outputReady
+          ? this.#queueAdapterEmission(channel, { kind: "error", code })
+          : this.#emitError(channelId, code);
+      },
+      halfClose: () => {
+        const channel = this.#channels.get(channelId);
+        return channel && !channel.outputReady
+          ? this.#queueAdapterEmission(channel, { kind: "half-close" })
+          : this.#emitHalfClose(channelId);
+      },
+    };
+  }
+
+  #queueAdapterEmission(
+    channel: ActiveChannel,
+    emission: PendingAdapterEmission,
+  ): boolean {
+    if (channel.pendingOutput.length >= MAX_PENDING_ADAPTER_EMISSIONS) {
+      return false;
+    }
+    if (emission.kind === "data") {
+      const grant = this.#grant(channel.sessionId, channel.grantId);
+      if (
+        !grant?.grant.binding.operations.includes("stream:read") ||
+        emission.payload.byteLength === 0 ||
+        emission.payload.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
+        channel.pendingOutputBytes + emission.payload.byteLength >
+          channel.outboundCreditBytes
+      ) {
+        return false;
+      }
+      channel.pendingOutputBytes += emission.payload.byteLength;
+    }
+    if (
+      emission.kind === "half-close" &&
+      !this.#grant(
+        channel.sessionId,
+        channel.grantId,
+      )?.grant.binding.operations.includes("stream:half-close")
+    ) {
+      return false;
+    }
+    channel.pendingOutput.push(emission);
+    return true;
+  }
+
+  async #activateAdapterOutput(channelId: string): Promise<void> {
+    const channel = this.#channels.get(channelId);
+    if (!channel || channel.outputReady) return;
+    channel.outputReady = true;
+    const pending = channel.pendingOutput.splice(0);
+    channel.pendingOutputBytes = 0;
+    for (const emission of pending) {
+      if (this.#channels.get(channelId) !== channel) return;
+      let sent: boolean;
+      switch (emission.kind) {
+        case "data":
+          sent = this.#emitData(channelId, emission.payload);
+          break;
+        case "error":
+          sent = this.#emitError(channelId, emission.code);
+          break;
+        case "half-close":
+          sent = this.#emitHalfClose(channelId);
+          break;
+        case "close":
+          await this.#closeChannel(channelId, emission.code);
+          return;
+      }
+      if (!sent) {
+        await this.#closeChannel(channelId, "endpoint-disconnected");
+        return;
+      }
+    }
+  }
+
+  #emitData(channelId: string, payload: Uint8Array): boolean {
+    const channel = this.#channels.get(channelId);
+    const grant = channel
+      ? this.#grant(channel.sessionId, channel.grantId)
+      : null;
+    if (
+      !channel ||
+      !grant?.grant.binding.operations.includes("stream:read") ||
+      payload.byteLength === 0 ||
+      payload.byteLength > WORKER_LINK_MAX_PAYLOAD_BYTES ||
+      payload.byteLength > channel.outboundCreditBytes
+    ) {
+      return false;
+    }
+    const sent = this.#respond(
+      channel,
+      {
+        kind: "data",
+        direction: "worker-to-client",
+        payloadFormat: "raw",
+      },
+      payload,
+    );
+    if (sent) channel.outboundCreditBytes -= payload.byteLength;
+    return sent;
+  }
+
+  #emitCredit(
+    channel: ActiveChannel,
+    direction: "client-to-worker" | "worker-to-client",
+    bytes: number,
+  ): boolean {
+    return this.#respond(channel, { kind: "credit", direction, bytes });
+  }
+
+  #emitHalfClose(channelId: string): boolean {
+    const channel = this.#channels.get(channelId);
+    const grant = channel
+      ? this.#grant(channel.sessionId, channel.grantId)
+      : null;
+    return channel &&
+      grant?.grant.binding.operations.includes("stream:half-close")
+      ? this.#respond(channel, {
+          kind: "half-close",
+          direction: "worker-to-client",
+        })
+      : false;
+  }
+
+  #emitError(channelId: string, code: WorkerLinkChannelErrorCode): boolean {
+    const channel = this.#channels.get(channelId);
+    return channel ? this.#respond(channel, { kind: "error", code }) : false;
+  }
+
+  #respond(
+    channel: ActiveChannel,
+    detail:
+      | { kind: "data"; direction: "worker-to-client"; payloadFormat: "raw" }
+      | {
+          kind: "credit";
+          direction: "client-to-worker" | "worker-to-client";
+          bytes: number;
+        }
+      | { kind: "half-close"; direction: "worker-to-client" }
+      | { kind: "close"; code: WorkerLinkChannelCloseCode }
+      | { kind: "error"; code: WorkerLinkChannelErrorCode },
+    payload: Uint8Array = EMPTY_PAYLOAD,
+  ): boolean {
+    const header = workerLinkFrameHeaderSchema.parse({
+      protocolVersion: 1,
+      sessionId: channel.sessionId,
+      routeGeneration: channel.routeGeneration,
+      effectiveRoute: channel.route,
+      channel: channel.identity,
+      lane: channel.lane,
+      sequence: channel.outboundSequence,
+      ...detail,
+    });
+    let sent = false;
+    try {
+      sent = channel.respond(header, payload);
+    } catch {
+      sent = false;
+    }
+    if (sent) {
+      channel.outboundSequence += 1;
+      channel.lastActivityAtMs = this.#now();
+    }
+    return sent;
   }
 
   async #installSession(input: WorkerLinkSession): Promise<void> {
@@ -749,6 +1203,7 @@ export class WorkerLinkGateway {
     const state = this.#sessions.get(channel.sessionId);
     state?.channels.delete(channelId);
     state?.grants.get(channel.grantId)?.activeChannels.delete(channelId);
+    this.#respond(channel, { kind: "close", code });
     try {
       await channel.adapter.close?.(code);
     } catch {
@@ -761,15 +1216,6 @@ export class WorkerLinkGateway {
     const serverId = resolveIdentityPart(this.options.serverId);
     if (!serverId || session.identity.serverId !== serverId) {
       throw new Error("WorkerLink session belongs to another server.");
-    }
-    const serverGeneration = resolveIdentityPart(this.options.serverGeneration);
-    if (
-      !serverGeneration ||
-      session.identity.serverGeneration !== serverGeneration
-    ) {
-      throw new Error(
-        "WorkerLink session belongs to another server generation.",
-      );
     }
     const ownerId = resolveIdentityPart(this.options.ownerId);
     if (!ownerId || session.identity.ownerId !== ownerId) {
@@ -790,8 +1236,6 @@ export class WorkerLinkGateway {
     return (
       session.identity.serverId ===
         resolveIdentityPart(this.options.serverId) &&
-      session.identity.serverGeneration ===
-        resolveIdentityPart(this.options.serverGeneration) &&
       session.identity.ownerId === resolveIdentityPart(this.options.ownerId) &&
       session.identity.workerId === this.options.workerId &&
       session.identity.workerProcessGeneration ===

@@ -26,24 +26,24 @@ TCP resumption, and final legacy-relay consolidation.
 
 ## Passes
 
-| Pass                            | Scope                                                                                      | Status      | Branch                                   | PR                                                       | Validation                                                                                                                                    | Notes or deviations                                                                      |
-| ------------------------------- | ------------------------------------------------------------------------------------------ | ----------- | ---------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| 1 — Ledger, ADR, protocol       | Create this ledger, ADR 0009, and strict bounded WorkerLink contracts and tests            | Complete    | `codex/network-tranche1-pass1-contracts` | [#1163](https://github.com/ArcaneArts/Cantrip/pull/1163) | Protocol typecheck and 349 focused tests; workspace typecheck; Code/Codex source verification; CLI check; changed-file formatting; diff check | Runtime routing remains unchanged; repository-wide baseline failures are recorded below  |
-| 2 — Server/worker lifecycle     | Add the transient coordinator, gateway, grants, expiry, revocation, and generation fencing | Complete    | `codex/network-tranche1-pass2-lifecycle` | [#1168](https://github.com/ArcaneArts/Cantrip/pull/1168) | Workspace/package typechecks; WorkerLink protocol 8, server 38, worker 37; source/CLI verification; changed-file format and diff checks       | Exact generation fencing is wired; the path stays dormant until an adapter is registered |
-| 3 — Client manager and carriers | Add the shared manager and wrap current LOCAL and RELAY paths                              | Not started | —                                        | —                                                        | —                                                                                                                                             | —                                                                                        |
-| 4 — Terminal                    | Move Terminal route ownership beneath WorkerLink                                           | Not started | —                                        | —                                                        | —                                                                                                                                             | —                                                                                        |
-| 5 — Tunnels and project shares  | Move saved/managed tunnels and WebDAV streams behind WorkerLink                            | Not started | —                                        | —                                                        | —                                                                                                                                             | —                                                                                        |
-| 6 — Cantrip Code                | Move Code HTTP/WebSocket acquisition and pooling behind WorkerLink                         | Not started | —                                        | —                                                        | —                                                                                                                                             | —                                                                                        |
-| 7 — Hardening and release gate  | Audit topology branches, complete diagnostics/tests, and run the acceptance matrix         | Not started | —                                        | —                                                        | —                                                                                                                                             | —                                                                                        |
+| Pass                            | Scope                                                                                      | Status      | Branch                                        | PR                                                       | Validation                                                                                                                                                  | Notes or deviations                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------ | ----------- | --------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 1 — Ledger, ADR, protocol       | Create this ledger, ADR 0009, and strict bounded WorkerLink contracts and tests            | Complete    | `codex/network-tranche1-pass1-contracts`      | [#1163](https://github.com/ArcaneArts/Cantrip/pull/1163) | Protocol typecheck and 349 focused tests; workspace typecheck; Code/Codex source verification; CLI check; changed-file formatting; diff check               | Runtime routing remains unchanged; repository-wide baseline failures are recorded below                          |
+| 2 — Server/worker lifecycle     | Add the transient coordinator, gateway, grants, expiry, revocation, and generation fencing | Complete    | `codex/network-tranche1-pass2-lifecycle`      | [#1168](https://github.com/ArcaneArts/Cantrip/pull/1168) | Workspace/package typechecks; WorkerLink protocol 8, server 38, worker 37; source/CLI verification; changed-file format and diff checks                     | Exact generation fencing is wired; the path stays dormant until an adapter is registered                         |
+| 3 — Client manager and carriers | Add the shared manager and wrap current LOCAL and RELAY paths                              | Complete    | `codex/network-tranche1-pass3-client-manager` | Pending                                                  | Workspace/package typechecks; focused protocol 9, app 8, worker 11, server 41; full app 1,571; source/CLI verification; changed-file format and diff checks | Shared transient claims and authority RPC remove sticky-session dependence; baseline failures are recorded below |
+| 4 — Terminal                    | Move Terminal route ownership beneath WorkerLink                                           | Not started | —                                             | —                                                        | —                                                                                                                                                           | —                                                                                                                |
+| 5 — Tunnels and project shares  | Move saved/managed tunnels and WebDAV streams behind WorkerLink                            | Not started | —                                             | —                                                        | —                                                                                                                                                           | —                                                                                                                |
+| 6 — Cantrip Code                | Move Code HTTP/WebSocket acquisition and pooling behind WorkerLink                         | Not started | —                                             | —                                                        | —                                                                                                                                                           | —                                                                                                                |
+| 7 — Hardening and release gate  | Audit topology branches, complete diagnostics/tests, and run the acceptance matrix         | Not started | —                                             | —                                                        | —                                                                                                                                                           | —                                                                                                                |
 
 ## Tranche One acceptance checklist
 
 - [ ] A single WorkerLink abstraction owns feature-facing route selection.
-- [ ] One logical session is keyed to the exact client/server/worker-process identity.
-- [ ] Server-issued resource grants are short-lived, bounded, and independently revocable.
-- [ ] Unauthorized, expired, replayed, cross-account, cross-session, and wrong-generation opens fail closed.
-- [ ] LOCAL and RELAY implement the same logical channel contract and LOCAL failure falls back automatically.
-- [ ] Route generations reject stale replacement-channel frames.
+- [x] One logical session is keyed to the exact client/server/worker-process identity.
+- [x] Server-issued resource grants are short-lived, bounded, and independently revocable.
+- [x] Unauthorized, expired, replayed, cross-account, cross-session, and wrong-generation opens fail closed.
+- [x] LOCAL and RELAY implement the same logical channel contract and LOCAL failure falls back automatically.
+- [x] Route generations reject stale replacement-channel frames.
 - [ ] Interactive and stream queues and credit cannot starve Terminal input.
 - [ ] Terminal uses WorkerLink with Tauri LOCAL and hosted RELAY parity.
 - [ ] Generic tunnels and project shares use WorkerLink without changing encryption, listeners, mounts, or lifecycle.
@@ -67,12 +67,19 @@ TCP resumption, and final legacy-relay consolidation.
   `cantrip_app/src/lib/desktop-tunnel.ts`,
   `cantrip_app/src/lib/server-connections.ts`, and
   `cantrip_server/test/chat-turn-retry-repository.test.ts`.
-- The full protocol suite has 353 passing tests and one unrelated failure: the
+- The full protocol suite has 354 passing tests and one unrelated failure: the
   read-only permission result omits `web.session.snapshot` even though the
   exported read catalog includes it. The exact failure was reproduced in a
   detached worktree at current `origin/main`; the WorkerLink protocol suite is
-  8/8. Later passes must continue running focused validation and recheck these
+  9/9. Later passes must continue running focused validation and recheck these
   repository gates.
+- The current full app suite passes 1,571 tests with three skipped. The full
+  worker suite has 869 passing, two skipped, and one unrelated packaged MCP
+  catalog-order failure; the same failure reproduces on the synchronized
+  Primary checkout. The full server suite currently has broad pre-existing
+  schema/test drift (676 passing, 102 skipped, 50 failing); a representative
+  `local-foundation.test.ts` failure reproduces on Primary. Pass-specific
+  server and worker surfaces remain green.
 - The migration crosses TypeScript browser/server/worker code and the native
   Tauri forwarder. Later passes must keep compatibility adapters until every
   supported client uses the WorkerLink-facing boundary.
@@ -93,20 +100,30 @@ TCP resumption, and final legacy-relay consolidation.
   worker.
 - Telemetry payloads accept only bounded route, lane, event, count, latency,
   and reason vocabularies; tenant and resource identifiers are not labels.
-- WorkerLink coordination remains process-local transient authority on the
-  client-facing server. Install/revoke commands use the existing
-  `WorkerCommandBus`, so replicated deployments retain their current worker
-  routing and ownership checks without introducing a second coordination
-  backend.
+- WorkerLink session state remains transient, but a short-lived session claim
+  in the existing relay-coordination abstraction names the authoritative
+  server instance. Any authenticated server replica can authorize a request,
+  forward mutations to that authority, and carry RELAY frames through the
+  existing worker bridge; deployments with shared coordination therefore do
+  not require sticky HTTP/WebSocket sessions. The in-memory and Redis backends
+  implement the contract, and a future server-to-server backend can implement
+  the same abstraction.
 - The worker gateway accepts sessions from the authenticated server command
-  plane, fences the exact server, control-plane generation, owner, account
-  session, worker, and worker-process generation, and exposes no resource until
-  a feature-specific adapter is registered.
+  plane, fences the durable server identity plus the client-facing server
+  generation, owner, account session, worker, and worker-process generation,
+  and exposes no resource until a feature-specific adapter is registered.
 - Route-generation replacement retires active worker channels before the
   replacement is acknowledged. Logout fences are transient around revocation,
   allowing a later authenticated account session to establish fresh authority.
+- LOCAL and RELAY carry the identical bounded binary frames. Adapters cannot
+  emit before acceptance is delivered, receive credit is returned only after
+  the client consumer acknowledges data, and per-lane bounded scheduling gives
+  interactive traffic greater service without sharing bulk queue capacity.
+- Browser and Capacitor clients intentionally select RELAY in Tranche One;
+  Tauri probes the authenticated loopback broker first and automatically
+  replaces the route with RELAY when LOCAL setup fails.
 
 ## Next expected pass
 
-Pass 3: client manager and LOCAL/RELAY carriers after Pass 2 is reported merged
-and the Primary checkout is synchronized.
+Pass 4: migrate Terminal route ownership, I/O, resize, exit, and reconnect
+behavior behind WorkerLink while preserving Tauri LOCAL and hosted RELAY paths.
