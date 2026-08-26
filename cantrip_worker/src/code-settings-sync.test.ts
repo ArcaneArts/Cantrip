@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CodeSettingsSynchronizer,
   codeSettingsDigest,
+  codeSettingsRetryDelay,
   mergeCodeSettingsSnapshots,
   parseAndNormalizeCodeSettings,
 } from "./code-settings-sync.js";
@@ -163,6 +164,7 @@ async function synchronizer(
   directories.push(directory);
   const settingsPath = path.join(directory, "User", "settings.json");
   const sync = new CodeSettingsSynchronizer({
+    authorizationFingerprint: `${ownerId}:${serverId}:1`,
     credential: () => "worker-token",
     debounceMs: 60_000,
     fetch: server.fetch,
@@ -197,6 +199,37 @@ afterEach(async () => {
 });
 
 describe("Code settings normalization and three-way merge", () => {
+  it("bounds exponential synchronization retry delay with jitter", () => {
+    expect(
+      [0, 1, 2, 3, 4].map((attempt) =>
+        codeSettingsRetryDelay({
+          attempt,
+          baseDelayMs: 1_000,
+          maxDelayMs: 5_000,
+          jitterRatio: 0,
+        }),
+      ),
+    ).toEqual([1_000, 2_000, 4_000, 5_000, 5_000]);
+    expect(
+      codeSettingsRetryDelay({
+        attempt: 1,
+        baseDelayMs: 1_000,
+        maxDelayMs: 5_000,
+        jitterRatio: 0.2,
+        random: () => 0,
+      }),
+    ).toBe(1_600);
+    expect(
+      codeSettingsRetryDelay({
+        attempt: 1,
+        baseDelayMs: 1_000,
+        maxDelayMs: 5_000,
+        jitterRatio: 0.2,
+        random: () => 1,
+      }),
+    ).toBe(2_400);
+  });
+
   it("parses JSONC, strips only reserved keys, and hashes semantic content", () => {
     const parsed = parseAndNormalizeCodeSettings(`\ufeff{
       // comment

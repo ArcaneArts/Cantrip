@@ -18,7 +18,10 @@ import type {
 } from "@cantrip/protocol/encryption";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { CodeSettingsSynchronizer } from "./code-settings-sync.js";
+import {
+  CodeSettingsSynchronizer,
+  codeSettingsAuthorizationFingerprint,
+} from "./code-settings-sync.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
 
 const ownerId = "owner-code-settings-lifecycle";
@@ -29,11 +32,20 @@ const directories: string[] = [];
 class OpaqueSettingsServer {
   profile: CodeSettingsStoredProfile | null = null;
   offline = false;
+  rejectionStatus: number | null = null;
+  requestCount = 0;
   getCount = 0;
   putCount = 0;
 
   fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    this.requestCount += 1;
     if (this.offline) throw new TypeError("server unavailable");
+    if (this.rejectionStatus !== null) {
+      return Response.json(
+        { error: "settings authorization unavailable" },
+        { status: this.rejectionStatus },
+      );
+    }
     if (init?.method === "PUT") {
       this.putCount += 1;
       const upload = codeSettingsUploadSchema.parse(
@@ -169,7 +181,9 @@ async function synchronizer(input: {
   componentKeys: ReadonlyMap<number, Uint8Array>;
   debounceMs?: number;
   directory?: string;
+  maxRetryDelayMs?: number;
   pollIntervalMs?: number;
+  retryJitterRatio?: number;
   server: OpaqueSettingsServer;
   service?: WorkerEncryptionService;
   watchFactory?: WatchFactory;
@@ -186,11 +200,19 @@ async function synchronizer(input: {
   const service =
     input.service ??
     (await encryptionService(input.workerId, input.componentKeys));
+  const authorizationFingerprint =
+    codeSettingsAuthorizationFingerprint(service);
+  if (!authorizationFingerprint) {
+    throw new Error("Test synchronizer requires customization authorization.");
+  }
   const sync = new CodeSettingsSynchronizer({
+    authorizationFingerprint,
     credential: () => "worker-token",
     debounceMs: input.debounceMs ?? 20,
     fetch: input.server.fetch,
+    maxRetryDelayMs: input.maxRetryDelayMs,
     pollIntervalMs: input.pollIntervalMs ?? 3_600_000,
+    retryJitterRatio: input.retryJitterRatio,
     serverUrl: "https://cantrip.test",
     service,
     settingsPath,
@@ -245,6 +267,130 @@ afterEach(async () => {
 });
 
 describe("Code settings synchronization lifecycle", { timeout: 45_000 }, () => {
+  it("requires an active customization grant for synchronization authority", async () => {
+    const noGrant = await encryptionService("no-settings-grant", new Map());
+    expect(noGrant.status()).toMatchObject({ state: "ready", grants: [] });
+    expect(codeSettingsAuthorizationFingerprint(noGrant)).toBeNull();
+
+    const componentKey = deriveComponentKey({
+      accountMasterKey: generateAccountMasterKey(),
+      ownerId,
+      component: "customization-content",
+      keyRevision: 1,
+    });
+    const granted = await encryptionService(
+      "settings-grant",
+      new Map([[1, componentKey]]),
+    );
+    expect(codeSettingsAuthorizationFingerprint(granted)).not.toBeNull();
+  });
+
+  it("makes no settings requests while customization authorization is absent", async () => {
+    const componentKey = deriveComponentKey({
+      accountMasterKey: generateAccountMasterKey(),
+      ownerId,
+      component: "customization-content",
+      keyRevision: 1,
+    });
+    const server = new OpaqueSettingsServer();
+    let watcher!: ManualWatcher;
+    const worker = await synchronizer({
+      componentKeys: new Map([[1, componentKey]]),
+      debounceMs: 10,
+      pollIntervalMs: 15,
+      server,
+      watchFactory: (_directory, listener) => {
+        watcher = new ManualWatcher(listener);
+        return watcher;
+      },
+      workerId: "unauthorized-worker",
+    });
+
+    worker.sync.updateAuthorization(null);
+    watcher.change();
+    await worker.sync.synchronize({ initializeIfMissing: false });
+    await new Promise((resolve) => setTimeout(resolve, 75));
+
+    expect(server.requestCount).toBe(0);
+    expect(worker.sync.status()).toMatchObject({
+      state: "unavailable",
+      error: expect.stringContaining("customization-content"),
+    });
+    await worker.sync.close();
+  });
+
+  it("pauses after one authorization rejection and resumes only on an authorization signal", async () => {
+    const componentKey = deriveComponentKey({
+      accountMasterKey: generateAccountMasterKey(),
+      ownerId,
+      component: "customization-content",
+      keyRevision: 1,
+    });
+    const server = new OpaqueSettingsServer();
+    server.rejectionStatus = 403;
+    let watcher!: ManualWatcher;
+    const worker = await synchronizer({
+      componentKeys: new Map([[1, componentKey]]),
+      debounceMs: 10,
+      pollIntervalMs: 15,
+      server,
+      watchFactory: (_directory, listener) => {
+        watcher = new ManualWatcher(listener);
+        return watcher;
+      },
+      workerId: "authorization-rejected-worker",
+    });
+
+    await expect(
+      worker.sync.synchronize({ initializeIfMissing: false }),
+    ).resolves.toMatchObject({ state: "unavailable" });
+    watcher.change();
+    await worker.sync.synchronize({ initializeIfMissing: false });
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    expect(server.requestCount).toBe(1);
+
+    server.rejectionStatus = null;
+    expect(
+      worker.sync.updateAuthorization(`${ownerId}:${serverId}:1`, {
+        forceResume: true,
+      }),
+    ).toBe(true);
+    await expect(
+      worker.sync.synchronize({ initializeIfMissing: false }),
+    ).resolves.toMatchObject({ state: "uninitialized" });
+    expect(server.requestCount).toBe(2);
+    await worker.sync.close();
+  });
+
+  it("backs off boundedly after transport failures and recovers", async () => {
+    const componentKey = deriveComponentKey({
+      accountMasterKey: generateAccountMasterKey(),
+      ownerId,
+      component: "customization-content",
+      keyRevision: 1,
+    });
+    const server = new OpaqueSettingsServer();
+    server.offline = true;
+    const worker = await synchronizer({
+      componentKeys: new Map([[1, componentKey]]),
+      maxRetryDelayMs: 80,
+      pollIntervalMs: 20,
+      retryJitterRatio: 0,
+      server,
+      workerId: "backoff-worker",
+    });
+
+    await eventually(() => server.requestCount >= 2);
+    const requestsAfterSecondFailure = server.requestCount;
+    await new Promise((resolve) => setTimeout(resolve, 35));
+    expect(server.requestCount).toBe(requestsAfterSecondFailure);
+
+    server.offline = false;
+    await eventually(() => worker.sync.status().state === "uninitialized");
+    expect(server.requestCount).toBeGreaterThan(requestsAfterSecondFailure);
+    await worker.sync.close();
+  });
+
   it("re-encrypts an older canonical key revision with the current component key", async () => {
     const accountMasterKey = generateAccountMasterKey();
     const keyRevision1 = deriveComponentKey({
