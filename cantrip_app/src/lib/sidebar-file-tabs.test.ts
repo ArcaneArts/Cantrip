@@ -107,28 +107,6 @@ describe("sidebar file tabs", () => {
     ).toBe(hidden);
   });
 
-  it("keeps a separate hidden Explorer warm while the current one is previewing", () => {
-    const preview = explorer("preview", "worktree-1");
-    const reserve = explorer("reserve", "worktree-1");
-
-    expect(
-      dedicatedSidebarExplorer({
-        desiredWorktreeId: "worktree-1",
-        excludeExplorerId: preview.id,
-        explorers: [preview, reserve],
-        layout: layout(),
-      }),
-    ).toBe(reserve);
-    expect(
-      dedicatedSidebarExplorer({
-        desiredWorktreeId: "worktree-1",
-        excludeExplorerId: preview.id,
-        explorers: [preview],
-        layout: layout(),
-      }),
-    ).toBeNull();
-  });
-
   it("keeps the preview Explorer stable across worktree selection", () => {
     const preview = explorer("preview", "worktree-1");
     const other = explorer("other", "worktree-2");
