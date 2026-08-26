@@ -5687,12 +5687,7 @@ async function protectedSharedCodeTransportCandidate(input: {
         name: "Cantrip Code",
         description: "Shared protected editor transport.",
         source: { kind: "desktop-loopback" },
-        destination: {
-          kind: "worker-adapter",
-          workerId: input.workerId,
-          adapter: "code",
-          resourceId: input.transportId,
-        },
+        destination: sharedCodeTransportDestination(input),
         dataProtection: createTunnelDataProtection(),
       },
       operationId: input.transportId,
@@ -5700,6 +5695,17 @@ async function protectedSharedCodeTransportCandidate(input: {
       tunnelId: input.transportId,
       workerId: input.workerId,
     }),
+  };
+}
+
+export function sharedCodeTransportDestination(input: {
+  transportId: string;
+  workerId: string;
+}) {
+  return {
+    kind: "worker-code-transport" as const,
+    workerId: input.workerId,
+    resourceId: input.transportId,
   };
 }
 
