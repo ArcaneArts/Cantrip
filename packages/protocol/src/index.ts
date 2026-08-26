@@ -14750,6 +14750,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       stateProtection: terminalPrivateStateOpaqueSchema,
       cols: z.number().int().min(1).max(1_000),
       rows: z.number().int().min(1).max(1_000),
+      outputMode: z.enum(["protected", "discard"]).optional(),
       launch: z.discriminatedUnion("type", [
         z.object({ type: z.literal("shell") }),
         z.object({
@@ -15740,6 +15741,16 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
         .array(z.enum(["turn", "goal", "queue", "plan"]))
         .min(1)
         .max(4),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("terminal.runtime.observed"),
+      terminalId: z.string().min(1).max(200),
+      workerProcessGeneration: z.string().min(1).max(200),
+      status: z.literal("exited"),
+      exitCode: z.number().int(),
+      signal: z.number().int().nullable(),
     })
     .strict(),
   workerLogStreamBatchSchema

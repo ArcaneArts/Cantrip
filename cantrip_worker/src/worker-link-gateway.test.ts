@@ -493,6 +493,7 @@ describe("WorkerLinkGateway", () => {
     const now = Date.parse("2026-08-26T12:00:00.000Z");
     const fixture = fixtures(now);
     const write = vi.fn();
+    const credit = vi.fn();
     let emit!: WorkerLinkAdapterEmitter;
     const responses: Array<{
       header: WorkerLinkFrameHeader;
@@ -514,7 +515,7 @@ describe("WorkerLinkGateway", () => {
       kind: "terminal",
       open: (context) => {
         emit = context.emit;
-        return { write };
+        return { credit, write };
       },
     });
     await install(gateway, fixture);
@@ -566,11 +567,31 @@ describe("WorkerLinkGateway", () => {
         {
           protocolVersion: 1,
           sessionId,
-          routeGeneration: 2,
+          routeGeneration: 1,
           effectiveRoute: "local",
           channel: fixture.open.channel,
           lane: "interactive",
           sequence: 2,
+          kind: "credit",
+          direction: "worker-to-client",
+          bytes: 2,
+        },
+        new Uint8Array(),
+        respond,
+      ),
+    ).resolves.toBe(true);
+    expect(credit).toHaveBeenCalledWith(2);
+
+    await expect(
+      gateway.handleFrame(
+        {
+          protocolVersion: 1,
+          sessionId,
+          routeGeneration: 2,
+          effectiveRoute: "local",
+          channel: fixture.open.channel,
+          lane: "interactive",
+          sequence: 3,
           kind: "half-close",
           direction: "client-to-worker",
         },

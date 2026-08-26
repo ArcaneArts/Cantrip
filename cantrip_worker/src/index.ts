@@ -343,6 +343,7 @@ import {
 } from "./terminal-manager.js";
 import { openTerminalPrivateState } from "./terminal-private-state.js";
 import { TerminalDirectEndpointManager } from "./terminal-direct-endpoint.js";
+import { TerminalWorkerLinkAdapter } from "./terminal-worker-link-adapter.js";
 import {
   openWorkerSurfaceStreamContent,
   protectWorkerSurfaceStreamContent,
@@ -1182,6 +1183,34 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   terminalDirectEndpoints.setInputPolicy(
     (terminalId) => !runConfigurationRuntimes.ownsTerminal(terminalId),
+  );
+  terminals.setLifecycleObserver((observation) => {
+    workerNotificationEmitter?.({
+      type: "terminal.runtime.observed",
+      workerProcessGeneration,
+      ...observation,
+    });
+  });
+  workerLinkGateway.registerAdapter(
+    new TerminalWorkerLinkAdapter(terminals, {
+      inputAllowed: (terminalId) =>
+        !runConfigurationRuntimes.ownsTerminal(terminalId),
+      openInput: (context, opaque) =>
+        openWorkerSurfaceStreamContent({
+          context,
+          opaque,
+          schema: terminalInputContentSchema,
+          service: workerEncryption,
+        }),
+      protectOutput: (context, event) =>
+        protectWorkerSurfaceStreamContent({
+          context,
+          content: event,
+          schema: terminalOutputContentSchema,
+          service: workerEncryption,
+        }),
+      replay: surfaceStreamReplay,
+    }),
   );
   const providerAuthObserver = new ProviderAuthObserver({
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
@@ -3982,6 +4011,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             outputQueue = outputQueue.then(() => emit(event));
             return;
           }
+          if (command.outputMode === "discard") return;
           const sequence = outputSequence;
           outputSequence += 1;
           outputQueue = outputQueue.then(async () => {
