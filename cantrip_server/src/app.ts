@@ -874,6 +874,7 @@ import {
 } from "./workers/bridge.js";
 import { BufferedWorkerSocket } from "./workers/buffered-socket.js";
 import { workerLogStreamConsumerIsSlow } from "./workers/log-stream.js";
+import { workerPresenceFingerprint } from "./workers/presence.js";
 import {
   authenticateWorkerRequest,
   createWorkerCredential,
@@ -1304,11 +1305,6 @@ export function mutationLiveResources(
 function mutationChatLiveResources(route: string): ChatLiveResource[] {
   if (route === "/api/chats/:chatId/goal") return ["chat-goal"];
   return [];
-}
-
-function workerPresenceFingerprint(worker: WorkerSummary): string {
-  const { lastSeenAt: _lastSeenAt, ...presence } = worker;
-  return JSON.stringify(presence);
 }
 
 function runConfigurationSecretReferences(
@@ -4710,7 +4706,7 @@ export async function buildApp({
       workerOfflineTimers.delete(workerId);
       workerPresenceFingerprints.delete(workerId);
       runAsOwner(ownerId, () =>
-        publishLiveInvalidation("worker", { entityId: workerId }),
+        publishLiveInvalidation("worker-availability", { entityId: workerId }),
       );
     }, WORKER_ONLINE_WINDOW_MS + 50);
     timer.unref();
@@ -15422,6 +15418,9 @@ export async function buildApp({
         if (credential.active) revokedWorkerCredentialIds.add(credential.id);
       }
       bridge.disconnect?.(request.params.workerId, "Worker was unlinked");
+      publishLiveInvalidation("worker-availability", {
+        entityId: request.params.workerId,
+      });
       serverLogger.info("Worker unlinked", {
         event: "worker.enrollment.unlinked",
         subsystem: "worker-auth",
@@ -33323,6 +33322,9 @@ export async function buildApp({
           publishLiveInvalidation("worker", {
             entityId: provision.replacedWorkerId,
           });
+          publishLiveInvalidation("worker-availability", {
+            entityId: provision.replacedWorkerId,
+          });
         }
         await appendAudit(request, {
           action: "worker.paired",
@@ -34458,7 +34460,9 @@ export async function buildApp({
           return;
         }
         runAsOwner(workerAuth.ownerId, () =>
-          publishLiveInvalidation("worker", { entityId: workerId }),
+          publishLiveInvalidation("worker-availability", {
+            entityId: workerId,
+          }),
         );
         serverLogger.event("info", "Worker command channel authenticated", {
           event: "worker.authentication.completed",

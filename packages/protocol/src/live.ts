@@ -168,6 +168,7 @@ export const appLiveResourceSchema = z.enum([
   "provider-auth",
   "policy",
   "worker",
+  "worker-availability",
   "project",
   "project-automation",
   "project-token-usage",
