@@ -30111,11 +30111,6 @@ export async function buildApp({
             .code(404)
             .send({ error: "Tunnel attachment not found." });
         }
-        if (authorization.origin === "code") {
-          return reply.code(409).send({
-            error: "Cantrip Code tunnel migration is not enabled yet.",
-          });
-        }
         if (authorization.destination.workerId !== session.identity.workerId) {
           return reply.code(409).send({
             error: "Tunnel placement does not match the WorkerLink session.",
