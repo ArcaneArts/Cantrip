@@ -1,10 +1,12 @@
 import {
+  codeSessionRouteBasePath,
   decodeTunnelDataPlaneFrame,
   encodeTunnelDataPlaneFrame,
   tunnelAttachmentReadySchema,
   TUNNEL_DATA_PLANE_MAX_PLAINTEXT_BYTES,
   type CodeAttachment,
   type CodeProtectedAttachmentWire,
+  type CodeSharedAttachmentWire,
   type TunnelAttachmentCreateResult,
   type TunnelAttachmentReady,
   type TunnelDataPlaneFrameHeader,
@@ -14,12 +16,18 @@ import type { TunnelDataProtectionConfiguration } from "@cantrip/protocol/tunnel
 import {
   createTunnelAttachment,
   deleteTunnelAttachment,
+  explorerCodeSessionBindingCurrent,
   getTunnelDataProtection,
+  type BoundExplorerCodeSessionAttachment,
 } from "@/lib/api";
-import { getClientSession } from "@/lib/client-session";
+import {
+  getClientSession,
+  onClientSessionIdentityChanged,
+} from "@/lib/client-session";
 import {
   getActiveServerConnection,
   getActiveServerUrl,
+  onServerConnectionIdentityChanged,
 } from "@/lib/server-connections";
 
 const INITIAL_CREDIT_BYTES = 256 * 1_024;
@@ -29,9 +37,11 @@ const MAX_HTTP_HEADER_BYTES = 64 * 1_024;
 const MAX_HTTP_HEADER_COUNT = 256;
 const MAX_BROWSER_HTTP_REQUESTS = 128;
 const MAX_BROWSER_CODE_SOCKETS = 128;
+const MAX_BROWSER_CODE_SESSION_CONNECTIONS = 64;
 const MAX_TUNNEL_CONNECTIONS = 256;
 const MAX_CONNECTION_QUEUED_BYTES = 8 * 1_024 * 1_024;
 const MAX_TUNNEL_QUEUED_SEND_BYTES = 32 * 1_024 * 1_024;
+const MAX_BROWSER_CODE_SESSION_QUEUED_SEND_BYTES = 24 * 1_024 * 1_024;
 const MAX_SOCKET_BUFFER_BYTES = 8 * 1_024 * 1_024;
 const MAX_SOCKET_RECEIVE_BYTES = 32 * 1_024 * 1_024;
 const OUTER_SEND_HIGH_WATER_BYTES = 8 * 1_024 * 1_024;
@@ -43,11 +53,11 @@ const OUTER_READY_TIMEOUT_MS = 10_000;
 const CONNECTION_OPEN_TIMEOUT_MS = 10_000;
 const HTTP_REQUEST_TIMEOUT_MS = 30_000;
 const SERVICE_WORKER_READY_TIMEOUT_MS = 10_000;
+const SERVICE_WORKER_PROTOCOL_PROBE_TIMEOUT_MS = 250;
 const API_OPERATION_TIMEOUT_MS = 10_000;
 const RECONNECT_GRACE_MS = 15_000;
 const RECONNECT_RETRY_MS = 250;
 const RELAY_ERROR_CLOSE_CLASSIFICATION_MS = 75;
-const HTTP_CHANNEL = "cantrip-code-http-v1";
 const SERVICE_WORKER_PATH = "/cantrip-code-service-worker.js";
 const SOCKET_EVENT = "cantrip-code-websocket-event-v1";
 const textEncoder = new TextEncoder();
@@ -86,8 +96,37 @@ interface HttpProxyCancel {
   type: "cantrip-code-http-cancel-v1";
 }
 
+interface BrowserCodeAdapterRegistered {
+  adapterId: string;
+  generation: string;
+  type: "cantrip-code-adapter-registered-v2";
+}
+
+interface BrowserCodeAdapterRejected {
+  adapterId: string;
+  generation: string;
+  reason: string;
+  type: "cantrip-code-adapter-rejected-v2";
+}
+
+interface BrowserCodeAdapterPort {
+  generation: string;
+  port: MessagePort;
+  rootLease: string;
+}
+
+interface BrowserCodeLineageClaim {
+  adapterId: string;
+  frameNonce: string;
+  generation: string;
+  lineageToken: string;
+  type: "cantrip-code-worker-lineage-v2";
+}
+
 interface SocketRequest {
   adapterId: string;
+  frameNonce: string;
+  generation: string;
   socketId: string;
   type:
     | "cantrip-code-websocket-close-v1"
@@ -213,6 +252,11 @@ interface BrowserSecurityIdentity {
   serverUrl: string;
 }
 
+interface BrowserTunnelOpenOptions {
+  binding?: BoundExplorerCodeSessionAttachment["binding"];
+  transport?: CodeSharedAttachmentWire["transport"];
+}
+
 function browserSecurityIdentity(): BrowserSecurityIdentity {
   const connection = getActiveServerConnection();
   const session = getClientSession();
@@ -278,6 +322,10 @@ function frameAad(
   );
 }
 
+interface BrowserConnectionSendBudget {
+  reserve(byteLength: number): () => void;
+}
+
 class BrowserTunnelConnection {
   readonly #chunks: Uint8Array[] = [];
   readonly #closed: Promise<void>;
@@ -300,6 +348,7 @@ class BrowserTunnelConnection {
   constructor(
     readonly id: string,
     private readonly tunnel: BrowserTunnelClient,
+    private readonly sessionSendBudget?: BrowserConnectionSendBudget,
   ) {
     this.#accepted = new Promise<void>((resolve, reject) => {
       this.#accept = resolve;
@@ -329,7 +378,14 @@ class BrowserTunnelConnection {
     if (this.#retired) {
       throw new Error("Protected Code stream is closed.");
     }
-    const releaseAggregate = this.tunnel.reserveQueuedSend(payload.byteLength);
+    const releaseSession = this.sessionSendBudget?.reserve(payload.byteLength);
+    let releaseAggregate: (() => void) | null = null;
+    try {
+      releaseAggregate = this.tunnel.reserveQueuedSend(payload.byteLength);
+    } catch (error) {
+      releaseSession?.();
+      throw error;
+    }
     this.#queuedBytes += payload.byteLength;
     const operation = this.#queued.then(async () => {
       for (
@@ -351,6 +407,7 @@ class BrowserTunnelConnection {
     } finally {
       this.#queuedBytes -= payload.byteLength;
       releaseAggregate();
+      releaseSession?.();
     }
   }
 
@@ -572,6 +629,8 @@ class BrowserTunnelClient {
     private readonly securityIdentity: BrowserSecurityIdentity,
     credential: BrowserRelayCredential,
     private readonly protection: TunnelDataProtectionConfiguration,
+    private readonly binding:
+      BoundExplorerCodeSessionAttachment["binding"] | null,
   ) {
     this.#credential = credential;
     this.#ownedAttachmentIds.add(credential.attachmentId);
@@ -587,23 +646,55 @@ class BrowserTunnelClient {
   static async open(
     tunnelId: string,
     signal?: AbortSignal,
+    options: BrowserTunnelOpenOptions = {},
   ): Promise<BrowserTunnelClient> {
     const clientId = `web-code:${crypto.randomUUID()}`;
     const securityIdentity = browserSecurityIdentity();
+    if (
+      options.binding &&
+      !explorerCodeSessionBindingCurrent(options.binding)
+    ) {
+      throw new Error(
+        "The Cantrip Code server or authentication identity changed while connecting.",
+      );
+    }
+    const serverUrl = options.binding?.serverUrl;
     const protection = await boundedOperation(
       (operationSignal) =>
-        getTunnelDataProtection(tunnelId, { signal: operationSignal }),
+        getTunnelDataProtection(tunnelId, {
+          ...(serverUrl ? { serverUrl } : {}),
+          signal: operationSignal,
+        }),
       API_OPERATION_TIMEOUT_MS,
       "Protected Code data-plane keys timed out.",
       signal,
     );
+    if (
+      options.transport &&
+      (options.transport.transportId !== tunnelId ||
+        options.transport.tunnelId !== tunnelId ||
+        options.transport.protectedKeyRevision !== protection.keyRevision)
+    ) {
+      throw new Error("Protected Code transport security identity changed.");
+    }
+    if (
+      options.binding &&
+      !explorerCodeSessionBindingCurrent(options.binding)
+    ) {
+      throw new Error(
+        "The Cantrip Code server or authentication identity changed while connecting.",
+      );
+    }
     const attachment = relayCredential(
       await boundedOperation(
         (operationSignal) =>
           createTunnelAttachment(
             tunnelId,
             { clientId },
-            { signal: operationSignal },
+            {
+              ...(serverUrl ? { serverUrl } : {}),
+              signal: operationSignal,
+            },
           ),
         API_OPERATION_TIMEOUT_MS,
         "Protected Code relay allocation timed out.",
@@ -617,8 +708,17 @@ class BrowserTunnelClient {
       securityIdentity,
       attachment,
       protection,
+      options.binding ?? null,
     );
     try {
+      if (
+        options.binding &&
+        !explorerCodeSessionBindingCurrent(options.binding)
+      ) {
+        throw new Error(
+          "The Cantrip Code server or authentication identity changed while connecting.",
+        );
+      }
       await client.#connect(signal);
       return client;
     } catch (error) {
@@ -659,12 +759,17 @@ class BrowserTunnelClient {
     return () => this.#terminalListeners.delete(listener);
   }
 
+  retire(error: Error): void {
+    this.#failTerminal(error);
+  }
+
   async openConnection(): Promise<BrowserTunnelConnection> {
     return this.openConnectionWithSignal();
   }
 
   async openConnectionWithSignal(
     parent?: AbortSignal,
+    sessionSendBudget?: BrowserConnectionSendBudget,
   ): Promise<BrowserTunnelConnection> {
     return boundedOperation(
       async (signal) => {
@@ -681,6 +786,7 @@ class BrowserTunnelClient {
         const connection = new BrowserTunnelConnection(
           crypto.randomUUID(),
           this,
+          sessionSendBudget,
         );
         this.#connections.set(connection.id, connection);
         this.sendControl({
@@ -1293,7 +1399,10 @@ class BrowserTunnelClient {
     this.#assertSecurityIdentity();
     const refreshedProtection = await boundedOperation(
       (operationSignal) =>
-        getTunnelDataProtection(this.tunnelId, { signal: operationSignal }),
+        getTunnelDataProtection(this.tunnelId, {
+          ...(this.binding ? { serverUrl: this.binding.serverUrl } : {}),
+          signal: operationSignal,
+        }),
       API_OPERATION_TIMEOUT_MS,
       "Protected Code data-plane key refresh timed out.",
       signal,
@@ -1315,7 +1424,10 @@ class BrowserTunnelClient {
           createTunnelAttachment(
             this.tunnelId,
             { clientId: this.clientId },
-            { signal: operationSignal },
+            {
+              ...(this.binding ? { serverUrl: this.binding.serverUrl } : {}),
+              signal: operationSignal,
+            },
           ),
         API_OPERATION_TIMEOUT_MS,
         "Protected Code relay credential rotation timed out.",
@@ -1344,6 +1456,11 @@ class BrowserTunnelClient {
   }
 
   #assertSecurityIdentity(): void {
+    if (this.binding && !explorerCodeSessionBindingCurrent(this.binding)) {
+      throw new RelaySecurityIdentityChangedError(
+        "Protected Code server or account identity changed.",
+      );
+    }
     if (
       !sameSecurityIdentity(this.securityIdentity, browserSecurityIdentity())
     ) {
@@ -1356,8 +1473,15 @@ class BrowserTunnelClient {
   async #deleteAttachmentOnce(attachmentId: string): Promise<void> {
     const existing = this.#deletePromises.get(attachmentId);
     if (existing) return existing;
+    if (this.binding && !explorerCodeSessionBindingCurrent(this.binding)) {
+      return;
+    }
     const operation = boundedOperation(
-      (signal) => deleteTunnelAttachment(attachmentId, { signal }),
+      (signal) =>
+        deleteTunnelAttachment(attachmentId, {
+          ...(this.binding ? { serverUrl: this.binding.serverUrl } : {}),
+          signal,
+        }),
       API_OPERATION_TIMEOUT_MS,
       "Protected Code relay cleanup timed out.",
     ).catch(() => undefined);
@@ -1391,7 +1515,11 @@ class BrowserTunnelClient {
   }
 }
 
-function virtualCodePath(url: URL, adapterId: string): string {
+function virtualCodePath(
+  url: URL,
+  adapterId: string,
+  upstreamBasePath = "/code",
+): string {
   const prefix = `/__cantrip_code/${adapterId}`;
   const codePath = `${prefix}/code`;
   if (
@@ -1400,12 +1528,19 @@ function virtualCodePath(url: URL, adapterId: string): string {
   ) {
     throw new Error("Protected Code request escaped its browser adapter.");
   }
-  return url.pathname.slice(prefix.length) + url.search;
+  const suffix = url.pathname.slice(codePath.length);
+  const search = new URLSearchParams(url.search);
+  search.delete("cantripRootLease");
+  const query = search.toString();
+  return `${upstreamBasePath}${suffix}${query ? `?${query}` : ""}`;
 }
 
-function serializeHttpRequest(request: HttpProxyRequest): Uint8Array {
+function serializeHttpRequest(
+  request: HttpProxyRequest,
+  upstreamBasePath = "/code",
+): Uint8Array {
   const url = new URL(request.url);
-  const path = virtualCodePath(url, request.adapterId);
+  const path = virtualCodePath(url, request.adapterId, upstreamBasePath);
   if (
     typeof request.method !== "string" ||
     request.method.length > 32 ||
@@ -1427,6 +1562,7 @@ function serializeHttpRequest(request: HttpProxyRequest): Uint8Array {
     "host",
     "proxy-authorization",
     "transfer-encoding",
+    "x-cantrip-code-base-path",
   ]);
   const headers = request.headers.filter((entry) => {
     if (!Array.isArray(entry) || entry.length !== 2) {
@@ -1560,13 +1696,19 @@ function parseHttpResponse(bytes: Uint8Array) {
 export async function proxyBrowserCodeHttp(
   tunnel: BrowserTunnelClient,
   request: HttpProxyRequest,
-  options: { signal?: AbortSignal } = {},
+  options: {
+    sendBudget?: BrowserConnectionSendBudget;
+    signal?: AbortSignal;
+    upstreamBasePath?: string;
+  } = {},
 ) {
   const connection = await boundedOperation(
     (signal) =>
       "openConnectionWithSignal" in tunnel &&
       typeof tunnel.openConnectionWithSignal === "function"
-        ? tunnel.openConnectionWithSignal(signal)
+        ? options.sendBudget
+          ? tunnel.openConnectionWithSignal(signal, options.sendBudget)
+          : tunnel.openConnectionWithSignal(signal)
         : awaitWithSignal(tunnel.openConnection(), signal),
     CONNECTION_OPEN_TIMEOUT_MS,
     "Protected Code logical stream open timed out.",
@@ -1585,7 +1727,12 @@ export async function proxyBrowserCodeHttp(
   try {
     await boundedOperation(
       (signal) =>
-        awaitWithSignal(connection.send(serializeHttpRequest(request)), signal),
+        awaitWithSignal(
+          connection.send(
+            serializeHttpRequest(request, options.upstreamBasePath),
+          ),
+          signal,
+        ),
       HTTP_REQUEST_TIMEOUT_MS,
       "Protected Code request send timed out.",
       options.signal,
@@ -1662,6 +1809,8 @@ class BrowserCodeSocket {
 
   private constructor(
     private readonly adapterId: string,
+    private readonly generation: string,
+    private readonly frameNonce: string,
     private readonly socketId: string,
     private readonly target: WindowProxy,
     connection: BrowserTunnelConnection,
@@ -1686,10 +1835,17 @@ class BrowserCodeSocket {
     receiveBudget: BrowserSocketReceiveBudget,
     signal?: AbortSignal,
     onRetired: () => void = () => undefined,
+    upstreamBasePath = "/code",
+    sendBudget?: BrowserConnectionSendBudget,
   ): Promise<BrowserCodeSocket> {
-    const connection = await tunnel.openConnectionWithSignal(signal);
+    const connection = await tunnel.openConnectionWithSignal(
+      signal,
+      sendBudget,
+    );
     const socket = new BrowserCodeSocket(
       request.adapterId,
+      request.generation,
+      request.frameNonce,
       request.socketId,
       target,
       connection,
@@ -1698,7 +1854,7 @@ class BrowserCodeSocket {
       onRetired,
     );
     const url = new URL(request.url!);
-    const path = virtualCodePath(url, request.adapterId);
+    const path = virtualCodePath(url, request.adapterId, upstreamBasePath);
     const keyBytes = crypto.getRandomValues(new Uint8Array(16));
     let keyBinary = "";
     for (const byte of keyBytes) keyBinary += String.fromCharCode(byte);
@@ -2028,6 +2184,8 @@ class BrowserCodeSocket {
     this.target.postMessage(
       {
         adapterId: this.adapterId,
+        frameNonce: this.frameNonce,
+        generation: this.generation,
         socketId: this.socketId,
         type: SOCKET_EVENT,
         ...message,
@@ -2043,13 +2201,287 @@ function encodeBase64(value: ArrayBuffer): string {
   return btoa(binary);
 }
 
+async function browserCodeAdapterFingerprint(
+  adapterId: string,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    textEncoder.encode(adapterId.toLowerCase()),
+  );
+  return encodeBase64(digest)
+    .replace(/\+/gu, "-")
+    .replace(/\//gu, "_")
+    .replace(/=+$/gu, "");
+}
+
+async function browserCodeServiceWorker(
+  signal?: AbortSignal,
+): Promise<ServiceWorker> {
+  if (!("serviceWorker" in navigator)) {
+    throw new Error("This browser cannot host protected Code attachments.");
+  }
+  installBrowserCodeServiceWorkerRecoveryListener();
+  const controller = navigator.serviceWorker.controller;
+  if (
+    controller &&
+    browserRuntime.serviceWorkerController &&
+    browserRuntime.serviceWorkerController !== controller
+  ) {
+    browserRuntime.serviceWorkerController = null;
+    browserRuntime.serviceWorkerReadiness = null;
+  }
+  let readiness = browserRuntime.serviceWorkerReadiness;
+  if (!readiness) {
+    const exact = selectCompatibleBrowserCodeServiceWorker();
+    browserRuntime.serviceWorkerReadiness = exact;
+    void exact.catch(() => {
+      if (browserRuntime.serviceWorkerReadiness === exact) {
+        browserRuntime.serviceWorkerReadiness = null;
+      }
+    });
+    readiness = exact;
+  }
+  const worker = await boundedOperation(
+    (operationSignal) => awaitWithSignal(readiness, operationSignal),
+    SERVICE_WORKER_READY_TIMEOUT_MS,
+    "Protected Code service worker readiness timed out.",
+    signal,
+  );
+  if (browserRuntime.serviceWorkerReadiness === readiness) {
+    browserRuntime.serviceWorkerController = worker;
+  }
+  return worker;
+}
+
+async function selectCompatibleBrowserCodeServiceWorker(): Promise<ServiceWorker> {
+  return boundedOperation(
+    async (signal) => {
+      const registration = await awaitWithSignal(
+        navigator.serviceWorker.register(SERVICE_WORKER_PATH, { scope: "/" }),
+        signal,
+      );
+      void registration.update?.().catch(() => undefined);
+      await awaitWithSignal(navigator.serviceWorker.ready, signal);
+      const incompatible = new Set<ServiceWorker>();
+      while (true) {
+        signal.throwIfAborted();
+        const candidate = navigator.serviceWorker.controller;
+        if (candidate && !incompatible.has(candidate)) {
+          if (await probeBrowserCodeServiceWorker(candidate, signal)) {
+            return candidate;
+          }
+          incompatible.add(candidate);
+        }
+        await delay(25, signal);
+      }
+    },
+    SERVICE_WORKER_READY_TIMEOUT_MS,
+    "Protected Code service worker compatibility timed out.",
+  );
+}
+
+async function probeBrowserCodeServiceWorker(
+  worker: ServiceWorker,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const channel = new MessageChannel();
+  const port = channel.port1;
+  try {
+    await boundedOperation(
+      (probeSignal) =>
+        new Promise<void>((resolve, reject) => {
+          const cleanup = () => {
+            port.removeEventListener("message", receive);
+            probeSignal.removeEventListener("abort", abort);
+          };
+          const abort = () => {
+            cleanup();
+            reject(
+              probeSignal.reason ??
+                abortError("Protected Code service worker probe aborted."),
+            );
+          };
+          const receive = (event: MessageEvent<unknown>) => {
+            const message = event.data as {
+              type?: unknown;
+              version?: unknown;
+            } | null;
+            if (
+              message?.type !== "cantrip-code-adapter-protocol-ready-v2" ||
+              message.version !== 2
+            ) {
+              return;
+            }
+            cleanup();
+            resolve();
+          };
+          port.addEventListener("message", receive);
+          probeSignal.addEventListener("abort", abort, { once: true });
+          port.start();
+          try {
+            worker.postMessage(
+              { type: "cantrip-code-adapter-protocol-probe-v2" },
+              [channel.port2],
+            );
+          } catch (error) {
+            cleanup();
+            reject(error);
+          }
+        }),
+      SERVICE_WORKER_PROTOCOL_PROBE_TIMEOUT_MS,
+      "Protected Code service worker did not support adapter protocol v2.",
+      signal,
+    );
+    return true;
+  } catch {
+    signal.throwIfAborted();
+    return false;
+  } finally {
+    port.close();
+  }
+}
+
+async function registerBrowserCodeAdapter(
+  adapterId: string,
+  signal?: AbortSignal,
+  previous?: {
+    frameNonce: string | null;
+    generation: string;
+    lineageToken: string | null;
+    rootLease: string;
+  },
+): Promise<BrowserCodeAdapterPort> {
+  const worker = await browserCodeServiceWorker(signal);
+  signal?.throwIfAborted();
+  const generation = previous?.generation ?? crypto.randomUUID();
+  const rootLease =
+    previous?.rootLease ?? crypto.randomUUID().replaceAll("-", "");
+  const channel = new MessageChannel();
+  const port = channel.port1;
+  try {
+    await boundedOperation(
+      (operationSignal) =>
+        new Promise<void>((resolve, reject) => {
+          const cleanup = () => {
+            port.removeEventListener("message", receive);
+            operationSignal.removeEventListener("abort", abort);
+          };
+          const abort = () => {
+            cleanup();
+            reject(
+              operationSignal.reason ??
+                abortError("Protected Code adapter registration was aborted."),
+            );
+          };
+          const receive = (event: MessageEvent<unknown>) => {
+            const message = event.data as
+              BrowserCodeAdapterRegistered | BrowserCodeAdapterRejected | null;
+            if (
+              !message ||
+              message.adapterId !== adapterId ||
+              message.generation !== generation
+            ) {
+              return;
+            }
+            if (message.type === "cantrip-code-adapter-registered-v2") {
+              cleanup();
+              resolve();
+            } else if (
+              message.type === "cantrip-code-adapter-rejected-v2" &&
+              typeof message.reason === "string"
+            ) {
+              cleanup();
+              reject(new Error(message.reason));
+            }
+          };
+          port.addEventListener("message", receive);
+          operationSignal.addEventListener("abort", abort, { once: true });
+          port.start();
+          try {
+            worker.postMessage(
+              {
+                adapterId,
+                generation,
+                rootLease,
+                ...(previous?.frameNonce && previous.lineageToken
+                  ? {
+                      frameNonce: previous.frameNonce,
+                      lineageToken: previous.lineageToken,
+                    }
+                  : {}),
+                type: "cantrip-code-adapter-register-v2",
+              },
+              [channel.port2],
+            );
+          } catch (error) {
+            cleanup();
+            reject(error);
+          }
+        }),
+      SERVICE_WORKER_READY_TIMEOUT_MS,
+      "Protected Code browser adapter registration timed out.",
+      signal,
+    );
+    return { generation, port, rootLease };
+  } catch (error) {
+    try {
+      port.postMessage({
+        adapterId,
+        generation,
+        type: "cantrip-code-adapter-unregister-v2",
+      });
+    } catch {
+      // Registration failure already owns the adapter lifecycle.
+    }
+    port.close();
+    throw error;
+  }
+}
+
+function unregisterBrowserCodeAdapter(
+  adapterId: string,
+  adapter: BrowserCodeAdapterPort,
+): void {
+  try {
+    adapter.port.postMessage({
+      adapterId,
+      generation: adapter.generation,
+      type: "cantrip-code-adapter-unregister-v2",
+    });
+  } catch {
+    // Closing the local endpoint still makes this adapter unusable.
+  }
+  adapter.port.close();
+}
+
 class BrowserCodeSession {
-  readonly #channel = new BroadcastChannel(HTTP_CHANNEL);
+  #adapterGeneration: string;
+  #adapterPort: MessagePort;
+  #adapterRecovery: Promise<void> | null = null;
+  #frameNonce: string | null = null;
+  readonly #httpOperations = new Set<Promise<void>>();
   readonly #httpRequests = new Map<string, AbortController>();
   readonly #pendingSockets = new Map<
     string,
     { controller: AbortController; target: MessageEventSource }
   >();
+  readonly #sendBudget: BrowserConnectionSendBudget = {
+    reserve: (byteLength) => {
+      if (
+        byteLength >
+        MAX_BROWSER_CODE_SESSION_QUEUED_SEND_BYTES - this.#queuedSendBytes
+      ) {
+        throw new Error("Protected Code session send queue is congested.");
+      }
+      this.#queuedSendBytes += byteLength;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        this.#queuedSendBytes = Math.max(0, this.#queuedSendBytes - byteLength);
+      };
+    },
+  };
   readonly #sockets = new Map<string, BrowserCodeSocket>();
   readonly #socketReceiveBudget: BrowserSocketReceiveBudget = {
     release: (byteLength) => {
@@ -2068,17 +2500,33 @@ class BrowserCodeSession {
   };
   #closePromise: Promise<void> | null = null;
   #failure: Error | null = null;
+  #frame: WindowProxy | null = null;
   #healthy = true;
+  #lineageToken: string | null = null;
   #removeTerminalListener: (() => void) | null = null;
+  readonly #rootLease: string;
+  #queuedSendBytes = 0;
   #socketReceiveBytes = 0;
 
   private constructor(
     readonly adapterId: string,
     readonly attachment: CodeAttachment,
     private readonly tunnel: BrowserTunnelClient,
+    private readonly upstreamBasePath: string,
+    private readonly releaseTunnel: () => Promise<void>,
+    adapterPort: BrowserCodeAdapterPort,
+    private readonly onTerminal: (
+      session: BrowserCodeSession,
+      error: Error,
+    ) => void,
   ) {
-    this.#channel.addEventListener("message", this.#http);
+    this.#adapterGeneration = adapterPort.generation;
+    this.#adapterPort = adapterPort.port;
+    this.#rootLease = adapterPort.rootLease;
+    this.#adapterPort.addEventListener("message", this.#http);
+    this.#adapterPort.start();
     window.addEventListener("message", this.#socket);
+    trackBrowserCodeSession(this);
   }
 
   static async open(
@@ -2086,24 +2534,6 @@ class BrowserCodeSession {
     onTerminal: (session: BrowserCodeSession, error: Error) => void,
     signal?: AbortSignal,
   ): Promise<BrowserCodeSession> {
-    if (!("serviceWorker" in navigator)) {
-      throw new Error("This browser cannot host protected Code attachments.");
-    }
-    const registration = await boundedOperation(
-      () =>
-        navigator.serviceWorker.register(SERVICE_WORKER_PATH, { scope: "/" }),
-      SERVICE_WORKER_READY_TIMEOUT_MS,
-      "Protected Code service worker registration timed out.",
-      signal,
-    );
-    const readyRegistration = await boundedOperation(
-      () => navigator.serviceWorker.ready,
-      SERVICE_WORKER_READY_TIMEOUT_MS,
-      "Protected Code service worker readiness timed out.",
-      signal,
-    );
-    if (!readyRegistration.active && !registration.active)
-      throw new Error("Protected Code service worker is unavailable.");
     const adapterId = crypto.randomUUID();
     const url = new URL(
       `/__cantrip_code/${adapterId}/code/`,
@@ -2116,7 +2546,10 @@ class BrowserCodeSession {
       url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
     }
     const tunnel = await BrowserTunnelClient.open(wire.tunnelId, signal);
+    let adapterPort: BrowserCodeAdapterPort | null = null;
     try {
+      adapterPort = await registerBrowserCodeAdapter(adapterId, signal);
+      url.searchParams.set("cantripRootLease", adapterPort.rootLease);
       const session = new BrowserCodeSession(
         adapterId,
         {
@@ -2127,13 +2560,74 @@ class BrowserCodeSession {
           runtime: wire.runtime,
         },
         tunnel,
+        "/code",
+        () => tunnel.close(),
+        adapterPort,
+        onTerminal,
       );
       session.#removeTerminalListener = tunnel.onTerminal((error) => {
-        session.#terminal(error, onTerminal);
+        session.#terminal(error);
       });
       return session;
     } catch (error) {
+      if (adapterPort) unregisterBrowserCodeAdapter(adapterId, adapterPort);
       await tunnel.close().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  static async openShared(
+    owned: BoundExplorerCodeSessionAttachment,
+    onTerminal: (session: BrowserCodeSession, error: Error) => void,
+    signal?: AbortSignal,
+  ): Promise<{
+    lease: BrowserCodeTransportLease;
+    session: BrowserCodeSession;
+  }> {
+    if (!explorerCodeSessionBindingCurrent(owned.binding)) {
+      throw new Error(
+        "The Cantrip Code server or authentication identity changed while connecting.",
+      );
+    }
+    const adapterId = crypto.randomUUID();
+    const url = new URL(
+      `/__cantrip_code/${adapterId}/code/`,
+      window.location.origin,
+    );
+    if (owned.attachment.session.runtime.workspaceUri) {
+      const workspace = new URL(owned.attachment.session.runtime.workspaceUri);
+      if (workspace.protocol !== "file:") {
+        throw new Error("Cantrip Code supplied an invalid workspace URI.");
+      }
+      url.searchParams.set("workspace", decodeURIComponent(workspace.pathname));
+    }
+    const lease = await acquireBrowserCodeTransport(owned, signal);
+    let adapterPort: BrowserCodeAdapterPort | null = null;
+    try {
+      adapterPort = await registerBrowserCodeAdapter(adapterId, signal);
+      url.searchParams.set("cantripRootLease", adapterPort.rootLease);
+      const session = new BrowserCodeSession(
+        adapterId,
+        {
+          attachmentId: owned.attachment.session.attachmentId,
+          sessionId: owned.attachment.session.sessionId,
+          url: url.toString(),
+          expiresAt: owned.attachment.session.expiresAt,
+          runtime: owned.attachment.session.runtime,
+        },
+        lease.client,
+        codeSessionRouteBasePath(owned.attachment.session.routeGrant),
+        () => releaseBrowserCodeTransport(lease),
+        adapterPort,
+        onTerminal,
+      );
+      session.#removeTerminalListener = lease.client.onTerminal((error) => {
+        session.#terminal(error);
+      });
+      return { lease, session };
+    } catch (error) {
+      if (adapterPort) unregisterBrowserCodeAdapter(adapterId, adapterPort);
+      await releaseBrowserCodeTransport(lease).catch(() => undefined);
       throw error;
     }
   }
@@ -2146,6 +2640,131 @@ class BrowserCodeSession {
     return this.#failure;
   }
 
+  bindFrame(frame: WindowProxy, frameNonce: string): () => void {
+    this.#frame = frame;
+    this.prepareFrameNonce(frameNonce);
+    this.#requestFrameLineage();
+    return () => {
+      if (this.#frame === frame && this.#frameNonce === frameNonce) {
+        this.#frame = null;
+      }
+    };
+  }
+
+  prepareFrameNonce(frameNonce: string): void {
+    if (!/^[A-Za-z0-9_-]{16,128}$/u.test(frameNonce)) {
+      throw new Error("Protected Code frame nonce was invalid.");
+    }
+    if (this.#frameNonce !== frameNonce) {
+      this.#retireFrameSockets("Code workbench frame replaced");
+      this.#frameNonce = frameNonce;
+      this.#lineageToken = null;
+      this.#postFrameBinding();
+    }
+  }
+
+  #retireFrameSockets(reason: string): void {
+    for (const pending of this.#pendingSockets.values()) {
+      pending.controller.abort(abortError(reason));
+    }
+    this.#pendingSockets.clear();
+    const sockets = [...this.#sockets.values()];
+    this.#sockets.clear();
+    void Promise.allSettled(
+      sockets.map((socket) => socket.close(1001, reason)),
+    );
+  }
+
+  #postFrameBinding(): void {
+    if (!this.#frameNonce) return;
+    try {
+      this.#adapterPort.postMessage({
+        adapterId: this.adapterId,
+        frameNonce: this.#frameNonce,
+        generation: this.#adapterGeneration,
+        type: "cantrip-code-adapter-frame-bound-v2",
+      });
+    } catch {
+      // Adapter recovery will restore the current frame binding.
+    }
+  }
+
+  #requestFrameLineage(): void {
+    if (!this.#frame || !this.#frameNonce) return;
+    try {
+      this.#frame.postMessage(
+        {
+          adapterId: this.adapterId,
+          frameNonce: this.#frameNonce,
+          generation: this.#adapterGeneration,
+          type: "cantrip-code-worker-lineage-request-v2",
+        },
+        { targetOrigin: window.location.origin },
+      );
+    } catch {
+      // The injected shim also retries its initial lineage claim.
+    }
+  }
+
+  recoverAdapter(): Promise<void> {
+    if (!this.#healthy) return Promise.resolve();
+    if (this.#adapterRecovery) return this.#adapterRecovery;
+    const previous = {
+      generation: this.#adapterGeneration,
+      port: this.#adapterPort,
+      rootLease: this.#rootLease,
+    };
+    const recovery = registerBrowserCodeAdapter(this.adapterId, undefined, {
+      frameNonce: this.#frameNonce,
+      generation: this.#adapterGeneration,
+      lineageToken: this.#lineageToken,
+      rootLease: this.#rootLease,
+    })
+      .then((replacement) => {
+        if (!this.#healthy || this.#adapterPort !== previous.port) {
+          unregisterBrowserCodeAdapter(this.adapterId, replacement);
+          return;
+        }
+        previous.port.removeEventListener("message", this.#http);
+        for (const controller of this.#httpRequests.values()) {
+          controller.abort(
+            abortError("Protected Code service worker restarted."),
+          );
+        }
+        this.#httpRequests.clear();
+        this.#adapterGeneration = replacement.generation;
+        this.#adapterPort = replacement.port;
+        this.#adapterPort.addEventListener("message", this.#http);
+        this.#adapterPort.start();
+        this.#postFrameBinding();
+        this.#requestFrameLineage();
+        if (this.#frameNonce && this.#lineageToken) {
+          this.#adapterPort.postMessage({
+            adapterId: this.adapterId,
+            frameNonce: this.#frameNonce,
+            generation: this.#adapterGeneration,
+            lineageToken: this.#lineageToken,
+            type: "cantrip-code-adapter-lineage-v2",
+          });
+        }
+        unregisterBrowserCodeAdapter(this.adapterId, previous);
+      })
+      .catch((error) => {
+        // A recovery request is advisory and can race an already-registered
+        // adapter or a service-worker controller transition. Keep the exact
+        // logical session and physical transport alive; a later missing-adapter
+        // fetch will request another generation-fenced registration.
+        void error;
+      })
+      .finally(() => {
+        if (this.#adapterRecovery === recovery) {
+          this.#adapterRecovery = null;
+        }
+      });
+    this.#adapterRecovery = recovery;
+    return recovery;
+  }
+
   close(): Promise<void> {
     if (this.#closePromise) return this.#closePromise;
     this.#healthy = false;
@@ -2156,9 +2775,10 @@ class BrowserCodeSession {
   }
 
   async #close(): Promise<void> {
-    this.#channel.removeEventListener("message", this.#http);
-    this.#channel.close();
+    untrackBrowserCodeSession(this);
+    this.#adapterPort.removeEventListener("message", this.#http);
     window.removeEventListener("message", this.#socket);
+    this.#frame = null;
     for (const controller of this.#httpRequests.values()) {
       controller.abort(abortError("Protected Code attachment closed."));
     }
@@ -2174,17 +2794,20 @@ class BrowserCodeSession {
         socket.close(1001, "Code attachment closed").catch(() => undefined),
       ),
     );
-    await this.tunnel.close();
+    await Promise.allSettled([...this.#httpOperations]);
+    unregisterBrowserCodeAdapter(this.adapterId, {
+      generation: this.#adapterGeneration,
+      port: this.#adapterPort,
+      rootLease: this.#rootLease,
+    });
+    await this.releaseTunnel();
   }
 
-  #terminal(
-    error: Error,
-    onTerminal: (session: BrowserCodeSession, error: Error) => void,
-  ): void {
+  #terminal(error: Error): void {
     if (!this.#healthy) return;
     this.#healthy = false;
     this.#failure = error;
-    onTerminal(this, error);
+    this.onTerminal(this, error);
     void this.close();
   }
 
@@ -2192,6 +2815,10 @@ class BrowserCodeSession {
     event: MessageEvent<HttpProxyRequest | HttpProxyCancel>,
   ) => {
     const request = event.data;
+    const responsePort =
+      event.currentTarget && "postMessage" in event.currentTarget
+        ? (event.currentTarget as MessagePort)
+        : this.#adapterPort;
     if (
       request?.type === "cantrip-code-http-cancel-v1" &&
       request.adapterId === this.adapterId
@@ -2209,8 +2836,14 @@ class BrowserCodeSession {
       this.#httpRequests.has(request.requestId)
     )
       return;
-    if (this.#httpRequests.size >= MAX_BROWSER_HTTP_REQUESTS) {
-      this.#channel.postMessage({
+    if (
+      this.#httpRequests.size >= MAX_BROWSER_HTTP_REQUESTS ||
+      this.#httpRequests.size +
+        this.#pendingSockets.size +
+        this.#sockets.size >=
+        MAX_BROWSER_CODE_SESSION_CONNECTIONS
+    ) {
+      responsePort.postMessage({
         adapterId: this.adapterId,
         type: "cantrip-code-http-response-v1",
         requestId: request.requestId,
@@ -2220,11 +2853,13 @@ class BrowserCodeSession {
     }
     const controller = new AbortController();
     this.#httpRequests.set(request.requestId, controller);
-    void proxyBrowserCodeHttp(this.tunnel, request, {
+    const operation = proxyBrowserCodeHttp(this.tunnel, request, {
+      sendBudget: this.#sendBudget,
       signal: controller.signal,
+      upstreamBasePath: this.upstreamBasePath,
     })
       .then((response) =>
-        this.#channel.postMessage({
+        responsePort.postMessage({
           adapterId: this.adapterId,
           type: "cantrip-code-http-response-v1",
           requestId: request.requestId,
@@ -2232,7 +2867,7 @@ class BrowserCodeSession {
         }),
       )
       .catch((error) =>
-        this.#channel.postMessage({
+        responsePort.postMessage({
           adapterId: this.adapterId,
           type: "cantrip-code-http-response-v1",
           requestId: request.requestId,
@@ -2246,21 +2881,74 @@ class BrowserCodeSession {
         if (this.#httpRequests.get(request.requestId) === controller) {
           this.#httpRequests.delete(request.requestId);
         }
+        this.#httpOperations.delete(operation);
       });
+    this.#httpOperations.add(operation);
+    void operation;
   };
 
-  readonly #socket = (event: MessageEvent<SocketRequest>) => {
+  readonly #socket = (
+    event: MessageEvent<SocketRequest | BrowserCodeLineageClaim>,
+  ) => {
     if (event.origin !== window.location.origin) return;
+    if (
+      !this.#frame ||
+      !browserCodeFrameDescendsFrom(event.source, this.#frame)
+    )
+      return;
     const request = event.data;
     if (
       !request ||
       typeof request.type !== "string" ||
-      request.adapterId !== this.adapterId ||
-      !request.type.startsWith("cantrip-code-websocket-")
+      request.adapterId !== this.adapterId
     )
       return;
+    if (request.type === "cantrip-code-worker-lineage-v2") {
+      if (
+        request.generation !== this.#adapterGeneration ||
+        request.frameNonce !== this.#frameNonce ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+          request.lineageToken,
+        )
+      ) {
+        return;
+      }
+      this.#lineageToken = request.lineageToken;
+      try {
+        this.#adapterPort.postMessage({
+          adapterId: this.adapterId,
+          frameNonce: request.frameNonce,
+          generation: this.#adapterGeneration,
+          lineageToken: request.lineageToken,
+          type: "cantrip-code-adapter-lineage-v2",
+        });
+      } catch {
+        // The exact lineage is retained for adapter recovery.
+      }
+      try {
+        (event.source as WindowProxy).postMessage(
+          {
+            adapterId: this.adapterId,
+            frameNonce: request.frameNonce,
+            generation: this.#adapterGeneration,
+            type: "cantrip-code-worker-lineage-accepted-v2",
+          },
+          { targetOrigin: window.location.origin },
+        );
+      } catch {
+        // The shim's bounded retry can recover a raced acknowledgement.
+      }
+      return;
+    }
+    if (!request.type.startsWith("cantrip-code-websocket-")) return;
     const target = event.source;
     if (!target || !("postMessage" in target)) return;
+    if (
+      request.generation !== this.#adapterGeneration ||
+      request.frameNonce !== this.#frameNonce
+    ) {
+      return;
+    }
     if (request.type === "cantrip-code-websocket-open-v1") {
       if (
         typeof request.socketId !== "string" ||
@@ -2271,11 +2959,17 @@ class BrowserCodeSession {
         this.#pendingSockets.has(request.socketId) ||
         this.#sockets.has(request.socketId) ||
         this.#pendingSockets.size + this.#sockets.size >=
-          MAX_BROWSER_CODE_SOCKETS
+          MAX_BROWSER_CODE_SOCKETS ||
+        this.#httpRequests.size +
+          this.#pendingSockets.size +
+          this.#sockets.size >=
+          MAX_BROWSER_CODE_SESSION_CONNECTIONS
       ) {
         this.#postSocketFailure(
           target as WindowProxy,
           request.socketId,
+          request.generation,
+          request.frameNonce,
           "Protected Code WebSocket request was invalid or duplicated.",
         );
         return;
@@ -2297,6 +2991,8 @@ class BrowserCodeSession {
             this.#sockets.delete(request.socketId);
           }
         },
+        this.upstreamBasePath,
+        this.#sendBudget,
       )
         .then((socket) => {
           opened = socket;
@@ -2305,6 +3001,10 @@ class BrowserCodeSession {
           if (
             !stillPending ||
             pending.controller.signal.aborted ||
+            request.generation !== this.#adapterGeneration ||
+            request.frameNonce !== this.#frameNonce ||
+            !this.#frame ||
+            !browserCodeFrameDescendsFrom(target, this.#frame) ||
             socket.terminal
           ) {
             if (stillPending) this.#pendingSockets.delete(request.socketId);
@@ -2320,6 +3020,8 @@ class BrowserCodeSession {
           this.#postSocketFailure(
             target as WindowProxy,
             request.socketId,
+            request.generation,
+            request.frameNonce,
             error instanceof Error
               ? error.message
               : "Protected Code WebSocket failed.",
@@ -2345,6 +3047,8 @@ class BrowserCodeSession {
         (target as WindowProxy).postMessage(
           {
             adapterId: this.adapterId,
+            frameNonce: request.frameNonce,
+            generation: request.generation,
             socketId: request.socketId,
             type: SOCKET_EVENT,
             event: "close",
@@ -2370,6 +3074,8 @@ class BrowserCodeSession {
         this.#postSocketFailure(
           target as WindowProxy,
           request.socketId,
+          request.generation,
+          request.frameNonce,
           "Protected Code WebSocket send payload was invalid.",
         );
         void socket.close(1002, "Invalid socket payload");
@@ -2391,6 +3097,8 @@ class BrowserCodeSession {
           this.#postSocketFailure(
             target as WindowProxy,
             request.socketId,
+            request.generation,
+            request.frameNonce,
             error instanceof Error
               ? error.message
               : "Protected Code WebSocket send failed.",
@@ -2408,10 +3116,14 @@ class BrowserCodeSession {
   #postSocketFailure(
     destination: WindowProxy,
     socketId: string,
+    generation: string,
+    frameNonce: string,
     message: string,
   ): void {
     const base = {
       adapterId: this.adapterId,
+      frameNonce,
+      generation,
       socketId,
       type: SOCKET_EVENT,
     };
@@ -2432,23 +3144,401 @@ class BrowserCodeSession {
   }
 }
 
-const sessions = new Map<string, BrowserCodeSession>();
+function browserCodeFrameDescendsFrom(
+  source: MessageEventSource | null,
+  root: WindowProxy,
+): boolean {
+  let current = source;
+  for (let depth = 0; current && depth < 32; depth += 1) {
+    if (current === root) return true;
+    try {
+      const parent = (current as WindowProxy).parent;
+      if (!parent || parent === current) return false;
+      current = parent;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 interface PendingBrowserCodeStart {
   controller: AbortController;
   removeCallerAbort(): void;
   token: symbol;
 }
 
-const pendingStarts = new Map<string, PendingBrowserCodeStart>();
+interface BrowserCodeTransportPoolEntry {
+  closePromise: Promise<void> | null;
+  generation: string;
+  key: string;
+  leases: Set<string>;
+  opening: Promise<BrowserTunnelClient>;
+  openingController: AbortController;
+  terminal: boolean;
+  transportId: string;
+}
+
+interface BrowserCodeTransportLease {
+  client: BrowserTunnelClient;
+  entry: BrowserCodeTransportPoolEntry;
+  generation: string;
+  leaseId: string;
+  released: boolean;
+  transportId: string;
+}
+
+interface SharedBrowserCodeSessionLease {
+  session: BrowserCodeSession;
+  transportLease: BrowserCodeTransportLease;
+}
+
+interface BrowserCodeTunnelRuntimeState {
+  identitySubscriptionsInstalled: boolean;
+  legacyPendingStarts: Map<string, PendingBrowserCodeStart>;
+  legacySessions: Map<string, BrowserCodeSession>;
+  sharedSessions: WeakMap<
+    BoundExplorerCodeSessionAttachment,
+    Map<string, SharedBrowserCodeSessionLease>
+  >;
+  sessionsByAttachmentId: Map<string, Set<BrowserCodeSession>>;
+  sessionsByAdapterId: Map<string, BrowserCodeSession>;
+  serviceWorkerController: ServiceWorker | null;
+  serviceWorkerRecoveryListenerInstalled: boolean;
+  serviceWorkerReadiness: Promise<ServiceWorker> | null;
+  transportPool: Map<string, BrowserCodeTransportPoolEntry>;
+  unavailableListeners: Set<
+    (event: BrowserCodeAttachmentUnavailableEvent) => void
+  >;
+}
+
+type BrowserCodeTunnelHotState = {
+  browserCodeTunnelRuntime?: BrowserCodeTunnelRuntimeState;
+};
+
+export function browserCodeTunnelRuntime(
+  hotState?: BrowserCodeTunnelHotState,
+): BrowserCodeTunnelRuntimeState {
+  const create = (): BrowserCodeTunnelRuntimeState => ({
+    identitySubscriptionsInstalled: false,
+    legacyPendingStarts: new Map(),
+    legacySessions: new Map(),
+    sharedSessions: new WeakMap(),
+    sessionsByAttachmentId: new Map(),
+    sessionsByAdapterId: new Map(),
+    serviceWorkerController: null,
+    serviceWorkerRecoveryListenerInstalled: false,
+    serviceWorkerReadiness: null,
+    transportPool: new Map(),
+    unavailableListeners: new Set(),
+  });
+  if (!hotState) return create();
+  hotState.browserCodeTunnelRuntime ??= create();
+  hotState.browserCodeTunnelRuntime.sessionsByAttachmentId ??= new Map();
+  hotState.browserCodeTunnelRuntime.sessionsByAdapterId ??= new Map();
+  hotState.browserCodeTunnelRuntime.serviceWorkerController ??= null;
+  hotState.browserCodeTunnelRuntime.serviceWorkerRecoveryListenerInstalled ??= false;
+  hotState.browserCodeTunnelRuntime.serviceWorkerReadiness ??= null;
+  return hotState.browserCodeTunnelRuntime;
+}
+
+const browserRuntime = browserCodeTunnelRuntime(
+  import.meta.hot?.data as BrowserCodeTunnelHotState | undefined,
+);
+const sessions = browserRuntime.legacySessions;
+const pendingStarts = browserRuntime.legacyPendingStarts;
+const sharedSessions = browserRuntime.sharedSessions;
+const sessionsByAttachmentId = browserRuntime.sessionsByAttachmentId;
+const sessionsByAdapterId = browserRuntime.sessionsByAdapterId;
+const browserTransportPool = browserRuntime.transportPool;
+
+function installBrowserCodeServiceWorkerRecoveryListener(): void {
+  if (
+    browserRuntime.serviceWorkerRecoveryListenerInstalled ||
+    typeof navigator === "undefined" ||
+    !("serviceWorker" in navigator) ||
+    typeof navigator.serviceWorker.addEventListener !== "function"
+  ) {
+    return;
+  }
+  browserRuntime.serviceWorkerRecoveryListenerInstalled = true;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    browserRuntime.serviceWorkerController = null;
+    browserRuntime.serviceWorkerReadiness = null;
+    if (sessionsByAdapterId.size === 0) return;
+    void browserCodeServiceWorker()
+      .then(async () => {
+        await Promise.all(
+          [...sessionsByAdapterId.values()].map((session) =>
+            session.recoverAdapter(),
+          ),
+        );
+      })
+      .catch(() => undefined);
+  });
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    const message = event.data as {
+      adapterFingerprint?: unknown;
+      type?: unknown;
+    } | null;
+    if (
+      message?.type !== "cantrip-code-adapter-registration-required-v2" ||
+      typeof message.adapterFingerprint !== "string" ||
+      !/^[A-Za-z0-9_-]{43}$/u.test(message.adapterFingerprint)
+    ) {
+      return;
+    }
+    const controller = navigator.serviceWorker.controller;
+    if (!controller || event.source !== controller) return;
+    if (browserRuntime.serviceWorkerController !== controller) {
+      browserRuntime.serviceWorkerController = controller;
+      browserRuntime.serviceWorkerReadiness = Promise.resolve(controller);
+    }
+    const requestedFingerprint = message.adapterFingerprint;
+    void (async () => {
+      for (const session of [...sessionsByAdapterId.values()]) {
+        if (
+          (await browserCodeAdapterFingerprint(session.adapterId)) !==
+            requestedFingerprint ||
+          sessionsByAdapterId.get(session.adapterId) !== session
+        ) {
+          continue;
+        }
+        await session.recoverAdapter();
+        return;
+      }
+    })();
+  });
+}
+
+function trackBrowserCodeSession(session: BrowserCodeSession): void {
+  const candidates =
+    sessionsByAttachmentId.get(session.attachment.attachmentId) ?? new Set();
+  candidates.add(session);
+  sessionsByAttachmentId.set(session.attachment.attachmentId, candidates);
+  sessionsByAdapterId.set(session.adapterId, session);
+}
+
+function untrackBrowserCodeSession(session: BrowserCodeSession): void {
+  const candidates = sessionsByAttachmentId.get(
+    session.attachment.attachmentId,
+  );
+  if (candidates) {
+    candidates.delete(session);
+    if (candidates.size === 0) {
+      sessionsByAttachmentId.delete(session.attachment.attachmentId);
+    }
+  }
+  if (sessionsByAdapterId.get(session.adapterId) === session) {
+    sessionsByAdapterId.delete(session.adapterId);
+  }
+}
+
+export function bindBrowserCodeAttachmentFrame(
+  attachmentId: string,
+  frame: WindowProxy,
+  frameNonce: string,
+): () => void {
+  const cleanups = [...(sessionsByAttachmentId.get(attachmentId) ?? [])].map(
+    (session) => session.bindFrame(frame, frameNonce),
+  );
+  return () => {
+    for (const cleanup of cleanups) cleanup();
+  };
+}
+
+function browserCodeTransportPoolKey(
+  owned: BoundExplorerCodeSessionAttachment,
+): string {
+  const { identity, serverUrl } = owned.binding;
+  const transport = owned.attachment.transport;
+  return JSON.stringify([
+    identity.accountId,
+    identity.connectionId,
+    identity.generation,
+    identity.incarnationId,
+    identity.serverId,
+    identity.serverUrl,
+    identity.userId,
+    serverUrl,
+    transport.transportId,
+    transport.workerId,
+    transport.securityScopeId,
+    transport.serverId,
+    transport.serverControlPlaneGeneration,
+    transport.protectedKeyRevision,
+    transport.workerProcessGeneration,
+  ]);
+}
+
+function closeBrowserCodeTransportEntry(
+  entry: BrowserCodeTransportPoolEntry,
+): Promise<void> {
+  if (entry.closePromise) return entry.closePromise;
+  entry.terminal = true;
+  entry.openingController.abort(
+    abortError("Protected Code transport no longer has a browser lease."),
+  );
+  entry.closePromise = entry.opening.then(
+    (client) => client.close(),
+    () => undefined,
+  );
+  return entry.closePromise;
+}
+
+async function releaseBrowserCodeTransport(
+  lease: BrowserCodeTransportLease,
+): Promise<void> {
+  if (lease.released) return;
+  lease.released = true;
+  const entry = lease.entry;
+  if (
+    entry.generation !== lease.generation ||
+    entry.transportId !== lease.transportId ||
+    !entry.leases.delete(lease.leaseId)
+  ) {
+    return;
+  }
+  if (entry.leases.size > 0) return;
+  await closeBrowserCodeTransportEntry(entry);
+  if (browserTransportPool.get(entry.key) === entry) {
+    browserTransportPool.delete(entry.key);
+  }
+}
+
+async function acquireBrowserCodeTransport(
+  owned: BoundExplorerCodeSessionAttachment,
+  signal?: AbortSignal,
+): Promise<BrowserCodeTransportLease> {
+  signal?.throwIfAborted();
+  if (!explorerCodeSessionBindingCurrent(owned.binding)) {
+    throw new Error(
+      "The Cantrip Code server or authentication identity changed while connecting.",
+    );
+  }
+  const key = browserCodeTransportPoolKey(owned);
+  let entry = browserTransportPool.get(key);
+  while (entry?.terminal) {
+    await awaitWithSignal(
+      closeBrowserCodeTransportEntry(entry),
+      signal ?? new AbortController().signal,
+    );
+    if (browserTransportPool.get(key) === entry) {
+      browserTransportPool.delete(key);
+    }
+    signal?.throwIfAborted();
+    entry = browserTransportPool.get(key);
+  }
+  if (!entry || entry.terminal) {
+    const openingController = new AbortController();
+    const generation = crypto.randomUUID();
+    entry = {
+      closePromise: null,
+      generation,
+      key,
+      leases: new Set(),
+      opening: Promise.resolve(null as never),
+      openingController,
+      terminal: false,
+      transportId: owned.attachment.transport.transportId,
+    };
+    const exact = entry;
+    entry.opening = BrowserTunnelClient.open(
+      entry.transportId,
+      openingController.signal,
+      {
+        binding: owned.binding,
+        transport: owned.attachment.transport,
+      },
+    )
+      .then((client) => {
+        client.onTerminal(() => {
+          exact.terminal = true;
+        });
+        if (exact.terminal || exact.leases.size === 0) {
+          void closeBrowserCodeTransportEntry(exact);
+        }
+        return client;
+      })
+      .catch((error) => {
+        exact.terminal = true;
+        if (browserTransportPool.get(key) === exact) {
+          browserTransportPool.delete(key);
+        }
+        throw error;
+      });
+    void entry.opening.catch(() => undefined);
+    browserTransportPool.set(key, entry);
+  }
+  const lease: BrowserCodeTransportLease = {
+    client: null as never,
+    entry,
+    generation: entry.generation,
+    leaseId: crypto.randomUUID(),
+    released: false,
+    transportId: entry.transportId,
+  };
+  entry.leases.add(lease.leaseId);
+  try {
+    lease.client = await awaitWithSignal(
+      entry.opening,
+      signal ?? new AbortController().signal,
+    );
+    if (
+      entry.terminal ||
+      !lease.client.healthy ||
+      !explorerCodeSessionBindingCurrent(owned.binding)
+    ) {
+      throw new Error("The shared browser Code transport changed identity.");
+    }
+    return lease;
+  } catch (error) {
+    await releaseBrowserCodeTransport(lease);
+    throw error;
+  }
+}
+
+function retireBrowserCodeTransportPool(reason: string): void {
+  const error = new Error(reason);
+  for (const [key, entry] of browserTransportPool) {
+    if (browserTransportPool.get(key) === entry) {
+      browserTransportPool.delete(key);
+    }
+    entry.terminal = true;
+    entry.openingController.abort(error);
+    void entry.opening.then(
+      (client) => {
+        client.retire(error);
+        if (entry.leases.size === 0) {
+          void closeBrowserCodeTransportEntry(entry);
+        }
+      },
+      () => undefined,
+    );
+  }
+}
+
+if (!browserRuntime.identitySubscriptionsInstalled) {
+  browserRuntime.identitySubscriptionsInstalled = true;
+  onClientSessionIdentityChanged(() => {
+    retireBrowserCodeTransportPool(
+      "Protected Code authentication identity changed.",
+    );
+  });
+  onServerConnectionIdentityChanged(() => {
+    retireBrowserCodeTransportPool("Protected Code server identity changed.");
+  });
+}
 
 export interface BrowserCodeAttachmentUnavailableEvent {
+  attachmentId?: string;
+  leaseId?: string;
   reason: string;
+  transportGeneration?: string;
   tunnelId: string;
 }
 
-const unavailableListeners = new Set<
-  (event: BrowserCodeAttachmentUnavailableEvent) => void
->();
+const unavailableListeners = browserRuntime.unavailableListeners;
 
 export function subscribeBrowserCodeAttachmentUnavailable(
   listener: (event: BrowserCodeAttachmentUnavailableEvent) => void,
@@ -2460,8 +3550,12 @@ export function subscribeBrowserCodeAttachmentUnavailable(
 function notifyBrowserCodeAttachmentUnavailable(
   tunnelId: string,
   error: Error,
+  identity: Omit<
+    BrowserCodeAttachmentUnavailableEvent,
+    "reason" | "tunnelId"
+  > = {},
 ): void {
-  const event = { tunnelId, reason: error.message };
+  const event = { tunnelId, reason: error.message, ...identity };
   for (const listener of unavailableListeners) {
     try {
       listener(event);
@@ -2469,6 +3563,98 @@ function notifyBrowserCodeAttachmentUnavailable(
       // Recovery listeners are isolated so every mounted surface is notified.
     }
   }
+}
+
+export interface SharedBrowserCodeAttachment {
+  attachment: CodeAttachment;
+  leaseId: string;
+  transportGeneration: string;
+}
+
+export async function startSharedBrowserCodeAttachment(
+  owned: BoundExplorerCodeSessionAttachment,
+  options: { signal?: AbortSignal } = {},
+): Promise<SharedBrowserCodeAttachment> {
+  options.signal?.throwIfAborted();
+  const opened = await BrowserCodeSession.openShared(
+    owned,
+    (failed, error) => {
+      const leases = sharedSessions.get(owned);
+      if (!leases) return;
+      for (const [leaseId, candidate] of leases) {
+        if (candidate.session !== failed) continue;
+        leases.delete(leaseId);
+        if (leases.size === 0) sharedSessions.delete(owned);
+        notifyBrowserCodeAttachmentUnavailable(
+          owned.attachment.transport.transportId,
+          error,
+          {
+            attachmentId: owned.attachment.session.attachmentId,
+            leaseId,
+            transportGeneration: candidate.transportLease.generation,
+          },
+        );
+        return;
+      }
+    },
+    options.signal,
+  );
+  if (!opened.session.healthy || options.signal?.aborted) {
+    await opened.session.close();
+    options.signal?.throwIfAborted();
+    throw (
+      opened.session.failure ??
+      new Error("The protected Code relay disconnected during startup.")
+    );
+  }
+  const leases =
+    sharedSessions.get(owned) ??
+    new Map<string, SharedBrowserCodeSessionLease>();
+  leases.set(opened.lease.leaseId, {
+    session: opened.session,
+    transportLease: opened.lease,
+  });
+  sharedSessions.set(owned, leases);
+  return {
+    attachment: opened.session.attachment,
+    leaseId: opened.lease.leaseId,
+    transportGeneration: opened.lease.generation,
+  };
+}
+
+export async function stopSharedBrowserCodeAttachment(
+  owned: BoundExplorerCodeSessionAttachment,
+  leaseId?: string,
+): Promise<void> {
+  const leases = sharedSessions.get(owned);
+  if (!leases) return;
+  const retiring = leaseId
+    ? [...leases.entries()].filter(([candidateId]) => candidateId === leaseId)
+    : [...leases.entries()];
+  for (const [candidateId] of retiring) leases.delete(candidateId);
+  if (leases.size === 0) sharedSessions.delete(owned);
+  await Promise.all(retiring.map(([, candidate]) => candidate.session.close()));
+}
+
+export async function retainSharedBrowserCodeAttachment(
+  owned: BoundExplorerCodeSessionAttachment,
+  leaseId: string,
+): Promise<void> {
+  const leases = sharedSessions.get(owned);
+  if (!leases?.has(leaseId)) return;
+  const retiring = [...leases.entries()].filter(
+    ([candidateId]) => candidateId !== leaseId,
+  );
+  for (const [candidateId] of retiring) leases.delete(candidateId);
+  await Promise.all(retiring.map(([, candidate]) => candidate.session.close()));
+}
+
+export function sharedBrowserCodeAttachmentHealthy(
+  owned: BoundExplorerCodeSessionAttachment,
+  leaseId: string,
+): boolean {
+  const candidate = sharedSessions.get(owned)?.get(leaseId);
+  return Boolean(candidate?.session.healthy);
 }
 
 export async function startBrowserCodeAttachment(

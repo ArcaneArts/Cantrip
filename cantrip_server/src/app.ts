@@ -29316,6 +29316,7 @@ export async function buildApp({
           !probe.workerProcessGeneration
         ) {
           return reply.code(409).send({
+            code: "shared-code-transport-unsupported",
             error:
               "This worker does not support shared Cantrip Code transports.",
           });

@@ -18,6 +18,7 @@ import {
   isDarkCodeAppearance,
 } from "@/components/code/code-view";
 import { Button } from "@/components/ui/button";
+import { bindBrowserCodeAttachmentFrame } from "@/lib/browser-code-tunnel";
 import {
   CODE_WORKBENCH_READY_TIMEOUT_MS,
   CodeWorkbenchFrameLoadTracker,
@@ -64,6 +65,10 @@ const SHARED_SESSION_RENEWAL_MAX_DELAY_MS = 5 * 60_000;
 const SHARED_SESSION_RENEWAL_MIN_DELAY_MS = 30_000;
 const AUTOMATIC_REPLACEMENT_EXHAUSTED_MESSAGE =
   "Cantrip Code could not restore this editor automatically. Retry to reconnect.";
+const SHARED_TRANSPORT_FALLBACK_CODES = new Set([
+  "shared-code-transport-requires-single-server",
+  "shared-code-transport-unsupported",
+]);
 export const EXPLORER_CODE_RETRY_BASE_DELAY_MS = 500;
 export const EXPLORER_CODE_RETRY_MAX_DELAY_MS = 15_000;
 export const EXPLORER_CODE_AUTOMATIC_RETRY_LIMIT = 6;
@@ -99,6 +104,15 @@ export function isRetryableExplorerCodeConnectionError(
     candidate = candidate.cause;
   }
   return false;
+}
+
+export function allowsLegacyExplorerCodeFallback(error: unknown): boolean {
+  return (
+    error instanceof CantripApiError &&
+    error.status === 409 &&
+    error.code !== null &&
+    SHARED_TRANSPORT_FALLBACK_CODES.has(error.code)
+  );
 }
 
 function isCodeControlOperationTimeout(error: unknown): boolean {
@@ -252,7 +266,6 @@ export function ExplorerCodeEditor({
   const automaticReplacementCountRef = useRef(0);
   const automaticReplacementPendingRef = useRef(false);
   const appearanceRef = useRef(appearance);
-  appearanceRef.current = appearance;
   const connectionInFlightRef = useRef(false);
   const connectionRetryCountRef = useRef(0);
   const connectionRetryableRef = useRef(false);
@@ -288,9 +301,7 @@ export function ExplorerCodeEditor({
   const previousActiveRef = useRef(active);
   const previousPathRef = useRef(path);
   const onReadyRef = useRef(onReady);
-  onReadyRef.current = onReady;
   const workerOnlineRef = useRef(workerOnline);
-  workerOnlineRef.current = workerOnline;
   const attachmentLifecycleRef =
     useRef<SerializedAttachmentLifecycle<ExplorerCodeAttachmentOwnership> | null>(
       null,
@@ -300,7 +311,6 @@ export function ExplorerCodeEditor({
       retireExplorerCodeAttachment,
     );
   const pathRef = useRef(path);
-  pathRef.current = path;
   const bindingKey = explorerCodeEditorBindingKey({
     explorerId,
     reloadVersion,
@@ -308,7 +318,6 @@ export function ExplorerCodeEditor({
     worktreeId,
   });
   const bindingKeyRef = useRef(bindingKey);
-  bindingKeyRef.current = bindingKey;
   const requestedReadyKey = preferredAttachment
     ? path === null
       ? null
@@ -330,9 +339,34 @@ export function ExplorerCodeEditor({
     ],
   );
   const preferredAttachmentRef = useRef(preferredAttachment);
-  preferredAttachmentRef.current = preferredAttachment;
   const frameMountRef = useRef(frameMount);
-  frameMountRef.current = frameMount;
+  useLayoutEffect(() => {
+    appearanceRef.current = appearance;
+    bindingKeyRef.current = bindingKey;
+    frameMountRef.current = frameMount;
+    onReadyRef.current = onReady;
+    pathRef.current = path;
+    preferredAttachmentRef.current = preferredAttachment;
+    workerOnlineRef.current = workerOnline;
+  }, [
+    appearance,
+    bindingKey,
+    frameMount,
+    onReady,
+    path,
+    preferredAttachment,
+    workerOnline,
+  ]);
+  useLayoutEffect(() => {
+    if (!preferredAttachment || !frameMount) return;
+    const frame = frameRef.current?.contentWindow;
+    if (!frame) return;
+    return bindBrowserCodeAttachmentFrame(
+      preferredAttachment.attachment.attachmentId,
+      frame,
+      frameMount.nonce,
+    );
+  }, [frameMount, preferredAttachment]);
   const frameReady =
     frameMount !== null && frameReadyNonce === frameMount.nonce;
   const navigationIdentity =
@@ -577,22 +611,28 @@ export function ExplorerCodeEditor({
       const connectionAppearance = appearanceRef.current;
       try {
         const preferred = await attachmentLifecycleRef.current!.replace(
-          () =>
-            isTauri()
-              ? createProtectedExplorerCodeSessionAttachment(
-                  explorerId,
-                  pathRef.current,
-                  workerId,
-                  worktreeId,
-                  connectionAppearance,
-                )
-              : createProtectedExplorerCodeAttachment(
-                  explorerId,
-                  pathRef.current,
-                  workerId,
-                  worktreeId,
-                  connectionAppearance,
-                ),
+          async () => {
+            try {
+              return await createProtectedExplorerCodeSessionAttachment(
+                explorerId,
+                pathRef.current,
+                workerId,
+                worktreeId,
+                connectionAppearance,
+              );
+            } catch (sharedError) {
+              if (isTauri() || !allowsLegacyExplorerCodeFallback(sharedError)) {
+                throw sharedError;
+              }
+              return createProtectedExplorerCodeAttachment(
+                explorerId,
+                pathRef.current,
+                workerId,
+                worktreeId,
+                connectionAppearance,
+              );
+            }
+          },
           (owned, signal) =>
             sharedExplorerCodeAttachment(owned)
               ? preferSharedProtectedCodeAttachment(owned, { signal })

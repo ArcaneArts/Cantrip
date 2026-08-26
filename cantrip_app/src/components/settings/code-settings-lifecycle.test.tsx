@@ -29,8 +29,14 @@ const desktopCode = vi.hoisted(() => ({
 const availability = vi.hoisted(() => ({
   listeners: new Set<() => void>(),
 }));
+const browserCode = vi.hoisted(() => ({
+  bindFrame: vi.fn(() => () => undefined),
+}));
 
 vi.mock("@/lib/api", () => api);
+vi.mock("@/lib/browser-code-tunnel", () => ({
+  bindBrowserCodeAttachmentFrame: browserCode.bindFrame,
+}));
 vi.mock("@/lib/desktop-code", () => desktopCode);
 vi.mock("@/lib/app-live-react", () => ({
   useAppLiveStatus: () => "stopped",
@@ -288,8 +294,14 @@ describe("CodeSettings retained workbench lifecycle", () => {
   );
 
   it("creates once when mounted and retains the iframe while active toggles", async () => {
-    const { queryClient, renderer } = await mount(true);
+    const { frameWindow, queryClient, renderer } = await mount(true);
     const initialFrame = renderer.root.findByType("iframe");
+
+    expect(browserCode.bindFrame).toHaveBeenCalledWith(
+      attachment.attachmentId,
+      frameWindow,
+      expect.any(String),
+    );
     expect(api.createProtectedCodeSettingsAttachment).toHaveBeenCalledOnce();
 
     await act(async () => updateActive(renderer, queryClient, false));

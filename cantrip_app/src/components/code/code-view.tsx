@@ -17,6 +17,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { bindBrowserCodeAttachmentFrame } from "@/lib/browser-code-tunnel";
 import {
   CantripApiError,
   createProtectedCodeAttachment,
@@ -187,8 +188,10 @@ export function CodeView({
   const stopped = useRef(false);
   const onChangedRef = useRef(onChanged);
 
-  appearanceRef.current = appearance;
-  onChangedRef.current = onChanged;
+  useLayoutEffect(() => {
+    appearanceRef.current = appearance;
+    onChangedRef.current = onChanged;
+  }, [appearance, onChanged]);
 
   const reload = useCallback(() => {
     stopped.current = false;
@@ -340,6 +343,17 @@ export function CodeView({
     () => (attachment ? createCodeWorkbenchFrameMount(attachment.url) : null),
     [attachment?.attachmentId, attachment?.url, frameDocumentVersion],
   );
+
+  useLayoutEffect(() => {
+    if (!attachment || !frameMount) return;
+    const frame = frameRef.current?.contentWindow;
+    if (!frame) return;
+    return bindBrowserCodeAttachmentFrame(
+      attachment.attachmentId,
+      frame,
+      frameMount.nonce,
+    );
+  }, [attachment, frameMount]);
 
   useLayoutEffect(() => {
     setFrameReadyNonce(null);

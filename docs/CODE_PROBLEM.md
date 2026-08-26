@@ -11,6 +11,150 @@ explicitly waived are recorded in the Cycle 10 result rather than hidden.
 Investigation baseline: `origin/main` at `169aee45` (`fix(explorer): reuse
 shared Code editor process (#913)`).
 
+## Shared transport migration result (2026-08-25)
+
+The later tab-to-tab churn had a separate architectural cause: one protected
+tunnel was still the ownership root for one editor session in the server,
+worker endpoint, desktop forwarder, and browser relay. Reusing that tunnel ID
+for another tab superseded the first session, while preserving separate
+tunnels made each tab run its own transport health, recovery, capability, and
+relay lifecycle. React preview/pin transitions could therefore expose a real
+transport ownership race even though the worker's Code process stayed warm.
+
+The current architecture separates those lifetimes:
+
+```text
+one worker-lifetime Code process/profile
+        |
+one protected transport root per complete worker/security identity
+        |
+        +-- opaque route grant A -> Explorer/worktree session A
+        +-- opaque route grant B -> Explorer/worktree session B
+        +-- opaque route grant C -> Explorer/worktree session C
+        +-- opaque route grant D -> Explorer/worktree session D
+```
+
+The shared transport identity contains the owner, raw authenticated session,
+logical server, worker, protected-key revision, server control-plane
+generation, and worker-process generation. The wire record also carries a
+fresh security-scope ID. Client pools additionally fence the current client
+connection generation/incarnation, normalized server binding, and exact
+transport ID. A logout/login, server switch, worker replacement, encryption
+rotation, or control-plane restart therefore retires the old generation even
+when a user or worker ID happens to be reused.
+
+The server owns one transient transport root plus independently expiring and
+revocable logical session leases. Project, Explorer, worktree, runtime,
+session-incarnation, and route-grant authority live on the logical lease, not
+on the project-agnostic transport root. Closing a tab revokes that route and
+stops only its Code session. The final lease releases the root; no editor lease
+stops the worker-lifetime Code process.
+
+The worker endpoint owns an explicit
+`transport -> route grant -> session` allowlist. It accepts HTTP and WebSocket
+traffic only through `/sessions/<grant>/code/...` and resolves the grant to the
+authorized supervisor target. A session UUID, guessed URL, removed grant,
+wrong transport identity, or stale worker/server generation is not authority.
+Per-route and aggregate concurrency, queue, and byte limits keep one workbench
+from consuming the whole transport.
+
+Tauri owns physical forwarding below React and issues exact
+generation-fenced renderer leases, so preview, pin, switch, remount, HMR, and
+additional desktop webviews cannot replace the native listener. A browser
+renderer pools one `BrowserTunnelClient` and outer relay WebSocket across all
+of its logical sessions. Each session retains a separate virtual adapter URL,
+private `MessagePort`, route base, iframe binding, HTTP/socket limits, and
+terminal state. A service-worker restart re-registers only those private
+adapter channels; it does not recreate the outer relay or server session.
+Recovery requests are accepted only from the page's current controlling
+service worker and stale or failed registration attempts remain retryable. The
+worker broadcasts only a SHA-256 adapter fingerprint during recovery, so it
+does not disclose another window's raw adapter ID. An already-controlled page
+probes for protocol v2 and waits for the registered replacement worker during
+a rolling upgrade instead of spending the old ten-second timeout against the
+pre-v2 worker.
+
+Final-release cleanup is also part of physical ownership. The pool retains an
+exact keyed closing generation until its relay socket is closed and its server
+attachment cleanup finishes. A same-identity acquire waits behind that barrier
+before publishing a replacement; stale releases can no longer overlap or
+delete the replacement. Allocated relay credentials become client-owned before
+the final identity fence, ensuring every later failure zeroizes and closes
+them. Cleanup never sends current credentials to an old server binding after
+identity rotation; authoritative server revocation owns that case.
+
+The public browser workbench URL contains a random adapter ID and a separate
+browser-local root lease. The lease is established over the adapter's private
+`MessagePort`, is required for initial and replacement root navigation, and is
+stripped before the request enters the physical tunnel. It is not a server
+route credential. Route grants are added at the trusted tunnel edge and never
+appear in public iframe URLs, service-worker messages, generated base paths, or
+logs. The service worker binds registration to a same-origin top-level client
+and accepted navigation to the exact iframe client. Each authorized HTML
+response carries a private
+adapter-generation, frame-nonce, and root-lineage tuple. The injected shim
+wraps OpenVSCode's real module/classic `blob:` workers, registers the exact
+`WorkerClient` or `SharedWorkerClient` through a one-shot `MessagePort` before
+the original blob is imported, and buffers early application events until that
+authorization finishes. Known object URLs are cloned before application
+revocation, and equivalent `SharedWorker` constructors reuse one stable wrapper
+URL. Nested blob workers inherit only that exact lineage. A root replacement
+rotates a lineage epoch, clears its descendants, cancels HTTP contexts admitted
+under the prior epoch, and resolves pending recovery challenges closed; every
+admission revalidates that epoch after asynchronous client pruning. After
+service-worker state loss,
+the owner restores the exact adapter channel and the worker challenges the
+requesting `Client` for its private lineage before readmission. Adapter UUID or
+URL knowledge alone is never authority. Dead clients are pruned before the
+bounded allowlist is enforced, and an old root, guessed adapter, wrong
+generation, wrong lineage, or sibling frame fails closed. The page
+independently binds workbench WebSocket requests and events to the exact iframe
+`WindowProxy`, adapter generation, and frame nonce; frame replacement retires
+only that frame's child sockets.
+
+Browser pooling is necessarily renderer-local: separate browser processes
+cannot share a JavaScript WebSocket without a process broker. Those windows
+still share the same server transport root, worker endpoint/listener, and Code
+process, while each window owns one relay source attachment. Tauri's native
+manager is process-wide and can share one forward across desktop windows.
+
+The Explorer uses protocol v2 by default. Legacy one-session transport
+ownership is allowed only when the server returns the explicit compatibility
+codes `shared-code-transport-requires-single-server` or
+`shared-code-transport-unsupported`. Authentication, authorization, missing
+resource, generic conflict, and network errors never downgrade. Durable Code
+tabs and the global Code-settings surface retain their narrower existing
+server contracts; they are not a hidden fallback inside the Explorer v2 path.
+
+Delivery was split into independently merged transport-safe cycles:
+
+| Cycle | Pull request | Squash merge | Result                                                  |
+| ----- | ------------ | ------------ | ------------------------------------------------------- |
+| 1     | #1097        | `d0b1c522`   | Stable event-driven transport lifecycle and diagnostics |
+| 2     | #1100        | `ea0b44d4`   | Separate transport roots and logical session leases     |
+| 3     | #1104        | `372638d5`   | Authorized worker-side session multiplexer              |
+| 4     | #1114        | `f289abc7`   | Process-owned desktop transport pooling                 |
+| 5     | This change  | Pending      | Browser/relay parity, migration, and cleanup            |
+
+Deterministic coverage proves four logical sessions share one transport,
+closing one leaves its siblings alive, exact identity changes retire the pool,
+stale grants and wrong frames fail closed, service-worker state can recover
+without replacing the relay, final-release/reacquire cannot overlap, and
+per-session congestion is isolated. The final Cycle 5 automated pass includes
+303 app files with 1,524 passing tests and 3 skips, 328 protocol tests, 828
+passing worker tests with 2 skips, 49 focused shared-server tests, v1/v2 route
+compatibility coverage, and all four TypeScript typechecks. The broad server
+suite still contains unrelated baseline fixture/schema drift: representative
+`skill_audiences` storage-accounting and provider-summary failures reproduce
+unchanged on the Cycle 4 base. The server-boundary audit also fails unchanged
+there because the previously added `/api/tasks/:chatId` route has not been
+accepted into its reviewed route-set digest; Cycle 5 neither changes nor
+silently approves that unrelated task route.
+
+Final local four-tab, reconnect, and ten-minute idle evidence is recorded only
+after that run completes; this section does not infer it from responsive UI
+alone.
+
 ## Warm continuity hardening follow-up (started 2026-08-24)
 
 The root incident documented below remains remediated. A separate longevity

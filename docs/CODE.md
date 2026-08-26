@@ -1,6 +1,7 @@
 # Cantrip Code Integration Plan
 
-- Status: warm continuity implemented and locally accepted; multi-platform QA remains
+- Status: shared transport/session architecture implemented; final local soak
+  and multi-platform QA remain
 - Scope: browser-native Code OSS workbench hosted by `cantrip_worker`
 - Source location: `cantrip_code/` in the Cantrip monorepo
 - Immediate upstream: OpenVSCode Server
@@ -274,19 +275,26 @@ flowchart LR
     AGENT --> TREE
 ```
 
-When a Code tab opens:
+When an Explorer editor owner opens:
 
 1. The server resolves the project, worker, worktree, profile, and authorization.
-2. The server asks the selected worker to open or resume an editor session.
-3. The worker verifies the embedded Cantrip Code distribution and creates or
+2. The server acquires the one transient shared transport root for the complete
+   owner/authentication/server/worker/key identity, or reuses the exact current
+   root.
+3. The server asks the selected worker to open one logical editor session and
+   installs an opaque, explicitly authorized route grant on the shared worker
+   endpoint.
+4. The worker verifies the embedded Cantrip Code distribution and creates or
    reuses the generated `.code-workspace` file.
-4. The unlocked client creates a session-bound protected tunnel record and a
+5. The unlocked client supplies the transport's protected tunnel record and
    random data-plane key; the server persists only ciphertext and routing IDs.
-5. Cantrip Code binds to a random worker-loopback port only after the worker
-   opens and validates that protected record.
-6. Tauri loads a stable localhost forward. Remote web uses a same-origin
-   service-worker HTTP edge and iframe WebSocket shim.
-7. Direct and relayed routes carry identical endpoint-encrypted generic tunnel
+6. The worker exposes one loopback transport endpoint. Requests beneath
+   `/sessions/<opaque-grant>/code/` are dispatched only to the session on the
+   server-controlled allowlist for that grant.
+7. Tauri acquires one process-owned localhost forward. A browser renderer
+   acquires one pooled relay source and exposes a separate same-origin adapter
+   URL for each logical session.
+8. Direct and relayed routes carry identical endpoint-encrypted generic tunnel
    frames; a route change does not change the Code URL or downgrade protection.
 
 The attachment URL carries the selected generated workspace path as an encoded
@@ -295,24 +303,122 @@ editor authentication message is translated to the raw process token only at
 the authorized worker-local tunnel boundary.
 
 The editor port and raw editor token are never exposed directly, and the server
-never assumes it can open an inbound connection to a worker. Each Code tab owns one logical,
-project-associated protected tunnel in the unified tunnel control plane. Each
-renderer view creates an independently revocable generic attachment. HTTP and
-WebSocket bytes travel through the same bounded stream identities, endpoint
-AEAD, credit flow control, routing, disconnect cleanup, counters, and worker
-transport used by other protected tunnels. Code-specific authentication and
-header translation exists only at the trusted client and worker-local edges.
+never assumes it can open an inbound connection to a worker. One complete
+security identity owns one project-agnostic physical Code transport in the
+unified tunnel control plane. Every Explorer owner owns a separately revocable,
+project/worktree-authorized logical session lease beneath that transport. A
+tab close removes only its route grant and logical worker session. The physical
+transport is released only after the final logical lease or an authoritative
+worker/security identity change. HTTP and WebSocket bytes travel through the
+same bounded stream identities, endpoint AEAD, credit flow control, routing,
+disconnect cleanup, counters, and worker transport used by other protected
+tunnels. Code-specific authentication and header translation exists only at
+the trusted client and worker-local edges.
 
 The worker-local endpoint performs base-path, header, CSP, and initial
 WebSocket-auth translation. The dedicated server Code surface and plaintext
-compatibility adapter no longer exist. The endpoint is bound to the protected
-Code session and is revoked when that tab, session, worktree, account session,
-or worker connection ends.
+compatibility adapter no longer exist. The endpoint is bound to the shared
+transport identity and an explicit route-grant allowlist. Knowing a session ID
+or another route grant is not authorization. Removing one grant immediately
+blocks new access to that session without rotating the endpoint or disturbing
+other grants.
 
 This extends the worker-owned surface principles in
 [`adr/0002-worker-owned-remote-surfaces.md`](adr/0002-worker-owned-remote-surfaces.md),
 while using browser-native rendering instead of a screencast canvas because
 Cantrip controls the editor application and its framing behavior.
+
+### Shared transport and logical-session ownership
+
+The physical transport key is the canonical combination of:
+
+```text
+account/owner
++ authenticated connection and client-session generation/incarnation
++ logical server and normalized server URL
++ worker and worker-process generation
++ security scope and protected-key revision
++ server control-plane generation
+```
+
+Every field participates in equality. Logout/login as the same user, a new
+client-session incarnation, server switch, worker replacement, control-plane
+restart, or encryption-key rotation retires the old generation rather than
+reusing it by user ID or tunnel ID alone.
+
+The server owns a transient transport root and exact per-session leases. The
+worker owns `transport -> authorized route grant -> Code session` mappings.
+The desktop process owns the physical native forward and hands exact
+generation-fenced leases to renderers. A browser renderer pools one
+`BrowserTunnelClient` and outer relay WebSocket while retaining a separate
+adapter, route base, HTTP budget, socket budget, and exact iframe binding for
+each session. React mounts and tab preview/pin state are consumers; none is the
+source of physical transport truth. Operational values read by asynchronous
+editor work synchronize only after React commits, so a speculative or
+abandoned render cannot change a live session open or recovery decision.
+
+Browser public URLs remain
+`/__cantrip_code/<adapter-id>/code/...`. The internal route grant never appears
+in that URL, the service-worker protocol, logs, or the generated workbench base
+path. The app rewrites the virtual path to the opaque session route only at the
+trusted tunnel edge. Service-worker HTTP routing uses a private,
+generation-fenced `MessagePort` registered by a same-origin top-level client.
+Registration also creates a random browser-local root lease; the service worker
+requires that lease for the first navigation and every root replacement, then
+strips it before the request enters the physical tunnel. The lease is not a
+server credential and adapter UUID knowledge alone cannot mint it. The worker
+binds accepted navigation to the exact frame client and rejects unregistered or
+sibling-frame requests. Authorized HTML contains a private
+adapter-generation, frame-nonce, and root-lineage tuple. The injected shim
+wraps OpenVSCode's module/classic `blob:` workers and registers each exact
+worker client before importing the original blob, buffering early message and
+connect events until authorization completes. The wrapper clones known object
+URLs before user code can revoke them and reuses one stable wrapper URL for an
+equivalent `SharedWorker`, preserving native worker lifetime and identity
+semantics. Nested blob workers inherit the same bounded lineage. Root
+replacement rotates a lineage epoch and revokes the old descendant set;
+in-flight HTTP contexts from the old epoch are canceled before response
+lineage can be injected, and pending recovery challenges resolve closed rather
+than surviving an epoch change. Terminated clients are pruned before enforcing
+the hard bound, and every asynchronous admission rechecks that epoch after
+yielding. Workbench WebSocket
+commands and events carry the exact adapter generation and frame nonce in
+addition to being bound to the iframe `WindowProxy`; replacing the frame
+retires only its pending/live child sockets. Service-worker process restart
+performs bounded adapter recovery and then challenges the exact requesting
+`Client` for the private lineage tuple before readmitting it. Adapter UUID or
+virtual-URL knowledge can request recovery but never grants access. Recovery
+discovery broadcasts only a SHA-256 adapter fingerprint, and the page accepts
+it only from its current controller before matching it to a locally owned
+adapter. Pages still controlled by the pre-v2 worker wait until the registered
+protocol-v2 replacement actually controls the page rather than registering an
+adapter with a non-controlling worker. A controlling-worker change proactively
+restores all live adapters without replacing their sessions or relay.
+
+The browser pool keeps a keyed closing barrier through final relay-attachment
+deletion. A same-identity reopen waits for that exact generation to finish, so
+old and replacement physical transports never overlap. Late releases remain
+entry, generation, transport, and lease fenced and cannot affect the
+replacement.
+
+Pooling is renderer-local in a web browser. Multiple browser windows still
+share the one server transport root, worker endpoint/listener, Code process,
+and logical-session authority, but each window has one independently owned
+relay source attachment and outer WebSocket. Sharing one JavaScript WebSocket
+across browser processes would require a `SharedWorker` or equivalent browser
+broker and is not implied by a module-global map. Tauri ownership is below
+React and process-wide, so desktop windows and pop-outs share the native
+forward.
+
+The normal Explorer path requires shared transport protocol v2. Legacy
+one-tunnel ownership is entered only for the explicit machine-readable
+compatibility codes `shared-code-transport-requires-single-server` and
+`shared-code-transport-unsupported`; generic conflicts, authorization
+failures, missing resources, and network failures never downgrade. Dedicated
+durable Code-tab and global Code-settings surfaces still use their existing
+narrow legacy contracts because their server resources are not Explorer
+logical-session leases. They do not participate in Explorer pooling and must
+not be mistaken for a compatibility fallback inside the v2 Explorer path.
 
 ## 10. Isolation and security
 
@@ -499,40 +605,50 @@ status, last attachment, and last error without storing editor credentials.
 
 ## 17. Lifecycle
 
-- Opening a tab starts or reuses the compatible editor session.
+- Worker startup prewarms the one compatible Code process/profile and keeps it
+  alive for that worker process's lifetime; editor ownership never stops it.
+- Opening an Explorer owner creates one logical session/route and acquires the
+  existing physical transport generation.
 - Reloading the app reattaches to the existing session when possible.
 - A crashed editor is relaunched with the same profile and generated workspace.
-- Closing a tab detaches the client but may keep the editor warm for a bounded
-  idle period.
-- An explicit `Stop editor` action terminates it immediately.
+- Closing a tab releases only its adapter, exact transport lease, route grant,
+  and logical session. Other sessions and the Code process remain untouched.
+- Releasing the final session releases the shared transport root; it does not
+  stop the worker-lifetime Code process.
+- An explicit session stop terminates that logical session, not the shared
+  process while the worker remains online.
 - Worker shutdown terminates editor processes cleanly.
 - A worker update replaces the embedded editor and performs compatible profile
   migrations before accepting Code sessions.
 - Main and pop-out windows may attach concurrently to the same worker-owned
   editor session. Each renderer receives its own short-lived surface attachment
   and releases it when the view closes or switches tabs.
-- The shared logical Code tunnel remains visible while at least one attachment
-  exists; revoking the last attachment removes the managed-ephemeral tunnel.
+- The shared physical Code transport remains available while at least one
+  logical session lease exists; releasing the last lease removes its managed
+  ephemeral tunnel and worker endpoint without stopping the Code process.
 
-### Authoritative Code-surface lifetime
+### Authoritative transport and logical-session lifetimes
 
-One protected Code attachment is the server-side lifetime root for its editor
-surface. Its opaque generation is bound to the logical server, owner/account,
-authentication session, protected-content key revision, worker, Explorer, and
-worktree captured when the surface is created. The generic relay attachment,
-direct capability, worker session, and retained client route may renew only
-while that exact generation remains current. A client heartbeat never supplies
-an expiry or any security identity.
+One protected Code transport is the server-side physical lifetime root. Its
+opaque generation is bound to the logical server, owner/account,
+authentication session, protected-content key revision, worker, server
+control-plane generation, and worker-process generation captured when the root
+is created. Project, Explorer, worktree, Code runtime, and route-grant authority
+remain on each logical session lease beneath that root. The generic relay
+attachment, direct capability, worker endpoint, and retained client route may
+renew only while the exact transport generation remains current. A client
+heartbeat never supplies an expiry or any security identity.
 
 The desktop reports each active forward every 10 seconds. Local-direct reports
 renew the existing worker capability inside a stable jittered renewal window;
 relayed and degraded forwards call the route-independent attachment heartbeat.
 Both paths slide the root's 15-minute idle deadline but cannot exceed its
 12-hour absolute deadline or the generic attachment's own expiry. Transient
-renewal transport failures preserve the still-valid lease for retry. Explicit
-close, absolute/idle expiry, a rejected renewal, or any server, account,
-encryption, worker, Explorer, or worktree identity change retires the root and
-its children.
+renewal transport failures preserve the still-valid lease for retry. Absolute
+or idle expiry, a rejected renewal, or any server, account, encryption, or
+worker identity change retires the root and its children. Releasing one logical
+session revokes only its route and session; explicit close retires the physical
+root only when it was the final lease.
 
 Relay connection credentials remain short-lived. While direct is healthy the
 client refreshes its fallback shortly before expiry; a degraded route refreshes
@@ -638,10 +754,18 @@ implementation requires a server-authorized replacement capability and an
 additive native control path that can install it into the existing forward;
 reusing the retired credential would violate the lifecycle boundary.
 
-Browser Code uses the same protected surface identity through its same-origin
-service worker and WebSocket shim. Open/readiness, heartbeat/Pong, reconnect,
-send queue, and buffered-byte accounting are bounded. A valid reconnect keeps
-the existing surface; lease or security-identity expiry ends it cleanly.
+Browser Code uses the same protected transport identity through its
+same-origin service worker and WebSocket shim. One renderer-local
+`BrowserTunnelClient` and relay WebSocket serve all matching Explorer logical
+sessions. Each session has its own random public adapter URL, private
+generation-fenced `MessagePort`, browser-local root-navigation lease, opaque
+internal route grant, exact iframe binding, and per-session HTTP/WebSocket
+budgets. Open/readiness,
+heartbeat/Pong, reconnect, send queues, and buffered-byte accounting are
+bounded. Service-worker restart re-registers the private adapters while keeping
+the relay and logical server sessions. A valid reconnect keeps the existing
+transport; lease or security-identity expiry ends only the exact affected
+generation.
 
 Editor-only file navigation is transient and does not rewrite workspace or
 runtime persistence that is excluded from restoration. Durable workbench

@@ -3,11 +3,26 @@ import type {
   CodeAttachment,
   CodeProtectedAttachmentWire,
 } from "@cantrip/protocol";
-import { createElement, type ComponentProps, type ComponentType } from "react";
+import {
+  createElement,
+  startTransition,
+  Suspense,
+  type ComponentProps,
+  type ComponentType,
+} from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
+  CantripApiError: class extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+      readonly code: string | null = null,
+    ) {
+      super(message);
+    }
+  },
   createProtectedExplorerCodeAttachment: vi.fn(),
   createProtectedExplorerCodeSessionAttachment: vi.fn(),
   releaseCodeAttachment: vi.fn(),
@@ -31,6 +46,7 @@ const desktopCode = vi.hoisted(() => ({
 const tauri = vi.hoisted(() => ({ enabled: false }));
 
 const browserCode = vi.hoisted(() => ({
+  bindFrame: vi.fn(() => () => undefined),
   unavailableListeners: new Set<
     (event: { reason: string; tunnelId: string }) => void
   >(),
@@ -64,20 +80,13 @@ vi.mock("@/components/ui/button", async () => {
 
 vi.mock("@/lib/api", () => ({
   ...api,
-  CantripApiError: class extends Error {
-    constructor(
-      message: string,
-      readonly status: number,
-    ) {
-      super(message);
-    }
-  },
 }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
   isTauri: () => tauri.enabled,
 }));
 vi.mock("@/lib/browser-code-tunnel", () => ({
+  bindBrowserCodeAttachmentFrame: browserCode.bindFrame,
   subscribeBrowserCodeAttachmentUnavailable: (
     listener: (event: { reason: string; tunnelId: string }) => void,
   ) => {
@@ -241,20 +250,42 @@ function editor(
   options: {
     active?: boolean;
     appearance?: CodeAppearance;
+    explorerId?: string;
     onReady?: () => void;
+    workerId?: string;
     workerOnline?: boolean;
+    worktreeId?: string;
   } = {},
 ) {
   return createElement(TestExplorerCodeEditor, {
     active: options.active ?? true,
     appearance: options.appearance ?? "dark",
-    explorerId: "explorer-1",
+    explorerId: options.explorerId ?? "explorer-1",
     onReady: options.onReady,
     path,
-    workerId: "worker-1",
+    workerId: options.workerId ?? "worker-1",
     workerOnline: options.workerOnline ?? true,
-    worktreeId: "worktree-1",
+    worktreeId: options.worktreeId ?? "worktree-1",
   });
+}
+
+function speculativeEditor(
+  path: string | null,
+  options: Parameters<typeof editor>[1],
+  suspension: Promise<never> | null,
+  onSpeculativeRender: () => void,
+) {
+  const RenderFence = () => {
+    onSpeculativeRender();
+    if (suspension) throw suspension;
+    return null;
+  };
+  return createElement(
+    Suspense,
+    { fallback: null },
+    editor(path, options),
+    createElement(RenderFence),
+  );
 }
 
 async function settle() {
@@ -309,8 +340,16 @@ beforeEach(() => {
     value: testWindow,
   });
   api.createProtectedExplorerCodeAttachment.mockResolvedValue(wire);
-  api.createProtectedExplorerCodeSessionAttachment.mockResolvedValue(
-    sharedOwned,
+  api.createProtectedExplorerCodeSessionAttachment.mockImplementation(() =>
+    tauri.enabled
+      ? Promise.resolve(sharedOwned)
+      : Promise.reject(
+          new api.CantripApiError(
+            "Shared transport is unavailable in coordinator mode.",
+            409,
+            "shared-code-transport-requires-single-server",
+          ),
+        ),
   );
   api.releaseCodeAttachment.mockResolvedValue(undefined);
   api.releaseProtectedExplorerCodeSessionAttachment.mockResolvedValue(
@@ -361,6 +400,32 @@ afterEach(() => {
 });
 
 describe("ExplorerCodeEditor warm lifecycle", () => {
+  it("uses the shared logical-session path in a browser when v2 is supported", async () => {
+    api.createProtectedExplorerCodeSessionAttachment.mockResolvedValueOnce(
+      sharedOwned,
+    );
+
+    const { renderer } = await mount("src/browser-shared.ts");
+
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledOnce();
+    expect(api.createProtectedExplorerCodeAttachment).not.toHaveBeenCalled();
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledWith(sharedOwned, { signal: expect.any(AbortSignal) });
+
+    await act(async () => renderer.unmount());
+    await settle();
+
+    expect(desktopCode.stopSharedProtectedCodeAttachment).toHaveBeenCalledWith(
+      sharedOwned,
+    );
+    expect(
+      api.releaseProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledWith(sharedOwned);
+  });
+
   it("retains the logical session while replacing only an exact failed desktop lease", async () => {
     tauri.enabled = true;
     desktopCode.preferSharedProtectedCodeAttachment
@@ -406,6 +471,136 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     expect(api.releaseCodeAttachment).not.toHaveBeenCalled();
   });
 
+  it("does not let an abandoned render alter committed session-open inputs", async () => {
+    vi.useFakeTimers();
+    const onSpeculativeRender = vi.fn();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        speculativeEditor(
+          "src/committed.ts",
+          { appearance: "dark", workerOnline: true },
+          null,
+          onSpeculativeRender,
+        ),
+        { unstable_isConcurrent: true } as never,
+      );
+    });
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).not.toHaveBeenCalled();
+
+    onSpeculativeRender.mockClear();
+    const neverCommits = new Promise<never>(() => undefined);
+    await act(async () => {
+      startTransition(() => {
+        renderer.update(
+          speculativeEditor(
+            "src/speculative.ts",
+            {
+              appearance: "light",
+              explorerId: "speculative-explorer",
+              workerId: "speculative-worker",
+              workerOnline: false,
+              worktreeId: "speculative-worktree",
+            },
+            neverCommits,
+            onSpeculativeRender,
+          ),
+        );
+      });
+      await Promise.resolve();
+    });
+    expect(onSpeculativeRender).toHaveBeenCalled();
+
+    await flushImmediateTimers();
+
+    expect(
+      api.createProtectedExplorerCodeSessionAttachment,
+    ).toHaveBeenCalledWith(
+      "explorer-1",
+      "src/committed.ts",
+      "worker-1",
+      "worktree-1",
+      "dark",
+    );
+    await act(async () => renderer.unmount());
+  });
+
+  it("does not let an abandoned identity render cancel committed lease recovery", async () => {
+    tauri.enabled = true;
+    let resolveRecovery!: (value: ReturnType<typeof sharedPreferred>) => void;
+    const recovery = new Promise<ReturnType<typeof sharedPreferred>>(
+      (resolve) => {
+        resolveRecovery = resolve;
+      },
+    );
+    desktopCode.preferSharedProtectedCodeAttachment
+      .mockResolvedValueOnce(sharedPreferred("lease-one"))
+      .mockImplementationOnce(() => recovery);
+    const onSpeculativeRender = vi.fn();
+    const frameWindow = {} as Window;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        speculativeEditor(
+          "src/committed.ts",
+          { workerOnline: true },
+          null,
+          onSpeculativeRender,
+        ),
+        {
+          createNodeMock: (element: { type: unknown }) =>
+            element.type === "iframe" ? { contentWindow: frameWindow } : null,
+          unstable_isConcurrent: true,
+        } as never,
+      );
+    });
+    await settle();
+
+    await act(async () => emitBrowserUnavailable(sharedTransportId));
+    await settle();
+    expect(
+      desktopCode.preferSharedProtectedCodeAttachment,
+    ).toHaveBeenCalledTimes(2);
+
+    onSpeculativeRender.mockClear();
+    const neverCommits = new Promise<never>(() => undefined);
+    await act(async () => {
+      startTransition(() => {
+        renderer.update(
+          speculativeEditor(
+            "src/speculative.ts",
+            {
+              explorerId: "speculative-explorer",
+              workerId: "speculative-worker",
+              worktreeId: "speculative-worktree",
+            },
+            neverCommits,
+            onSpeculativeRender,
+          ),
+        );
+      });
+      await Promise.resolve();
+    });
+    expect(onSpeculativeRender).toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRecovery(sharedPreferred("lease-two"));
+      await recovery;
+    });
+    await settle();
+
+    expect(
+      desktopCode.retainSharedProtectedCodeAttachmentLease,
+    ).toHaveBeenCalledWith(sharedOwned, "lease-two");
+    expect(
+      desktopCode.stopSharedProtectedCodeAttachment,
+    ).not.toHaveBeenCalledWith(sharedOwned, "lease-two");
+
+    await act(async () => renderer.unmount());
+  });
+
   it("reports readiness only after the exact pinned path is open", async () => {
     const onReady = vi.fn();
     const { renderer } = await mount("src/pinned.ts", true, onReady);
@@ -425,7 +620,7 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
   });
 
   it("prewarms without a path, then reuses the attachment and frame for two files", async () => {
-    const { renderer } = await mount(null);
+    const { frameWindow, renderer } = await mount(null);
     const initialFrame = renderer.root.findByType("iframe");
     const initialFrameUrl = initialFrame.props.src;
 
@@ -436,6 +631,11 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
       "worker-1",
       "worktree-1",
       "dark",
+    );
+    expect(browserCode.bindFrame).toHaveBeenCalledWith(
+      attachment.attachmentId,
+      frameWindow,
+      "frame_nonce_1_1234567890",
     );
 
     await act(async () => testWindow.sendMessage());
@@ -495,7 +695,7 @@ describe("ExplorerCodeEditor warm lifecycle", () => {
     await flushImmediateTimers();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
     });
 
     expect(
