@@ -50,7 +50,7 @@ export function useMobileProjectNavigationState() {
   } as const;
 }
 
-export type MobileProjectNavigationState = ReturnType<
+type MobileProjectNavigationState = ReturnType<
   typeof useMobileProjectNavigationState
 >;
 
@@ -63,7 +63,7 @@ export function useMobileProjectNavigationRefs() {
   return { mobileBottomTabSequenceRef, persistedMobileBottomTabsRef } as const;
 }
 
-export type MobileProjectNavigationRefs = ReturnType<
+type MobileProjectNavigationRefs = ReturnType<
   typeof useMobileProjectNavigationRefs
 >;
 

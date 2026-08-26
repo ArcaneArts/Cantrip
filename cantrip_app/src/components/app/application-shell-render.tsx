@@ -13,9 +13,9 @@ import { ShellHeader } from "@/components/app/shell-header";
 import { ShellOverlays } from "@/components/app/shell-overlays";
 import { ShellSidebar } from "@/components/app/shell-sidebar";
 
-export type ApplicationShellRenderBindings = Readonly<Record<string, any>>;
+type ApplicationShellRenderBindings = Readonly<Record<string, any>>;
 
-export function ShellContent({
+function ShellContent({
   bindings,
 }: {
   bindings: ApplicationShellRenderBindings;

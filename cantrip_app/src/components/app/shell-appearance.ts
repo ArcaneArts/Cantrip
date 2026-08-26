@@ -33,8 +33,6 @@ export function useShellAppearanceState() {
   } as const;
 }
 
-export type ShellAppearanceState = ReturnType<typeof useShellAppearanceState>;
-
 export function useShellAppearanceEffects({
   preferences,
   proModeActive,

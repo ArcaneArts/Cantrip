@@ -220,7 +220,7 @@ export function useShellNavigationState(
   } as const;
 }
 
-export type ShellNavigationState = ReturnType<typeof useShellNavigationState>;
+type ShellNavigationState = ReturnType<typeof useShellNavigationState>;
 
 export function useAppDestinationPersistence({
   destinationWriteRef,

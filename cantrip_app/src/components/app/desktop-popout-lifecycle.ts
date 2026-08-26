@@ -48,9 +48,7 @@ export function useDesktopPopoutStatusState() {
   } as const;
 }
 
-export type DesktopPopoutStatusState = ReturnType<
-  typeof useDesktopPopoutStatusState
->;
+type DesktopPopoutStatusState = ReturnType<typeof useDesktopPopoutStatusState>;
 
 export function useDetachedDesktopGroupState() {
   const [detachedGroupId, setDetachedGroupId] = useState<string | null>(null);
@@ -62,7 +60,7 @@ export function useDetachedDesktopGroupState() {
   } as const;
 }
 
-export type DetachedDesktopGroupState = ReturnType<
+type DetachedDesktopGroupState = ReturnType<
   typeof useDetachedDesktopGroupState
 >;
 

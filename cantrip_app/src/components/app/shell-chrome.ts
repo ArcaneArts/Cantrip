@@ -76,7 +76,7 @@ export function useShellChromeState({
   } as const;
 }
 
-export type ShellChromeState = ReturnType<typeof useShellChromeState>;
+type ShellChromeState = ReturnType<typeof useShellChromeState>;
 
 export function useSidebarWidthPersistence(queryClient: QueryClient) {
   return useMutation({
