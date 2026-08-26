@@ -239,6 +239,12 @@ function providerSetupFor(provider: ModelProviderSummary): ProviderSetupKind {
   return (match?.[0] as ProviderSetupKind | undefined) ?? "openai-compatible";
 }
 
+export function initialProviderName(
+  provider: Pick<ModelProviderSummary, "name"> | null,
+): string {
+  return provider?.name ?? providerSetups.ollama.label;
+}
+
 type AccountProviderKind = Extract<ModelProviderKind, "chatgpt" | "grok">;
 
 function isAccountProviderKind(
@@ -1036,7 +1042,7 @@ export function SettingsPage({
     signOutCodex.reset();
     consumeRateLimitReset.reset();
     setEditingProvider(provider);
-    setProviderName(provider?.name ?? "");
+    setProviderName(initialProviderName(provider));
     setProviderKind(provider?.kind ?? "ollama");
     setProviderSetup(provider ? providerSetupFor(provider) : "ollama");
     setBaseUrl(provider?.baseUrl ?? "http://127.0.0.1:11434/v1");
