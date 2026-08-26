@@ -38,7 +38,7 @@ test("devtop is launched through the hard-stop lifecycle wrapper", async () => {
   assert.match(launcher, /forceKillSpawnedProcessGroup\(activeChild\.pid\)/u);
   assert.match(
     launcher,
-    /await ensureDevtopTauriConfig\(\{\s*repositoryRoot,\s*repositoryCommonDirectory,\s*\}\)/u,
+    /await ensureDevtopTauriConfig\(\{\s*repositoryRoot,\s*\}\)/u,
   );
   assert.match(
     launcher,
