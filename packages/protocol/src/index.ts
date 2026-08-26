@@ -8932,15 +8932,12 @@ export const cantripAgentOperationRequestSchema = z
   })
   .strict();
 
-const cantripMcpBindingFields = {
+const cantripMcpBindingBaseFields = {
   bindingId: z.string().uuid(),
   ownerId: z.string().min(1).max(200),
-  projectId: z.string().min(1).max(200),
   chatId: z.string().min(1).max(200),
   executionLaneId: z.string().min(1).max(200),
   workerId: z.string().min(1).max(200),
-  worktreeId: z.string().min(1).max(200),
-  rootKind: projectRootKindSchema,
   permissionProfileId: permissionProfileIdSchema,
   allowedOperations: z
     .array(cantripAgentOperationNameSchema)
@@ -8953,9 +8950,33 @@ const cantripMcpBindingFields = {
   expiresAt: z.iso.datetime(),
 };
 
+const cantripMcpProjectBindingSchema = z
+  .object({
+    ...cantripMcpBindingBaseFields,
+    contextKind: z.literal("project"),
+    projectId: z.string().min(1).max(200),
+    worktreeId: z.string().min(1).max(200),
+    rootKind: projectRootKindSchema,
+    scratchRootId: z.null(),
+  })
+  .strict();
+
+const cantripMcpStandaloneBindingSchema = z
+  .object({
+    ...cantripMcpBindingBaseFields,
+    contextKind: z.literal("standalone"),
+    projectId: z.null(),
+    worktreeId: z.null(),
+    rootKind: z.null(),
+    scratchRootId: z.string().min(1).max(200),
+  })
+  .strict();
+
 export const cantripMcpBindingSchema = z
-  .object(cantripMcpBindingFields)
-  .strict()
+  .discriminatedUnion("contextKind", [
+    cantripMcpProjectBindingSchema,
+    cantripMcpStandaloneBindingSchema,
+  ])
   .superRefine((binding, context) => {
     const issuedAt = Date.parse(binding.issuedAt);
     const expiresAt = Date.parse(binding.expiresAt);
@@ -9000,11 +9021,30 @@ export const workerCantripMcpOperationCallSchema = z
   })
   .strict();
 
-const compatibleCantripMcpBindingSchema = z.object({
-  ...cantripMcpBindingFields,
+const compatibleCantripMcpBindingBaseFields = {
+  ...cantripMcpBindingBaseFields,
   canonicalRoot: z.string().min(1).max(8_192).optional(),
   allowedOperations: z.array(z.string().min(1).max(100)).min(1).max(100),
-});
+};
+
+const compatibleCantripMcpBindingSchema = z.union([
+  z.object({
+    ...compatibleCantripMcpBindingBaseFields,
+    contextKind: z.literal("project").optional(),
+    projectId: z.string().min(1).max(200),
+    worktreeId: z.string().min(1).max(200),
+    rootKind: projectRootKindSchema,
+    scratchRootId: z.null().optional(),
+  }),
+  z.object({
+    ...compatibleCantripMcpBindingBaseFields,
+    contextKind: z.literal("standalone"),
+    projectId: z.null(),
+    worktreeId: z.null(),
+    rootKind: z.null(),
+    scratchRootId: z.string().min(1).max(200),
+  }),
+]);
 
 /**
  * Accepts both the current binding and the legacy binding used during rolling
@@ -9028,6 +9068,8 @@ export const compatibleWorkerCantripMcpOperationCallSchema = z
       ...call,
       binding: {
         ...currentBinding,
+        contextKind: currentBinding.contextKind ?? "project",
+        scratchRootId: currentBinding.scratchRootId ?? null,
         allowedOperations: allowedOperations.filter(
           (operation) =>
             cantripAgentOperationNameSchema.safeParse(operation).success,
@@ -9088,8 +9130,10 @@ export const cantripMcpToolHelpInputSchema = z
   .object({ tool: cantripMcpToolNameSchema })
   .strict();
 export const cantripMcpBindingStaleClaimSchema = z.enum([
+  "context-kind",
   "chat",
   "project",
+  "scratch-root",
   "worker",
   "execution-lane",
   "worktree",
@@ -9101,7 +9145,7 @@ export const cantripMcpBindingReadinessSchema = z
   .object({
     status: z.enum(["ready", "read-only", "refresh-required"]),
     mutationReady: z.boolean(),
-    staleClaims: z.array(cantripMcpBindingStaleClaimSchema).max(8),
+    staleClaims: z.array(cantripMcpBindingStaleClaimSchema).max(10),
     recoveryInstruction: z.string().min(1).max(500).nullable(),
     expiresAt: z.iso.datetime(),
   })

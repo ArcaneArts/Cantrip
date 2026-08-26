@@ -35,6 +35,13 @@ import { openWorkerRunContent } from "../run-content-encryption.js";
 import { protectRunConfigurationSecretValue } from "../run-configuration-secret-encryption.js";
 import type { CantripMcpOperationOptions } from "./read-operations.js";
 
+function boundProjectId(options: CantripMcpOperationOptions): string {
+  if (options.binding.contextKind !== "project") {
+    throw new Error("Run configurations require a project MCP binding.");
+  }
+  return options.binding.projectId;
+}
+
 function assertBoundProject(
   options: CantripMcpOperationOptions,
   result: CantripAgentOperationResult,
@@ -234,7 +241,7 @@ async function executeMutationOperation(options: CantripMcpOperationOptions) {
         options.request.arguments,
       );
       const protectedValue = await protectRunConfigurationSecretValue({
-        projectId: options.binding.projectId,
+        projectId: boundProjectId(options),
         reference: arguments_.reference,
         value: arguments_.value,
         service: options.service,
@@ -264,6 +271,9 @@ async function executeMutationOperation(options: CantripMcpOperationOptions) {
 export function executeCantripMcpRunConfigurationOperation(
   options: CantripMcpOperationOptions,
 ) {
+  if (options.binding.contextKind !== "project") {
+    throw new Error("Run configurations require a project MCP binding.");
+  }
   if (options.service.ownerId() !== options.binding.ownerId) {
     throw new Error("Worker encryption belongs to a different MCP owner.");
   }

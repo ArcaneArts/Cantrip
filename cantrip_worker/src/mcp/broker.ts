@@ -295,7 +295,7 @@ export class CantripMcpBroker {
             operation: "refresh-binding",
             status: "completed",
             workerId: stored.binding.workerId,
-            projectId: stored.binding.projectId,
+            projectId: stored.binding.projectId ?? undefined,
             chatId: stored.binding.chatId,
             executionLaneId: stored.binding.executionLaneId,
             worktreeId: stored.binding.worktreeId,
@@ -354,7 +354,7 @@ export class CantripMcpBroker {
       operation: "create-binding",
       status: "completed",
       workerId: binding.workerId,
-      projectId: binding.projectId,
+      projectId: binding.projectId ?? undefined,
       chatId: binding.chatId,
       counts: { allowedOperations: binding.allowedOperations.length },
     });
@@ -504,7 +504,7 @@ export class CantripMcpBroker {
               ...(stored
                 ? {
                     workerId: stored.binding.workerId,
-                    projectId: stored.binding.projectId,
+                    projectId: stored.binding.projectId ?? undefined,
                     chatId: stored.binding.chatId,
                     executionLaneId: stored.binding.executionLaneId,
                     worktreeId: stored.binding.worktreeId,

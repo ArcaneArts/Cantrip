@@ -294,12 +294,14 @@ beforeAll(async () => {
   mcpBinding = {
     bindingId: crypto.randomUUID(),
     ownerId: LOCAL_USER_ID,
+    contextKind: "project",
     projectId,
     chatId: chat.id,
     executionLaneId: context.executionLaneId,
     workerId: context.workerId,
     worktreeId: context.worktreeId,
     rootKind: context.rootKind,
+    scratchRootId: null,
     permissionProfileId:
       context.permissionProfileId ?? context.defaultPermissionProfileId,
     allowedOperations: [...CANTRIP_MCP_OPERATIONS],
