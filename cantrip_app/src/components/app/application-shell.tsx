@@ -1,26 +1,13 @@
 import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/protocol";
 import type {
-  ArchivedStandaloneChatSummary,
-  BrowserSummary,
   BrowserFleetService,
   ChatSummary,
-  CodeTabSummary,
-  ExecutionTarget,
   ExplorerEntry,
   ExplorerSummary,
-  ProjectReplicaJobSummary,
-  ProjectSummary,
-  ProjectTabLayoutSummary,
-  ProjectWorkspaceSummary,
-  ProjectWorktreeCreate,
-  ProjectWorktreeSummary,
-  ProjectViewKind,
   ProjectViewSummary,
   RemoteDesktopTarget,
   ScriptCommand,
-  StandaloneChatSummary,
   TaskDetail,
-  TerminalSummary,
 } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -52,7 +39,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { flushSync } from "react-dom";
+
 import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
 import { RunConfigurationControl } from "@/components/run/run-configuration-control";
 import { AppCommandBar } from "@/components/app/app-command-bar";
@@ -72,9 +59,34 @@ import {
 } from "@/components/app/application-shell-surfaces";
 import { StatusDot } from "@/components/app/status-dot";
 import {
+  useBrowserCodeViewCreationOperations,
+  useChatConsoleOperation,
+  useExplorerCreationOperations,
+  useProjectChatCreationOperation,
+  useProjectTaskCreationOperation,
+  useRemoteDesktopCreationOperation,
+  useStandaloneChatCompletionOperation,
+  useStandaloneChatOperations,
+  useTerminalCreationOperation,
+} from "@/components/app/surface-creation-operations";
+import {
+  useBrowserSurfaceOperations,
+  useChatDeleteOperation,
+  useChatRenameAndForkOperations,
+  useCodeSurfaceOperations,
+  useExplorerSurfaceOperations,
+  useProjectViewSurfaceOperations,
+  useTerminalSurfaceOperations,
+} from "@/components/app/surface-crud-operations";
+import { createSurfaceCommandController } from "@/components/app/surface-commands";
+import {
   useApplicationInventory,
   useProjectInventory,
 } from "@/components/app/project-inventory";
+import {
+  useProjectListOperations,
+  useProjectSetupOperations,
+} from "@/components/app/project-operations";
 import { useProjectWorkspaceResources } from "@/components/app/project-workspace-resources";
 import {
   projectWorkspaceSurfaceSelection,
@@ -97,6 +109,11 @@ import {
   useSidebarWidthPersistence,
 } from "@/components/app/shell-chrome";
 import {
+  createWorkspaceDropHandler,
+  useTabLayoutOperations,
+} from "@/components/app/tab-layout-operations";
+import { useWorktreeOperations } from "@/components/app/worktree-operations";
+import {
   createShellNavigationCommands,
   createShellProjectNavigationCommands,
   useAppDestinationPersistence,
@@ -107,7 +124,7 @@ import {
 } from "@/components/app/shell-navigation";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
 import { updateAgentInspectOpenChats } from "@/components/chat/agent-inspect-panel";
-import { randomAgentChatTitle } from "@/components/chat/agent-chat-name";
+
 import { projectFilePath } from "@/components/chat/markdown-file-link";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { updateChatConsoleOpenChats } from "@/components/chat/chat-console-state";
@@ -118,7 +135,7 @@ import {
   latestChatRelocationJob,
 } from "@/components/chat/chat-relocation-dialog";
 import type { CodeHeaderState } from "@/components/code/code-view";
-import { runCodeWorktreeChange } from "@/components/code/code-worktree-change";
+
 import {
   GitHistoryView,
   type GitHistoryHeaderState,
@@ -126,10 +143,7 @@ import {
 } from "@/components/git/git-history";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
-import {
-  explorerGraphRootForEntry,
-  explorerRepositoryGraphAvailable,
-} from "@/components/explorer/explorer-graph-routing";
+import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
 import type {
   ExplorerGraphRequest,
   ExplorerHeaderState,
@@ -137,15 +151,13 @@ import type {
 } from "@/components/explorer/explorer-view";
 import {
   confirmExplorerDiscard,
-  deleteExplorerAfterPreparation,
   prepareExplorerPopout as prepareExplorerPopoutLifecycle,
-  prepareExplorerRebind as prepareExplorerRebindLifecycle,
 } from "@/components/explorer/explorer-lifecycle";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { StandaloneChatSidebar } from "@/components/sidebar/standalone-chat-sidebar";
 import type { ExplorerFileMutationAuthorization } from "@/components/sidebar/project-sidebar-file-tree";
 import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
-import type { ProjectSurfaceCreateKind } from "@/components/workspace/project-surface-create-menu";
+
 import type { ProjectSurfacePlacementContext } from "@/components/workspace/project-surface-create-menu";
 import {
   ContentHeaderActions,
@@ -217,58 +229,19 @@ import {
   EmptyStateTitle,
 } from "@/components/ui/empty-state";
 import {
-  createBrowser,
-  createCodeTab,
-  acknowledgeChatCompletion,
-  createChat,
-  createStandaloneChat,
-  createTask,
-  createChatConsole,
   createExplorer,
   pinExplorer,
-  createProjectWorktree,
-  createProjectView,
-  createRemoteDesktop,
-  createTerminal,
-  deleteChat,
-  deleteBrowser,
-  deleteCodeTab,
-  deleteExplorer,
   deleteExplorerEntry,
-  deleteProjectView,
-  deleteTerminal,
-  forkChat,
   getChatRelocations,
   getExplorers,
-  renameChat,
-  renameExplorer,
   renameExplorerEntry,
-  renameProjectView,
-  renameTerminal,
   resolveStandaloneChatFilePath,
-  removeProject,
-  retryProjectReplicaJob,
-  retryProjectFolderSetup,
-  permanentlyDeleteArchivedChat,
-  restoreArchivedChat,
-  moveProjectTabGroupMember,
-  reorderProjectTabGroupMembers,
-  reorderProjectTabGroups,
-  reorderProjects,
-  updateChatWorktree,
-  updateBrowser,
-  updateCodeTab,
-  updateCodeTabWorktree,
   updateExplorerViewState,
-  updateExplorerWorktree,
-  updateProjectViewWorktree,
-  updateProjectTabGroup,
   updateSettings,
-  updateTerminalWorktree,
 } from "@/lib/api";
-import { operateRunConfigurationRuntime } from "@/lib/run-configuration-api";
+
 import { runConfigurationTargetControlForIdentity } from "@/lib/run-configuration-control-model";
-import { createProjectWorkspace } from "@/lib/workspace-encryption";
+
 import {
   closeCurrentDesktopWindow,
   desktopPopoutTitlebarLeftInset,
@@ -285,10 +258,7 @@ import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { scopedClientStorageKey } from "@/lib/client-session";
 import { useDesktopDirectTransportTelemetry } from "@/lib/direct-transport-telemetry";
 import { useAppActions } from "@/lib/use-app-actions";
-import {
-  type ProjectSurface,
-  projectSurfaceTabKey,
-} from "@/lib/project-surface";
+import { projectSurfaceTabKey } from "@/lib/project-surface";
 import {
   runtimeForRunTerminal,
   runTerminalTargetLabel,
@@ -310,10 +280,7 @@ import {
 import { projectScriptCommandDestination } from "@/lib/project-script-command";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "@/lib/sidebar-resize";
 import { cn } from "@/lib/utils";
-import {
-  applyOptimisticTabLayoutToCache,
-  restoreOptimisticTabLayoutCache,
-} from "@/lib/project-tab-layout-optimistic";
+
 import {
   isWindowsLongPathSetupFailure,
   projectOwningWorkerId,
@@ -325,12 +292,8 @@ import {
   projectReplicaProgressMessage,
   projectSetupErrorMessage,
 } from "@/lib/job-status-message";
-import type {
-  TabLayoutCommand,
-  WorkspaceDropOperation,
-} from "@/lib/workspace-dnd-model";
+
 import {
-  emptyWorkspaceSelection,
   selectWorkspaceGroup,
   selectWorkspaceOverview,
   selectWorkspaceTab,
@@ -722,41 +685,21 @@ export function App() {
     standaloneChatWorkerAvailable,
     standaloneChats,
   } = projectInventory;
-  const retryLongPathSetupMutation = useMutation({
-    mutationFn: (job: ProjectReplicaJobSummary) =>
-      retryProjectReplicaJob(job.id, { stateRevision: job.stateRevision }),
-    onSuccess: async (_updated, job) => {
-      setDismissedLongPathFailure(projectSetupFailureKey(job));
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["projects"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["project-replica-jobs", job.projectId],
-        }),
-      ]);
-    },
-  });
-  const createWorkspaceMutation = useMutation({
-    mutationFn: (name: string) => createProjectWorkspace({ name }),
-    onSuccess: (workspace) => {
-      queryClient.setQueryData<ProjectWorkspaceSummary[]>(
-        ["project-workspaces"],
-        (current = []) => [...current, workspace],
-      );
-      setActiveProjectWorkspaceId(workspace.id);
-      window.localStorage.setItem(
-        activeProjectWorkspaceStorageKey,
-        workspace.id,
-      );
-      setSelectedProjectId(null);
-      setWorkspaceSelection(emptyWorkspaceSelection());
-      resetMobileBottomTabs();
-      setShowImporter(false);
-      setShowSettings(false);
-      setShowArchivedStandaloneChats(false);
-      setShowServerAdmin(false);
-      setShowProjectSettings(false);
-    },
-  });
+  const { createWorkspaceMutation, retryLongPathSetupMutation } =
+    useProjectSetupOperations({
+      activeProjectWorkspaceStorageKey,
+      queryClient,
+      resetMobileBottomTabs,
+      setActiveProjectWorkspaceId,
+      setDismissedLongPathFailure,
+      setSelectedProjectId,
+      setShowArchivedStandaloneChats,
+      setShowImporter,
+      setShowProjectSettings,
+      setShowServerAdmin,
+      setShowSettings,
+      setWorkspaceSelection,
+    });
   const projectWorkspaceResources = useProjectWorkspaceResources({
     activeProjectOverviewSection,
     projectOverviewSelected,
@@ -784,250 +727,36 @@ export function App() {
     worktreeStatuses,
     worktrees,
   } = projectWorkspaceResources;
-  const newChat = useMutation({
-    mutationFn: ({
-      projectId,
-      tabGroupId,
-      worktreeId,
-      worktreeMode,
-      target,
-    }: {
-      open?: boolean;
-      projectId: string;
-      tabGroupId?: string;
-      worktreeId?: string;
-      worktreeMode?: "agent-managed" | "pinned";
-      target?: ExecutionTarget;
-    }) => {
-      const existingTitles = [
-        ...(chats.data ?? []),
-        ...(terminals.data ?? []),
-        ...(explorers.data ?? []),
-        ...(browsers.data ?? []),
-        ...(codeTabs.data ?? []),
-        ...(projectViews.data ?? []),
-      ]
-        .filter((surface) => surface.projectId === projectId)
-        .map((surface) => surface.title);
-      return createChat(
-        projectId,
-        randomAgentChatTitle(existingTitles),
-        worktreeId,
-        worktreeMode,
-        tabGroupId,
-        target,
-      );
-    },
-    onSuccess: (chat, { open }) => {
-      queryClient.setQueryData<ChatSummary[]>(
-        ["chats", chat.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== chat.id), chat].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      if (open !== false) {
-        openCreatedTab(chat.projectId, "chat", chat.id);
-      } else {
-        void queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", chat.projectId],
-        });
-      }
-      void queryClient.invalidateQueries({
-        queryKey: ["chats", chat.projectId],
-      });
-    },
+  const newChat = useProjectChatCreationOperation({
+    openCreatedTab,
+    queryClient,
+    resources: projectWorkspaceResources,
   });
-  const newStandaloneChat = useMutation({
-    mutationFn: () => {
-      if (bootstrap.data?.capabilities.standaloneChat.available === false) {
-        throw new Error(
-          bootstrap.data.capabilities.standaloneChat.reason ??
-            "Standalone Chat is unavailable on this server.",
-        );
-      }
-      if (!standaloneChatWorkerAvailable) {
-        throw new Error(
-          "Connect an online worker with standalone Chat scratch support first.",
-        );
-      }
-      return createStandaloneChat(
-        randomAgentChatTitle(
-          (standaloneChats.data ?? []).map(({ title }) => title),
-        ),
-      );
-    },
-    onSuccess: (chat) => {
-      queryClient.setQueryData<StandaloneChatSummary[]>(
-        ["standalone-chats"],
-        (current = []) =>
-          [...current.filter(({ id }) => id !== chat.id), chat].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      setSelectedStandaloneChatId(chat.id);
-      setShowArchivedStandaloneChats(false);
-      void persistAppDestination({
-        lastAppMode: "chat",
-        lastStandaloneChatId: chat.id,
-      });
-    },
+  const {
+    archiveStandaloneChat,
+    forkStandaloneChat,
+    newStandaloneChat,
+    permanentlyDeleteStandaloneChat,
+    renameStandaloneChat,
+    restoreStandaloneChat,
+  } = useStandaloneChatOperations({
+    bootstrap,
+    persistAppDestination,
+    queryClient,
+    selectedStandaloneChatId,
+    setSelectedStandaloneChatId,
+    setShowArchivedStandaloneChats,
+    standaloneChats,
+    standaloneChatWorkerAvailable,
   });
-  const renameStandaloneChat = useMutation({
-    mutationFn: ({ chatId, title }: { chatId: string; title: string }) =>
-      renameChat(chatId, title),
-    onSuccess: (renamed) => {
-      if (renamed.contextKind !== "standalone") return;
-      queryClient.setQueryData<StandaloneChatSummary[]>(
-        ["standalone-chats"],
-        (current = []) =>
-          current.map((chat) => (chat.id === renamed.id ? renamed : chat)),
-      );
-    },
+  const newTask = useProjectTaskCreationOperation({
+    openProjectTask,
+    queryClient,
   });
-  const forkStandaloneChat = useMutation({
-    mutationFn: (chat: StandaloneChatSummary) => forkChat(chat.id, chat.title),
-    onSuccess: (forked) => {
-      if (forked.contextKind !== "standalone") return;
-      void queryClient.invalidateQueries({ queryKey: ["standalone-chats"] });
-      setSelectedStandaloneChatId(forked.id);
-      void persistAppDestination({
-        lastAppMode: "chat",
-        lastStandaloneChatId: forked.id,
-      });
-    },
-  });
-  const archiveStandaloneChat = useMutation({
-    mutationFn: (chat: StandaloneChatSummary) => deleteChat(chat.id),
-    onSuccess: async (_result, chat) => {
-      if (selectedStandaloneChatId === chat.id) {
-        setSelectedStandaloneChatId(null);
-        void persistAppDestination({ lastStandaloneChatId: null });
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["standalone-chats"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["archived-standalone-chats"],
-        }),
-      ]);
-    },
-  });
-  const restoreStandaloneChat = useMutation({
-    mutationFn: (chat: ArchivedStandaloneChatSummary) =>
-      restoreArchivedChat(chat.id),
-    onSuccess: (restored) => {
-      if (restored.contextKind !== "standalone") return;
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["standalone-chats"] }),
-        queryClient.invalidateQueries({
-          queryKey: ["archived-standalone-chats"],
-        }),
-      ]);
-      setSelectedStandaloneChatId(restored.id);
-      setShowArchivedStandaloneChats(false);
-      void persistAppDestination({
-        lastAppMode: "chat",
-        lastStandaloneChatId: restored.id,
-      });
-    },
-  });
-  const permanentlyDeleteStandaloneChat = useMutation({
-    mutationFn: (chat: ArchivedStandaloneChatSummary) =>
-      permanentlyDeleteArchivedChat(chat.id),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: ["archived-standalone-chats"],
-      }),
-  });
-  const newTask = useMutation({
-    mutationFn: ({
-      projectId,
-      tabGroupId,
-      worktreeId,
-      worktreeMode,
-      target,
-    }: {
-      projectId: string;
-      tabGroupId?: string;
-      worktreeId?: string;
-      worktreeMode?: "agent-managed" | "pinned";
-      target?: ExecutionTarget;
-    }) =>
-      createTask(
-        projectId,
-        "New task",
-        worktreeId,
-        worktreeMode,
-        tabGroupId,
-        target,
-      ),
-    onSuccess: ({ chat, task }) => {
-      queryClient.setQueryData<ChatSummary[]>(
-        ["chats", chat.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== chat.id), chat].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      queryClient.setQueryData(["task", chat.id], task);
-      openProjectTask(chat.projectId, chat.id);
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
-        queryClient.invalidateQueries({
-          queryKey: ["project-task-workload", chat.projectId],
-        }),
-      ]);
-    },
-  });
-  const newTerminal = useMutation({
-    mutationFn: ({
-      projectId,
-      directoryPath,
-      tabGroupId,
-      title,
-      worktreeId,
-      target,
-      initialInput: _initialInput,
-    }: {
-      initialInput?: string;
-      projectId: string;
-      directoryPath?: string;
-      tabGroupId?: string;
-      title?: string;
-      worktreeId?: string;
-      target?: ExecutionTarget;
-    }) =>
-      createTerminal(
-        projectId,
-        title ?? "Terminal",
-        worktreeId,
-        tabGroupId,
-        target,
-        directoryPath,
-      ),
-    onSuccess: (terminal, { initialInput }) => {
-      queryClient.setQueryData<TerminalSummary[]>(
-        ["terminals", terminal.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== terminal.id), terminal].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      if (initialInput) {
-        setPendingTerminalInputs((current) => [
-          ...current,
-          {
-            data: initialInput,
-            id: crypto.randomUUID(),
-            terminalId: terminal.id,
-          },
-        ]);
-      }
-      openCreatedTab(terminal.projectId, "terminal", terminal.id);
-      void queryClient.invalidateQueries({
-        queryKey: ["terminals", terminal.projectId],
-      });
-    },
+  const newTerminal = useTerminalCreationOperation({
+    openCreatedTab,
+    queryClient,
+    setPendingTerminalInputs,
   });
   const appActionView = isPopout
     ? "popout"
@@ -1070,97 +799,15 @@ export function App() {
         : "browser",
     onAction: executeAppAction,
   });
-  const openChatConsole = useMutation({
-    mutationFn: (chatId: string) => createChatConsole(chatId),
-    onError: (error, chatId) => {
-      clientLogger.error("Codex console failed to open", {
-        chatId,
-        ...operationalErrorMetadata(error),
-        event: "surface.codex-console.open.failed",
-        operation: "open-console",
-        reasonCode: "request-failed",
-        status: "failed",
-        subsystem: "codex-console",
-      });
-    },
-    onSuccess: (terminal, chatId) => {
-      queryClient.setQueryData<TerminalSummary[]>(
-        ["terminals", terminal.projectId],
-        (current = []) => [
-          ...current.filter((item) => item.id !== terminal.id),
-          terminal,
-        ],
-      );
-      setChatConsoleOpen(chatId, true);
-    },
+  const openChatConsole = useChatConsoleOperation({
+    queryClient,
+    setChatConsoleOpen,
   });
-  const newExplorer = useMutation({
-    mutationFn: ({
-      projectId,
-      tabGroupId,
-      worktreeId,
-      target,
-    }: {
-      projectId: string;
-      tabGroupId?: string;
-      worktreeId?: string;
-      target?: ExecutionTarget;
-    }) => createExplorer(projectId, "Explorer", worktreeId, tabGroupId, target),
-    onSuccess: (explorer) => {
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", explorer.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== explorer.id), explorer].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      openCreatedTab(explorer.projectId, "explorer", explorer.id);
-      void queryClient.invalidateQueries({
-        queryKey: ["explorers", explorer.projectId],
-      });
-    },
-  });
-  const newGraphExplorer = useMutation({
-    mutationFn: ({
-      explorer,
-      entry,
-      tabGroupId,
-    }: {
-      explorer: ExplorerSummary;
-      entry: ExplorerEntry;
-      tabGroupId?: string;
-    }) =>
-      createExplorer(
-        explorer.projectId,
-        `Graph · ${entry.name}`,
-        explorer.worktreeId,
-        tabGroupId,
-        {
-          kind: "worktree",
-          projectId: explorer.projectId,
-          worktreeId: explorer.worktreeId,
-        },
-      ),
-    onError: (error) => setPopoutError(errorText(error)),
-    onSuccess: (createdExplorer, { entry }) => {
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", createdExplorer.projectId],
-        (current = []) =>
-          [
-            ...current.filter((item) => item.id !== createdExplorer.id),
-            createdExplorer,
-          ].sort((left, right) => left.position - right.position),
-      );
-      setExplorerGraphRequest({
-        explorerId: createdExplorer.id,
-        requestId: crypto.randomUUID(),
-        rootPath: explorerGraphRootForEntry(entry),
-      });
-      openCreatedTab(createdExplorer.projectId, "explorer", createdExplorer.id);
-      void queryClient.invalidateQueries({
-        queryKey: ["explorers", createdExplorer.projectId],
-      });
-    },
+  const { newExplorer, newGraphExplorer } = useExplorerCreationOperations({
+    openCreatedTab,
+    queryClient,
+    setExplorerGraphRequest,
+    setPopoutError,
   });
   const createSidebarExplorerMutation = useMutation({
     mutationFn: ({
@@ -1359,767 +1006,88 @@ export function App() {
     }
     openProjectExplorerFile(chat.projectId, chat.activeWorktreeId, path);
   };
-  const newBrowser = useMutation({
-    mutationFn: ({
-      projectId,
-      tabGroupId,
-      target,
-      title,
-      url,
-    }: {
-      projectId: string;
-      tabGroupId?: string;
-      target?: ExecutionTarget;
-      title?: string;
-      url?: string;
-    }) => createBrowser(projectId, title ?? "Browser", tabGroupId, target, url),
-    onSuccess: (browser) => {
-      queryClient.setQueryData<BrowserSummary[]>(
-        ["browsers", browser.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== browser.id), browser].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      openCreatedTab(browser.projectId, "browser", browser.id);
-      void queryClient.invalidateQueries({
-        queryKey: ["browsers", browser.projectId],
-      });
-    },
-  });
-  const newCodeTab = useMutation({
-    mutationFn: ({
-      projectId,
-      tabGroupId,
-      worktreeId,
-      target,
-    }: {
-      projectId: string;
-      tabGroupId?: string;
-      worktreeId?: string;
-      target?: ExecutionTarget;
-    }) => createCodeTab(projectId, "Code", worktreeId, tabGroupId, target),
-    onSuccess: (codeTab) => {
-      queryClient.setQueryData<CodeTabSummary[]>(
-        ["code-tabs", codeTab.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== codeTab.id), codeTab].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      openCreatedTab(codeTab.projectId, "code", codeTab.id);
-      void queryClient.invalidateQueries({
-        queryKey: ["code-tabs", codeTab.projectId],
-      });
-    },
-  });
-  const newProjectView = useMutation({
-    mutationFn: ({
-      projectId,
-      kind,
-      tabGroupId,
-      worktreeId,
-    }: {
-      projectId: string;
-      kind: ProjectViewKind;
-      tabGroupId?: string;
-      worktreeId?: string;
-    }) =>
-      createProjectView(
-        projectId,
-        kind,
-        kind === "history"
-          ? "Git"
-          : kind === "issues"
-            ? "Issues"
-            : "Remote Desktop",
-        worktreeId,
-        tabGroupId,
-      ),
-    onSuccess: (view) => {
-      queryClient.setQueryData<ProjectViewSummary[]>(
-        ["project-views", view.projectId],
-        (current = []) =>
-          [...current.filter((item) => item.id !== view.id), view].sort(
-            (left, right) => left.position - right.position,
-          ),
-      );
-      openCreatedTab(view.projectId, "view", view.id);
-      void queryClient.invalidateQueries({
-        queryKey: ["project-views", view.projectId],
-      });
-    },
-  });
-  const bindWorktreeMutation = useMutation({
-    mutationFn: async ({
-      target,
-      worktreeId,
-      mode,
-    }: {
-      target: WorktreeBindingTarget;
-      worktreeId: string;
-      mode?: "agent-managed" | "pinned";
-    }) => {
-      if (target.kind === "chat") {
-        return {
-          kind: "chat" as const,
-          value: await updateChatWorktree(target.tabId, {
-            worktreeId,
-            mode: mode ?? target.mode,
-          }),
-        };
-      }
-      if (target.kind === "terminal") {
-        return {
-          kind: "terminal" as const,
-          value: await updateTerminalWorktree(target.tabId, worktreeId),
-        };
-      }
-      if (target.kind === "explorer") {
-        return {
-          kind: "explorer" as const,
-          value: await updateExplorerWorktree(target.tabId, worktreeId),
-        };
-      }
-      if (target.kind === "code") {
-        return {
-          kind: "code" as const,
-          value: await updateCodeTabWorktree(target.tabId, worktreeId),
-        };
-      }
-      return {
-        kind: "history" as const,
-        value: await updateProjectViewWorktree(target.tabId, worktreeId),
-      };
-    },
-    onMutate: async ({ target, worktreeId, mode }) => {
-      setWorktreeActionError(null);
-      if (target.kind !== "chat") return {};
-      const queryKey = ["chats", target.projectId] as const;
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<ChatSummary[]>(queryKey);
-      queryClient.setQueryData<ChatSummary[]>(queryKey, (current = []) =>
-        current.map((chat) =>
-          chat.id === target.tabId
-            ? {
-                ...chat,
-                activeWorktreeId: worktreeId,
-                worktreeMode: mode ?? target.mode,
-              }
-            : chat,
-        ),
-      );
-      return { previous, queryKey };
-    },
-    onSuccess: ({ kind, value }) => {
-      if (kind === "chat") {
-        queryClient.setQueryData<ChatSummary[]>(
-          ["chats", value.projectId],
-          (current = []) =>
-            current.map((chat) => (chat.id === value.id ? value : chat)),
-        );
-        void queryClient.invalidateQueries({
-          queryKey: ["terminals", value.projectId],
-        });
-      } else if (kind === "terminal") {
-        queryClient.setQueryData<TerminalSummary[]>(
-          ["terminals", value.projectId],
-          (current = []) =>
-            current.map((terminal) =>
-              terminal.id === value.id ? value : terminal,
-            ),
-        );
-      } else if (kind === "explorer") {
-        queryClient.setQueryData<ExplorerSummary[]>(
-          ["explorers", value.projectId],
-          (current = []) =>
-            current.map((explorer) =>
-              explorer.id === value.id ? value : explorer,
-            ),
-        );
-        void Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: [
-              "explorer-directory",
-              value.projectId,
-              value.worktreeId,
-              value.id,
-            ],
-          }),
-          queryClient.invalidateQueries({
-            queryKey: ["explorer-file", value.id],
-          }),
-        ]);
-      } else if (kind === "code") {
-        queryClient.setQueryData<CodeTabSummary[]>(
-          ["code-tabs", value.projectId],
-          (current = []) =>
-            current.map((codeTab) =>
-              codeTab.id === value.id ? value : codeTab,
-            ),
-        );
-      } else {
-        queryClient.setQueryData<ProjectViewSummary[]>(
-          ["project-views", value.projectId],
-          (current = []) =>
-            current.map((view) => (view.id === value.id ? value : view)),
-        );
-      }
-    },
-    onError: (error, input, context) => {
-      if (context?.queryKey) {
-        queryClient.setQueryData(context.queryKey, context.previous);
-      }
-      if (input.target.kind === "history") {
-        void queryClient.invalidateQueries({
-          queryKey: ["project-views", input.target.projectId],
-        });
-      }
-      if (input.target.kind === "code") {
-        void queryClient.invalidateQueries({
-          queryKey: ["code-tabs", input.target.projectId],
-        });
-      }
-      setWorktreeActionError(errorText(error));
-    },
-  });
-  const prepareExplorerRebind = async (target: WorktreeBindingTarget) => {
-    if (target.kind !== "explorer") return true;
-    const lifecycle = explorerLifecycleRef.current.get(target.tabId);
-    const result = await prepareExplorerRebindLifecycle(lifecycle, () =>
-      window.confirm(
-        "Switch this Explorer to another worktree and discard its unsaved changes?",
-      ),
-    );
-    if (result === "state-failed") {
-      setWorktreeActionError(
-        "Explorer view state could not be saved before switching worktrees.",
-      );
-    }
-    return result === "ready";
-  };
-  const requestBindWorktree = async (input: {
-    target: WorktreeBindingTarget;
-    worktreeId: string;
-    mode?: "agent-managed" | "pinned";
-  }) => {
-    if (!(await prepareExplorerRebind(input.target))) return false;
-    const codeNeedsPause =
-      input.target.kind === "code" &&
-      Boolean(
-        codeHeader?.runtime ||
-        codeHeader?.status === "starting" ||
-        codeHeader?.status === "running",
-      );
-    return runCodeWorktreeChange({
-      active: codeNeedsPause,
-      header: codeHeader,
-      rebind: async () => {
-        try {
-          await bindWorktreeMutation.mutateAsync(input);
-          return true;
-        } catch {
-          return false;
-        }
-      },
+  const { newBrowser, newCodeTab, newProjectView } =
+    useBrowserCodeViewCreationOperations({
+      openCreatedTab,
+      queryClient,
     });
-  };
-  const createWorktreeMutation = useMutation({
-    mutationFn: ({
-      projectId,
-      input,
-    }: {
-      projectId: string;
-      input: ProjectWorktreeCreate;
-    }) => createProjectWorktree(projectId, input),
-    onSuccess: (created) => {
-      queryClient.setQueryData<ProjectWorktreeSummary[]>(
-        ["worktrees", created.projectId],
-        (current = []) => [
-          ...current.filter((worktree) => worktree.id !== created.id),
-          created,
-        ],
-      );
-    },
+  const {
+    bindWorktreeMutation,
+    createWorktreeMutation,
+    prepareExplorerRebind,
+    requestBindWorktree,
+  } = useWorktreeOperations({
+    codeHeader,
+    explorerLifecycleRef,
+    queryClient,
+    setWorktreeActionError,
   });
-  const newRemoteDesktop = useMutation({
-    mutationFn: ({
-      projectId,
-      tabGroupId,
-      target,
-      desktopTarget,
-    }: {
-      projectId: string;
-      tabGroupId?: string;
-      target?: ExecutionTarget;
-      desktopTarget?: RemoteDesktopTarget;
-    }) => createRemoteDesktop(projectId, tabGroupId, target, desktopTarget),
-    onSuccess: (desktop) => {
-      queryClient.setQueryData<ProjectViewSummary[]>(
-        ["project-views", desktop.projectId],
-        (current = []) =>
-          [
-            ...current.filter((item) => item.id !== desktop.id),
-            {
-              id: desktop.id,
-              projectId: desktop.projectId,
-              title: desktop.title,
-              kind: "remote-desktop" as const,
-              worktreeId: null,
-              position: desktop.position,
-              createdAt: desktop.createdAt,
-              updatedAt: desktop.updatedAt,
-            },
-          ].sort((left, right) => left.position - right.position),
-      );
-      queryClient.setQueryData(["remote-desktop", desktop.id], desktop);
-      void queryClient.invalidateQueries({
-        queryKey: ["remote-desktop-fleet", desktop.projectId],
-      });
-      openCreatedTab(desktop.projectId, "view", desktop.id);
-      void queryClient.invalidateQueries({
-        queryKey: ["project-views", desktop.projectId],
-      });
-    },
+  const newRemoteDesktop = useRemoteDesktopCreationOperation({
+    openCreatedTab,
+    queryClient,
   });
-  const renameChatMutation = useMutation({
-    mutationFn: ({ chatId, title }: { chatId: string; title: string }) =>
-      renameChat(chatId, title),
-    onSuccess: (renamed) => {
-      if (renamed.contextKind === "standalone") return;
-      queryClient.setQueryData<ChatSummary[]>(
-        ["chats", renamed.projectId],
-        (current = []) =>
-          current.map((chat) => (chat.id === renamed.id ? renamed : chat)),
-      );
-    },
+  const {
+    acknowledgeSelectedChatCompletion,
+    forkChatMutation,
+    renameChatMutation,
+  } = useChatRenameAndForkOperations({
+    openCreatedTab,
+    queryClient,
+    selectedProjectId,
   });
-  const { mutate: acknowledgeSelectedChatCompletion } = useMutation({
-    mutationFn: ({ chatId }: { chatId: string; projectId: string }) =>
-      acknowledgeChatCompletion(chatId),
-    onSuccess: (acknowledged) => {
-      if (acknowledged.contextKind === "standalone") return;
-      queryClient.setQueryData<ChatSummary[]>(
-        ["chats", acknowledged.projectId],
-        (current = []) =>
-          current.map((chat) =>
-            chat.id === acknowledged.id ? acknowledged : chat,
-          ),
-      );
-    },
-    retry: 2,
+  const acknowledgeSelectedStandaloneChatCompletion =
+    useStandaloneChatCompletionOperation(queryClient);
+  const deleteChatMutation = useChatDeleteOperation({
+    queryClient,
+    selectedProjectId,
+    setChatConsoleOpen,
+    setProjectTaskChatIds,
+    setTaskChatViewIds,
   });
-  const forkChatMutation = useMutation({
-    mutationFn: (chatId: string) => {
-      const source = queryClient
-        .getQueryData<ChatSummary[]>(["chats", selectedProjectId])
-        ?.find(({ id }) => id === chatId);
-      if (!source) throw new Error("The source chat is unavailable.");
-      return forkChat(chatId, source.title);
-    },
-    onSuccess: async (forked) => {
-      if (forked.contextKind === "standalone") return;
-      await queryClient.invalidateQueries({
-        queryKey: ["chats", forked.projectId],
-      });
-      openCreatedTab(forked.projectId, "chat", forked.id);
-    },
+  const {
+    deleteTerminalMutation,
+    renameTerminalMutation,
+    stopAndDeleteRunTerminalMutation,
+  } = useTerminalSurfaceOperations({
+    queryClient,
+    selectedProjectId,
+    setPendingTerminalInputs,
+    setTerminalServiceTerminalId,
+    terminalServiceTerminalId,
   });
-  const { mutate: acknowledgeSelectedStandaloneChatCompletion } = useMutation({
-    mutationFn: (chatId: string) => acknowledgeChatCompletion(chatId),
-    onSuccess: (acknowledged) => {
-      if (acknowledged.contextKind !== "standalone") return;
-      queryClient.setQueryData<StandaloneChatSummary[]>(
-        ["standalone-chats"],
-        (current = []) =>
-          current.map((chat) =>
-            chat.id === acknowledged.id ? acknowledged : chat,
-          ),
-      );
-    },
-    retry: 2,
+  const {
+    deleteExplorerMutation,
+    renameExplorerMutation,
+    requestDeleteExplorer,
+  } = useExplorerSurfaceOperations({
+    explorerLifecycleRef,
+    queryClient,
+    selectedProjectId,
   });
-  const deleteChatMutation = useMutation({
-    mutationFn: deleteChat,
-    onSuccess: async (_value, deletedId) => {
-      setChatConsoleOpen(deletedId, false);
-      setTaskChatViewIds((current) => {
-        if (!current.has(deletedId)) return current;
-        const next = new Set(current);
-        next.delete(deletedId);
-        return next;
-      });
-      setProjectTaskChatIds((current) => {
-        const next = new Map(
-          [...current].filter(([, chatId]) => chatId !== deletedId),
-        );
-        if (next.size === current.size) return current;
-        return next;
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["chats", selectedProjectId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["archived-chats", selectedProjectId],
-      });
-    },
+  const { deleteBrowserMutation, updateBrowserMutation } =
+    useBrowserSurfaceOperations({ queryClient, selectedProjectId });
+  const { deleteCodeTabMutation, updateCodeTabMutation } =
+    useCodeSurfaceOperations({ queryClient, selectedProjectId });
+  const { deleteProjectViewMutation, renameProjectViewMutation } =
+    useProjectViewSurfaceOperations({ queryClient, selectedProjectId });
+  const {
+    removeProjectMutation,
+    reorderProjectsMutation,
+    retryFolderSetupMutation,
+  } = useProjectListOperations({
+    pendingSurfaceSelection,
+    queryClient,
+    selectedProjectId,
+    setPendingSurfaceSelection,
+    setSelectedProjectId,
+    setShowProjectSettings,
+    setWorkspaceSelection,
+    showProjectSettings,
+    workspaceSelection,
   });
-  const renameTerminalMutation = useMutation({
-    mutationFn: ({
-      terminalId,
-      title,
-    }: {
-      terminalId: string;
-      title: string;
-    }) => renameTerminal(terminalId, title),
-    onSuccess: (renamed) =>
-      queryClient.setQueryData<TerminalSummary[]>(
-        ["terminals", renamed.projectId],
-        (current = []) =>
-          current.map((terminal) =>
-            terminal.id === renamed.id ? renamed : terminal,
-          ),
-      ),
-  });
-  const deleteTerminalMutation = useMutation({
-    mutationFn: deleteTerminal,
-    onSuccess: async (_value, deletedId) => {
-      if (terminalServiceTerminalId === deletedId) {
-        setTerminalServiceTerminalId(null);
-      }
-      setPendingTerminalInputs((current) =>
-        current.filter(({ terminalId }) => terminalId !== deletedId),
-      );
-      await queryClient.invalidateQueries({
-        queryKey: ["terminals", selectedProjectId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
-      });
-    },
-  });
-  const stopAndDeleteRunTerminalMutation = useMutation({
-    mutationFn: async (terminal: TerminalSummary) => {
-      if (
-        terminal.kind !== "run-configuration" ||
-        !terminal.runConfigurationId
-      ) {
-        throw new Error("Only a bound Run terminal can be stopped and closed.");
-      }
-      await operateRunConfigurationRuntime({
-        operation: "stop",
-        projectId: terminal.projectId,
-        configurationId: terminal.runConfigurationId,
-        targetWorktreeId: terminal.worktreeId,
-      });
-      await deleteTerminal(terminal.id);
-    },
-    onSuccess: async (_value, terminal) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["terminals", terminal.projectId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["project-tab-layout", terminal.projectId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["run-configuration-runtimes", terminal.projectId],
-        }),
-      ]);
-    },
-  });
-  const renameExplorerMutation = useMutation({
-    mutationFn: ({
-      explorerId,
-      title,
-    }: {
-      explorerId: string;
-      title: string;
-    }) => renameExplorer(explorerId, title),
-    onSuccess: (renamed) =>
-      queryClient.setQueryData<ExplorerSummary[]>(
-        ["explorers", renamed.projectId],
-        (current = []) =>
-          current.map((explorer) =>
-            explorer.id === renamed.id ? renamed : explorer,
-          ),
-      ),
-  });
-  const deleteExplorerMutation = useMutation({
-    mutationFn: (explorerId: string) =>
-      deleteExplorerAfterPreparation(
-        explorerLifecycleRef.current.get(explorerId),
-        () => deleteExplorer(explorerId),
-      ),
-    onSuccess: async (_value, deletedId) => {
-      explorerLifecycleRef.current.delete(deletedId);
-      await queryClient.invalidateQueries({
-        queryKey: ["explorers", selectedProjectId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
-      });
-    },
-  });
-  const requestDeleteExplorer = (explorerId: string) => {
-    const lifecycle = explorerLifecycleRef.current.get(explorerId);
-    if (
-      !confirmExplorerDiscard(lifecycle, () =>
-        window.confirm(
-          "Delete this Explorer and discard its unsaved file changes?",
-        ),
-      )
-    ) {
-      return;
-    }
-    deleteExplorerMutation.mutate(explorerId);
-  };
-  const updateBrowserMutation = useMutation({
-    mutationFn: ({
-      browserId,
-      input,
-    }: {
-      browserId: string;
-      input: { title?: string; url?: string; stateRevision?: number };
-    }) => updateBrowser(browserId, input),
-    onSuccess: (updated) =>
-      queryClient.setQueryData<BrowserSummary[]>(
-        ["browsers", updated.projectId],
-        (current = []) =>
-          current.map((browser) =>
-            browser.id === updated.id ? updated : browser,
-          ),
-      ),
-  });
-  const deleteBrowserMutation = useMutation({
-    mutationFn: deleteBrowser,
-    onSuccess: async (_value, deletedId) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["browsers", selectedProjectId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
-      });
-    },
-  });
-  const updateCodeTabMutation = useMutation({
-    mutationFn: ({ codeTabId, title }: { codeTabId: string; title: string }) =>
-      updateCodeTab(codeTabId, { title }),
-    onSuccess: (updated) =>
-      queryClient.setQueryData<CodeTabSummary[]>(
-        ["code-tabs", updated.projectId],
-        (current = []) =>
-          current.map((codeTab) =>
-            codeTab.id === updated.id ? updated : codeTab,
-          ),
-      ),
-  });
-  const deleteCodeTabMutation = useMutation({
-    mutationFn: deleteCodeTab,
-    onSuccess: async (_value, deletedId) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["code-tabs", selectedProjectId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
-      });
-    },
-  });
-  const renameProjectViewMutation = useMutation({
-    mutationFn: ({ viewId, title }: { viewId: string; title: string }) =>
-      renameProjectView(viewId, title),
-    onSuccess: (renamed) =>
-      queryClient.setQueryData<ProjectViewSummary[]>(
-        ["project-views", renamed.projectId],
-        (current = []) =>
-          current.map((view) => (view.id === renamed.id ? renamed : view)),
-      ),
-  });
-  const deleteProjectViewMutation = useMutation({
-    mutationFn: deleteProjectView,
-    onSuccess: async (_value, deletedId) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["project-views", selectedProjectId],
-      });
-      await queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", selectedProjectId],
-      });
-    },
-  });
-  const removeProjectMutation = useMutation({
-    mutationFn: ({
-      projectId,
-      deleteLocalFiles,
-    }: {
-      projectId: string;
-      deleteLocalFiles: boolean;
-    }) => removeProject(projectId, deleteLocalFiles),
-    onMutate: async ({ projectId }) => {
-      await queryClient.cancelQueries({ queryKey: ["projects"] });
-      const previousProjects = queryClient.getQueryData<ProjectSummary[]>([
-        "projects",
-      ]);
-      const restoreSelection =
-        selectedProjectId === projectId
-          ? {
-              pendingSurfaceSelection,
-              showProjectSettings,
-              workspaceSelection,
-            }
-          : null;
-      flushSync(() => {
-        queryClient.setQueryData<ProjectSummary[]>(
-          ["projects"],
-          (current = []) =>
-            current.filter((project) => project.id !== projectId),
-        );
-        if (restoreSelection) {
-          setSelectedProjectId(null);
-          setWorkspaceSelection(emptyWorkspaceSelection());
-          setPendingSurfaceSelection(null);
-          setShowProjectSettings(false);
-        }
-      });
-      return { previousProjects, restoreSelection };
-    },
-    onError: (_error, { projectId }, context) => {
-      if (context?.previousProjects) {
-        queryClient.setQueryData(["projects"], context.previousProjects);
-      }
-      if (context?.restoreSelection) {
-        setSelectedProjectId(projectId);
-        setWorkspaceSelection(context.restoreSelection.workspaceSelection);
-        setPendingSurfaceSelection(
-          context.restoreSelection.pendingSurfaceSelection,
-        );
-        setShowProjectSettings(context.restoreSelection.showProjectSettings);
-      }
-    },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project-workspaces"] }),
-        queryClient.invalidateQueries({ queryKey: ["github-repositories"] }),
-      ]);
-    },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
-  });
-  const retryFolderSetupMutation = useMutation({
-    mutationFn: ({
-      projectId,
-      stateRevision,
-    }: {
-      projectId: string;
-      stateRevision: number;
-    }) => retryProjectFolderSetup(projectId, stateRevision),
-    onSuccess: (job) => {
-      queryClient.setQueryData(["project-folder-setup", job.projectId], job);
-      void queryClient.invalidateQueries({ queryKey: ["projects"] });
-    },
-  });
-  const reorderProjectsMutation = useMutation({
-    mutationFn: (ids: string[]) => reorderProjects(ids),
-    onMutate: async (ids) => {
-      await queryClient.cancelQueries({ queryKey: ["projects"] });
-      const previous = queryClient.getQueryData<ProjectSummary[]>(["projects"]);
-      queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
-        ids.flatMap((id, position) => {
-          const project = current.find((item) => item.id === id);
-          return project ? [{ ...project, position }] : [];
-        }),
-      );
-      return { previous };
-    },
-    onError: (_error, _ids, context) =>
-      queryClient.setQueryData(["projects"], context?.previous),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
-  });
-  const tabLayoutMutation = useMutation({
-    mutationFn: ({
-      command,
-      projectId,
-    }: {
-      projectId: string;
-      command: TabLayoutCommand;
-    }) => {
-      const current = queryClient.getQueryData<ProjectTabLayoutSummary>([
-        "project-tab-layout",
-        projectId,
-      ]);
-      if (!current) throw new Error("The project tab layout is not loaded.");
-      if (command.type === "reorder-groups") {
-        return reorderProjectTabGroups(
-          projectId,
-          current.revision,
-          command.groupIds,
-        );
-      }
-      if (command.type === "reorder-members") {
-        return reorderProjectTabGroupMembers(
-          projectId,
-          command.groupId,
-          current.revision,
-          command.tabKeys,
-        );
-      }
-      return moveProjectTabGroupMember(projectId, {
-        revision: current.revision,
-        tabKey: command.tabKey,
-        targetGroupId: command.targetGroupId,
-        targetMemberPosition: command.targetMemberPosition,
-        ...(command.targetGroupPosition === undefined
-          ? {}
-          : { targetGroupPosition: command.targetGroupPosition }),
-      });
-    },
-    onMutate: async ({ command, projectId }) => {
-      setWorkspaceDragError(null);
-      const queryKey = ["project-tab-layout", projectId] as const;
-      await queryClient.cancelQueries({ queryKey });
-      return applyOptimisticTabLayoutToCache(queryClient, projectId, command);
-    },
-    onError: (error, _input, context) => {
-      restoreOptimisticTabLayoutCache(queryClient, context);
-      setWorkspaceDragError(errorText(error));
-    },
-    onSuccess: (layout) =>
-      queryClient.setQueryData(
-        ["project-tab-layout", layout.projectId],
-        layout,
-      ),
-    onSettled: (_data, _error, input) =>
-      queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", input.projectId],
-      }),
-  });
-  const renameTabGroupMutation = useMutation({
-    mutationFn: ({
-      groupId,
-      projectId,
-      title,
-    }: {
-      groupId: string;
-      projectId: string;
-      title: string;
-    }) => {
-      const current = queryClient.getQueryData<ProjectTabLayoutSummary>([
-        "project-tab-layout",
-        projectId,
-      ]);
-      if (!current) throw new Error("The project tab layout is not loaded.");
-      return updateProjectTabGroup(projectId, groupId, current.revision, title);
-    },
-    onSuccess: (layout) =>
-      queryClient.setQueryData(
-        ["project-tab-layout", layout.projectId],
-        layout,
-      ),
-    onSettled: (_data, _error, input) =>
-      queryClient.invalidateQueries({
-        queryKey: ["project-tab-layout", input.projectId],
-      }),
+  const { renameTabGroupMutation, tabLayoutMutation } = useTabLayoutOperations({
+    queryClient,
+    setWorkspaceDragError,
   });
 
   const onlineWorker = workers.data?.find((worker) => worker.online) ?? null;
@@ -3914,76 +2882,46 @@ export function App() {
   };
   const removeActiveMobileBottomTab = () =>
     removeMobileBottomTabById(activeMobileBottomTabId);
-  const createProjectSurface = (
-    projectId: string,
-    kind: ProjectSurfaceCreateKind,
-    tabGroupId?: string,
-    target?: ExecutionTarget,
-  ) => {
-    const input: {
-      projectId: string;
-      tabGroupId?: string;
-      target?: ExecutionTarget;
-    } = { projectId };
-    if (tabGroupId) input.tabGroupId = tabGroupId;
-    if (target) input.target = target;
-    if (kind === "chat") newChat.mutate(input);
-    else if (kind === "terminal") newTerminal.mutate(input);
-    else if (kind === "explorer") newExplorer.mutate(input);
-    else if (kind === "browser") newBrowser.mutate(input);
-    else if (kind === "code") newCodeTab.mutate(input);
-    else if (kind === "remote-desktop") {
-      if (!tabGroupId) newRemoteDesktop.reset();
-      newRemoteDesktop.mutate(input);
-    } else {
-      newProjectView.mutate({ projectId, tabGroupId, kind });
-    }
-  };
-  const renameSurface = (surface: ProjectSurface, title: string) => {
-    if (surface.kind === "chat") {
-      renameChatMutation.mutate({ chatId: surface.tabId, title });
-    } else if (surface.kind === "terminal") {
-      renameTerminalMutation.mutate({ terminalId: surface.tabId, title });
-    } else if (surface.kind === "explorer") {
-      renameExplorerMutation.mutate({ explorerId: surface.tabId, title });
-    } else if (surface.kind === "browser") {
-      updateBrowserMutation.mutate({
-        browserId: surface.tabId,
-        input: { title },
-      });
-    } else if (surface.kind === "code") {
-      updateCodeTabMutation.mutate({ codeTabId: surface.tabId, title });
-    } else {
-      renameProjectViewMutation.mutate({ viewId: surface.tabId, title });
-    }
-  };
-  const deleteSurface = (surface: ProjectSurface) => {
-    if (surface.kind === "chat") deleteChatMutation.mutate(surface.tabId);
-    else if (surface.kind === "terminal")
-      deleteTerminalMutation.mutate(surface.tabId);
-    else if (surface.kind === "explorer") requestDeleteExplorer(surface.tabId);
-    else if (surface.kind === "browser")
-      deleteBrowserMutation.mutate(surface.tabId);
-    else if (surface.kind === "code")
-      deleteCodeTabMutation.mutate(surface.tabId);
-    else deleteProjectViewMutation.mutate(surface.tabId);
-  };
-  const deleteSurfaceImmediately = (surface: ProjectSurface) => {
-    if (surface.kind === "explorer") {
-      deleteExplorerMutation.mutate(surface.tabId);
-      return;
-    }
-    deleteSurface(surface);
-  };
-  const creatingSurfaceKinds = new Set<ProjectSurfaceCreateKind>([
-    ...(newChat.isPending ? (["chat"] as const) : []),
-    ...(newTerminal.isPending ? (["terminal"] as const) : []),
-    ...(newExplorer.isPending ? (["explorer"] as const) : []),
-    ...(newBrowser.isPending ? (["browser"] as const) : []),
-    ...(newCodeTab.isPending ? (["code"] as const) : []),
-    ...(newProjectView.isPending ? (["history", "issues"] as const) : []),
-    ...(newRemoteDesktop.isPending ? (["remote-desktop"] as const) : []),
-  ]);
+  const {
+    createProjectSurface,
+    creatingSurfaceKinds,
+    deleteSurface,
+    deleteSurfaceImmediately,
+    renameSurface,
+    surfaceCreationFailure,
+  } = createSurfaceCommandController({
+    creation: {
+      browser: newBrowser,
+      chat: newChat,
+      code: newCodeTab,
+      explorer: newExplorer,
+      projectView: newProjectView,
+      remoteDesktop: newRemoteDesktop,
+      terminal: newTerminal,
+    },
+    crud: {
+      browser: {
+        delete: deleteBrowserMutation,
+        rename: updateBrowserMutation,
+      },
+      chat: { delete: deleteChatMutation, rename: renameChatMutation },
+      code: { delete: deleteCodeTabMutation, rename: updateCodeTabMutation },
+      explorer: {
+        delete: deleteExplorerMutation,
+        rename: renameExplorerMutation,
+        requestDelete: requestDeleteExplorer,
+      },
+      projectView: {
+        delete: deleteProjectViewMutation,
+        rename: renameProjectViewMutation,
+      },
+      terminal: {
+        delete: deleteTerminalMutation,
+        rename: renameTerminalMutation,
+      },
+    },
+  });
+
   const selectedPlacementContext: ProjectSurfacePlacementContext | undefined =
     selectedProject
       ? {
@@ -3994,64 +2932,13 @@ export function App() {
           worktrees: worktrees.data ?? [],
         }
       : undefined;
-  const surfaceCreationFailure = newChat.isError
-    ? { label: "Agent", error: newChat.error, dismiss: newChat.reset }
-    : newTerminal.isError
-      ? {
-          label: "terminal",
-          error: newTerminal.error,
-          dismiss: newTerminal.reset,
-        }
-      : newExplorer.isError
-        ? {
-            label: "Explorer",
-            error: newExplorer.error,
-            dismiss: newExplorer.reset,
-          }
-        : newBrowser.isError
-          ? {
-              label: "Browser",
-              error: newBrowser.error,
-              dismiss: newBrowser.reset,
-            }
-          : newCodeTab.isError
-            ? {
-                label: "Code tab",
-                error: newCodeTab.error,
-                dismiss: newCodeTab.reset,
-              }
-            : newRemoteDesktop.isError
-              ? {
-                  label: "Remote Desktop",
-                  error: newRemoteDesktop.error,
-                  dismiss: newRemoteDesktop.reset,
-                }
-              : null;
-  const handleWorkspaceDrop = (operation: WorkspaceDropOperation) => {
-    setWorkspaceDragError(null);
-    if (operation.type === "tab-layout") {
-      if (tabLayoutMutation.isPending) {
-        setWorkspaceDragError("Wait for the current tab move to finish.");
-        return;
-      }
-      tabLayoutMutation.mutate({
-        projectId: operation.projectId,
-        command: operation.command,
-      });
-      return;
-    }
-    const current = projects.data ?? [];
-    const from = current.findIndex(
-      ({ id }) => id === operation.sourceProjectId,
-    );
-    const to = current.findIndex(({ id }) => id === operation.targetProjectId);
-    if (from < 0 || to < 0) return;
-    const reordered = [...current];
-    const [moved] = reordered.splice(from, 1);
-    if (!moved) return;
-    reordered.splice(to, 0, moved);
-    reorderProjectsMutation.mutate(reordered.map(({ id }) => id));
-  };
+
+  const handleWorkspaceDrop = createWorkspaceDropHandler({
+    projects: projects.data ?? [],
+    reorderProjectsMutation,
+    setWorkspaceDragError,
+    tabLayoutMutation,
+  });
   const contentHeaderActions = {
     git:
       gitHistoryProject &&
