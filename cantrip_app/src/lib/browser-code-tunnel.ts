@@ -17,9 +17,15 @@ import {
   createTunnelAttachment,
   deleteTunnelAttachment,
   explorerCodeSessionBindingCurrent,
-  getTunnelDataProtection,
+  getTunnelTransportConfiguration,
   type BoundExplorerCodeSessionAttachment,
 } from "@/lib/api";
+import {
+  BROWSER_CODE_TUNNEL_SOCKET_CLOSED,
+  BROWSER_CODE_TUNNEL_SOCKET_OPEN,
+  createBrowserCodeWorkerLinkSocket,
+  type BrowserCodeTunnelSocket,
+} from "@/lib/browser-code-worker-link-socket";
 import {
   getClientSession,
   onClientSessionIdentityChanged,
@@ -566,12 +572,12 @@ class BrowserTunnelConnection {
   }
 }
 
-interface BrowserRelayCredential extends TunnelAttachmentCreateResult {
+interface BrowserTunnelCredential extends TunnelAttachmentCreateResult {
   expiresAtEpochMs: number;
   secretExpiresAtEpochMs: number;
 }
 
-interface BrowserRelayTransport {
+interface BrowserWorkerLinkTransport {
   errorTimer: ReturnType<typeof setTimeout> | null;
   identities: ReadyMessage | null;
   published: boolean;
@@ -581,16 +587,16 @@ interface BrowserRelayTransport {
   retired: boolean;
   sendAbort: AbortController;
   sendQueue: Promise<void>;
-  socket: WebSocket;
+  socket: BrowserCodeTunnelSocket;
 }
 
-class RelayCredentialRejectedError extends Error {}
-class RelaySecurityIdentityChangedError extends Error {}
+class TunnelAuthorizationEndedError extends Error {}
+class TunnelSecurityIdentityChangedError extends Error {}
 
-function relayCredential(
+function workerLinkCredential(
   result: TunnelAttachmentCreateResult,
   tunnelId: string,
-): BrowserRelayCredential {
+): BrowserTunnelCredential {
   const secretExpiresAtEpochMs = Date.parse(result.secretExpiresAt);
   const expiresAtEpochMs = Date.parse(result.expiresAt);
   if (
@@ -601,7 +607,14 @@ function relayCredential(
     result.secret = "";
     throw new Error("Protected Code relay credentials were invalid.");
   }
-  return { ...result, secretExpiresAtEpochMs, expiresAtEpochMs };
+  const credential = {
+    ...result,
+    secret: "",
+    secretExpiresAtEpochMs,
+    expiresAtEpochMs,
+  };
+  result.secret = "";
+  return credential;
 }
 
 class BrowserTunnelClient {
@@ -613,7 +626,7 @@ class BrowserTunnelClient {
   readonly #deletePromises = new Map<string, Promise<void>>();
   readonly #terminalListeners = new Set<(error: Error) => void>();
   #closing = false;
-  #credential: BrowserRelayCredential;
+  #credential: BrowserTunnelCredential;
   #credentialRotationRequired = false;
   #queuedSendBytes = 0;
   #destinationEndpointId: string | null = null;
@@ -621,14 +634,15 @@ class BrowserTunnelClient {
   #reconnectPromise: Promise<void> | null = null;
   #receiveQueue = Promise.resolve();
   #terminalError: Error | null = null;
-  #transport: BrowserRelayTransport | null = null;
+  #transport: BrowserWorkerLinkTransport | null = null;
 
   private constructor(
     readonly tunnelId: string,
     private readonly clientId: string,
     private readonly securityIdentity: BrowserSecurityIdentity,
-    credential: BrowserRelayCredential,
+    credential: BrowserTunnelCredential,
     private readonly protection: TunnelDataProtectionConfiguration,
+    private readonly workerId: string,
     private readonly binding:
       BoundExplorerCodeSessionAttachment["binding"] | null,
   ) {
@@ -659,9 +673,9 @@ class BrowserTunnelClient {
       );
     }
     const serverUrl = options.binding?.serverUrl;
-    const protection = await boundedOperation(
+    const configuration = await boundedOperation(
       (operationSignal) =>
-        getTunnelDataProtection(tunnelId, {
+        getTunnelTransportConfiguration(tunnelId, {
           ...(serverUrl ? { serverUrl } : {}),
           signal: operationSignal,
         }),
@@ -673,7 +687,9 @@ class BrowserTunnelClient {
       options.transport &&
       (options.transport.transportId !== tunnelId ||
         options.transport.tunnelId !== tunnelId ||
-        options.transport.protectedKeyRevision !== protection.keyRevision)
+        options.transport.protectedKeyRevision !==
+          configuration.dataProtection.keyRevision ||
+        options.transport.workerId !== configuration.workerId)
     ) {
       throw new Error("Protected Code transport security identity changed.");
     }
@@ -685,7 +701,7 @@ class BrowserTunnelClient {
         "The Cantrip Code server or authentication identity changed while connecting.",
       );
     }
-    const attachment = relayCredential(
+    const attachment = workerLinkCredential(
       await boundedOperation(
         (operationSignal) =>
           createTunnelAttachment(
@@ -707,7 +723,8 @@ class BrowserTunnelClient {
       clientId,
       securityIdentity,
       attachment,
-      protection,
+      configuration.dataProtection,
+      configuration.workerId,
       options.binding ?? null,
     );
     try {
@@ -909,7 +926,7 @@ class BrowserTunnelClient {
   }
 
   #queuePhysicalSend(
-    transport: BrowserRelayTransport,
+    transport: BrowserWorkerLinkTransport,
     payload: string | ArrayBuffer,
   ): Promise<void> {
     const operation = transport.sendQueue.then(() =>
@@ -929,7 +946,7 @@ class BrowserTunnelClient {
   }
 
   async #writePhysical(
-    transport: BrowserRelayTransport,
+    transport: BrowserWorkerLinkTransport,
     payload: string | ArrayBuffer,
   ): Promise<void> {
     if (transport.retired || transport.sendAbort.signal.aborted) {
@@ -956,7 +973,7 @@ class BrowserTunnelClient {
         OUTER_SEND_HIGH_WATER_BYTES
       ) {
         while (transport.socket.bufferedAmount > OUTER_SEND_LOW_WATER_BYTES) {
-          if (transport.socket.readyState !== WebSocket.OPEN) {
+          if (transport.socket.readyState !== BROWSER_CODE_TUNNEL_SOCKET_OPEN) {
             throw new Error("Protected Code relay disconnected while sending.");
           }
           await delay(OUTER_SEND_POLL_MS, bounded.signal);
@@ -965,7 +982,7 @@ class BrowserTunnelClient {
       bounded.signal.throwIfAborted();
       if (
         transport.retired ||
-        transport.socket.readyState !== WebSocket.OPEN ||
+        transport.socket.readyState !== BROWSER_CODE_TUNNEL_SOCKET_OPEN ||
         transport.socket.bufferedAmount + byteLength >
           OUTER_SEND_HIGH_WATER_BYTES
       ) {
@@ -980,20 +997,6 @@ class BrowserTunnelClient {
   async #connect(parent?: AbortSignal): Promise<void> {
     this.#assertSecurityIdentity();
     const credential = this.#credential;
-    const base = new URL(this.securityIdentity.serverUrl);
-    const url = new URL(credential.connectPath, base);
-    const expectedPath = `/api/tunnel-attachments/${encodeURIComponent(credential.attachmentId)}/connect`;
-    if (
-      url.origin !== base.origin ||
-      url.pathname !== expectedPath ||
-      url.search !== "" ||
-      url.hash !== "" ||
-      url.username !== "" ||
-      url.password !== ""
-    ) {
-      throw new Error("Protected Code relay route was invalid.");
-    }
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     let readyResolve!: (ready: ReadyMessage) => void;
     let readyReject!: (error: Error) => void;
     const ready = new Promise<ReadyMessage>((resolve, reject) => {
@@ -1001,8 +1004,13 @@ class BrowserTunnelClient {
       readyReject = reject;
     });
     void ready.catch(() => undefined);
-    const socket = new WebSocket(url, `cantrip-tunnel-v1.${credential.secret}`);
-    const transport: BrowserRelayTransport = {
+    const socket = createBrowserCodeWorkerLinkSocket({
+      attachmentId: credential.attachmentId,
+      expiresAt: credential.expiresAt,
+      tunnelId: this.tunnelId,
+      workerId: this.workerId,
+    });
+    const transport: BrowserWorkerLinkTransport = {
       errorTimer: null,
       identities: null,
       published: false,
@@ -1015,9 +1023,13 @@ class BrowserTunnelClient {
       socket,
     };
     socket.binaryType = "arraybuffer";
-    socket.addEventListener("message", (event) =>
-      this.#message(transport, event),
-    );
+    if (socket.setMessageConsumer) {
+      socket.setMessageConsumer((event) => this.#message(transport, event));
+    } else {
+      socket.addEventListener("message", (event) =>
+        this.#message(transport, event as MessageEvent),
+      );
+    }
     socket.addEventListener("close", (event) => {
       if (transport.errorTimer) clearTimeout(transport.errorTimer);
       transport.errorTimer = null;
@@ -1026,7 +1038,7 @@ class BrowserTunnelClient {
       this.#transportLost(
         transport,
         close.code === 1008
-          ? new RelayCredentialRejectedError(
+          ? new TunnelAuthorizationEndedError(
               "Protected Code relay credentials were rejected.",
             )
           : new Error("The protected Code relay disconnected."),
@@ -1062,7 +1074,7 @@ class BrowserTunnelClient {
               (event) =>
                 reject(
                   (event as CloseEvent).code === 1008
-                    ? new RelayCredentialRejectedError(
+                    ? new TunnelAuthorizationEndedError(
                         "Protected Code relay credentials were rejected.",
                       )
                     : new Error(
@@ -1105,7 +1117,10 @@ class BrowserTunnelClient {
     }
   }
 
-  #message(transport: BrowserRelayTransport, event: MessageEvent): void {
+  async #message(
+    transport: BrowserWorkerLinkTransport,
+    event: MessageEvent,
+  ): Promise<void> {
     if (transport.retired) return;
     if (typeof event.data === "string") {
       let parsed: unknown;
@@ -1121,7 +1136,7 @@ class BrowserTunnelClient {
         result.data.tunnelId !== this.tunnelId ||
         result.data.expiresAt !== this.#credential.expiresAt
       ) {
-        const error = new RelaySecurityIdentityChangedError(
+        const error = new TunnelSecurityIdentityChangedError(
           "Protected Code relay identity did not match.",
         );
         transport.readyReject(error);
@@ -1137,7 +1152,7 @@ class BrowserTunnelClient {
         (this.#destinationEndpointId !== null &&
           this.#destinationEndpointId !== result.data.destinationEndpointId)
       ) {
-        const error = new RelaySecurityIdentityChangedError(
+        const error = new TunnelSecurityIdentityChangedError(
           "Protected Code relay endpoint identity changed during recovery.",
         );
         transport.readyReject(error);
@@ -1151,7 +1166,7 @@ class BrowserTunnelClient {
       this.#destinationEndpointId = result.data.destinationEndpointId;
       const next = Object.freeze({ ...result.data });
       if (transport.identities) {
-        const error = new RelaySecurityIdentityChangedError(
+        const error = new TunnelSecurityIdentityChangedError(
           "Protected Code relay published readiness more than once.",
         );
         transport.readyReject(error);
@@ -1190,7 +1205,7 @@ class BrowserTunnelClient {
           error instanceof Error
             ? error
             : new Error("Protected Code frame failed.");
-        if (failure instanceof RelaySecurityIdentityChangedError) {
+        if (failure instanceof TunnelSecurityIdentityChangedError) {
           this.#failTerminal(failure);
         } else {
           this.#transportLost(transport, failure, false);
@@ -1200,10 +1215,11 @@ class BrowserTunnelClient {
         this.#queuedReceiveBytes -= frameBytes;
       });
     this.#receiveQueue = operation;
+    await operation;
   }
 
   async #receiveFrame(
-    transport: BrowserRelayTransport,
+    transport: BrowserWorkerLinkTransport,
     data: unknown,
   ): Promise<void> {
     if (transport.retired || this.#transport !== transport) return;
@@ -1228,7 +1244,7 @@ class BrowserTunnelClient {
       frame.header.sourceEndpointId !== identities.sourceEndpointId ||
       frame.header.destinationEndpointId !== identities.destinationEndpointId
     ) {
-      throw new RelaySecurityIdentityChangedError(
+      throw new TunnelSecurityIdentityChangedError(
         "Protected Code relay frame escaped its authenticated route.",
       );
     }
@@ -1274,7 +1290,7 @@ class BrowserTunnelClient {
   }
 
   #transportLost(
-    transport: BrowserRelayTransport,
+    transport: BrowserWorkerLinkTransport,
     error: Error,
     credentialRejected: boolean,
   ): void {
@@ -1294,7 +1310,7 @@ class BrowserTunnelClient {
     transport.sendAbort.abort(error);
     if (transport.errorTimer) clearTimeout(transport.errorTimer);
     transport.errorTimer = null;
-    if (transport.socket.readyState !== WebSocket.CLOSED) {
+    if (transport.socket.readyState !== BROWSER_CODE_TUNNEL_SOCKET_CLOSED) {
       transport.socket.close(1013, "Protected Code relay was congested");
     }
     transport.readyReject(error);
@@ -1339,7 +1355,7 @@ class BrowserTunnelClient {
         grace.signal.throwIfAborted();
         this.#assertSecurityIdentity();
         if (Date.now() >= this.#credential.expiresAtEpochMs) {
-          throw new RelayCredentialRejectedError(
+          throw new TunnelAuthorizationEndedError(
             "Protected Code relay attachment expired.",
           );
         }
@@ -1352,7 +1368,7 @@ class BrowserTunnelClient {
             rotate = false;
           } catch (error) {
             if (
-              error instanceof RelaySecurityIdentityChangedError ||
+              error instanceof TunnelSecurityIdentityChangedError ||
               terminalApiError(error)
             ) {
               throw error;
@@ -1380,12 +1396,12 @@ class BrowserTunnelClient {
           return;
         } catch (error) {
           if (
-            error instanceof RelaySecurityIdentityChangedError ||
+            error instanceof TunnelSecurityIdentityChangedError ||
             terminalApiError(error)
           ) {
             throw error;
           }
-          if (error instanceof RelayCredentialRejectedError) rotate = true;
+          if (error instanceof TunnelAuthorizationEndedError) rotate = true;
           grace.signal.throwIfAborted();
           await delay(RECONNECT_RETRY_MS, grace.signal);
         }
@@ -1397,9 +1413,9 @@ class BrowserTunnelClient {
 
   async #rotateCredential(signal: AbortSignal): Promise<void> {
     this.#assertSecurityIdentity();
-    const refreshedProtection = await boundedOperation(
+    const refreshedConfiguration = await boundedOperation(
       (operationSignal) =>
-        getTunnelDataProtection(this.tunnelId, {
+        getTunnelTransportConfiguration(this.tunnelId, {
           ...(this.binding ? { serverUrl: this.binding.serverUrl } : {}),
           signal: operationSignal,
         }),
@@ -1408,17 +1424,21 @@ class BrowserTunnelClient {
       signal,
     );
     if (
-      refreshedProtection.formatVersion !== this.protection.formatVersion ||
-      refreshedProtection.algorithm !== this.protection.algorithm ||
-      refreshedProtection.keyRevision !== this.protection.keyRevision ||
-      refreshedProtection.key !== this.protection.key
+      refreshedConfiguration.workerId !== this.workerId ||
+      refreshedConfiguration.dataProtection.formatVersion !==
+        this.protection.formatVersion ||
+      refreshedConfiguration.dataProtection.algorithm !==
+        this.protection.algorithm ||
+      refreshedConfiguration.dataProtection.keyRevision !==
+        this.protection.keyRevision ||
+      refreshedConfiguration.dataProtection.key !== this.protection.key
     ) {
-      throw new RelaySecurityIdentityChangedError(
+      throw new TunnelSecurityIdentityChangedError(
         "Protected Code data-plane identity changed during recovery.",
       );
     }
     const previous = this.#credential;
-    const next = relayCredential(
+    const next = workerLinkCredential(
       await boundedOperation(
         (operationSignal) =>
           createTunnelAttachment(
@@ -1457,14 +1477,14 @@ class BrowserTunnelClient {
 
   #assertSecurityIdentity(): void {
     if (this.binding && !explorerCodeSessionBindingCurrent(this.binding)) {
-      throw new RelaySecurityIdentityChangedError(
+      throw new TunnelSecurityIdentityChangedError(
         "Protected Code server or account identity changed.",
       );
     }
     if (
       !sameSecurityIdentity(this.securityIdentity, browserSecurityIdentity())
     ) {
-      throw new RelaySecurityIdentityChangedError(
+      throw new TunnelSecurityIdentityChangedError(
         "Protected Code server or account identity changed.",
       );
     }

@@ -26,6 +26,7 @@ const RENEW_AHEAD_MS = 20_000;
 const MIN_RENEW_DELAY_MS = 1_000;
 
 export interface TunnelWorkerLinkConnection {
+  readonly bufferedAmount: number;
   readonly route: "local" | "relay";
   readonly tunnelRoute: WorkerLinkTunnelRoute;
   activate(): void;
@@ -137,6 +138,10 @@ class ActiveTunnelWorkerLink implements TunnelWorkerLinkConnection {
 
   get route(): "local" | "relay" {
     return this.#route;
+  }
+
+  get bufferedAmount(): number {
+    return this.#outboundBytes;
   }
 
   get tunnelRoute(): WorkerLinkTunnelRoute {

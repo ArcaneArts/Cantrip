@@ -664,11 +664,9 @@ export async function preferProtectedCodeAttachment(
     };
   }
   const diagnosticTraceId = crypto.randomUUID();
-  let forward = await startDesktopTunnel(wire.tunnelId, {
-    compatibilityTransport: "legacy",
+  const forward = await startDesktopTunnel(wire.tunnelId, {
     diagnosticTraceId,
   });
-  const readinessStartedAtMs = monotonicNow();
   try {
     const url = new URL(
       `http://${forward.localHost}:${forward.localPort}/code/`,
@@ -692,64 +690,14 @@ export async function preferProtectedCodeAttachment(
         attachmentId: wire.attachmentId,
         diagnosticTraceId,
         destinationRejectionBaseline: forward.destinationRejectedCount ?? 0,
-        healthPhase: forward.routeState === "local-direct" ? "direct" : "relay",
+        healthPhase: "initial",
         sessionId: wire.sessionId,
         signal: options.signal,
-        totalTimeoutMs:
-          forward.routeState === "local-direct"
-            ? CODE_ATTACHMENT_DIRECT_HEALTH_TIMEOUT_MS
-            : CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS,
+        totalTimeoutMs: CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS,
         tunnelId: wire.tunnelId,
       });
-      if (
-        forward.routeState === "local-direct" &&
-        forward.relayFallbackAvailable
-      ) {
-        const currentRoute = (
-          await invoke<Array<{ routeState: string; tunnelId: string }>>(
-            "list_tunnel_forwards",
-          )
-        ).find((candidate) => candidate.tunnelId === wire.tunnelId);
-        if (!currentRoute) {
-          throw new Error("The desktop tunnel stopped during Code readiness.");
-        }
-        if (
-          currentRoute.routeState === "relayed" ||
-          currentRoute.routeState === "degraded"
-        ) {
-          forward = await forceDesktopTunnelRelay(forward, {
-            signal: options.signal,
-          });
-          const remainingHealthMs = Math.floor(
-            CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS -
-              (monotonicNow() - readinessStartedAtMs),
-          );
-          if (remainingHealthMs <= 0) {
-            throw new CodeAttachmentHealthError({
-              attemptCount: 0,
-              failureKind: "total-timeout",
-            });
-          }
-          await waitForDirectCodeAttachmentReady(attachment, {
-            attachmentId: wire.attachmentId,
-            diagnosticTraceId,
-            destinationRejectionBaseline: forward.destinationRejectedCount ?? 0,
-            healthPhase: "relay",
-            sessionId: wire.sessionId,
-            signal: options.signal,
-            totalTimeoutMs: remainingHealthMs,
-            tunnelId: wire.tunnelId,
-          });
-        } else if (currentRoute.routeState !== "local-direct") {
-          throw new Error(
-            "The desktop tunnel returned an invalid route state.",
-          );
-        }
-      }
     } catch (error) {
-      if (!(error instanceof CodeAttachmentHealthError)) {
-        throw error;
-      }
+      if (!(error instanceof CodeAttachmentHealthError)) throw error;
       const destinationRejectionCode = await currentDestinationRejection(
         wire.tunnelId,
         forward.lastDestinationRejectionCode,
@@ -769,51 +717,7 @@ export async function preferProtectedCodeAttachment(
           tunnelId: wire.tunnelId,
         });
       }
-      if (
-        !error.relayFallbackEligible ||
-        forward.routeState !== "local-direct" ||
-        !forward.relayFallbackAvailable
-      ) {
-        throw withDestinationRejection(error, destinationRejectionCode);
-      }
-      forward = await forceDesktopTunnelRelay(forward, {
-        signal: options.signal,
-      });
-      options.signal?.throwIfAborted();
-      const remainingHealthMs = Math.floor(
-        CODE_ATTACHMENT_HEALTH_TOTAL_TIMEOUT_MS -
-          (monotonicNow() - readinessStartedAtMs),
-      );
-      if (remainingHealthMs <= 0) {
-        throw new CodeAttachmentHealthError({
-          attemptCount: 0,
-          cause: error,
-          failureKind: "total-timeout",
-        });
-      }
-      try {
-        await waitForDirectCodeAttachmentReady(attachment, {
-          attachmentId: wire.attachmentId,
-          diagnosticTraceId,
-          destinationRejectionBaseline: forward.destinationRejectedCount ?? 0,
-          healthPhase: "relay",
-          sessionId: wire.sessionId,
-          signal: options.signal,
-          totalTimeoutMs: remainingHealthMs,
-          tunnelId: wire.tunnelId,
-        });
-      } catch (relayError) {
-        if (!(relayError instanceof CodeAttachmentHealthError)) {
-          throw relayError;
-        }
-        const relayDestinationRejection = await currentDestinationRejection(
-          wire.tunnelId,
-          forward.lastDestinationRejectionCode ?? destinationRejectionCode,
-          options.signal,
-        );
-        options.signal?.throwIfAborted();
-        throw withDestinationRejection(relayError, relayDestinationRejection);
-      }
+      throw withDestinationRejection(error, destinationRejectionCode);
     }
     const desktopRouteIdentity = {
       attachmentId: forward.attachmentId,

@@ -34,7 +34,8 @@ TCP resumption, and final legacy-relay consolidation.
 | 4 — Terminal                    | Move Terminal route ownership beneath WorkerLink                                           | Complete    | `codex/network-tranche1-pass4-terminal`        | [#1173](https://github.com/ArcaneArts/Cantrip/pull/1173) | Workspace typecheck; focused protocol 9, app 11, worker 13, server 21; full app 1,580; source/CLI verification; changed-file format and diff checks         | Server-authorized PTY bootstrap and encrypted I/O now use WorkerLink; compatibility endpoints remain                        |
 | 5A — Generic tunnel substrate   | Add exact tunnel grants, nested frame transport, worker adapter, and attachment fencing    | Complete    | `codex/network-tranche1-pass5-tunnels`         | [#1182](https://github.com/ArcaneArts/Cantrip/pull/1182) | Workspace typecheck; protocol 312; app 1,582; worker 875; focused protocol 10, server 8, app 9, worker 15; source/CLI verification; format and diff checks  | Pass 5 was split so authorization/data-plane review remains independent from the native listener lifecycle cutover          |
 | 5B — Tunnel and share cutover   | Move saved/managed tunnels and WebDAV streams behind WorkerLink                            | Complete    | `codex/network-tranche1-pass5b-native-tunnels` | [#1183](https://github.com/ArcaneArts/Cantrip/pull/1183) | Workspace typecheck; focused app 120 and full app 1,572; Rust fmt/check and bridge 2; source/CLI verification; changed-file format and diff checks          | Native loopback listeners bridge the shared WorkerLink stream; Cantrip Code remains on compatibility transport until Pass 6 |
-| 6 — Cantrip Code                | Move Code HTTP/WebSocket acquisition and pooling behind WorkerLink                         | Not started | —                                              | —                                                        | —                                                                                                                                                           | —                                                                                                                           |
+| 6A — Hosted and dedicated Code  | Move browser/Capacitor and dedicated desktop Code transport behind WorkerLink              | Complete    | `codex/network-tranche1-pass6-code`            | [#1184](https://github.com/ArcaneArts/Cantrip/pull/1184) | Workspace/app typecheck; focused app 97 and full app 1,571; source/CLI verification; changed-file format and diff checks                                    | Pass 6 is split so the browser service-worker boundary is reviewed separately from native process-wide pool ownership       |
+| 6B — Shared desktop Code pool   | Move the process-wide Tauri Code transport pool and handoff behind WorkerLink              | Not started | —                                              | —                                                        | —                                                                                                                                                           | Preserves multi-window generation fencing and stable localhost ownership                                                    |
 | 7 — Hardening and release gate  | Audit topology branches, complete diagnostics/tests, and run the acceptance matrix         | Not started | —                                              | —                                                        | —                                                                                                                                                           | —                                                                                                                           |
 
 ## Tranche One acceptance checklist
@@ -72,7 +73,7 @@ TCP resumption, and final legacy-relay consolidation.
   detached worktree at current `origin/main`; the WorkerLink protocol suite is
   9/9. Later passes must continue running focused validation and recheck these
   repository gates.
-- The current full app suite passes 1,572 tests with three skipped. The full
+- The current full app suite passes 1,571 tests with three skipped. The full
   worker suite has 872 passing, two skipped, and one unrelated packaged MCP
   catalog-order failure; the same failure reproduces on the synchronized
   Primary checkout. The full server suite continues to report broad
@@ -160,9 +161,15 @@ TCP resumption, and final legacy-relay consolidation.
 - Long-lived native tunnels rotate the same stable server attachment before its
   hard grant expiration. Revoking the old grant reconnects only the WorkerLink
   stream, while the native listener and its public localhost port remain bound.
+- The browser and Capacitor Code adapter keeps its same-origin service-worker
+  and WebSocket-shim boundary, but its physical protected tunnel socket is an
+  adapter over WorkerLink rather than a feature-owned server-relay WebSocket.
+  Endpoint AEAD and the inner tunnel-data-plane v1 protocol remain unchanged,
+  and unused legacy relay secrets are wiped immediately after attachment
+  allocation.
 
 ## Next expected pass
 
-Begin Pass 6 from merged `main`: move Cantrip Code HTTP/WebSocket acquisition
-and shared transport pooling behind WorkerLink while preserving the current
-Tauri LOCAL and hosted RELAY behavior.
+Begin Pass 6B from merged `main`: migrate the process-wide Tauri shared Code
+pool, generation-fenced leases, and multi-window carrier handoff behind
+WorkerLink without changing the stable localhost Code URL.

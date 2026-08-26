@@ -955,7 +955,7 @@ describe("preferProtectedCodeAttachment", () => {
       localHost: "127.0.0.1",
       localPort: 52345,
       routeState: "relayed",
-      relayFallbackAvailable: true,
+      relayFallbackAvailable: false,
       directCapabilityId: null,
       tunnelId: "11111111-1111-4111-8111-111111111111",
     });
@@ -985,7 +985,6 @@ describe("preferProtectedCodeAttachment", () => {
     expect(mocks.startDesktopTunnel).toHaveBeenCalledWith(
       "11111111-1111-4111-8111-111111111111",
       {
-        compatibilityTransport: "legacy",
         diagnosticTraceId: expect.any(String),
       },
     );
@@ -1010,14 +1009,14 @@ describe("preferProtectedCodeAttachment", () => {
     );
   });
 
-  it("classifies a healthy desktop direct route without changing its tunnel identity", async () => {
+  it("reports WorkerLink's healthy LOCAL route without owning route selection", async () => {
     mocks.startDesktopTunnel.mockResolvedValue({
       attachmentId: "transport-1",
       localHost: "127.0.0.1",
       localPort: 52345,
       routeState: "local-direct",
       relayFallbackAvailable: false,
-      directCapabilityId: "capability-1",
+      directCapabilityId: null,
       tunnelId: "11111111-1111-4111-8111-111111111111",
     });
     mocks.fetch.mockResolvedValue({ ok: true });
@@ -1036,55 +1035,14 @@ describe("preferProtectedCodeAttachment", () => {
     });
   });
 
-  it("switches an unusable connected direct route to relay exactly once", async () => {
-    vi.useFakeTimers();
-    try {
-      mocks.startDesktopTunnel.mockResolvedValue({
-        attachmentId: "transport-1",
-        diagnosticTraceId: null,
-        localHost: "127.0.0.1",
-        localPort: 52345,
-        routeState: "local-direct",
-        relayFallbackAvailable: true,
-        directCapabilityId: "capability-1",
-        directFallbackReason: null,
-        tunnelId: "11111111-1111-4111-8111-111111111111",
-      });
-      mocks.fetch.mockImplementation(() =>
-        mocks.fetch.mock.calls.length <= 4
-          ? new Promise(() => undefined)
-          : Promise.resolve({ ok: true }),
-      );
-
-      const preferred = preferProtectedCodeAttachment({
-        attachmentId: "11111111-1111-4111-8111-111111111111",
-        tunnelId: "11111111-1111-4111-8111-111111111111",
-        sessionId: "22222222-2222-4222-8222-222222222222",
-        expiresAt: "2026-08-13T12:00:00.000Z",
-        runtime: {},
-      } as never);
-      await vi.advanceTimersByTimeAsync(3_000);
-
-      await expect(preferred).resolves.toMatchObject({
-        directTunnelId: "11111111-1111-4111-8111-111111111111",
-        transportKind: "relay",
-      });
-      expect(mocks.forceDesktopTunnelRelay).toHaveBeenCalledTimes(1);
-      expect(mocks.fetch).toHaveBeenCalledTimes(5);
-      expect(mocks.stopDesktopTunnel).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("does not fall back after an HTTP response proves the selected route is usable", async () => {
+  it("leaves route recovery to WorkerLink when Code returns an HTTP response", async () => {
     mocks.startDesktopTunnel.mockResolvedValue({
       attachmentId: "transport-1",
       localHost: "127.0.0.1",
       localPort: 52345,
       routeState: "local-direct",
-      relayFallbackAvailable: true,
-      directCapabilityId: "capability-1",
+      relayFallbackAvailable: false,
+      directCapabilityId: null,
       tunnelId: "11111111-1111-4111-8111-111111111111",
     });
     mocks.fetch.mockResolvedValue({ ok: false, status: 503 });
@@ -1111,7 +1069,7 @@ describe("preferProtectedCodeAttachment", () => {
         localPort: 52345,
         routeState: "local-direct",
         relayFallbackAvailable: false,
-        directCapabilityId: "capability-1",
+        directCapabilityId: null,
         tunnelId: "11111111-1111-4111-8111-111111111111",
       } as const;
       mocks.startDesktopTunnel.mockResolvedValue(direct);
@@ -1152,146 +1110,14 @@ describe("preferProtectedCodeAttachment", () => {
     }
   });
 
-  it("falls back immediately on a fresh direct rejection and stops immediately on the relay rejection", async () => {
-    const direct = {
-      attachmentId: "transport-1",
-      localHost: "127.0.0.1",
-      localPort: 52345,
-      routeState: "local-direct",
-      relayFallbackAvailable: true,
-      directCapabilityId: "capability-1",
-      tunnelId: "11111111-1111-4111-8111-111111111111",
-    } as const;
-    mocks.startDesktopTunnel.mockResolvedValue(direct);
-    mocks.fetch.mockRejectedValue(new TypeError("Load failed"));
-    mocks.invoke
-      .mockResolvedValueOnce([
-        {
-          ...direct,
-          destinationRejectedCount: 1,
-          lastDestinationRejectionCode: "protected-record-unavailable",
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          ...direct,
-          routeState: "relayed",
-          destinationRejectedCount: 1,
-          lastDestinationRejectionCode: "protected-record-unavailable",
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          ...direct,
-          routeState: "relayed",
-          destinationRejectedCount: 2,
-          lastDestinationRejectionCode: "protected-record-unavailable",
-        },
-      ])
-      .mockResolvedValue([
-        {
-          ...direct,
-          routeState: "relayed",
-          destinationRejectedCount: 2,
-          lastDestinationRejectionCode: "protected-record-unavailable",
-        },
-      ]);
-
-    await expect(
-      preferProtectedCodeAttachment({
-        attachmentId: "11111111-1111-4111-8111-111111111111",
-        tunnelId: "11111111-1111-4111-8111-111111111111",
-        sessionId: "22222222-2222-4222-8222-222222222222",
-        expiresAt: "2026-08-13T12:00:00.000Z",
-        runtime: {},
-      } as never),
-    ).rejects.toMatchObject({
-      destinationRejectionCode: "protected-record-unavailable",
-    });
-
-    expect(mocks.forceDesktopTunnelRelay).toHaveBeenCalledTimes(1);
-    expect(mocks.fetch).toHaveBeenCalledTimes(2);
-    expect(mocks.stopDesktopTunnel).toHaveBeenCalledTimes(1);
-  });
-
-  it("retires direct state when native disconnected to relay during health retries", async () => {
-    const direct = {
-      attachmentId: "transport-1",
-      localHost: "127.0.0.1",
-      localPort: 52345,
-      routeState: "local-direct",
-      relayFallbackAvailable: true,
-      directCapabilityId: "capability-1",
-      tunnelId: "11111111-1111-4111-8111-111111111111",
-    };
-    mocks.startDesktopTunnel.mockResolvedValue(direct);
-    mocks.fetch
-      .mockResolvedValueOnce({ ok: true })
-      .mockResolvedValueOnce({ ok: true });
-    mocks.invoke.mockResolvedValue([
-      {
-        ...direct,
-        routeState: "relayed",
-      },
-    ]);
-
-    await expect(
-      preferProtectedCodeAttachment({
-        attachmentId: "11111111-1111-4111-8111-111111111111",
-        tunnelId: "11111111-1111-4111-8111-111111111111",
-        sessionId: "22222222-2222-4222-8222-222222222222",
-        expiresAt: "2026-08-13T12:00:00.000Z",
-        runtime: {},
-      } as never),
-    ).resolves.toMatchObject({
-      directTunnelId: "11111111-1111-4111-8111-111111111111",
-    });
-    expect(mocks.forceDesktopTunnelRelay).toHaveBeenCalledTimes(1);
-    expect(mocks.fetch).toHaveBeenCalledTimes(2);
-    expect(mocks.clientLog).toHaveBeenCalledWith(
-      "info",
-      "Cantrip Code health check completed",
-      expect.objectContaining({ healthPhase: "relay" }),
-    );
-  });
-
-  it("does not expose an autonomously selected relay until relay health succeeds", async () => {
-    const direct = {
-      attachmentId: "transport-1",
-      localHost: "127.0.0.1",
-      localPort: 52345,
-      routeState: "local-direct",
-      relayFallbackAvailable: true,
-      directCapabilityId: "capability-1",
-      tunnelId: "11111111-1111-4111-8111-111111111111",
-    };
-    mocks.startDesktopTunnel.mockResolvedValue(direct);
-    mocks.fetch
-      .mockResolvedValueOnce({ ok: true })
-      .mockResolvedValueOnce({ ok: false, status: 503 });
-    mocks.invoke.mockResolvedValue([{ ...direct, routeState: "relayed" }]);
-
-    await expect(
-      preferProtectedCodeAttachment({
-        attachmentId: "11111111-1111-4111-8111-111111111111",
-        tunnelId: "11111111-1111-4111-8111-111111111111",
-        sessionId: "22222222-2222-4222-8222-222222222222",
-        expiresAt: "2026-08-13T12:00:00.000Z",
-        runtime: {},
-      } as never),
-    ).rejects.toMatchObject({ failureKind: "http-response" });
-    expect(mocks.forceDesktopTunnelRelay).toHaveBeenCalledTimes(1);
-    expect(mocks.stopDesktopTunnel).toHaveBeenCalledTimes(1);
-  });
-
   it("preserves caller cancellation and never turns it into relay fallback", async () => {
     mocks.startDesktopTunnel.mockResolvedValue({
       attachmentId: "transport-1",
       localHost: "127.0.0.1",
       localPort: 52345,
       routeState: "local-direct",
-      relayFallbackAvailable: true,
-      directCapabilityId: "capability-1",
+      relayFallbackAvailable: false,
+      directCapabilityId: null,
       tunnelId: "11111111-1111-4111-8111-111111111111",
     });
     mocks.fetch.mockImplementation(() => new Promise(() => undefined));
@@ -1332,8 +1158,8 @@ describe("preferProtectedCodeAttachment", () => {
       localHost: "127.0.0.1",
       localPort: 52345,
       routeState: "local-direct",
-      relayFallbackAvailable: true,
-      directCapabilityId: "capability-1",
+      relayFallbackAvailable: false,
+      directCapabilityId: null,
       destinationRejectedCount: 0,
       tunnelId: "11111111-1111-4111-8111-111111111111",
     });
