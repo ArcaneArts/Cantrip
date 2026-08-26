@@ -33,6 +33,7 @@ describe("server configuration safety", () => {
       agentModelProvider: "ollama",
       allowInsecureRemote: false,
       authMode: "none",
+      bandwidthUsageFlushIntervalMs: 60_000,
       bootstrapMode: "pnpm-dev",
       deploymentMode: "local",
       host: "127.0.0.1",

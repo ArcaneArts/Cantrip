@@ -328,7 +328,7 @@ limits. Its tuning and retention variables are:
 | Variable                                        | Default | Purpose                               |
 | ----------------------------------------------- | ------: | ------------------------------------- |
 | `CANTRIP_STORAGE_RECONCILIATION_INTERVAL_MS`    | 3600000 | Full logical storage sweep            |
-| `CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS`     |    5000 | Normal bandwidth batch interval       |
+| `CANTRIP_BANDWIDTH_USAGE_FLUSH_INTERVAL_MS`     |   60000 | Normal bandwidth batch interval       |
 | `CANTRIP_BANDWIDTH_USAGE_FLUSH_THRESHOLD_BYTES` | 1048576 | Early bandwidth flush threshold       |
 | `CANTRIP_BANDWIDTH_USAGE_MAX_BUFFERED_ENTRIES`  |    4096 | In-memory dimensional cardinality cap |
 | `CANTRIP_ACCOUNT_USAGE_MAINTENANCE_INTERVAL_MS` | 3600000 | Rollup/retention interval             |
