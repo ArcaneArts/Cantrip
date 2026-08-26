@@ -326,9 +326,19 @@ carrier implementations.
 | Browser   | Normally unavailable          | WebRTC DataChannels                                                                        | Server WebSocket        |
 | Capacitor | Normally unavailable          | WebRTC DataChannels                                                                        | Server WebSocket        |
 
-WebRTC is the common direct carrier for browser and Capacitor and should also
-serve renderer-owned Tauri channels. The implementation should extract the
-current Remote Surface WebRTC machinery into a feature-neutral peer carrier.
+WebRTC is the common direct carrier for browser and Capacitor and also serves
+renderer-owned Tauri channels. The renderer's default `WorkerLinkManager`
+installs the feature-neutral `PeerCarrier`; Terminal, generic in-app tunnels,
+and Cantrip Code therefore inherit LAN or WAN whenever that carrier wins without
+changing their feature-facing APIs. Code retains its existing same-origin
+service-worker and WebSocket-shim boundary, while the physical socket beneath
+that shim is a WorkerLink stream.
+
+Apple platforms declare a local-network usage description for the Capacitor iOS
+app and the packaged macOS Tauri app. Cantrip does not browse or advertise a
+Bonjour service: peer discovery and signaling remain server-authorized, so no
+`NSBonjourServices` entry is declared. Browser and Capacitor expose only these
+in-app surfaces; they do not expose a general operating-system localhost port.
 
 Tauri additionally owns TCP listeners used by unrelated desktop programs. An
 early implementation spike must select the best native path among:

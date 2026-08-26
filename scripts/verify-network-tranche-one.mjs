@@ -36,6 +36,18 @@ const migratedConsumers = [
     path: "cantrip_app/src/components/browser/browser-view.tsx",
     required: ["startDesktopTunnel"],
   },
+  {
+    path: "cantrip_app/src/lib/terminal-worker-link.ts",
+    required: ["workerLinkManager", 'openStream(grant, "interactive")'],
+  },
+  {
+    path: "cantrip_app/src/lib/tunnel-worker-link.ts",
+    required: ["workerLinkManager", 'openStream(issued.grant, "stream")'],
+  },
+  {
+    path: "cantrip_app/src/lib/browser-code-worker-link-socket.ts",
+    required: ["openTunnelWorkerLink"],
+  },
 ];
 
 const featureOwnedTopology = [
@@ -46,6 +58,24 @@ const featureOwnedTopology = [
   "forceDesktopTunnelRelay",
   "terminalWebSocketUrl",
   "tunnelAttachmentWebSocketUrl",
+  "RTCPeerConnection",
+  "createWorkerLinkDirectTicket",
+  "createWorkerLinkPeerSession",
+  "openWorkerLinkLocalCarrier",
+  "openWorkerLinkPeerCarrier",
+  "openWorkerLinkRelayCarrier",
+  "/api/worker-links/",
+];
+
+const platformRequirements = [
+  {
+    path: "cantrip_app/ios/App/App/Info.plist",
+    required: ["NSLocalNetworkUsageDescription"],
+  },
+  {
+    path: "cantrip_app/src-tauri/Info.plist",
+    required: ["NSLocalNetworkUsageDescription"],
+  },
 ];
 
 const violations = [];
@@ -68,6 +98,18 @@ for (const consumer of migratedConsumers) {
   }
 }
 
+for (const platform of platformRequirements) {
+  const content = await readFile(
+    path.join(repositoryRoot, platform.path),
+    "utf8",
+  );
+  for (const required of platform.required) {
+    if (!content.includes(required)) {
+      violations.push(`${platform.path} must retain ${required}`);
+    }
+  }
+}
+
 const removedHelpers = ["cantrip_app/src/lib/desktop-terminal.ts"];
 for (const removed of removedHelpers) {
   try {
@@ -84,6 +126,6 @@ if (violations.length > 0) {
   process.exitCode = 1;
 } else {
   console.log(
-    "Terminal, tunnels, project shares, and Code retain WorkerLink-owned topology",
+    "Renderer Terminal, tunnels, project shares, and Code inherit WorkerLink-owned LOCAL/LAN/WAN/RELAY topology",
   );
 }

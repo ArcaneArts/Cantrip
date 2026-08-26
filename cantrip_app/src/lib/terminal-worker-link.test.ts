@@ -24,9 +24,7 @@ import type {
 const now = Date.parse("2026-08-26T12:00:00.000Z");
 const operationId = "11111111-1111-4111-8111-111111111111";
 
-function session(
-  preferredRoute: "local" | "relay" = "local",
-): WorkerLinkSession {
+function session(preferredRoute: WorkerLinkRoute = "local"): WorkerLinkSession {
   return {
     sessionId: "22222222-2222-4222-8222-222222222222",
     identity: {
@@ -45,7 +43,7 @@ function session(
     },
     routePolicy: {
       priority: ["local", "lan", "wan", "relay"],
-      enabled: ["local", "relay"],
+      enabled: ["local", "lan", "wan", "relay"],
     },
     routeGeneration: 1,
     preferredRoute,
@@ -147,7 +145,7 @@ class FakeStream implements WorkerLinkStream {
   }
 }
 
-function setup(route: "local" | "relay" = "local") {
+function setup(route: WorkerLinkRoute = "local") {
   const activeSession = session(route);
   const activeGrant = grant(activeSession);
   const stream = new FakeStream(route);
@@ -253,31 +251,34 @@ describe("Terminal WorkerLink client", () => {
     connection.close();
   });
 
-  it("uses the same grant and stream boundary when the manager selects RELAY", async () => {
-    const fixture = setup("relay");
-    const connection = await openTerminalWorkerLink(
-      {
-        onClose: vi.fn(),
-        onMessage: vi.fn(),
-        operationId,
-        terminalId: "terminal-1",
-        workerId: "worker-1",
-      },
-      fixture.dependencies,
-    );
+  it.each(["lan", "wan", "relay"] satisfies WorkerLinkRoute[])(
+    "uses the same grant and stream boundary when the manager selects %s",
+    async (route) => {
+      const fixture = setup(route);
+      const connection = await openTerminalWorkerLink(
+        {
+          onClose: vi.fn(),
+          onMessage: vi.fn(),
+          operationId,
+          terminalId: "terminal-1",
+          workerId: "worker-1",
+        },
+        fixture.dependencies,
+      );
 
-    expect(connection.route).toBe("relay");
-    expect(fixture.dependencies.createGrant).toHaveBeenCalledWith(
-      fixture.activeGrant.binding.sessionId,
-      "terminal-1",
-      operationId,
-    );
-    expect(fixture.link.openStream).toHaveBeenCalledWith(
-      fixture.activeGrant,
-      "interactive",
-    );
-    connection.close();
-  });
+      expect(connection.route).toBe(route);
+      expect(fixture.dependencies.createGrant).toHaveBeenCalledWith(
+        fixture.activeGrant.binding.sessionId,
+        "terminal-1",
+        operationId,
+      );
+      expect(fixture.link.openStream).toHaveBeenCalledWith(
+        fixture.activeGrant,
+        "interactive",
+      );
+      connection.close();
+    },
+  );
 
   it("releases the shared link and grant when stream opening fails", async () => {
     const fixture = setup();

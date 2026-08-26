@@ -1,5 +1,6 @@
 import type {
   WorkerLinkChannelCloseCode,
+  WorkerLinkRoute,
   WorkerLinkTunnelRoute,
 } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -34,7 +35,7 @@ class FakeConnection implements TunnelWorkerLinkConnection {
   readonly send = vi.fn((_frame: Uint8Array) => true);
 
   constructor(
-    readonly route: "local" | "relay",
+    readonly route: WorkerLinkRoute,
     readonly tunnelRoute: WorkerLinkTunnelRoute,
   ) {}
 }
@@ -85,7 +86,7 @@ class FakeSocket {
   }
 }
 
-function setup(routes: Array<"local" | "relay"> = ["local"]) {
+function setup(routes: WorkerLinkRoute[] = ["local"]) {
   const sockets: FakeSocket[] = [];
   const connections: FakeConnection[] = [];
   const linkOptions: OpenTunnelWorkerLinkOptions[] = [];
@@ -206,4 +207,23 @@ describe("desktop tunnel WorkerLink bridge", () => {
     expect(fixture.sockets).toHaveLength(2);
     expect(fixture.connections[1]!.activate).toHaveBeenCalledOnce();
   });
+
+  it.each(["lan", "wan"] satisfies WorkerLinkRoute[])(
+    "preserves the native listener while renderer traffic uses %s",
+    async (route) => {
+      const fixture = setup([route]);
+      const summary = await startDesktopTunnelWorkerLinkForward(
+        input(),
+        fixture.dependencies,
+      );
+
+      expect(summary).toMatchObject({
+        localPort: 41234,
+        routeState: "local-direct",
+      });
+      expect(fixture.connections[0]!.route).toBe(route);
+      expect(fixture.connections[0]!.activate).toHaveBeenCalledOnce();
+      expect(fixture.sockets).toHaveLength(1);
+    },
+  );
 });

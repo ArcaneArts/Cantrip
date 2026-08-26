@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Cantrip uses the camera to scan sign-in QR codes.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Cantrip connects directly to your signed-in workers on the local network.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
