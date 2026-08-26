@@ -38,6 +38,9 @@ importers:
       "@cantrip/crypto":
         specifier: workspace:*
         version: link:../packages/crypto
+      "@cantrip/glitch":
+        specifier: workspace:*
+        version: link:../packages/glitch
       "@cantrip/logging":
         specifier: workspace:*
         version: link:../packages/logging
@@ -372,6 +375,22 @@ importers:
       "@noble/hashes":
         specifier: ^2.3.0
         version: 2.3.0
+
+  packages/glitch:
+    dependencies:
+      "@cantrip/protocol":
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      "@types/react":
+        specifier: ^19.2.18
+        version: 19.2.18
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.2)(vite@8.2.0(@types/node@26.1.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.9)(yaml@2.9.0))
 
   packages/logging: {}
 

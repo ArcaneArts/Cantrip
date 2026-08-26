@@ -30,7 +30,7 @@ import {
   type EliteGlitchVariant,
   type EliteRevealConfig,
   type EliteRevealContentKind,
-} from "@/components/elite/elite-reveal";
+} from "@cantrip/glitch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

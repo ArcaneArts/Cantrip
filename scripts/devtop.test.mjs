@@ -85,7 +85,7 @@ test("legacy cleanup selects devtop roots across worktrees", () => {
       pid: 10,
       ppid: 1,
       command:
-        "node /workspace/Cantrip/node_modules/concurrently --names protocol,server,worker,desktop",
+        "node /workspace/Cantrip/node_modules/concurrently --names glitch,protocol,server,worker,desktop",
     },
     {
       pid: 20,
@@ -142,8 +142,14 @@ test("legacy cleanup recognizes orphaned service watchers in Cantrip worktrees",
       command: "node tsx watch src/index.ts",
       cwd: "/workspace/AnotherProject/cantrip_worker",
     },
+    {
+      pid: 40,
+      ppid: 1,
+      command: "node tsc -p tsconfig.json --watch --preserveWatchOutput",
+      cwd: "/private/tmp/cantrip-cycle/packages/glitch",
+    },
   ];
-  assert.deepEqual(findLegacyDevtopRootPids(processes, roots), [10, 20]);
+  assert.deepEqual(findLegacyDevtopRootPids(processes, roots), [10, 20, 40]);
 });
 
 test("legacy cleanup collapses nested Cantrip launchers to the owning root", () => {

@@ -13,7 +13,7 @@ import {
   selectEliteGlitchVariant,
   variantsForEliteContent,
   type EliteRevealConfig,
-} from "./elite-reveal";
+} from "../src/index.js";
 
 const config: EliteRevealConfig = {
   ...DEFAULT_ELITE_REVEAL_CONFIG,

@@ -4,7 +4,7 @@ import {
   ELITE_CHROMATIC_PAIRS,
   normalizeEliteRevealConfig,
   type EliteRevealConfig,
-} from "@/components/elite/elite-reveal";
+} from "@cantrip/glitch";
 
 import "./terminal-content-glitch.css";
 

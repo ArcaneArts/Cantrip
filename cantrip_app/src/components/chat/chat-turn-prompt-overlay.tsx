@@ -6,7 +6,7 @@ import {
   DEFAULT_ELITE_REVEAL_CONFIG,
   EliteReveal,
   type EliteRevealConfig,
-} from "@/components/elite/elite-reveal";
+} from "@cantrip/glitch";
 
 const CHAT_TURN_PROMPT_MAX_LENGTH = 280;
 

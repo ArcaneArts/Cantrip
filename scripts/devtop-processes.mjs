@@ -71,11 +71,16 @@ function isCantripDevelopmentCommand(process, repositoryRoots) {
   const normalizedCommand = process.command.replaceAll("\\", "/");
   if (
     (normalizedCommand.includes("concurrently") &&
-      normalizedCommand.includes("--names protocol,server,worker,desktop")) ||
+      (normalizedCommand.includes(
+        "--names glitch,protocol,server,worker,desktop",
+      ) ||
+        normalizedCommand.includes(
+          "--names protocol,server,worker,desktop",
+        ))) ||
     /(?:^|\s)(?:.*\/)?target\/debug\/cantrip-app(?:\.exe)?(?:\s|$)/u.test(
       normalizedCommand,
     ) ||
-    /--filter\s+@cantrip\/(?:app|protocol|server|worker)\s+(?:run\s+)?dev(?:\s|$)/u.test(
+    /--filter\s+@cantrip\/(?:app|glitch|protocol|server|worker)\s+(?:run\s+)?dev(?:\s|$)/u.test(
       normalizedCommand,
     )
   ) {
@@ -97,7 +102,7 @@ function isCantripDevelopmentCommand(process, repositoryRoots) {
     (/\btsc(?:\.cmd)?\s+-p\s+tsconfig\.json\s+--watch(?:\s|$)/u.test(
       normalizedCommand,
     ) &&
-      /\/packages\/protocol$/u.test(normalizedCwd)) ||
+      /\/packages\/(?:glitch|protocol)$/u.test(normalizedCwd)) ||
     (/\bvite(?:\.cmd|\.js)?\s+--port\s+1420(?:\s|$)/u.test(normalizedCommand) &&
       /\/cantrip_app$/u.test(normalizedCwd)) ||
     (/\btauri(?:\.cmd)?\s+dev(?:\s|$)/u.test(normalizedCommand) &&
@@ -364,7 +369,7 @@ export function forceKillLegacyDevtop(repositoryRoot = null) {
           "-NoProfile",
           "-NonInteractive",
           "-Command",
-          `Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.ProcessId -ne ${process.pid} -and (($_.CommandLine -like '*concurrently*--names protocol,server,worker,desktop*') -or ($_.CommandLine -match 'target[\\\\/]debug[\\\\/]cantrip-app(?:\\.exe)?')) } | Select-Object -ExpandProperty ProcessId`,
+          `Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.ProcessId -ne ${process.pid} -and ((($_.CommandLine -like '*concurrently*--names glitch,protocol,server,worker,desktop*') -or ($_.CommandLine -like '*concurrently*--names protocol,server,worker,desktop*')) -or ($_.CommandLine -match 'target[\\\\/]debug[\\\\/]cantrip-app(?:\\.exe)?')) } | Select-Object -ExpandProperty ProcessId`,
         ]),
       );
       for (const pid of pids) {

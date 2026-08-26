@@ -1,4 +1,4 @@
-import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/protocol";
+import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/glitch";
 import type {
   BrowserFleetService,
   ProjectViewSummary,

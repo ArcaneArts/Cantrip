@@ -1,11 +1,10 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import type {
-  EliteRevealConfig,
-  TerminalServerMessage,
-  TerminalSummary,
-} from "@cantrip/protocol";
-import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/protocol";
+import {
+  DEFAULT_ELITE_REVEAL_CONFIG,
+  type EliteRevealConfig,
+} from "@cantrip/glitch";
+import type { TerminalServerMessage, TerminalSummary } from "@cantrip/protocol";
 import {
   terminalInputContentSchema,
   terminalOutputContentSchema,
