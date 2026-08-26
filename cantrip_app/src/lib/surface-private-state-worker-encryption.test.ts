@@ -54,6 +54,34 @@ function worker(encryption: WorkerEncryptionStatus) {
 }
 
 describe("surface private-state worker readiness", () => {
+  it("returns an authoritatively ready worker without grants or refresh churn", async () => {
+    const ready = status("ready", [
+      { component: "surface-private-state", keyRevision: 3 },
+      { component: "private-surface-metadata", keyRevision: 3 },
+    ]);
+    const api = {
+      approvePrincipal: vi.fn(),
+      createGrant: vi.fn(),
+      listGrants: vi.fn(),
+      listPrincipals: vi.fn(),
+      revokeGrant: vi.fn(),
+    } satisfies WorkerGrantApi;
+    const refresh = vi.fn();
+
+    await expect(
+      ensureSurfacePrivateStateWorkerEncryption({
+        api,
+        refresh,
+        service: service(),
+        session: () =>
+          ({ serverId, user: { id: ownerId } }) as ClientSessionContext,
+        worker: worker(ready),
+      }),
+    ).resolves.toEqual(ready);
+    expect(api.createGrant).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it("adds the missing private-label grant to a surface-ready worker", async () => {
     const keyPair = await generateHpkeKeyPair(false);
     let principal: EncryptionPrincipal = {
@@ -208,6 +236,42 @@ describe("surface private-state worker readiness", () => {
   });
 
   it("retries when the same worker has not activated the current grants yet", async () => {
+    const keyPair = await generateHpkeKeyPair(false);
+    const principal: EncryptionPrincipal = {
+      id: "11111111-1111-4111-8111-111111111111",
+      ownerId,
+      kind: "worker",
+      workerId: "worker-a",
+      label: "Surface worker",
+      publicKey: await publicKeyForPair(keyPair),
+      state: "approved",
+      revision: 2,
+      approvedAt: timestamp,
+      revokedAt: null,
+      revokedReason: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const api: WorkerGrantApi = {
+      approvePrincipal: async () => principal,
+      createGrant: async (principalId, input) => ({
+        id: crypto.randomUUID(),
+        ownerId,
+        principalId,
+        ...input,
+        state: "active",
+        revision: 1,
+        revokedAt: null,
+        revokedReason: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }),
+      listGrants: async () => [],
+      listPrincipals: async () => [principal],
+      revokeGrant: async () => {
+        throw new Error("not used");
+      },
+    };
     const ready = status("ready", [
       { component: "surface-private-state", keyRevision: 3 },
       { component: "private-surface-metadata", keyRevision: 3 },
@@ -216,23 +280,20 @@ describe("surface private-state worker readiness", () => {
       { component: "surface-private-state", keyRevision: 2 },
       { component: "private-surface-metadata", keyRevision: 2 },
     ]);
-    const loadWorker = vi.fn(async () => worker(ready));
-    const sleep = vi.fn(async () => undefined);
-    const refresh = vi
+    const loadWorker = vi
       .fn()
-      .mockResolvedValueOnce({
-        component: "surface-private-state" as const,
-        keyRevision: 3,
-        status: stale,
-      })
-      .mockResolvedValue({
-        component: "surface-private-state" as const,
-        keyRevision: 3,
-        status: ready,
-      });
+      .mockResolvedValueOnce(worker(stale))
+      .mockResolvedValue(worker(ready));
+    const sleep = vi.fn(async () => undefined);
+    const refresh = vi.fn().mockResolvedValue({
+      component: "surface-private-state" as const,
+      keyRevision: 3,
+      status: stale,
+    });
 
     await expect(
       waitForSurfacePrivateStateWorkerEncryption({
+        api,
         loadWorker,
         refresh,
         service: service(),
@@ -242,7 +303,7 @@ describe("surface private-state worker readiness", () => {
       }),
     ).resolves.toEqual(ready);
     expect(loadWorker).toHaveBeenCalledTimes(2);
-    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(sleep).toHaveBeenCalledWith(250);
   });
 });

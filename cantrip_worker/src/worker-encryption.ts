@@ -283,6 +283,12 @@ export class WorkerEncryptionService {
   #ownerId: string | null;
   #boundServerId: string | null;
   #bootstrapGeneration = 0;
+  #refreshInFlight: {
+    credential: string;
+    fetcher: typeof fetch;
+    generation: number;
+    promise: Promise<WorkerEncryptionStatus>;
+  } | null = null;
   #serverId: string | null = null;
   #status: WorkerEncryptionStatus;
 
@@ -492,12 +498,45 @@ export class WorkerEncryptionService {
     return { key: new Uint8Array(entry.key), keyRevision: entry.keyRevision };
   }
 
-  async refresh(input: {
+  refresh(input: {
     credential: string;
     fetch?: typeof fetch;
   }): Promise<WorkerEncryptionStatus> {
-    const generation = ++this.#bootstrapGeneration;
     const fetcher = input.fetch ?? fetch;
+    const existing = this.#refreshInFlight;
+    if (
+      existing &&
+      existing.generation === this.#bootstrapGeneration &&
+      existing.credential === input.credential &&
+      existing.fetcher === fetcher
+    ) {
+      return existing.promise;
+    }
+    const generation = ++this.#bootstrapGeneration;
+    const promise = this.refreshGeneration(
+      input.credential,
+      fetcher,
+      generation,
+    );
+    const refresh = {
+      credential: input.credential,
+      fetcher,
+      generation,
+      promise,
+    };
+    this.#refreshInFlight = refresh;
+    const clear = () => {
+      if (this.#refreshInFlight === refresh) this.#refreshInFlight = null;
+    };
+    void promise.then(clear, clear);
+    return promise;
+  }
+
+  private async refreshGeneration(
+    credential: string,
+    fetcher: typeof fetch,
+    generation: number,
+  ): Promise<WorkerEncryptionStatus> {
     let response: Response;
     try {
       response = await fetcher(
@@ -505,7 +544,7 @@ export class WorkerEncryptionService {
         {
           body: JSON.stringify(this.registration()),
           headers: {
-            authorization: `Bearer ${input.credential}`,
+            authorization: `Bearer ${credential}`,
             "content-type": "application/json",
             "x-cantrip-worker-id": this.workerId,
           },

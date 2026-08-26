@@ -137,6 +137,7 @@ import { discoverBrowserServices } from "./browser/service-discovery.js";
 import { discoverMcpConfigurations } from "./mcp/discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
 import {
+  codePrewarmEncryptionFingerprint,
   createCoalescingCodePrewarmScheduler,
   ownerScopedCodeProfileId,
   prewarmDefaultCodeProfileAfterEncryptionRefresh,
@@ -856,6 +857,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const scheduleCodePrewarm = createCoalescingCodePrewarmScheduler<
     "startup-refresh" | "command-refresh" | "heartbeat"
   >({
+    fingerprint: () => {
+      try {
+        const fingerprint = codePrewarmEncryptionFingerprint({
+          identity: {
+            ownerId: workerEncryption.ownerId(),
+            serverId: workerEncryption.serverIdentity(),
+          },
+          status: workerEncryption.status(),
+        });
+        return fingerprint;
+      } catch {
+        return null;
+      }
+    },
     onError: (error, trigger) => {
       workerLogger.rateLimited(
         `code-profile-prewarm-schedule-failed:${config.workerId}`,

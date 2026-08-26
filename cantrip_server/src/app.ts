@@ -985,6 +985,7 @@ import {
   readAndPersistProviderQuotaSnapshot,
 } from "./models/provider-quota.js";
 import { evaluateModelRouteAvailability } from "./models/model-route-availability.js";
+import { workerEncryptionRefreshChangesSurfaceMaterial } from "./worker-encryption-refresh.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -13899,7 +13900,13 @@ export async function buildApp({
             { ownerId, timeoutMs: 20_000 },
           ),
         );
-        if (input.data.component === "surface-private-state") {
+        if (
+          workerEncryptionRefreshChangesSurfaceMaterial({
+            after: result.status,
+            before: worker.encryption,
+            component: input.data.component,
+          })
+        ) {
           await synchronizeTerminalServicesForWorker(request.params.workerId);
         }
         return reply.send(result);

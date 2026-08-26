@@ -16,7 +16,7 @@ import type {
   EncryptionPrincipal,
   WorkerComponentKeyGrant,
 } from "@cantrip/protocol/encryption";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   WorkerEncryptionError,
@@ -409,11 +409,11 @@ describe("persistent worker encryption", () => {
     const firstFetch = fetchSequence(olderPending.promise, newerReady.promise);
     const olderRefresh = service.refresh({
       credential: "worker-credential",
-      fetch: firstFetch,
+      fetch: (...arguments_) => firstFetch(...arguments_),
     });
     const newerRefresh = service.refresh({
       credential: "worker-credential",
-      fetch: firstFetch,
+      fetch: (...arguments_) => firstFetch(...arguments_),
     });
 
     newerReady.resolve(
@@ -448,11 +448,11 @@ describe("persistent worker encryption", () => {
     );
     const failingRefresh = service.refresh({
       credential: "worker-credential",
-      fetch: secondFetch,
+      fetch: (...arguments_) => secondFetch(...arguments_),
     });
     const readyRefresh = service.refresh({
       credential: "worker-credential",
-      fetch: secondFetch,
+      fetch: (...arguments_) => secondFetch(...arguments_),
     });
     latestReady.resolve(
       Response.json({
@@ -481,6 +481,39 @@ describe("persistent worker encryption", () => {
     ).toMatchObject({
       serverId,
     });
+  });
+
+  it("shares an identical in-flight bootstrap fetch", async () => {
+    const workerId = "worker-shared-refresh";
+    const service = await WorkerEncryptionService.open({
+      dataDirectory: await directory(),
+      serverUrl: "https://cantrip.test",
+      workerId,
+    });
+    const response = deferred<Response>();
+    const fetcher = vi.fn(() => response.promise);
+
+    const first = service.refresh({
+      credential: "worker-credential",
+      fetch: fetcher,
+    });
+    const second = service.refresh({
+      credential: "worker-credential",
+      fetch: fetcher,
+    });
+    expect(second).toBe(first);
+    expect(fetcher).toHaveBeenCalledOnce();
+
+    response.resolve(
+      Response.json({
+        serverId,
+        ownerId,
+        principal: principal(service, workerId, "pending"),
+        grants: [],
+      }),
+    );
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it("rejects a different logical server at the same transport origin", async () => {

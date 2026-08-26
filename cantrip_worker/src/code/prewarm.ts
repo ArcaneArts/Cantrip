@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { WorkerEncryptionStatus } from "@cantrip/protocol";
+import {
+  workerEncryptionMaterialFingerprint,
+  type WorkerEncryptionStatus,
+} from "@cantrip/protocol";
 
 export interface VerifiedCodePrewarmIdentity {
   ownerId: string;
@@ -8,36 +11,58 @@ export interface VerifiedCodePrewarmIdentity {
 }
 
 export function createCoalescingCodePrewarmScheduler<TTrigger>(input: {
+  fingerprint?: (trigger: TTrigger) => string | null;
   onError: (error: unknown, trigger: TTrigger) => void;
   run: (trigger: TTrigger) => Promise<void>;
 }): (trigger: TTrigger) => void {
-  let active: Promise<void> | null = null;
-  let hasQueuedTrigger = false;
-  let queuedTrigger: TTrigger | undefined;
+  let active:
+    { fingerprint: string | null; promise: Promise<void> } | undefined;
+  let completedFingerprint: string | null = null;
+  let queued: { fingerprint: string | null; trigger: TTrigger } | undefined;
 
   const schedule = (trigger: TTrigger) => {
+    const fingerprint = input.fingerprint?.(trigger) ?? null;
+    if (input.fingerprint && fingerprint === null) return;
     if (active) {
-      queuedTrigger = trigger;
-      hasQueuedTrigger = true;
+      if (fingerprint !== null && fingerprint === active.fingerprint) {
+        queued = undefined;
+        return;
+      }
+      queued = { fingerprint, trigger };
       return;
     }
+    if (fingerprint !== null && fingerprint === completedFingerprint) return;
 
-    const task = input
+    const promise = input
       .run(trigger)
+      .then(() => {
+        if (fingerprint !== null) completedFingerprint = fingerprint;
+      })
       .catch((error) => input.onError(error, trigger))
       .finally(() => {
-        if (active !== task) return;
-        active = null;
-        if (!hasQueuedTrigger) return;
-        const nextTrigger = queuedTrigger as TTrigger;
-        queuedTrigger = undefined;
-        hasQueuedTrigger = false;
-        schedule(nextTrigger);
+        if (active?.promise !== promise) return;
+        active = undefined;
+        const next = queued;
+        queued = undefined;
+        if (next) schedule(next.trigger);
       });
-    active = task;
+    active = { fingerprint, promise };
   };
 
   return schedule;
+}
+
+export function codePrewarmEncryptionFingerprint(input: {
+  identity: VerifiedCodePrewarmIdentity;
+  status: WorkerEncryptionStatus;
+}): string | null {
+  if (input.status.state !== "ready") return null;
+  if (!input.identity.ownerId || !input.identity.serverId) return null;
+  return JSON.stringify([
+    input.identity.ownerId,
+    input.identity.serverId,
+    workerEncryptionMaterialFingerprint(input.status),
+  ]);
 }
 
 export function ownerScopedCodeProfileId(
