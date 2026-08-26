@@ -369,50 +369,33 @@ export class TunnelTcpDestinationAdapter {
         if (payload.byteLength > stream.destinationToSourceCredit) {
           return;
         }
+        const header: TunnelDataPlaneFrameHeader = {
+          ...responseBase(stream),
+          kind: "data",
+          direction: "destination-to-source",
+        };
+        // A false result means the frame was not accepted. Preserve the exact
+        // payload and sequence across the capacity wait so parallel HTTP and
+        // WebSocket streams cannot turn transient contention into data loss.
+        while (!this.#emit(header, payload)) {
+          if (!(await this.#awaitCapacity(stream))) return;
+          if (!this.#streams.has(key(stream.header))) return;
+        }
         stream.pendingOutput.shift();
         stream.pendingBytes -= payload.byteLength;
         stream.destinationToSourceCredit -= payload.byteLength;
-        if (
-          !this.#emit(
-            {
-              ...responseBase(stream),
-              kind: "data",
-              direction: "destination-to-source",
-            },
-            payload,
-          )
-        ) {
-          this.#close(stream, "congested", "data-frame-emitter-rejected");
-          return;
-        }
-        let capacityAvailable = false;
-        try {
-          capacityAvailable = await this.#waitForCapacity(
-            stream.header.attachmentId,
-          );
-        } catch {
-          this.#close(stream, "congested", "capacity-wait-failed");
-          return;
-        }
-        if (!capacityAvailable) {
-          this.#close(stream, "congested", "capacity-unavailable");
-          return;
-        }
+        if (!(await this.#awaitCapacity(stream))) return;
       }
       if (!this.#streams.has(key(stream.header))) return;
       if (stream.destinationHalfClosed && !stream.destinationHalfCloseSent) {
-        if (
-          !this.#emit(
-            {
-              ...responseBase(stream),
-              kind: "half-close",
-              direction: "destination-to-source",
-            },
-            EMPTY_PAYLOAD,
-          )
-        ) {
-          this.#close(stream, "congested", "half-close-emitter-rejected");
-          return;
+        const header: TunnelDataPlaneFrameHeader = {
+          ...responseBase(stream),
+          kind: "half-close",
+          direction: "destination-to-source",
+        };
+        while (!this.#emit(header, EMPTY_PAYLOAD)) {
+          if (!(await this.#awaitCapacity(stream))) return;
+          if (!this.#streams.has(key(stream.header))) return;
         }
         stream.destinationHalfCloseSent = true;
       }
@@ -426,6 +409,23 @@ export class TunnelTcpDestinationAdapter {
         this.#resumeOutput(stream);
       }
     }
+  }
+
+  async #awaitCapacity(stream: TcpStream): Promise<boolean> {
+    let capacityAvailable = false;
+    try {
+      capacityAvailable = await this.#waitForCapacity(
+        stream.header.attachmentId,
+      );
+    } catch {
+      this.#close(stream, "congested", "capacity-wait-failed");
+      return false;
+    }
+    if (!capacityAvailable) {
+      this.#close(stream, "congested", "capacity-unavailable");
+      return false;
+    }
+    return true;
   }
 
   #pauseOutput(stream: TcpStream): void {

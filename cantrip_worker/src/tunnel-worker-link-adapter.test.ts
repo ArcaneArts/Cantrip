@@ -174,6 +174,51 @@ describe("TunnelWorkerLinkAdapter", () => {
     expect(adapter.routeFrame(accepted, new Uint8Array())).toBeNull();
   });
 
+  it("waits for fresh outer credit after a nested frame is rejected", async () => {
+    const destinations = {
+      handleFrame: vi.fn(),
+      revokeAttachment: vi.fn(() => 1),
+    };
+    const emitter: WorkerLinkAdapterEmitter = {
+      close: vi.fn(async () => true),
+      data: vi.fn(() => false),
+      error: vi.fn(() => true),
+      halfClose: vi.fn(() => true),
+    };
+    const adapter = new TunnelWorkerLinkAdapter(
+      destinations as unknown as TunnelDestinationRouter,
+    );
+    const { grant, session } = authority();
+    const channel = await adapter.open({
+      channel: {
+        channelId: "33333333-3333-4333-8333-333333333333",
+        connectionId: "44444444-4444-4444-8444-444444444444",
+      },
+      grant,
+      lane: "stream",
+      emit: emitter,
+      session,
+    });
+    const accepted: TunnelDataPlaneFrameHeader = {
+      ...base(),
+      kind: "accepted",
+      initialCreditBytes: 1024,
+    };
+
+    expect(adapter.routeFrame(accepted, new Uint8Array())).toBe(false);
+    const capacity = adapter.waitForCapacity(attachmentId)!;
+    let settled = false;
+    void capacity.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    await channel.credit?.(1024);
+    await expect(capacity).resolves.toBe(true);
+    await channel.close?.("normal");
+  });
+
   it("rejects nested frames outside the exact grant identity", async () => {
     const adapter = new TunnelWorkerLinkAdapter({
       handleFrame: vi.fn(),
