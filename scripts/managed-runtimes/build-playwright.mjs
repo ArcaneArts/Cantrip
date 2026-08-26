@@ -20,7 +20,12 @@ import {
   tarArgumentPath,
   writeFile,
 } from "./searxng-lib.mjs";
-import { inputRoot, readPlaywrightLock, root } from "./playwright-lib.mjs";
+import {
+  copyPortableHostFile,
+  inputRoot,
+  readPlaywrightLock,
+  root,
+} from "./playwright-lib.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -187,7 +192,10 @@ async function collectPortableHostFiles(runtimeRoot) {
       : [];
   for (const source of fontCandidates) {
     if (await exists(source))
-      await cp(source, path.join(runtimeRoot, "fonts", path.basename(source)));
+      await copyPortableHostFile(
+        source,
+        path.join(runtimeRoot, "fonts", path.basename(source)),
+      );
   }
   await mkdir(path.join(runtimeRoot, "certificates"), { recursive: true });
   const caCandidates =
@@ -196,7 +204,10 @@ async function collectPortableHostFiles(runtimeRoot) {
       : ["/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt"];
   for (const source of caCandidates) {
     if (await exists(source)) {
-      await cp(source, path.join(runtimeRoot, "certificates", "ca-bundle.crt"));
+      await copyPortableHostFile(
+        source,
+        path.join(runtimeRoot, "certificates", "ca-bundle.crt"),
+      );
       break;
     }
   }
@@ -227,7 +238,8 @@ async function collectPortableHostFiles(runtimeRoot) {
   const packages = new Set();
   for (const source of [...libraries].sort()) {
     const destination = path.join(libraryRoot, path.basename(source));
-    if (!(await exists(destination))) await cp(source, destination);
+    if (!(await exists(destination)))
+      await copyPortableHostFile(source, destination);
     try {
       const { stdout } = await execFileAsync("dpkg-query", ["-S", source]);
       packages.add(stdout.split(":", 1)[0]);

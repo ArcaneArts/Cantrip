@@ -1,8 +1,24 @@
-import { readFile } from "node:fs/promises";
+import { cp, lstat, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 export const root = path.resolve(import.meta.dirname, "../..");
 export const inputRoot = path.join(root, "managed_runtimes", "playwright");
+
+export async function copyPortableHostFile(source, destination) {
+  const sourceMetadata = await stat(source);
+  if (!sourceMetadata.isFile())
+    throw new Error(`portable host dependency is not a file: ${source}`);
+  await cp(source, destination, {
+    dereference: true,
+    errorOnExist: true,
+    force: false,
+  });
+  const destinationMetadata = await lstat(destination);
+  if (!destinationMetadata.isFile() || destinationMetadata.isSymbolicLink())
+    throw new Error(
+      `portable host dependency was not materialized: ${destination}`,
+    );
+}
 
 export async function readPlaywrightLock() {
   const lock = JSON.parse(
