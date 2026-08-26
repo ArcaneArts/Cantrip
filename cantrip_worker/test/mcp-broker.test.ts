@@ -213,6 +213,7 @@ describe("Cantrip MCP worker broker", () => {
         expect.arrayContaining([
           "run-configuration.start",
           "run-configuration.stop",
+          "web.session.snapshot",
         ]),
       );
       const denied = await fetch(`${broker.endpoint}/v1/execute`, {
@@ -458,6 +459,11 @@ describe("Cantrip MCP worker broker", () => {
           const openWorld = new Set([
             "web_search",
             "web_read",
+            "web_session_snapshot",
+            "web_session_open",
+            "web_session_click",
+            "web_session_type",
+            "web_session_close",
             "browser_services",
             "run_configuration_start",
             "run_configuration_restart",

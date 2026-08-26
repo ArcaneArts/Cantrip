@@ -12,6 +12,7 @@ import {
   type CantripMcpOperationOptions,
 } from "./read-operations.js";
 import { executeCantripMcpRunConfigurationOperation } from "./run-configuration-operations.js";
+import { executeCantripMcpWebSessionOperation } from "./web-session-operations.js";
 
 const readOperations = new Set<string>(CANTRIP_MCP_READ_OPERATIONS);
 const mutationOperations = new Set<string>(CANTRIP_MCP_MUTATION_OPERATIONS);
@@ -24,6 +25,9 @@ export function executeCantripMcpOperation(
 ): Promise<CantripAgentOperationResult> {
   if (options.request.operation.startsWith("run-configuration.")) {
     return executeCantripMcpRunConfigurationOperation(options);
+  }
+  if (options.request.operation.startsWith("web.session.")) {
+    return executeCantripMcpWebSessionOperation(options);
   }
   if (readOperations.has(options.request.operation)) {
     return executeCantripMcpReadOperation(options);

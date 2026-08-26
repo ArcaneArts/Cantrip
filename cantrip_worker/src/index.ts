@@ -936,6 +936,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   const webService = new WorkerWebService({
     searchRuntime: searxngRuntime,
+    sessionRuntime: playwrightRuntime,
     renderPage: (url, beforeNavigation) =>
       playwrightRuntime.render(url, beforeNavigation),
   });

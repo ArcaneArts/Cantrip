@@ -71,6 +71,15 @@ import {
   cantripMcpWebReadResultSchema,
   cantripMcpWebSearchInputSchema,
   cantripMcpWebSearchResultSchema,
+  cantripMcpWebSessionActionResultSchema,
+  cantripMcpWebSessionClickInputSchema,
+  cantripMcpWebSessionCloseInputSchema,
+  cantripMcpWebSessionCloseResultSchema,
+  cantripMcpWebSessionOpenInputSchema,
+  cantripMcpWebSessionOpenResultSchema,
+  cantripMcpWebSessionSnapshotInputSchema,
+  cantripMcpWebSessionSnapshotResultSchema,
+  cantripMcpWebSessionTypeInputSchema,
   cantripMcpWorktreeCreateInputSchema,
   cantripMcpWorktreeCreateResultSchema,
   cantripMcpWorktreeListInputSchema,
@@ -88,7 +97,7 @@ import {
 import { cantripMcpToolHelp } from "./tool-catalog.js";
 
 export const CANTRIP_MCP_INSTRUCTIONS =
-  "Use Cantrip MCP only for Cantrip-owned state, surfaces, and worker-managed web research. Call context_get first. Call tool_help with a tool name before guessing arguments; it returns exact schema generated from the live authoritative validator. Use web_search for bounded discovery and web_read with its opaque result IDs or continuation cursors for static page content. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Use run_configuration_detect to discover typed targets and run_configuration_list or run_configuration_get to obtain stable configuration IDs and exact revisions. Create and update structured definitions with explicit operation IDs; never select a configuration or worktree by display name. A Run targets Primary unless an exact worktree ID is supplied. Use explicit start, restart, stop, status, and read-output operations for one configuration/worktree runtime identity. Secret values are write-only through run_configuration_secret_set. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
+  "Use Cantrip MCP only for Cantrip-owned state, surfaces, and worker-managed web research. Call context_get first. Call tool_help with a tool name before guessing arguments; it returns exact schema generated from the live authoritative validator. Use web_search for bounded discovery and web_read with its opaque result IDs or continuation cursors for static page content. Use web_session_open only when interaction is required, take a fresh web_session_snapshot after every action, and never reuse stale element references. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Use run_configuration_detect to discover typed targets and run_configuration_list or run_configuration_get to obtain stable configuration IDs and exact revisions. Create and update structured definitions with explicit operation IDs; never select a configuration or worktree by display name. A Run targets Primary unless an exact worktree ID is supplied. Use explicit start, restart, stop, status, and read-output operations for one configuration/worktree runtime identity. Secret values are write-only through run_configuration_secret_set. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
 
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
@@ -598,6 +607,131 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
         return operationResult(
           cantripMcpWebReadResultSchema.parse(
             await gateway({ operation: "web.read", arguments: arguments_ }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "web_session_snapshot",
+    {
+      title: "Snapshot an interactive web session",
+      description:
+        "Read a bounded accessibility snapshot and generation-fenced opaque element references from an owned web session.",
+      inputSchema: cantripMcpWebSessionSnapshotInputSchema,
+      outputSchema: cantripMcpWebSessionSnapshotResultSchema,
+      annotations: browserDiscoveryAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWebSessionSnapshotResultSchema.parse(
+            await gateway({
+              operation: "web.session.snapshot",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "web_session_open",
+    {
+      title: "Open an interactive web session",
+      description:
+        "Open or navigate an owned managed-browser session. An exact Browser target opts into its persistent profile.",
+      inputSchema: cantripMcpWebSessionOpenInputSchema,
+      outputSchema: cantripMcpWebSessionOpenResultSchema,
+      annotations: openWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWebSessionOpenResultSchema.parse(
+            await gateway({
+              operation: "web.session.open",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "web_session_click",
+    {
+      title: "Click in an interactive web session",
+      description:
+        "Click an opaque element reference from the current snapshot generation.",
+      inputSchema: cantripMcpWebSessionClickInputSchema,
+      outputSchema: cantripMcpWebSessionActionResultSchema,
+      annotations: openWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWebSessionActionResultSchema.parse(
+            await gateway({
+              operation: "web.session.click",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "web_session_type",
+    {
+      title: "Type in an interactive web session",
+      description:
+        "Fill an opaque element reference from the current snapshot generation and optionally submit it.",
+      inputSchema: cantripMcpWebSessionTypeInputSchema,
+      outputSchema: cantripMcpWebSessionActionResultSchema,
+      annotations: openWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWebSessionActionResultSchema.parse(
+            await gateway({
+              operation: "web.session.type",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "web_session_close",
+    {
+      title: "Close an interactive web session",
+      description:
+        "Close an owned managed-browser session and release its bounded resources.",
+      inputSchema: cantripMcpWebSessionCloseInputSchema,
+      outputSchema: cantripMcpWebSessionCloseResultSchema,
+      annotations: openWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWebSessionCloseResultSchema.parse(
+            await gateway({
+              operation: "web.session.close",
+              arguments: arguments_,
+            }),
           ),
         );
       } catch (error) {

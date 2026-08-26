@@ -5,6 +5,15 @@ import { parseHTML } from "linkedom";
 import {
   cantripMcpWebReadInputSchema,
   cantripMcpWebReadResultSchema,
+  cantripMcpWebSessionActionResultSchema,
+  cantripMcpWebSessionClickInputSchema,
+  cantripMcpWebSessionCloseInputSchema,
+  cantripMcpWebSessionCloseResultSchema,
+  cantripMcpWebSessionOpenInputSchema,
+  cantripMcpWebSessionOpenResultSchema,
+  cantripMcpWebSessionSnapshotInputSchema,
+  cantripMcpWebSessionSnapshotResultSchema,
+  cantripMcpWebSessionTypeInputSchema,
   cantripMcpWebSearchInputSchema,
   cantripMcpWebSearchResultSchema,
   type CantripAgentOperationResult,
@@ -12,6 +21,7 @@ import {
 } from "@cantrip/protocol";
 
 import type { SearxngRuntimeManager } from "../managed-runtimes/searxng.js";
+import type { PlaywrightRuntimeManager } from "../managed-runtimes/playwright.js";
 import { RobotsPolicy } from "./robots.js";
 import {
   normalizedPublicHttpUrl,
@@ -76,6 +86,14 @@ export interface WorkerWebServiceOptions {
     beforeNavigation?: (url: URL) => Promise<void>,
   ) => Promise<{ html: string; title: string; url: string }>;
   searchRuntime: Pick<SearxngRuntimeManager, "request">;
+  sessionRuntime?: Pick<
+    PlaywrightRuntimeManager,
+    | "openSession"
+    | "snapshotSession"
+    | "clickSession"
+    | "typeSession"
+    | "closeSession"
+  >;
 }
 
 function opaque(prefix: "wrc" | "wsr"): string {
@@ -183,6 +201,7 @@ export class WorkerWebService {
   readonly #rateWindows = new Map<string, RateWindow>();
   readonly #robots: RobotsPolicy;
   readonly #searchRuntime: WorkerWebServiceOptions["searchRuntime"];
+  readonly #sessionRuntime: WorkerWebServiceOptions["sessionRuntime"] | null;
 
   constructor(options: WorkerWebServiceOptions) {
     this.#fetchPage = options.fetchPage ?? safeFetch;
@@ -192,6 +211,108 @@ export class WorkerWebService {
       options.robots ?? new RobotsPolicy({ fetchOptions: this.#fetchOptions });
     this.#renderPage = options.renderPage ?? null;
     this.#searchRuntime = options.searchRuntime;
+    this.#sessionRuntime = options.sessionRuntime ?? null;
+  }
+
+  async sessionOpen(
+    binding: CantripMcpBinding,
+    arguments_: unknown,
+    browserTarget?: { projectId: string; surfaceId: string },
+  ): Promise<CantripAgentOperationResult> {
+    const runtime = this.#requireSessionRuntime();
+    const input = cantripMcpWebSessionOpenInputSchema.parse(arguments_);
+    const data = await runtime.openSession(binding, input.url, {
+      sessionId: input.sessionId,
+      browserTarget,
+      beforeNavigation: (url) => this.#robots.assertAllowed(url),
+    });
+    return cantripMcpWebSessionOpenResultSchema.parse({
+      summary: `${input.sessionId ? "Navigated" : "Opened"} web session ${data.sessionId}.`,
+      target: null,
+      worktreeId: null,
+      mutated: true,
+      data,
+    });
+  }
+
+  async sessionSnapshot(
+    binding: CantripMcpBinding,
+    arguments_: unknown,
+  ): Promise<CantripAgentOperationResult> {
+    const input = cantripMcpWebSessionSnapshotInputSchema.parse(arguments_);
+    const data = await this.#requireSessionRuntime().snapshotSession(
+      binding,
+      input.sessionId,
+      input.maxChars,
+    );
+    return cantripMcpWebSessionSnapshotResultSchema.parse({
+      summary: `Read generation ${data.generation} of web session ${data.sessionId}.`,
+      target: null,
+      worktreeId: null,
+      mutated: false,
+      data,
+    });
+  }
+
+  async sessionClick(
+    binding: CantripMcpBinding,
+    arguments_: unknown,
+  ): Promise<CantripAgentOperationResult> {
+    const input = cantripMcpWebSessionClickInputSchema.parse(arguments_);
+    const data = await this.#requireSessionRuntime().clickSession(
+      binding,
+      input.sessionId,
+      input.elementRef,
+    );
+    return cantripMcpWebSessionActionResultSchema.parse({
+      summary: `Clicked an element in web session ${data.sessionId}.`,
+      target: null,
+      worktreeId: null,
+      mutated: true,
+      data,
+    });
+  }
+
+  async sessionType(
+    binding: CantripMcpBinding,
+    arguments_: unknown,
+  ): Promise<CantripAgentOperationResult> {
+    const input = cantripMcpWebSessionTypeInputSchema.parse(arguments_);
+    const data = await this.#requireSessionRuntime().typeSession(
+      binding,
+      input.sessionId,
+      input.elementRef,
+      input.text,
+      input.submit,
+    );
+    return cantripMcpWebSessionActionResultSchema.parse({
+      summary: `Typed into an element in web session ${data.sessionId}.`,
+      target: null,
+      worktreeId: null,
+      mutated: true,
+      data,
+    });
+  }
+
+  async sessionClose(
+    binding: CantripMcpBinding,
+    arguments_: unknown,
+  ): Promise<CantripAgentOperationResult> {
+    const input = cantripMcpWebSessionCloseInputSchema.parse(arguments_);
+    await this.#requireSessionRuntime().closeSession(binding, input.sessionId);
+    return cantripMcpWebSessionCloseResultSchema.parse({
+      summary: `Closed web session ${input.sessionId}.`,
+      target: null,
+      worktreeId: null,
+      mutated: true,
+      data: { sessionId: input.sessionId, closed: true },
+    });
+  }
+
+  #requireSessionRuntime() {
+    if (!this.#sessionRuntime)
+      throw new Error("The managed browser session runtime is unavailable.");
+    return this.#sessionRuntime;
   }
 
   async search(
