@@ -1260,7 +1260,10 @@ describe("managed Cantrip MCP guidance", () => {
     expect(params.developerInstructions).toBe(
       STANDALONE_CHAT_DEVELOPER_INSTRUCTIONS,
     );
-    expect(params.developerInstructions).not.toContain("managed `cantrip`");
+    expect(params.developerInstructions).toContain("managed `cantrip`");
+    expect(params.developerInstructions).toContain("`web_search`");
+    expect(params.developerInstructions).toContain("`web_read`");
+    expect(params.developerInstructions).not.toContain("`context_get`");
     expect(params.dynamicTools).toEqual([]);
   });
 
@@ -1862,35 +1865,28 @@ describe("codexMcpConfigOverride", () => {
     );
   });
 
-  it("limits managed Cantrip tools to the binding permission catalog", () => {
+  it("limits standalone managed Cantrip tools to the shared web catalog", () => {
     const server = {
       name: "cantrip",
       transport: "stdio" as const,
       command: "/worker/runtime/node",
       args: ["/worker/dist/mcp/stdio.js", "--connection", "/binding.json"],
-      environment: {},
+      environment: { CANTRIP_MCP_PROFILE: "standalone-web" },
       enabled: true,
-      managedToolNames: [
-        "context_get",
-        "run_configuration_list",
-        "run_configuration_status",
-      ],
+      managedToolNames: ["tool_help", "web_search", "web_read"],
     };
     expect(codexMcpConfigOverride([server])).toMatchObject({
       mcp_servers: {
         cantrip: {
-          enabled_tools: [
-            "context_get",
-            "run_configuration_list",
-            "run_configuration_status",
-          ],
+          env: { CANTRIP_MCP_PROFILE: "standalone-web" },
+          enabled_tools: ["tool_help", "web_search", "web_read"],
         },
       },
     });
     expect(managedMcpToolRequirements([server])).toEqual([
-      { name: "cantrip", tool: "context_get" },
-      { name: "cantrip", tool: "run_configuration_list" },
-      { name: "cantrip", tool: "run_configuration_status" },
+      { name: "cantrip", tool: "tool_help" },
+      { name: "cantrip", tool: "web_search" },
+      { name: "cantrip", tool: "web_read" },
     ]);
   });
 });

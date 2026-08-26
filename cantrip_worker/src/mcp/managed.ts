@@ -8,6 +8,8 @@ import {
   type McpServerConfiguration,
 } from "@cantrip/protocol";
 
+import type { CantripMcpProfile } from "./profile.js";
+
 export interface CantripMcpHostInvocation {
   arguments: string[];
   command: string;
@@ -39,6 +41,7 @@ export function managedCantripMcpServer(
   invocation: CantripMcpHostInvocation,
   connectionPath: string,
   managedToolNames: readonly (typeof CANTRIP_MCP_TOOL_NAMES)[number][] = CANTRIP_MCP_TOOL_NAMES,
+  profile: CantripMcpProfile = "ide",
 ): McpServerConfiguration & {
   managedToolNames: Array<(typeof CANTRIP_MCP_TOOL_NAMES)[number]>;
 } {
@@ -52,7 +55,7 @@ export function managedCantripMcpServer(
       "--connection",
       path.resolve(connectionPath),
     ],
-    environment: {},
+    environment: { CANTRIP_MCP_PROFILE: profile },
     managedToolNames: [...managedToolNames],
   };
 }

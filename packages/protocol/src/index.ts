@@ -9230,7 +9230,7 @@ const cantripWebDomainSchema = z
     /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/u,
     "Domains must be hostnames without a scheme or path.",
   )
-  .transform((value) => value.toLowerCase());
+  .overwrite((value) => value.toLowerCase());
 export const cantripMcpWebSearchInputSchema = z
   .object({
     query: z.string().trim().min(1).max(500),

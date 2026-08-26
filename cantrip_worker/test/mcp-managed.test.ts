@@ -6,6 +6,7 @@ import {
   managedCantripMcpServer,
   mergeManagedMcpServers,
 } from "../src/mcp/managed.js";
+import { CANTRIP_MCP_STANDALONE_TOOL_NAMES } from "../src/mcp/profile.js";
 
 describe("managed worker MCP servers", () => {
   it("materializes the packaged worker-owned stdio host", () => {
@@ -29,8 +30,22 @@ describe("managed worker MCP servers", () => {
         "--connection",
         "/worker/data/binding.json",
       ],
-      environment: {},
+      environment: { CANTRIP_MCP_PROFILE: "ide" },
       managedToolNames: [...CANTRIP_MCP_TOOL_NAMES],
+    });
+  });
+
+  it("materializes the standalone web-only profile", () => {
+    expect(
+      managedCantripMcpServer(
+        { command: "node", arguments: ["stdio.js"] },
+        "/binding.json",
+        CANTRIP_MCP_STANDALONE_TOOL_NAMES,
+        "standalone-web",
+      ),
+    ).toMatchObject({
+      environment: { CANTRIP_MCP_PROFILE: "standalone-web" },
+      managedToolNames: [...CANTRIP_MCP_STANDALONE_TOOL_NAMES],
     });
   });
 
