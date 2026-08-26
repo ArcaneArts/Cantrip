@@ -14,6 +14,7 @@ import {
   setDevtopStateChild,
   writeDevtopState,
 } from "./devtop-processes.mjs";
+import { ensureDevtopTauriConfig } from "./devtop-tauri-config.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
 
 const repositoryRoot = path.resolve(
@@ -96,6 +97,15 @@ await Promise.all([
   mkdir(path.dirname(stateFile), { recursive: true }),
 ]);
 
+// Tauri keys its encrypted client state by the application identifier. Keep
+// Primary compatible with the existing art.cantrip profile, but give every
+// other worktree a persisted identity paired with that worktree's server and
+// worker state. Recreating .cantrip/dev intentionally creates a fresh pair.
+await ensureDevtopTauriConfig({
+  repositoryRoot,
+  repositoryCommonDirectory,
+});
+
 // A new devtop owns the fixed development ports. Remove the previous tree
 // immediately instead of requesting graceful shutdown and waiting for it.
 await forceKillRecordedDevtop(stateFile, repositoryCommonDirectory);
@@ -132,7 +142,7 @@ try {
         "pnpm --filter @cantrip/protocol dev",
         "cross-env FORCE_COLOR=1 CANTRIP_SERVICE_LOG_DIR=../.cantrip/dev/logs/server pnpm --filter @cantrip/server dev",
         "node scripts/wait-for-server.mjs && cross-env FORCE_COLOR=1 CANTRIP_SERVICE_LOG_DIR=../.cantrip/dev/logs/worker CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP=true pnpm --filter @cantrip/worker dev",
-        "node scripts/wait-for-server.mjs && cross-env CANTRIP_LOCAL_ONLY=true pnpm --filter @cantrip/app tauri:dev",
+        "node scripts/wait-for-server.mjs && cross-env CANTRIP_LOCAL_ONLY=true pnpm --filter @cantrip/app exec tauri dev --config ../.cantrip/dev/tauri-dev.conf.json",
       ]);
     }
   }
