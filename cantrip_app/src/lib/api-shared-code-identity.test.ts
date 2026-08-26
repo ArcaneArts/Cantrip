@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertCreatedExplorerCodeSessionIdentity,
   assertRenewedExplorerCodeSessionIdentity,
+  sharedCodeTransportDestination,
 } from "./api";
 
 function attachment(transportId: string): CodeSharedAttachmentWire {
@@ -16,8 +17,7 @@ function attachment(transportId: string): CodeSharedAttachmentWire {
       formatVersion: 2,
       protectedKeyRevision: 7,
       securityScopeId: "66666666-6666-4666-8666-666666666666",
-      serverControlPlaneGeneration:
-        "77777777-7777-4777-8777-777777777777",
+      serverControlPlaneGeneration: "77777777-7777-4777-8777-777777777777",
       serverId: "server-1",
       transportId,
       tunnelId: transportId,
@@ -42,8 +42,7 @@ function attachment(transportId: string): CodeSharedAttachmentWire {
         lastError: null,
         processInstanceId: "code-process-1",
         sessionId,
-        sessionIncarnationId:
-          "44444444-4444-4444-8444-444444444444",
+        sessionIncarnationId: "44444444-4444-4444-8444-444444444444",
         startedAt: now,
         status: "running",
         workbench: {
@@ -62,6 +61,19 @@ function attachment(transportId: string): CodeSharedAttachmentWire {
 }
 
 describe("shared Explorer Code response identity", () => {
+  it("protects the shared root as a multiplexed Code transport", () => {
+    expect(
+      sharedCodeTransportDestination({
+        transportId: "11111111-1111-4111-8111-111111111111",
+        workerId: "worker-1",
+      }),
+    ).toEqual({
+      kind: "worker-code-transport",
+      resourceId: "11111111-1111-4111-8111-111111111111",
+      workerId: "worker-1",
+    });
+  });
+
   it("accepts the existing shared root when this tab proposed another candidate", () => {
     const winningRootId = "11111111-1111-4111-8111-111111111111";
     const losingCandidateId = "99999999-9999-4999-8999-999999999999";
@@ -90,38 +102,61 @@ describe("shared Explorer Code response identity", () => {
   });
 
   it.each([
-    ["transport worker", (wire: CodeSharedAttachmentWire) => {
-      wire.transport.workerId = "worker-2";
-    }],
-    ["security scope", (wire: CodeSharedAttachmentWire) => {
-      wire.transport.securityScopeId =
-        "99999999-9999-4999-8999-999999999999";
-    }],
-    ["server", (wire: CodeSharedAttachmentWire) => {
-      wire.transport.serverId = "server-2";
-    }],
-    ["control plane", (wire: CodeSharedAttachmentWire) => {
-      wire.transport.serverControlPlaneGeneration =
-        "99999999-9999-4999-8999-999999999999";
-    }],
-    ["key revision", (wire: CodeSharedAttachmentWire) => {
-      wire.transport.protectedKeyRevision += 1;
-    }],
-    ["worker process", (wire: CodeSharedAttachmentWire) => {
-      wire.transport.workerProcessGeneration =
-        "99999999-9999-4999-8999-999999999999";
-    }],
-    ["session incarnation", (wire: CodeSharedAttachmentWire) => {
-      wire.session.runtime.sessionIncarnationId =
-        "99999999-9999-4999-8999-999999999999";
-    }],
-  ] as const)("rejects a renewed lease with changed %s identity", (_name, mutate) => {
-    const previous = attachment("11111111-1111-4111-8111-111111111111");
-    const renewed = structuredClone(previous);
-    mutate(renewed);
+    [
+      "transport worker",
+      (wire: CodeSharedAttachmentWire) => {
+        wire.transport.workerId = "worker-2";
+      },
+    ],
+    [
+      "security scope",
+      (wire: CodeSharedAttachmentWire) => {
+        wire.transport.securityScopeId = "99999999-9999-4999-8999-999999999999";
+      },
+    ],
+    [
+      "server",
+      (wire: CodeSharedAttachmentWire) => {
+        wire.transport.serverId = "server-2";
+      },
+    ],
+    [
+      "control plane",
+      (wire: CodeSharedAttachmentWire) => {
+        wire.transport.serverControlPlaneGeneration =
+          "99999999-9999-4999-8999-999999999999";
+      },
+    ],
+    [
+      "key revision",
+      (wire: CodeSharedAttachmentWire) => {
+        wire.transport.protectedKeyRevision += 1;
+      },
+    ],
+    [
+      "worker process",
+      (wire: CodeSharedAttachmentWire) => {
+        wire.transport.workerProcessGeneration =
+          "99999999-9999-4999-8999-999999999999";
+      },
+    ],
+    [
+      "session incarnation",
+      (wire: CodeSharedAttachmentWire) => {
+        wire.session.runtime.sessionIncarnationId =
+          "99999999-9999-4999-8999-999999999999";
+      },
+    ],
+  ] as const)(
+    "rejects a renewed lease with changed %s identity",
+    (_name, mutate) => {
+      const previous = attachment("11111111-1111-4111-8111-111111111111");
+      const renewed = structuredClone(previous);
+      mutate(renewed);
 
-    expect(() =>
-      assertRenewedExplorerCodeSessionIdentity(previous, renewed, "server-1"),
-    ).toThrow(/lease changed identity/u);
-  });
+      expect(() =>
+        assertRenewedExplorerCodeSessionIdentity(previous, renewed, "server-1"),
+      ).toThrow(/lease changed identity/u);
+    },
+  );
 });
