@@ -85,6 +85,14 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         ["worker-enrollment-status"],
         ["desktop-worker-enrollment-status"],
         ["chat-sync"],
+      ];
+    case "worker-availability":
+      return [
+        ["workers"],
+        ["worker-management"],
+        ["worker-enrollment-status"],
+        ["desktop-worker-enrollment-status"],
+        ["chat-sync"],
         ["project-repository-stats"],
       ];
     case "project":
@@ -170,7 +178,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : [];
     case "git-operation":
       return projectId
-        ? [["git-operation", projectId]]
+        ? [
+            ["git-operation", projectId],
+            ["project-repository-stats", projectId],
+          ]
         : event.scope.kind === "current-user"
           ? [["git-operation"]]
           : [];
@@ -320,6 +331,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
             event.entityId
               ? ["explorer-directory-commits", projectId, event.entityId]
               : ["explorer-directory-commits", projectId],
+            ["project-repository-stats", projectId],
           ]
         : [];
     case "browser":

@@ -306,6 +306,7 @@ describe("application live query bridge", () => {
     ).toEqual([
       ["explorer-directory", "project-one", "worktree-one"],
       ["explorer-directory-commits", "project-one", "worktree-one"],
+      ["project-repository-stats", "project-one"],
     ]);
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
@@ -433,7 +434,7 @@ describe("application live query bridge", () => {
     bridge.handleEvent({ ...workerEvent, cursor: 2 });
     await Promise.resolve();
     await Promise.resolve();
-    expect(invalidate).toHaveBeenCalledTimes(6);
+    expect(invalidate).toHaveBeenCalledTimes(5);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["workers"] });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["worker-management"],
@@ -445,15 +446,57 @@ describe("application live query bridge", () => {
       queryKey: ["desktop-worker-enrollment-status"],
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chat-sync"] });
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: ["project-repository-stats"],
-    });
     expect(bridge.stats()).toMatchObject({
-      coalescedInvalidationCount: 6,
-      invalidatedQueryCount: 6,
+      coalescedInvalidationCount: 5,
+      invalidatedQueryCount: 5,
       invalidationFlushCount: 1,
       receivedEventCount: 2,
     });
+  });
+
+  it("refreshes repository statistics for availability changes", () => {
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          entityId: "worker-one",
+          resource: "worker-availability",
+          scope: { kind: "current-user" },
+        }),
+      ),
+    ).toEqual([
+      ["workers"],
+      ["worker-management"],
+      ["worker-enrollment-status"],
+      ["desktop-worker-enrollment-status"],
+      ["chat-sync"],
+      ["project-repository-stats"],
+    ]);
+  });
+
+  it("coalesces repository mutation statistics invalidation", async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const filesystemEvent = event({
+      entityId: "worktree-one",
+      resource: "explorer-filesystem",
+      scope: { kind: "project", projectId: "project-one" },
+    });
+
+    bridge.handleEvent(filesystemEvent);
+    bridge.handleEvent({ ...filesystemEvent, cursor: 2 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(
+      invalidate.mock.calls.filter(
+        ([input]) =>
+          JSON.stringify(input?.queryKey) ===
+          JSON.stringify(["project-repository-stats", "project-one"]),
+      ),
+    ).toHaveLength(1);
   });
 
   it("invalidates policy state in every connected Settings window", async () => {
@@ -963,6 +1006,9 @@ describe("application live query bridge", () => {
     ).toBe("completed");
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["git-operation", projectId],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["project-repository-stats", projectId],
     });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["git-conflicts", projectId],
