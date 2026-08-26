@@ -1,0 +1,27 @@
+use_default_settings:
+  engines:
+    keep_only: []
+
+general:
+  debug: false
+  instance_name: "Cantrip Search Smoke"
+  enable_metrics: false
+
+search:
+  formats:
+    - json
+
+server:
+  bind_address: "127.0.0.1"
+  port: __CANTRIP_PORT__
+  secret_key: "__CANTRIP_SECRET__"
+  limiter: false
+  image_proxy: false
+
+valkey:
+  url: false
+
+engines:
+  - name: cantrip offline
+    engine: demo_offline
+    shortcut: cantrip

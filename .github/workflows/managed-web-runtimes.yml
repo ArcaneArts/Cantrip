@@ -1,0 +1,99 @@
+name: Managed web runtimes
+
+on:
+  pull_request:
+    paths:
+      - "managed_runtimes/**"
+      - "scripts/managed-runtimes/**"
+      - ".github/workflows/managed-web-runtimes.yml"
+      - "package.json"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Sign and publish the pinned runtime release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  searxng:
+    name: SearXNG ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+          - target: darwin-x64
+            runner: macos-15-intel
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - target: win32-arm64
+            runner: windows-11-arm
+          - target: win32-x64
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify release tooling
+        run: pnpm managed-runtime:searxng:test
+      - name: Build, inventory, launch, search, and shut down
+        shell: bash
+        run: >-
+          pnpm managed-runtime:searxng:build --
+          --target ${{ matrix.target }}
+          --external-smoke
+          ${{ matrix.target == 'linux-x64' && '--with-sources' || '' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: searxng-${{ matrix.target }}
+          path: dist/managed-runtimes/searxng/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    needs: searxng
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: searxng-*
+          path: dist/managed-runtimes/searxng
+          merge-multiple: true
+      - name: Sign release manifest
+        env:
+          CANTRIP_MANAGED_RUNTIME_SIGNING_KEY_BASE64: ${{ secrets.CANTRIP_MANAGED_RUNTIME_SIGNING_KEY_BASE64 }}
+          CANTRIP_MANAGED_RUNTIME_SIGNING_KEY_ID: ${{ vars.CANTRIP_MANAGED_RUNTIME_SIGNING_KEY_ID }}
+        run: pnpm managed-runtime:searxng:release
+      - name: Publish immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          version="$(node -p "require('./managed_runtimes/searxng/runtime.lock.json').bundleVersion")"
+          gh release create "web-runtime-${version}" dist/managed-runtimes/searxng/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Managed web runtime ${version}" \
+            --notes "Pinned, signed, six-platform Cantrip SearXNG runtime."
