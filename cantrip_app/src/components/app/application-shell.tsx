@@ -8,7 +8,6 @@ import type {
   ExecutionTarget,
   ExplorerEntry,
   ExplorerSummary,
-  ProjectFolderSetupJobSummary,
   ProjectReplicaJobSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
@@ -24,12 +23,7 @@ import type {
   TerminalSummary,
 } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
-import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
   Code2,
@@ -77,6 +71,20 @@ import {
   TerminalView,
 } from "@/components/app/application-shell-surfaces";
 import { StatusDot } from "@/components/app/status-dot";
+import {
+  useApplicationInventory,
+  useProjectInventory,
+} from "@/components/app/project-inventory";
+import { useProjectWorkspaceResources } from "@/components/app/project-workspace-resources";
+import {
+  projectWorkspaceSurfaceSelection,
+  useActiveProjectWorkspace,
+  useProjectSurfaceSelection,
+  useProjectWorkspaceSelectionState,
+  useWorkspaceLiveScopes,
+  useWorkspaceSelectionReconciliation,
+  workspaceGroupSelection,
+} from "@/components/app/project-workspace-selection";
 import { useShellEnvironment } from "@/components/app/shell-environment";
 import {
   useShellAppearanceEffects,
@@ -96,7 +104,6 @@ import {
   useShellClientControlNavigation,
   useShellNavigationState,
   useShellStartupNavigation,
-  type PendingSurfaceSelection,
 } from "@/components/app/shell-navigation";
 import { ArchivedStandaloneChatsPage } from "@/components/chat/archived-standalone-chats-page";
 import { updateAgentInspectOpenChats } from "@/components/chat/agent-inspect-panel";
@@ -177,7 +184,6 @@ import { ServerSwitcher } from "@/components/servers/server-switcher";
 import {
   WorktreeControl,
   WorktreeCreateDialog,
-  type WorktreeStatusMap,
 } from "@/components/worktrees/worktree-control";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { openExternalUrl } from "@/lib/external-url";
@@ -224,7 +230,6 @@ import {
   createProjectView,
   createRemoteDesktop,
   createTerminal,
-  cleanupArchivedChats,
   deleteChat,
   deleteBrowser,
   deleteCodeTab,
@@ -233,26 +238,8 @@ import {
   deleteProjectView,
   deleteTerminal,
   forkChat,
-  getArchivedStandaloneChats,
-  getChats,
-  getStandaloneChats,
   getChatRelocations,
-  getBrowsers,
-  getCodeTabs,
   getExplorers,
-  getProjectReplicaJobs,
-  getProjectFolderSetupJob,
-  getProjectTabLayout,
-  getProjectWorktrees,
-  getProjectWorktreeStatus,
-  getProjectViews,
-  getProjectRepositoryStats,
-  getProjectTokenUsage,
-  getRemoteDesktop,
-  getServerBootstrap,
-  getSettings,
-  getTerminals,
-  getWorkers,
   renameChat,
   renameExplorer,
   renameExplorerEntry,
@@ -279,18 +266,9 @@ import {
   updateSettings,
   updateTerminalWorktree,
 } from "@/lib/api";
-import {
-  listRunConfigurationRuntimes,
-  listRunConfigurations,
-  operateRunConfigurationRuntime,
-} from "@/lib/run-configuration-api";
+import { operateRunConfigurationRuntime } from "@/lib/run-configuration-api";
 import { runConfigurationTargetControlForIdentity } from "@/lib/run-configuration-control-model";
-import { installRunConfigurationFocusRecovery } from "@/lib/run-configuration-focus-recovery";
-import {
-  createProjectWorkspace,
-  getProjectWorkspaces,
-} from "@/lib/workspace-encryption";
-import { getProjects } from "@/lib/project-encryption";
+import { createProjectWorkspace } from "@/lib/workspace-encryption";
 import {
   closeCurrentDesktopWindow,
   desktopPopoutTitlebarLeftInset,
@@ -308,13 +286,10 @@ import { scopedClientStorageKey } from "@/lib/client-session";
 import { useDesktopDirectTransportTelemetry } from "@/lib/direct-transport-telemetry";
 import { useAppActions } from "@/lib/use-app-actions";
 import {
-  buildProjectSurfaceIndex,
   type ProjectSurface,
-  projectSurfaceTabId,
   projectSurfaceTabKey,
 } from "@/lib/project-surface";
 import {
-  decorateRunConfigurationTerminals,
   runtimeForRunTerminal,
   runTerminalTargetLabel,
 } from "@/lib/run-terminal-model";
@@ -340,16 +315,9 @@ import {
   restoreOptimisticTabLayoutCache,
 } from "@/lib/project-tab-layout-optimistic";
 import {
-  projectsInWorkspace,
-  resolveProjectWorkspace,
-} from "@/lib/project-workspaces";
-import {
   isWindowsLongPathSetupFailure,
-  latestProjectProvisionJob,
-  projectListRefreshInterval,
   projectOwningWorkerId,
   projectSetupFailureKey,
-  projectSetupJobRefreshInterval,
   projectSetupPercent,
 } from "@/lib/project-setup-progress";
 import {
@@ -363,8 +331,6 @@ import type {
 } from "@/lib/workspace-dnd-model";
 import {
   emptyWorkspaceSelection,
-  reconcileWorkspaceSelection,
-  selectedWorkspaceTabKey,
   selectWorkspaceGroup,
   selectWorkspaceOverview,
   selectWorkspaceTab,
@@ -443,19 +409,12 @@ export function App() {
   const [dismissedLongPathFailure, setDismissedLongPathFailure] = useState<
     string | null
   >(null);
-  const [workspaceSelection, setWorkspaceSelection] = useState(() =>
-    emptyWorkspaceSelection(popoutProjectId),
-  );
-  const [pendingSurfaceSelection, setPendingSurfaceSelection] =
-    useState<PendingSurfaceSelection | null>(
-      popoutTarget
-        ? {
-            groupId: popoutTarget.groupId,
-            projectId: popoutTarget.projectId,
-            tabKey: popoutTarget.activeTabKey,
-          }
-        : null,
-    );
+  const {
+    pendingSurfaceSelection,
+    setPendingSurfaceSelection,
+    setWorkspaceSelection,
+    workspaceSelection,
+  } = useProjectWorkspaceSelectionState({ popoutProjectId, popoutTarget });
   const [sidebarFilePreview, setSidebarFilePreview] =
     useState<SidebarFilePreviewState | null>(null);
   const [sidebarFilePinHandoff, setSidebarFilePinHandoff] =
@@ -495,26 +454,21 @@ export function App() {
   const showAppToast = useCallback((toast: AppToastInput) => {
     setAppToast({ ...toast, id: crypto.randomUUID() });
   }, []);
-  const selectedTabKey = selectedWorkspaceTabKey(workspaceSelection);
-  const selectedChatId = projectSurfaceTabId(selectedTabKey, "chat");
-  const selectedTerminalId = projectSurfaceTabId(selectedTabKey, "terminal");
-  const selectedExplorerId = projectSurfaceTabId(selectedTabKey, "explorer");
-  const selectedBrowserId = projectSurfaceTabId(selectedTabKey, "browser");
-  const selectedCodeTabId = projectSurfaceTabId(selectedTabKey, "code");
-  const selectedProjectViewId = projectSurfaceTabId(selectedTabKey, "view");
-  useAppLiveScope(
-    selectedProjectId
-      ? { kind: "project", projectId: selectedProjectId }
-      : null,
-  );
-  useAppLiveScope(
-    selectedChatId ? { kind: "chat", chatId: selectedChatId } : null,
-  );
-  useAppLiveScope(
-    appMode === "chat" && selectedStandaloneChatId
-      ? { kind: "chat", chatId: selectedStandaloneChatId }
-      : null,
-  );
+  const {
+    selectedBrowserId,
+    selectedChatId,
+    selectedCodeTabId,
+    selectedExplorerId,
+    selectedProjectViewId,
+    selectedTabKey,
+    selectedTerminalId,
+  } = projectWorkspaceSurfaceSelection(workspaceSelection);
+  useWorkspaceLiveScopes({
+    appMode,
+    selectedChatId,
+    selectedProjectId,
+    selectedStandaloneChatId,
+  });
   const [folderProjectDialogOpen, setFolderProjectDialogOpen] = useState(false);
   const [folderProjectDialogMode, setFolderProjectDialogMode] =
     useState<FolderSourceMode>("create");
@@ -611,9 +565,6 @@ export function App() {
   const sidebarFilePreviewLifecycleRef =
     useRef<ExplorerLifecycleActions | null>(null);
   const sidebarExplorerCreationKeyRef = useRef<string | null>(null);
-  const archiveCleanupRequestedRef = useRef(false);
-  const appResourcesLoggedRef = useRef(false);
-  const projectResourcesLoggedRef = useRef<string | null>(null);
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
     useState<WorktreeBindingTarget | null>(null);
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
@@ -713,52 +664,11 @@ export function App() {
     setSidebarFilePreview,
     setWorkspaceSelection,
   });
-  const bootstrap = useQuery({
-    queryFn: getServerBootstrap,
-    queryKey: ["server-bootstrap"],
+  const applicationInventory = useApplicationInventory({
+    isPopout,
+    projectResourcesLive,
   });
-  useEffect(() => {
-    if (
-      isPopout ||
-      !bootstrap.isSuccess ||
-      archiveCleanupRequestedRef.current
-    ) {
-      return;
-    }
-    archiveCleanupRequestedRef.current = true;
-    const startedAt = performance.now();
-    void cleanupArchivedChats()
-      .then(({ deleted }) => {
-        clientLogger.info("Archived chat cleanup completed", {
-          counts: { deleted },
-          durationMs: Math.round(performance.now() - startedAt),
-          event: "archive.cleanup.completed",
-          operation: "cleanup",
-          status: "completed",
-          subsystem: "archive",
-        });
-        if (deleted > 0) {
-          void queryClient.invalidateQueries({ queryKey: ["archived-chats"] });
-        }
-      })
-      .catch((error) => {
-        clientLogger.warn("Archived chat cleanup failed", {
-          durationMs: Math.round(performance.now() - startedAt),
-          ...operationalErrorMetadata(error),
-          event: "archive.cleanup.failed",
-          operation: "cleanup",
-          reasonCode: "request-failed",
-          status: "failed",
-          subsystem: "archive",
-        });
-      });
-  }, [bootstrap.isSuccess, isPopout, queryClient]);
-  const workers = useQuery({
-    queryFn: getWorkers,
-    queryKey: ["workers"],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
-  const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const { bootstrap, settings, workers } = applicationInventory;
   const persistAppDestination = useAppDestinationPersistence({
     destinationWriteRef,
     queryClient,
@@ -791,115 +701,27 @@ export function App() {
     scope: { id: "mobile-project-tab-configurations" },
   });
   const saveSidebarWidth = useSidebarWidthPersistence(queryClient);
-  const projects = useQuery({
-    queryFn: getProjects,
-    queryKey: ["projects"],
-    refetchInterval: (query) =>
-      projectListRefreshInterval(projectResourcesLive, query.state.data),
+  const projectInventory = useProjectInventory({
+    appMode,
+    foundation: applicationInventory,
+    isPopout,
+    projectResourcesLive,
+    selectedProjectId,
+    selectedStandaloneChatId,
   });
-  const standaloneChats = useQuery({
-    enabled: !isPopout,
-    queryFn: getStandaloneChats,
-    queryKey: ["standalone-chats"],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
-  const archivedStandaloneChats = useQuery({
-    enabled: !isPopout && appMode === "chat",
-    queryFn: getArchivedStandaloneChats,
-    queryKey: ["archived-standalone-chats"],
-    refetchInterval: projectResourcesLive ? false : 30_000,
-  });
-  useEffect(() => {
-    if (
-      appResourcesLoggedRef.current ||
-      !bootstrap.isSuccess ||
-      !workers.isSuccess ||
-      !settings.isSuccess ||
-      !projects.isSuccess
-    ) {
-      return;
-    }
-    appResourcesLoggedRef.current = true;
-    clientLogger.info("Cantrip application resources loaded", {
-      counts: {
-        projects: projects.data.length,
-        workers: workers.data.length,
-      },
-      event: "client.resources.loaded",
-      operation: "load-resources",
-      status: "ready",
-      subsystem: "bootstrap",
-    });
-  }, [
-    bootstrap.isSuccess,
-    projects.data,
-    projects.isSuccess,
-    settings.isSuccess,
-    workers.data,
-    workers.isSuccess,
-  ]);
-  const repositorySetupProjects = (projects.data ?? []).filter(
-    (project) =>
-      project.originKind === "github" &&
-      (project.setupStatus === "cloning" || project.setupStatus === "failed"),
-  );
-  const projectSetupJobQueries = useQueries({
-    queries: repositorySetupProjects.map((project) => ({
-      queryFn: () => getProjectReplicaJobs(project.id),
-      queryKey: ["project-replica-jobs", project.id],
-      refetchInterval: projectSetupJobRefreshInterval(project.setupStatus),
-    })),
-  });
-  const projectSetupJobs = new Map<string, ProjectReplicaJobSummary>();
-  repositorySetupProjects.forEach((project, index) => {
-    const job = latestProjectProvisionJob(projectSetupJobQueries[index]?.data);
-    if (job) projectSetupJobs.set(project.id, job);
-  });
-  const folderSetupProjects = (projects.data ?? []).filter(
-    (project) =>
-      project.originKind === "managed-folder" &&
-      project.setupStatus !== "ready",
-  );
-  const folderSetupJobQueries = useQueries({
-    queries: folderSetupProjects.map((project) => ({
-      queryFn: () => getProjectFolderSetupJob(project.id),
-      queryKey: ["project-folder-setup", project.id],
-      refetchInterval: projectSetupJobRefreshInterval(project.setupStatus),
-      retry: false,
-    })),
-  });
-  const folderSetupJobs = new Map<string, ProjectFolderSetupJobSummary>();
-  folderSetupProjects.forEach((project, index) => {
-    const job = folderSetupJobQueries[index]?.data;
-    if (job) folderSetupJobs.set(project.id, job);
-  });
-  const projectWorkspaces = useQuery({
-    queryFn: getProjectWorkspaces,
-    queryKey: ["project-workspaces"],
-  });
-  const selectedProject = projects.data?.find(
-    (project) => project.id === selectedProjectId,
-  );
-  const selectedStandaloneChat = standaloneChats.data?.find(
-    (chat) => chat.id === selectedStandaloneChatId,
-  );
-  const standaloneChatWorkerAvailable = (workers.data ?? []).some(
-    (worker) =>
-      worker.online &&
-      worker.standaloneChat.scratch.provision &&
-      worker.standaloneChat.scratch.resolve &&
-      worker.standaloneChat.scratch.remove,
-  );
-  const standaloneChatCreationUnavailableReason = !bootstrap.isSuccess
-    ? "Checking standalone Chat availability…"
-    : bootstrap.data.capabilities.standaloneChat.available === false
-      ? (bootstrap.data.capabilities.standaloneChat.reason ??
-        "Standalone Chat is unavailable on this server.")
-      : !standaloneChatWorkerAvailable
-        ? "Connect an online worker with standalone Chat scratch support first."
-        : null;
-  const standaloneChatCreationAvailable =
-    standaloneChatCreationUnavailableReason === null;
+  const {
+    archivedStandaloneChats,
+    folderSetupJobs,
+    projectSetupJobs,
+    projects,
+    projectWorkspaces,
+    selectedProject,
+    selectedStandaloneChat,
+    standaloneChatCreationAvailable,
+    standaloneChatCreationUnavailableReason,
+    standaloneChatWorkerAvailable,
+    standaloneChats,
+  } = projectInventory;
   const retryLongPathSetupMutation = useMutation({
     mutationFn: (job: ProjectReplicaJobSummary) =>
       retryProjectReplicaJob(job.id, { stateRevision: job.stateRevision }),
@@ -935,216 +757,33 @@ export function App() {
       setShowProjectSettings(false);
     },
   });
-  const tabLayout = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => getProjectTabLayout(selectedProjectId!),
-    queryKey: ["project-tab-layout", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
-  const worktrees = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () =>
-      getProjectWorktrees(selectedProjectId!, {
-        onStatus: (worktreeId, result) => {
-          queryClient.setQueryData(
-            ["worktree-status", selectedProjectId!, worktreeId],
-            result.status,
-          );
-        },
-      }),
-    queryKey: ["worktrees", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 15_000,
-  });
-  const worktreeStatusQueries = useQueries({
-    queries: (worktrees.data ?? []).map((worktree) => ({
-      enabled:
-        worktree.rootKind === "git-worktree" &&
-        worktree.lifecycleState === "ready",
-      queryFn: () =>
-        getProjectWorktreeStatus(worktree.projectId, worktree.id).then(
-          ({ status }) => status,
-        ),
-      queryKey: ["worktree-status", worktree.projectId, worktree.id],
-      refetchInterval:
-        projectResourcesLive ||
-        !workers.data?.find(({ workerId }) => workerId === worktree.workerId)
-          ?.online
-          ? false
-          : 15_000,
-      retry: false,
-      staleTime: 15_000,
-    })),
-  });
-  const worktreeStatuses = useMemo<WorktreeStatusMap>(
-    () =>
-      Object.fromEntries(
-        (worktrees.data ?? []).map((worktree, index) => [
-          worktree.id,
-          worktreeStatusQueries[index]?.data,
-        ]),
-      ),
-    [worktreeStatusQueries, worktrees.data],
-  );
-  const chats = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => getChats(selectedProjectId!),
-    queryKey: ["chats", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
-  const terminals = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => getTerminals(selectedProjectId!),
-    queryKey: ["terminals", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
-  const runConfigurations = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => listRunConfigurations(selectedProjectId!),
-    queryKey: ["run-configurations", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-    retry: false,
-  });
-  const runConfigurationRuntimes = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => listRunConfigurationRuntimes(selectedProjectId!),
-    queryKey: ["run-configuration-runtimes", selectedProjectId],
-    refetchInterval: (query) =>
-      projectResourcesLive
-        ? false
-        : query.state.data?.some((runtime) =>
-              ["starting", "running", "restarting", "stopping"].includes(
-                runtime.state,
-              ),
-            )
-          ? 1_000
-          : 10_000,
-    retry: false,
-  });
-  useEffect(() => {
-    if (!selectedProjectId) return;
-    return installRunConfigurationFocusRecovery(
-      queryClient,
-      selectedProjectId,
-      { document, window },
-    );
-  }, [queryClient, selectedProjectId]);
-  const explorers = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => getExplorers(selectedProjectId!),
-    queryKey: ["explorers", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
-  const browsers = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => getBrowsers(selectedProjectId!),
-    queryKey: ["browsers", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
-  const codeTabs = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => getCodeTabs(selectedProjectId!),
-    queryKey: ["code-tabs", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
-  const projectViews = useQuery({
-    enabled: Boolean(selectedProjectId),
-    queryFn: () => getProjectViews(selectedProjectId!),
-    queryKey: ["project-views", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
-  useEffect(() => {
-    if (!selectedProjectId) {
-      projectResourcesLoggedRef.current = null;
-      return;
-    }
-    if (
-      projectResourcesLoggedRef.current === selectedProjectId ||
-      !tabLayout.isSuccess ||
-      (selectedProject?.capabilities.worktrees && !worktrees.isSuccess) ||
-      !chats.isSuccess ||
-      !terminals.isSuccess ||
-      !explorers.isSuccess ||
-      !browsers.isSuccess ||
-      !codeTabs.isSuccess ||
-      !projectViews.isSuccess
-    ) {
-      return;
-    }
-    projectResourcesLoggedRef.current = selectedProjectId;
-    clientLogger.info("Project surfaces loaded", {
-      counts: {
-        browsers: browsers.data.length,
-        chats: chats.data.length,
-        codeTabs: codeTabs.data.length,
-        explorers: explorers.data.length,
-        tabGroups: tabLayout.data.groups.length,
-        terminals: terminals.data.length,
-        views: projectViews.data.length,
-        worktrees: (worktrees.data ?? []).length,
-      },
-      event: "project.resources.loaded",
-      operation: "load-project",
-      projectId: selectedProjectId,
-      status: "ready",
-      subsystem: "projects",
-    });
-  }, [
-    browsers.data,
-    browsers.isSuccess,
-    chats.data,
-    chats.isSuccess,
-    codeTabs.data,
-    codeTabs.isSuccess,
-    explorers.data,
-    explorers.isSuccess,
-    projectViews.data,
-    projectViews.isSuccess,
+  const projectWorkspaceResources = useProjectWorkspaceResources({
+    activeProjectOverviewSection,
+    projectOverviewSelected,
+    projectResourcesLive,
+    projects: projects.data,
+    queryClient,
+    selectedProject,
     selectedProjectId,
-    selectedProject?.capabilities.worktrees,
-    tabLayout.data,
-    tabLayout.isSuccess,
-    terminals.data,
-    terminals.isSuccess,
-    worktrees.data,
-    worktrees.isSuccess,
-  ]);
-  const repositoryStats = useQuery({
-    enabled:
-      Boolean(selectedProjectId) &&
-      projectOverviewSelected &&
-      activeProjectOverviewSection === "overview" &&
-      Boolean(
-        projects.data?.some(
-          (project) =>
-            project.id === selectedProjectId &&
-            project.setupStatus === "ready" &&
-            project.source,
-        ),
-      ),
-    queryFn: () => getProjectRepositoryStats(selectedProjectId!),
-    queryKey: ["project-repository-stats", selectedProjectId],
-    retry: false,
-    staleTime: 30_000,
+    selectedProjectViewId,
+    workers: workers.data,
   });
-  const projectTokenUsage = useQuery({
-    enabled:
-      Boolean(selectedProjectId) &&
-      projectOverviewSelected &&
-      activeProjectOverviewSection === "overview",
-    queryFn: () => getProjectTokenUsage(selectedProjectId!),
-    queryKey: ["project-token-usage", selectedProjectId],
-    refetchInterval: projectResourcesLive ? false : 15_000,
-    staleTime: 10_000,
-  });
-  const selectedProjectViewForQuery = projectViews.data?.find(
-    (view) => view.id === selectedProjectViewId,
-  );
-  const remoteDesktop = useQuery({
-    enabled: selectedProjectViewForQuery?.kind === "remote-desktop",
-    queryFn: () => getRemoteDesktop(selectedProjectViewId!),
-    queryKey: ["remote-desktop", selectedProjectViewId],
-    refetchInterval: projectResourcesLive ? false : 10_000,
-  });
+  const {
+    browsers,
+    chats,
+    codeTabs,
+    explorers,
+    projectTokenUsage,
+    projectViews,
+    remoteDesktop,
+    repositoryStats,
+    runConfigurationRuntimes,
+    runConfigurations,
+    tabLayout,
+    terminals,
+    worktreeStatuses,
+    worktrees,
+  } = projectWorkspaceResources;
   const newChat = useMutation({
     mutationFn: ({
       projectId,
@@ -2484,13 +2123,11 @@ export function App() {
   });
 
   const onlineWorker = workers.data?.find((worker) => worker.online) ?? null;
-  const activeProjectWorkspace = resolveProjectWorkspace(
-    projectWorkspaces.data ?? [],
-    activeProjectWorkspaceId,
-  );
-  const visibleProjects = useMemo(
-    () => projectsInWorkspace(projects.data ?? [], activeProjectWorkspace),
-    [activeProjectWorkspace, projects.data],
+  const { activeProjectWorkspace, visibleProjects } = useActiveProjectWorkspace(
+    {
+      activeProjectWorkspaceId,
+      inventory: { projects, projectWorkspaces },
+    },
   );
   const selectedProjectSetupJob = selectedProject
     ? projectSetupJobs.get(selectedProject.id)
@@ -2534,38 +2171,11 @@ export function App() {
       showProjectSettings ||
       mobileTabGridOpen ||
       (projectOverviewSelected && Boolean(selectedProject)));
-  const displayTerminals = useMemo(
-    () =>
-      decorateRunConfigurationTerminals(
-        terminals.data ?? [],
-        runConfigurations.data,
-        worktrees.data ?? [],
-      ),
-    [runConfigurations.data, terminals.data, worktrees.data],
-  );
-  const projectSurfaceIndex = useMemo(
-    () =>
-      buildProjectSurfaceIndex(tabLayout.data, {
-        browsers: browsers.data ?? [],
-        chats: chats.data ?? [],
-        codeTabs: codeTabs.data ?? [],
-        explorers: explorers.data ?? [],
-        projectViews: projectViews.data ?? [],
-        terminals: displayTerminals,
-      }),
-    [
-      browsers.data,
-      chats.data,
-      codeTabs.data,
-      explorers.data,
-      projectViews.data,
-      tabLayout.data,
-      displayTerminals,
-    ],
-  );
-  const selectedSurface = selectedTabKey
-    ? projectSurfaceIndex.byTabKey.get(selectedTabKey)
-    : undefined;
+  const { displayTerminals, projectSurfaceIndex, selectedSurface } =
+    useProjectSurfaceSelection({
+      resources: projectWorkspaceResources,
+      selectedTabKey,
+    });
   const sidebarDesiredWorktreeId =
     surfaceWorktreeId(selectedSurface) ??
     primaryWorktreeId(worktrees.data ?? []);
@@ -2830,25 +2440,17 @@ export function App() {
     showServerAdmin,
     showSettings,
   });
-  const selectedTabGroup = tabLayout.data?.groups.find(
-    (group) => group.id === workspaceSelection.selectedGroupId,
-  );
-  const selectedGroupSurfaces = workspaceSelection.selectedGroupId
-    ? (projectSurfaceIndex.byGroupId.get(workspaceSelection.selectedGroupId) ??
-      [])
-    : [];
-  const sidebarPreviewGroupSurfaces = sidebarFilePreview?.groupId
-    ? (projectSurfaceIndex.byGroupId.get(sidebarFilePreview.groupId) ?? [])
-    : [];
-  const projectTabBarSurfaces = sidebarFilePreview?.active
-    ? sidebarPreviewGroupSurfaces
-    : selectedGroupSurfaces;
-  const showSidebarPreviewTab = Boolean(
-    sidebarFilePreview &&
-    (sidebarFilePreview.active ||
-      (sidebarFilePreview.groupId !== null &&
-        sidebarFilePreview.groupId === workspaceSelection.selectedGroupId)),
-  );
+  const {
+    projectTabBarSurfaces,
+    selectedGroupSurfaces,
+    selectedTabGroup,
+    showSidebarPreviewTab,
+  } = workspaceGroupSelection({
+    projectSurfaceIndex,
+    sidebarFilePreview,
+    tabLayout: tabLayout.data,
+    workspaceSelection,
+  });
   const activeMobileBottomTab = mobileBottomTabs.find(
     ({ id }) => id === activeMobileBottomTabId,
   );
@@ -3635,35 +3237,13 @@ export function App() {
     }
   }, [createdRepositoryOnboarding, projects.data]);
 
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setWorkspaceSelection(emptyWorkspaceSelection());
-      return;
-    }
-    const layout = tabLayout.data;
-    if (!layout || layout.projectId !== selectedProjectId) return;
-    const pendingGroup = pendingSurfaceSelection?.groupId
-      ? layout.groups.find(({ id }) => id === pendingSurfaceSelection.groupId)
-      : undefined;
-    const pendingTabKey =
-      pendingSurfaceSelection?.projectId === selectedProjectId &&
-      layout.groups.some(({ members }) =>
-        members.some(({ tabKey }) => tabKey === pendingSurfaceSelection.tabKey),
-      )
-        ? pendingSurfaceSelection.tabKey
-        : (pendingGroup?.anchorTabKey ?? null);
-    setWorkspaceSelection((current) => {
-      const reconciled = reconcileWorkspaceSelection(
-        current,
-        layout,
-        pendingTabKey,
-      );
-      return pendingTabKey
-        ? selectWorkspaceTab(reconciled, layout, pendingTabKey)
-        : reconciled;
-    });
-    if (pendingTabKey) setPendingSurfaceSelection(null);
-  }, [pendingSurfaceSelection, selectedProjectId, tabLayout.data]);
+  useWorkspaceSelectionReconciliation({
+    layout: tabLayout.data,
+    pendingSurfaceSelection,
+    selectedProjectId,
+    setPendingSurfaceSelection,
+    setWorkspaceSelection,
+  });
 
   useEffect(() => {
     if (!selectedProjectId) {
