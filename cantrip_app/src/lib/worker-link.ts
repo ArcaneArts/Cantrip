@@ -13,6 +13,7 @@ import {
   type WorkerLinkPayloadFormat,
   type WorkerLinkQosLane,
   type WorkerLinkResourceGrant,
+  type WorkerLinkRoute,
   type WorkerLinkRouteStatus,
   type WorkerLinkSession,
   type WorkerLinkTelemetrySample,
@@ -51,6 +52,8 @@ const SCHEDULER_MAX_BYTES_PER_LANE = 4 * 1_024 * 1_024;
 const SCHEDULER_BURST_FRAMES = 16;
 const SCHEDULER_RETRY_MS = 5;
 const TELEMETRY_FLUSH_INTERVAL_MS = 1_000;
+const DEFAULT_LAST_USED_STATUS_TTL_MS = 30_000;
+const ROUTES: readonly WorkerLinkRoute[] = ["local", "lan", "wan", "relay"];
 const SCHEDULER_LANES: readonly WorkerLinkQosLane[] = [
   "interactive",
   "interactive",
@@ -113,6 +116,36 @@ export interface WorkerLink {
 export interface WorkerLinkReference {
   readonly link: WorkerLink;
   release(): void;
+}
+
+export type WorkerLinkConnectionState =
+  "idle" | "connecting" | "active" | "degraded" | "reconnecting" | "offline";
+
+export type WorkerLinkStatusFreshness = "active" | "last-used";
+
+export interface WorkerLinkRouteChannelCount {
+  readonly channelCount: number;
+  readonly route: WorkerLinkRoute;
+}
+
+export interface WorkerLinkStatusSnapshot {
+  readonly activeChannelCount: number;
+  readonly activeLinkCount: number;
+  readonly changedAt: string;
+  readonly consumerCount: number;
+  readonly effectiveRoutes: readonly WorkerLinkRoute[];
+  readonly fallbackReason: WorkerLinkRouteStatus["fallbackReason"];
+  readonly freshness: WorkerLinkStatusFreshness;
+  readonly latencyMs: number | null;
+  readonly preferredRoute: WorkerLinkRoute | null;
+  readonly routeChannelCounts: readonly WorkerLinkRouteChannelCount[];
+  readonly routeGeneration: number | null;
+  readonly state: WorkerLinkConnectionState;
+  readonly workerId: string;
+}
+
+export interface WorkerLinkManagerOptions {
+  readonly lastUsedStatusTtlMs?: number;
 }
 
 export interface WorkerLinkManagerDependencies {
@@ -228,16 +261,54 @@ interface ManagedEntry {
   references: number;
 }
 
+interface ClientWorkerLinkStatus {
+  activeChannelCount: number;
+  changedAt: string;
+  effectiveRoutes: readonly WorkerLinkRoute[];
+  fallbackReason: WorkerLinkRouteStatus["fallbackReason"];
+  latencyMs: number | null;
+  preferredRoute: WorkerLinkRoute | null;
+  routeChannelCounts: readonly WorkerLinkRouteChannelCount[];
+  routeGeneration: number | null;
+  state: WorkerLinkConnectionState;
+}
+
+interface ManagedStatusEntry {
+  identityKey: string;
+  snapshot: WorkerLinkStatusSnapshot;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
 export class WorkerLinkManager {
   readonly #entries = new Map<string, ManagedEntry>();
   readonly #opening = new Map<string, Promise<ManagedEntry>>();
+  readonly #statusEntries = new Map<string, ManagedStatusEntry>();
+  readonly #statusListeners = new Set<() => void>();
+  #statusSnapshot: readonly WorkerLinkStatusSnapshot[] = [];
   #closed = false;
+  readonly #lastUsedStatusTtlMs: number;
   readonly #unsubscribeIdentity: () => void;
 
-  constructor(private readonly dependencies: WorkerLinkManagerDependencies) {
+  constructor(
+    private readonly dependencies: WorkerLinkManagerDependencies,
+    options: WorkerLinkManagerOptions = {},
+  ) {
+    this.#lastUsedStatusTtlMs = Math.max(
+      0,
+      options.lastUsedStatusTtlMs ?? DEFAULT_LAST_USED_STATUS_TTL_MS,
+    );
     this.#unsubscribeIdentity = dependencies.subscribeIdentity(() => {
       void this.#retireAll("revoked");
     });
+  }
+
+  getStatusSnapshot(): readonly WorkerLinkStatusSnapshot[] {
+    return this.#statusSnapshot;
+  }
+
+  subscribeStatus(listener: () => void): () => void {
+    this.#statusListeners.add(listener);
+    return () => this.#statusListeners.delete(listener);
   }
 
   async acquire(workerId: string): Promise<WorkerLinkReference> {
@@ -261,6 +332,7 @@ export class WorkerLinkManager {
       }
     }
     entry.references += 1;
+    this.#setConsumerCount(key, entry.references);
     let released = false;
     return {
       link: entry.link,
@@ -277,19 +349,25 @@ export class WorkerLinkManager {
     this.#closed = true;
     this.#unsubscribeIdentity();
     await this.#retireAll("normal");
+    this.#statusListeners.clear();
   }
 
   #release(key: string, entry: ManagedEntry): void {
     if (this.#entries.get(key) !== entry) return;
     entry.references -= 1;
-    if (entry.references > 0) return;
+    if (entry.references > 0) {
+      this.#setConsumerCount(key, entry.references);
+      return;
+    }
     this.#entries.delete(key);
+    this.#retainLastUsed(key, "idle");
     void entry.link.retire("normal");
   }
 
   async #retireAll(code: WorkerLinkChannelCloseCode): Promise<void> {
     const entries = [...this.#entries.values()];
     this.#entries.clear();
+    this.#clearStatuses();
     await Promise.all(entries.map((entry) => entry.link.retire(code)));
   }
 
@@ -299,20 +377,23 @@ export class WorkerLinkManager {
     identityKey: string,
     key: string,
   ): Promise<ManagedEntry> {
-    const clientInstanceId = this.dependencies.createId();
-    const session = await this.dependencies.createSession(
-      workerId,
-      clientInstanceId,
-    );
-    validateSessionAuthority(session, workerId, clientInstanceId, identity);
-    const link = new ClientWorkerLink(
-      session,
-      identity,
-      clientInstanceId,
-      this.dependencies,
-    );
-    const entry = { identityKey, link, references: 0 };
+    this.#publishOpening(key, identityKey, workerId);
+    let link: ClientWorkerLink | null = null;
     try {
+      const clientInstanceId = this.dependencies.createId();
+      const session = await this.dependencies.createSession(
+        workerId,
+        clientInstanceId,
+      );
+      validateSessionAuthority(session, workerId, clientInstanceId, identity);
+      link = new ClientWorkerLink(
+        session,
+        identity,
+        clientInstanceId,
+        this.dependencies,
+        (status) => this.#publishLinkStatus(key, identityKey, workerId, status),
+      );
+      const entry = { identityKey, link, references: 0 };
       await link.start();
       if (
         this.#closed ||
@@ -325,16 +406,155 @@ export class WorkerLinkManager {
       this.#entries.set(key, entry);
       return entry;
     } catch (error) {
-      await link.retire("endpoint-disconnected");
+      await link?.retire("endpoint-disconnected");
+      const activeIdentity = this.dependencies.getIdentity();
+      if (
+        !this.#closed &&
+        activeIdentity &&
+        clientIdentityKey(activeIdentity) === identityKey
+      ) {
+        this.#retainLastUsed(key, "offline");
+      } else {
+        this.#removeStatus(key);
+      }
       throw error;
     }
+  }
+
+  #publishOpening(key: string, identityKey: string, workerId: string): void {
+    this.#setStatus(key, {
+      identityKey,
+      snapshot: {
+        activeChannelCount: 0,
+        activeLinkCount: 1,
+        changedAt: new Date(this.dependencies.now()).toISOString(),
+        consumerCount: 0,
+        effectiveRoutes: [],
+        fallbackReason: null,
+        freshness: "active",
+        latencyMs: null,
+        preferredRoute: null,
+        routeChannelCounts: emptyRouteChannelCounts(),
+        routeGeneration: null,
+        state: "connecting",
+        workerId,
+      },
+      timer: null,
+    });
+  }
+
+  #publishLinkStatus(
+    key: string,
+    identityKey: string,
+    workerId: string,
+    status: ClientWorkerLinkStatus,
+  ): void {
+    const identity = this.dependencies.getIdentity();
+    if (
+      this.#closed ||
+      !identity ||
+      clientIdentityKey(identity) !== identityKey
+    ) {
+      return;
+    }
+    const previous = this.#statusEntries.get(key)?.snapshot;
+    this.#setStatus(key, {
+      identityKey,
+      snapshot: {
+        ...status,
+        activeLinkCount: 1,
+        consumerCount: previous?.consumerCount ?? 0,
+        freshness: "active",
+        workerId,
+      },
+      timer: null,
+    });
+  }
+
+  #setConsumerCount(key: string, consumerCount: number): void {
+    const entry = this.#statusEntries.get(key);
+    if (!entry || entry.snapshot.freshness !== "active") return;
+    this.#setStatus(key, {
+      identityKey: entry.identityKey,
+      snapshot: { ...entry.snapshot, consumerCount },
+      timer: null,
+    });
+  }
+
+  #retainLastUsed(
+    key: string,
+    state: Extract<WorkerLinkConnectionState, "idle" | "offline">,
+  ): void {
+    const entry = this.#statusEntries.get(key);
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    const retained: ManagedStatusEntry = {
+      identityKey: entry.identityKey,
+      snapshot: {
+        ...entry.snapshot,
+        activeChannelCount: 0,
+        activeLinkCount: 0,
+        changedAt: new Date(this.dependencies.now()).toISOString(),
+        consumerCount: 0,
+        freshness: "last-used",
+        routeChannelCounts: emptyRouteChannelCounts(),
+        state,
+      },
+      timer: null,
+    };
+    if (this.#lastUsedStatusTtlMs === 0) {
+      this.#statusEntries.delete(key);
+      this.#publishStatusSnapshot();
+      return;
+    }
+    retained.timer = setTimeout(() => {
+      if (this.#statusEntries.get(key) !== retained) return;
+      this.#statusEntries.delete(key);
+      this.#publishStatusSnapshot();
+    }, this.#lastUsedStatusTtlMs);
+    this.#statusEntries.set(key, retained);
+    this.#publishStatusSnapshot();
+  }
+
+  #setStatus(key: string, entry: ManagedStatusEntry): void {
+    const previous = this.#statusEntries.get(key);
+    if (previous?.timer) clearTimeout(previous.timer);
+    this.#statusEntries.set(key, entry);
+    this.#publishStatusSnapshot();
+  }
+
+  #removeStatus(key: string): void {
+    const entry = this.#statusEntries.get(key);
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    this.#statusEntries.delete(key);
+    this.#publishStatusSnapshot();
+  }
+
+  #clearStatuses(): void {
+    if (this.#statusEntries.size === 0) return;
+    for (const entry of this.#statusEntries.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
+    }
+    this.#statusEntries.clear();
+    this.#publishStatusSnapshot();
+  }
+
+  #publishStatusSnapshot(): void {
+    this.#statusSnapshot = [...this.#statusEntries.values()]
+      .map((entry) => entry.snapshot)
+      .sort((left, right) => left.workerId.localeCompare(right.workerId));
+    for (const listener of this.#statusListeners) listener();
   }
 }
 
 class ClientWorkerLink implements WorkerLink {
+  readonly #activeStreamIds = new Set<string>();
   #carrier: WorkerLinkCarrier | null = null;
   #closed = false;
+  #connectionState: WorkerLinkConnectionState = "connecting";
   #connecting: Promise<void> | null = null;
+  #hasConnected = false;
   readonly #routeListeners = new Set<(status: WorkerLinkRouteStatus) => void>();
   #renewTimer: ReturnType<typeof setTimeout> | null = null;
   #routeStatus: WorkerLinkRouteStatus;
@@ -343,12 +563,14 @@ class ClientWorkerLink implements WorkerLink {
   readonly #streams = new Map<string, ClientWorkerLinkStream>();
   #telemetry: WorkerLinkTelemetryReporter;
   #unsubscribeCarrier: Array<() => void> = [];
+  #statusEnabled = true;
 
   constructor(
     session: WorkerLinkSession,
     private readonly clientIdentity: ClientSessionIdentitySnapshot,
     private readonly clientInstanceId: string,
     private readonly dependencies: WorkerLinkManagerDependencies,
+    private readonly publishStatus: (status: ClientWorkerLinkStatus) => void,
   ) {
     this.#session = session;
     this.#telemetry = new WorkerLinkTelemetryReporter(
@@ -378,9 +600,15 @@ class ClientWorkerLink implements WorkerLink {
   }
 
   async start(): Promise<void> {
-    await this.#connect();
-    this.#recordTelemetry("session-opened", 1, "none");
-    this.#scheduleRenewal();
+    this.#transition("connecting");
+    try {
+      await this.#connect();
+      this.#recordTelemetry("session-opened", 1, "none");
+      this.#scheduleRenewal();
+    } catch (error) {
+      this.#transition("offline");
+      throw error;
+    }
   }
 
   onRouteChanged(
@@ -400,6 +628,7 @@ class ClientWorkerLink implements WorkerLink {
     }
     validateGrant(grant, this.#session, lane, this.dependencies.now());
     const channelId = this.dependencies.createId();
+    let countedActive = false;
     const stream = new ClientWorkerLinkStream(
       channelId,
       this.dependencies.createId(),
@@ -414,6 +643,10 @@ class ClientWorkerLink implements WorkerLink {
       },
       (preserveClose) => {
         this.#streams.delete(channelId);
+        if (countedActive) {
+          countedActive = false;
+          if (this.#activeStreamIds.delete(channelId)) this.#emitStatus();
+        }
         this.#scheduler?.cancelChannel(channelId, preserveClose);
       },
       (event, value, reason) =>
@@ -422,6 +655,11 @@ class ClientWorkerLink implements WorkerLink {
     this.#streams.set(channelId, stream);
     try {
       await stream.open(grant);
+      if (this.#streams.get(channelId) === stream) {
+        countedActive = true;
+        this.#activeStreamIds.add(channelId);
+        this.#emitStatus();
+      }
       return stream;
     } catch (error) {
       this.#streams.delete(channelId);
@@ -430,14 +668,21 @@ class ClientWorkerLink implements WorkerLink {
     }
   }
 
-  reprobe(): Promise<void> {
+  async reprobe(): Promise<void> {
     if (this.#closed) return Promise.reject(new Error("WorkerLink is closed."));
-    return this.#connect();
+    this.#transition(this.#hasConnected ? "reconnecting" : "connecting");
+    try {
+      await this.#connect();
+    } catch (error) {
+      this.#transition("offline");
+      throw error;
+    }
   }
 
   async retire(code: WorkerLinkChannelCloseCode): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    this.#statusEnabled = false;
     if (this.#renewTimer) clearTimeout(this.#renewTimer);
     this.#renewTimer = null;
     this.#recordTelemetry("session-closed", 1, code);
@@ -516,10 +761,13 @@ class ClientWorkerLink implements WorkerLink {
       carrier.onClose(() => {
         if (this.#carrier !== carrier || this.#closed) return;
         this.#detachCarrier("endpoint-disconnected");
+        this.#transition("degraded");
         void this.#reconnect();
       }),
     ];
     this.#publishRoute(carrier.route, carrier.latencyMs, fallbackReason);
+    this.#hasConnected = true;
+    this.#transition("active");
     this.#recordTelemetry(
       "route-selected",
       1,
@@ -541,6 +789,7 @@ class ClientWorkerLink implements WorkerLink {
   }
 
   async #reconnect(): Promise<void> {
+    this.#transition("reconnecting");
     for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
       await delay(RECONNECT_DELAYS_MS[attempt] ?? RECONNECT_DELAYS_MS.at(-1)!);
       if (this.#closed || this.#carrier) return;
@@ -561,6 +810,7 @@ class ClientWorkerLink implements WorkerLink {
     } catch {
       // An explicit reprobe or feature reconnect may try again later.
     }
+    if (!this.#closed && !this.#carrier) this.#transition("offline");
   }
 
   async #replaceSession(): Promise<void> {
@@ -610,13 +860,14 @@ class ClientWorkerLink implements WorkerLink {
 
   #detachCarrier(code: WorkerLinkChannelCloseCode): void {
     const carrier = this.#carrier;
+    this.#carrier = null;
     this.#scheduler?.close();
     this.#scheduler = null;
     for (const unsubscribe of this.#unsubscribeCarrier) unsubscribe();
     this.#unsubscribeCarrier = [];
+    this.#activeStreamIds.clear();
     for (const stream of [...this.#streams.values()]) stream.retire(code);
     this.#streams.clear();
-    this.#carrier = null;
     carrier?.close(code);
   }
 
@@ -636,6 +887,7 @@ class ClientWorkerLink implements WorkerLink {
         .then((session) => {
           if (this.#closed) return;
           this.#session = session;
+          this.#emitStatus();
           this.#scheduleRenewal();
         })
         .catch(() => this.#carrier?.close("session-renewal-failed"));
@@ -656,6 +908,30 @@ class ClientWorkerLink implements WorkerLink {
       changedAt: new Date(this.dependencies.now()).toISOString(),
     };
     for (const listener of this.#routeListeners) listener(this.#routeStatus);
+  }
+
+  #transition(state: WorkerLinkConnectionState): void {
+    this.#connectionState = state;
+    this.#emitStatus();
+  }
+
+  #emitStatus(): void {
+    if (!this.#statusEnabled) return;
+    const effectiveRoute = this.#carrier?.route ?? null;
+    this.publishStatus({
+      activeChannelCount: this.#activeStreamIds.size,
+      changedAt: new Date(this.dependencies.now()).toISOString(),
+      effectiveRoutes: effectiveRoute ? [effectiveRoute] : [],
+      fallbackReason: this.#routeStatus.fallbackReason,
+      latencyMs: this.#routeStatus.latencyMs,
+      preferredRoute: this.#session.preferredRoute,
+      routeChannelCounts: routeChannelCounts(
+        effectiveRoute,
+        this.#activeStreamIds.size,
+      ),
+      routeGeneration: this.#session.routeGeneration,
+      state: this.#connectionState,
+    });
   }
 
   #recordTelemetry(
@@ -1225,6 +1501,20 @@ function operationalRoute(
     throw new Error("WorkerLink LAN/WAN routes are not operational.");
   }
   return route;
+}
+
+function emptyRouteChannelCounts(): readonly WorkerLinkRouteChannelCount[] {
+  return routeChannelCounts(null, 0);
+}
+
+function routeChannelCounts(
+  effectiveRoute: WorkerLinkRoute | null,
+  activeChannelCount: number,
+): readonly WorkerLinkRouteChannelCount[] {
+  return ROUTES.map((route) => ({
+    channelCount: route === effectiveRoute ? activeChannelCount : 0,
+    route,
+  }));
 }
 
 function delay(milliseconds: number): Promise<void> {

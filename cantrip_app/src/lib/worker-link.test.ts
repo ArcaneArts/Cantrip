@@ -200,13 +200,102 @@ describe("WorkerLinkManager", () => {
     expect(first.link).toBe(second.link);
     expect(setup.dependency.createSession).toHaveBeenCalledOnce();
     expect(first.link.preferredRoute).toBe("local");
+    expect(manager.getStatusSnapshot()[0]).toEqual(
+      expect.objectContaining({ consumerCount: 2, workerId: "worker-1" }),
+    );
 
     first.release();
     expect(setup.dependency.deleteSession).not.toHaveBeenCalled();
+    expect(manager.getStatusSnapshot()[0]?.consumerCount).toBe(1);
     second.release();
     await vi.waitFor(() =>
       expect(setup.dependency.deleteSession).toHaveBeenCalledOnce(),
     );
+    await manager.close();
+  });
+
+  it("projects feature-neutral route, channel, consumer, and last-used status", async () => {
+    vi.useFakeTimers();
+    const carrier = new FakeCarrier("local", 7);
+    const setup = dependencies({ local: async () => carrier });
+    const manager = new WorkerLinkManager(setup.dependency, {
+      lastUsedStatusTtlMs: 1_000,
+    });
+    const changed = vi.fn();
+    const unsubscribe = manager.subscribeStatus(changed);
+    const reference = await manager.acquire("worker-1");
+
+    expect(manager.getStatusSnapshot()).toEqual([
+      expect.objectContaining({
+        activeChannelCount: 0,
+        activeLinkCount: 1,
+        consumerCount: 1,
+        effectiveRoutes: ["local"],
+        fallbackReason: null,
+        freshness: "active",
+        latencyMs: 7,
+        preferredRoute: "local",
+        routeGeneration: 1,
+        state: "active",
+        workerId: "worker-1",
+      }),
+    ]);
+    expect(manager.getStatusSnapshot()[0]?.routeChannelCounts).toEqual([
+      { channelCount: 0, route: "local" },
+      { channelCount: 0, route: "lan" },
+      { channelCount: 0, route: "wan" },
+      { channelCount: 0, route: "relay" },
+    ]);
+    expect(JSON.stringify(manager.getStatusSnapshot())).not.toMatch(
+      /account-1|owner-1|account-session|cantrip\.example|a{43}/,
+    );
+
+    const opening = reference.link.openStream(
+      grant(reference.link.session),
+      "interactive",
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    const open = carrier.sent[0]?.header;
+    if (!open || open.kind !== "open") throw new Error("Missing open frame.");
+    carrier.receive({
+      protocolVersion: 1,
+      sessionId: open.sessionId,
+      routeGeneration: open.routeGeneration,
+      effectiveRoute: "local",
+      channel: open.channel,
+      lane: open.lane,
+      sequence: 0,
+      kind: "accept",
+      initialCreditBytes: 32,
+    });
+    const stream = await opening;
+    expect(manager.getStatusSnapshot()[0]).toEqual(
+      expect.objectContaining({ activeChannelCount: 1, state: "active" }),
+    );
+    expect(manager.getStatusSnapshot()[0]?.routeChannelCounts).toEqual([
+      { channelCount: 1, route: "local" },
+      { channelCount: 0, route: "lan" },
+      { channelCount: 0, route: "wan" },
+      { channelCount: 0, route: "relay" },
+    ]);
+
+    stream.close();
+    expect(manager.getStatusSnapshot()[0]?.activeChannelCount).toBe(0);
+    reference.release();
+    expect(manager.getStatusSnapshot()).toEqual([
+      expect.objectContaining({
+        activeChannelCount: 0,
+        activeLinkCount: 0,
+        consumerCount: 0,
+        effectiveRoutes: ["local"],
+        freshness: "last-used",
+        state: "idle",
+      }),
+    ]);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(manager.getStatusSnapshot()).toEqual([]);
+    expect(changed).toHaveBeenCalled();
+    unsubscribe();
     await manager.close();
   });
 
@@ -232,6 +321,16 @@ describe("WorkerLinkManager", () => {
       session().sessionId,
       "relay",
     );
+    expect(manager.getStatusSnapshot()).toEqual([
+      expect.objectContaining({
+        effectiveRoutes: ["relay"],
+        fallbackReason: "local-unavailable",
+        latencyMs: 14,
+        preferredRoute: "relay",
+        routeGeneration: 2,
+        state: "active",
+      }),
+    ]);
     reference.release();
     await vi.waitFor(() =>
       expect(setup.dependency.recordTelemetry).toHaveBeenCalled(),
@@ -530,8 +629,10 @@ describe("WorkerLinkManager", () => {
     const setup = dependencies({ local: async () => carrier });
     const manager = new WorkerLinkManager(setup.dependency);
     await manager.acquire("worker-1");
+    expect(manager.getStatusSnapshot()).toHaveLength(1);
 
     setup.invalidateIdentity();
+    expect(manager.getStatusSnapshot()).toEqual([]);
     await vi.waitFor(() => expect(carrier.closed).toBe(true));
     await vi.waitFor(() =>
       expect(setup.dependency.deleteSession).toHaveBeenCalledOnce(),
@@ -553,12 +654,57 @@ describe("WorkerLinkManager", () => {
     const setup = dependencies({ local, relay });
     const manager = new WorkerLinkManager(setup.dependency);
     await manager.acquire("worker-1");
+    const states: string[] = [];
+    manager.subscribeStatus(() => {
+      const state = manager.getStatusSnapshot()[0]?.state;
+      if (state) states.push(state);
+    });
 
     initial.close();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(local).toHaveBeenCalledTimes(1 + 4 + 1);
     expect(relay).toHaveBeenCalledTimes(4 + 1);
     expect(setup.dependency.createSession).toHaveBeenCalledTimes(2);
+    expect(states).toEqual(
+      expect.arrayContaining(["degraded", "reconnecting", "offline"]),
+    );
+    expect(manager.getStatusSnapshot()).toEqual([
+      expect.objectContaining({
+        activeLinkCount: 1,
+        effectiveRoutes: [],
+        freshness: "active",
+        state: "offline",
+      }),
+    ]);
+    await manager.close();
+  });
+
+  it("retains a bounded offline status when initial route setup fails", async () => {
+    vi.useFakeTimers();
+    const setup = dependencies({
+      local: async () => {
+        throw new Error("local down");
+      },
+      relay: async () => {
+        throw new Error("relay down");
+      },
+    });
+    const manager = new WorkerLinkManager(setup.dependency, {
+      lastUsedStatusTtlMs: 500,
+    });
+
+    await expect(manager.acquire("worker-1")).rejects.toThrow("relay down");
+    expect(manager.getStatusSnapshot()).toEqual([
+      expect.objectContaining({
+        activeLinkCount: 0,
+        effectiveRoutes: [],
+        freshness: "last-used",
+        state: "offline",
+        workerId: "worker-1",
+      }),
+    ]);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(manager.getStatusSnapshot()).toEqual([]);
     await manager.close();
   });
 });
