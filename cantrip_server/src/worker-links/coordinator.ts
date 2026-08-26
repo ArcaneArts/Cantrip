@@ -8,12 +8,19 @@ import {
   workerLinkGrantBindingSchema,
   workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
+  workerLinkPeerSessionSchema,
+  workerLinkPeerSignalEnvelopeSchema,
   workerLinkSessionSchema,
   type InstalledWorkerLinkGrant,
   type WorkerLinkGrantOperation,
   type WorkerLinkCoordinatorCommand,
   type WorkerLinkLease,
   type WorkerLinkOperationalRoute,
+  type WorkerLinkPeerConfiguration,
+  type WorkerLinkPeerCoordinatorCommand,
+  type WorkerLinkPeerRoute,
+  type WorkerLinkPeerSession,
+  type WorkerLinkPeerSignalEnvelope,
   type WorkerLinkQosLane,
   type WorkerLinkResourceGrant,
   type WorkerLinkResourceKind,
@@ -34,12 +41,18 @@ const MAX_ACTIVE_SESSIONS = 1_024;
 
 interface WorkerLinkSessionState {
   grants: Map<string, WorkerLinkGrantState>;
+  peers: Map<string, WorkerLinkPeerState>;
   ready: boolean;
   session: WorkerLinkSession;
 }
 
 interface WorkerLinkGrantState {
   grant: InstalledWorkerLinkGrant;
+}
+
+interface WorkerLinkPeerState {
+  peerSession: WorkerLinkPeerSession;
+  ready: boolean;
 }
 
 interface WorkerSubscription {
@@ -50,6 +63,7 @@ interface WorkerSubscription {
 export interface WorkerLinkCoordinatorOptions {
   maxActiveSessions?: number;
   now?: () => number;
+  peerConfiguration?: WorkerLinkPeerConfiguration;
   serverGeneration: string;
   serverId: string;
   sessionLeaseMs?: number;
@@ -81,6 +95,12 @@ export interface WorkerLinkCoordinatorStats {
   sessions: number;
 }
 
+export interface WorkerLinkPeerSessionOpenInput {
+  route: WorkerLinkPeerRoute;
+  routeGeneration: number;
+  sessionId: string;
+}
+
 export class WorkerLinkUnavailableError extends Error {}
 
 export class WorkerLinkCoordinator {
@@ -88,6 +108,10 @@ export class WorkerLinkCoordinator {
   #closed = false;
   readonly #identitySessions = new Map<string, string>();
   readonly #now: () => number;
+  readonly #openingPeerSessions = new Map<
+    string,
+    Promise<WorkerLinkPeerSession>
+  >();
   readonly #openingSessions = new Map<string, Promise<WorkerLinkSession>>();
   readonly #ownerFences = new Map<string, number>();
   readonly #resourceFences = new Map<string, number>();
@@ -254,6 +278,168 @@ export class WorkerLinkCoordinator {
     return { binding, token };
   }
 
+  async openPeerSession(
+    input: WorkerLinkPeerSessionOpenInput,
+  ): Promise<WorkerLinkPeerSession> {
+    this.#assertOpen();
+    await this.sweepExpired();
+    const state = this.#readySession(input.sessionId);
+    const configuration = this.options.peerConfiguration;
+    if (
+      !configuration ||
+      configuration.relayOnly ||
+      !configuration.directRoutes[input.route]
+    ) {
+      throw new WorkerLinkUnavailableError(
+        "The requested WorkerLink peer route is disabled.",
+      );
+    }
+    if (input.routeGeneration !== state.session.routeGeneration) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink peer route generation is stale.",
+      );
+    }
+    const existing = [...state.peers.values()].find(
+      (peer) =>
+        peer.ready &&
+        peer.peerSession.route === input.route &&
+        peer.peerSession.routeGeneration === input.routeGeneration,
+    );
+    if (existing) return existing.peerSession;
+    const peerKey = peerRoundKeyOf(input);
+    const opening = this.#openingPeerSessions.get(peerKey);
+    if (opening) return opening;
+    const promise = this.#installPeerSession(state, input, configuration);
+    this.#openingPeerSessions.set(peerKey, promise);
+    try {
+      return await promise;
+    } finally {
+      if (this.#openingPeerSessions.get(peerKey) === promise) {
+        this.#openingPeerSessions.delete(peerKey);
+      }
+    }
+  }
+
+  async #installPeerSession(
+    state: WorkerLinkSessionState,
+    input: WorkerLinkPeerSessionOpenInput,
+    configuration: WorkerLinkPeerConfiguration,
+  ): Promise<WorkerLinkPeerSession> {
+    if (state.peers.size >= configuration.maxPeerSessionsPerClient) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink client peer-session limit has been reached.",
+      );
+    }
+    let workerPeers = 0;
+    for (const candidate of this.#sessions.values()) {
+      if (
+        candidate.session.identity.workerId === state.session.identity.workerId
+      ) {
+        workerPeers += candidate.peers.size;
+      }
+    }
+    if (workerPeers >= configuration.maxPeerSessionsPerWorker) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink worker peer-session limit has been reached.",
+      );
+    }
+    const now = this.#now();
+    const peerSession = workerLinkPeerSessionSchema.parse({
+      peerSessionId: randomUUID(),
+      sessionId: state.session.sessionId,
+      identity: state.session.identity,
+      routeGeneration: state.session.routeGeneration,
+      route: input.route,
+      lease: {
+        issuedAt: new Date(now).toISOString(),
+        expiresAt: state.session.lease.expiresAt,
+        absoluteExpiresAt: state.session.lease.absoluteExpiresAt,
+      },
+    });
+    const peerState: WorkerLinkPeerState = { peerSession, ready: false };
+    state.peers.set(peerSession.peerSessionId, peerState);
+    try {
+      await this.#request(state.session.identity.workerId, {
+        type: "worker-link.peer.install",
+        peerSession,
+        configuration,
+      });
+    } catch (error) {
+      if (state.peers.get(peerSession.peerSessionId) === peerState) {
+        state.peers.delete(peerSession.peerSessionId);
+      }
+      throw error;
+    }
+    if (
+      this.#sessions.get(state.session.sessionId) !== state ||
+      state.peers.get(peerSession.peerSessionId) !== peerState ||
+      state.session.routeGeneration !== peerSession.routeGeneration
+    ) {
+      await this.#bestEffortRequest(
+        state.session.identity.workerId,
+        {
+          type: "worker-link.peer.revoke",
+          peerSessionId: peerSession.peerSessionId,
+          sessionId: peerSession.sessionId,
+          revocation: revocation("route-replaced", this.#now()),
+        },
+        state.session.identity.ownerId,
+      );
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink peer session was revoked during installation.",
+      );
+    }
+    peerState.ready = true;
+    return peerSession;
+  }
+
+  async signalPeer(input: WorkerLinkPeerSignalEnvelope): Promise<void> {
+    const envelope = workerLinkPeerSignalEnvelopeSchema.parse(input);
+    if (envelope.sender !== "client") {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink peer signal sender is invalid.",
+      );
+    }
+    const state = this.#readySession(envelope.sessionId);
+    const peer = state.peers.get(envelope.peerSessionId);
+    if (
+      !peer?.ready ||
+      envelope.routeGeneration !== peer.peerSession.routeGeneration ||
+      envelope.route !== peer.peerSession.route ||
+      Date.parse(peer.peerSession.lease.expiresAt) <= this.#now()
+    ) {
+      throw new WorkerLinkUnavailableError(
+        "The WorkerLink peer signal authority is unavailable.",
+      );
+    }
+    await this.#request(state.session.identity.workerId, {
+      type: "worker-link.peer.signal",
+      envelope,
+    });
+  }
+
+  async revokePeerSession(
+    sessionId: string,
+    peerSessionId: string,
+    reason: WorkerLinkRevokeReason = "released",
+  ): Promise<boolean> {
+    const state = this.#sessions.get(sessionId);
+    const peer = state?.peers.get(peerSessionId);
+    if (!state || !peer) return false;
+    state.peers.delete(peerSessionId);
+    await this.#bestEffortRequest(
+      state.session.identity.workerId,
+      {
+        type: "worker-link.peer.revoke",
+        peerSessionId,
+        sessionId,
+        revocation: revocation(reason, this.#now()),
+      },
+      state.session.identity.ownerId,
+    );
+    return true;
+  }
+
   async renewSession(
     sessionId: string,
     leaseMs = this.options.sessionLeaseMs ?? DEFAULT_SESSION_LEASE_MS,
@@ -273,6 +459,41 @@ export class WorkerLinkCoordinator {
       );
     }
     state.session = workerLinkSessionSchema.parse({ ...state.session, lease });
+    for (const peer of [...state.peers.values()]) {
+      if (!peer.ready) continue;
+      const renewedPeerLease = renewedLease(
+        peer.peerSession.lease,
+        leaseMs,
+        this.#now(),
+        Date.parse(lease.expiresAt),
+      );
+      try {
+        await this.#request(state.session.identity.workerId, {
+          type: "worker-link.peer.renew",
+          peerSessionId: peer.peerSession.peerSessionId,
+          sessionId,
+          lease: renewedPeerLease,
+        });
+        if (state.peers.get(peer.peerSession.peerSessionId) === peer) {
+          peer.peerSession = workerLinkPeerSessionSchema.parse({
+            ...peer.peerSession,
+            lease: renewedPeerLease,
+          });
+        }
+      } catch {
+        state.peers.delete(peer.peerSession.peerSessionId);
+        await this.#bestEffortRequest(
+          state.session.identity.workerId,
+          {
+            type: "worker-link.peer.revoke",
+            peerSessionId: peer.peerSession.peerSessionId,
+            sessionId,
+            revocation: revocation("lease-expired", this.#now()),
+          },
+          state.session.identity.ownerId,
+        );
+      }
+    }
     return state.session;
   }
 
@@ -306,6 +527,15 @@ export class WorkerLinkCoordinator {
       preferredRoute,
       routeGeneration,
     });
+    await Promise.all(
+      [...state.peers.keys()].map((peerSessionId) =>
+        this.revokePeerSession(
+          state.session.sessionId,
+          peerSessionId,
+          "route-replaced",
+        ),
+      ),
+    );
     return state.session;
   }
 
@@ -512,6 +742,7 @@ export class WorkerLinkCoordinator {
     const now = this.#now();
     let revoked = 0;
     const expiredGrants: Array<[string, string]> = [];
+    const expiredPeers: Array<[string, string]> = [];
     const expiredSessions: string[] = [];
     for (const state of this.#sessions.values()) {
       if (Date.parse(state.session.lease.expiresAt) <= now) {
@@ -522,6 +753,18 @@ export class WorkerLinkCoordinator {
         if (Date.parse(grant.grant.binding.lease.expiresAt) <= now) {
           expiredGrants.push([state.session.sessionId, grantId]);
         }
+      }
+      for (const [peerSessionId, peer] of state.peers) {
+        if (Date.parse(peer.peerSession.lease.expiresAt) <= now) {
+          expiredPeers.push([state.session.sessionId, peerSessionId]);
+        }
+      }
+    }
+    for (const [sessionId, peerSessionId] of expiredPeers) {
+      if (
+        await this.revokePeerSession(sessionId, peerSessionId, "lease-expired")
+      ) {
+        revoked += 1;
       }
     }
     for (const [sessionId, grantId] of expiredGrants) {
@@ -620,6 +863,7 @@ export class WorkerLinkCoordinator {
     });
     const state: WorkerLinkSessionState = {
       grants: new Map(),
+      peers: new Map(),
       ready: false,
       session,
     };
@@ -764,6 +1008,7 @@ export class WorkerLinkCoordinator {
       this.#workerSubscriptions.delete(session.identity.workerId);
     }
     state.grants.clear();
+    state.peers.clear();
   }
 
   async #revokeSessionsWhere(
@@ -781,7 +1026,7 @@ export class WorkerLinkCoordinator {
 
   async #request(
     workerId: string,
-    command: WorkerLinkCoordinatorCommand,
+    command: WorkerLinkCoordinatorCommand | WorkerLinkPeerCoordinatorCommand,
     ownerId?: string,
   ): Promise<void> {
     const result = await this.workers.request(workerId, command, {
@@ -789,7 +1034,13 @@ export class WorkerLinkCoordinator {
         ownerId ??
         ("session" in command
           ? command.session.identity.ownerId
-          : this.#sessions.get(command.sessionId)?.session.identity.ownerId),
+          : "peerSession" in command
+            ? command.peerSession.identity.ownerId
+            : this.#sessions.get(
+                "sessionId" in command
+                  ? command.sessionId
+                  : command.envelope.sessionId,
+              )?.session.identity.ownerId),
       timeoutMs: WORKER_COMMAND_TIMEOUT_MS,
     });
     if (
@@ -805,7 +1056,7 @@ export class WorkerLinkCoordinator {
 
   async #bestEffortRequest(
     workerId: string,
-    command: WorkerLinkCoordinatorCommand,
+    command: WorkerLinkCoordinatorCommand | WorkerLinkPeerCoordinatorCommand,
     ownerId?: string,
   ): Promise<void> {
     try {
@@ -866,6 +1117,10 @@ function identityKeyOf(identity: WorkerLinkSessionIdentity): string {
   ]
     .map((part) => `${part.length}:${part}`)
     .join("");
+}
+
+function peerRoundKeyOf(input: WorkerLinkPeerSessionOpenInput): string {
+  return `${input.sessionId}:${input.routeGeneration}:${input.route}`;
 }
 
 function resourceKeyOf(

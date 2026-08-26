@@ -489,6 +489,52 @@ describe("WorkerLinkGateway", () => {
     await gateway.close();
   });
 
+  it("authorizes peer sessions only within one exact installed session", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    await install(gateway, fixture);
+    const peerSession = {
+      peerSessionId: randomUUID(),
+      sessionId,
+      identity: fixture.session.identity,
+      routeGeneration: 1,
+      route: "lan" as const,
+      lease: fixture.session.lease,
+    };
+
+    expect(gateway.peerSessionAuthorized(peerSession)).toBe(true);
+    expect(
+      gateway.peerSessionAuthorized({
+        ...peerSession,
+        identity: {
+          ...peerSession.identity,
+          accountSessionId: "another-account-session",
+        },
+      }),
+    ).toBe(false);
+    expect(
+      gateway.peerSessionAuthorized({ ...peerSession, routeGeneration: 2 }),
+    ).toBe(false);
+    expect(
+      gateway.peerSessionAuthorized({
+        ...peerSession,
+        lease: {
+          ...peerSession.lease,
+          expiresAt: new Date(now + 90_000).toISOString(),
+        },
+      }),
+    ).toBe(false);
+    await gateway.close();
+  });
+
   it("runs reliable stream frames through adapters with sequence and credit fencing", async () => {
     const now = Date.parse("2026-08-26T12:00:00.000Z");
     const fixture = fixtures(now);

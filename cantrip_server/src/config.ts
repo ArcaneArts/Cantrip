@@ -335,6 +335,13 @@ function readWorkerLinkPeerConfig(): WorkerLinkPeerConfiguration {
       1,
       4_096,
     ),
+    invalidHandshakeRatePerMinute: readBoundedInteger(
+      "CANTRIP_WORKER_LINK_INVALID_HANDSHAKE_RATE_PER_MINUTE",
+      process.env.CANTRIP_WORKER_LINK_INVALID_HANDSHAKE_RATE_PER_MINUTE,
+      60,
+      1,
+      10_000,
+    ),
     laneLimits: readWorkerLinkLaneLimits(),
   });
 }

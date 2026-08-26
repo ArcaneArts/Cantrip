@@ -7,6 +7,7 @@ import {
   installedWorkerLinkGrantSchema,
   workerLinkCoordinatorCommandSchema,
   workerLinkFrameHeaderSchema,
+  workerLinkPeerSessionSchema,
   workerLinkSessionSchema,
   type InstalledWorkerLinkGrant,
   type WorkerLinkChannelCloseCode,
@@ -15,6 +16,7 @@ import {
   type WorkerLinkCoordinatorCommand,
   type WorkerLinkFrameHeader,
   type WorkerLinkPayloadFormat,
+  type WorkerLinkPeerSession,
   type WorkerLinkResourceKind,
   type WorkerLinkSession,
 } from "@cantrip/protocol/worker-link";
@@ -728,6 +730,24 @@ export class WorkerLinkGateway {
       invalidAttempts,
       sessions: this.#sessions.size,
     };
+  }
+
+  peerSessionAuthorized(input: WorkerLinkPeerSession): boolean {
+    const peer = workerLinkPeerSessionSchema.parse(input);
+    const state = this.#sessions.get(peer.sessionId);
+    return Boolean(
+      state &&
+      canonical(state.session.identity) === canonical(peer.identity) &&
+      state.session.routeGeneration === peer.routeGeneration &&
+      Date.parse(peer.lease.issuedAt) >=
+        Date.parse(state.session.lease.issuedAt) &&
+      Date.parse(peer.lease.expiresAt) > this.#now() &&
+      Date.parse(peer.lease.expiresAt) <=
+        Date.parse(state.session.lease.expiresAt) &&
+      Date.parse(peer.lease.absoluteExpiresAt) <=
+        Date.parse(state.session.lease.absoluteExpiresAt) &&
+      this.#identityStillCurrent(state.session),
+    );
   }
 
   async close(): Promise<void> {

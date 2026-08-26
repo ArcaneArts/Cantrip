@@ -148,6 +148,12 @@ import {
   workerLinkGrantRenewCommandSchema,
   workerLinkGrantRevokeCommandSchema,
   workerLinkIdentityResolveCommandSchema,
+  workerLinkPeerCandidateNotificationSchema,
+  workerLinkPeerSessionInstallCommandSchema,
+  workerLinkPeerSessionRenewCommandSchema,
+  workerLinkPeerSessionRevokeCommandSchema,
+  workerLinkPeerSignalCommandSchema,
+  workerLinkPeerSignalNotificationSchema,
   workerLinkSessionInstallCommandSchema,
   workerLinkSessionRenewCommandSchema,
   workerLinkSessionRouteCommandSchema,
@@ -13512,6 +13518,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   workerLinkGrantRenewCommandSchema,
   workerLinkGrantRevokeCommandSchema,
   workerLinkIdentityResolveCommandSchema,
+  workerLinkPeerSessionInstallCommandSchema,
+  workerLinkPeerSessionRenewCommandSchema,
+  workerLinkPeerSessionRevokeCommandSchema,
+  workerLinkPeerSignalCommandSchema,
   standaloneChatScratchProvisionCommandSchema,
   standaloneChatScratchResolveCommandSchema,
   standaloneChatScratchArchiveCommandSchema,
@@ -15665,6 +15675,8 @@ export const workerEventEnvelopeSchema = z.object({
 });
 
 export const workerNotificationSchema = z.discriminatedUnion("type", [
+  workerLinkPeerSignalNotificationSchema,
+  workerLinkPeerCandidateNotificationSchema,
   z
     .object({
       type: z.literal("chat.turn.outcome"),
