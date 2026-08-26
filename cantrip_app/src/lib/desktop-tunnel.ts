@@ -3,6 +3,7 @@ import type {
   CodeSharedAttachmentWire,
   DirectTunnelTicket,
   TunnelAttachmentCreateResult,
+  WorkerLinkRoute,
 } from "@cantrip/protocol";
 
 import {
@@ -119,6 +120,7 @@ export interface DesktopTunnelForwardSummary {
   expiresAt: string;
   localHost: "127.0.0.1";
   localPort: number;
+  effectiveRoute?: WorkerLinkRoute | null;
   routeState: "local-direct" | "relayed" | "degraded";
   relayFallbackAvailable?: boolean;
   relayCredentialExpiresAtEpochMs?: number | null;

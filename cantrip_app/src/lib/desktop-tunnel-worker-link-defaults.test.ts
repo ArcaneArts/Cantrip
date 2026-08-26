@@ -39,13 +39,17 @@ class FakeWebSocket {
   send(data: ArrayBuffer | string): void {
     if (typeof data !== "string") return;
     const initialize = JSON.parse(data) as {
+      claimGeneration: number;
       identity: { attachmentId: string; tunnelId: string };
+      nativeForwardGeneration: string;
     };
     queueMicrotask(() =>
       this.onmessage?.({
         data: JSON.stringify({
           type: "ready",
           attachmentId: initialize.identity.attachmentId,
+          claimGeneration: initialize.claimGeneration,
+          nativeForwardGeneration: initialize.nativeForwardGeneration,
           tunnelId: initialize.identity.tunnelId,
         }),
       } as MessageEvent<string>),
@@ -99,6 +103,21 @@ describe("desktop tunnel WorkerLink browser defaults", () => {
       target: { kind: "tcp", host: "127.0.0.1", port: 4321 },
     };
     const connection = {
+      bridgeAuthority: {
+        accountSessionId: "account-session-1",
+        channelId: "11111111-1111-4111-8111-111111111111",
+        clientInstanceId: "client-instance-1",
+        connectionId: "22222222-2222-4222-8222-222222222222",
+        grantGeneration: 1,
+        grantId: "33333333-3333-4333-8333-333333333333",
+        ownerId: "owner-1",
+        routeGeneration: 1,
+        serverGeneration: "server-generation-1",
+        serverId: "server-1",
+        sessionId: "44444444-4444-4444-8444-444444444444",
+        workerId: "worker-1",
+        workerProcessGeneration: "worker-generation-1",
+      },
       bufferedAmount: 0,
       activate: vi.fn(),
       close: vi.fn(),
@@ -123,6 +142,10 @@ describe("desktop tunnel WorkerLink browser defaults", () => {
           workerId: "worker-1",
         },
         {
+          claimGeneration: 1,
+          claimId: "55555555-5555-4555-8555-555555555555",
+          expiresAtEpochMs: Date.now() + 30_000,
+          nativeForwardGeneration: "66666666-6666-4666-8666-666666666666",
           token: "b".repeat(43),
           url: "ws://127.0.0.1:43123/",
         },

@@ -29,6 +29,21 @@ function route(grantId = "grant-1"): WorkerLinkTunnelRoute {
 }
 
 class FakeConnection implements TunnelWorkerLinkConnection {
+  readonly bridgeAuthority = {
+    accountSessionId: "account-session-1",
+    channelId: "11111111-1111-4111-8111-111111111111",
+    clientInstanceId: "client-instance-1",
+    connectionId: "22222222-2222-4222-8222-222222222222",
+    grantGeneration: 1,
+    grantId: "33333333-3333-4333-8333-333333333333",
+    ownerId: "owner-1",
+    routeGeneration: 1,
+    serverGeneration: "server-generation-1",
+    serverId: "server-1",
+    sessionId: "44444444-4444-4444-8444-444444444444",
+    workerId: "worker-1",
+    workerProcessGeneration: "worker-generation-1",
+  };
   readonly bufferedAmount = 0;
   readonly activate = vi.fn();
   readonly close = vi.fn((_code?: WorkerLinkChannelCloseCode) => undefined);
@@ -63,13 +78,17 @@ class FakeSocket {
   send(data: ArrayBuffer | string): void {
     if (typeof data === "string") {
       const initialize = JSON.parse(data) as {
+        claimGeneration: number;
         identity: { attachmentId: string; tunnelId: string };
+        nativeForwardGeneration: string;
       };
       queueMicrotask(() =>
         this.onmessage?.({
           data: JSON.stringify({
             type: "ready",
             attachmentId: initialize.identity.attachmentId,
+            claimGeneration: initialize.claimGeneration,
+            nativeForwardGeneration: initialize.nativeForwardGeneration,
             tunnelId: initialize.identity.tunnelId,
           }),
         } as MessageEvent<string>),
@@ -90,10 +109,19 @@ function setup(routes: WorkerLinkRoute[] = ["local"]) {
   const sockets: FakeSocket[] = [];
   const connections: FakeConnection[] = [];
   const linkOptions: OpenTunnelWorkerLinkOptions[] = [];
+  let bridgeClaimGeneration = 1;
+  const bridge = () => ({
+    claimGeneration: bridgeClaimGeneration,
+    claimId: "55555555-5555-4555-8555-555555555555",
+    expiresAtEpochMs: Date.now() + 30_000,
+    nativeForwardGeneration: "66666666-6666-4666-8666-666666666666",
+    token: `${bridgeClaimGeneration}`.repeat(43).slice(0, 43),
+    url: "ws://127.0.0.1:43123/",
+  });
   const invoke = vi.fn(async (command: string) => {
     if (command === "prepare_worker_link_tunnel_forward") {
       return {
-        bridge: { token: "b".repeat(43), url: "ws://127.0.0.1:43123/" },
+        bridge: bridge(),
         forward: {
           attachmentId,
           diagnosticTraceId: null,
@@ -107,6 +135,10 @@ function setup(routes: WorkerLinkRoute[] = ["local"]) {
           tunnelId,
         },
       };
+    }
+    if (command === "rotate_worker_link_tunnel_bridge_claim") {
+      bridgeClaimGeneration += 1;
+      return bridge();
     }
     if (
       command === "update_worker_link_tunnel_forward_route" ||
@@ -208,6 +240,40 @@ describe("desktop tunnel WorkerLink bridge", () => {
     expect(fixture.connections[1]!.activate).toHaveBeenCalledOnce();
   });
 
+  it("walks LAN to WAN to RELAY without rebinding the native listener", async () => {
+    vi.useFakeTimers();
+    const fixture = setup(["lan", "wan", "relay"]);
+    const summary = await startDesktopTunnelWorkerLinkForward(
+      input(),
+      fixture.dependencies,
+    );
+
+    fixture.linkOptions[0]!.onClose("endpoint-disconnected");
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.waitFor(() => expect(fixture.connections).toHaveLength(2));
+    fixture.linkOptions[1]!.onClose("endpoint-disconnected");
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.waitFor(() => expect(fixture.connections).toHaveLength(3));
+
+    expect(summary.localPort).toBe(41234);
+    expect(fixture.connections.map((connection) => connection.route)).toEqual([
+      "lan",
+      "wan",
+      "relay",
+    ]);
+    expect(
+      fixture.invoke.mock.calls.filter(
+        ([command]) => command === "prepare_worker_link_tunnel_forward",
+      ),
+    ).toHaveLength(1);
+    expect(
+      fixture.invoke.mock.calls.filter(
+        ([command]) => command === "rotate_worker_link_tunnel_bridge_claim",
+      ),
+    ).toHaveLength(2);
+    expect(fixture.sockets).toHaveLength(3);
+  });
+
   it.each(["lan", "wan"] satisfies WorkerLinkRoute[])(
     "preserves the native listener while renderer traffic uses %s",
     async (route) => {
@@ -218,6 +284,7 @@ describe("desktop tunnel WorkerLink bridge", () => {
       );
 
       expect(summary).toMatchObject({
+        effectiveRoute: route,
         localPort: 41234,
         routeState: "local-direct",
       });

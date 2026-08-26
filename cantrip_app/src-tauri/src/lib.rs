@@ -980,6 +980,7 @@ pub fn run() {
             tunnel_forward::release_code_transport_forward,
             tunnel_forward::start_tunnel_forward,
             tunnel_forward::prepare_worker_link_tunnel_forward,
+            tunnel_forward::rotate_worker_link_tunnel_bridge_claim,
             tunnel_forward::update_worker_link_tunnel_forward_route,
             tunnel_forward::refresh_worker_link_tunnel_forward,
             tunnel_forward::force_tunnel_forward_relay,
