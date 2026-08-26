@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  allowsLegacyExplorerCodeFallback,
   configureExplorerCodeEditorNavigation,
   ExplorerCodePresentationCache,
   explorerCodeEditorBindingKey,
@@ -66,6 +67,31 @@ describe("Explorer Code editor readiness identity", () => {
 });
 
 describe("Explorer Code connection retry classification", () => {
+  it("allows legacy fallback only for explicit shared-transport compatibility codes", () => {
+    for (const code of [
+      "shared-code-transport-requires-single-server",
+      "shared-code-transport-unsupported",
+    ]) {
+      expect(
+        allowsLegacyExplorerCodeFallback(
+          new CantripApiError("Compatibility boundary.", 409, code),
+        ),
+      ).toBe(true);
+    }
+    for (const error of [
+      new CantripApiError("Generic conflict.", 409),
+      new CantripApiError(
+        "Wrong status.",
+        503,
+        "shared-code-transport-unsupported",
+      ),
+      new CantripApiError("Unauthorized.", 401),
+      new TypeError("Load failed"),
+    ]) {
+      expect(allowsLegacyExplorerCodeFallback(error)).toBe(false);
+    }
+  });
+
   it("retries transport and server failures but not identity, auth, or limit responses", () => {
     expect(
       isRetryableExplorerCodeConnectionError(new TypeError("Load failed")),

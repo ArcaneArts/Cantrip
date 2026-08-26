@@ -7,6 +7,8 @@ import type {
 const mocks = vi.hoisted(() => ({
   acquireDesktopCodeTransport: vi.fn(),
   browserCodeAttachmentHealthy: vi.fn(),
+  retainSharedBrowserCodeAttachment: vi.fn(),
+  sharedBrowserCodeAttachmentHealthy: vi.fn(),
   invoke: vi.fn(),
   isTauri: vi.fn(),
   forceDesktopTunnelRelay: vi.fn(),
@@ -14,8 +16,10 @@ const mocks = vi.hoisted(() => ({
   listDesktopTunnelsWithOptions: vi.fn(),
   releaseDesktopCodeTransport: vi.fn(),
   startBrowserCodeAttachment: vi.fn(),
+  startSharedBrowserCodeAttachment: vi.fn(),
   startDesktopTunnel: vi.fn(),
   stopBrowserCodeAttachment: vi.fn(),
+  stopSharedBrowserCodeAttachment: vi.fn(),
   stopDesktopTunnel: vi.fn(),
   stopDesktopTunnelForward: vi.fn(),
   subscribeBrowserCodeAttachmentUnavailable: vi.fn(),
@@ -43,8 +47,12 @@ vi.mock("@/lib/desktop-tunnel", () => ({
 
 vi.mock("@/lib/browser-code-tunnel", () => ({
   browserCodeAttachmentHealthy: mocks.browserCodeAttachmentHealthy,
+  retainSharedBrowserCodeAttachment: mocks.retainSharedBrowserCodeAttachment,
+  sharedBrowserCodeAttachmentHealthy: mocks.sharedBrowserCodeAttachmentHealthy,
   startBrowserCodeAttachment: mocks.startBrowserCodeAttachment,
+  startSharedBrowserCodeAttachment: mocks.startSharedBrowserCodeAttachment,
   stopBrowserCodeAttachment: mocks.stopBrowserCodeAttachment,
+  stopSharedBrowserCodeAttachment: mocks.stopSharedBrowserCodeAttachment,
   subscribeBrowserCodeAttachmentUnavailable:
     mocks.subscribeBrowserCodeAttachmentUnavailable,
 }));
@@ -85,6 +93,8 @@ beforeEach(() => {
   mocks.isTauri.mockReturnValue(true);
   mocks.explorerCodeSessionBindingCurrent.mockReturnValue(true);
   mocks.releaseDesktopCodeTransport.mockResolvedValue(true);
+  mocks.retainSharedBrowserCodeAttachment.mockResolvedValue(undefined);
+  mocks.stopSharedBrowserCodeAttachment.mockResolvedValue(undefined);
   mocks.invoke.mockResolvedValue([]);
   mocks.listDesktopTunnelsWithOptions.mockResolvedValue([]);
   mocks.releaseDesktopCodeTransport.mockResolvedValue(true);
@@ -238,6 +248,42 @@ describe("shared desktop Code attachment", () => {
     expect(mocks.releaseDesktopCodeTransport).toHaveBeenCalledTimes(2);
     expect(mocks.releaseDesktopCodeTransport).toHaveBeenLastCalledWith(
       secondLease,
+    );
+  });
+
+  it("delegates browser shared-session leases without invoking native ownership", async () => {
+    mocks.isTauri.mockReturnValue(false);
+    const owned = ownedAttachment();
+    mocks.startSharedBrowserCodeAttachment.mockResolvedValue({
+      attachment: {
+        attachmentId: owned.attachment.session.attachmentId,
+        expiresAt: owned.attachment.session.expiresAt,
+        runtime: owned.attachment.session.runtime,
+        sessionId: owned.attachment.session.sessionId,
+        url: "https://server.example.test/__cantrip_code/adapter/code/",
+      },
+      leaseId: "browser-lease-one",
+      transportGeneration: "browser-generation-one",
+    });
+
+    const preferred = await preferSharedProtectedCodeAttachment(owned);
+
+    expect(mocks.startSharedBrowserCodeAttachment).toHaveBeenCalledWith(owned, {
+      signal: undefined,
+    });
+    expect(preferred).toMatchObject({
+      directTunnelId: owned.attachment.transport.transportId,
+      sharedOwnedAttachment: owned,
+      sharedTransportGeneration: "browser-generation-one",
+      sharedTransportLeaseId: "browser-lease-one",
+      transportKind: "relay",
+    });
+    expect(mocks.acquireDesktopCodeTransport).not.toHaveBeenCalled();
+
+    await stopSharedProtectedCodeAttachment(owned, "browser-lease-one");
+    expect(mocks.stopSharedBrowserCodeAttachment).toHaveBeenCalledWith(
+      owned,
+      "browser-lease-one",
     );
   });
 });

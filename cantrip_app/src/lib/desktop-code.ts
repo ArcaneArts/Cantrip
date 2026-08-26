@@ -16,7 +16,11 @@ import {
 
 import {
   browserCodeAttachmentHealthy,
+  retainSharedBrowserCodeAttachment,
+  sharedBrowserCodeAttachmentHealthy,
+  startSharedBrowserCodeAttachment,
   startBrowserCodeAttachment,
+  stopSharedBrowserCodeAttachment,
   stopBrowserCodeAttachment,
   subscribeBrowserCodeAttachmentUnavailable,
 } from "@/lib/browser-code-tunnel";
@@ -60,7 +64,15 @@ export function subscribePreferredCodeAttachmentUnavailable(
   if (!tunnelId) return () => undefined;
   if (!isTauri()) {
     return subscribeBrowserCodeAttachmentUnavailable((event) => {
-      if (event.tunnelId === tunnelId) listener();
+      if (event.tunnelId !== tunnelId) return;
+      if (
+        preferred.sharedTransportLeaseId &&
+        event.leaseId &&
+        event.leaseId !== preferred.sharedTransportLeaseId
+      ) {
+        return;
+      }
+      listener();
     });
   }
   const identity = preferred.desktopRouteIdentity;
@@ -76,10 +88,7 @@ export function subscribePreferredCodeAttachmentUnavailable(
 }
 
 type DesktopCodeRuntimeState = {
-  protectedAttachmentIdentities: WeakMap<
-    object,
-    DesktopTunnelForwardIdentity
-  >;
+  protectedAttachmentIdentities: WeakMap<object, DesktopTunnelForwardIdentity>;
   sharedProtectedAttachmentLeases: WeakMap<
     BoundExplorerCodeSessionAttachment,
     Map<string, DesktopCodeTransportLease>
@@ -833,9 +842,16 @@ export async function preferSharedProtectedCodeAttachment(
   options: { signal?: AbortSignal } = {},
 ): Promise<PreferredCodeAttachment> {
   if (!isTauri()) {
-    throw new Error(
-      "Shared Cantrip Code browser transports are not enabled yet.",
-    );
+    const preferred = await startSharedBrowserCodeAttachment(owned, options);
+    return {
+      attachment: preferred.attachment,
+      desktopRouteIdentity: null,
+      directTunnelId: owned.attachment.transport.transportId,
+      sharedOwnedAttachment: owned,
+      sharedTransportGeneration: preferred.transportGeneration,
+      sharedTransportLeaseId: preferred.leaseId,
+      transportKind: "relay",
+    };
   }
   options.signal?.throwIfAborted();
   const wire = owned.attachment;
@@ -951,6 +967,10 @@ export async function stopSharedProtectedCodeAttachment(
   owned: BoundExplorerCodeSessionAttachment,
   leaseId?: string,
 ): Promise<void> {
+  if (!isTauri()) {
+    await stopSharedBrowserCodeAttachment(owned, leaseId);
+    return;
+  }
   const leases = sharedProtectedAttachmentLeases.get(owned);
   if (!leases) return;
   if (leaseId) {
@@ -988,6 +1008,10 @@ export async function retainSharedProtectedCodeAttachmentLease(
   owned: BoundExplorerCodeSessionAttachment,
   leaseId: string,
 ): Promise<void> {
+  if (!isTauri()) {
+    await retainSharedBrowserCodeAttachment(owned, leaseId);
+    return;
+  }
   const leases = sharedProtectedAttachmentLeases.get(owned);
   if (!leases?.has(leaseId)) return;
   const retired: Array<[string, DesktopCodeTransportLease]> = [];
@@ -1073,7 +1097,13 @@ async function performPreferredCodeAttachmentRouteRecovery(
   if (!tunnelId) return "available";
   if (!isTauri()) {
     try {
-      return (await browserCodeAttachmentHealthy(tunnelId))
+      const sharedOwned = preferred.sharedOwnedAttachment;
+      const sharedLeaseId = preferred.sharedTransportLeaseId;
+      return (
+        sharedOwned && sharedLeaseId
+          ? sharedBrowserCodeAttachmentHealthy(sharedOwned, sharedLeaseId)
+          : await browserCodeAttachmentHealthy(tunnelId)
+      )
         ? "available"
         : "replace-required";
     } catch {
@@ -1108,7 +1138,10 @@ async function performPreferredCodeAttachmentRouteRecovery(
 
   try {
     const sharedOwned = preferred.sharedOwnedAttachment;
-    if (sharedOwned && !explorerCodeSessionBindingCurrent(sharedOwned.binding)) {
+    if (
+      sharedOwned &&
+      !explorerCodeSessionBindingCurrent(sharedOwned.binding)
+    ) {
       return "replace-required";
     }
     const relayed = await forceDesktopTunnelRelay(exact, {

@@ -18,6 +18,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { bindBrowserCodeAttachmentFrame } from "@/lib/browser-code-tunnel";
 import {
   createProtectedCodeSettingsAttachment,
   getCodeSettingsWorkerStatus,
@@ -250,6 +251,17 @@ export function CodeSettings({
     () => (attachment ? createCodeWorkbenchFrameMount(attachment.url) : null),
     [attachment?.attachmentId, attachment?.url, frameDocumentVersion],
   );
+
+  useLayoutEffect(() => {
+    if (!attachment || !frameMount) return;
+    const frame = frameRef.current?.contentWindow;
+    if (!frame) return;
+    return bindBrowserCodeAttachmentFrame(
+      attachment.attachmentId,
+      frame,
+      frameMount.nonce,
+    );
+  }, [attachment, frameMount]);
 
   useLayoutEffect(() => {
     if (!attachment || !frameMount) return;

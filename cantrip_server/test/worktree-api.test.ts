@@ -3875,6 +3875,7 @@ describe.sequential("server worktree control plane", () => {
 
       expect(response.statusCode, response.body).toBe(409);
       expect(response.json()).toEqual({
+        code: "shared-code-transport-unsupported",
         error: "This worker does not support shared Cantrip Code transports.",
       });
       expect(codeOpenCommands).toHaveLength(opensBefore);
