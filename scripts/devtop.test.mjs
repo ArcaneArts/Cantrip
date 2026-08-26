@@ -36,6 +36,19 @@ test("devtop is launched through the hard-stop lifecycle wrapper", async () => {
     /forceKillDevelopmentPortListeners\(undefined, undefined, repositoryRoot\)/u,
   );
   assert.match(launcher, /forceKillSpawnedProcessGroup\(activeChild\.pid\)/u);
+  assert.match(
+    launcher,
+    /await ensureDevtopTauriConfig\(\{\s*repositoryRoot,\s*repositoryCommonDirectory,\s*\}\)/u,
+  );
+  assert.match(
+    launcher,
+    /exec tauri dev --config \.\.\/\.cantrip\/dev\/tauri-dev\.conf\.json/u,
+  );
+  assert.ok(
+    launcher.indexOf("await ensureDevtopTauriConfig") <
+      launcher.indexOf("await forceKillRecordedDevtop"),
+    "validate the worktree identity before stopping the active devtop",
+  );
   const processLifecycle = await readFile(
     path.join(repositoryRoot, "scripts", "devtop-processes.mjs"),
     "utf8",
