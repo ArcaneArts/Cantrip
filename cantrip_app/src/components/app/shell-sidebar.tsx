@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "@/lib/sidebar-resize";
 import { cn } from "@/lib/utils";
-export type ShellSidebarBindings = Readonly<Record<string, any>>;
+type ShellSidebarBindings = Readonly<Record<string, any>>;
 
 export function ShellSidebar({ bindings }: { bindings: ShellSidebarBindings }) {
   const {

@@ -491,7 +491,7 @@ export function useSidebarExplorerModel({
   } as const;
 }
 
-export type SidebarExplorerModel = ReturnType<typeof useSidebarExplorerModel>;
+type SidebarExplorerModel = ReturnType<typeof useSidebarExplorerModel>;
 
 export function sidebarExplorerProvisioningDetails({
   onlineWorkerIds,

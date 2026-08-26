@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { desktopPopoutTitlebarLeftInset } from "@/lib/desktop-popout";
 import { sidebarFileName } from "@/lib/sidebar-file-tabs";
 import { cn } from "@/lib/utils";
-export type ShellHeaderBindings = Readonly<Record<string, any>>;
+type ShellHeaderBindings = Readonly<Record<string, any>>;
 
 export function ShellHeader({ bindings }: { bindings: ShellHeaderBindings }) {
   const {

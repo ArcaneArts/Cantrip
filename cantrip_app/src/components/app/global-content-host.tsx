@@ -73,21 +73,21 @@ import {
   projectSetupErrorMessage,
 } from "@/lib/job-status-message";
 import { ChatTranscript } from "@/components/chat/chat-transcript";
-export type GlobalContentBindings = Readonly<Record<string, any>>;
+type GlobalContentBindings = Readonly<Record<string, any>>;
 
-export function StandaloneChatHost({ children }: { children: ReactNode }) {
+function StandaloneChatHost({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export function ProjectSurfaceHost({ children }: { children: ReactNode }) {
+function ProjectSurfaceHost({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export function ProjectOverviewHost({ children }: { children: ReactNode }) {
+function ProjectOverviewHost({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export function DetachedGroupPlaceholder({ onFocus }: { onFocus(): void }) {
+function DetachedGroupPlaceholder({ onFocus }: { onFocus(): void }) {
   return (
     <EmptyState>
       <EmptyStateContent>

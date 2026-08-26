@@ -9,7 +9,7 @@ import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer
 import { ProjectTabBar } from "@/components/workspace/project-tab-bar";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { sidebarFileName } from "@/lib/sidebar-file-tabs";
-export type PersistentSurfaceBindings = Readonly<Record<string, any>>;
+type PersistentSurfaceBindings = Readonly<Record<string, any>>;
 
 export function PersistentSurfaceLayer({
   bindings,

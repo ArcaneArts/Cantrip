@@ -8,7 +8,7 @@ import {
 } from "@/components/projects/folder-project-dialog";
 import { WorktreeCreateDialog } from "@/components/worktrees/worktree-control";
 import { errorMessage as errorText } from "@/lib/error-message";
-export type ShellOverlayBindings = Readonly<Record<string, any>>;
+type ShellOverlayBindings = Readonly<Record<string, any>>;
 
 export function ShellOverlays({
   bindings,
