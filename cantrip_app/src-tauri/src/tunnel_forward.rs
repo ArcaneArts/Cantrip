@@ -47,7 +47,9 @@ pub struct PrepareWorkerLinkTunnelForwardRequest {
     pub diagnostic_trace_id: Option<String>,
     pub expires_at: String,
     pub preferred_local_port: Option<u16>,
+    pub server_url: String,
     pub tunnel_id: String,
+    pub worker_id: String,
 }
 
 #[derive(Serialize)]
@@ -62,6 +64,14 @@ pub struct WorkerLinkTunnelBridge {
 pub struct WorkerLinkTunnelForwardPreparation {
     pub bridge: WorkerLinkTunnelBridge,
     pub forward: TunnelForwardSummary,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkerLinkCodeTransportForwardCompletion {
+    pub bridge: WorkerLinkTunnelBridge,
+    pub forward: TunnelForwardSummary,
+    pub generation: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
@@ -361,6 +371,80 @@ pub async fn prepare_worker_link_tunnel_forward(
     #[cfg(mobile)]
     {
         let _ = (app, state, request);
+        Err("Local tunnel attachments are only available in the desktop app.".into())
+    }
+}
+
+#[tauri::command]
+pub async fn complete_worker_link_code_transport_forward(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    state: State<'_, TunnelForwards>,
+    transport_id: String,
+    generation: String,
+    reservation_id: String,
+    window_instance_id: String,
+    request: PrepareWorkerLinkTunnelForwardRequest,
+) -> Result<WorkerLinkCodeTransportForwardCompletion, String> {
+    #[cfg(desktop)]
+    return desktop::complete_worker_link_code_transport_forward(
+        &app,
+        &state,
+        window.label(),
+        &transport_id,
+        &generation,
+        &reservation_id,
+        &window_instance_id,
+        request,
+    )
+    .await;
+    #[cfg(mobile)]
+    {
+        let _ = (
+            app,
+            window,
+            state,
+            transport_id,
+            generation,
+            reservation_id,
+            window_instance_id,
+            request,
+        );
+        Err("Shared Code transports are only available in the desktop app.".into())
+    }
+}
+
+#[tauri::command]
+pub fn claim_worker_link_tunnel_bridge(
+    window: tauri::WebviewWindow,
+    state: State<'_, TunnelForwards>,
+    tunnel_id: String,
+    attachment_id: String,
+    code_pool_generation: String,
+    lease_id: String,
+    window_instance_id: String,
+) -> Result<Option<WorkerLinkTunnelBridge>, String> {
+    #[cfg(desktop)]
+    return desktop::claim_worker_link_bridge(
+        &state,
+        &tunnel_id,
+        &attachment_id,
+        &code_pool_generation,
+        window.label(),
+        &lease_id,
+        &window_instance_id,
+    );
+    #[cfg(mobile)]
+    {
+        let _ = (
+            window,
+            state,
+            tunnel_id,
+            attachment_id,
+            code_pool_generation,
+            lease_id,
+            window_instance_id,
+        );
         Err("Local tunnel attachments are only available in the desktop app.".into())
     }
 }
@@ -777,8 +861,8 @@ mod desktop {
         PrepareWorkerLinkTunnelForwardRequest, RelayTunnelRequest, StartTunnelForwardRequest,
         TunnelDataProtectionRequest, TunnelForwardSummary, TunnelForwardTerminalEvent,
         TunnelForwardTerminalSnapshot, TunnelForwards, TunnelRelayRefreshOutcome,
-        TunnelRelayRefreshResult, WorkerLinkTunnelBridge, WorkerLinkTunnelForwardPreparation,
-        TUNNEL_FORWARD_TERMINAL_EVENT,
+        TunnelRelayRefreshResult, WorkerLinkCodeTransportForwardCompletion, WorkerLinkTunnelBridge,
+        WorkerLinkTunnelForwardPreparation, TUNNEL_FORWARD_TERMINAL_EVENT,
     };
     use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
     use aes_gcm::{Aes256Gcm, Nonce};
@@ -845,6 +929,21 @@ mod desktop {
         pub stop: Option<oneshot::Sender<()>>,
         summary: TunnelForwardSummary,
         pub task: TauriJoinHandle<()>,
+        worker_link_bridge: Option<StoredWorkerLinkBridge>,
+    }
+
+    struct StoredWorkerLinkBridge {
+        token: Zeroizing<String>,
+        url: String,
+    }
+
+    impl StoredWorkerLinkBridge {
+        fn expose(&self) -> WorkerLinkTunnelBridge {
+            WorkerLinkTunnelBridge {
+                token: self.token.to_string(),
+                url: self.url.clone(),
+            }
+        }
     }
 
     struct ForwardStartReservation<'a> {
@@ -2143,6 +2242,134 @@ mod desktop {
         })
     }
 
+    pub async fn complete_worker_link_code_transport_forward(
+        app: &AppHandle,
+        state: &State<'_, TunnelForwards>,
+        window_label: &str,
+        transport_id: &str,
+        generation: &str,
+        reservation_id: &str,
+        window_instance_id: &str,
+        request: PrepareWorkerLinkTunnelForwardRequest,
+    ) -> Result<WorkerLinkCodeTransportForwardCompletion, String> {
+        validate_code_transport_window_instance(state, window_label, window_instance_id)?;
+        {
+            let mut pool = state
+                .code_pool
+                .lock()
+                .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
+            let Some(CodeTransportPoolEntry::Starting(entry)) = pool.entries.get_mut(transport_id)
+            else {
+                return Err("The shared Code forward reservation is unavailable.".into());
+            };
+            if entry.generation != generation
+                || entry.reservation_id != reservation_id
+                || entry.leader_window_label != window_label
+                || entry.leader_window_instance_id != window_instance_id
+                || entry.completing
+                || entry.forward.is_some()
+                || request.tunnel_id != entry.identity.transport_id
+                || request.tunnel_id != transport_id
+                || request.data_protection.key_revision != entry.identity.protected_key_revision
+                || request.server_url != entry.identity.server_url
+                || request.worker_id != entry.identity.worker_id
+            {
+                return Err(
+                    "The shared Code WorkerLink preparation changed security identity.".into(),
+                );
+            }
+            entry.completing = true;
+            signal_pool_change(&entry.changes);
+        }
+
+        let prepared = match prepare_worker_link_with_generation(
+            app,
+            state,
+            request,
+            Some(generation),
+        )
+        .await
+        {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                let mut pool = state
+                    .code_pool
+                    .lock()
+                    .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
+                if pool
+                    .entries
+                    .get(transport_id)
+                    .is_some_and(|entry| pool_entry_generation(entry) == generation)
+                {
+                    if let Some(entry) = pool.entries.remove(transport_id) {
+                        signal_pool_change(pool_entry_changes(&entry));
+                    }
+                }
+                return Err(error);
+            }
+        };
+
+        let window_current =
+            validate_code_transport_window_instance(state, window_label, window_instance_id)
+                .is_ok();
+        let accepted = {
+            let mut pool = state
+                .code_pool
+                .lock()
+                .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
+            if !window_current {
+                let exact = matches!(
+                    pool.entries.get(transport_id),
+                    Some(CodeTransportPoolEntry::Starting(entry))
+                        if entry.generation == generation
+                            && entry.reservation_id == reservation_id
+                            && entry.leader_window_label == window_label
+                            && entry.leader_window_instance_id == window_instance_id
+                );
+                if exact {
+                    if let Some(entry) = pool.entries.remove(transport_id) {
+                        signal_pool_change(pool_entry_changes(&entry));
+                    }
+                }
+                false
+            } else {
+                match pool.entries.get_mut(transport_id) {
+                    Some(CodeTransportPoolEntry::Starting(entry))
+                        if entry.generation == generation
+                            && entry.reservation_id == reservation_id
+                            && entry.leader_window_label == window_label
+                            && entry.leader_window_instance_id == window_instance_id =>
+                    {
+                        entry.completing = false;
+                        entry.forward = Some(prepared.forward.clone());
+                        signal_pool_change(&entry.changes);
+                        true
+                    }
+                    _ => false,
+                }
+            }
+        };
+        if !accepted {
+            let _ = stop(
+                app,
+                state,
+                transport_id,
+                Some(&prepared.forward.attachment_id),
+                prepared.forward.diagnostic_trace_id.as_deref(),
+                None,
+                Some(generation),
+                "stale-code-pool-completion",
+            )
+            .await;
+            return Err("The shared Code forward completed after its reservation ended.".into());
+        }
+        Ok(WorkerLinkCodeTransportForwardCompletion {
+            bridge: prepared.bridge,
+            forward: prepared.forward,
+            generation: generation.to_string(),
+        })
+    }
+
     pub fn publish_code_transport_forward(
         state: &TunnelForwards,
         window_label: &str,
@@ -3027,6 +3254,7 @@ mod desktop {
                 stop: Some(stop_sender),
                 summary: summary.clone(),
                 task,
+                worker_link_bridge: None,
             },
         );
         let _ = publication_sender.send(());
@@ -3038,6 +3266,15 @@ mod desktop {
         state: &State<'_, TunnelForwards>,
         request: PrepareWorkerLinkTunnelForwardRequest,
     ) -> Result<WorkerLinkTunnelForwardPreparation, String> {
+        prepare_worker_link_with_generation(app, state, request, None).await
+    }
+
+    async fn prepare_worker_link_with_generation(
+        app: &AppHandle,
+        state: &State<'_, TunnelForwards>,
+        request: PrepareWorkerLinkTunnelForwardRequest,
+        code_pool_generation: Option<&str>,
+    ) -> Result<WorkerLinkTunnelForwardPreparation, String> {
         validate_worker_link_forward_identifiers(&request)?;
         let PrepareWorkerLinkTunnelForwardRequest {
             attachment_id,
@@ -3045,10 +3282,12 @@ mod desktop {
             diagnostic_trace_id,
             expires_at,
             preferred_local_port,
+            server_url: _,
             tunnel_id,
+            worker_id: _,
         } = request;
         let protection = data_protection(Some(protection_request))?;
-        let _start_reservation = reserve_forward_start(state, &tunnel_id, None)?;
+        let _start_reservation = reserve_forward_start(state, &tunnel_id, code_pool_generation)?;
         let _ = stop(app, state, &tunnel_id, None, None, None, None, "replaced").await?;
         let listener = bind_listener(preferred_local_port).await?;
         let local_port = listener
@@ -3061,7 +3300,13 @@ mod desktop {
             .map_err(|error| format!("Could not inspect the tunnel bridge listener: {error}"))?
             .port();
         let bridge_token = URL_SAFE_NO_PAD.encode(Aes256Gcm::generate_key(&mut OsRng));
-        let task_token = Zeroizing::new(bridge_token.clone());
+        let bridge = StoredWorkerLinkBridge {
+            token: Zeroizing::new(bridge_token),
+            url: format!("ws://127.0.0.1:{bridge_port}/worker-link-tunnel"),
+        };
+        let task_token = Zeroizing::new(bridge.token.to_string());
+        let exposed_bridge = bridge.expose();
+        let code_pool_generation = code_pool_generation.map(str::to_string);
         let counters = Arc::new(ForwardCounters::default());
         counters.route_state.store(3, Ordering::Relaxed);
         let summary = TunnelForwardSummary {
@@ -3082,7 +3327,7 @@ mod desktop {
             connections_closed: 0,
             connections_opened: 0,
             destination_rejected_count: 0,
-            code_pool_generation: None,
+            code_pool_generation: code_pool_generation.clone(),
         };
         let terminal_event = TunnelForwardTerminalEvent {
             attachment_id: attachment_id.clone(),
@@ -3096,6 +3341,9 @@ mod desktop {
         let (route_control_sender, _route_control_receiver) = mpsc::channel(1);
         let task_app = app.clone();
         let task_counters = counters.clone();
+        let terminal_code_pool_generation = code_pool_generation.clone();
+        let terminal_counters = counters.clone();
+        let terminal_summary = summary.clone();
         let task = tauri::async_runtime::spawn(async move {
             run_worker_link_forward(
                 Some(task_app.clone()),
@@ -3130,6 +3378,14 @@ mod desktop {
                     exact
                 });
             if removed {
+                if let Some(generation) = terminal_code_pool_generation.as_deref() {
+                    code_transport_forward_terminated(
+                        &task_app.state::<TunnelForwards>(),
+                        &terminal_event.tunnel_id,
+                        generation,
+                        Some(terminal_counters.terminal_snapshot(&terminal_summary)),
+                    );
+                }
                 emit_forward_terminal(&task_app, &terminal_event);
             }
         });
@@ -3145,13 +3401,14 @@ mod desktop {
         forwards.insert(
             summary.tunnel_id.clone(),
             ForwardHandle {
-                code_pool_generation: None,
+                code_pool_generation,
                 counters,
                 relay_refresh: relay_refresh_sender,
                 route_control: route_control_sender,
                 stop: Some(stop_sender),
                 summary: summary.clone(),
                 task,
+                worker_link_bridge: Some(bridge),
             },
         );
         drop(forwards);
@@ -3172,12 +3429,57 @@ mod desktop {
             }),
         );
         Ok(WorkerLinkTunnelForwardPreparation {
-            bridge: WorkerLinkTunnelBridge {
-                token: bridge_token,
-                url: format!("ws://127.0.0.1:{bridge_port}/worker-link-tunnel"),
-            },
+            bridge: exposed_bridge,
             forward: summary,
         })
+    }
+
+    pub fn claim_worker_link_bridge(
+        state: &TunnelForwards,
+        tunnel_id: &str,
+        attachment_id: &str,
+        code_pool_generation: &str,
+        window_label: &str,
+        lease_id: &str,
+        window_instance_id: &str,
+    ) -> Result<Option<WorkerLinkTunnelBridge>, String> {
+        validate_code_transport_window_instance(state, window_label, window_instance_id)?;
+        let pool = state
+            .code_pool
+            .lock()
+            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
+        let authorized = matches!(
+            pool.entries.get(tunnel_id),
+            Some(CodeTransportPoolEntry::Active(active))
+                if active.generation == code_pool_generation
+                    && active.leases.get(lease_id).is_some_and(|lease| {
+                        lease.window_label == window_label
+                            && lease.window_instance_id == window_instance_id
+                    })
+        );
+        if !authorized {
+            return Ok(None);
+        }
+        drop(pool);
+        let forwards = state
+            .forwards
+            .lock()
+            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+        let Some(forward) = forwards.get(tunnel_id) else {
+            return Ok(None);
+        };
+        if forward.summary.attachment_id != attachment_id
+            || forward.code_pool_generation.as_deref() != Some(code_pool_generation)
+            || forward.summary.direct_capability_id.is_some()
+            || forward.summary.relay_fallback_available
+            || forward.counters.route_state.load(Ordering::Relaxed) != 3
+        {
+            return Ok(None);
+        }
+        Ok(forward
+            .worker_link_bridge
+            .as_ref()
+            .map(StoredWorkerLinkBridge::expose))
     }
 
     pub fn update_worker_link_route(
@@ -3191,25 +3493,66 @@ mod desktop {
             "relay" => 2,
             _ => return Err("The WorkerLink tunnel route is invalid.".into()),
         };
-        let forwards = state
-            .forwards
-            .lock()
-            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-        let Some(forward) = forwards.get(tunnel_id) else {
-            return Ok(false);
+        let summary = {
+            let mut forwards = state
+                .forwards
+                .lock()
+                .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+            let Some(forward) = forwards.get_mut(tunnel_id) else {
+                return Ok(false);
+            };
+            if forward.worker_link_bridge.is_none()
+                || forward.summary.attachment_id != attachment_id
+                || forward.summary.direct_capability_id.is_some()
+                || forward.summary.relay_fallback_available
+            {
+                return Ok(false);
+            }
+            forward
+                .counters
+                .route_state
+                .store(route_state, Ordering::Relaxed);
+            forward.summary.route_state = match route {
+                "local" => "local-direct",
+                "relay" => "relayed",
+                _ => unreachable!(),
+            };
+            forward.summary.clone()
         };
-        if forward.code_pool_generation.is_some()
-            || forward.summary.attachment_id != attachment_id
-            || forward.summary.direct_capability_id.is_some()
-            || forward.summary.relay_fallback_available
-        {
-            return Ok(false);
-        }
-        forward
-            .counters
-            .route_state
-            .store(route_state, Ordering::Relaxed);
+        synchronize_code_pool_worker_link_forward(state, &summary)?;
         Ok(true)
+    }
+
+    fn synchronize_code_pool_worker_link_forward(
+        state: &TunnelForwards,
+        summary: &TunnelForwardSummary,
+    ) -> Result<(), String> {
+        let Some(generation) = summary.code_pool_generation.as_deref() else {
+            return Ok(());
+        };
+        let mut pool = state
+            .code_pool
+            .lock()
+            .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
+        match pool.entries.get_mut(&summary.tunnel_id) {
+            Some(CodeTransportPoolEntry::Starting(entry))
+                if entry.generation == generation
+                    && entry
+                        .forward
+                        .as_ref()
+                        .is_some_and(|forward| forward.attachment_id == summary.attachment_id) =>
+            {
+                entry.forward = Some(summary.clone());
+            }
+            Some(CodeTransportPoolEntry::Active(entry))
+                if entry.generation == generation
+                    && entry.forward.attachment_id == summary.attachment_id =>
+            {
+                entry.forward = summary.clone();
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     pub fn refresh_worker_link_forward(
@@ -3221,21 +3564,25 @@ mod desktop {
         if expires_at.len() > 64 || chrono::DateTime::parse_from_rfc3339(expires_at).is_err() {
             return Err("The WorkerLink tunnel expiration is invalid.".into());
         }
-        let mut forwards = state
-            .forwards
-            .lock()
-            .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
-        let Some(forward) = forwards.get_mut(tunnel_id) else {
-            return Ok(false);
+        let summary = {
+            let mut forwards = state
+                .forwards
+                .lock()
+                .map_err(|_| "The local tunnel manager is unavailable.".to_string())?;
+            let Some(forward) = forwards.get_mut(tunnel_id) else {
+                return Ok(false);
+            };
+            if forward.worker_link_bridge.is_none()
+                || forward.summary.attachment_id != attachment_id
+                || forward.summary.direct_capability_id.is_some()
+                || forward.summary.relay_fallback_available
+            {
+                return Ok(false);
+            }
+            forward.summary.expires_at = expires_at.to_string();
+            forward.summary.clone()
         };
-        if forward.code_pool_generation.is_some()
-            || forward.summary.attachment_id != attachment_id
-            || forward.summary.direct_capability_id.is_some()
-            || forward.summary.relay_fallback_available
-        {
-            return Ok(false);
-        }
-        forward.summary.expires_at = expires_at.to_string();
+        synchronize_code_pool_worker_link_forward(state, &summary)?;
         Ok(true)
     }
 
@@ -3725,6 +4072,7 @@ mod desktop {
         for (label, value) in [
             ("tunnel", request.tunnel_id.as_str()),
             ("attachment", request.attachment_id.as_str()),
+            ("worker", request.worker_id.as_str()),
         ] {
             if !valid_tunnel_identity(value) {
                 return Err(format!("The {label} identity is invalid."));
@@ -3736,6 +4084,16 @@ mod desktop {
             .is_some_and(|trace_id| Uuid::parse_str(trace_id).is_err())
         {
             return Err("The tunnel diagnostic trace identity is invalid.".into());
+        }
+        let server_url = Url::parse(&request.server_url)
+            .map_err(|_| "The WorkerLink server URL is invalid.".to_string())?;
+        if request.server_url.len() > 2_048
+            || !matches!(server_url.scheme(), "http" | "https")
+            || server_url.host_str().is_none()
+            || !server_url.username().is_empty()
+            || server_url.password().is_some()
+        {
+            return Err("The WorkerLink server URL is invalid.".into());
         }
         Ok(())
     }
@@ -5415,6 +5773,29 @@ mod desktop {
             }
         }
 
+        fn test_worker_link_code_pool_forward() -> TunnelForwardSummary {
+            TunnelForwardSummary {
+                attachment_id: "physical-attachment-one".into(),
+                diagnostic_trace_id: Some("55555555-5555-4555-8555-555555555555".into()),
+                expires_at: "2099-01-01T00:00:00.000Z".into(),
+                local_host: "127.0.0.1",
+                local_port: 43_123,
+                route_state: "degraded",
+                relay_fallback_available: false,
+                relay_credential_expires_at_epoch_ms: None,
+                direct_capability_id: None,
+                direct_fallback_reason: None,
+                last_destination_rejection_code: None,
+                tunnel_id: "33333333-3333-4333-8333-333333333333".into(),
+                bytes_from_local: 0,
+                bytes_to_local: 0,
+                connections_closed: 0,
+                connections_opened: 0,
+                destination_rejected_count: 0,
+                code_pool_generation: Some("77777777-7777-4777-8777-777777777777".into()),
+            }
+        }
+
         fn test_active_code_pool_entry(
             identity: CodeTransportPoolIdentity,
             forward: TunnelForwardSummary,
@@ -5440,6 +5821,127 @@ mod desktop {
             assert!(constant_time_secret_match(&token, &token));
             assert!(!constant_time_secret_match(&token, &"b".repeat(43)));
             assert!(!constant_time_secret_match(&token, &"a".repeat(42)));
+        }
+
+        #[test]
+        fn worker_link_route_and_expiration_updates_reach_the_exact_code_pool_generation() {
+            let state = TunnelForwards::default();
+            let transport_id = "33333333-3333-4333-8333-333333333333";
+            let generation = "77777777-7777-4777-8777-777777777777";
+            state.code_pool.lock().unwrap().entries.insert(
+                transport_id.into(),
+                test_active_code_pool_entry(
+                    test_code_pool_identity(),
+                    test_worker_link_code_pool_forward(),
+                    generation,
+                ),
+            );
+            let mut updated = test_worker_link_code_pool_forward();
+            updated.route_state = "relayed";
+            updated.expires_at = "2099-02-01T00:00:00.000Z".into();
+
+            synchronize_code_pool_worker_link_forward(&state, &updated).unwrap();
+
+            assert!(matches!(
+                state.code_pool.lock().unwrap().entries.get(transport_id),
+                Some(CodeTransportPoolEntry::Active(active))
+                    if active.forward.route_state == "relayed"
+                        && active.forward.expires_at == "2099-02-01T00:00:00.000Z"
+            ));
+        }
+
+        #[tokio::test]
+        async fn degraded_code_worker_link_bridge_requires_the_exact_live_window_lease() {
+            let state = TunnelForwards::default();
+            let transport_id = "33333333-3333-4333-8333-333333333333";
+            let generation = "77777777-7777-4777-8777-777777777777";
+            let lease_id = "88888888-8888-4888-8888-888888888888";
+            let window_instance = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+            register_code_transport_window_instance(&state, "main", window_instance).unwrap();
+            let mut entry = match test_active_code_pool_entry(
+                test_code_pool_identity(),
+                test_worker_link_code_pool_forward(),
+                generation,
+            ) {
+                CodeTransportPoolEntry::Active(entry) => entry,
+                _ => unreachable!(),
+            };
+            entry.leases.insert(
+                lease_id.into(),
+                CodeTransportLease {
+                    acquisition_id: "99999999-9999-4999-8999-999999999999".into(),
+                    consumer_id: "consumer-one".into(),
+                    window_label: "main".into(),
+                    window_instance_id: window_instance.into(),
+                },
+            );
+            state
+                .code_pool
+                .lock()
+                .unwrap()
+                .entries
+                .insert(transport_id.into(), CodeTransportPoolEntry::Active(entry));
+            let counters = Arc::new(ForwardCounters::default());
+            counters.route_state.store(3, Ordering::Relaxed);
+            let (relay_refresh, _) = watch::channel(None);
+            let (route_control, _) = mpsc::channel(1);
+            let (stop, _) = oneshot::channel();
+            let task = tauri::async_runtime::spawn(async {
+                std::future::pending::<()>().await;
+            });
+            state.forwards.lock().unwrap().insert(
+                transport_id.into(),
+                ForwardHandle {
+                    code_pool_generation: Some(generation.into()),
+                    counters: counters.clone(),
+                    relay_refresh,
+                    route_control,
+                    stop: Some(stop),
+                    summary: test_worker_link_code_pool_forward(),
+                    task,
+                    worker_link_bridge: Some(StoredWorkerLinkBridge {
+                        token: Zeroizing::new("bridge-secret".into()),
+                        url: "ws://127.0.0.1:43210/worker-link-tunnel".into(),
+                    }),
+                },
+            );
+
+            let claimed = claim_worker_link_bridge(
+                &state,
+                transport_id,
+                "physical-attachment-one",
+                generation,
+                "main",
+                lease_id,
+                window_instance,
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(claimed.token, "bridge-secret");
+            assert!(claim_worker_link_bridge(
+                &state,
+                transport_id,
+                "physical-attachment-one",
+                generation,
+                "main",
+                "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                window_instance,
+            )
+            .unwrap()
+            .is_none());
+
+            counters.route_state.store(2, Ordering::Relaxed);
+            assert!(claim_worker_link_bridge(
+                &state,
+                transport_id,
+                "physical-attachment-one",
+                generation,
+                "main",
+                lease_id,
+                window_instance,
+            )
+            .unwrap()
+            .is_none());
         }
 
         #[tokio::test]
@@ -8099,6 +8601,7 @@ mod desktop {
                     stop: Some(stop),
                     summary,
                     task,
+                    worker_link_bridge: None,
                 },
             )]);
 

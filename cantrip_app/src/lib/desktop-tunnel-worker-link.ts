@@ -48,13 +48,13 @@ export interface DesktopTunnelWorkerLinkSummary {
   codePoolGeneration?: string | null;
 }
 
-interface NativeWorkerLinkBridge {
+export interface DesktopTunnelWorkerLinkBridge {
   token: string;
   url: string;
 }
 
 interface NativeWorkerLinkForwardPreparation {
-  bridge: NativeWorkerLinkBridge;
+  bridge: DesktopTunnelWorkerLinkBridge;
   forward: DesktopTunnelWorkerLinkSummary;
 }
 
@@ -64,9 +64,15 @@ export interface StartDesktopTunnelWorkerLinkInput {
   diagnosticTraceId?: string;
   expiresAt: string;
   preferredLocalPort?: number;
+  serverUrl: string;
   tunnelId: string;
   workerId: string;
 }
+
+type DesktopTunnelWorkerLinkControllerInput = Pick<
+  StartDesktopTunnelWorkerLinkInput,
+  "attachmentId" | "diagnosticTraceId" | "tunnelId" | "workerId"
+>;
 
 interface BridgeSocket {
   binaryType: BinaryType;
@@ -117,7 +123,9 @@ export async function startDesktopTunnelWorkerLinkForward(
         diagnosticTraceId: input.diagnosticTraceId ?? null,
         expiresAt: input.expiresAt,
         preferredLocalPort: input.preferredLocalPort ?? null,
+        serverUrl: input.serverUrl,
         tunnelId: input.tunnelId,
+        workerId: input.workerId,
       },
     },
   )) as NativeWorkerLinkForwardPreparation;
@@ -146,6 +154,32 @@ export async function startDesktopTunnelWorkerLinkForward(
         tunnelId: input.tunnelId,
       })
       .catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function attachDesktopTunnelWorkerLinkForward(
+  input: Pick<
+    StartDesktopTunnelWorkerLinkInput,
+    "attachmentId" | "diagnosticTraceId" | "tunnelId" | "workerId"
+  >,
+  bridge: DesktopTunnelWorkerLinkBridge,
+  dependencies: DesktopTunnelWorkerLinkDependencies = defaultDependencies,
+): Promise<"local" | "relay"> {
+  await stopDesktopTunnelWorkerLinkForward(input.tunnelId);
+  const controller = new DesktopTunnelWorkerLinkController(
+    input,
+    bridge,
+    dependencies,
+  );
+  activeForwards.set(input.tunnelId, controller);
+  try {
+    return await controller.start();
+  } catch (error) {
+    if (activeForwards.get(input.tunnelId) === controller) {
+      activeForwards.delete(input.tunnelId);
+    }
+    controller.stop();
     throw error;
   }
 }
@@ -186,13 +220,15 @@ class DesktopTunnelWorkerLinkController {
   #stopped = false;
 
   constructor(
-    private readonly input: StartDesktopTunnelWorkerLinkInput,
-    private readonly bridge: NativeWorkerLinkBridge,
+    private readonly input: DesktopTunnelWorkerLinkControllerInput,
+    private readonly bridge: DesktopTunnelWorkerLinkBridge,
     private readonly dependencies: DesktopTunnelWorkerLinkDependencies,
   ) {}
 
   async start(): Promise<"local" | "relay"> {
-    return this.#connect();
+    const route = await this.#connect();
+    await this.#publishRoute(this.#generation, route);
+    return route;
   }
 
   stop(): void {
@@ -341,7 +377,7 @@ class DesktopTunnelWorkerLinkController {
 }
 
 async function openBridgeSocket(
-  bridge: NativeWorkerLinkBridge,
+  bridge: DesktopTunnelWorkerLinkBridge,
   route: WorkerLinkTunnelRoute,
   effectiveRoute: "local" | "relay",
   onFrame: (frame: Uint8Array) => void,

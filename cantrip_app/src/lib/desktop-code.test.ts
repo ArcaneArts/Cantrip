@@ -201,6 +201,7 @@ describe("shared desktop Code attachment", () => {
       generation: "generation-one",
       leaseId,
       serverUrl: "https://server.example.test",
+      workerId: "worker-one",
     };
   }
 
@@ -300,20 +301,21 @@ describe("recoverPreferredCodeAttachmentRoute", () => {
     desktopRouteIdentity: {
       attachmentId: "transport-1",
       diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
-      directCapabilityId: "capability-1",
+      directCapabilityId: null,
     },
     directTunnelId: "11111111-1111-4111-8111-111111111111",
     transportKind: "local-direct" as const,
   };
   const directForward = {
     attachmentId: "transport-1",
-    diagnosticTraceId: null,
+    codePoolGeneration: "generation-one",
+    diagnosticTraceId: "33333333-3333-4333-8333-333333333333",
     expiresAt: "2026-08-13T13:00:00.000Z",
     localHost: "127.0.0.1" as const,
     localPort: 52345,
-    routeState: "local-direct" as const,
-    relayFallbackAvailable: true,
-    directCapabilityId: "capability-1",
+    routeState: "relayed" as const,
+    relayFallbackAvailable: false,
+    directCapabilityId: null,
     directFallbackReason: null,
     tunnelId: preferred.directTunnelId,
   };
@@ -358,33 +360,18 @@ describe("recoverPreferredCodeAttachmentRoute", () => {
     expect(unlisten).toHaveBeenCalledOnce();
   });
 
-  it("forces an exact connected-but-broken direct route to relay and probes the same attachment URL", async () => {
+  it("leaves an exact unavailable WorkerLink route in recovery for the carrier", async () => {
     mocks.listDesktopTunnelsWithOptions.mockResolvedValue([directForward]);
-    mocks.fetch
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockResolvedValueOnce({ ok: true });
+    mocks.fetch.mockRejectedValueOnce(new TypeError("Load failed"));
 
     await expect(recoverPreferredCodeAttachmentRoute(preferred)).resolves.toBe(
-      "available",
+      "recovering",
     );
 
-    expect(mocks.forceDesktopTunnelRelay).toHaveBeenCalledWith(directForward, {
-      signal: expect.any(AbortSignal),
-    });
-    expect(mocks.fetch).toHaveBeenCalledTimes(3);
+    expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
+    expect(mocks.fetch).toHaveBeenCalledOnce();
     expect(mocks.fetch).toHaveBeenNthCalledWith(
       1,
-      new URL("http://127.0.0.1:52345/code/_cantrip/health"),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(mocks.fetch).toHaveBeenNthCalledWith(
-      2,
-      new URL("http://127.0.0.1:52345/code/_cantrip/health"),
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
-    expect(mocks.fetch).toHaveBeenNthCalledWith(
-      3,
       new URL("http://127.0.0.1:52345/code/_cantrip/health"),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
@@ -398,17 +385,15 @@ describe("recoverPreferredCodeAttachmentRoute", () => {
     expect(preferred.attachment.url).toBe("http://127.0.0.1:52345/code/");
   });
 
-  it("retains the exact direct route when its immediate confirmation probe succeeds", async () => {
+  it("retains the exact WorkerLink route when its immediate probe succeeds", async () => {
     mocks.listDesktopTunnelsWithOptions.mockResolvedValue([directForward]);
-    mocks.fetch
-      .mockRejectedValueOnce(new TypeError("Load failed"))
-      .mockResolvedValueOnce({ ok: true });
+    mocks.fetch.mockResolvedValueOnce({ ok: true });
 
     await expect(recoverPreferredCodeAttachmentRoute(preferred)).resolves.toBe(
       "available",
     );
 
-    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(mocks.fetch).toHaveBeenCalledOnce();
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
   });
 
@@ -422,10 +407,8 @@ describe("recoverPreferredCodeAttachmentRoute", () => {
     expect(mocks.forceDesktopTunnelRelay).not.toHaveBeenCalled();
   });
 
-  it("accepts a retired direct capability on the exact relayed attachment", async () => {
-    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([
-      { ...directForward, directCapabilityId: null, routeState: "relayed" },
-    ]);
+  it("accepts the exact relayed WorkerLink attachment", async () => {
+    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([directForward]);
     mocks.fetch.mockResolvedValueOnce({ ok: true });
 
     await expect(recoverPreferredCodeAttachmentRoute(preferred)).resolves.toBe(
@@ -442,9 +425,7 @@ describe("recoverPreferredCodeAttachmentRoute", () => {
       "recovering",
     );
 
-    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([
-      { ...directForward, directCapabilityId: null, routeState: "relayed" },
-    ]);
+    mocks.listDesktopTunnelsWithOptions.mockResolvedValue([directForward]);
     mocks.fetch.mockRejectedValueOnce(new TypeError("Load failed"));
     await expect(recoverPreferredCodeAttachmentRoute(preferred)).resolves.toBe(
       "recovering",
@@ -474,7 +455,6 @@ describe("recoverPreferredCodeAttachmentRoute", () => {
     mocks.listDesktopTunnelsWithOptions.mockResolvedValueOnce([
       {
         ...directForward,
-        directCapabilityId: null,
         routeState: "degraded",
       },
     ]);

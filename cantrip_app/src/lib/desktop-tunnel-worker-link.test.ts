@@ -149,6 +149,7 @@ function input() {
       key: "k".repeat(43),
     },
     expiresAt: "2099-01-01T00:00:00.000Z",
+    serverUrl: "https://cantrip.example",
     tunnelId,
     workerId: "worker-1",
   };
