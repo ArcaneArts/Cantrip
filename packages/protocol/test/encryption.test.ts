@@ -5,6 +5,7 @@ import {
   passwordKdfParametersSchema,
   workerComponentKeyGrantSchema,
   workerEncryptionBootstrapResultSchema,
+  workerEncryptionMaterialFingerprint,
   workerEncryptionRefreshRequestSchema,
   workerEncryptionRefreshResultSchema,
 } from "../src/encryption.js";
@@ -112,5 +113,44 @@ describe("encryption protocol", () => {
         "https://cantrip.test",
       ).success,
     ).toBe(false);
+  });
+
+  it("fingerprints worker security material without timestamp or grant-order churn", () => {
+    const current = {
+      supported: true,
+      state: "ready" as const,
+      principalId: "11111111-1111-4111-8111-111111111111",
+      grants: [
+        { component: "surface-private-state" as const, keyRevision: 3 },
+        { component: "private-surface-metadata" as const, keyRevision: 3 },
+      ],
+      lastSyncedAt: "2026-08-26T00:00:00.000Z",
+      error: null,
+    };
+    const fingerprint = workerEncryptionMaterialFingerprint(current);
+
+    expect(
+      workerEncryptionMaterialFingerprint({
+        ...current,
+        grants: [...current.grants].reverse(),
+        lastSyncedAt: "2026-08-26T00:10:00.000Z",
+      }),
+    ).toBe(fingerprint);
+    expect(
+      workerEncryptionMaterialFingerprint({
+        ...current,
+        grants: current.grants.map((grant) => ({
+          ...grant,
+          keyRevision: 4,
+        })),
+      }),
+    ).not.toBe(fingerprint);
+    expect(
+      workerEncryptionMaterialFingerprint({
+        ...current,
+        state: "error",
+        error: "grant refresh failed",
+      }),
+    ).not.toBe(fingerprint);
   });
 });

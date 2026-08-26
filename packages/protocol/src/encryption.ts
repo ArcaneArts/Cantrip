@@ -396,6 +396,24 @@ export const workerEncryptionStatusSchema = z
     }
   });
 
+export function workerEncryptionMaterialFingerprint(
+  status: WorkerEncryptionStatus,
+): string {
+  return JSON.stringify([
+    status.supported,
+    status.state,
+    status.principalId,
+    status.error,
+    [...status.grants]
+      .map(({ component, keyRevision }) => [component, keyRevision] as const)
+      .sort(([leftComponent, leftRevision], [rightComponent, rightRevision]) =>
+        leftComponent === rightComponent
+          ? leftRevision - rightRevision
+          : leftComponent.localeCompare(rightComponent),
+      ),
+  ]);
+}
+
 export const workerEncryptionRefreshRequestSchema = z
   .object({
     component: workerEncryptionComponentScopeSchema,

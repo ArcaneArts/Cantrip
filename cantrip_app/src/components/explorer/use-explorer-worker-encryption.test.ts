@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, StrictMode } from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +18,22 @@ const runtime = vi.hoisted(() => {
     session: {
       serverId: "server-a",
       user: { id: "owner-a" },
+    },
+    worker: {
+      workerId: "worker-a",
+      online: true,
+      startedAt: "2026-08-26T00:00:00.000Z",
+      encryption: {
+        supported: true,
+        state: "ready" as const,
+        principalId: "11111111-1111-4111-8111-111111111111",
+        grants: [
+          { component: "surface-private-state" as const, keyRevision: 3 },
+          { component: "private-surface-metadata" as const, keyRevision: 3 },
+        ],
+        lastSyncedAt: "2026-08-26T00:00:00.000Z",
+        error: null,
+      },
     },
     wait: vi.fn<() => Promise<void>>(async () => undefined),
   };
@@ -41,10 +57,19 @@ vi.mock("@/lib/client-session", () => ({
 vi.mock("@/lib/surface-private-state-worker-encryption", () => ({
   waitForSurfacePrivateStateWorkerEncryption: runtime.wait,
 }));
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: () => ({
+    data: [runtime.worker],
+    isError: false,
+    refetch: vi.fn(async () => undefined),
+  }),
+}));
 
 import {
   explorerWorkerEncryptionBindingKey,
   explorerWorkerEncryptionBindingReady,
+  explorerWorkerSecurityFingerprint,
+  resetExplorerWorkerEncryptionReadinessForTests,
   useExplorerWorkerEncryption,
 } from "./use-explorer-worker-encryption";
 
@@ -78,14 +103,32 @@ function binding(
     encryption,
     explorer,
     session,
+    worker: runtime.worker,
     ...overrides,
   });
 }
 
 describe("Explorer worker encryption binding", () => {
   beforeEach(() => {
+    resetExplorerWorkerEncryptionReadinessForTests();
     runtime.wait.mockReset();
     runtime.wait.mockResolvedValue(undefined);
+    runtime.worker = {
+      ...runtime.worker,
+      online: true,
+      startedAt: "2026-08-26T00:00:00.000Z",
+      encryption: {
+        ...runtime.worker.encryption,
+        state: "ready",
+        principalId: "11111111-1111-4111-8111-111111111111",
+        grants: [
+          { component: "surface-private-state" as const, keyRevision: 3 },
+          { component: "private-surface-metadata" as const, keyRevision: 3 },
+        ],
+        lastSyncedAt: "2026-08-26T00:00:00.000Z",
+        error: null,
+      },
+    };
   });
 
   it("invalidates readiness when the Explorer or its worker binding changes", () => {
@@ -139,6 +182,46 @@ describe("Explorer worker encryption binding", () => {
     ).not.toBe(current);
   });
 
+  it("fingerprints material worker security state but ignores heartbeat timestamps", () => {
+    const current = explorerWorkerSecurityFingerprint(runtime.worker);
+    expect(
+      explorerWorkerSecurityFingerprint({
+        ...runtime.worker,
+        encryption: {
+          ...runtime.worker.encryption,
+          lastSyncedAt: "2026-08-26T00:10:00.000Z",
+        },
+      }),
+    ).toBe(current);
+    expect(
+      explorerWorkerSecurityFingerprint({
+        ...runtime.worker,
+        startedAt: "2026-08-26T00:10:00.000Z",
+      }),
+    ).not.toBe(current);
+    expect(
+      explorerWorkerSecurityFingerprint({
+        ...runtime.worker,
+        online: false,
+      }),
+    ).not.toBe(current);
+    expect(
+      explorerWorkerSecurityFingerprint({
+        ...runtime.worker,
+        encryption: {
+          ...runtime.worker.encryption,
+          grants: [
+            { component: "surface-private-state" as const, keyRevision: 4 },
+            {
+              component: "private-surface-metadata" as const,
+              keyRevision: 4,
+            },
+          ],
+        },
+      }),
+    ).not.toBe(current);
+  });
+
   it("only opens the operation gate for the exact completed binding", () => {
     const current = binding();
     const previous = binding({
@@ -173,7 +256,22 @@ describe("Explorer worker encryption binding", () => {
     await act(async () => renderer.unmount());
   });
 
-  it("keeps a reactivated binding closed until the new authorization completes", async () => {
+  it("shares one readiness operation across StrictMode effect replay", async () => {
+    const Probe = () => {
+      useExplorerWorkerEncryption(explorer, true);
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        createElement(StrictMode, null, createElement(Probe)),
+      );
+    });
+    expect(runtime.wait).toHaveBeenCalledTimes(1);
+    await act(async () => renderer.unmount());
+  });
+
+  it("reuses a completed binding through a brief reactivation gap", async () => {
     const observed: boolean[] = [];
     const Probe = ({ enabled }: { enabled: boolean }) => {
       observed.push(useExplorerWorkerEncryption(explorer, enabled).ready);
@@ -190,21 +288,55 @@ describe("Explorer worker encryption binding", () => {
     });
     expect(observed.at(-1)).toBe(false);
 
-    let resolveReactivation!: () => void;
-    runtime.wait.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveReactivation = resolve;
-        }),
-    );
     await act(async () => {
       renderer.update(createElement(Probe, { enabled: true }));
     });
-    expect(runtime.wait).toHaveBeenCalledTimes(2);
-    expect(observed.at(-1)).toBe(false);
-
-    await act(async () => resolveReactivation());
+    expect(runtime.wait).toHaveBeenCalledTimes(1);
     expect(observed.at(-1)).toBe(true);
+    await act(async () => renderer.unmount());
+  });
+
+  it("does not cache a failed readiness operation as success", async () => {
+    runtime.wait.mockRejectedValueOnce(new Error("authorization failed"));
+    const observed: Array<{ error: string | null; ready: boolean }> = [];
+    let retry!: () => void;
+    const Probe = () => {
+      const state = useExplorerWorkerEncryption(explorer, true);
+      retry = state.retry;
+      observed.push({ error: state.error, ready: state.ready });
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Probe));
+    });
+    expect(observed.at(-1)).toMatchObject({ ready: false });
+    expect(observed.at(-1)?.error).not.toBeNull();
+
+    runtime.wait.mockResolvedValueOnce(undefined);
+    await act(async () => retry());
+    expect(runtime.wait).toHaveBeenCalledTimes(2);
+    expect(observed.at(-1)).toEqual({ error: null, ready: true });
+    await act(async () => renderer.unmount());
+  });
+
+  it("invalidates a completed lease when the worker incarnation changes", async () => {
+    const Probe = () => {
+      useExplorerWorkerEncryption(explorer, true);
+      return null;
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(createElement(Probe));
+    });
+    expect(runtime.wait).toHaveBeenCalledTimes(1);
+
+    runtime.worker = {
+      ...runtime.worker,
+      startedAt: "2026-08-26T00:15:00.000Z",
+    };
+    await act(async () => renderer.update(createElement(Probe)));
+    expect(runtime.wait).toHaveBeenCalledTimes(2);
     await act(async () => renderer.unmount());
   });
 

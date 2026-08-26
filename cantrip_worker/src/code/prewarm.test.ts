@@ -4,6 +4,7 @@ import type { WorkerEncryptionStatus } from "@cantrip/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  codePrewarmEncryptionFingerprint,
   createCoalescingCodePrewarmScheduler,
   ownerScopedCodeProfileId,
   prewarmDefaultCodeProfileAfterEncryptionRefresh,
@@ -63,6 +64,66 @@ describe("verified Cantrip Code prewarm", () => {
     await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
     expect(onError).toHaveBeenCalledOnce();
     expect(run.mock.calls[1]).toEqual(["command-refresh"]);
+  });
+
+  it("suppresses active and completed prewarm for identical security state", async () => {
+    let finishFirst: (() => void) | undefined;
+    let fingerprint = "security-a";
+    const run = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishFirst = resolve;
+        }),
+    );
+    const schedule = createCoalescingCodePrewarmScheduler({
+      fingerprint: () => fingerprint,
+      onError: vi.fn(),
+      run,
+    });
+
+    schedule("startup");
+    schedule("heartbeat");
+    expect(run).toHaveBeenCalledOnce();
+    finishFirst?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    schedule("heartbeat");
+    expect(run).toHaveBeenCalledOnce();
+
+    fingerprint = "security-b";
+    schedule("command-refresh");
+    expect(run).toHaveBeenCalledTimes(2);
+    finishFirst?.();
+  });
+
+  it("fingerprints material encryption state without refresh timestamps", () => {
+    const ready = {
+      ...status("ready"),
+      grants: [{ component: "tunnel-content" as const, keyRevision: 2 }],
+      lastSyncedAt: "2026-08-26T00:00:00.000Z",
+    };
+    const identity = { ownerId: "owner-one", serverId: "server-one" };
+    const current = codePrewarmEncryptionFingerprint({
+      identity,
+      status: ready,
+    });
+    expect(
+      codePrewarmEncryptionFingerprint({
+        identity,
+        status: {
+          ...ready,
+          lastSyncedAt: "2026-08-26T00:10:00.000Z",
+        },
+      }),
+    ).toBe(current);
+    expect(
+      codePrewarmEncryptionFingerprint({
+        identity,
+        status: {
+          ...ready,
+          grants: [{ component: "tunnel-content", keyRevision: 3 }],
+        },
+      }),
+    ).not.toBe(current);
   });
 
   it("does not prewarm before encryption becomes ready", async () => {

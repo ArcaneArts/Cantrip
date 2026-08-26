@@ -129,24 +129,24 @@ export async function ensureSurfacePrivateStateWorkerEncryption(input: {
     );
   }
 
-  if (readiness !== "ready") {
-    const components = remoteSurfaceWorkerComponents.filter(
-      (component) =>
-        !worker.encryption.grants.some(
-          (grant) =>
-            grant.component === component &&
-            grant.keyRevision === snapshot.masterKeyRevision,
-        ),
-    );
-    await authorizeWorkerEncryption({
-      api: input.api,
-      components,
-      identity,
-      keyRevision: snapshot.masterKeyRevision,
-      service,
-      workerId: worker.workerId,
-    });
-  }
+  if (readiness === "ready") return worker.encryption;
+
+  const components = remoteSurfaceWorkerComponents.filter(
+    (component) =>
+      !worker.encryption.grants.some(
+        (grant) =>
+          grant.component === component &&
+          grant.keyRevision === snapshot.masterKeyRevision,
+      ),
+  );
+  await authorizeWorkerEncryption({
+    api: input.api,
+    components,
+    identity,
+    keyRevision: snapshot.masterKeyRevision,
+    service,
+    workerId: worker.workerId,
+  });
 
   const refreshed = await (input.refresh ?? refreshWorkerEncryption)(
     worker.workerId,
