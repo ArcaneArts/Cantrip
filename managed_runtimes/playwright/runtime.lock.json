@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "component": "playwright",
+  "bundleVersion": "2026.08.22.1",
+  "playwright": {
+    "version": "1.62.1",
+    "packageUrl": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.62.1.tgz",
+    "packageSha256": "954be1e183d0ddb9748fe0d2d08b0b66a9210c74dd75c397aeb70303b9f08a00",
+    "packageBytes": 3070300,
+    "repository": "https://github.com/microsoft/playwright",
+    "license": "Apache-2.0"
+  },
+  "chromium": {
+    "revision": "1234",
+    "version": "151.0.7922.34",
+    "source": "https://chromium.googlesource.com/chromium/src/+/151.0.7922.34",
+    "license": "BSD-3-Clause"
+  },
+  "targets": {
+    "darwin-arm64": {
+      "platform": "darwin",
+      "architecture": "arm64",
+      "browserArchitecture": "arm64",
+      "minimumOs": "macOS 14.0"
+    },
+    "darwin-x64": {
+      "platform": "darwin",
+      "architecture": "x64",
+      "browserArchitecture": "x64",
+      "minimumOs": "macOS 14.0"
+    },
+    "linux-arm64": {
+      "platform": "linux",
+      "architecture": "arm64",
+      "browserArchitecture": "arm64",
+      "minimumKernel": "5.15",
+      "minimumLibc": "glibc 2.35"
+    },
+    "linux-x64": {
+      "platform": "linux",
+      "architecture": "x64",
+      "browserArchitecture": "x64",
+      "minimumKernel": "5.15",
+      "minimumLibc": "glibc 2.35"
+    },
+    "win32-arm64": {
+      "platform": "win32",
+      "architecture": "arm64",
+      "browserArchitecture": "x64-emulated",
+      "minimumOs": "Windows 11"
+    },
+    "win32-x64": {
+      "platform": "win32",
+      "architecture": "x64",
+      "browserArchitecture": "x64",
+      "minimumOs": "Windows 10"
+    }
+  }
+}
