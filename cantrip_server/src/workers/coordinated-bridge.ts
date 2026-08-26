@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   remoteSurfaceFrameHeaderSchema,
   tunnelDataPlaneFrameHeaderSchema,
+  workerLinkFrameHeaderSchema,
   workerCommandSchema,
   workerEventSchema,
   workerNotificationSchema,
@@ -11,6 +12,7 @@ import {
   type WorkerCommand,
   type WorkerEvent,
   type WorkerNotification,
+  type WorkerLinkFrameHeader,
 } from "@cantrip/protocol";
 
 import type {
@@ -27,6 +29,7 @@ import type {
   WorkerRequestOptions,
   WorkerSurfaceFrameListener,
   WorkerTunnelDataPlaneFrameListener,
+  WorkerLinkFrameListener,
 } from "./bridge.js";
 import {
   sameWorkerConnectionContinuityIdentity,
@@ -41,7 +44,7 @@ const MAX_OUTBOUND_PUBLICATIONS = 512;
 const MAX_REMOTE_COMMAND_LIFETIME_MS = 24 * 60 * 60_000;
 
 type WorkerSocket = Parameters<WorkerCommandBus["attach"]>[1];
-type Transport = "surface" | "tunnel";
+type Transport = "surface" | "tunnel" | "worker-link";
 
 interface LocalConnection {
   connectionId: string;
@@ -101,6 +104,10 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
   readonly #tunnelListeners = new Map<
     string,
     Set<WorkerTunnelDataPlaneFrameListener>
+  >();
+  readonly #workerLinkListeners = new Map<
+    string,
+    Set<WorkerLinkFrameListener>
   >();
   readonly #unsubscribeCoordination: () => void;
   readonly #presenceTimer: ReturnType<typeof setInterval>;
@@ -300,6 +307,19 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
           );
         },
       ),
+      this.#local.subscribeWorkerLinkFrames(workerId, (header, payload) => {
+        if (this.#connections.get(workerId)?.connectionId !== connectionId)
+          return;
+        this.#dispatchFrame("worker-link", workerId, header, payload);
+        this.#publishWorkerFrame(
+          "from-worker",
+          "worker-link",
+          resolvedOwnerId,
+          workerId,
+          header,
+          payload,
+        );
+      }),
       this.#local.subscribeNotifications(workerId, (notification) => {
         if (this.#connections.get(workerId)?.connectionId !== connectionId)
           return;
@@ -373,6 +393,7 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     this.#notificationListeners.clear();
     this.#surfaceListeners.clear();
     this.#tunnelListeners.clear();
+    this.#workerLinkListeners.clear();
     this.#knownRemoteWorkers.clear();
     await Promise.allSettled(releases);
     serverLogger.event("info", "Coordinated worker bridge stopped", {
@@ -475,6 +496,14 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     return this.#sendFrame("tunnel", workerId, header, payload);
   }
 
+  sendWorkerLinkFrame(
+    workerId: string,
+    header: WorkerLinkFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    return this.#sendFrame("worker-link", workerId, header, payload);
+  }
+
   subscribeWorkerDisconnect(
     workerId: string,
     listener: () => void,
@@ -498,6 +527,13 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     listener: WorkerTunnelDataPlaneFrameListener,
   ): () => void {
     return this.#subscribe(this.#tunnelListeners, workerId, listener);
+  }
+
+  subscribeWorkerLinkFrames(
+    workerId: string,
+    listener: WorkerLinkFrameListener,
+  ): () => void {
+    return this.#subscribe(this.#workerLinkListeners, workerId, listener);
   }
 
   subscribeNotifications(
@@ -908,6 +944,17 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
             payload,
           );
         }
+        return;
+      }
+      case "worker-link": {
+        const header = workerLinkFrameHeaderSchema.safeParse(message.header);
+        if (header.success) {
+          this.#local.sendWorkerLinkFrame(
+            message.workerId,
+            header.data,
+            payload,
+          );
+        }
       }
     }
   }
@@ -919,18 +966,26 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     payload: Uint8Array,
   ): boolean {
     if (this.#connections.has(workerId)) {
-      if (transport === "surface") {
-        return this.#local.sendSurfaceFrame(
-          workerId,
-          header as RemoteSurfaceFrameHeader,
-          payload,
-        );
+      switch (transport) {
+        case "surface":
+          return this.#local.sendSurfaceFrame(
+            workerId,
+            header as RemoteSurfaceFrameHeader,
+            payload,
+          );
+        case "tunnel":
+          return this.#local.sendTunnelDataPlaneFrame(
+            workerId,
+            header as TunnelDataPlaneFrameHeader,
+            payload,
+          );
+        case "worker-link":
+          return this.#local.sendWorkerLinkFrame(
+            workerId,
+            header as WorkerLinkFrameHeader,
+            payload,
+          );
       }
-      return this.#local.sendTunnelDataPlaneFrame(
-        workerId,
-        header as TunnelDataPlaneFrameHeader,
-        payload,
-      );
     }
     const presence = this.#coordinator.cachedWorker(workerId);
     if (!presence) return false;
@@ -996,9 +1051,17 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       }
       return;
     }
-    const parsed = tunnelDataPlaneFrameHeaderSchema.safeParse(header);
+    if (transport === "tunnel") {
+      const parsed = tunnelDataPlaneFrameHeaderSchema.safeParse(header);
+      if (!parsed.success) return;
+      for (const listener of this.#tunnelListeners.get(workerId) ?? []) {
+        listener(parsed.data, payload);
+      }
+      return;
+    }
+    const parsed = workerLinkFrameHeaderSchema.safeParse(header);
     if (!parsed.success) return;
-    for (const listener of this.#tunnelListeners.get(workerId) ?? []) {
+    for (const listener of this.#workerLinkListeners.get(workerId) ?? []) {
       listener(parsed.data, payload);
     }
   }

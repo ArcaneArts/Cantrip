@@ -12,11 +12,16 @@ import {
   directBrokerReadySchema,
   directCapabilityPrepareResultSchema,
   decodeTunnelDataPlaneFrame,
+  decodeWorkerLinkFrame,
   encodeTunnelDataPlaneFrame,
+  encodeWorkerLinkFrame,
+  WORKER_LINK_MAX_HEADER_BYTES,
+  WORKER_LINK_MAX_PAYLOAD_BYTES,
   type DirectBrokerAdvertisement,
   type DirectCapabilityBinding,
   type TunnelDataPlaneFrameHeader,
   type TunnelDataPlaneTarget,
+  type WorkerLinkFrameHeader,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
@@ -44,6 +49,7 @@ interface ActiveSession {
   socket: WebSocket;
   timer: ReturnType<typeof setTimeout>;
   tunnelRoute: NonNullable<PrepareCommand["tunnelRoute"]> | null;
+  workerLinkRespond: WorkerLinkFrameResponder;
 }
 
 const INITIALIZE_TIMEOUT_MS = 5_000;
@@ -61,6 +67,18 @@ type TunnelTargetResolver = (
   target: TunnelDataPlaneTarget,
 ) => Promise<TunnelDataPlaneTarget>;
 type CapabilityRevoker = (capabilityId: string, reason: string) => void;
+type WorkerLinkFrameResponder = (
+  header: WorkerLinkFrameHeader,
+  payload: Uint8Array,
+) => boolean;
+type WorkerLinkFrameHandler = (
+  header: WorkerLinkFrameHeader,
+  payload: Uint8Array,
+  respond: WorkerLinkFrameResponder,
+) => Promise<unknown> | unknown;
+type WorkerLinkDisconnectHandler = (
+  respond: WorkerLinkFrameResponder,
+) => Promise<unknown> | unknown;
 
 function rawText(data: RawData): string {
   if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
@@ -93,6 +111,8 @@ export class DirectBroker {
   #resolveTunnelTarget: TunnelTargetResolver = async (_binding, target) =>
     target;
   #revokeCapability: CapabilityRevoker = () => undefined;
+  #handleWorkerLinkFrame: WorkerLinkFrameHandler = () => undefined;
+  #disconnectWorkerLink: WorkerLinkDisconnectHandler = () => undefined;
 
   get advertisement(): DirectBrokerAdvertisement {
     return this.#advertisement;
@@ -110,7 +130,8 @@ export class DirectBroker {
     });
     const webSockets = new WebSocketServer({
       noServer: true,
-      maxPayload: 80 * 1_024,
+      maxPayload:
+        8 + WORKER_LINK_MAX_HEADER_BYTES + WORKER_LINK_MAX_PAYLOAD_BYTES,
     });
     server.on("upgrade", (request, socket, head) => {
       if (request.url !== "/direct/v1") {
@@ -285,6 +306,9 @@ export class DirectBroker {
       clearTimeout(active.timer);
       this.#active.delete(capabilityId);
       this.#closeTunnelConnections(active);
+      if (active.binding.resourceKind === "worker-link") {
+        void this.#disconnectWorkerLink(active.workerLinkRespond);
+      }
       active.socket.close(1008, reason.slice(0, 123));
       revoked = true;
     }
@@ -322,6 +346,14 @@ export class DirectBroker {
 
   setCapabilityRevoker(revoker: CapabilityRevoker): void {
     this.#revokeCapability = revoker;
+  }
+
+  setWorkerLinkFrameHandler(
+    handler: WorkerLinkFrameHandler,
+    disconnect: WorkerLinkDisconnectHandler,
+  ): void {
+    this.#handleWorkerLinkFrame = handler;
+    this.#disconnectWorkerLink = disconnect;
   }
 
   routeTunnelFrame(
@@ -489,6 +521,24 @@ export class DirectBroker {
           socket,
           timer: this.#leaseTimer(capability.binding.capabilityId, leaseExpiry),
           tunnelRoute: capability.tunnelRoute,
+          workerLinkRespond: (header, payload) => {
+            if (
+              this.#active.get(capability.binding.capabilityId)?.socket !==
+                socket ||
+              socket.readyState !== WebSocket.OPEN ||
+              socket.bufferedAmount > MAX_BUFFERED_TUNNEL_BYTES
+            ) {
+              return false;
+            }
+            try {
+              socket.send(encodeWorkerLinkFrame(header, payload), {
+                binary: true,
+              });
+              return true;
+            } catch {
+              return false;
+            }
+          },
         };
         this.#active.set(capability.binding.capabilityId, active);
         workerLogger.event("info", "Direct capability connected", {
@@ -531,6 +581,9 @@ export class DirectBroker {
           clearTimeout(current.timer);
           this.#active.delete(capability.binding.capabilityId);
           this.#closeTunnelConnections(current);
+          if (current.binding.resourceKind === "worker-link") {
+            void this.#disconnectWorkerLink(current.workerLinkRespond);
+          }
           this.#revokeCapability(
             capability.binding.capabilityId,
             "Direct connection closed",
@@ -607,6 +660,44 @@ export class DirectBroker {
       return;
     }
     const route = active.tunnelRoute;
+    if (
+      active.binding.resourceKind === "worker-link" &&
+      active.binding.channels.includes("worker-link") &&
+      route === null
+    ) {
+      try {
+        const bytes =
+          data instanceof ArrayBuffer
+            ? new Uint8Array(data)
+            : Array.isArray(data)
+              ? Buffer.concat(data)
+              : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        const frame = decodeWorkerLinkFrame(bytes);
+        if (frame.header.sessionId !== active.binding.resourceId) {
+          throw new Error("WorkerLink frame escaped its direct capability.");
+        }
+        void Promise.resolve(
+          this.#handleWorkerLinkFrame(
+            frame.header,
+            frame.payload,
+            active.workerLinkRespond,
+          ),
+        )
+          .then((accepted) => {
+            if (!accepted && active.socket.readyState === WebSocket.OPEN) {
+              active.socket.close(1003, "WorkerLink frame was rejected");
+            }
+          })
+          .catch(() => {
+            if (active.socket.readyState === WebSocket.OPEN) {
+              active.socket.close(1003, "WorkerLink frame was rejected");
+            }
+          });
+      } catch {
+        active.socket.close(1003, "WorkerLink frame is invalid");
+      }
+      return;
+    }
     if (!route || !active.binding.channels.includes("tunnel-data")) {
       workerLogger.rateLimited(
         `direct-frame-rejected:unauthorized-channel:${active.binding.resourceKind}`,

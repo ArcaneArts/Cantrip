@@ -8,7 +8,10 @@ import type {
 } from "@cantrip/protocol/worker-link";
 import { describe, expect, it, vi } from "vitest";
 
-import { WorkerLinkGateway } from "./worker-link-gateway.js";
+import {
+  WorkerLinkGateway,
+  type WorkerLinkAdapterEmitter,
+} from "./worker-link-gateway.js";
 
 const serverId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const serverGeneration = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -111,7 +114,6 @@ describe("WorkerLinkGateway", () => {
     const gateway = new WorkerLinkGateway({
       now: () => now,
       ownerId: "owner-1",
-      serverGeneration,
       serverId,
       sweepIntervalMs: 0,
       workerId: "worker-1",
@@ -161,7 +163,6 @@ describe("WorkerLinkGateway", () => {
     const gateway = new WorkerLinkGateway({
       now: () => now,
       ownerId: "owner-1",
-      serverGeneration,
       serverId,
       sweepIntervalMs: 0,
       workerId: "worker-1",
@@ -217,7 +218,6 @@ describe("WorkerLinkGateway", () => {
     const gateway = new WorkerLinkGateway({
       now: () => now,
       ownerId: "owner-1",
-      serverGeneration,
       serverId,
       sweepIntervalMs: 0,
       workerId: "worker-1",
@@ -279,7 +279,6 @@ describe("WorkerLinkGateway", () => {
     const gateway = new WorkerLinkGateway({
       now: () => now,
       ownerId: "owner-1",
-      serverGeneration,
       serverId,
       sweepIntervalMs: 0,
       workerId: "worker-1",
@@ -331,7 +330,6 @@ describe("WorkerLinkGateway", () => {
     const gateway = new WorkerLinkGateway({
       now: () => now,
       ownerId: "owner-1",
-      serverGeneration,
       serverId,
       sweepIntervalMs: 0,
       workerId: "worker-1",
@@ -400,7 +398,6 @@ describe("WorkerLinkGateway", () => {
     const gateway = new WorkerLinkGateway({
       now: () => now,
       ownerId: "owner-1",
-      serverGeneration,
       serverId,
       sweepIntervalMs: 0,
       workerId: "worker-1",
@@ -439,7 +436,7 @@ describe("WorkerLinkGateway", () => {
         type: "worker-link.session.install",
         session: foreignServerGeneration.session,
       }),
-    ).rejects.toThrow(/another server generation/i);
+    ).resolves.toEqual({ accepted: true });
 
     const foreignAccount = fixtures(now);
     foreignAccount.session = {
@@ -468,7 +465,6 @@ describe("WorkerLinkGateway", () => {
     const gateway = new WorkerLinkGateway({
       now: () => now,
       ownerId: () => ownerId,
-      serverGeneration,
       serverId,
       sweepIntervalMs: 0,
       workerId: "worker-1",
@@ -490,6 +486,221 @@ describe("WorkerLinkGateway", () => {
       sessions: 0,
     });
     expect(closed).toHaveBeenCalledWith("revoked");
+    await gateway.close();
+  });
+
+  it("runs reliable stream frames through adapters with sequence and credit fencing", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const write = vi.fn();
+    let emit!: WorkerLinkAdapterEmitter;
+    const responses: Array<{
+      header: WorkerLinkFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    const respond = (header: WorkerLinkFrameHeader, payload: Uint8Array) => {
+      responses.push({ header, payload });
+      return true;
+    };
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({
+      kind: "terminal",
+      open: (context) => {
+        emit = context.emit;
+        return { write };
+      },
+    });
+    await install(gateway, fixture);
+
+    await expect(
+      gateway.handleFrame(fixture.open, new Uint8Array(), respond),
+    ).resolves.toBe(true);
+    expect(responses[0]?.header).toMatchObject({ kind: "accept", sequence: 0 });
+
+    const input = new Uint8Array([1, 2, 3]);
+    await expect(
+      gateway.handleFrame(
+        {
+          protocolVersion: 1,
+          sessionId,
+          routeGeneration: 1,
+          effectiveRoute: "local",
+          channel: fixture.open.channel,
+          lane: "interactive",
+          sequence: 1,
+          kind: "data",
+          direction: "client-to-worker",
+          payloadFormat: "raw",
+        },
+        input,
+        respond,
+      ),
+    ).resolves.toBe(true);
+    expect(write).toHaveBeenCalledWith(input);
+    expect(responses[1]?.header).toMatchObject({
+      kind: "credit",
+      direction: "client-to-worker",
+      bytes: 3,
+      sequence: 1,
+    });
+
+    expect(emit.data(new Uint8Array([4, 5]))).toBe(true);
+    expect(responses[2]).toMatchObject({
+      header: {
+        kind: "data",
+        direction: "worker-to-client",
+        sequence: 2,
+      },
+      payload: new Uint8Array([4, 5]),
+    });
+
+    await expect(
+      gateway.handleFrame(
+        {
+          protocolVersion: 1,
+          sessionId,
+          routeGeneration: 2,
+          effectiveRoute: "local",
+          channel: fixture.open.channel,
+          lane: "interactive",
+          sequence: 2,
+          kind: "half-close",
+          direction: "client-to-worker",
+        },
+        new Uint8Array(),
+        respond,
+      ),
+    ).resolves.toBe(false);
+    expect(responses.at(-1)?.header).toMatchObject({
+      kind: "close",
+      code: "protocol-error",
+    });
+    expect(gateway.stats().channels).toBe(0);
+    await gateway.close();
+  });
+
+  it("orders synchronous adapter output after the channel acceptance", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const responses: Array<{
+      header: WorkerLinkFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({
+      kind: "terminal",
+      open: ({ emit }) => {
+        expect(emit.data(new Uint8Array([7, 8]))).toBe(true);
+        return {};
+      },
+    });
+    await install(gateway, fixture);
+
+    await expect(
+      gateway.handleFrame(fixture.open, new Uint8Array(), (header, payload) => {
+        responses.push({ header, payload });
+        return true;
+      }),
+    ).resolves.toBe(true);
+    expect(responses.map(({ header }) => header.kind)).toEqual([
+      "accept",
+      "data",
+    ]);
+    expect(responses[1]).toMatchObject({
+      header: { direction: "worker-to-client", sequence: 1 },
+      payload: new Uint8Array([7, 8]),
+    });
+    await gateway.close();
+  });
+
+  it("closes an accepted adapter when the acceptance cannot be delivered", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    const close = vi.fn();
+    const gateway = new WorkerLinkGateway({
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({ kind: "terminal", open: () => ({ close }) });
+    await install(gateway, fixture);
+
+    await expect(
+      gateway.handleFrame(fixture.open, new Uint8Array(), () => false),
+    ).resolves.toBe(false);
+    expect(close).toHaveBeenCalledWith("endpoint-disconnected");
+    expect(gateway.stats().channels).toBe(0);
+    await gateway.close();
+  });
+
+  it("reserves capacity while adapters are opening concurrently", async () => {
+    const now = Date.parse("2026-08-26T12:00:00.000Z");
+    const fixture = fixtures(now);
+    fixture.installed = {
+      ...fixture.installed,
+      binding: { ...fixture.installed.binding, maxChannels: 1 },
+    };
+    fixture.open = {
+      ...fixture.open,
+      grant: {
+        ...fixture.open.grant,
+        binding: { ...fixture.open.grant.binding, maxChannels: 1 },
+      },
+    };
+    let finishOpen!: () => void;
+    const opening = new Promise<void>((resolve) => {
+      finishOpen = resolve;
+    });
+    const adapterStarted = vi.fn();
+    const gateway = new WorkerLinkGateway({
+      maxActiveChannels: 1,
+      now: () => now,
+      ownerId: "owner-1",
+      serverId,
+      sweepIntervalMs: 0,
+      workerId: "worker-1",
+      workerProcessGeneration: workerGeneration,
+    });
+    gateway.registerAdapter({
+      kind: "terminal",
+      open: async () => {
+        adapterStarted();
+        await opening;
+        return {};
+      },
+    });
+    await install(gateway, fixture);
+
+    const first = gateway.openChannel(fixture.open);
+    await vi.waitFor(() => expect(adapterStarted).toHaveBeenCalledOnce());
+    const second = {
+      ...fixture.open,
+      channel: { channelId: randomUUID(), connectionId: randomUUID() },
+      openNonce: randomUUID(),
+    };
+    await expect(gateway.openChannel(second)).rejects.toMatchObject({
+      code: "limit-exceeded",
+    });
+    finishOpen();
+    await expect(first).resolves.toMatchObject({ kind: "accept" });
+    expect(gateway.stats().channels).toBe(1);
     await gateway.close();
   });
 });

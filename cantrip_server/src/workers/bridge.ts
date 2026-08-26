@@ -4,15 +4,19 @@ import {
   decodeWorkerServerEnvelope,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
+  decodeWorkerLinkFrame,
   encodeWorkerRequestEnvelope,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
+  encodeWorkerLinkFrame,
   isTunnelDataPlaneFrame,
+  isWorkerLinkFrame,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
   type WorkerEvent,
   type WorkerNotification,
+  type WorkerLinkFrameHeader,
   type WorkerServerEnvelope,
 } from "@cantrip/protocol";
 import type { ServiceLogger } from "@cantrip/logging";
@@ -46,6 +50,11 @@ export type WorkerTunnelDataPlaneFrameListener = (
   payload: Uint8Array,
 ) => void;
 
+export type WorkerLinkFrameListener = (
+  header: WorkerLinkFrameHeader,
+  payload: Uint8Array,
+) => void;
+
 export type WorkerNotificationListener = (
   notification: WorkerNotification,
 ) => Promise<void> | void;
@@ -76,6 +85,11 @@ export interface WorkerCommandBus {
     header: TunnelDataPlaneFrameHeader,
     payload: Uint8Array,
   ): boolean;
+  sendWorkerLinkFrame?(
+    workerId: string,
+    header: WorkerLinkFrameHeader,
+    payload: Uint8Array,
+  ): boolean;
   subscribeWorkerDisconnect(workerId: string, listener: () => void): () => void;
   subscribeWorkerOffline?(workerId: string, listener: () => void): () => void;
   subscribeSurfaceFrames(
@@ -85,6 +99,10 @@ export interface WorkerCommandBus {
   subscribeTunnelDataPlaneFrames?(
     workerId: string,
     listener: WorkerTunnelDataPlaneFrameListener,
+  ): () => void;
+  subscribeWorkerLinkFrames?(
+    workerId: string,
+    listener: WorkerLinkFrameListener,
   ): () => void;
   subscribeNotifications?(
     workerId: string,
@@ -198,6 +216,10 @@ export class WorkerBridge implements WorkerCommandBus {
   readonly #tunnelDataPlaneListeners = new Map<
     string,
     Set<WorkerTunnelDataPlaneFrameListener>
+  >();
+  readonly #workerLinkListeners = new Map<
+    string,
+    Set<WorkerLinkFrameListener>
   >();
   readonly #notificationListeners = new Map<
     string,
@@ -371,6 +393,13 @@ export class WorkerBridge implements WorkerCommandBus {
         const frame = decodeTunnelDataPlaneFrame(bytes);
         for (const listener of this.#tunnelDataPlaneListeners.get(workerId) ??
           []) {
+          listener(frame.header, frame.payload);
+        }
+        return;
+      }
+      if (isWorkerLinkFrame(bytes)) {
+        const frame = decodeWorkerLinkFrame(bytes);
+        for (const listener of this.#workerLinkListeners.get(workerId) ?? []) {
           listener(frame.header, frame.payload);
         }
         return;
@@ -616,6 +645,22 @@ export class WorkerBridge implements WorkerCommandBus {
     }
   }
 
+  sendWorkerLinkFrame(
+    workerId: string,
+    header: WorkerLinkFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    const socket = this.#sockets.get(workerId);
+    if (!socket || socket.readyState !== 1) return false;
+    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) return false;
+    try {
+      socket.send(encodeWorkerLinkFrame(header, payload), { binary: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   subscribeSurfaceFrames(
     workerId: string,
     listener: WorkerSurfaceFrameListener,
@@ -629,6 +674,17 @@ export class WorkerBridge implements WorkerCommandBus {
   ): () => void {
     return subscribeKeyedListener(
       this.#tunnelDataPlaneListeners,
+      workerId,
+      listener,
+    );
+  }
+
+  subscribeWorkerLinkFrames(
+    workerId: string,
+    listener: WorkerLinkFrameListener,
+  ): () => void {
+    return subscribeKeyedListener(
+      this.#workerLinkListeners,
       workerId,
       listener,
     );
@@ -780,6 +836,7 @@ export class WorkerBridge implements WorkerCommandBus {
     this.#continuityIdentities.clear();
     this.#surfaceListeners.clear();
     this.#tunnelDataPlaneListeners.clear();
+    this.#workerLinkListeners.clear();
     this.#notificationListeners.clear();
     this.#workerDisconnectListeners.clear();
     this.#workerOfflineListeners.clear();

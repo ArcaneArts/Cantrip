@@ -43,6 +43,7 @@ import {
   skillSettingsMutationResultSchema,
   workerCommandSchema,
   workerEncryptionRefreshResultSchema,
+  workerLinkIdentityResolveResultSchema,
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
   type AgentTurnResultMode,
@@ -711,7 +712,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }),
     { workerId: config.workerId },
   );
-  let workerLinkServerGeneration: string | null = null;
   const workerLinkGateway = new WorkerLinkGateway({
     ownerId: () => {
       try {
@@ -727,10 +727,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return null;
       }
     },
-    serverGeneration: () => workerLinkServerGeneration,
     workerId: config.workerId,
     workerProcessGeneration,
   });
+  directBroker.setWorkerLinkFrameHandler(
+    (header, payload, respond) =>
+      workerLinkGateway.handleFrame(header, payload, respond),
+    (respond) => workerLinkGateway.disconnectResponder(respond),
+  );
   const activeCodeTransportSecurityIdentity = () => {
     const tunnelContentKey = workerEncryption.componentKey("tunnel-content");
     const protectedKeyRevision = tunnelContentKey.keyRevision;
@@ -1678,6 +1682,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       return runtimeProvider;
     };
     switch (command.type) {
+      case "worker-link.identity.resolve":
+        return workerLinkIdentityResolveResultSchema.parse({
+          serverId: workerEncryption.serverIdentity(),
+          ownerId: workerEncryption.ownerId(),
+          workerId: config.workerId,
+          workerProcessGeneration,
+        });
       case "worker-link.session.install":
       case "worker-link.session.renew":
       case "worker-link.session.route":
@@ -5340,8 +5351,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     undefined,
     (serverControlPlaneGeneration) => {
-      workerLinkServerGeneration = serverControlPlaneGeneration;
-      void workerLinkGateway.reconcileSecurityIdentity();
       if (serverControlPlaneGeneration) {
         codeDirectEndpoints.synchronizeControlPlaneGeneration(
           serverControlPlaneGeneration,
@@ -5357,7 +5366,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
     },
-    { connectionGeneration: workerProcessGeneration },
+    {
+      connectionGeneration: workerProcessGeneration,
+      handleWorkerLinkFrame: async (header, payload) => {
+        await workerLinkGateway.handleFrame(
+          header,
+          payload,
+          (responseHeader, responsePayload) =>
+            commandConnection.sendWorkerLinkFrame(
+              responseHeader,
+              responsePayload,
+            ),
+        );
+      },
+    },
   );
   directBroker.setTunnelFrameHandler((header, payload, diagnostics) =>
     tunnelDestinations.handleFrame(header, payload, diagnostics),

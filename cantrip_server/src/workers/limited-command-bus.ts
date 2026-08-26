@@ -2,6 +2,7 @@ import type {
   RemoteSurfaceFrameHeader,
   TunnelDataPlaneFrameHeader,
   WorkerCommand,
+  WorkerLinkFrameHeader,
 } from "@cantrip/protocol";
 
 import {
@@ -16,6 +17,7 @@ import type {
   WorkerRequestOptions,
   WorkerSurfaceFrameListener,
   WorkerTunnelDataPlaneFrameListener,
+  WorkerLinkFrameListener,
   WorkerCommandBusStats,
 } from "./bridge.js";
 
@@ -112,6 +114,16 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     );
   }
 
+  sendWorkerLinkFrame(
+    workerId: string,
+    header: WorkerLinkFrameHeader,
+    payload: Uint8Array,
+  ): boolean {
+    return (
+      this.delegate.sendWorkerLinkFrame?.(workerId, header, payload) ?? false
+    );
+  }
+
   subscribeWorkerDisconnect(workerId: string, listener: () => void) {
     return this.delegate.subscribeWorkerDisconnect(workerId, listener);
   }
@@ -136,6 +148,16 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
   ) {
     return (
       this.delegate.subscribeTunnelDataPlaneFrames?.(workerId, listener) ??
+      (() => undefined)
+    );
+  }
+
+  subscribeWorkerLinkFrames(
+    workerId: string,
+    listener: WorkerLinkFrameListener,
+  ) {
+    return (
+      this.delegate.subscribeWorkerLinkFrames?.(workerId, listener) ??
       (() => undefined)
     );
   }

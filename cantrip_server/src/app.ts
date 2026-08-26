@@ -958,6 +958,14 @@ import {
   DirectAttachmentUnavailableError,
 } from "./direct-attachments/coordinator.js";
 import { WorkerLinkCoordinator } from "./worker-links/coordinator.js";
+import { WorkerLinkUnavailableError } from "./worker-links/coordinator.js";
+import { WorkerLinkRelay } from "./worker-links/relay.js";
+import { WorkerLinkService } from "./worker-links/service.js";
+import {
+  workerLinkRouteUpdateRequestSchema,
+  workerLinkSessionOpenRequestSchema,
+  workerLinkSessionSchema,
+} from "@cantrip/protocol/worker-link";
 import { OpenRouterCatalogService } from "./models/openrouter-catalog.js";
 import { OpenRouterRuntimeCatalogHydrator } from "./models/openrouter-runtime-catalog.js";
 import { OllamaCatalogService } from "./models/ollama-catalog.js";
@@ -3726,10 +3734,27 @@ export async function buildApp({
       ? Promise.resolve(null)
       : repository.ensureLocalIdentity(),
   ]);
-  const workerLinks = new WorkerLinkCoordinator(bridge, {
-    serverId,
-    serverGeneration: serverControlPlaneGeneration,
-  });
+  const workerLinks = new WorkerLinkService(
+    new WorkerLinkCoordinator(bridge, {
+      serverId,
+      serverGeneration: serverControlPlaneGeneration,
+    }),
+    coordinator,
+  );
+  const workerLinkRelay = new WorkerLinkRelay(bridge);
+  const unsubscribeWorkerLinkRelayRevocations =
+    workerLinks.subscribeRelayRevocations((scope) => {
+      switch (scope.kind) {
+        case "session":
+          workerLinkRelay.revokeSession(scope.sessionId);
+          return;
+        case "account-session":
+          workerLinkRelay.revokeAccountSession(scope.accountSessionId);
+          return;
+        case "owner":
+          workerLinkRelay.revokeOwner(scope.ownerId);
+      }
+    });
   const authorizedCodeAttachmentRootIdentity = (
     authorization: Pick<
       TunnelAttachmentAuthorization,
@@ -14465,6 +14490,236 @@ export async function buildApp({
         socket.close(1013, "Worker log stream could not start");
         cleanup();
       }
+    },
+  );
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/worker-link/sessions",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerLinkSessionOpenRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const worker = await repository.getWorker(
+        principal.user.id,
+        request.params.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      if (!bridge.isConnected(worker.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        const session = await workerLinks.openSession({
+          accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          clientInstanceId: input.data.clientInstanceId,
+          ownerId: principal.user.id,
+          workerId: worker.workerId,
+        });
+        return reply.code(201).send(workerLinkSessionSchema.parse(session));
+      } catch (error) {
+        if (error instanceof WorkerLinkUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    "/api/worker-links/:sessionId/renew",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const authorization = {
+        accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+        ownerId: principal.user.id,
+      };
+      if (
+        !(await workerLinks.sessionForAuthorization(
+          request.params.sessionId,
+          authorization,
+        ))
+      ) {
+        return reply.code(404).send({ error: "WorkerLink session not found." });
+      }
+      try {
+        return reply.send(
+          workerLinkSessionSchema.parse(
+            await workerLinks.renewSession(request.params.sessionId),
+          ),
+        );
+      } catch (error) {
+        if (error instanceof WorkerLinkUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    "/api/worker-links/:sessionId/route",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerLinkRouteUpdateRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = authenticatedPrincipal(request);
+      const authorization = {
+        accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+        ownerId: principal.user.id,
+      };
+      if (
+        !(await workerLinks.sessionForAuthorization(
+          request.params.sessionId,
+          authorization,
+        ))
+      ) {
+        return reply.code(404).send({ error: "WorkerLink session not found." });
+      }
+      try {
+        const session = await workerLinks.replaceRoute(
+          request.params.sessionId,
+          input.data.preferredRoute,
+        );
+        if (session.preferredRoute === "relay") {
+          await directAttachments.revokeResource(
+            principal.user.id,
+            "worker-link",
+            session.sessionId,
+          );
+        }
+        return reply.send(workerLinkSessionSchema.parse(session));
+      } catch (error) {
+        if (error instanceof WorkerLinkUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>(
+    "/api/worker-links/:sessionId/direct",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const accountSessionId =
+        principal.sessionId ?? `local:${principal.user.id}`;
+      const session = await workerLinks.sessionForAuthorization(
+        request.params.sessionId,
+        { accountSessionId, ownerId: principal.user.id },
+      );
+      if (!session) {
+        return reply.code(404).send({ error: "WorkerLink session not found." });
+      }
+      if (session.preferredRoute !== "local") {
+        return reply
+          .code(409)
+          .send({ error: "WorkerLink LOCAL is not selected." });
+      }
+      const preparationLease = directAttachments.acquirePreparationLease({
+        authSessionId: accountSessionId,
+        ownerId: principal.user.id,
+        resourceId: session.sessionId,
+        resourceKind: "worker-link",
+      });
+      if (!preparationLease) {
+        return reply.code(409).send({ error: "WorkerLink route is changing." });
+      }
+      try {
+        const worker = await repository.getWorker(
+          principal.user.id,
+          session.identity.workerId,
+        );
+        if (!worker) {
+          return reply.code(404).send({ error: "Worker not found." });
+        }
+        const ticket = await directAttachments.prepare({
+          authSessionId: accountSessionId,
+          channels: ["worker-link"],
+          leaseExpiresAt: new Date(session.lease.expiresAt),
+          maxLeaseExpiresAt: new Date(session.lease.absoluteExpiresAt),
+          ownerId: principal.user.id,
+          preparationLease,
+          resourceId: session.sessionId,
+          resourceKind: "worker-link",
+          worker,
+        });
+        return reply.code(201).send(directAttachmentTicketSchema.parse(ticket));
+      } catch (error) {
+        if (error instanceof DirectAttachmentUnavailableError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        return sendWorkerRequestFailure(reply, error);
+      } finally {
+        directAttachments.releasePreparationLease(preparationLease);
+      }
+    },
+  );
+
+  app.delete<{ Params: { sessionId: string } }>(
+    "/api/worker-links/:sessionId",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const principal = authenticatedPrincipal(request);
+      const authorization = {
+        accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+        ownerId: principal.user.id,
+      };
+      if (
+        !(await workerLinks.sessionForAuthorization(
+          request.params.sessionId,
+          authorization,
+        ))
+      ) {
+        return reply.code(204).send();
+      }
+      await directAttachments.revokeResource(
+        principal.user.id,
+        "worker-link",
+        request.params.sessionId,
+      );
+      await workerLinks.revokeSession(request.params.sessionId, "released");
+      return reply.code(204).send();
+    },
+  );
+
+  app.get<{
+    Params: { sessionId: string };
+    Querystring: { clientInstanceId?: string };
+  }>(
+    "/api/worker-links/:sessionId/connect",
+    { websocket: true },
+    async (socket, request) => {
+      if (
+        !request.headers.origin ||
+        !config.appOrigins.includes(request.headers.origin)
+      ) {
+        socket.close(1008, "Origin not allowed");
+        return;
+      }
+      if (!registerAuthenticatedSocket(socket, request)) return;
+      registerSessionSocket(socket, request);
+      const principal = authenticatedPrincipal(request);
+      const session = await workerLinks.sessionForAuthorization(
+        request.params.sessionId,
+        {
+          accountSessionId: principal.sessionId ?? `local:${principal.user.id}`,
+          ownerId: principal.user.id,
+        },
+      );
+      if (
+        !session ||
+        request.query.clientInstanceId !== session.identity.clientInstanceId
+      ) {
+        socket.close(1008, "WorkerLink session is unavailable");
+        return;
+      }
+      workerLinkRelay.attach(session, socket);
     },
   );
 
@@ -35097,6 +35352,8 @@ export async function buildApp({
     await projectShareTunnel.close();
     tunnelRuntime.close();
     await directAttachments.close();
+    unsubscribeWorkerLinkRelayRevocations();
+    workerLinkRelay.close();
     await workerLinks.close();
     await bridge.close();
     await accountUsageMeter.close();

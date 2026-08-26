@@ -1,13 +1,16 @@
 import {
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
+  decodeWorkerLinkFrame,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
+  encodeWorkerLinkFrame,
   workerEventEnvelopeSchema,
   workerNotificationEnvelopeSchema,
   workerResponseEnvelopeSchema,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
+  type WorkerLinkFrameHeader,
 } from "@cantrip/protocol";
 import {
   createServiceLogEmitter,
@@ -106,6 +109,44 @@ const continuityIdentity: WorkerConnectionContinuityIdentity = {
 };
 
 describe("WorkerBridge Remote Surface transport", () => {
+  it("keeps WorkerLink frames binary and isolated from command envelopes", () => {
+    const bridge = new WorkerBridge();
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+    const frame: WorkerLinkFrameHeader = {
+      protocolVersion: 1,
+      sessionId: "11111111-1111-4111-8111-111111111111",
+      routeGeneration: 1,
+      effectiveRoute: "relay",
+      channel: {
+        channelId: "22222222-2222-4222-8222-222222222222",
+        connectionId: "33333333-3333-4333-8333-333333333333",
+      },
+      lane: "interactive",
+      sequence: 1,
+      kind: "close",
+      code: "normal",
+    };
+    const received = vi.fn();
+    bridge.subscribeWorkerLinkFrames("worker-1", received);
+
+    socket.emit(
+      "message",
+      encodeWorkerLinkFrame(frame, new Uint8Array()),
+      true,
+    );
+    expect(received).toHaveBeenCalledWith(frame, new Uint8Array());
+    expect(
+      bridge.sendWorkerLinkFrame("worker-1", frame, new Uint8Array()),
+    ).toBe(true);
+    const outbound = socket.sent.at(-1);
+    if (!(outbound instanceof Uint8Array)) {
+      throw new Error("WorkerLink frame was not sent as binary.");
+    }
+    expect(decodeWorkerLinkFrame(outbound).header).toEqual(frame);
+    bridge.close();
+  });
+
   it("publishes readiness before attachment becomes command-visible", async () => {
     const bridge = new WorkerBridge();
     const socket = new AttachmentVisibilitySocket(bridge);

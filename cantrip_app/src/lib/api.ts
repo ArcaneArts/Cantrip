@@ -280,6 +280,9 @@ import {
   queuedPromptListSchema,
   queuedPromptSchema,
   directAttachmentTicketSchema,
+  workerLinkRouteUpdateRequestSchema,
+  workerLinkSessionOpenRequestSchema,
+  workerLinkSessionSchema,
   directTransportTelemetrySchema,
   directTunnelPrepareRequestSchema,
   directTunnelTicketSchema,
@@ -829,6 +832,50 @@ export async function createDirectWorkerProbe(workerId: string) {
   return directAttachmentTicketSchema.parse(
     await post(`/api/workers/${encodeURIComponent(workerId)}/direct-probe`, {}),
   );
+}
+
+export async function createWorkerLinkSession(
+  workerId: string,
+  clientInstanceId: string,
+) {
+  return workerLinkSessionSchema.parse(
+    await post(
+      `/api/workers/${encodeURIComponent(workerId)}/worker-link/sessions`,
+      workerLinkSessionOpenRequestSchema.parse({ clientInstanceId }),
+    ),
+  );
+}
+
+export async function renewWorkerLinkSession(sessionId: string) {
+  return workerLinkSessionSchema.parse(
+    await post(`/api/worker-links/${encodeURIComponent(sessionId)}/renew`, {}),
+  );
+}
+
+export async function updateWorkerLinkRoute(
+  sessionId: string,
+  preferredRoute: "local" | "relay",
+) {
+  return workerLinkSessionSchema.parse(
+    await post(
+      `/api/worker-links/${encodeURIComponent(sessionId)}/route`,
+      workerLinkRouteUpdateRequestSchema.parse({ preferredRoute }),
+    ),
+  );
+}
+
+export async function createWorkerLinkDirectTicket(sessionId: string) {
+  return directAttachmentTicketSchema.parse(
+    await post(`/api/worker-links/${encodeURIComponent(sessionId)}/direct`, {}),
+  );
+}
+
+export async function deleteWorkerLinkSession(
+  sessionId: string,
+): Promise<void> {
+  await request(`/api/worker-links/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function deleteDirectAttachment(

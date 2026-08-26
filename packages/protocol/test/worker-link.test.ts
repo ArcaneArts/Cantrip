@@ -12,11 +12,15 @@ import {
   workerLinkCoordinatorCommandSchema,
   workerLinkFrameHeaderSchema,
   workerLinkGrantBindingSchema,
+  workerLinkIdentityResolveResultSchema,
   workerLinkLeaseSchema,
   workerLinkQosLaneSchema,
   workerLinkResourceGrantSchema,
   workerLinkRoutePolicySchema,
+  workerLinkRouteUpdateRequestSchema,
+  workerLinkSessionOpenRequestSchema,
   workerLinkRouteSchema,
+  workerLinkSessionSchema,
   workerLinkSessionIdentitySchema,
   workerLinkTelemetryBatchSchema,
   workerCommandSchema,
@@ -131,6 +135,19 @@ describe("WorkerLink protocol", () => {
         enabled: ["relay", "relay"],
       }).success,
     ).toBe(false);
+    expect(
+      workerLinkSessionSchema.safeParse({
+        sessionId,
+        identity,
+        lease,
+        routePolicy: {
+          priority: ["local", "lan", "wan", "relay"],
+          enabled: ["local", "relay"],
+        },
+        routeGeneration: 1,
+        preferredRoute: "wan",
+      }).success,
+    ).toBe(false);
   });
 
   it("requires ordered, bounded leases and exact resource grants", () => {
@@ -190,6 +207,35 @@ describe("WorkerLink protocol", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("strictly validates client session APIs and authoritative worker identity resolution", () => {
+    expect(
+      workerLinkSessionOpenRequestSchema.parse({
+        clientInstanceId: identity.clientInstanceId,
+      }),
+    ).toEqual({ clientInstanceId: identity.clientInstanceId });
+    expect(
+      workerLinkSessionOpenRequestSchema.safeParse({
+        clientInstanceId: identity.clientInstanceId,
+        workerProcessGeneration: identity.workerProcessGeneration,
+      }).success,
+    ).toBe(false);
+    expect(
+      workerLinkRouteUpdateRequestSchema.safeParse({ preferredRoute: "lan" })
+        .success,
+    ).toBe(false);
+    expect(
+      workerCommandSchema.parse({ type: "worker-link.identity.resolve" }),
+    ).toEqual({ type: "worker-link.identity.resolve" });
+    expect(
+      workerLinkIdentityResolveResultSchema.parse({
+        serverId: identity.serverId,
+        ownerId: identity.ownerId,
+        workerId: identity.workerId,
+        workerProcessGeneration: identity.workerProcessGeneration,
+      }),
+    ).toMatchObject({ workerProcessGeneration: "worker-process-1" });
   });
 
   it("round-trips every reliable channel operation", () => {
