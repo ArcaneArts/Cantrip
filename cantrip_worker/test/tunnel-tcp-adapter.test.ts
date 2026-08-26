@@ -385,6 +385,76 @@ describe("worker TCP tunnel destination", () => {
     adapter.close();
   });
 
+  it("retains and retries an output frame rejected by shared channel congestion", async () => {
+    const port = await listenPayload(Buffer.from("ready"));
+    const adapter = new TunnelTcpDestinationAdapter();
+    const connectionId = "shared-channel-congestion";
+    const attempts: Array<{
+      header: TunnelDataPlaneFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    const output: Array<{
+      header: TunnelDataPlaneFrameHeader;
+      payload: Uint8Array;
+    }> = [];
+    let rejectFirstData = true;
+    let capacityWaits = 0;
+    let releaseCongestion!: (available: boolean) => void;
+    const congestion = new Promise<boolean>((resolve) => {
+      releaseCongestion = resolve;
+    });
+    adapter.setFrameEmitter(
+      (header, payload) => {
+        attempts.push({ header, payload: payload.slice() });
+        if (header.kind === "data" && rejectFirstData) {
+          rejectFirstData = false;
+          return false;
+        }
+        output.push({ header, payload: payload.slice() });
+        return true;
+      },
+      async () => {
+        capacityWaits += 1;
+        return capacityWaits === 1 ? congestion : true;
+      },
+    );
+
+    adapter.handleFrame(connectHeader(connectionId, port), EMPTY_PAYLOAD);
+    await waitFor(
+      () =>
+        attempts.filter(({ header }) => header.kind === "data").length === 1,
+    );
+    expect(capacityWaits).toBe(1);
+    expect(
+      attempts.some(
+        ({ header }) => header.kind === "close" && header.code === "congested",
+      ),
+    ).toBe(false);
+
+    releaseCongestion(true);
+    await waitFor(() =>
+      output.some(({ header }) => header.kind === "half-close"),
+    );
+    const dataAttempts = attempts.filter(
+      ({ header }) => header.kind === "data",
+    );
+    expect(dataAttempts).toHaveLength(2);
+    expect(dataAttempts[0]!.header.sequence).toBe(
+      dataAttempts[1]!.header.sequence,
+    );
+    expect(
+      new TextDecoder().decode(
+        output.find(({ header }) => header.kind === "data")!.payload,
+      ),
+    ).toBe("ready");
+    expect(
+      output.some(
+        ({ header }) => header.kind === "close" && header.code === "congested",
+      ),
+    ).toBe(false);
+    adapter.close();
+  });
+
   it("records a safe diagnostic when output capacity closes a stream", async () => {
     const port = await listenBurst(64 * 1_024);
     const adapter = new TunnelTcpDestinationAdapter();

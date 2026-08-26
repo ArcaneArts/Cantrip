@@ -83,7 +83,10 @@ export class TunnelWorkerLinkAdapter implements WorkerLinkResourceAdapter {
       encodeTunnelDataPlaneFrame(header, payload),
       "tunnel-data-plane-v1",
     );
-    if (sent) active.writable = false;
+    // A rejected emission means the shared outer channel has no capacity at
+    // this instant. Keep it non-writable until the gateway reports fresh
+    // credit so competing nested TCP streams can retain and retry their frame.
+    active.writable = false;
     return sent;
   }
 
