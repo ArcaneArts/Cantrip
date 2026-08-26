@@ -8,7 +8,7 @@ import type {
   TaskDetail,
 } from "@cantrip/protocol";
 import type { RunConfigurationRuntime } from "@cantrip/protocol/run-configuration-runtime";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
   Code2,
@@ -45,6 +45,24 @@ import {
   projectOverviewSectionLabel,
   type WorktreeBindingTarget,
 } from "@/components/app/application-shell-model";
+import {
+  createDesktopGroupSelectionCommands,
+  useDesktopPopoutEffects,
+  useDesktopPopoutModel,
+  useDesktopPopoutStatusState,
+  useDetachedDesktopGroupState,
+  useOrphanedDesktopPopoutEffect,
+} from "@/components/app/desktop-popout-lifecycle";
+import {
+  createMobileProjectNavigationCommands,
+  mobileProjectShellModel,
+  resetMobileProjectNavigation,
+  useMobileBottomTabsPersistence,
+  useMobileProjectNavigationEffects,
+  useMobileProjectNavigationModel,
+  useMobileProjectNavigationRefs,
+  useMobileProjectNavigationState,
+} from "@/components/app/mobile-project-navigation";
 import {
   BrowserView,
   PersistentCodeViews,
@@ -151,7 +169,6 @@ import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 
 import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
 import type { ExplorerHeaderState } from "@/components/explorer/explorer-view";
-import { prepareExplorerPopout as prepareExplorerPopoutLifecycle } from "@/components/explorer/explorer-lifecycle";
 import { ProjectChatList } from "@/components/sidebar/project-chat-list";
 import { StandaloneChatSidebar } from "@/components/sidebar/standalone-chat-sidebar";
 
@@ -206,15 +223,7 @@ import {
   type AppActionId,
 } from "@/lib/app-actions";
 import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboarding";
-import {
-  assignMobileBottomTab,
-  initialMobileBottomTabs,
-  mobileBottomTabConfiguration,
-  mobileBottomTabsFromConfiguration,
-  PRIMARY_MOBILE_BOTTOM_TAB_ID,
-  reconcileMobileBottomTabs,
-  removeMobileBottomTab,
-} from "@/lib/mobile-navigation";
+import { PRIMARY_MOBILE_BOTTOM_TAB_ID } from "@/lib/mobile-navigation";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -227,24 +236,13 @@ import {
   EmptyStateIcon,
   EmptyStateTitle,
 } from "@/components/ui/empty-state";
-import {
-  getChatRelocations,
-  getExplorers,
-  resolveStandaloneChatFilePath,
-  updateSettings,
-} from "@/lib/api";
+import { getChatRelocations, resolveStandaloneChatFilePath } from "@/lib/api";
 
 import { runConfigurationTargetControlForIdentity } from "@/lib/run-configuration-control-model";
 
 import {
-  closeCurrentDesktopWindow,
   desktopPopoutTitlebarLeftInset,
-  focusDesktopPopoutGroup,
   isMacosDesktopRuntime,
-  openDesktopPopoutGroup,
-  openDesktopProjectOverviewPopout,
-  updateDesktopWindowTitle,
-  watchDesktopPopoutGroup,
 } from "@/lib/desktop-popout";
 import { revealProjectInNativeFileManager } from "@/lib/desktop-project-share";
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
@@ -276,11 +274,7 @@ import {
   projectSetupErrorMessage,
 } from "@/lib/job-status-message";
 
-import {
-  selectWorkspaceGroup,
-  selectWorkspaceOverview,
-  selectWorkspaceTab,
-} from "@/lib/workspace-selection";
+import { selectWorkspaceTab } from "@/lib/workspace-selection";
 import { ChatTranscript } from "@/components/chat/chat-transcript";
 
 export { ChatTranscript };
@@ -452,16 +446,9 @@ export function App() {
   >(() => window.localStorage.getItem(activeProjectWorkspaceStorageKey));
   const [showCustomizations, setShowCustomizations] = useState(false);
   const [chatRelocationOpen, setChatRelocationOpen] = useState(false);
-  const [mobileTabGridOpen, setMobileTabGridOpen] = useState(false);
-  const [mobileBottomTabs, setMobileBottomTabs] = useState(
-    initialMobileBottomTabs,
-  );
-  const [mobileBottomTabsProjectId, setMobileBottomTabsProjectId] = useState<
-    string | null
-  >(null);
-  const [activeMobileBottomTabId, setActiveMobileBottomTabId] = useState(
-    PRIMARY_MOBILE_BOTTOM_TAB_ID,
-  );
+  const mobileProjectNavigation = useMobileProjectNavigationState();
+  const { activeMobileBottomTabId, mobileTabGridOpen, setMobileTabGridOpen } =
+    mobileProjectNavigation;
   const {
     contentRootRef,
     contentScrolled,
@@ -489,8 +476,8 @@ export function App() {
   const [sidebarFilePreviewHeader, setSidebarFilePreviewHeader] =
     useState<ExplorerHeaderState | null>(null);
   const [codeHeader, setCodeHeader] = useState<CodeHeaderState | null>(null);
-  const [popoutPending, setPopoutPending] = useState(false);
-  const [popoutError, setPopoutError] = useState<string | null>(null);
+  const desktopPopoutStatus = useDesktopPopoutStatusState();
+  const { popoutError, popoutPending, setPopoutError } = desktopPopoutStatus;
   const [
     terminalCommandPaletteTerminalId,
     setTerminalCommandPaletteTerminalId,
@@ -505,8 +492,8 @@ export function App() {
       terminalId: string;
     }>
   >([]);
-  const [detachedGroupId, setDetachedGroupId] = useState<string | null>(null);
-  const detachedExplorerIdRef = useRef<string | null>(null);
+  const detachedDesktopGroup = useDetachedDesktopGroupState();
+  const { detachedGroupId, setDetachedGroupId } = detachedDesktopGroup;
   const explorerLifecycle = useExplorerLifecycleRefs();
   const {
     explorerLifecycleRef,
@@ -520,11 +507,7 @@ export function App() {
   );
   const { codeAppearance, proModeActive, setCodeAppearance, setProModeActive } =
     useShellAppearanceState();
-  const mobileBottomTabSequenceRef = useRef(0);
-  const persistedMobileBottomTabsRef = useRef<{
-    projectId: string;
-    signature: string;
-  } | null>(null);
+  const mobileProjectNavigationRefs = useMobileProjectNavigationRefs();
 
   const {
     handleExplorerChanged,
@@ -538,12 +521,10 @@ export function App() {
   });
 
   const resetMobileBottomTabs = () => {
-    setMobileBottomTabs(initialMobileBottomTabs());
-    setMobileBottomTabsProjectId(null);
-    setActiveMobileBottomTabId(PRIMARY_MOBILE_BOTTOM_TAB_ID);
-    setMobileTabGridOpen(false);
-    mobileBottomTabSequenceRef.current = 0;
-    persistedMobileBottomTabsRef.current = null;
+    resetMobileProjectNavigation(
+      mobileProjectNavigation,
+      mobileProjectNavigationRefs,
+    );
   };
 
   const {
@@ -590,33 +571,7 @@ export function App() {
     destinationWriteRef,
     queryClient,
   });
-  const saveMobileBottomTabs = useMutation({
-    mutationFn: async ({
-      groupIds,
-      projectId,
-    }: {
-      groupIds: (string | null)[];
-      projectId: string;
-    }) =>
-      updateSettings({
-        mobileProjectTabConfigurations: {
-          [projectId]: groupIds,
-        },
-      }),
-    onError: (error) => {
-      clientLogger.warn("Mobile project tab state failed to save", {
-        ...operationalErrorMetadata(error),
-        event: "tabs.mobile.save.failed",
-        operation: "save-layout",
-        reasonCode: "request-failed",
-        status: "rolled-back",
-        subsystem: "tabs",
-      });
-    },
-    onSuccess: (bundle) => queryClient.setQueryData(["settings"], bundle),
-    retry: 2,
-    scope: { id: "mobile-project-tab-configurations" },
-  });
+  const saveMobileBottomTabs = useMobileBottomTabsPersistence(queryClient);
   const saveSidebarWidth = useSidebarWidthPersistence(queryClient);
   const projectInventory = useProjectInventory({
     appMode,
@@ -898,24 +853,19 @@ export function App() {
       selectedFolderSetupJob?.state === "blocked" ||
       selectedFolderSetupJob?.state === "failed"),
   );
-  const mobileProjectSelectorOpen =
-    appMode === "ide" &&
-    compactShell &&
-    selectedProjectId === null &&
-    !showImporter &&
-    !showSettings &&
-    !showServerAdmin &&
-    !showProjectSettings;
-  const compactManagedHeader =
-    appMode === "ide" &&
-    compactShell &&
-    (mobileProjectSelectorOpen ||
-      showImporter ||
-      showSettings ||
-      showServerAdmin ||
-      showProjectSettings ||
-      mobileTabGridOpen ||
-      (projectOverviewSelected && Boolean(selectedProject)));
+  const { compactManagedHeader, mobileProjectSelectorOpen } =
+    mobileProjectShellModel({
+      appMode,
+      compactShell,
+      mobileTabGridOpen,
+      projectOverviewSelected,
+      selectedProject: Boolean(selectedProject),
+      selectedProjectId,
+      showImporter,
+      showProjectSettings,
+      showServerAdmin,
+      showSettings,
+    });
   const { displayTerminals, projectSurfaceIndex, selectedSurface } =
     useProjectSurfaceSelection({
       resources: projectWorkspaceResources,
@@ -976,15 +926,15 @@ export function App() {
     tabLayoutIsSuccess: tabLayout.isSuccess,
     workers: workers.data,
   });
-  const validMobileGroupIds = useMemo(
-    () =>
-      new Set(
-        tabLayout.data?.projectId === selectedProjectId
-          ? tabLayout.data.groups.map(({ id }) => id)
-          : [],
-      ),
-    [selectedProjectId, tabLayout.data],
-  );
+  const mobileProjectNavigationModel = useMobileProjectNavigationModel({
+    projectSurfaceIndex,
+    selectedProjectId,
+    state: mobileProjectNavigation,
+    tabLayout: tabLayout.data,
+    workspaceSelection,
+  });
+  const { activeMobileBottomTab, mobileBottomNavigationItems } =
+    mobileProjectNavigationModel;
   const projectSurfaces = useMemo(
     () => [...projectSurfaceIndex.byTabKey.values()],
     [projectSurfaceIndex],
@@ -1007,21 +957,6 @@ export function App() {
     sidebarFilePreview,
     tabLayout: tabLayout.data,
     workspaceSelection,
-  });
-  const activeMobileBottomTab = mobileBottomTabs.find(
-    ({ id }) => id === activeMobileBottomTabId,
-  );
-  const mobileBottomNavigationItems = mobileBottomTabs.map((tab) => {
-    const group = tabLayout.data?.groups.find(({ id }) => id === tab.groupId);
-    const tabKey = group
-      ? (workspaceSelection.activeTabByGroup[group.id] ?? group.anchorTabKey)
-      : null;
-    return {
-      id: tab.id,
-      label: group?.title,
-      removable: tab.id !== PRIMARY_MOBILE_BOTTOM_TAB_ID,
-      surface: tabKey ? projectSurfaceIndex.byTabKey.get(tabKey) : undefined,
-    };
   });
   const selectedProjectView =
     !sidebarFilePreviewVisible &&
@@ -1445,40 +1380,29 @@ export function App() {
     showServerAdmin,
     showSettings,
   ]);
-  const activePopout =
-    desktopRuntime &&
-    !isPopout &&
-    currentSurface &&
-    selectedProject &&
-    selectedTabGroup
-      ? {
-          target: {
-            activeTabKey: currentSurface.tabKey,
-            groupId: selectedTabGroup.id,
-            projectId: selectedProject.id,
-          },
-          title: currentSurface.title,
-        }
-      : null;
-  const activeProjectOverviewPopout =
-    desktopRuntime && !isPopout && projectOverviewSelected && selectedProject
-      ? {
-          target: {
-            projectId: selectedProject.id,
-            section: activeProjectOverviewSection,
-            worktreeId:
-              activeProjectOverviewSection === "overview" ||
-              activeProjectOverviewSection === "tasks"
-                ? null
-                : resolvedProjectOverviewWorktreeId,
-          },
-          title: `${selectedProject.name} · ${projectOverviewSectionLabel(activeProjectOverviewSection)}`,
-        }
-      : null;
-  const groupOwnedElsewhere =
-    !isPopout &&
-    detachedGroupId !== null &&
-    detachedGroupId === selectedTabGroup?.id;
+  const desktopPopout = useDesktopPopoutModel({
+    activeProjectOverviewSection,
+    currentSurface,
+    desktopRuntime,
+    detached: detachedDesktopGroup,
+    explorerLifecycleRef,
+    isPopout,
+    projectOverviewSelected,
+    queryClient,
+    resolvedProjectOverviewWorktreeId,
+    selectedExplorer,
+    selectedProject,
+    selectedProjectId,
+    selectedTabGroupId: selectedTabGroup?.id ?? null,
+    status: desktopPopoutStatus,
+  });
+  const {
+    activePopout,
+    activeProjectOverviewPopout,
+    groupOwnedElsewhere,
+    popOutActiveView,
+    popOutProjectOverviewView,
+  } = desktopPopout;
   const activeContentKey = showImporter
     ? "importer"
     : showSettings
@@ -1490,196 +1414,18 @@ export function App() {
           : currentSurface
             ? `${currentSurface.tabKey}:${gitHistoryHeader?.section ?? "content"}`
             : `project:${selectedProjectId ?? "none"}:${activeProjectOverviewSection}`;
-  const resumeDetachedGroup = useCallback(
-    async (groupId: string) => {
-      const explorerId = detachedExplorerIdRef.current;
-      try {
-        if (explorerId && selectedProjectId) {
-          const refreshed = await getExplorers(selectedProjectId);
-          queryClient.setQueryData(["explorers", selectedProjectId], refreshed);
-          const persisted = refreshed.find(({ id }) => id === explorerId);
-          const lifecycle = explorerLifecycleRef.current.get(explorerId);
-          if (persisted && lifecycle) {
-            await lifecycle.reconcile(persisted);
-          } else {
-            await queryClient.invalidateQueries({
-              queryKey: ["explorer-file", explorerId],
-            });
-          }
-        }
-      } catch (error) {
-        clientLogger.warn("Explorer state recovery after pop-out failed", {
-          ...operationalErrorMetadata(error),
-          event: "surface.explorer.popout-recovery.failed",
-          operation: "recover-state",
-          reasonCode: "refresh-failed",
-          status: "failed",
-          subsystem: "explorer",
-          surfaceId: explorerId ?? undefined,
-        });
-      } finally {
-        detachedExplorerIdRef.current = null;
-        setDetachedGroupId((current) => (current === groupId ? null : current));
-      }
-    },
-    [queryClient, selectedProjectId],
-  );
-  const popOutActiveView = () => {
-    if (!activePopout || popoutPending) return;
-    void (async () => {
-      const startedAt = performance.now();
-      clientLogger.info("Desktop pop-out preparation started", {
-        event: "window.popout.open.started",
-        operation: "open-popout",
-        projectId: activePopout.target.projectId,
-        subsystem: "desktop-window",
-      });
-      const explorerLifecycle = selectedExplorer
-        ? explorerLifecycleRef.current.get(selectedExplorer.id)
-        : null;
-      const preparation = await prepareExplorerPopoutLifecycle(
-        explorerLifecycle,
-        () =>
-          window.confirm(
-            "This Explorer has unsaved changes. Save and continue opening it in a new window?\n\nChoose Cancel to keep editing in this window.",
-          ),
-      );
-      if (preparation === "cancelled") return;
-      if (preparation === "save-failed") {
-        setPopoutError("Save the Explorer file before opening a pop-out.");
-        return;
-      }
-      if (preparation === "state-failed") {
-        setPopoutError(
-          "Explorer view state could not be saved before opening the pop-out.",
-        );
-        return;
-      }
-      setPopoutPending(true);
-      setPopoutError(null);
-      try {
-        await openDesktopPopoutGroup(activePopout.target, activePopout.title);
-        detachedExplorerIdRef.current = selectedExplorer?.id ?? null;
-        setDetachedGroupId(activePopout.target.groupId);
-        clientLogger.info("Desktop pop-out opened", {
-          durationMs: Math.round(performance.now() - startedAt),
-          event: "window.popout.open.completed",
-          operation: "open-popout",
-          projectId: activePopout.target.projectId,
-          status: "opened",
-          subsystem: "desktop-window",
-        });
-      } catch (error) {
-        clientLogger.error("Desktop pop-out failed to open", {
-          durationMs: Math.round(performance.now() - startedAt),
-          ...operationalErrorMetadata(error),
-          event: "window.popout.open.failed",
-          operation: "open-popout",
-          projectId: activePopout.target.projectId,
-          reasonCode: "native-window-error",
-          status: "failed",
-          subsystem: "desktop-window",
-        });
-        setPopoutError(errorText(error));
-      } finally {
-        setPopoutPending(false);
-      }
-    })();
-  };
-  const popOutProjectOverviewView = () => {
-    if (!activeProjectOverviewPopout || popoutPending) return;
-    void (async () => {
-      const startedAt = performance.now();
-      setPopoutPending(true);
-      setPopoutError(null);
-      try {
-        await openDesktopProjectOverviewPopout(
-          activeProjectOverviewPopout.target,
-          activeProjectOverviewPopout.title,
-        );
-        clientLogger.info("Project overview pop-out opened", {
-          durationMs: Math.round(performance.now() - startedAt),
-          event: "window.project-overview-popout.open.completed",
-          operation: "open-popout",
-          projectId: activeProjectOverviewPopout.target.projectId,
-          status: "opened",
-          subsystem: "desktop-window",
-        });
-      } catch (error) {
-        clientLogger.error("Project overview pop-out failed to open", {
-          durationMs: Math.round(performance.now() - startedAt),
-          ...operationalErrorMetadata(error),
-          event: "window.project-overview-popout.open.failed",
-          operation: "open-popout",
-          projectId: activeProjectOverviewPopout.target.projectId,
-          reasonCode: "native-window-error",
-          status: "failed",
-          subsystem: "desktop-window",
-        });
-        setPopoutError(errorText(error));
-      } finally {
-        setPopoutPending(false);
-      }
-    })();
-  };
-
   useEffect(() => {
     setChatRelocationOpen(false);
   }, [activeChat?.id]);
-  useEffect(() => {
-    const popoutContentTitle =
-      currentSurface?.title ??
-      (projectOverviewPopoutTarget
-        ? projectOverviewSectionLabel(projectOverviewPopoutTarget.section)
-        : null);
-    if (!isPopout || !popoutContentTitle) return;
-    const projectTitle =
-      selectedProject?.github?.nameWithOwner ?? selectedProject?.name;
-    const title = [popoutContentTitle, projectTitle, "Cantrip"]
-      .filter(Boolean)
-      .join(" — ");
-    void updateDesktopWindowTitle(title).catch((error: unknown) => {
-      clientLogger.warn("Desktop pop-out title update failed", {
-        ...operationalErrorMetadata(error),
-        event: "window.popout.title.failed",
-        operation: "set-title",
-        reasonCode: "native-window-error",
-        status: "failed",
-        subsystem: "desktop-window",
-      });
-    });
-  }, [currentSurface, isPopout, projectOverviewPopoutTarget, selectedProject]);
-  useEffect(() => {
-    if (!desktopRuntime || isPopout || !detachedGroupId) return;
-    const observedGroupId = detachedGroupId;
-    let mounted = true;
-    let stopObserving: (() => void) | null = null;
-    const resumeLocally = () => {
-      if (!mounted) return;
-      void resumeDetachedGroup(observedGroupId);
-    };
-    void watchDesktopPopoutGroup(observedGroupId, resumeLocally)
-      .then((stop) => {
-        if (mounted) stopObserving = stop;
-        else stop();
-      })
-      .catch((error: unknown) => {
-        if (!mounted) return;
-        clientLogger.warn("Desktop pop-out observer failed", {
-          ...operationalErrorMetadata(error),
-          event: "window.popout.observe.failed",
-          operation: "observe-window",
-          reasonCode: "native-window-error",
-          status: "recovering",
-          subsystem: "desktop-window",
-        });
-        resumeLocally();
-      });
-    return () => {
-      mounted = false;
-      stopObserving?.();
-    };
-  }, [desktopRuntime, detachedGroupId, isPopout, resumeDetachedGroup]);
+  useDesktopPopoutEffects({
+    currentSurface,
+    desktopRuntime,
+    detached: detachedDesktopGroup,
+    isPopout,
+    model: desktopPopout,
+    projectOverviewPopoutTarget,
+    selectedProject,
+  });
   useContentScrollChrome({
     activeContentKey,
     contentRootRef,
@@ -1802,135 +1548,24 @@ export function App() {
     setWorkspaceSelection,
   });
 
-  useEffect(() => {
-    if (!selectedProjectId) {
-      if (mobileBottomTabsProjectId !== null) resetMobileBottomTabs();
-      return;
-    }
-    if (mobileBottomTabsProjectId === selectedProjectId || !settings.data) {
-      return;
-    }
-    const restored = mobileBottomTabsFromConfiguration(
-      settings.data.preferences.mobileProjectTabConfigurations[
-        selectedProjectId
-      ],
-    );
-    mobileBottomTabSequenceRef.current = restored.length - 1;
-    persistedMobileBottomTabsRef.current = {
-      projectId: selectedProjectId,
-      signature: JSON.stringify(mobileBottomTabConfiguration(restored)),
-    };
-    setMobileBottomTabs(restored);
-    setMobileBottomTabsProjectId(selectedProjectId);
-    setActiveMobileBottomTabId(PRIMARY_MOBILE_BOTTOM_TAB_ID);
-    setMobileTabGridOpen(false);
-  }, [mobileBottomTabsProjectId, selectedProjectId, settings.data]);
-
-  useEffect(() => {
-    if (
-      !compactShell ||
-      !selectedProjectId ||
-      mobileBottomTabsProjectId !== selectedProjectId ||
-      !settings.isSuccess
-    ) {
-      return;
-    }
-    const groupIds = mobileBottomTabConfiguration(mobileBottomTabs);
-    const signature = JSON.stringify(groupIds);
-    if (
-      persistedMobileBottomTabsRef.current?.projectId === selectedProjectId &&
-      persistedMobileBottomTabsRef.current.signature === signature
-    ) {
-      return;
-    }
-    persistedMobileBottomTabsRef.current = {
-      projectId: selectedProjectId,
-      signature,
-    };
-    saveMobileBottomTabs.mutate({ groupIds, projectId: selectedProjectId });
-  }, [
+  useMobileProjectNavigationEffects({
     compactShell,
-    mobileBottomTabs,
-    mobileBottomTabsProjectId,
+    model: mobileProjectNavigationModel,
+    refs: mobileProjectNavigationRefs,
+    saveMobileBottomTabs,
     selectedProjectId,
-    settings.isSuccess,
-  ]);
+    settings,
+    state: mobileProjectNavigation,
+    tabLayout: tabLayout.data,
+    workspaceSelection,
+  });
 
-  useEffect(() => {
-    if (!compactShell) {
-      setMobileTabGridOpen(false);
-      return;
-    }
-    if (
-      mobileTabGridOpen ||
-      workspaceSelection.destination !== "surface" ||
-      !workspaceSelection.selectedGroupId ||
-      tabLayout.data?.projectId !== selectedProjectId
-    ) {
-      return;
-    }
-    setMobileBottomTabs((current) =>
-      assignMobileBottomTab(
-        current,
-        activeMobileBottomTabId,
-        workspaceSelection.selectedGroupId!,
-      ),
-    );
-  }, [
-    activeMobileBottomTabId,
-    compactShell,
-    mobileTabGridOpen,
-    selectedProjectId,
-    tabLayout.data?.projectId,
-    workspaceSelection.destination,
-    workspaceSelection.selectedGroupId,
-  ]);
-
-  useEffect(() => {
-    if (!compactShell || tabLayout.data?.projectId !== selectedProjectId) {
-      return;
-    }
-    const activeTab = mobileBottomTabs.find(
-      ({ id }) => id === activeMobileBottomTabId,
-    );
-    if (activeTab?.groupId && !validMobileGroupIds.has(activeTab.groupId)) {
-      setMobileTabGridOpen(true);
-    }
-    setMobileBottomTabs((current) =>
-      reconcileMobileBottomTabs(current, validMobileGroupIds),
-    );
-  }, [
-    activeMobileBottomTabId,
-    compactShell,
-    mobileBottomTabs,
-    selectedProjectId,
-    tabLayout.data?.projectId,
-    validMobileGroupIds,
-  ]);
-
-  useEffect(() => {
-    if (!popoutTarget || !tabLayout.isSuccess || tabLayoutMutation.isPending) {
-      return;
-    }
-    if (tabLayout.data?.groups.some(({ id }) => id === popoutTarget.groupId)) {
-      return;
-    }
-    void closeCurrentDesktopWindow().catch((error: unknown) => {
-      clientLogger.warn("Orphaned desktop pop-out failed to close", {
-        ...operationalErrorMetadata(error),
-        event: "window.popout.close.failed",
-        operation: "close-popout",
-        reasonCode: "native-window-error",
-        status: "failed",
-        subsystem: "desktop-window",
-      });
-    });
-  }, [
+  useOrphanedDesktopPopoutEffect({
+    isLayoutMutationPending: tabLayoutMutation.isPending,
+    layout: tabLayout.data,
+    layoutIsSuccess: tabLayout.isSuccess,
     popoutTarget,
-    tabLayout.data,
-    tabLayout.isSuccess,
-    tabLayoutMutation.isPending,
-  ]);
+  });
 
   const {
     closeCompactProject,
@@ -2009,43 +1644,18 @@ export function App() {
     setDetachedGroupId(null);
     revealWorkspace();
   };
-  const selectMobileOverview = () => {
-    setMobileTabGridOpen(false);
-    setWorkspaceSelection((current) =>
-      selectWorkspaceOverview(current, selectedProjectId),
-    );
-  };
-  const selectGroupFromSidebar = (groupId: string) => {
-    setSidebarFilePreview((current) =>
-      current ? { ...current, active: false } : null,
-    );
-    const layout = tabLayout.data;
-    if (!layout) return;
-    const selectLocally = () => {
-      setWorkspaceSelection((current) =>
-        selectWorkspaceGroup(current, layout, groupId),
-      );
-      setDetachedGroupId(null);
-      revealWorkspace();
-    };
-    if (!desktopRuntime || isPopout) {
-      selectLocally();
-      return;
-    }
-    void focusDesktopPopoutGroup(groupId)
-      .then((focused) => {
-        if (focused) {
-          setWorkspaceSelection((current) =>
-            selectWorkspaceGroup(current, layout, groupId),
-          );
-          setDetachedGroupId(groupId);
-          revealWorkspace();
-        } else {
-          selectLocally();
-        }
-      })
-      .catch(() => selectLocally());
-  };
+  const { focusDetachedGroup, selectGroupFromSidebar } =
+    createDesktopGroupSelectionCommands({
+      desktopRuntime,
+      detached: detachedDesktopGroup,
+      isPopout,
+      layout: tabLayout.data,
+      model: desktopPopout,
+      revealWorkspace,
+      setPopoutError,
+      setSidebarFilePreview,
+      setWorkspaceSelection,
+    });
   const {
     activateSidebarFilePreview,
     closeSidebarFilePreview,
@@ -2081,52 +1691,21 @@ export function App() {
     sidebarExplorerCreationKey,
     tabLayout: tabLayout.data,
   });
-  const selectMobileBottomTab = (tabId: string) => {
-    setActiveMobileBottomTabId(tabId);
-    const tab = mobileBottomTabs.find(({ id }) => id === tabId);
-    if (!tab?.groupId) {
-      setMobileTabGridOpen(true);
-      return;
-    }
-    setMobileTabGridOpen(false);
-    selectGroupFromSidebar(tab.groupId);
-  };
-  const openMobileBottomTabSwitcher = (tabId: string) => {
-    setActiveMobileBottomTabId(tabId);
-    setMobileTabGridOpen(true);
-  };
-  const addMobileBottomTab = () => {
-    const tabId = `mobile-${++mobileBottomTabSequenceRef.current}`;
-    setMobileBottomTabs((current) => [
-      ...current,
-      { groupId: null, id: tabId },
-    ]);
-    setActiveMobileBottomTabId(tabId);
-    setMobileTabGridOpen(true);
-  };
-  const selectGroupFromMobileSwitcher = (groupId: string) => {
-    setMobileBottomTabs((current) =>
-      assignMobileBottomTab(current, activeMobileBottomTabId, groupId),
-    );
-    setMobileTabGridOpen(false);
-    selectGroupFromSidebar(groupId);
-  };
-  const removeMobileBottomTabById = (tabId: string) => {
-    const removal = removeMobileBottomTab(mobileBottomTabs, tabId);
-    if (!removal) return;
-    setMobileBottomTabs(removal.tabs);
-    if (tabId !== activeMobileBottomTabId) return;
-    setActiveMobileBottomTabId(removal.activeTabId);
-    const next = removal.tabs.find(({ id }) => id === removal.activeTabId);
-    if (next?.groupId) {
-      setMobileTabGridOpen(false);
-      selectGroupFromSidebar(next.groupId);
-    } else {
-      setMobileTabGridOpen(true);
-    }
-  };
-  const removeActiveMobileBottomTab = () =>
-    removeMobileBottomTabById(activeMobileBottomTabId);
+  const {
+    addMobileBottomTab,
+    openMobileBottomTabSwitcher,
+    removeActiveMobileBottomTab,
+    removeMobileBottomTabById,
+    selectGroupFromMobileSwitcher,
+    selectMobileBottomTab,
+    selectMobileOverview,
+  } = createMobileProjectNavigationCommands({
+    refs: mobileProjectNavigationRefs,
+    selectGroup: selectGroupFromSidebar,
+    selectedProjectId,
+    setWorkspaceSelection,
+    state: mobileProjectNavigation,
+  });
   const {
     createProjectSurface,
     creatingSurfaceKinds,
@@ -3669,17 +3248,7 @@ export function App() {
               <EmptyStateActions>
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    void focusDesktopPopoutGroup(selectedTabGroup.id)
-                      .then((focused) => {
-                        if (!focused) {
-                          void resumeDetachedGroup(selectedTabGroup.id);
-                        }
-                      })
-                      .catch((error: unknown) =>
-                        setPopoutError(errorText(error)),
-                      )
-                  }
+                  onClick={() => focusDetachedGroup(selectedTabGroup.id)}
                 >
                   <ExternalLink className="size-4" />
                   Focus window
