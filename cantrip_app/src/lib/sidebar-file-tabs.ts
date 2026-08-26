@@ -140,10 +140,12 @@ export function preferredSidebarExplorer({
 
 export function dedicatedSidebarExplorer({
   desiredWorktreeId,
+  excludeExplorerId,
   explorers,
   layout,
 }: {
   desiredWorktreeId: string | null;
+  excludeExplorerId?: string | null;
   explorers: readonly ExplorerSummary[];
   layout: ProjectTabLayoutSummary | null | undefined;
 }): ExplorerSummary | null {
@@ -152,6 +154,7 @@ export function dedicatedSidebarExplorer({
     explorers.find(
       (explorer) =>
         !tabbed.has(explorer.id) &&
+        explorer.id !== excludeExplorerId &&
         (!desiredWorktreeId || explorer.worktreeId === desiredWorktreeId),
     ) ?? null
   );
