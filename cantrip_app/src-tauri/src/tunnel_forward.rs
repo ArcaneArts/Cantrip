@@ -843,6 +843,7 @@ mod desktop {
         leader_consumer_id: String,
         leader_window_label: String,
         leader_window_instance_id: String,
+        retirement_fence: Arc<ForwardRetirementFence>,
         reservation_id: String,
     }
 
@@ -855,6 +856,7 @@ mod desktop {
         maintenance: Option<(String, Instant)>,
         publication_acquisition_id: String,
         publication_reservation_id: String,
+        retirement_fence: Arc<ForwardRetirementFence>,
     }
 
     struct StoppingCodeTransport {
@@ -879,6 +881,21 @@ mod desktop {
     enum CodeTransportReleasePlan {
         Completed(CodeTransportForwardRelease),
         Stop(TunnelForwardSummary),
+    }
+
+    #[derive(Default)]
+    struct ForwardRetirementFence {
+        retiring: AtomicBool,
+    }
+
+    impl ForwardRetirementFence {
+        fn retire(&self) {
+            self.retiring.store(true, Ordering::Release);
+        }
+
+        fn is_retiring(&self) -> bool {
+            self.retiring.load(Ordering::Acquire)
+        }
     }
 
     #[derive(Default)]
@@ -1353,6 +1370,11 @@ mod desktop {
         Stopped,
     }
 
+    enum ForwardSessionResolution {
+        Outcome(Result<SessionOutcome, String>),
+        RetirementFenced,
+    }
+
     enum RelayConnectOutcome<T> {
         Connected(T),
         Refreshed,
@@ -1752,6 +1774,7 @@ mod desktop {
                 leader_consumer_id: request.consumer_id,
                 leader_window_label: window_label.to_string(),
                 leader_window_instance_id: request.window_instance_id,
+                retirement_fence: Arc::new(ForwardRetirementFence::default()),
                 reservation_id: reservation_id.clone(),
             }),
         );
@@ -2105,6 +2128,7 @@ mod desktop {
                 maintenance: None,
                 publication_acquisition_id: starting.leader_acquisition_id,
                 publication_reservation_id: starting.reservation_id,
+                retirement_fence: starting.retirement_fence,
             }),
         );
         Ok(CodeTransportForwardAcquisition::Ready {
@@ -2413,6 +2437,7 @@ mod desktop {
             });
         }
         let forward = active.forward.clone();
+        active.retirement_fence.retire();
         signal_pool_change(&active.changes);
         pool.entries.insert(
             transport_id.to_string(),
@@ -2685,6 +2710,24 @@ mod desktop {
     ) -> Result<TunnelForwardSummary, String> {
         validate_identifiers(&request)?;
         let relay_fallback_available = request.relay.is_some();
+        let retirement_fence = match request.code_pool_generation.as_deref() {
+            Some(generation) => {
+                let pool = state
+                    .code_pool
+                    .lock()
+                    .map_err(|_| "The shared Code transport pool is unavailable.".to_string())?;
+                let Some(CodeTransportPoolEntry::Starting(starting)) =
+                    pool.entries.get(&request.tunnel_id)
+                else {
+                    return Err("The shared Code forward reservation is unavailable.".into());
+                };
+                if starting.generation != generation {
+                    return Err("The shared Code forward reservation changed.".into());
+                }
+                starting.retirement_fence.clone()
+            }
+            None => Arc::new(ForwardRetirementFence::default()),
+        };
         let _start_reservation = reserve_forward_start(
             state,
             &request.tunnel_id,
@@ -2777,6 +2820,7 @@ mod desktop {
                 listener,
                 request,
                 task_counters.clone(),
+                retirement_fence,
                 stop_receiver,
                 ready_sender,
                 relay_refresh_receiver,
@@ -3601,6 +3645,7 @@ mod desktop {
         listener: TcpListener,
         mut request: StartTunnelForwardRequest,
         counters: Arc<ForwardCounters>,
+        retirement_fence: Arc<ForwardRetirementFence>,
         mut stop: oneshot::Receiver<()>,
         ready: oneshot::Sender<Result<StartupRoute, String>>,
         mut relay_refreshes: watch::Receiver<Option<Arc<RelayRoute>>>,
@@ -3626,6 +3671,9 @@ mod desktop {
         let mut direct_fallback_reason = None;
         let mut pending_relay_fallback: Option<oneshot::Sender<Result<(), String>>> = None;
         loop {
+            if retirement_fence.is_retiring() {
+                return;
+            }
             if direct.is_none() {
                 if let Some(latest) = relay_refreshes.borrow_and_update().clone() {
                     relay = Some(latest);
@@ -3699,6 +3747,9 @@ mod desktop {
                     RelayConnectOutcome::Stopped => return,
                 }
             };
+            if retirement_fence.is_retiring() {
+                return;
+            }
             let (web_socket, identity, startup) = match connected {
                 Ok(connected) => connected,
                 Err(error) => {
@@ -3803,6 +3854,16 @@ mod desktop {
             );
             let result =
                 run_session_with_relay_refresh(session, &mut relay, &mut relay_refreshes).await;
+            let result = match retirement_fenced_session_outcome(result, &retirement_fence) {
+                ForwardSessionResolution::Outcome(result) => result,
+                ForwardSessionResolution::RetirementFenced => {
+                    // The pool already owns the terminal transition. Wait for
+                    // its exact stop so this task cannot win the authoritative
+                    // forward-map cleanup race or emit a false terminal event.
+                    let _ = (&mut stop).await;
+                    return;
+                }
+            };
             match result {
                 Ok(SessionOutcome::Stopped) => return,
                 Ok(SessionOutcome::ForceRelay(completed)) => {
@@ -3844,6 +3905,19 @@ mod desktop {
                     counters.route_state.store(3, Ordering::Relaxed);
                 }
             }
+        }
+    }
+
+    fn retirement_fenced_session_outcome(
+        outcome: Result<SessionOutcome, String>,
+        retirement_fence: &ForwardRetirementFence,
+    ) -> ForwardSessionResolution {
+        if matches!(outcome, Ok(SessionOutcome::Stopped)) {
+            ForwardSessionResolution::Outcome(outcome)
+        } else if retirement_fence.is_retiring() {
+            ForwardSessionResolution::RetirementFenced
+        } else {
+            ForwardSessionResolution::Outcome(outcome)
         }
     }
 
@@ -4807,6 +4881,7 @@ mod desktop {
                 maintenance: None,
                 publication_acquisition_id: "99999999-9999-4999-8999-999999999999".into(),
                 publication_reservation_id: "88888888-8888-4888-8888-888888888888".into(),
+                retirement_fence: Arc::new(ForwardRetirementFence::default()),
             })
         }
 
@@ -4961,6 +5036,7 @@ mod desktop {
             let first_lease = "88888888-8888-4888-8888-888888888888";
             let second_lease = "99999999-9999-4999-8999-999999999999";
             let (changes, _) = watch::channel(0_u64);
+            let retirement_fence = Arc::new(ForwardRetirementFence::default());
             let mut pool = CodeTransportPool {
                 entries: HashMap::from([(
                     transport_id.into(),
@@ -4994,6 +5070,7 @@ mod desktop {
                         maintenance: None,
                         publication_acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
                         publication_reservation_id: "33333333-3333-4333-8333-333333333333".into(),
+                        retirement_fence: retirement_fence.clone(),
                     }),
                 )]),
                 ..CodeTransportPool::default()
@@ -5011,6 +5088,7 @@ mod desktop {
             };
             assert!(!stale_generation.released);
             assert_eq!(stale_generation.remaining_leases, 2);
+            assert!(!retirement_fence.is_retiring());
 
             let CodeTransportReleasePlan::Completed(first) =
                 release_code_transport_pool_lease(&mut pool, transport_id, generation, first_lease)
@@ -5019,6 +5097,7 @@ mod desktop {
             };
             assert!(first.released);
             assert_eq!(first.remaining_leases, 1);
+            assert!(!retirement_fence.is_retiring());
             assert!(matches!(
                 pool.entries.get(transport_id),
                 Some(CodeTransportPoolEntry::Active(active))
@@ -5035,10 +5114,82 @@ mod desktop {
                 panic!("the exact last lease must stop the transport")
             };
             assert_eq!(stopped.tunnel_id, transport_id);
+            assert!(retirement_fence.is_retiring());
             assert!(matches!(
                 pool.entries.get(transport_id),
                 Some(CodeTransportPoolEntry::Stopping(entry))
                     if entry.generation == generation
+            ));
+        }
+
+        #[test]
+        fn retirement_fence_before_remote_close_resolves_session_as_stopped() {
+            let retirement_fence = ForwardRetirementFence::default();
+            retirement_fence.retire();
+
+            assert!(matches!(
+                retirement_fenced_session_outcome(
+                    Ok(SessionOutcome::Disconnected),
+                    &retirement_fence,
+                ),
+                ForwardSessionResolution::RetirementFenced
+            ));
+        }
+
+        #[test]
+        fn remote_close_before_stop_delivery_observes_synchronous_last_lease_fence() {
+            let transport_id = "33333333-3333-4333-8333-333333333333";
+            let generation = "77777777-7777-4777-8777-777777777777";
+            let lease_id = "88888888-8888-4888-8888-888888888888";
+            let retirement_fence = Arc::new(ForwardRetirementFence::default());
+            let remote_close = Ok(SessionOutcome::Disconnected);
+            let mut entry = match test_active_code_pool_entry(
+                test_code_pool_identity(),
+                test_code_pool_forward(),
+                generation,
+            ) {
+                CodeTransportPoolEntry::Active(entry) => entry,
+                _ => unreachable!(),
+            };
+            entry.retirement_fence = retirement_fence.clone();
+            entry.leases.insert(
+                lease_id.into(),
+                CodeTransportLease {
+                    acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
+                    consumer_id: "consumer-one".into(),
+                    window_label: "main".into(),
+                    window_instance_id: "11111111-1111-4111-8111-111111111111".into(),
+                },
+            );
+            let mut pool = CodeTransportPool {
+                entries: HashMap::from([(
+                    transport_id.into(),
+                    CodeTransportPoolEntry::Active(entry),
+                )]),
+                ..CodeTransportPool::default()
+            };
+
+            assert!(matches!(
+                release_code_transport_pool_lease(&mut pool, transport_id, generation, lease_id,),
+                CodeTransportReleasePlan::Stop(_)
+            ));
+            assert!(retirement_fence.is_retiring());
+            assert!(matches!(
+                retirement_fenced_session_outcome(remote_close, &retirement_fence),
+                ForwardSessionResolution::RetirementFenced
+            ));
+        }
+
+        #[test]
+        fn unexpected_remote_close_without_retirement_still_recovers() {
+            let retirement_fence = ForwardRetirementFence::default();
+
+            assert!(matches!(
+                retirement_fenced_session_outcome(
+                    Ok(SessionOutcome::Disconnected),
+                    &retirement_fence,
+                ),
+                ForwardSessionResolution::Outcome(Ok(SessionOutcome::Disconnected))
             ));
         }
 
@@ -5080,6 +5231,7 @@ mod desktop {
                     maintenance: None,
                     publication_acquisition_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into(),
                     publication_reservation_id: "33333333-3333-4333-8333-333333333333".into(),
+                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
                 }),
             );
             let cleanup = ForwardCounters::default().terminal_snapshot(&test_code_pool_forward());
@@ -5162,6 +5314,7 @@ mod desktop {
                     leader_consumer_id: "66666666-6666-4666-8666-666666666666".into(),
                     leader_window_instance_id: first.into(),
                     leader_window_label: "main".into(),
+                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
                     reservation_id: reservation_id.into(),
                 }),
             );
@@ -5227,6 +5380,7 @@ mod desktop {
                     leader_consumer_id: "66666666-6666-4666-8666-666666666666".into(),
                     leader_window_instance_id: second.into(),
                     leader_window_label: "main".into(),
+                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
                     reservation_id: "88888888-8888-4888-8888-888888888888".into(),
                 }),
             );
@@ -5261,6 +5415,7 @@ mod desktop {
                     leader_consumer_id: "66666666-6666-4666-8666-666666666666".into(),
                     leader_window_instance_id: window_instance.into(),
                     leader_window_label: "main".into(),
+                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
                     reservation_id: reservation_id.into(),
                 }),
             );
@@ -5321,6 +5476,7 @@ mod desktop {
                     leader_consumer_id: "66666666-6666-4666-8666-666666666666".into(),
                     leader_window_instance_id: window_instance.into(),
                     leader_window_label: "main".into(),
+                    retirement_fence: Arc::new(ForwardRetirementFence::default()),
                     reservation_id: reservation_id.into(),
                 }),
             );
@@ -6040,6 +6196,7 @@ mod desktop {
                 listener,
                 request,
                 forward_counters,
+                Arc::new(ForwardRetirementFence::default()),
                 stop_receiver,
                 ready_sender,
                 relay_refresh_receiver,
